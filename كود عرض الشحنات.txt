@@ -1,0 +1,351 @@
+import React, { useEffect, useState, useRef } from "react";
+
+export default function QCSRawMaterialView() {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [reports, setReports] = useState([]);
+  const [selectedReportId, setSelectedReportId] = useState(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const savedReports = JSON.parse(localStorage.getItem("qcs_raw_material_reports") || "[]");
+    setReports(savedReports);
+    if (savedReports.length > 0) setSelectedReportId(savedReports[0].id);
+  }, []);
+
+  const filteredReports = reports.filter(r =>
+    r.generalInfo?.airwayBill?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const selectedReport = filteredReports.find(r => r.id === selectedReportId);
+
+  const keyLabels = {
+    reportOn: "تاريخ التقرير",
+    receivedOn: "تاريخ الاستلام",
+    inspectionDate: "تاريخ الفحص",
+    temperature: "درجة الحرارة",
+    brand: "العلامة التجارية",
+    invoiceNo: "رقم الفاتورة",
+    ph: "درجة الحموضة",
+    origin: "بلد المنشأ",
+    airwayBill: "رقم بوليصة الشحن",
+    localLogger: "جهاز التسجيل المحلي",
+    internationalLogger: "جهاز التسجيل الدولي"
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm("هل أنت متأكد من حذف هذا التقرير؟")) {
+      const filtered = reports.filter(r => r.id !== id);
+      setReports(filtered);
+      localStorage.setItem("qcs_raw_material_reports", JSON.stringify(filtered));
+      if (selectedReportId === id) {
+        setSelectedReportId(filtered.length > 0 ? filtered[0].id : null);
+      }
+    }
+  };
+
+  const handleExport = () => {
+    const dataStr = JSON.stringify(reports, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "qcs_raw_material_reports_backup.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const importedData = JSON.parse(event.target.result);
+        if (!Array.isArray(importedData)) {
+          alert("ملف غير صالح: يجب أن يحتوي على مصفوفة تقارير.");
+          return;
+        }
+        const merged = [...reports, ...importedData];
+        setReports(merged);
+        localStorage.setItem("qcs_raw_material_reports", JSON.stringify(merged));
+        alert("تم استيراد التقارير بنجاح.");
+      } catch {
+        alert("فشل في قراءة الملف أو تنسيقه غير صالح.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  if (reports.length === 0) {
+    return (
+      <p style={{
+        padding: "1rem",
+        fontFamily: "Cairo, sans-serif",
+        textAlign: "center",
+        fontWeight: "bold",
+        color: "#c0392b"
+      }}>
+        ❗ لا يوجد أي تقرير استلام شحنات محفوظ حتى الآن.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", fontFamily: "Cairo, sans-serif", direction: "rtl", gap: "1rem", padding: "1rem" }}>
+      <aside style={{
+        flex: "0 0 280px",
+        borderLeft: "1px solid #ccc",
+        paddingLeft: "1rem",
+        maxHeight: "80vh",
+        overflowY: "auto",
+        backgroundColor: "#fafafa"
+      }}>
+        <h3 style={{ marginBottom: "1rem", color: "#8e44ad", fontWeight: "bold" }}>📦 قائمة تقارير استلام الشحنات</h3>
+        <div style={{ marginBottom: "1rem" }}>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="🔍 ابحث عن تقرير برقم بوليصة الشحن (Airway Bill)"
+            style={{
+              width: "100%",
+              padding: "8px",
+              borderRadius: "6px",
+              border: "1px solid #ccc"
+            }}
+          />
+        </div>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          {filteredReports.map(report => (
+            <li key={report.id} style={{ marginBottom: "0.5rem" }}>
+              <button
+                onClick={() => setSelectedReportId(report.id)}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "5px",
+                  border: selectedReportId === report.id ? "2px solid #8e44ad" : "1px solid #ccc",
+                  backgroundColor: selectedReportId === report.id ? "#f0e6fb" : "#fff",
+                  cursor: "pointer",
+                  fontWeight: selectedReportId === report.id ? "bold" : "normal",
+                  textAlign: "right",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center"
+                }}
+                title={`فتح تقرير ${report.generalInfo?.airwayBill || "بدون رقم شحنة"}`}
+              >
+                <span>{report.generalInfo?.airwayBill || "بدون رقم شحنة"}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(report.id);
+                  }}
+                  style={{
+                    backgroundColor: "#c0392b",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "4px",
+                    padding: "3px 8px",
+                    cursor: "pointer",
+                    marginLeft: "8px",
+                    fontWeight: "normal"
+                  }}
+                  title="حذف التقرير"
+                >
+                  حذف
+                </button>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
+          <button
+            onClick={handleExport}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: "#8e44ad",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+              width: "100%",
+              fontWeight: "bold",
+              marginBottom: "8px"
+            }}
+          >
+            ⬇️ تصدير التقارير
+          </button>
+          <button
+            onClick={() => fileInputRef.current.click()}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: "#27ae60",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+              width: "100%",
+              fontWeight: "bold"
+            }}
+          >
+            ⬆️ استيراد تقارير
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            onChange={handleImport}
+            style={{ display: "none" }}
+          />
+        </div>
+      </aside>
+
+      <main style={{
+        flex: 1,
+        maxHeight: "80vh",
+        overflowY: "auto",
+        backgroundColor: "#fff",
+        borderRadius: "6px",
+        padding: "1rem",
+        boxShadow: "0 0 5px rgba(0,0,0,0.1)"
+      }}>
+        {!selectedReport ? (
+          <p style={{
+            textAlign: "center",
+            fontWeight: "bold",
+            color: "#c0392b",
+            padding: "2rem"
+          }}>
+            ❌ لم يتم اختيار تقرير.
+          </p>
+        ) : (
+          <>
+            <h3 style={{ marginBottom: "1rem", color: "#8e44ad", fontWeight: "bold" }}>
+              📋 تقرير استلام شحنة رقم: <span style={{ color: "#2c3e50" }}>{selectedReport.generalInfo?.airwayBill || "غير محدد"}</span>
+            </h3>
+
+            <section style={{
+              marginBottom: "1.5rem",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "1rem"
+            }}>
+              {selectedReport.generalInfo && Object.entries(selectedReport.generalInfo).map(([key, value]) => (
+                <div key={key} style={{
+                  flex: "1 1 200px",
+                  backgroundColor: "#f9f9f9",
+                  padding: "10px",
+                  borderRadius: "5px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                  fontWeight: "600",
+                  textAlign: "right",
+                  color: "#444"
+                }} title={`${key}: ${value || "-"}`}>
+                  <div style={{ fontWeight: "bold", marginBottom: "0.3rem", color: "#8e44ad" }}>{keyLabels[key] || key} ({key})</div>
+                  <div>{value || "-"}</div>
+                </div>
+              ))}
+              <div style={{
+                flex: "1 1 200px",
+                backgroundColor: "#f9f9f9",
+                padding: "10px",
+                borderRadius: "5px",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                fontWeight: "600",
+                textAlign: "right",
+                color: "#444"
+              }}>
+                <div style={{ fontWeight: "bold", marginBottom: "0.3rem", color: "#8e44ad" }}>حالة الشحنة (Shipment Status)</div>
+                <div>{selectedReport.status || "-"}</div>
+              </div>
+              <div style={{
+                flex: "1 1 200px",
+                backgroundColor: "#f9f9f9",
+                padding: "10px",
+                borderRadius: "5px",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                fontWeight: "600",
+                textAlign: "right",
+                color: "#444"
+              }}>
+                <div style={{ fontWeight: "bold", marginBottom: "0.3rem", color: "#8e44ad" }}>تاريخ الإدخال (Entry Date)</div>
+                <div>{selectedReport.date || "-"}</div>
+              </div>
+              {selectedReport.verifiedBy1 && (
+                <div style={{
+                  flex: "1 1 200px",
+                  backgroundColor: "#f9f9f9",
+                  padding: "10px",
+                  borderRadius: "5px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                  fontWeight: "600",
+                  textAlign: "right",
+                  color: "#444"
+                }}>
+                  <div style={{ fontWeight: "bold", marginBottom: "0.3rem", color: "#8e44ad" }}>تم الفحص بواسطة (Inspected By)</div>
+                  <div>{selectedReport.verifiedBy1}</div>
+                </div>
+              )}
+              {selectedReport.verifiedBy2 && (
+                <div style={{
+                  flex: "1 1 200px",
+                  backgroundColor: "#f9f9f9",
+                  padding: "10px",
+                  borderRadius: "5px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                  fontWeight: "600",
+                  textAlign: "right",
+                  color: "#444"
+                }}>
+                  <div style={{ fontWeight: "bold", marginBottom: "0.3rem", color: "#8e44ad" }}>تم التحقق بواسطة (Verified By)</div>
+                  <div>{selectedReport.verifiedBy2}</div>
+                </div>
+              )}
+            </section>
+
+            <section>
+              <h4 style={{ marginBottom: "0.8rem", fontWeight: "bold", color: "#8e44ad", borderBottom: "2px solid #8e44ad", paddingBottom: "0.3rem" }}>
+                عينات الفحص (Test Samples)
+              </h4>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.95rem", minWidth: "700px" }}>
+                  <thead>
+                    <tr style={{ backgroundColor: "#f0f0f0", textAlign: "center", fontWeight: "bold" }}>
+                      <th style={{ padding: "8px" }}>#</th>
+                      <th style={{ padding: "8px" }}>درجة الحرارة (Temp)</th>
+                      <th style={{ padding: "8px" }}>PH</th>
+                      <th style={{ padding: "8px" }}>تاريخ الذبح (Slaughter Date)</th>
+                      <th style={{ padding: "8px" }}>تاريخ الانتهاء (Expiry Date)</th>
+                      <th style={{ padding: "8px" }}>قطع مكسورة (Broken)</th>
+                      <th style={{ padding: "8px" }}>المظهر (Appearance)</th>
+                      <th style={{ padding: "8px" }}>تجلط دم (Blood Clots)</th>
+                      <th style={{ padding: "8px" }}>اللون (Colour)</th>
+                      <th style={{ padding: "8px" }}>شحوم متغيرة (Fat Discoloration)</th>
+                      <th style={{ padding: "8px" }}>تلف اللحم (Meat Damage)</th>
+                      <th style={{ padding: "8px" }}>مواد غريبة (Foreign Matter)</th>
+                      <th style={{ padding: "8px" }}>الملمس (Texture)</th>
+                      <th style={{ padding: "8px" }}>خصيتين (Testicles)</th>
+                      <th style={{ padding: "8px" }}>رائحة كريهة (Smell)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedReport.samples && selectedReport.samples.map((sample, idx) => (
+                      <tr key={idx} style={{ textAlign: "center", borderBottom: "1px solid #ddd" }}>
+                        <td style={{ padding: "6px" }}>{idx + 1}</td>
+                        {Object.keys(sample).map(key => (
+                          <td key={key} style={{ padding: "6px" }}>{sample[key] || "-"}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}

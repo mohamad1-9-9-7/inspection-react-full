@@ -1,0 +1,378 @@
+import React, { useState, useEffect } from "react";
+
+export default function QCSRawMaterialInspection() {
+  const [samples, setSamples] = useState([
+    {
+      temperature: "", ph: "", slaughterDate: "", expiryDate: "",
+      broken: "", appearance: "", bloodClots: "", colour: "",
+      fatDiscoloration: "", meatDamage: "", foreignMatter: "",
+      texture: "", testicles: "", smell: ""
+    },
+  ]);
+
+  const [reportTitle, setReportTitle] = useState("");
+  const [shipmentStatus, setShipmentStatus] = useState("مرضي");
+  const [verifiedBy1, setVerifiedBy1] = useState("");
+  const [verifiedBy2, setVerifiedBy2] = useState("");
+
+  const [totalQuantity, setTotalQuantity] = useState("");
+  const [totalWeight, setTotalWeight] = useState("");
+  const [averageWeight, setAverageWeight] = useState("0");
+
+  const [generalInfo, setGeneralInfo] = useState({
+    reportOn: "", receivedOn: "", inspectionDate: "",
+    temperature: "", brand: "", invoiceNo: "",
+    ph: "", origin: "", airwayBill: "",
+    localLogger: "N/A", internationalLogger: "N/A"
+  });
+
+  useEffect(() => {
+    const q = parseFloat(totalQuantity);
+    const w = parseFloat(totalWeight);
+    if (q > 0 && w > 0) {
+      setAverageWeight((w / q).toFixed(3)); // متوسط الوزن بالكيلو
+    } else {
+      setAverageWeight("0");
+    }
+  }, [totalQuantity, totalWeight]);
+
+  const handleSampleChange = (index, field, value) => {
+    const updated = [...samples];
+    updated[index][field] = value;
+    setSamples(updated);
+  };
+
+  const handleGeneralChange = (field, value) => {
+    setGeneralInfo((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const addSample = () => {
+    setSamples((prev) => [
+      ...prev,
+      {
+        temperature: "", ph: "", slaughterDate: "", expiryDate: "",
+        broken: "", appearance: "", bloodClots: "", colour: "",
+        fatDiscoloration: "", meatDamage: "", foreignMatter: "",
+        texture: "", testicles: "", smell: ""
+      }
+    ]);
+  };
+
+  const handleSave = () => {
+    if (!reportTitle.trim()) {
+      alert("📝 الرجاء إدخال عنوان أو رقم التقرير.");
+      return;
+    }
+
+    if (!verifiedBy1.trim()) {
+      alert("🛑 الرجاء إدخال اسم الشخص الذي قام بالتحقق الأول (Verified By 1).");
+      return;
+    }
+
+    const allReports = JSON.parse(localStorage.getItem("qcs_raw_material_reports") || "[]");
+
+    const newReport = {
+      id: Date.now(),
+      title: reportTitle,
+      status: shipmentStatus,
+      generalInfo,
+      date: new Date().toLocaleString(),
+      samples,
+      verifiedBy1,
+      verifiedBy2,
+      totalQuantity,
+      totalWeight,
+      averageWeight
+    };
+
+    allReports.push(newReport);
+    localStorage.setItem("qcs_raw_material_reports", JSON.stringify(allReports));
+    alert("✅ تم حفظ التقرير الجديد بنجاح");
+    setReportTitle("");
+    setSamples([samples[0]]);
+    setVerifiedBy1("");
+    setVerifiedBy2("");
+    setTotalQuantity("");
+    setTotalWeight("");
+    setAverageWeight("0");
+  };
+
+  return (
+    <div style={{
+      padding: "2rem",
+      background: "#fff",
+      borderRadius: "12px",
+      marginTop: "2rem",
+      direction: "rtl",
+      fontFamily: "Cairo, sans-serif"
+    }}>
+      <h2 style={{ color: "#2c3e50", marginBottom: "1.5rem" }}>
+        📦 تقرير استلام شحنات - QCS
+      </h2>
+
+      <div style={{ marginBottom: "1.5rem" }}>
+        <label style={{ fontWeight: "bold" }}>
+          📌 عنوان التقرير (Report Title):
+        </label>
+        <input
+          value={reportTitle}
+          onChange={(e) => setReportTitle(e.target.value)}
+          placeholder="مثال: شحنة رقم 3 - تاريخ 28/07"
+          style={{
+            width: "60%",
+            padding: "10px",
+            marginRight: "0.5rem",
+            border: "1px solid #ccc",
+            borderRadius: "6px"
+          }}
+        />
+      </div>
+
+      <fieldset style={{
+        marginBottom: "2rem",
+        padding: "1.5rem",
+        border: "1px solid #ccc",
+        borderRadius: "10px"
+      }}>
+        <legend style={{ fontWeight: "bold", fontSize: "1.1rem" }}>
+          📋 معلومات عامة عن التقرير (General Information)
+        </legend>
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+          gap: "1rem",
+          marginTop: "1rem"
+        }}>
+          {[
+            ["📅 تاريخ التقرير (Report On)", "reportOn"],
+            ["📥 تاريخ الاستلام (Sample Received On)", "receivedOn"],
+            ["🔍 تاريخ الفحص (Inspection Date)", "inspectionDate"],
+            ["🌡️ درجة الحرارة (Temperature)", "temperature"],
+            ["🏷️ العلامة التجارية (Brand)", "brand"],
+            ["🧾 رقم الفاتورة (Invoice No)", "invoiceNo"],
+            ["🔬 درجة الحموضة (PH)", "ph"],
+            ["🌍 بلد المنشأ (Origin)", "origin"],
+            ["📦 رقم بوليصة الشحن (Air Way Bill No)", "airwayBill"],
+            ["📡 جهاز التسجيل المحلي (Local Logger)", "localLogger"],
+            ["🌐 جهاز التسجيل الدولي (International Logger)", "internationalLogger"]
+          ].map(([label, field]) => (
+            <div key={field}>
+              <label>{label}:</label>
+              <input
+                value={generalInfo[field]}
+                onChange={(e) => handleGeneralChange(field, e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  border: "1px solid #ccc",
+                  borderRadius: "6px"
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: "1.5rem" }}>
+          <label style={{ fontWeight: "bold" }}>
+            ⚠️ حالة الشحنة (Shipment Status):
+          </label>
+          <select
+            value={shipmentStatus}
+            onChange={(e) => setShipmentStatus(e.target.value)}
+            style={{
+              padding: "8px",
+              fontWeight: "bold",
+              borderRadius: "6px",
+              border: "1px solid #aaa"
+            }}
+          >
+            <option>مرضي</option>
+            <option>وسط</option>
+            <option>تحت الوسط</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <h4 style={{ marginBottom: "1rem" }}>🧪 عينات الفحص (Test Samples)</h4>
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "0.95rem"
+        }}>
+          <thead>
+            <tr style={{ backgroundColor: "#f0f0f0", textAlign: "center" }}>
+              <th>#</th>
+              <th>درجة الحرارة (Temp)</th>
+              <th>PH</th>
+              <th>تاريخ الذبح (Slaughter Date)</th>
+              <th>تاريخ الانتهاء (Expiry)</th>
+              <th>قطع مكسورة (Broken)</th>
+              <th>المظهر (Appearance)</th>
+              <th>تجلط دم (Blood Clots)</th>
+              <th>اللون (Colour)</th>
+              <th>شحوم متغيرة (Fat Discoloration)</th>
+              <th>تلف اللحم (Meat Damage)</th>
+              <th>مواد غريبة (Foreign Matter)</th>
+              <th>الملمس (Texture)</th>
+              <th>خصيتين (Testicles)</th>
+              <th>رائحة كريهة (Smell)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {samples.map((sample, idx) => (
+              <tr key={idx} style={{ textAlign: "center", borderBottom: "1px solid #ddd" }}>
+                <td>{idx + 1}</td>
+                {Object.keys(sample).map((key) => (
+                  <td key={key}>
+                    <input
+                      value={sample[key]}
+                      onChange={(e) => handleSampleChange(idx, key, e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "6px",
+                        border: "1px solid #ccc",
+                        borderRadius: "4px"
+                      }}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+
+            <tr>
+              <td colSpan="15" style={{ textAlign: "center", padding: "1rem" }}>
+                <button
+                  onClick={addSample}
+                  style={{
+                    padding: "8px 16px",
+                    background: "#8e44ad",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: "pointer"
+                  }}
+                >
+                  ➕ إضافة عينة جديدة (Add Sample)
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* الحقول الجديدة بعد الجدول */}
+      <div style={{
+        marginTop: "1.5rem",
+        display: "flex",
+        gap: "1rem",
+        alignItems: "center"
+      }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ fontWeight: "bold" }}>📦 عدد الحبات الكلي:</label>
+          <input
+            type="number"
+            value={totalQuantity}
+            onChange={(e) => setTotalQuantity(e.target.value)}
+            placeholder="مثال: 1000"
+            style={{
+              width: "100%",
+              padding: "8px",
+              border: "1px solid #ccc",
+              borderRadius: "6px"
+            }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={{ fontWeight: "bold" }}>⚖️ وزن الشحنة الكلي (كجم):</label>
+          <input
+            type="number"
+            value={totalWeight}
+            onChange={(e) => setTotalWeight(e.target.value)}
+            placeholder="مثال: 750"
+            style={{
+              width: "100%",
+              padding: "8px",
+              border: "1px solid #ccc",
+              borderRadius: "6px"
+            }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={{ fontWeight: "bold" }}>🔢 متوسط وزن الحبة (كجم):</label>
+          <input
+            type="text"
+            value={averageWeight}
+            disabled
+            style={{
+              width: "100%",
+              padding: "8px",
+              background: "#f5f5f5",
+              border: "1px solid #ccc",
+              borderRadius: "6px"
+            }}
+          />
+        </div>
+      </div>
+
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        marginTop: "2rem",
+        gap: "1rem"
+      }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ fontWeight: "bold" }}>
+            ✅ تم التحقق بواسطة (Verified By 1):
+          </label>
+          <input
+            value={verifiedBy1}
+            onChange={(e) => setVerifiedBy1(e.target.value)}
+            placeholder="اسم المحقق الأول"
+            style={{
+              width: "100%",
+              padding: "10px",
+              border: "1px solid #ccc",
+              borderRadius: "6px"
+            }}
+          />
+        </div>
+
+        <div style={{ flex: 1 }}>
+          <label style={{ fontWeight: "bold" }}>
+            📝 تم التحقق بواسطة (Verified By 2):
+          </label>
+          <input
+            value={verifiedBy2}
+            onChange={(e) => setVerifiedBy2(e.target.value)}
+            placeholder="اسم المحقق الثاني"
+            style={{
+              width: "100%",
+              padding: "10px",
+              border: "1px solid #ccc",
+              borderRadius: "6px"
+            }}
+          />
+        </div>
+      </div>
+
+      <div style={{ marginTop: "2rem" }}>
+        <button
+          onClick={handleSave}
+          style={{
+            padding: "10px 24px",
+            background: "#27ae60",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer"
+          }}
+        >
+          💾 حفظ التقرير (Save Report)
+        </button>
+      </div>
+    </div>
+  );
+}
