@@ -7,44 +7,60 @@ const branches = [
   "POS 25", "POS 37", "POS 38", "POS 42", "POS 44", "POS 45"
 ];
 
+// تحويل الاسم إلى مسار صالح: "POS 19" -> "pos19" ، "QCS" -> "qcs"
+const toSlug = (name) => name.trim().toLowerCase().replace(/\s+/g, "");
+
 export default function DailyMonitorDashboard() {
   const navigate = useNavigate();
 
   const handleBranchClick = (branch) => {
-    if (branch === "QCS") {
-      navigate("/monitor/qcs");
-    } else if (branch === "POS 19") {
-      navigate("/monitor/pos19"); // ✅ توجيه مخصص لـ POS 19
-    } else {
-      alert(`🛠️ التقارير لفرع ${branch} لم يتم إعدادها بعد.`);
-    }
+    const slug = toSlug(branch);
+    navigate(`/monitor/${slug}`);
   };
 
   return (
-    <div style={{ padding: "2rem", direction: "rtl", fontFamily: "Cairo" }}>
+    <div style={{ padding: "2rem", direction: "rtl", fontFamily: "Cairo, sans-serif" }}>
+      {/* ستايل تأثيرات بسيطة */}
+      <style>{`
+        .branches-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+          gap: 1rem;
+          margin-top: 2rem;
+        }
+        .branch-card {
+          padding: 1rem;
+          background: #f9f9f9;
+          border-radius: 12px;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+          text-align: center;
+          font-weight: 700;
+          cursor: pointer;
+          transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+          user-select: none;
+          outline: none;
+        }
+        .branch-card:hover,
+        .branch-card:focus-visible {
+          transform: translateY(-2px) scale(1.02);
+          box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+          background: #ffffff;
+        }
+      `}</style>
+
       <h2>📋 التقارير اليومية - المراقبة لجميع الفروع</h2>
       <p>اختر أحد الفروع لإدخال تقرير يومي:</p>
 
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-        gap: "1rem",
-        marginTop: "2rem"
-      }}>
-        {branches.map((branch, index) => (
+      <div className="branches-grid">
+        {branches.map((branch) => (
           <div
-            key={index}
+            key={branch}
+            role="button"
+            tabIndex={0}
+            aria-label={`فتح تقارير ${branch}`}
+            className="branch-card"
             onClick={() => handleBranchClick(branch)}
-            style={{
-              padding: "1rem",
-              backgroundColor: "#f9f9f9",
-              borderRadius: "8px",
-              cursor: "pointer",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-              textAlign: "center",
-              transition: "0.3s",
-              fontWeight: "bold"
-            }}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleBranchClick(branch)}
           >
             🏢 {branch}
           </div>
