@@ -14,7 +14,7 @@ import ReturnView from "./ReturnView";
 export default function AdminDashboard() {
   const [reports, setReports] = useState([]);
   const [questions, setQuestions] = useState([]);
-  const [users, setUsers] = useState([]);
+  // const [users, setUsers] = useState([]); // حذفنا إدارة المستخدمين، فلم نعد بحاجة لحالة المستخدمين
   const [dailyReports, setDailyReports] = useState([]);
   const [activeView, setActiveView] = useState("reports");
   const [language, setLanguage] = useState("ar");
@@ -29,7 +29,7 @@ export default function AdminDashboard() {
     }
     setReports(JSON.parse(localStorage.getItem("reports") || "[]"));
     setQuestions(JSON.parse(localStorage.getItem("allQuestions") || "[]"));
-    setUsers(JSON.parse(localStorage.getItem("readonlyUsers") || "[]"));
+    // لم نعد نحمل مستخدمين للقراءة فقط لأن تبويب إدارة المستخدمين محذوف
     setDailyReports(JSON.parse(localStorage.getItem("dailyReports") || "[]"));
   }, [navigate, language]);
 
@@ -101,12 +101,9 @@ export default function AdminDashboard() {
             localStorage.setItem("allQuestions", JSON.stringify(mergedQuestions));
             alert(language === "ar" ? "تم استيراد بيانات الأسئلة بنجاح." : "Questions data imported successfully.");
             break;
-          case "users":
-            const mergedUsers = [...users, ...importedData];
-            setUsers(mergedUsers);
-            localStorage.setItem("readonlyUsers", JSON.stringify(mergedUsers));
-            alert(language === "ar" ? "تم استيراد بيانات المستخدمين بنجاح." : "Users data imported successfully.");
-            break;
+          // case "users":
+          //   // تبويب المستخدمين لم يعد موجودًا، لذا نتجاهل استيراد بيانات المستخدمين
+          //   break;
           case "dailyReports":
             const mergedDailyReports = [...dailyReports, ...importedData];
             setDailyReports(mergedDailyReports);
@@ -236,7 +233,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* أزرار التصدير والاستيراد */}
-      {["reports", "questions", "users", "dailyReports"].includes(activeView) && (
+      {["reports", "questions", "dailyReports"].includes(activeView) && (
         <div style={{ marginBottom: "1.4rem" }}>
           <button
             onClick={() => {
@@ -244,7 +241,7 @@ export default function AdminDashboard() {
               let name = "";
               if (activeView === "reports") { data = reports; name = "reports_backup.json"; }
               if (activeView === "questions") { data = questions; name = "questions_backup.json"; }
-              if (activeView === "users") { data = users; name = "users_backup.json"; }
+              // حذفنا حالة "users" لأن تبويب إدارة المستخدمين لم يعد موجودًا
               if (activeView === "dailyReports") { data = dailyReports; name = "daily_reports_backup.json"; }
               exportToJson(data, name);
             }}

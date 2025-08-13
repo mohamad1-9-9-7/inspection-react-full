@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import './Login.css';
 import logo from '../assets/almawashi-logo.jpg';
 
@@ -11,16 +11,15 @@ const roles = [
   { id: 'daily', label: 'مراقبة يومية', route: '/monitor', icon: '📅' },
   { id: 'ohc', label: 'OHC', route: '/ohc', icon: '🩺' },
   { id: 'returns', label: 'مرتجعات', route: '/returns', icon: '♻️' },
-  // ⬇️⬇️⬇️ الإضافة الجديدة:
   { id: 'finalProduct', label: 'تقرير المنتج النهائي', route: '/finished-product-entry', icon: '🏷️' },
-
+  // 🆕 أيقونة السيارات برمز ثابت
+  { id: 'cars', label: 'السيارات', route: '/cars', icon: '🚗' },
 ];
 
 // نافذة كلمة السر
 function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
   const [password, setPassword] = useState("");
 
-  // عندما تظهر النافذة يتم تصفير كلمة السر
   React.useEffect(() => {
     if (show) setPassword("");
   }, [show]);
@@ -107,23 +106,21 @@ function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
 
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [hoveredRoleId, setHoveredRoleId] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
   const [modalError, setModalError] = useState("");
 
-  // كلمة السر الموحدة:
   const PASSWORD = "0000";
 
-  // عند ضغط زر
   const handleRoleClick = (role) => {
     setSelectedRole(role);
     setModalOpen(true);
     setModalError("");
   };
 
-  // فحص كلمة السر
   const handleModalSubmit = (password) => {
     if (password === PASSWORD) {
       setModalOpen(false);
@@ -138,12 +135,16 @@ function Login() {
     }
   };
 
-  // عند إغلاق المودال
   const handleModalClose = () => {
     setModalOpen(false);
     setModalError("");
     setSelectedRole(null);
   };
+
+  // ✅ عرض الصفحة فقط إذا كنا في /
+  if (location.pathname !== "/") {
+    return null;
+  }
 
   return (
     <div

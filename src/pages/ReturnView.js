@@ -1,13 +1,8 @@
 // src/pages/ReturnView.js
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-// قائمة الأفرع (لتحليل إضافي)
-const BRANCHES = [
-  "QCS", "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16",
-  "POS 17", "POS 19", "POS 21", "POS 24", "POS 25", "POS 37", "POS 38",
-  "POS 42", "POS 44", "POS 45", "فرع آخر..."
-];
+// (اختياري) قوائم جاهزة إن احتجتها لاحقًا
 const ACTIONS = [
   "Use in production",
   "Condemnation",
@@ -18,347 +13,407 @@ const ACTIONS = [
 
 export default function ReturnView() {
   const [reports, setReports] = useState([]);
-  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  // فلاتر عامة من/إلى
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
+
+  // تعديل الإجراء داخل جدول التفاصيل
   const [editActionIdx, setEditActionIdx] = useState(null);
   const [editActionVal, setEditActionVal] = useState("");
   const [editCustomActionVal, setEditCustomActionVal] = useState("");
 
-  // تحميل التقارير أول مرة
+  // (للواجهة أعلى الصفحة فقط)
+  const [groupMode, setGroupMode] = useState("day"); // 'year' | 'month' | 'day'
+  const [selectedGroupKey, setSelectedGroupKey] = useState("");
+
+  // اختيار التاريخ لعرض التفاصيل
+  const [selectedDate, setSelectedDate] = useState("");
+
+  // طي/فتح الأقسام في القائمة اليسار
+  const [openYears, setOpenYears] = useState({});
+  const [openMonths, setOpenMonths] = useState({}); // المفتاح: `${year}-${month}`
+
+  // تحميل التقارير
   useEffect(() => {
     const data = JSON.parse(localStorage.getItem("returns_reports") || "[]");
-    // ترتيب تنازلي حسب التاريخ
     data.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
     setReports(data);
   }, []);
 
-  // الفلترة حسب التاريخ
-  const filteredReports = reports.filter((r) => {
-    if (!filterFrom && !filterTo) return true;
-    const d = r.reportDate || "";
-    if (filterFrom && d < filterFrom) return false;
-    if (filterTo && d > filterTo) return false;
-    return true;
-  });
+  // أدوات تاريخ
+  const parts = (dateStr) => {
+    if (!dateStr || dateStr.length < 10) return { y: "", m: "", d: "" };
+    return { y: dateStr.slice(0, 4), m: dateStr.slice(5, 7), d: dateStr.slice(8, 10) };
+  };
+  const monthKey = (dateStr) => {
+    const { y, m } = parts(dateStr);
+    return y && m ? `${y}-${m}` : "";
+  };
+  const yearKey = (dateStr) => parts(dateStr).y || "";
 
-  // حساب التحليلات لكل الفلاتر المختارة
-  let total = 0, totalQty = 0, byBranch = {}, byAction = {};
-  filteredReports.forEach(rep => {
-    total += rep.items.length;
-    rep.items.forEach(r => {
-      totalQty += Number(r.quantity || 0);
-      // تجميع حسب الفرع
-      const b = r.butchery === "فرع آخر..." ? r.customButchery : r.butchery;
-      if (b) byBranch[b] = (byBranch[b] || 0) + 1;
-      // تجميع حسب الإجراء
-      const a = r.action === "إجراء آخر..." ? r.customAction : r.action;
-      if (a) byAction[a] = (byAction[a] || 0) + 1;
+  // فلترة بحسب من/إلى
+  const filteredReports = useMemo(() => {
+    return reports.filter((r) => {
+      const d = r.reportDate || "";
+      if (filterFrom && d < filterFrom) return false;
+      if (filterTo && d > filterTo) return false;
+      return true;
     });
-  });
+  }, [reports, filterFrom, filterTo]);
 
-  // ==== Badges جديدة ====
+  // اضبط selectedDate عند تغيّر البيانات/الفلتر
+  useEffect(() => {
+    if (!filteredReports.length) {
+      setSelectedDate("");
+      return;
+    }
+    const stillExists = filteredReports.some((r) => r.reportDate === selectedDate);
+    if (!stillExists) setSelectedDate(filteredReports[0].reportDate);
+  }, [filteredReports, selectedDate]);
+
+  // استرجاع التقرير المختار
+  const selectedReportIndex = useMemo(
+    () => filteredReports.findIndex((r) => r.reportDate === selectedDate),
+    [filteredReports, selectedDate]
+  );
+  const selectedReport = selectedReportIndex >= 0 ? filteredReports[selectedReportIndex] : null;
+
+  // KPIs عامة
+  const kpi = useMemo(() => {
+    let totalItems = 0;
+    let totalQty = 0;
+    const byAction = {};
+    filteredReports.forEach((rep) => {
+      totalItems += rep.items.length;
+      rep.items.forEach((it) => {
+        totalQty += Number(it.quantity || 0);
+        const action = it.action === "إجراء آخر..." ? it.customAction : it.action;
+        if (action) byAction[action] = (byAction[action] || 0) + 1;
+      });
+    });
+    return {
+      totalReports: filteredReports.length,
+      totalItems,
+      totalQty,
+      byAction,
+    };
+  }, [filteredReports]);
+
+  // شارة اليوم و تنبيه
   const today = new Date().toISOString().slice(0, 10);
-  const newReportsCount = filteredReports.filter(r => r.reportDate === today).length;
+  const newReportsCount = filteredReports.filter((r) => r.reportDate === today).length;
+  const showAlert = kpi.totalQty > 50 || filteredReports.length > 50;
+  const alertMsg =
+    kpi.totalQty > 50
+      ? "⚠️ الكمية الكلية للمرتجعات مرتفعة جداً!"
+      : filteredReports.length > 50
+      ? "⚠️ عدد تقارير المرتجعات كبير في هذه الفترة!"
+      : "";
 
-  // ==== تنبيه تجاوز الكميات ====
-  let showAlert = false;
-  let alertMsg = "";
-  if (totalQty > 50) {
-    showAlert = true;
-    alertMsg = "⚠️ الكمية الكلية للمرتجعات مرتفعة جداً!";
-  } else if (filteredReports.length > 50) {
-    showAlert = true;
-    alertMsg = "⚠️ عدد تقارير المرتجعات كبير في هذه الفترة!";
-  }
+  // تجميع هرمي للسنة ← الشهر ← اليوم
+  const hierarchy = useMemo(() => {
+    const years = new Map(); // y -> Map(m -> array of dates DESC)
+    filteredReports.forEach((rep) => {
+      const y = yearKey(rep.reportDate);
+      const mk = monthKey(rep.reportDate); // YYYY-MM
+      const m = mk.slice(5, 7);
+      if (!y || !m) return;
+      if (!years.has(y)) years.set(y, new Map());
+      const months = years.get(y);
+      if (!months.has(m)) months.set(m, []);
+      months.get(m).push(rep.reportDate);
+    });
+    years.forEach((months) => {
+      months.forEach((days, m) => {
+        days.sort((a, b) => b.localeCompare(a));
+        months.set(m, days);
+      });
+    });
+    const sortedYears = [...years.keys()].sort((a, b) => b.localeCompare(a));
+    const result = sortedYears.map((y) => {
+      const months = years.get(y);
+      const sortedMonths = [...months.keys()].sort((a, b) => b.localeCompare(a));
+      return { year: y, months: sortedMonths.map((m) => ({ month: m, days: months.get(m) })) };
+    });
+    return result;
+  }, [filteredReports]);
 
-  // حذف تقرير بالكامل
-  const handleDelete = idx => {
-    if (!window.confirm("هل أنت متأكد من حذف هذا التقرير؟")) return;
-    const list = [...reports];
-    const realIdx = reports.findIndex((r, i) => filteredReports[idx] === r);
-    list.splice(realIdx, 1);
+  // حذف تقرير بحسب التاريخ
+  const handleDeleteByDate = (dateStr) => {
+    if (!window.confirm(`هل أنت متأكد من حذف تقرير ${dateStr}؟`)) return;
+    const list = reports.filter((r) => r.reportDate !== dateStr);
     setReports(list);
     localStorage.setItem("returns_reports", JSON.stringify(list));
-    setSelectedIdx(selectedIdx > 0 ? selectedIdx - 1 : 0);
+    if (selectedDate === dateStr) {
+      const next = list
+        .filter((r) => {
+          const d = r.reportDate || "";
+          if (filterFrom && d < filterFrom) return false;
+          if (filterTo && d > filterTo) return false;
+          return true;
+        })
+        .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
+      setSelectedDate(next[0]?.reportDate || "");
+    }
   };
 
-  // تحديث الإجراء
-  const handleActionEdit = (itemIdx) => {
-    const rep = filteredReports[selectedIdx];
-    const item = rep.items[itemIdx];
-    setEditActionIdx(itemIdx);
+  // تعديل إجراء عنصر
+  const handleActionEdit = (i) => {
+    if (!selectedReport) return;
+    const item = selectedReport.items[i];
+    setEditActionIdx(i);
     setEditActionVal(item.action || "");
     setEditCustomActionVal(item.customAction || "");
   };
-  const handleActionSave = (itemIdx) => {
-    const repIdx = reports.findIndex(r => r === filteredReports[selectedIdx]);
-    if (repIdx < 0) return;
-    let updatedReports = [...reports];
-    let updatedItems = [...updatedReports[repIdx].items];
-    updatedItems[itemIdx] = {
-      ...updatedItems[itemIdx],
+  const handleActionSave = (i) => {
+    if (!selectedReport) return;
+    const repIdxInAll = reports.findIndex((r) => r.reportDate === selectedReport.reportDate);
+    if (repIdxInAll < 0) return;
+    const updated = [...reports];
+    const items = [...updated[repIdxInAll].items];
+    items[i] = {
+      ...items[i],
       action: editActionVal,
       customAction: editActionVal === "إجراء آخر..." ? editCustomActionVal : "",
     };
-    updatedReports[repIdx].items = updatedItems;
-    setReports(updatedReports);
-    localStorage.setItem("returns_reports", JSON.stringify(updatedReports));
+    updated[repIdxInAll] = { ...updated[repIdxInAll], items };
+    setReports(updated);
+    localStorage.setItem("returns_reports", JSON.stringify(updated));
     setEditActionIdx(null);
   };
 
-  // ============ العرض ===============
+  // UI
   return (
     <div
       style={{
         fontFamily: "Cairo, sans-serif",
         padding: "2rem",
-        background: "#f4f6fa",
+        background: "linear-gradient(180deg, #f7f2fb 0%, #f4f6fa 100%)",
         minHeight: "100vh",
-        direction: "rtl"
+        direction: "rtl",
+        color: "#111", // خط أسود
       }}
     >
+      {/* العنوان */}
       <h2
         style={{
           textAlign: "center",
-          color: "#512e5f",
+          color: "#1f2937",
           fontWeight: "bold",
-          marginBottom: "1.5rem"
+          marginBottom: "1.2rem",
+          letterSpacing: ".2px",
         }}
       >
         📋 جميع تقارير المرتجعات المحفوظة
         {newReportsCount > 0 && (
-          <span style={{
-            marginRight: 16,
-            fontSize: "0.75em",
-            color: "#c0392b",
-            background: "#fadbd8",
-            borderRadius: "50%",
-            padding: "4px 12px",
-            fontWeight: "bold",
-            verticalAlign: "top"
-          }}>
+          <span
+            style={{
+              marginRight: 16,
+              fontSize: "0.75em",
+              color: "#b91c1c",
+              background: "#fee2e2",
+              borderRadius: "50%",
+              padding: "4px 12px",
+              fontWeight: "bold",
+              verticalAlign: "top",
+              boxShadow: "0 2px 6px #fee2e2",
+            }}
+          >
             🔴{newReportsCount}
           </span>
         )}
       </h2>
 
-      {/* ====== كروت KPI أعلى الصفحة دائماً ====== */}
-      <div style={{
-        display: "flex",
-        flexWrap: "wrap",
-        justifyContent: "center",
-        gap: "2.2rem",
-        marginBottom: 30,
-        marginTop: 10
-      }}>
-        <div style={cardBox}>
-          <div style={{ fontSize: 28, marginBottom: 7 }}>📦</div>
-          <div style={{ fontWeight: "bold", fontSize: "1.15em" }}>إجمالي التقارير</div>
-          <div style={{ fontSize: "1.9em", color: "#229954" }}>{filteredReports.length}</div>
-          {newReportsCount > 0 &&
-            <span style={{
-              display: "inline-block",
-              background: "#c0392b",
-              color: "#fff",
-              borderRadius: 50,
-              fontSize: "0.78em",
-              padding: "1px 9px",
-              marginTop: 5
-            }}>جديد {newReportsCount}</span>
-          }
-        </div>
-        <div style={cardBox}>
-          <div style={{ fontSize: 28, marginBottom: 7 }}>🔢</div>
-          <div style={{ fontWeight: "bold", fontSize: "1.15em" }}>إجمالي العناصر</div>
-          <div style={{ fontSize: "1.65em", color: "#512e5f" }}>{total}</div>
-        </div>
-        <div style={cardBox}>
-          <div style={{ fontWeight: "bold" }}>إجمالي الكميات:</div>
-          <div style={{ color: "#884ea0", fontWeight: 700 }}>{totalQty}</div>
-        </div>
-        <div style={cardBox}>
-          <div style={{ fontWeight: "bold" }}>أكثر الفروع مرتجعات:</div>
-          {Object.entries(byBranch)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([b, c]) => (
-              <div key={b}>{b}: <b style={{ color: "#884ea0" }}>{c}</b></div>
-            ))}
-        </div>
-        <div style={cardBox}>
-          <div style={{ fontWeight: "bold" }}>أكثر الإجراءات:</div>
-          {Object.entries(byAction)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([a, c]) => (
-              <div key={a}>{a}: <b style={{ color: "#c0392b" }}>{c}</b></div>
-            ))}
-        </div>
+      {/* كروت KPI */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: "1rem",
+          marginBottom: 18,
+        }}
+      >
+        <KpiCard title="إجمالي التقارير" value={kpi.totalReports} emoji="📦" accent="#111" />
+        <KpiCard title="إجمالي العناصر" value={kpi.totalItems} emoji="🔢" accent="#111" />
+        <KpiCard title="إجمالي الكميات" value={kpi.totalQty} accent="#111" />
+        <KpiList title="أكثر الإجراءات" entries={sortTop(kpi.byAction, 3)} color="#111" />
       </div>
 
-      {/* إشعار تنبيه */}
+      {/* تنبيه */}
       {showAlert && (
-        <div style={{
-          background: "#fdecea",
-          color: "#c0392b",
-          border: "1.5px solid #e74c3c",
-          fontWeight: "bold",
-          borderRadius: 11,
-          textAlign: "center",
-          fontSize: "1.13em",
-          marginBottom: 23,
-          padding: "14px 0",
-          boxShadow: "0 2px 12px #f9ebea"
-        }}>
+        <div
+          style={{
+            background: "#fff7ed",
+            color: "#9a3412",
+            border: "1.5px solid #f59e0b",
+            fontWeight: "bold",
+            borderRadius: 12,
+            textAlign: "center",
+            fontSize: "1.05em",
+            marginBottom: 18,
+            padding: "12px 10px",
+            boxShadow: "0 2px 12px #fde68a",
+          }}
+        >
           {alertMsg}
         </div>
       )}
 
-      {/* فلاتر التاريخ */}
-      <div style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        gap: "1.2rem",
-        marginBottom: 20
-      }}>
-        <span style={{ fontWeight: 600, fontSize: "1.1em" }}>فلترة حسب تاريخ التقرير:</span>
-        <label>
-          من:{" "}
-          <input
-            type="date"
-            value={filterFrom}
-            onChange={e => setFilterFrom(e.target.value)}
-            style={dateInputStyle}
-          />
-        </label>
-        <label>
-          إلى:{" "}
-          <input
-            type="date"
-            value={filterTo}
-            onChange={e => setFilterTo(e.target.value)}
-            style={dateInputStyle}
-          />
-        </label>
-        {(filterFrom || filterTo) && (
-          <button
-            onClick={() => {
-              setFilterFrom("");
-              setFilterTo("");
-            }}
-            style={{
-              background: "#e67e22",
-              color: "#fff",
-              border: "none",
-              borderRadius: 10,
-              padding: "7px 18px",
-              fontWeight: "bold",
-              fontSize: "1em",
-              marginRight: 7,
-              cursor: "pointer"
-            }}
-          >
-            🧹 مسح التصفية
-          </button>
-        )}
+      {/* شريط تحكم */}
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 14,
+          padding: "12px",
+          marginBottom: 16,
+          boxShadow: "0 2px 14px #e8daef66",
+        }}
+      >
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+          <TabButton active={groupMode === "year"} onClick={() => setGroupMode("year")} label="حسب السنة" />
+          <TabButton active={groupMode === "month"} onClick={() => setGroupMode("month")} label="حسب الشهر" />
+          <TabButton active={groupMode === "day"} onClick={() => setGroupMode("day")} label="حسب اليوم" />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            justifyContent: "center",
+            alignItems: "center",
+            marginTop: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontWeight: 700 }}>فلترة حسب تاريخ التقرير:</span>
+          <label>
+            من:
+            <input
+              type="date"
+              value={filterFrom}
+              onChange={(e) => setFilterFrom(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+          <label>
+            إلى:
+            <input
+              type="date"
+              value={filterTo}
+              onChange={(e) => setFilterTo(e.target.value)}
+              style={dateInputStyle}
+            />
+          </label>
+          {(filterFrom || filterTo) && (
+            <button
+              onClick={() => {
+                setFilterFrom("");
+                setFilterTo("");
+              }}
+              style={clearBtn}
+            >
+              🧹 مسح التصفية
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* --- تصميم قسمين: عناوين التقارير يسار & تفاصيل يمين --- */}
-      <div style={{
-        display: "flex",
-        alignItems: "flex-start",
-        minHeight: 400
-      }}>
-        {/* ==== يسار: قائمة عناوين التقارير ==== */}
-        <div style={{
-          minWidth: 240,
-          background: "#f9ebff",
-          borderRadius: 12,
-          marginLeft: 28,
-          boxShadow: "0 1px 6px #e8daef44",
-          padding: "12px 0"
-        }}>
-          {filteredReports.length === 0 && (
-            <div style={{
-              textAlign: "center", padding: 60, color: "#b2babb",
-              fontSize: "1.13em"
-            }}>
+      {/* تخطيط: يسار (هرمي) + يمين (تفاصيل) */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, minHeight: 420 }}>
+        {/* يسار: قائمة هرمية سنة ← شهر ← يوم */}
+        <div style={leftTree}>
+          {hierarchy.length === 0 && (
+            <div style={{ textAlign: "center", padding: 60, color: "#6b7280", fontSize: "1.03em" }}>
               لا يوجد تقارير مرتجعات محفوظة للفترة المختارة.
             </div>
           )}
-          {filteredReports.map((rep, idx) => (
-            <div
-              key={rep.reportDate + idx}
-              onClick={() => setSelectedIdx(idx)}
-              style={{
-                background: idx === selectedIdx ? "#884ea030" : "#f9ebff",
-                color: idx === selectedIdx ? "#512e5f" : "#626262",
-                padding: "12px 18px",
-                borderRight: idx === selectedIdx ? "5px solid #884ea0" : "none",
-                borderBottom: "1px solid #e8daef",
-                fontWeight: idx === selectedIdx ? "bold" : "normal",
-                cursor: "pointer",
-                fontSize: "1.12em"
-              }}
-            >
-              📅 {rep.reportDate}
-              <span style={{ fontSize: "0.87em", color: "#8e44ad", marginRight: 6 }}>
-                ({rep.items.length} عنصر)
-              </span>
-              <button
-                title="حذف التقرير"
-                onClick={e => {
-                  e.stopPropagation();
-                  handleDelete(idx);
-                }}
-                style={{
-                  background: "#e74c3c",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 15,
-                  marginRight: 9,
-                  padding: "2px 10px",
-                  cursor: "pointer"
-                }}
-              >🗑️</button>
-            </div>
-          ))}
+
+          {hierarchy.map(({ year, months }) => {
+            const yOpen = !!openYears[year];
+            const yearCount = months.reduce((acc, mo) => acc + mo.days.length, 0);
+            return (
+              <div key={year} style={treeSection}>
+                <div
+                  style={{ ...treeHeader, background: yOpen ? "#e0f2fe" : "#eff6ff", color: "#111" }}
+                  onClick={() =>
+                    setOpenYears((prev) => ({ ...prev, [year]: !prev[year] }))
+                  }
+                >
+                  <span>{yOpen ? "▼" : "►"} سنة {year}</span>
+                  <span style={{ color: "#111", fontWeight: 700 }}>{yearCount} يوم</span>
+                </div>
+
+                {yOpen && (
+                  <div style={{ padding: "6px 0 6px 0" }}>
+                    {months.map(({ month, days }) => {
+                      const key = `${year}-${month}`;
+                      const mOpen = !!openMonths[key];
+                      return (
+                        <div key={key} style={{ margin: "4px 0 6px" }}>
+                          <div
+                            style={{ ...treeSubHeader, background: mOpen ? "#f0f9ff" : "#ffffff", color: "#111" }}
+                            onClick={() =>
+                              setOpenMonths((prev) => ({ ...prev, [key]: !prev[key] }))
+                            }
+                          >
+                            <span>{mOpen ? "▾" : "▸"} شهر {month}</span>
+                            <span style={{ color: "#111" }}>{days.length} يوم</span>
+                          </div>
+
+                          {mOpen && (
+                            <div>
+                              {days.map((d) => {
+                                const isSelected = selectedDate === d;
+                                return (
+                                  <div
+                                    key={d}
+                                    style={{
+                                      ...treeDay,
+                                      background: isSelected ? "#e0f2fe" : "#fff",
+                                      borderRight: isSelected ? "5px solid #3b82f6" : "none",
+                                      color: "#111",
+                                    }}
+                                    onClick={() => setSelectedDate(d)}
+                                  >
+                                    <div>📅 {d}</div>
+                                    <button
+                                      title="حذف التقرير"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteByDate(d);
+                                      }}
+                                      style={deleteBtn}
+                                    >
+                                      🗑️
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
-        {/* ==== يمين: تفاصيل التقرير ==== */}
-        <div style={{
-          flex: 1,
-          background: "#fff",
-          borderRadius: 15,
-          boxShadow: "0 1px 12px #e8daef44",
-          minHeight: 320,
-          padding: "25px 28px",
-          marginRight: 0
-        }}>
-          {filteredReports[selectedIdx] ? (
+        {/* يمين: تفاصيل التقرير */}
+        <div style={rightPanel}>
+          {selectedReport ? (
             <div>
-              <div style={{
-                fontWeight: "bold",
-                color: "#512e5f",
-                fontSize: "1.23em",
-                marginBottom: 8
-              }}>
-                تفاصيل تقرير المرتجعات ({filteredReports[selectedIdx].reportDate})
+              <div style={{ fontWeight: "bold", color: "#111", fontSize: "1.2em", marginBottom: 8 }}>
+                تفاصيل تقرير المرتجعات ({selectedReport.reportDate})
               </div>
-              <table style={{
-                width: "100%",
-                background: "#fff",
-                borderRadius: 12,
-                boxShadow: "0 2px 12px #e8daef44",
-                borderCollapse: "collapse",
-                marginTop: 6,
-                minWidth: 800
-              }}>
+
+              {/* جدول بنمط إكسل: أزرق فاتح + حدود واضحة + خط أسود */}
+              <table style={detailTable}>
                 <thead>
-                  <tr style={{ background: "#f9ebff", color: "#512e5f" }}>
+                  <tr style={{ background: "#dbeafe", color: "#111" }}>
                     <th style={th}>SL.NO</th>
                     <th style={th}>PRODUCT NAME</th>
                     <th style={th}>ORIGIN</th>
@@ -372,8 +427,8 @@ export default function ReturnView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredReports[selectedIdx].items.map((row, i) => (
-                    <tr key={i} style={{ background: i % 2 ? "#fcf3ff" : "#fff" }}>
+                  {selectedReport.items.map((row, i) => (
+                    <tr key={i}>
                       <td style={td}>{i + 1}</td>
                       <td style={td}>{row.productName}</td>
                       <td style={td}>{row.origin}</td>
@@ -389,77 +444,41 @@ export default function ReturnView() {
                           <div>
                             <select
                               value={editActionVal}
-                              onChange={e => setEditActionVal(e.target.value)}
-                              style={{
-                                padding: "4px 6px",
-                                borderRadius: 7,
-                                fontSize: "1em",
-                                marginBottom: 4
-                              }}
+                              onChange={(e) => setEditActionVal(e.target.value)}
+                              style={cellInputStyle}
                             >
-                              {ACTIONS.map(act =>
-                                <option value={act} key={act}>{act}</option>
-                              )}
+                              {ACTIONS.map((act) => (
+                                <option value={act} key={act}>
+                                  {act}
+                                </option>
+                              ))}
                             </select>
                             {editActionVal === "إجراء آخر..." && (
                               <input
                                 value={editCustomActionVal}
-                                onChange={e => setEditCustomActionVal(e.target.value)}
+                                onChange={(e) => setEditCustomActionVal(e.target.value)}
                                 placeholder="حدد الإجراء..."
-                                style={{
-                                  padding: "4px 8px",
-                                  borderRadius: 7,
-                                  fontSize: "1em",
-                                  marginBottom: 2,
-                                  marginTop: 2
-                                }}
+                                style={cellInputStyle}
                               />
                             )}
-                            <button onClick={() => handleActionSave(i)}
-                              style={{
-                                marginRight: 5,
-                                background: "#229954",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: 6,
-                                padding: "2px 9px",
-                                fontWeight: "bold",
-                                cursor: "pointer"
-                              }}
-                            >حفظ</button>
-                            <button onClick={() => setEditActionIdx(null)}
-                              style={{
-                                background: "#bbb",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: 6,
-                                padding: "2px 8px",
-                                marginRight: 4,
-                                fontWeight: "bold",
-                                cursor: "pointer"
-                              }}
-                            >إلغاء</button>
+                            <button onClick={() => handleActionSave(i)} style={saveBtn}>
+                              حفظ
+                            </button>
+                            <button onClick={() => setEditActionIdx(null)} style={cancelBtn}>
+                              إلغاء
+                            </button>
                           </div>
+                        ) : row.action === "إجراء آخر..." ? (
+                          row.customAction
                         ) : (
-                          row.action === "إجراء آخر..." ?
-                            row.customAction :
-                            row.action
+                          row.action
                         )}
                       </td>
                       <td style={td}>
                         {editActionIdx !== i && (
-                          <button
-                            onClick={() => handleActionEdit(i)}
-                            style={{
-                              background: "#884ea0",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: 8,
-                              fontSize: 15,
-                              padding: "2px 8px",
-                              cursor: "pointer"
-                            }}
-                          >✏️</button>
+                          <button onClick={() => handleActionEdit(i)} style={editBtn}>
+                            ✏️
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -468,13 +487,8 @@ export default function ReturnView() {
               </table>
             </div>
           ) : (
-            <div style={{
-              textAlign: "center",
-              color: "#b2babb",
-              padding: 80,
-              fontSize: "1.1em"
-            }}>
-              اختر تقريراً من القائمة لعرض تفاصيله.
+            <div style={{ textAlign: "center", color: "#6b7280", padding: 80, fontSize: "1.05em" }}>
+              اختر تاريخًا من القائمة لعرض تفاصيله.
             </div>
           )}
         </div>
@@ -483,34 +497,204 @@ export default function ReturnView() {
   );
 }
 
-// ========== أنماط الكروت والجداول ==========
-const cardBox = {
+/* ========== مكونات صغيرة ========== */
+function KpiCard({ title, value, emoji, accent = "#111" }) {
+  return (
+    <div style={{ background: "#fff", borderRadius: 16, padding: "1rem 1.2rem", textAlign: "center", boxShadow: "0 2px 12px #e8daef66", color: "#111" }}>
+      {emoji && <div style={{ fontSize: 26, marginBottom: 6 }}>{emoji}</div>}
+      <div style={{ fontWeight: "bold", marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: "1.7em", fontWeight: 800, color: accent }}>{value}</div>
+    </div>
+  );
+}
+function KpiList({ title, entries = [], color = "#111" }) {
+  return (
+    <div style={{ background: "#fff", borderRadius: 16, padding: "1rem 1.2rem", boxShadow: "0 2px 12px #e8daef66", color: "#111" }}>
+      <div style={{ fontWeight: "bold", marginBottom: 6 }}>{title}</div>
+      {entries.length === 0 ? (
+        <div style={{ color: "#6b7280" }}>—</div>
+      ) : (
+        entries.map(([k, v]) => (
+          <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
+            <span>{k}</span>
+            <b style={{ color }}>{v}</b>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+function TabButton({ active, onClick, label }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "8px 16px",
+        borderRadius: 12,
+        border: "1px solid #bfdbfe",
+        cursor: "pointer",
+        fontWeight: 800,
+        background: active ? "#60a5fa" : "#ffffff",
+        color: active ? "#111" : "#111",
+        boxShadow: active ? "0 2px 8px #bfdbfe" : "none",
+        minWidth: 120,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/* ========== أدوات/أنماط مساعدة ========== */
+function sortTop(obj, n) {
+  return Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
+}
+
+const leftTree = {
+  minWidth: 280,
   background: "#fff",
-  borderRadius: 16,
-  padding: "1.1rem 2rem",
-  minWidth: 180,
-  minHeight: 70,
-  textAlign: "center",
-  boxShadow: "0 2px 12px #e8daef66",
-  fontSize: "1.02em"
+  borderRadius: 12,
+  boxShadow: "0 1px 10px #e8daef66",
+  padding: "6px 0",
+  border: "1px solid #e5e7eb",
+  maxHeight: "70vh",
+  overflow: "auto",
+  color: "#111",
+};
+const treeSection = { marginBottom: 4 };
+const treeHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  padding: "10px 14px",
+  cursor: "pointer",
+  fontWeight: 800,
+  color: "#111",
+  borderBottom: "1px solid #e5e7eb",
+};
+const treeSubHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  padding: "8px 14px",
+  cursor: "pointer",
+  color: "#111",
+  borderBottom: "1px dashed #e5e7eb",
+};
+const treeDay = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "8px 14px",
+  cursor: "pointer",
+  borderBottom: "1px dashed #e5e7eb",
+  fontSize: "0.98em",
+  color: "#111",
+};
+
+const rightPanel = {
+  flex: 1,
+  background: "#fff",
+  borderRadius: 15,
+  boxShadow: "0 1px 12px #e8daef44",
+  minHeight: 320,
+  padding: "25px 28px",
+  marginRight: 0,
+  color: "#111",
+};
+
+/* === جدول بنمط إكسل === */
+const detailTable = {
+  width: "100%",
+  background: "#fff",
+  borderRadius: 8,
+  borderCollapse: "collapse",      // دمج الحدود مثل الإكسل
+  border: "1px solid #b6c8e3",     // إطار خارجي
+  marginTop: 6,
+  minWidth: 800,
+  color: "#111",
 };
 const th = {
-  padding: "12px 7px",
+  padding: "10px 8px",
   textAlign: "center",
-  fontSize: "1.07em",
+  fontSize: "0.98em",
   fontWeight: "bold",
-  borderBottom: "2px solid #c7a8dc"
+  border: "1px solid #b6c8e3",     // حدود كل خلية
+  background: "#dbeafe",           // أزرق أغمق للترويسة
+  color: "#111",
 };
 const td = {
-  padding: "8px 6px",
+  padding: "9px 8px",
   textAlign: "center",
-  minWidth: 90
+  minWidth: 90,
+  border: "1px solid #b6c8e3",     // حدود مثل الإكسل
+  background: "#eef6ff",           // أزرق فاتح للخلايا
+  color: "#111",                   // خط أسود
 };
+
+/* مدخلات داخل خلايا الجدول بنفس الستايل */
+const cellInputStyle = {
+  padding: "6px 8px",
+  borderRadius: 6,
+  border: "1px solid #b6c8e3",
+  background: "#eef6ff",
+  color: "#111",
+  minWidth: 140,
+};
+
 const dateInputStyle = {
-  borderRadius: 10,
-  border: "2px solid #884ea0",
-  background: "#fcf3ff",
+  borderRadius: 8,
+  border: "1.5px solid #93c5fd",
+  background: "#eff6ff",
   padding: "7px 13px",
   fontSize: "1em",
-  minWidth: 105
+  minWidth: 120,
+  color: "#111",
+};
+const clearBtn = {
+  background: "#3b82f6",
+  color: "#fff",
+  border: "none",
+  borderRadius: 10,
+  padding: "7px 18px",
+  fontWeight: "bold",
+  fontSize: "1em",
+  cursor: "pointer",
+  boxShadow: "0 1px 6px #bfdbfe",
+};
+const deleteBtn = {
+  background: "#ef4444",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  fontSize: 15,
+  padding: "2px 10px",
+  cursor: "pointer",
+};
+const saveBtn = {
+  marginRight: 5,
+  background: "#10b981",
+  color: "#fff",
+  border: "none",
+  borderRadius: 6,
+  padding: "2px 9px",
+  fontWeight: "bold",
+  cursor: "pointer",
+};
+const cancelBtn = {
+  background: "#9ca3af",
+  color: "#fff",
+  border: "none",
+  borderRadius: 6,
+  padding: "2px 8px",
+  marginRight: 4,
+  fontWeight: "bold",
+  cursor: "pointer",
+};
+const editBtn = {
+  background: "#3b82f6",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  fontSize: 15,
+  padding: "2px 8px",
+  cursor: "pointer",
 };

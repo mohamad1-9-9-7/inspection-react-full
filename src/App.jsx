@@ -28,9 +28,25 @@ const FinishedProductsData = lazy(() => import("./pages/finished/FinishedProduct
 const FinishedProductEntry = lazy(() => import("./pages/finished/FinishedProductEntry"));
 const FinishedProductReports = lazy(() => import("./pages/finished/FinishedProductReports"));
 
+// 🆕 سيارات: صفحة التبويبات (CarIcon.jsx الموجود عندك في src/pages/car/pages)
+const CarIconPage = lazy(() => import("./pages/car/pages/CarIcon"));
+
 // (اختياري) مكون لحماية المسارات
+/**
+ * مكوّن لحماية المسارات الخاصة: يقوم بالتحقق من وجود مستخدم مسجّل في localStorage.
+ * إذا كان المستخدم موجودًا، يعرض المكوّن الأب؛ وإلا يعيد التوجيه لصفحة تسجيل الدخول.
+ */
 function ProtectedRoute({ children }) {
-  const isAuthed = true; // بدّلها بمنطق التحقق الحقيقي
+  // نحاول قراءة بيانات المستخدم الحالي من localStorage. إذا لم يكن موجودًا أو كان معطوبًا
+  // يعتبر المستخدم غير مصادق، ويتم إعادة التوجيه إلى الجذر (صفحة تسجيل الدخول).
+  let isAuthed = false;
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
+    isAuthed = !!(raw && JSON.parse(raw));
+  } catch {
+    // في حال وجود JSON غير صالح في localStorage نتجاهل الخطأ ونعتبر أنه غير مسجّل
+    isAuthed = false;
+  }
   return isAuthed ? children : <Navigate to="/" replace />;
 }
 
@@ -38,11 +54,9 @@ function ProtectedRoute({ children }) {
 function BranchMonitorPage() {
   const { slug } = useParams();
 
-  // تنسيق للاسم: pos19 -> POS 19, qcs -> QCS
   const prettyName = (s) => {
     if (!s) return "";
     if (s.toLowerCase() === "qcs") return "QCS";
-    // pos19 -> POS 19
     const m = s.match(/^([a-zA-Z]+)(\d+)$/);
     if (m) return `${m[1].toUpperCase()} ${m[2]}`;
     return s.toUpperCase();
@@ -106,7 +120,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          {/* مسارات جاهزة محددة */}
           <Route
             path="qcs"
             element={
@@ -131,7 +144,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          {/* (جديد) مسار عام لأي فرع مثل /monitor/pos21, /monitor/pos6, /monitor/qcs */}
           <Route
             path=":slug"
             element={
@@ -230,6 +242,26 @@ export default function App() {
             }
           />
         </Route>
+
+        {/* alias للمنتج النهائي */}
+        <Route
+          path="/finished-product-entry"
+          element={
+            <ProtectedRoute>
+              <FinishedProductEntry />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 مسار السيارات */}
+        <Route
+          path="/cars"
+          element={
+            <ProtectedRoute>
+              <CarIconPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* 404 */}
         <Route path="*" element={<NotFound />} />

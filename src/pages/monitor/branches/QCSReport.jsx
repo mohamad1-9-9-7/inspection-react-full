@@ -78,17 +78,12 @@ const makeDefaultHygiene = (min = MIN_PH_ROWS) => {
   return rows;
 };
 
-const makeDefaultVehicles = () => ([
-  { startTime: "", endTime: "", temperature: "", cleanliness: false, plateNumber: "", driverName: "" }
-]);
-
 const makeEmptyReport = (date) => ({
   date,
   auditTime: "",
   coolers: makeDefaultCoolers(),
   personalHygiene: makeDefaultHygiene(),
   cleanlinessRows: [],
-  vehicleReport: makeDefaultVehicles(),
 });
 
 // حفظ بنسختين: مصفوفة + قاموس حسب التاريخ (للتوافق مع صفحة العرض)
@@ -397,7 +392,6 @@ export default function QCSReport() {
   const [personalHygiene, setPersonalHygiene] = useState(makeDefaultHygiene());
   const [auditTime, setAuditTime] = useState("");
   const [cleanlinessRows, setCleanlinessRows] = useState([]);
-  const [vehicleReport, setVehicleReport] = useState(makeDefaultVehicles());
 
   // ترويسة/فوتر النظافة الشخصية
   const [phHeader, setPhHeader] = useLocalJSON("qcs_ph_header_v1", defaultPHHeader);
@@ -415,14 +409,12 @@ export default function QCSReport() {
       setCoolers(Array.isArray(existing.coolers) ? existing.coolers : makeDefaultCoolers());
       setPersonalHygiene(Array.isArray(existing.personalHygiene) ? existing.personalHygiene : makeDefaultHygiene());
       setCleanlinessRows(Array.isArray(existing.cleanlinessRows) ? existing.cleanlinessRows : []);
-      setVehicleReport(Array.isArray(existing.vehicleReport) ? existing.vehicleReport : makeDefaultVehicles());
     } else {
       const empty = makeEmptyReport(reportDate);
       setAuditTime(empty.auditTime);
       setCoolers(empty.coolers);
       setPersonalHygiene(empty.personalHygiene);
       setCleanlinessRows(empty.cleanlinessRows);
-      setVehicleReport(empty.vehicleReport);
     }
   }, [reportDate]);
 
@@ -433,13 +425,6 @@ export default function QCSReport() {
     setCoolers(prev => {
       const next = [...prev];
       next[index] = { ...next[index], temps: { ...next[index].temps, [time]: value } };
-      return next;
-    });
-  };
-  const handleVehicleChange = (index, field, value) => {
-    setVehicleReport(prev => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
       return next;
     });
   };
@@ -465,10 +450,6 @@ export default function QCSReport() {
     });
   };
 
-  // السيارات
-  const addVehicle = () => setVehicleReport(prev => [...prev, { startTime:"", endTime:"", temperature:"", cleanliness:false, plateNumber:"", driverName:"" }]);
-  const removeVehicle = (i) => setVehicleReport(prev => prev.filter((_, idx) => idx !== i));
-
   /* ========== حفظ التقرير ========= */
   const saveReport = () => {
     const report = {
@@ -477,7 +458,6 @@ export default function QCSReport() {
       coolers,
       personalHygiene,
       cleanlinessRows,
-      vehicleReport,
     };
     saveReportToStorage(report);
     alert(`✅ تم حفظ تقرير ${reportDate} بنجاح`);
@@ -499,7 +479,6 @@ export default function QCSReport() {
     { id: "coolers", label: <Bidi ar="🧊 درجات حرارة البرادات" en="🧊 Coolers Temperatures" /> },
     { id: "personalHygiene", label: <Bidi ar="🧼 النظافة الشخصية" en="🧼 Personal Hygiene" /> },
     { id: "dailyCleanliness", label: <Bidi ar="🧹 النظافة اليومية للمستودع" en="🧹 Daily Cleanliness" /> },
-    { id: "vehicleReport", label: <Bidi ar="🚚 تقارير السيارات" en="🚚 Vehicle Reports" /> },
     { id: "shipment", label: <Bidi ar="📦 تقرير استلام الشحنات" en="📦 Raw Material Receipt" /> },
   ];
 
@@ -673,54 +652,6 @@ export default function QCSReport() {
           </div>
         )}
 
-        {/* تبويب السيارات */}
-        {activeTab === "vehicleReport" && (
-          <div style={card}>
-            <div style={{ ...toolbar, marginBottom: 12 }}>
-              <button onClick={() => setVehicleReport(prev => [...prev, { startTime:"", endTime:"", temperature:"", cleanliness:false, plateNumber:"", driverName:"" }])} style={btnGhost}>
-                <Bidi ar="➕ إضافة سيارة" en="➕ Add Vehicle" inline />
-              </button>
-            </div>
-
-            {vehicleReport.map((v, i) => (
-              <div key={i} style={{
-                background: "#fff7ed", border: "1px solid #fed7aa",
-                padding: "0.75rem", borderRadius: 10, marginBottom: 10
-              }}>
-                <div style={{ ...toolbar, justifyContent: "space-between", marginBottom: 8 }}>
-                  <strong><Bidi ar={`سيارة #${i + 1}`} en={`Vehicle #${i + 1}`} inline /></strong>
-                  {vehicleReport.length > 1 && (
-                    <button onClick={() => setVehicleReport(prev => prev.filter((_, idx) => idx !== i))} style={btnDangerLight}>
-                      <Bidi ar="حذف" en="Delete" inline />
-                    </button>
-                  )}
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-                  <label style={fieldLbl}><Bidi ar="🕐 وقت التحميل" en="🕐 Loading Start" />
-                    <input type="time" value={v.startTime} onChange={(e)=>handleVehicleChange(i,"startTime",e.target.value)} style={fieldInput} />
-                  </label>
-                  <label style={fieldLbl}><Bidi ar="🕔 وقت الانتهاء" en="🕔 Finish Time" />
-                    <input type="time" value={v.endTime} onChange={(e)=>handleVehicleChange(i,"endTime",e.target.value)} style={fieldInput} />
-                  </label>
-                  <label style={fieldLbl}><Bidi ar="🌡️ درجة الحرارة" en="🌡️ Temperature" />
-                    <input type="number" value={v.temperature} onChange={(e)=>handleVehicleChange(i,"temperature",e.target.value)} style={{ ...fieldInput, width: "100%" }} />
-                  </label>
-                  <label style={{ ...fieldLbl, display: "flex", alignItems: "center", gap: 8 }}><Bidi ar="🚿 نظافة السيارة" en="🚿 Cleanliness" />
-                    <input type="checkbox" checked={v.cleanliness} onChange={(e)=>handleVehicleChange(i,"cleanliness",e.target.checked)} />
-                  </label>
-                  <label style={fieldLbl}><Bidi ar="🚗 رقم اللوحة" en="🚗 Plate Number" />
-                    <input type="text" value={v.plateNumber} onChange={(e)=>handleVehicleChange(i,"plateNumber",e.target.value)} style={fieldInput} />
-                  </label>
-                  <label style={fieldLbl}><Bidi ar="👤 اسم السائق" en="👤 Driver Name" />
-                    <input type="text" value={v.driverName} onChange={(e)=>handleVehicleChange(i,"driverName",e.target.value)} style={fieldInput} />
-                  </label>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* تبويب الشحنات */}
         {activeTab === "shipment" && (
           <div style={card}>
@@ -771,7 +702,3 @@ const btnBase = {
 const btnSecondary = { ...btnBase, background: "#111827", color: "#fff" };
 const btnGhost = { ...btnBase, background: "#fff", color: "#111827", border: "1px solid #e5e7eb" };
 const btnSave = { ...btnBase, background: "#059669", color: "#fff", padding: "12px 22px", boxShadow: "0 4px 10px rgba(5,150,105,.35)" };
-const btnDangerLight = { ...btnBase, background: "#fff", color: "#b91c1c", border: "1px solid #fecaca" };
-
-const fieldLbl = { display: "grid", gap: 6, fontWeight: 700 };
-const fieldInput = { padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" };

@@ -209,7 +209,8 @@ export default function Returns() {
           }}
         >💾 حفظ</button>
         <button
-          onClick={() => navigate("/returns-view")}
+          // انتقل مباشرة للمسار المطلق الصحيح لعرض المرتجعات
+          onClick={() => navigate("/returns/view")}
           style={{
             background: "#884ea0",
             color: "#fff",
