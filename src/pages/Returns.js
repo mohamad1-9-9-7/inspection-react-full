@@ -1,7 +1,16 @@
 // src/pages/Returns.js
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+// 🆕 رابط الـ API (من متغيّر البيئة إن وُجد، وإلا استخدم رابط Render مباشرة)
+const API_BASE = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL)
+  ? import.meta.env.VITE_API_URL
+  : "https://inspection-server-4nvj.onrender.com";
+
+// 🆕 مفاتيح التخزين المحلي
+const LS_KEY_RETURNS = "returns_reports";
+const LS_KEY_SYNCQ  = "returns_sync_queue";
 
 // قائمة الأفرع
 const BRANCHES = [
@@ -29,6 +38,69 @@ function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// 🆕 أدوات الطابور المحلي
+function readQueue() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY_SYNCQ) || "[]"); } catch { return []; }
+}
+function writeQueue(q) {
+  localStorage.setItem(LS_KEY_SYNCQ, JSON.stringify(q));
+}
+function enqueueSync(item) {
+  const q = readQueue();
+  q.push(item);
+  writeQueue(q);
+}
+function dequeueSync() {
+  const q = readQueue();
+  const first = q.shift();
+  writeQueue(q);
+  return first;
+}
+function queueLength() {
+  return readQueue().length;
+}
+
+// 🆕 إرسال تقرير واحد للسيرفر
+async function sendOneToServer({ reportDate, items }) {
+  let reporter = "anonymous";
+  try {
+    const raw = localStorage.getItem("currentUser");
+    const user = raw ? JSON.parse(raw) : null;
+    reporter = user?.username || reporter;
+  } catch {}
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reporter, type: "returns", payload: { reportDate, items } })
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Server ${res.status}: ${t}`);
+  }
+  return res.json();
+}
+
+// 🆕 حلقة مزامنة: تحاول تفريغ الطابور عنصرًا عنصرًا
+async function syncOnce(setSaveMsg) {
+  if (!navigator.onLine) return; // بدون إنترنت لا تحاول
+  let didSomething = false;
+  while (queueLength() > 0) {
+    const item = dequeueSync();
+    try {
+      await sendOneToServer(item);
+      didSomething = true;
+      setSaveMsg?.("✅ تمت مزامنة تقرير مرتجعات مؤجل بنجاح!");
+    } catch (e) {
+      // فشل: أعده للطابور وأوقف المحاولة الآن (ننتظر جولة لاحقة)
+      const q = readQueue();
+      q.unshift(item);
+      writeQueue(q);
+      break;
+    }
+  }
+  return didSomething;
+}
+
 export default function Returns() {
   const navigate = useNavigate();
   const [reportDate, setReportDate] = useState(getToday());
@@ -48,6 +120,26 @@ export default function Returns() {
     }
   ]);
   const [saveMsg, setSaveMsg] = useState("");
+
+  // 🆕 مُؤقّت للمزامنة كل 30 ثانية + أحداث online/focus
+  const syncTimerRef = useRef(null);
+  useEffect(() => {
+    // عند التحميل: حاول مزامنة أي عناصر متراكمة
+    syncOnce(setSaveMsg);
+
+    function onOnline() { syncOnce(setSaveMsg); }
+    function onFocus()  { syncOnce(setSaveMsg); }
+    window.addEventListener("online", onOnline);
+    window.addEventListener("focus", onFocus);
+
+    syncTimerRef.current = setInterval(() => { syncOnce(setSaveMsg); }, 30000);
+
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("focus", onFocus);
+      if (syncTimerRef.current) clearInterval(syncTimerRef.current);
+    };
+  }, []);
 
   // إضافة صف جديد
   const addRow = () => {
@@ -85,8 +177,8 @@ export default function Returns() {
     setRows(updated);
   };
 
-  // زر الحفظ (يحفظ كل تقرير على حدة وفق التاريخ)
-  const handleSave = () => {
+  // زر الحفظ: يحفظ محليًا دائمًا + يحاول إرسال للسيرفر + يضيف للطابور عند الفشل
+  const handleSave = async () => {
     // حذف الصفوف الفارغة بالكامل
     const filtered = rows.filter(
       r =>
@@ -105,28 +197,33 @@ export default function Returns() {
       setTimeout(() => setSaveMsg(""), 1700);
       return;
     }
-    // جلب تقارير سابقة
+
+    // ======= الحفظ المحلي (كما هو) =======
     let existing = [];
     try {
-      existing = JSON.parse(localStorage.getItem("returns_reports") || "[]");
+      existing = JSON.parse(localStorage.getItem(LS_KEY_RETURNS) || "[]");
     } catch { existing = []; }
-    // تحديث أو إضافة التقرير حسب التاريخ
     const foundIdx = existing.findIndex(r => r.reportDate === reportDate);
     if (foundIdx > -1) {
-      // تحديث العناصر لذلك اليوم (استبدال)
       existing[foundIdx].items = filtered;
     } else {
-      // إضافة تقرير جديد
-      existing.push({
-        reportDate,
-        items: filtered
-      });
+      existing.push({ reportDate, items: filtered });
     }
-    localStorage.setItem("returns_reports", JSON.stringify(existing));
-    setSaveMsg("✅ تم الحفظ بنجاح!");
-    setTimeout(() => setSaveMsg(""), 2000);
-    // إبقاء الجدول أو إعادة ضبطه
-    // setRows([{...}])
+    localStorage.setItem(LS_KEY_RETURNS, JSON.stringify(existing));
+    // ======= انتهى الحفظ المحلي =======
+
+    // محاولة الإرسال المباشر
+    try {
+      setSaveMsg("⏳ جاري الحفظ على السيرفر…");
+      await sendOneToServer({ reportDate, items: filtered });
+      setSaveMsg("✅ تم الحفظ محليًا وعلى السيرفر بنجاح!");
+    } catch (err) {
+      // فشل: أدخل الطلب في الطابور وسنحاول لاحقًا تلقائيًا
+      enqueueSync({ reportDate, items: filtered });
+      setSaveMsg("⚠️ تم الحفظ محليًا. سنحاول الإرسال للسيرفر تلقائيًا لاحقًا.");
+    } finally {
+      setTimeout(() => setSaveMsg(""), 3500);
+    }
   };
 
   return (
@@ -226,7 +323,7 @@ export default function Returns() {
         {saveMsg && (
           <span style={{
             marginRight: 18, fontWeight: "bold",
-            color: saveMsg.startsWith("✅") ? "#229954" : "#c0392b",
+            color: saveMsg.startsWith("✅") ? "#229954" : (saveMsg.startsWith("⏳") ? "#512e5f" : "#c0392b"),
             fontSize: "1.05em"
           }}>{saveMsg}</span>
         )}
