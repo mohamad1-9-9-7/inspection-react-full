@@ -2,7 +2,7 @@
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Suspense, lazy } from "react";
 
-// Lazy imports (عدّل المسارات حسب مشروعك)
+// Lazy imports
 const Login = lazy(() => import("./pages/Login"));
 const Inspection = lazy(() => import("./pages/Inspection"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
@@ -28,29 +28,29 @@ const FinishedProductsData = lazy(() => import("./pages/finished/FinishedProduct
 const FinishedProductEntry = lazy(() => import("./pages/finished/FinishedProductEntry"));
 const FinishedProductReports = lazy(() => import("./pages/finished/FinishedProductReports"));
 
-// 🆕 سيارات: صفحة التبويبات (CarIcon.jsx الموجود عندك في src/pages/car/pages)
+// 🆕 سيارات
 const CarIconPage = lazy(() => import("./pages/car/pages/CarIcon"));
 
-// (اختياري) مكون لحماية المسارات
+// 🆕 صيانة
+const MaintenanceRequests = lazy(() => import("./pages/maintenance/MaintenanceRequests"));
+const MaintenanceHome = lazy(() => import("./pages/maintenance/MaintenanceHome"));
+const BrowseMaintenanceRequests = lazy(() => import("./pages/maintenance/BrowseMaintenanceRequests")); // ✅ جديد
+
 /**
- * مكوّن لحماية المسارات الخاصة: يقوم بالتحقق من وجود مستخدم مسجّل في localStorage.
- * إذا كان المستخدم موجودًا، يعرض المكوّن الأب؛ وإلا يعيد التوجيه لصفحة تسجيل الدخول.
+ * حماية المسارات الخاصة
  */
 function ProtectedRoute({ children }) {
-  // نحاول قراءة بيانات المستخدم الحالي من localStorage. إذا لم يكن موجودًا أو كان معطوبًا
-  // يعتبر المستخدم غير مصادق، ويتم إعادة التوجيه إلى الجذر (صفحة تسجيل الدخول).
   let isAuthed = false;
   try {
     const raw = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
     isAuthed = !!(raw && JSON.parse(raw));
   } catch {
-    // في حال وجود JSON غير صالح في localStorage نتجاهل الخطأ ونعتبر أنه غير مسجّل
     isAuthed = false;
   }
   return isAuthed ? children : <Navigate to="/" replace />;
 }
 
-// (جديد) صفحة عامة مؤقتة لأي فرع /monitor/:slug
+// صفحة مؤقتة لأي فرع /monitor/:slug
 function BranchMonitorPage() {
   const { slug } = useParams();
 
@@ -74,7 +74,7 @@ function BranchMonitorPage() {
   );
 }
 
-// (اختياري) صفحة 404
+// 404
 function NotFound() {
   return <div style={{ padding: 24, direction: "rtl" }}>الصفحة غير موجودة</div>;
 }
@@ -259,6 +259,36 @@ export default function App() {
           element={
             <ProtectedRoute>
               <CarIconPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 مسار طلبات الصيانة - إنشاء */}
+        <Route
+          path="/maintenance-requests"
+          element={
+            <ProtectedRoute>
+              <MaintenanceRequests />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 مسار طلبات الصيانة - تصفّح */}
+        <Route
+          path="/maintenance-browse"
+          element={
+            <ProtectedRoute>
+              <BrowseMaintenanceRequests />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 مسار صفحة الهب للصيانة */}
+        <Route
+          path="/maintenance-home"
+          element={
+            <ProtectedRoute>
+              <MaintenanceHome />
             </ProtectedRoute>
           }
         />

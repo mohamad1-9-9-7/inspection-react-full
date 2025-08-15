@@ -12,11 +12,11 @@ const roles = [
   { id: 'ohc', label: 'OHC', route: '/ohc', icon: '🩺' },
   { id: 'returns', label: 'مرتجعات', route: '/returns', icon: '♻️' },
   { id: 'finalProduct', label: 'تقرير المنتج النهائي', route: '/finished-product-entry', icon: '🏷️' },
-  // 🆕 أيقونة السيارات برمز ثابت
   { id: 'cars', label: 'السيارات', route: '/cars', icon: '🚗' },
+  // 🆕 تعديل المسار ليكون صفحة الهب الخاصة بالصيانة
+  { id: 'maintenance', label: 'طلبات الصيانة', route: '/maintenance-home', icon: '🔧' },
 ];
 
-// نافذة كلمة السر
 function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
   const [password, setPassword] = useState("");
 
@@ -116,6 +116,15 @@ function Login() {
   const PASSWORD = "0000";
 
   const handleRoleClick = (role) => {
+    // ✅ لو كان الدور KPI يدخل مباشرة بدون كلمة سر
+    if (role.id === "kpi") {
+      localStorage.setItem('currentUser', JSON.stringify({
+        username: role.id,
+        role: role.label,
+      }));
+      navigate(role.route);
+      return;
+    }
     setSelectedRole(role);
     setModalOpen(true);
     setModalError("");
@@ -141,7 +150,6 @@ function Login() {
     setSelectedRole(null);
   };
 
-  // ✅ عرض الصفحة فقط إذا كنا في /
   if (location.pathname !== "/") {
     return null;
   }
@@ -241,14 +249,15 @@ function Login() {
           </button>
         ))}
       </div>
-      {/* زر خاص بلوحة KPI */}
+      {/* زر خاص بلوحة KPI بدون كلمة سر */}
       <button
-        onClick={() => handleRoleClick({
-          id: 'kpi',
-          label: 'لوحة المؤشرات',
-          route: '/kpi-login',
-          icon: '📊'
-        })}
+        onClick={() => {
+          localStorage.setItem('currentUser', JSON.stringify({
+            username: 'kpi',
+            role: 'لوحة المؤشرات',
+          }));
+          navigate('/kpi-login');
+        }}
         style={{
           marginTop: "2.5rem",
           padding: "1.2rem 2.5rem",
@@ -269,7 +278,7 @@ function Login() {
       >
         📊 دخول لوحة المؤشرات (KPI)
       </button>
-      {/* نافذة كلمة السر */}
+
       <PasswordModal
         show={modalOpen}
         roleLabel={selectedRole?.label}
@@ -277,6 +286,17 @@ function Login() {
         onClose={handleModalClose}
         error={modalError}
       />
+
+      <div style={{
+        position: "fixed",
+        bottom: "10px",
+        left: "15px",
+        fontSize: "0.75rem",
+        color: "#000",
+        opacity: 0.8
+      }}>
+        تم الإنشاء بواسطة م.محمد عبدالله
+      </div>
     </div>
   );
 }

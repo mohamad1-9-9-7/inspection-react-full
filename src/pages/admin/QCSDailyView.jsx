@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 /* =========================
    إعدادات عامة
@@ -14,14 +16,14 @@ const COOLER_TIMES = [
 // عناوين تبويب النظافة الشخصية
 const PH_COLUMNS = [
   { ar: "الرقم", en: "S. No" },
-  { ar: "اسم الموظف", en: "Employ Name" },
+  { ar: "اسم الموظف", en: "Employee Name" },
   { ar: "الأظافر", en: "Nails" },
   { ar: "الشعر", en: "Hair" },
-  { ar: "عدم ارتداء الحُلي", en: "Not wearing Jewelries" },
-  { ar: "ارتداء ملابس نظيفة/شبكة شعر/قفازات يد/كمامات وجه/حذاء", en: "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/ Shoe" },
-  { ar: "الأمراض المعدية", en: "Communicable disease" },
-  { ar: "جروح/قروح/قطوع مفتوحة", en: "Open wounds/ sores & cut" },
-  { ar: "ملاحظات وإجراءات تصحيحية", en: "Remarks and Corrective Actions" },
+  { ar: "عدم ارتداء الحُلي", en: "No jewelry" },
+  { ar: "ارتداء ملابس نظيفة/شبكة شعر/قفازات يد/كمامة/حذاء", en: "Wearing clean clothes / hair net / gloves / face mask / shoes" },
+  { ar: "الأمراض المعدية", en: "Communicable disease(s)" },
+  { ar: "جروح/قروح/قطوع مفتوحة", en: "Open wounds / sores / cuts" },
+  { ar: "ملاحظات وإجراءات تصحيحية", en: "Remarks & Corrective Actions" },
 ];
 
 const I18N = {
@@ -37,28 +39,16 @@ const I18N = {
     coolers: { ar: "🧊 درجات حرارة البرادات", en: "🧊 Coolers Temperatures" },
     personalHygiene: { ar: "🧼 النظافة الشخصية", en: "🧼 Personal Hygiene" },
     dailyCleanliness: { ar: "🧹 النظافة اليومية", en: "🧹 Daily Cleanliness" },
-    vehicleReport: { ar: "🚚 تقارير السيارات", en: "🚚 Vehicle Reports" },
   },
   sections: {
     coolers: { ar: "🧊 درجات حرارة البرادات", en: "🧊 Coolers Temperatures" },
     personalHygiene: { ar: "🧼 النظافة الشخصية للموظفين", en: "🧼 Employees Personal Hygiene" },
     dailyCleanliness: { ar: "🧹 النظافة اليومية للمستودع", en: "🧹 Warehouse Daily Cleanliness" },
-    vehicleReport: { ar: "🚚 تقارير السيارات", en: "🚚 Vehicle Reports" },
   },
   kpi: {
     avg: { ar: "المتوسط", en: "Average" },
     outOfRange: { ar: "خارج النطاق", en: "Out of Range" },
     minmax: { ar: "أقل / أعلى", en: "Min / Max" },
-  },
-  vehicle: {
-    loadStart: { ar: "⏱️ وقت التحميل", en: "⏱️ Loading Start" },
-    loadEnd: { ar: "⏱️ الانتهاء", en: "⏱️ Finish" },
-    temp: { ar: "🌡️ درجة الحرارة", en: "🌡️ Temperature" },
-    clean: { ar: "🧼 نظافة", en: "🧼 Cleanliness" },
-    plate: { ar: "🚗 رقم اللوحة", en: "🚗 Plate Number" },
-    driver: { ar: "👨‍✈️ اسم السائق", en: "👨‍✈️ Driver Name" },
-    cleanYes: { ar: "✅ نظيفة", en: "✅ Clean" },
-    cleanNo: { ar: "❌ غير نظيفة", en: "❌ Not Clean" },
   },
   tabActions: {
     print: { ar: "🖨️ طباعة التقرير", en: "🖨️ Print Report" },
@@ -113,6 +103,35 @@ const printCss = `
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
+  }
+`;
+
+/* ========= ستايل شاشة عصري خفيف (لا يمس الطباعة) ========= */
+const screenCss = `
+  @media screen {
+    body { background: linear-gradient(135deg, #f7fafc 0%, #eef2ff 100%); }
+    .app-shell { backdrop-filter: saturate(1.1); }
+    /* تحسين أزرار التبويبات */
+    nav.no-print button {
+      transition: transform .08s ease, box-shadow .15s ease, background-color .15s ease, border-color .15s ease;
+    }
+    nav.no-print button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(17, 24, 39, 0.08);
+    }
+    /* بطاقات أقسام البرادات */
+    .cooler-card {
+      transition: box-shadow .18s ease, transform .1s ease;
+    }
+    .cooler-card:hover {
+      box-shadow: 0 10px 24px rgba(41, 128, 185, 0.16);
+      transform: translateY(-1px);
+    }
+    /* تمرير أنعم */
+    * { scrollbar-width: thin; scrollbar-color: #cbd5e1 #f1f5f9; }
+    *::-webkit-scrollbar { height: 8px; width: 8px; }
+    *::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    *::-webkit-scrollbar-track { background: #f1f5f9; }
   }
 `;
 
@@ -551,6 +570,8 @@ export default function QCSDailyView() {
   const [ccHeader, setCcHeader] = useLocalJSON("qcs_cc_header_v1", defaultCCHeader);
   const [ccFooter, setCcFooter] = useLocalJSON("qcs_cc_footer_v1", defaultCCFooter);
 
+  const [exportingPDF, setExportingPDF] = useState(false); // حالة زر تصدير PDF
+
   useEffect(() => {
     const unified = loadUnifiedReports();
     setReports(unified);
@@ -620,10 +641,70 @@ export default function QCSDailyView() {
     reader.readAsText(file); e.target.value = "";
   };
 
-  // 🖨️ طباعة مع سكيل ديناميكي
+  // 🖨️ طباعة مع سكيل ديناميكي (الإبقاء على الزر القديم)
   const handlePrint = () => {
     setAutoPrintScale();
     setTimeout(() => window.print(), 30);
+  };
+
+  // 📄 تصدير PDF مباشرة من منطقة العرض
+  const handleExportPDF = async () => {
+    try {
+      setExportingPDF(true);
+      const input = document.getElementById("report-container");
+      if (!input) {
+        alert("لم يتم العثور على منطقة التقرير.");
+        setExportingPDF(false);
+        return;
+      }
+
+      // تأكد أن كل شيء ظاهر بالحجم الفعلي قبل اللقطة
+      input.classList.add("exporting-pdf-temp");
+      const canvas = await html2canvas(input, {
+        scale: 2,           // دقة أعلى
+        useCORS: true,      // للسماح بصور من public مثل الشعار
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        windowWidth: document.documentElement.clientWidth,
+        windowHeight: document.documentElement.clientHeight,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("landscape", "pt", "a4"); // A4 أفقي
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      // لو الصورة أطول من صفحة، نقسمها على صفحات متعددة بتحريك الموضع Y سالب
+      let position = 0;
+      let heightLeft = imgHeight;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const fileName = `qcs_report_${selectedDate || new Date().toISOString().split("T")[0]}.pdf`;
+      pdf.save(fileName);
+    } catch (e) {
+      console.error(e);
+      alert("تعذّر إنشاء ملف PDF. تأكد من تثبيت jspdf و html2canvas.");
+    } finally {
+      const el = document.getElementById("report-container");
+      el && el.classList.remove("exporting-pdf-temp");
+      setExportingPDF(false);
+    }
   };
 
   // before/after print للتنظيف
@@ -643,13 +724,14 @@ export default function QCSDailyView() {
 
   if (!selectedReport) {
     return (
-      <div style={{ padding: "1rem", fontFamily: "Cairo, sans-serif", direction: lang === "en" ? "ltr" : "rtl" }}>
+      <div className="app-shell" style={{ padding: "1rem", fontFamily: "Cairo, sans-serif", direction: lang === "en" ? "ltr" : "rtl" }}>
         <style>{printCss}</style>
+        <style>{screenCss}</style>
         <header className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h3><LangText lang={lang} {...I18N.noReportsHeader} /></h3>
           <LangSwitch lang={lang} setLang={setLang} />
         </header>
-        <div className="print-area one-page">
+        <div className="print-area one-page" id="report-container">
           <p><LangText lang={lang} {...I18N.noReportsText} /></p>
         </div>
         <button onClick={() => fileInputRef.current?.click()} style={btnStyleSuccess} className="no-print">
@@ -663,14 +745,13 @@ export default function QCSDailyView() {
   const coolers = Array.isArray(selectedReport.coolers) ? selectedReport.coolers : [];
   const personalHygiene = Array.isArray(selectedReport.personalHygiene) ? selectedReport.personalHygiene : [];
   const cleanlinessRows = Array.isArray(selectedReport.cleanlinessRows) ? selectedReport.cleanlinessRows : [];
-  const vehicleReport = Array.isArray(selectedReport.vehicleReport) ? selectedReport.vehicleReport : [];
 
   // حد أدنى لطباعة النظافة الشخصية
   const phRowsCount = Math.max(MIN_PH_ROWS, personalHygiene.length || 0);
   const phDataForPrint = Array.from({ length: phRowsCount }).map((_, i) => personalHygiene[i] || {});
 
   return (
-    <div style={{
+    <div className="app-shell" style={{
       display: "flex",
       gap: "1rem",
       fontFamily: "Cairo, sans-serif",
@@ -678,6 +759,7 @@ export default function QCSDailyView() {
       direction: lang === "en" ? "ltr" : "rtl"
     }}>
       <style>{printCss}</style>
+      <style>{screenCss}</style>
 
       {/* الشريط الجانبي */}
       <aside className="no-print" style={{ flex: "0 0 290px", borderRight: "1px solid #e5e7eb", paddingRight: "1rem" }}>
@@ -756,7 +838,6 @@ export default function QCSDailyView() {
             { id: "coolers", label: I18N.tabs.coolers },
             { id: "personalHygiene", label: I18N.tabs.personalHygiene },
             { id: "dailyCleanliness", label: I18N.tabs.dailyCleanliness },
-            { id: "vehicleReport", label: I18N.tabs.vehicleReport },
           ].map(({ id, label }) => (
             <button
               key={id}
@@ -777,10 +858,18 @@ export default function QCSDailyView() {
           ))}
         </nav>
 
-        {/* زر الطباعة فقط */}
+        {/* أزرار الطباعة/تصدير PDF */}
         <div className="no-print" style={{ display: "flex", gap: 8, justifyContent: "flex-end", margin: "0 0 8px 0" }}>
           <button onClick={handlePrint} style={btnStyleOutline}>
             <LangText lang={lang} {...I18N.tabActions.print} inline />
+          </button>
+          <button
+            onClick={handleExportPDF}
+            style={{ ...btnStylePrimary, opacity: exportingPDF ? 0.7 : 1 }}
+            disabled={exportingPDF}
+            title="Export as PDF (A4 Landscape)"
+          >
+            {exportingPDF ? "… جاري إنشاء PDF" : "📄 تصدير PDF"}
           </button>
         </div>
 
@@ -793,7 +882,7 @@ export default function QCSDailyView() {
         )}
 
         {/* ===== منطقة الطباعة ===== */}
-        <div className="print-area one-page">
+        <div className="print-area one-page" id="report-container">
           {/* البرادات */}
           {activeTab === "coolers" && (
             <>
@@ -804,7 +893,7 @@ export default function QCSDailyView() {
               <CoolersKPI coolers={coolers} lang={lang} />
               {coolers.length > 0 ? (
                 coolers.map((cooler, i) => (
-                  <div key={i} style={{ marginBottom: "1.2rem", background: i % 2 === 0 ? "#ecf6fc" : "#f8f3fa", padding: "1.1rem 0.7rem", borderRadius: "10px", display: "flex", alignItems: "center", gap: "1rem", boxShadow: "0 0 6px #d6eaf8aa" }}>
+                  <div key={i} className="cooler-card" style={{ marginBottom: "1.2rem", background: i % 2 === 0 ? "#ecf6fc" : "#f8f3fa", padding: "1.1rem 0.7rem", borderRadius: "12px", display: "flex", alignItems: "center", gap: "1rem", boxShadow: "0 3px 14px rgba(0,0,0,.06)" }}>
                     <strong style={{ minWidth: "80px", color: "#34495e", fontWeight: "bold" }}>
                       <bdi>{lang === "en" ? "Cooler" : "براد"} {i + 1}:</bdi>
                     </strong>
@@ -918,35 +1007,6 @@ export default function QCSDailyView() {
               </div>
 
               <CCPrintFooter footer={ccFooter} />
-            </>
-          )}
-
-          {/* تقارير السيارات */}
-          {activeTab === "vehicleReport" && (
-            <>
-              <h4>
-                <LangText lang={lang} {...I18N.sections.vehicleReport} />
-                {" "}- <small>{selectedDate}</small>
-              </h4>
-              {vehicleReport.length > 0 ? (
-                vehicleReport.map((vehicle, i) => (
-                  <div key={i} style={{ marginBottom: "1rem", background: "#fef9e7", padding: "1rem", borderRadius: "8px", border: "1px solid #fdebd0" }}>
-                    <p><LangText lang={lang} {...I18N.vehicle.loadStart} inline />: {vehicle?.startTime || "-"}</p>
-                    <p><LangText lang={lang} {...I18N.vehicle.loadEnd} inline />: {vehicle?.endTime || "-"}</p>
-                    <p><LangText lang={lang} {...I18N.vehicle.temp} inline />: {vehicle?.temperature ?? "-"}°</p>
-                    <p>
-                      <LangText lang={lang} {...I18N.vehicle.clean} inline />:{" "}
-                      {vehicle?.cleanliness
-                        ? <LangText lang={lang} {...I18N.vehicle.cleanYes} inline />
-                        : <LangText lang={lang} {...I18N.vehicle.cleanNo} inline />}
-                    </p>
-                    <p><LangText lang={lang} {...I18N.vehicle.plate} inline />: {vehicle?.plateNumber || "-"}</p>
-                    <p><LangText lang={lang} {...I18N.vehicle.driver} inline />: {vehicle?.driverName || "-"}</p>
-                  </div>
-                ))
-              ) : (
-                <p>لا توجد بيانات للسيارات</p>
-              )}
             </>
           )}
         </div>

@@ -194,6 +194,140 @@ function ThemeStyles() {
   );
 }
 
+/* ====================== عناصر المؤشرات (بدون مكتبات) ====================== */
+function GaugeCircle({ value = 72, size = 120, stroke = 12, color = "#884ea0", label = "" }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, Number(value) || 0));
+  const dash = (clamped / 100) * c;
+
+  return (
+    <div style={{ display: "grid", placeItems: "center" }}>
+      <svg width={size} height={size} style={{ display: "block" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} stroke="#eee" strokeWidth={stroke} fill="none" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={color}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={`${dash} ${c - dash}`}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" style={{ fontWeight: 800, fill: "#512e5f" }}>
+          {Math.round(clamped)}%
+        </text>
+      </svg>
+      {label && <div style={{ marginTop: 6, fontWeight: 700, color: "#512e5f" }}>{label}</div>}
+    </div>
+  );
+}
+
+function Sparkline({ points = [], width = 240, height = 60, stroke = "#7d3c98" }) {
+  if (!points || points.length === 0) {
+    return <div style={{ height, display: "grid", placeItems: "center", color: "#6b7280" }}>—</div>;
+  }
+  const max = Math.max(...points, 1);
+  const min = Math.min(...points, 0);
+  const range = Math.max(1, max - min);
+  const step = points.length > 1 ? width / (points.length - 1) : width;
+
+  const ys = points.map((v) => {
+    const norm = (v - min) / range;
+    return height - norm * height;
+  });
+  const d = ys.map((y, i) => `${i * step},${y}`).join(" ");
+
+  return (
+    <svg width={width} height={height} style={{ display: "block" }}>
+      <polyline points={d} fill="none" stroke={stroke} strokeWidth="2" />
+    </svg>
+  );
+}
+
+function StatCard({ title, value, suffix = "", hint = "" }) {
+  return (
+    <div
+      className="panel"
+      style={{
+        padding: 14,
+        borderRadius: 14,
+        minWidth: 180,
+        background: "rgba(255,255,255,0.85)",
+      }}
+    >
+      <div style={{ fontWeight: 800, color: "#884ea0", marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: "1.8em", fontWeight: 900, color: "#0f172a" }}>
+        {value}
+        {suffix}
+      </div>
+      {hint && <div style={{ color: "#6b7280", fontSize: ".9em", marginTop: 4 }}>{hint}</div>}
+    </div>
+  );
+}
+
+/* ====================== أدوات حساب للـ KPIs السريعة ====================== */
+const toNum = (x) => {
+  const n = Number(String(x).replace(/[^\d.\-]/g, ""));
+  return isNaN(n) ? null : n;
+};
+
+const parseTimeToMinutes = (t) => {
+  if (!t || typeof t !== "string") return null;
+  const m = t.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (isNaN(hh) || isNaN(mm)) return null;
+  return hh * 60 + mm;
+};
+
+const formatMinutes = (mins) => {
+  if (mins == null || isNaN(mins)) return "—";
+  const m = Math.max(0, Math.round(mins));
+  return `${m}`;
+};
+
+function computeDayKPIs(vehicles) {
+  // count
+  const count = vehicles.length;
+
+  // avg temp
+  const temps = vehicles.map((v) => toNum(v.tempCheck)).filter((n) => n != null);
+  const avgTemp = temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length) : null;
+
+  // avg duration (timeEnd - timeStart) in minutes
+  const durations = vehicles
+    .map((v) => {
+      const s = parseTimeToMinutes(v.timeStart);
+      const e = parseTimeToMinutes(v.timeEnd);
+      if (s == null || e == null) return null;
+      const d = e - s;
+      return isNaN(d) ? null : Math.max(0, d);
+    })
+    .filter((n) => n != null);
+  const avgDuration = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
+
+  // visual yes-rate across all vehicles & all defined VI_PARAMS
+  let totalChecks = 0;
+  let yesChecks = 0;
+  vehicles.forEach((v) => {
+    VI_PARAMS.forEach((p) => {
+      const val = v.visual?.[p.id]?.value;
+      if (val === "yes" || val === "no") {
+        totalChecks += 1;
+        if (val === "yes") yesChecks += 1;
+      }
+    });
+  });
+  const yesRate = totalChecks ? (yesChecks / totalChecks) * 100 : null;
+
+  return { count, avgTemp, avgDuration, yesRate };
+}
+
+/* ====================== المكوّن الرئيسي ====================== */
 export default function LoadingReports() {
   const [records, setRecords] = useState([]);
 
@@ -293,6 +427,15 @@ export default function LoadingReports() {
   const selectedVehicles = selectedDayKey ? dayIndex.get(selectedDayKey) || [] : [];
   const selectedIso = selectedDayKey?.startsWith("iso:") ? selectedDayKey.slice(4) : null;
   const selectedRaw = selectedDayKey?.startsWith("raw:") ? selectedDayKey.slice(4) : null;
+
+  /* ===== KPIs المحسوبة لليوم المحدد + بيانات السباركلайн للأيام الأخيرة ===== */
+  const dayKPIs = useMemo(() => computeDayKPIs(selectedVehicles), [selectedVehicles]);
+
+  const sparkPoints = useMemo(() => {
+    // آخر 12 يومًا (حسب الترتيب الحالي للـ flatDays - الأحدث أولًا)
+    const lastKeys = flatDays.slice(0, 12).reverse(); // نعرض من الأقدم للأحدث
+    return lastKeys.map((k) => (dayIndex.get(k) || []).length);
+  }, [flatDays, dayIndex]);
 
   /* ===== حذف حسب اليوم ===== */
   const handleDeleteByDayKey = (key) => {
@@ -575,6 +718,41 @@ export default function LoadingReports() {
                       selectedRaw
                     )}
                   </div>
+
+                  {/* ====== المؤشرات الجديدة (لا تغيّر أي ميزة قديمة) ====== */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 12, margin: "10px 0 16px" }}>
+                    <StatCard
+                      title="عدد المركبات / Vehicles"
+                      value={dayKPIs.count ?? 0}
+                      hint="سجلات هذا اليوم"
+                    />
+                    <StatCard
+                      title="متوسط الحرارة (°C)"
+                      value={dayKPIs.avgTemp != null ? dayKPIs.avgTemp.toFixed(1) : "—"}
+                      hint="Temp Check"
+                    />
+                    <StatCard
+                      title="متوسط مدة التحميل"
+                      value={formatMinutes(dayKPIs.avgDuration)}
+                      suffix=" دقيقة"
+                      hint="(Time End - Time Start)"
+                    />
+                    <div className="panel" style={{ padding: 12, display: "grid", placeItems: "center" }}>
+                      <GaugeCircle
+                        value={dayKPIs.yesRate != null ? dayKPIs.yesRate : 0}
+                        label="نسبة فحص بصري (Yes)"
+                        color="#5dade2"
+                      />
+                    </div>
+                    <div className="panel" style={{ padding: 12 }}>
+                      <div style={{ fontWeight: 800, color: "#884ea0", marginBottom: 6 }}>سجلات آخر الأيام</div>
+                      <Sparkline points={sparkPoints} />
+                      <div style={{ color: "#6b7280", fontSize: ".88em", marginTop: 6 }}>
+                        يوضح الاتجاه (عدد السجلات/اليوم) لآخر {sparkPoints.length || 0} يوم.
+                      </div>
+                    </div>
+                  </div>
+                  {/* ====== نهاية المؤشرات الجديدة ====== */}
 
                   {selectedVehicles.map((v) => (
                     <div key={v.id} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, marginTop: 6 }}>

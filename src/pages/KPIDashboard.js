@@ -112,6 +112,8 @@ export default function KPIDashboard() {
       inspection: JSON.parse(localStorage.getItem("reports") || "[]"),
       qcsDaily: JSON.parse(localStorage.getItem("qcs_reports") || "[]"),
       shipments: JSON.parse(localStorage.getItem("qcs_raw_material_reports") || "[]"),
+      // NEW: تقارير أوقات التحميل للسيارات
+      loadingReports: JSON.parse(localStorage.getItem("cars_loading_inspection_v1") || "[]"),
     });
     // ==== جلب بيانات المرتجعات من returns_reports ====
     const returns = JSON.parse(localStorage.getItem("returns_reports") || "[]");
@@ -129,6 +131,8 @@ export default function KPIDashboard() {
       inspection: filterByDate(kpi.inspection || []),
       qcsDaily: filterByDate(kpi.qcsDaily || []),
       shipments: filterByDate(kpi.shipments || []),
+      // NEW
+      loadingReports: filterByDate(kpi.loadingReports || []),
     });
   }, [dateFrom, dateTo, kpi]);
 
@@ -142,16 +146,12 @@ export default function KPIDashboard() {
   });
 
   // ==== إحصائيات المرتجعات ====
-  // عدد تقارير المرتجعات (عدد التقارير)
   const returnsCount = filteredReturns.length;
-  // عدد كل العناصر (كل الـitems داخل كل تقرير)
   const returnsItemsCount = filteredReturns.reduce((acc, rep) => acc + (rep.items?.length || 0), 0);
-  // إجمالي الكميات من كل العناصر
   const returnsTotalQty = filteredReturns.reduce(
     (acc, rep) => acc + (rep.items?.reduce((sum, r) => sum + Number(r.quantity || 0), 0) || 0),
     0
   );
-  // إحصاء الفرع الأكثر تكرارًا في المرتجعات
   const byBranch = {};
   filteredReturns.forEach(rep => {
     (rep.items || []).forEach(r => {
@@ -162,7 +162,6 @@ export default function KPIDashboard() {
   });
   const topBranches = Object.entries(byBranch).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
-  // إحصاء الإجراء الأكثر تكرارًا
   const byAction = {};
   filteredReturns.forEach(rep => {
     (rep.items || []).forEach(r => {
@@ -183,6 +182,7 @@ export default function KPIDashboard() {
         ) / inspectionCount
       ).toFixed(1)
     : 0;
+
   const qcsDailyCount = filtered.qcsDaily?.length ?? 0;
   const qcsCoolersAvg = (() => {
     let temps = [];
@@ -195,6 +195,7 @@ export default function KPIDashboard() {
     if (temps.length === 0) return 0;
     return (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1);
   })();
+
   const shipmentsCount = filtered.shipments?.length ?? 0;
   const shipmentsMardi =
     filtered.shipments?.filter(r => r.status === "مرضي").length ?? 0;
@@ -210,6 +211,47 @@ export default function KPIDashboard() {
     return acc;
   }, {});
 
+  // ======== KPIs لتقارير أوقات التحميل (NEW) ========
+  const loadingReports = filtered.loadingReports || [];
+  const loadingCount = loadingReports.length;
+
+  // تحويل وقت "HH:MM" -> دقائق
+  function toMinutes(t) {
+    if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return null;
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  }
+  // متوسط زمن التحميل بالدقائق
+  const loadingDurations = loadingReports.map(r => {
+    const s = toMinutes(r.timeStart);
+    const e = toMinutes(r.timeEnd);
+    return s != null && e != null && e >= s ? (e - s) : null;
+  }).filter(v => v != null);
+  const loadingAvgMinutes = loadingDurations.length
+    ? Math.round(loadingDurations.reduce((a,b)=>a+b,0) / loadingDurations.length)
+    : 0;
+
+  // متوسط حرارة التحميل
+  const loadingTemps = loadingReports
+    .map(r => Number(r.tempCheck))
+    .filter(v => !isNaN(v));
+  const loadingAvgTemp = loadingTemps.length
+    ? (loadingTemps.reduce((a,b)=>a+b,0) / loadingTemps.length).toFixed(1)
+    : 0;
+
+  // نسبة التوافق في الفحص البصري
+  const VI_KEYS = ["sealIntact","containerClean","pestDetection","tempReader","plasticCurtain","badSmell","ppeA","ppeB","ppeC"];
+  let viYes = 0, viTotal = 0;
+  loadingReports.forEach(r => {
+    VI_KEYS.forEach(k => {
+      if (r.visual && r.visual[k]) {
+        viTotal += 1;
+        if (r.visual[k].value === "yes") viYes += 1;
+      }
+    });
+  });
+  const loadingVICompliance = viTotal ? Math.round((viYes / viTotal) * 100) : 0;
+
   // ========== تصدير البيانات كـ JSON ==========
   const handleExportJSON = () => {
     const obj = {
@@ -223,6 +265,12 @@ export default function KPIDashboard() {
         shipmentsWasat,
         shipmentsTahtWasat,
         shipmentTypes,
+        // NEW: KPIs التحميل
+        loadingCount,
+        loadingAvgMinutes,
+        loadingAvgTemp,
+        loadingVICompliance,
+        // المرتجعات
         returnsCount,
         returnsItemsCount,
         returnsTotalQty,
@@ -464,7 +512,8 @@ export default function KPIDashboard() {
         }}
       >
         {/* KPIs الرئيسية */}
-        {[{
+        {[
+          {
             icon: "📑",
             label: "عدد تقارير التفتيش",
             value: inspectionCount,
@@ -499,6 +548,31 @@ export default function KPIDashboard() {
             label: "عدد الشحنات المرضية",
             value: shipmentsMardi,
             color: numberColor(shipmentsMardi, "good")
+          },
+          // NEW: كروت تقارير التحميل
+          {
+            icon: "🚚",
+            label: "تقارير التحميل",
+            value: loadingCount,
+            color: numberColor(loadingCount, "good")
+          },
+          {
+            icon: "⏱️",
+            label: "متوسط زمن التحميل (دقيقة)",
+            value: String(loadingAvgMinutes),
+            color: numberColor(loadingAvgMinutes, "warn")
+          },
+          {
+            icon: "🌡️",
+            label: "متوسط حرارة التحميل",
+            value: String(loadingAvgTemp) + "°C",
+            color: numberColor(loadingAvgTemp, "temp")
+          },
+          {
+            icon: "✅",
+            label: "توافق الفحص البصري (تحميل)",
+            value: String(loadingVICompliance) + "%",
+            color: numberColor(loadingVICompliance, "percentage")
           },
         ].map(({ icon, label, value, color }, i) => (
           <div
@@ -917,4 +991,3 @@ const td = {
 // ---------
 // لا تنسى تثبيت مكتبة عداد الأرقام قبل التشغيل:
 // npm i react-countup
-
