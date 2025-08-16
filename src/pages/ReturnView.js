@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useState } from "react";
 /* ========== ربط API السيرفر (صيغة CRA) ========== */
 const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
-
 async function fetchReturns() {
   const res = await fetch(API_BASE + "/api/reports?type=returns", { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch");
@@ -13,18 +12,63 @@ async function fetchReturns() {
   return Array.isArray(json) ? json : (json && json.data ? json.data : []);
 }
 
-/* 🆕 حذف تقارير يوم معيّن من السيرفر */
+/* 🆕 حذف تقارير يوم معيّن من السيرفر (محسّنة مع fallback) */
 async function deleteReturnsByDate(reportDate) {
-  const url = API_BASE + "/api/reports?type=returns&reportDate=" + encodeURIComponent(reportDate);
-  const res = await fetch(url, { method: "DELETE" });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error("DELETE failed: " + (text || res.status));
+  const qsUrl = API_BASE + "/api/reports?type=returns&reportDate=" + encodeURIComponent(reportDate);
+
+  function readDeletedCount(json) {
+    if (!json || typeof json !== "object") return 0;
+    if (json.deleted != null) return Number(json.deleted) || 0;
+    if (json.deletedCount != null) return Number(json.deletedCount) || 0;
+    if (json.nDeleted != null) return Number(json.nDeleted) || 0;
+    if (json.count != null) return Number(json.count) || 0;
+    return 0;
   }
-  const json = await res.json();
-  // نتوقع { ok:true, deleted: <number> }
-  if (!json || json.ok !== true) throw new Error("DELETE response not ok");
-  return json.deleted || 0;
+  async function parseJsonOrText(res) {
+    try { return await res.json(); }
+    catch {
+      const t = await res.text().catch(() => "");
+      return { _raw: t };
+    }
+  }
+
+  // المحاولة 1: DELETE مع query string
+  let firstFail = null;
+  try {
+    const res = await fetch(qsUrl, { method: "DELETE", headers: { "Accept": "application/json" } });
+    if (res.ok) {
+      const json = await parseJsonOrText(res);
+      const cnt = readDeletedCount(json);
+      if (cnt > 0 || json.ok === true || json.success === true) return cnt || 1;
+      return cnt; // صفر = لا سجلات
+    } else {
+      const body = await res.text().catch(() => "");
+      firstFail = `queryDELETE status=${res.status} body=${body || "<empty>"}`;
+    }
+  } catch (e) {
+    firstFail = "queryDELETE error=" + (e && e.message ? e.message : String(e));
+  }
+
+  // المحاولة 2: DELETE مع body JSON
+  try {
+    const res2 = await fetch(API_BASE + "/api/reports", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ type: "returns", reportDate })
+    });
+    if (!res2.ok) {
+      const body2 = await res2.text().catch(() => "");
+      throw new Error(`bodyDELETE status=${res2.status} body=${body2 || "<empty>"}`);
+    }
+    const json2 = await parseJsonOrText(res2);
+    const cnt2 = readDeletedCount(json2);
+    if (cnt2 > 0 || json2.ok === true || json2.success === true) return cnt2 || 1;
+    return cnt2; // صفر
+  } catch (e2) {
+    // لو فشل الاثنان أعطِ رسالة مفيدة
+    const both = (firstFail ? firstFail + " | " : "") + (e2 && e2.message ? e2.message : String(e2));
+    throw new Error(both);
+  }
 }
 
 /* توحيد الشكل: إن كانت البيانات بالفعل بالشكل [{reportDate, items:[]}] نُعيدها كما هي.
@@ -216,12 +260,11 @@ export default function ReturnView() {
       });
     });
     const sortedYears = Array.from(years.keys()).sort((a, b) => b.localeCompare(a));
-    const result = sortedYears.map((y) => {
+    return sortedYears.map((y) => {
       const months = years.get(y);
       const sortedMonths = Array.from(months.keys()).sort((a, b) => b.localeCompare(a));
       return { year: y, months: sortedMonths.map((m) => ({ month: m, days: months.get(m) })) };
     });
-    return result;
   }, [filteredReports]);
 
   // 🆕 حذف تقرير بحسب التاريخ (يحذف من السيرفر أولاً ثم يحدّث الحالة المحلية)
@@ -252,11 +295,11 @@ export default function ReturnView() {
         setOpMsg("ℹ️ لا توجد سجلات مطابقة لتاريخ " + dateStr + " لحذفها.");
       }
 
-      // إعادة تحميل من السيرفر للتأكد 100% (اختياري لكن مفيد)
+      // إعادة تحميل من السيرفر للتأكد 100%
       await reloadFromServer();
     } catch (err) {
       console.error(err);
-      setOpMsg("❌ فشل حذف التقرير من السيرفر. تأكد من صلاحيات CORS ومسار DELETE.");
+      setOpMsg("❌ فشل حذف التقرير من السيرفر: " + (err && err.message ? err.message : "سبب غير معروف"));
     } finally {
       setTimeout(() => setOpMsg(""), 4000);
     }
