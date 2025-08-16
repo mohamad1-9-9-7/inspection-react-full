@@ -16,10 +16,11 @@ const pool = new pg.Pool({
 });
 
 app.use(express.json());
+
+// تفعيل CORS (Netlify + Localhost)
 app.use(
   cors({
-    // السماح للنشر على Netlify والتجارب محليًا
-    origin: ["https://cheerful-melba-898d30.netlify.app", /^http:\/\/localhost:\d+$/],
+    origin: [/\.netlify\.app$/, /^http:\/\/localhost:\d+$/],
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "X-Idempotency-Key"],
   })
