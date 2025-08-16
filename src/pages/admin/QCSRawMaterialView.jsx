@@ -113,6 +113,9 @@ const keyLabels = {
   internationalLogger: "جهاز التسجيل الدولي"
 };
 
+/* ========================= 🗄️ مفتاح التخزين ========================= */
+const LS_KEY_REPORTS = "qcs_raw_material_reports";
+
 /* ========================= 🧪 الصفحة ========================= */
 export default function QCSRawMaterialView() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -124,13 +127,13 @@ export default function QCSRawMaterialView() {
   const [loadingServer, setLoadingServer] = useState(false);
   const [serverErr, setServerErr] = useState("");
 
-  // مراجع (مرة واحدة فقط — لا تكرر التعريف لتجنب خطأ ESLint)
+  // refs
   const fileInputRef = useRef(null);
   const restoreShowCertRef = useRef(false);
   const printAreaRef = useRef(null);
   const mainRef = useRef(null);
 
-  /* ========================= 🧹 أدوات صغيرة ========================= */
+  /* ========================= أدوات صغيرة ========================= */
   const toggleType = (type) =>
     setOpenTypes((prev) => ({ ...prev, [type]: !prev[type] }));
 
@@ -186,18 +189,17 @@ export default function QCSRawMaterialView() {
   };
 
   /* ========================= 🔄 جلب محلي + من السيرفر ========================= */
-  // تحويل سجل السيرفر إلى نفس شكل الواجهة المحلية
+  // نحافظ على id = payload.id (لو موجود) لدمج صحيح
+  // ونخزّن serverId = معرف السجل في قاعدة البيانات (_id) من السيرفر لدعم الحذف
   const normalizeServerRecord = (rec) => {
     const p = rec?.payload || rec || {};
-    const id =
-      p.id ||
-      rec?.id ||
-      rec?._id ||
-      `${Date.parse(rec?.createdAt || p?.date || new Date().toISOString())}-${Math.random()
-        .toString(16)
-        .slice(2, 8)}`;
+    const payloadId = p.id || p.payloadId || undefined; // id داخل payload
+    const dbId = rec?._id || rec?.id || undefined;      // _id من قاعدة البيانات
+
     return {
-      id,
+      id: payloadId || dbId || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      serverId: dbId,
+
       shipmentType: p.shipmentType || "",
       status: p.status || "",
       generalInfo: p.generalInfo || {},
@@ -217,21 +219,21 @@ export default function QCSRawMaterialView() {
     };
   };
 
-  // الدمج بدون تكرار حسب id (أفضلية لسجل السيرفر)
+  // الدمج بدون تكرار حسب id (تعطي أولوية للسيرفر وتحتفظ بـ serverId)
   const mergeUniqueById = (serverArr, localArr) => {
     const map = new Map();
     localArr.forEach((r) => map.set(r.id, r));
-    serverArr.forEach((r) => map.set(r.id, { ...map.get(r.id), ...r }));
+    serverArr.forEach((r) => {
+      const prev = map.get(r.id) || {};
+      map.set(r.id, { ...prev, ...r });
+    });
     return Array.from(map.values());
   };
 
   const loadFromLocal = () => {
     try {
-      const saved = JSON.parse(
-        localStorage.getItem("qcs_raw_material_reports") || "[]"
-      );
-      saved.sort((a, b) => (b.id || 0) - (a.id || 0));
-      return saved;
+      const saved = JSON.parse(localStorage.getItem(LS_KEY_REPORTS) || "[]");
+      return saved.map((r) => ({ ...r, serverId: r.serverId || undefined }));
     } catch {
       return [];
     }
@@ -242,7 +244,8 @@ export default function QCSRawMaterialView() {
     setLoadingServer(true);
     try {
       const res = await fetch(`${API_BASE}/api/reports?type=qcs_raw_material`, {
-        cache: "no-store"
+        cache: "no-store",
+        credentials: "include"
       });
       if (!res.ok) throw new Error(`Server ${res.status}`);
       const json = await res.json();
@@ -262,12 +265,19 @@ export default function QCSRawMaterialView() {
 
     const update = async () => {
       const local = loadFromLocal();
+
       if (mounted) {
-        setReports(local);
-        if (local.length && selectedReportId == null) {
-          setSelectedReportId(local[0].id);
+        const sortedLocal = local.sort((a, b) =>
+          String(b.date || b.createdAt || "").localeCompare(
+            String(a.date || a.createdAt || "")
+          )
+        );
+        setReports(sortedLocal);
+        if (sortedLocal.length && selectedReportId == null) {
+          setSelectedReportId(sortedLocal[0].id);
         }
       }
+
       const server = await fetchFromServer();
       if (mounted) {
         const merged = mergeUniqueById(server, local).sort((a, b) =>
@@ -279,6 +289,8 @@ export default function QCSRawMaterialView() {
         if (merged.length && !merged.some((r) => r.id === selectedReportId)) {
           setSelectedReportId(merged[0]?.id || null);
         }
+        // خزّن النسخة المدمجة محليًا
+        localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(merged));
       }
     };
 
@@ -303,14 +315,79 @@ export default function QCSRawMaterialView() {
   const selectedReport =
     filteredReports.find((r) => r.id === selectedReportId) || null;
 
-  /* ========================= 🗑️ حذف محلي ========================= */
-  const handleDelete = (id) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذا التقرير؟")) return;
-    const filtered = reports.filter((r) => r.id !== id);
-    setReports(filtered);
-    const local = loadFromLocal().filter((r) => r.id !== id);
-    localStorage.setItem("qcs_raw_material_reports", JSON.stringify(local));
-    if (selectedReportId === id) setSelectedReportId(filtered[0]?.id || null);
+  /* ========================= 🗑️ حذف محلي + سيرفر (بشكل بسيط وموثوق) ========================= */
+  const deleteOnServer = async (record) => {
+    const base = `${API_BASE}/api/reports`;
+    const norm = (s) => String(s || "").trim().toLowerCase();
+
+    const apiDelete = async (url) => {
+      try {
+        const res = await fetch(url, { method: "DELETE", credentials: "include" });
+        if (res.ok || res.status === 404) return true; // 404 يعني محذوف أصلًا
+      } catch (e) {
+        console.warn("Delete network error:", e);
+      }
+      return false;
+    };
+
+    // 1) عندنا serverId؟
+    if (record.serverId) {
+      const urls = [
+        `${base}/${encodeURIComponent(record.serverId)}`,
+        `${base}/${encodeURIComponent(record.serverId)}?type=qcs_raw_material`,
+        `${base}/qcs_raw_material/${encodeURIComponent(record.serverId)}`
+      ];
+      for (const u of urls) {
+        if (await apiDelete(u)) return true;
+      }
+    }
+
+    // 2) ما عندنا serverId → دوري على السجل وبعدين إحذف
+    try {
+      const res = await fetch(`${base}?type=qcs_raw_material`, { cache: "no-store", credentials: "include" });
+      if (res.ok) {
+        const json = await res.json();
+        const arr = Array.isArray(json) ? json : json?.data || [];
+        const target = arr.find((rec) => {
+          const p = rec?.payload || {};
+          return (p.id && p.id === record.id) ||
+                 (norm(p.generalInfo?.airwayBill) === norm(record.generalInfo?.airwayBill));
+        });
+        const dbId = target?._id || target?.id;
+        if (dbId) {
+          const urls2 = [
+            `${base}/${encodeURIComponent(dbId)}`,
+            `${base}/${encodeURIComponent(dbId)}?type=qcs_raw_material`,
+            `${base}/qcs_raw_material/${encodeURIComponent(dbId)}`
+          ];
+          for (const u of urls2) {
+            if (await apiDelete(u)) return true;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Lookup before delete failed:", e);
+    }
+
+    return false;
+  };
+
+  const handleDelete = async (id) => {
+    const rec = reports.find((r) => r.id === id);
+    if (!rec) return;
+    if (!window.confirm("هل أنت متأكد من حذف هذا التقرير من الجهاز والسيرفر؟")) return;
+
+    // 1) احذف فورًا من الواجهة وlocalStorage
+    const newList = reports.filter((r) => r.id !== id);
+    setReports(newList);
+    localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(newList));
+    if (selectedReportId === id) setSelectedReportId(newList[0]?.id || null);
+
+    // 2) حاول تحذف من السيرفر
+    const ok = await deleteOnServer(rec);
+    if (!ok) {
+      alert("⚠️ تعذّر حذف التقرير من السيرفر. تم حذفه محليًا فقط.");
+    }
   };
 
   /* ========================= ⬇️⬆️ استيراد/تصدير (محلي) ========================= */
@@ -337,13 +414,16 @@ export default function QCSRawMaterialView() {
         const data = JSON.parse(target.result);
         if (!Array.isArray(data))
           return alert("ملف غير صالح: يجب أن يحتوي على مصفوفة تقارير.");
-        const merged = mergeUniqueById([], [...reports, ...data]).sort((a, b) =>
+        // ضمّ البيانات المستوردة مع الحالية (بدون تكرار id)
+        const map = new Map();
+        [...reports, ...data].forEach((r) => map.set(r.id, { ...map.get(r.id), ...r }));
+        const merged = Array.from(map.values()).sort((a, b) =>
           String(b.date || b.createdAt || "").localeCompare(
             String(a.date || a.createdAt || "")
           )
         );
         setReports(merged);
-        localStorage.setItem("qcs_raw_material_reports", JSON.stringify(merged));
+        localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(merged));
         alert("تم استيراد التقارير بنجاح.");
       } catch {
         alert("فشل في قراءة الملف أو تنسيقه غير صالح.");
@@ -456,7 +536,7 @@ export default function QCSRawMaterialView() {
       }
     : defaultDocMeta;
 
-  /* ========================= 🧱 UI ========================= */
+  /* ========================= UI ========================= */
   return (
     <div
       style={{
@@ -611,6 +691,7 @@ export default function QCSRawMaterialView() {
                             : "❌"}
                         </span>
                       </span>
+                      {/* ملاحظة: زر داخل زر مو مثالي بالـ HTML، لكن أبقيته متوافقًا مع تصميمك الحالي */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

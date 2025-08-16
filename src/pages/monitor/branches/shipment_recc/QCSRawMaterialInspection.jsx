@@ -52,6 +52,8 @@ async function sendOneToServer({ payload }) {
   const res = await fetch(`${API_BASE}/api/reports`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    // إن كان عندك كوكي/سِشن فعّل السطر التالي:
+    // credentials: "include",
     body: JSON.stringify({ reporter, type: "qcs_raw_material", payload })
   });
   if (!res.ok) {
@@ -61,17 +63,52 @@ async function sendOneToServer({ payload }) {
   return res.json();
 }
 
+/* ========================= 🧩 أدوات تخزين محلي ========================= */
+function persistLocally(report) {
+  let all = [];
+  try { all = JSON.parse(localStorage.getItem(LS_KEY_REPORTS) || "[]"); } catch { all = []; }
+  const idx = all.findIndex(r => r.id === report.id);
+  const now = new Date().toISOString();
+  if (idx >= 0) {
+    all[idx] = { ...all[idx], ...report, updatedAt: now };
+  } else {
+    all.push({ ...report, createdAt: report.createdAt || now, updatedAt: now });
+  }
+  localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(all));
+}
+
+/** بعد نجاح الرفع من الطابور: اربط serverId مع التقرير المحلي */
+function attachServerIdToLocalReport(localId, serverId, createdAt) {
+  if (!serverId) return;
+  let all = [];
+  try { all = JSON.parse(localStorage.getItem(LS_KEY_REPORTS) || "[]"); } catch { all = []; }
+  const idx = all.findIndex(r => r.id === localId);
+  if (idx >= 0) {
+    all[idx] = {
+      ...all[idx],
+      serverId,
+      createdAt: all[idx].createdAt || createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(all));
+  }
+}
+
 /* ========================= 🔁 حلقة مزامنة (تفرّغ الطابور) ========================= */
 async function syncOnce(setSaveMsg) {
   if (!navigator.onLine) return false;
   let didSomething = false;
   while (queueLength() > 0) {
-    const item = dequeueSync();
+    const item = dequeueSync(); // item هو نفس payload الذي خزّناه
     try {
-      await sendOneToServer({ payload: item });
+      const saved = await sendOneToServer({ payload: item });
+      const serverId = saved?._id || saved?.data?._id || saved?.id || saved?.record?._id;
+      const createdAt = saved?.createdAt || saved?.data?.createdAt;
+      attachServerIdToLocalReport(item.id, serverId, createdAt);
       didSomething = true;
       setSaveMsg?.("✅ تمت مزامنة تقرير مؤجّل بنجاح!");
     } catch (e) {
+      // رجّع العنصر للطابور واسمح بمحاولة لاحقة
       const q = readQueue();
       q.unshift(item);
       writeQueue(q);
@@ -400,20 +437,7 @@ export default function QCSRawMaterialInspection() {
     notes
   });
 
-  /* ========================= 💾 حفظ محلي ========================= */
-  const persistLocally = (report) => {
-    let all = [];
-    try { all = JSON.parse(localStorage.getItem(LS_KEY_REPORTS) || "[]"); } catch { all = []; }
-    const idx = all.findIndex(r => r.id === report.id);
-    if (idx >= 0) {
-      all[idx] = { ...all[idx], ...report, updatedAt: new Date().toISOString() };
-    } else {
-      all.push({ ...report, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    }
-    localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(all));
-  };
-
-  /* ========================= حفظ يدوي فقط عند الضغط ========================= */
+  /* ========================= حفظ يدوي فقط عند الضغط (مع تخزين serverId) ========================= */
   const handleSave = async () => {
     // تحقق بسيط: لازم نوع الشحنة على الأقل
     if (!shipmentType.trim()) {
@@ -421,19 +445,37 @@ export default function QCSRawMaterialInspection() {
       return;
     }
 
-    // ولّد id جديد للتقرير
+    // ولّد id محلي للتقرير (payload.id)
     const id = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const payload = buildReportPayload(id);
 
-    // 1) احفظ محلي
+    // 1) احفظ محليًا أولًا
     persistLocally(payload);
 
-    // 2) حاول التصدير للسيرفر، ولو فشل ادخله للطابور
     try {
       setSaveMsg("⏳ جاري حفظ التقرير وتصديره للسيرفر…");
-      await sendOneToServer({ payload });
-      setSaveMsg("✅ تم الحفظ محليًا والتصدير للسيرفر بنجاح!");
-    } catch {
+
+      // 2) ابعث للسيرفر وخُذ الرد
+      const saved = await sendOneToServer({ payload });
+
+      // 3) استخرج معرف السجل من الرد وخزّنه محليًا كـ serverId
+      const serverId =
+        saved?._id || saved?.data?._id || saved?.id || saved?.record?._id;
+
+      if (serverId) {
+        const withServerId = {
+          ...payload,
+          serverId,
+          createdAt: saved?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        persistLocally(withServerId);
+        setSaveMsg("✅ تم الحفظ محليًا والتصدير للسيرفر بنجاح!");
+      } else {
+        setSaveMsg("✅ تم الحفظ. لم نستلم serverId من السيرفر، سيبقى محليًا.");
+      }
+    } catch (e) {
+      // 4) لو فشل الإرسال: دخّل التقرير إلى طابور المزامنة
       enqueueSync(payload);
       setSaveMsg("⚠️ تم الحفظ محليًا. سيتم التصدير تلقائيًا عند توفّر الاتصال.");
     } finally {
@@ -452,13 +494,8 @@ export default function QCSRawMaterialInspection() {
     window.addEventListener("focus", onFocus);
 
     // محاولة كل 30 ثانية
-    syncTimerRef.current = setInterval(() => { syncOnce(setSaveMsg); }, 30000);
-
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("focus", onFocus);
-      if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-    };
+    const t = setInterval(() => { syncOnce(setSaveMsg); }, 30000);
+    return () => clearInterval(t);
   }, []);
 
   /* ========================= UI ========================= */
