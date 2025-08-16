@@ -4,7 +4,7 @@ import cors from "cors";
 import pg from "pg";
 import dotenv from "dotenv";
 
-dotenv.config(); // محلي فقط، على Render يكفي Environment Variables
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,8 +18,8 @@ const pool = new pg.Pool({
 app.use(express.json());
 app.use(
   cors({
-    // السماح للنشر على Netlify والتجارب على أي بورت محلي (3000, 5173, ...إلخ)
-    origin: [/\.netlify\.app$/, /^http:\/\/localhost:\d+$/],
+    // السماح للنشر على Netlify والتجارب محليًا
+    origin: ["https://cheerful-melba-898d30.netlify.app", /^http:\/\/localhost:\d+$/],
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "X-Idempotency-Key"],
   })
@@ -27,7 +27,6 @@ app.use(
 app.options("*", cors());
 
 /* ======================== DB Schema ======================== */
-// إنشاء الجدول إذا لم يكن موجود
 async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS reports (
@@ -39,7 +38,6 @@ async function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(type);
     CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at);
-    -- فهرس يساعد على حذف/جلب يوم معين بسرعة
     CREATE INDEX IF NOT EXISTS idx_reports_type_reportdate
       ON reports (type, ((payload->>'reportDate')));
   `);
@@ -47,7 +45,6 @@ async function ensureSchema() {
 }
 
 /* ======================== Health ======================== */
-// فحص صحة قاعدة البيانات
 app.get("/health/db", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
@@ -57,11 +54,9 @@ app.get("/health/db", async (_req, res) => {
   }
 });
 
-// فحص صحة السيرفر
 app.get("/", (_req, res) => res.send("OK"));
 
 /* ======================== Reports API ======================== */
-// إضافة تقرير
 app.post("/api/reports", async (req, res) => {
   try {
     const { reporter, type, payload } = req.body || {};
@@ -83,7 +78,6 @@ app.post("/api/reports", async (req, res) => {
   }
 });
 
-// قراءة التقارير (آخر 50 حسب type إن وُجد)
 app.get("/api/reports", async (req, res) => {
   try {
     const { type } = req.query;
@@ -98,9 +92,7 @@ app.get("/api/reports", async (req, res) => {
   }
 });
 
-// حذف تقارير يوم معيّن (Hard Delete) بناءً على نوع التقرير وتاريخ التقرير
-// يُستدعى هكذا من الواجهة:
-// DELETE /api/reports?type=returns&reportDate=YYYY-MM-DD
+// مسار حذف تقرير
 app.delete("/api/reports", async (req, res) => {
   try {
     const { type, reportDate } = req.query;

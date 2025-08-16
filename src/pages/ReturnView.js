@@ -20,16 +20,18 @@ async function fetchReturns() {
   return Array.isArray(json) ? json : (json && json.data ? json.data : []);
 }
 
-/* 🆕 حذف حسب التاريخ على السيرفر */
-async function deleteReturnsByDateOnServer(dateStr) {
-  const url = `${API_BASE}/api/reports?type=returns&reportDate=${encodeURIComponent(dateStr)}`;
+/* 🆕 حذف تقارير يوم معيّن من السيرفر */
+async function deleteReturnsByDate(reportDate) {
+  const url = API_BASE + "/api/reports?type=returns&reportDate=" + encodeURIComponent(reportDate);
   const res = await fetch(url, { method: "DELETE" });
   if (!res.ok) {
-    let txt = "";
-    try { txt = await res.text(); } catch {}
-    throw new Error(`Server ${res.status}: ${txt || "DELETE failed"}`);
+    const text = await res.text().catch(() => "");
+    throw new Error("DELETE failed: " + (text || res.status));
   }
-  return res.json(); // { ok:true, deleted:n }
+  const json = await res.json();
+  // نتوقع { ok:true, deleted: <number> }
+  if (!json || json.ok !== true) throw new Error("DELETE response not ok");
+  return json.deleted || 0;
 }
 
 /* توحيد الشكل: إن كانت البيانات بالفعل بالشكل [{reportDate, items:[]}] نُعيدها كما هي.
@@ -90,11 +92,12 @@ export default function ReturnView() {
   const [openYears, setOpenYears] = useState({});
   const [openMonths, setOpenMonths] = useState({}); // المفتاح: `${year}-${month}`
 
-  // رسائل حالة
+  // رسائل الحالة
   const [serverErr, setServerErr] = useState("");
   const [loadingServer, setLoadingServer] = useState(false);
-  const [opMsg, setOpMsg] = useState("");          // 🆕 رسالة عمليات (حذف/حفظ...)
-  const [opBusy, setOpBusy] = useState(false);     // 🆕 حالة انشغال أثناء الحذف
+
+  // 🆕 رسالة عمليات (حذف… إلخ)
+  const [opMsg, setOpMsg] = useState("");
 
   // تحميل التقارير من localStorage أولًا
   useEffect(() => {
@@ -104,28 +107,27 @@ export default function ReturnView() {
   }, []);
 
   /* ========== جلب من السيرفر ثم توحيد الشكل ========== */
+  async function reloadFromServer() {
+    setServerErr("");
+    setLoadingServer(true);
+    try {
+      const raw = await fetchReturns();
+      const normalized = normalizeServerReturns(raw);
+      normalized.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
+      setReports(function (prev) { return (normalized && normalized.length ? normalized : prev); });
+    } catch (e) {
+      setServerErr("تعذر الجلب من السيرفر الآن. (قد يكون السيرفر يستيقظ).");
+      console.error(e);
+    } finally {
+      setLoadingServer(false);
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
     (async () => {
-      try {
-        setLoadingServer(true);
-        const raw = await fetchReturns();
-        const normalized = normalizeServerReturns(raw);
-        normalized.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
-        if (mounted) {
-          // إذا عندي بيانات من السيرفر، اعتمدها (حتى ما نضل عالكاش)
-          if (normalized && normalized.length) {
-            setReports(normalized);
-            // خياري: نحدّث النسخة المحلية بنفس الوقت لتماسك العرض بعد التحديث
-            localStorage.setItem("returns_reports", JSON.stringify(normalized));
-          }
-        }
-      } catch (e) {
-        if (mounted) setServerErr("تعذر الجلب من السيرفر الآن. (قد يكون السيرفر يستيقظ).");
-        console.error(e);
-      } finally {
-        if (mounted) setLoadingServer(false);
-      }
+      if (!mounted) return;
+      await reloadFromServer();
     })();
     return () => { mounted = false; };
   }, []);
@@ -145,7 +147,7 @@ export default function ReturnView() {
   // فلترة بحسب من/إلى
   const filteredReports = useMemo(() => {
     return reports.filter((r) => {
-      const d = (r && r.reportDate) || "";
+      const d = r.reportDate || "";
       if (filterFrom && d < filterFrom) return false;
       if (filterTo && d > filterTo) return false;
       return true;
@@ -229,57 +231,41 @@ export default function ReturnView() {
     return result;
   }, [filteredReports]);
 
-  /* ======================= حذف تقرير بحسب التاريخ (سيرفر + محلي) ======================= */
+  // 🆕 حذف تقرير بحسب التاريخ (يحذف من السيرفر أولاً ثم يحدّث الحالة المحلية)
   const handleDeleteByDate = async (dateStr) => {
     if (!window.confirm("هل أنت متأكد من حذف تقرير " + dateStr + "؟")) return;
-    setOpBusy(true);
-    setOpMsg("⏳ جاري الحذف من السيرفر…");
-    setServerErr("");
 
     try {
-      // 1) احذف من السيرفر
-      const res = await deleteReturnsByDateOnServer(dateStr);
-      if (!res || res.ok !== true) {
-        throw new Error(res && res.error ? res.error : "DELETE failed");
-      }
-
-      // 2) حدث الحالة المحلية (التي تُعرض على الشاشة)
-      const list = reports.filter((r) => r.reportDate !== dateStr);
-      setReports(list);
-
-      // 3) احذف من التخزين المحلي returns_reports
-      localStorage.setItem("returns_reports", JSON.stringify(list));
-
-      // 4) 🆕 نظّف كمان طابور المزامنة returns_sync_queue (حتى ما يرجع يطلع بعد تحديث)
-      try {
-        let q = JSON.parse(localStorage.getItem("returns_sync_queue") || "[]");
-        if (Array.isArray(q) && q.length) {
-          q = q.filter((r) => (r && r.reportDate) !== dateStr);
-          localStorage.setItem("returns_sync_queue", JSON.stringify(q));
+      setOpMsg("⏳ جاري حذف تقرير " + dateStr + " من السيرفر…");
+      const deleted = await deleteReturnsByDate(dateStr); // ← حذف من السيرفر
+      if (deleted > 0) {
+        // حدّث الواجهة المحلية و localStorage
+        const list = reports.filter((r) => r.reportDate !== dateStr);
+        setReports(list);
+        localStorage.setItem("returns_reports", JSON.stringify(list));
+        if (selectedDate === dateStr) {
+          const next = list
+            .filter((r) => {
+              const d = r.reportDate || "";
+              if (filterFrom && d < filterFrom) return false;
+              if (filterTo && d > filterTo) return false;
+              return true;
+            })
+            .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
+          setSelectedDate(next[0] ? next[0].reportDate : "");
         }
-      } catch {}
-
-      // 5) ضبط التاريخ المختار إذا كان نفس المحذوف
-      if (selectedDate === dateStr) {
-        const next = list
-          .filter((r) => {
-            const d = r.reportDate || "";
-            if (filterFrom && d < filterFrom) return false;
-            if (filterTo && d > filterTo) return false;
-            return true;
-          })
-          .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
-        setSelectedDate(next[0] ? next[0].reportDate : "");
+        setOpMsg("✅ تم حذف تقرير " + dateStr + " (deleted=" + deleted + ")");
+      } else {
+        setOpMsg("ℹ️ لا توجد سجلات مطابقة لتاريخ " + dateStr + " لحذفها.");
       }
 
-      setOpMsg(`✅ تم حذف تقرير ${dateStr} بنجاح (خادمًا ومحليًا).`);
-    } catch (e) {
-      console.error(e);
-      setServerErr("فشل حذف التقرير من السيرفر. تأكد من صلاحيات CORS ومسار DELETE.");
-      setOpMsg("❌ لم يتم الحذف.");
+      // إعادة تحميل من السيرفر للتأكد 100% (اختياري لكن مفيد)
+      await reloadFromServer();
+    } catch (err) {
+      console.error(err);
+      setOpMsg("❌ فشل حذف التقرير من السيرفر. تأكد من صلاحيات CORS ومسار DELETE.");
     } finally {
-      setOpBusy(false);
-      setTimeout(() => setOpMsg(""), 3000);
+      setTimeout(() => setOpMsg(""), 4000);
     }
   };
 
@@ -350,7 +336,7 @@ export default function ReturnView() {
         )}
       </h2>
 
-      {/* حالة الجلب من السيرفر & رسائل العمليات */}
+      {/* حالة الجلب من السيرفر */}
       {loadingServer && (
         <div style={{ textAlign: "center", marginBottom: 10, color: "#1f2937" }}>
           ⏳ جاري الجلب من السيرفر…
@@ -361,8 +347,9 @@ export default function ReturnView() {
           {serverErr}
         </div>
       )}
+      {/* 🆕 رسالة عمليات */}
       {opMsg && (
-        <div style={{ textAlign: "center", marginBottom: 10, color: opMsg.startsWith("✅") ? "#117a37" : (opMsg.startsWith("⏳") ? "#1f2937" : "#b91c1c") }}>
+        <div style={{ textAlign: "center", marginBottom: 10, color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46", fontWeight: 700 }}>
           {opMsg}
         </div>
       )}
@@ -521,12 +508,11 @@ export default function ReturnView() {
                                     <div>📅 {d}</div>
                                     <button
                                       title="حذف التقرير"
-                                      disabled={opBusy}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleDeleteByDate(d);
                                       }}
-                                      style={{ ...deleteBtn, opacity: opBusy ? 0.6 : 1, cursor: opBusy ? "not-allowed" : "pointer" }}
+                                      style={deleteBtn}
                                     >
                                       🗑️
                                     </button>
