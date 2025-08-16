@@ -2,16 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
-/* ========== ربط API السيرفر (متوافق مع ESLint بدون optional chaining) ========== */
-let API_BASE = "https://inspection-server-4nvj.onrender.com";
-try {
-  // يعمل في Vite/ESM
-  if (typeof import.meta !== "undefined" && import.meta && import.meta.env && import.meta.env.VITE_API_URL) {
-    API_BASE = import.meta.env.VITE_API_URL;
-  }
-} catch (e) {
-  // تجاهل في البيئات التي لا تدعم import.meta
-}
+/* ========== ربط API السيرفر (صيغة CRA) ========== */
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 async function fetchReturns() {
   const res = await fetch(API_BASE + "/api/reports?type=returns", { cache: "no-store" });

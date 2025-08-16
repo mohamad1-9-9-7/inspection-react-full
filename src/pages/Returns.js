@@ -3,10 +3,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-// 🆕 رابط الـ API (من متغيّر البيئة إن وُجد، وإلا استخدم رابط Render مباشرة)
-const API_BASE = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL)
-  ? import.meta.env.VITE_API_URL
-  : "https://inspection-server-4nvj.onrender.com";
+// 🆕 رابط الـ API (من متغيّر البيئة في CRA)
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 // 🆕 مفاتيح التخزين المحلي
 const LS_KEY_RETURNS = "returns_reports";
@@ -198,7 +196,7 @@ export default function Returns() {
       return;
     }
 
-    // ======= الحفظ المحلي (كما هو) =======
+    // ======= الحفظ المحلي =======
     let existing = [];
     try {
       existing = JSON.parse(localStorage.getItem(LS_KEY_RETURNS) || "[]");
@@ -218,7 +216,6 @@ export default function Returns() {
       await sendOneToServer({ reportDate, items: filtered });
       setSaveMsg("✅ تم الحفظ محليًا وعلى السيرفر بنجاح!");
     } catch (err) {
-      // فشل: أدخل الطلب في الطابور وسنحاول لاحقًا تلقائيًا
       enqueueSync({ reportDate, items: filtered });
       setSaveMsg("⚠️ تم الحفظ محليًا. سنحاول الإرسال للسيرفر تلقائيًا لاحقًا.");
     } finally {
@@ -245,7 +242,7 @@ export default function Returns() {
         🛒 سجل المرتجعات (Returns Register)
       </h2>
 
-      {/* ====== تاريخ اليوم أعلى الصفحة ====== */}
+      {/* ====== تاريخ اليوم ====== */}
       <div style={{
         display: "flex",
         alignItems: "center",
@@ -291,8 +288,7 @@ export default function Returns() {
         display: "flex", justifyContent: "center", alignItems: "center",
         gap: "1.2rem", marginBottom: 20
       }}>
-        <button
-          onClick={handleSave}
+        <button onClick={handleSave}
           style={{
             background: "#229954",
             color: "#fff",
@@ -303,11 +299,8 @@ export default function Returns() {
             padding: "10px 32px",
             cursor: "pointer",
             boxShadow: "0 2px 8px #d4efdf"
-          }}
-        >💾 حفظ</button>
-        <button
-          // انتقل مباشرة للمسار المطلق الصحيح لعرض المرتجعات
-          onClick={() => navigate("/returns/view")}
+          }}>💾 حفظ</button>
+        <button onClick={() => navigate("/returns/view")}
           style={{
             background: "#884ea0",
             color: "#fff",
@@ -318,8 +311,7 @@ export default function Returns() {
             padding: "10px 32px",
             cursor: "pointer",
             boxShadow: "0 2px 8px #d2b4de"
-          }}
-        >📋 عرض التقارير المحفوظة</button>
+          }}>📋 عرض التقارير المحفوظة</button>
         {saveMsg && (
           <span style={{
             marginRight: 18, fontWeight: "bold",
@@ -329,6 +321,7 @@ export default function Returns() {
         )}
       </div>
 
+      {/* جدول */}
       <div style={{ overflowX: "auto" }}>
         <table style={{
           width: "100%",
@@ -357,120 +350,87 @@ export default function Returns() {
               <tr key={idx} style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}>
                 <td style={td}>{idx + 1}</td>
                 <td style={td}>
-                  <input
-                    style={input}
+                  <input style={input}
                     value={row.productName}
-                    onChange={e => handleChange(idx, "productName", e.target.value)}
-                  />
+                    onChange={e => handleChange(idx, "productName", e.target.value)} />
                 </td>
                 <td style={td}>
-                  <input
-                    style={input}
+                  <input style={input}
                     value={row.origin}
-                    onChange={e => handleChange(idx, "origin", e.target.value)}
-                  />
+                    onChange={e => handleChange(idx, "origin", e.target.value)} />
                 </td>
                 <td style={td}>
-                  <select
-                    style={input}
+                  <select style={input}
                     value={row.butchery}
-                    onChange={e => handleChange(idx, "butchery", e.target.value)}
-                  >
+                    onChange={e => handleChange(idx, "butchery", e.target.value)}>
                     <option value="">اختر الفرع</option>
                     {BRANCHES.map(b => (
                       <option key={b} value={b}>{b}</option>
                     ))}
                   </select>
-                  {/* حقل فرع مخصص إذا اختار "فرع آخر..." */}
                   {row.butchery === "فرع آخر..." && (
-                    <input
-                      style={{ ...input, marginTop: 6 }}
+                    <input style={{ ...input, marginTop: 6 }}
                       placeholder="اكتب اسم الفرع..."
                       value={row.customButchery}
-                      onChange={e => handleChange(idx, "customButchery", e.target.value)}
-                    />
+                      onChange={e => handleChange(idx, "customButchery", e.target.value)} />
                   )}
                 </td>
                 <td style={td}>
-                  <input
-                    type="number"
-                    min="0"
-                    style={input}
+                  <input type="number" min="0" style={input}
                     value={row.quantity}
-                    onChange={e => handleChange(idx, "quantity", e.target.value)}
-                  />
+                    onChange={e => handleChange(idx, "quantity", e.target.value)} />
                 </td>
                 <td style={td}>
-                  <select
-                    style={input}
+                  <select style={input}
                     value={row.qtyType}
-                    onChange={e => handleChange(idx, "qtyType", e.target.value)}
-                  >
+                    onChange={e => handleChange(idx, "qtyType", e.target.value)}>
                     {QTY_TYPES.map(q => (
                       <option key={q} value={q}>{q}</option>
                     ))}
                   </select>
                   {row.qtyType === "أخرى" && (
-                    <input
-                      style={{ ...input, marginTop: 6 }}
+                    <input style={{ ...input, marginTop: 6 }}
                       placeholder="اكتب النوع..."
                       value={row.customQtyType}
-                      onChange={e => handleChange(idx, "customQtyType", e.target.value)}
-                    />
+                      onChange={e => handleChange(idx, "customQtyType", e.target.value)} />
                   )}
                 </td>
                 <td style={td}>
-                  <input
-                    type="date"
-                    style={input}
+                  <input type="date" style={input}
                     value={row.expiry}
-                    onChange={e => handleChange(idx, "expiry", e.target.value)}
-                  />
+                    onChange={e => handleChange(idx, "expiry", e.target.value)} />
                 </td>
                 <td style={td}>
-                  <input
-                    style={input}
+                  <input style={input}
                     value={row.remarks}
-                    onChange={e => handleChange(idx, "remarks", e.target.value)}
-                  />
+                    onChange={e => handleChange(idx, "remarks", e.target.value)} />
                 </td>
                 <td style={td}>
-                  <select
-                    style={input}
+                  <select style={input}
                     value={row.action}
-                    onChange={e => handleChange(idx, "action", e.target.value)}
-                  >
+                    onChange={e => handleChange(idx, "action", e.target.value)}>
                     <option value="">اختر الإجراء</option>
                     {ACTIONS.map(a => (
                       <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
-                  {/* حقل إجراء مخصص إذا اختار "إجراء آخر..." */}
                   {row.action === "إجراء آخر..." && (
-                    <input
-                      style={{ ...input, marginTop: 6 }}
+                    <input style={{ ...input, marginTop: 6 }}
                       placeholder="اكتب الإجراء..."
                       value={row.customAction}
-                      onChange={e => handleChange(idx, "customAction", e.target.value)}
-                    />
+                      onChange={e => handleChange(idx, "customAction", e.target.value)} />
                   )}
                 </td>
                 <td style={td}>
                   {rows.length > 1 && (
-                    <button
-                      onClick={() => removeRow(idx)}
+                    <button onClick={() => removeRow(idx)}
                       style={{
-                        background: "#c0392b",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 8,
-                        fontWeight: "bold",
-                        fontSize: 20,
-                        padding: "4px 12px",
-                        cursor: "pointer"
+                        background: "#c0392b", color: "#fff",
+                        border: "none", borderRadius: 8,
+                        fontWeight: "bold", fontSize: 20,
+                        padding: "4px 12px", cursor: "pointer"
                       }}
-                      title="حذف الصف"
-                    >✖</button>
+                      title="حذف الصف">✖</button>
                   )}
                 </td>
               </tr>
@@ -479,20 +439,14 @@ export default function Returns() {
         </table>
       </div>
       <div style={{ marginTop: "2rem", textAlign: "center" }}>
-        <button
-          onClick={addRow}
+        <button onClick={addRow}
           style={{
-            background: "#512e5f",
-            color: "#fff",
-            border: "none",
-            borderRadius: "14px",
-            fontWeight: "bold",
-            fontSize: "1.13em",
-            padding: "12px 35px",
-            cursor: "pointer",
+            background: "#512e5f", color: "#fff",
+            border: "none", borderRadius: "14px",
+            fontWeight: "bold", fontSize: "1.13em",
+            padding: "12px 35px", cursor: "pointer",
             boxShadow: "0 2px 8px #d2b4de"
-          }}
-        >➕ إضافة صف جديد</button>
+          }}>➕ إضافة صف جديد</button>
       </div>
     </div>
   );

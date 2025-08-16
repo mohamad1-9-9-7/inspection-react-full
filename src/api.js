@@ -7,12 +7,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000; // 🟢 الافتراضي 5000 للسيرفر
 
 // اتصال PostgreSQL
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false }, // مطلوب مع Neon
 });
 
 app.use(express.json());
@@ -20,7 +20,10 @@ app.use(express.json());
 // تفعيل CORS (Netlify + Localhost)
 app.use(
   cors({
-    origin: [/\.netlify\.app$/, /^http:\/\/localhost:\d+$/],
+    origin: [
+      "https://cheerful-melba-898d30.netlify.app", // 🟢 موقعك على Netlify
+      /^http:\/\/localhost:\d+$/, // 🟢 أي localhost
+    ],
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "X-Idempotency-Key"],
   })
@@ -55,9 +58,10 @@ app.get("/health/db", async (_req, res) => {
   }
 });
 
-app.get("/", (_req, res) => res.send("OK"));
+app.get("/", (_req, res) => res.send("🚀 API is running"));
 
 /* ======================== Reports API ======================== */
+// إضافة تقرير جديد
 app.post("/api/reports", async (req, res) => {
   try {
     const { reporter, type, payload } = req.body || {};
@@ -72,13 +76,14 @@ app.post("/api/reports", async (req, res) => {
       RETURNING *`;
     const r = await pool.query(q, [reporter || "anonymous", type, payload]);
 
-    res.status(200).json({ ok: true, report: r.rows[0] });
+    res.status(201).json({ ok: true, report: r.rows[0] });
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false, error: "db insert failed" });
   }
 });
 
+// قراءة التقارير (مع ?type=returns يفلتر النوع)
 app.get("/api/reports", async (req, res) => {
   try {
     const { type } = req.query;
@@ -93,7 +98,7 @@ app.get("/api/reports", async (req, res) => {
   }
 });
 
-// مسار حذف تقرير
+// حذف تقارير حسب النوع والتاريخ
 app.delete("/api/reports", async (req, res) => {
   try {
     const { type, reportDate } = req.query;
@@ -118,7 +123,9 @@ app.delete("/api/reports", async (req, res) => {
 /* ======================== Boot ======================== */
 ensureSchema()
   .then(() => {
-    app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+    app.listen(PORT, () =>
+      console.log(`✅ Server running on port ${PORT}`)
+    );
   })
   .catch((err) => {
     console.error("❌ DB init failed:", err);
