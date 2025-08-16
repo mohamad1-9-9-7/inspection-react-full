@@ -1,7 +1,89 @@
+// src/pages/QCSRawMaterialInspection.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
-// ✅ هيكل العينة الفارغة (لا تَستخدم نفس المرجع)
+/* ========================= 🔗 API Base ========================= */
+let API_BASE = "https://inspection-server-4nvj.onrender.com";
+try {
+  if (
+    typeof import.meta !== "undefined" &&
+    import.meta &&
+    import.meta.env &&
+    import.meta.env.VITE_API_URL
+  ) {
+    API_BASE = import.meta.env.VITE_API_URL;
+  }
+} catch {}
+
+/* ========================= 🗄️ مفاتيح التخزين ========================= */
+const LS_KEY_REPORTS = "qcs_raw_material_reports";          // التقارير المحفوظة محليًا
+const LS_KEY_SYNCQ   = "qcs_raw_material_sync_queue";       // طابور مزامنة للسيرفر
+const LS_KEY_DRAFT   = "qcs_raw_material_current_draft";    // آخر مسودة جارية (id)
+
+/* ========================= 🧰 طابور المزامنة ========================= */
+function readQueue() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY_SYNCQ) || "[]"); } catch { return []; }
+}
+function writeQueue(q) {
+  localStorage.setItem(LS_KEY_SYNCQ, JSON.stringify(q));
+}
+function enqueueSync(item) {
+  const q = readQueue();
+  q.push(item);
+  writeQueue(q);
+}
+function dequeueSync() {
+  const q = readQueue();
+  const first = q.shift();
+  writeQueue(q);
+  return first;
+}
+function queueLength() {
+  return readQueue().length;
+}
+
+/* ========================= ✉️ إرسال تقرير واحد للسيرفر ========================= */
+async function sendOneToServer({ payload }) {
+  let reporter = "anonymous";
+  try {
+    const raw = localStorage.getItem("currentUser");
+    const user = raw ? JSON.parse(raw) : null;
+    reporter = user?.username || reporter;
+  } catch {}
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reporter, type: "qcs_raw_material", payload })
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Server ${res.status}: ${t}`);
+  }
+  return res.json();
+}
+
+/* ========================= 🔁 حلقة مزامنة (تفرّغ الطابور) ========================= */
+async function syncOnce(setSaveMsg) {
+  if (!navigator.onLine) return false;
+  let didSomething = false;
+  while (queueLength() > 0) {
+    const item = dequeueSync();
+    try {
+      await sendOneToServer({ payload: item });
+      didSomething = true;
+      setSaveMsg?.("✅ تمت مزامنة تقرير مؤجّل بنجاح!");
+    } catch (e) {
+      // فشل: أعده للطابور وتوقّف لجولة لاحقة
+      const q = readQueue();
+      q.unshift(item);
+      writeQueue(q);
+      break;
+    }
+  }
+  return didSomething;
+}
+
+/* ========================= ✅ هيكل العينة الفارغة ========================= */
 const initialSample = {
   temperature: "",
   ph: "",
@@ -18,11 +100,10 @@ const initialSample = {
   testicles: "",
   smell: ""
 };
-
 // دالة تُنشئ نسخة جديدة من عينة فارغة في كل مرة
 const newEmptySample = () => ({ ...initialSample });
 
-// 🎨 أنماط عصرية مع الحفاظ على RTL والميزات القديمة
+/* ========================= 🎨 أنماط عصرية ========================= */
 const styles = {
   page: {
     minHeight: "100vh",
@@ -66,12 +147,10 @@ const styles = {
   },
   section: { marginBottom: "1.25rem" },
   label: { fontWeight: 700, color: "#0f172a" },
-
-  // ✅ لمسة سحرية: حدود زرقاء افتراضيًا + سلاسة بالفوكس
   input: {
     width: "100%",
     padding: "12px 14px",
-    border: "1px solid #bfdbfe",           // أزرق فاتح
+    border: "1px solid #bfdbfe",
     borderRadius: "12px",
     outline: "none",
     transition: "box-shadow .15s ease, border-color .15s ease, transform .08s ease",
@@ -80,18 +159,17 @@ const styles = {
   select: {
     width: "100%",
     padding: "12px 14px",
-    border: "1px solid #bfdbfe",           // أزرق فاتح
+    border: "1px solid #bfdbfe",
     borderRadius: "12px",
     outline: "none",
     transition: "box-shadow .15s ease, border-color .15s ease, transform .08s ease",
     background: "#fff"
   },
   focused: {
-    boxShadow: "0 0 0 4px rgba(59,130,246,.25)", // هالة فوكس زرقاء لطيفة
+    boxShadow: "0 0 0 4px rgba(59,130,246,.25)",
     borderColor: "#3b82f6",
     transform: "translateY(-1px)"
   },
-
   fieldset: {
     marginBottom: "1.5rem",
     padding: "1.25rem",
@@ -141,19 +219,16 @@ const styles = {
     whiteSpace: "nowrap"
   },
   td: { borderTop: "1px solid #f1f5f9", padding: "8px 6px" },
-
-  // ✅ تكبير خانات العينات + حدود زرقاء + سلاسة
   tdInput: {
     width: "100%",
     minWidth: "120px",
     padding: "10px 12px",
-    border: "1px solid #bfdbfe",           // أزرق فاتح
+    border: "1px solid #bfdbfe",
     borderRadius: "10px",
     outline: "none",
     transition: "box-shadow .15s ease, border-color .15s ease",
     background: "#fff"
   },
-
   actionsRow: {
     display: "flex",
     gap: "12px",
@@ -237,14 +312,35 @@ const styles = {
     borderRadius: 10,
     outline: "none"
   },
-  headerRowSpacer: { borderLeft: "1px solid #e5e7eb", width: "10px" }
+  headerRowSpacer: { borderLeft: "1px solid #e5e7eb", width: "10px" },
+  toast: { marginInlineStart: 10, fontWeight: 800 }
 };
 
 export default function QCSRawMaterialInspection() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
-  // ترويسة بقيم ثابتة قابلة للتعديل
+  // رسالة حالة صغيرة (حفظ/مزامنة)
+  const [saveMsg, setSaveMsg] = useState("");
+
+  // مؤقّت مزامنة دوري
+  const syncTimerRef = useRef(null);
+
+  // مؤقّت تهدئة (debounce) للحفظ التلقائي
+  const autosaveTimerRef = useRef(null);
+
+  // id للمسودة الجارية
+  const [draftId, setDraftId] = useState(() => {
+    try {
+      const existing = localStorage.getItem(LS_KEY_DRAFT);
+      if (existing) return existing;
+    } catch {}
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    localStorage.setItem(LS_KEY_DRAFT, id);
+    return id;
+  });
+
+  // ترويسة قابلة للتعديل
   const [docMeta, setDocMeta] = useState({
     documentTitle: "Raw Material Inspection Report Chilled lamb",
     documentNo: "FS-QM/REC/RMB",
@@ -278,7 +374,6 @@ export default function QCSRawMaterialInspection() {
   });
   const [certificateFile, setCertificateFile] = useState(null);
   const [certificateName, setCertificateName] = useState("");
-  // 📝 ملاحظات
   const [notes, setNotes] = useState("");
 
   // 🔢 متوسط الوزن (ديناميكي)
@@ -288,17 +383,14 @@ export default function QCSRawMaterialInspection() {
     setAverageWeight(q > 0 && w > 0 ? (w / q).toFixed(3) : "0");
   }, [totalQuantity, totalWeight]);
 
-  // ✏️ Handlers (بشكل غير قابل للتغيير)
+  // ✏️ Handlers
   const handleSampleChange = (index, field, value) => {
     setSamples(prev => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
   };
-
   const handleGeneralChange = (field, value) => {
     setGeneralInfo(prev => ({ ...prev, [field]: value }));
   };
-
   const addSample = () => setSamples(prev => [...prev, newEmptySample()]);
-
   const handleCertificateUpload = e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -307,51 +399,105 @@ export default function QCSRawMaterialInspection() {
     reader.readAsDataURL(file);
     setCertificateName(file.name);
   };
-
   const triggerFileSelect = () => fileInputRef.current?.click();
 
-  const handleSave = () => {
-    if (!shipmentType.trim()) {
-      alert("📦 الرجاء اختيار نوع الشحنة.");
-      return;
+  /* ========================= 🧩 بناء التقرير من الحالة ========================= */
+  const buildReportPayload = () => ({
+    id: draftId,
+    date: new Date().toISOString(),
+    shipmentType,
+    status: shipmentStatus,
+    generalInfo,
+    samples,
+    inspectedBy,
+    verifiedBy,
+    totalQuantity,
+    totalWeight,
+    averageWeight,
+    certificateFile,
+    certificateName,
+    docMeta,
+    notes
+  });
+
+  /* ========================= 💾 حفظ محلي + تصدير ========================= */
+  const persistLocally = (report) => {
+    let all = [];
+    try { all = JSON.parse(localStorage.getItem(LS_KEY_REPORTS) || "[]"); } catch { all = []; }
+    const idx = all.findIndex(r => r.id === report.id);
+    if (idx >= 0) {
+      all[idx] = { ...all[idx], ...report, updatedAt: new Date().toISOString() };
+    } else {
+      all.push({ ...report, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     }
-
-    const allReports = JSON.parse(localStorage.getItem("qcs_raw_material_reports") || "[]");
-    const newReport = {
-      id: Date.now(),
-      shipmentType,
-      status: shipmentStatus,
-      generalInfo,
-      date: new Date().toLocaleString(),
-      samples,
-      inspectedBy,
-      verifiedBy,
-      totalQuantity,
-      totalWeight,
-      averageWeight,
-      certificateFile,
-      certificateName,
-      docMeta,
-      notes // ✅ حفظ الملاحظات
-    };
-
-    allReports.push(newReport);
-    localStorage.setItem("qcs_raw_material_reports", JSON.stringify(allReports));
-    alert("✅ تم حفظ التقرير الجديد بنجاح");
-
-    // reset (بدون حذف أي ميزة)
-    setShipmentType("");
-    setSamples([newEmptySample()]);
-    setInspectedBy("");
-    setVerifiedBy("");
-    setTotalQuantity("");
-    setTotalWeight("");
-    setAverageWeight("0");
-    setCertificateFile(null);
-    setCertificateName("");
-    setNotes(""); // ✅ تفريغ الملاحظات بعد الحفظ
+    localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(all));
   };
 
+  const tryExportToServer = async (report) => {
+    try {
+      setSaveMsg("⏳ حفظ تلقائي ومزامنة…");
+      await sendOneToServer({ payload: report });
+      setSaveMsg("✅ تم الحفظ محليًا والتصدير للسيرفر!");
+    } catch {
+      enqueueSync(report);
+      setSaveMsg("⚠️ تم الحفظ محليًا. سيُصدَّر للسيرفر تلقائيًا لاحقًا.");
+    } finally {
+      clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = setTimeout(() => setSaveMsg(""), 3000);
+    }
+  };
+
+  // لإخفاء الرسالة بعد قليل
+  const statusTimerRef = useRef(null);
+
+  /* ========================= ⏱️ تهدئة الحفظ التلقائي ========================= */
+  const scheduleAutosave = () => {
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      const payload = buildReportPayload();
+      persistLocally(payload);
+      // بعد الحفظ المحلي حاول التصدير
+      tryExportToServer(payload);
+    }, 800); // 800ms تهدئة
+  };
+
+  // أي تغيير بالحالة يطلق الحفظ التلقائي (بدون تعليق لقاعدة ESLint)
+  useEffect(() => { scheduleAutosave(); }, [shipmentType, shipmentStatus, inspectedBy, verifiedBy, totalQuantity, totalWeight, averageWeight, certificateFile, certificateName, notes]);
+  useEffect(() => { scheduleAutosave(); }, [docMeta]);
+  useEffect(() => { scheduleAutosave(); }, [generalInfo]);
+  useEffect(() => { scheduleAutosave(); }, [samples]);
+
+  // حفظ نهائي عند تفكيك المكوّن + ضمان الإدراج في الطابور
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+      const payload = buildReportPayload();
+      persistLocally(payload);
+      enqueueSync(payload);
+    };
+  }, []);
+
+  /* ========================= 🔄 تشغيل حلقة المزامنة ========================= */
+  useEffect(() => {
+    // مزامنة فورية عند التحميل
+    syncOnce(setSaveMsg);
+
+    function onOnline() { syncOnce(setSaveMsg); }
+    function onFocus()  { syncOnce(setSaveMsg); }
+    window.addEventListener("online", onOnline);
+    window.addEventListener("focus", onFocus);
+
+    // كل 30 ثانية
+    syncTimerRef.current = setInterval(() => { syncOnce(setSaveMsg); }, 30000);
+
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("focus", onFocus);
+      if (syncTimerRef.current) clearInterval(syncTimerRef.current);
+    };
+  }, []);
+
+  /* ========================= UI ========================= */
   // 🎯 أداة صغيرة لتجميع خصائص الإدخال مع اللمسة العصرية للفوكس
   const inputProps = name => ({
     onFocus: () => setIsFocused(name),
@@ -361,7 +507,6 @@ export default function QCSRawMaterialInspection() {
       ...(isFocused === name ? styles.focused : {})
     }
   });
-
   const selectProps = name => ({
     onFocus: () => setIsFocused(name),
     onBlur: () => setIsFocused(null),
@@ -371,12 +516,23 @@ export default function QCSRawMaterialInspection() {
     }
   });
 
+  // زر الحفظ الأصلي بقي (اختياري)، لكنه الآن يستدعي نفس مسار الحفظ/التصدير التلقائي
+  const handleSave = () => {
+    const payload = buildReportPayload();
+    persistLocally(payload);
+    tryExportToServer(payload);
+    alert("💾 تم تشغيل الحفظ اليدوي. سيتم كذلك تصدير التقرير/مزامنته في الخلفية.");
+  };
+
   return (
     <div style={styles.page}>
       <div style={styles.container}>
         <div style={styles.titleWrap}>
           <h2 style={styles.title}>📦 تقرير استلام شحنات - QCS</h2>
-          <span style={styles.badge}>نسخة واجهة محسّنة</span>
+          <span style={styles.badge}>
+            حفظ تلقائي + تصدير للسيرفر
+            {saveMsg ? <span style={{ marginInlineStart: 10, fontWeight: 800 }}>· {saveMsg}</span> : null}
+          </span>
         </div>
 
         {/* الترويسة كجدول قابل للتعديل */}
@@ -707,6 +863,7 @@ export default function QCSRawMaterialInspection() {
 
         {/* Save & View */}
         <div style={{ marginTop: "1.25rem", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          {/* زر الحفظ بقي لعدم الحذف، لكنه غير ضروري لأن الحفظ تلقائي */}
           <button onClick={handleSave} style={styles.saveButton}>
             💾 حفظ التقرير (Save Report)
           </button>
