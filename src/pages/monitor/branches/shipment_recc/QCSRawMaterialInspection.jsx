@@ -16,9 +16,8 @@ try {
 } catch {}
 
 /* ========================= 🗄️ مفاتيح التخزين ========================= */
-const LS_KEY_REPORTS = "qcs_raw_material_reports";          // التقارير المحفوظة محليًا
-const LS_KEY_SYNCQ   = "qcs_raw_material_sync_queue";       // طابور مزامنة للسيرفر
-const LS_KEY_DRAFT   = "qcs_raw_material_current_draft";    // آخر مسودة جارية (id)
+const LS_KEY_REPORTS = "qcs_raw_material_reports";        // التقارير المحفوظة محليًا
+const LS_KEY_SYNCQ   = "qcs_raw_material_sync_queue";     // طابور مزامنة للسيرفر
 
 /* ========================= 🧰 طابور المزامنة ========================= */
 function readQueue() {
@@ -73,7 +72,6 @@ async function syncOnce(setSaveMsg) {
       didSomething = true;
       setSaveMsg?.("✅ تمت مزامنة تقرير مؤجّل بنجاح!");
     } catch (e) {
-      // فشل: أعده للطابور وتوقّف لجولة لاحقة
       const q = readQueue();
       q.unshift(item);
       writeQueue(q);
@@ -100,7 +98,6 @@ const initialSample = {
   testicles: "",
   smell: ""
 };
-// دالة تُنشئ نسخة جديدة من عينة فارغة في كل مرة
 const newEmptySample = () => ({ ...initialSample });
 
 /* ========================= 🎨 أنماط عصرية ========================= */
@@ -320,25 +317,8 @@ export default function QCSRawMaterialInspection() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
-  // رسالة حالة صغيرة (حفظ/مزامنة)
   const [saveMsg, setSaveMsg] = useState("");
-
-  // مؤقّت مزامنة دوري
   const syncTimerRef = useRef(null);
-
-  // مؤقّت تهدئة (debounce) للحفظ التلقائي
-  const autosaveTimerRef = useRef(null);
-
-  // id للمسودة الجارية
-  const [draftId, setDraftId] = useState(() => {
-    try {
-      const existing = localStorage.getItem(LS_KEY_DRAFT);
-      if (existing) return existing;
-    } catch {}
-    const id = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    localStorage.setItem(LS_KEY_DRAFT, id);
-    return id;
-  });
 
   // ترويسة قابلة للتعديل
   const [docMeta, setDocMeta] = useState({
@@ -358,7 +338,7 @@ export default function QCSRawMaterialInspection() {
   const [totalQuantity, setTotalQuantity] = useState("");
   const [totalWeight, setTotalWeight] = useState("");
   const [averageWeight, setAverageWeight] = useState("0");
-  const [isFocused, setIsFocused] = useState(null); // لإضافة لمسة focus عصرية
+  const [isFocused, setIsFocused] = useState(null);
   const [generalInfo, setGeneralInfo] = useState({
     reportOn: "",
     receivedOn: "",
@@ -402,8 +382,8 @@ export default function QCSRawMaterialInspection() {
   const triggerFileSelect = () => fileInputRef.current?.click();
 
   /* ========================= 🧩 بناء التقرير من الحالة ========================= */
-  const buildReportPayload = () => ({
-    id: draftId,
+  const buildReportPayload = (id) => ({
+    id,
     date: new Date().toISOString(),
     shipmentType,
     status: shipmentStatus,
@@ -420,7 +400,7 @@ export default function QCSRawMaterialInspection() {
     notes
   });
 
-  /* ========================= 💾 حفظ محلي + تصدير ========================= */
+  /* ========================= 💾 حفظ محلي ========================= */
   const persistLocally = (report) => {
     let all = [];
     try { all = JSON.parse(localStorage.getItem(LS_KEY_REPORTS) || "[]"); } catch { all = []; }
@@ -433,53 +413,37 @@ export default function QCSRawMaterialInspection() {
     localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(all));
   };
 
-  const tryExportToServer = async (report) => {
+  /* ========================= حفظ يدوي فقط عند الضغط ========================= */
+  const handleSave = async () => {
+    // تحقق بسيط: لازم نوع الشحنة على الأقل
+    if (!shipmentType.trim()) {
+      alert("📦 الرجاء اختيار نوع الشحنة قبل الحفظ.");
+      return;
+    }
+
+    // ولّد id جديد للتقرير
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const payload = buildReportPayload(id);
+
+    // 1) احفظ محلي
+    persistLocally(payload);
+
+    // 2) حاول التصدير للسيرفر، ولو فشل ادخله للطابور
     try {
-      setSaveMsg("⏳ حفظ تلقائي ومزامنة…");
-      await sendOneToServer({ payload: report });
-      setSaveMsg("✅ تم الحفظ محليًا والتصدير للسيرفر!");
+      setSaveMsg("⏳ جاري حفظ التقرير وتصديره للسيرفر…");
+      await sendOneToServer({ payload });
+      setSaveMsg("✅ تم الحفظ محليًا والتصدير للسيرفر بنجاح!");
     } catch {
-      enqueueSync(report);
-      setSaveMsg("⚠️ تم الحفظ محليًا. سيُصدَّر للسيرفر تلقائيًا لاحقًا.");
+      enqueueSync(payload);
+      setSaveMsg("⚠️ تم الحفظ محليًا. سيتم التصدير تلقائيًا عند توفّر الاتصال.");
     } finally {
-      clearTimeout(statusTimerRef.current);
-      statusTimerRef.current = setTimeout(() => setSaveMsg(""), 3000);
+      setTimeout(() => setSaveMsg(""), 3000);
     }
   };
 
-  // لإخفاء الرسالة بعد قليل
-  const statusTimerRef = useRef(null);
-
-  /* ========================= ⏱️ تهدئة الحفظ التلقائي ========================= */
-  const scheduleAutosave = () => {
-    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-    autosaveTimerRef.current = setTimeout(() => {
-      const payload = buildReportPayload();
-      persistLocally(payload);
-      // بعد الحفظ المحلي حاول التصدير
-      tryExportToServer(payload);
-    }, 800); // 800ms تهدئة
-  };
-
-  // أي تغيير بالحالة يطلق الحفظ التلقائي (بدون تعليق لقاعدة ESLint)
-  useEffect(() => { scheduleAutosave(); }, [shipmentType, shipmentStatus, inspectedBy, verifiedBy, totalQuantity, totalWeight, averageWeight, certificateFile, certificateName, notes]);
-  useEffect(() => { scheduleAutosave(); }, [docMeta]);
-  useEffect(() => { scheduleAutosave(); }, [generalInfo]);
-  useEffect(() => { scheduleAutosave(); }, [samples]);
-
-  // حفظ نهائي عند تفكيك المكوّن + ضمان الإدراج في الطابور
-  useEffect(() => {
-    return () => {
-      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-      const payload = buildReportPayload();
-      persistLocally(payload);
-      enqueueSync(payload);
-    };
-  }, []);
-
   /* ========================= 🔄 تشغيل حلقة المزامنة ========================= */
   useEffect(() => {
-    // مزامنة فورية عند التحميل
+    // مزامنة فورية عند التحميل (لإرسال أي تقارير مؤجلة سابقًا)
     syncOnce(setSaveMsg);
 
     function onOnline() { syncOnce(setSaveMsg); }
@@ -487,7 +451,7 @@ export default function QCSRawMaterialInspection() {
     window.addEventListener("online", onOnline);
     window.addEventListener("focus", onFocus);
 
-    // كل 30 ثانية
+    // محاولة كل 30 ثانية
     syncTimerRef.current = setInterval(() => { syncOnce(setSaveMsg); }, 30000);
 
     return () => {
@@ -498,7 +462,6 @@ export default function QCSRawMaterialInspection() {
   }, []);
 
   /* ========================= UI ========================= */
-  // 🎯 أداة صغيرة لتجميع خصائص الإدخال مع اللمسة العصرية للفوكس
   const inputProps = name => ({
     onFocus: () => setIsFocused(name),
     onBlur: () => setIsFocused(null),
@@ -516,21 +479,13 @@ export default function QCSRawMaterialInspection() {
     }
   });
 
-  // زر الحفظ الأصلي بقي (اختياري)، لكنه الآن يستدعي نفس مسار الحفظ/التصدير التلقائي
-  const handleSave = () => {
-    const payload = buildReportPayload();
-    persistLocally(payload);
-    tryExportToServer(payload);
-    alert("💾 تم تشغيل الحفظ اليدوي. سيتم كذلك تصدير التقرير/مزامنته في الخلفية.");
-  };
-
   return (
     <div style={styles.page}>
       <div style={styles.container}>
         <div style={styles.titleWrap}>
           <h2 style={styles.title}>📦 تقرير استلام شحنات - QCS</h2>
           <span style={styles.badge}>
-            حفظ تلقائي + تصدير للسيرفر
+            حفظ يدوي فقط
             {saveMsg ? <span style={{ marginInlineStart: 10, fontWeight: 800 }}>· {saveMsg}</span> : null}
           </span>
         </div>
@@ -863,7 +818,6 @@ export default function QCSRawMaterialInspection() {
 
         {/* Save & View */}
         <div style={{ marginTop: "1.25rem", display: "flex", gap: "10px", flexWrap: "wrap" }}>
-          {/* زر الحفظ بقي لعدم الحذف، لكنه غير ضروري لأن الحفظ تلقائي */}
           <button onClick={handleSave} style={styles.saveButton}>
             💾 حفظ التقرير (Save Report)
           </button>
