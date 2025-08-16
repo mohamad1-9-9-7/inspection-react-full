@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 // 🆕 رابط الـ API (من متغيّر البيئة في CRA)
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
 // 🆕 مفاتيح التخزين المحلي
 const LS_KEY_RETURNS = "returns_reports";

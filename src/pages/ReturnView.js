@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 /* ========== ربط API السيرفر (صيغة CRA) ========== */
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+
 
 async function fetchReturns() {
   const res = await fetch(API_BASE + "/api/reports?type=returns", { cache: "no-store" });
