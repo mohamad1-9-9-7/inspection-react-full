@@ -2,6 +2,50 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
+/* ========== ربط API السيرفر (متوافق مع ESLint بدون optional chaining) ========== */
+let API_BASE = "https://inspection-server-4nvj.onrender.com";
+try {
+  // يعمل في Vite/ESM
+  if (typeof import.meta !== "undefined" && import.meta && import.meta.env && import.meta.env.VITE_API_URL) {
+    API_BASE = import.meta.env.VITE_API_URL;
+  }
+} catch (e) {
+  // تجاهل في البيئات التي لا تدعم import.meta
+}
+
+async function fetchReturns() {
+  const res = await fetch(API_BASE + "/api/reports?type=returns", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch");
+  const json = await res.json(); // { ok:true, data:[...] } أو Array حسب السيرفر
+  return Array.isArray(json) ? json : (json && json.data ? json.data : []);
+}
+
+/* توحيد الشكل: إن كانت البيانات بالفعل بالشكل [{reportDate, items:[]}] نُعيدها كما هي.
+   وإلا نحوّل من شكل السيرفر [{ payload:{reportDate, items[]} ...}] إلى نفس الشكل المتوقع محليًا. */
+function normalizeServerReturns(arr) {
+  if (Array.isArray(arr) && arr.length && Array.isArray(arr[0] && arr[0].items)) {
+    return arr;
+  }
+  // افرد العناصر مع تاريخ التقرير، ثم اجمعها حسب اليوم
+  const flat = (arr || []).flatMap(function (rec) {
+    const payload = (rec && rec.payload) ? rec.payload : {};
+    const date = payload.reportDate || (rec && rec.reportDate) || "";
+    const items = payload.items || [];
+    return items.map(function (it) { return { reportDate: date, ...it }; });
+  });
+  const byDate = new Map();
+  flat.forEach(function (row) {
+    const d = row.reportDate || "";
+    const rest = { ...row };
+    delete rest.reportDate;
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push(rest);
+  });
+  return Array.from(byDate.entries()).map(function ([reportDate, items]) {
+    return { reportDate: reportDate, items: items };
+  });
+}
+
 // (اختياري) قوائم جاهزة إن احتجتها لاحقًا
 const ACTIONS = [
   "Use in production",
@@ -34,11 +78,36 @@ export default function ReturnView() {
   const [openYears, setOpenYears] = useState({});
   const [openMonths, setOpenMonths] = useState({}); // المفتاح: `${year}-${month}`
 
-  // تحميل التقارير
+  // تحميل التقارير من localStorage أولًا
   useEffect(() => {
     const data = JSON.parse(localStorage.getItem("returns_reports") || "[]");
     data.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
     setReports(data);
+  }, []);
+
+  /* ========== جلب من السيرفر ثم توحيد الشكل ========== */
+  const [serverErr, setServerErr] = useState("");
+  const [loadingServer, setLoadingServer] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoadingServer(true);
+        const raw = await fetchReturns();
+        const normalized = normalizeServerReturns(raw);
+        normalized.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
+        if (mounted) {
+          setReports(function (prev) { return (normalized && normalized.length ? normalized : prev); });
+        }
+      } catch (e) {
+        if (mounted) setServerErr("تعذر الجلب من السيرفر الآن. (قد يكون السيرفر يستيقظ).");
+        console.error(e);
+      } finally {
+        if (mounted) setLoadingServer(false);
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   // أدوات تاريخ
@@ -47,8 +116,9 @@ export default function ReturnView() {
     return { y: dateStr.slice(0, 4), m: dateStr.slice(5, 7), d: dateStr.slice(8, 10) };
   };
   const monthKey = (dateStr) => {
-    const { y, m } = parts(dateStr);
-    return y && m ? `${y}-${m}` : "";
+    const p = parts(dateStr);
+    const y = p.y, m = p.m;
+    return y && m ? y + "-" + m : "";
   };
   const yearKey = (dateStr) => parts(dateStr).y || "";
 
@@ -85,8 +155,8 @@ export default function ReturnView() {
     let totalQty = 0;
     const byAction = {};
     filteredReports.forEach((rep) => {
-      totalItems += rep.items.length;
-      rep.items.forEach((it) => {
+      totalItems += (rep.items || []).length;
+      (rep.items || []).forEach((it) => {
         totalQty += Number(it.quantity || 0);
         const action = it.action === "إجراء آخر..." ? it.customAction : it.action;
         if (action) byAction[action] = (byAction[action] || 0) + 1;
@@ -94,9 +164,9 @@ export default function ReturnView() {
     });
     return {
       totalReports: filteredReports.length,
-      totalItems,
-      totalQty,
-      byAction,
+      totalItems: totalItems,
+      totalQty: totalQty,
+      byAction: byAction,
     };
   }, [filteredReports]);
 
@@ -130,10 +200,10 @@ export default function ReturnView() {
         months.set(m, days);
       });
     });
-    const sortedYears = [...years.keys()].sort((a, b) => b.localeCompare(a));
+    const sortedYears = Array.from(years.keys()).sort((a, b) => b.localeCompare(a));
     const result = sortedYears.map((y) => {
       const months = years.get(y);
-      const sortedMonths = [...months.keys()].sort((a, b) => b.localeCompare(a));
+      const sortedMonths = Array.from(months.keys()).sort((a, b) => b.localeCompare(a));
       return { year: y, months: sortedMonths.map((m) => ({ month: m, days: months.get(m) })) };
     });
     return result;
@@ -141,7 +211,7 @@ export default function ReturnView() {
 
   // حذف تقرير بحسب التاريخ
   const handleDeleteByDate = (dateStr) => {
-    if (!window.confirm(`هل أنت متأكد من حذف تقرير ${dateStr}؟`)) return;
+    if (!window.confirm("هل أنت متأكد من حذف تقرير " + dateStr + "؟")) return;
     const list = reports.filter((r) => r.reportDate !== dateStr);
     setReports(list);
     localStorage.setItem("returns_reports", JSON.stringify(list));
@@ -154,7 +224,7 @@ export default function ReturnView() {
           return true;
         })
         .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
-      setSelectedDate(next[0]?.reportDate || "");
+      setSelectedDate(next[0] ? next[0].reportDate : "");
     }
   };
 
@@ -170,8 +240,8 @@ export default function ReturnView() {
     if (!selectedReport) return;
     const repIdxInAll = reports.findIndex((r) => r.reportDate === selectedReport.reportDate);
     if (repIdxInAll < 0) return;
-    const updated = [...reports];
-    const items = [...updated[repIdxInAll].items];
+    const updated = reports.slice();
+    const items = updated[repIdxInAll].items.slice();
     items[i] = {
       ...items[i],
       action: editActionVal,
@@ -224,6 +294,18 @@ export default function ReturnView() {
           </span>
         )}
       </h2>
+
+      {/* حالة الجلب من السيرفر */}
+      {loadingServer && (
+        <div style={{ textAlign: "center", marginBottom: 10, color: "#1f2937" }}>
+          ⏳ جاري الجلب من السيرفر…
+        </div>
+      )}
+      {serverErr && (
+        <div style={{ textAlign: "center", marginBottom: 10, color: "#b91c1c" }}>
+          {serverErr}
+        </div>
+      )}
 
       {/* كروت KPI */}
       <div
@@ -347,7 +429,7 @@ export default function ReturnView() {
                 {yOpen && (
                   <div style={{ padding: "6px 0 6px 0" }}>
                     {months.map(({ month, days }) => {
-                      const key = `${year}-${month}`;
+                      const key = year + "-" + month;
                       const mOpen = !!openMonths[key];
                       return (
                         <div key={key} style={{ margin: "4px 0 6px" }}>
@@ -607,7 +689,7 @@ const detailTable = {
   background: "#fff",
   borderRadius: 8,
   borderCollapse: "collapse",      // دمج الحدود مثل الإكسل
-  border: "1px solid #b6c8e3",     // إطار خارجي
+  border: "1px solid #b6c8e3",     // ✅ تم تصحيح السطر
   marginTop: 6,
   minWidth: 800,
   color: "#111",
