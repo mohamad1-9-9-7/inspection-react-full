@@ -12,13 +12,44 @@ async function fetchReturns() {
   return Array.isArray(json) ? json : (json && json.data ? json.data : []);
 }
 
-/* 🆕 حذف تقارير يوم معيّن من السيرفر (محسّنة مع fallback) */
-// يحاول أكثر من مسار للحذف (لتفادي 404) ويتحمّل ردّ غير JSON
-async function deleteReturnsByDate(reportDate) {
+/* 🆕 قائمة انتظار تواريخ بانتظار حذف على السيرفر (لمنع رجوعها للواجهة) */
+const LS_KEY_PENDING = "returns_pending_server_deletes";
+function readPending() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY_PENDING) || "[]"); } catch { return []; }
+}
+function writePending(arr) {
+  localStorage.setItem(LS_KEY_PENDING, JSON.stringify([...new Set(arr)]));
+}
+
+/* 🆕 حذف محلي لتاريخ معيّن: ينظّف returns_reports و returns_sync_queue */
+function deleteLocalReturnsByDate(reportDate) {
+  let localDeleted = 0;
+
+  // returns_reports المخزنة محليًا
+  try {
+    const arr = JSON.parse(localStorage.getItem("returns_reports") || "[]");
+    const before = arr.length;
+    const filtered = arr.filter((r) => (r.reportDate || r?.payload?.reportDate) !== reportDate);
+    localDeleted = before - filtered.length;
+    localStorage.setItem("returns_reports", JSON.stringify(filtered));
+  } catch {}
+
+  // طابور المزامنة (لو في عناصر بنفس التاريخ)
+  try {
+    const q = JSON.parse(localStorage.getItem("returns_sync_queue") || "[]");
+    const qFiltered = q.filter((it) => it?.reportDate !== reportDate);
+    localStorage.setItem("returns_sync_queue", JSON.stringify(qFiltered));
+  } catch {}
+
+  return localDeleted;
+}
+
+/* 🆕 حذف من السيرفر بمحاولات متعددة لمسارات مختلفة + تحمّل 204/HTML */
+async function deleteReturnsOnServer(reportDate) {
   const attempts = [
     API_BASE + "/api/reports?type=returns&reportDate=" + encodeURIComponent(reportDate), // المسار القديم
     API_BASE + "/api/reports/returns?reportDate=" + encodeURIComponent(reportDate),      // مسار بديل
-    API_BASE + "/returns?reportDate=" + encodeURIComponent(reportDate)                   // مسار أبسط
+    API_BASE + "/returns?reportDate=" + encodeURIComponent(reportDate),                  // مسار أبسط
   ];
 
   let lastErr = null;
@@ -33,25 +64,38 @@ async function deleteReturnsByDate(reportDate) {
           if (json && (json.ok === true || typeof json.deleted !== "undefined")) {
             return Number(json.deleted || 1);
           }
-          return 1;
+          return 1; // رد غير قياسي بس ناجح
         } catch {
-          // رد غير JSON (مثلاً 204 No Content) => نجاح
-          return 1;
+          return 1; // 204/HTML
         }
       }
-      // لو 404 جرّب المسار التالي
-      if (res.status === 404) continue;
-
+      if (res.status === 404) continue; // جرّب المسار التالي
       const text = await res.text().catch(() => "");
-      throw new Error(`DELETE failed ${res.status}: ${text}`);
+      lastErr = new Error(`DELETE failed ${res.status}: ${text}`);
     } catch (e) {
       lastErr = e;
     }
   }
 
-  throw lastErr || new Error("No matching DELETE route on server");
+  if (lastErr) throw lastErr;
+  throw new Error("No matching DELETE route on server");
 }
 
+/* 🆕 منسّق: يحذف من السيرفر ثم من التخزين المحلي، ويعيد أرقام الاثنين + الخطأ إن وجد */
+async function deleteReturnsByDate(reportDate) {
+  let serverDeleted = 0;
+  let serverError = null;
+
+  try {
+    serverDeleted = await deleteReturnsOnServer(reportDate);
+  } catch (e) {
+    serverError = e;
+  }
+
+  const localDeleted = deleteLocalReturnsByDate(reportDate);
+
+  return { serverDeleted, localDeleted, error: serverError?.message || null };
+}
 
 /* توحيد الشكل: إن كانت البيانات بالفعل بالشكل [{reportDate, items:[]}] نُعيدها كما هي.
    وإلا نحوّل من شكل السيرفر [{ payload:{reportDate, items[]} ...}] إلى نفس الشكل المتوقع محليًا. */
@@ -125,7 +169,7 @@ export default function ReturnView() {
     setReports(data);
   }, []);
 
-  /* ========== جلب من السيرفر ثم توحيد الشكل ========== */
+  /* ========== جلب من السيرفر ثم توحيد الشكل + تصفية التواريخ المعلَّمة pending ========== */
   async function reloadFromServer() {
     setServerErr("");
     setLoadingServer(true);
@@ -133,7 +177,16 @@ export default function ReturnView() {
       const raw = await fetchReturns();
       const normalized = normalizeServerReturns(raw);
       normalized.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
-      setReports(function (prev) { return (normalized && normalized.length ? normalized : prev); });
+
+      // صفّي أي تقرير تاريخُه موجود بقائمة الانتظار
+      const pending = readPending();
+      const filteredNormalized = normalized.filter(
+        (r) => !pending.includes(r.reportDate)
+      );
+
+      setReports(function (prev) {
+        return (filteredNormalized && filteredNormalized.length ? filteredNormalized : prev);
+      });
     } catch (e) {
       setServerErr("تعذر الجلب من السيرفر الآن. (قد يكون السيرفر يستيقظ).");
       console.error(e);
@@ -249,39 +302,52 @@ export default function ReturnView() {
     });
   }, [filteredReports]);
 
-  // 🆕 حذف تقرير بحسب التاريخ (يحذف من السيرفر أولاً ثم يحدّث الحالة المحلية)
+  // 🆕 حذف تقرير بحسب التاريخ:
+  // - يحاول الحذف من السيرفر
+  // - يحذف محليًا دومًا
+  // - لو فشل السيرفر: يضيف التاريخ إلى pending لإخفائه، ويُعاد المحاولة لاحقًا يدويًا
   const handleDeleteByDate = async (dateStr) => {
-    if (!window.confirm("هل أنت متأكد من حذف تقرير " + dateStr + "؟")) return;
+    if (!window.confirm("هل أنت متأكد من حذف تقرير " + dateStr + " من السيرفر والتخزين المحلي؟")) return;
 
     try {
-      setOpMsg("⏳ جاري حذف تقرير " + dateStr + " من السيرفر…");
-      const deleted = await deleteReturnsByDate(dateStr); // ← حذف من السيرفر
-      if (deleted > 0) {
-        // حدّث الواجهة المحلية و localStorage
-        const list = reports.filter((r) => r.reportDate !== dateStr);
-        setReports(list);
-        localStorage.setItem("returns_reports", JSON.stringify(list));
-        if (selectedDate === dateStr) {
-          const next = list
-            .filter((r) => {
-              const d = r.reportDate || "";
-              if (filterFrom && d < filterFrom) return false;
-              if (filterTo && d > filterTo) return false;
-              return true;
-            })
-            .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
-          setSelectedDate(next[0] ? next[0].reportDate : "");
-        }
-        setOpMsg("✅ تم حذف تقرير " + dateStr + " (deleted=" + deleted + ")");
+      setOpMsg("⏳ جاري حذف تقرير " + dateStr + "…");
+
+      const { serverDeleted, localDeleted, error } = await deleteReturnsByDate(dateStr);
+
+      if (error) {
+        // أخفِ اليوم من الواجهة مؤقتًا
+        const p = readPending();
+        p.push(dateStr);
+        writePending(p);
+        setOpMsg(`⚠️ تم تنظيف التخزين المحلي (${localDeleted})، لكن فشل حذف السيرفر (${error}). سنخفي ${dateStr} مؤقتًا.`);
       } else {
-        setOpMsg("ℹ️ لا توجد سجلات مطابقة لتاريخ " + dateStr + " لحذفها.");
+        // لو نجح الحذف على السيرفر، نظّف من قائمة الانتظار
+        writePending(readPending().filter((x) => x !== dateStr));
+        setOpMsg(`✅ حذف من السيرفر: ${serverDeleted} | حذف محلي: ${localDeleted}`);
       }
 
-      // إعادة تحميل من السيرفر للتأكد 100%
+      // حدّث الواجهة المحلية فورًا
+      const list = (JSON.parse(localStorage.getItem("returns_reports") || "[]") || []).filter((r) => r.reportDate !== dateStr);
+      setReports(list);
+      localStorage.setItem("returns_reports", JSON.stringify(list));
+
+      if (selectedDate === dateStr) {
+        const next = list
+          .filter((r) => {
+            const d = r.reportDate || "";
+            if (filterFrom && d < filterFrom) return false;
+            if (filterTo && d > filterTo) return false;
+            return true;
+          })
+          .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
+        setSelectedDate(next[0] ? next[0].reportDate : "");
+      }
+
+      // إعادة تحميل من السيرفر للتأكد وتصفيته عبر pending
       await reloadFromServer();
     } catch (err) {
       console.error(err);
-      setOpMsg("❌ فشل حذف التقرير من السيرفر: " + (err && err.message ? err.message : "سبب غير معروف"));
+      setOpMsg("❌ حدث خطأ غير متوقع أثناء الحذف: " + (err && err.message ? err.message : "سبب غير معروف"));
     } finally {
       setTimeout(() => setOpMsg(""), 4000);
     }
