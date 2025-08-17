@@ -1,6 +1,6 @@
 // src/pages/ReturnView.js
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 
 /* ========== ربط API السيرفر (صيغة CRA) ========== */
 const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -104,6 +104,9 @@ export default function ReturnView() {
 
   // 🆕 رسالة عمليات (حفظ… إلخ)
   const [opMsg, setOpMsg] = useState("");
+
+  // 🆕 مرجع لمدخل رفع JSON للاستيراد
+  const importInputRef = useRef(null);
 
   /* ========== جلب من السيرفر فقط ========== */
   async function reloadFromServer() {
@@ -365,6 +368,58 @@ export default function ReturnView() {
     }
   };
 
+  /* ========== 🆕 تصدير/استيراد JSON شامل لكل التقارير ========== */
+  const handleExportJSON = () => {
+    try {
+      const blob = new Blob([JSON.stringify(reports, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "returns_all.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setOpMsg("✅ تم تصدير جميع التقارير كـ JSON.");
+    } catch (e) {
+      console.error(e);
+      setOpMsg("❌ تعذر تصدير JSON.");
+    } finally {
+      setTimeout(() => setOpMsg(""), 3000);
+    }
+  };
+
+  const handleImportClick = () => {
+    if (importInputRef.current) importInputRef.current.click();
+  };
+
+  const handleImportJSON = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      setOpMsg("⏳ جاري استيراد JSON وحفظه على السيرفر…");
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!Array.isArray(data)) throw new Error("صيغة غير صحيحة: يجب أن يكون مصفوفة");
+      // نتوقع عناصر بالشكل [{reportDate, items:[]}] كما في التصدير
+      for (const entry of data) {
+        const d = entry && entry.reportDate;
+        const items = (entry && Array.isArray(entry.items)) ? entry.items : [];
+        if (!d) continue; // نتجاوز بدون كسر العملية
+        await saveReportToServer(d, items);
+      }
+      await reloadFromServer();
+      setOpMsg("✅ تم الاستيراد والحفظ بنجاح.");
+    } catch (err) {
+      console.error(err);
+      setOpMsg("❌ فشل استيراد JSON. تأكد من الصيغة.");
+    } finally {
+      // تنظيف قيمة المدخل للسماح برفع نفس الملف مجددًا إن لزم
+      if (importInputRef.current) importInputRef.current.value = "";
+      setTimeout(() => setOpMsg(""), 4000);
+    }
+  };
+
   // UI
   return (
     <div
@@ -516,6 +571,21 @@ export default function ReturnView() {
               🧹 مسح التصفية
             </button>
           )}
+          {/* 🆕 أزرار التصدير/الاستيراد JSON (شاملة لكل التقارير) */}
+          <button onClick={handleExportJSON} style={jsonExportBtn}>
+            ⬇️ تصدير JSON (كل التقارير)
+          </button>
+          <button onClick={handleImportClick} style={jsonImportBtn}>
+            ⬆️ استيراد JSON
+          </button>
+          {/* مدخل ملف مخفي للاستيراد */}
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImportJSON}
+            style={{ display: "none" }}
+          />
         </div>
       </div>
 
@@ -893,4 +963,28 @@ const editBtn = {
   fontSize: 15,
   padding: "2px 8px",
   cursor: "pointer",
+};
+
+/* 🆕 أنماط أزرار JSON */
+const jsonExportBtn = {
+  background: "#0f766e",
+  color: "#fff",
+  border: "none",
+  borderRadius: 10,
+  padding: "7px 18px",
+  fontWeight: "bold",
+  fontSize: "1em",
+  cursor: "pointer",
+  boxShadow: "0 1px 6px #99f6e4",
+};
+const jsonImportBtn = {
+  background: "#7c3aed",
+  color: "#fff",
+  border: "none",
+  borderRadius: 10,
+  padding: "7px 18px",
+  fontWeight: "bold",
+  fontSize: "1em",
+  cursor: "pointer",
+  boxShadow: "0 1px 6px #c4b5fd",
 };
