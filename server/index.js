@@ -9,15 +9,24 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// اتصال PostgreSQL
+/* ======================== CORS Headers ======================== */
+// 🔹 ضيف هيدرز بشكل يدوي قبل أي use أو routes
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*"); // أو غيّرها لـ localhost/netlify فقط إذا بدك
+  res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, X-Idempotency-Key");
+  next();
+});
+
+/* ======================== PostgreSQL ======================== */
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // مناسب لـ Neon/Render
+  ssl: { rejectUnauthorized: false }, // مناسب لـ Render / Neon
 });
 
 app.use(express.json());
 
-// ✅ إعداد CORS مضبوط (يسمح من localhost ومن Netlify)
+/* ======================== إعداد CORS ======================== */
 app.use(
   cors({
     origin: [
@@ -28,7 +37,6 @@ app.use(
     allowedHeaders: ["Content-Type", "X-Idempotency-Key"],
   })
 );
-// تأكيد السماح لكل طلبات OPTIONS (preflight)
 app.options("*", cors());
 
 /* ======================== DB Schema ======================== */

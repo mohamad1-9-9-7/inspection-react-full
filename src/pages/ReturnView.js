@@ -13,63 +13,45 @@ async function fetchReturns() {
 }
 
 /* 🆕 حذف تقارير يوم معيّن من السيرفر (محسّنة مع fallback) */
+// يحاول أكثر من مسار للحذف (لتفادي 404) ويتحمّل ردّ غير JSON
 async function deleteReturnsByDate(reportDate) {
-  const qsUrl = API_BASE + "/api/reports?type=returns&reportDate=" + encodeURIComponent(reportDate);
+  const attempts = [
+    API_BASE + "/api/reports?type=returns&reportDate=" + encodeURIComponent(reportDate), // المسار القديم
+    API_BASE + "/api/reports/returns?reportDate=" + encodeURIComponent(reportDate),      // مسار بديل
+    API_BASE + "/returns?reportDate=" + encodeURIComponent(reportDate)                   // مسار أبسط
+  ];
 
-  function readDeletedCount(json) {
-    if (!json || typeof json !== "object") return 0;
-    if (json.deleted != null) return Number(json.deleted) || 0;
-    if (json.deletedCount != null) return Number(json.deletedCount) || 0;
-    if (json.nDeleted != null) return Number(json.nDeleted) || 0;
-    if (json.count != null) return Number(json.count) || 0;
-    return 0;
-  }
-  async function parseJsonOrText(res) {
-    try { return await res.json(); }
-    catch {
-      const t = await res.text().catch(() => "");
-      return { _raw: t };
+  let lastErr = null;
+
+  for (const url of attempts) {
+    try {
+      const res = await fetch(url, { method: "DELETE" });
+      if (res.ok) {
+        // جرّب قراءة JSON؛ لو ما كان JSON (204 أو HTML) اعتبرها نجاح واحسب 1
+        try {
+          const json = await res.json();
+          if (json && (json.ok === true || typeof json.deleted !== "undefined")) {
+            return Number(json.deleted || 1);
+          }
+          return 1;
+        } catch {
+          // رد غير JSON (مثلاً 204 No Content) => نجاح
+          return 1;
+        }
+      }
+      // لو 404 جرّب المسار التالي
+      if (res.status === 404) continue;
+
+      const text = await res.text().catch(() => "");
+      throw new Error(`DELETE failed ${res.status}: ${text}`);
+    } catch (e) {
+      lastErr = e;
     }
   }
 
-  // المحاولة 1: DELETE مع query string
-  let firstFail = null;
-  try {
-    const res = await fetch(qsUrl, { method: "DELETE", headers: { "Accept": "application/json" } });
-    if (res.ok) {
-      const json = await parseJsonOrText(res);
-      const cnt = readDeletedCount(json);
-      if (cnt > 0 || json.ok === true || json.success === true) return cnt || 1;
-      return cnt; // صفر = لا سجلات
-    } else {
-      const body = await res.text().catch(() => "");
-      firstFail = `queryDELETE status=${res.status} body=${body || "<empty>"}`;
-    }
-  } catch (e) {
-    firstFail = "queryDELETE error=" + (e && e.message ? e.message : String(e));
-  }
-
-  // المحاولة 2: DELETE مع body JSON
-  try {
-    const res2 = await fetch(API_BASE + "/api/reports", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ type: "returns", reportDate })
-    });
-    if (!res2.ok) {
-      const body2 = await res2.text().catch(() => "");
-      throw new Error(`bodyDELETE status=${res2.status} body=${body2 || "<empty>"}`);
-    }
-    const json2 = await parseJsonOrText(res2);
-    const cnt2 = readDeletedCount(json2);
-    if (cnt2 > 0 || json2.ok === true || json2.success === true) return cnt2 || 1;
-    return cnt2; // صفر
-  } catch (e2) {
-    // لو فشل الاثنان أعطِ رسالة مفيدة
-    const both = (firstFail ? firstFail + " | " : "") + (e2 && e2.message ? e2.message : String(e2));
-    throw new Error(both);
-  }
+  throw lastErr || new Error("No matching DELETE route on server");
 }
+
 
 /* توحيد الشكل: إن كانت البيانات بالفعل بالشكل [{reportDate, items:[]}] نُعيدها كما هي.
    وإلا نحوّل من شكل السيرفر [{ payload:{reportDate, items[]} ...}] إلى نفس الشكل المتوقع محليًا. */
