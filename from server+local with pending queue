@@ -1,0 +1,143 @@
+[1mdiff --git a/src/pages/ReturnView.js b/src/pages/ReturnView.js[m
+[1mindex bb03a09..950de3f 100644[m
+[1m--- a/src/pages/ReturnView.js[m
+[1m+++ b/src/pages/ReturnView.js[m
+[36m@@ -12,13 +12,44 @@[m [masync function fetchReturns() {[m
+   return Array.isArray(json) ? json : (json && json.data ? json.data : []);[m
+ }[m
+ [m
+[31m-/* 🆕 حذف تقارير يوم معيّن من السيرفر (محسّنة مع fallback) */[m
+[31m-// يحاول أكثر من مسار للحذف (لتفادي 404) ويتحمّل ردّ غير JSON[m
+[31m-async function deleteReturnsByDate(reportDate) {[m
+[32m+[m[32m/* 🆕 قائمة انتظار تواريخ بانتظار حذف على السيرفر (لمنع رجوعها للواجهة) */[m
+[32m+[m[32mconst LS_KEY_PENDING = "returns_pending_server_deletes";[m
+[32m+[m[32mfunction readPending() {[m
+[32m+[m[32m  try { return JSON.parse(localStorage.getItem(LS_KEY_PENDING) || "[]"); } catch { return []; }[m
+[32m+[m[32m}[m
+[32m+[m[32mfunction writePending(arr) {[m
+[32m+[m[32m  localStorage.setItem(LS_KEY_PENDING, JSON.stringify([...new Set(arr)]));[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/* 🆕 حذف محلي لتاريخ معيّن: ينظّف returns_reports و returns_sync_queue */[m
+[32m+[m[32mfunction deleteLocalReturnsByDate(reportDate) {[m
+[32m+[m[32m  let localDeleted = 0;[m
+[32m+[m
+[32m+[m[32m  // returns_reports المخزنة محليًا[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const arr = JSON.parse(localStorage.getItem("returns_reports") || "[]");[m
+[32m+[m[32m    const before = arr.length;[m
+[32m+[m[32m    const filtered = arr.filter((r) => (r.reportDate || r?.payload?.reportDate) !== reportDate);[m
+[32m+[m[32m    localDeleted = before - filtered.length;[m
+[32m+[m[32m    localStorage.setItem("returns_reports", JSON.stringify(filtered));[m
+[32m+[m[32m  } catch {}[m
+[32m+[m
+[32m+[m[32m  // طابور المزامنة (لو في عناصر بنفس التاريخ)[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const q = JSON.parse(localStorage.getItem("returns_sync_queue") || "[]");[m
+[32m+[m[32m    const qFiltered = q.filter((it) => it?.reportDate !== reportDate);[m
+[32m+[m[32m    localStorage.setItem("returns_sync_queue", JSON.stringify(qFiltered));[m
+[32m+[m[32m  } catch {}[m
+[32m+[m
+[32m+[m[32m  return localDeleted;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/* 🆕 حذف من السيرفر بمحاولات متعددة لمسارات مختلفة + تحمّل 204/HTML */[m
+[32m+[m[32masync function deleteReturnsOnServer(reportDate) {[m
+   const attempts = [[m
+     API_BASE + "/api/reports?type=returns&reportDate=" + encodeURIComponent(reportDate), // المسار القديم[m
+     API_BASE + "/api/reports/returns?reportDate=" + encodeURIComponent(reportDate),      // مسار بديل[m
+[31m-    API_BASE + "/returns?reportDate=" + encodeURIComponent(reportDate)                   // مسار أبسط[m
+[32m+[m[32m    API_BASE + "/returns?reportDate=" + encodeURIComponent(reportDate),                  // مسار أبسط[m
+   ];[m
+ [m
+   let lastErr = null;[m
+[36m@@ -33,25 +64,38 @@[m [masync function deleteReturnsByDate(reportDate) {[m
+           if (json && (json.ok === true || typeof json.deleted !== "undefined")) {[m
+             return Number(json.deleted || 1);[m
+           }[m
+[31m-          return 1;[m
+[32m+[m[32m          return 1; // رد غير قياسي بس ناجح[m
+         } catch {[m
+[31m-          // رد غير JSON (مثلاً 204 No Content) => نجاح[m
+[31m-          return 1;[m
+[32m+[m[32m          return 1; // 204/HTML[m
+         }[m
+       }[m
+[31m-      // لو 404 جرّب المسار التالي[m
+[31m-      if (res.status === 404) continue;[m
+[31m-[m
+[32m+[m[32m      if (res.status === 404) continue; // جرّب المسار التالي[m
+       const text = await res.text().catch(() => "");[m
+[31m-      throw new Error(`DELETE failed ${res.status}: ${text}`);[m
+[32m+[m[32m      lastErr = new Error(`DELETE failed ${res.status}: ${text}`);[m
+     } catch (e) {[m
+       lastErr = e;[m
+     }[m
+   }[m
+ [m
+[31m-  throw lastErr || new Error("No matching DELETE route on server");[m
+[32m+[m[32m  if (lastErr) throw lastErr;[m
+[32m+[m[32m  throw new Error("No matching DELETE route on server");[m
+ }[m
+ [m
+[32m+[m[32m/* 🆕 منسّق: يحذف من السيرفر ثم من التخزين المحلي، ويعيد أرقام الاثنين + الخطأ إن وجد */[m
+[32m+[m[32masync function deleteReturnsByDate(reportDate) {[m
+[32m+[m[32m  let serverDeleted = 0;[m
+[32m+[m[32m  let serverError = null;[m
+[32m+[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    serverDeleted = await deleteReturnsOnServer(reportDate);[m
+[32m+[m[32m  } catch (e) {[m
+[32m+[m[32m    serverError = e;[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const localDeleted = deleteLocalReturnsByDate(reportDate);[m
+[32m+[m
+[32m+[m[32m  return { serverDeleted, localDeleted, error: serverError?.message || null };[m
+[32m+[m[32m}[m
+ [m
+ /* توحيد الشكل: إن كانت البيانات بالفعل بالشكل [{reportDate, items:[]}] نُعيدها كما هي.[m
+    وإلا نحوّل من شكل السيرفر [{ payload:{reportDate, items[]} ...}] إلى نفس الشكل المتوقع محليًا. */[m
+[36m@@ -125,7 +169,7 @@[m [mexport default function ReturnView() {[m
+     setReports(data);[m
+   }, []);[m
+ [m
+[31m-  /* ========== جلب من السيرفر ثم توحيد الشكل ========== */[m
+[32m+[m[32m  /* ========== جلب من السيرفر ثم توحيد الشكل + تصفية التواريخ المعلَّمة pending ========== */[m
+   async function reloadFromServer() {[m
+     setServerErr("");[m
+     setLoadingServer(true);[m
+[36m@@ -133,7 +177,16 @@[m [mexport default function ReturnView() {[m
+       const raw = await fetchReturns();[m
+       const normalized = normalizeServerReturns(raw);[m
+       normalized.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));[m
+[31m-      setReports(function (prev) { return (normalized && normalized.length ? normalized : prev); });[m
+[32m+[m
+[32m+[m[32m      // صفّي أي تقرير تاريخُه موجود بقائمة الانتظار[m
+[32m+[m[32m      const pending = readPending();[m
+[32m+[m[32m      const filteredNormalized = normalized.filter([m
+[32m+[m[32m        (r) => !pending.includes(r.reportDate)[m
+[32m+[m[32m      );[m
+[32m+[m
+[32m+[m[32m      setReports(function (prev) {[m
+[32m+[m[32m        return (filteredNormalized && filteredNormalized.length ? filteredNormalized : prev);[m
+[32m+[m[32m      });[m
+     } catch (e) {[m
+       setServerErr("تعذر الجلب من السيرفر الآن. (قد يكون السيرفر يستيقظ).");[m
+       console.error(e);[m
+[36m@@ -249,39 +302,52 @@[m [mexport default function ReturnView() {[m
+     });[m
+   }, [filteredReports]);[m
+ [m
+[31m-  // 🆕 حذف تقرير بحسب التاريخ (يحذف من السيرفر أولاً ثم يحدّث الحالة المحلية)[m
+[32m+[m[32m  // 🆕 حذف تقرير بحسب التاريخ:[m
+[32m+[m[32m  // - يحاول الحذف من السيرفر[m
+[32m+[m[32m  // - يحذف محليًا دومًا[m
+[32m+[m[32m  // - لو فشل السيرفر: يضيف التاريخ إلى pending لإخفائه، ويُعاد المحاولة لاحقًا يدويًا[m
+   const handleDeleteByDate = async (dateStr) => {[m
+[31m-    if (!window.confirm("هل أنت متأكد من حذف تقرير " + dateStr + "؟")) return;[m
+[32m+[m[32m    if (!window.confirm("هل أنت متأكد من حذف تقرير " + dateStr + " من السيرفر والتخزين المحلي؟")) return;[m
+ [m
+     try {[m
+[31m-      setOpMsg("⏳ جاري حذف تقرير " + dateStr + " من السيرفر…");[m
+[31m-      const deleted = await deleteReturnsByDate(dateStr); // ← حذف �

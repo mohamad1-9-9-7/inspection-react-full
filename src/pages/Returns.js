@@ -9,6 +9,17 @@ const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nv
 // 🆕 مفاتيح التخزين المحلي
 const LS_KEY_RETURNS = "returns_reports";
 const LS_KEY_SYNCQ  = "returns_sync_queue";
+// 🆕 قائمة انتظار تواريخ محذوفة على السيرفر لكنها مخفية محليًا مؤقتًا
+const LS_KEY_PENDING = "returns_pending_server_deletes";
+function readPending() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY_PENDING) || "[]"); } catch { return []; }
+}
+function writePending(arr) {
+  localStorage.setItem(LS_KEY_PENDING, JSON.stringify([...new Set(arr)]));
+}
+function clearPendingDate(d) {
+  writePending(readPending().filter(x => x !== d));
+}
 
 // قائمة الأفرع
 const BRANCHES = [
@@ -75,6 +86,8 @@ async function sendOneToServer({ reportDate, items }) {
     const t = await res.text();
     throw new Error(`Server ${res.status}: ${t}`);
   }
+  // ✅ نجح الإرسال: لو كان التاريخ معلّم pending (مخفي بسبب فشل حذف سابق)، اشطبه
+  clearPendingDate(reportDate);
   return res.json();
 }
 
@@ -86,6 +99,8 @@ async function syncOnce(setSaveMsg) {
     const item = dequeueSync();
     try {
       await sendOneToServer(item);
+      // ✅ بعد النجاح، تأكد أيضًا من إزالة التاريخ من pending (احتياط لو تغيّر sendOneToServer مستقبلًا)
+      clearPendingDate(item.reportDate);
       didSomething = true;
       setSaveMsg?.("✅ تمت مزامنة تقرير مرتجعات مؤجل بنجاح!");
     } catch (e) {
@@ -214,6 +229,8 @@ export default function Returns() {
     try {
       setSaveMsg("⏳ جاري الحفظ على السيرفر…");
       await sendOneToServer({ reportDate, items: filtered });
+      // ✅ نجح الإرسال: لو كان التاريخ معلّم pending بسبب محاولة حذف فاشلة سابقة، نظّفه
+      clearPendingDate(reportDate);
       setSaveMsg("✅ تم الحفظ محليًا وعلى السيرفر بنجاح!");
     } catch (err) {
       enqueueSync({ reportDate, items: filtered });

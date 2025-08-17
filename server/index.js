@@ -9,10 +9,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-/* ======================== CORS Headers ======================== */
-// 🔹 ضيف هيدرز بشكل يدوي قبل أي use أو routes
+/* ======================== CORS Headers (مبكرة) ======================== */
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*"); // أو غيّرها لـ localhost/netlify فقط إذا بدك
+  res.header("Access-Control-Allow-Origin", "*"); // غيّرها لقائمة أصول معيّنة إذا لزم
   res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, X-Idempotency-Key");
   next();
@@ -21,7 +20,7 @@ app.use((req, res, next) => {
 /* ======================== PostgreSQL ======================== */
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // مناسب لـ Render / Neon
+  ssl: { rejectUnauthorized: false }, // مناسب لـ Render/Neon
 });
 
 app.use(express.json());
@@ -104,7 +103,7 @@ app.post("/api/reports", async (req, res) => {
   }
 });
 
-// حذف تقارير يوم معيّن حسب النوع والتاريخ
+// 🔹 المسار الأساسي: حذف بحسب النوع والتاريخ
 // مثال: DELETE /api/reports?type=returns&reportDate=2025-08-20
 app.delete("/api/reports", async (req, res) => {
   try {
@@ -122,6 +121,42 @@ app.delete("/api/reports", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false, error: "db delete failed" });
+  }
+});
+
+// 🔸 مسار بديل مطابق لمحاولة الواجهة الثانية
+// مثال: DELETE /api/reports/returns?reportDate=2025-08-20
+app.delete("/api/reports/returns", async (req, res) => {
+  try {
+    const { reportDate } = req.query;
+    if (!reportDate) return res.status(400).json({ ok: false, error: "reportDate required" });
+    const { rowCount } = await pool.query(
+      `DELETE FROM reports
+       WHERE type = 'returns' AND payload->>'reportDate' = $1`,
+      [reportDate]
+    );
+    res.json({ ok: true, deleted: rowCount });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, error: "db delete failed" });
+  }
+});
+
+// 🔹 مسار ثالث بسيط (يرجع نص/204 لو حاب) — مطابق لمحاولة الواجهة الثالثة
+// مثال: DELETE /returns?reportDate=2025-08-20
+app.delete("/returns", async (req, res) => {
+  try {
+    const { reportDate } = req.query;
+    if (!reportDate) return res.status(400).send("reportDate required");
+    const { rowCount } = await pool.query(
+      `DELETE FROM reports
+       WHERE type = 'returns' AND payload->>'reportDate' = $1`,
+      [reportDate]
+    );
+    res.status(200).send(String(rowCount || 0)); // الواجهة تتعامل مع 204/نص أيضًا
+  } catch (e) {
+    console.error(e);
+    res.status(500).send(e.message);
   }
 });
 
