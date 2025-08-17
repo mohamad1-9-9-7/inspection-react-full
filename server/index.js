@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 5000;
 /* ======================== CORS Headers (مبكرة) ======================== */
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*"); // غيّرها لقائمة أصول معيّنة إذا لزم
-  res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"); // 🆕 أضفنا PUT
   res.header("Access-Control-Allow-Headers", "Content-Type, X-Idempotency-Key");
   next();
 });
@@ -32,7 +32,7 @@ app.use(
       "http://localhost:3000",
       /\.netlify\.app$/,
     ],
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // 🆕 أضفنا PUT
     allowedHeaders: ["Content-Type", "X-Idempotency-Key"],
   })
 );
@@ -157,6 +157,78 @@ app.delete("/returns", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).send(e.message);
+  }
+});
+
+/* ======================== 🆕 التعديل (PUT) ======================== */
+/**
+ * استبدال تقرير يوم محدد (Upsert منطقي بدون تغيير السكيمة):
+ * - نتوقع في الـ body:
+ *   { type: 'returns', payload: { reportDate: 'YYYY-MM-DD', items: [...] }, reporter? }
+ * - ننفّذ حذفًا لكل سجل بنفس (type, reportDate)، ثم نُدرج سجلًّا واحدًا جديدًا.
+ * - هذا يحل مشكلة "السيرفر يضيف فقط" ويجعل التعديل يعمل من الواجهة.
+ */
+app.put("/api/reports", async (req, res) => {
+  const { reporter, type, payload } = req.body || {};
+  const reportDate =
+    payload?.reportDate ??
+    (typeof payload === "object" ? payload?.report_date : undefined) ??
+    req.query?.reportDate;
+
+  if (!type || !payload || typeof payload !== "object" || !reportDate) {
+    return res.status(400).json({ ok: false, error: "type & payload.reportDate required" });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // حذف كل النسخ القديمة لنفس اليوم ونفس النوع
+    await client.query(
+      `DELETE FROM reports
+       WHERE type = $1 AND payload->>'reportDate' = $2`,
+      [type, reportDate]
+    );
+    // إدراج النسخة الجديدة المعدّلة
+    const ins = await client.query(
+      `INSERT INTO reports (reporter, type, payload)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [reporter || "anonymous", type, payload]
+    );
+    await client.query("COMMIT");
+    res.json({ ok: true, report: ins.rows[0] });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error(e);
+    res.status(500).json({ ok: false, error: "db upsert (replace) failed" });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * تعديل مباشر عبر المعرّف (id) — مفيد لو بدك تستخدمه بالإدارة.
+ * body: { payload: {...} }
+ */
+app.put("/api/reports/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { payload } = req.body || {};
+    if (!payload || typeof payload !== "object") {
+      return res.status(400).json({ ok: false, error: "invalid payload" });
+    }
+    const r = await pool.query(
+      `UPDATE reports
+          SET payload = $1
+        WHERE id = $2
+        RETURNING *`,
+      [payload, id]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: "not found" });
+    res.json({ ok: true, report: r.rows[0] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, error: "db update failed" });
   }
 });
 
