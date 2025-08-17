@@ -12,8 +12,8 @@ async function fetchReturns() {
   return Array.isArray(json) ? json : (json && json.data ? json.data : []);
 }
 
-/* ========== تحديث التقرير على السيرفر (PUT/POST فقط) ========== */
-/* نحاول أكثر من مسار لضمان التوافق مع السيرفر */
+/* ========== تحديث/إضافة تقرير على السيرفر ========== */
+/* بما أن السيرفر عمليًا يقبل الإضافة فقط، سنعتمد POST/PUT ولكن سنفترض أن POST دائمًا يعمل */
 async function saveReportToServer(reportDate, items) {
   const payload = {
     reporter: "anonymous",
@@ -22,9 +22,9 @@ async function saveReportToServer(reportDate, items) {
   };
 
   const attempts = [
-    { url: `${API_BASE}/api/reports`, method: "PUT", body: JSON.stringify(payload) },
-    { url: `${API_BASE}/api/reports/returns?reportDate=${encodeURIComponent(reportDate)}`, method: "PUT", body: JSON.stringify({ items }) },
-    { url: `${API_BASE}/api/reports`, method: "POST", body: JSON.stringify(payload) }, // بعض السيرفرات تعمل UPSERT بالـ POST
+    { url: `${API_BASE}/api/reports`, method: "POST", body: JSON.stringify(payload) }, // نُفضّل POST
+    { url: `${API_BASE}/api/reports`, method: "PUT", body: JSON.stringify(payload) },  // احتياطي
+    { url: `${API_BASE}/api/reports/returns?reportDate=${encodeURIComponent(reportDate)}`, method: "PUT", body: JSON.stringify({ items }) }, // احتياطي
   ];
 
   let lastErr = null;
@@ -44,26 +44,62 @@ async function saveReportToServer(reportDate, items) {
   throw lastErr || new Error("Save failed");
 }
 
-/* توحيد الشكل: [{reportDate, items:[]}] */
-function normalizeServerReturns(arr) {
-  if (Array.isArray(arr) && arr.length && Array.isArray(arr[0] && arr[0].items)) {
-    return arr;
+/* ========== توحيد الشكل مع إلغاء التكرار: نعرض آخر نسخة لكل تاريخ فقط ========== */
+/*
+  - بعض السيرفرات تُعيد سجلًّا جديدًا في كل تعديل (append only).
+  - هنا نأخذ لكل reportDate آخر سجل حسب:
+      1) createdAt أو updatedAt أو timestamp إن وُجدت
+      2) وإلا ترتيب العنصر في المصفوفة (الأخير يُعتبر الأحدث)
+*/
+function normalizeServerReturns(raw) {
+  // حالة السيرفر يعيد أصلاً [{reportDate, items}] -> نتأكد أيضاً من "آخر نسخة" لكل يوم إن تكرر
+  if (Array.isArray(raw) && raw.length && Array.isArray(raw[0] && raw[0].items)) {
+    const latestMap = new Map(); // date -> { ts, items }
+    raw.forEach((rec, idx) => {
+      const date = rec.reportDate;
+      const items = Array.isArray(rec.items) ? rec.items : [];
+      const ts =
+        toComparableTs(rec.createdAt) ||
+        toComparableTs(rec.updatedAt) ||
+        toComparableTs(rec.timestamp) ||
+        idx; // fallback
+      const prev = latestMap.get(date);
+      if (!prev || ts >= prev.ts) latestMap.set(date, { ts, items });
+    });
+    return Array.from(latestMap.entries())
+      .map(([reportDate, v]) => ({ reportDate, items: v.items }))
+      .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
   }
-  const flat = (arr || []).flatMap((rec) => {
+
+  // حالة السيرفر يعيد سجلات عامة فيها payload
+  const latestByDate = new Map(); // date -> { ts, items }
+  (raw || []).forEach((rec, idx) => {
     const payload = (rec && rec.payload) ? rec.payload : {};
     const date = payload.reportDate || rec?.reportDate || "";
     const items = payload.items || [];
-    return items.map((it) => ({ reportDate: date, ...it }));
+    if (!date) return;
+    const ts =
+      toComparableTs(rec.createdAt) ||
+      toComparableTs(rec.updatedAt) ||
+      toComparableTs(rec.timestamp) ||
+      toComparableTs(payload.createdAt) ||
+      toComparableTs(payload.updatedAt) ||
+      idx; // fallback: الأخير في القائمة أحدث
+    const prev = latestByDate.get(date);
+    if (!prev || ts >= prev.ts) latestByDate.set(date, { ts, items });
   });
-  const byDate = new Map();
-  flat.forEach((row) => {
-    const d = row.reportDate || "";
-    const rest = { ...row };
-    delete rest.reportDate;
-    if (!byDate.has(d)) byDate.set(d, []);
-    byDate.get(d).push(rest);
-  });
-  return Array.from(byDate.entries()).map(([reportDate, items]) => ({ reportDate, items }));
+
+  return Array.from(latestByDate.entries())
+    .map(([reportDate, v]) => ({ reportDate, items: v.items }))
+    .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
+}
+
+function toComparableTs(x) {
+  if (!x) return null;
+  try {
+    const n = typeof x === "number" ? x : Date.parse(x);
+    return Number.isFinite(n) ? n : null;
+  } catch { return null; }
 }
 
 // (اختياري) قائمة الإجراءات
@@ -102,10 +138,10 @@ export default function ReturnView() {
   const [serverErr, setServerErr] = useState("");
   const [loadingServer, setLoadingServer] = useState(false);
 
-  // 🆕 رسالة عمليات (حفظ… إلخ)
+  // رسالة عمليات (حفظ… إلخ)
   const [opMsg, setOpMsg] = useState("");
 
-  // 🆕 مرجع لمدخل رفع JSON للاستيراد
+  // مرجع لمدخل رفع JSON للاستيراد
   const importInputRef = useRef(null);
 
   /* ========== جلب من السيرفر فقط ========== */
@@ -114,9 +150,7 @@ export default function ReturnView() {
     setLoadingServer(true);
     try {
       const raw = await fetchReturns();
-      const normalized = normalizeServerReturns(raw)
-        .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
-
+      const normalized = normalizeServerReturns(raw);
       setReports(normalized);
       // اضبط التاريخ المختار أول مرة
       if (!selectedDate && normalized.length) setSelectedDate(normalized[0].reportDate);
@@ -228,7 +262,7 @@ export default function ReturnView() {
     });
   }, [filteredReports]);
 
-  /* ========== تعديل إجراء عنصر وحفظه إلى السيرفر ========== */
+  /* ========== تعديل إجراء عنصر: نضيف نسخة جديدة لليوم، وواجهة تعرض آخر نسخة فقط ========== */
   const handleActionEdit = (i) => {
     if (!selectedReport) return;
     const item = selectedReport.items[i];
@@ -243,7 +277,7 @@ export default function ReturnView() {
     if (repIdxInView < 0) return;
     try {
       setOpMsg("⏳ جاري حفظ التعديل على السيرفر…");
-      // جهّز نسخة جديدة من عناصر اليوم
+      // نسخة جديدة من عناصر اليوم (تعديل العنصر فقط)
       const newItems = selectedReport.items.map((row, idx) => {
         if (idx !== i) return row;
         return {
@@ -253,15 +287,15 @@ export default function ReturnView() {
         };
       });
 
-      // حفظ على السيرفر (PUT/POST)
+      // نرسل POST فقط (السيرفر يضيف سجل جديد)، والواجهة لاحقًا ستعرض هذه النسخة كآخر نسخة لليوم
       await saveReportToServer(selectedReport.reportDate, newItems);
 
-      // حدّث الحالة من خلال إعادة الجلب لضمان التطابق مع السيرفر
+      // إعادة الجلب ستُظهر آخر نسخة فقط
       await reloadFromServer();
 
       // أعد ضبط محرر الخلية
       setEditActionIdx(null);
-      setOpMsg("✅ تم حفظ التعديل على السيرفر.");
+      setOpMsg("✅ تم حفظ التعديل على السيرفر (بدون تكرار في العرض).");
     } catch (err) {
       console.error(err);
       setOpMsg("❌ فشل حفظ التعديل على السيرفر.");
@@ -304,7 +338,7 @@ export default function ReturnView() {
 
       // رأس الجدول
       const headers = ["SL", "PRODUCT", "ORIGIN", "BUTCHERY", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"];
-      const colWidths = [28, 120, 70, 85, 45, 65, 65, 120, 95]; // مجموعها أقل من عرض الصفحة
+      const colWidths = [28, 120, 70, 85, 45, 65, 65, 120, 95];
       const tableX = marginX;
       const rowH = 18;
 
@@ -325,7 +359,6 @@ export default function ReturnView() {
 
       const rows = selectedReport.items || [];
       rows.forEach((row, i) => {
-        // سطر جديد إذا اقتربنا من نهاية الصفحة
         if (y > 780) {
           doc.addPage();
           y = 50;
@@ -341,15 +374,12 @@ export default function ReturnView() {
           row.remarks || "",
           row.action === "إجراء آخر..." ? (row.customAction || "") : (row.action || "")
         ];
-        // خط فاصل خلفي خفيف لكل صف
         doc.setDrawColor(182, 200, 227); // #b6c8e3
         doc.rect(tableX, y - 0.5, colWidths.reduce((a, b) => a + b, 0), rowH, "S");
 
-        // كتابة الخلايا
         let xx = tableX + 4;
         vals.forEach((v, idx) => {
           const maxW = colWidths[idx] - 8;
-          // قص النص البسيط
           const text = doc.splitTextToSize(String(v), maxW);
           doc.text(text, xx, y + 12);
           xx += colWidths[idx];
@@ -368,7 +398,7 @@ export default function ReturnView() {
     }
   };
 
-  /* ========== 🆕 تصدير/استيراد JSON شامل لكل التقارير ========== */
+  /* ========== تصدير/استيراد JSON شامل لكل التقارير (آخر نسخة لكل يوم) ========== */
   const handleExportJSON = () => {
     try {
       const blob = new Blob([JSON.stringify(reports, null, 2)], { type: "application/json" });
@@ -397,24 +427,23 @@ export default function ReturnView() {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     try {
-      setOpMsg("⏳ جاري استيراد JSON وحفظه على السيرفر…");
+      setOpMsg("⏳ جاري استيراد JSON (إضافة نسخ جديدة)…");
       const text = await file.text();
       const data = JSON.parse(text);
       if (!Array.isArray(data)) throw new Error("صيغة غير صحيحة: يجب أن يكون مصفوفة");
-      // نتوقع عناصر بالشكل [{reportDate, items:[]}] كما في التصدير
+      // نتوقع عناصر بالشكل [{reportDate, items:[]}]
       for (const entry of data) {
         const d = entry && entry.reportDate;
         const items = (entry && Array.isArray(entry.items)) ? entry.items : [];
-        if (!d) continue; // نتجاوز بدون كسر العملية
-        await saveReportToServer(d, items);
+        if (!d) continue;
+        await saveReportToServer(d, items); // إضافة نسخة جديدة لليوم
       }
-      await reloadFromServer();
-      setOpMsg("✅ تم الاستيراد والحفظ بنجاح.");
+      await reloadFromServer(); // العرض سيأخذ آخر نسخة
+      setOpMsg("✅ تم الاستيراد بنجاح.");
     } catch (err) {
       console.error(err);
       setOpMsg("❌ فشل استيراد JSON. تأكد من الصيغة.");
     } finally {
-      // تنظيف قيمة المدخل للسماح برفع نفس الملف مجددًا إن لزم
       if (importInputRef.current) importInputRef.current.value = "";
       setTimeout(() => setOpMsg(""), 4000);
     }
@@ -571,7 +600,7 @@ export default function ReturnView() {
               🧹 مسح التصفية
             </button>
           )}
-          {/* 🆕 أزرار التصدير/الاستيراد JSON (شاملة لكل التقارير) */}
+          {/* أزرار التصدير/الاستيراد JSON (شاملة لكل التقارير) */}
           <button onClick={handleExportJSON} style={jsonExportBtn}>
             ⬇️ تصدير JSON (كل التقارير)
           </button>
@@ -647,7 +676,6 @@ export default function ReturnView() {
                                     onClick={() => setSelectedDate(d)}
                                   >
                                     <div>📅 {d}</div>
-                                    {/* ❌ لا يوجد زر حذف بعد الآن */}
                                   </div>
                                 );
                               })}
@@ -685,7 +713,7 @@ export default function ReturnView() {
                 </button>
               </div>
 
-              {/* جدول بنمط إكسل: أزرق فاتح + حدود واضحة + خط أسود */}
+              {/* جدول بنمط إكسل */}
               <table style={detailTable}>
                 <thead>
                   <tr style={{ background: "#dbeafe", color: "#111" }}>
@@ -965,7 +993,7 @@ const editBtn = {
   cursor: "pointer",
 };
 
-/* 🆕 أنماط أزرار JSON */
+/* أنماط أزرار JSON */
 const jsonExportBtn = {
   background: "#0f766e",
   color: "#fff",
