@@ -12,24 +12,6 @@ async function fetchReturns() {
   return Array.isArray(json) ? json : (json && json.data ? json.data : []);
 }
 
-/* ========== حذف تقرير يوم معيّن (لمنع التكرار) ========== */
-/* نحاول أكثر من مسار DELETE لأننا لا نعرف الصيغة المضمونة على السيرفر */
-async function deleteReportByDate(reportDate) {
-  const attempts = [
-    { url: `${API_BASE}/api/reports/returns?reportDate=${encodeURIComponent(reportDate)}`, method: "DELETE" },
-    { url: `${API_BASE}/api/reports?type=returns&reportDate=${encodeURIComponent(reportDate)}`, method: "DELETE" },
-    { url: `${API_BASE}/api/reports/returns/${encodeURIComponent(reportDate)}`, method: "DELETE" },
-  ];
-  for (const a of attempts) {
-    try {
-      const res = await fetch(a.url, { method: a.method });
-      if (res.ok) return true;
-    } catch (_) { /* نتجاهل ونحاول المسار التالي */ }
-  }
-  // لو ما نجحت ولا واحدة، نُكمل الحفظ على أمل أن الـ PUT/POST تعمل استبدال
-  return false;
-}
-
 /* ========== تحديث التقرير على السيرفر (PUT/POST فقط) ========== */
 /* نحاول أكثر من مسار لضمان التوافق مع السيرفر */
 async function saveReportToServer(reportDate, items) {
@@ -56,18 +38,10 @@ async function saveReportToServer(reportDate, items) {
       if (res.ok) {
         try { return await res.json(); } catch { return { ok: true }; }
       }
-      lastErr = new Error(`${a.method} ${a.url} -> ${res.status} ${await res.text().catch(()=> "")}`);
+      lastErr = new Error(`${a.method} ${a.url} -> ${res.status} ${await res.text().catch(()=>"")}`);
     } catch (e) { lastErr = e; }
   }
   throw lastErr || new Error("Save failed");
-}
-
-/* 🆕 استبدال شامل: نحذف يوم التقرير أولًا ثم نحفظ العناصر الجديدة */
-async function replaceReportOnServer(reportDate, items) {
-  try {
-    await deleteReportByDate(reportDate);
-  } catch (_) { /* حتى لو فشل الحذف نكمل بالحفظ */ }
-  return saveReportToServer(reportDate, items);
 }
 
 /* توحيد الشكل: [{reportDate, items:[]}] */
@@ -128,10 +102,10 @@ export default function ReturnView() {
   const [serverErr, setServerErr] = useState("");
   const [loadingServer, setLoadingServer] = useState(false);
 
-  // رسالة عمليات (حفظ… إلخ)
+  // 🆕 رسالة عمليات (حفظ… إلخ)
   const [opMsg, setOpMsg] = useState("");
 
-  // مرجع لمدخل رفع JSON للاستيراد
+  // 🆕 مرجع لمدخل رفع JSON للاستيراد
   const importInputRef = useRef(null);
 
   /* ========== جلب من السيرفر فقط ========== */
@@ -254,7 +228,7 @@ export default function ReturnView() {
     });
   }, [filteredReports]);
 
-  /* ========== تعديل إجراء عنصر وحفظه إلى السيرفر (استبدال لا إضافة) ========== */
+  /* ========== تعديل إجراء عنصر وحفظه إلى السيرفر ========== */
   const handleActionEdit = (i) => {
     if (!selectedReport) return;
     const item = selectedReport.items[i];
@@ -269,7 +243,7 @@ export default function ReturnView() {
     if (repIdxInView < 0) return;
     try {
       setOpMsg("⏳ جاري حفظ التعديل على السيرفر…");
-      // جهّز نسخة جديدة من عناصر اليوم (تعديل العنصر فقط، بدون تكرار)
+      // جهّز نسخة جديدة من عناصر اليوم
       const newItems = selectedReport.items.map((row, idx) => {
         if (idx !== i) return row;
         return {
@@ -279,15 +253,15 @@ export default function ReturnView() {
         };
       });
 
-      // 🆕 استبدل تقرير اليوم بالكامل (حذف قديم + حفظ جديد)
-      await replaceReportOnServer(selectedReport.reportDate, newItems);
+      // حفظ على السيرفر (PUT/POST)
+      await saveReportToServer(selectedReport.reportDate, newItems);
 
       // حدّث الحالة من خلال إعادة الجلب لضمان التطابق مع السيرفر
       await reloadFromServer();
 
       // أعد ضبط محرر الخلية
       setEditActionIdx(null);
-      setOpMsg("✅ تم حفظ التعديل على السيرفر بدون تكرار.");
+      setOpMsg("✅ تم حفظ التعديل على السيرفر.");
     } catch (err) {
       console.error(err);
       setOpMsg("❌ فشل حفظ التعديل على السيرفر.");
@@ -394,7 +368,7 @@ export default function ReturnView() {
     }
   };
 
-  /* ========== تصدير/استيراد JSON شامل لكل التقارير ========== */
+  /* ========== 🆕 تصدير/استيراد JSON شامل لكل التقارير ========== */
   const handleExportJSON = () => {
     try {
       const blob = new Blob([JSON.stringify(reports, null, 2)], { type: "application/json" });
@@ -423,7 +397,7 @@ export default function ReturnView() {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     try {
-      setOpMsg("⏳ جاري استيراد JSON واستبداله على السيرفر…");
+      setOpMsg("⏳ جاري استيراد JSON وحفظه على السيرفر…");
       const text = await file.text();
       const data = JSON.parse(text);
       if (!Array.isArray(data)) throw new Error("صيغة غير صحيحة: يجب أن يكون مصفوفة");
@@ -432,15 +406,15 @@ export default function ReturnView() {
         const d = entry && entry.reportDate;
         const items = (entry && Array.isArray(entry.items)) ? entry.items : [];
         if (!d) continue; // نتجاوز بدون كسر العملية
-        // 🆕 استبدال اليوم بالكامل لمنع التكرار
-        await replaceReportOnServer(d, items);
+        await saveReportToServer(d, items);
       }
       await reloadFromServer();
-      setOpMsg("✅ تم الاستيراد والاستبدال بنجاح.");
+      setOpMsg("✅ تم الاستيراد والحفظ بنجاح.");
     } catch (err) {
       console.error(err);
       setOpMsg("❌ فشل استيراد JSON. تأكد من الصيغة.");
     } finally {
+      // تنظيف قيمة المدخل للسماح برفع نفس الملف مجددًا إن لزم
       if (importInputRef.current) importInputRef.current.value = "";
       setTimeout(() => setOpMsg(""), 4000);
     }
@@ -597,7 +571,7 @@ export default function ReturnView() {
               🧹 مسح التصفية
             </button>
           )}
-          {/* أزرار التصدير/الاستيراد JSON (شاملة لكل التقارير) */}
+          {/* 🆕 أزرار التصدير/الاستيراد JSON (شاملة لكل التقارير) */}
           <button onClick={handleExportJSON} style={jsonExportBtn}>
             ⬇️ تصدير JSON (كل التقارير)
           </button>
@@ -991,7 +965,7 @@ const editBtn = {
   cursor: "pointer",
 };
 
-/* أنماط أزرار JSON */
+/* 🆕 أنماط أزرار JSON */
 const jsonExportBtn = {
   background: "#0f766e",
   color: "#fff",
