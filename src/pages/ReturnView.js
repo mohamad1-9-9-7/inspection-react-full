@@ -12,19 +12,23 @@ async function fetchReturns() {
   return Array.isArray(json) ? json : (json && json.data ? json.data : []);
 }
 
-/* ========== تحديث التقرير على السيرفر (PUT/POST فقط) ========== */
-/* نحاول أكثر من مسار لضمان التوافق مع السيرفر */
+/* ========== تحديث التقرير على السيرفر (PUT فقط) ========== */
+/* أزلنا POST الاحتياطي حتى لا يضيف نسخة جديدة لنفس اليوم */
 async function saveReportToServer(reportDate, items) {
   const payload = {
     reporter: "anonymous",
     type: "returns",
-    payload: { reportDate, items },
+    payload: { reportDate, items, _clientSavedAt: Date.now() },
   };
 
+  // نحاول مسارين PUT فقط (لا POST)
   const attempts = [
     { url: `${API_BASE}/api/reports`, method: "PUT", body: JSON.stringify(payload) },
-    { url: `${API_BASE}/api/reports/returns?reportDate=${encodeURIComponent(reportDate)}`, method: "PUT", body: JSON.stringify({ items }) },
-    { url: `${API_BASE}/api/reports`, method: "POST", body: JSON.stringify(payload) }, // بعض السيرفرات تعمل UPSERT بالـ POST
+    {
+      url: `${API_BASE}/api/reports/returns?reportDate=${encodeURIComponent(reportDate)}`,
+      method: "PUT",
+      body: JSON.stringify({ items, _clientSavedAt: payload.payload._clientSavedAt }),
+    },
   ];
 
   let lastErr = null;
@@ -44,29 +48,54 @@ async function saveReportToServer(reportDate, items) {
   throw lastErr || new Error("Save failed");
 }
 
-/* توحيد الشكل: [{reportDate, items:[]}] */
-function normalizeServerReturns(arr) {
-  if (Array.isArray(arr) && arr.length && Array.isArray(arr[0] && arr[0].items)) {
-    return arr;
+/* ========== توحيد الشكل مع اختيار آخر نسخة لكل تاريخ فقط ========== */
+function toTs(x) {
+  if (!x) return null;
+  if (typeof x === "number") return x;
+  if (typeof x === "string" && /^[a-f0-9]{24}$/i.test(x)) {
+    // Mongo ObjectId → أول 4 بايت = seconds since epoch
+    return parseInt(x.slice(0, 8), 16) * 1000;
   }
-  const flat = (arr || []).flatMap((rec) => {
-    const payload = (rec && rec.payload) ? rec.payload : {};
-    const date = payload.reportDate || rec?.reportDate || "";
-    const items = payload.items || [];
-    return items.map((it) => ({ reportDate: date, ...it }));
-  });
-  const byDate = new Map();
-  flat.forEach((row) => {
-    const d = row.reportDate || "";
-    const rest = { ...row };
-    delete rest.reportDate;
-    if (!byDate.has(d)) byDate.set(d, []);
-    byDate.get(d).push(rest);
-  });
-  return Array.from(byDate.entries()).map(([reportDate, items]) => ({ reportDate, items }));
+  const n = Date.parse(x);
+  return Number.isFinite(n) ? n : null;
+}
+function newer(a, b) {
+  // قارن createdAt/updatedAt/timestamp/_id/payload._clientSavedAt
+  const ta = toTs(a?.createdAt) || toTs(a?.updatedAt) || toTs(a?.timestamp) || toTs(a?._id) || toTs(a?.payload?._clientSavedAt) || 0;
+  const tb = toTs(b?.createdAt) || toTs(b?.updatedAt) || toTs(b?.timestamp) || toTs(b?._id) || toTs(b?.payload?._clientSavedAt) || 0;
+  return tb >= ta ? b : a;
+}
+function normalizeServerReturns(raw) {
+  if (!Array.isArray(raw)) return [];
+  // شكّل entries موحّدة مع الحفاظ على الحقول الزمنية للمقارنة
+  const entries = raw.map((rec, idx) => {
+    const payload = rec?.payload || rec || {};
+    return {
+      _idx: idx,
+      createdAt: rec?.createdAt,
+      updatedAt: rec?.updatedAt,
+      timestamp: rec?.timestamp,
+      _id: rec?._id,
+      payload,
+      reportDate: payload.reportDate || rec?.reportDate || "",
+      items: Array.isArray(payload.items) ? payload.items : [],
+    };
+  }).filter(e => e.reportDate);
+
+  // خُذ “أحدث سجل” لكل تاريخ
+  const latest = new Map();
+  for (const e of entries) {
+    const prev = latest.get(e.reportDate);
+    latest.set(e.reportDate, prev ? newer(prev, e) : e);
+  }
+
+  // رجّع بالشكل المطلوب للواجهة
+  return Array.from(latest.values())
+    .map(e => ({ reportDate: e.reportDate, items: e.items }))
+    .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
 }
 
-// (اختياري) قائمة الإجراءات
+// قائمة الإجراءات
 const ACTIONS = [
   "Use in production",
   "Condemnation",
@@ -102,10 +131,10 @@ export default function ReturnView() {
   const [serverErr, setServerErr] = useState("");
   const [loadingServer, setLoadingServer] = useState(false);
 
-  // 🆕 رسالة عمليات (حفظ… إلخ)
+  // رسالة عمليات
   const [opMsg, setOpMsg] = useState("");
 
-  // 🆕 مرجع لمدخل رفع JSON للاستيراد
+  // مرجع لمدخل رفع JSON للاستيراد
   const importInputRef = useRef(null);
 
   /* ========== جلب من السيرفر فقط ========== */
@@ -253,7 +282,7 @@ export default function ReturnView() {
         };
       });
 
-      // حفظ على السيرفر (PUT/POST)
+      // حفظ على السيرفر (PUT فقط وفقًا للدالة أعلاه)
       await saveReportToServer(selectedReport.reportDate, newItems);
 
       // حدّث الحالة من خلال إعادة الجلب لضمان التطابق مع السيرفر
@@ -368,7 +397,7 @@ export default function ReturnView() {
     }
   };
 
-  /* ========== 🆕 تصدير/استيراد JSON شامل لكل التقارير ========== */
+  /* ========== تصدير/استيراد JSON شامل لكل التقارير ========== */
   const handleExportJSON = () => {
     try {
       const blob = new Blob([JSON.stringify(reports, null, 2)], { type: "application/json" });
@@ -571,7 +600,7 @@ export default function ReturnView() {
               🧹 مسح التصفية
             </button>
           )}
-          {/* 🆕 أزرار التصدير/الاستيراد JSON (شاملة لكل التقارير) */}
+          {/* أزرار التصدير/الاستيراد JSON (شاملة لكل التقارير) */}
           <button onClick={handleExportJSON} style={jsonExportBtn}>
             ⬇️ تصدير JSON (كل التقارير)
           </button>
@@ -647,7 +676,6 @@ export default function ReturnView() {
                                     onClick={() => setSelectedDate(d)}
                                   >
                                     <div>📅 {d}</div>
-                                    {/* ❌ لا يوجد زر حذف بعد الآن */}
                                   </div>
                                 );
                               })}
@@ -685,7 +713,7 @@ export default function ReturnView() {
                 </button>
               </div>
 
-              {/* جدول بنمط إكسل: أزرق فاتح + حدود واضحة + خط أسود */}
+              {/* جدول بنمط إكسل: أزرق فاتح + حدود واضحة */}
               <table style={detailTable}>
                 <thead>
                   <tr style={{ background: "#dbeafe", color: "#111" }}>
@@ -832,6 +860,7 @@ const leftTree = {
   boxShadow: "0 1px 10px #e8daef66",
   padding: "6px 0",
   border: "1px solid #e5e7eb",
+
   maxHeight: "70vh",
   overflow: "auto",
   color: "#111",
@@ -965,7 +994,7 @@ const editBtn = {
   cursor: "pointer",
 };
 
-/* 🆕 أنماط أزرار JSON */
+/* أنماط أزرار JSON */
 const jsonExportBtn = {
   background: "#0f766e",
   color: "#fff",
