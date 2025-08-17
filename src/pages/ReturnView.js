@@ -3,45 +3,49 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 
 /* ========== ربط API السيرفر (صيغة CRA) ========== */
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
 async function fetchReturns() {
-  const res = await fetch(`${API_BASE}/api/reports?type=returns`, {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`GET /api/reports?type=returns -> ${res.status}`);
-  const json = await res.json(); // { ok:true, data:[...] }
-  return json && Array.isArray(json.data) ? json.data : [];
+  const res = await fetch(API_BASE + "/api/reports?type=returns", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch");
+  const json = await res.json(); // { ok:true, data:[...] } أو Array حسب السيرفر
+  return Array.isArray(json) ? json : (json && json.data ? json.data : []);
 }
 
-/* ========== حفظ التقرير على السيرفر (PUT واحد فقط) ========== */
+/* ========== تحديث التقرير على السيرفر (PUT فقط) ========== */
+/* أزلنا POST الاحتياطي حتى لا يضيف نسخة جديدة لنفس اليوم */
 async function saveReportToServer(reportDate, items) {
-  const cleanItems = Array.isArray(items) ? items.map((x) => ({ ...x })) : [];
-  const body = {
-    reporter: "web",
+  const payload = {
+    reporter: "anonymous",
     type: "returns",
-    payload: { reportDate, items: cleanItems, _clientSavedAt: Date.now() },
+    payload: { reportDate, items, _clientSavedAt: Date.now() },
   };
 
-  const res = await fetch(`${API_BASE}/api/reports`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  // نحاول مسارين PUT فقط (لا POST)
+  const attempts = [
+    { url: `${API_BASE}/api/reports`, method: "PUT", body: JSON.stringify(payload) },
+    {
+      url: `${API_BASE}/api/reports/returns?reportDate=${encodeURIComponent(reportDate)}`,
+      method: "PUT",
+      body: JSON.stringify({ items, _clientSavedAt: payload.payload._clientSavedAt }),
+    },
+  ];
 
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { raw: text };
+  let lastErr = null;
+  for (const a of attempts) {
+    try {
+      const res = await fetch(a.url, {
+        method: a.method,
+        headers: { "Content-Type": "application/json" },
+        body: a.body,
+      });
+      if (res.ok) {
+        try { return await res.json(); } catch { return { ok: true }; }
+      }
+      lastErr = new Error(`${a.method} ${a.url} -> ${res.status} ${await res.text().catch(()=>"")}`);
+    } catch (e) { lastErr = e; }
   }
-
-  if (!res.ok) {
-    throw new Error(`PUT /api/reports -> ${res.status} ${JSON.stringify(json)}`);
-  }
-  return json;
+  throw lastErr || new Error("Save failed");
 }
 
 /* ========== توحيد الشكل مع اختيار آخر نسخة لكل تاريخ فقط ========== */
@@ -56,47 +60,27 @@ function toTs(x) {
   return Number.isFinite(n) ? n : null;
 }
 function newer(a, b) {
-  // قارن createdAt/updatedAt/timestamp/_id/payload._clientSavedAt (camelCase + snake_case)
-  const ta =
-    toTs(a?.createdAt) ||
-    toTs(a?.created_at) ||
-    toTs(a?.updatedAt) ||
-    toTs(a?.updated_at) ||
-    toTs(a?.timestamp) ||
-    toTs(a?._id) ||
-    toTs(a?.payload?._clientSavedAt) ||
-    0;
-
-  const tb =
-    toTs(b?.createdAt) ||
-    toTs(b?.created_at) ||
-    toTs(b?.updatedAt) ||
-    toTs(b?.updated_at) ||
-    toTs(b?.timestamp) ||
-    toTs(b?._id) ||
-    toTs(b?.payload?._clientSavedAt) ||
-    0;
-
+  // قارن createdAt/updatedAt/timestamp/_id/payload._clientSavedAt
+  const ta = toTs(a?.createdAt) || toTs(a?.updatedAt) || toTs(a?.timestamp) || toTs(a?._id) || toTs(a?.payload?._clientSavedAt) || 0;
+  const tb = toTs(b?.createdAt) || toTs(b?.updatedAt) || toTs(b?.timestamp) || toTs(b?._id) || toTs(b?.payload?._clientSavedAt) || 0;
   return tb >= ta ? b : a;
 }
 function normalizeServerReturns(raw) {
   if (!Array.isArray(raw)) return [];
   // شكّل entries موحّدة مع الحفاظ على الحقول الزمنية للمقارنة
-  const entries = raw
-    .map((rec, idx) => {
-      const payload = rec?.payload || {};
-      return {
-        _idx: idx,
-        createdAt: rec?.createdAt || rec?.created_at,
-        updatedAt: rec?.updatedAt || rec?.updated_at,
-        timestamp: rec?.timestamp,
-        _id: rec?._id,
-        payload,
-        reportDate: payload.reportDate || rec?.reportDate || "",
-        items: Array.isArray(payload.items) ? payload.items : [],
-      };
-    })
-    .filter((e) => e.reportDate);
+  const entries = raw.map((rec, idx) => {
+    const payload = rec?.payload || rec || {};
+    return {
+      _idx: idx,
+      createdAt: rec?.createdAt,
+      updatedAt: rec?.updatedAt,
+      timestamp: rec?.timestamp,
+      _id: rec?._id,
+      payload,
+      reportDate: payload.reportDate || rec?.reportDate || "",
+      items: Array.isArray(payload.items) ? payload.items : [],
+    };
+  }).filter(e => e.reportDate);
 
   // خُذ “أحدث سجل” لكل تاريخ
   const latest = new Map();
@@ -107,7 +91,7 @@ function normalizeServerReturns(raw) {
 
   // رجّع بالشكل المطلوب للواجهة
   return Array.from(latest.values())
-    .map((e) => ({ reportDate: e.reportDate, items: e.items }))
+    .map(e => ({ reportDate: e.reportDate, items: e.items }))
     .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
 }
 
@@ -159,14 +143,12 @@ export default function ReturnView() {
     setLoadingServer(true);
     try {
       const raw = await fetchReturns();
-      const normalized = normalizeServerReturns(raw).sort((a, b) =>
-        (b.reportDate || "").localeCompare(a.reportDate || "")
-      );
+      const normalized = normalizeServerReturns(raw)
+        .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
 
       setReports(normalized);
       // اضبط التاريخ المختار أول مرة
-      if (!selectedDate && normalized.length)
-        setSelectedDate(normalized[0].reportDate);
+      if (!selectedDate && normalized.length) setSelectedDate(normalized[0].reportDate);
     } catch (e) {
       setServerErr("تعذر الجلب من السيرفر الآن. (قد يكون السيرفر يستيقظ).");
       console.error(e);
@@ -175,24 +157,16 @@ export default function ReturnView() {
     }
   }
 
-  useEffect(() => {
-    reloadFromServer();
-    // eslint-disable-next-line
-  }, []);
+  useEffect(() => { reloadFromServer(); /* eslint-disable-next-line */ }, []);
 
   // أدوات تاريخ
   const parts = (dateStr) => {
     if (!dateStr || dateStr.length < 10) return { y: "", m: "", d: "" };
-    return {
-      y: dateStr.slice(0, 4),
-      m: dateStr.slice(5, 7),
-      d: dateStr.slice(8, 10),
-    };
+    return { y: dateStr.slice(0, 4), m: dateStr.slice(5, 7), d: dateStr.slice(8, 10) };
   };
   const monthKey = (dateStr) => {
     const p = parts(dateStr);
-    const y = p.y,
-      m = p.m;
+    const y = p.y, m = p.m;
     return y && m ? y + "-" + m : "";
   };
   const yearKey = (dateStr) => parts(dateStr).y || "";
@@ -213,9 +187,7 @@ export default function ReturnView() {
       setSelectedDate("");
       return;
     }
-    const stillExists = filteredReports.some(
-      (r) => r.reportDate === selectedDate
-    );
+    const stillExists = filteredReports.some((r) => r.reportDate === selectedDate);
     if (!stillExists) setSelectedDate(filteredReports[0].reportDate);
   }, [filteredReports, selectedDate]);
 
@@ -224,8 +196,7 @@ export default function ReturnView() {
     () => filteredReports.findIndex((r) => r.reportDate === selectedDate),
     [filteredReports, selectedDate]
   );
-  const selectedReport =
-    selectedReportIndex >= 0 ? filteredReports[selectedReportIndex] : null;
+  const selectedReport = selectedReportIndex >= 0 ? filteredReports[selectedReportIndex] : null;
 
   // KPIs عامة
   const kpi = useMemo(() => {
@@ -250,9 +221,7 @@ export default function ReturnView() {
 
   // شارة اليوم و تنبيه
   const today = new Date().toISOString().slice(0, 10);
-  const newReportsCount = filteredReports.filter(
-    (r) => r.reportDate === today
-  ).length;
+  const newReportsCount = filteredReports.filter((r) => r.reportDate === today).length;
   const showAlert = kpi.totalQty > 50 || filteredReports.length > 50;
   const alertMsg =
     kpi.totalQty > 50
@@ -280,18 +249,11 @@ export default function ReturnView() {
         months.set(m, days);
       });
     });
-    const sortedYears = Array.from(years.keys()).sort((a, b) =>
-      b.localeCompare(a)
-    );
+    const sortedYears = Array.from(years.keys()).sort((a, b) => b.localeCompare(a));
     return sortedYears.map((y) => {
       const months = years.get(y);
-      const sortedMonths = Array.from(months.keys()).sort((a, b) =>
-        b.localeCompare(a)
-      );
-      return {
-        year: y,
-        months: sortedMonths.map((m) => ({ month: m, days: months.get(m) })),
-      };
+      const sortedMonths = Array.from(months.keys()).sort((a, b) => b.localeCompare(a));
+      return { year: y, months: sortedMonths.map((m) => ({ month: m, days: months.get(m) })) };
     });
   }, [filteredReports]);
 
@@ -306,9 +268,7 @@ export default function ReturnView() {
 
   const handleActionSave = async (i) => {
     if (!selectedReport) return;
-    const repIdxInView = filteredReports.findIndex(
-      (r) => r.reportDate === selectedReport.reportDate
-    );
+    const repIdxInView = filteredReports.findIndex((r) => r.reportDate === selectedReport.reportDate);
     if (repIdxInView < 0) return;
     try {
       setOpMsg("⏳ جاري حفظ التعديل على السيرفر…");
@@ -318,8 +278,7 @@ export default function ReturnView() {
         return {
           ...row,
           action: editActionVal,
-          customAction:
-            editActionVal === "إجراء آخر..." ? editCustomActionVal : "",
+          customAction: editActionVal === "إجراء آخر..." ? editCustomActionVal : "",
         };
       });
 
@@ -334,11 +293,40 @@ export default function ReturnView() {
       setOpMsg("✅ تم حفظ التعديل على السيرفر.");
     } catch (err) {
       console.error(err);
-      setOpMsg(
-        `❌ فشل حفظ التعديل على السيرفر: ${String(
-          err?.message || err
-        ).slice(0, 300)}`
+      setOpMsg("❌ فشل حفظ التعديل على السيرفر.");
+    } finally {
+      setTimeout(() => setOpMsg(""), 3000);
+    }
+  };
+
+  /* ========== حذف تقرير اليوم المفتوح من السيرفر ========== */
+  const handleDeleteDay = async () => {
+    if (!selectedReport) return;
+    const d = selectedReport.reportDate;
+    const sure = window.confirm(`متأكد بدك تحذف تقرير التاريخ ${d} نهائيًا؟`);
+    if (!sure) return;
+
+    try {
+      setOpMsg("⏳ جاري حذف التقرير من السيرفر…");
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=returns&reportDate=${encodeURIComponent(d)}`,
+        { method: "DELETE" }
       );
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || res.statusText);
+      }
+      if (json?.deleted === 0) {
+        setOpMsg("ℹ️ لا يوجد شيء للحذف (قد يكون محذوف مسبقًا).");
+      } else {
+        await reloadFromServer();
+        setSelectedDate("");
+        setOpMsg("✅ تم حذف تقرير هذا اليوم من السيرفر.");
+      }
+    } catch (e) {
+      console.error(e);
+      setOpMsg("❌ فشل حذف التقرير من السيرفر.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -349,8 +337,7 @@ export default function ReturnView() {
     if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
     await new Promise((resolve, reject) => {
       const s = document.createElement("script");
-      s.src =
-        "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
       s.onload = () => resolve();
       s.onerror = () => reject(new Error("Failed to load jsPDF"));
       document.head.appendChild(s);
@@ -378,30 +365,14 @@ export default function ReturnView() {
       y += 20;
 
       // رأس الجدول
-      const headers = [
-        "SL",
-        "PRODUCT",
-        "ORIGIN",
-        "BUTCHERY",
-        "QTY",
-        "QTY TYPE",
-        "EXPIRY",
-        "REMARKS",
-        "ACTION",
-      ];
+      const headers = ["SL", "PRODUCT", "ORIGIN", "BUTCHERY", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"];
       const colWidths = [28, 120, 70, 85, 45, 65, 65, 120, 95]; // مجموعها أقل من عرض الصفحة
       const tableX = marginX;
       const rowH = 18;
 
       // خلفية الترويسة
       doc.setFillColor(219, 234, 254); // #dbeafe
-      doc.rect(
-        tableX,
-        y,
-        colWidths.reduce((a, b) => a + b, 0),
-        rowH,
-        "F"
-      );
+      doc.rect(tableX, y, colWidths.reduce((a, b) => a + b, 0), rowH, "F");
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
 
@@ -425,24 +396,16 @@ export default function ReturnView() {
           String(i + 1),
           row.productName || "",
           row.origin || "",
-          row.butchery === "فرع آخر..."
-            ? row.customButchery || ""
-            : row.butchery || "",
+          row.butchery === "فرع آخر..." ? (row.customButchery || "") : (row.butchery || ""),
           String(row.quantity ?? ""),
-          row.qtyType === "أخرى" ? row.customQtyType || "" : row.qtyType || "",
+          row.qtyType === "أخرى" ? (row.customQtyType || "") : (row.qtyType || ""),
           row.expiry || "",
           row.remarks || "",
-          row.action === "إجراء آخر..." ? row.customAction || "" : row.action || "",
+          row.action === "إجراء آخر..." ? (row.customAction || "") : (row.action || "")
         ];
         // خط فاصل خلفي خفيف لكل صف
         doc.setDrawColor(182, 200, 227); // #b6c8e3
-        doc.rect(
-          tableX,
-          y - 0.5,
-          colWidths.reduce((a, b) => a + b, 0),
-          rowH,
-          "S"
-        );
+        doc.rect(tableX, y - 0.5, colWidths.reduce((a, b) => a + b, 0), rowH, "S");
 
         // كتابة الخلايا
         let xx = tableX + 4;
@@ -470,9 +433,7 @@ export default function ReturnView() {
   /* ========== تصدير/استيراد JSON شامل لكل التقارير ========== */
   const handleExportJSON = () => {
     try {
-      const blob = new Blob([JSON.stringify(reports, null, 2)], {
-        type: "application/json",
-      });
+      const blob = new Blob([JSON.stringify(reports, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -501,13 +462,11 @@ export default function ReturnView() {
       setOpMsg("⏳ جاري استيراد JSON وحفظه على السيرفر…");
       const text = await file.text();
       const data = JSON.parse(text);
-      if (!Array.isArray(data))
-        throw new Error("صيغة غير صحيحة: يجب أن يكون مصفوفة");
+      if (!Array.isArray(data)) throw new Error("صيغة غير صحيحة: يجب أن يكون مصفوفة");
       // نتوقع عناصر بالشكل [{reportDate, items:[]}] كما في التصدير
       for (const entry of data) {
         const d = entry && entry.reportDate;
-        const items =
-          entry && Array.isArray(entry.items) ? entry.items : [];
+        const items = (entry && Array.isArray(entry.items)) ? entry.items : [];
         if (!d) continue; // نتجاوز بدون كسر العملية
         await saveReportToServer(d, items);
       }
@@ -567,29 +526,18 @@ export default function ReturnView() {
 
       {/* حالة الجلب من السيرفر */}
       {loadingServer && (
-        <div
-          style={{ textAlign: "center", marginBottom: 10, color: "#1f2937" }}
-        >
+        <div style={{ textAlign: "center", marginBottom: 10, color: "#1f2937" }}>
           ⏳ جاري الجلب من السيرفر…
         </div>
       )}
       {serverErr && (
-        <div
-          style={{ textAlign: "center", marginBottom: 10, color: "#b91c1c" }}
-        >
+        <div style={{ textAlign: "center", marginBottom: 10, color: "#b91c1c" }}>
           {serverErr}
         </div>
       )}
       {/* رسالة عمليات */}
       {opMsg && (
-        <div
-          style={{
-            textAlign: "center",
-            marginBottom: 10,
-            color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46",
-            fontWeight: 700,
-          }}
-        >
+        <div style={{ textAlign: "center", marginBottom: 10, color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46", fontWeight: 700 }}>
           {opMsg}
         </div>
       )}
@@ -603,18 +551,8 @@ export default function ReturnView() {
           marginBottom: 18,
         }}
       >
-        <KpiCard
-          title="إجمالي التقارير"
-          value={kpi.totalReports}
-          emoji="📦"
-          accent="#111"
-        />
-        <KpiCard
-          title="إجمالي العناصر"
-          value={kpi.totalItems}
-          emoji="🔢"
-          accent="#111"
-        />
+        <KpiCard title="إجمالي التقارير" value={kpi.totalReports} emoji="📦" accent="#111" />
+        <KpiCard title="إجمالي العناصر" value={kpi.totalItems} emoji="🔢" accent="#111" />
         <KpiCard title="إجمالي الكميات" value={kpi.totalQty} accent="#111" />
         <KpiList title="أكثر الإجراءات" entries={sortTop(kpi.byAction, 3)} color="#111" />
       </div>
@@ -649,29 +587,10 @@ export default function ReturnView() {
           boxShadow: "0 2px 14px #e8daef66",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            justifyContent: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <TabButton
-            active={groupMode === "year"}
-            onClick={() => setGroupMode("year")}
-            label="حسب السنة"
-          />
-          <TabButton
-            active={groupMode === "month"}
-            onClick={() => setGroupMode("month")}
-            label="حسب الشهر"
-          />
-          <TabButton
-            active={groupMode === "day"}
-            onClick={() => setGroupMode("day")}
-            label="حسب اليوم"
-          />
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+          <TabButton active={groupMode === "year"} onClick={() => setGroupMode("year")} label="حسب السنة" />
+          <TabButton active={groupMode === "month"} onClick={() => setGroupMode("month")} label="حسب الشهر" />
+          <TabButton active={groupMode === "day"} onClick={() => setGroupMode("day")} label="حسب اليوم" />
         </div>
 
         <div
@@ -733,25 +652,11 @@ export default function ReturnView() {
       </div>
 
       {/* تخطيط: يسار (هرمي) + يمين (تفاصيل) */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 16,
-          minHeight: 420,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, minHeight: 420 }}>
         {/* يسار: قائمة هرمية سنة ← شهر ← يوم */}
         <div style={leftTree}>
           {hierarchy.length === 0 && (
-            <div
-              style={{
-                textAlign: "center",
-                padding: 60,
-                color: "#6b7280",
-                fontSize: "1.03em",
-              }}
-            >
+            <div style={{ textAlign: "center", padding: 60, color: "#6b7280", fontSize: "1.03em" }}>
               لا يوجد تقارير مرتجعات محفوظة للفترة المختارة.
             </div>
           )}
@@ -762,19 +667,13 @@ export default function ReturnView() {
             return (
               <div key={year} style={treeSection}>
                 <div
-                  style={{
-                    ...treeHeader,
-                    background: yOpen ? "#e0f2fe" : "#eff6ff",
-                    color: "#111",
-                  }}
+                  style={{ ...treeHeader, background: yOpen ? "#e0f2fe" : "#eff6ff", color: "#111" }}
                   onClick={() =>
                     setOpenYears((prev) => ({ ...prev, [year]: !prev[year] }))
                   }
                 >
                   <span>{yOpen ? "▼" : "►"} سنة {year}</span>
-                  <span style={{ color: "#111", fontWeight: 700 }}>
-                    {yearCount} يوم
-                  </span>
+                  <span style={{ color: "#111", fontWeight: 700 }}>{yearCount} يوم</span>
                 </div>
 
                 {yOpen && (
@@ -785,16 +684,9 @@ export default function ReturnView() {
                       return (
                         <div key={key} style={{ margin: "4px 0 6px" }}>
                           <div
-                            style={{
-                              ...treeSubHeader,
-                              background: mOpen ? "#f0f9ff" : "#ffffff",
-                              color: "#111",
-                            }}
+                            style={{ ...treeSubHeader, background: mOpen ? "#f0f9ff" : "#ffffff", color: "#111" }}
                             onClick={() =>
-                              setOpenMonths((prev) => ({
-                                ...prev,
-                                [key]: !prev[key],
-                              }))
+                              setOpenMonths((prev) => ({ ...prev, [key]: !prev[key] }))
                             }
                           >
                             <span>{mOpen ? "▾" : "▸"} شهر {month}</span>
@@ -811,9 +703,7 @@ export default function ReturnView() {
                                     style={{
                                       ...treeDay,
                                       background: isSelected ? "#e0f2fe" : "#fff",
-                                      borderRight: isSelected
-                                        ? "5px solid #3b82f6"
-                                        : "none",
+                                      borderRight: isSelected ? "5px solid #3b82f6" : "none",
                                       color: "#111",
                                     }}
                                     onClick={() => setSelectedDate(d)}
@@ -838,34 +728,27 @@ export default function ReturnView() {
         <div style={rightPanel}>
           {selectedReport ? (
             <div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
-                  marginBottom: 8,
-                }}
-              >
-                <div
-                  style={{ fontWeight: "bold", color: "#111", fontSize: "1.2em" }}
-                >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <div style={{ fontWeight: "bold", color: "#111", fontSize: "1.2em" }}>
                   تفاصيل تقرير المرتجعات ({selectedReport.reportDate})
                 </div>
-                <button
-                  onClick={handleExportPDF}
-                  style={{
-                    background: "#111827",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 10,
-                    padding: "8px 14px",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                  }}
-                >
-                  ⬇️ تصدير PDF
-                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button onClick={handleExportPDF}
+                    style={{
+                      background: "#111827",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 10,
+                      padding: "8px 14px",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                    }}>
+                    ⬇️ تصدير PDF
+                  </button>
+                  <button onClick={handleDeleteDay} style={deleteBtnMain}>
+                    🗑️ حذف تقرير هذا اليوم
+                  </button>
+                </div>
               </div>
 
               {/* جدول بنمط إكسل: أزرق فاتح + حدود واضحة */}
@@ -891,14 +774,10 @@ export default function ReturnView() {
                       <td style={td}>{row.productName}</td>
                       <td style={td}>{row.origin}</td>
                       <td style={td}>
-                        {row.butchery === "فرع آخر..."
-                          ? row.customButchery
-                          : row.butchery}
+                        {row.butchery === "فرع آخر..." ? row.customButchery : row.butchery}
                       </td>
                       <td style={td}>{row.quantity}</td>
-                      <td style={td}>
-                        {row.qtyType === "أخرى" ? row.customQtyType : row.qtyType || ""}
-                      </td>
+                      <td style={td}>{row.qtyType === "أخرى" ? row.customQtyType : row.qtyType || ""}</td>
                       <td style={td}>{row.expiry}</td>
                       <td style={td}>{row.remarks}</td>
                       <td style={td}>
@@ -918,23 +797,15 @@ export default function ReturnView() {
                             {editActionVal === "إجراء آخر..." && (
                               <input
                                 value={editCustomActionVal}
-                                onChange={(e) =>
-                                  setEditCustomActionVal(e.target.value)
-                                }
+                                onChange={(e) => setEditCustomActionVal(e.target.value)}
                                 placeholder="حدد الإجراء..."
                                 style={cellInputStyle}
                               />
                             )}
-                            <button
-                              onClick={() => handleActionSave(i)}
-                              style={saveBtn}
-                            >
+                            <button onClick={() => handleActionSave(i)} style={saveBtn}>
                               حفظ
                             </button>
-                            <button
-                              onClick={() => setEditActionIdx(null)}
-                              style={cancelBtn}
-                            >
+                            <button onClick={() => setEditActionIdx(null)} style={cancelBtn}>
                               إلغاء
                             </button>
                           </div>
@@ -946,10 +817,7 @@ export default function ReturnView() {
                       </td>
                       <td style={td}>
                         {editActionIdx !== i && (
-                          <button
-                            onClick={() => handleActionEdit(i)}
-                            style={editBtn}
-                          >
+                          <button onClick={() => handleActionEdit(i)} style={editBtn}>
                             ✏️
                           </button>
                         )}
@@ -960,14 +828,7 @@ export default function ReturnView() {
               </table>
             </div>
           ) : (
-            <div
-              style={{
-                textAlign: "center",
-                color: "#6b7280",
-                padding: 80,
-                fontSize: "1.05em",
-              }}
-            >
+            <div style={{ textAlign: "center", color: "#6b7280", padding: 80, fontSize: "1.05em" }}>
               اختر تاريخًا من القائمة لعرض تفاصيله.
             </div>
           )}
@@ -980,44 +841,22 @@ export default function ReturnView() {
 /* ========== مكونات صغيرة ========== */
 function KpiCard({ title, value, emoji, accent = "#111" }) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 16,
-        padding: "1rem 1.2rem",
-        textAlign: "center",
-        boxShadow: "0 2px 12px #e8daef66",
-        color: "#111",
-      }}
-    >
+    <div style={{ background: "#fff", borderRadius: 16, padding: "1rem 1.2rem", textAlign: "center", boxShadow: "0 2px 12px #e8daef66", color: "#111" }}>
       {emoji && <div style={{ fontSize: 26, marginBottom: 6 }}>{emoji}</div>}
       <div style={{ fontWeight: "bold", marginBottom: 4 }}>{title}</div>
-      <div style={{ fontSize: "1.7em", fontWeight: 800, color: accent }}>
-        {value}
-      </div>
+      <div style={{ fontSize: "1.7em", fontWeight: 800, color: accent }}>{value}</div>
     </div>
   );
 }
 function KpiList({ title, entries = [], color = "#111" }) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 16,
-        padding: "1rem 1.2rem",
-        boxShadow: "0 2px 12px #e8daef66",
-        color: "#111",
-      }}
-    >
+    <div style={{ background: "#fff", borderRadius: 16, padding: "1rem 1.2rem", boxShadow: "0 2px 12px #e8daef66", color: "#111" }}>
       <div style={{ fontWeight: "bold", marginBottom: 6 }}>{title}</div>
       {entries.length === 0 ? (
         <div style={{ color: "#6b7280" }}>—</div>
       ) : (
         entries.map(([k, v]) => (
-          <div
-            key={k}
-            style={{ display: "flex", justifyContent: "space-between" }}
-          >
+          <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
             <span>{k}</span>
             <b style={{ color }}>{v}</b>
           </div>
@@ -1049,9 +888,7 @@ function TabButton({ active, onClick, label }) {
 
 /* ========== أدوات/أنماط مساعدة ========== */
 function sortTop(obj, n) {
-  return Object.entries(obj)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, n);
+  return Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n);
 }
 
 const leftTree = {
@@ -1193,6 +1030,18 @@ const editBtn = {
   fontSize: 15,
   padding: "2px 8px",
   cursor: "pointer",
+};
+
+/* زر حذف التقرير المفتوح */
+const deleteBtnMain = {
+  background: "#dc2626",
+  color: "#fff",
+  border: "none",
+  borderRadius: 10,
+  padding: "8px 14px",
+  fontWeight: "bold",
+  cursor: "pointer",
+  boxShadow: "0 1px 6px #fecaca",
 };
 
 /* أنماط أزرار JSON */
