@@ -12,118 +12,61 @@ async function fetchReturns() {
   return Array.isArray(json) ? json : (json && json.data ? json.data : []);
 }
 
-/* 🆕 قائمة انتظار تواريخ بانتظار حذف على السيرفر (لمنع رجوعها للواجهة) */
-const LS_KEY_PENDING = "returns_pending_server_deletes";
-function readPending() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY_PENDING) || "[]"); } catch { return []; }
-}
-function writePending(arr) {
-  localStorage.setItem(LS_KEY_PENDING, JSON.stringify([...new Set(arr)]));
-}
+/* ========== تحديث التقرير على السيرفر (PUT/POST فقط) ========== */
+/* نحاول أكثر من مسار لضمان التوافق مع السيرفر */
+async function saveReportToServer(reportDate, items) {
+  const payload = {
+    reporter: "anonymous",
+    type: "returns",
+    payload: { reportDate, items },
+  };
 
-/* 🆕 حذف محلي لتاريخ معيّن: ينظّف returns_reports و returns_sync_queue */
-function deleteLocalReturnsByDate(reportDate) {
-  let localDeleted = 0;
-
-  // returns_reports المخزنة محليًا
-  try {
-    const arr = JSON.parse(localStorage.getItem("returns_reports") || "[]");
-    const before = arr.length;
-    const filtered = arr.filter((r) => (r.reportDate || r?.payload?.reportDate) !== reportDate);
-    localDeleted = before - filtered.length;
-    localStorage.setItem("returns_reports", JSON.stringify(filtered));
-  } catch {}
-
-  // طابور المزامنة (لو في عناصر بنفس التاريخ)
-  try {
-    const q = JSON.parse(localStorage.getItem("returns_sync_queue") || "[]");
-    const qFiltered = q.filter((it) => it?.reportDate !== reportDate);
-    localStorage.setItem("returns_sync_queue", JSON.stringify(qFiltered));
-  } catch {}
-
-  return localDeleted;
-}
-
-/* 🆕 حذف من السيرفر بمحاولات متعددة لمسارات مختلفة + تحمّل 204/HTML */
-async function deleteReturnsOnServer(reportDate) {
   const attempts = [
-    API_BASE + "/api/reports?type=returns&reportDate=" + encodeURIComponent(reportDate), // المسار القديم
-    API_BASE + "/api/reports/returns?reportDate=" + encodeURIComponent(reportDate),      // مسار بديل
-    API_BASE + "/returns?reportDate=" + encodeURIComponent(reportDate),                  // مسار أبسط
+    { url: `${API_BASE}/api/reports`, method: "PUT", body: JSON.stringify(payload) },
+    { url: `${API_BASE}/api/reports/returns?reportDate=${encodeURIComponent(reportDate)}`, method: "PUT", body: JSON.stringify({ items }) },
+    { url: `${API_BASE}/api/reports`, method: "POST", body: JSON.stringify(payload) }, // بعض السيرفرات تعمل UPSERT بالـ POST
   ];
 
   let lastErr = null;
-
-  for (const url of attempts) {
+  for (const a of attempts) {
     try {
-      const res = await fetch(url, { method: "DELETE" });
+      const res = await fetch(a.url, {
+        method: a.method,
+        headers: { "Content-Type": "application/json" },
+        body: a.body,
+      });
       if (res.ok) {
-        // جرّب قراءة JSON؛ لو ما كان JSON (204 أو HTML) اعتبرها نجاح واحسب 1
-        try {
-          const json = await res.json();
-          if (json && (json.ok === true || typeof json.deleted !== "undefined")) {
-            return Number(json.deleted || 1);
-          }
-          return 1; // رد غير قياسي بس ناجح
-        } catch {
-          return 1; // 204/HTML
-        }
+        try { return await res.json(); } catch { return { ok: true }; }
       }
-      if (res.status === 404) continue; // جرّب المسار التالي
-      const text = await res.text().catch(() => "");
-      lastErr = new Error(`DELETE failed ${res.status}: ${text}`);
-    } catch (e) {
-      lastErr = e;
-    }
+      lastErr = new Error(`${a.method} ${a.url} -> ${res.status} ${await res.text().catch(()=>"")}`);
+    } catch (e) { lastErr = e; }
   }
-
-  if (lastErr) throw lastErr;
-  throw new Error("No matching DELETE route on server");
+  throw lastErr || new Error("Save failed");
 }
 
-/* 🆕 منسّق: يحذف من السيرفر ثم من التخزين المحلي، ويعيد أرقام الاثنين + الخطأ إن وجد */
-async function deleteReturnsByDate(reportDate) {
-  let serverDeleted = 0;
-  let serverError = null;
-
-  try {
-    serverDeleted = await deleteReturnsOnServer(reportDate);
-  } catch (e) {
-    serverError = e;
-  }
-
-  const localDeleted = deleteLocalReturnsByDate(reportDate);
-
-  return { serverDeleted, localDeleted, error: serverError?.message || null };
-}
-
-/* توحيد الشكل: إن كانت البيانات بالفعل بالشكل [{reportDate, items:[]}] نُعيدها كما هي.
-   وإلا نحوّل من شكل السيرفر [{ payload:{reportDate, items[]} ...}] إلى نفس الشكل المتوقع محليًا. */
+/* توحيد الشكل: [{reportDate, items:[]}] */
 function normalizeServerReturns(arr) {
   if (Array.isArray(arr) && arr.length && Array.isArray(arr[0] && arr[0].items)) {
     return arr;
   }
-  // افرد العناصر مع تاريخ التقرير، ثم اجمعها حسب اليوم
-  const flat = (arr || []).flatMap(function (rec) {
+  const flat = (arr || []).flatMap((rec) => {
     const payload = (rec && rec.payload) ? rec.payload : {};
-    const date = payload.reportDate || (rec && rec.reportDate) || "";
+    const date = payload.reportDate || rec?.reportDate || "";
     const items = payload.items || [];
-    return items.map(function (it) { return { reportDate: date, ...it }; });
+    return items.map((it) => ({ reportDate: date, ...it }));
   });
   const byDate = new Map();
-  flat.forEach(function (row) {
+  flat.forEach((row) => {
     const d = row.reportDate || "";
     const rest = { ...row };
     delete rest.reportDate;
     if (!byDate.has(d)) byDate.set(d, []);
     byDate.get(d).push(rest);
   });
-  return Array.from(byDate.entries()).map(function ([reportDate, items]) {
-    return { reportDate: reportDate, items: items };
-  });
+  return Array.from(byDate.entries()).map(([reportDate, items]) => ({ reportDate, items }));
 }
 
-// (اختياري) قوائم جاهزة إن احتجتها لاحقًا
+// (اختياري) قائمة الإجراءات
 const ACTIONS = [
   "Use in production",
   "Condemnation",
@@ -139,7 +82,7 @@ export default function ReturnView() {
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
 
-  // تعديل الإجراء داخل جدول التفاصيل
+  // تعديل الإجراء داخل جدول التفاصيل (مع حفظ للسيرفر)
   const [editActionIdx, setEditActionIdx] = useState(null);
   const [editActionVal, setEditActionVal] = useState("");
   const [editCustomActionVal, setEditCustomActionVal] = useState("");
@@ -159,34 +102,21 @@ export default function ReturnView() {
   const [serverErr, setServerErr] = useState("");
   const [loadingServer, setLoadingServer] = useState(false);
 
-  // 🆕 رسالة عمليات (حذف… إلخ)
+  // 🆕 رسالة عمليات (حفظ… إلخ)
   const [opMsg, setOpMsg] = useState("");
 
-  // تحميل التقارير من localStorage أولًا
-  useEffect(() => {
-    const data = JSON.parse(localStorage.getItem("returns_reports") || "[]");
-    data.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
-    setReports(data);
-  }, []);
-
-  /* ========== جلب من السيرفر ثم توحيد الشكل + تصفية التواريخ المعلَّمة pending ========== */
+  /* ========== جلب من السيرفر فقط ========== */
   async function reloadFromServer() {
     setServerErr("");
     setLoadingServer(true);
     try {
       const raw = await fetchReturns();
-      const normalized = normalizeServerReturns(raw);
-      normalized.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
+      const normalized = normalizeServerReturns(raw)
+        .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
 
-      // صفّي أي تقرير تاريخُه موجود بقائمة الانتظار
-      const pending = readPending();
-      const filteredNormalized = normalized.filter(
-        (r) => !pending.includes(r.reportDate)
-      );
-
-      setReports(function (prev) {
-        return (filteredNormalized && filteredNormalized.length ? filteredNormalized : prev);
-      });
+      setReports(normalized);
+      // اضبط التاريخ المختار أول مرة
+      if (!selectedDate && normalized.length) setSelectedDate(normalized[0].reportDate);
     } catch (e) {
       setServerErr("تعذر الجلب من السيرفر الآن. (قد يكون السيرفر يستيقظ).");
       console.error(e);
@@ -195,14 +125,7 @@ export default function ReturnView() {
     }
   }
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!mounted) return;
-      await reloadFromServer();
-    })();
-    return () => { mounted = false; };
-  }, []);
+  useEffect(() => { reloadFromServer(); /* eslint-disable-next-line */ }, []);
 
   // أدوات تاريخ
   const parts = (dateStr) => {
@@ -302,58 +225,7 @@ export default function ReturnView() {
     });
   }, [filteredReports]);
 
-  // 🆕 حذف تقرير بحسب التاريخ:
-  // - يحاول الحذف من السيرفر
-  // - يحذف محليًا دومًا
-  // - لو فشل السيرفر: يضيف التاريخ إلى pending لإخفائه، ويُعاد المحاولة لاحقًا يدويًا
-  const handleDeleteByDate = async (dateStr) => {
-    if (!window.confirm("هل أنت متأكد من حذف تقرير " + dateStr + " من السيرفر والتخزين المحلي؟")) return;
-
-    try {
-      setOpMsg("⏳ جاري حذف تقرير " + dateStr + "…");
-
-      const { serverDeleted, localDeleted, error } = await deleteReturnsByDate(dateStr);
-
-      if (error) {
-        // أخفِ اليوم من الواجهة مؤقتًا
-        const p = readPending();
-        p.push(dateStr);
-        writePending(p);
-        setOpMsg(`⚠️ تم تنظيف التخزين المحلي (${localDeleted})، لكن فشل حذف السيرفر (${error}). سنخفي ${dateStr} مؤقتًا.`);
-      } else {
-        // لو نجح الحذف على السيرفر، نظّف من قائمة الانتظار
-        writePending(readPending().filter((x) => x !== dateStr));
-        setOpMsg(`✅ حذف من السيرفر: ${serverDeleted} | حذف محلي: ${localDeleted}`);
-      }
-
-      // حدّث الواجهة المحلية فورًا
-      const list = (JSON.parse(localStorage.getItem("returns_reports") || "[]") || []).filter((r) => r.reportDate !== dateStr);
-      setReports(list);
-      localStorage.setItem("returns_reports", JSON.stringify(list));
-
-      if (selectedDate === dateStr) {
-        const next = list
-          .filter((r) => {
-            const d = r.reportDate || "";
-            if (filterFrom && d < filterFrom) return false;
-            if (filterTo && d > filterTo) return false;
-            return true;
-          })
-          .sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
-        setSelectedDate(next[0] ? next[0].reportDate : "");
-      }
-
-      // إعادة تحميل من السيرفر للتأكد وتصفيته عبر pending
-      await reloadFromServer();
-    } catch (err) {
-      console.error(err);
-      setOpMsg("❌ حدث خطأ غير متوقع أثناء الحذف: " + (err && err.message ? err.message : "سبب غير معروف"));
-    } finally {
-      setTimeout(() => setOpMsg(""), 4000);
-    }
-  };
-
-  // تعديل إجراء عنصر
+  /* ========== تعديل إجراء عنصر وحفظه إلى السيرفر ========== */
   const handleActionEdit = (i) => {
     if (!selectedReport) return;
     const item = selectedReport.items[i];
@@ -361,21 +233,136 @@ export default function ReturnView() {
     setEditActionVal(item.action || "");
     setEditCustomActionVal(item.customAction || "");
   };
-  const handleActionSave = (i) => {
+
+  const handleActionSave = async (i) => {
     if (!selectedReport) return;
-    const repIdxInAll = reports.findIndex((r) => r.reportDate === selectedReport.reportDate);
-    if (repIdxInAll < 0) return;
-    const updated = reports.slice();
-    const items = updated[repIdxInAll].items.slice();
-    items[i] = {
-      ...items[i],
-      action: editActionVal,
-      customAction: editActionVal === "إجراء آخر..." ? editCustomActionVal : "",
-    };
-    updated[repIdxInAll] = { ...updated[repIdxInAll], items };
-    setReports(updated);
-    localStorage.setItem("returns_reports", JSON.stringify(updated));
-    setEditActionIdx(null);
+    const repIdxInView = filteredReports.findIndex((r) => r.reportDate === selectedReport.reportDate);
+    if (repIdxInView < 0) return;
+    try {
+      setOpMsg("⏳ جاري حفظ التعديل على السيرفر…");
+      // جهّز نسخة جديدة من عناصر اليوم
+      const newItems = selectedReport.items.map((row, idx) => {
+        if (idx !== i) return row;
+        return {
+          ...row,
+          action: editActionVal,
+          customAction: editActionVal === "إجراء آخر..." ? editCustomActionVal : "",
+        };
+      });
+
+      // حفظ على السيرفر (PUT/POST)
+      await saveReportToServer(selectedReport.reportDate, newItems);
+
+      // حدّث الحالة من خلال إعادة الجلب لضمان التطابق مع السيرفر
+      await reloadFromServer();
+
+      // أعد ضبط محرر الخلية
+      setEditActionIdx(null);
+      setOpMsg("✅ تم حفظ التعديل على السيرفر.");
+    } catch (err) {
+      console.error(err);
+      setOpMsg("❌ فشل حفظ التعديل على السيرفر.");
+    } finally {
+      setTimeout(() => setOpMsg(""), 3000);
+    }
+  };
+
+  /* ========== تصدير PDF (بدون زر طباعة) ========== */
+  async function ensureJsPDF() {
+    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Failed to load jsPDF"));
+      document.head.appendChild(s);
+    });
+    return window.jspdf.jsPDF;
+  }
+
+  const handleExportPDF = async () => {
+    if (!selectedReport) return;
+    try {
+      setOpMsg("⏳ إنشاء ملف PDF…");
+      const JsPDF = await ensureJsPDF();
+      const doc = new JsPDF({ unit: "pt", format: "a4" });
+
+      const marginX = 40;
+      let y = 50;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("Returns Report", marginX, y);
+      y += 18;
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Date: ${selectedReport.reportDate}`, marginX, y);
+      y += 20;
+
+      // رأس الجدول
+      const headers = ["SL", "PRODUCT", "ORIGIN", "BUTCHERY", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"];
+      const colWidths = [28, 120, 70, 85, 45, 65, 65, 120, 95]; // مجموعها أقل من عرض الصفحة
+      const tableX = marginX;
+      const rowH = 18;
+
+      // خلفية الترويسة
+      doc.setFillColor(219, 234, 254); // #dbeafe
+      doc.rect(tableX, y, colWidths.reduce((a, b) => a + b, 0), rowH, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+
+      let x = tableX + 4;
+      headers.forEach((h, idx) => {
+        doc.text(h, x, y + 12);
+        x += colWidths[idx];
+      });
+      y += rowH;
+
+      doc.setFont("helvetica", "normal");
+
+      const rows = selectedReport.items || [];
+      rows.forEach((row, i) => {
+        // سطر جديد إذا اقتربنا من نهاية الصفحة
+        if (y > 780) {
+          doc.addPage();
+          y = 50;
+        }
+        const vals = [
+          String(i + 1),
+          row.productName || "",
+          row.origin || "",
+          row.butchery === "فرع آخر..." ? (row.customButchery || "") : (row.butchery || ""),
+          String(row.quantity ?? ""),
+          row.qtyType === "أخرى" ? (row.customQtyType || "") : (row.qtyType || ""),
+          row.expiry || "",
+          row.remarks || "",
+          row.action === "إجراء آخر..." ? (row.customAction || "") : (row.action || "")
+        ];
+        // خط فاصل خلفي خفيف لكل صف
+        doc.setDrawColor(182, 200, 227); // #b6c8e3
+        doc.rect(tableX, y - 0.5, colWidths.reduce((a, b) => a + b, 0), rowH, "S");
+
+        // كتابة الخلايا
+        let xx = tableX + 4;
+        vals.forEach((v, idx) => {
+          const maxW = colWidths[idx] - 8;
+          // قص النص البسيط
+          const text = doc.splitTextToSize(String(v), maxW);
+          doc.text(text, xx, y + 12);
+          xx += colWidths[idx];
+        });
+        y += rowH;
+      });
+
+      const fileName = `returns_${selectedReport.reportDate}.pdf`;
+      doc.save(fileName);
+      setOpMsg("✅ تم إنشاء ملف PDF.");
+    } catch (e) {
+      console.error(e);
+      setOpMsg("❌ تعذر إنشاء PDF (تحقق من الاتصال).");
+    } finally {
+      setTimeout(() => setOpMsg(""), 3000);
+    }
   };
 
   // UI
@@ -387,7 +374,7 @@ export default function ReturnView() {
         background: "linear-gradient(180deg, #f7f2fb 0%, #f4f6fa 100%)",
         minHeight: "100vh",
         direction: "rtl",
-        color: "#111", // خط أسود
+        color: "#111",
       }}
     >
       {/* العنوان */}
@@ -431,7 +418,7 @@ export default function ReturnView() {
           {serverErr}
         </div>
       )}
-      {/* 🆕 رسالة عمليات */}
+      {/* رسالة عمليات */}
       {opMsg && (
         <div style={{ textAlign: "center", marginBottom: 10, color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46", fontWeight: 700 }}>
           {opMsg}
@@ -590,16 +577,7 @@ export default function ReturnView() {
                                     onClick={() => setSelectedDate(d)}
                                   >
                                     <div>📅 {d}</div>
-                                    <button
-                                      title="حذف التقرير"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteByDate(d);
-                                      }}
-                                      style={deleteBtn}
-                                    >
-                                      🗑️
-                                    </button>
+                                    {/* ❌ لا يوجد زر حذف بعد الآن */}
                                   </div>
                                 );
                               })}
@@ -619,8 +597,22 @@ export default function ReturnView() {
         <div style={rightPanel}>
           {selectedReport ? (
             <div>
-              <div style={{ fontWeight: "bold", color: "#111", fontSize: "1.2em", marginBottom: 8 }}>
-                تفاصيل تقرير المرتجعات ({selectedReport.reportDate})
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <div style={{ fontWeight: "bold", color: "#111", fontSize: "1.2em" }}>
+                  تفاصيل تقرير المرتجعات ({selectedReport.reportDate})
+                </div>
+                <button onClick={handleExportPDF}
+                  style={{
+                    background: "#111827",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "8px 14px",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}>
+                  ⬇️ تصدير PDF
+                </button>
               </div>
 
               {/* جدول بنمط إكسل: أزرق فاتح + حدود واضحة + خط أسود */}
@@ -819,8 +811,8 @@ const detailTable = {
   width: "100%",
   background: "#fff",
   borderRadius: 8,
-  borderCollapse: "collapse",      // دمج الحدود مثل الإكسل
-  border: "1px solid #b6c8e3",     // ✅ تم تصحيح السطر
+  borderCollapse: "collapse",
+  border: "1px solid #b6c8e3",
   marginTop: 6,
   minWidth: 800,
   color: "#111",
@@ -830,17 +822,17 @@ const th = {
   textAlign: "center",
   fontSize: "0.98em",
   fontWeight: "bold",
-  border: "1px solid #b6c8e3",     // حدود كل خلية
-  background: "#dbeafe",           // أزرق أغمق للترويسة
+  border: "1px solid #b6c8e3",
+  background: "#dbeafe",
   color: "#111",
 };
 const td = {
   padding: "9px 8px",
   textAlign: "center",
   minWidth: 90,
-  border: "1px solid #b6c8e3",     // حدود مثل الإكسل
-  background: "#eef6ff",           // أزرق فاتح للخلايا
-  color: "#111",                   // خط أسود
+  border: "1px solid #b6c8e3",
+  background: "#eef6ff",
+  color: "#111",
 };
 
 /* مدخلات داخل خلايا الجدول بنفس الستايل */
@@ -872,15 +864,6 @@ const clearBtn = {
   fontSize: "1em",
   cursor: "pointer",
   boxShadow: "0 1px 6px #bfdbfe",
-};
-const deleteBtn = {
-  background: "#ef4444",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  fontSize: 15,
-  padding: "2px 10px",
-  cursor: "pointer",
 };
 const saveBtn = {
   marginRight: 5,
