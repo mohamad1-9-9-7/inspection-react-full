@@ -1,7 +1,6 @@
-// index.js  — Open-CRUD backend (Express + Postgres) with FULL public access
-// تشغيل: NODE_ENV=production PORT=5000 node index.js
-// متغيّرات البيئة المطلوبة في Render: DATABASE_URL
-// مثال DATABASE_URL (Neon): postgres://user:pass@host/db
+// index.js — Open-CRUD backend (Express + Postgres) with FULL public access
+// تشغيل محلي: PORT=5000 node index.js
+// متغيّرات البيئة: DATABASE_URL (Render Postgres)
 
 const express = require("express");
 const cors = require("cors");
@@ -11,11 +10,14 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 /* =================== CORS مفتوح للجميع =================== */
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type"],
-}));
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
+// هيدر إضافي تحسّبًا
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -29,11 +31,10 @@ app.use(express.json({ limit: "2mb" }));
 
 /* =================== PostgreSQL =================== */
 const { Pool } = pg;
+// ✅ تفعيل SSL دائمًا (ضروري عادةً مع Render Postgres)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes("neon.tech")
-    ? { rejectUnauthorized: false }
-    : undefined,
+  ssl: { rejectUnauthorized: false },
 });
 
 /* =================== تهيئة السكيمة =================== */
@@ -43,7 +44,7 @@ async function ensureSchema() {
       id          BIGSERIAL PRIMARY KEY,
       reporter    TEXT,
       type        TEXT NOT NULL,
-      payload     JSONB NOT NULL,
+      payload     JSONB NOT NULL,         -- يحتوي reportDate و items
       created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -51,6 +52,7 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_reports_type ON reports(type);
     CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at);
 
+    -- فهرس فريد على (type, payload->>'reportDate') ليدعم الـ UPSERT
     DO $$
     BEGIN
       IF NOT EXISTS (
@@ -77,6 +79,8 @@ app.get("/healthz", async (_req, res) => {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
 });
+// نقطة سهلة لتأكيد النسخة المنشورة
+app.get("/version", (_req, res) => res.json({ v: "open-crud-2" }));
 
 /* =================== Utilities =================== */
 function isPlainObject(x) {
@@ -84,7 +88,7 @@ function isPlainObject(x) {
 }
 
 /* =================== API =================== */
-// قراءة كل التقارير أو حسب النوع
+/** قراءة كل التقارير أو حسب النوع */
 app.get("/api/reports", async (req, res) => {
   const { type } = req.query;
   try {
@@ -93,17 +97,18 @@ app.get("/api/reports", async (req, res) => {
       : `SELECT * FROM reports ORDER BY created_at DESC`;
     const { rows } = await pool.query(q, type ? [type] : []);
     res.json({ ok: true, data: rows });
-  } catch {
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ ok: false, error: "db select failed" });
   }
 });
 
-// إضافة تقرير جديد
+/** إضافة تقرير جديد (قد يُكرر لنفس اليوم إن لم تستخدم PUT/UPSERT) */
 app.post("/api/reports", async (req, res) => {
   try {
     const { reporter, type, payload } = req.body || {};
     if (!type || !isPlainObject(payload)) {
-      return res.status(400).json({ ok: false, error: "type & payload required" });
+      return res.status(400).json({ ok: false, error: "type & payload are required" });
     }
     const { rows } = await pool.query(
       `INSERT INTO reports (reporter, type, payload)
@@ -112,12 +117,13 @@ app.post("/api/reports", async (req, res) => {
       [reporter || "anonymous", type, payload]
     );
     res.status(201).json({ ok: true, report: rows[0] });
-  } catch {
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ ok: false, error: "db insert failed" });
   }
 });
 
-// تعديل (UPSERT حسب type + reportDate)
+/** تعديل (UPSERT) حسب (type + reportDate) */
 app.put("/api/reports", async (req, res) => {
   try {
     const { reporter, type, payload } = req.body || {};
@@ -128,7 +134,8 @@ app.put("/api/reports", async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO reports (reporter, type, payload)
        VALUES ($1, $2, $3)
-       ON CONFLICT ON CONSTRAINT ux_reports_type_reportdate
+       -- ✅ استخدام الأعمدة/التعبير بدل اسم الـ CONSTRAINT
+       ON CONFLICT (type, (payload->>'reportDate'))
        DO UPDATE SET
          reporter   = EXCLUDED.reporter,
          payload    = EXCLUDED.payload,
@@ -137,12 +144,13 @@ app.put("/api/reports", async (req, res) => {
       [reporter || "anonymous", type, payload]
     );
     res.json({ ok: true, report: rows[0] });
-  } catch {
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ ok: false, error: "db upsert failed" });
   }
 });
 
-// تعديل بحسب ID
+/** تعديل بحسب ID */
 app.put("/api/reports/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -169,12 +177,13 @@ app.put("/api/reports/:id", async (req, res) => {
     );
     if (!rowCount) return res.status(404).json({ ok: false, error: "not found" });
     res.json({ ok: true, report: rows[0] });
-  } catch {
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ ok: false, error: "db update failed" });
   }
 });
 
-// حذف حسب النوع + التاريخ
+/** حذف حسب النوع + التاريخ */
 app.delete("/api/reports", async (req, res) => {
   try {
     const { type, reportDate } = req.query;
@@ -187,19 +196,21 @@ app.delete("/api/reports", async (req, res) => {
       [type, reportDate]
     );
     res.json({ ok: true, deleted: rowCount });
-  } catch {
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ ok: false, error: "db delete failed" });
   }
 });
 
-// حذف حسب ID
+/** حذف حسب ID */
 app.delete("/api/reports/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { rowCount } = await pool.query(`DELETE FROM reports WHERE id = $1`, [id]);
     if (!rowCount) return res.status(404).json({ ok: false, error: "not found" });
     res.json({ ok: true, deleted: rowCount });
-  } catch {
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ ok: false, error: "db delete failed" });
   }
 });
