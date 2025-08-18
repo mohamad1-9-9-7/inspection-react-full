@@ -15,11 +15,15 @@ const POS19Report = lazy(() => import("./pages/monitor/branches/POS19Report"));
 const OHCUpload = lazy(() => import("./pages/ohc/OHCUpload"));
 const OHCView = lazy(() => import("./pages/ohc/OHCView"));
 
-const QCSRawMaterialInspection = lazy(() => import("./pages/monitor/branches/shipment_recc/QCSRawMaterialInspection"));
+const QCSRawMaterialInspection = lazy(() =>
+  import("./pages/monitor/branches/shipment_recc/QCSRawMaterialInspection")
+);
 const QCSRawMaterialView = lazy(() => import("./pages/admin/QCSRawMaterialView"));
 
 const Returns = lazy(() => import("./pages/Returns"));
 const ReturnView = lazy(() => import("./pages/ReturnView"));
+const BrowseReturns = lazy(() => import("./pages/BrowseReturns")); // ✅ جديد
+const ReturnsMenu = lazy(() => import("./ReturnsMenu")); // ✅ جديد: قائمة المرتجعات
 
 const LoginKPI = lazy(() => import("./pages/LoginKPI"));
 const KPIDashboard = lazy(() => import("./pages/KPIDashboard"));
@@ -34,7 +38,9 @@ const CarIconPage = lazy(() => import("./pages/car/pages/CarIcon"));
 // 🆕 صيانة
 const MaintenanceRequests = lazy(() => import("./pages/maintenance/MaintenanceRequests"));
 const MaintenanceHome = lazy(() => import("./pages/maintenance/MaintenanceHome"));
-const BrowseMaintenanceRequests = lazy(() => import("./pages/maintenance/BrowseMaintenanceRequests")); // ✅ جديد
+const BrowseMaintenanceRequests = lazy(() =>
+  import("./pages/maintenance/BrowseMaintenanceRequests")
+); // ✅ جديد
 
 /**
  * حماية المسارات الخاصة
@@ -194,11 +200,30 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          {/* صفحة الهب/القائمة */}
+          <Route
+            path="menu"
+            element={
+              <ProtectedRoute>
+                <ReturnsMenu />
+              </ProtectedRoute>
+            }
+          />
+          {/* تعديل/عرض تفصيلي */}
           <Route
             path="view"
             element={
               <ProtectedRoute>
                 <ReturnView />
+              </ProtectedRoute>
+            }
+          />
+          {/* تصفّح التقارير */}
+          <Route
+            path="browse"
+            element={
+              <ProtectedRoute>
+                <BrowseReturns />
               </ProtectedRoute>
             }
           />

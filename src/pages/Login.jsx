@@ -10,7 +10,7 @@ const roles = [
   { id: 'supervisor', label: 'مشرف', route: '/supervisor', icon: '🛠️' },
   { id: 'daily', label: 'مراقبة يومية', route: '/monitor', icon: '📅' },
   { id: 'ohc', label: 'OHC', route: '/ohc', icon: '🩺' },
-  { id: 'returns', label: 'مرتجعات', route: '/returns', icon: '♻️' },
+  { id: 'returns', label: 'مرتجعات', route: '/returns/menu', icon: '♻️' }, // ✅ تعديل هنا
   { id: 'finalProduct', label: 'تقرير المنتج النهائي', route: '/finished-product-entry', icon: '🏷️' },
   { id: 'cars', label: 'السيارات', route: '/cars', icon: '🚗' },
   // 🆕 تعديل المسار ليكون صفحة الهب الخاصة بالصيانة
