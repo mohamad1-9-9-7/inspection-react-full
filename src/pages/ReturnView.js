@@ -190,6 +190,22 @@ export default function ReturnView() {
   const [editActionVal, setEditActionVal] = useState("");
   const [editCustomActionVal, setEditCustomActionVal] = useState("");
 
+  // إضافة منتج جديد
+  const [addingNew, setAddingNew] = useState(false);
+  const [newItem, setNewItem] = useState({
+    productName: "",
+    origin: "",
+    butchery: "",
+    customButchery: "",
+    quantity: "",
+    qtyType: "",
+    customQtyType: "",
+    expiry: "",
+    remarks: "",
+    action: ACTIONS[0],
+    customAction: "",
+  });
+
   // (للواجهة أعلى الصفحة فقط)
   const [groupMode] = useState("day");
 
@@ -421,6 +437,83 @@ export default function ReturnView() {
     } catch (e) {
       console.error(e);
       setOpMsg("❌ فشل حذف التقرير من السيرفر.");
+    } finally {
+      setTimeout(() => setOpMsg(""), 3000);
+    }
+  };
+
+  /* ========== إضافة منتج جديد وحفظ التقرير المحدّث ========== */
+  const resetNewItem = () =>
+    setNewItem({
+      productName: "",
+      origin: "",
+      butchery: "",
+      customButchery: "",
+      quantity: "",
+      qtyType: "",
+      customQtyType: "",
+      expiry: "",
+      remarks: "",
+      action: ACTIONS[0],
+      customAction: "",
+    });
+
+  const handleAddNewClick = () => {
+    setAddingNew(true);
+    resetNewItem();
+  };
+
+  const handleAddNewCancel = () => {
+    setAddingNew(false);
+    resetNewItem();
+  };
+
+  const handleAddNewSave = async () => {
+    if (!selectedReport) return;
+
+    // بعض التحقق البسيط
+    if (!newItem.productName?.trim()) {
+      setOpMsg("❌ أدخل اسم المنتج.");
+      setTimeout(() => setOpMsg(""), 3000);
+      return;
+    }
+    const qtyNum = Number(newItem.quantity);
+    if (!Number.isFinite(qtyNum) || qtyNum <= 0) {
+      setOpMsg("❌ أدخل كمية صالحة (> 0).");
+      setTimeout(() => setOpMsg(""), 3000);
+      return;
+    }
+
+    // تحويل الحقول لتناسق الصيغة المستخدمة في الجدول
+    const prepared = {
+      productName: newItem.productName?.trim(),
+      origin: newItem.origin?.trim() || "",
+      // إذا المستخدم كتب customButchery، نخزن butchery = "فرع آخر..." ليظهر صحيح بالتفاصيل
+      butchery: newItem.customButchery?.trim()
+        ? "فرع آخر..."
+        : (newItem.butchery?.trim() || ""),
+      customButchery: newItem.customButchery?.trim() || "",
+      quantity: qtyNum,
+      // إذا كتب customQtyType نعتبرها "أخرى" ونخزن النص في customQtyType
+      qtyType: newItem.customQtyType?.trim() ? "أخرى" : (newItem.qtyType?.trim() || ""),
+      customQtyType: newItem.customQtyType?.trim() || "",
+      expiry: newItem.expiry?.trim() || "",
+      remarks: newItem.remarks?.trim() || "",
+      action: newItem.action || "",
+      customAction: newItem.action === "إجراء آخر..." ? (newItem.customAction?.trim() || "") : "",
+    };
+
+    try {
+      setOpMsg("⏳ جاري إضافة المنتج وحفظ التقرير…");
+      const newItems = [...(selectedReport.items || []), prepared];
+      await saveReportToServer(selectedReport.reportDate, newItems);
+      await reloadFromServer();
+      setAddingNew(false);
+      resetNewItem();
+      setOpMsg("✅ تمت إضافة المنتج وحُفِظ التقرير المحدّث.");
+    } catch (e) {
+      console.error(e);
+      setOpMsg("❌ فشل حفظ التقرير المحدّث.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -918,6 +1011,139 @@ export default function ReturnView() {
                   ))}
                 </tbody>
               </table>
+
+              {/* --- إضافة منتج جديد أسفل الجدول --- */}
+              <div
+                style={{
+                  marginTop: 12,
+                  background: "#f8fafc",
+                  border: "1px dashed #bfdbfe",
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
+                {!addingNew ? (
+                  <button
+                    onClick={handleAddNewClick}
+                    style={{
+                      background: "#2563eb",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 10,
+                      padding: "8px 16px",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      boxShadow: "0 1px 6px #bfdbfe",
+                    }}
+                  >
+                    ➕ إضافة منتج جديد
+                  </button>
+                ) : (
+                  <div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                        gap: 8,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <input
+                        style={cellInputStyle}
+                        placeholder="PRODUCT NAME"
+                        value={newItem.productName}
+                        onChange={(e) => setNewItem((s) => ({ ...s, productName: e.target.value }))}
+                      />
+                      <input
+                        style={cellInputStyle}
+                        placeholder="ORIGIN"
+                        value={newItem.origin}
+                        onChange={(e) => setNewItem((s) => ({ ...s, origin: e.target.value }))}
+                      />
+                      <input
+                        style={cellInputStyle}
+                        placeholder="BUTCHERY (اختياري)"
+                        value={newItem.butchery}
+                        onChange={(e) => setNewItem((s) => ({ ...s, butchery: e.target.value }))}
+                      />
+                      <input
+                        style={cellInputStyle}
+                        placeholder="BUTCHERY مخصص (يستبدل السابق)"
+                        value={newItem.customButchery}
+                        onChange={(e) =>
+                          setNewItem((s) => ({ ...s, customButchery: e.target.value }))
+                        }
+                      />
+                      <input
+                        style={cellInputStyle}
+                        placeholder="QUANTITY"
+                        type="number"
+                        min="0"
+                        value={newItem.quantity}
+                        onChange={(e) => setNewItem((s) => ({ ...s, quantity: e.target.value }))}
+                      />
+                      <input
+                        style={cellInputStyle}
+                        placeholder="QTY TYPE (اختياري)"
+                        value={newItem.qtyType}
+                        onChange={(e) => setNewItem((s) => ({ ...s, qtyType: e.target.value }))}
+                      />
+                      <input
+                        style={cellInputStyle}
+                       placeholder='QTY TYPE مخصص (يفعّل "أخرى")'
+
+                        value={newItem.customQtyType}
+                        onChange={(e) =>
+                          setNewItem((s) => ({ ...s, customQtyType: e.target.value }))
+                        }
+                      />
+                      <input
+                        style={cellInputStyle}
+                        placeholder="EXPIRY DATE (YYYY-MM-DD)"
+                        value={newItem.expiry}
+                        onChange={(e) => setNewItem((s) => ({ ...s, expiry: e.target.value }))}
+                      />
+                      <input
+                        style={cellInputStyle}
+                        placeholder="REMARKS (اختياري)"
+                        value={newItem.remarks}
+                        onChange={(e) => setNewItem((s) => ({ ...s, remarks: e.target.value }))}
+                      />
+                      <select
+                        style={cellInputStyle}
+                        value={newItem.action}
+                        onChange={(e) => setNewItem((s) => ({ ...s, action: e.target.value }))}
+                      >
+                        {ACTIONS.map((a) => (
+                          <option key={a} value={a}>
+                            {a}
+                          </option>
+                        ))}
+                      </select>
+                      {newItem.action === "إجراء آخر..." && (
+                        <input
+                          style={cellInputStyle}
+                          placeholder="اكتب الإجراء المخصص"
+                          value={newItem.customAction}
+                          onChange={(e) =>
+                            setNewItem((s) => ({ ...s, customAction: e.target.value }))
+                          }
+                        />
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={handleAddNewSave} style={saveBtn}>
+                        حفظ المنتج وإعادة حفظ التقرير
+                      </button>
+                      <button onClick={handleAddNewCancel} style={cancelBtn}>
+                        إلغاء
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* --- نهاية إضافة منتج --- */}
             </div>
           ) : (
             <div style={{ textAlign: "center", color: "#6b7280", padding: 80, fontSize: "1.05em" }}>

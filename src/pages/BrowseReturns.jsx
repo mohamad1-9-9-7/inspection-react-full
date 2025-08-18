@@ -52,9 +52,7 @@ function normalizeReturns(raw) {
     const prev = byDate.get(e.reportDate);
     if (!prev || e.ts > prev.ts) byDate.set(e.reportDate, e);
   }
-  const arr = Array.from(byDate.values());
-  arr.sort((a, b) => (b.reportDate || "").localeCompare(a.reportDate || ""));
-  return arr;
+  return Array.from(byDate.values());
 }
 function safeButchery(row) {
   return row?.butchery === "فرع آخر..." ? row?.customButchery || "" : row?.butchery || "";
@@ -80,6 +78,10 @@ export default function BrowseReturns() {
   const [filterTo, setFilterTo] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
 
+  // فتح/طي هرمية السنة والشهر
+  const [openYears, setOpenYears] = useState({});
+  const [openMonths, setOpenMonths] = useState({}); // key: YYYY-MM
+
   const [loadingServer, setLoadingServer] = useState(false);
   const [serverErr, setServerErr] = useState("");
 
@@ -91,11 +93,20 @@ export default function BrowseReturns() {
         fetchByType("returns"),
         fetchByType("returns_changes"),
       ]);
-      setReturnsData(normalizeReturns(rawReturns));
+      const normalized = normalizeReturns(rawReturns);
+      setReturnsData(normalized);
       setChangesData(rawChanges);
-      if (!selectedDate) {
-        const n = normalizeReturns(rawReturns);
-        if (n.length) setSelectedDate(n[0].reportDate);
+
+      // اختيار أقدم تاريخ افتراضيًا وفتح سنته/شهره
+      if (!selectedDate && normalized.length) {
+        const oldest = [...normalized]
+          .map((r) => r.reportDate)
+          .sort((a, b) => a.localeCompare(b))[0];
+        setSelectedDate(oldest);
+        const y = oldest.slice(0, 4);
+        const m = oldest.slice(5, 7);
+        setOpenYears((p) => ({ ...p, [y]: true }));
+        setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
       }
     } catch (e) {
       console.error(e);
@@ -129,29 +140,165 @@ export default function BrowseReturns() {
     return map;
   }, [changesData]);
 
-  // فلترة حسب من/إلى
-  const filteredReports = useMemo(() => {
-    return returnsData.filter((r) => {
+  // فلترة حسب من/إلى (وتصاعدي)
+  const filteredReportsAsc = useMemo(() => {
+    const arr = returnsData.filter((r) => {
       const d = r.reportDate || "";
       if (filterFrom && d < filterFrom) return false;
       if (filterTo && d > filterTo) return false;
       return true;
     });
+    arr.sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || "")); // الأقدم أولًا
+    return arr;
   }, [returnsData, filterFrom, filterTo]);
 
+  // تأكيد selectedDate ضمن النطاق
   useEffect(() => {
-    if (!filteredReports.length) {
+    if (!filteredReportsAsc.length) {
       setSelectedDate("");
       return;
     }
-    const still = filteredReports.some((r) => r.reportDate === selectedDate);
-    if (!still) setSelectedDate(filteredReports[0].reportDate);
-  }, [filteredReports, selectedDate]);
+    const still = filteredReportsAsc.some((r) => r.reportDate === selectedDate);
+    if (!still) {
+      setSelectedDate(filteredReportsAsc[0].reportDate);
+      const y = filteredReportsAsc[0].reportDate.slice(0, 4);
+      const m = filteredReportsAsc[0].reportDate.slice(5, 7);
+      setOpenYears((p) => ({ ...p, [y]: true }));
+      setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
+    }
+  }, [filteredReportsAsc, selectedDate]);
 
   const selectedReport =
-    filteredReports.find((r) => r.reportDate === selectedDate) || null;
+    filteredReportsAsc.find((r) => r.reportDate === selectedDate) || null;
+
+  /* ===== هرمية سنة → شهر → يوم (تصاعدي) ===== */
+  const hierarchyAsc = useMemo(() => {
+    const years = new Map(); // y -> Map(m -> array of days)
+    filteredReportsAsc.forEach((rep) => {
+      const d = rep.reportDate;
+      const y = d.slice(0, 4);
+      const m = d.slice(5, 7);
+      if (!years.has(y)) years.set(y, new Map());
+      const months = years.get(y);
+      if (!months.has(m)) months.set(m, []);
+      months.get(m).push(d);
+    });
+    years.forEach((months) => {
+      months.forEach((days) => days.sort((a, b) => a.localeCompare(b))); // أيام تصاعديًا
+    });
+    const sortedYears = Array.from(years.keys()).sort((a, b) => a.localeCompare(b)); // سنوات تصاعديًا
+    return sortedYears.map((y) => {
+      const months = years.get(y);
+      const sortedMonths = Array.from(months.keys()).sort((a, b) => a.localeCompare(b)); // شهور تصاعديًا
+      return {
+        year: y,
+        months: sortedMonths.map((m) => ({ month: m, days: months.get(m) })),
+      };
+    });
+  }, [filteredReportsAsc]);
+
+  /* ================= KPIs =================
+     - Top POS (Items): أكثر POS بعدد العناصر
+     - Top POS by Quantity: الأفضل حسب (KG + PCS)، مع عرض كل منهما
+     - Total Reports / Items / Qty
+     - Top Action (Latest only): يعتمد على أحدث إجراء لكل صنف في ذلك اليوم عبر returns_changes
+  */
+  const kpi = useMemo(() => {
+    let totalItems = 0;
+    let totalQty = 0;
+
+    const posCountItems = {};
+    const posKg = {};
+    const posPcs = {};
+    const byActionLatest = {};
+
+    const isKgType = (t) => {
+      const s = (t || "").toString().toLowerCase();
+      return s.includes("kg") || s.includes("كيلو") || s.includes("كجم");
+    };
+
+    // Helper: أحدث إجراء لهذا الصنف في تاريخ معيّن
+    const latestActionFor = (date, row) => {
+      const inner = changeMapByDate.get(date) || new Map();
+      const ch = inner.get(itemKey(row));
+      return ch?.to ?? actionText(row);
+    };
+
+    filteredReportsAsc.forEach((rep) => {
+      const date = rep.reportDate;
+      totalItems += (rep.items || []).length;
+      (rep.items || []).forEach((it) => {
+        const q = Number(it.quantity || 0);
+        totalQty += q;
+
+        // POS
+        const pos =
+          it.butchery === "فرع آخر..." ? it.customButchery || "—" : it.butchery || "—";
+        posCountItems[pos] = (posCountItems[pos] || 0) + 1;
+        if (isKgType(it.qtyType)) posKg[pos] = (posKg[pos] || 0) + q;
+        else posPcs[pos] = (posPcs[pos] || 0) + q;
+
+        // أحدث إجراء فقط
+        const act = latestActionFor(date, it);
+        if (act) byActionLatest[act] = (byActionLatest[act] || 0) + 1;
+      });
+    });
+
+    const pickMax = (obj) => {
+      let bestK = "—";
+      let bestV = -Infinity;
+      for (const [k, v] of Object.entries(obj)) {
+        if (v > bestV) {
+          bestV = v;
+          bestK = k;
+        }
+      }
+      return { key: bestK, value: bestV > 0 ? bestV : 0 };
+    };
+
+    const topActionLatest = pickMax(byActionLatest);
+    const topPosByItems = pickMax(posCountItems);
+
+    // POS الأعلى حسب إجمالي الكمية (kg + pcs) مع عرض كل منهما
+    const allPos = new Set([...Object.keys(posKg), ...Object.keys(posPcs)]);
+    let bestKey = "—";
+    let bestScore = -Infinity;
+    allPos.forEach((p) => {
+      const s = (posKg[p] || 0) + (posPcs[p] || 0);
+      if (s > bestScore) {
+        bestScore = s;
+        bestKey = p;
+      }
+    });
+    const topPosByQty = {
+      key: bestKey,
+      kg: Math.round((posKg[bestKey] || 0) * 1000) / 1000,
+      pcs: Math.round((posPcs[bestKey] || 0) * 1000) / 1000,
+    };
+
+    return {
+      totalReports: filteredReportsAsc.length,
+      totalItems,
+      totalQty,
+      topActionLatest,
+      topPosByItems,
+      topPosByQty,
+    };
+  }, [filteredReportsAsc, changeMapByDate]);
 
   /* ========== أنماط ========== */
+  const kpiBox = {
+    background: "rgba(59,130,246,0.12)", // أزرق شفاف
+    border: "1.5px solid #000",
+    borderRadius: 16,
+    padding: "1rem 1.2rem",
+    textAlign: "center",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+    color: "#111",
+  };
+  const kpiTitle = { fontWeight: "bold", marginBottom: 6 };
+  const kpiValue = { fontSize: "1.8em", fontWeight: 800 };
+
   const dateInputStyle = {
     borderRadius: 8,
     border: "1.5px solid #93c5fd",
@@ -172,8 +319,8 @@ export default function BrowseReturns() {
     cursor: "pointer",
     boxShadow: "0 1px 6px #bfdbfe",
   };
-  const leftList = {
-    minWidth: 260,
+  const leftTree = {
+    minWidth: 280,
     background: "#fff",
     borderRadius: 12,
     boxShadow: "0 1px 10px #e8daef66",
@@ -183,17 +330,36 @@ export default function BrowseReturns() {
     overflow: "auto",
     color: "#111",
   };
-  const dayItem = (active) => ({
+  const treeHeader = {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: 800,
+    color: "#111",
+    borderBottom: "1px solid #e5e7eb",
+  };
+  const treeSubHeader = {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "8px 14px",
+    cursor: "pointer",
+    color: "#111",
+    borderBottom: "1px dashed #e5e7eb",
+  };
+  const treeDay = (active) => ({
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "10px 14px",
+    padding: "8px 14px",
     cursor: "pointer",
     borderBottom: "1px dashed #e5e7eb",
     background: active ? "#e0f2fe" : "#fff",
     borderRight: active ? "5px solid #3b82f6" : "none",
+    fontSize: "0.98em",
     color: "#111",
   });
+
   const rightPanel = {
     flex: 1,
     background: "#fff",
@@ -255,6 +421,63 @@ export default function BrowseReturns() {
       >
         📂 تصفّح تقارير المرتجعات (عرض فقط)
       </h2>
+
+      {/* KPIs */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+          gap: "12px",
+          marginBottom: 14,
+        }}
+      >
+        {/* Top POS by Quantity */}
+        <div style={kpiBox}>
+          <div style={kpiTitle}>Top POS by Quantity / أكثر فرع إرجاعًا حسب الكمية</div>
+          <div style={{ fontSize: "0.95em", marginTop: 6 }}>
+            <div>PCS 🧮</div>
+            <div style={{ fontWeight: 700 }}>
+              {kpi.topPosByQty.key} — {kpi.topPosByQty.pcs || 0}
+            </div>
+            <div style={{ marginTop: 6 }}>KG ⚖️</div>
+            <div style={{ fontWeight: 700 }}>
+              {kpi.topPosByQty.key} — {kpi.topPosByQty.kg || 0} kg
+            </div>
+          </div>
+        </div>
+
+        {/* Top POS (Items) */}
+        <div style={kpiBox}>
+          <div style={kpiTitle}>Top POS (Items) / أكثر فرع إرجاعًا (عدد العناصر)</div>
+          <div style={kpiValue}>{kpi.topPosByItems.value || 0}</div>
+          <div style={{ opacity: 0.8 }}>POS {kpi.topPosByItems.key}</div>
+        </div>
+
+        {/* Total Reports */}
+        <div style={kpiBox}>
+          <div style={kpiTitle}>Total Reports / إجمالي التقارير</div>
+          <div style={kpiValue}>{kpi.totalReports}</div>
+        </div>
+
+        {/* Total Items */}
+        <div style={kpiBox}>
+          <div style={kpiTitle}>Total Items / إجمالي العناصر</div>
+          <div style={kpiValue}>{kpi.totalItems}</div>
+        </div>
+
+        {/* Total Qty */}
+        <div style={kpiBox}>
+          <div style={kpiTitle}>Total Qty / إجمالي الكميات</div>
+          <div style={kpiValue}>{kpi.totalQty}</div>
+        </div>
+
+        {/* Top Action (Latest only) */}
+        <div style={kpiBox}>
+          <div style={kpiTitle}>Top Action (Latest) / أكثر إجراء (الأحدث فقط)</div>
+          <div style={kpiValue}>{kpi.topActionLatest.value || 0}</div>
+          <div style={{ opacity: 0.8 }}>{kpi.topActionLatest.key}</div>
+        </div>
+      </div>
 
       {loadingServer && (
         <div style={{ textAlign: "center", marginBottom: 10, color: "#1f2937" }}>
@@ -319,27 +542,75 @@ export default function BrowseReturns() {
         </div>
       </div>
 
-      {/* تخطيط: يسار تواريخ + يمين تفاصيل اليوم المختار */}
+      {/* تخطيط: يسار هرمية سنة→شهر→يوم (تصاعدي) + يمين تفاصيل اليوم المختار */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, minHeight: 420 }}>
-        {/* يسار: قائمة أيام */}
-        <div style={leftList}>
-          {filteredReports.length === 0 ? (
+        {/* يسار: شجرة التواريخ */}
+        <div style={leftTree}>
+          {hierarchyAsc.length === 0 ? (
             <div style={{ textAlign: "center", padding: 60, color: "#6b7280", fontSize: "1.03em" }}>
               لا يوجد تقارير للفترة المختارة.
             </div>
           ) : (
-            filteredReports.map((r) => (
-              <div
-                key={r.reportDate}
-                style={dayItem(selectedDate === r.reportDate)}
-                onClick={() => setSelectedDate(r.reportDate)}
-              >
-                <div>📅 {r.reportDate}</div>
-                <div style={{ color: "#111", fontWeight: 700 }}>
-                  {r.items?.length || 0} صنف
+            hierarchyAsc.map(({ year, months }) => {
+              const yOpen = !!openYears[year];
+              const yearCount = months.reduce((acc, mo) => acc + mo.days.length, 0);
+              return (
+                <div key={year} style={{ marginBottom: 4 }}>
+                  <div
+                    style={{ ...treeHeader, background: yOpen ? "#e0f2fe" : "#eff6ff" }}
+                    onClick={() =>
+                      setOpenYears((prev) => ({ ...prev, [year]: !prev[year] }))
+                    }
+                  >
+                    <span>{yOpen ? "▼" : "►"} سنة {year}</span>
+                    <span style={{ color: "#111", fontWeight: 700 }}>{yearCount} يوم</span>
+                  </div>
+
+                  {yOpen && (
+                    <div style={{ padding: "6px 0 6px 0" }}>
+                      {months.map(({ month, days }) => {
+                        const key = `${year}-${month}`;
+                        const mOpen = !!openMonths[key];
+                        return (
+                          <div key={key} style={{ margin: "4px 0 6px" }}>
+                            <div
+                              style={{ ...treeSubHeader, background: mOpen ? "#f0f9ff" : "#ffffff" }}
+                              onClick={() =>
+                                setOpenMonths((prev) => ({ ...prev, [key]: !prev[key] }))
+                              }
+                            >
+                              <span>{mOpen ? "▾" : "▸"} شهر {month}</span>
+                              <span style={{ color: "#111" }}>{days.length} يوم</span>
+                            </div>
+
+                            {mOpen && (
+                              <div>
+                                {days.map((d) => {
+                                  const isSelected = selectedDate === d;
+                                  const rep = filteredReportsAsc.find((r) => r.reportDate === d);
+                                  return (
+                                    <div
+                                      key={d}
+                                      style={treeDay(isSelected)}
+                                      onClick={() => setSelectedDate(d)}
+                                    >
+                                      <div>📅 {d}</div>
+                                      <div style={{ color: "#111", fontWeight: 700 }}>
+                                        {(rep?.items?.length || 0)} صنف
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -358,7 +629,7 @@ export default function BrowseReturns() {
                     <th style={th}>SL.NO</th>
                     <th style={th}>PRODUCT NAME</th>
                     <th style={th}>ORIGIN</th>
-                    <th style={th}>BUTCHERY</th>
+                    <th style={th}>POS</th>
                     <th style={th}>QUANTITY</th>
                     <th style={th}>QTY TYPE</th>
                     <th style={th}>EXPIRY DATE</th>

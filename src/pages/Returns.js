@@ -10,19 +10,19 @@ const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nv
 const BRANCHES = [
   "QCS", "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16",
   "POS 17", "POS 19", "POS 21", "POS 24", "POS 25", "POS 37", "POS 38",
-  "POS 42", "POS 44", "POS 45", "فرع آخر..."
+  "POS 42", "POS 44", "POS 45", "فرع آخر... / Other branch"
 ];
 
 // خيارات الإجراء
 const ACTIONS = [
-  "Use in production",
-  "Condemnation",
-  "Use in kitchen",
-  "Send to market",
-  "إجراء آخر..."
+  "Use in production / استخدام في الإنتاج",
+  "Condemnation / إتلاف",
+  "Use in kitchen / استخدام في المطبخ",
+  "Send to market / إرسال للسوق",
+  "إجراء آخر... / Other action"
 ];
 
-const QTY_TYPES = ["KG", "PCS", "أخرى"];
+const QTY_TYPES = ["KG", "PCS", "أخرى / Other"];
 
 function getToday() {
   return new Date().toISOString().slice(0, 10);
@@ -96,9 +96,9 @@ export default function Returns() {
     const updated = [...rows];
     updated[idx][field] = value;
     // إعادة ضبط الحقول المخصّصة عند اختيار خيار قياسي
-    if (field === "butchery" && value !== "فرع آخر...") updated[idx].customButchery = "";
-    if (field === "action" && value !== "إجراء آخر...") updated[idx].customAction = "";
-    if (field === "qtyType" && value !== "أخرى") updated[idx].customQtyType = "";
+    if (field === "butchery" && value !== "فرع آخر... / Other branch") updated[idx].customButchery = "";
+    if (field === "action" && value !== "إجراء آخر... / Other action") updated[idx].customAction = "";
+    if (field === "qtyType" && value !== "أخرى / Other") updated[idx].customQtyType = "";
     setRows(updated);
   };
 
@@ -118,17 +118,17 @@ export default function Returns() {
         r.customAction.trim()
     );
     if (!filtered.length) {
-      setSaveMsg("يجب إضافة بيانات على الأقل!");
+      setSaveMsg("يجب إضافة بيانات على الأقل! / Please add at least one row.");
       setTimeout(() => setSaveMsg(""), 1700);
       return;
     }
 
     try {
-      setSaveMsg("⏳ جاري الحفظ على السيرفر…");
+      setSaveMsg("⏳ جاري الحفظ على السيرفر… / Saving to server…");
       await sendOneToServer({ reportDate, items: filtered });
-      setSaveMsg("✅ تم الحفظ على السيرفر بنجاح!");
+      setSaveMsg("✅ تم الحفظ على السيرفر بنجاح! / Saved successfully.");
     } catch (err) {
-      setSaveMsg("❌ فشل الحفظ على السيرفر. حاول مجددًا.");
+      setSaveMsg("❌ فشل الحفظ على السيرفر. حاول مجددًا. / Save failed. Please try again.");
       console.error(err);
     } finally {
       setTimeout(() => setSaveMsg(""), 3500);
@@ -175,7 +175,7 @@ export default function Returns() {
           fontWeight: "bold",
         }}>
           <span role="img" aria-label="calendar" style={{ fontSize: 22 }}>📅</span>
-          تاريخ إعداد التقرير:
+          تاريخ إعداد التقرير / Report Date:
           <input
             type="date"
             value={reportDate}
@@ -211,7 +211,7 @@ export default function Returns() {
             padding: "10px 32px",
             cursor: "pointer",
             boxShadow: "0 2px 8px #d4efdf"
-          }}>💾 حفظ</button>
+          }}>💾 حفظ / Save</button>
         <button onClick={() => navigate("/returns/view")}
           style={{
             background: "#884ea0",
@@ -223,7 +223,7 @@ export default function Returns() {
             padding: "10px 32px",
             cursor: "pointer",
             boxShadow: "0 2px 8px #d2b4de"
-          }}>📋 عرض التقارير</button>
+          }}>📋 عرض التقارير / View Reports</button>
         {saveMsg && (
           <span style={{
             marginRight: 18, fontWeight: "bold",
@@ -245,15 +245,15 @@ export default function Returns() {
         }}>
           <thead>
             <tr style={{ background: "#e8daef", color: "#512e5f" }}>
-              <th style={th}>SL.NO</th>
-              <th style={th}>PRODUCT NAME</th>
-              <th style={th}>ORIGIN</th>
-              <th style={th}>BUTCHERY</th>
-              <th style={th}>QUANTITY</th>
-              <th style={th}>QTY TYPE</th>
-              <th style={th}>EXPIRY DATE</th>
-              <th style={th}>REMARKS</th>
-              <th style={th}>ACTION</th>
+              <th style={th}>التسلسل / SL.NO</th>
+              <th style={th}>اسم المنتج / PRODUCT NAME</th>
+              <th style={th}>المنشأ / ORIGIN</th>
+              <th style={th}>الفرع / BUTCHERY</th>
+              <th style={th}>الكمية / QUANTITY</th>
+              <th style={th}>نوع الكمية / QTY TYPE</th>
+              <th style={th}>تاريخ الانتهاء / EXPIRY DATE</th>
+              <th style={th}>ملاحظات / REMARKS</th>
+              <th style={th}>الإجراء / ACTION</th>
               <th style={th}></th>
             </tr>
           </thead>
@@ -263,11 +263,13 @@ export default function Returns() {
                 <td style={td}>{idx + 1}</td>
                 <td style={td}>
                   <input style={input}
+                    placeholder="اكتب اسم المنتج / Enter product name"
                     value={row.productName}
                     onChange={e => handleChange(idx, "productName", e.target.value)} />
                 </td>
                 <td style={td}>
                   <input style={input}
+                    placeholder="اكتب المنشأ / Enter origin"
                     value={row.origin}
                     onChange={e => handleChange(idx, "origin", e.target.value)} />
                 </td>
@@ -275,20 +277,21 @@ export default function Returns() {
                   <select style={input}
                     value={row.butchery}
                     onChange={e => handleChange(idx, "butchery", e.target.value)}>
-                    <option value="">اختر الفرع</option>
+                    <option value="">{`اختر الفرع / Select branch`}</option>
                     {BRANCHES.map(b => (
                       <option key={b} value={b}>{b}</option>
                     ))}
                   </select>
-                  {row.butchery === "فرع آخر..." && (
+                  {row.butchery === "فرع آخر... / Other branch" && (
                     <input style={{ ...input, marginTop: 6 }}
-                      placeholder="اكتب اسم الفرع..."
+                      placeholder="اكتب اسم الفرع / Enter branch name"
                       value={row.customButchery}
                       onChange={e => handleChange(idx, "customButchery", e.target.value)} />
                   )}
                 </td>
                 <td style={td}>
                   <input type="number" min="0" style={input}
+                    placeholder="ادخل الكمية / Enter quantity"
                     value={row.quantity}
                     onChange={e => handleChange(idx, "quantity", e.target.value)} />
                 </td>
@@ -300,20 +303,22 @@ export default function Returns() {
                       <option key={q} value={q}>{q}</option>
                     ))}
                   </select>
-                  {row.qtyType === "أخرى" && (
+                  {row.qtyType === "أخرى / Other" && (
                     <input style={{ ...input, marginTop: 6 }}
-                      placeholder="اكتب النوع..."
+                      placeholder="اكتب النوع / Enter type"
                       value={row.customQtyType}
                       onChange={e => handleChange(idx, "customQtyType", e.target.value)} />
                   )}
                 </td>
                 <td style={td}>
                   <input type="date" style={input}
+                    placeholder="YYYY-MM-DD"
                     value={row.expiry}
                     onChange={e => handleChange(idx, "expiry", e.target.value)} />
                 </td>
                 <td style={td}>
                   <input style={input}
+                    placeholder="اكتب ملاحظات / Enter remarks"
                     value={row.remarks}
                     onChange={e => handleChange(idx, "remarks", e.target.value)} />
                 </td>
@@ -321,14 +326,14 @@ export default function Returns() {
                   <select style={input}
                     value={row.action}
                     onChange={e => handleChange(idx, "action", e.target.value)}>
-                    <option value="">اختر الإجراء</option>
+                    <option value="">{`اختر الإجراء / Select action`}</option>
                     {ACTIONS.map(a => (
                       <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
-                  {row.action === "إجراء آخر..." && (
+                  {row.action === "إجراء آخر... / Other action" && (
                     <input style={{ ...input, marginTop: 6 }}
-                      placeholder="اكتب الإجراء..."
+                      placeholder="اكتب الإجراء / Enter action"
                       value={row.customAction}
                       onChange={e => handleChange(idx, "customAction", e.target.value)} />
                   )}
@@ -342,7 +347,7 @@ export default function Returns() {
                         fontWeight: "bold", fontSize: 20,
                         padding: "4px 12px", cursor: "pointer"
                       }}
-                      title="حذف الصف">✖</button>
+                      title="حذف الصف / Delete row">✖</button>
                   )}
                 </td>
               </tr>
@@ -358,7 +363,7 @@ export default function Returns() {
             fontWeight: "bold", fontSize: "1.13em",
             padding: "12px 35px", cursor: "pointer",
             boxShadow: "0 2px 8px #d2b4de"
-          }}>➕ إضافة صف جديد</button>
+          }}>➕ إضافة صف جديد / Add new row</button>
       </div>
     </div>
   );
