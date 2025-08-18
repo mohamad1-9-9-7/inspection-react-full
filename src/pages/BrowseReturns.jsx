@@ -66,6 +66,7 @@ function itemKey(row) {
   ].join("|");
 }
 function actionText(row) {
+  // ملاحظة: نتركها كما هي (العربي) للحفاظ على التوافق مع البيانات القديمة
   return row?.action === "إجراء آخر..." ? row?.customAction || "" : row?.action || "";
 }
 
@@ -197,12 +198,7 @@ export default function BrowseReturns() {
     });
   }, [filteredReportsAsc]);
 
-  /* ================= KPIs =================
-     - Top POS (Items): أكثر POS بعدد العناصر
-     - Top POS by Quantity: الأفضل حسب (KG + PCS)، مع عرض كل منهما
-     - Total Reports / Items / Qty
-     - Top Action (Latest only): يعتمد على أحدث إجراء لكل صنف في ذلك اليوم عبر returns_changes
-  */
+  /* ================= KPIs ================= */
   const kpi = useMemo(() => {
     let totalItems = 0;
     let totalQty = 0;
@@ -285,6 +281,139 @@ export default function BrowseReturns() {
       topPosByQty,
     };
   }, [filteredReportsAsc, changeMapByDate]);
+
+  /* ========== PDF Export (الجدول فقط + شعار نصي أعلى يمين) ========== */
+  async function ensureJsPDF() {
+    if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Failed to load jsPDF"));
+      document.head.appendChild(s);
+    });
+    return window.jspdf.jsPDF;
+  }
+  async function ensureAutoTable() {
+    if (
+      window.jspdf &&
+      window.jspdf.jsPDF &&
+      window.jspdf.jsPDF.API &&
+      window.jspdf.jsPDF.API.autoTable
+    ) {
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js";
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Failed to load jsPDF-AutoTable"));
+      document.head.appendChild(s);
+    });
+  }
+
+  const handleExportPDF = async () => {
+    if (!selectedReport) return;
+    try {
+      const JsPDF = await ensureJsPDF();
+      await ensureAutoTable();
+
+      // دعم بيانات قديمة/جديدة لـ Other...
+      const isOther = (v) => v === "إجراء آخر..." || v === "Other...";
+      const actionTextSafe = (row) =>
+        isOther(row?.action) ? row?.customAction || "" : row?.action || "";
+
+      // صفحة أفقية + توزيع أعمدة نسبي لمنع القص
+      const doc = new JsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
+
+      const marginL = 30, marginR = 30;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const avail = pageWidth - marginL - marginR;
+
+      // رأس الصفحة (يتكرر بكل صفحة)
+      const drawHeader = () => {
+        // يسار: عنوان وتاريخ
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text("Returns Report", marginL, 36);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(11);
+        doc.text(`Date: ${selectedReport.reportDate}`, marginL, 54);
+
+        // يمين: "شعار" المواشي كنص
+        const rightX = pageWidth - marginR;
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(180, 0, 0);
+        doc.setFontSize(18);
+        doc.text("AL MAWASHI", rightX, 30, { align: "right" });
+
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.text("Trans Emirates Livestock Trading L.L.C.", rightX, 46, { align: "right" });
+      };
+
+      drawHeader();
+
+      const head = [
+        ["SL", "PRODUCT", "ORIGIN", "POS", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"],
+      ];
+
+      const body = (selectedReport.items || []).map((row, i) => {
+        const pos = row.butchery === "فرع آخر..." ? row.customButchery || "" : row.butchery || "";
+        const qtyType = row.qtyType === "أخرى" ? row.customQtyType || "" : row.qtyType || "";
+        return [
+          String(i + 1),
+          row.productName || "",
+          row.origin || "",
+          pos,
+          String(row.quantity ?? ""),
+          qtyType,
+          row.expiry || "",
+          row.remarks || "",
+          actionTextSafe(row) || "",
+        ];
+      });
+
+      // نسب عرض الأعمدة
+      const frac = [0.05, 0.17, 0.12, 0.10, 0.07, 0.10, 0.10, 0.17, 0.12];
+      const columnStyles = {};
+      frac.forEach((f, idx) => (columnStyles[idx] = { cellWidth: Math.floor(avail * f) }));
+
+      doc.autoTable({
+        head,
+        body,
+        margin: { top: 80, left: marginL, right: marginR }, // نترك مساحة للهيدر
+        tableWidth: avail,
+        styles: {
+          font: "helvetica",
+          fontSize: 9,
+          cellPadding: 3,
+          lineColor: [182, 200, 227],
+          lineWidth: 0.5,
+          halign: "center",
+          valign: "middle",
+          overflow: "linebreak",
+        },
+        headStyles: {
+          fillColor: [219, 234, 254],
+          textColor: [17, 17, 17],
+          fontStyle: "bold",
+        },
+        columnStyles,
+        didDrawPage: () => {
+          // ارسم الهيدر في كل صفحة
+          drawHeader();
+        },
+      });
+
+      doc.save(`returns_${selectedReport.reportDate}.pdf`);
+    } catch (e) {
+      console.error(e);
+      alert("❌ تعذر إنشاء PDF. حاول مجددًا.");
+    }
+  };
 
   /* ========== أنماط ========== */
   const kpiBox = {
@@ -619,10 +748,34 @@ export default function BrowseReturns() {
           {selectedReport ? (
             <div>
               <div
-                style={{ fontWeight: "bold", color: "#111", fontSize: "1.2em", marginBottom: 8 }}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 8,
+                }}
               >
-                تفاصيل تقرير المرتجعات ({selectedReport.reportDate})
+                <div style={{ fontWeight: "bold", color: "#111", fontSize: "1.2em" }}>
+                  تفاصيل تقرير المرتجعات ({selectedReport.reportDate})
+                </div>
+                <button
+                  onClick={handleExportPDF}
+                  style={{
+                    background: "#111827",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "8px 14px",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}
+                  title="تصدير PDF"
+                >
+                  ⬇️ تصدير PDF
+                </button>
               </div>
+
               <table style={table}>
                 <thead>
                   <tr style={{ background: "#dbeafe", color: "#111" }}>

@@ -13,13 +13,13 @@ const BRANCHES = [
   "POS 42", "POS 44", "POS 45", "فرع آخر... / Other branch"
 ];
 
-// خيارات الإجراء
+// خيارات الإجراء — English ONLY (ثابتة للتخزين والمقارنة)
 const ACTIONS = [
-  "Use in production / استخدام في الإنتاج",
-  "Condemnation / إتلاف",
-  "Use in kitchen / استخدام في المطبخ",
-  "Send to market / إرسال للسوق",
-  "إجراء آخر... / Other action"
+  "Use in production",
+  "Condemnation",
+  "Use in kitchen",
+  "Send to market",
+  "Other..."
 ];
 
 const QTY_TYPES = ["KG", "PCS", "أخرى / Other"];
@@ -97,7 +97,7 @@ export default function Returns() {
     updated[idx][field] = value;
     // إعادة ضبط الحقول المخصّصة عند اختيار خيار قياسي
     if (field === "butchery" && value !== "فرع آخر... / Other branch") updated[idx].customButchery = "";
-    if (field === "action" && value !== "إجراء آخر... / Other action") updated[idx].customAction = "";
+    if (field === "action" && value !== "Other...") updated[idx].customAction = "";
     if (field === "qtyType" && value !== "أخرى / Other") updated[idx].customQtyType = "";
     setRows(updated);
   };
@@ -326,14 +326,14 @@ export default function Returns() {
                   <select style={input}
                     value={row.action}
                     onChange={e => handleChange(idx, "action", e.target.value)}>
-                    <option value="">{`اختر الإجراء / Select action`}</option>
+                    <option value="">{`Select action`}</option>
                     {ACTIONS.map(a => (
                       <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
-                  {row.action === "إجراء آخر... / Other action" && (
+                  {row.action === "Other..." && (
                     <input style={{ ...input, marginTop: 6 }}
-                      placeholder="اكتب الإجراء / Enter action"
+                      placeholder="Enter custom action"
                       value={row.customAction}
                       onChange={e => handleChange(idx, "customAction", e.target.value)} />
                   )}
@@ -362,7 +362,7 @@ export default function Returns() {
             border: "none", borderRadius: "14px",
             fontWeight: "bold", fontSize: "1.13em",
             padding: "12px 35px", cursor: "pointer",
-            boxShadow: "0 2px 8px #d2b4de"
+            boxShadow: "0 2px 8px #د2b4de"
           }}>➕ إضافة صف جديد / Add new row</button>
       </div>
     </div>
