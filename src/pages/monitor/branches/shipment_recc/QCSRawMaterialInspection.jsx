@@ -2,47 +2,20 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
-/* ========================= 🔗 API Base ========================= */
-let API_BASE = "https://inspection-server-4nvj.onrender.com";
-try {
-  if (
-    typeof import.meta !== "undefined" &&
+/* ========================= 🔗 API Base (خارجي فقط) ========================= */
+const API_BASE = (
+  (typeof process !== "undefined" &&
+    process.env &&
+    process.env.REACT_APP_API_URL) ||
+  (typeof import.meta !== "undefined" &&
     import.meta &&
     import.meta.env &&
-    import.meta.env.VITE_API_URL
-  ) {
-    API_BASE = import.meta.env.VITE_API_URL;
-  }
-} catch {}
-
-/* ========================= 🗄️ مفاتيح التخزين ========================= */
-const LS_KEY_REPORTS = "qcs_raw_material_reports";        // التقارير المحفوظة محليًا
-const LS_KEY_SYNCQ   = "qcs_raw_material_sync_queue";     // طابور مزامنة للسيرفر
-
-/* ========================= 🧰 طابور المزامنة ========================= */
-function readQueue() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY_SYNCQ) || "[]"); } catch { return []; }
-}
-function writeQueue(q) {
-  localStorage.setItem(LS_KEY_SYNCQ, JSON.stringify(q));
-}
-function enqueueSync(item) {
-  const q = readQueue();
-  q.push(item);
-  writeQueue(q);
-}
-function dequeueSync() {
-  const q = readQueue();
-  const first = q.shift();
-  writeQueue(q);
-  return first;
-}
-function queueLength() {
-  return readQueue().length;
-}
+    import.meta.env.VITE_API_URL) ||
+  "https://inspection-server-4nvj.onrender.com"
+).replace(/\/$/, "");
 
 /* ========================= ✉️ إرسال تقرير واحد للسيرفر ========================= */
-async function sendOneToServer({ payload }) {
+async function sendToServer(payload) {
   let reporter = "anonymous";
   try {
     const raw = localStorage.getItem("currentUser");
@@ -50,72 +23,15 @@ async function sendOneToServer({ payload }) {
     reporter = user?.username || reporter;
   } catch {}
   const res = await fetch(`${API_BASE}/api/reports`, {
-    method: "POST",
+    method: "PUT", // upsert موحّد مع باقي التقارير
     headers: { "Content-Type": "application/json" },
-    // إن كان عندك كوكي/سِشن فعّل السطر التالي:
-    // credentials: "include",
-    body: JSON.stringify({ reporter, type: "qcs_raw_material", payload })
+    body: JSON.stringify({ reporter, type: "qcs_raw_material", payload }),
   });
   if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Server ${res.status}: ${t}`);
+    const t = await res.text().catch(() => "");
+    throw new Error(t || `Server error ${res.status}`);
   }
-  return res.json();
-}
-
-/* ========================= 🧩 أدوات تخزين محلي ========================= */
-function persistLocally(report) {
-  let all = [];
-  try { all = JSON.parse(localStorage.getItem(LS_KEY_REPORTS) || "[]"); } catch { all = []; }
-  const idx = all.findIndex(r => r.id === report.id);
-  const now = new Date().toISOString();
-  if (idx >= 0) {
-    all[idx] = { ...all[idx], ...report, updatedAt: now };
-  } else {
-    all.push({ ...report, createdAt: report.createdAt || now, updatedAt: now });
-  }
-  localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(all));
-}
-
-/** بعد نجاح الرفع من الطابور: اربط serverId مع التقرير المحلي */
-function attachServerIdToLocalReport(localId, serverId, createdAt) {
-  if (!serverId) return;
-  let all = [];
-  try { all = JSON.parse(localStorage.getItem(LS_KEY_REPORTS) || "[]"); } catch { all = []; }
-  const idx = all.findIndex(r => r.id === localId);
-  if (idx >= 0) {
-    all[idx] = {
-      ...all[idx],
-      serverId,
-      createdAt: all[idx].createdAt || createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(all));
-  }
-}
-
-/* ========================= 🔁 حلقة مزامنة (تفرّغ الطابور) ========================= */
-async function syncOnce(setSaveMsg) {
-  if (!navigator.onLine) return false;
-  let didSomething = false;
-  while (queueLength() > 0) {
-    const item = dequeueSync(); // item هو نفس payload الذي خزّناه
-    try {
-      const saved = await sendOneToServer({ payload: item });
-      const serverId = saved?._id || saved?.data?._id || saved?.id || saved?.record?._id;
-      const createdAt = saved?.createdAt || saved?.data?.createdAt;
-      attachServerIdToLocalReport(item.id, serverId, createdAt);
-      didSomething = true;
-      setSaveMsg?.("✅ تمت مزامنة تقرير مؤجّل بنجاح!");
-    } catch (e) {
-      // رجّع العنصر للطابور واسمح بمحاولة لاحقة
-      const q = readQueue();
-      q.unshift(item);
-      writeQueue(q);
-      break;
-    }
-  }
-  return didSomething;
+  return res.json().catch(() => ({}));
 }
 
 /* ========================= ✅ هيكل العينة الفارغة ========================= */
@@ -346,8 +262,7 @@ const styles = {
     borderRadius: 10,
     outline: "none"
   },
-  headerRowSpacer: { borderLeft: "1px solid #e5e7eb", width: "10px" },
-  toast: { marginInlineStart: 10, fontWeight: 800 }
+  headerRowSpacer: { borderLeft: "1px solid #e5e7eb", width: "10px" }
 };
 
 export default function QCSRawMaterialInspection() {
@@ -355,7 +270,6 @@ export default function QCSRawMaterialInspection() {
   const fileInputRef = useRef(null);
 
   const [saveMsg, setSaveMsg] = useState("");
-  const syncTimerRef = useRef(null);
 
   // ترويسة قابلة للتعديل
   const [docMeta, setDocMeta] = useState({
@@ -419,8 +333,7 @@ export default function QCSRawMaterialInspection() {
   const triggerFileSelect = () => fileInputRef.current?.click();
 
   /* ========================= 🧩 بناء التقرير من الحالة ========================= */
-  const buildReportPayload = (id) => ({
-    id,
+  const buildReportPayload = () => ({
     date: new Date().toISOString(),
     shipmentType,
     status: shipmentStatus,
@@ -437,66 +350,23 @@ export default function QCSRawMaterialInspection() {
     notes
   });
 
-  /* ========================= حفظ يدوي فقط عند الضغط (مع تخزين serverId) ========================= */
+  /* ========================= حفظ يدوي فقط على السيرفر ========================= */
   const handleSave = async () => {
-    // تحقق بسيط: لازم نوع الشحنة على الأقل
     if (!shipmentType.trim()) {
       alert("📦 الرجاء اختيار نوع الشحنة قبل الحفظ.");
       return;
     }
-
-    // ولّد id محلي للتقرير (payload.id)
-    const id = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    const payload = buildReportPayload(id);
-
-    // 1) احفظ محليًا أولًا
-    persistLocally(payload);
-
+    const payload = buildReportPayload();
     try {
-      setSaveMsg("⏳ جاري حفظ التقرير وتصديره للسيرفر…");
-
-      // 2) ابعث للسيرفر وخُذ الرد
-      const saved = await sendOneToServer({ payload });
-
-      // 3) استخرج معرف السجل من الرد وخزّنه محليًا كـ serverId
-      const serverId =
-        saved?._id || saved?.data?._id || saved?.id || saved?.record?._id;
-
-      if (serverId) {
-        const withServerId = {
-          ...payload,
-          serverId,
-          createdAt: saved?.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        persistLocally(withServerId);
-        setSaveMsg("✅ تم الحفظ محليًا والتصدير للسيرفر بنجاح!");
-      } else {
-        setSaveMsg("✅ تم الحفظ. لم نستلم serverId من السيرفر، سيبقى محليًا.");
-      }
+      setSaveMsg("⏳ جاري الحفظ على السيرفر…");
+      await sendToServer(payload);
+      setSaveMsg("✅ تم الحفظ على السيرفر بنجاح!");
     } catch (e) {
-      // 4) لو فشل الإرسال: دخّل التقرير إلى طابور المزامنة
-      enqueueSync(payload);
-      setSaveMsg("⚠️ تم الحفظ محليًا. سيتم التصدير تلقائيًا عند توفّر الاتصال.");
+      setSaveMsg(`❌ فشل الحفظ: ${e.message || e}`);
     } finally {
       setTimeout(() => setSaveMsg(""), 3000);
     }
   };
-
-  /* ========================= 🔄 تشغيل حلقة المزامنة ========================= */
-  useEffect(() => {
-    // مزامنة فورية عند التحميل (لإرسال أي تقارير مؤجلة سابقًا)
-    syncOnce(setSaveMsg);
-
-    function onOnline() { syncOnce(setSaveMsg); }
-    function onFocus()  { syncOnce(setSaveMsg); }
-    window.addEventListener("online", onOnline);
-    window.addEventListener("focus", onFocus);
-
-    // محاولة كل 30 ثانية
-    const t = setInterval(() => { syncOnce(setSaveMsg); }, 30000);
-    return () => clearInterval(t);
-  }, []);
 
   /* ========================= UI ========================= */
   const inputProps = name => ({
@@ -859,7 +729,7 @@ export default function QCSRawMaterialInspection() {
             💾 حفظ التقرير (Save Report)
           </button>
           <button onClick={() => navigate("/qcs-raw-material-view")} style={styles.viewButton}>
-            📄 عرض التقارير المحفوظة (View Saved Reports)
+            📄 عرض التقارير (View Reports)
           </button>
         </div>
       </div>

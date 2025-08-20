@@ -1,3 +1,4 @@
+// src/pages/monitor/branches/QCSReport.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import QCSRawMaterialInspection from "./shipment_recc/QCSRawMaterialInspection";
 import PersonalHygieneTab from "./qcs/PersonalHygieneTab";
@@ -6,8 +7,31 @@ import DailyCleanlinessTab from "./qcs/DailyCleanlinessTab";
 /* =========================
    شعار + إعدادات عامة
 ========================= */
-const LOGO_URL = "/brand/al-mawashi.jpg"; // ضع الصورة في public/brand/al-mawashi.jpg
+const LOGO_URL = "/brand/al-mawashi.jpg";
 const MIN_PH_ROWS = 21;
+
+/* =========================
+   إعدادات السيرفر (CRA + Vite بلا تحذير)
+========================= */
+const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
+
+const CRA_URL =
+  (typeof process !== "undefined" &&
+    process.env &&
+    process.env.REACT_APP_API_URL)
+    ? process.env.REACT_APP_API_URL
+    : undefined;
+
+let VITE_URL;
+try { VITE_URL = import.meta.env?.VITE_API_URL; } catch {}
+
+const API_BASE = (VITE_URL || CRA_URL || API_BASE_DEFAULT).replace(/\/$/, "");
+
+/* هل الـ API على نفس الأصل؟ */
+const IS_SAME_ORIGIN = (() => {
+  try { return new URL(API_BASE).origin === window.location.origin; }
+  catch { return false; }
+})();
 
 /* =========================
    أوقات كل ساعتين من 4AM إلى 8PM
@@ -26,7 +50,7 @@ function generateTimes() {
 const TIMES = generateTimes();
 
 /* =========================
-   ترجمة مختصرة (عربي/إنكليزي مدمج)
+   ترجمة مختصرة
 ========================= */
 function Bidi({ ar, en, inline }) {
   if (inline) {
@@ -38,11 +62,8 @@ function Bidi({ ar, en, inline }) {
   }
   return (
     <span style={{ display: "inline-block", lineHeight: 1.2 }}>
-      <bdi>{ar}</bdi>
-      <br />
-      <span style={{ opacity: 0.8, fontSize: ".92em" }}>
-        <bdi>{en}</bdi>
-      </span>
+      <bdi>{ar}</bdi><br/>
+      <span style={{ opacity: 0.8, fontSize: ".92em" }}><bdi>{en}</bdi></span>
     </span>
   );
 }
@@ -86,34 +107,82 @@ const makeEmptyReport = (date) => ({
   cleanlinessRows: [],
 });
 
-// حفظ بنسختين: مصفوفة + قاموس حسب التاريخ (للتوافق مع صفحة العرض)
-function saveReportToStorage(report) {
-  try {
-    const prevArr = JSON.parse(localStorage.getItem("qcs_reports") || "[]");
-    const filtered = Array.isArray(prevArr) ? prevArr.filter(r => r?.date !== report.date) : [];
-    localStorage.setItem("qcs_reports", JSON.stringify([...filtered, report]));
-  } catch {}
-  try {
-    const dict = JSON.parse(localStorage.getItem("qcs_daily_reports_v1") || "{}");
-    const { date, ...rest } = report;
-    dict[report.date] = rest;
-    localStorage.setItem("qcs_daily_reports_v1", JSON.stringify(dict));
-  } catch {}
+/* =========================
+   API Helpers
+========================= */
+async function listReportsByType(type) {
+  const res = await fetch(
+    `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`,
+    {
+      method: "GET",
+      cache: "no-store",
+      credentials: IS_SAME_ORIGIN ? "include" : "omit",
+    }
+  );
+  if (!res.ok) return [];
+  const json = await res.json().catch(() => null);
+  const arr = Array.isArray(json) ? json : json?.data || [];
+  return arr;
 }
 
-function loadReportByDate(date) {
+async function fetchReportFromServer(date) {
+  const rows = await listReportsByType("qcs-daily");
+  const found = rows.find(r => String(r?.payload?.reportDate || "") === String(date));
+  return found?.payload || null;
+}
+
+async function findExistingReportIdByDate(date) {
+  const rows = await listReportsByType("qcs-daily");
+  const found = rows.find(r => String(r?.payload?.reportDate || "") === String(date));
+  return found?._id || found?.id || null;
+}
+
+function getReporter() {
   try {
-    const dict = JSON.parse(localStorage.getItem("qcs_daily_reports_v1") || "{}");
-    if (dict && dict[date]) return { date, ...dict[date] };
-  } catch {}
-  try {
-    const arr = JSON.parse(localStorage.getItem("qcs_reports") || "[]");
-    if (Array.isArray(arr)) {
-      const found = arr.find(r => r?.date === date);
-      if (found) return found;
+    const raw = localStorage.getItem("currentUser");
+    const user = raw ? JSON.parse(raw) : null;
+    return user?.username || "anonymous";
+  } catch { return "anonymous"; }
+}
+
+async function saveReportToServer(report) {
+  const payload = {
+    reportDate: report.date,
+    auditTime: report.auditTime,
+    coolers: report.coolers,
+    personalHygiene: report.personalHygiene,
+    cleanlinessRows: report.cleanlinessRows,
+    headers: report.headers || {},
+  };
+
+  const reporter = getReporter();
+  const existingId = await findExistingReportIdByDate(report.date);
+
+  if (existingId) {
+    const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existingId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: IS_SAME_ORIGIN ? "include" : "omit",
+      body: JSON.stringify({ reporter, type: "qcs-daily", payload }),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(t || "Failed to update report");
     }
-  } catch {}
-  return null;
+    return res.json().catch(() => ({}));
+  } else {
+    const res = await fetch(`${API_BASE}/api/reports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: IS_SAME_ORIGIN ? "include" : "omit",
+      body: JSON.stringify({ reporter, type: "qcs-daily", payload }),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(t || "Failed to create report");
+    }
+    return res.json().catch(() => ({}));
+  }
 }
 
 /* =========================
@@ -126,15 +195,16 @@ function calcCoolersKPI(coolers) {
     TIMES.forEach(t => {
       const v = c?.temps?.[t];
       const n = Number(v);
-      if (v !== "" && !isNaN(n)) {
+      if (v !== "" && !Number.isNaN(n)) {
         all.push(n);
         if (n < 0 || n > 5) outOfRange += 1;
       }
     });
   });
-  const avg = all.length ? (all.reduce((a,b)=>a+b,0) / all.length) : null;
+  const avgNum = all.length ? (all.reduce((a,b)=>a+b,0) / all.length) : null;
   return {
-    avg: avg === null ? "—" : avg.toFixed(2),
+    avg: avgNum === null ? "—" : avgNum.toFixed(2),
+    avgNum,
     min: all.length ? Math.min(...all) : "—",
     max: all.length ? Math.max(...all) : "—",
     outOfRange
@@ -142,7 +212,7 @@ function calcCoolersKPI(coolers) {
 }
 
 /* =========================
-   ترويسة/فوتر تبويب "النظافة الشخصية" (عرض + تحرير)
+   ترويسة/فوتر تبويب "النظافة الشخصية"
 ========================= */
 const defaultPHHeader = {
   documentTitle: "Personal Hygiene Check List",
@@ -157,7 +227,7 @@ const defaultPHHeader = {
 const defaultPHFooter = { checkedBy: "", verifiedBy: "" };
 
 /* =========================
-   ترويسة/فوتر تبويب "النظافة اليومية" (Cleaning Checklist)
+   ترويسة/فوتر تبويب "النظافة اليومية"
 ========================= */
 const defaultDCHeader = {
   documentTitle: "Cleaning Checklist",
@@ -171,11 +241,11 @@ const defaultDCHeader = {
 };
 const defaultDCFooter = { checkedBy: "", verifiedBy: "" };
 
-function useLocalJSON(key, initialValue) {
-  const [val, setVal] = useState(() => {
-    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : initialValue; } catch { return initialValue; }
-  });
-  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
+/* =========================
+   حفظ إعدادات الترويسة محليًا؟ (موقف)
+========================= */
+function useLocalJSON(_key, initialValue) {
+  const [val, setVal] = useState(initialValue);
   return [val, setVal];
 }
 
@@ -188,7 +258,7 @@ function RowKV({ label, value }) {
   );
 }
 
-/* === Personal Hygiene Header/Footer (نفس السابق) === */
+/* === Personal Hygiene Header/Footer === */
 function PHEntryHeader({ header, date }) {
   return (
     <div style={{ border:"1px solid #000", marginBottom:8 }}>
@@ -261,24 +331,21 @@ function PHHeaderEditor({ header, setHeader, footer, setFooter }) {
       </summary>
       <div style={{ marginTop:10, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
         <div>
-          <label style={row}><span>Document Title</span><input style={input} value={header.documentTitle} onChange={e=>setHeader({ ...header, documentTitle:e.target.value })}/></label>
-          <label style={row}><span>Issue Date</span><input style={input} value={header.issueDate} onChange={e=>setHeader({ ...header, issueDate:e.target.value })}/></label>
-          <label style={row}><span>Area</span><input style={input} value={header.area} onChange={e=>setHeader({ ...header, area:e.target.value })}/></label>
-          <label style={row}><span>Controlling Officer</span><input style={input} value={header.controllingOfficer} onChange={e=>setHeader({ ...header, controllingOfficer:e.target.value })}/></label>
+          <label style={row}><span>Document Title</span><input style={input} value={header.documentTitle} onChange={e=>setHeader({ ...header, documentTitle:e.target.value })} /></label>
+          <label style={row}><span>Issue Date</span><input style={input} value={header.issueDate} onChange={e=>setHeader({ ...header, issueDate:e.target.value })} /></label>
+          <label style={row}><span>Area</span><input style={input} value={header.area} onChange={e=>setHeader({ ...header, area:e.target.value })} /></label>
+          <label style={row}><span>Controlling Officer</span><input style={input} value={header.controllingOfficer} onChange={e=>setHeader({ ...header, controllingOfficer:e.target.value })} /></label>
         </div>
         <div>
-          <label style={row}><span>Document No</span><input style={input} value={header.documentNo} onChange={e=>setHeader({ ...header, documentNo:e.target.value })}/></label>
-          <label style={row}><span>Revision No</span><input style={input} value={header.revisionNo} onChange={e=>setHeader({ ...header, revisionNo:e.target.value })}/></label>
-          <label style={row}><span>Issued By</span><input style={input} value={header.issuedBy} onChange={e=>setHeader({ ...header, issuedBy:e.target.value })}/></label>
-          <label style={row}><span>Approved By</span><input style={input} value={header.approvedBy} onChange={e=>setHeader({ ...header, approvedBy:e.target.value })}/></label>
+          <label style={row}><span>Document No</span><input style={input} value={header.documentNo} onChange={e=>setHeader({ ...header, documentNo:e.target.value })} /></label>
+          <label style={row}><span>Revision No</span><input style={input} value={header.revisionNo} onChange={e=>setHeader({ ...header, revisionNo:e.target.value })} /></label>
+          <label style={row}><span>Issued By</span><input style={input} value={header.issuedBy} onChange={e=>setHeader({ ...header, issuedBy:e.target.value })} /></label>
+          <label style={row}><span>Approved By</span><input style={input} value={header.approvedBy} onChange={e=>setHeader({ ...header, approvedBy:e.target.value })} /></label>
         </div>
       </div>
       <div style={{ marginTop:12, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-        <label style={row}><span>Checked By</span><input style={input} value={footer.checkedBy} onChange={e=>setFooter({ ...footer, checkedBy:e.target.value })}/></label>
-        <label style={row}><span>Verified By</span><input style={input} value={footer.verifiedBy} onChange={e=>setFooter({ ...footer, verifiedBy:e.target.value })}/></label>
-      </div>
-      <div style={{ marginTop:8, fontSize:12, color:"#64748b" }}>
-        * سيتم حفظ هذه القيم تلقائياً في المتصفح (localStorage).
+        <label style={row}><span>Checked By</span><input style={input} value={footer.checkedBy} onChange={e=>setFooter({ ...footer, checkedBy:e.target.value })} /></label>
+        <label style={row}><span>Verified By</span><input style={input} value={footer.verifiedBy} onChange={e=>setFooter({ ...footer, verifiedBy:e.target.value })} /></label>
       </div>
     </details>
   );
@@ -360,21 +427,21 @@ function DCHeaderEditor({ header, setHeader, footer, setFooter }) {
       </summary>
       <div style={{ marginTop:10, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
         <div>
-          <label style={row}><span>Document Title</span><input style={input} value={header.documentTitle} onChange={e=>setHeader({ ...header, documentTitle:e.target.value })}/></label>
-          <label style={row}><span>Issue Date</span><input style={input} value={header.issueDate} onChange={e=>setHeader({ ...header, issueDate:e.target.value })}/></label>
-          <label style={row}><span>Area</span><input style={input} value={header.area} onChange={e=>setHeader({ ...header, area:e.target.value })}/></label>
-          <label style={row}><span>Controlling Officer</span><input style={input} value={header.controllingOfficer} onChange={e=>setHeader({ ...header, controllingOfficer:e.target.value })}/></label>
+          <label style={row}><span>Document Title</span><input style={input} value={header.documentTitle} onChange={e=>setHeader({ ...header, documentTitle:e.target.value })} /></label>
+          <label style={row}><span>Issue Date</span><input style={input} value={header.issueDate} onChange={e=>setHeader({ ...header, issueDate:e.target.value })} /></label>
+          <label style={row}><span>Area</span><input style={input} value={header.area} onChange={e=>setHeader({ ...header, area:e.target.value })} /></label>
+          <label style={row}><span>Controlling Officer</span><input style={input} value={header.controllingOfficer} onChange={e=>setHeader({ ...header, controllingOfficer:e.target.value })} /></label>
         </div>
         <div>
-          <label style={row}><span>Document No</span><input style={input} value={header.documentNo} onChange={e=>setHeader({ ...header, documentNo:e.target.value })}/></label>
-          <label style={row}><span>Revision No</span><input style={input} value={header.revisionNo} onChange={e=>setHeader({ ...header, revisionNo:e.target.value })}/></label>
-          <label style={row}><span>Issued By</span><input style={input} value={header.issuedBy} onChange={e=>setHeader({ ...header, issuedBy:e.target.value })}/></label>
-          <label style={row}><span>Approved By</span><input style={input} value={header.approvedBy} onChange={e=>setHeader({ ...header, approvedBy:e.target.value })}/></label>
+          <label style={row}><span>Document No</span><input style={input} value={header.documentNo} onChange={e=>setHeader({ ...header, documentNo:e.target.value })} /></label>
+          <label style={row}><span>Revision No</span><input style={input} value={header.revisionNo} onChange={e=>setHeader({ ...header, revisionNo:e.target.value })} /></label>
+          <label style={row}><span>Issued By</span><input style={input} value={header.issuedBy} onChange={e=>setHeader({ ...header, issuedBy:e.target.value })} /></label>
+          <label style={row}><span>Approved By</span><input style={input} value={header.approvedBy} onChange={e=>setHeader({ ...header, approvedBy:e.target.value })} /></label>
         </div>
       </div>
       <div style={{ marginTop:12, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-        <label style={row}><span>Checked By (QC-ASSIST)</span><input style={input} value={footer.checkedBy} onChange={e=>setFooter({ ...footer, checkedBy:e.target.value })}/></label>
-        <label style={row}><span>Verified By</span><input style={input} value={footer.verifiedBy} onChange={e=>setFooter({ ...footer, verifiedBy:e.target.value })}/></label>
+        <label style={row}><span>Checked By (QC-ASSIST)</span><input style={input} value={footer.checkedBy} onChange={e=>setFooter({ ...footer, checkedBy:e.target.value })} /></label>
+        <label style={row}><span>Verified By</span><input style={input} value={footer.verifiedBy} onChange={e=>setFooter({ ...footer, verifiedBy:e.target.value })} /></label>
       </div>
     </details>
   );
@@ -387,40 +454,51 @@ export default function QCSReport() {
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [activeTab, setActiveTab] = useState("coolers");
 
-  // الحالة (state)
   const [coolers, setCoolers] = useState(makeDefaultCoolers());
   const [personalHygiene, setPersonalHygiene] = useState(makeDefaultHygiene());
   const [auditTime, setAuditTime] = useState("");
   const [cleanlinessRows, setCleanlinessRows] = useState([]);
 
-  // ترويسة/فوتر النظافة الشخصية
   const [phHeader, setPhHeader] = useLocalJSON("qcs_ph_header_v1", defaultPHHeader);
   const [phFooter, setPhFooter] = useLocalJSON("qcs_ph_footer_v1", defaultPHFooter);
-
-  // ترويسة/فوتر النظافة اليومية (Cleaning)
   const [dcHeader, setDcHeader] = useLocalJSON("qcs_dc_header_v1", defaultDCHeader);
   const [dcFooter, setDcFooter] = useLocalJSON("qcs_dc_footer_v1", defaultDCFooter);
 
-  // حمل التقرير عند تغيّر التاريخ (إن وُجد)
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
   useEffect(() => {
-    const existing = loadReportByDate(reportDate);
-    if (existing) {
-      setAuditTime(existing.auditTime || "");
-      setCoolers(Array.isArray(existing.coolers) ? existing.coolers : makeDefaultCoolers());
-      setPersonalHygiene(Array.isArray(existing.personalHygiene) ? existing.personalHygiene : makeDefaultHygiene());
-      setCleanlinessRows(Array.isArray(existing.cleanlinessRows) ? existing.cleanlinessRows : []);
-    } else {
-      const empty = makeEmptyReport(reportDate);
-      setAuditTime(empty.auditTime);
-      setCoolers(empty.coolers);
-      setPersonalHygiene(empty.personalHygiene);
-      setCleanlinessRows(empty.cleanlinessRows);
-    }
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const existing = await fetchReportFromServer(reportDate);
+        if (cancelled) return;
+        if (existing) {
+          setAuditTime(existing.auditTime || "");
+          setCoolers(Array.isArray(existing.coolers) ? existing.coolers : makeDefaultCoolers());
+          setPersonalHygiene(Array.isArray(existing.personalHygiene) ? existing.personalHygiene : makeDefaultHygiene());
+          setCleanlinessRows(Array.isArray(existing.cleanlinessRows) ? existing.cleanlinessRows : []);
+        } else {
+          const empty = makeEmptyReport(reportDate);
+          setAuditTime(empty.auditTime);
+          setCoolers(empty.coolers);
+          setPersonalHygiene(empty.personalHygiene);
+          setCleanlinessRows(empty.cleanlinessRows);
+        }
+      } catch (_e) {
+        setLoadError("تعذر تحميل تقرير هذا التاريخ من السيرفر.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [reportDate]);
 
   const kpi = useMemo(() => calcCoolersKPI(coolers), [coolers]);
 
-  /* ========== معالجات ========= */
   const handleCoolerChange = (index, time, value) => {
     setCoolers(prev => {
       const next = [...prev];
@@ -429,7 +507,7 @@ export default function QCSReport() {
     });
   };
 
-  // النظافة الشخصية: أدوات
+  // النظافة الشخصية
   const addHygieneRow = () => setPersonalHygiene(prev => [...prev, makeEmptyHygieneRow("")]);
   const removeHygieneRow = (i) => setPersonalHygiene(prev => prev.filter((_, idx) => idx !== i));
   const fillDefaultNames = () => {
@@ -450,20 +528,26 @@ export default function QCSReport() {
     });
   };
 
-  /* ========== حفظ التقرير ========= */
-  const saveReport = () => {
+  const saveReport = async () => {
     const report = {
       date: reportDate,
       auditTime,
       coolers,
       personalHygiene,
       cleanlinessRows,
+      headers: { phHeader, phFooter, dcHeader, dcFooter },
     };
-    saveReportToStorage(report);
-    alert(`✅ تم حفظ تقرير ${reportDate} بنجاح`);
+    try {
+      setSaving(true);
+      await saveReportToServer(report);
+      alert(`✅ تم حفظ تقرير ${reportDate} على السيرفر (إنشاء/تحديث)`);
+    } catch (e) {
+      alert(`❌ فشل الحفظ على السيرفر: ${e.message || e}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  /* ========== شكل عام ========= */
   const card = { background: "#fff", padding: "1rem", marginBottom: "1rem", borderRadius: 12, boxShadow: "0 0 8px rgba(0,0,0,.10)" };
   const toolbar = { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" };
   const tabBtn = (active) => ({
@@ -491,7 +575,6 @@ export default function QCSReport() {
       fontFamily: "Cairo, sans-serif",
       minHeight: "100vh",
     }}>
-      {/* العنوان والتاريخ */}
       <div style={{ ...card, display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center" }}>
         <h2 style={{ margin: 0 }}>
           <Bidi ar="📋 تقرير فرع QCS اليومي" en="📋 QCS Branch Daily Report" />
@@ -518,153 +601,118 @@ export default function QCSReport() {
         </div>
       </div>
 
-      {/* تبويبات */}
       <div style={{ ...card, display: "flex", gap: 8, justifyContent: "center" }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={tabBtn(activeTab === t.id)}>{t.label}</button>
         ))}
       </div>
 
-      {/* المحتوى */}
-      <div>
-        {/* تبويب البرادات (بدون أزرار التعبئة/النسخ) */}
-        {activeTab === "coolers" && (
-          <div style={card}>
-            {/* KPIs */}
-            <div style={{
-              display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "center", marginBottom: 16
-            }}>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
-                <div style={{ color: "#7c3aed", fontWeight: 700 }}><Bidi ar="متوسط الحرارة" en="Average Temp" inline /></div>
-                <div style={{ fontSize: "1.25rem", fontWeight: 800, color: kpi.avg !== "—" && (kpi.avg < 0 || kpi.avg > 5) ? "#b91c1c" : "#16a34a" }}>
-                  {kpi.avg}<span style={{ fontSize: ".9em", color: "#475569" }}> °C</span>
-                </div>
-              </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
-                <div style={{ color: "#b91c1c", fontWeight: 700 }}><Bidi ar="خارج النطاق" en="Out of Range" inline /></div>
-                <div style={{ fontSize: "1.25rem", fontWeight: 800 }}>{kpi.outOfRange}</div>
-              </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
-                <div style={{ color: "#0ea5e9", fontWeight: 700 }}><Bidi ar="أقل / أعلى" en="Min / Max" inline /></div>
-                <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
-                  <span style={{ color: "#0369a1" }}>{kpi.min}</span>
-                  <span style={{ color: "#94a3b8" }}> / </span>
-                  <span style={{ color: "#b91c1c" }}>{kpi.max}</span>
-                  <span style={{ fontSize: ".9em", color: "#475569" }}> °C</span>
-                </div>
-              </div>
-            </div>
+      {loading && <div style={{ ...card, textAlign: "center" }}>⏳ جارِ تحميل تقرير {reportDate} من السيرفر…</div>}
+      {loadError && !loading && <div style={{ ...card, color: "#b91c1c" }}>{loadError}</div>}
 
-            {/* برادات */}
-            <h3 style={{ color: "#2980b9", marginBottom: "1rem", textAlign: "center" }}>
-              🧊 درجات حرارة البرادات (كل ساعتين من 4AM حتى 8PM)
-            </h3>
-            {coolers.map((cooler, i) => (
-              <div
-                key={i}
-                style={{
-                  marginBottom: "1.2rem",
-                  padding: "1rem",
+      {!loading && (
+        <div>
+          {activeTab === "coolers" && (
+            <div style={card}>
+              <div style={{
+                display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "center", marginBottom: 16
+              }}>
+                <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
+                  <div style={{ color: "#7c3aed", fontWeight: 700 }}><Bidi ar="متوسط الحرارة" en="Average Temp" inline /></div>
+                  <div style={{ fontSize: "1.25rem", fontWeight: 800, color: (kpi.avgNum !== null && (kpi.avgNum < 0 || kpi.avgNum > 5)) ? "#b91c1c" : "#16a34a" }}>
+                    {kpi.avg}<span style={{ fontSize: ".9em", color: "#475569" }}> °C</span>
+                  </div>
+                </div>
+                <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
+                  <div style={{ color: "#b91c1c", fontWeight: 700 }}><Bidi ar="خارج النطاق" en="Out of Range" inline /></div>
+                  <div style={{ fontSize: "1.25rem", fontWeight: 800 }}>{kpi.outOfRange}</div>
+                </div>
+                <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
+                  <div style={{ color: "#0ea5e9", fontWeight: 700 }}><Bidi ar="أقل / أعلى" en="Min / Max" inline /></div>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
+                    <span style={{ color: "#0369a1" }}>{kpi.min}</span>
+                    <span style={{ color: "#94a3b8" }}> / </span>
+                    <span style={{ color: "#b91c1c" }}>{kpi.max}</span>
+                    <span style={{ fontSize: ".9em", color: "#475569" }}> °C</span>
+                  </div>
+                </div>
+              </div>
+
+              <h3 style={{ color: "#2980b9", marginBottom: "1rem", textAlign: "center" }}>
+                🧊 درجات حرارة البرادات (كل ساعتين من 4AM حتى 8PM)
+              </h3>
+              {coolers.map((cooler, i) => (
+                <div key={i} style={{
+                  marginBottom: "1.2rem", padding: "1rem",
                   backgroundColor: i % 2 === 0 ? "#ecf6fc" : "#d6eaf8",
-                  borderRadius: "10px",
-                  boxShadow: "inset 0 0 6px rgba(0, 131, 230, 0.15)",
-                }}
-              >
-                <strong style={{ display: "block", marginBottom: "0.8rem", fontSize: "1.1rem" }}>
-                  <Bidi ar={`براد ${i + 1}`} en={`Cooler ${i + 1}`} inline />
-                </strong>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.7rem",
-                    flexWrap: "wrap",
-                    justifyContent: "flex-start",
-                  }}
-                >
-                  {TIMES.map((time) => (
-                    <label
-                      key={time}
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        fontSize: "0.93rem",
-                        color: "#34495e",
-                        minWidth: "78px",
-                      }}
-                    >
-                      <span style={{ marginBottom: "7px", fontWeight: "600" }}>{time}</span>
-                      <input
-                        type="number"
-                        value={cooler.temps[time]}
-                        onChange={(e) => handleCoolerChange(i, time, e.target.value)}
-                        style={tempInputStyle(cooler.temps[time])}
-                        placeholder="°C"
-                        min="-50"
-                        max="50"
-                        step="0.1"
-                      />
-                    </label>
-                  ))}
+                  borderRadius: "10px", boxShadow: "inset 0 0 6px rgba(0, 131, 230, 0.15)",
+                }}>
+                  <strong style={{ display: "block", marginBottom: "0.8rem", fontSize: "1.1rem" }}>
+                    <Bidi ar={`براد ${i + 1}`} en={`Cooler ${i + 1}`} inline />
+                  </strong>
+                  <div style={{ display: "flex", gap: "0.7rem", flexWrap: "wrap", justifyContent: "flex-start" }}>
+                    {TIMES.map((time) => (
+                      <label key={time} style={{
+                        display: "flex", flexDirection: "column", alignItems: "center",
+                        fontSize: "0.93rem", color: "#34495e", minWidth: "78px",
+                      }}>
+                        <span style={{ marginBottom: "7px", fontWeight: "600" }}>{time}</span>
+                        <input
+                          type="number"
+                          value={cooler.temps[time]}
+                          onChange={(e) => handleCoolerChange(i, time, e.target.value)}
+                          style={tempInputStyle(cooler.temps[time])}
+                          placeholder="°C" min="-50" max="50" step="0.1"
+                        />
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* تبويب النظافة الشخصية */}
-        {activeTab === "personalHygiene" && (
-          <div style={card}>
-            <PHEntryHeader header={phHeader} date={reportDate} />
-            <PHHeaderEditor header={phHeader} setHeader={setPhHeader} footer={phFooter} setFooter={setPhFooter} />
-
-            <div style={{ ...toolbar, marginBottom: 12 }}>
-              <button onClick={fillDefaultNames} style={btnSecondary}><Bidi ar="إعادة الأسماء الافتراضية" en="Reset Default Names" inline /></button>
-              <button onClick={ensureMinHygieneRows} style={btnGhost}><Bidi ar={`إكمال تلقائي إلى ${MIN_PH_ROWS} صف`} en={`Autofill to ${MIN_PH_ROWS} rows`} inline /></button>
-              <button onClick={addHygieneRow} style={btnGhost}><Bidi ar="➕ إضافة صف" en="➕ Add Row" inline /></button>
+              ))}
             </div>
+          )}
 
-            <PersonalHygieneTab
-              personalHygiene={personalHygiene}
-              setPersonalHygiene={setPersonalHygiene}
-              onRemoveRow={removeHygieneRow}
-            />
+          {activeTab === "personalHygiene" && (
+            <div style={card}>
+              <PHEntryHeader header={phHeader} date={reportDate} />
+              <PHHeaderEditor header={phHeader} setHeader={setPhHeader} footer={phFooter} setFooter={setPhFooter} />
+              <div style={{ ...toolbar, marginBottom: 12 }}>
+                <button onClick={fillDefaultNames} style={btnSecondary}><Bidi ar="إعادة الأسماء الافتراضية" en="Reset Default Names" inline /></button>
+                <button onClick={ensureMinHygieneRows} style={btnGhost}><Bidi ar={`إكمال تلقائي إلى ${MIN_PH_ROWS} صف`} en={`Autofill to ${MIN_PH_ROWS} rows`} inline /></button>
+                <button onClick={addHygieneRow} style={btnGhost}><Bidi ar="➕ إضافة صف" en="➕ Add Row" inline /></button>
+              </div>
+              <PersonalHygieneTab personalHygiene={personalHygiene} setPersonalHygiene={setPersonalHygiene} onRemoveRow={removeHygieneRow} />
+              <PHEntryFooter footer={phFooter} />
+            </div>
+          )}
 
-            <PHEntryFooter footer={phFooter} />
-          </div>
-        )}
+          {activeTab === "dailyCleanliness" && (
+            <div style={card}>
+              <DCEntryHeader header={dcHeader} date={reportDate} />
+              <DCHeaderEditor header={dcHeader} setHeader={setDcHeader} footer={dcFooter} setFooter={setDcFooter} />
+              <h3 style={{ marginTop: 0 }}><Bidi ar="🧹 النظافة اليومية للمستودع" en="🧹 Warehouse Daily Cleanliness" /></h3>
+              <DailyCleanlinessTab
+                cleanlinessRows={cleanlinessRows}
+                setCleanlinessRows={setCleanlinessRows}
+                auditTime={auditTime}
+                setAuditTime={setAuditTime}
+              />
+              <DCEntryFooter footer={dcFooter} />
+            </div>
+          )}
 
-        {/* تبويب النظافة اليومية */}
-        {activeTab === "dailyCleanliness" && (
-          <div style={card}>
-            <DCEntryHeader header={dcHeader} date={reportDate} />
-            <DCHeaderEditor header={dcHeader} setHeader={setDcHeader} footer={dcFooter} setFooter={setDcFooter} />
+          {activeTab === "shipment" && (
+            <div style={card}>
+              <h3 style={{ marginTop: 0 }}><Bidi ar="📦 تقرير استلام الشحنات" en="📦 Raw Material Receipt" /></h3>
+              <QCSRawMaterialInspection />
+            </div>
+          )}
+        </div>
+      )}
 
-            <h3 style={{ marginTop: 0 }}><Bidi ar="🧹 النظافة اليومية للمستودع" en="🧹 Warehouse Daily Cleanliness" /></h3>
-            <DailyCleanlinessTab
-              cleanlinessRows={cleanlinessRows}
-              setCleanlinessRows={setCleanlinessRows}
-              auditTime={auditTime}
-              setAuditTime={setAuditTime}
-            />
-
-            <DCEntryFooter footer={dcFooter} />
-          </div>
-        )}
-
-        {/* تبويب الشحنات */}
-        {activeTab === "shipment" && (
-          <div style={card}>
-            <h3 style={{ marginTop: 0 }}><Bidi ar="📦 تقرير استلام الشحنات" en="📦 Raw Material Receipt" /></h3>
-            <QCSRawMaterialInspection />
-          </div>
-        )}
-      </div>
-
-      {/* شريط الحفظ */}
       <div style={{ ...card, display: "flex", justifyContent: "center" }}>
-        <button onClick={saveReport} style={btnSave}>
-          <Bidi ar="💾 حفظ التقرير" en="💾 Save Report" inline />
+        <button onClick={saveReport} style={{ ...btnSave, opacity: saving ? 0.7 : 1 }} disabled={saving}>
+          {saving ? <Bidi ar="⏳ جارِ الحفظ..." en="⏳ Saving..." inline /> : <Bidi ar="💾 حفظ التقرير" en="💾 Save Report" inline />}
         </button>
       </div>
     </div>

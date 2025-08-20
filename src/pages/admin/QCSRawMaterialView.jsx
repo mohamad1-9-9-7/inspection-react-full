@@ -194,6 +194,7 @@ export default function QCSRawMaterialView() {
   const normalizeServerRecord = (rec) => {
     const p = rec?.payload || rec || {};
     const payloadId = p.id || p.payloadId || undefined; // id داخل payload
+    the
     const dbId = rec?._id || rec?.id || undefined;      // _id من قاعدة البيانات
 
     return {
@@ -245,7 +246,7 @@ export default function QCSRawMaterialView() {
     try {
       const res = await fetch(`${API_BASE}/api/reports?type=qcs_raw_material`, {
         cache: "no-store",
-        credentials: "include"
+        mode: "cors" // ⬅️ تعديل
       });
       if (!res.ok) throw new Error(`Server ${res.status}`);
       const json = await res.json();
@@ -322,7 +323,7 @@ export default function QCSRawMaterialView() {
 
     const apiDelete = async (url) => {
       try {
-        const res = await fetch(url, { method: "DELETE", credentials: "include" });
+        const res = await fetch(url, { method: "DELETE", mode: "cors" }); // ⬅️ تعديل
         if (res.ok || res.status === 404) return true; // 404 يعني محذوف أصلًا
       } catch (e) {
         console.warn("Delete network error:", e);
@@ -344,14 +345,19 @@ export default function QCSRawMaterialView() {
 
     // 2) ما عندنا serverId → دوري على السجل وبعدين إحذف
     try {
-      const res = await fetch(`${base}?type=qcs_raw_material`, { cache: "no-store", credentials: "include" });
+      const res = await fetch(`${base}?type=qcs_raw_material`, {
+        cache: "no-store",
+        mode: "cors" // ⬅️ تعديل
+      });
       if (res.ok) {
         const json = await res.json();
         const arr = Array.isArray(json) ? json : json?.data || [];
         const target = arr.find((rec) => {
           const p = rec?.payload || {};
-          return (p.id && p.id === record.id) ||
-                 (norm(p.generalInfo?.airwayBill) === norm(record.generalInfo?.airwayBill));
+          return (
+            (p.id && p.id === record.id) ||
+            (norm(p.generalInfo?.airwayBill) === norm(record.generalInfo?.airwayBill))
+          );
         });
         const dbId = target?._id || target?.id;
         if (dbId) {
@@ -444,7 +450,7 @@ export default function QCSRawMaterialView() {
       (selectedReport?.generalInfo?.airwayBill &&
         `QCS-${selectedReport.generalInfo.airwayBill}`) ||
       `QCS-Report-${(selectedReport?.date || "")
-        .replace(/[:/\\s]+/g, "_")
+        .replace(/[:/\s]+/g, "_")
         .slice(0, 40) || Date.now()}`;
 
     const mainEl = mainRef.current;

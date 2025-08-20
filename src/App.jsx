@@ -70,11 +70,11 @@ function BranchMonitorPage() {
 
   return (
     <div style={{ padding: "2rem", direction: "rtl", fontFamily: "Cairo, sans-serif" }}>
-      <h2>📝 صفحة تقارير الفرع: {prettyName(slug)}</h2>
-      <p>هذه صفحة مؤقتة. يمكنك لاحقًا استبدالها بنموذج الفرع الحقيقي.</p>
+      <h2>📝 صفحة تقارير الفرع / Branch Reports Page: {prettyName(slug)}</h2>
+      <p>هذه صفحة مؤقتة. يمكنك لاحقًا استبدالها بنموذج الفرع الحقيقي. / This is a temporary page; you can later replace it with the real branch form.</p>
       <ul style={{ marginTop: "1rem" }}>
-        <li>أضف نموذج الإدخال الخاص بهذا الفرع هنا.</li>
-        <li>أو استورد مكوّن الفرع النهائي عندما يكون جاهزًا.</li>
+        <li>أضف نموذج الإدخال الخاص بهذا الفرع هنا. / Add this branch’s input form here.</li>
+        <li>أو استورد مكوّن الفرع النهائي عندما يكون جاهزًا. / Or import the final branch component when it’s ready.</li>
       </ul>
     </div>
   );
@@ -82,12 +82,12 @@ function BranchMonitorPage() {
 
 // 404
 function NotFound() {
-  return <div style={{ padding: 24, direction: "rtl" }}>الصفحة غير موجودة</div>;
+  return <div style={{ padding: 24, direction: "rtl" }}>الصفحة غير موجودة / Page not found</div>;
 }
 
 export default function App() {
   return (
-    <Suspense fallback={<div style={{ padding: 24, direction: "rtl" }}>جارٍ التحميل…</div>}>
+    <Suspense fallback={<div style={{ padding: 24, direction: "rtl" }}>جارٍ التحميل… / Loading…</div>}>
       <Routes>
         {/* الجذر */}
         <Route path="/" element={<Login />} />

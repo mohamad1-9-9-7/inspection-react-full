@@ -1,6 +1,87 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// src/pages/admin/QCSDailyView.jsx
+import React, { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+
+/* ======================================
+   API (Server) — كشف العنوان + تجنّب CORS
+====================================== */
+// عنوان السيرفر (تقدر تغيّره من window.__QCS_API__ أو REACT_APP_API_URL)
+const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
+const API_ROOT =
+  (typeof window !== "undefined" && window.__QCS_API__) ||
+  (typeof process !== "undefined" &&
+    process.env &&
+    process.env.REACT_APP_API_URL) ||
+  API_ROOT_DEFAULT;
+
+// نضمن ما في / بالأخير
+const API_BASE = String(API_ROOT).replace(/\/$/, "");
+const REPORTS_URL = `${API_BASE}/api/reports`;
+
+const IS_SAME_ORIGIN = (() => {
+  try {
+    return new URL(API_BASE).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+})();
+
+/* ======================================
+   دوال API متوافقة مع السيرفر الجديد
+====================================== */
+
+// جلب كل تقارير qcs-daily (ترجع مصفوفة سجلات من السيرفر)
+async function listQcsDailyReports() {
+  const res = await fetch(`${REPORTS_URL}?type=qcs-daily`, {
+    method: "GET",
+    cache: "no-store",
+    credentials: IS_SAME_ORIGIN ? "include" : "omit",
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error("Failed to list qcs-daily reports");
+  const json = await res.json().catch(() => null);
+  // ندعم الشكلين: [] مباشرة أو {data: []}
+  return Array.isArray(json) ? json : json?.data || [];
+}
+
+// إرجاع قائمة التواريخ (مميزة ومرتبة تنازليًا)
+async function listReportDates() {
+  const rows = await listQcsDailyReports();
+  const dates = Array.from(
+    new Set(
+      rows
+        .map((r) => String(r?.payload?.reportDate || r?.payload?.date || ""))
+        .filter(Boolean)
+    )
+  );
+  return dates.sort((a, b) => b.localeCompare(a));
+}
+
+// جلب تقرير (payload) حسب التاريخ
+async function getReportByDate(date) {
+  const rows = await listQcsDailyReports();
+  const found = rows.find(
+    (r) => String(r?.payload?.reportDate || "") === String(date)
+  );
+  return found?.payload || null;
+}
+
+// حذف تقرير حسب التاريخ (نبحث عن السجل ثم نحذف بالـ id)
+async function deleteReportByDate(date) {
+  const rows = await listQcsDailyReports();
+  const found = rows.find(
+    (r) => String(r?.payload?.reportDate || "") === String(date)
+  );
+  const id = found?._id || found?.id;
+  if (!id) throw new Error("Report not found");
+  const res = await fetch(`${REPORTS_URL}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: IS_SAME_ORIGIN ? "include" : "omit",
+  });
+  if (!res.ok && res.status !== 404) throw new Error("Failed to delete report");
+  return true;
+}
 
 /* =========================
    إعدادات عامة
@@ -9,18 +90,27 @@ const LOGO_URL = "/brand/al-mawashi.jpg";
 const MIN_PH_ROWS = 21;
 
 const COOLER_TIMES = [
-  "4:00 AM","6:00 AM","8:00 AM","10:00 AM","12:00 PM",
-  "2:00 PM","4:00 PM","6:00 PM","8:00 PM"
+  "4:00 AM",
+  "6:00 AM",
+  "8:00 AM",
+  "10:00 AM",
+  "12:00 PM",
+  "2:00 PM",
+  "4:00 PM",
+  "6:00 PM",
+  "8:00 PM",
 ];
 
-// عناوين تبويب النظافة الشخصية
 const PH_COLUMNS = [
   { ar: "الرقم", en: "S. No" },
   { ar: "اسم الموظف", en: "Employee Name" },
   { ar: "الأظافر", en: "Nails" },
   { ar: "الشعر", en: "Hair" },
   { ar: "عدم ارتداء الحُلي", en: "No jewelry" },
-  { ar: "ارتداء ملابس نظيفة/شبكة شعر/قفازات يد/كمامة/حذاء", en: "Wearing clean clothes / hair net / gloves / face mask / shoes" },
+  {
+    ar: "ارتداء ملابس نظيفة/شبكة شعر/قفازات يد/كمامة/حذاء",
+    en: "Wearing clean clothes / hair net / gloves / face mask / shoes",
+  },
   { ar: "الأمراض المعدية", en: "Communicable disease(s)" },
   { ar: "جروح/قروح/قطوع مفتوحة", en: "Open wounds / sores / cuts" },
   { ar: "ملاحظات وإجراءات تصحيحية", en: "Remarks & Corrective Actions" },
@@ -29,12 +119,20 @@ const PH_COLUMNS = [
 const I18N = {
   reportsTitle: { ar: "قائمة التقارير", en: "Reports List" },
   selectedDate: { ar: "التاريخ المحدد", en: "Selected Date" },
-  exportCurrent: { ar: "⬇️ تصدير التقرير الحالي (JSON)", en: "⬇️ Export Current Report (JSON)" },
-  exportAll: { ar: "⬇️⬇️ تصدير كل التقارير (JSON)", en: "⬇️⬇️ Export All Reports (JSON)" },
-  importBtn: { ar: "⬆️ استيراد التقارير", en: "⬆️ Import Reports" },
+  exportCurrent: {
+    ar: "⬇️ تصدير التقرير الحالي (JSON)",
+    en: "⬇️ Export Current Report (JSON)",
+  },
+  exportAll: {
+    ar: "⬇️⬇️ تصدير كل التقارير (JSON)",
+    en: "⬇️⬇️ Export All Reports (JSON)",
+  },
   delete: { ar: "حذف", en: "Delete" },
   noReportsHeader: { ar: "📋 تقارير القصيص", en: "📋 QCS Reports" },
-  noReportsText: { ar: "لا يوجد تقارير محفوظة على هذا الجهاز.", en: "No reports found on this device." },
+  noReportsText: {
+    ar: "لا يوجد تقارير محفوظة على هذا الجهاز.",
+    en: "No reports found on this device.",
+  },
   tabs: {
     coolers: { ar: "🧊 درجات حرارة البرادات", en: "🧊 Coolers Temperatures" },
     personalHygiene: { ar: "🧼 النظافة الشخصية", en: "🧼 Personal Hygiene" },
@@ -42,8 +140,14 @@ const I18N = {
   },
   sections: {
     coolers: { ar: "🧊 درجات حرارة البرادات", en: "🧊 Coolers Temperatures" },
-    personalHygiene: { ar: "🧼 النظافة الشخصية للموظفين", en: "🧼 Employees Personal Hygiene" },
-    dailyCleanliness: { ar: "🧹 النظافة اليومية للمستودع", en: "🧹 Warehouse Daily Cleanliness" },
+    personalHygiene: {
+      ar: "🧼 النظافة الشخصية للموظفين",
+      en: "🧼 Employees Personal Hygiene",
+    },
+    dailyCleanliness: {
+      ar: "🧹 النظافة اليومية للمستودع",
+      en: "🧹 Warehouse Daily Cleanliness",
+    },
   },
   kpi: {
     avg: { ar: "المتوسط", en: "Average" },
@@ -52,7 +156,7 @@ const I18N = {
   },
   tabActions: {
     print: { ar: "🖨️ طباعة التقرير", en: "🖨️ Print Report" },
-  }
+  },
 };
 
 // ثنائي بسيط
@@ -61,17 +165,23 @@ function Bidi({ ar, en }) {
     <span style={{ display: "inline-block" }}>
       <bdi>{ar}</bdi>
       <br />
-      <span style={{ opacity: .75, fontSize: ".92em" }}><bdi>{en}</bdi></span>
+      <span style={{ opacity: 0.75, fontSize: ".92em" }}>
+        <bdi>{en}</bdi>
+      </span>
     </span>
   );
 }
-function LangText({ lang, ar, en, strong=false, inline=false }) {
-  const wrap = (n) => strong ? <strong>{n}</strong> : n;
+function LangText({ lang, ar, en, strong = false, inline = false }) {
+  const wrap = (n) => (strong ? <strong>{n}</strong> : n);
   if (lang === "ar") return wrap(<bdi>{ar}</bdi>);
   if (lang === "en") return wrap(<bdi>{en}</bdi>);
   return wrap(
     <span style={{ display: inline ? "inline" : "inline-block" }}>
-      <bdi>{ar}</bdi><br/><span style={{ opacity:.7, fontSize:".92em" }}><bdi>{en}</bdi></span>
+      <bdi>{ar}</bdi>
+      <br />
+      <span style={{ opacity: 0.7, fontSize: ".92em" }}>
+        <bdi>{en}</bdi>
+      </span>
     </span>
   );
 }
@@ -93,9 +203,8 @@ const printCss = `
     table { page-break-inside: auto; }
     tr { page-break-inside: avoid; }
 
-    /* إجبار المحتوى على صفحة واحدة مع سكيل ديناميكي */
     .one-page {
-      width: 281mm;                 /* 297 - (8+8)mm */
+      width: 281mm;
       height: auto;
       overflow: visible !important;
       transform-origin: top left;
@@ -106,12 +215,11 @@ const printCss = `
   }
 `;
 
-/* ========= ستايل شاشة عصري خفيف (لا يمس الطباعة) ========= */
+/* ========= ستايل شاشة خفيف ========= */
 const screenCss = `
   @media screen {
     body { background: linear-gradient(135deg, #f7fafc 0%, #eef2ff 100%); }
     .app-shell { backdrop-filter: saturate(1.1); }
-    /* تحسين أزرار التبويبات */
     nav.no-print button {
       transition: transform .08s ease, box-shadow .15s ease, background-color .15s ease, border-color .15s ease;
     }
@@ -119,15 +227,8 @@ const screenCss = `
       transform: translateY(-1px);
       box-shadow: 0 8px 20px rgba(17, 24, 39, 0.08);
     }
-    /* بطاقات أقسام البرادات */
-    .cooler-card {
-      transition: box-shadow .18s ease, transform .1s ease;
-    }
-    .cooler-card:hover {
-      box-shadow: 0 10px 24px rgba(41, 128, 185, 0.16);
-      transform: translateY(-1px);
-    }
-    /* تمرير أنعم */
+    .cooler-card { transition: box-shadow .18s ease, transform .1s ease; }
+    .cooler-card:hover { box-shadow: 0 10px 24px rgba(41, 128, 185, 0.16); transform: translateY(-1px); }
     * { scrollbar-width: thin; scrollbar-color: #cbd5e1 #f1f5f9; }
     *::-webkit-scrollbar { height: 8px; width: 8px; }
     *::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
@@ -136,94 +237,134 @@ const screenCss = `
 `;
 
 /* ========= سكيل الطباعة الديناميكي ========= */
-const PX_PER_MM = 96 / 25.4;     // تحويل mm إلى px
-const PRINT_W_MM = 281;          // عرض المساحة القابلة للطباعة (A4 Landscape مع هامش 8mm)
-const PRINT_H_MM = 194;          // الارتفاع القابل للطباعة
+const PX_PER_MM = 96 / 25.4;
+const PRINT_W_MM = 281;
+const PRINT_H_MM = 194;
 
 function setAutoPrintScale() {
-  const el = document.querySelector('.print-area.one-page') || document.querySelector('.print-area');
+  const el =
+    document.querySelector(".print-area.one-page") ||
+    document.querySelector(".print-area");
   if (!el) return 1;
-  const rect = el.getBoundingClientRect(); // أبعاد المحتوى على الشاشة (بدون سكيل الطباعة)
+  const rect = el.getBoundingClientRect();
   const maxW = PRINT_W_MM * PX_PER_MM;
   const maxH = PRINT_H_MM * PX_PER_MM;
   const scale = Math.min(maxW / rect.width, maxH / rect.height, 1);
-  el.style.setProperty('--print-scale', String(scale));
+  el.style.setProperty("--print-scale", String(scale));
   return scale;
 }
-
-// ستايل شاشة بسيط
-const thStyle = { padding: "8px", borderBottom: "2px solid #2980b9" };
-const tdStyle = { padding: "8px", borderBottom: "1px solid #ccc" };
 
 /* =========================
    Helpers
 ========================= */
 function getTempCellStyle(temp) {
   const t = Number(temp);
-  if (temp === "" || isNaN(t)) return { background: "#d6eaf8", color: "#2980b9" };
-  if (t < 0 || t > 5) return { background: "#fdecea", color: "#c0392b", fontWeight: 700 };
-  if (t >= 3) return { background: "#eaf6fb", color: "#2471a3", fontWeight: 600 };
+  if (temp === "" || isNaN(t))
+    return { background: "#d6eaf8", color: "#2980b9" };
+  if (t < 0 || t > 5)
+    return { background: "#fdecea", color: "#c0392b", fontWeight: 700 };
+  if (t >= 3)
+    return { background: "#eaf6fb", color: "#2471a3", fontWeight: 600 };
   return { background: "#d6eaf8", color: "#2980b9" };
 }
 function downloadBlob(str, mime, filename) {
   const blob = new Blob([str], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
-}
-function headerByLang(ar, en, lang) {
-  if (lang === "ar") return ar;
-  if (lang === "en") return en;
-  return `${ar} / ${en}`;
-}
-function loadUnifiedReports() {
-  const arr = [];
-  try { const oldRaw = localStorage.getItem("qcs_reports"); if (oldRaw) { const a = JSON.parse(oldRaw); if (Array.isArray(a)) arr.push(...a); } } catch {}
-  try { const newRaw = localStorage.getItem("qcs_daily_reports_v1"); if (newRaw) { const dict = JSON.parse(newRaw); if (dict && typeof dict === "object") Object.keys(dict).forEach(d => { const rec = dict[d]; if (rec && typeof rec === "object") arr.push({ date: d, ...rec }); }); } } catch {}
-  const map = new Map(); arr.forEach(r => r?.date && map.set(r.date, r));
-  return Array.from(map.values()).sort((a,b)=> (a.date < b.date ? 1 : -1));
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 /* =========================
    KPIs للبرادات
 ========================= */
 function CoolersKPI({ coolers = [], lang }) {
-  const all = []; let outOfRange = 0;
-  coolers.forEach(c => {
-    COOLER_TIMES.forEach(time => {
-      const v = c?.temps?.[time]; const t = Number(v);
-      if (v !== "" && !isNaN(t)) { all.push(t); if (t < 0 || t > 5) outOfRange += 1; }
+  const all = [];
+  let outOfRange = 0;
+  coolers.forEach((c) => {
+    COOLER_TIMES.forEach((time) => {
+      const v = c?.temps?.[time];
+      const t = Number(v);
+      if (v !== "" && !isNaN(t)) {
+        all.push(t);
+        if (t < 0 || t > 5) outOfRange += 1;
+      }
     });
   });
-  const avgNum = all.length ? all.reduce((a,b)=>a+b,0)/all.length : null;
+  const avgNum = all.length ? all.reduce((a, b) => a + b, 0) / all.length : null;
   const avg = avgNum !== null ? avgNum.toFixed(2) : "—";
   const min = all.length ? Math.min(...all) : "—";
   const max = all.length ? Math.max(...all) : "—";
   const avgBad = avgNum !== null && (avgNum < 0 || avgNum > 5);
 
   return (
-    <div style={{ display:"flex", gap:"1.2rem", margin:"10px 0 25px 0", flexWrap:"wrap" }}>
-      <div style={{ background:"#fff", borderRadius:8, padding:"9px 26px", fontWeight:"bold", color:"#512e5f", boxShadow:"0 2px 10px #e8daef33" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: "1.2rem",
+        margin: "10px 0 25px 0",
+        flexWrap: "wrap",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 8,
+          padding: "9px 26px",
+          fontWeight: "bold",
+          color: "#512e5f",
+          boxShadow: "0 2px 10px #e8daef33",
+        }}
+      >
         <LangText lang={lang} {...I18N.kpi.avg} inline />:{" "}
-        <span style={{ color: avgBad ? "#c0392b" : "#229954", fontWeight: "bolder" }}>{avg}°C</span>
+        <span
+          style={{
+            color: avgBad ? "#c0392b" : "#229954",
+            fontWeight: "bolder",
+          }}
+        >
+          {avg}°C
+        </span>
       </div>
-      <div style={{ background:"#fff", borderRadius:8, padding:"9px 26px", fontWeight:"bold", color:"#c0392b", boxShadow:"0 2px 10px #fdecea" }}>
-        <LangText lang={lang} {...I18N.kpi.outOfRange} inline />: <span style={{ fontWeight:"bolder" }}>{outOfRange}</span>
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 8,
+          padding: "9px 26px",
+          fontWeight: "bold",
+          color: "#c0392b",
+          boxShadow: "0 2px 10px #fdecea",
+        }}
+      >
+        <LangText lang={lang} {...I18N.kpi.outOfRange} inline />:{" "}
+        <span style={{ fontWeight: "bolder" }}>{outOfRange}</span>
       </div>
-      <div style={{ background:"#fff", borderRadius:8, padding:"9px 22px", fontWeight:"bold", color:"#884ea0", boxShadow:"0 2px 10px #f5eef8" }}>
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 8,
+          padding: "9px 22px",
+          fontWeight: "bold",
+          color: "#884ea0",
+          boxShadow: "0 2px 10px #f5eef8",
+        }}
+      >
         <LangText lang={lang} {...I18N.kpi.minmax} inline />:{" "}
-        <span style={{ color:"#2471a3" }}>{min}</span>
-        <span style={{ color:"#999" }}> / </span>
-        <span style={{ color:"#c0392b" }}>{max}</span>
-        <span style={{ color:"#884ea0", fontWeight:"normal" }}>°C</span>
+        <span style={{ color: "#2471a3" }}>{min}</span>
+        <span style={{ color: "#999" }}> / </span>
+        <span style={{ color: "#c0392b" }}>{max}</span>
+        <span style={{ color: "#884ea0", fontWeight: "normal" }}>°C</span>
       </div>
     </div>
   );
 }
 
 /* =========================
-   ترويسة/فوتر تبويب النظافة الشخصية
+   ترويسة/فوتر التبويبات المطبوعة
 ========================= */
 const defaultPHHeader = {
   documentTitle: "Personal Hygiene Check List",
@@ -237,9 +378,6 @@ const defaultPHHeader = {
 };
 const defaultPHFooter = { checkedBy: "MOHAMAD", verifiedBy: "" };
 
-/* =========================
-   ترويسة/فوتر تبويب النظافة اليومية (Cleaning Checklist)
-========================= */
 const defaultCCHeader = {
   documentTitle: "Cleaning Checklist",
   documentNo: "FF -QM/REC/CC",
@@ -250,41 +388,76 @@ const defaultCCHeader = {
   controllingOfficer: "Quality Controller",
   approvedBy: "Hussam O.Sarhan",
 };
-const defaultCCFooter = {
-  checkedBy: "",
-  verifiedBy: "",
-};
+const defaultCCFooter = { checkedBy: "", verifiedBy: "" };
 
 function useLocalJSON(key, initialValue) {
   const [val, setVal] = useState(() => {
-    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : initialValue; } catch { return initialValue; }
+    try {
+      const s = localStorage.getItem(key);
+      return s ? JSON.parse(s) : initialValue;
+    } catch {
+      return initialValue;
+    }
   });
-  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch {}
+  }, [key, val]);
   return [val, setVal];
 }
 
 function Row({ label, value }) {
   return (
-    <div style={{ display:"flex", borderBottom:"1px solid #000" }}>
-      <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:170, fontWeight:700 }}>{label}</div>
-      <div style={{ padding:"6px 8px", flex:1 }}>{value}</div>
+    <div style={{ display: "flex", borderBottom: "1px solid #000" }}>
+      <div
+        style={{
+          padding: "6px 8px",
+          borderInlineEnd: "1px solid #000",
+          minWidth: 170,
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ padding: "6px 8px", flex: 1 }}>{value}</div>
     </div>
   );
 }
 
-/* ===== Personal Hygiene Header/Footer (عرض) ===== */
 function PHPrintHeader({ header, selectedDate }) {
   return (
-    <div style={{ border:"1px solid #000", marginBottom:8, breakInside:"avoid" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"180px 1fr 1fr", alignItems:"stretch" }}>
-        <div style={{ borderInlineEnd:"1px solid #000", display:"flex", alignItems:"center", justifyContent:"center", padding:8 }}>
-          <img src={LOGO_URL} alt="Al Mawashi" style={{ maxWidth:"100%", maxHeight:80, objectFit:"contain" }} />
+    <div style={{ border: "1px solid #000", marginBottom: 8, breakInside: "avoid" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "180px 1fr 1fr",
+          alignItems: "stretch",
+        }}
+      >
+        <div
+          style={{
+            borderInlineEnd: "1px solid #000",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 8,
+          }}
+        >
+          <img
+            src={LOGO_URL}
+            alt="Al Mawashi"
+            style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }}
+          />
         </div>
-        <div style={{ borderInlineEnd:"1px solid #000" }}>
+        <div style={{ borderInlineEnd: "1px solid #000" }}>
           <Row label="Document Title:" value={header.documentTitle} />
           <Row label="Issue  Date:" value={header.issueDate} />
           <Row label="Area:" value={header.area} />
-          <Row label="Controlling Officer:" value={header.controllingOfficer} />
+          <Row
+            label="Controlling Officer:"
+            value={header.controllingOfficer}
+          />
         </div>
         <div>
           <Row label="Document No:" value={header.documentNo} />
@@ -294,15 +467,31 @@ function PHPrintHeader({ header, selectedDate }) {
         </div>
       </div>
 
-      <div style={{ borderTop:"1px solid #000" }}>
-        <div style={{ background:"#c0c0c0", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+      <div style={{ borderTop: "1px solid #000" }}>
+        <div
+          style={{
+            background: "#c0c0c0",
+            textAlign: "center",
+            fontWeight: 900,
+            padding: "6px 8px",
+            borderBottom: "1px solid #000",
+          }}
+        >
           TRANS EMIRATES LIVESTOCK MEAT TRADING LLC-AL QUSAIS
         </div>
-        <div style={{ background:"#d6d6d6", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+        <div
+          style={{
+            background: "#d6d6d6",
+            textAlign: "center",
+            fontWeight: 900,
+            padding: "6px 8px",
+            borderBottom: "1px solid #000",
+          }}
+        >
           PERSONAL HYGIENE CHECK LIST
         </div>
-        <div style={{ display:"flex", gap:8, alignItems:"center", padding:"6px 8px" }}>
-          <span style={{ fontWeight:900, textDecoration:"underline" }}>Date:</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px" }}>
+          <span style={{ fontWeight: 900, textDecoration: "underline" }}>Date:</span>
           <span>{selectedDate || ""}</span>
         </div>
       </div>
@@ -311,102 +500,64 @@ function PHPrintHeader({ header, selectedDate }) {
 }
 function PHPrintFooter({ footer }) {
   return (
-    <div style={{ border:"1px solid #000", marginTop:8, breakInside:"avoid" }}>
-      <div style={{ padding:"6px 8px", borderBottom:"1px solid #000", fontWeight:900 }}>
+    <div style={{ border: "1px solid #000", marginTop: 8, breakInside: "avoid" }}>
+      <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>
         REMARKS/CORRECTIVE ACTIONS:
       </div>
-      <div style={{ padding:"8px", borderBottom:"1px solid #000", minHeight:56 }}>
+      <div style={{ padding: "8px", borderBottom: "1px solid #000", minHeight: 56 }}>
         <em>*(C – Conform    N / C – Non Conform)</em>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
-        <div style={{ display:"flex" }}>
-          <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:120, fontWeight:700 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+        <div style={{ display: "flex" }}>
+          <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 120, fontWeight: 700 }}>
             Checked By :
           </div>
-          <div style={{ padding:"6px 8px", flex:1 }}>{footer.checkedBy || "\u00A0"}</div>
+          <div style={{ padding: "6px 8px", flex: 1 }}>{footer.checkedBy || "\u00A0"}</div>
         </div>
-        <div style={{ display:"flex", borderInlineStart:"1px solid #000" }}>
-          <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:120, fontWeight:700 }}>
+        <div style={{ display: "flex", borderInlineStart: "1px solid #000" }}>
+          <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 120, fontWeight: 700 }}>
             Verified  By :
           </div>
-          <div style={{ padding:"6px 8px", flex:1 }}>{footer.verifiedBy || "\u00A0"}</div>
+          <div style={{ padding: "6px 8px", flex: 1 }}>{footer.verifiedBy || "\u00A0"}</div>
         </div>
       </div>
     </div>
   );
 }
 
-// محرر قيم النظافة الشخصية — حفظ عند الضغط فقط
-function PHHeaderEditor({ header, setHeader, footer, setFooter }) {
-  const [localHeader, setLocalHeader] = useState(header);
-  const [localFooter, setLocalFooter] = useState(footer);
-
-  useEffect(() => { setLocalHeader(header); }, [header]);
-  useEffect(() => { setLocalFooter(footer); }, [footer]);
-
-  const Input = ({ label, value, onChange }) => (
-    <label style={{ display:"grid", gridTemplateColumns:"160px 1fr", alignItems:"center", gap:8, marginBottom:8 }}>
-      <span style={{ fontWeight:700 }}>{label}</span>
-      <input value={value} onChange={e=>onChange(e.target.value)} style={{ padding:"8px 10px", border:"1px solid #ccc", borderRadius:6 }} />
-    </label>
-  );
-
-  return (
-    <div className="no-print" style={{ border:"1px dashed #bbb", padding:12, borderRadius:8, margin:"8px 0" }}>
-      <details>
-        <summary style={{ cursor:"pointer", fontWeight:800 }}>⚙️ Edit Header/Footer (Personal Hygiene)</summary>
-        <div style={{ marginTop:10, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-          <div>
-            <Input label="Document Title" value={localHeader.documentTitle} onChange={v=>setLocalHeader({...localHeader, documentTitle:v})}/>
-            <Input label="Issue Date" value={localHeader.issueDate} onChange={v=>setLocalHeader({...localHeader, issueDate:v})}/>
-            <Input label="Area" value={localHeader.area} onChange={v=>setLocalHeader({...localHeader, area:v})}/>
-            <Input label="Controlling Officer" value={localHeader.controllingOfficer} onChange={v=>setLocalHeader({...localHeader, controllingOfficer:v})}/>
-          </div>
-          <div>
-            <Input label="Document No" value={localHeader.documentNo} onChange={v=>setLocalHeader({...localHeader, documentNo:v})}/>
-            <Input label="Revision No" value={localHeader.revisionNo} onChange={v=>setLocalHeader({...localHeader, revisionNo:v})}/>
-            <Input label="Issued By" value={localHeader.issuedBy} onChange={v=>setLocalHeader({...localHeader, issuedBy:v})}/>
-            <Input label="Approved By" value={localHeader.approvedBy} onChange={v=>setLocalHeader({...localHeader, approvedBy:v})}/>
-          </div>
-        </div>
-
-        <div style={{ marginTop:10, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-          <Input label="Checked By" value={localFooter.checkedBy} onChange={v=>setLocalFooter({...localFooter, checkedBy:v})}/>
-          <Input label="Verified By" value={localFooter.verifiedBy} onChange={v=>setLocalFooter({...localFooter, verifiedBy:v})}/>
-        </div>
-
-        <div style={{ marginTop:10, display:"flex", gap:8 }}>
-          <button onClick={() => { setHeader(localHeader); setFooter(localFooter); }}
-                  style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #16a34a", background:"#16a34a", color:"#fff", fontWeight:800, cursor:"pointer" }}>
-            Save
-          </button>
-          <button onClick={() => { setLocalHeader(header); setLocalFooter(footer); }}
-                  style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #e5e7eb", background:"#fff", color:"#111827", fontWeight:800, cursor:"pointer" }}>
-            Cancel
-          </button>
-        </div>
-
-        <div style={{ marginTop:8, fontSize:12, color:"#666" }}>
-          * القيم لا تُحفظ أثناء الكتابة. يتم الحفظ فقط عند الضغط على Save.
-        </div>
-      </details>
-    </div>
-  );
-}
-
-/* ===== Cleaning Checklist Header/Footer (عرض) ===== */
 function CCPrintHeader({ header, selectedDate }) {
   return (
-    <div style={{ border:"1px solid #000", marginBottom:8, breakInside:"avoid" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"180px 1fr 1fr", alignItems:"stretch" }}>
-        <div style={{ borderInlineEnd:"1px solid #000", display:"flex", alignItems:"center", justifyContent:"center", padding:8 }}>
-          <img src={LOGO_URL} alt="Al Mawashi" style={{ maxWidth:"100%", maxHeight:80, objectFit:"contain" }} />
+    <div style={{ border: "1px solid #000", marginBottom: 8, breakInside: "avoid" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "180px 1fr 1fr",
+          alignItems: "stretch",
+        }}
+      >
+        <div
+          style={{
+            borderInlineEnd: "1px solid #000",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 8,
+          }}
+        >
+          <img
+            src={LOGO_URL}
+            alt="Al Mawashi"
+            style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }}
+          />
         </div>
-        <div style={{ borderInlineEnd:"1px solid #000" }}>
+        <div style={{ borderInlineEnd: "1px solid #000" }}>
           <Row label="Document Title:" value={header.documentTitle} />
           <Row label="Issue Date:" value={header.issueDate} />
           <Row label="Area:" value={header.area} />
-          <Row label="Controlling Officer:" value={header.controllingOfficer} />
+          <Row
+            label="Controlling Officer:"
+            value={header.controllingOfficer}
+          />
         </div>
         <div>
           <Row label="Document No:" value={header.documentNo} />
@@ -416,15 +567,31 @@ function CCPrintHeader({ header, selectedDate }) {
         </div>
       </div>
 
-      <div style={{ borderTop:"1px solid #000" }}>
-        <div style={{ background:"#c0c0c0", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+      <div style={{ borderTop: "1px solid #000" }}>
+        <div
+          style={{
+            background: "#c0c0c0",
+            textAlign: "center",
+            fontWeight: 900,
+            padding: "6px 8px",
+            borderBottom: "1px solid #000",
+          }}
+        >
           TRANS EMIRATES LIVESTOCK TRADING LLC
         </div>
-        <div style={{ background:"#d6d6d6", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+        <div
+          style={{
+            background: "#d6d6d6",
+            textAlign: "center",
+            fontWeight: 900,
+            padding: "6px 8px",
+            borderBottom: "1px solid #000",
+          }}
+        >
           CLEANING CHECKLIST-WAREHOUSE
         </div>
-        <div style={{ display:"flex", gap:8, alignItems:"center", padding:"6px 8px" }}>
-          <span style={{ fontWeight:900, textDecoration:"underline" }}>Date:</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px" }}>
+          <span style={{ fontWeight: 900, textDecoration: "underline" }}>Date:</span>
           <span>{selectedDate || ""}</span>
         </div>
       </div>
@@ -433,221 +600,200 @@ function CCPrintHeader({ header, selectedDate }) {
 }
 function CCPrintFooter({ footer }) {
   return (
-    <div style={{ border:"1px solid #000", marginTop:8, breakInside:"avoid" }}>
-      <div style={{ padding:"6px 8px", borderBottom:"1px solid #000", fontWeight:900 }}>
+    <div style={{ border: "1px solid #000", marginTop: 8, breakInside: "avoid" }}>
+      <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>
         REMARKS/CORRECTIVE ACTIONS:
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
-        <div style={{ display:"flex" }}>
-          <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:160, fontWeight:900, textDecoration:"underline" }}>
-            CHECKED BY: <span style={{ fontWeight:400 }}>(QC-ASSIST)</span>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+        <div style={{ display: "flex" }}>
+          <div
+            style={{
+              padding: "6px 8px",
+              borderInlineEnd: "1px solid #000",
+              minWidth: 160,
+              fontWeight: 900,
+              textDecoration: "underline",
+            }}
+          >
+            CHECKED BY: <span style={{ fontWeight: 400 }}>(QC-ASSIST)</span>
           </div>
-          <div style={{ padding:"6px 8px", flex:1 }}>{footer.checkedBy || "\u00A0"}</div>
+          <div style={{ padding: "6px 8px", flex: 1 }}>{footer.checkedBy || "\u00A0"}</div>
         </div>
-        <div style={{ display:"flex", borderInlineStart:"1px solid #000" }}>
-          <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:140, fontWeight:900, textDecoration:"underline" }}>
+        <div style={{ display: "flex", borderInlineStart: "1px solid #000" }}>
+          <div
+            style={{
+              padding: "6px 8px",
+              borderInlineEnd: "1px solid #000",
+              minWidth: 140,
+              fontWeight: 900,
+              textDecoration: "underline",
+            }}
+          >
             VERIFIED BY:
           </div>
-          <div style={{ padding:"6px 8px", flex:1 }}>{footer.verifiedBy || "\u00A0"}</div>
+          <div style={{ padding: "6px 8px", flex: 1 }}>{footer.verifiedBy || "\u00A0"}</div>
         </div>
       </div>
 
-      <div style={{ padding:"8px 8px 2px", fontStyle:"italic" }}>
+      <div style={{ padding: "8px 8px 2px", fontStyle: "italic" }}>
         Remark:-Frequency-Daily
       </div>
-      <div style={{ padding:"0 8px 8px", fontStyle:"italic" }}>
+      <div style={{ padding: "0 8px 8px", fontStyle: "italic" }}>
         *(C = Conform &nbsp;&nbsp;&nbsp; N / C = Non Conform)
       </div>
     </div>
   );
 }
 
-// محرر قيم Cleaning Checklist — حفظ عند الضغط فقط
-function CCHeaderEditor({ header, setHeader, footer, setFooter }) {
-  const [localHeader, setLocalHeader] = useState(header);
-  const [localFooter, setLocalFooter] = useState(footer);
-
-  useEffect(() => { setLocalHeader(header); }, [header]);
-  useEffect(() => { setLocalFooter(footer); }, [footer]);
-
-  const Input = ({ label, value, onChange }) => (
-    <label style={{ display:"grid", gridTemplateColumns:"160px 1fr", alignItems:"center", gap:8, marginBottom:8 }}>
-      <span style={{ fontWeight:700 }}>{label}</span>
-      <input value={value} onChange={e=>onChange(e.target.value)} style={{ padding:"8px 10px", border:"1px solid #ccc", borderRadius:6 }} />
-    </label>
-  );
-
-  return (
-    <div className="no-print" style={{ border:"1px dashed #bbb", padding:12, borderRadius:8, margin:"8px 0" }}>
-      <details>
-        <summary style={{ cursor:"pointer", fontWeight:800 }}>⚙️ Edit Header/Footer (Daily Cleanliness)</summary>
-        <div style={{ marginTop:10, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-          <div>
-            <Input label="Document Title" value={localHeader.documentTitle} onChange={v=>setLocalHeader({...localHeader, documentTitle:v})}/>
-            <Input label="Issue Date" value={localHeader.issueDate} onChange={v=>setLocalHeader({...localHeader, issueDate:v})}/>
-            <Input label="Area" value={localHeader.area} onChange={v=>setLocalHeader({...localHeader, area:v})}/>
-            <Input label="Controlling Officer" value={localHeader.controllingOfficer} onChange={v=>setLocalHeader({...localHeader, controllingOfficer:v})}/>
-          </div>
-          <div>
-            <Input label="Document No" value={localHeader.documentNo} onChange={v=>setLocalHeader({...localHeader, documentNo:v})}/>
-            <Input label="Revision No" value={localHeader.revisionNo} onChange={v=>setLocalHeader({...localHeader, revisionNo:v})}/>
-            <Input label="Issued By" value={localHeader.issuedBy} onChange={v=>setLocalHeader({...localHeader, issuedBy:v})}/>
-            <Input label="Approved By" value={localHeader.approvedBy} onChange={v=>setLocalHeader({...localHeader, approvedBy:v})}/>
-          </div>
-        </div>
-
-        <div style={{ marginTop:10, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-          <Input label="Checked By" value={localFooter.checkedBy} onChange={v=>setLocalFooter({...localFooter, checkedBy:v})}/>
-          <Input label="Verified By" value={localFooter.verifiedBy} onChange={v=>setLocalFooter({...localFooter, verifiedBy:v})}/>
-        </div>
-
-        <div style={{ marginTop:10, display:"flex", gap:8 }}>
-          <button onClick={() => { setHeader(localHeader); setFooter(localFooter); }}
-                  style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #16a34a", background:"#16a34a", color:"#fff", fontWeight:800, cursor:"pointer" }}>
-            Save
-          </button>
-          <button onClick={() => { setLocalHeader(header); setLocalFooter(footer); }}
-                  style={{ padding:"8px 12px", borderRadius:8, border:"1px solid #e5e7eb", background:"#fff", color:"#111827", fontWeight:800, cursor:"pointer" }}>
-            Cancel
-          </button>
-        </div>
-
-        <div style={{ marginTop:8, fontSize:12, color:"#666" }}>
-          * القيم لا تُحفظ أثناء الكتابة. يتم الحفظ فقط عند الضغط على Save.
-        </div>
-      </details>
-    </div>
-  );
-}
-
 /* =========================
-   هيكل جدول النظافة اليومية المثبّت (حسب النموذج)
+   جدول النظافة اليومية المثبّت
 ========================= */
 const CLEANING_SECTIONS = [
   { header: "Hand Washing Area", items: ["Tissue available", "Hair Net available", "Face Masks available"] },
-  { header: "Chiller Room 1",     items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { header: "Chiller Room 2",     items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { header: "Chiller Room 3",     items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { header: "Chiller Room 4",     items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { header: "Chiller Room 5",     items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { header: "Chiller Room 6",     items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { header: "Chiller Room 7",     items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { header: "Chiller Room 8",     items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
-  { header: "Loading Area",       items: ["Walls/Floors", "Trolleys"] },
-  { header: "Waste Disposal",     items: ["Collection of waste", "Disposal"] },
-  { header: "Working Conditions & Cleanliness",
-    items: ["Lights","Fly Catchers","Floor/wall","Painting and Plastering","Weighing Balance","Tap Water"] },
+  { header: "Chiller Room 1", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
+  { header: "Chiller Room 2", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
+  { header: "Chiller Room 3", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
+  { header: "Chiller Room 4", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
+  { header: "Chiller Room 5", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
+  { header: "Chiller Room 6", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
+  { header: "Chiller Room 7", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
+  { header: "Chiller Room 8", items: ["Floors", "Drainage", "Proper arrangement of Products", "Door"] },
+  { header: "Loading Area", items: ["Walls/Floors", "Trolleys"] },
+  { header: "Waste Disposal", items: ["Collection of waste", "Disposal"] },
+  {
+    header: "Working Conditions & Cleanliness",
+    items: ["Lights", "Fly Catchers", "Floor/wall", "Painting and Plastering", "Weighing Balance", "Tap Water"],
+  },
 ];
 
-// جد مطابقة بين صف محفوظ وقيمة الجدول الثابت
 function findCleanRow(rows, sectionHeader, itemName) {
   if (!Array.isArray(rows) || rows.length === 0) return null;
-  const norm = s => String(s || "").trim().toLowerCase();
+  const norm = (s) => String(s || "").trim().toLowerCase();
   const h = norm(sectionHeader);
   const i = norm(itemName);
-  // نحاول مطابقة بالإنكليزي أولاً ثم العربي إن وجد
-  return rows.find(r =>
-    (norm(r.groupEn) === h || norm(r.groupAr) === h) &&
-    (norm(r.itemEn)  === i || norm(r.itemAr)  === i)
-  ) || null;
+  return (
+    rows.find(
+      (r) =>
+        (norm(r.groupEn) === h || norm(r.groupAr) === h) &&
+        (norm(r.itemEn) === i || norm(r.itemAr) === i)
+    ) || null
+  );
 }
 
 /* =========================
    الصفحة الرئيسية
 ========================= */
 export default function QCSDailyView() {
-  const [reports, setReports] = useState([]);
+  const [reports, setReports] = useState([]); // [{date}]
   const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [loadingReport, setLoadingReport] = useState(false);
   const [activeTab, setActiveTab] = useState("coolers");
-  const [lang, setLang] = useState("both"); // واجهة فقط
-  const fileInputRef = useRef(null);
+  const [lang, setLang] = useState("both");
 
-  // ترويسات تبويبَي النظافة
   const [phHeader, setPhHeader] = useLocalJSON("qcs_ph_header_v1", defaultPHHeader);
   const [phFooter, setPhFooter] = useLocalJSON("qcs_ph_footer_v1", defaultPHFooter);
-
   const [ccHeader, setCcHeader] = useLocalJSON("qcs_cc_header_v1", defaultCCHeader);
   const [ccFooter, setCcFooter] = useLocalJSON("qcs_cc_footer_v1", defaultCCFooter);
 
-  const [exportingPDF, setExportingPDF] = useState(false); // حالة زر تصدير PDF
+  const [exportingPDF, setExportingPDF] = useState(false);
+  const [exportingAll, setExportingAll] = useState(false);
 
+  // تحميل قائمة التواريخ
   useEffect(() => {
-    const unified = loadUnifiedReports();
-    setReports(unified);
-    if (unified.length > 0) setSelectedDate(unified[0].date);
+    (async () => {
+      try {
+        const dates = await listReportDates();
+        const items = dates.map((d) => ({ date: d }));
+        setReports(items);
+        setSelectedDate(dates[0] || null);
+      } catch (e) {
+        console.error(e);
+        alert("تعذّر جلب قائمة التقارير من السيرفر.");
+      }
+    })();
   }, []);
 
-  const selectedReport = useMemo(() => reports.find(r => r.date === selectedDate) || null, [reports, selectedDate]);
-
-  // حذف نهائي من المصدرين
-  const handleDeleteReport = (dateToDelete) => {
-    if (window.confirm(lang === "en"
-      ? `Are you sure you want to delete report dated ${dateToDelete}?`
-      : `هل أنت متأكد من حذف التقرير الخاص بتاريخ ${dateToDelete}؟`)) {
-
-      const filtered = reports.filter(r => r.date !== dateToDelete);
-      setReports(filtered);
-      localStorage.setItem("qcs_reports", JSON.stringify(filtered));
-
+  // جلب تقرير التاريخ المختار
+  useEffect(() => {
+    if (!selectedDate) {
+      setSelectedReport(null);
+      return;
+    }
+    setLoadingReport(true);
+    (async () => {
       try {
-        const dictRaw = localStorage.getItem("qcs_daily_reports_v1");
-        if (dictRaw) {
-          const dict = JSON.parse(dictRaw) || {};
-          delete dict[dateToDelete];
-          localStorage.setItem("qcs_daily_reports_v1", JSON.stringify(dict));
-        }
-      } catch {}
+        const payload = await getReportByDate(selectedDate);
+        setSelectedReport(payload ? { date: selectedDate, ...payload } : null);
+      } catch (e) {
+        console.error(e);
+        setSelectedReport(null);
+        alert("تعذّر جلب التقرير المحدّد من السيرفر.");
+      } finally {
+        setLoadingReport(false);
+      }
+    })();
+  }, [selectedDate]);
 
-      if (selectedDate === dateToDelete) setSelectedDate(filtered.length > 0 ? filtered[0].date : null);
+  // حذف نهائي من السيرفر
+  const handleDeleteReport = async (dateToDelete) => {
+    const msgEn = `Are you sure you want to delete report dated ${dateToDelete}?`;
+    const msgAr = `هل أنت متأكد من حذف التقرير الخاص بتاريخ ${dateToDelete}؟`;
+    if (!window.confirm(lang === "en" ? msgEn : msgAr)) return;
+
+    try {
+      await deleteReportByDate(dateToDelete);
+      const filtered = reports.filter((r) => r.date !== dateToDelete);
+      setReports(filtered);
+      if (selectedDate === dateToDelete) setSelectedDate(filtered[0]?.date || null);
+    } catch (e) {
+      console.error(e);
+      alert(lang === "en" ? "Failed to delete report from server." : "فشل حذف التقرير من السيرفر.");
     }
   };
 
-  // تصدير/استيراد JSON فقط
-  const exportAll = () => downloadBlob(JSON.stringify(reports, null, 2), "application/json", "qcs_reports_backup_all.json");
-  const exportCurrent = () =>
-    selectedReport && downloadBlob(JSON.stringify(selectedReport, null, 2), "application/json", `qcs_report_${selectedReport.date}.json`);
-
-  const handleImport = (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const imported = JSON.parse(event.target.result);
-        const asArray = Array.isArray(imported) ? imported : imported?.date ? [imported] : [];
-        if (!asArray.length) {
-          alert(lang === "en" ? "Invalid file: must be one report object or an array of reports." : "ملف غير صالح: يجب أن يكون تقريرًا واحدًا أو مصفوفة تقارير."); return;
-        }
-        const map = new Map(reports.map(r => [r.date, r]));
-        asArray.forEach(r => r?.date && map.set(r.date, r));
-        const merged = Array.from(map.values()).sort((a,b)=> (a.date < b.date ? 1 : -1));
-
-        // خزّن المصفوفة
-        setReports(merged);
-        localStorage.setItem("qcs_reports", JSON.stringify(merged));
-
-        // خزّن القاموس المتزامن
+  // تصدير JSON
+  const exportAll = async () => {
+    try {
+      setExportingAll(true);
+      const all = [];
+      for (const r of reports) {
         try {
-          const dict = JSON.parse(localStorage.getItem("qcs_daily_reports_v1") || "{}");
-          asArray.forEach(r => { if (r?.date) { const { date, ...rest } = r; dict[date] = rest; }});
-          localStorage.setItem("qcs_daily_reports_v1", JSON.stringify(dict));
-        } catch {}
-
-        alert(lang === "en" ? "Imported and merged successfully." : "تم الاستيراد والدمج بنجاح.");
-      } catch {
-        alert(lang === "en" ? "Failed to read or invalid format." : "فشل في قراءة الملف أو تنسيقه غير صالح.");
+          const data = await getReportByDate(r.date);
+          if (data) all.push({ date: r.date, ...data });
+        } catch (e) {
+          console.warn("Skip date due to fetch error:", r.date, e);
+        }
       }
-    };
-    reader.readAsText(file); e.target.value = "";
+      downloadBlob(
+        JSON.stringify(all, null, 2),
+        "application/json",
+        "qcs_reports_backup_all.json"
+      );
+    } catch (e) {
+      console.error(e);
+      alert(lang === "en" ? "Failed to export all." : "فشل تصدير الكل.");
+    } finally {
+      setExportingAll(false);
+    }
   };
+  const exportCurrent =
+    () =>
+      selectedReport &&
+      downloadBlob(
+        JSON.stringify(selectedReport, null, 2),
+        "application/json",
+        `qcs_report_${selectedDate}.json`
+      );
 
-  // 🖨️ طباعة مع سكيل ديناميكي (الإبقاء على الزر القديم)
+  // طباعة
   const handlePrint = () => {
     setAutoPrintScale();
     setTimeout(() => window.print(), 30);
   };
 
-  // 📄 تصدير PDF مباشرة من منطقة العرض
+  // تصدير PDF
   const handleExportPDF = async () => {
     try {
       setExportingPDF(true);
@@ -657,12 +803,9 @@ export default function QCSDailyView() {
         setExportingPDF(false);
         return;
       }
-
-      // تأكد أن كل شيء ظاهر بالحجم الفعلي قبل اللقطة
-      input.classList.add("exporting-pdf-temp");
       const canvas = await html2canvas(input, {
-        scale: 2,           // دقة أعلى
-        useCORS: true,      // للسماح بصور من public مثل الشعار
+        scale: 2,
+        useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
         logging: false,
@@ -673,7 +816,7 @@ export default function QCSDailyView() {
       });
 
       const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("landscape", "pt", "a4"); // A4 أفقي
+      const pdf = new jsPDF("landscape", "pt", "a4");
 
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
@@ -681,7 +824,6 @@ export default function QCSDailyView() {
       const imgWidth = pageWidth;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      // لو الصورة أطول من صفحة، نقسمها على صفحات متعددة بتحريك الموضع Y سالب
       let position = 0;
       let heightLeft = imgHeight;
 
@@ -701,8 +843,6 @@ export default function QCSDailyView() {
       console.error(e);
       alert("تعذّر إنشاء ملف PDF. تأكد من تثبيت jspdf و html2canvas.");
     } finally {
-      const el = document.getElementById("report-container");
-      el && el.classList.remove("exporting-pdf-temp");
       setExportingPDF(false);
     }
   };
@@ -710,76 +850,119 @@ export default function QCSDailyView() {
   // before/after print للتنظيف
   useEffect(() => {
     const before = () => setAutoPrintScale();
-    const after  = () => {
-      const el = document.querySelector('.print-area.one-page') || document.querySelector('.print-area');
-      if (el) el.style.removeProperty('--print-scale');
+    const after = () => {
+      const el =
+        document.querySelector(".print-area.one-page") ||
+        document.querySelector(".print-area");
+      if (el) el.style.removeProperty("--print-scale");
     };
-    window.addEventListener('beforeprint', before);
-    window.addEventListener('afterprint', after);
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
     return () => {
-      window.removeEventListener('beforeprint', before);
-      window.removeEventListener('afterprint', after);
+      window.removeEventListener("beforeprint", before);
+      window.removeEventListener("afterprint", after);
     };
   }, []);
 
-  if (!selectedReport) {
+  // حالة لا يوجد تقارير
+  if (reports.length === 0) {
     return (
-      <div className="app-shell" style={{ padding: "1rem", fontFamily: "Cairo, sans-serif", direction: lang === "en" ? "ltr" : "rtl" }}>
+      <div
+        className="app-shell"
+        style={{
+          padding: "1rem",
+          fontFamily: "Cairo, sans-serif",
+          direction: lang === "en" ? "ltr" : "rtl",
+        }}
+      >
         <style>{printCss}</style>
         <style>{screenCss}</style>
-        <header className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3><LangText lang={lang} {...I18N.noReportsHeader} /></h3>
+        <header
+          className="no-print"
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+        >
+          <h3>
+            <LangText lang={lang} {...I18N.noReportsHeader} />
+          </h3>
           <LangSwitch lang={lang} setLang={setLang} />
         </header>
         <div className="print-area one-page" id="report-container">
-          <p><LangText lang={lang} {...I18N.noReportsText} /></p>
+          <p>
+            <LangText lang={lang} {...I18N.noReportsText} />
+          </p>
         </div>
-        <button onClick={() => fileInputRef.current?.click()} style={btnStyleSuccess} className="no-print">
-          <LangText lang={lang} {...I18N.importBtn} inline />
-        </button>
-        <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImport} style={{ display: "none" }} />
       </div>
     );
   }
 
-  const coolers = Array.isArray(selectedReport.coolers) ? selectedReport.coolers : [];
-  const personalHygiene = Array.isArray(selectedReport.personalHygiene) ? selectedReport.personalHygiene : [];
-  const cleanlinessRows = Array.isArray(selectedReport.cleanlinessRows) ? selectedReport.cleanlinessRows : [];
+  const coolers = Array.isArray(selectedReport?.coolers)
+    ? selectedReport.coolers
+    : [];
+  const personalHygiene = Array.isArray(selectedReport?.personalHygiene)
+    ? selectedReport.personalHygiene
+    : [];
+  const cleanlinessRows = Array.isArray(selectedReport?.cleanlinessRows)
+    ? selectedReport.cleanlinessRows
+    : [];
 
   // حد أدنى لطباعة النظافة الشخصية
   const phRowsCount = Math.max(MIN_PH_ROWS, personalHygiene.length || 0);
-  const phDataForPrint = Array.from({ length: phRowsCount }).map((_, i) => personalHygiene[i] || {});
+  const phDataForPrint = Array.from({ length: phRowsCount }).map(
+    (_, i) => personalHygiene[i] || {}
+  );
 
   return (
-    <div className="app-shell" style={{
-      display: "flex",
-      gap: "1rem",
-      fontFamily: "Cairo, sans-serif",
-      padding: "1rem",
-      direction: lang === "en" ? "ltr" : "rtl"
-    }}>
+    <div
+      className="app-shell"
+      style={{
+        display: "flex",
+        gap: "1rem",
+        fontFamily: "Cairo, sans-serif",
+        padding: "1rem",
+        direction: lang === "en" ? "ltr" : "rtl",
+      }}
+    >
       <style>{printCss}</style>
       <style>{screenCss}</style>
 
       {/* الشريط الجانبي */}
-      <aside className="no-print" style={{ flex: "0 0 290px", borderRight: "1px solid #e5e7eb", paddingRight: "1rem" }}>
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}><LangText lang={lang} {...I18N.reportsTitle} /></h3>
+      <aside
+        className="no-print"
+        style={{ flex: "0 0 290px", borderRight: "1px solid #e5e7eb", paddingRight: "1rem" }}
+      >
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <h3 style={{ margin: 0 }}>
+            <LangText lang={lang} {...I18N.reportsTitle} />
+          </h3>
           <LangSwitch small lang={lang} setLang={setLang} />
         </header>
 
         {/* اختيار التاريخ */}
-        <div style={{ marginBottom: "10px" }}>
+        <div style={{ margin: "10px 0" }}>
           <label style={{ display: "block", marginBottom: 6, fontWeight: 700 }}>
             <LangText lang={lang} {...I18N.selectedDate} />
           </label>
           <select
             value={selectedDate ?? ""}
             onChange={(e) => setSelectedDate(e.target.value)}
-            style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", outline: "none" }}
+            style={{
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid #e5e7eb",
+              outline: "none",
+            }}
           >
             {reports.map((r) => (
-              <option key={r.date} value={r.date}>{r.date}</option>
+              <option key={r.date} value={r.date}>
+                {r.date}
+              </option>
             ))}
           </select>
         </div>
@@ -805,8 +988,19 @@ export default function QCSDailyView() {
             >
               <span>{report.date}</span>
               <button
-                onClick={(e) => { e.stopPropagation(); handleDeleteReport(report.date); }}
-                style={{ backgroundColor: "#c0392b", color: "white", border: "none", borderRadius: "6px", padding: "6px 10px", cursor: "pointer", marginLeft: "6px" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteReport(report.date);
+                }}
+                style={{
+                  backgroundColor: "#c0392b",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                  marginLeft: "6px",
+                }}
                 title={lang === "en" ? "Delete report" : "حذف التقرير"}
               >
                 <LangText lang={lang} {...I18N.delete} inline />
@@ -815,25 +1009,44 @@ export default function QCSDailyView() {
           ))}
         </ul>
 
-        {/* أزرار الاستيراد/تصدير JSON فقط */}
+        {/* أزرار التصدير */}
         <div style={{ marginTop: "1.2rem", display: "grid", gap: 8 }}>
-          <button onClick={exportCurrent} style={btnStylePrimary} title="Export current report as JSON">
+          <button
+            onClick={exportCurrent}
+            style={btnStylePrimary}
+            title="Export current report as JSON"
+            disabled={!selectedReport}
+          >
             <LangText lang={lang} {...I18N.exportCurrent} inline />
           </button>
-          <button onClick={exportAll} style={btnStyleSecondary} title="Export all reports as JSON">
-            <LangText lang={lang} {...I18N.exportAll} inline />
+          <button
+            onClick={exportAll}
+            style={{ ...btnStyleSecondary, opacity: exportingAll ? 0.7 : 1 }}
+            title="Export all reports as JSON"
+            disabled={exportingAll}
+          >
+            {exportingAll ? "… جارِ تجميع كل التقارير" : <LangText lang={lang} {...I18N.exportAll} inline />}
           </button>
-          <button onClick={() => fileInputRef.current?.click()} style={{ ...btnStyleSuccess }}>
-            <LangText lang={lang} {...I18N.importBtn} inline />
-          </button>
-          <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImport} style={{ display: "none" }} />
         </div>
       </aside>
 
       {/* المحتوى */}
       <main style={{ flex: 1, minWidth: 320, maxHeight: "calc(100vh - 3rem)", overflowY: "auto", paddingRight: "1rem" }}>
         {/* التبويبات */}
-        <nav className="no-print" style={{ display: "flex", gap: "10px", marginBottom: "0.6rem", position: "sticky", top: 0, background: "#fff", paddingTop: 6, paddingBottom: 6, zIndex: 5 }}>
+        <nav
+          className="no-print"
+          style={{
+            display: "flex",
+            gap: "10px",
+            marginBottom: "0.6rem",
+            position: "sticky",
+            top: 0,
+            background: "#fff",
+            paddingTop: 6,
+            paddingBottom: 6,
+            zIndex: 5,
+          }}
+        >
           {[
             { id: "coolers", label: I18N.tabs.coolers },
             { id: "personalHygiene", label: I18N.tabs.personalHygiene },
@@ -850,7 +1063,7 @@ export default function QCSDailyView() {
                 cursor: "pointer",
                 flex: 1,
                 fontWeight: activeTab === id ? "bold" : 600,
-                fontSize: "1.02em"
+                fontSize: "1.02em",
               }}
             >
               <LangText lang={lang} {...label} />
@@ -873,12 +1086,11 @@ export default function QCSDailyView() {
           </button>
         </div>
 
-        {/* محررات التواقيع/الترويسات */}
-        {activeTab === "personalHygiene" && (
-          <PHHeaderEditor header={phHeader} setHeader={setPhHeader} footer={phFooter} setFooter={setPhFooter} />
-        )}
-        {activeTab === "dailyCleanliness" && (
-          <CCHeaderEditor header={ccHeader} setHeader={setCcHeader} footer={ccFooter} setFooter={setCcFooter} />
+        {/* حالة التحميل */}
+        {loadingReport && (
+          <div className="no-print" style={{ marginBottom: 8, fontStyle: "italic", color: "#6b7280" }}>
+            {lang === "en" ? "Loading report..." : "جارِ تحميل التقرير..."}
+          </div>
         )}
 
         {/* ===== منطقة الطباعة ===== */}
@@ -887,21 +1099,60 @@ export default function QCSDailyView() {
           {activeTab === "coolers" && (
             <>
               <h4 style={{ color: "#2980b9", margin: "0 0 10px 0" }}>
-                <LangText lang={lang} {...I18N.sections.coolers} />
-                {" "}- <small>{selectedDate}</small>
+                <LangText lang={lang} {...I18N.sections.coolers} />{" "}
+                - <small>{selectedDate}</small>
               </h4>
               <CoolersKPI coolers={coolers} lang={lang} />
               {coolers.length > 0 ? (
                 coolers.map((cooler, i) => (
-                  <div key={i} className="cooler-card" style={{ marginBottom: "1.2rem", background: i % 2 === 0 ? "#ecf6fc" : "#f8f3fa", padding: "1.1rem 0.7rem", borderRadius: "12px", display: "flex", alignItems: "center", gap: "1rem", boxShadow: "0 3px 14px rgba(0,0,0,.06)" }}>
+                  <div
+                    key={i}
+                    className="cooler-card"
+                    style={{
+                      marginBottom: "1.2rem",
+                      background: i % 2 === 0 ? "#ecf6fc" : "#f8f3fa",
+                      padding: "1.1rem 0.7rem",
+                      borderRadius: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "1rem",
+                      boxShadow: "0 3px 14px rgba(0,0,0,.06)",
+                    }}
+                  >
                     <strong style={{ minWidth: "80px", color: "#34495e", fontWeight: "bold" }}>
                       <bdi>{lang === "en" ? "Cooler" : "براد"} {i + 1}:</bdi>
                     </strong>
                     <div style={{ display: "flex", gap: "0.7rem", flexWrap: "wrap" }}>
                       {COOLER_TIMES.map((time) => (
-                        <div key={time} style={{ minWidth: "62px", padding: "7px 7px", borderRadius: "8px", textAlign: "center", fontWeight: "600", fontSize: ".99em", boxShadow: "0 0 4px #d6eaf8", ...getTempCellStyle(cooler?.temps?.[time]) }} title={`${time} — ${cooler?.temps?.[time] ?? "-"}°C`}>
-                          <div style={{ fontSize: "0.85rem", marginBottom: "2px", color: "#512e5f", fontWeight: 600 }}>{time}</div>
-                          <div>{(cooler?.temps?.[time] ?? "") !== "" ? `${cooler?.temps?.[time]}°C` : "-"}</div>
+                        <div
+                          key={time}
+                          style={{
+                            minWidth: "62px",
+                            padding: "7px 7px",
+                            borderRadius: "8px",
+                            textAlign: "center",
+                            fontWeight: "600",
+                            fontSize: ".99em",
+                            boxShadow: "0 0 4px #d6eaf8",
+                            ...getTempCellStyle(cooler?.temps?.[time]),
+                          }}
+                          title={`${time} — ${cooler?.temps?.[time] ?? "-"}°C`}
+                        >
+                          <div
+                            style={{
+                              fontSize: "0.85rem",
+                              marginBottom: "2px",
+                              color: "#512e5f",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {time}
+                          </div>
+                          <div>
+                            {(cooler?.temps?.[time] ?? "") !== ""
+                              ? `${cooler?.temps?.[time]}°C`
+                              : "-"}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -917,11 +1168,21 @@ export default function QCSDailyView() {
           {activeTab === "personalHygiene" && (
             <>
               <PHPrintHeader header={phHeader} selectedDate={selectedDate} />
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "center", border: "1px solid #000" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  textAlign: "center",
+                  border: "1px solid #000",
+                }}
+              >
                 <thead>
                   <tr style={{ background: "#d9d9d9" }}>
                     {PH_COLUMNS.map((c, idx) => (
-                      <th key={idx} style={{ border: "1px solid #000", padding: "6px 4px", fontWeight: 800 }}>
+                      <th
+                        key={idx}
+                        style={{ border: "1px solid #000", padding: "6px 4px", fontWeight: 800 }}
+                      >
                         <Bidi ar={c.ar} en={c.en} />
                       </th>
                     ))}
@@ -934,10 +1195,18 @@ export default function QCSDailyView() {
                       <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.employName || ""}</td>
                       <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.nails || ""}</td>
                       <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.hair || ""}</td>
-                      <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.notWearingJewelries || ""}</td>
-                      <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.wearingCleanCloth || ""}</td>
-                      <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.communicableDisease || ""}</td>
-                      <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.openWounds || ""}</td>
+                      <td style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                        {emp?.notWearingJewelries || ""}
+                      </td>
+                      <td style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                        {emp?.wearingCleanCloth || ""}
+                      </td>
+                      <td style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                        {emp?.communicableDisease || ""}
+                      </td>
+                      <td style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                        {emp?.openWounds || ""}
+                      </td>
                       <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.remarks || ""}</td>
                     </tr>
                   ))}
@@ -947,21 +1216,42 @@ export default function QCSDailyView() {
             </>
           )}
 
-          {/* النظافة اليومية — النموذج النهائي مع C/NC */}
+          {/* النظافة اليومية */}
           {activeTab === "dailyCleanliness" && (
             <>
               <CCPrintHeader header={ccHeader} selectedDate={selectedDate} />
 
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", border: "1px solid #000" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  textAlign: "left",
+                  border: "1px solid #000",
+                }}
+              >
                 <thead>
-                  <tr style={{ background:"#d9d9d9" }}>
-                    <th style={{ border:"1px solid #000", padding:"6px 4px", textAlign:"center" }}>SI-No</th>
-                    <th style={{ border:"1px solid #000", padding:"6px 4px" }}>General Cleaning</th>
-                    <th style={{ border:"1px solid #000", padding:"6px 4px", textAlign:"center" }}>C / NC</th>
-                    <th style={{ border:"1px solid #000", padding:"6px 4px", textAlign:"center" }}>Time</th>
-                    <th style={{ border:"1px solid #000", padding:"6px 4px" }}>Observation</th>
-                    <th style={{ border:"1px solid #000", padding:"6px 4px" }}>Informed to</th>
-                    <th style={{ border:"1px solid #000", padding:"6px 4px" }}>Remarks & CA</th>
+                  <tr style={{ background: "#d9d9d9" }}>
+                    <th style={{ border: "1px solid #000", padding: "6px 4px", textAlign: "center" }}>
+                      SI-No
+                    </th>
+                    <th style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                      General Cleaning
+                    </th>
+                    <th style={{ border: "1px solid #000", padding: "6px 4px", textAlign: "center" }}>
+                      C / NC
+                    </th>
+                    <th style={{ border: "1px solid #000", padding: "6px 4px", textAlign: "center" }}>
+                      Time
+                    </th>
+                    <th style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                      Observation
+                    </th>
+                    <th style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                      Informed to
+                    </th>
+                    <th style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                      Remarks & CA
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -969,16 +1259,16 @@ export default function QCSDailyView() {
                     const rows = [];
                     let si = 1;
                     CLEANING_SECTIONS.forEach((sec, sIdx) => {
-                      // صف عنوان القسم
+                      // عنوان القسم
                       rows.push(
-                        <tr key={`sec-${sIdx}`} style={{ background:"#f2f2f2", fontWeight:800 }}>
-                          <td style={{ border:"1px solid #000", padding:"6px 4px", textAlign:"center" }}></td>
-                          <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{sec.header}</td>
-                          <td style={{ border:"1px solid #000", padding:"6px 4px" }}></td>
-                          <td style={{ border:"1px solid #000", padding:"6px 4px" }}></td>
-                          <td style={{ border:"1px solid #000", padding:"6px 4px" }}></td>
-                          <td style={{ border:"1px solid #000", padding:"6px 4px" }}></td>
-                          <td style={{ border:"1px solid #000", padding:"6px 4px" }}></td>
+                        <tr key={`sec-${sIdx}`} style={{ background: "#f2f2f2", fontWeight: 800 }}>
+                          <td style={{ border: "1px solid #000", padding: "6px 4px", textAlign: "center" }} />
+                          <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{sec.header}</td>
+                          <td style={{ border: "1px solid #000", padding: "6px 4px" }} />
+                          <td style={{ border: "1px solid #000", padding: "6px 4px" }} />
+                          <td style={{ border: "1px solid #000", padding: "6px 4px" }} />
+                          <td style={{ border: "1px solid #000", padding: "6px 4px" }} />
+                          <td style={{ border: "1px solid #000", padding: "6px 4px" }} />
                         </tr>
                       );
                       // عناصر القسم
@@ -986,13 +1276,25 @@ export default function QCSDailyView() {
                         const found = findCleanRow(cleanlinessRows, sec.header, item) || {};
                         rows.push(
                           <tr key={`row-${sIdx}-${iIdx}`}>
-                            <td style={{ border:"1px solid #000", padding:"6px 4px", textAlign:"center" }}>{si++}</td>
-                            <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{item}</td>
-                            <td style={{ border:"1px solid #000", padding:"6px 4px", textAlign:"center" }}>{found.result || ""}</td>
-                            <td style={{ border:"1px solid #000", padding:"6px 4px", textAlign:"center" }}>{selectedReport?.auditTime || ""}</td>
-                            <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{found.observation || ""}</td>
-                            <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{found.informed || ""}</td>
-                            <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{found.remarks || ""}</td>
+                            <td style={{ border: "1px solid #000", padding: "6px 4px", textAlign: "center" }}>
+                              {si++}
+                            </td>
+                            <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{item}</td>
+                            <td style={{ border: "1px solid #000", padding: "6px 4px", textAlign: "center" }}>
+                              {found.result || ""}
+                            </td>
+                            <td style={{ border: "1px solid #000", padding: "6px 4px", textAlign: "center" }}>
+                              {selectedReport?.auditTime || ""}
+                            </td>
+                            <td style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                              {found.observation || ""}
+                            </td>
+                            <td style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                              {found.informed || ""}
+                            </td>
+                            <td style={{ border: "1px solid #000", padding: "6px 4px" }}>
+                              {found.remarks || ""}
+                            </td>
                           </tr>
                         );
                       });
@@ -1016,9 +1318,9 @@ export default function QCSDailyView() {
 }
 
 /* =========================
-   مبدّل اللغة UI (واجهة فقط)
+   مبدّل اللغة UI
 ========================= */
-function LangSwitch({ lang, setLang, small=false }) {
+function LangSwitch({ lang, setLang, small = false }) {
   const base = {
     padding: small ? "4px 8px" : "6px 12px",
     border: "1px solid #e5e7eb",
@@ -1027,12 +1329,23 @@ function LangSwitch({ lang, setLang, small=false }) {
     cursor: "pointer",
     fontWeight: 800,
   };
-  const active = { ...base, background: "#111827", color: "#fff", borderColor: "#111827" };
+  const active = {
+    ...base,
+    background: "#111827",
+    color: "#fff",
+    borderColor: "#111827",
+  };
   return (
     <div style={{ display: "flex", gap: 6 }}>
-      <button onClick={() => setLang("ar")} style={lang === "ar" ? active : base}>AR</button>
-      <button onClick={() => setLang("en")} style={lang === "en" ? active : base}>EN</button>
-      <button onClick={() => setLang("both")} style={lang === "both" ? active : base}>BOTH</button>
+      <button onClick={() => setLang("ar")} style={lang === "ar" ? active : base}>
+        AR
+      </button>
+      <button onClick={() => setLang("en")} style={lang === "en" ? active : base}>
+        EN
+      </button>
+      <button onClick={() => setLang("both")} style={lang === "both" ? active : base}>
+        BOTH
+      </button>
     </div>
   );
 }
@@ -1049,5 +1362,9 @@ const btnBase = {
 };
 const btnStylePrimary = { ...btnBase, background: "#2563eb", color: "#fff" };
 const btnStyleSecondary = { ...btnBase, background: "#111827", color: "#fff" };
-const btnStyleSuccess = { ...btnBase, background: "#059669", color: "#fff" };
-const btnStyleOutline = { ...btnBase, background: "#fff", color: "#111827", border: "1px solid #e5e7eb" };
+const btnStyleOutline = {
+  ...btnBase,
+  background: "#fff",
+  color: "#111827",
+  border: "1px solid #e5e7eb",
+};
