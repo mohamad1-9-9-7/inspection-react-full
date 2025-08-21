@@ -117,7 +117,11 @@ function Login() {
   const [selectedRole, setSelectedRole] = useState(null);
   const [modalError, setModalError] = useState("");
 
-  const PASSWORD = "0000";
+  // 🔐 كلمات السر: الافتراضي 9999 لكل الأدوار، وreturns = 0000
+  const PASSWORDS = {
+    returns: "0000",
+    default: "9999",
+  };
 
   const handleRoleClick = (role) => {
     // ✅ KPI يدخل مباشرة بدون كلمة سر
@@ -135,7 +139,10 @@ function Login() {
   };
 
   const handleModalSubmit = (password) => {
-    if (password === PASSWORD) {
+    const expected =
+      (selectedRole && PASSWORDS[selectedRole.id]) || PASSWORDS.default;
+
+    if (password === expected) {
       setModalOpen(false);
       setErrorMsg("");
       localStorage.setItem('currentUser', JSON.stringify({

@@ -1,7 +1,7 @@
 // src/pages/BrowseReturns.jsx
 import React, { useEffect, useMemo, useState } from "react";
 
-/* ========== ربط API السيرفر (صيغة CRA) ========== */
+/* ========== API ========== */
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
@@ -14,7 +14,7 @@ async function fetchByType(type) {
   return Array.isArray(json) ? json : json?.data ?? [];
 }
 
-/* ========== أدوات تطبيع ========== */
+/* ========== Normalization Helpers ========== */
 function toTs(x) {
   if (!x) return null;
   if (typeof x === "number") return x;
@@ -46,7 +46,6 @@ function normalizeReturns(raw) {
       };
     })
     .filter((e) => e.reportDate);
-  // أخذ أحدث نسخة لكل يوم
   const byDate = new Map();
   for (const e of entries) {
     const prev = byDate.get(e.reportDate);
@@ -66,22 +65,142 @@ function itemKey(row) {
   ].join("|");
 }
 function actionText(row) {
-  // ملاحظة: نتركها كما هي (العربي) للحفاظ على التوافق مع البيانات القديمة
   return row?.action === "إجراء آخر..." ? row?.customAction || "" : row?.action || "";
 }
 
-/* ========== الصفحة (عرض فقط) ========== */
+/* UI date for table: DD/MM/YYYY with Latin digits */
+function formatChangeDate(ch) {
+  const t = ch?.ts || toTs(ch?.at);
+  if (!t) return "";
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Dubai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(t));
+  } catch {
+    const d = new Date(t);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${dd}/${mm}/${yyyy}`;
+  }
+}
+
+/* PDF date: DD/MM/YYYY */
+function formatChangeDatePDF(ch) {
+  const t = ch?.ts || toTs(ch?.at);
+  if (!t) return "";
+  const d = new Date(t);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+/* Match "Condemnation" exactly (case-insensitive) */
+function isCondemnation(s) {
+  return (s ?? "").toString().trim().toLowerCase() === "condemnation";
+}
+
+/* ===== Unified Donut KPI Card (SVG) ===== */
+function DonutCard({
+  percent = 0,
+  label = "",
+  subLabel = "",
+  count = null,
+  color = "#166534",
+  centerText = null,
+  extra = null,
+}) {
+  const size = 114;
+  const stroke = 12;
+  const r = (size - stroke) / 2;
+  const C = 2 * Math.PI * r;
+  const dash = Math.max(0, Math.min(100, percent));
+  const offset = C * (1 - dash / 100);
+
+  return (
+    <div style={{
+      background: "#fff",
+      border: "1px solid #e5e7eb",
+      borderRadius: 14,
+      boxShadow: "0 2px 12px rgba(0,0,0,.06)",
+      padding: "12px 14px",
+      display: "grid",
+      placeItems: "center",
+      gap: 6,
+      minWidth: 210
+    }}>
+      <svg width={size} height={size} style={{ display: "block" }}>
+        <circle cx={size/2} cy={size/2} r={r} stroke="#e5e7eb" strokeWidth={stroke} fill="none"/>
+        <circle
+          cx={size/2} cy={size/2} r={r}
+          stroke={color} strokeWidth={stroke} fill="none"
+          strokeDasharray={`${C} ${C}`} strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size/2} ${size/2})`}
+        />
+        <text
+          x="50%" y="50%" dominantBaseline="middle" textAnchor="middle"
+          style={{ fontWeight: 800, fontSize: 20, fill: "#111" }}
+        >
+          {centerText != null ? centerText : `${dash}%`}
+        </text>
+      </svg>
+
+      {/* Main label (value/subject) */}
+      <div
+        style={{
+          fontWeight: 800,
+          color: "#111",
+          textAlign: "center",
+          maxWidth: 180,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap"
+        }}
+        title={label}
+      >
+        {label}
+      </div>
+
+      {/* Descriptive line */}
+      {subLabel ? (
+        <div
+          style={{
+            fontSize: 12,
+            opacity: 0.85,
+            textAlign: "center",
+            maxWidth: 200,
+            lineHeight: 1.2,
+          }}
+          title={subLabel}
+        >
+          {subLabel}
+        </div>
+      ) : null}
+
+      {count != null && (
+        <div style={{ opacity: .75, fontWeight: 700 }}>{count}</div>
+      )}
+      {extra}
+    </div>
+  );
+}
+
+/* ========== Page ========== */
 export default function BrowseReturns() {
-  const [returnsData, setReturnsData] = useState([]); // [{reportDate, items}]
-  const [changesData, setChangesData] = useState([]); // raw changes (type=returns_changes)
+  const [returnsData, setReturnsData] = useState([]);
+  const [changesData, setChangesData] = useState([]);
 
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
 
-  // فتح/طي هرمية السنة والشهر
   const [openYears, setOpenYears] = useState({});
-  const [openMonths, setOpenMonths] = useState({}); // key: YYYY-MM
+  const [openMonths, setOpenMonths] = useState({});
 
   const [loadingServer, setLoadingServer] = useState(false);
   const [serverErr, setServerErr] = useState("");
@@ -98,7 +217,6 @@ export default function BrowseReturns() {
       setReturnsData(normalized);
       setChangesData(rawChanges);
 
-      // اختيار أقدم تاريخ افتراضيًا وفتح سنته/شهره
       if (!selectedDate && normalized.length) {
         const oldest = [...normalized]
           .map((r) => r.reportDate)
@@ -111,7 +229,7 @@ export default function BrowseReturns() {
       }
     } catch (e) {
       console.error(e);
-      setServerErr("تعذر الجلب من السيرفر الآن. (قد يكون السيرفر يستيقظ).");
+      setServerErr("Failed to fetch from server. (The server might be waking up).");
     } finally {
       setLoadingServer(false);
     }
@@ -121,9 +239,9 @@ export default function BrowseReturns() {
     reload();
   }, []);
 
-  // خريطة تغييرات حسب التاريخ → key → آخر {from,to,at}
+  /* Changes map: date -> Map(key -> {from,to,at,ts}) */
   const changeMapByDate = useMemo(() => {
-    const map = new Map(); // date -> Map(key -> {from,to,at,ts})
+    const map = new Map();
     for (const rec of changesData) {
       const d = rec?.payload?.reportDate || rec?.reportDate || "";
       if (!d) continue;
@@ -141,7 +259,7 @@ export default function BrowseReturns() {
     return map;
   }, [changesData]);
 
-  // فلترة حسب من/إلى (وتصاعدي)
+  /* Filter & sort (ascending) */
   const filteredReportsAsc = useMemo(() => {
     const arr = returnsData.filter((r) => {
       const d = r.reportDate || "";
@@ -149,11 +267,10 @@ export default function BrowseReturns() {
       if (filterTo && d > filterTo) return false;
       return true;
     });
-    arr.sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || "")); // الأقدم أولًا
+    arr.sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || ""));
     return arr;
   }, [returnsData, filterFrom, filterTo]);
 
-  // تأكيد selectedDate ضمن النطاق
   useEffect(() => {
     if (!filteredReportsAsc.length) {
       setSelectedDate("");
@@ -172,9 +289,9 @@ export default function BrowseReturns() {
   const selectedReport =
     filteredReportsAsc.find((r) => r.reportDate === selectedDate) || null;
 
-  /* ===== هرمية سنة → شهر → يوم (تصاعدي) ===== */
+  /* Year -> Month -> Day hierarchy (ascending) */
   const hierarchyAsc = useMemo(() => {
-    const years = new Map(); // y -> Map(m -> array of days)
+    const years = new Map();
     filteredReportsAsc.forEach((rep) => {
       const d = rep.reportDate;
       const y = d.slice(0, 4);
@@ -185,12 +302,12 @@ export default function BrowseReturns() {
       months.get(m).push(d);
     });
     years.forEach((months) => {
-      months.forEach((days) => days.sort((a, b) => a.localeCompare(b))); // أيام تصاعديًا
+      months.forEach((days) => days.sort((a, b) => a.localeCompare(b)));
     });
-    const sortedYears = Array.from(years.keys()).sort((a, b) => a.localeCompare(b)); // سنوات تصاعديًا
+    const sortedYears = Array.from(years.keys()).sort((a, b) => a.localeCompare(b));
     return sortedYears.map((y) => {
       const months = years.get(y);
-      const sortedMonths = Array.from(months.keys()).sort((a, b) => a.localeCompare(b)); // شهور تصاعديًا
+      const sortedMonths = Array.from(months.keys()).sort((a, b) => a.localeCompare(b));
       return {
         year: y,
         months: sortedMonths.map((m) => ({ month: m, days: months.get(m) })),
@@ -201,19 +318,20 @@ export default function BrowseReturns() {
   /* ================= KPIs ================= */
   const kpi = useMemo(() => {
     let totalItems = 0;
-    let totalQty = 0;
+    let totalQtyKg = 0;
+    let totalQtyPcs = 0;
 
     const posCountItems = {};
     const posKg = {};
     const posPcs = {};
     const byActionLatest = {};
+    const condemnationNames = {};
 
     const isKgType = (t) => {
       const s = (t || "").toString().toLowerCase();
       return s.includes("kg") || s.includes("كيلو") || s.includes("كجم");
     };
 
-    // Helper: أحدث إجراء لهذا الصنف في تاريخ معيّن
     const latestActionFor = (date, row) => {
       const inner = changeMapByDate.get(date) || new Map();
       const ch = inner.get(itemKey(row));
@@ -225,18 +343,26 @@ export default function BrowseReturns() {
       totalItems += (rep.items || []).length;
       (rep.items || []).forEach((it) => {
         const q = Number(it.quantity || 0);
-        totalQty += q;
 
-        // POS
         const pos =
           it.butchery === "فرع آخر..." ? it.customButchery || "—" : it.butchery || "—";
         posCountItems[pos] = (posCountItems[pos] || 0) + 1;
-        if (isKgType(it.qtyType)) posKg[pos] = (posKg[pos] || 0) + q;
-        else posPcs[pos] = (posPcs[pos] || 0) + q;
 
-        // أحدث إجراء فقط
+        if (isKgType(it.qtyType)) {
+          posKg[pos] = (posKg[pos] || 0) + q;
+          totalQtyKg += q;
+        } else {
+          posPcs[pos] = (posPcs[pos] || 0) + q;
+          totalQtyPcs += q;
+        }
+
         const act = latestActionFor(date, it);
         if (act) byActionLatest[act] = (byActionLatest[act] || 0) + 1;
+
+        if (isCondemnation(act)) {
+          const name = (it.productName || "—").trim();
+          condemnationNames[name] = (condemnationNames[name] || 0) + 1;
+        }
       });
     });
 
@@ -255,34 +381,54 @@ export default function BrowseReturns() {
     const topActionLatest = pickMax(byActionLatest);
     const topPosByItems = pickMax(posCountItems);
 
-    // POS الأعلى حسب إجمالي الكمية (kg + pcs) مع عرض كل منهما
-    const allPos = new Set([...Object.keys(posKg), ...Object.keys(posPcs)]);
-    let bestKey = "—";
-    let bestScore = -Infinity;
-    allPos.forEach((p) => {
-      const s = (posKg[p] || 0) + (posPcs[p] || 0);
-      if (s > bestScore) {
-        bestScore = s;
-        bestKey = p;
-      }
-    });
-    const topPosByQty = {
-      key: bestKey,
-      kg: Math.round((posKg[bestKey] || 0) * 1000) / 1000,
-      pcs: Math.round((posPcs[bestKey] || 0) * 1000) / 1000,
+    // Top POS by kg
+    const topKg = pickMax(posKg);
+    const topPosByQtyKg = {
+      key: topKg.key,
+      kg: Math.round((topKg.value || 0) * 1000) / 1000,
+      percent: Math.round(((topKg.value || 0) * 100) / (totalQtyKg || 1)),
     };
+
+    // Top POS by pcs
+    const topPcs = pickMax(posPcs);
+    const topPosByQtyPcs = {
+      key: topPcs.key,
+      pcs: Math.round((topPcs.value || 0) * 1000) / 1000,
+      percent: Math.round(((topPcs.value || 0) * 100) / (totalQtyPcs || 1)),
+    };
+
+    const topCondemnList = Object.entries(condemnationNames)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
+
+    const totalActionItems =
+      Object.values(byActionLatest).reduce((a, b) => a + b, 0) || 1;
+    const topActions = Object.entries(byActionLatest)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percent: Math.round((count * 100) / totalActionItems),
+      }));
 
     return {
       totalReports: filteredReportsAsc.length,
       totalItems,
-      totalQty,
+      totalQtyKg,
+      totalQtyPcs,
       topActionLatest,
       topPosByItems,
-      topPosByQty,
+      topPosByQtyKg,
+      topPosByQtyPcs,
+      topCondemnList,
+      topActions,
+      actionTotal: totalActionItems,
     };
   }, [filteredReportsAsc, changeMapByDate]);
 
-  /* ========== PDF Export (الجدول فقط + شعار نصي أعلى يمين) ========== */
+  /* ========== PDF Export ========== */
   async function ensureJsPDF() {
     if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
     await new Promise((resolve, reject) => {
@@ -295,14 +441,7 @@ export default function BrowseReturns() {
     return window.jspdf.jsPDF;
   }
   async function ensureAutoTable() {
-    if (
-      window.jspdf &&
-      window.jspdf.jsPDF &&
-      window.jspdf.jsPDF.API &&
-      window.jspdf.jsPDF.API.autoTable
-    ) {
-      return;
-    }
+    if (window.jspdf?.jsPDF?.API?.autoTable) return;
     await new Promise((resolve, reject) => {
       const s = document.createElement("script");
       s.src =
@@ -319,21 +458,16 @@ export default function BrowseReturns() {
       const JsPDF = await ensureJsPDF();
       await ensureAutoTable();
 
-      // دعم بيانات قديمة/جديدة لـ Other...
       const isOther = (v) => v === "إجراء آخر..." || v === "Other...";
       const actionTextSafe = (row) =>
         isOther(row?.action) ? row?.customAction || "" : row?.action || "";
 
-      // صفحة أفقية + توزيع أعمدة نسبي لمنع القص
       const doc = new JsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
-
-      const marginL = 30, marginR = 30;
+      const marginL = 20, marginR = 20, marginTop = 80;
       const pageWidth = doc.internal.pageSize.getWidth();
       const avail = pageWidth - marginL - marginR;
 
-      // رأس الصفحة (يتكرر بكل صفحة)
       const drawHeader = () => {
-        // يسار: عنوان وتاريخ
         doc.setFont("helvetica", "bold");
         doc.setFontSize(16);
         doc.text("Returns Report", marginL, 36);
@@ -341,7 +475,6 @@ export default function BrowseReturns() {
         doc.setFontSize(11);
         doc.text(`Date: ${selectedReport.reportDate}`, marginL, 54);
 
-        // يمين: "شعار" المواشي كنص
         const rightX = pageWidth - marginR;
         doc.setFont("helvetica", "bold");
         doc.setTextColor(180, 0, 0);
@@ -360,9 +493,19 @@ export default function BrowseReturns() {
         ["SL", "PRODUCT", "ORIGIN", "POS", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"],
       ];
 
+      const changeMap = changeMapByDate.get(selectedReport?.reportDate || "") || new Map();
+
       const body = (selectedReport.items || []).map((row, i) => {
         const pos = row.butchery === "فرع آخر..." ? row.customButchery || "" : row.butchery || "";
         const qtyType = row.qtyType === "أخرى" ? row.customQtyType || "" : row.qtyType || "";
+        const curr = actionTextSafe(row);
+        let actionCell = curr || "";
+        const k = itemKey(row);
+        const ch = changeMap.get(k);
+        if (ch && (ch.to ?? "") === (curr ?? "")) {
+          const dateTxt = formatChangeDatePDF(ch);
+          actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? `\n${dateTxt}` : ""}`;
+        }
         return [
           String(i + 1),
           row.productName || "",
@@ -372,38 +515,44 @@ export default function BrowseReturns() {
           qtyType,
           row.expiry || "",
           row.remarks || "",
-          actionTextSafe(row) || "",
+          actionCell,
         ];
       });
 
-      // نسب عرض الأعمدة
-      const frac = [0.05, 0.17, 0.12, 0.10, 0.07, 0.10, 0.10, 0.17, 0.12];
+      const frac = [0.05, 0.18, 0.09, 0.08, 0.06, 0.08, 0.08, 0.18, 0.20];
       const columnStyles = {};
       frac.forEach((f, idx) => (columnStyles[idx] = { cellWidth: Math.floor(avail * f) }));
+      columnStyles[0].halign = "center";
+      columnStyles[4].halign = "center";
+      columnStyles[6].halign = "center";
+      columnStyles[7].halign = "left";
+      columnStyles[8].halign = "left";
 
       doc.autoTable({
         head,
         body,
-        margin: { top: 80, left: marginL, right: marginR }, // نترك مساحة للهيدر
+        margin: { top: marginTop, left: marginL, right: marginR },
         tableWidth: avail,
         styles: {
           font: "helvetica",
-          fontSize: 9,
-          cellPadding: 3,
+          fontSize: 10,
+          cellPadding: 4,
           lineColor: [182, 200, 227],
           lineWidth: 0.5,
-          halign: "center",
+          halign: "left",
           valign: "middle",
           overflow: "linebreak",
+          wordBreak: "break-word",
+          minCellHeight: 16,
         },
         headStyles: {
           fillColor: [219, 234, 254],
           textColor: [17, 17, 17],
           fontStyle: "bold",
+          halign: "center",
         },
         columnStyles,
         didDrawPage: () => {
-          // ارسم الهيدر في كل صفحة
           drawHeader();
         },
       });
@@ -411,22 +560,21 @@ export default function BrowseReturns() {
       doc.save(`returns_${selectedReport.reportDate}.pdf`);
     } catch (e) {
       console.error(e);
-      alert("❌ تعذر إنشاء PDF. حاول مجددًا.");
+      alert("❌ Failed to generate PDF. Please try again.");
     }
   };
 
-  /* ========== أنماط ========== */
+  /* ========== Styles ========== */
   const kpiBox = {
-    background: "rgba(59,130,246,0.12)", // أزرق شفاف
-    border: "1.5px solid #000",
-    borderRadius: 16,
-    padding: "1rem 1.2rem",
-    textAlign: "center",
-    boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 14,
+    boxShadow: "0 2px 12px rgba(0,0,0,.06)",
+    padding: "12px 14px",
     color: "#111",
+    minWidth: 210,
   };
   const kpiTitle = { fontWeight: "bold", marginBottom: 6 };
-  const kpiValue = { fontSize: "1.8em", fontWeight: 800 };
 
   const dateInputStyle = {
     borderRadius: 8,
@@ -526,6 +674,59 @@ export default function BrowseReturns() {
     color: "#111",
   };
 
+  const brandWrap = {
+    position: "fixed",
+    top: 10,
+    right: 16,
+    textAlign: "right",
+    zIndex: 9999,
+    pointerEvents: "none",
+  };
+  const brandTitle = {
+    fontFamily: "Cairo, sans-serif",
+    fontWeight: 900,
+    letterSpacing: "1px",
+    fontSize: "18px",
+    color: "#b91c1c",
+  };
+  const brandSub = {
+    fontFamily: "Cairo, sans-serif",
+    fontWeight: 600,
+    fontSize: "11px",
+    color: "#374151",
+    opacity: 0.9,
+  };
+
+  const listRow = {
+    display: "grid",
+    gridTemplateColumns: "28px 1fr auto",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 2px",
+    borderBottom: "1px dashed #e5e7eb",
+  };
+  const rankDot = {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    display: "grid",
+    placeItems: "center",
+    background: "#ecfdf5",
+    color: "#065f46",
+    fontWeight: 800,
+    border: "1px solid #a7f3d0",
+    fontSize: 12,
+  };
+  const countChip = {
+    background: "#eff6ff",
+    color: "#1e3a8a",
+    borderRadius: 999,
+    padding: "2px 8px",
+    fontSize: 12,
+    fontWeight: 800,
+    border: "1px solid #bfdbfe",
+  };
+
   const changeMap = changeMapByDate.get(selectedReport?.reportDate || "") || new Map();
 
   return (
@@ -535,10 +736,15 @@ export default function BrowseReturns() {
         padding: "2rem",
         background: "linear-gradient(180deg, #f7f2fb 0%, #f4f6fa 100%)",
         minHeight: "100vh",
-        direction: "rtl",
+        direction: "ltr",
         color: "#111",
       }}
     >
+      <div style={brandWrap}>
+        <div style={brandTitle}>AL MAWASHI</div>
+        <div style={brandSub}>Trans Emirates Livestock Trading L.L.C.</div>
+      </div>
+
       <h2
         style={{
           textAlign: "center",
@@ -548,69 +754,132 @@ export default function BrowseReturns() {
           letterSpacing: ".2px",
         }}
       >
-        📂 تصفّح تقارير المرتجعات (عرض فقط)
+        📂 Browse Returns Reports (View Only)
       </h2>
 
-      {/* KPIs */}
+      {/* KPI donuts */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-          gap: "12px",
+          gap: 12,
           marginBottom: 14,
+          alignItems: "stretch",
         }}
       >
-        {/* Top POS by Quantity */}
+        {/* Total items */}
+        <DonutCard
+          percent={100}
+          centerText="ALL"
+          label="Total items"
+          subLabel="All items across selected range"
+          count={kpi.totalItems}
+          color="#059669"
+        />
+
+        {/* Top actions (share of latest actions) */}
+        {kpi.topActions.map((a, idx) => (
+          <DonutCard
+            key={a.name + idx}
+            label={a.name}
+            subLabel="Share of latest actions"
+            count={a.count}
+            percent={a.percent}
+            color={["#166534", "#a21caf", "#b45309"][idx % 3]}
+          />
+        ))}
+
+        {/* Total reports */}
+        <DonutCard
+          percent={100}
+          centerText={String(kpi.totalReports)}
+          label="Total reports"
+          subLabel="Reports found in the selected date range"
+          color="#0ea5e9"
+        />
+
+        {/* Total quantity (kg) */}
+        <DonutCard
+          percent={100}
+          centerText={String(Math.round(kpi.totalQtyKg * 1000) / 1000)}
+          label="Total quantity (kg)"
+          subLabel="Weight-based items only"
+          color="#2563eb"
+        />
+
+        {/* Total quantity (pcs) */}
+        <DonutCard
+          percent={100}
+          centerText={String(Math.round(kpi.totalQtyPcs * 1000) / 1000)}
+          label="Total quantity (pcs)"
+          subLabel="Piece-based items only"
+          color="#1d4ed8"
+        />
+
+        {/* Top POS by item count */}
+        <DonutCard
+          percent={Math.round((kpi.topPosByItems.value * 100) / (kpi.totalItems || 1))}
+          label={kpi.topPosByItems.key || "—"}
+          subLabel="Top POS by item count"
+          count={`${kpi.topPosByItems.value} items`}
+          color="#b45309"
+        />
+
+        {/* Top POS by total quantity (kg) */}
+        <DonutCard
+          percent={kpi.topPosByQtyKg.percent}
+          label={kpi.topPosByQtyKg.key || "—"}
+          subLabel="Top POS by total quantity (kg)"
+          count={`${kpi.topPosByQtyKg.kg} kg`}
+          color="#0e7490"
+        />
+
+        {/* Top POS by total quantity (pcs) */}
+        <DonutCard
+          percent={kpi.topPosByQtyPcs.percent}
+          label={kpi.topPosByQtyPcs.key || "—"}
+          subLabel="Top POS by total quantity (pcs)"
+          count={`${kpi.topPosByQtyPcs.pcs} pcs`}
+          color="#0284c7"
+        />
+
+        {/* Top 5 Condemnation list */}
         <div style={kpiBox}>
-          <div style={kpiTitle}>Top POS by Quantity / أكثر فرع إرجاعًا حسب الكمية</div>
-          <div style={{ fontSize: "0.95em", marginTop: 6 }}>
-            <div>PCS 🧮</div>
-            <div style={{ fontWeight: 700 }}>
-              {kpi.topPosByQty.key} — {kpi.topPosByQty.pcs || 0}
-            </div>
-            <div style={{ marginTop: 6 }}>KG ⚖️</div>
-            <div style={{ fontWeight: 700 }}>
-              {kpi.topPosByQty.key} — {kpi.topPosByQty.kg || 0} kg
-            </div>
+          <div style={{ ...kpiTitle, textAlign: "center" }}>
+            Top 5 Condemnation
           </div>
-        </div>
 
-        {/* Top POS (Items) */}
-        <div style={kpiBox}>
-          <div style={kpiTitle}>Top POS (Items) / أكثر فرع إرجاعًا (عدد العناصر)</div>
-          <div style={kpiValue}>{kpi.topPosByItems.value || 0}</div>
-          <div style={{ opacity: 0.8 }}>POS {kpi.topPosByItems.key}</div>
-        </div>
-
-        {/* Total Reports */}
-        <div style={kpiBox}>
-          <div style={kpiTitle}>Total Reports / إجمالي التقارير</div>
-          <div style={kpiValue}>{kpi.totalReports}</div>
-        </div>
-
-        {/* Total Items */}
-        <div style={kpiBox}>
-          <div style={kpiTitle}>Total Items / إجمالي العناصر</div>
-          <div style={kpiValue}>{kpi.totalItems}</div>
-        </div>
-
-        {/* Total Qty */}
-        <div style={kpiBox}>
-          <div style={kpiTitle}>Total Qty / إجمالي الكميات</div>
-          <div style={kpiValue}>{kpi.totalQty}</div>
-        </div>
-
-        {/* Top Action (Latest only) */}
-        <div style={kpiBox}>
-          <div style={kpiTitle}>Top Action (Latest) / أكثر إجراء (الأحدث فقط)</div>
-          <div style={kpiValue}>{kpi.topActionLatest.value || 0}</div>
-          <div style={{ opacity: 0.8 }}>{kpi.topActionLatest.key}</div>
+          {kpi.topCondemnList.length ? (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {kpi.topCondemnList.map((p, i) => (
+                <li key={i} style={listRow}>
+                  <span style={rankDot}>{i + 1}</span>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={p.name}
+                  >
+                    {p.name}
+                  </span>
+                  <span style={countChip}>{p.count}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div style={{ opacity: 0.75, textAlign: "center" }}>
+              No items with Condemnation status.
+            </div>
+          )}
         </div>
       </div>
 
       {loadingServer && (
         <div style={{ textAlign: "center", marginBottom: 10, color: "#1f2937" }}>
-          ⏳ جاري الجلب من السيرفر…
+          ⏳ Loading from server…
         </div>
       )}
       {serverErr && (
@@ -619,7 +888,7 @@ export default function BrowseReturns() {
         </div>
       )}
 
-      {/* شريط تحكم */}
+      {/* Controls */}
       <div
         style={{
           background: "#fff",
@@ -638,9 +907,9 @@ export default function BrowseReturns() {
             flexWrap: "wrap",
           }}
         >
-          <span style={{ fontWeight: 700 }}>فلترة حسب تاريخ التقرير:</span>
+          <span style={{ fontWeight: 700 }}>Filter by report date:</span>
           <label>
-            من:
+            From:
             <input
               type="date"
               value={filterFrom}
@@ -649,7 +918,7 @@ export default function BrowseReturns() {
             />
           </label>
           <label>
-            إلى:
+            To:
             <input
               type="date"
               value={filterTo}
@@ -665,19 +934,19 @@ export default function BrowseReturns() {
               }}
               style={clearBtn}
             >
-              🧹 مسح التصفية
+              🧹 Clear filter
             </button>
           )}
         </div>
       </div>
 
-      {/* تخطيط: يسار هرمية سنة→شهر→يوم (تصاعدي) + يمين تفاصيل اليوم المختار */}
+      {/* Layout: left tree + right details */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, minHeight: 420 }}>
-        {/* يسار: شجرة التواريخ */}
+        {/* Left: date tree */}
         <div style={leftTree}>
           {hierarchyAsc.length === 0 ? (
             <div style={{ textAlign: "center", padding: 60, color: "#6b7280", fontSize: "1.03em" }}>
-              لا يوجد تقارير للفترة المختارة.
+              No reports for the selected period.
             </div>
           ) : (
             hierarchyAsc.map(({ year, months }) => {
@@ -691,8 +960,8 @@ export default function BrowseReturns() {
                       setOpenYears((prev) => ({ ...prev, [year]: !prev[year] }))
                     }
                   >
-                    <span>{yOpen ? "▼" : "►"} سنة {year}</span>
-                    <span style={{ color: "#111", fontWeight: 700 }}>{yearCount} يوم</span>
+                    <span>{yOpen ? "▼" : "►"} Year {year}</span>
+                    <span style={{ color: "#111", fontWeight: 700 }}>{yearCount} days</span>
                   </div>
 
                   {yOpen && (
@@ -708,8 +977,8 @@ export default function BrowseReturns() {
                                 setOpenMonths((prev) => ({ ...prev, [key]: !prev[key] }))
                               }
                             >
-                              <span>{mOpen ? "▾" : "▸"} شهر {month}</span>
-                              <span style={{ color: "#111" }}>{days.length} يوم</span>
+                              <span>{mOpen ? "▾" : "▸"} Month {month}</span>
+                              <span style={{ color: "#111" }}>{days.length} days</span>
                             </div>
 
                             {mOpen && (
@@ -725,7 +994,7 @@ export default function BrowseReturns() {
                                     >
                                       <div>📅 {d}</div>
                                       <div style={{ color: "#111", fontWeight: 700 }}>
-                                        {(rep?.items?.length || 0)} صنف
+                                        {(rep?.items?.length || 0)} items
                                       </div>
                                     </div>
                                   );
@@ -743,7 +1012,7 @@ export default function BrowseReturns() {
           )}
         </div>
 
-        {/* يمين: تفاصيل اليوم المختار (جدول) */}
+        {/* Right: selected day details */}
         <div style={rightPanel}>
           {selectedReport ? (
             <div>
@@ -757,7 +1026,7 @@ export default function BrowseReturns() {
                 }}
               >
                 <div style={{ fontWeight: "bold", color: "#111", fontSize: "1.2em" }}>
-                  تفاصيل تقرير المرتجعات ({selectedReport.reportDate})
+                  Returns details ({selectedReport.reportDate})
                 </div>
                 <button
                   onClick={handleExportPDF}
@@ -770,9 +1039,9 @@ export default function BrowseReturns() {
                     fontWeight: "bold",
                     cursor: "pointer",
                   }}
-                  title="تصدير PDF"
+                  title="Export PDF"
                 >
-                  ⬇️ تصدير PDF
+                  ⬇️ Export PDF
                 </button>
               </div>
 
@@ -795,7 +1064,7 @@ export default function BrowseReturns() {
                     const curr = actionText(row);
                     const k = itemKey(row);
                     const ch = changeMap.get(k);
-                    const showChange = ch && ch.to === curr; // آخر تغيير يطابق الحالة الحالية
+                    const showChange = ch && ch.to === curr;
 
                     return (
                       <tr key={i}>
@@ -831,8 +1100,13 @@ export default function BrowseReturns() {
                                   fontWeight: 700,
                                 }}
                               >
-                                تم التغيير
+                                Changed
                               </span>
+                              {formatChangeDate(ch) && (
+                                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85, color: "#111" }}>
+                                  🗓️ {formatChangeDate(ch)}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             curr
@@ -846,7 +1120,7 @@ export default function BrowseReturns() {
             </div>
           ) : (
             <div style={{ textAlign: "center", color: "#6b7280", padding: 80, fontSize: "1.05em" }}>
-              اختر تاريخًا من القائمة لعرض تفاصيله.
+              Pick a date from the list to view its details.
             </div>
           )}
         </div>

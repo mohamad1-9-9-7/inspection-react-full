@@ -24,6 +24,9 @@ const ACTIONS = [
 
 const QTY_TYPES = ["KG", "PCS", "أخرى / Other"];
 
+// 🔐 كلمة السر المطلوبة للدخول لهذه الصفحة (دائمًا تُطلب)
+const RETURNS_CREATE_PASSWORD = "9999";
+
 function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -46,8 +49,94 @@ async function sendOneToServer({ reportDate, items }) {
   return res.json();
 }
 
+/* ================= Password Modal ================= */
+function PasswordModal({ show, onSubmit, onClose, error }) {
+  const [password, setPassword] = useState("");
+
+  React.useEffect(() => { if (show) setPassword(""); }, [show]);
+  if (!show) return null;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, width: "100vw", height: "100vh",
+      background: "rgba(44,62,80,0.24)", display: "flex",
+      alignItems: "center", justifyContent: "center", zIndex: 2000, direction: "rtl",
+    }}>
+      <div style={{
+        background: "#fff", padding: "2.2rem 2.5rem", borderRadius: "17px",
+        minWidth: 320, boxShadow: "0 4px 32px #2c3e5077", textAlign: "center",
+        position: "relative", fontFamily: "Cairo, sans-serif",
+      }}>
+        <button onClick={onClose} style={{
+          position: "absolute", top: 10, left: 15, fontSize: 22,
+          background: "transparent", border: "none", color: "#c0392b", cursor: "pointer",
+        }}>✖</button>
+
+        <div style={{ fontWeight: "bold", fontSize: "1.18em", color: "#2980b9", marginBottom: 14 }}>
+          🔒 كلمة سر إنشاء المرتجعات / Password required
+        </div>
+
+        <form onSubmit={(e) => { e.preventDefault(); onSubmit(password); }}>
+          <input
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={4}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoFocus
+            placeholder="أدخل كلمة السر / Enter password"
+            style={{
+              width: "90%", padding: "11px", fontSize: "1.1em",
+              border: "1.8px solid #b2babb", borderRadius: "10px",
+              marginBottom: 16, background: "#f4f6f7",
+            }}
+            value={password}
+            onChange={(e) => {
+              const onlyDigits = e.target.value.replace(/\D/g, "").slice(0, 4);
+              setPassword(onlyDigits);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          <button type="submit" style={{
+            width: "100%", background: "#884ea0", color: "#fff", border: "none",
+            padding: "11px 0", borderRadius: "8px", fontWeight: "bold",
+            fontSize: "1.13rem", marginBottom: 10, cursor: "pointer",
+            boxShadow: "0 2px 12px #d2b4de",
+          }}>
+            دخول / Sign in
+          </button>
+          {error && <div style={{ color: "#c0392b", fontWeight: "bold", marginTop: 5 }}>{error}</div>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Returns() {
   const navigate = useNavigate();
+
+  // 🔐 المودال يظهر دائمًا حتى إدخال كلمة السر الصحيحة
+  const [modalOpen, setModalOpen] = useState(true);
+  const [modalError, setModalError] = useState("");
+
+  const handleSubmitPassword = (val) => {
+    if (val === RETURNS_CREATE_PASSWORD) {
+      setModalOpen(false);
+      setModalError("");
+    } else {
+      setModalError("❌ كلمة السر غير صحيحة! / Wrong password!");
+    }
+  };
+
+  const handleCloseModal = () => {
+    // إغلاق = رجوع للقائمة
+    navigate("/returns/menu", { replace: true });
+  };
+
+  // ========= بقية الصفحة (بعد اجتياز كلمة السر) =========
   const [reportDate, setReportDate] = useState(getToday());
   const [rows, setRows] = useState([
     {
@@ -134,6 +223,18 @@ export default function Returns() {
       setTimeout(() => setSaveMsg(""), 3500);
     }
   };
+
+  // لو المودال مفتوح، نعرضه ونمنع الصفحة
+  if (modalOpen) {
+    return (
+      <PasswordModal
+        show={modalOpen}
+        onSubmit={handleSubmitPassword}
+        onClose={handleCloseModal}
+        error={modalError}
+      />
+    );
+  }
 
   return (
     <div
@@ -362,7 +463,7 @@ export default function Returns() {
             border: "none", borderRadius: "14px",
             fontWeight: "bold", fontSize: "1.13em",
             padding: "12px 35px", cursor: "pointer",
-            boxShadow: "0 2px 8px #د2b4de"
+            boxShadow: "0 2px 8px #d2b4de"
           }}>➕ إضافة صف جديد / Add new row</button>
       </div>
     </div>
