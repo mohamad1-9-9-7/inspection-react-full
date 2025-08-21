@@ -38,6 +38,7 @@
     ]
   },
   "devDependencies": {
-    "electron": "^37.2.5"
+    "electron": "^37.2.5",
+    "eslint-plugin-react-hooks": "^5"
   }
 }
