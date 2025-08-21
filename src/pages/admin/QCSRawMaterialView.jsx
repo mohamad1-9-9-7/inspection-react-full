@@ -1,18 +1,33 @@
 // src/pages/admin/QCSRawMaterialView.jsx
 import React, { useEffect, useState, useRef } from "react";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 
-/* ========================= 🔗 API Base ========================= */
-let API_BASE = "https://inspection-server-4nvj.onrender.com";
-try {
-  if (
-    typeof import.meta !== "undefined" &&
+/* ========================= 🔗 API Base (خارجي فقط) =========================
+   - يقرأ window.__QCS_API__ إن وُجد، أو REACT_APP_API_URL، أو VITE_API_URL، وإلا الافتراضي.
+   - جميع العمليات تتم ضد السيرفر الخارجي.
+============================================================================= */
+const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
+const API_ROOT =
+  (typeof window !== "undefined" && window.__QCS_API__) ||
+  (typeof process !== "undefined" &&
+    process.env &&
+    (process.env.REACT_APP_API_URL || process.env.VITE_API_URL)) ||
+  (typeof import.meta !== "undefined" &&
     import.meta &&
     import.meta.env &&
-    import.meta.env.VITE_API_URL
-  ) {
-    API_BASE = import.meta.env.VITE_API_URL;
+    import.meta.env.VITE_API_URL) ||
+  API_ROOT_DEFAULT;
+
+const API_BASE = String(API_ROOT).replace(/\/$/, "");
+
+/* هل نفس الأصل لإرسال الكوكيز؟ */
+const IS_SAME_ORIGIN = (() => {
+  try {
+    return new URL(API_BASE).origin === window.location.origin;
+  } catch {
+    return false;
   }
-} catch {}
+})();
 
 /* ========================= 🧭 أعمدة العينات ========================= */
 const sampleColumns = [
@@ -189,16 +204,16 @@ export default function QCSRawMaterialView() {
   };
 
   /* ========================= 🔄 جلب محلي + من السيرفر ========================= */
-  // نحافظ على id = payload.id (لو موجود) لدمج صحيح
-  // ونخزّن serverId = معرف السجل في قاعدة البيانات (_id) من السيرفر لدعم الحذف
   const normalizeServerRecord = (rec) => {
     const p = rec?.payload || rec || {};
     const payloadId = p.id || p.payloadId || undefined; // id داخل payload
-    the
     const dbId = rec?._id || rec?.id || undefined;      // _id من قاعدة البيانات
 
     return {
-      id: payloadId || dbId || `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      id:
+        payloadId ||
+        dbId ||
+        `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
       serverId: dbId,
 
       shipmentType: p.shipmentType || "",
@@ -246,7 +261,9 @@ export default function QCSRawMaterialView() {
     try {
       const res = await fetch(`${API_BASE}/api/reports?type=qcs_raw_material`, {
         cache: "no-store",
-        mode: "cors" // ⬅️ تعديل
+        mode: "cors",
+        credentials: IS_SAME_ORIGIN ? "include" : "omit",
+        headers: { Accept: "application/json" }
       });
       if (!res.ok) throw new Error(`Server ${res.status}`);
       const json = await res.json();
@@ -323,7 +340,11 @@ export default function QCSRawMaterialView() {
 
     const apiDelete = async (url) => {
       try {
-        const res = await fetch(url, { method: "DELETE", mode: "cors" }); // ⬅️ تعديل
+        const res = await fetch(url, {
+          method: "DELETE",
+          mode: "cors",
+          credentials: IS_SAME_ORIGIN ? "include" : "omit"
+        });
         if (res.ok || res.status === 404) return true; // 404 يعني محذوف أصلًا
       } catch (e) {
         console.warn("Delete network error:", e);
@@ -347,7 +368,8 @@ export default function QCSRawMaterialView() {
     try {
       const res = await fetch(`${base}?type=qcs_raw_material`, {
         cache: "no-store",
-        mode: "cors" // ⬅️ تعديل
+        mode: "cors",
+        credentials: IS_SAME_ORIGIN ? "include" : "omit"
       });
       if (res.ok) {
         const json = await res.json();
@@ -383,11 +405,17 @@ export default function QCSRawMaterialView() {
     if (!rec) return;
     if (!window.confirm("هل أنت متأكد من حذف هذا التقرير من الجهاز والسيرفر؟")) return;
 
-    // 1) احذف فورًا من الواجهة وlocalStorage
-    const newList = reports.filter((r) => r.id !== id);
-    setReports(newList);
-    localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(newList));
-    if (selectedReportId === id) setSelectedReportId(newList[0]?.id || null);
+    // 1) احذف فورًا من الواجهة وlocalStorage (بشكل آمن ودون الحاجة لمرتين)
+    setReports((prev) => {
+      const newList = prev.filter((r) => r.id !== id);
+      localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(newList));
+      // حدّث المحدد لو كان نفس المحذوف
+      if (selectedReportId === id) {
+        const next = newList[0]?.id || null;
+        setSelectedReportId(next);
+      }
+      return newList;
+    });
 
     // 2) حاول تحذف من السيرفر
     const ok = await deleteOnServer(rec);
@@ -422,7 +450,9 @@ export default function QCSRawMaterialView() {
           return alert("ملف غير صالح: يجب أن يحتوي على مصفوفة تقارير.");
         // ضمّ البيانات المستوردة مع الحالية (بدون تكرار id)
         const map = new Map();
-        [...reports, ...data].forEach((r) => map.set(r.id, { ...map.get(r.id), ...r }));
+        [...reports, ...data].forEach((r) =>
+          map.set(r.id, { ...map.get(r.id), ...r })
+        );
         const merged = Array.from(map.values()).sort((a, b) =>
           String(b.date || b.createdAt || "").localeCompare(
             String(a.date || a.createdAt || "")
@@ -450,7 +480,7 @@ export default function QCSRawMaterialView() {
       (selectedReport?.generalInfo?.airwayBill &&
         `QCS-${selectedReport.generalInfo.airwayBill}`) ||
       `QCS-Report-${(selectedReport?.date || "")
-        .replace(/[:/\s]+/g, "_")
+        .replace(/[:/\\s]+/g, "_")
         .slice(0, 40) || Date.now()}`;
 
     const mainEl = mainRef.current;
@@ -575,7 +605,43 @@ export default function QCSRawMaterialView() {
           📦 تقارير حسب نوع الشحنة
         </h3>
 
-        {/* حالة السيرفر */}
+        {/* حالة السيرفر + أزرار عامة */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              flex: 1,
+              padding: 10,
+              background: "#10b981",
+              color: "#fff",
+              border: "1px solid #000",
+              borderRadius: 10,
+              fontWeight: 800,
+              cursor: "pointer"
+            }}
+            title="إعادة تحميل الصفحة"
+          >
+            🔄 تحديث
+          </button>
+          <button
+            onClick={exportToPDF}
+            disabled={!selectedReport}
+            style={{
+              flex: 1,
+              padding: 10,
+              background: !selectedReport ? "#93c5fd" : "#0ea5e9",
+              color: "#fff",
+              border: "1px solid #000",
+              borderRadius: 10,
+              fontWeight: 800,
+              cursor: !selectedReport ? "not-allowed" : "pointer"
+            }}
+            title="تصدير التقرير المحدد PDF"
+          >
+            ⬇️ PDF
+          </button>
+        </div>
+
         {loadingServer && (
           <div style={{ marginBottom: 8, color: "#0ea5e9", fontWeight: 800 }}>
             ⏳ جاري الجلب من السيرفر…
@@ -586,26 +652,6 @@ export default function QCSRawMaterialView() {
             {serverErr}
           </div>
         )}
-
-        {/* زر التصدير المباشر PDF */}
-        <button
-          onClick={exportToPDF}
-          disabled={!selectedReport}
-          style={{
-            width: "100%",
-            padding: 10,
-            background: !selectedReport ? "#93c5fd" : "#0ea5e9",
-            color: "#fff",
-            border: "1px solid #000",
-            borderRadius: 10,
-            fontWeight: 800,
-            marginBottom: "10px",
-            cursor: !selectedReport ? "not-allowed" : "pointer"
-          }}
-          title="تصدير التقرير كـ PDF مباشرة"
-        >
-          ⬇️ تصدير التقرير PDF (مباشر)
-        </button>
 
         <input
           type="text"
@@ -656,50 +702,61 @@ export default function QCSRawMaterialView() {
               <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {reportsInType.map((r) => (
                   <li key={r.id} style={{ marginBottom: "0.5rem" }}>
-                    <button
-                      onClick={() => {
-                        setSelectedReportId(r.id);
-                        setShowCertificate(false);
-                      }}
-                      title={`فتح تقرير ${r.generalInfo?.airwayBill || "بدون رقم شحنة"}`}
+                    <div
                       style={{
-                        width: "100%",
-                        padding: "10px 12px",
-                        borderRadius: 10,
-                        cursor: "pointer",
-                        border:
-                          selectedReportId === r.id
-                            ? "2px solid #000"
-                            : "1px solid #000",
-                        background:
-                          selectedReportId === r.id ? "#f5f5f5" : "#fff",
-                        fontWeight: selectedReportId === r.id ? 800 : 600,
                         display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        textAlign: "right",
-                        color: "#0f172a"
+                        gap: 8,
+                        alignItems: "center"
                       }}
                     >
-                      <span>
-                        {r.generalInfo?.airwayBill || "بدون رقم شحنة"}{" "}
-                        <span
-                          style={{
-                            fontWeight: 800,
-                            fontSize: "0.85rem",
-                            color: "#0f172a"
-                          }}
-                        >
-                          {r.status === "مرضي"
-                            ? "✅"
-                            : r.status === "وسط"
-                            ? "⚠️"
-                            : "❌"}
+                      {/* زر فتح التقرير (مستقل) */}
+                      <button
+                        onClick={() => {
+                          setSelectedReportId(r.id);
+                          setShowCertificate(false);
+                        }}
+                        title={`فتح تقرير ${r.generalInfo?.airwayBill || "بدون رقم شحنة"}`}
+                        style={{
+                          flex: 1,
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          cursor: "pointer",
+                          border:
+                            selectedReportId === r.id
+                              ? "2px solid #000"
+                              : "1px solid #000",
+                          background:
+                            selectedReportId === r.id ? "#f5f5f5" : "#fff",
+                          fontWeight: selectedReportId === r.id ? 800 : 600,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          textAlign: "right",
+                          color: "#0f172a"
+                        }}
+                      >
+                        <span>
+                          {r.generalInfo?.airwayBill || "بدون رقم شحنة"}{" "}
+                          <span
+                            style={{
+                              fontWeight: 800,
+                              fontSize: "0.85rem",
+                              color: "#0f172a"
+                            }}
+                          >
+                            {r.status === "مرضي"
+                              ? "✅"
+                              : r.status === "وسط"
+                              ? "⚠️"
+                              : "❌"}
+                          </span>
                         </span>
-                      </span>
-                      {/* ملاحظة: زر داخل زر مو مثالي بالـ HTML، لكن أبقيته متوافقًا مع تصميمك الحالي */}
+                      </button>
+
+                      {/* زر الحذف (مستقل — لا تداخل أزرار) */}
                       <button
                         onClick={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
                           handleDelete(r.id);
                         }}
@@ -708,14 +765,16 @@ export default function QCSRawMaterialView() {
                           color: "#fff",
                           border: "1px solid #000",
                           borderRadius: 8,
-                          padding: "6px 10px",
+                          padding: "8px 12px",
                           cursor: "pointer",
-                          fontWeight: 800
+                          fontWeight: 800,
+                          minWidth: 72
                         }}
+                        title="حذف التقرير"
                       >
                         حذف
                       </button>
-                    </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -747,8 +806,7 @@ export default function QCSRawMaterialView() {
               color: "#fff",
               border: "1px solid #000",
               borderRadius: 10,
-              width: "100%",
-              fontWeight: 800
+              width: "100%"
             }}
           >
             ⬆️ استيراد تقارير
@@ -826,16 +884,52 @@ export default function QCSRawMaterialView() {
               </table>
             </div>
 
-            {/* عنوان التقرير */}
-            <h3
+            {/* عنوان التقرير + أدوات العرض */}
+            <div
               style={{
-                margin: "0 0 1rem",
-                color: "#111827",
-                fontWeight: 800
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: "1rem"
               }}
             >
-              {reportTitle}
-            </h3>
+              <h3
+                style={{
+                  margin: 0,
+                  color: "#111827",
+                  fontWeight: 800
+                }}
+              >
+                {reportTitle}
+              </h3>
+
+              {/* زر أيقونة إظهار/إخفاء الشهادة */}
+              <button
+                className="no-print"
+                onClick={() => setShowCertificate((s) => !s)}
+                title={showCertificate ? "إخفاء الشهادة" : "إظهار الشهادة"}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid #000",
+                  background: "#ffffff",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                  color: "#0f172a",
+                  minWidth: 44
+                }}
+              >
+                {showCertificate ? <FiEyeOff /> : <FiEye />}
+                <span style={{ fontSize: 14 }}>
+                  {showCertificate ? "إخفاء الشهادة" : "إظهار الشهادة"}
+                </span>
+              </button>
+            </div>
 
             {/* معلومات عامة */}
             <section
