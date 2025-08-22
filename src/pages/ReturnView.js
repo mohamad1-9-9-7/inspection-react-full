@@ -175,6 +175,7 @@ const ACTIONS = [
   "Condemnation",
   "Use in kitchen",
   "Send to market",
+  "Separated expired shelf", // ← تمت الإضافة هنا
   "إجراء آخر...",
 ];
 

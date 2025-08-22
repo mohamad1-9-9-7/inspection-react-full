@@ -6,19 +6,31 @@ import { useNavigate } from "react-router-dom";
 // رابط الـ API (من متغيّر البيئة في CRA)
 const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
-// قائمة الأفرع
+// قائمة الأفرع (تم إضافة POS 18, 34, 35, 36, 41, 43)
 const BRANCHES = [
-  "QCS", "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16",
-  "POS 17", "POS 19", "POS 21", "POS 24", "POS 25", "POS 37", "POS 38",
-  "POS 42", "POS 44", "POS 45", "فرع آخر... / Other branch"
+  "QCS",
+  "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16", "POS 17",
+  "POS 18", // جديد
+  "POS 19", "POS 21", "POS 24", "POS 25",
+  "POS 34", // جديد
+  "POS 35", // جديد
+  "POS 36", // جديد
+  "POS 37", "POS 38",
+  "POS 41", // جديد
+  "POS 42",
+  "POS 43", // جديد
+  "POS 44", "POS 45",
+  "فرع آخر... / Other branch"
 ];
 
 // خيارات الإجراء — English ONLY (ثابتة للتخزين والمقارنة)
+// تمت إضافة "Separated expired shelf"
 const ACTIONS = [
   "Use in production",
   "Condemnation",
   "Use in kitchen",
   "Send to market",
+  "Separated expired shelf", // جديد
   "Other..."
 ];
 
