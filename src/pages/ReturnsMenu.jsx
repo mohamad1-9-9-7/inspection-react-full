@@ -29,14 +29,26 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
 
         <form onSubmit={(e) => { e.preventDefault(); onSubmit(password); }}>
           <input
-            type="password" autoFocus placeholder="أدخل كلمة السر (0000)"
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={4}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoFocus
+            placeholder="أدخل كلمة السر / Enter password"
             style={{
               width: "90%", padding: "11px", fontSize: "1.1em",
               border: "1.8px solid #b2babb", borderRadius: "10px",
               marginBottom: 16, background: "#f4f6f7",
             }}
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              const onlyDigits = e.target.value.replace(/\D/g, "").slice(0, 4);
+              setPassword(onlyDigits);
+            }}
             onKeyDown={(e) => e.stopPropagation()}
           />
           <button type="submit" style={{
@@ -59,7 +71,9 @@ export default function ReturnsMenu() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalError, setModalError] = useState("");
   const navigate = useNavigate();
-  const PASSWORD = "0000";
+
+  // 🔐 Password for creating report
+  const PASSWORD = "9999";
 
   const tileStyle = (active) => ({
     fontSize: "3rem",
@@ -84,10 +98,39 @@ export default function ReturnsMenu() {
     textAlign: "center",
   });
 
+  // ✅ Brand text (top-right)
+  const brandWrap = {
+    position: "fixed",
+    top: 10,
+    right: 16,
+    textAlign: "right",
+    zIndex: 9999,
+    pointerEvents: "none",
+  };
+  const brandTitle = {
+    fontFamily: "Cairo, sans-serif",
+    fontWeight: 900,
+    letterSpacing: "1px",
+    fontSize: "18px",
+    color: "#b91c1c",
+  };
+  const brandSub = {
+    fontFamily: "Cairo, sans-serif",
+    fontWeight: 600,
+    fontSize: "11px",
+    color: "#374151",
+    opacity: 0.9,
+  };
+
   const openPassword = () => { setModalOpen(true); setModalError(""); };
   const handleSubmitPassword = (val) => {
-    if (val === PASSWORD) { setModalOpen(false); setModalError(""); navigate("/returns"); }
-    else { setModalError("❌ كلمة السر غير صحيحة!"); }
+    if (val === PASSWORD) {
+      setModalOpen(false);
+      setModalError("");
+      navigate("/returns");
+    } else {
+      setModalError("❌ كلمة السر غير صحيحة!");
+    }
   };
 
   return (
@@ -96,6 +139,12 @@ export default function ReturnsMenu() {
       justifyContent: "start", paddingTop: "4rem", fontFamily: "Cairo, sans-serif",
       background: "linear-gradient(135deg, #2980b9 0%, #6dd5fa 100%)", color: "#fff", direction: "rtl",
     }}>
+      {/* Brand text (no image) */}
+      <div style={brandWrap}>
+        <div style={brandTitle}>AL MAWASHI</div>
+        <div style={brandSub}>Trans Emirates Livestock Trading L.L.C.</div>
+      </div>
+
       <h2 style={{ marginBottom: "2rem", fontWeight: "bold", textShadow: "1px 1px 4px rgba(0,0,0,0.4)" }}>
         مرتجعات — اختر الإجراء
       </h2>
