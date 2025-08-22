@@ -6,12 +6,14 @@ import { useNavigate } from "react-router-dom";
 // رابط الـ API (من متغيّر البيئة في CRA)
 const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
-// قائمة الأفرع (تم إضافة POS 18, 34, 35, 36, 41, 43)
+// قائمة الأفرع (تم إضافة POS 18, 26, 31, 34, 35, 36, 41, 43)
 const BRANCHES = [
   "QCS",
   "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16", "POS 17",
   "POS 18", // جديد
   "POS 19", "POS 21", "POS 24", "POS 25",
+  "POS 26", // جديد
+  "POS 31", // جديد
   "POS 34", // جديد
   "POS 35", // جديد
   "POS 36", // جديد

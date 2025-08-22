@@ -8,7 +8,7 @@ const API_BASE =
 async function fetchReturns() {
   const res = await fetch(API_BASE + "/api/reports?type=returns", { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch");
-  const json = await res.json(); // { ok:true, data:[...] } أو Array حسب السيرفر
+  const json = await res.json();
   return Array.isArray(json) ? json : (json && json.data ? json.data : []);
 }
 
@@ -44,9 +44,7 @@ async function saveReportToServer(reportDate, items) {
           return { ok: true };
         }
       }
-      lastErr = new Error(`${a.method} ${a.url} -> ${res.status} ${await res
-        .text()
-        .catch(() => "")}`);
+      lastErr = new Error(`${a.method} ${a.url} -> ${res.status} ${await res.text().catch(() => "")}`);
     } catch (e) {
       lastErr = e;
     }
@@ -128,35 +126,24 @@ function itemKey(row) {
 
 /* ========== سجل تغييرات (type=returns_changes) يُخزَّن على السيرفر ========== */
 async function appendActionChange(reportDate, changeItem) {
-  // 1) احضر سجل اليوم الحالي (إن وجد)
   let existing = [];
   try {
     const res = await fetch(`${API_BASE}/api/reports?type=returns_changes`, { cache: "no-store" });
     if (res.ok) {
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data || [];
-      const sameDay = arr.filter(
-        (r) => (r?.payload?.reportDate || r?.reportDate) === reportDate
-      );
+      const sameDay = arr.filter((r) => (r?.payload?.reportDate || r?.reportDate) === reportDate);
       if (sameDay.length) {
-        // اختر أحدث سجل لليوم
-        sameDay.sort(
-          (a, b) =>
-            (toTs(b?.updatedAt) || toTs(b?._id) || 0) -
-            (toTs(a?.updatedAt) || toTs(a?._id) || 0)
+        sameDay.sort((a, b) =>
+          (toTs(b?.updatedAt) || toTs(b?._id) || 0) -
+          (toTs(a?.updatedAt) || toTs(a?._id) || 0)
         );
         const latest = sameDay[0];
         existing = Array.isArray(latest?.payload?.items) ? latest.payload.items : [];
       }
     }
-  } catch {
-    // تجاهل
-  }
-
-  // 2) أضف التغيير الجديد
+  } catch { }
   const merged = [...existing, changeItem];
-
-  // 3) ارفع/حدّث (UPSERT) كسجل returns_changes لذات التاريخ
   const upsertPayload = {
     reporter: "anonymous",
     type: "returns_changes",
@@ -175,8 +162,23 @@ const ACTIONS = [
   "Condemnation",
   "Use in kitchen",
   "Send to market",
-  "Separated expired shelf", // ← تمت الإضافة هنا
+  "Separated expired shelf", // جديد
   "إجراء آخر...",
+];
+
+/* ========== قائمة الأفرع المحدثة ========== */
+const BRANCHES = [
+  "QCS",
+  "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16", "POS 17",
+  "POS 18",
+  "POS 19", "POS 21", "POS 24", "POS 25",
+  "POS 26", // جديد
+  "POS 31", // جديد
+  "POS 34", "POS 35", "POS 36",
+  "POS 37", "POS 38",
+  "POS 41", "POS 42", "POS 43",
+  "POS 44", "POS 45",
+  "فرع آخر..."
 ];
 
 export default function ReturnView() {
