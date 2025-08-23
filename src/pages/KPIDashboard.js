@@ -1,37 +1,184 @@
 // src/pages/KPIDashboard.js
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import CountUp from "react-countup";
 
-// --- Bar Chart فقط للعرض البياني ---
+/* ================== API ================== */
+const API_BASE =
+  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+
+async function fetchByType(type) {
+  const url = `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`${res.status} while fetching ${type}`);
+  const json = await res.json().catch(() => []);
+  const arr = Array.isArray(json) ? json : json?.data || [];
+  return arr;
+}
+
+/** يحاول قراءة وقت/تاريخ من سجل عام */
+function pickDate(rec) {
+  // أولوية: payload.reportDate -> reportDate -> date -> createdAt
+  const cands = [
+    rec?.payload?.reportDate,
+    rec?.reportDate,
+    rec?.date,
+    rec?.createdAt,
+    rec?._id, // ObjectId timestamp (كحل أخير)
+  ].filter(Boolean);
+  const d = cands[0];
+  if (!d) return "";
+  // نعيد YYYY-MM-DD إن أمكن
+  const s = String(d);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const ts = Date.parse(s);
+  if (Number.isFinite(ts)) return new Date(ts).toISOString().slice(0, 10);
+  // ObjectId
+  if (/^[a-f0-9]{24}$/i.test(s)) {
+    const ms = parseInt(s.slice(0, 8), 16) * 1000;
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  return "";
+}
+
+/* ====== تطبيع الأنواع ====== */
+
+/** تفتيش عام (type=reports): نتوقع percentage و date */
+function normalizeInspection(raw) {
+  return raw.map((r) => {
+    const payload = r?.payload || r || {};
+    return {
+      ...payload,
+      percentage: payload.percentage ?? r?.percentage ?? 0,
+      date: pickDate(r),
+    };
+  });
+}
+
+/** QCS Daily (type=qcs_reports): نتوقع coolers داخل payload */
+function normalizeQCSDaily(raw) {
+  return raw.map((r) => {
+    const payload = r?.payload || r || {};
+    return {
+      ...payload,
+      coolers: Array.isArray(payload.coolers) ? payload.coolers : [],
+      date: pickDate(r),
+    };
+  });
+}
+
+/** شحنات QCS (type=qcs_raw_material_reports): status/shipmentType/.. */
+function normalizeShipments(raw) {
+  return raw.map((r) => {
+    const payload = r?.payload || r || {};
+    return {
+      ...payload,
+      status: payload.status || r?.status || "",
+      shipmentType: payload.shipmentType || r?.shipmentType || "غير محدد",
+      productName: payload.productName || payload.name || r?.name || "",
+      supplier: payload.supplier || payload.butchery || r?.supplier || "",
+      butchery: payload.butchery || "",
+      remarks: payload.remarks || "",
+      date: pickDate(r),
+    };
+  });
+}
+
+/** تقارير تحميل السيارات (type=cars_loading_inspection_v1) */
+function normalizeLoading(raw) {
+  return raw.map((r) => {
+    const payload = r?.payload || r || {};
+    return {
+      ...payload,
+      date: pickDate(r),
+      timeStart: payload.timeStart || "",
+      timeEnd: payload.timeEnd || "",
+      tempCheck: payload.tempCheck ?? payload.temp ?? "",
+      visual: payload.visual || {},
+    };
+  });
+}
+
+/** المرتجعات (type=returns) ← نعتمد نفس بنية ReturnView: [{reportDate, items[]}] */
+function normalizeReturns(raw) {
+  // احتمال يكون فيه نسخ متعددة بنفس التاريخ—نأخذ الأحدث
+  function ts(x) {
+    if (!x) return 0;
+    if (typeof x === "number") return x;
+    const n = Date.parse(x);
+    if (Number.isFinite(n)) return n;
+    if (typeof x === "string" && /^[a-f0-9]{24}$/i.test(x)) {
+      return parseInt(x.slice(0, 8), 16) * 1000;
+    }
+    return 0;
+  }
+  const entries = raw
+    .map((rec) => {
+      const payload = rec?.payload || rec || {};
+      const reportDate =
+        payload.reportDate || rec?.reportDate || pickDate(rec) || "";
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      const stamp =
+        ts(rec?.updatedAt) ||
+        ts(rec?.createdAt) ||
+        ts(rec?._id) ||
+        ts(payload?._clientSavedAt);
+      return { reportDate, items, _stamp: stamp };
+    })
+    .filter((e) => e.reportDate);
+
+  const latest = new Map();
+  for (const e of entries) {
+    const prev = latest.get(e.reportDate);
+    latest.set(
+      e.reportDate,
+      !prev || (e._stamp || 0) >= (prev._stamp || 0) ? e : prev
+    );
+  }
+  return Array.from(latest.values())
+    .map(({ reportDate, items }) => ({ reportDate, items }))
+    .sort((a, b) => b.reportDate.localeCompare(a.reportDate));
+}
+
+/* ===== رسومات بسيطة ===== */
 function BarChart({ data }) {
-  const max = Math.max(...Object.values(data), 1);
+  const vals = Object.values(data || {});
+  const max = Math.max(...(vals.length ? vals : [1]));
   return (
     <div style={{ padding: "1rem 0" }}>
-      {Object.entries(data).map(([label, value]) => (
+      {Object.entries(data || {}).map(([label, value]) => (
         <div key={label} style={{ marginBottom: 7 }}>
           <div style={{ fontWeight: 500, marginBottom: 3 }}>{label}</div>
-          <div style={{
-            background: "#f1e7fa",
-            borderRadius: 10,
-            height: 20,
-            position: "relative",
-            overflow: "hidden"
-          }}>
-            <div style={{
-              width: `${(value / max) * 100}%`,
-              height: 20,
-              background: "#884ea0",
+          <div
+            style={{
+              background: "#f1e7fa",
               borderRadius: 10,
-              transition: "width .4s"
-            }}>
-              <span style={{
-                position: "absolute",
-                left: 10,
-                color: "#fff",
-                fontWeight: "bold",
-                fontSize: 15
-              }}>{value}</span>
+              height: 20,
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${(Number(value) / max) * 100}%`,
+                height: 20,
+                background: "#884ea0",
+                borderRadius: 10,
+                transition: "width .4s",
+                position: "relative",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  left: 10,
+                  color: "#fff",
+                  fontWeight: "bold",
+                  fontSize: 15,
+                }}
+              >
+                {value}
+              </span>
             </div>
           </div>
         </div>
@@ -40,33 +187,37 @@ function BarChart({ data }) {
   );
 }
 
-// ==== Modal لعرض التفاصيل ====
+/* ===== مودال ===== */
 function Modal({ show, onClose, title, children }) {
   if (!show) return null;
   return (
-    <div style={{
-      position: "fixed",
-      zIndex: 1200,
-      left: 0,
-      top: 0,
-      width: "100vw",
-      height: "100vh",
-      background: "rgba(81,46,95,0.18)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center"
-    }}>
-      <div style={{
-        background: "#fff",
-        borderRadius: 16,
-        padding: "2rem 2.4rem",
-        minWidth: 350,
-        minHeight: 150,
-        boxShadow: "0 2px 22px #b39ddb60",
-        position: "relative",
-        maxHeight: "80vh",
-        overflowY: "auto"
-      }}>
+    <div
+      style={{
+        position: "fixed",
+        zIndex: 1200,
+        left: 0,
+        top: 0,
+        width: "100vw",
+        height: "100vh",
+        background: "rgba(81,46,95,0.18)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 16,
+          padding: "2rem 2.4rem",
+          minWidth: 350,
+          minHeight: 150,
+          boxShadow: "0 2px 22px #b39ddb60",
+          position: "relative",
+          maxHeight: "80vh",
+          overflowY: "auto",
+        }}
+      >
         <button
           onClick={onClose}
           style={{
@@ -78,238 +229,249 @@ function Modal({ show, onClose, title, children }) {
             background: "transparent",
             color: "#c0392b",
             fontWeight: "bold",
-            cursor: "pointer"
+            cursor: "pointer",
           }}
           title="إغلاق"
-        >✖</button>
-        <div style={{ fontWeight: "bold", color: "#884ea0", fontSize: "1.2em", marginBottom: 18 }}>{title}</div>
+        >
+          ✖
+        </button>
+        <div
+          style={{
+            fontWeight: "bold",
+            color: "#884ea0",
+            fontSize: "1.2em",
+            marginBottom: 18,
+          }}
+        >
+          {title}
+        </div>
         <div>{children}</div>
       </div>
     </div>
   );
 }
 
-// --------- صفحة الـKPI الرئيسية ---------
+/* ====== الصفحة ====== */
 export default function KPIDashboard() {
-  const [kpi, setKpi] = useState({});
+  // مصادر البيانات (من السيرفر فقط)
+  const [inspection, setInspection] = useState([]);
+  const [qcsDaily, setQCSDaily] = useState([]);
+  const [shipments, setShipments] = useState([]);
+  const [loadingReports, setLoadingReports] = useState([]);
+  const [returnsReports, setReturnsReports] = useState([]);
+
+  // حالة جلب/أخطاء
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState("");
+
+  // فلاتر التاريخ
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [filtered, setFiltered] = useState({});
-  const [importError, setImportError] = useState("");
-  const fileInputRef = React.useRef();
 
-  // ==== للمرتجعات ====
-  const [returnsData, setReturnsData] = useState([]);
-  const [returnsDetailsOpen, setReturnsDetailsOpen] = useState(false);
-
-  // ==== تفاصيل الشحنات وسط وتحت الوسط ====
+  // مودالات
   const [wasatOpen, setWasatOpen] = useState(false);
   const [tahtWasatOpen, setTahtWasatOpen] = useState(false);
+  const [returnsDetailsOpen, setReturnsDetailsOpen] = useState(false);
 
-  // === جلب البيانات كاملة ===
+  // استيراد/تصدير KPIs (ملف)
+  const [importError, setImportError] = useState("");
+  const fileInputRef = useRef(null);
+
+  // جلب من السيرفر الخارجي
   useEffect(() => {
-    setKpi({
-      inspection: JSON.parse(localStorage.getItem("reports") || "[]"),
-      qcsDaily: JSON.parse(localStorage.getItem("qcs_reports") || "[]"),
-      shipments: JSON.parse(localStorage.getItem("qcs_raw_material_reports") || "[]"),
-      // NEW: تقارير أوقات التحميل للسيارات
-      loadingReports: JSON.parse(localStorage.getItem("cars_loading_inspection_v1") || "[]"),
-    });
-    // ==== جلب بيانات المرتجعات من returns_reports ====
-    const returns = JSON.parse(localStorage.getItem("returns_reports") || "[]");
-    setReturnsData(returns);
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setLoadErr("");
+
+        const [
+          rawInspection,
+          rawQCSDaily,
+          rawShipments,
+          rawLoading,
+          rawReturns,
+        ] = await Promise.all([
+          fetchByType("reports").catch(() => []),
+          fetchByType("qcs_reports").catch(() => []),
+          fetchByType("qcs_raw_material_reports").catch(() => []),
+          fetchByType("cars_loading_inspection_v1").catch(() => []),
+          fetchByType("returns").catch(() => []),
+        ]);
+
+        if (!mounted) return;
+
+        setInspection(normalizeInspection(rawInspection));
+        setQCSDaily(normalizeQCSDaily(rawQCSDaily));
+        setShipments(normalizeShipments(rawShipments));
+        setLoadingReports(normalizeLoading(rawLoading));
+        setReturnsReports(normalizeReturns(rawReturns));
+      } catch (e) {
+        console.error(e);
+        setLoadErr("تعذر الجلب من السيرفر الخارجي الآن.");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // === فلترة حسب التاريخ عند تغيير الفلاتر ===
-  useEffect(() => {
-    const filterByDate = (arr, key = "date") => arr.filter(
-      obj =>
-        (!dateFrom || obj[key] >= dateFrom) &&
-        (!dateTo || obj[key] <= dateTo)
-    );
-    setFiltered({
-      inspection: filterByDate(kpi.inspection || []),
-      qcsDaily: filterByDate(kpi.qcsDaily || []),
-      shipments: filterByDate(kpi.shipments || []),
-      // NEW
-      loadingReports: filterByDate(kpi.loadingReports || []),
-    });
-  }, [dateFrom, dateTo, kpi]);
+  // فلترة حسب التاريخ (YYYY-MM-DD)
+  const inRange = (d) =>
+    (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
 
-  // === فلترة بيانات المرتجعات حسب التاريخ كذلك ===
-  const filteredReturns = returnsData.filter(r => {
-    if (!dateFrom && !dateTo) return true;
-    const d = r.reportDate || "";
-    if (dateFrom && d < dateFrom) return false;
-    if (dateTo && d > dateTo) return false;
-    return true;
-  });
+  const filteredInspection = inspection.filter((r) => inRange(r.date || ""));
+  const filteredQCSDaily = qcsDaily.filter((r) => inRange(r.date || ""));
+  const filteredShipments = shipments.filter((r) => inRange(r.date || ""));
+  const filteredLoading = loadingReports.filter((r) => inRange(r.date || ""));
+  const filteredReturns = returnsReports.filter((r) => inRange(r.reportDate || ""));
 
-  // ==== إحصائيات المرتجعات ====
-  const returnsCount = filteredReturns.length;
-  const returnsItemsCount = filteredReturns.reduce((acc, rep) => acc + (rep.items?.length || 0), 0);
-  const returnsTotalQty = filteredReturns.reduce(
-    (acc, rep) => acc + (rep.items?.reduce((sum, r) => sum + Number(r.quantity || 0), 0) || 0),
-    0
-  );
-  const byBranch = {};
-  filteredReturns.forEach(rep => {
-    (rep.items || []).forEach(r => {
-      const b = r.butchery === "فرع آخر..." ? r.customButchery : r.butchery;
-      if (!b) return;
-      byBranch[b] = (byBranch[b] || 0) + 1;
-    });
-  });
-  const topBranches = Object.entries(byBranch).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  /* ==== KPIs ==== */
 
-  const byAction = {};
-  filteredReturns.forEach(rep => {
-    (rep.items || []).forEach(r => {
-      const a = r.action === "إجراء آخر..." ? r.customAction : r.action;
-      if (!a) return;
-      byAction[a] = (byAction[a] || 0) + 1;
-    });
-  });
-  const topActions = Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 3);
-
-  // === استخراج القيم للـ KPIs بعد الفلترة ===
-  const inspectionCount = filtered.inspection?.length ?? 0;
+  // تفتيش
+  const inspectionCount = filteredInspection.length;
   const inspectionAvg = inspectionCount
     ? (
-        filtered.inspection.reduce(
+        filteredInspection.reduce(
           (acc, r) => acc + (parseFloat(r.percentage) || 0),
           0
         ) / inspectionCount
       ).toFixed(1)
     : 0;
 
-  const qcsDailyCount = filtered.qcsDaily?.length ?? 0;
+  // QCS: متوسط حرارة البرادات
+  const qcsDailyCount = filteredQCSDaily.length;
   const qcsCoolersAvg = (() => {
     let temps = [];
-    (filtered.qcsDaily || []).forEach(rep =>
-      rep.coolers?.forEach(c =>
-        temps.push(...Object.values(c.temps).filter(v => v !== ""))
-      )
+    filteredQCSDaily.forEach((rep) =>
+      (rep.coolers || []).forEach((c) => {
+        // نتوقع c.temps = {a:val, b:val ...}
+        const vals = Object.values(c?.temps || {}).filter((v) => v !== "");
+        temps.push(...vals);
+      })
     );
-    temps = temps.map(Number).filter(x => !isNaN(x));
-    if (temps.length === 0) return 0;
+    temps = temps.map(Number).filter((x) => !isNaN(x));
+    if (!temps.length) return 0;
     return (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1);
   })();
 
-  const shipmentsCount = filtered.shipments?.length ?? 0;
+  // شحنات
+  const shipmentsCount = filteredShipments.length;
   const shipmentsMardi =
-    filtered.shipments?.filter(r => r.status === "مرضي").length ?? 0;
-  const shipmentsWasatArr =
-    filtered.shipments?.filter(r => r.status === "وسط") ?? [];
+    filteredShipments.filter((r) => (r.status || "").trim() === "مرضي")
+      .length;
+  const shipmentsWasatArr = filteredShipments.filter(
+    (r) => (r.status || "").trim() === "وسط"
+  );
   const shipmentsWasat = shipmentsWasatArr.length;
-  const shipmentsTahtWasatArr =
-    filtered.shipments?.filter(r => r.status === "تحت الوسط") ?? [];
+  const shipmentsTahtWasatArr = filteredShipments.filter(
+    (r) => (r.status || "").trim() === "تحت الوسط"
+  );
   const shipmentsTahtWasat = shipmentsTahtWasatArr.length;
-  const shipmentTypes = (filtered.shipments || []).reduce((acc, r) => {
-    const type = r.shipmentType || "غير محدد";
-    acc[type] = (acc[type] || 0) + 1;
+  const shipmentTypes = filteredShipments.reduce((acc, r) => {
+    const t = r.shipmentType || "غير محدد";
+    acc[t] = (acc[t] || 0) + 1;
     return acc;
   }, {});
 
-  // ======== KPIs لتقارير أوقات التحميل (NEW) ========
-  const loadingReports = filtered.loadingReports || [];
-  const loadingCount = loadingReports.length;
-
-  // تحويل وقت "HH:MM" -> دقائق
-  function toMinutes(t) {
+  // تحميل سيارات
+  const loadingCount = filteredLoading.length;
+  const toMinutes = (t) => {
     if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return null;
     const [h, m] = t.split(":").map(Number);
     return h * 60 + m;
-  }
-  // متوسط زمن التحميل بالدقائق
-  const loadingDurations = loadingReports.map(r => {
-    const s = toMinutes(r.timeStart);
-    const e = toMinutes(r.timeEnd);
-    return s != null && e != null && e >= s ? (e - s) : null;
-  }).filter(v => v != null);
+    };
+  const loadingDurations = filteredLoading
+    .map((r) => {
+      const s = toMinutes(r.timeStart);
+      const e = toMinutes(r.timeEnd);
+      return s != null && e != null && e >= s ? e - s : null;
+    })
+    .filter((v) => v != null);
   const loadingAvgMinutes = loadingDurations.length
-    ? Math.round(loadingDurations.reduce((a,b)=>a+b,0) / loadingDurations.length)
+    ? Math.round(
+        loadingDurations.reduce((a, b) => a + b, 0) / loadingDurations.length
+      )
     : 0;
 
-  // متوسط حرارة التحميل
-  const loadingTemps = loadingReports
-    .map(r => Number(r.tempCheck))
-    .filter(v => !isNaN(v));
+  const loadingTemps = filteredLoading
+    .map((r) => Number(r.tempCheck))
+    .filter((v) => !isNaN(v));
   const loadingAvgTemp = loadingTemps.length
-    ? (loadingTemps.reduce((a,b)=>a+b,0) / loadingTemps.length).toFixed(1)
+    ? (loadingTemps.reduce((a, b) => a + b, 0) / loadingTemps.length).toFixed(
+        1
+      )
     : 0;
 
-  // نسبة التوافق في الفحص البصري
-  const VI_KEYS = ["sealIntact","containerClean","pestDetection","tempReader","plasticCurtain","badSmell","ppeA","ppeB","ppeC"];
-  let viYes = 0, viTotal = 0;
-  loadingReports.forEach(r => {
-    VI_KEYS.forEach(k => {
-      if (r.visual && r.visual[k]) {
+  const VI_KEYS = [
+    "sealIntact",
+    "containerClean",
+    "pestDetection",
+    "tempReader",
+    "plasticCurtain",
+    "badSmell",
+    "ppeA",
+    "ppeB",
+    "ppeC",
+  ];
+  let viYes = 0,
+    viTotal = 0;
+  filteredLoading.forEach((r) => {
+    const v = r.visual || {};
+    VI_KEYS.forEach((k) => {
+      if (v[k]) {
         viTotal += 1;
-        if (r.visual[k].value === "yes") viYes += 1;
+        if (v[k].value === "yes") viYes += 1;
       }
     });
   });
-  const loadingVICompliance = viTotal ? Math.round((viYes / viTotal) * 100) : 0;
+  const loadingVICompliance = viTotal
+    ? Math.round((viYes / viTotal) * 100)
+    : 0;
 
-  // ========== تصدير البيانات كـ JSON ==========
-  const handleExportJSON = () => {
-    const obj = {
-      KPIs: {
-        inspectionCount,
-        inspectionAvg,
-        qcsDailyCount,
-        qcsCoolersAvg,
-        shipmentsCount,
-        shipmentsMardi,
-        shipmentsWasat,
-        shipmentsTahtWasat,
-        shipmentTypes,
-        // NEW: KPIs التحميل
-        loadingCount,
-        loadingAvgMinutes,
-        loadingAvgTemp,
-        loadingVICompliance,
-        // المرتجعات
-        returnsCount,
-        returnsItemsCount,
-        returnsTotalQty,
-        topBranches,
-        topActions
-      },
-      dateFrom,
-      dateTo,
-      lastExport: new Date().toISOString(),
-    };
-    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "kpi_export.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // مرتجعات
+  const returnsCount = filteredReturns.length;
+  const returnsItemsCount = filteredReturns.reduce(
+    (acc, rep) => acc + (rep.items?.length || 0),
+    0
+  );
+  const returnsTotalQty = filteredReturns.reduce(
+    (acc, rep) =>
+      acc +
+      (rep.items?.reduce(
+        (sum, it) => sum + Number(it.quantity || 0),
+        0
+      ) || 0),
+    0
+  );
 
-  // ===== استيراد ملف KPI =====
-  const handleImportJSON = e => {
-    setImportError("");
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = evt => {
-      try {
-        const data = JSON.parse(evt.target.result);
-        if (!data.KPIs) throw new Error("ملف غير صحيح!");
-        alert("✅ تم استيراد البيانات بنجاح! (المعاينة فقط، لن تحفظ في LocalStorage)");
-      } catch (err) {
-        setImportError("❌ خطأ في قراءة الملف أو الملف غير صحيح!");
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = ""; // reset for next import
-  };
+  const byBranch = {};
+  filteredReturns.forEach((rep) =>
+    (rep.items || []).forEach((it) => {
+      const b = it.butchery === "فرع آخر..." ? it.customButchery : it.butchery;
+      if (!b) return;
+      byBranch[b] = (byBranch[b] || 0) + 1;
+    })
+  );
+  const topBranches = Object.entries(byBranch)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
 
-  // ==== أنماط للأرقام حسب القيمة ====
+  const byAction = {};
+  filteredReturns.forEach((rep) =>
+    (rep.items || []).forEach((it) => {
+      const a = it.action === "إجراء آخر..." ? it.customAction : it.action;
+      if (!a) return;
+      byAction[a] = (byAction[a] || 0) + 1;
+    })
+  );
+  const topActions = Object.entries(byAction)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+
+  /* ===== أدوات عرض ===== */
   function numberColor(val, type = "") {
     if (type === "temp") {
       if (val < 2) return "#229954";
@@ -327,41 +489,100 @@ export default function KPIDashboard() {
     return "#273746";
   }
 
-  // ===== Reset Filter function =====
   const resetFilters = () => {
     setDateFrom("");
     setDateTo("");
   };
 
-  // ===== إشعار انخفاض التقارير =====
   const notification = (() => {
     let notes = [];
     if (Number(inspectionAvg) < 50)
       notes.push("⚠️ متوسط نسبة التفتيش منخفض (أقل من 50%)");
-    if (qcsCoolersAvg > 8)
-      notes.push("⚠️ متوسط حرارة البرادات مرتفع");
+    if (qcsCoolersAvg > 8) notes.push("⚠️ متوسط حرارة البرادات مرتفع");
     if (shipmentsTahtWasat > shipmentsMardi)
       notes.push("⚠️ عدد الشحنات تحت الوسط أعلى من المرضية");
-    if (notes.length === 0)
-      return null;
+    if (!notes.length) return null;
     return (
-      <div style={{
-        background: "#fdecea",
-        color: "#c0392b",
-        fontWeight: "bold",
-        border: "1.8px solid #e74c3c",
-        borderRadius: 10,
-        textAlign: "center",
-        fontSize: "1.12em",
-        marginBottom: 30,
-        padding: "15px 0",
-        boxShadow: "0 2px 12px #f9ebea"
-      }}>
-        {notes.map((n, i) => <div key={i} style={{marginBottom:5}}>{n}</div>)}
+      <div
+        style={{
+          background: "#fdecea",
+          color: "#c0392b",
+          fontWeight: "bold",
+          border: "1.8px solid #e74c3c",
+          borderRadius: 10,
+          textAlign: "center",
+          fontSize: "1.12em",
+          marginBottom: 30,
+          padding: "15px 0",
+          boxShadow: "0 2px 12px #f9ebea",
+        }}
+      >
+        {notes.map((n, i) => (
+          <div key={i} style={{ marginBottom: 5 }}>
+            {n}
+          </div>
+        ))}
       </div>
     );
   })();
 
+  const handleExportJSON = () => {
+    const obj = {
+      KPIs: {
+        inspectionCount,
+        inspectionAvg,
+        qcsDailyCount,
+        qcsCoolersAvg,
+        shipmentsCount,
+        shipmentsMardi,
+        shipmentsWasat,
+        shipmentsTahtWasat,
+        shipmentTypes,
+        loadingCount,
+        loadingAvgMinutes,
+        loadingAvgTemp,
+        loadingVICompliance,
+        returnsCount,
+        returnsItemsCount,
+        returnsTotalQty,
+        topBranches,
+        topActions,
+      },
+      dateFrom,
+      dateTo,
+      lastExport: new Date().toISOString(),
+      source: "server",
+    };
+    const blob = new Blob([JSON.stringify(obj, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "kpi_export.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportJSON = (e) => {
+    setImportError("");
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = JSON.parse(evt.target.result);
+        if (!data.KPIs) throw new Error("Invalid file!");
+        alert("✅ Imported OK (preview only).");
+      } catch (err) {
+        setImportError("❌ Failed to read or invalid JSON!");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  /* ====== UI ====== */
   return (
     <div
       style={{
@@ -369,7 +590,7 @@ export default function KPIDashboard() {
         padding: "2rem",
         background: "linear-gradient(120deg, #f6f8fa 60%, #e8daef 100%)",
         minHeight: "100vh",
-        direction: "rtl"
+        direction: "rtl",
       }}
     >
       <h2
@@ -377,25 +598,36 @@ export default function KPIDashboard() {
           textAlign: "center",
           color: "#512e5f",
           fontWeight: "bold",
-          marginBottom: "2.5rem",
-          letterSpacing: "0.02em"
+          marginBottom: "2.0rem",
+          letterSpacing: "0.02em",
         }}
       >
         📈 لوحة مؤشرات الأداء (KPI)
       </h2>
 
-      {/* ===== إشعار انخفاض أو تحذير ===== */}
-      {notification}
+      {loading && (
+        <div style={{ textAlign: "center", marginBottom: 14, color: "#512e5f" }}>
+          ⏳ جاري الجلب من السيرفر الخارجي…
+        </div>
+      )}
+      {loadErr && (
+        <div style={{ textAlign: "center", marginBottom: 14, color: "#c0392b", fontWeight: "bold" }}>
+          {loadErr}
+        </div>
+      )}
 
-      {/* فلاتر التاريخ وأزرار التصدير/الاستيراد */}
+      {/* تحذيرات */}
+      {!loading && !loadErr && notification}
+
+      {/* فلاتر + تصدير/استيراد */}
       <div
         style={{
           display: "flex",
           flexWrap: "wrap",
           gap: 15,
-          marginBottom: "2.3rem",
+          marginBottom: "2.0rem",
           justifyContent: "center",
-          alignItems: "center"
+          alignItems: "center",
         }}
       >
         <span style={{ fontWeight: 600, fontSize: "1.1em" }}>فلترة حسب التاريخ:</span>
@@ -404,14 +636,14 @@ export default function KPIDashboard() {
           <input
             type="date"
             value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
+            onChange={(e) => setDateFrom(e.target.value)}
             style={{
               borderRadius: 10,
               border: "2px solid #884ea0",
               background: "#fcf3ff",
               padding: "10px 18px",
               margin: "0 7px",
-              fontSize: "1.08em"
+              fontSize: "1.08em",
             }}
           />
         </label>
@@ -420,14 +652,14 @@ export default function KPIDashboard() {
           <input
             type="date"
             value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
+            onChange={(e) => setDateTo(e.target.value)}
             style={{
               borderRadius: 10,
               border: "2px solid #884ea0",
               background: "#fcf3ff",
               padding: "10px 18px",
               margin: "0 7px",
-              fontSize: "1.08em"
+              fontSize: "1.08em",
             }}
           />
         </label>
@@ -443,14 +675,13 @@ export default function KPIDashboard() {
               padding: "10px 22px",
               fontSize: "1.09em",
               cursor: "pointer",
-              boxShadow: "0 2px 8px #edbb99"
+              boxShadow: "0 2px 8px #edbb99",
             }}
           >
             🧹 مسح التصفية
           </button>
         )}
 
-        {/* زر تصدير النتائج */}
         <button
           style={{
             background: "#884ea0",
@@ -462,13 +693,12 @@ export default function KPIDashboard() {
             fontSize: "1.09em",
             marginRight: 7,
             cursor: "pointer",
-            boxShadow: "0 2px 8px #d2b4de"
+            boxShadow: "0 2px 8px #d2b4de",
           }}
           onClick={handleExportJSON}
         >
           ⬇️ تصدير النتائج (JSON)
         </button>
-        {/* زر استيراد النتائج */}
         <button
           style={{
             background: "#229954",
@@ -480,7 +710,7 @@ export default function KPIDashboard() {
             fontSize: "1.09em",
             marginRight: 7,
             cursor: "pointer",
-            boxShadow: "0 2px 8px #d4efdf"
+            boxShadow: "0 2px 8px #d4efdf",
           }}
           onClick={() => fileInputRef.current.click()}
         >
@@ -494,124 +724,156 @@ export default function KPIDashboard() {
           style={{ display: "none" }}
         />
       </div>
-      {/* رسالة خطأ الاستيراد */}
+
       {importError && (
-        <div style={{
-          color: "#c0392b",
-          textAlign: "center",
-          marginBottom: 16,
-          fontWeight: "bold"
-        }}>{importError}</div>
+        <div
+          style={{
+            color: "#c0392b",
+            textAlign: "center",
+            marginBottom: 16,
+            fontWeight: "bold",
+          }}
+        >
+          {importError}
+        </div>
       )}
 
+      {/* بطاقات المؤشرات */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-          gap: "2.2rem"
+          gap: "2.0rem",
         }}
       >
-        {/* KPIs الرئيسية */}
         {[
           {
             icon: "📑",
             label: "عدد تقارير التفتيش",
             value: inspectionCount,
-            color: numberColor(inspectionCount, "good")
+            color: numberColor(inspectionCount, "good"),
           },
           {
             icon: "📊",
             label: "متوسط نسبة التفتيش",
             value: inspectionAvg + "%",
-            color: numberColor(inspectionAvg, "percentage")
+            color: numberColor(inspectionAvg, "percentage"),
           },
           {
             icon: "🗓️",
             label: "عدد تقارير QCS اليومية",
             value: qcsDailyCount,
-            color: numberColor(qcsDailyCount, "good")
+            color: numberColor(qcsDailyCount, "good"),
           },
           {
             icon: "❄️",
             label: "متوسط حرارة البرادات (QCS)",
             value: qcsCoolersAvg + "°C",
-            color: numberColor(qcsCoolersAvg, "temp")
+            color: numberColor(qcsCoolersAvg, "temp"),
           },
           {
             icon: "📦",
             label: "عدد شحنات QCS المستلمة",
             value: shipmentsCount,
-            color: numberColor(shipmentsCount, "good")
+            color: numberColor(shipmentsCount, "good"),
           },
           {
             icon: "✅",
             label: "عدد الشحنات المرضية",
             value: shipmentsMardi,
-            color: numberColor(shipmentsMardi, "good")
+            color: numberColor(shipmentsMardi, "good"),
           },
-          // NEW: كروت تقارير التحميل
           {
             icon: "🚚",
             label: "تقارير التحميل",
             value: loadingCount,
-            color: numberColor(loadingCount, "good")
+            color: numberColor(loadingCount, "good"),
           },
           {
             icon: "⏱️",
             label: "متوسط زمن التحميل (دقيقة)",
             value: String(loadingAvgMinutes),
-            color: numberColor(loadingAvgMinutes, "warn")
+            color: numberColor(loadingAvgMinutes, "warn"),
           },
           {
             icon: "🌡️",
             label: "متوسط حرارة التحميل",
             value: String(loadingAvgTemp) + "°C",
-            color: numberColor(loadingAvgTemp, "temp")
+            color: numberColor(loadingAvgTemp, "temp"),
           },
           {
             icon: "✅",
             label: "توافق الفحص البصري (تحميل)",
             value: String(loadingVICompliance) + "%",
-            color: numberColor(loadingVICompliance, "percentage")
+            color: numberColor(loadingVICompliance, "percentage"),
           },
         ].map(({ icon, label, value, color }, i) => (
           <div
             key={i}
             style={{
               ...cardStyle,
-              background: `linear-gradient(135deg, #fff, ${i % 2 === 0 ? "#e8daef" : "#f5eef8"} 85%)`,
+              background: `linear-gradient(135deg, #fff, ${
+                i % 2 === 0 ? "#e8daef" : "#f5eef8"
+              } 85%)`,
               border: "2px solid #e1bee7",
               boxShadow: "0 6px 18px rgba(120,100,200,0.10)",
-              transition: "transform 0.18s"
+              transition: "transform 0.18s",
             }}
           >
-            <div style={{ fontSize: "2.5em", marginBottom: "0.3em" }}>{icon}</div>
-            <div style={{ fontWeight: "bold", marginBottom: "0.4em", color: "#884ea0" }}>
+            <div style={{ fontSize: "2.5em", marginBottom: "0.3em" }}>
+              {icon}
+            </div>
+            <div
+              style={{
+                fontWeight: "bold",
+                marginBottom: "0.4em",
+                color: "#884ea0",
+              }}
+            >
               {label}
             </div>
             <div style={{ ...bigNum, color }}>
-              <CountUp end={isNaN(parseFloat(value)) ? 0 : parseFloat(value)} duration={1.3} separator="," />
+              <CountUp
+                end={isNaN(parseFloat(value)) ? 0 : parseFloat(value)}
+                duration={1.2}
+                separator=","
+              />
               {typeof value === "string" && value.endsWith("%") && <span>%</span>}
               {typeof value === "string" && value.endsWith("°C") && <span>°C</span>}
             </div>
           </div>
         ))}
 
-        {/* ========= كرت الشحنات وسط مع زر التفاصيل ========== */}
+        {/* كرت الشحنات وسط */}
         <div
           style={{
             ...cardStyle,
             background: "linear-gradient(135deg, #fff, #f5eef8 85%)",
             border: "2px solid #e1bee7",
             boxShadow: "0 6px 18px rgba(120,100,200,0.10)",
-            transition: "transform 0.18s"
+            transition: "transform 0.18s",
           }}
         >
           <div style={{ fontSize: "2.5em", marginBottom: "0.3em" }}>⚠️</div>
-          <div style={{ fontWeight: "bold", marginBottom: "0.4em", color: "#884ea0" }}>
+          <div
+            style={{
+              fontWeight: "bold",
+              marginBottom: "0.4em",
+              color: "#884ea0",
+            }}
+          >
             عدد الشحنات وسط
           </div>
-          <div style={{ ...bigNum, color: numberColor(shipmentsWasat, "warn"), display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <div
+            style={{
+              ...bigNum,
+              color: numberColor(shipmentsWasat, "warn"),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+            }}
+          >
             <CountUp end={shipmentsWasat} duration={1.2} separator="," />
             <button
               title="عرض تفاصيل الشحنات وسط"
@@ -626,27 +888,44 @@ export default function KPIDashboard() {
                 padding: "1px 12px",
                 marginRight: 6,
                 cursor: "pointer",
-                boxShadow: "0 1px 6px #e8daef77"
+                boxShadow: "0 1px 6px #e8daef77",
               }}
-            >🔍</button>
+            >
+              🔍
+            </button>
           </div>
         </div>
 
-        {/* ========= كرت الشحنات تحت الوسط مع زر التفاصيل ========== */}
+        {/* كرت الشحنات تحت الوسط */}
         <div
           style={{
             ...cardStyle,
             background: "linear-gradient(135deg, #fff, #e8daef 85%)",
             border: "2px solid #e1bee7",
             boxShadow: "0 6px 18px rgba(120,100,200,0.10)",
-            transition: "transform 0.18s"
+            transition: "transform 0.18s",
           }}
         >
           <div style={{ fontSize: "2.5em", marginBottom: "0.3em" }}>❌</div>
-          <div style={{ fontWeight: "bold", marginBottom: "0.4em", color: "#884ea0" }}>
+          <div
+            style={{
+              fontWeight: "bold",
+              marginBottom: "0.4em",
+              color: "#884ea0",
+            }}
+          >
             عدد الشحنات تحت الوسط
           </div>
-          <div style={{ ...bigNum, color: numberColor(shipmentsTahtWasat, "bad"), display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+          <div
+            style={{
+              ...bigNum,
+              color: numberColor(shipmentsTahtWasat, "bad"),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+            }}
+          >
             <CountUp end={shipmentsTahtWasat} duration={1.2} separator="," />
             <button
               title="عرض تفاصيل الشحنات تحت الوسط"
@@ -661,67 +940,88 @@ export default function KPIDashboard() {
                 padding: "1px 12px",
                 marginRight: 6,
                 cursor: "pointer",
-                boxShadow: "0 1px 6px #f6b7b7"
+                boxShadow: "0 1px 6px #f6b7b7",
               }}
-            >🔍</button>
+            >
+              🔍
+            </button>
           </div>
         </div>
 
-        {/* ========= كرت المرتجعات مع زر التفاصيل ========== */}
+        {/* كرت المرتجعات */}
         <div
           style={{
             ...cardStyle,
             background: "linear-gradient(135deg, #fff, #e8daef 90%)",
             border: "2px solid #d7bde2",
             minWidth: 270,
-            position: "relative"
+            position: "relative",
           }}
         >
           <div style={{ fontSize: "2.3em", marginBottom: "0.2em" }}>🛒</div>
-          <div style={{ fontWeight: "bold", marginBottom: "0.4em", color: "#884ea0" }}>
+          <div
+            style={{
+              fontWeight: "bold",
+              marginBottom: "0.4em",
+              color: "#884ea0",
+            }}
+          >
             عدد تقارير المرتجعات
           </div>
           <div style={{ ...bigNum, color: "#229954" }}>
             <CountUp end={returnsCount} duration={1.2} separator="," />
           </div>
-          <div style={{
-            margin: "7px 0 0 0",
-            fontWeight: "bold",
-            fontSize: "1.12em",
-            color: "#512e5f"
-          }}>
+          <div
+            style={{
+              margin: "7px 0 0 0",
+              fontWeight: "bold",
+              fontSize: "1.12em",
+              color: "#512e5f",
+            }}
+          >
             إجمالي العناصر:{" "}
-            <span style={{ color: "#512e5f", fontWeight: "bold" }}>{returnsItemsCount}</span>
+            <span style={{ color: "#512e5f", fontWeight: "bold" }}>
+              {returnsItemsCount}
+            </span>
           </div>
-          <div style={{
-            margin: "7px 0 0 0",
-            fontWeight: "bold",
-            fontSize: "1.12em",
-            color: "#512e5f"
-          }}>
+          <div
+            style={{
+              margin: "7px 0 0 0",
+              fontWeight: "bold",
+              fontSize: "1.12em",
+              color: "#512e5f",
+            }}
+          >
             إجمالي الكمية:{" "}
-            <span style={{ color: "#884ea0", fontWeight: "bold" }}>{returnsTotalQty}</span>
+            <span style={{ color: "#884ea0", fontWeight: "bold" }}>
+              {returnsTotalQty}
+            </span>
           </div>
-          <div style={{
-            fontSize: "1em",
-            color: "#512e5f",
-            margin: "10px 0 7px 0"
-          }}>
+          <div
+            style={{
+              fontSize: "1em",
+              color: "#512e5f",
+              margin: "10px 0 7px 0",
+            }}
+          >
             <span style={{ fontWeight: 500 }}>الأكثر تكراراً:</span>
             <div style={{ fontSize: "0.93em" }}>
-              {topBranches.length > 0 &&
+              {topBranches.length > 0 && (
                 <div>
-                  فرع: <b style={{ color: "#884ea0" }}>{topBranches[0][0]}</b> (<b>{topBranches[0][1]}</b>)
+                  فرع:{" "}
+                  <b style={{ color: "#884ea0" }}>{topBranches[0][0]}</b> (
+                  <b>{topBranches[0][1]}</b>)
                 </div>
-              }
-              {topActions.length > 0 &&
+              )}
+              {topActions.length > 0 && (
                 <div>
-                  إجراء: <b style={{ color: "#c0392b" }}>{topActions[0][0]}</b> (<b>{topActions[0][1]}</b>)
+                  إجراء:{" "}
+                  <b style={{ color: "#c0392b" }}>{topActions[0][0]}</b> (
+                  <b>{topActions[0][1]}</b>)
                 </div>
-              }
+              )}
             </div>
           </div>
-          {/* زر التفاصيل */}
           <button
             onClick={() => setReturnsDetailsOpen(true)}
             style={{
@@ -734,7 +1034,7 @@ export default function KPIDashboard() {
               fontWeight: "bold",
               fontSize: "1.07em",
               cursor: "pointer",
-              boxShadow: "0 2px 8px #d2b4de"
+              boxShadow: "0 2px 8px #d2b4de",
             }}
             title="عرض كل تفاصيل تقارير المرتجعات"
           >
@@ -742,36 +1042,44 @@ export default function KPIDashboard() {
           </button>
         </div>
 
-        {/* شحنات حسب النوع مع رسم بياني */}
+        {/* شحنات حسب النوع */}
         <div
           style={{
             ...cardStyle,
             background: "linear-gradient(135deg, #fff, #e8daef 90%)",
             border: "2px solid #d7bde2",
-            minWidth: 270
+            minWidth: 270,
           }}
         >
           <div style={{ fontSize: "2.3em", marginBottom: "0.3em" }}>🏷️</div>
-          <div style={{ fontWeight: "bold", marginBottom: "0.4em", color: "#884ea0" }}>
+          <div
+            style={{
+              fontWeight: "bold",
+              marginBottom: "0.4em",
+              color: "#884ea0",
+            }}
+          >
             عدد الشحنات حسب النوع
           </div>
           <BarChart data={shipmentTypes} />
         </div>
       </div>
 
-      {/* ======= Modal تفاصيل الشحنات وسط ======= */}
+      {/* تفاصيل وسط */}
       <Modal
         show={wasatOpen}
         onClose={() => setWasatOpen(false)}
         title="تفاصيل الشحنات وسط"
       >
         {shipmentsWasatArr.length === 0 ? (
-          <div style={{
-            textAlign: "center",
-            color: "#b2babb",
-            fontWeight: "bold",
-            padding: 28
-          }}>
+          <div
+            style={{
+              textAlign: "center",
+              color: "#b2babb",
+              fontWeight: "bold",
+              padding: 28,
+            }}
+          >
             لا يوجد شحنات وسط في الفترة المحددة.
           </div>
         ) : (
@@ -784,7 +1092,7 @@ export default function KPIDashboard() {
                 boxShadow: "0 2px 12px #f4ecf7cc",
                 borderCollapse: "collapse",
                 minWidth: 900,
-                fontSize: "1.03em"
+                fontSize: "1.03em",
               }}
             >
               <thead>
@@ -800,13 +1108,22 @@ export default function KPIDashboard() {
               </thead>
               <tbody>
                 {shipmentsWasatArr.map((row, idx) => (
-                  <tr key={idx} style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}>
+                  <tr
+                    key={idx}
+                    style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}
+                  >
                     <td style={td}>{idx + 1}</td>
-                    <td style={td}>{row.date || <span style={{ color: "#b2babb" }}>---</span>}</td>
+                    <td style={td}>
+                      {row.date || <span style={{ color: "#b2babb" }}>---</span>}
+                    </td>
                     <td style={td}>{row.productName || row.name || "—"}</td>
                     <td style={td}>{row.shipmentType || "—"}</td>
                     <td style={td}>{row.butchery || row.supplier || "—"}</td>
-                    <td style={td}><span style={{ color: "#f1c40f", fontWeight: "bold" }}>{row.status}</span></td>
+                    <td style={td}>
+                      <span style={{ color: "#f1c40f", fontWeight: "bold" }}>
+                        {row.status}
+                      </span>
+                    </td>
                     <td style={td}>{row.remarks || "—"}</td>
                   </tr>
                 ))}
@@ -816,19 +1133,21 @@ export default function KPIDashboard() {
         )}
       </Modal>
 
-      {/* ======= Modal تفاصيل الشحنات تحت الوسط ======= */}
+      {/* تفاصيل تحت الوسط */}
       <Modal
         show={tahtWasatOpen}
         onClose={() => setTahtWasatOpen(false)}
         title="تفاصيل الشحنات تحت الوسط"
       >
         {shipmentsTahtWasatArr.length === 0 ? (
-          <div style={{
-            textAlign: "center",
-            color: "#b2babb",
-            fontWeight: "bold",
-            padding: 28
-          }}>
+          <div
+            style={{
+              textAlign: "center",
+              color: "#b2babb",
+              fontWeight: "bold",
+              padding: 28,
+            }}
+          >
             لا يوجد شحنات تحت الوسط في الفترة المحددة.
           </div>
         ) : (
@@ -841,7 +1160,7 @@ export default function KPIDashboard() {
                 boxShadow: "0 2px 12px #f4ecf7cc",
                 borderCollapse: "collapse",
                 minWidth: 900,
-                fontSize: "1.03em"
+                fontSize: "1.03em",
               }}
             >
               <thead>
@@ -857,13 +1176,22 @@ export default function KPIDashboard() {
               </thead>
               <tbody>
                 {shipmentsTahtWasatArr.map((row, idx) => (
-                  <tr key={idx} style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}>
+                  <tr
+                    key={idx}
+                    style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}
+                  >
                     <td style={td}>{idx + 1}</td>
-                    <td style={td}>{row.date || <span style={{ color: "#b2babb" }}>---</span>}</td>
+                    <td style={td}>
+                      {row.date || <span style={{ color: "#b2babb" }}>---</span>}
+                    </td>
                     <td style={td}>{row.productName || row.name || "—"}</td>
                     <td style={td}>{row.shipmentType || "—"}</td>
                     <td style={td}>{row.butchery || row.supplier || "—"}</td>
-                    <td style={td}><span style={{ color: "#c0392b", fontWeight: "bold" }}>{row.status}</span></td>
+                    <td style={td}>
+                      <span style={{ color: "#c0392b", fontWeight: "bold" }}>
+                        {row.status}
+                      </span>
+                    </td>
                     <td style={td}>{row.remarks || "—"}</td>
                   </tr>
                 ))}
@@ -873,19 +1201,21 @@ export default function KPIDashboard() {
         )}
       </Modal>
 
-      {/* ======= Modal تفاصيل المرتجعات ======= */}
+      {/* تفاصيل المرتجعات */}
       <Modal
         show={returnsDetailsOpen}
         onClose={() => setReturnsDetailsOpen(false)}
         title="تفاصيل تقارير المرتجعات في الفترة المحددة"
       >
         {filteredReturns.length === 0 ? (
-          <div style={{
-            textAlign: "center",
-            color: "#b2babb",
-            fontWeight: "bold",
-            padding: 28
-          }}>
+          <div
+            style={{
+              textAlign: "center",
+              color: "#b2babb",
+              fontWeight: "bold",
+              padding: 28,
+            }}
+          >
             لا يوجد بيانات مرتجعات في الفترة المحددة.
           </div>
         ) : (
@@ -898,7 +1228,7 @@ export default function KPIDashboard() {
                 boxShadow: "0 2px 12px #f4ecf7cc",
                 borderCollapse: "collapse",
                 minWidth: 1080,
-                fontSize: "1.04em"
+                fontSize: "1.04em",
               }}
             >
               <thead>
@@ -918,17 +1248,40 @@ export default function KPIDashboard() {
               <tbody>
                 {filteredReturns.flatMap((rep, repIdx) =>
                   (rep.items || []).map((row, i) => (
-                    <tr key={repIdx + "-" + i} style={{ background: (repIdx * 100 + i) % 2 ? "#fcf3ff" : "#fff" }}>
-                      <td style={td}>{repIdx + 1}-{i + 1}</td>
-                      <td style={td}>{rep.reportDate || <span style={{ color: "#b2babb" }}>---</span>}</td>
+                    <tr
+                      key={repIdx + "-" + i}
+                      style={{
+                        background: (repIdx * 100 + i) % 2 ? "#fcf3ff" : "#fff",
+                      }}
+                    >
+                      <td style={td}>
+                        {repIdx + 1}-{i + 1}
+                      </td>
+                      <td style={td}>
+                        {rep.reportDate || (
+                          <span style={{ color: "#b2babb" }}>---</span>
+                        )}
+                      </td>
                       <td style={td}>{row.productName}</td>
                       <td style={td}>{row.origin}</td>
-                      <td style={td}>{row.butchery === "فرع آخر..." ? row.customButchery : row.butchery}</td>
+                      <td style={td}>
+                        {row.butchery === "فرع آخر..."
+                          ? row.customButchery
+                          : row.butchery}
+                      </td>
                       <td style={td}>{row.quantity}</td>
-                      <td style={td}>{row.qtyType === "أخرى" ? row.customQtyType : row.qtyType || ""}</td>
+                      <td style={td}>
+                        {row.qtyType === "أخرى"
+                          ? row.customQtyType
+                          : row.qtyType || ""}
+                      </td>
                       <td style={td}>{row.expiry}</td>
                       <td style={td}>{row.remarks}</td>
-                      <td style={td}>{row.action === "إجراء آخر..." ? row.customAction : row.action}</td>
+                      <td style={td}>
+                        {row.action === "إجراء آخر..."
+                          ? row.customAction
+                          : row.action}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -940,21 +1293,23 @@ export default function KPIDashboard() {
 
       <div
         style={{
-          margin: "3rem 0 0 0",
+          margin: "2.2rem 0 0 0",
           textAlign: "center",
           color: "#b2babb",
           fontSize: "1.05em",
-          letterSpacing: "0.03em"
+          letterSpacing: "0.03em",
         }}
       >
-        جميع البيانات من النظام المحلي (LocalStorage) — تم التحديث بتاريخ:{" "}
-        <span style={{ color: "#884ea0" }}>{new Date().toLocaleDateString("ar-EG")}</span>
+        جميع البيانات يتم جلبها مباشرة من السيرفر الخارجي —{" "}
+        <span style={{ color: "#884ea0" }}>
+          {new Date().toLocaleDateString("ar-EG")}
+        </span>
       </div>
     </div>
   );
 }
 
-// ==== أنماط الكارت ====
+/* ==== أنماط ==== */
 const cardStyle = {
   borderRadius: "18px",
   boxShadow: "0 6px 18px rgba(120,100,200,0.12)",
@@ -979,15 +1334,11 @@ const th = {
   textAlign: "center",
   fontSize: "1.01em",
   fontWeight: "bold",
-  borderBottom: "2px solid #c7a8dc"
+  borderBottom: "2px solid #c7a8dc",
 };
 
 const td = {
   padding: "10px 6px",
   textAlign: "center",
-  minWidth: 85
+  minWidth: 85,
 };
-
-// ---------
-// لا تنسى تثبيت مكتبة عداد الأرقام قبل التشغيل:
-// npm i react-countup

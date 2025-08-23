@@ -11,6 +11,8 @@ const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 const DailyMonitorDashboard = lazy(() => import("./pages/monitor/DailyMonitorDashboard"));
 const QCSReport = lazy(() => import("./pages/monitor/branches/QCSReport"));
 const POS19Report = lazy(() => import("./pages/monitor/branches/POS19Report"));
+const FTR2Report = lazy(() => import("./pages/monitor/branches/ftr2/FTR2Report"));       // ✅ الإدخال
+const FTR2ReportView = lazy(() => import("./pages/monitor/branches/ftr2/FTR2ReportView")); // ✅ العرض
 
 const OHCUpload = lazy(() => import("./pages/ohc/OHCUpload"));
 const OHCView = lazy(() => import("./pages/ohc/OHCView"));
@@ -22,8 +24,8 @@ const QCSRawMaterialView = lazy(() => import("./pages/admin/QCSRawMaterialView")
 
 const Returns = lazy(() => import("./pages/Returns"));
 const ReturnView = lazy(() => import("./pages/ReturnView"));
-const BrowseReturns = lazy(() => import("./pages/BrowseReturns")); // ✅ جديد
-const ReturnsMenu = lazy(() => import("./ReturnsMenu")); // ✅ جديد: قائمة المرتجعات
+const BrowseReturns = lazy(() => import("./pages/BrowseReturns"));
+const ReturnsMenu = lazy(() => import("./ReturnsMenu"));
 
 const LoginKPI = lazy(() => import("./pages/LoginKPI"));
 const KPIDashboard = lazy(() => import("./pages/KPIDashboard"));
@@ -40,7 +42,7 @@ const MaintenanceRequests = lazy(() => import("./pages/maintenance/MaintenanceRe
 const MaintenanceHome = lazy(() => import("./pages/maintenance/MaintenanceHome"));
 const BrowseMaintenanceRequests = lazy(() =>
   import("./pages/maintenance/BrowseMaintenanceRequests")
-); // ✅ جديد
+);
 
 /**
  * حماية المسارات الخاصة
@@ -71,11 +73,10 @@ function BranchMonitorPage() {
   return (
     <div style={{ padding: "2rem", direction: "rtl", fontFamily: "Cairo, sans-serif" }}>
       <h2>📝 صفحة تقارير الفرع / Branch Reports Page: {prettyName(slug)}</h2>
-      <p>هذه صفحة مؤقتة. يمكنك لاحقًا استبدالها بنموذج الفرع الحقيقي. / This is a temporary page; you can later replace it with the real branch form.</p>
-      <ul style={{ marginTop: "1rem" }}>
-        <li>أضف نموذج الإدخال الخاص بهذا الفرع هنا. / Add this branch’s input form here.</li>
-        <li>أو استورد مكوّن الفرع النهائي عندما يكون جاهزًا. / Or import the final branch component when it’s ready.</li>
-      </ul>
+      <p>
+        هذه صفحة مؤقتة. يمكنك لاحقًا استبدالها بنموذج الفرع الحقيقي. / This is a temporary
+        page; you can later replace it with the real branch form.
+      </p>
     </div>
   );
 }
@@ -143,6 +144,14 @@ export default function App() {
             }
           />
           <Route
+            path="ftr2"
+            element={
+              <ProtectedRoute>
+                <FTR2Report />   {/* ✅ الإدخال */}
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="qcs-raw-material-inspection"
             element={
               <ProtectedRoute>
@@ -159,6 +168,16 @@ export default function App() {
             }
           />
         </Route>
+
+        {/* admin/* */}
+        <Route
+          path="/admin/ftr2"
+          element={
+            <ProtectedRoute>
+              <FTR2ReportView />   {/* ✅ العرض للأدمن */}
+            </ProtectedRoute>
+          }
+        />
 
         {/* ohc/* */}
         <Route path="/ohc">
@@ -200,7 +219,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          {/* صفحة الهب/القائمة */}
           <Route
             path="menu"
             element={
@@ -209,7 +227,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          {/* تعديل/عرض تفصيلي */}
           <Route
             path="view"
             element={
@@ -218,7 +235,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          {/* تصفّح التقارير */}
           <Route
             path="browse"
             element={
@@ -268,7 +284,6 @@ export default function App() {
           />
         </Route>
 
-        {/* alias للمنتج النهائي */}
         <Route
           path="/finished-product-entry"
           element={
@@ -288,7 +303,7 @@ export default function App() {
           }
         />
 
-        {/* 🆕 مسار طلبات الصيانة - إنشاء */}
+        {/* 🆕 مسار طلبات الصيانة */}
         <Route
           path="/maintenance-requests"
           element={
@@ -297,8 +312,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* 🆕 مسار طلبات الصيانة - تصفّح */}
         <Route
           path="/maintenance-browse"
           element={
@@ -307,8 +320,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* 🆕 مسار صفحة الهب للصيانة */}
         <Route
           path="/maintenance-home"
           element={

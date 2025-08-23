@@ -3,20 +3,19 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 /* =============================================================================
-   🔗 API Base (خارجي فقط) — بدون import.meta نهائياً
-   - يقرأ أولاً window.__QCS_API__ إن وُجد، أو REACT_APP_API_URL، وإلا الافتراضي.
-   - كل الحفظ يتم على السيرفر الخارجي فقط (لا يوجد أي تخزين محلي).
+   🔗 API Base (external only) — no import.meta
 ============================================================================= */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const API_ROOT =
   (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" && process.env && process.env.REACT_APP_API_URL) ||
+  (typeof process !== "undefined" &&
+    process.env &&
+    process.env.REACT_APP_API_URL) ||
   API_ROOT_DEFAULT;
 
 const API_BASE = String(API_ROOT).replace(/\/$/, "");
 const REPORTS_URL = `${API_BASE}/api/reports`;
 
-// لو كان نفس الـ origin رح نرسل الكوكيز، غير هيك لا
 const IS_SAME_ORIGIN = (() => {
   try {
     return new URL(API_BASE).origin === window.location.origin;
@@ -26,9 +25,7 @@ const IS_SAME_ORIGIN = (() => {
 })();
 
 /* =============================================================================
-   ✉️ إرسال تقرير واحد للسيرفر (إنشاء سجل جديد في مجموعة التقارير)
-   - نستخدم POST فقط لإنشاء تقرير جديد من نوع qcs_raw_material
-   - لا يوجد أي upsert محلي أو تخزين محلي
+   ✉️ Server helpers
 ============================================================================= */
 function getReporter() {
   try {
@@ -40,20 +37,17 @@ function getReporter() {
   }
 }
 
-// UUID مبسّط لتتبع الطلب (لتجنب التكرار)
 const makeClientId = () =>
   `cli_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 async function sendToServer(payload) {
   const reporter = getReporter();
-
   const res = await fetch(REPORTS_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
     body: JSON.stringify({ reporter, type: "qcs_raw_material", payload }),
   });
-
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     throw new Error(t || `Server error ${res.status}`);
@@ -61,14 +55,11 @@ async function sendToServer(payload) {
   return res.json().catch(() => ({}));
 }
 
-// فحص مسبق لعدم تكرار Air Way Bill (إن وجد)
 async function checkDuplicateAirway(airwayBill) {
   if (!airwayBill) return false;
   try {
-    const q = `${REPORTS_URL}?type=qcs_raw_material`;
-    const res = await fetch(q, {
+    const res = await fetch(`${REPORTS_URL}?type=qcs_raw_material`, {
       cache: "no-store",
-      mode: "cors",
       credentials: IS_SAME_ORIGIN ? "include" : "omit",
       headers: { Accept: "application/json" },
     });
@@ -76,52 +67,99 @@ async function checkDuplicateAirway(airwayBill) {
     const json = await res.json();
     const arr = Array.isArray(json) ? json : json?.data || [];
     const norm = (s) => String(s || "").trim().toLowerCase();
-    return arr.some((rec) => norm(rec?.payload?.generalInfo?.airwayBill) === norm(airwayBill));
+    return arr.some(
+      (rec) => norm(rec?.payload?.generalInfo?.airwayBill) === norm(airwayBill)
+    );
   } catch {
     return false;
   }
 }
 
 /* =============================================================================
-   ✅ هيكل العينة الفارغة + مُنشئ
+   ✅ Transposed samples (rows = attributes, columns = samples)
 ============================================================================= */
-const initialSample = {
-  temperature: "",
-  ph: "",
-  slaughterDate: "",
-  expiryDate: "",
-  broken: "",
-  appearance: "",
-  bloodClots: "",
-  colour: "",
-  fatDiscoloration: "",
-  meatDamage: "",
-  foreignMatter: "",
-  texture: "",
-  testicles: "",
-  smell: "",
+const ATTRIBUTES = [
+  { key: "temperature", label: "Product Temperature", default: "" },
+  { key: "ph", label: "Product PH", default: "" },
+  { key: "slaughterDate", label: "Slaughter Date", default: "" },
+  { key: "expiryDate", label: "Expiry Date", default: "" },
+  { key: "broken", label: "Broken / Cut Pieces", default: "NIL" },
+  { key: "appearance", label: "Appearance", default: "OK" },
+  { key: "bloodClots", label: "Blood Clots", default: "NIL" },
+  { key: "colour", label: "Colour", default: "OK" },
+  { key: "fatDiscoloration", label: "Fat Discoloration", default: "NIL" },
+  { key: "meatDamage", label: "Meat Damage", default: "NIL" },
+  { key: "foreignMatter", label: "Hair / Foreign Matter", default: "NIL" },
+  { key: "texture", label: "Texture", default: "OK" },
+  { key: "testicles", label: "Testicles", default: "NIL" },
+  { key: "smell", label: "Smell", default: "NIL" },
+];
+
+const newSample = () => {
+  const s = { productName: "CHILLED LAMB CARCASS" };
+  ATTRIBUTES.forEach((a) => (s[a.key] = a.default));
+  return s;
 };
-const newEmptySample = () => ({ ...initialSample });
 
 /* =============================================================================
-   🎨 أنماط واجهة عصرية وخفيفة — (بدون خلط shorthand/longhand للحدود)
+   🎨 Styles — hero + strong table borders
 ============================================================================= */
 const styles = {
   page: {
     minHeight: "100vh",
-    background: "linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)",
-    padding: "32px 16px",
+    background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
   },
+  hero: {
+    position: "relative",
+    height: 220,
+    background:
+      "linear-gradient(135deg, #4f46e5 0%, #7c3aed 35%, #0ea5e9 100%)",
+    overflow: "hidden",
+  },
+  heroBlobA: {
+    position: "absolute",
+    width: 400,
+    height: 400,
+    left: -120,
+    top: -180,
+    borderRadius: "50%",
+    background:
+      "radial-gradient(closest-side, rgba(255,255,255,.25), rgba(255,255,255,0))",
+    filter: "blur(2px)",
+  },
+  heroBlobB: {
+    position: "absolute",
+    width: 500,
+    height: 300,
+    right: -140,
+    top: -120,
+    borderRadius: "50%",
+    background:
+      "radial-gradient(closest-side, rgba(255,255,255,.18), rgba(255,255,255,0))",
+    transform: "rotate(-15deg)",
+  },
+  heroWave: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: -1,
+    width: "100%",
+    height: 140,
+    display: "block",
+  },
+  containerWrap: { padding: "0 16px 32px" },
   container: {
-    padding: "2rem",
+    margin: "0 auto",
+    marginTop: -80,
+    padding: "1.25rem 1.5rem",
     background: "#fff",
     borderRadius: "16px",
-    margin: "0 auto",
     width: "min(1200px, 96vw)",
-    direction: "rtl",
-    fontFamily: "Cairo, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+    direction: "ltr",
+    fontFamily:
+      "Inter, system-ui, -apple-system, Segoe UI, Roboto, Cairo, sans-serif",
     boxShadow:
-      "0 10px 20px rgba(2, 6, 23, 0.06), 0 1px 2px rgba(2, 6, 23, 0.04)",
+      "0 10px 20px rgba(2, 6, 23, 0.08), 0 1px 2px rgba(2, 6, 23, 0.04)",
     border: "1px solid #e5e7eb",
   },
   titleWrap: {
@@ -131,13 +169,7 @@ const styles = {
     gap: "1rem",
     marginBottom: "1.2rem",
   },
-  title: {
-    color: "#0f172a",
-    margin: 0,
-    fontSize: "1.5rem",
-    fontWeight: 800,
-    letterSpacing: "0.2px",
-  },
+  title: { color: "#0f172a", margin: 0, fontSize: "1.5rem", fontWeight: 800 },
   badge: {
     fontSize: "0.85rem",
     background: "#eef2ff",
@@ -161,6 +193,7 @@ const styles = {
     transition:
       "box-shadow .15s ease, border-color .15s ease, transform .08s ease",
     background: "#fff",
+    boxSizing: "border-box",
   },
   select: {
     width: "100%",
@@ -173,6 +206,7 @@ const styles = {
     transition:
       "box-shadow .15s ease, border-color .15s ease, transform .08s ease",
     background: "#fff",
+    boxSizing: "border-box",
   },
   focused: {
     boxShadow: "0 0 0 4px rgba(59,130,246,.25)",
@@ -187,12 +221,7 @@ const styles = {
     borderRadius: "14px",
     background: "#fafafa",
   },
-  legend: {
-    fontWeight: 800,
-    fontSize: "1.05rem",
-    color: "#111827",
-    padding: "0 .4rem",
-  },
+  legend: { fontWeight: 800, fontSize: "1.05rem", color: "#111827" },
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
@@ -207,35 +236,59 @@ const styles = {
     marginTop: "0.5rem",
     flexWrap: "wrap",
   },
+
+  /* ==== Samples table: strong borders (#000) ==== */
   tableWrap: {
     overflowX: "auto",
     background: "#fff",
-    border: "1px solid #e5e7eb",
+    border: "1px solid #000",
     borderRadius: "12px",
   },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "0.95rem" },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    tableLayout: "fixed",
+    fontSize: "0.95rem",
+    border: "1px solid #000",
+  },
   th: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#f5f5f5",
+    color: "#111827",
     textAlign: "center",
     position: "sticky",
     top: 0,
     zIndex: 1,
-    borderBottom: "1px solid #e5e7eb",
     padding: "10px 6px",
     whiteSpace: "nowrap",
+    border: "1px solid #000",
   },
-  td: { borderTop: "1px solid #f1f5f9", padding: "8px 6px" },
+  td: {
+    border: "1px solid #000",
+    padding: "8px 6px",
+    verticalAlign: "top",
+    background: "#fff",
+  },
+  firstColCell: {
+    border: "1px solid #000",
+    padding: "8px 6px",
+    fontWeight: 600,
+    background: "#fafafa",
+    minWidth: 220,
+    whiteSpace: "nowrap",
+  },
   tdInput: {
     width: "100%",
-    minWidth: "120px",
+    minWidth: 140,
+    display: "block",
     padding: "10px 12px",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: "#bfdbfe",
+    borderColor: "#000",
     borderRadius: "10px",
     outline: "none",
     transition: "box-shadow .15s ease, border-color .15s ease",
     background: "#fff",
+    boxSizing: "border-box",
   },
 
   actionsRow: {
@@ -248,7 +301,16 @@ const styles = {
     padding: "10px 16px",
     background: "#4f46e5",
     color: "#fff",
-    border: "none",
+    border: "1px solid #000",
+    borderRadius: "10px",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  dangerButton: {
+    padding: "10px 16px",
+    background: "#dc2626",
+    color: "#fff",
+    border: "1px solid #000",
     borderRadius: "10px",
     cursor: "pointer",
     fontWeight: 700,
@@ -257,13 +319,20 @@ const styles = {
     padding: "10px 16px",
     background: "#f59e0b",
     color: "#fff",
-    border: "none",
+    border: "1px solid #000",
     borderRadius: "10px",
     cursor: "pointer",
     marginBottom: "0.75rem",
     fontWeight: 700,
   },
   previewImage: { maxWidth: "200px", marginTop: "0.5rem", borderRadius: "8px" },
+  previewGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+    gap: "8px",
+    marginTop: "8px",
+  },
+
   formRow3: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
@@ -274,25 +343,23 @@ const styles = {
     padding: "12px 22px",
     background: "#16a34a",
     color: "#fff",
-    border: "none",
+    border: "1px solid #000",
     borderRadius: "12px",
     cursor: "pointer",
     fontWeight: 800,
   },
-  saveButtonDisabled: {
-    opacity: 0.6,
-    cursor: "not-allowed",
-  },
+  saveButtonDisabled: { opacity: 0.6, cursor: "not-allowed" },
   viewButton: {
     padding: "12px 22px",
     background: "#2563eb",
     color: "#fff",
-    border: "none",
+    border: "1px solid #000",
     borderRadius: "12px",
     cursor: "pointer",
     marginTop: "0.75rem",
     fontWeight: 800,
   },
+
   headerWrap: { marginBottom: "12px" },
   headerTable: {
     width: "100%",
@@ -324,10 +391,9 @@ const styles = {
     border: "1px solid #e5e7eb",
     borderRadius: 10,
     outline: "none",
+    boxSizing: "border-box",
   },
-  headerRowSpacer: { borderLeft: "1px solid #e5e7eb", width: "10px" },
 
-  // Toast
   toastWrap: {
     position: "fixed",
     left: 16,
@@ -346,34 +412,28 @@ const styles = {
 };
 
 /* =============================================================================
-   👇 المكوّن الرئيسي
+   👇 Component
 ============================================================================= */
 export default function QCSRawMaterialInspection() {
   const navigate = useNavigate();
-  const fileInputRef = useRef(null);
+  const certInputRef = useRef(null);
+  const imagesInputRef = useRef(null);
 
-  // رسالة حالة الحفظ (سريعة أعلى الصفحة)
   const [saveMsg, setSaveMsg] = useState("");
-
-  // Toast سفلي لنجاح/فشل
   const [toast, setToast] = useState({ type: null, msg: "" });
-
-  // مانع نقر مزدوج
   const [isSaving, setIsSaving] = useState(false);
 
-  // ترويسة قابلة للتعديل (للطباعة/العرض)
   const [docMeta, setDocMeta] = useState({
-    documentTitle: "Raw Material Inspection Report Chilled lamb",
+    documentTitle: "Raw Material Inspection Report - Chilled Lamb",
     documentNo: "FS-QM/REC/RMB",
     issueDate: "2020-02-10",
     revisionNo: "0",
     area: "QA",
   });
 
-  // ✅ الحقول والحالات
-  const [samples, setSamples] = useState([newEmptySample()]);
+  const [samples, setSamples] = useState([newSample()]);
   const [shipmentType, setShipmentType] = useState("");
-  const [shipmentStatus, setShipmentStatus] = useState("مرضي");
+  const [shipmentStatus, setShipmentStatus] = useState("Acceptable");
   const [inspectedBy, setInspectedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [totalQuantity, setTotalQuantity] = useState("");
@@ -395,25 +455,26 @@ export default function QCSRawMaterialInspection() {
   });
   const [certificateFile, setCertificateFile] = useState(null);
   const [certificateName, setCertificateName] = useState("");
+  const [images, setImages] = useState([]);
   const [notes, setNotes] = useState("");
 
-  // 🔢 متوسط الوزن (ديناميكي)
   useEffect(() => {
     const q = parseFloat(totalQuantity);
     const w = parseFloat(totalWeight);
     setAverageWeight(q > 0 && w > 0 ? (w / q).toFixed(3) : "0");
   }, [totalQuantity, totalWeight]);
 
-  // ✏️ Handlers
-  const handleSampleChange = (index, field, value) => {
+  const setSampleValue = (index, key, value) => {
     setSamples((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, [field]: value } : s))
+      prev.map((s, i) => (i === index ? { ...s, [key]: value } : s))
     );
   };
-  const handleGeneralChange = (field, value) => {
+  const addSample = () => setSamples((prev) => [...prev, newSample()]);
+  const removeSample = () =>
+    setSamples((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
+
+  const handleGeneralChange = (field, value) =>
     setGeneralInfo((prev) => ({ ...prev, [field]: value }));
-  };
-  const addSample = () => setSamples((prev) => [...prev, newEmptySample()]);
 
   const handleCertificateUpload = (e) => {
     const file = e.target.files?.[0];
@@ -423,12 +484,25 @@ export default function QCSRawMaterialInspection() {
     reader.readAsDataURL(file);
     setCertificateName(file.name);
   };
-  const triggerFileSelect = () => fileInputRef.current?.click();
+  const triggerCertSelect = () => certInputRef.current?.click();
 
-  /* ========================= 🧩 بناء التقرير من الحالة ========================= */
+  const handleImagesUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onloadend = () =>
+        setImages((prev) => [
+          ...prev,
+          { name: file.name, data: String(reader.result || "") },
+        ]);
+      reader.readAsDataURL(file);
+    });
+  };
+  const triggerImagesSelect = () => imagesInputRef.current?.click();
+
   const buildReportPayload = () => ({
-    // لا نستخدم أي تخزين محلي — هذا مجرد payload يُرسل للسيرفر
-    clientId: makeClientId(), // يساعد على منع التكرار في حال ضغطة مزدوجة
+    clientId: makeClientId(),
     date: new Date().toISOString(),
     shipmentType,
     status: shipmentStatus,
@@ -439,13 +513,13 @@ export default function QCSRawMaterialInspection() {
     totalQuantity,
     totalWeight,
     averageWeight,
-    certificateFile, // DataURL (صورة/PDF) إن تم رفعه
+    certificateFile,
     certificateName,
+    images,
     docMeta,
     notes,
   });
 
-  /* ========================= 🔔 Toast helper ========================= */
   const showToast = (type, msg) => {
     setToast({ type, msg });
     window.clearTimeout(showToast._t);
@@ -464,43 +538,38 @@ export default function QCSRawMaterialInspection() {
     }
   };
 
-  /* ========================= 💾 حفظ على السيرفر الخارجي فقط ========================= */
   const handleSave = async () => {
-    if (isSaving) return; // منع النقرات المتعددة
+    if (isSaving) return;
     if (!shipmentType.trim()) {
-      alert("📦 الرجاء اختيار نوع الشحنة قبل الحفظ.");
+      alert("Please choose Shipment Type before saving.");
       return;
     }
-
-    // لو في Air Way Bill افحص التكرار أولاً
     const airway = (generalInfo.airwayBill || "").trim();
     if (airway) {
       const exists = await checkDuplicateAirway(airway);
       if (exists) {
-        showToast("error", "❌ يوجد تقرير سابق بنفس رقم بوليصة الشحن.");
-        setSaveMsg("❌ يوجد تقرير بنفس رقم بوليصة الشحن.");
+        showToast("error", "Duplicate Air Way Bill detected.");
+        setSaveMsg("Duplicate Air Way Bill.");
         return;
       }
     }
 
-    // رسالة تأكيد قبل الحفظ
-    const ok = window.confirm("تأكيد الحفظ على السيرفر الخارجي؟");
+    const ok = window.confirm("Confirm saving to external server?");
     if (!ok) {
-      setSaveMsg("ℹ️ تم إلغاء الحفظ.");
-      showToast("info", "تم إلغاء الحفظ.");
+      setSaveMsg("Save canceled.");
+      showToast("info", "Save canceled.");
       return;
     }
 
-    const payload = buildReportPayload();
     try {
       setIsSaving(true);
-      setSaveMsg("⏳ جاري الحفظ على السيرفر…");
-      showToast("info", "⏳ جاري الحفظ…");
-      await sendToServer(payload); // POST /api/reports
-      setSaveMsg("✅ تم الحفظ على السيرفر بنجاح!");
-      showToast("success", "تم الحفظ على السيرفر بنجاح ✅");
+      setSaveMsg("Saving to server…");
+      showToast("info", "Saving…");
+      await sendToServer(buildReportPayload());
+      setSaveMsg("Saved successfully!");
+      showToast("success", "Saved successfully ✅");
     } catch (e) {
-      const msg = `❌ فشل الحفظ: ${e?.message || e}`;
+      const msg = `Save failed: ${e?.message || e}`;
       setSaveMsg(msg);
       showToast("error", msg);
     } finally {
@@ -510,7 +579,6 @@ export default function QCSRawMaterialInspection() {
     }
   };
 
-  /* ========================= 🧰 خصائص إدخال مع تأثير تركيز ========================= */
   const inputProps = (name) => ({
     onFocus: () => setIsFocused(name),
     onBlur: () => setIsFocused(null),
@@ -522,424 +590,502 @@ export default function QCSRawMaterialInspection() {
     style: { ...styles.select, ...(isFocused === name ? styles.focused : {}) },
   });
 
-  /* ========================= 🖥️ واجهة المستخدم ========================= */
+  // Ensure enough width; allow horizontal scroll
+  const tableMinWidth = 240 /* first col */ + samples.length * 160;
+
   return (
     <div style={styles.page}>
-      <div style={styles.container}>
-        <div style={styles.titleWrap}>
-          <h2 style={styles.title}>📦 تقرير استلام شحنات - QCS</h2>
-          <span style={styles.badge}>
-            حفظ يدوي فقط
-            {saveMsg ? (
-              <span style={{ marginInlineStart: 10, fontWeight: 800 }}>
-                · {saveMsg}
-              </span>
-            ) : null}
-          </span>
-        </div>
+      {/* Hero */}
+      <div style={styles.hero} aria-hidden="true">
+        <div style={styles.heroBlobA} />
+        <div style={styles.heroBlobB} />
+        <svg viewBox="0 0 1440 140" preserveAspectRatio="none" style={styles.heroWave}>
+          <path
+            fill="#ffffff"
+            d="M0,64 C240,128 480,0 720,32 C960,64 1200,160 1440,96 L1440,140 L0,140 Z"
+          />
+        </svg>
+      </div>
 
-        {/* الترويسة كجدول قابل للتعديل */}
-        <div style={styles.headerWrap}>
-          <table style={styles.headerTable}>
-            <colgroup>
-              <col />
-              <col />
-              <col style={styles.headerRowSpacer} />
-              <col />
-              <col />
-            </colgroup>
-            <tbody>
-              <tr>
-                <th style={styles.headerTh}>Document Title</th>
-                <td style={styles.headerTd}>
-                  <input
-                    {...inputProps("documentTitle")}
-                    value={docMeta.documentTitle}
-                    onChange={(e) =>
-                      setDocMeta({ ...docMeta, documentTitle: e.target.value })
-                    }
-                  />
-                </td>
-                <td />
-                <th style={styles.headerTh}>Document No</th>
-                <td style={styles.headerTd}>
-                  <input
-                    {...inputProps("documentNo")}
-                    value={docMeta.documentNo}
-                    onChange={(e) =>
-                      setDocMeta({ ...docMeta, documentNo: e.target.value })
-                    }
-                  />
-                </td>
-              </tr>
-              <tr>
-                <th style={styles.headerTh}>Issue Date</th>
-                <td style={styles.headerTd}>
-                  <input
-                    type="date"
-                    {...inputProps("issueDate")}
-                    value={docMeta.issueDate}
-                    onChange={(e) =>
-                      setDocMeta({ ...docMeta, issueDate: e.target.value })
-                    }
-                  />
-                </td>
-                <td />
-                <th style={styles.headerTh}>Revision No</th>
-                <td style={styles.headerTd}>
-                  <input
-                    {...inputProps("revisionNo")}
-                    value={docMeta.revisionNo}
-                    onChange={(e) =>
-                      setDocMeta({ ...docMeta, revisionNo: e.target.value })
-                    }
-                  />
-                </td>
-              </tr>
-              <tr>
-                <th style={styles.headerTh}>Area</th>
-                <td style={styles.headerTd} colSpan={4}>
-                  <input
-                    {...inputProps("area")}
-                    value={docMeta.area}
-                    onChange={(e) =>
-                      setDocMeta({ ...docMeta, area: e.target.value })
-                    }
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        {/* نوع الشحنة */}
-        <div style={styles.section}>
-          <label style={styles.label}>📦 نوع الشحنة (Shipment Type):</label>
-          <select
-            value={shipmentType}
-            onChange={(e) => setShipmentType(e.target.value)}
-            {...selectProps("shipmentType")}
-          >
-            <option value="">-- اختر نوع الشحنة --</option>
-            <option value="LAMB AUS">LAMB AUS</option>
-            <option value="MOUTTON AUS">MOUTTON AUS</option>
-            <option value="LAMB S.A">LAMB S.A</option>
-            <option value="MOUTTON S.A">MOUTTON S.A</option>
-            <option value="VACUUM">VACUUM</option>
-            <option value="FROZEN">FROZEN</option>
-            <option value="PAK">PAK</option>
-            <option value="KHZ">KHZ</option>
-            <option value="IND MOUTTON">IND MOUTTON</option>
-            <option value="IND VEAL">IND VEAL</option>
-            <option value="FRESH LAMB">FRESH LAMB</option>
-            <option value="FRSH CHICKEN">FRSH CHICKEN</option>
-          </select>
-        </div>
-
-        {/* معلومات عامة */}
-        <fieldset style={styles.fieldset}>
-          <legend style={styles.legend}>
-            📋 معلومات عامة عن التقرير (General Information)
-          </legend>
-          <div style={styles.grid}>
-            {[
-              ["📅 تاريخ التقرير (Report On)", "reportOn", "date"],
-              ["📥 تاريخ الاستلام (Sample Received On)", "receivedOn", "date"],
-              ["🔍 تاريخ الفحص (Inspection Date)", "inspectionDate", "date"],
-              ["🌡️ درجة الحرارة (Temperature)", "temperature", "text"],
-              ["🏷️ العلامة التجارية (Brand)", "brand", "text"],
-              ["🧾 رقم الفاتورة (Invoice No)", "invoiceNo", "text"],
-              ["🔬 درجة الحموضة (PH)", "ph", "text"],
-              ["🌍 بلد المنشأ (Origin)", "origin", "text"],
-              ["📦 Air Way Bill No", "airwayBill", "text"],
-              ["📡 Local Logger", "localLogger", "select"],
-              ["🌐 International Logger", "internationalLogger", "select"],
-            ].map(([label, field, type]) => (
-              <div key={field} style={styles.row}>
-                <label>{label}:</label>
-                {type === "select" ? (
-                  <select
-                    value={generalInfo[field]}
-                    onChange={(e) => handleGeneralChange(field, e.target.value)}
-                    {...selectProps(field)}
-                  >
-                    <option value="">-- اختر --</option>
-                    <option value="YES">YES</option>
-                    <option value="NO">NO</option>
-                  </select>
-                ) : type === "date" ? (
-                  <input
-                    type="date"
-                    value={generalInfo[field]}
-                    onChange={(e) => handleGeneralChange(field, e.target.value)}
-                    {...inputProps(field)}
-                  />
-                ) : (
-                  <input
-                    value={generalInfo[field]}
-                    onChange={(e) => handleGeneralChange(field, e.target.value)}
-                    {...inputProps(field)}
-                  />
-                )}
-              </div>
-            ))}
+      <div style={styles.containerWrap}>
+        <div style={styles.container}>
+          <div style={styles.titleWrap}>
+            <h2 style={styles.title}>📦 QCS Incoming Shipments Report</h2>
+            <span style={styles.badge}>
+              Manual Save Only{saveMsg ? <b> · {saveMsg}</b> : null}
+            </span>
           </div>
 
-          {/* حالة الشحنة */}
-          <div style={{ marginTop: "1rem" }}>
-            <label style={styles.label}>⚠️ حالة الشحنة (Shipment Status):</label>
-            <div style={styles.statusContainer}>
-              <select
-                value={shipmentStatus}
-                onChange={(e) => setShipmentStatus(e.target.value)}
-                {...selectProps("shipmentStatus")}
-                style={{
-                  ...selectProps("shipmentStatus").style,
-                  fontWeight: 800,
-                  color:
-                    shipmentStatus === "مرضي"
-                      ? "#16a34a"
-                      : shipmentStatus === "وسط"
-                      ? "#d97706"
-                      : "#dc2626",
-                }}
-              >
-                <option value="مرضي">✅ مرضي (Acceptable)</option>
-                <option value="وسط">⚠️ وسط (Average)</option>
-                <option value="تحت الوسط">❌ تحت الوسط (Below Average)</option>
-              </select>
-              <span
-                style={{
-                  fontWeight: 800,
-                  color:
-                    shipmentStatus === "مرضي"
-                      ? "#16a34a"
-                      : shipmentStatus === "وسط"
-                      ? "#d97706"
-                      : "#dc2626",
-                }}
-              >
-                {shipmentStatus === "مرضي"
-                  ? "مقبول / Acceptable"
-                  : shipmentStatus === "وسط"
-                  ? "متوسط / Average"
-                  : "تحت المتوسط / Below Average"}
-              </span>
+          {/* Header (editable) */}
+          <div style={styles.headerWrap}>
+            <table style={styles.headerTable}>
+              <colgroup>
+                <col />
+                <col />
+                <col />
+                <col />
+                <col />
+              </colgroup>
+              <tbody>
+                <tr>
+                  <th style={styles.headerTh}>Document Title</th>
+                  <td style={styles.headerTd}>
+                    <input
+                      {...inputProps("documentTitle")}
+                      value={docMeta.documentTitle}
+                      onChange={(e) =>
+                        setDocMeta({ ...docMeta, documentTitle: e.target.value })
+                      }
+                    />
+                  </td>
+                  <th style={styles.headerTh}>Document No</th>
+                  <td style={styles.headerTd}>
+                    <input
+                      {...inputProps("documentNo")}
+                      value={docMeta.documentNo}
+                      onChange={(e) =>
+                        setDocMeta({ ...docMeta, documentNo: e.target.value })
+                      }
+                    />
+                  </td>
+                  <td />
+                </tr>
+                <tr>
+                  <th style={styles.headerTh}>Issue Date</th>
+                  <td style={styles.headerTd}>
+                    <input
+                      type="date"
+                      {...inputProps("issueDate")}
+                      value={docMeta.issueDate}
+                      onChange={(e) =>
+                        setDocMeta({ ...docMeta, issueDate: e.target.value })
+                      }
+                    />
+                  </td>
+                  <th style={styles.headerTh}>Revision No</th>
+                  <td style={styles.headerTd}>
+                    <input
+                      {...inputProps("revisionNo")}
+                      value={docMeta.revisionNo}
+                      onChange={(e) =>
+                        setDocMeta({ ...docMeta, revisionNo: e.target.value })
+                      }
+                    />
+                  </td>
+                  <td />
+                </tr>
+                <tr>
+                  <th style={styles.headerTh}>Area</th>
+                  <td style={styles.headerTd} colSpan={3}>
+                    <input
+                      {...inputProps("area")}
+                      value={docMeta.area}
+                      onChange={(e) =>
+                        setDocMeta({ ...docMeta, area: e.target.value })
+                      }
+                    />
+                  </td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Shipment Type */}
+          <div style={styles.section}>
+            <label style={styles.label}>Shipment Type:</label>
+            <select
+              value={shipmentType}
+              onChange={(e) => setShipmentType(e.target.value)}
+              {...selectProps("shipmentType")}
+            >
+              <option value="">-- Select --</option>
+              <option value="LAMB AUS">LAMB AUS</option>
+              <option value="MUTTON AUS">MUTTON AUS</option>
+              <option value="LAMB S.A">LAMB S.A</option>
+              <option value="MUTTON S.A">MUTTON S.A</option>
+              <option value="VACUUM">VACUUM</option>
+              <option value="FROZEN">FROZEN</option>
+              <option value="PAK">PAK</option>
+              <option value="KHZ">KHZ</option>
+              <option value="IND MUTTON">IND MUTTON</option>
+              <option value="IND VEAL">IND VEAL</option>
+              <option value="FRESH LAMB">FRESH LAMB</option>
+              <option value="FRESH CHICKEN">FRESH CHICKEN</option>
+            </select>
+          </div>
+
+          {/* General Information */}
+          <fieldset style={styles.fieldset}>
+            <legend style={styles.legend}>General Information</legend>
+            <div style={styles.grid}>
+              {[
+                ["Report On", "reportOn", "date"],
+                ["Sample Received On", "receivedOn", "date"],
+                ["Inspection Date", "inspectionDate", "date"],
+                ["Temperature", "temperature", "text"],
+                ["Brand", "brand", "text"],
+                ["Invoice No", "invoiceNo", "text"],
+                ["PH", "ph", "text"],
+                ["Origin", "origin", "text"],
+                ["Air Way Bill No", "airwayBill", "text"],
+                ["Local Logger", "localLogger", "select"],
+                ["International Logger", "internationalLogger", "select"],
+              ].map(([label, field, type]) => (
+                <div key={field} style={styles.row}>
+                  <label style={styles.label}>{label}:</label>
+                  {type === "select" ? (
+                    <select
+                      value={generalInfo[field]}
+                      onChange={(e) => handleGeneralChange(field, e.target.value)}
+                      {...selectProps(field)}
+                    >
+                      <option value="">-- Select --</option>
+                      <option value="YES">YES</option>
+                      <option value="NO">NO</option>
+                    </select>
+                  ) : type === "date" ? (
+                    <input
+                      type="date"
+                      value={generalInfo[field]}
+                      onChange={(e) => handleGeneralChange(field, e.target.value)}
+                      {...inputProps(field)}
+                    />
+                  ) : (
+                    <input
+                      value={generalInfo[field]}
+                      onChange={(e) => handleGeneralChange(field, e.target.value)}
+                      {...inputProps(field)}
+                    />
+                  )}
+                </div>
+              ))}
             </div>
-          </div>
-        </fieldset>
 
-        {/* عينات الفحص */}
-        <h4 style={styles.section}>🧪 عينات الفحص (Test Samples)</h4>
-        <div style={styles.tableWrap}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>#</th>
-                <th style={styles.th}>Temp</th>
-                <th style={styles.th}>PH</th>
-                <th style={styles.th}>Slaughter Date</th>
-                <th style={styles.th}>Expiry</th>
-                <th style={styles.th}>Broken</th>
-                <th style={styles.th}>Appearance</th>
-                <th style={styles.th}>Blood Clots</th>
-                <th style={styles.th}>Colour</th>
-                <th style={styles.th}>Fat Discoloration</th>
-                <th style={styles.th}>Meat Damage</th>
-                <th style={styles.th}>Foreign Matter</th>
-                <th style={styles.th}>Texture</th>
-                <th style={styles.th}>Testicles</th>
-                <th style={styles.th}>Smell</th>
-              </tr>
-            </thead>
-            <tbody>
-              {samples.map((sample, idx) => (
-                <tr key={idx} style={{ textAlign: "center" }}>
-                  <td style={styles.td}>{idx + 1}</td>
-                  {Object.keys(sample).map((key) => (
-                    <td key={key} style={styles.td}>
+            {/* Status */}
+            <div style={{ marginTop: "1rem" }}>
+              <label style={styles.label}>Shipment Status:</label>
+              <div style={styles.statusContainer}>
+                <select
+                  value={shipmentStatus}
+                  onChange={(e) => setShipmentStatus(e.target.value)}
+                  {...selectProps("shipmentStatus")}
+                  style={{
+                    ...selectProps("shipmentStatus").style,
+                    fontWeight: 800,
+                    color:
+                      shipmentStatus === "Acceptable"
+                        ? "#16a34a"
+                        : shipmentStatus === "Average"
+                        ? "#d97706"
+                        : "#dc2626",
+                  }}
+                >
+                  <option value="Acceptable">✅ Acceptable</option>
+                  <option value="Average">⚠️ Average</option>
+                  <option value="Below Average">❌ Below Average</option>
+                </select>
+                <span
+                  style={{
+                    fontWeight: 800,
+                    color:
+                      shipmentStatus === "Acceptable"
+                        ? "#16a34a"
+                        : shipmentStatus === "Average"
+                        ? "#d97706"
+                        : "#dc2626",
+                  }}
+                >
+                  {shipmentStatus}
+                </span>
+              </div>
+            </div>
+          </fieldset>
+
+          {/* Transposed Samples */}
+          <h4 style={styles.section}>Test Samples</h4>
+          <div style={styles.tableWrap}>
+            <table style={{ ...styles.table, minWidth: tableMinWidth }}>
+              <thead>
+                <tr>
+                  <th style={{ ...styles.th, minWidth: 220, textAlign: "left" }}>
+                    Attribute
+                  </th>
+                  {samples.map((_, idx) => (
+                    <th key={idx} style={styles.th}>
+                      Sample {idx + 1}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {/* Product Name row */}
+                <tr>
+                  <td style={styles.firstColCell}>PRODUCT NAME</td>
+                  {samples.map((s, i) => (
+                    <td key={i} style={styles.td}>
                       <input
-                        value={sample[key]}
+                        value={s.productName}
                         onChange={(e) =>
-                          handleSampleChange(idx, key, e.target.value)
+                          setSampleValue(i, "productName", e.target.value)
                         }
                         style={styles.tdInput}
                         onFocus={(e) => {
                           e.currentTarget.style.boxShadow =
-                            "0 0 0 4px rgba(59,130,246,.20)";
-                          e.currentTarget.style.borderColor = "#3b82f6";
+                            "0 0 0 3px rgba(37,99,235,.25)";
+                          e.currentTarget.style.borderColor = "#2563eb";
                         }}
                         onBlur={(e) => {
                           e.currentTarget.style.boxShadow = "none";
-                          e.currentTarget.style.borderColor = "#bfdbfe";
+                          e.currentTarget.style.borderColor = "#000";
                         }}
                       />
                     </td>
                   ))}
                 </tr>
-              ))}
-              <tr>
-                <td
-                  colSpan={15}
-                  style={{ textAlign: "center", padding: "1rem" }}
-                >
-                  <button onClick={addSample} style={styles.addButton}>
-                    ➕ إضافة عينة جديدة (Add Sample)
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
 
-        {/* ملاحظات أسفل جدول العينات */}
-        <div style={{ marginTop: "12px" }}>
-          <label style={styles.label}>📝 ملاحظات (Notes):</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={4}
-            placeholder="اكتب أي ملاحظات إضافية هنا..."
-            style={{
-              ...styles.input,
-              minHeight: "110px",
-              resize: "vertical",
-              lineHeight: "1.6",
-            }}
-          />
-        </div>
+                {ATTRIBUTES.map((attr) => (
+                  <tr
+                    key={attr.key}
+                    style={
+                      ["temperature", "ph", "slaughterDate", "expiryDate"].includes(
+                        attr.key
+                      )
+                        ? { background: "#f8fafc" }
+                        : undefined
+                    }
+                  >
+                    <td style={styles.firstColCell}>{attr.label}</td>
+                    {samples.map((s, i) => (
+                      <td key={i} style={styles.td}>
+                        <input
+                          value={s[attr.key]}
+                          onChange={(e) => setSampleValue(i, attr.key, e.target.value)}
+                          style={styles.tdInput}
+                          onFocus={(e) => {
+                            e.currentTarget.style.boxShadow =
+                              "0 0 0 3px rgba(37,99,235,.25)";
+                            e.currentTarget.style.borderColor = "#2563eb";
+                          }}
+                          onBlur={(e) => {
+                            e.currentTarget.style.boxShadow = "none";
+                            e.currentTarget.style.borderColor = "#000";
+                          }}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
 
-        {/* الكميات والأوزان */}
-        <div style={styles.formRow3}>
-          <div>
-            <label style={styles.label}>📦 عدد الحبات الكلي:</label>
-            <input
-              type="number"
-              value={totalQuantity}
-              onChange={(e) => setTotalQuantity(e.target.value)}
-              placeholder="مثال: 1000"
-              {...inputProps("totalQuantity")}
-            />
+                {/* Add/Remove sample (columns) */}
+                <tr>
+                  <td
+                    colSpan={1 + samples.length}
+                    style={{ padding: "1rem" }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        justifyContent: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button onClick={addSample} style={styles.addButton}>
+                        ➕ Add Sample (column)
+                      </button>
+                      <button
+                        onClick={removeSample}
+                        style={styles.dangerButton}
+                        disabled={samples.length <= 1}
+                        title={
+                          samples.length <= 1
+                            ? "At least one sample is required"
+                            : "Remove last sample column"
+                        }
+                      >
+                        🗑 Remove Sample (column)
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <div>
-            <label style={styles.label}>⚖️ وزن الشحنة الكلي (كجم):</label>
-            <input
-              type="number"
-              value={totalWeight}
-              onChange={(e) => setTotalWeight(e.target.value)}
-              placeholder="مثال: 750"
-              {...inputProps("totalWeight")}
-            />
-          </div>
-          <div>
-            <label style={styles.label}>🔢 متوسط وزن الحبة (كجم):</label>
-            <input
-              type="text"
-              value={averageWeight}
-              disabled
+
+          {/* Notes */}
+          <div style={{ marginTop: 12 }}>
+            <label style={styles.label}>Notes:</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+              placeholder="Write any additional notes here..."
               style={{
                 ...styles.input,
-                background: "#f3f4f6",
-                color: "#111827",
+                minHeight: "110px",
+                resize: "vertical",
+                lineHeight: "1.6",
               }}
             />
           </div>
-        </div>
 
-        {/* رفع شهادة الحلال */}
-        <div style={styles.section}>
-          <button
-            type="button"
-            onClick={triggerFileSelect}
-            style={styles.uploadButton}
-          >
-            📤 إضافة شهادة الحلال (Upload Halal Certificate)
-          </button>
-          <input
-            type="file"
-            accept="image/*,.pdf"
-            ref={fileInputRef}
-            onChange={handleCertificateUpload}
-            style={{ display: "none" }}
-          />
-          {certificateName && <div>{certificateName}</div>}
-          {certificateFile &&
-            (String(certificateFile).startsWith("data:image/") ? (
-              <img
-                src={certificateFile}
-                alt="Certificate Preview"
-                style={styles.previewImage}
+          {/* Quantity & Weights */}
+          <div style={styles.formRow3}>
+            <div>
+              <label style={styles.label}>Total Quantity (pcs):</label>
+              <input
+                type="number"
+                value={totalQuantity}
+                onChange={(e) => setTotalQuantity(e.target.value)}
+                placeholder="e.g., 1000"
+                {...inputProps("totalQuantity")}
               />
-            ) : (
-              <div style={{ marginTop: 6, fontSize: 13, color: "#374151" }}>
-                ✔️ ملف PDF مرفوع (سيُحفظ Base64 ضمن التقرير)
+            </div>
+            <div>
+              <label style={styles.label}>Total Weight (kg):</label>
+              <input
+                type="number"
+                value={totalWeight}
+                onChange={(e) => setTotalWeight(e.target.value)}
+                placeholder="e.g., 750"
+                {...inputProps("totalWeight")}
+              />
+            </div>
+            <div>
+              <label style={styles.label}>Average Weight (kg):</label>
+              <input
+                type="text"
+                value={averageWeight}
+                disabled
+                style={{
+                  ...styles.input,
+                  background: "#f3f4f6",
+                  color: "#111827",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Uploads */}
+          <div style={styles.section}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" onClick={triggerCertSelect} style={styles.uploadButton}>
+                📤 Upload Halal Certificate
+              </button>
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                ref={certInputRef}
+                onChange={handleCertificateUpload}
+                style={{ display: "none" }}
+              />
+
+              <button type="button" onClick={triggerImagesSelect} style={styles.uploadButton}>
+                📸 Upload Images
+              </button>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                ref={imagesInputRef}
+                onChange={handleImagesUpload}
+                style={{ display: "none" }}
+              />
+            </div>
+
+            {certificateName && <div>{certificateName}</div>}
+            {certificateFile &&
+              (String(certificateFile).startsWith("data:image/") ? (
+                <img
+                  src={certificateFile}
+                  alt="Certificate Preview"
+                  style={styles.previewImage}
+                />
+              ) : (
+                <div style={{ marginTop: 6, fontSize: 13, color: "#374151" }}>
+                  ✔️ PDF certificate uploaded (Base64 will be saved with the report)
+                </div>
+              ))}
+
+            {images.length > 0 && (
+              <div style={styles.previewGrid}>
+                {images.map((img, i) => (
+                  <img
+                    key={`${img.name}-${i}`}
+                    src={img.data}
+                    alt={img.name}
+                    style={{
+                      width: "100%",
+                      borderRadius: 8,
+                      border: "1px solid #e5e7eb",
+                    }}
+                  />
+                ))}
               </div>
-            ))}
-        </div>
-
-        {/* التوقيعات */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: "12px",
-            marginTop: "0.75rem",
-          }}
-        >
-          <div>
-            <label style={styles.label}>
-              👁️ تم الفحص بواسطة (Inspected By):
-            </label>
-            <input
-              value={inspectedBy}
-              onChange={(e) => setInspectedBy(e.target.value)}
-              placeholder="اسم من قام بالفحص"
-              {...inputProps("inspectedBy")}
-            />
+            )}
           </div>
-          <div>
-            <label style={styles.label}>
-              🔍 تم التحقق بواسطة (Verified By):
-            </label>
-            <input
-              value={verifiedBy}
-              onChange={(e) => setVerifiedBy(e.target.value)}
-              placeholder="اسم من قام بالتحقق"
-              {...inputProps("verifiedBy")}
-            />
-          </div>
-        </div>
 
-        {/* أزرار الحفظ/العرض */}
-        <div
-          style={{
-            marginTop: "1.25rem",
-            display: "flex",
-            gap: "10px",
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            onClick={handleSave}
+          {/* Signatures */}
+          <div
             style={{
-              ...styles.saveButton,
-              ...(isSaving ? styles.saveButtonDisabled : {}),
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              gap: "12px",
+              marginTop: "0.75rem",
             }}
-            disabled={isSaving}
-            title={isSaving ? "جاري الحفظ..." : "حفظ التقرير"}
           >
-            {isSaving ? "⏳ جاري الحفظ..." : "💾 حفظ التقرير (Save Report)"}
-          </button>
-          <button
-            onClick={() => navigate("/qcs-raw-material-view")}
-            style={styles.viewButton}
+            <div>
+              <label style={styles.label}>Inspected By:</label>
+              <input
+                value={inspectedBy}
+                onChange={(e) => setInspectedBy(e.target.value)}
+                placeholder="Inspector name"
+                {...inputProps("inspectedBy")}
+              />
+            </div>
+            <div>
+              <label style={styles.label}>Verified By:</label>
+              <input
+                value={verifiedBy}
+                onChange={(e) => setVerifiedBy(e.target.value)}
+                placeholder="Verifier name"
+                {...inputProps("verifiedBy")}
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div
+            style={{
+              marginTop: "1.25rem",
+              display: "flex",
+              gap: "10px",
+              flexWrap: "wrap",
+            }}
           >
-            📄 عرض التقارير (View Reports)
-          </button>
+            <button
+              onClick={handleSave}
+              style={{
+                ...styles.saveButton,
+                ...(isSaving ? styles.saveButtonDisabled : {}),
+              }}
+              disabled={isSaving}
+              title={isSaving ? "Saving..." : "Save report"}
+            >
+              {isSaving ? "⏳ Saving..." : "💾 Save Report"}
+            </button>
+            <button
+              onClick={() => navigate("/qcs-raw-material-view")}
+              style={styles.viewButton}
+            >
+              📄 View Reports
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Toast الإشعاري السفلي */}
+      {/* Toast */}
       {toast.type && (
         <div style={styles.toastWrap}>
           <div

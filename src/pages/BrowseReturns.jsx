@@ -99,12 +99,15 @@ function formatChangeDatePDF(ch) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-/* Match "Condemnation" exactly (case-insensitive) */
+/* Match actions exactly (case-insensitive) */
 function isCondemnation(s) {
   return (s ?? "").toString().trim().toLowerCase() === "condemnation";
 }
+function isSendToMarket(s) {
+  return (s ?? "").toString().trim().toLowerCase() === "send to market";
+}
 
-/* ===== Unified Donut KPI Card (SVG) — bigger & cleaner ===== */
+/* ===== Unified Donut KPI Card (SVG) ===== */
 function DonutCard({
   percent = 0,
   label = "",
@@ -113,8 +116,8 @@ function DonutCard({
   color = "#166534",
   centerText = null,
   extra = null,
-  size = 140,      // ⬅️ Bigger
-  stroke = 14,     // ⬅️ Thicker ring
+  size = 140,
+  stroke = 14,
 }) {
   const r = (size - stroke) / 2;
   const C = 2 * Math.PI * r;
@@ -333,6 +336,13 @@ export default function BrowseReturns() {
     const byActionLatest = {};
     const condemnationNames = {};
 
+    // dedicated counters for special actions
+    let condemnationCount = 0;
+    let condemnationKg = 0;
+    let useProdCount = 0;
+    let sepExpiredCount = 0;
+    let marketKg = 0;
+
     const isKgType = (t) => {
       const s = (t || "").toString().toLowerCase();
       return s.includes("kg") || s.includes("كيلو") || s.includes("كجم");
@@ -366,8 +376,19 @@ export default function BrowseReturns() {
         if (act) byActionLatest[act] = (byActionLatest[act] || 0) + 1;
 
         if (isCondemnation(act)) {
+          condemnationCount += 1;
+          if (isKgType(it.qtyType)) condemnationKg += q;
           const name = (it.productName || "—").trim();
           condemnationNames[name] = (condemnationNames[name] || 0) + 1;
+        }
+        if ((act || "").toLowerCase() === "use in production") {
+          useProdCount += 1;
+        }
+        if ((act || "").toLowerCase() === "separated expired shelf") {
+          sepExpiredCount += 1;
+        }
+        if (isSendToMarket(act) && isKgType(it.qtyType)) {
+          marketKg += q;
         }
       });
     });
@@ -384,7 +405,6 @@ export default function BrowseReturns() {
       return { key: bestK, value: bestV > 0 ? bestV : 0 };
     };
 
-    const topActionLatest = pickMax(byActionLatest);
     const topPosByItems = pickMax(posCountItems);
 
     // Top POS by kg
@@ -408,15 +428,37 @@ export default function BrowseReturns() {
       .slice(0, 5)
       .map(([name, count]) => ({ name, count }));
 
-    const totalActionItems =
-      Object.values(byActionLatest).reduce((a, b) => a + b, 0) || 1;
+    const actionTotal = Object.values(byActionLatest).reduce((a, b) => a + b, 0) || 1;
+
+    // shares
+    const condemnationShare = {
+      count: condemnationCount,
+      percent: Math.round((condemnationCount * 100) / actionTotal),
+      kg: Math.round(condemnationKg * 1000) / 1000,
+    };
+    const useProdShare = {
+      count: useProdCount,
+      percent: Math.round((useProdCount * 100) / actionTotal),
+    };
+    const sepExpiredShare = {
+      count: sepExpiredCount,
+      percent: Math.round((sepExpiredCount * 100) / actionTotal),
+    };
+
+    // Top actions EXCLUDING the ones we show as dedicated donuts to avoid duplicates
+    const EXCLUDE = new Set([
+      "condemnation",
+      "use in production",
+      "separated expired shelf",
+    ]);
     const topActions = Object.entries(byActionLatest)
+      .filter(([name]) => !EXCLUDE.has((name || "").toLowerCase()))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([name, count]) => ({
         name,
         count,
-        percent: Math.round((count * 100) / totalActionItems),
+        percent: Math.round((count * 100) / actionTotal),
       }));
 
     return {
@@ -424,13 +466,20 @@ export default function BrowseReturns() {
       totalItems,
       totalQtyKg,
       totalQtyPcs,
-      topActionLatest,
+
       topPosByItems,
       topPosByQtyKg,
       topPosByQtyPcs,
+
       topCondemnList,
+
+      condemnationShare,
+      useProdShare,
+      sepExpiredShare,
+
+      marketKg: Math.round(marketKg * 1000) / 1000, // Send to market (kg)
       topActions,
-      actionTotal: totalActionItems,
+      actionTotal,
     };
   }, [filteredReportsAsc, changeMapByDate]);
 
@@ -852,19 +901,40 @@ export default function BrowseReturns() {
             color="#059669"
           />
 
-          {/* Top actions (share of latest actions) */}
-          {kpi.topActions.map((a, idx) => (
-            <DonutCard
-              key={a.name + idx}
-              label={a.name}
-              subLabel="Share of latest actions"
-              count={a.count}
-              percent={a.percent}
-              color={["#16a34a", "#a21caf", "#b45309"][idx % 3]}
-            />
-          ))}
+          {/* Dedicated shares (avoid duplicate in top actions) */}
+          <DonutCard
+            percent={kpi.condemnationShare.percent}
+            label="Condemnation"
+            subLabel="Share of latest actions"
+            count={`${kpi.condemnationShare.count}`}
+            color="#047857"
+          />
+          <DonutCard
+            percent={kpi.useProdShare.percent}
+            label="Use in production"
+            subLabel="Share of latest actions"
+            count={`${kpi.useProdShare.count}`}
+            color="#7c3aed"
+          />
+          <DonutCard
+            percent={kpi.sepExpiredShare.percent}
+            label="Separated expired shelf"
+            subLabel="Share of latest actions"
+            count={`${kpi.sepExpiredShare.count}`}
+            color="#2563eb"
+          />
 
-          {/* Total reports */}
+          {/* Condemnation (kg) */}
+          <DonutCard
+            percent={100}
+            centerText={String(kpi.condemnationShare.kg)}
+            label="Condemnation (kg)"
+            subLabel="Total weight"
+            color="#22c55e"
+            extra={<div style={{ fontSize: 12, opacity: .8 }}>{kpi.condemnationShare.count} items</div>}
+          />
+
+          {/* Total reports / Total quantity (kg) */}
           <DonutCard
             percent={100}
             centerText={String(kpi.totalReports)}
@@ -872,14 +942,21 @@ export default function BrowseReturns() {
             subLabel="Reports in selected range"
             color="#0ea5e9"
           />
-
-          {/* Total quantity (kg) */}
           <DonutCard
             percent={100}
             centerText={String(Math.round(kpi.totalQtyKg * 1000) / 1000)}
             label="Total quantity (kg)"
             subLabel="Weight-based items only"
-            color="#2563eb"
+            color="#1d4ed8"
+          />
+
+          {/* NEW: Send to market (kg) */}
+          <DonutCard
+            percent={100}
+            centerText={String(kpi.marketKg)}
+            label="Send to market (kg)"
+            subLabel="Latest action only — weight-based items"
+            color="#0d9488"
           />
 
           {/* Total quantity (pcs) */}
@@ -888,7 +965,7 @@ export default function BrowseReturns() {
             centerText={String(Math.round(kpi.totalQtyPcs * 1000) / 1000)}
             label="Total quantity (pcs)"
             subLabel="Piece-based items only"
-            color="#1d4ed8"
+            color="#2563eb"
           />
 
           {/* Top POS by item count */}
@@ -950,6 +1027,18 @@ export default function BrowseReturns() {
               </div>
             )}
           </div>
+
+          {/* Top actions (remaining) */}
+          {kpi.topActions.map((a, idx) => (
+            <DonutCard
+              key={a.name + idx}
+              label={a.name}
+              subLabel="Share of latest actions"
+              count={a.count}
+              percent={a.percent}
+              color={["#16a34a", "#a21caf", "#b45309"][idx % 3]}
+            />
+          ))}
         </div>
 
         {loadingServer && (

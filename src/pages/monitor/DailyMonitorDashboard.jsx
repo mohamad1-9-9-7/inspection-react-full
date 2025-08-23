@@ -1,26 +1,48 @@
+// src/pages/DailyMonitorDashboard.js
+
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
 const branches = [
-  "QCS", "POS 6", "POS 7", "POS 10", "POS 11", "POS 14",
-  "POS 15", "POS 16", "POS 17", "POS 19", "POS 21", "POS 24",
-  "POS 25", "POS 37", "POS 38", "POS 42", "POS 44", "POS 45"
+  "QCS",
+  "POS 6", "POS 7", "POS 10", "POS 11", "POS 14",
+  "POS 15", "POS 16", "POS 17",
+  "POS 18",
+  "POS 19", "POS 21", "POS 24", "POS 25",
+  "POS 26",
+  "POS 31",
+  "POS 34",
+  "POS 35",
+  "POS 36",
+  "POS 37", "POS 38",
+  "POS 41",
+  "POS 42",
+  "POS 43",
+  "POS 44", "POS 45",
+  "FTR 1",  // New
+  "FTR 2"   // New
 ];
 
-// تحويل الاسم إلى مسار صالح: "POS 19" -> "pos19" ، "QCS" -> "qcs"
+// Convert name to valid slug: "POS 19" -> "pos19", "QCS" -> "qcs"
 const toSlug = (name) => name.trim().toLowerCase().replace(/\s+/g, "");
 
 export default function DailyMonitorDashboard() {
   const navigate = useNavigate();
 
   const handleBranchClick = (branch) => {
-    const slug = toSlug(branch);
-    navigate(`/monitor/${slug}`);
+    if (branch === "FTR 2") {
+      navigate("/monitor/ftr2"); // ✅ إدخال FTR2Report
+    } else if (branch === "FTR 1") {
+      navigate("/monitor/ftr1"); // (ممكن تضيف لاحقًا نفس الفكرة لـ FTR1)
+    } else {
+      const slug = toSlug(branch);
+      navigate(`/monitor/${slug}`);
+    }
   };
 
   return (
-    <div style={{ padding: "2rem", direction: "rtl", fontFamily: "Cairo, sans-serif" }}>
-      {/* ستايل تأثيرات بسيطة */}
+    <div style={{ padding: "2rem", direction: "ltr", fontFamily: "Inter, sans-serif" }}>
+      {/* Simple styles */}
       <style>{`
         .branches-grid {
           display: grid;
@@ -48,8 +70,8 @@ export default function DailyMonitorDashboard() {
         }
       `}</style>
 
-      <h2>📋 التقارير اليومية - المراقبة لجميع الفروع</h2>
-      <p>اختر أحد الفروع لإدخال تقرير يومي:</p>
+      <h2>📋 Daily Monitoring Reports - All Branches</h2>
+      <p>Select a branch to enter a daily report:</p>
 
       <div className="branches-grid">
         {branches.map((branch) => (
@@ -57,7 +79,7 @@ export default function DailyMonitorDashboard() {
             key={branch}
             role="button"
             tabIndex={0}
-            aria-label={`فتح تقارير ${branch}`}
+            aria-label={`Open reports for ${branch}`}
             className="branch-card"
             onClick={() => handleBranchClick(branch)}
             onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleBranchClick(branch)}
