@@ -44,6 +44,11 @@ const BrowseMaintenanceRequests = lazy(() =>
   import("./pages/maintenance/BrowseMaintenanceRequests")
 );
 
+// 🆕 🍖 Meat Daily (الإدخال/العرض/التصفّح)
+const MeatDailyInput = lazy(() => import("./pages/MeatDailyInput"));
+const MeatDailyView = lazy(() => import("./pages/MeatDailyView"));
+const BrowseMeatDaily = lazy(() => import("./pages/BrowseMeatDaily"));
+
 /**
  * حماية المسارات الخاصة
  */
@@ -240,6 +245,34 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <BrowseReturns />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        {/* 🆕 meat-daily/* */}
+        <Route path="/meat-daily">
+          <Route
+            path="input"
+            element={
+              <ProtectedRoute>
+                <MeatDailyInput />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="view"
+            element={
+              <ProtectedRoute>
+                <MeatDailyView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="browse"
+            element={
+              <ProtectedRoute>
+                <BrowseMeatDaily />
               </ProtectedRoute>
             }
           />
