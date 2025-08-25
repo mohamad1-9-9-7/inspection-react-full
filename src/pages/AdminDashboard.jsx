@@ -52,6 +52,35 @@ async function upsertOne(type, payload) {
   }
 }
 
+/* ========== غلاف لإخفاء أزرار Delete داخل نطاق محدد فقط ========== */
+function HideDeleteScope({ children }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+
+    const hide = () => {
+      const btns = root.querySelectorAll("button, [role='button']");
+      btns.forEach((b) => {
+        const txt = (b.textContent || "").trim().toLowerCase();
+        const title = (b.getAttribute("title") || "").toLowerCase();
+        if (txt === "delete" || txt.includes("delete") || title.includes("delete")) {
+          b.style.display = "none";
+        }
+      });
+    };
+
+    hide();
+    const mo = new MutationObserver(hide);
+    mo.observe(root, { childList: true, subtree: true, characterData: true });
+
+    return () => mo.disconnect();
+  }, []);
+
+  return <div ref={ref}>{children}</div>;
+}
+
 export default function AdminDashboard() {
   const [reports, setReports] = useState([]);
   const [dailyReports, setDailyReports] = useState([]);
@@ -358,7 +387,10 @@ export default function AdminDashboard() {
             language="en"
           />
         ) : activeView === "qcsShipment" ? (
-          <QCSRawMaterialView language="en" />
+          // ⬇️ الإخفاء هنا فقط
+          <HideDeleteScope>
+            <QCSRawMaterialView language="en" />
+          </HideDeleteScope>
         ) : activeView === "kpi" ? (
           <KPIDashboard />
         ) : activeView === "qcs" ? (
