@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 const branches = [
   "QCS",
+  "PRODUCTION", // جديد: تبويب الإنتاج
   "POS 6", "POS 7", "POS 10", "POS 11", "POS 14",
   "POS 15", "POS 16", "POS 17",
   "POS 18",
@@ -49,6 +50,16 @@ const IconShield = () => (
   <svg {...Svg()}>
     <path d="M12 22s7-3 7-10V6l-7-3-7 3v6c0 7 7 10 7 10z" />
     <path d="M9.5 12.5l2 2 3.5-3.5" />
+  </svg>
+);
+/* جديد: أيقونة الإنتاج */
+const IconProduction = () => (
+  <svg {...Svg()}>
+    {/* مبنى مصنع بسيط مع مدخنة */}
+    <path d="M3 21V9l5 3V9l5 3V9l5 3v9H3z" />
+    <path d="M3 21h18" />
+    <path d="M7 21v-3M11 21v-3M15 21v-3M19 21v-3" />
+    <path d="M17 6V3h2v4" />
   </svg>
 );
 
@@ -149,6 +160,8 @@ export default function DailyMonitorDashboard() {
         .tile.pos { background:linear-gradient(135deg, #ecfeff 0%, #ffffff 60%); color:#0369a1; border-color:#bae6fd; }
         .tile.ftr { background:linear-gradient(135deg, #fff7ed 0%, #ffffff 60%); color:#b45309; border-color:#fed7aa; }
         .tile.qcs { background:linear-gradient(135deg, #f0fdfa 0%, #ffffff 60%); color:#065f46; border-color:#a7f3d0; }
+        /* جديد: شكل PRODUCTION */
+        .tile.prod { background:linear-gradient(135deg, #fdf2f8 0%, #ffffff 60%); color:#be185d; border-color:#fbcfe8; }
 
         .title{ font-weight:900; color:var(--text); letter-spacing:.2px; }
         .badge{ font-size:12px; font-weight:800; color:#475569; background:#f1f5f9; border:1px solid #e2e8f0; padding:3px 8px; border-radius:999px; display:inline-flex; gap:6px; align-items:center; }
@@ -187,7 +200,8 @@ export default function DailyMonitorDashboard() {
             {branches.map((branch) => {
               const isQCS = branch === "QCS";
               const isFTR = branch.startsWith("FTR");
-              const type = isQCS ? "QCS" : isFTR ? "FTR" : "POS";
+              const isProduction = branch === "PRODUCTION";
+              const type = isQCS ? "QCS" : isFTR ? "FTR" : isProduction ? "PROD" : "POS";
               return (
                 <div
                   key={branch}
@@ -203,19 +217,20 @@ export default function DailyMonitorDashboard() {
                 >
                   <div
                     className={`tile ${
-                      type === "POS" ? "pos" : type === "FTR" ? "ftr" : "qcs"
+                      type === "POS" ? "pos" : type === "FTR" ? "ftr" : type === "QCS" ? "qcs" : "prod"
                     }`}
                   >
                     {type === "POS" && <IconStore />}
                     {type === "FTR" && <IconTruck />}
                     {type === "QCS" && <IconShield />}
+                    {type === "PROD" && <IconProduction />}
                   </div>
                   <div>
                     <div className="title">{branch}</div>
                     {/* لا نعرض أي وصف لبطاقة QCS */}
                     {!isQCS && (
                       <div className="badge">
-                        {type === "FTR" ? "FTR Branch" : "Point of Sale"}
+                        {type === "FTR" ? "FTR Branch" : isProduction ? "Production" : "Point of Sale"}
                       </div>
                     )}
                   </div>

@@ -147,12 +147,12 @@ function CompleteModal({ open, onClose, onConfirm, defaultRepairer = "" }) {
       >
         <div style={styles.modalTitle}>✅ تأكيد إكمال الطلب / Mark as Completed</div>
         <div>
-          <label style={styles.label}>👷 اسم الفني / Repairer</label>
+          <label style={styles.label}>👷 يرجى تأكيد مشرف قسم الصيانة  / Repairer</label>
           <input
             style={styles.input}
             value={repairer}
             onChange={(e) => setRepairer(e.target.value)}
-            placeholder="أدخل اسم الفني…"
+            placeholder="يرجى تأكيد مشرف قسم الصيانة …"
           />
         </div>
         <div style={{ marginTop: 10 }}>
@@ -170,7 +170,7 @@ function CompleteModal({ open, onClose, onConfirm, defaultRepairer = "" }) {
             style={styles.btn(COLORS.green)}
             onClick={() => {
               if (!repairer.trim()) {
-                alert("يرجى إدخال اسم الفني / Please enter repairer name.");
+                alert("يرجى تأكيد مشرف قسم الصيانة / Please enter repairer name.");
                 return;
               }
               onConfirm({ repairer: repairer.trim(), note: note.trim() });

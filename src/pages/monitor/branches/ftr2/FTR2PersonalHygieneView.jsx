@@ -16,6 +16,14 @@ export default function FTR2PersonalHygieneView() {
     fetchReports();
   }, []);
 
+  // helper: تاريخ آمن من reportDate ثم fallback على created_at
+  const getReportDate = (r) => {
+    const d1 = new Date(r?.payload?.reportDate);
+    if (!isNaN(d1)) return d1;
+    const d2 = new Date(r?.created_at);
+    return isNaN(d2) ? new Date(0) : d2;
+  };
+
   const fetchReports = async () => {
     setLoading(true);
     try {
@@ -25,9 +33,12 @@ export default function FTR2PersonalHygieneView() {
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+      // ✅ تصاعدي: الأقدم أولًا
+      arr.sort((a, b) => getReportDate(a) - getReportDate(b));
+
       setReports(arr);
-      setSelectedReport(arr[0] || null);
+      setSelectedReport(arr[0] || null); // الأقدم
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
@@ -50,7 +61,7 @@ export default function FTR2PersonalHygieneView() {
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
 
-    // 🔹 إضافة اسم الشركة أعلى التقرير
+    // 🔹 عنوان الشركة أعلى التقرير
     pdf.setFontSize(18);
     pdf.setFont("helvetica", "bold");
     pdf.text("AL MAWASHI", pageWidth / 2, 30, { align: "center" });
@@ -82,14 +93,14 @@ export default function FTR2PersonalHygieneView() {
 
   // Group reports by year → month → day
   const groupedReports = reports.reduce((acc, r) => {
-    const date = new Date(r.payload?.reportDate);
+    const date = getReportDate(r);
     if (isNaN(date)) return acc;
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     if (!acc[year]) acc[year] = {};
     if (!acc[year][month]) acc[year][month] = [];
-    acc[year][month].push({ ...r, day });
+    acc[year][month].push({ ...r, day, _dt: date.getTime() });
     return acc;
   }, {});
 
@@ -115,38 +126,47 @@ export default function FTR2PersonalHygieneView() {
           <p>❌ No reports</p>
         ) : (
           <div>
-            {Object.entries(groupedReports).map(([year, months]) => (
-              <details key={year} open>
-                <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
-                  📅 Year {year}
-                </summary>
-                {Object.entries(months).map(([month, days]) => (
-                  <details key={month} style={{ marginLeft: "1rem" }}>
-                    <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
-                    <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                      {days.map((r, i) => (
-                        <li
-                          key={i}
-                          onClick={() => setSelectedReport(r)}
-                          style={{
-                            padding: "6px 10px",
-                            marginBottom: "4px",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            background: selectedReport?.id === r.id ? "#6d28d9" : "#ecf0f1",
-                            color: selectedReport?.id === r.id ? "#fff" : "#333",
-                            fontWeight: 600,
-                            textAlign: "center",
-                          }}
-                        >
-                          {`${r.day}/${month}/${year}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                ))}
-              </details>
-            ))}
+            {Object.entries(groupedReports)
+              .sort(([ya], [yb]) => Number(ya) - Number(yb)) // ✅ سنوات تصاعدي
+              .map(([year, months]) => (
+                <details key={year} open>
+                  <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
+                    📅 Year {year}
+                  </summary>
+
+                  {Object.entries(months)
+                    .sort(([ma], [mb]) => Number(ma) - Number(mb)) // ✅ أشهر تصاعدي
+                    .map(([month, days]) => {
+                      const daysSorted = [...days].sort((a, b) => a._dt - b._dt); // ✅ أيام تصاعدي
+                      return (
+                        <details key={month} style={{ marginLeft: "1rem" }}>
+                          <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
+                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
+                            {daysSorted.map((r, i) => (
+                              <li
+                                key={i}
+                                onClick={() => setSelectedReport(r)}
+                                style={{
+                                  padding: "6px 10px",
+                                  marginBottom: "4px",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  background:
+                                    selectedReport?.id === r.id ? "#6d28d9" : "#ecf0f1",
+                                  color: selectedReport?.id === r.id ? "#fff" : "#333",
+                                  fontWeight: 600,
+                                  textAlign: "center",
+                                }}
+                              >
+                                {`${r.day}/${month}/${year}`}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      );
+                    })}
+                </details>
+              ))}
           </div>
         )}
       </div>
@@ -165,7 +185,7 @@ export default function FTR2PersonalHygieneView() {
           <p>❌ No report selected.</p>
         ) : (
           <>
-            {/* Actions (خارج التقرير → ما يبينوا بالـ PDF) */}
+            {/* Actions */}
             <div
               style={{
                 display: "flex",

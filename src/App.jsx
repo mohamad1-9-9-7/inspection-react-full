@@ -49,6 +49,20 @@ const MeatDailyInput = lazy(() => import("./pages/MeatDailyInput"));
 const MeatDailyView = lazy(() => import("./pages/MeatDailyView"));
 const BrowseMeatDaily = lazy(() => import("./pages/BrowseMeatDaily"));
 
+/* 🆕 Production (بنفس المسار المطلوب) */
+const ProductionHub = lazy(() =>
+  import("./pages/monitor/branches/production/ProductionHub")
+);
+const PersonalHygienePRDInput = lazy(() =>
+  import("./pages/monitor/branches/production/PersonalHygienePRDInput")
+);
+const CleaningChecklistPRDInput = lazy(() =>
+  import("./pages/monitor/branches/production/CleaningChecklistPRDInput")
+);
+const PRDDefrostingRecordInput = lazy(() =>
+  import("./pages/monitor/branches/production/PRDDefrostingRecordInput")
+);
+
 /**
  * حماية المسارات الخاصة
  */
@@ -132,6 +146,41 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          {/* 🆕 Production Hub + إدخالاته */}
+          <Route
+            path="production"
+            element={
+              <ProtectedRoute>
+                <ProductionHub />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="production/personal-hygiene-prd/input"
+            element={
+              <ProtectedRoute>
+                <PersonalHygienePRDInput />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="production/cleaning-checklist-prd/input"
+            element={
+              <ProtectedRoute>
+                <CleaningChecklistPRDInput />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="production/prd-defrosting-record/input"
+            element={
+              <ProtectedRoute>
+                <PRDDefrostingRecordInput />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* موجودة سابقًا */}
           <Route
             path="qcs"
             element={
@@ -164,6 +213,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          {/* يُترك في النهاية */}
           <Route
             path=":slug"
             element={

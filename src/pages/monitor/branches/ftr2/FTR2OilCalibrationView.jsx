@@ -1,5 +1,5 @@
 // src/pages/monitor/branches/ftr2/FTR2OilCalibrationView.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
@@ -12,63 +12,143 @@ export default function FTR2OilCalibrationView() {
   const [loading, setLoading] = useState(false);
   const reportRef = useRef();
 
-  useEffect(() => {
+  /* ===== Helpers ===== */
+  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
+  const safeDate = (d) => {
+    const dt = d ? new Date(d) : null;
+    return dt && !isNaN(dt) ? dt : null;
+  };
+  const formatDate = (d) => {
+    const dt = safeDate(d);
+    if (!dt) return "—";
+    const dd = String(dt.getDate()).padStart(2, "0");
+    const mm = String(dt.getMonth() + 1).padStart(2, "0");
+    const yy = dt.getFullYear();
+    return `${dd}/${mm}/${yy}`;
+  };
+  const firstEntryDate = (r) => r?.payload?.entries?.[0]?.date || null;
+
+  const load = useCallback(async () => {
     setLoading(true);
-    fetch(`${API_BASE}/api/reports?type=ftr2_oil_calibration`)
-      .then((res) => res.json())
-      .then((json) => {
-        const arr = Array.isArray(json) ? json : json.data || [];
-        arr.sort(
-          (a, b) =>
-            new Date(b.payload?.entries?.[0]?.date) -
-            new Date(a.payload?.entries?.[0]?.date)
-        );
-        setReports(arr);
-        setSelectedReport(arr[0] || null);
-      })
-      .catch((err) => console.error(err))
-      .finally(() => setLoading(false));
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=ftr2_oil_calibration`,
+        { cache: "no-store" }
+      );
+      const json = await res.json();
+      const arr = Array.isArray(json) ? json : json?.data || [];
+
+      // تصاعدي: الأقدم أولًا
+      arr.sort((a, b) => {
+        const ta = safeDate(firstEntryDate(a))?.getTime() || 0;
+        const tb = safeDate(firstEntryDate(b))?.getTime() || 0;
+        return ta - tb;
+      });
+
+      setReports(arr);
+      setSelectedReport(arr[0] || null); // الأقدم
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const groupedReports = reports.reduce((acc, r) => {
-    const date = new Date(r.payload?.entries?.[0]?.date);
-    if (isNaN(date)) return acc;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    if (!acc[year]) acc[year] = {};
-    if (!acc[year][month]) acc[year][month] = [];
-    acc[year][month].push(r);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Group: Year -> Month -> [reports] (تصاعدي)
+  const grouped = useMemo(() => {
+    const acc = {};
+    for (const r of reports) {
+      const dt = safeDate(firstEntryDate(r));
+      if (!dt) continue;
+      const y = String(dt.getFullYear());
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      acc[y] ??= {};
+      acc[y][m] ??= [];
+      acc[y][m].push(r);
+    }
+    // داخل كل شهر: تصاعدي
+    Object.values(acc).forEach((months) => {
+      Object.values(months).forEach((arr) =>
+        arr.sort(
+          (a, b) =>
+            (safeDate(firstEntryDate(a))?.getTime() || 0) -
+            (safeDate(firstEntryDate(b))?.getTime() || 0)
+        )
+      );
+    });
     return acc;
-  }, {});
+  }, [reports]);
+
+  // ترتيب قيود التقرير المختار تصاعديًا
+  const sortedEntries = useMemo(() => {
+    const items = selectedReport?.payload?.entries || [];
+    return [...items].sort(
+      (a, b) =>
+        (safeDate(a?.date)?.getTime() || 0) -
+        (safeDate(b?.date)?.getTime() || 0)
+    );
+  }, [selectedReport]);
 
   const handleExportPDF = async () => {
-    if (!reportRef.current) return;
-    const canvas = await html2canvas(reportRef.current, { scale: 2 });
+    if (!reportRef.current || !selectedReport) return;
+
+    const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true });
     const imgData = canvas.toDataURL("image/png");
     const pdf = new jsPDF("p", "pt", "a4");
 
     const pageWidth = pdf.internal.pageSize.getWidth();
-    const imgWidth = pageWidth - 40;
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 20;
+    const imgWidth = pageWidth - margin * 2;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    pdf.addImage(imgData, "PNG", 20, 20, imgWidth, imgHeight);
-    pdf.save(
-      `FTR2_Oil_Calibration_${
-        selectedReport?.payload?.entries?.[0]?.date || "report"
-      }.pdf`
-    );
+    let position = margin;
+    let heightLeft = imgHeight;
+
+    pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight - margin * 2;
+
+    while (heightLeft > 0) {
+      pdf.addPage();
+      position = margin - (imgHeight - heightLeft);
+      pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight - margin * 2;
+    }
+
+    const nameDate = selectedReport?.payload?.entries?.[0]?.date || "report";
+    pdf.save(`FTR2_Oil_Calibration_${nameDate}.pdf`);
   };
 
   const handleDelete = async (report) => {
+    if (!report) return;
     if (!window.confirm("Are you sure you want to delete this report?")) return;
+
+    const rid = getId(report);
+    if (!rid) {
+      alert("⚠️ Missing report ID.");
+      return;
+    }
+
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${report.id}`, {
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete");
+
+      setReports((prev) => {
+        const idx = prev.findIndex((x) => getId(x) === rid);
+        const next = prev.filter((x) => getId(x) !== rid);
+        // بعد الحذف: اختَر العنصر في نفس الموضع إن وُجد
+        const pick = next[Math.min(idx, Math.max(0, next.length - 1))] || null;
+        setSelectedReport(pick);
+        return next;
+      });
+
       alert("✅ Report deleted successfully.");
-      setReports((prev) => prev.filter((r) => r.id !== report.id));
-      setSelectedReport(null);
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to delete report.");
@@ -80,7 +160,7 @@ export default function FTR2OilCalibrationView() {
       {/* Sidebar */}
       <div
         style={{
-          minWidth: "260px",
+          minWidth: "280px",
           background: "#f9f9f9",
           padding: "1rem",
           borderRadius: "10px",
@@ -90,60 +170,108 @@ export default function FTR2OilCalibrationView() {
       >
         <h4
           style={{
-            marginBottom: "1rem",
+            marginBottom: "0.5rem",
             color: "#16a085",
             textAlign: "center",
           }}
         >
           📂 Saved Reports
         </h4>
+
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+          <button
+            onClick={load}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 6,
+              background: "#0ea5e9",
+              color: "#fff",
+              fontWeight: 600,
+              border: "none",
+              cursor: "pointer",
+            }}
+            title="Refresh"
+          >
+            🔄 Refresh
+          </button>
+        </div>
+
         {loading ? (
           <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
+        ) : Object.keys(grouped).length === 0 ? (
           <p>❌ No reports</p>
         ) : (
           <div>
-            {Object.entries(groupedReports).map(([year, months]) => (
-              <details key={year} open>
-                <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
-                  📅 Year {year}
-                </summary>
-                {Object.entries(months).map(([month, reportsInMonth]) => (
-                  <div
-                    key={month}
-                    onClick={() => setSelectedReport(reportsInMonth[0])}
-                    style={{
-                      padding: "6px 10px",
-                      marginBottom: "4px",
-                      borderRadius: "6px",
-                      cursor: "pointer",
-                      background:
-                        selectedReport &&
-                        new Date(
-                          selectedReport.payload?.entries?.[0]?.date
-                        ).getMonth() +
-                          1 ===
-                          parseInt(month)
-                          ? "#16a085"
-                          : "#ecf0f1",
-                      color:
-                        selectedReport &&
-                        new Date(
-                          selectedReport.payload?.entries?.[0]?.date
-                        ).getMonth() +
-                          1 ===
-                          parseInt(month)
-                          ? "#fff"
-                          : "#333",
-                      fontWeight: 600,
-                      textAlign: "center",
-                    }}
-                  >
-                    📂 Month {month} ({reportsInMonth.length})
-                  </div>
-                ))}
-              </details>
-            ))}
+            {Object.entries(grouped)
+              .sort(([a], [b]) => Number(a) - Number(b)) // السنوات تصاعدي
+              .map(([year, months]) => (
+                <details key={year} open>
+                  <summary style={{ fontWeight: "bold", margin: "8px 0" }}>
+                    📅 Year {year}
+                  </summary>
+
+                  {Object.entries(months)
+                    .sort(([a], [b]) => Number(a) - Number(b)) // الأشهر تصاعدي
+                    .map(([month, reportsInMonth]) => (
+                      <div
+                        key={month}
+                        style={{
+                          background: "#ecf0f1",
+                          borderRadius: 8,
+                          padding: "6px 8px",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            marginBottom: 6,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span>📂 Month {month}</span>
+                          <span style={{ fontSize: 12, color: "#555" }}>
+                            {reportsInMonth.length} item(s)
+                          </span>
+                        </div>
+
+                        {/* داخل الشهر: الأقدم أولًا */}
+                        {reportsInMonth.map((r) => {
+                          const isActive = getId(selectedReport) === getId(r);
+                          const dt = firstEntryDate(r);
+                          return (
+                            <div
+                              key={getId(r) || dt || Math.random()}
+                              onClick={() => setSelectedReport(r)}
+                              style={{
+                                padding: "6px 10px",
+                                marginBottom: 4,
+                                borderRadius: 6,
+                                cursor: "pointer",
+                                background: isActive ? "#16a085" : "#ffffff",
+                                color: isActive ? "#fff" : "#333",
+                                border: "1px solid #e5e7eb",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                fontWeight: 600,
+                              }}
+                              title={`Open report (${formatDate(dt)})`}
+                            >
+                              <span>📝 {formatDate(dt)}</span>
+                              {getId(r) ? (
+                                <span style={{ fontSize: 12, opacity: 0.8 }}>
+                                  ID: {String(getId(r)).slice(0, 6)}…
+                                </span>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                </details>
+              ))}
           </div>
         )}
       </div>
@@ -264,6 +392,7 @@ export default function FTR2OilCalibrationView() {
               >
                 ⬇ Export PDF
               </button>
+
               <button
                 onClick={() => handleDelete(selectedReport)}
                 style={{
@@ -292,15 +421,23 @@ export default function FTR2OilCalibrationView() {
                 </tr>
               </thead>
               <tbody>
-                {selectedReport.payload?.entries?.map((entry, i) => (
-                  <tr key={i}>
-                    <td style={tdStyle}>{entry.date || "—"}</td>
-                    <td style={tdStyle}>{entry.result || "—"}</td>
-                    <td style={tdStyle}>{entry.action || "—"}</td>
-                    <td style={tdStyle}>{entry.checkedBy || "—"}</td>
-                    <td style={tdStyle}>{entry.verifiedBy || "—"}</td>
+                {sortedEntries.length ? (
+                  sortedEntries.map((entry, i) => (
+                    <tr key={i}>
+                      <td style={tdStyle}>{formatDate(entry?.date)}</td>
+                      <td style={tdStyle}>{entry?.result || "—"}</td>
+                      <td style={tdStyle}>{entry?.action || "—"}</td>
+                      <td style={tdStyle}>{entry?.checkedBy || "—"}</td>
+                      <td style={tdStyle}>{entry?.verifiedBy || "—"}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td style={tdStyle} colSpan={5}>
+                      — No entries —
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -310,6 +447,7 @@ export default function FTR2OilCalibrationView() {
   );
 }
 
+/* ===== Styles ===== */
 const cellStyle = {
   border: "1px solid #333",
   padding: "6px 10px",

@@ -12,7 +12,9 @@ export default function FTR2DailyCleanlinessView() {
   const [loading, setLoading] = useState(false);
   const reportRef = useRef();
 
-  // Fetch reports
+  const getId = (r) => r?.id || r?._id;
+
+  // Fetch reports (أقدم → أحدث)
   async function fetchReports() {
     setLoading(true);
     try {
@@ -22,7 +24,10 @@ export default function FTR2DailyCleanlinessView() {
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a, b) => new Date(a.payload?.reportDate) - new Date(b.payload?.reportDate));
+      arr.sort(
+        (a, b) =>
+          new Date(a.payload?.reportDate || 0) - new Date(b.payload?.reportDate || 0)
+      );
       setReports(arr);
       setSelectedReport(arr[0] || null);
     } catch (err) {
@@ -73,7 +78,7 @@ export default function FTR2DailyCleanlinessView() {
   const handleDelete = async (report) => {
     if (!window.confirm("⚠️ Delete this report?")) return;
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${report.id}`, {
+      const res = await fetch(`${API_BASE}/api/reports/${getId(report)}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete");
@@ -94,73 +99,117 @@ export default function FTR2DailyCleanlinessView() {
     const day = String(date.getDate()).padStart(2, "0");
     if (!acc[year]) acc[year] = {};
     if (!acc[year][month]) acc[year][month] = [];
-    acc[year][month].push({ ...r, day });
+    acc[year][month].push({ ...r, day, _dt: date.getTime() });
     return acc;
   }, {});
 
   return (
     <div style={{ display: "flex", gap: "1rem" }}>
       {/* Sidebar */}
-      <div style={{
-        minWidth: "260px", background: "#f9f9f9", padding: "1rem", borderRadius: "10px",
-        boxShadow: "0 3px 10px rgba(0,0,0,0.1)", height: "fit-content"
-      }}>
-        <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>🗓️ Saved Reports</h4>
+      <div
+        style={{
+          minWidth: "260px",
+          background: "#f9f9f9",
+          padding: "1rem",
+          borderRadius: "10px",
+          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
+          height: "fit-content",
+        }}
+      >
+        <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
+          🗓️ Saved Reports
+        </h4>
         {loading ? (
           <p>⏳ Loading...</p>
         ) : Object.keys(groupedReports).length === 0 ? (
           <p>❌ No reports</p>
         ) : (
           <div>
-            {Object.entries(groupedReports).map(([year, months]) => (
-              <details key={year} open>
-                <summary style={{ fontWeight: "bold" }}>📅 Year {year}</summary>
-                {Object.entries(months).map(([month, days]) => (
-                  <details key={month} style={{ marginLeft: "1rem" }}>
-                    <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
-                    <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                      {days.map((r, i) => (
-                        <li key={i} onClick={() => setSelectedReport(r)}
-                          style={{
-                            padding: "6px 10px", marginBottom: "4px", borderRadius: "6px",
-                            cursor: "pointer", background: selectedReport === r ? "#6d28d9" : "#ecf0f1",
-                            color: selectedReport === r ? "#fff" : "#333", fontWeight: 600,
-                            textAlign: "center"
-                          }}>
-                          {`${r.day}/${month}/${year}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                ))}
-              </details>
-            ))}
+            {Object.entries(groupedReports)
+              .sort(([a], [b]) => Number(a) - Number(b)) /* سنوات تصاعدي */
+              .map(([year, months]) => (
+                <details key={year} open>
+                  <summary style={{ fontWeight: "bold" }}>📅 Year {year}</summary>
+                  {Object.entries(months)
+                    .sort(([a], [b]) => Number(a) - Number(b)) /* أشهر تصاعدي */
+                    .map(([month, days]) => {
+                      const daysSorted = [...days].sort((x, y) => x._dt - y._dt); // أيام تصاعدي
+                      return (
+                        <details key={month} style={{ marginLeft: "1rem" }} open>
+                          <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
+                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
+                            {daysSorted.map((r, i) => {
+                              const isActive =
+                                selectedReport && getId(selectedReport) === getId(r);
+                              return (
+                                <li
+                                  key={i}
+                                  onClick={() => setSelectedReport(r)}
+                                  style={{
+                                    padding: "6px 10px",
+                                    marginBottom: "4px",
+                                    borderRadius: "6px",
+                                    cursor: "pointer",
+                                    background: isActive ? "#6d28d9" : "#ecf0f1",
+                                    color: isActive ? "#fff" : "#333",
+                                    fontWeight: 600,
+                                    textAlign: "center",
+                                    borderLeft: isActive ? "4px solid #4c1d95" : "4px solid transparent",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: 8,
+                                  }}
+                                  title={isActive ? "Currently open" : "Open report"}
+                                >
+                                  <span>{`${r.day}/${month}/${year}`}</span>
+                                  {isActive ? <span>✔️</span> : <span style={{ opacity: 0.5 }}>•</span>}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </details>
+                      );
+                    })}
+                </details>
+              ))}
           </div>
         )}
       </div>
 
       {/* Report display */}
-      <div style={{
-        flex: 1, background: "#fff", padding: "1.5rem", borderRadius: "14px",
-        boxShadow: "0 4px 18px #d2b4de44"
-      }}>
+      <div
+        style={{
+          flex: 1,
+          background: "#fff",
+          padding: "1.5rem",
+          borderRadius: "14px",
+          boxShadow: "0 4px 18px #d2b4de44",
+        }}
+      >
         {!selectedReport ? (
           <p>❌ No report selected.</p>
         ) : (
           <div ref={reportRef} style={{ paddingBottom: "100px" }}>
             {/* Header with actions */}
-            <div style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "1rem"
-            }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "1rem",
+              }}
+            >
               <h3 style={{ color: "#2980b9" }}>
                 🧹 Report: {selectedReport.payload?.reportDate}
               </h3>
               <div className="action-buttons" style={{ display: "flex", gap: "0.6rem" }}>
-                <button onClick={handleExportPDF} style={btnExport}>⬇ Export PDF</button>
-                <button onClick={() => handleDelete(selectedReport)} style={btnDelete}>🗑 Delete</button>
+                <button onClick={handleExportPDF} style={btnExport}>
+                  ⬇ Export PDF
+                </button>
+                <button onClick={() => handleDelete(selectedReport)} style={btnDelete}>
+                  🗑 Delete
+                </button>
               </div>
             </div>
 
@@ -173,7 +222,15 @@ export default function FTR2DailyCleanlinessView() {
             </div>
 
             {/* الترويسة */}
-            <table style={{ width: "100%", border: "1px solid #ccc", marginBottom: "1rem", fontSize: "0.9rem", borderCollapse: "collapse" }}>
+            <table
+              style={{
+                width: "100%",
+                border: "1px solid #ccc",
+                marginBottom: "1rem",
+                fontSize: "0.9rem",
+                borderCollapse: "collapse",
+              }}
+            >
               <tbody>
                 <tr>
                   <td style={tdStyle}><b>Document Title:</b> Cleaning Checklist</td>
@@ -194,9 +251,7 @@ export default function FTR2DailyCleanlinessView() {
               </tbody>
             </table>
 
-            <h3 style={{
-              textAlign: "center", background: "#e5e7eb", padding: "6px", marginBottom: "1rem"
-            }}>
+            <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: "6px", marginBottom: "1rem" }}>
               AL MAWASHI BRAAI MAMZAR <br />
               CLEANING CHECKLIST – FTR2
             </h3>
@@ -232,13 +287,15 @@ export default function FTR2DailyCleanlinessView() {
             </table>
 
             {/* Checked/Verified */}
-            <div style={{
-              marginTop: "1.5rem",
-              display: "flex",
-              justifyContent: "space-between",
-              fontWeight: 600,
-              padding: "0 1rem"
-            }}>
+            <div
+              style={{
+                marginTop: "1.5rem",
+                display: "flex",
+                justifyContent: "space-between",
+                fontWeight: 600,
+                padding: "0 1rem",
+              }}
+            >
               <span>Checked By: {selectedReport.payload?.checkedBy || "—"}</span>
               <span>Verified By: {selectedReport.payload?.verifiedBy || "—"}</span>
             </div>
@@ -249,7 +306,12 @@ export default function FTR2DailyCleanlinessView() {
   );
 }
 
-const thStyle = { padding: "8px", border: "1px solid #ccc", textAlign: "center", fontSize: "0.9rem" };
+const thStyle = {
+  padding: "8px",
+  border: "1px solid #ccc",
+  textAlign: "center",
+  fontSize: "0.9rem",
+};
 const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
 
 const btnExport = {
