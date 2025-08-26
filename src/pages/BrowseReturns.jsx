@@ -788,7 +788,27 @@ export default function BrowseReturns() {
     border: "1px solid #b6c8e3",
     background: "#e6f0ff",
     color: "#0f172a",
+    userSelect: "none",
   };
+  const thBtn = (active) => ({
+    display: "inline-flex",
+    gap: 6,
+    alignItems: "center",
+    cursor: "pointer",
+    padding: "4px 6px",
+    borderRadius: 8,
+    border: active ? "1px solid #93c5fd" : "1px solid transparent",
+    background: active ? "#eef6ff" : "transparent",
+  });
+  const arrow = (on, up) => ({
+    fontSize: 11,
+    fontWeight: 900,
+    color: on ? "#2563eb" : "#64748b",
+    marginLeft: 2,
+    position: "relative",
+    top: up ? -1 : 1,
+  });
+
   const td = {
     padding: "10px 8px",
     textAlign: "center",
@@ -848,6 +868,72 @@ export default function BrowseReturns() {
 
   const changeMap = changeMapByDate.get(selectedReport?.reportDate || "") || new Map();
 
+  /* ==================== SORTING ==================== */
+  const [sort, setSort] = useState({ key: null, dir: null }); // dir: 'asc' | 'desc' | null
+
+  function toggleSort(key) {
+    setSort((prev) => {
+      if (prev.key !== key) return { key, dir: "asc" };    // أول كبسة: تصاعدي
+      if (prev.dir === "asc") return { key, dir: "desc" }; // ثاني كبسة: تنازلي
+      return { key: null, dir: null };                     // ثالث كبسة: إلغاء الفرز
+    });
+  }
+
+  function getCellValue(row, key) {
+    switch (key) {
+      case "productName": return row.productName || "";
+      case "origin":      return row.origin || "";
+      case "pos":         return row.butchery === "فرع آخر..." ? (row.customButchery || "") : (row.butchery || "");
+      case "quantity":    return Number(row.quantity || 0);
+      case "qtyType":     return row.qtyType === "أخرى" ? (row.customQtyType || "") : (row.qtyType || "");
+      case "expiry":      return row.expiry || "";
+      case "remarks":     return row.remarks || "";
+      case "action":      return actionText(row) || "";
+      default:            return "";
+    }
+  }
+
+  const sortedRows = useMemo(() => {
+    if (!selectedReport) return [];
+    const rows = (selectedReport.items || []).map((r, i) => ({ ...r, __i: i })); // __i tie-break
+
+    if (!sort.key || !sort.dir) return rows;
+
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+    rows.sort((a, b) => {
+      const va = getCellValue(a, sort.key);
+      const vb = getCellValue(b, sort.key);
+
+      let cmp;
+      if (sort.key === "quantity") {
+        cmp = (va ?? 0) - (vb ?? 0);
+      } else {
+        cmp = collator.compare(String(va ?? ""), String(vb ?? ""));
+      }
+
+      if (cmp === 0) cmp = a.__i - b.__i; // استقرار
+      return sort.dir === "desc" ? -cmp : cmp;
+    });
+
+    return rows;
+  }, [selectedReport, sort]);
+
+  const SortHeader = ({ sortKey, label }) => {
+    const active = sort.key === sortKey;
+    return (
+      <span
+        style={thBtn(active)}
+        onClick={() => toggleSort(sortKey)}
+        title="Click to sort (Asc → Desc → Off)"
+      >
+        <span>{label}</span>
+        <span style={arrow(active && sort.dir === "asc", true)}>▲</span>
+        <span style={arrow(active && sort.dir === "desc", false)}>▼</span>
+      </span>
+    );
+  };
+
   return (
     <>
       {/* Gradient & waves background */}
@@ -891,7 +977,6 @@ export default function BrowseReturns() {
             alignItems: "stretch",
           }}
         >
-          {/* Total items */}
           <DonutCard
             percent={100}
             centerText="ALL"
@@ -901,7 +986,6 @@ export default function BrowseReturns() {
             color="#059669"
           />
 
-          {/* Dedicated shares (avoid duplicate in top actions) */}
           <DonutCard
             percent={kpi.condemnationShare.percent}
             label="Condemnation"
@@ -924,7 +1008,6 @@ export default function BrowseReturns() {
             color="#2563eb"
           />
 
-          {/* Condemnation (kg) */}
           <DonutCard
             percent={100}
             centerText={String(kpi.condemnationShare.kg)}
@@ -934,7 +1017,6 @@ export default function BrowseReturns() {
             extra={<div style={{ fontSize: 12, opacity: .8 }}>{kpi.condemnationShare.count} items</div>}
           />
 
-          {/* Total reports / Total quantity (kg) */}
           <DonutCard
             percent={100}
             centerText={String(kpi.totalReports)}
@@ -950,7 +1032,6 @@ export default function BrowseReturns() {
             color="#1d4ed8"
           />
 
-          {/* NEW: Send to market (kg) */}
           <DonutCard
             percent={100}
             centerText={String(kpi.marketKg)}
@@ -959,7 +1040,6 @@ export default function BrowseReturns() {
             color="#0d9488"
           />
 
-          {/* Total quantity (pcs) */}
           <DonutCard
             percent={100}
             centerText={String(Math.round(kpi.totalQtyPcs * 1000) / 1000)}
@@ -968,7 +1048,6 @@ export default function BrowseReturns() {
             color="#2563eb"
           />
 
-          {/* Top POS by item count */}
           <DonutCard
             percent={Math.round((kpi.topPosByItems.value * 100) / (kpi.totalItems || 1))}
             label={kpi.topPosByItems.key || "—"}
@@ -977,7 +1056,6 @@ export default function BrowseReturns() {
             color="#b45309"
           />
 
-          {/* Top POS by total quantity (kg) */}
           <DonutCard
             percent={kpi.topPosByQtyKg.percent}
             label={kpi.topPosByQtyKg.key || "—"}
@@ -986,7 +1064,6 @@ export default function BrowseReturns() {
             color="#0e7490"
           />
 
-          {/* Top POS by total quantity (pcs) */}
           <DonutCard
             percent={kpi.topPosByQtyPcs.percent}
             label={kpi.topPosByQtyPcs.key || "—"}
@@ -995,7 +1072,6 @@ export default function BrowseReturns() {
             color="#0284c7"
           />
 
-          {/* Top 5 Condemnation list */}
           <div style={kpiBox}>
             <div style={{ ...kpiTitle, textAlign: "center", fontWeight: 900 }}>
               Top 5 Condemnation
@@ -1028,7 +1104,6 @@ export default function BrowseReturns() {
             )}
           </div>
 
-          {/* Top actions (remaining) */}
           {kpi.topActions.map((a, idx) => (
             <DonutCard
               key={a.name + idx}
@@ -1215,26 +1290,26 @@ export default function BrowseReturns() {
                 <table style={table}>
                   <thead>
                     <tr>
-                      <th style={th}>SL.NO</th>
-                      <th style={th}>PRODUCT NAME</th>
-                      <th style={th}>ORIGIN</th>
-                      <th style={th}>POS</th>
-                      <th style={th}>QUANTITY</th>
-                      <th style={th}>QTY TYPE</th>
-                      <th style={th}>EXPIRY DATE</th>
-                      <th style={th}>REMARKS</th>
-                      <th style={th}>ACTION</th>
+                      <th style={th}><span style={{ opacity: .8 }}>SL.NO</span></th>
+                      <th style={th}><SortHeader sortKey="productName" label="PRODUCT NAME" /></th>
+                      <th style={th}><SortHeader sortKey="origin"      label="ORIGIN" /></th>
+                      <th style={th}><SortHeader sortKey="pos"         label="POS" /></th>
+                      <th style={th}><SortHeader sortKey="quantity"    label="QUANTITY" /></th>
+                      <th style={th}><SortHeader sortKey="qtyType"     label="QTY TYPE" /></th>
+                      <th style={th}><SortHeader sortKey="expiry"      label="EXPIRY DATE" /></th>
+                      <th style={th}><SortHeader sortKey="remarks"     label="REMARKS" /></th>
+                      <th style={th}><SortHeader sortKey="action"      label="ACTION" /></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedReport.items.map((row, i) => {
+                    {sortedRows.map((row, i) => {
                       const curr = actionText(row);
                       const k = itemKey(row);
                       const ch = changeMap.get(k);
                       const showChange = ch && ch.to === curr;
 
                       return (
-                        <tr key={i}>
+                        <tr key={row.__i ?? i}>
                           <td style={td}>{i + 1}</td>
                           <td style={td}>{row.productName}</td>
                           <td style={td}>{row.origin}</td>
