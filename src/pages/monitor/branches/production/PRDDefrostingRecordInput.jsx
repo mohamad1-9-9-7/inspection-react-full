@@ -1,8 +1,8 @@
-// src/pages/monitor/branches/production/PRDDefrostingRecordInput.jsx
 import React, { useState } from "react";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 const today = () => new Date().toISOString().slice(0,10);
+const TYPE = "prod_defrosting_record";
 
 function Row({ idx, row, onChange, onRemove, canRemove }) {
   const set = (k,v)=> onChange(idx, { ...row, [k]: v });
@@ -28,7 +28,7 @@ function Row({ idx, row, onChange, onRemove, canRemove }) {
 
 export default function PRDDefrostingRecordInput() {
   const [issueDate, setIssueDate] = useState(today());
-  const [month, setMonth] = useState(""); // YYYY-MM
+  const [recordDate, setRecordDate] = useState(today()); // YYYY-MM-DD
   const [docNo, setDocNo] = useState("TELT /PROD/ DR");
   const [revisionNo, setRevisionNo] = useState("0");
   const [area, setArea] = useState("PRODUCTION");
@@ -58,63 +58,92 @@ export default function PRDDefrostingRecordInput() {
   }]);
   const rmRow = (i)=> setEntries(entries.filter((_,ix)=>ix!==i));
 
+  const rowHasData = (r) =>
+    ["rawMaterial","quantity","brand","rmProdDate","rmExpDate","defStartDate","defStartTime","startTemp","defEndDate","defEndTime","endTemp","defrostTemp","remarks"]
+      .some((k)=> String(r[k] ?? "").trim() !== "");
+
   async function save() {
+    const dateForServer = (recordDate && recordDate.trim()) ? recordDate : issueDate; // YYYY-MM-DD
+    const cleanEntries = entries.filter(rowHasData);
+
+    if (cleanEntries.length === 0) {
+      alert("يرجى إدخال صف واحد على الأقل قبل الحفظ.");
+      return;
+    }
+
     try{
       setSaving(true);
-      const payload = {
-        reporter: "anonymous",
-        type: "prod_defrosting_record",
-        payload: {
-          header: {
-            documentTitle: "Defrosting Report",
-            documentNo: docNo,
-            revisionNo,
-            issueDate, area, issuedBy, coveringOfficer, approvedBy, month
-          },
-          entries,
-          signatures: { checkedBy, verifiedBy },
-          _clientSavedAt: Date.now(),
-        },
+      const header = {
+        documentTitle: "Defrosting Report",
+        documentNo: docNo,
+        revisionNo,
+        issueDate,
+        area,
+        issuedBy,
+        coveringOfficer,
+        approvedBy,
+        // مهم للحذف/العرض:
+        month: dateForServer,       // للتوافق القديم
+        reportDate: dateForServer,  // ✅ الاسم الذي يطلبه API للحذف
       };
+
+      const baseBody = {
+        header,
+        entries: cleanEntries,
+        signatures: { checkedBy, verifiedBy },
+        _clientSavedAt: Date.now(),
+      };
+
+      const payload = {
+        reporter: "admin",
+        type: TYPE,
+        payload: baseBody,
+      };
+
+      const base = String(API_BASE).replace(/\/$/, "");
       const attempts = [
-        { url: `${API_BASE}/api/reports`, method:"PUT", body: JSON.stringify(payload) },
-        { url: `${API_BASE}/api/reports/prod_defrosting_record?month=${encodeURIComponent(month || issueDate.slice(0,7))}`,
-          method:"PUT", body: JSON.stringify({ header: payload.payload.header, entries, signatures: payload.payload.signatures, _clientSavedAt: payload.payload._clientSavedAt })
-        }
+        // إنشاء/تحديث عام
+        { url: `${base}/api/reports`, method:"POST", body: JSON.stringify(payload) },
+        { url: `${base}/api/reports`, method:"PUT",  body: JSON.stringify(payload) },
+        // مُجمّع بحسب التاريخ (الاسم الجديد reportDate)
+        { url: `${base}/api/reports/${TYPE}?reportDate=${encodeURIComponent(dateForServer)}`, method:"POST", body: JSON.stringify(baseBody) },
+        { url: `${base}/api/reports/${TYPE}?reportDate=${encodeURIComponent(dateForServer)}`, method:"PUT",  body: JSON.stringify(baseBody) },
+        // للتوافق القديم (month)
+        { url: `${base}/api/reports/${TYPE}?month=${encodeURIComponent(dateForServer)}`, method:"POST", body: JSON.stringify(baseBody) },
+        { url: `${base}/api/reports/${TYPE}?month=${encodeURIComponent(dateForServer)}`, method:"PUT",  body: JSON.stringify(baseBody) },
       ];
-      let ok=false, err=null;
+
+      let ok=false, errText="";
       for (const a of attempts){
         try{
           const res = await fetch(a.url, { method:a.method, headers:{ "Content-Type":"application/json" }, body:a.body });
           if(res.ok){ ok=true; break; }
-          err = new Error(`HTTP ${res.status}`);
-        }catch(e){ err=e; }
+          const text = await res.text().catch(()=> "");
+          errText = `HTTP ${res.status} ${text}`;
+          if (text.includes("nothing to update")) continue;
+        }catch(e){
+          errText = e.message || String(e);
+        }
       }
-      if(!ok) throw err || new Error("Save failed");
+      if(!ok) throw new Error(errText || "Save failed");
       alert("Saved ✓ Defrosting Record (PRODUCTION)");
-    }catch(e){ alert("Error saving: " + e.message); }
-    finally{ setSaving(false); }
+    }catch(e){
+      alert("Error saving: " + e.message);
+    } finally{
+      setSaving(false);
+    }
   }
 
   return (
     <div className="wrap">
       <style>{`
         @media print { .no-print{ display:none !important; } body{ background:#fff; } }
-        .wrap{
-          padding:16px; color:#111827;
-          font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-        }
-        .sheet{
-          width: 100%; max-width: 100%; background:#fff; margin:0 auto;
-          border:1px solid #111; border-radius:4px; box-shadow:0 10px 24px rgba(0,0,0,.06);
-        }
+        .wrap{ padding:16px; color:#111827; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+        .sheet{ width:100%; background:#fff; margin:0 auto; border:1px solid #111; border-radius:4px; box-shadow:0 10px 24px rgba(0,0,0,.06); }
 
-        /* === الرويسة (نفس توزيع الصورة) === */
         .hdrTable, .brandTable, .noteTable{ width:100%; border-collapse:collapse; table-layout:fixed; }
         .hdrTable td, .brandTable td, .noteTable td{ border:1px solid #111; padding:6px 8px; font-size:12px; vertical-align:middle; }
-        .hdrTable{ margin:0; }
         .logoCell{ width:220px; text-align:center; }
-        /* كتابة بدل الشعار */
         .logoBlock{ display:flex; flex-direction:column; align-items:center; justify-content:center; height:70px; }
         .logoAR{ font-family: "Cairo", Tahoma, Arial, sans-serif; font-weight:900; font-size:26px; color:#c81e1e; line-height:1; }
         .logoEN{ font-weight:900; font-size:13px; letter-spacing:.6px; color:#111; margin-top:4px; }
@@ -123,28 +152,13 @@ export default function PRDDefrostingRecordInput() {
         .brandCellLeft{ width:220px; font-size:18px; font-weight:900; text-decoration:underline; }
         .brandCellRight{ text-align:center; font-weight:900; font-size:20px; }
 
-        /* Month input (MM/YYYY) */
-        .monthInput{
-          border:none; outline:none; font-weight:900; margin-left:6px;
-          width:140px;
-        }
-
-        /* الجدول الرئيسي */
         .tableWrap{ width:100%; overflow-x:auto; border-top:1px solid #111; }
         .table{ min-width: 1600px; border-left:1px solid #111; }
-        .t-head, .t-row{
-          display:grid;
-          grid-template-columns:
-            1.4fr .9fr 1.1fr 1.1fr 1.1fr 1.2fr 1fr .9fr 1.2fr 1fr .9fr 1.2fr 1.3fr 40px;
-          align-items:stretch;
-        }
+        .t-head, .t-row{ display:grid; grid-template-columns: 1.4fr .9fr 1.1fr 1.1fr 1.1fr 1.2fr 1fr .9fr 1.2fr 1fr .9fr 1.2fr 1.3fr 40px; align-items:stretch; }
         .t-head{ background:#e5e7eb; border-bottom:1px solid #111; font-size:12px; font-weight:900; text-align:center; }
         .t-head > div{ border-right:1px solid #111; padding:8px 6px; }
-        .t-head > div:last-child{ border-right:none; }
         .t-row{ border-bottom:1px solid #111; }
-        .t-row:last-child{ border-bottom:none; }
         .cell{ border-right:1px solid #111; padding:2px; display:flex; align-items:center; justify-content:center; }
-        .t-row .cell:last-of-type{ border-right:none; }
         .in{ width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:2px; font-weight:700; font-size:12px; background:#fff; }
 
         .sigRow{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; padding:10px; border-top:1px solid #111; }
@@ -158,7 +172,6 @@ export default function PRDDefrostingRecordInput() {
         .btn.danger{ background:#fee2e2; color:#991b1b; border-color:#fecaca; }
       `}</style>
 
-      {/* أزرار (لا تُطبع) */}
       <div className="topActions no-print">
         <button className="btn" onClick={addRow}>+ Add Row</button>
         <div style={{flex:1}} />
@@ -166,12 +179,10 @@ export default function PRDDefrostingRecordInput() {
       </div>
 
       <div className="sheet">
-        {/* جدول الرأس */}
         <table className="hdrTable">
           <tbody>
             <tr>
               <td className="logoCell" rowSpan={4}>
-                {/* كتابة بدل الشعار */}
                 <div className="logoBlock">
                   <div className="logoAR">المواشي</div>
                   <div className="logoEN">AL MAWASHI</div>
@@ -195,25 +206,18 @@ export default function PRDDefrostingRecordInput() {
           </tbody>
         </table>
 
-        {/* صف Month + اسم الشركة (مع إدخال شهر/سنة) */}
         <table className="brandTable" style={{marginTop:-1}}>
           <tbody>
             <tr>
               <td className="brandCellLeft">
-                <span className="lbl">Month :</span>
-                <input
-                  className="monthInput"
-                  type="month"
-                  value={month}
-                  onChange={(e)=>setMonth(e.target.value)}  // قيمة بصيغة YYYY-MM
-                />
+                <span className="lbl">Date :</span>
+                <input className="monthInput" type="date" value={recordDate} onChange={(e)=>setRecordDate(e.target.value)} />
               </td>
               <td className="brandCellRight">TRANS EMIRATES LIVESTOCK TRADING LLC</td>
             </tr>
           </tbody>
         </table>
 
-        {/* الملاحظة */}
         <table className="noteTable" style={{marginTop:-1}}>
           <tbody>
             <tr>
@@ -224,42 +228,24 @@ export default function PRDDefrostingRecordInput() {
           </tbody>
         </table>
 
-        {/* جدول أفقي واسع — بدون دمج */}
         <div className="tableWrap">
           <div className="table">
             <div className="t-head">
-              <div>RAW MATERIAL</div>
-              <div>QUANTITY</div>
-              <div>BRAND</div>
-              <div>RM PRODN DATE</div>
-              <div>RM EXP DATE</div>
-              <div>DEFROST START DATE</div>
-              <div>START TIME</div>
-              <div>DFRST START TEMP</div>
-              <div>DEFROST END DATE</div>
-              <div>END TIME</div>
-              <div>END TEMP</div>
-              <div>DEFROST TEMP (&gt; 5ºC)</div>
-              <div>REMARKS</div>
-              <div className="no-print"></div>
+              <div>RAW MATERIAL</div><div>QUANTITY</div><div>BRAND</div>
+              <div>RM PRODN DATE</div><div>RM EXP DATE</div>
+              <div>DEFROST START DATE</div><div>START TIME</div><div>DFRST START TEMP</div>
+              <div>DEFROST END DATE</div><div>END TIME</div><div>END TEMP</div>
+              <div>DEFROST TEMP (&gt; 5ºC)</div><div>REMARKS</div><div className="no-print"></div>
             </div>
-
             {entries.map((row, idx)=>(
               <Row key={idx} idx={idx} row={row} onChange={chRow} onRemove={rmRow} canRemove={entries.length>1} />
             ))}
           </div>
         </div>
 
-        {/* التواقيع */}
         <div className="sigRow">
-          <div className="sig">
-            <label>Checked By</label>
-            <input value={checkedBy} onChange={e=>setCheckedBy(e.target.value)} />
-          </div>
-          <div className="sig">
-            <label>Verified By</label>
-            <input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)} />
-          </div>
+          <div className="sig"><label>Checked By</label><input value={checkedBy} onChange={e=>setCheckedBy(e.target.value)} /></div>
+          <div className="sig"><label>Verified By</label><input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)} /></div>
         </div>
       </div>
     </div>

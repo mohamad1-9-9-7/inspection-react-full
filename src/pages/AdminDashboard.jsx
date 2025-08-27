@@ -1,4 +1,4 @@
-// src/pages/AdminDashboard.js
+// src/pages/AdminDashboard.jsx
 
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
@@ -104,7 +104,7 @@ export default function AdminDashboard() {
       console.error(e);
       setOpMsg("Failed to load data from server.");
     } finally {
-      setLoading(false);
+           setLoading(false);
       setTimeout(() => setOpMsg(""), 3500);
     }
   }
@@ -384,6 +384,7 @@ export default function AdminDashboard() {
             onOpenQCSShipmentReport={() => setActiveView("qcsShipment")}
             onOpenFTR1Report={() => setActiveView("ftr1")}
             onOpenFTR2Report={() => setActiveView("ftr2")}
+            onOpenProductionReport={() => navigate("/admin/production")}
             language="en"
           />
         ) : activeView === "qcsShipment" ? (

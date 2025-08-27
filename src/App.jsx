@@ -63,6 +63,11 @@ const PRDDefrostingRecordInput = lazy(() =>
   import("./pages/monitor/branches/production/PRDDefrostingRecordInput")
 );
 
+// 🆕 ✅ عرض تقارير الإنتاج الموحّد (Tabs)
+const PRDReportsView = lazy(() =>
+  import("./pages/monitor/branches/production/PRDReportsView")
+);
+
 /**
  * حماية المسارات الخاصة
  */
@@ -230,6 +235,15 @@ export default function App() {
           element={
             <ProtectedRoute>
               <FTR2ReportView />   {/* ✅ العرض للأدمن */}
+            </ProtectedRoute>
+          }
+        />
+        {/* 🆕 ✅ مسار عرض تقارير الإنتاج الموحّد */}
+        <Route
+          path="/admin/production"
+          element={
+            <ProtectedRoute>
+              <PRDReportsView />
             </ProtectedRoute>
           }
         />

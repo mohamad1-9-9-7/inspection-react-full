@@ -1,111 +1,314 @@
+// src/pages/monitor/branches/production/PersonalHygienePRDInput.jsx
 import React, { useState } from "react";
 
-const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
-const today = () => new Date().toISOString().slice(0,10);
+const API_BASE =
+  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
-const STATUS = ["OK","NG","NA"];
-
-function Row({ idx, row, onChange, onRemove, canRemove }) {
-  const set = (k,v)=> onChange(idx, { ...row, [k]: v });
-  const setCheck = (k,v)=> onChange(idx, { ...row, checks: { ...row.checks, [k]: v } });
-
-  return (
-    <div className="row">
-      <input className="in" placeholder="Employee Name" value={row.employee||""} onChange={e=>set("employee", e.target.value)} />
-      <input className="in" placeholder="ID / Code" value={row.code||""} onChange={e=>set("code", e.target.value)} />
-      <select className="in" value={row.checks.uniform} onChange={e=>setCheck("uniform", e.target.value)}>{STATUS.map(s=><option key={s}>{s}</option>)}</select>
-      <select className="in" value={row.checks.hairnet} onChange={e=>setCheck("hairnet", e.target.value)}>{STATUS.map(s=><option key={s}>{s}</option>)}</select>
-      <select className="in" value={row.checks.gloves} onChange={e=>setCheck("gloves", e.target.value)}>{STATUS.map(s=><option key={s}>{s}</option>)}</select>
-      <select className="in" value={row.checks.handwash} onChange={e=>setCheck("handwash", e.target.value)}>{STATUS.map(s=><option key={s}>{s}</option>)}</select>
-      <select className="in" value={row.checks.nails} onChange={e=>setCheck("nails", e.target.value)}>{STATUS.map(s=><option key={s}>{s}</option>)}</select>
-      <select className="in" value={row.checks.jewelry} onChange={e=>setCheck("jewelry", e.target.value)}>{STATUS.map(s=><option key={s}>{s}</option>)}</select>
-      <button className="btn danger" disabled={!canRemove} onClick={()=>onRemove(idx)}>−</button>
-    </div>
-  );
-}
+/* نفس شكل الأعمدة وطريقة الإدخال مثل FTR2 */
+const columns = [
+  "Nails",
+  "Hair",
+  "Not wearing Jewelry",
+  "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe",
+  "Communicable Disease",
+  "Open wounds/sores & cut",
+];
 
 export default function PersonalHygienePRDInput() {
-  const [reportDate, setReportDate] = useState(today());
-  const [shift, setShift] = useState("Morning");
-  const [supervisor, setSupervisor] = useState("");
-  const [entries, setEntries] = useState([
-    { employee:"", code:"", checks:{ uniform:"OK", hairnet:"OK", gloves:"OK", handwash:"OK", nails:"OK", jewelry:"OK" } }
-  ]);
-  const [saving, setSaving] = useState(false);
-  const addRow = ()=> setEntries([...entries, { employee:"", code:"", checks:{ uniform:"OK", hairnet:"OK", gloves:"OK", handwash:"OK", nails:"OK", jewelry:"OK" } }]);
-  const rmRow = (i)=> setEntries(entries.filter((_,ix)=>ix!==i));
-  const chRow = (i, v)=> setEntries(entries.map((r,ix)=> ix===i ? v : r));
+  const [date, setDate] = useState("");
+  const [checkedBy, setCheckedBy] = useState("");
+  const [verifiedBy, setVerifiedBy] = useState("");
+  const [opMsg, setOpMsg] = useState("");
 
-  async function save() {
+  // 9 صفوف مبدئية مثل FTR2
+  const [entries, setEntries] = useState(
+    Array.from({ length: 9 }, () => ({
+      name: "",
+      Nails: "",
+      Hair: "",
+      "Not wearing Jewelry": "",
+      "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe": "",
+      "Communicable Disease": "",
+      "Open wounds/sores & cut": "",
+      remarks: "",
+    }))
+  );
+
+  const handleChange = (rowIndex, field, value) => {
+    const updated = [...entries];
+    updated[rowIndex][field] = value;
+    setEntries(updated);
+  };
+
+  const handleSave = async () => {
+    if (!date) {
+      alert("⚠️ Please select a date");
+      return;
+    }
+    if (!checkedBy.trim() || !verifiedBy.trim()) {
+      alert("⚠️ Checked By and Verified By are required");
+      return;
+    }
     try {
-      setSaving(true);
+      setOpMsg("⏳ Saving...");
       const payload = {
-        reporter: "anonymous",
-        type: "prod_personal_hygiene",
-        payload: { reportDate, shift, supervisor, entries, _clientSavedAt: Date.now() },
+        branch: "Production",
+        reportDate: date,
+        entries,
+        checkedBy,
+        verifiedBy,
+        savedAt: Date.now(),
       };
-      const attempts = [
-        { url: `${API_BASE}/api/reports`, method: "PUT", body: JSON.stringify(payload) },
-        { url: `${API_BASE}/api/reports/prod_personal_hygiene?reportDate=${encodeURIComponent(reportDate)}`, method: "PUT", body: JSON.stringify({ shift, supervisor, entries, _clientSavedAt: payload.payload._clientSavedAt }) }
-      ];
-      let ok = false, lastErr = null;
-      for (const a of attempts) {
-        try {
-          const res = await fetch(a.url, { method: a.method, headers:{ "Content-Type":"application/json" }, body: a.body });
-          if (res.ok) { ok = true; break; }
-          lastErr = new Error(`HTTP ${res.status}`);
-        } catch(e){ lastErr = e; }
-      }
-      if (!ok) throw lastErr || new Error("Save failed");
-      alert("Saved ✓ Personal Hygiene (PRD)");
-    } catch(e){ alert("Error saving: " + e.message); }
-    finally { setSaving(false); }
-  }
+
+      // حفظ على نوع التقرير الخاص بالانتاج
+      const res = await fetch(`${API_BASE}/api/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reporter: "production",
+          type: "prod_personal_hygiene",
+          payload,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setOpMsg("✅ Saved successfully!");
+    } catch (err) {
+      console.error(err);
+      setOpMsg("❌ Failed to save.");
+    } finally {
+      setTimeout(() => setOpMsg(""), 4000);
+    }
+  };
 
   return (
-    <div className="wrap">
-      <style>{`
-        .wrap{ padding:16px; font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-        .card{ background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:14px; max-width:1200px; margin:0 auto; box-shadow:0 4px 18px rgba(0,0,0,.06); }
-        .h{ font-weight:900; font-size:18px; margin:0 0 8px 0; }
-        .row{ display:grid; grid-template-columns: 1.2fr .7fr repeat(6, .7fr) 44px; gap:8px; margin-top:8px; }
-        .head{ font-size:12px; color:#64748b; font-weight:800; }
-        .in{ padding:9px 10px; border:1px solid #e5e7eb; border-radius:10px; font-weight:700; }
-        .grid2{ display:grid; grid-template-columns: 180px 180px 1fr; gap:8px; margin-bottom:8px; }
-        .btn{ padding:10px 14px; border-radius:10px; border:1px solid #e5e7eb; background:#fff; font-weight:900; cursor:pointer; }
-        .btn.primary{ background:#2563eb; color:#fff; border-color:transparent; }
-        .btn.danger{ background:#fee2e2; color:#991b1b; border-color:#fecaca; }
-        .actions{ display:flex; gap:8px; margin-top:12px; }
-        .muted{ font-size:12px; color:#64748b; }
-      `}</style>
+    <div style={{ padding: "1rem", background: "#fff", borderRadius: 12 }}>
+      {/* Header info */}
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+        <tbody>
+          <tr>
+            <td style={tdHeader}>
+              <strong>Document Title:</strong> Personal Hygiene Check List
+            </td>
+            <td style={tdHeader}>
+              <strong>Document No:</strong> FS-QM /REC/PH
+            </td>
+          </tr>
+          <tr>
+            <td style={tdHeader}>
+              <strong>Issue Date:</strong> 05/02/2020
+            </td>
+            <td style={tdHeader}>
+              <strong>Revision No:</strong> 0
+            </td>
+          </tr>
+          <tr>
+            <td style={tdHeader}>
+              <strong>Area:</strong> Production
+            </td>
+            <td style={tdHeader}>
+              <strong>Issued By:</strong> QA
+            </td>
+          </tr>
+          <tr>
+            <td style={tdHeader}>
+              <strong>Controlling Officer:</strong> Quality Controller
+            </td>
+            <td style={tdHeader}>
+              <strong>Approved By:</strong> ——
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-      <div className="card">
-        <div className="h">Personal Hygiene (PRD) — Input</div>
-        <div className="grid2">
-          <input className="in" type="date" value={reportDate} onChange={e=>setReportDate(e.target.value)} />
-          <select className="in" value={shift} onChange={e=>setShift(e.target.value)}>
-            <option>Morning</option><option>Evening</option><option>Night</option>
-          </select>
-          <input className="in" placeholder="Supervisor" value={supervisor} onChange={e=>setSupervisor(e.target.value)} />
-        </div>
+      {/* Title */}
+      <h3
+        style={{
+          textAlign: "center",
+          background: "#e5e7eb",
+          padding: "6px",
+          marginBottom: "0.5rem",
+        }}
+      >
+        AL MAWASHI — PRODUCTION
+        <br />
+        PERSONAL HYGIENE CHECKLIST (PRD)
+      </h3>
 
-        <div className="row head" style={{marginTop:0}}>
-          <div>Employee</div><div>ID</div>
-          <div>Uniform</div><div>Hairnet/Beard</div><div>Gloves</div>
-          <div>Handwash</div><div>Nails</div><div>No Jewelry</div><div></div>
-        </div>
-
-        {entries.map((row, idx)=>(
-          <Row key={idx} idx={idx} row={row} onChange={chRow} onRemove={rmRow} canRemove={entries.length>1}/>
-        ))}
-
-        <div className="actions">
-          <button className="btn" onClick={addRow}>+ Add Employee</button>
-          <div style={{flex:1}} />
-          <button className="btn primary" disabled={saving} onClick={save}>{saving ? "Saving..." : "Save"}</button>
-        </div>
-        <div className="muted">Type: prod_personal_hygiene</div>
+      {/* Date */}
+      <div style={{ marginBottom: "0.5rem" }}>
+        <strong>Date:</strong>{" "}
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          style={{
+            padding: "4px 8px",
+            borderRadius: "6px",
+            border: "1px solid #ccc",
+          }}
+        />
       </div>
+
+      {/* Table */}
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          tableLayout: "fixed",
+        }}
+      >
+        <thead>
+          <tr style={{ background: "#2980b9", color: "#fff" }}>
+            <th style={{ ...thStyle, width: "50px" }}>S.No</th>
+            <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
+            {columns.map((col, i) => (
+              <th key={i} style={{ ...thStyle, width: "120px" }}>
+                {col}
+              </th>
+            ))}
+            <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry, i) => (
+            <tr key={i}>
+              <td style={tdStyle}>{i + 1}</td>
+              <td style={tdStyle}>
+                <input
+                  type="text"
+                  value={entry.name}
+                  onChange={(e) => handleChange(i, "name", e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    width: "100%",
+                    maxWidth: "140px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                />
+              </td>
+              {columns.map((col, cIndex) => (
+                <td key={cIndex} style={tdStyle}>
+                  <select
+                    value={entry[col]}
+                    onChange={(e) => handleChange(i, col, e.target.value)}
+                    style={{ ...inputStyle, width: "100%" }}
+                  >
+                    <option value="">--</option>
+                    <option value="C">C</option>
+                    <option value="NC">NC</option>
+                  </select>
+                </td>
+              ))}
+              <td style={tdStyle}>
+                <input
+                  type="text"
+                  value={entry.remarks}
+                  onChange={(e) => handleChange(i, "remarks", e.target.value)}
+                  style={{ ...inputStyle, width: "100%" }}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Remarks footer */}
+      <div style={{ marginTop: "1rem", fontWeight: "600" }}>
+        REMARKS / CORRECTIVE ACTIONS:
+      </div>
+
+      {/* C / NC note */}
+      <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
+        *(C – Conform &nbsp;&nbsp;&nbsp; N/C – Non Conform)
+      </div>
+
+      {/* Checked / Verified */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginTop: "1rem",
+          fontWeight: 600,
+        }}
+      >
+        <div>
+          Checked By:{" "}
+          <input
+            type="text"
+            required
+            value={checkedBy}
+            onChange={(e) => setCheckedBy(e.target.value)}
+            style={footerInput}
+          />
+        </div>
+        <div>
+          Verified By:{" "}
+          <input
+            type="text"
+            required
+            value={verifiedBy}
+            onChange={(e) => setVerifiedBy(e.target.value)}
+            style={footerInput}
+          />
+        </div>
+      </div>
+
+      {/* Save */}
+      <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
+        <button
+          onClick={handleSave}
+          style={{
+            padding: "10px 18px",
+            background: "linear-gradient(180deg,#10b981,#059669)",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          💾 Save Report
+        </button>
+      </div>
+
+      {opMsg && (
+        <div style={{ marginTop: "1rem", fontWeight: "600" }}>{opMsg}</div>
+      )}
     </div>
   );
 }
+
+const thStyle = {
+  padding: "6px",
+  border: "1px solid #ccc",
+  textAlign: "center",
+  fontSize: "0.85rem",
+};
+
+const tdStyle = {
+  padding: "6px",
+  border: "1px solid #ccc",
+  textAlign: "center",
+};
+
+const tdHeader = {
+  border: "1px solid #ccc",
+  padding: "4px 6px",
+  fontSize: "0.85rem",
+};
+
+const inputStyle = {
+  padding: "4px 6px",
+  borderRadius: "4px",
+  border: "1px solid #aaa",
+  width: "100%",
+};
+
+const footerInput = {
+  border: "1px solid #aaa",
+  borderRadius: "6px",
+  padding: "4px 6px",
+  minWidth: "160px",
+};

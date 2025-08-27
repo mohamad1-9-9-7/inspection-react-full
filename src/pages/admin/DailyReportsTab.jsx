@@ -5,10 +5,11 @@ const branches = [
   "QCS", "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16",
   "POS 17", "POS 19", "POS 21", "POS 24", "POS 25", "POS 37", "POS 38",
   "POS 42", "POS 44", "POS 45",
-  "FTR 1", "FTR 2"
+  "FTR 1", "FTR 2",
+  "PRODUCTION"
 ];
 
-/* ==== Icons (store / truck / shield) ==== */
+/* ==== Icons ==== */
 const Svg = (p) => ({
   width: 22, height: 22, viewBox: "0 0 24 24",
   fill: "none", stroke: "currentColor", strokeWidth: 1.8,
@@ -35,6 +36,14 @@ const IconShield = () => (
     <path d="M9.5 12.5l2 2 3.5-3.5" />
   </svg>
 );
+/* أيقونة المصنع لفرع PRODUCTION */
+const IconFactory = () => (
+  <svg {...Svg()}>
+    <path d="M3 21V9l6 3V9l6 3V9l6 3v9H3z" />
+    <path d="M6 21v-3h3v3M12 21v-3h3v3M18 21v-3h3v3" />
+    <path d="M9 6V3h2v3M15 6V3h2v3" />
+  </svg>
+);
 
 export default function DailyReportsTab({
   dailyReports,
@@ -44,6 +53,7 @@ export default function DailyReportsTab({
   onOpenQCSShipmentReport,
   onOpenFTR1Report,
   onOpenFTR2Report,
+  onOpenProductionReport,   // 👈 ربط تبويب PRODUCTION
 }) {
   const [showPwd, setShowPwd] = useState(false);
   const [pendingBranch, setPendingBranch] = useState(null);
@@ -55,6 +65,7 @@ export default function DailyReportsTab({
     else if (branch === "POS 19") onOpenPOS19Report?.();
     else if (branch === "FTR 1") onOpenFTR1Report?.();
     else if (branch === "FTR 2") onOpenFTR2Report?.();
+    else if (branch === "PRODUCTION") onOpenProductionReport?.(); // 👈 هنا تم الربط
     else alert(`📌 لا يوجد تقرير متاح حاليًا لهذا الفرع: ${branch}`);
   };
 
@@ -68,7 +79,15 @@ export default function DailyReportsTab({
   const submitPwd = (e) => {
     e?.preventDefault();
     if (!pendingBranch) return;
-    const expected = `${pendingBranch}123`; // كلمة السر = اسم الفرع + 123
+
+    // ✅ تعديل كلمة السر لفرع PRODUCTION
+    let expected;
+    if (pendingBranch === "PRODUCTION") {
+      expected = "PRD123";
+    } else {
+      expected = `${pendingBranch}123`;
+    }
+
     if (pwd === expected) {
       setShowPwd(false);
       openBranchAfterAuth(pendingBranch);
@@ -134,6 +153,7 @@ export default function DailyReportsTab({
         .tile.pos { background:linear-gradient(135deg, #ecfeff 0%, #ffffff 60%); color:#0369a1; border-color:#bae6fd; }
         .tile.ftr { background:linear-gradient(135deg, #fff7ed 0%, #ffffff 60%); color:#b45309; border-color:#fed7aa; }
         .tile.qcs { background:linear-gradient(135deg, #f0fdfa 0%, #ffffff 60%); color:#065f46; border-color:#a7f3d0; }
+        .tile.prod{ background:linear-gradient(135deg, #fef9c3 0%, #ffffff 60%); color:#92400e; border-color:#fde68a; }
 
         .title{ font-weight:900; color:var(--text); letter-spacing:.2px; }
         .badge{ font-size:12px; font-weight:800; color:#475569; background:#f1f5f9; border:1px solid #e2e8f0; padding:3px 8px; border-radius:999px; display:inline-flex; gap:6px; align-items:center; }
@@ -153,7 +173,7 @@ export default function DailyReportsTab({
         .actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
         .btn{ padding:10px 14px; border-radius:10px; border:1px solid transparent; font-weight:900; cursor:pointer; }
         .btn.primary{ background:var(--ring); color:#fff; }
-        .btn.ghost{ background:#fff; color:#111827; border-color:var(--border); }
+        .btn.ghost{ background:#fff; color:#111827; border-color:#var(--border); }
       `}</style>
 
       <div className="shell">
@@ -175,7 +195,8 @@ export default function DailyReportsTab({
             {branches.map((branch) => {
               const isQCS = branch === "QCS";
               const isFTR = branch.startsWith("FTR");
-              const type = isQCS ? "QCS" : isFTR ? "FTR" : "POS";
+              const isProduction = branch === "PRODUCTION";
+              const type = isQCS ? "QCS" : isFTR ? "FTR" : isProduction ? "PROD" : "POS";
               return (
                 <div
                   key={branch}
@@ -186,16 +207,20 @@ export default function DailyReportsTab({
                   onClick={() => handleCardClick(branch)}
                   onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleCardClick(branch)}
                 >
-                  <div className={`tile ${type === "POS" ? "pos" : type === "FTR" ? "ftr" : "qcs"}`}>
+                  <div className={`tile ${
+                    type === "POS" ? "pos" : type === "FTR" ? "ftr" : type === "QCS" ? "qcs" : "prod"
+                  }`}>
                     {type === "POS" && <IconStore />}
                     {type === "FTR" && <IconTruck />}
                     {type === "QCS" && <IconShield />}
+                    {type === "PROD" && <IconFactory />}
                   </div>
                   <div>
                     <div className="title">{branch}</div>
-                    {/* QCS بدون وصف، والباقي مع البادج */}
                     {!isQCS && (
-                      <div className="badge">{type === "FTR" ? "FTR Branch" : "Point of Sale"}</div>
+                      <div className="badge">
+                        {type === "FTR" ? "FTR Branch" : type === "PROD" ? "Production" : "Point of Sale"}
+                      </div>
                     )}
                   </div>
                   <svg className="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -206,7 +231,7 @@ export default function DailyReportsTab({
             })}
           </div>
 
-          {/* زر تقرير استلام الشحنات لفرع QCS فقط (ابقيناه كما هو) */}
+          {/* زر تقرير استلام الشحنات لفرع QCS فقط */}
           <div style={{ marginTop: "1.2rem", textAlign: "center" }}>
             <button
               onClick={onOpenQCSShipmentReport}
