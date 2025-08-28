@@ -4,7 +4,6 @@ import React, { useState } from "react";
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
-/* نفس شكل الأعمدة وطريقة الإدخال مثل FTR2 */
 const columns = [
   "Nails",
   "Hair",
@@ -14,31 +13,56 @@ const columns = [
   "Open wounds/sores & cut",
 ];
 
+// قائمة الأسماء الافتراضية (تظهر تلقائيًا)
+const DEFAULT_NAMES = [
+  "El Arbi Azar",
+  "Mamdouh Salah Ali Rezk",
+  "Mohammed Mahmoud Aletr",
+  "Imran Khan",
+  "Sherif Eid Mohamed Mahmoud",
+  "Yousef Lmbarki",
+  "MOHSEN HASAN HAIDAR",
+  "Mohammed Asif",
+  "MOHAMED NASR MOHAMED HASSAN",
+  "Aimen Gharib",
+  "Bakr Bakr Shaban Mohamed Elsayed",
+  "Abdalla Shaaban Kamal Abdou",
+  "Mohammed Khalid alahmad",
+  "Aallaa AlDin Mohammed Ali Almaad",
+  "Mohammad Salman",
+];
+
+const makeRow = (name = "") => ({
+  name,
+  Nails: "",
+  Hair: "",
+  "Not wearing Jewelry": "",
+  "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe": "",
+  "Communicable Disease": "",
+  "Open wounds/sores & cut": "",
+  remarks: "",
+});
+
+const today = () => new Date().toISOString().slice(0, 10);
+
 export default function PersonalHygienePRDInput() {
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(today());
   const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [opMsg, setOpMsg] = useState("");
 
-  // 9 صفوف مبدئية مثل FTR2
-  const [entries, setEntries] = useState(
-    Array.from({ length: 9 }, () => ({
-      name: "",
-      Nails: "",
-      Hair: "",
-      "Not wearing Jewelry": "",
-      "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe": "",
-      "Communicable Disease": "",
-      "Open wounds/sores & cut": "",
-      remarks: "",
-    }))
-  );
+  // الأسماء الافتراضية بدل 9 صفوف فارغة
+  const [entries, setEntries] = useState(DEFAULT_NAMES.map((n) => makeRow(n)));
 
   const handleChange = (rowIndex, field, value) => {
     const updated = [...entries];
     updated[rowIndex][field] = value;
     setEntries(updated);
   };
+
+  const addRow = () => setEntries((prev) => [...prev, makeRow("")]);
+  const removeRow = (idx) =>
+    setEntries((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev));
 
   const handleSave = async () => {
     if (!date) {
@@ -49,18 +73,30 @@ export default function PersonalHygienePRDInput() {
       alert("⚠️ Checked By and Verified By are required");
       return;
     }
+
+    // تجاهل الصفوف الفارغة تمامًا
+    const cleaned = entries.filter(
+      (e) =>
+        String(e.name || "").trim() !== "" ||
+        columns.some((c) => String(e[c] || "").trim() !== "") ||
+        String(e.remarks || "").trim() !== ""
+    );
+    if (cleaned.length === 0) {
+      alert("⚠️ أدخل اسمًا أو بيانات واحدة على الأقل.");
+      return;
+    }
+
     try {
       setOpMsg("⏳ Saving...");
       const payload = {
         branch: "Production",
         reportDate: date,
-        entries,
+        entries: cleaned,
         checkedBy,
         verifiedBy,
         savedAt: Date.now(),
       };
 
-      // حفظ على نوع التقرير الخاص بالانتاج
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -83,53 +119,39 @@ export default function PersonalHygienePRDInput() {
 
   return (
     <div style={{ padding: "1rem", background: "#fff", borderRadius: 12 }}>
+      {/* أزرار سريعة */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button onClick={addRow} style={btn} title="Add Row">
+          + Add Row
+        </button>
+      </div>
+
       {/* Header info */}
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
         <tbody>
           <tr>
-            <td style={tdHeader}>
-              <strong>Document Title:</strong> Personal Hygiene Check List
-            </td>
-            <td style={tdHeader}>
-              <strong>Document No:</strong> FS-QM /REC/PH
-            </td>
+            <td style={tdHeader}><strong>Document Title:</strong> Personal Hygiene Check List</td>
+            <td style={tdHeader}><strong>Document No:</strong> FS-QM /REC/PH</td>
           </tr>
           <tr>
-            <td style={tdHeader}>
-              <strong>Issue Date:</strong> 05/02/2020
-            </td>
-            <td style={tdHeader}>
-              <strong>Revision No:</strong> 0
-            </td>
+            <td style={tdHeader}><strong>Issue Date:</strong> 05/02/2020</td>
+            <td style={tdHeader}><strong>Revision No:</strong> 0</td>
           </tr>
           <tr>
-            <td style={tdHeader}>
-              <strong>Area:</strong> Production
-            </td>
-            <td style={tdHeader}>
-              <strong>Issued By:</strong> QA
-            </td>
+            <td style={tdHeader}><strong>Area:</strong> Production</td>
+            <td style={tdHeader}><strong>Issued By:</strong> QA</td>
           </tr>
+          {/* ✅ شيلنا Approved By من أعلى الترويسة وخليّنا Controlling Officer فقط */}
           <tr>
-            <td style={tdHeader}>
+            <td style={tdHeader} colSpan={2}>
               <strong>Controlling Officer:</strong> Quality Controller
-            </td>
-            <td style={tdHeader}>
-              <strong>Approved By:</strong> ——
             </td>
           </tr>
         </tbody>
       </table>
 
       {/* Title */}
-      <h3
-        style={{
-          textAlign: "center",
-          background: "#e5e7eb",
-          padding: "6px",
-          marginBottom: "0.5rem",
-        }}
-      >
+      <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: "6px", marginBottom: "0.5rem" }}>
         AL MAWASHI — PRODUCTION
         <br />
         PERSONAL HYGIENE CHECKLIST (PRD)
@@ -142,32 +164,21 @@ export default function PersonalHygienePRDInput() {
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          style={{
-            padding: "4px 8px",
-            borderRadius: "6px",
-            border: "1px solid #ccc",
-          }}
+          style={{ padding: "4px 8px", borderRadius: "6px", border: "1px solid #ccc" }}
         />
       </div>
 
       {/* Table */}
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          tableLayout: "fixed",
-        }}
-      >
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
         <thead>
           <tr style={{ background: "#2980b9", color: "#fff" }}>
             <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-            <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
+            <th style={{ ...thStyle, width: "180px" }}>Employee Name</th>
             {columns.map((col, i) => (
-              <th key={i} style={{ ...thStyle, width: "120px" }}>
-                {col}
-              </th>
+              <th key={i} style={{ ...thStyle, width: "120px" }}>{col}</th>
             ))}
             <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
+            <th className="no-print" style={{ ...thStyle, width: "70px" }}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -179,13 +190,7 @@ export default function PersonalHygienePRDInput() {
                   type="text"
                   value={entry.name}
                   onChange={(e) => handleChange(i, "name", e.target.value)}
-                  style={{
-                    ...inputStyle,
-                    width: "100%",
-                    maxWidth: "140px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
+                  style={{ ...inputStyle, width: "100%", maxWidth: "170px", overflow: "hidden", textOverflow: "ellipsis" }}
                 />
               </td>
               {columns.map((col, cIndex) => (
@@ -209,15 +214,16 @@ export default function PersonalHygienePRDInput() {
                   style={{ ...inputStyle, width: "100%" }}
                 />
               </td>
+              <td className="no-print" style={{ ...tdStyle }}>
+                <button onClick={() => removeRow(i)} style={btnDanger} title="Remove Row">− Remove</button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
       {/* Remarks footer */}
-      <div style={{ marginTop: "1rem", fontWeight: "600" }}>
-        REMARKS / CORRECTIVE ACTIONS:
-      </div>
+      <div style={{ marginTop: "1rem", fontWeight: "600" }}>REMARKS / CORRECTIVE ACTIONS:</div>
 
       {/* C / NC note */}
       <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
@@ -225,14 +231,7 @@ export default function PersonalHygienePRDInput() {
       </div>
 
       {/* Checked / Verified */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginTop: "1rem",
-          fontWeight: 600,
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "1rem", fontWeight: 600 }}>
         <div>
           Checked By:{" "}
           <input
@@ -273,9 +272,7 @@ export default function PersonalHygienePRDInput() {
         </button>
       </div>
 
-      {opMsg && (
-        <div style={{ marginTop: "1rem", fontWeight: "600" }}>{opMsg}</div>
-      )}
+      {opMsg && <div style={{ marginTop: "1rem", fontWeight: "600" }}>{opMsg}</div>}
     </div>
   );
 }
@@ -311,4 +308,23 @@ const footerInput = {
   borderRadius: "6px",
   padding: "4px 6px",
   minWidth: "160px",
+};
+
+const btn = {
+  padding: "8px 12px",
+  borderRadius: 8,
+  border: "1px solid #e5e7eb",
+  background: "#fff",
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+const btnDanger = {
+  padding: "6px 10px",
+  borderRadius: 6,
+  border: "1px solid #fecaca",
+  background: "#fee2e2",
+  color: "#991b1b",
+  cursor: "pointer",
+  fontWeight: 700,
 };

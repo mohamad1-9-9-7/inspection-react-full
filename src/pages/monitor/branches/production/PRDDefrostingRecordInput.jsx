@@ -1,69 +1,133 @@
+// src/pages/monitor/branches/production/PRDDefrostingRecordInput.jsx
 import React, { useState } from "react";
 
-const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
-const today = () => new Date().toISOString().slice(0,10);
-const TYPE = "prod_defrosting_record";
+const API_BASE =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+  (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
+  "https://inspection-server-4nvj.onrender.com";
 
+const TYPE = "prod_defrosting_record";
+const today = () => new Date().toISOString().slice(0, 10);
+
+/* ─── Helpers ──────────────────────────────────────────────────────────────── */
+function toIsoYMD(value) {
+  const s = String(value || "").trim();
+  if (!s) return today();
+  const normalized = /^\d{4}-\d{2}$/.test(s) ? `${s}-01` : s;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return today();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+/* ─── Row Component ───────────────────────────────────────────────────────── */
 function Row({ idx, row, onChange, onRemove, canRemove }) {
-  const set = (k,v)=> onChange(idx, { ...row, [k]: v });
+  const set = (k, v) => onChange(idx, { ...row, [k]: v });
   return (
     <div className="t-row">
-      <input className="cell in" value={row.rawMaterial||""} onChange={e=>set("rawMaterial", e.target.value)} />
-      <input className="cell in" value={row.quantity||""} onChange={e=>set("quantity", e.target.value)} />
-      <input className="cell in" value={row.brand||""} onChange={e=>set("brand", e.target.value)} />
-      <input className="cell in" type="date" value={row.rmProdDate||""} onChange={e=>set("rmProdDate", e.target.value)} />
-      <input className="cell in" type="date" value={row.rmExpDate||""} onChange={e=>set("rmExpDate", e.target.value)} />
-      <input className="cell in" type="date" value={row.defStartDate||""} onChange={e=>set("defStartDate", e.target.value)} />
-      <input className="cell in" type="time" value={row.defStartTime||""} onChange={e=>set("defStartTime", e.target.value)} />
-      <input className="cell in" value={row.startTemp||""} onChange={e=>set("startTemp", e.target.value)} />
-      <input className="cell in" type="date" value={row.defEndDate||""} onChange={e=>set("defEndDate", e.target.value)} />
-      <input className="cell in" type="time" value={row.defEndTime||""} onChange={e=>set("defEndTime", e.target.value)} />
-      <input className="cell in" value={row.endTemp||""} onChange={e=>set("endTemp", e.target.value)} />
-      <input className="cell in" value={row.defrostTemp||""} onChange={e=>set("defrostTemp", e.target.value)} />
-      <input className="cell in" value={row.remarks||""} onChange={e=>set("remarks", e.target.value)} />
-      <button className="cell btn danger no-print" title="Remove row" disabled={!canRemove} onClick={()=>onRemove(idx)}>−</button>
+      <input className="cell in" value={row.rawMaterial || ""} onChange={(e) => set("rawMaterial", e.target.value)} />
+      <input className="cell in" value={row.quantity || ""} onChange={(e) => set("quantity", e.target.value)} />
+      <input className="cell in" value={row.brand || ""} onChange={(e) => set("brand", e.target.value)} />
+      <input className="cell in" type="date" value={row.rmProdDate || ""} onChange={(e) => set("rmProdDate", e.target.value)} />
+      <input className="cell in" type="date" value={row.rmExpDate || ""} onChange={(e) => set("rmExpDate", e.target.value)} />
+      <input className="cell in" type="date" value={row.defStartDate || ""} onChange={(e) => set("defStartDate", e.target.value)} />
+      <input className="cell in" type="time" value={row.defStartTime || ""} onChange={(e) => set("defStartTime", e.target.value)} />
+      <input className="cell in" value={row.startTemp || ""} onChange={(e) => set("startTemp", e.target.value)} />
+      <input className="cell in" type="date" value={row.defEndDate || ""} onChange={(e) => set("defEndDate", e.target.value)} />
+      <input className="cell in" type="time" value={row.defEndTime || ""} onChange={(e) => set("defEndTime", e.target.value)} />
+      <input className="cell in" value={row.endTemp || ""} onChange={(e) => set("endTemp", e.target.value)} />
+      <input className="cell in" value={row.defrostTemp || ""} onChange={(e) => set("defrostTemp", e.target.value)} />
+      <input className="cell in" value={row.remarks || ""} onChange={(e) => set("remarks", e.target.value)} />
+      <button
+        className="cell btn danger no-print"
+        title="Remove row"
+        disabled={!canRemove}
+        onClick={() => onRemove(idx)}
+      >
+        −
+      </button>
     </div>
   );
 }
 
+/* ─── Main ────────────────────────────────────────────────────────────────── */
 export default function PRDDefrostingRecordInput() {
-  const [issueDate, setIssueDate] = useState(today());
+  // ✅ قيم الترويسة ثابتة وغير قابلة للتعديل
+  const ISSUE_DATE_TEXT = "05/05/2022";
+  const docNo = "TELT /PROD/ DR";
+  const revisionNo = "0";
+  const area = "PRODUCTION";
+  const issuedBy = "Suresh Sekar";
+  const coveringOfficer = "Production Officer";
+  const approvedBy = "Hussam O Sarhan";
+
   const [recordDate, setRecordDate] = useState(today()); // YYYY-MM-DD
-  const [docNo, setDocNo] = useState("TELT /PROD/ DR");
-  const [revisionNo, setRevisionNo] = useState("0");
-  const [area, setArea] = useState("PRODUCTION");
-  const [issuedBy, setIssuedBy] = useState("Suresh Sekar");
-  const [coveringOfficer, setCoveringOfficer] = useState("Production Officer");
-  const [approvedBy, setApprovedBy] = useState("Hussam O Sarhan");
 
   const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
 
   const [entries, setEntries] = useState(
     Array.from({ length: 16 }).map(() => ({
-      rawMaterial:"", quantity:"", brand:"", rmProdDate:"", rmExpDate:"",
-      defStartDate:"", defStartTime:"", startTemp:"",
-      defEndDate:"", defEndTime:"", endTemp:"",
-      defrostTemp:"", remarks:""
+      rawMaterial: "",
+      quantity: "",
+      brand: "",
+      rmProdDate: "",
+      rmExpDate: "",
+      defStartDate: "",
+      defStartTime: "",
+      startTemp: "",
+      defEndDate: "",
+      defEndTime: "",
+      endTemp: "",
+      defrostTemp: "",
+      remarks: "",
     }))
   );
   const [saving, setSaving] = useState(false);
 
-  const chRow = (i, v)=> setEntries(entries.map((r,ix)=> ix===i ? v : r));
-  const addRow = ()=> setEntries([...entries, {
-    rawMaterial:"", quantity:"", brand:"", rmProdDate:"", rmExpDate:"",
-    defStartDate:"", defStartTime:"", startTemp:"",
-    defEndDate:"", defEndTime:"", endTemp:"",
-    defrostTemp:"", remarks:""
-  }]);
-  const rmRow = (i)=> setEntries(entries.filter((_,ix)=>ix!==i));
+  const chRow = (i, v) => setEntries(entries.map((r, ix) => (ix === i ? v : r)));
+  const addRow = () =>
+    setEntries([
+      ...entries,
+      {
+        rawMaterial: "",
+        quantity: "",
+        brand: "",
+        rmProdDate: "",
+        rmExpDate: "",
+        defStartDate: "",
+        defStartTime: "",
+        startTemp: "",
+        defEndDate: "",
+        defEndTime: "",
+        endTemp: "",
+        defrostTemp: "",
+        remarks: "",
+      },
+    ]);
+  const rmRow = (i) => setEntries(entries.filter((_, ix) => ix !== i));
 
   const rowHasData = (r) =>
-    ["rawMaterial","quantity","brand","rmProdDate","rmExpDate","defStartDate","defStartTime","startTemp","defEndDate","defEndTime","endTemp","defrostTemp","remarks"]
-      .some((k)=> String(r[k] ?? "").trim() !== "");
+    [
+      "rawMaterial",
+      "quantity",
+      "brand",
+      "rmProdDate",
+      "rmExpDate",
+      "defStartDate",
+      "defStartTime",
+      "startTemp",
+      "defEndDate",
+      "defEndTime",
+      "endTemp",
+      "defrostTemp",
+      "remarks",
+    ].some((k) => String(r[k] ?? "").trim() !== "");
 
   async function save() {
-    const dateForServer = (recordDate && recordDate.trim()) ? recordDate : issueDate; // YYYY-MM-DD
+    const reportDate = toIsoYMD(recordDate || ISSUE_DATE_TEXT); // YYYY-MM-DD ثابت
     const cleanEntries = entries.filter(rowHasData);
 
     if (cleanEntries.length === 0) {
@@ -71,65 +135,42 @@ export default function PRDDefrostingRecordInput() {
       return;
     }
 
-    try{
+    try {
       setSaving(true);
+
       const header = {
         documentTitle: "Defrosting Report",
         documentNo: docNo,
         revisionNo,
-        issueDate,
+        issueDate: ISSUE_DATE_TEXT, // ✅ ثابت بالنص
         area,
         issuedBy,
         coveringOfficer,
         approvedBy,
-        // مهم للحذف/العرض:
-        month: dateForServer,       // للتوافق القديم
-        reportDate: dateForServer,  // ✅ الاسم الذي يطلبه API للحذف
-      };
-
-      const baseBody = {
-        header,
-        entries: cleanEntries,
-        signatures: { checkedBy, verifiedBy },
-        _clientSavedAt: Date.now(),
+        reportDate,
       };
 
       const payload = {
-        reporter: "admin",
-        type: TYPE,
-        payload: baseBody,
+        reportDate,
+        header,
+        entries: cleanEntries,
+        signatures: { checkedBy, verifiedBy },
+        savedAt: Date.now(),
       };
 
       const base = String(API_BASE).replace(/\/$/, "");
-      const attempts = [
-        // إنشاء/تحديث عام
-        { url: `${base}/api/reports`, method:"POST", body: JSON.stringify(payload) },
-        { url: `${base}/api/reports`, method:"PUT",  body: JSON.stringify(payload) },
-        // مُجمّع بحسب التاريخ (الاسم الجديد reportDate)
-        { url: `${base}/api/reports/${TYPE}?reportDate=${encodeURIComponent(dateForServer)}`, method:"POST", body: JSON.stringify(baseBody) },
-        { url: `${base}/api/reports/${TYPE}?reportDate=${encodeURIComponent(dateForServer)}`, method:"PUT",  body: JSON.stringify(baseBody) },
-        // للتوافق القديم (month)
-        { url: `${base}/api/reports/${TYPE}?month=${encodeURIComponent(dateForServer)}`, method:"POST", body: JSON.stringify(baseBody) },
-        { url: `${base}/api/reports/${TYPE}?month=${encodeURIComponent(dateForServer)}`, method:"PUT",  body: JSON.stringify(baseBody) },
-      ];
+      const res = await fetch(`${base}/api/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reporter: "production", type: TYPE, payload }),
+      });
 
-      let ok=false, errText="";
-      for (const a of attempts){
-        try{
-          const res = await fetch(a.url, { method:a.method, headers:{ "Content-Type":"application/json" }, body:a.body });
-          if(res.ok){ ok=true; break; }
-          const text = await res.text().catch(()=> "");
-          errText = `HTTP ${res.status} ${text}`;
-          if (text.includes("nothing to update")) continue;
-        }catch(e){
-          errText = e.message || String(e);
-        }
-      }
-      if(!ok) throw new Error(errText || "Save failed");
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text().catch(() => "")}`);
+
       alert("Saved ✓ Defrosting Record (PRODUCTION)");
-    }catch(e){
-      alert("Error saving: " + e.message);
-    } finally{
+    } catch (e) {
+      alert("Error saving: " + (e?.message || String(e)));
+    } finally {
       setSaving(false);
     }
   }
@@ -172,13 +213,18 @@ export default function PRDDefrostingRecordInput() {
         .btn.danger{ background:#fee2e2; color:#991b1b; border-color:#fecaca; }
       `}</style>
 
+      {/* أزرار التحكم (لا تُطبع) */}
       <div className="topActions no-print">
         <button className="btn" onClick={addRow}>+ Add Row</button>
-        <div style={{flex:1}} />
-        <button className="btn primary" disabled={saving} onClick={save}>{saving ? "Saving..." : "Save"}</button>
+        <div style={{ flex: 1 }} />
+        <button className="btn primary" disabled={saving} onClick={save}>
+          {saving ? "Saving..." : "Save"}
+        </button>
       </div>
 
+      {/* الورقة */}
       <div className="sheet">
+        {/* Header (ثابت) */}
         <table className="hdrTable">
           <tbody>
             <tr>
@@ -188,64 +234,113 @@ export default function PRDDefrostingRecordInput() {
                   <div className="logoEN">AL MAWASHI</div>
                 </div>
               </td>
-              <td><span className="lbl">Document Title:</span> Defrosting Report</td>
-              <td><span className="lbl">Document No:</span> <input style={{border:'none',outline:'none',width:'60%'}} value={docNo} onChange={e=>setDocNo(e.target.value)} /></td>
+              <td>
+                <span className="lbl">Document Title:</span> Defrosting Report
+              </td>
+              <td>
+                <span className="lbl">Document No:</span> {docNo}
+              </td>
             </tr>
             <tr>
-              <td><span className="lbl">Issue  Date:</span> <input type="date" style={{border:'none',outline:'none'}} value={issueDate} onChange={e=>setIssueDate(e.target.value)} /></td>
-              <td><span className="lbl">Revision  No:</span> <input style={{border:'none',outline:'none',width:'40%'}} value={revisionNo} onChange={e=>setRevisionNo(e.target.value)} /></td>
+              <td>
+                <span className="lbl">Issue  Date:</span> {ISSUE_DATE_TEXT}
+              </td>
+              <td>
+                <span className="lbl">Revision  No:</span> {revisionNo}
+              </td>
             </tr>
             <tr>
-              <td><span className="lbl">Area:</span> <input style={{border:'none',outline:'none',width:'60%'}} value={area} onChange={e=>setArea(e.target.value)} /></td>
-              <td><span className="lbl">Issued  By:</span> <input style={{border:'none',outline:'none',width:'60%'}} value={issuedBy} onChange={e=>setIssuedBy(e.target.value)} /></td>
+              <td>
+                <span className="lbl">Area:</span> {area}
+              </td>
+              <td>
+                <span className="lbl">Issued  By:</span> {issuedBy}
+              </td>
             </tr>
             <tr>
-              <td><span className="lbl">Controlling Officer:</span> <input style={{border:'none',outline:'none',width:'60%'}} value={coveringOfficer} onChange={e=>setCoveringOfficer(e.target.value)} /></td>
-              <td><span className="lbl">Approved  By :</span> <input style={{border:'none',outline:'none',width:'60%'}} value={approvedBy} onChange={e=>setApprovedBy(e.target.value)} /></td>
+              <td>
+                <span className="lbl">Controlling Officer:</span> {coveringOfficer}
+              </td>
+              <td>
+                <span className="lbl">Approved  By :</span> {approvedBy}
+              </td>
             </tr>
           </tbody>
         </table>
 
-        <table className="brandTable" style={{marginTop:-1}}>
+        {/* Date + Company */}
+        <table className="brandTable" style={{ marginTop: -1 }}>
           <tbody>
             <tr>
               <td className="brandCellLeft">
                 <span className="lbl">Date :</span>
-                <input className="monthInput" type="date" value={recordDate} onChange={(e)=>setRecordDate(e.target.value)} />
+                <input
+                  className="monthInput"
+                  type="date"
+                  value={recordDate}
+                  onChange={(e) => setRecordDate(e.target.value)}
+                />
               </td>
               <td className="brandCellRight">TRANS EMIRATES LIVESTOCK TRADING LLC</td>
             </tr>
           </tbody>
         </table>
 
-        <table className="noteTable" style={{marginTop:-1}}>
+        {/* Note */}
+        <table className="noteTable" style={{ marginTop: -1 }}>
           <tbody>
             <tr>
-              <td style={{fontSize:11}}>
-                Should be defrosted under refrigerated condition, product temp should not exceed 5ºC. foods should be cooked within 72 hours from the time of the start thawing.
+              <td style={{ fontSize: 11 }}>
+                Should be defrosted under refrigerated condition, product temp should not exceed 5ºC.
+                foods should be cooked within 72 hours from the time of the start thawing.
               </td>
             </tr>
           </tbody>
         </table>
 
+        {/* Table */}
         <div className="tableWrap">
           <div className="table">
             <div className="t-head">
-              <div>RAW MATERIAL</div><div>QUANTITY</div><div>BRAND</div>
-              <div>RM PRODN DATE</div><div>RM EXP DATE</div>
-              <div>DEFROST START DATE</div><div>START TIME</div><div>DFRST START TEMP</div>
-              <div>DEFROST END DATE</div><div>END TIME</div><div>END TEMP</div>
-              <div>DEFROST TEMP (&gt; 5ºC)</div><div>REMARKS</div><div className="no-print"></div>
+              <div>RAW MATERIAL</div>
+              <div>QUANTITY</div>
+              <div>BRAND</div>
+              <div>RM PRODN DATE</div>
+              <div>RM EXP DATE</div>
+              <div>DEFROST START DATE</div>
+              <div>START TIME</div>
+              <div>DFRST START TEMP</div>
+              <div>DEFROST END DATE</div>
+              <div>END TIME</div>
+              <div>END TEMP</div>
+              <div>DEFROST TEMP (&gt; 5ºC)</div>
+              <div>REMARKS</div>
+              <div className="no-print"></div>
             </div>
-            {entries.map((row, idx)=>(
-              <Row key={idx} idx={idx} row={row} onChange={chRow} onRemove={rmRow} canRemove={entries.length>1} />
+
+            {entries.map((row, idx) => (
+              <Row
+                key={idx}
+                idx={idx}
+                row={row}
+                onChange={chRow}
+                onRemove={rmRow}
+                canRemove={entries.length > 1}
+              />
             ))}
           </div>
         </div>
 
+        {/* Signatures */}
         <div className="sigRow">
-          <div className="sig"><label>Checked By</label><input value={checkedBy} onChange={e=>setCheckedBy(e.target.value)} /></div>
-          <div className="sig"><label>Verified By</label><input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)} /></div>
+          <div className="sig">
+            <label>Checked By</label>
+            <input value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)} />
+          </div>
+          <div className="sig">
+            <label>Verified By</label>
+            <input value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} />
+          </div>
         </div>
       </div>
     </div>

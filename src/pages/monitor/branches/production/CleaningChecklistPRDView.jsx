@@ -48,7 +48,9 @@ export default function CleaningChecklistPRDView() {
   const [reports, setReports] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const sheetRef = useRef(null);
+  const fileRef = useRef(null);
 
   async function load() {
     setLoading(true);
@@ -60,7 +62,7 @@ export default function CleaningChecklistPRDView() {
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
 
-      // فرز قديم → جديد للسايدبار (والاختيار الافتراضي أحدث تقرير)
+      // فرز قديم → جديد (والاختيار الافتراضي أحدث تقرير)
       arr.forEach((r) => (r.__dateStr = r.payload?.reportDate || r.createdAt || ""));
       arr.sort((a, b) => new Date(a.__dateStr || 0) - new Date(b.__dateStr || 0));
 
@@ -104,6 +106,71 @@ export default function CleaningChecklistPRDView() {
     w.document.write(html);
     w.document.close();
     setTimeout(() => { w.focus(); w.print(); }, 100);
+  }
+
+  /* ===== NEW: Export all reports as JSON ===== */
+  function exportJSONAll() {
+    const dump = {
+      meta: {
+        type: TYPE,
+        exportedAt: new Date().toISOString(),
+        count: reports.length,
+      },
+      items: reports.map((r) => ({
+        type: TYPE,
+        reporter: r.reporter || "production",
+        payload: r.payload,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${TYPE}-all-${new Date().toISOString().slice(0,19).replace(/[-:T]/g,"")}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  /* ===== NEW: Import JSON → save to server → refresh ===== */
+  function triggerImport() { fileRef.current?.click(); }
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setImporting(true);
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items =
+        Array.isArray(parsed) ? parsed :
+        parsed.items ?? parsed.data ?? parsed.reports ?? [];
+      if (!Array.isArray(items) || items.length === 0) {
+        alert("الملف لا يحتوي عناصر صالحة.");
+        return;
+      }
+      const base = String(API_BASE).replace(/\/$/, "");
+      let ok = 0, fail = 0;
+      for (const raw of items) {
+        const payload = raw?.payload ?? raw;
+        const reporter = raw?.reporter ?? "production";
+        const type = raw?.type ?? TYPE;
+        try {
+          const res = await fetch(`${base}/api/reports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reporter, type, payload }),
+          });
+          if (res.ok) ok++; else fail++;
+        } catch {
+          fail++;
+        }
+      }
+      await load();
+      alert(`تم الاستيراد: ${ok} ناجحة / ${fail} فاشلة`);
+    } catch (err) {
+      alert("ملف JSON غير صالح: " + (err?.message || String(err)));
+    } finally {
+      setImporting(false);
+      e.target.value = "";
+    }
   }
 
   /* ===== Delete (type + reportDate) ===== */
@@ -160,6 +227,21 @@ export default function CleaningChecklistPRDView() {
       <div style={styles.layout}>
         {/* Sidebar */}
         <aside style={styles.sidebar}>
+          {/* NEW: import/export toolbar */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <button onClick={exportJSONAll} style={btnDark}>⇩ Export JSON (all)</button>
+            <button onClick={triggerImport} style={btnBlue} disabled={importing}>
+              {importing ? "Importing…" : "⇧ Import JSON"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json"
+              style={{ display: "none" }}
+              onChange={handleImportFile}
+            />
+          </div>
+
           {loading && <div style={muted}>Loading…</div>}
           {Object.keys(groups.years)
             .sort((a, b) => Number(a) - Number(b)) // قديم → جديد
@@ -198,9 +280,11 @@ export default function CleaningChecklistPRDView() {
         }
         .tbl td { padding:10px 8px; font-weight:700; color:#1f2937; background:#fff; }
         .tbl tbody tr:nth-child(2n) td { background:#f8fafc; }
+
         .hdrTable { width:100%; border-collapse:collapse; margin-bottom:10px; }
-        .hdrTable td { border:1px solid #e5e7eb; padding:8px 10px; font-weight:800; background:#fff; }
-        .hdrTable tr:nth-child(odd) td { background:#fbfbff; }
+        /* أغمق شوي كما طلبت */
+        .hdrTable td { border:2px solid #334155; padding:8px 10px; font-weight:800; background:#fff; }
+        .hdrTable tr:nth-child(odd) td { background:#f1f5f9; }
       `}</style>
     </div>
   );
@@ -361,10 +445,18 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
           </table>
         </div>
 
-        {/* Footer */}
-        <div style={{ marginTop: 10, fontWeight: 900, display:"flex", gap:12, flexWrap:"wrap" }}>
-          <div>CHECKED BY: {footer.checkedBy || "—"}</div>
-          <div>VERIFIED BY: {footer.verifiedBy || "—"}</div>
+        {/* Footer (CHECKED يسار / VERIFIED يمين) */}
+        <div style={{
+          marginTop: 10,
+          fontWeight: 900,
+          display:"flex",
+          alignItems:"center",
+          justifyContent:"space-between",
+          gap:12,
+          flexWrap:"wrap"
+        }}>
+          <div style={{ textAlign:"left", flex:1 }}>CHECKED BY: {footer.checkedBy || "—"}</div>
+          <div style={{ textAlign:"right", flex:1 }}>VERIFIED BY: {footer.verifiedBy || "—"}</div>
         </div>
         <div style={{ marginTop: 6, fontSize: ".9rem", fontWeight: 800 }}>
           Remark:-Frequency-Daily &nbsp;&nbsp;&nbsp; (C = Conform, N/C = Non Conform)

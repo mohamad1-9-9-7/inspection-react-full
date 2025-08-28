@@ -53,7 +53,9 @@ export default function PRDDefrostingRecordView() {
   const [reports, setReports] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const sheetRef = useRef(null);
+  const fileRef = useRef(null);
 
   async function load() {
     setLoading(true);
@@ -70,7 +72,7 @@ export default function PRDDefrostingRecordView() {
         r.__dateStr = h.reportDate || h.month || h.issueDate || r.createdAt || "";
       });
 
-      // قديم → جديد
+      // قديم → جديد (السايدبار)
       arr.sort((a, b) => new Date(a.__dateStr || 0) - new Date(b.__dateStr || 0));
 
       setReports(arr);
@@ -97,8 +99,8 @@ export default function PRDDefrostingRecordView() {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       body { margin: 0; font-family: Inter, Arial, sans-serif; color:#0f172a; }
       table{ border-collapse:collapse; width:100%; }
-      th, td{ border:1px solid #cbd5e1; padding:8px; font-size:12px; }
-      thead th{ background:#f1f5f9; font-weight:900; }
+      th, td{ border:1.5px solid #94a3b8; padding:10px 8px; font-size:13px; }
+      thead th{ background:#e2e8f0; font-weight:900; }
       .paper { background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; }
       .hdr td{ font-weight:800; }
     `;
@@ -119,24 +121,90 @@ export default function PRDDefrostingRecordView() {
     setTimeout(() => { w.focus(); w.print(); }, 100);
   }
 
-  /* ============ Delete (type + reportDate) ============ */
+  /* ============ NEW: Export/Import JSON (all) ============ */
+  function exportJSONAll() {
+    const dump = {
+      meta: { type: TYPE, exportedAt: new Date().toISOString(), count: reports.length },
+      items: reports.map((r) => ({
+        type: TYPE,
+        reporter: r.reporter || "production",
+        payload: r.payload,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${TYPE}-all-${new Date().toISOString().slice(0,19).replace(/[-:T]/g,"")}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  function triggerImport() {
+    fileRef.current?.click();
+  }
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setImporting(true);
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items =
+        Array.isArray(parsed) ? parsed :
+        parsed.items ?? parsed.data ?? parsed.reports ?? [];
+      if (!Array.isArray(items) || items.length === 0) {
+        alert("الملف لا يحتوي عناصر صالحة.");
+        return;
+      }
+      const base = String(API_BASE).replace(/\/$/, "");
+      let ok = 0, fail = 0;
+      for (const raw of items) {
+        const payload = raw?.payload ?? raw;
+        const reporter = raw?.reporter ?? "production";
+        const type = raw?.type ?? TYPE;
+        try {
+          const res = await fetch(`${base}/api/reports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reporter, type, payload }),
+          });
+          if (res.ok) ok++; else fail++;
+        } catch {
+          fail++;
+        }
+      }
+      await load();
+      alert(`تم الاستيراد: ${ok} ناجحة / ${fail} فاشلة`);
+    } catch (err) {
+      alert("ملف JSON غير صالح: " + (err?.message || String(err)));
+    } finally {
+      setImporting(false);
+      e.target.value = "";
+    }
+  }
+
+  /* ============ Delete (type + reportDate فقط) ============ */
   async function handleDelete() {
     if (!selected) return;
-    const h = selected.payload?.header || {};
-    const reportDateIso = normYMD(h.reportDate || h.month || h.issueDate || selected.createdAt)?.iso;
-    if (!reportDateIso) return alert("لا يوجد تاريخ صالح للحذف.");
 
+    const h = selected.payload?.header || {};
+    const n = normYMD(h.reportDate || h.issueDate || h.month || selected.createdAt);
+    const iso = n?.iso;
+
+    if (!iso) {
+      alert("لا يوجد reportDate صالح للحذف.");
+      return;
+    }
     if (!window.confirm("هل تريد حذف هذا التقرير نهائيًا؟")) return;
 
     setLoading(true);
-    let ok = false, errText = "";
-    const base = String(API_BASE).replace(/\/$/, "");
+    let ok = false;
+    let lastErr = "";
 
+    const base = String(API_BASE).replace(/\/$/, "");
     const tries = [
-      { url: `${base}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(reportDateIso)}`, method: "DELETE" },
-      { url: `${base}/api/reports/${TYPE}?reportDate=${encodeURIComponent(reportDateIso)}`, method: "DELETE" },
-      { url: `${base}/api/reports/delete`, method: "POST", body: JSON.stringify({ type: TYPE, reportDate: reportDateIso }) },
-      { url: `${base}/api/reports/${TYPE}/delete`, method: "POST", body: JSON.stringify({ reportDate: reportDateIso }) },
+      { method: "DELETE", url: `${base}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(iso)}` },
+      { method: "DELETE", url: `${base}/api/reports/${TYPE}?reportDate=${encodeURIComponent(iso)}` },
+      { method: "POST",   url: `${base}/api/reports/delete`, body: JSON.stringify({ type: TYPE, reportDate: iso }) },
     ];
 
     for (const t of tries) {
@@ -147,18 +215,24 @@ export default function PRDDefrostingRecordView() {
           body: t.body,
         });
         if (res.ok) { ok = true; break; }
-        errText = `HTTP ${res.status} ${await res.text().catch(() => "")}`;
+        lastErr = `HTTP ${res.status} ${await res.text().catch(() => "")}`;
       } catch (e) {
-        errText = e.message || String(e);
+        lastErr = e?.message || String(e);
       }
     }
 
-    setLoading(false);
-    if (!ok) return alert("تعذّر الحذف: " + (errText || "Unknown error"));
+    if (!ok) {
+      setLoading(false);
+      alert("تعذّر الحذف من الخادم. الرجاء التأكد أن reportDate محفوظ بصيغة يوم/شهر/سنة.\n\n" + lastErr);
+      return;
+    }
 
-    const next = reports.filter((r) => getKey(r) !== selectedKey);
-    setReports(next);
-    setSelected(next[next.length - 1] || null);
+    const nextLocal = reports.filter((r) => getKey(r) !== selectedKey);
+    setReports(nextLocal);
+    setSelected(nextLocal[nextLocal.length - 1] || null);
+    await load();
+
+    setLoading(false);
     alert("تم الحذف بنجاح ✓");
   }
 
@@ -180,6 +254,21 @@ export default function PRDDefrostingRecordView() {
       <div style={styles.layout}>
         {/* سايدبار سنة/شهر/يوم */}
         <aside style={styles.sidebar}>
+          {/* NEW: import/export toolbar */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <button onClick={exportJSONAll} style={btnDark}>⇩ Export JSON (all)</button>
+            <button onClick={triggerImport} style={btnBlue} disabled={importing}>
+              {importing ? "Importing…" : "⇧ Import JSON"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json"
+              style={{ display: "none" }}
+              onChange={handleImportFile}
+            />
+          </div>
+
           {loading && <div style={muted}>Loading…</div>}
 
           {Object.keys(groups.years)
@@ -207,32 +296,36 @@ export default function PRDDefrostingRecordView() {
         </main>
       </div>
 
-      {/* CSS محلي للتفاصيل الدقيقة */}
+      {/* CSS محلي: حدود واضحة + خط أكبر */}
       <style>{`
         .tbl {
           width: 100%;
           border-collapse: collapse;
           box-shadow: 0 6px 18px rgba(2,6,23,.06);
+          border: 1.5px solid #94a3b8;
         }
         .tbl thead th {
           position: sticky;
           top: 0;
-          background: #f8fafc;
-          border-bottom: 1px solid #e5e7eb;
+          background: #e2e8f0;
+          border: 1.5px solid #94a3b8;
           padding: 10px 8px;
-          font-size: 12px;
+          font-size: 13px;
           text-transform: uppercase;
           letter-spacing: .04em;
           color: #0f172a;
+          font-weight: 900;
         }
         .tbl td {
-          border-bottom: 1px solid #eef2f7;
+          border: 1.5px solid #94a3b8;
           padding: 10px 8px;
+          font-size: 13px;
           font-weight: 700;
           color: #1f2937;
           background: #fff;
         }
-        .tbl tbody tr:nth-child(2n) td { background:#fcfdff; }
+        .tbl tbody tr:nth-child(2n) td { background:#f8fafc; }
+
         .hdrTable { width:100%; border-collapse: collapse; margin-bottom: 10px; }
         .hdrTable td { border:1px solid #e5e7eb; padding:8px 10px; font-weight:800; background:#fff; }
         .hdrTable tr:nth-child(odd) td { background:#fbfbff; }
@@ -298,7 +391,7 @@ function MonthBlock({ year, month, days, onPick, selectedKey }) {
   );
 }
 
-/* ==== زر واحد للتاريخ فقط مع وِسام العدد + تمييز أزرق عند الاختيار ==== */
+/* ==== زر التاريخ مع وسم العدد + تمييز أزرق ==== */
 function DateChip({ y, m, d, info, onPick, selectedKey }) {
   const list = info?.list || [];
   const first = list[0];
@@ -487,8 +580,10 @@ const sb = {
     padding: "8px 10px",
     marginLeft: 24,
     marginTop: 6,
+    borderWidth: 2,
+    borderStyle: "solid",
+    borderColor: "#e5e7eb",
     borderRadius: 12,
-    border: "2px solid #e5e7eb",
     background: "#fff",
     textAlign: "left",
     fontWeight: 900,

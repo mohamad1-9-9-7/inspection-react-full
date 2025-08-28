@@ -57,7 +57,9 @@ export default function PersonalHygienePRDView() {
   const [reports, setReports] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const sheetRef = useRef(null);
+  const fileRef = useRef(null);
 
   async function load() {
     setLoading(true);
@@ -69,7 +71,7 @@ export default function PersonalHygienePRDView() {
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
 
-      // فرز قديم → جديد للسايدبار (الافتراضي يختار الأحدث)
+      // فرز قديم → جديد للسايدبار
       arr.forEach((r) => (r.__dateStr = r.payload?.reportDate || r.createdAt || ""));
       arr.sort((a, b) => new Date(a.__dateStr || 0) - new Date(b.__dateStr || 0));
 
@@ -113,6 +115,73 @@ export default function PersonalHygienePRDView() {
     w.document.write(html);
     w.document.close();
     setTimeout(() => { w.focus(); w.print(); }, 100);
+  }
+
+  /* ===== NEW: Export all reports as JSON ===== */
+  function exportJSONAll() {
+    const dump = {
+      meta: {
+        type: TYPE,
+        exportedAt: new Date().toISOString(),
+        count: reports.length,
+      },
+      items: reports.map((r) => ({
+        type: TYPE,
+        reporter: r.reporter || "production",
+        payload: r.payload,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${TYPE}-all-${new Date().toISOString().slice(0,19).replace(/[-:T]/g,"")}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  /* ===== NEW: Import JSON → save to server → refresh ===== */
+  function triggerImport() {
+    fileRef.current?.click();
+  }
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setImporting(true);
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items =
+        Array.isArray(parsed) ? parsed :
+        parsed.items ?? parsed.data ?? parsed.reports ?? [];
+      if (!Array.isArray(items) || items.length === 0) {
+        alert("الملف لا يحتوي عناصر صالحة.");
+        return;
+      }
+      const base = String(API_BASE).replace(/\/$/, "");
+      let ok = 0, fail = 0;
+      for (const raw of items) {
+        const payload = raw?.payload ?? raw; // دعم الحالتين
+        const reporter = raw?.reporter ?? "production";
+        const type = raw?.type ?? TYPE;
+        try {
+          const res = await fetch(`${base}/api/reports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reporter, type, payload }),
+          });
+          if (res.ok) ok++; else fail++;
+        } catch {
+          fail++;
+        }
+      }
+      await load();
+      alert(`تم الاستيراد: ${ok} ناجحة / ${fail} فاشلة`);
+    } catch (err) {
+      alert("ملف JSON غير صالح: " + (err?.message || String(err)));
+    } finally {
+      setImporting(false);
+      e.target.value = "";
+    }
   }
 
   /* ===== Delete (type + reportDate) ===== */
@@ -169,6 +238,21 @@ export default function PersonalHygienePRDView() {
       <div style={styles.layout}>
         {/* Sidebar */}
         <aside style={styles.sidebar}>
+          {/* NEW: import/export toolbar */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <button onClick={exportJSONAll} style={btnDark}>⇩ Export JSON (all)</button>
+            <button onClick={triggerImport} style={btnBlue} disabled={importing}>
+              {importing ? "Importing…" : "⇧ Import JSON"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json"
+              style={{ display: "none" }}
+              onChange={handleImportFile}
+            />
+          </div>
+
           {loading && <div style={muted}>Loading…</div>}
           {Object.keys(groups.years)
             .sort((a, b) => Number(a) - Number(b)) // قديم → جديد
@@ -209,8 +293,9 @@ export default function PersonalHygienePRDView() {
         .tbl tbody tr:nth-child(2n) td { background:#f8fafc; }
 
         .hdrTable { width:100%; border-collapse:collapse; margin-bottom:10px; }
-        .hdrTable td { border:1px solid #e5e7eb; padding:8px 10px; font-weight:800; background:#fff; }
-        .hdrTable tr:nth-child(odd) td { background:#fbfbff; }
+        /* حدود الترويسة أوضح */
+        .hdrTable td { border:2px solid #334155; padding:8px 10px; font-weight:800; background:#fff; }
+        .hdrTable tr:nth-child(odd) td { background:#f1f5f9; }
       `}</style>
     </div>
   );
@@ -300,7 +385,6 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
     area: h.area || "Production",
     issuedBy: h.issuedBy || "QA",
     controllingOfficer: h.controllingOfficer || "Quality Controller",
-    approvedBy: h.approvedBy || "——",
     company: h.company || "TRANS EMIRATES LIVESTOCK TRADING LLC",
   };
 
@@ -312,7 +396,7 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
   return (
     <div ref={ref} className="paper">
       <div style={{ padding: 12 }}>
-        {/* Header (كامل مثل صفحة الإدخال) */}
+        {/* Header */}
         <table className="hdrTable">
           <tbody>
             <tr>
@@ -329,8 +413,9 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
             </tr>
             <tr>
               <td><strong>Controlling Officer:</strong> {header.controllingOfficer}</td>
-              <td><strong>Approved By:</strong> {header.approvedBy}</td>
+              <td><strong>Company:</strong> {header.company}</td>
             </tr>
+            {/* Approved By محذوف من الترويسة كما طلبت */}
           </tbody>
         </table>
 
@@ -338,12 +423,9 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
           AL MAWASHI — PRODUCTION<br/>PERSONAL HYGIENE CHECKLIST (PRD)
         </h3>
 
-        {/* سطر الشركة + التاريخ */}
+        {/* التاريخ */}
         <table className="hdrTable" style={{ marginTop: -6 }}>
           <tbody>
-            <tr>
-              <td colSpan={2}><strong>Company:</strong> {header.company}</td>
-            </tr>
             <tr>
               <td colSpan={2}><strong>Date:</strong> {date}</td>
             </tr>
@@ -380,11 +462,24 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
           </table>
         </div>
 
-        {/* Signatures */}
-        <div style={{ marginTop: 10, fontWeight: 900, display:"flex", gap:16, flexWrap:"wrap" }}>
-          <div>Checked By: {checkedBy}</div>
-          <div>Verified By: {verifiedBy}</div>
+        {/* Signatures: Checked By يسار — Verified By يمين */}
+        <div style={{
+          marginTop: 10,
+          fontWeight: 900,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          width: "100%",
+        }}>
+          <div style={{ textAlign: "left", flex: 1 }}>
+            Checked By: {checkedBy}
+          </div>
+          <div style={{ textAlign: "right", flex: 1 }}>
+            Verified By: {verifiedBy}
+          </div>
         </div>
+
         <div style={{ marginTop: 6, fontSize: ".9rem", fontWeight: 800 }}>
           *(C – Conform &nbsp;&nbsp; N/C – Non Conform)
         </div>
