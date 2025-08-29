@@ -199,6 +199,136 @@ function DonutCard({
   );
 }
 
+/* ====== Image viewer styles (view-only) ====== */
+const viewImgBtn = {
+  marginLeft: 8,
+  background: "#2563eb",
+  color: "#fff",
+  border: "none",
+  borderRadius: 999,
+  padding: "2px 8px",
+  fontSize: 11,
+  fontWeight: 800,
+  cursor: "pointer",
+  boxShadow: "0 1px 6px rgba(37,99,235,.35)",
+};
+
+const viewerBack = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15,23,42,.35)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 9999,
+};
+
+const viewerCard = {
+  width: "min(1200px, 96vw)",
+  maxHeight: "90vh",
+  overflow: "auto",
+  background: "#fff",
+  color: "#111",
+  borderRadius: 14,
+  border: "1px solid #e5e7eb",
+  padding: "14px 16px",
+  boxShadow: "0 12px 32px rgba(0,0,0,.25)",
+};
+
+const viewerClose = {
+  background: "transparent",
+  border: "none",
+  color: "#111",
+  fontWeight: 900,
+  cursor: "pointer",
+  fontSize: 18,
+};
+
+const viewerBigImg = {
+  width: "100%",
+  height: "auto",
+  maxHeight: "70vh",
+  objectFit: "contain",
+  borderRadius: 12,
+  boxShadow: "0 6px 18px rgba(0,0,0,.2)",
+};
+
+const viewerThumbsWrap = {
+  marginTop: 8,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: 10,
+};
+
+const viewerThumbTile = {
+  position: "relative",
+  border: "1px solid #e5e7eb",
+  borderRadius: 10,
+  overflow: "hidden",
+  background: "#f8fafc",
+  padding: 0,
+  cursor: "pointer",
+};
+
+const viewerThumbImg = {
+  width: "100%",
+  height: 120,
+  objectFit: "cover",
+  display: "block",
+};
+
+/* ===== Read-only Image Viewer Modal ===== */
+function ImageViewerModal({ open, images = [], title = "", onClose }) {
+  const [preview, setPreview] = React.useState(images[0] || "");
+
+  React.useEffect(() => {
+    if (open) setPreview(images[0] || "");
+    const onEsc = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [open, images, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div style={viewerBack} onClick={onClose}>
+      <div style={viewerCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
+            🖼️ Product Images{title ? ` — ${title}` : ""}
+          </div>
+          <button onClick={onClose} style={viewerClose}>✕</button>
+        </div>
+
+        {preview ? (
+          <div style={{ marginTop: 12, marginBottom: 10 }}>
+            <img
+              src={preview}
+              alt="preview"
+              style={viewerBigImg}
+            />
+          </div>
+        ) : (
+          <div style={{ marginTop: 12, marginBottom: 10, color: "#64748b" }}>No images.</div>
+        )}
+
+        <div style={viewerThumbsWrap}>
+          {images.map((src, i) => (
+            <button
+              key={i}
+              style={viewerThumbTile}
+              onClick={() => setPreview(src)}
+              title={`Image ${i + 1}`}
+            >
+              <img src={src} alt={`thumb-${i}`} style={viewerThumbImg} />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ========== Page ========== */
 export default function BrowseReturns() {
   const [returnsData, setReturnsData] = useState([]);
@@ -934,6 +1064,20 @@ export default function BrowseReturns() {
     );
   };
 
+  // ==== Image viewer state (read-only) ====
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerData, setViewerData] = useState({ title: "", images: [] });
+
+  function openViewer(row) {
+    const imgs = Array.isArray(row.images) ? row.images : [];
+    if (!imgs.length) return;
+    setViewerData({ title: row.productName || "Images", images: imgs });
+    setViewerOpen(true);
+  }
+  function closeViewer() {
+    setViewerOpen(false);
+  }
+
   return (
     <>
       {/* Gradient & waves background */}
@@ -1311,7 +1455,18 @@ export default function BrowseReturns() {
                       return (
                         <tr key={row.__i ?? i}>
                           <td style={td}>{i + 1}</td>
-                          <td style={td}>{row.productName}</td>
+                          <td style={td}>
+                            <span>{row.productName}</span>
+                            {Array.isArray(row.images) && row.images.length > 0 && (
+                              <button
+                                style={viewImgBtn}
+                                onClick={() => openViewer(row)}
+                                title="View images"
+                              >
+                                VIEW IMG ({row.images.length})
+                              </button>
+                            )}
+                          </td>
                           <td style={td}>{row.origin}</td>
                           <td style={td}>
                             {row.butchery === "فرع آخر..." ? row.customButchery : row.butchery}
@@ -1368,6 +1523,14 @@ export default function BrowseReturns() {
           </div>
         </div>
       </div>
+
+      {/* Read-only images modal */}
+      <ImageViewerModal
+        open={viewerOpen}
+        images={viewerData.images}
+        title={viewerData.title}
+        onClose={closeViewer}
+      />
     </>
   );
 }

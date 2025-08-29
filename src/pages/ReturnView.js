@@ -58,7 +58,7 @@ function toTs(x) {
   if (typeof x === "number") return x;
   if (typeof x === "string" && /^[a-f0-9]{24}$/i.test(x)) {
     return parseInt(x.slice(0, 8), 16) * 1000;
-    }
+  }
   const n = Date.parse(x);
   return Number.isFinite(n) ? n : null;
 }
@@ -188,6 +188,77 @@ async function appendActionChange(reportDate, changeItem) {
   });
 }
 
+/* ========= Images manager modal (per-row) ========= */
+const MAX_IMAGES_PER_PRODUCT = 5;
+
+function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, remaining }) {
+  const [previewSrc, setPreviewSrc] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) setPreviewSrc("");
+    const onEsc = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const handlePick = () => inputRef.current?.click();
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const allowed = files.slice(0, remaining);
+    const b64s = await Promise.all(
+      allowed.map((f) => new Promise((resolve, reject) => {
+        const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(f);
+      }))
+    );
+    onAddImages(b64s);
+    e.target.value = "";
+  };
+
+  return (
+    <div style={galleryBack} onClick={onClose}>
+      <div style={galleryCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
+            🖼️ Product Images {row?.productName ? `— ${row.productName}` : ""}
+          </div>
+          <button onClick={onClose} style={galleryClose}>✕</button>
+        </div>
+
+        {previewSrc && (
+          <div style={{ marginTop: 10, marginBottom: 8 }}>
+            <img src={previewSrc} alt="preview" style={{ maxWidth: "100%", maxHeight: 700, borderRadius: 15, boxShadow: "0 6px 18px rgba(0,0,0,.2)" }} />
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 }}>
+          <button onClick={handlePick} style={btnBlue} disabled={remaining === 0}>
+            ⬆️ Upload images ({remaining} left)
+          </button>
+          <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} />
+          <div style={{ fontSize: 13, color: "#334155" }}>Max {MAX_IMAGES_PER_PRODUCT} images per product.</div>
+        </div>
+
+        <div style={thumbsWrap}>
+          {(row?.images || []).length === 0 ? (
+            <div style={{ color: "#64748b" }}>No images yet.</div>
+          ) : (
+            row.images.map((src, i) => (
+              <div key={i} style={thumbTile} title={`Image ${i + 1}`}>
+                <img src={src} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
+                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>✕</button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ReturnView() {
   const [reports, setReports] = useState([]);
 
@@ -214,6 +285,10 @@ export default function ReturnView() {
   const [editRowIdx, setEditRowIdx] = useState(null);
   const [editRowData, setEditRowData] = useState(null);
   const [addingRow, setAddingRow] = useState(false);
+
+  // Images modal state
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageRowIndex, setImageRowIndex] = useState(-1);
 
   /* ========== Load from server only ========== */
   async function reloadFromServer() {
@@ -351,6 +426,7 @@ export default function ReturnView() {
     remarks: "",
     action: ACTIONS[0],
     customAction: "",
+    images: [], // ✅ ensure images field
   };
 
   const startAddRow = () => {
@@ -377,6 +453,7 @@ export default function ReturnView() {
       remarks: row.remarks || "",
       action: row.action || "",
       customAction: row.customAction || "",
+      images: Array.isArray(row.images) ? row.images : [], // ✅ keep images in edit state
     });
   };
 
@@ -386,12 +463,11 @@ export default function ReturnView() {
     setEditRowData(null);
   };
 
-  const prepareRowForSave = (row) => {
+  const prepareRowForSave = (row, existingImages = []) => {
     const qtyNum = Number(row.quantity);
     const customB = (row.customButchery || "").trim();
     const chosen = (row.butchery || "").trim();
 
-    // If custom text exists OR "Other branch" chosen, store the unified label value
     const butcheryLabel = (customB || isOtherBranch(chosen))
       ? "فرع آخر... / Other branch"
       : chosen;
@@ -402,21 +478,19 @@ export default function ReturnView() {
       butchery: butcheryLabel,
       customButchery: customB,
       quantity: Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0,
-      // Keep internal sentinel "أخرى" for compatibility
       qtyType: (row.customQtyType || "").trim() ? "أخرى" : (row.qtyType || "").trim(),
       customQtyType: (row.customQtyType || "").trim(),
       expiry: (row.expiry || "").trim(),
       remarks: (row.remarks || "").trim(),
       action: row.action || "",
-      // Keep internal sentinel "إجراء آخر..." for compatibility
       customAction: row.action === "إجراء آخر..." ? (row.customAction || "").trim() : "",
+      images: Array.isArray(row.images) ? row.images : existingImages, // ✅ preserve or save images
     };
   };
 
   const saveRow = async () => {
     if (!selectedReport || editRowIdx === null || !editRowData) return;
 
-    // Simple validation
     if (!editRowData.productName?.trim()) {
       setOpMsg("❌ Enter product name.");
       setTimeout(() => setOpMsg(""), 3000);
@@ -434,12 +508,12 @@ export default function ReturnView() {
       return;
     }
 
-    const prepared = prepareRowForSave(editRowData);
+    const currentItems = selectedReport.items || [];
+    const existingImages = !addingRow && currentItems[editRowIdx] ? (currentItems[editRowIdx].images || []) : [];
+    const prepared = prepareRowForSave(editRowData, existingImages);
 
     try {
       setOpMsg("⏳ Saving to server…");
-      const currentItems = selectedReport.items || [];
-      let newItems;
 
       // Action-change log if changed
       let changedAction = false;
@@ -450,11 +524,9 @@ export default function ReturnView() {
         changedAction = prevTxt && prevTxt !== nextTxt;
       }
 
-      if (addingRow) {
-        newItems = [...currentItems, prepared];
-      } else {
-        newItems = currentItems.map((r, i) => (i === editRowIdx ? prepared : r));
-      }
+      let newItems;
+      if (addingRow) newItems = [...currentItems, prepared];
+      else newItems = currentItems.map((r, i) => (i === editRowIdx ? prepared : r));
 
       await saveReportToServer(selectedReport.reportDate, newItems);
 
@@ -495,6 +567,50 @@ export default function ReturnView() {
     } catch (e) {
       console.error(e);
       setOpMsg("❌ Failed to delete row.");
+    } finally {
+      setTimeout(() => setOpMsg(""), 3000);
+    }
+  };
+
+  /* ======= Images actions (persist directly) ======= */
+  const openImagesFor = (i) => { setImageRowIndex(i); setImageModalOpen(true); };
+  const closeImages = () => setImageModalOpen(false);
+
+  const addImagesToRow = async (b64s) => {
+    if (!selectedReport || imageRowIndex < 0) return;
+    try {
+      const items = selectedReport.items || [];
+      const row = items[imageRowIndex] || {};
+      const cur = Array.isArray(row.images) ? row.images : [];
+      const merged = [...cur, ...b64s].slice(0, MAX_IMAGES_PER_PRODUCT);
+      const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: merged } : r));
+      setOpMsg("⏳ Updating images…");
+      await saveReportToServer(selectedReport.reportDate, newItems);
+      await reloadFromServer();
+      setOpMsg("✅ Images updated.");
+    } catch (e) {
+      console.error(e);
+      setOpMsg("❌ Failed to update images.");
+    } finally {
+      setTimeout(() => setOpMsg(""), 3000);
+    }
+  };
+
+  const removeImageFromRow = async (imgIndex) => {
+    if (!selectedReport || imageRowIndex < 0) return;
+    try {
+      const items = selectedReport.items || [];
+      const row = items[imageRowIndex] || {};
+      const cur = Array.isArray(row.images) ? [...row.images] : [];
+      cur.splice(imgIndex, 1);
+      const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: cur } : r));
+      setOpMsg("⏳ Removing image…");
+      await saveReportToServer(selectedReport.reportDate, newItems);
+      await reloadFromServer();
+      setOpMsg("✅ Image removed.");
+    } catch (e) {
+      console.error(e);
+      setOpMsg("❌ Failed to remove image.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -684,6 +800,11 @@ export default function ReturnView() {
   };
 
   /* ======================== UI ======================== */
+  const activeRow =
+    selectedReport && imageRowIndex >= 0 ? selectedReport.items?.[imageRowIndex] : null;
+  const remainingForActive =
+    Math.max(0, MAX_IMAGES_PER_PRODUCT - (activeRow?.images?.length || 0));
+
   return (
     <div
       style={{
@@ -1137,17 +1258,31 @@ export default function ReturnView() {
                         )}
                       </td>
 
-                      {/* ROW BUTTONS */}
+                      {/* ROW BUTTONS (Edit/Delete/Images) */}
                       <td style={td}>
                         {editRowIdx === i ? (
-                          <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                             <button onClick={saveRow} style={saveBtn}>Save</button>
                             <button onClick={cancelEditRow} style={cancelBtn}>Cancel</button>
+                            <button
+                              onClick={() => openImagesFor(i)}
+                              style={imageBtn}
+                              title="Manage images"
+                            >
+                              🖼️ Images ({row.images?.length || 0}/{MAX_IMAGES_PER_PRODUCT})
+                            </button>
                           </div>
                         ) : (
-                          <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                             <button onClick={() => startEditRow(i)} style={editBtn}>✏️ Edit</button>
                             <button onClick={() => deleteRow(i)} style={rowDeleteBtn}>🗑️ Delete</button>
+                            <button
+                              onClick={() => openImagesFor(i)}
+                              style={imageBtn}
+                              title="Manage images"
+                            >
+                              🖼️ Images ({row.images?.length || 0}/{MAX_IMAGES_PER_PRODUCT})
+                            </button>
                           </div>
                         )}
                       </td>
@@ -1272,9 +1407,16 @@ export default function ReturnView() {
                         </div>
                       </td>
                       <td style={td}>
-                        <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                           <button onClick={saveRow} style={saveBtn}>Save</button>
                           <button onClick={cancelEditRow} style={cancelBtn}>Cancel</button>
+                          <button
+                            onClick={() => openImagesFor(editRowIdx)}
+                            style={imageBtn}
+                            title="Manage images"
+                          >
+                            🖼️ Images ({editRowData.images?.length || 0}/{MAX_IMAGES_PER_PRODUCT})
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1289,6 +1431,16 @@ export default function ReturnView() {
           )}
         </div>
       </div>
+
+      {/* Images modal */}
+      <ImageManagerModal
+        open={imageModalOpen}
+        row={activeRow}
+        onClose={closeImages}
+        onAddImages={addImagesToRow}
+        onRemoveImage={removeImageFromRow}
+        remaining={remainingForActive}
+      />
     </div>
   );
 }
@@ -1502,6 +1654,16 @@ const editBtn = {
   padding: "2px 8px",
   cursor: "pointer",
 };
+const imageBtn = {
+  background: "#2563eb",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  fontSize: 14,
+  padding: "4px 10px",
+  cursor: "pointer",
+  boxShadow: "0 1px 6px #bfdbfe",
+};
 const deleteBtnMain = {
   background: "#dc2626",
   color: "#fff",
@@ -1551,5 +1713,76 @@ const rowDeleteBtn = {
   borderRadius: 8,
   fontSize: 15,
   padding: "2px 8px",
+  cursor: "pointer",
+};
+
+/* ====== Gallery modal styles ====== */
+const galleryBack = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15,23,42,.35)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 999,
+};
+const galleryCard = {
+  width: "min(1400px, 1000vw)",
+  maxHeight: "400vh",
+  overflow: "auto",
+  background: "#fff",
+  color: "#111",
+  borderRadius: 14,
+  border: "1px solid #e5e7eb",
+  padding: "14px 16px",
+  boxShadow: "0 12px 32px rgba(0,0,0,.25)",
+};
+const galleryClose = {
+  background: "transparent",
+  border: "none",
+  color: "#111",
+  fontWeight: 900,
+  cursor: "pointer",
+  fontSize: 18,
+};
+const btnBlue = {
+  background: "#2563eb",
+  color: "#fff",
+  border: "none",
+  borderRadius: 10,
+  padding: "8px 14px",
+  fontWeight: "bold",
+  cursor: "pointer",
+  boxShadow: "0 1px 6px #bfdbfe",
+};
+const thumbsWrap = {
+  marginTop: 8,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: 10,
+};
+const thumbTile = {
+  position: "relative",
+  border: "1px solid #e5e7eb",
+  borderRadius: 10,
+  overflow: "hidden",
+  background: "#f8fafc",
+};
+const thumbImg = {
+  width: "100%",
+  height: 150,
+  objectFit: "cover",
+  display: "block",
+};
+const thumbRemove = {
+  position: "absolute",
+  top: 6,
+  right: 6,
+  background: "#ef4444",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  padding: "2px 8px",
+  fontWeight: 800,
   cursor: "pointer",
 };
