@@ -11,6 +11,10 @@ export default function FTR2PersonalHygieneView() {
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const reportRef = useRef();
+  const fileInputRef = useRef(null);
+
+  // helper: ID موحّد للحذف والمقارنة
+  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 
   useEffect(() => {
     fetchReports();
@@ -78,8 +82,10 @@ export default function FTR2PersonalHygieneView() {
   // حذف التقرير
   const handleDelete = async (report) => {
     if (!window.confirm("Are you sure you want to delete this report?")) return;
+    const rid = getId(report);
+    if (!rid) return alert("⚠️ Missing report ID.");
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${report.id}`, {
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete");
@@ -88,6 +94,86 @@ export default function FTR2PersonalHygieneView() {
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to delete report.");
+    }
+  };
+
+  // ===== Export JSON (كل التقارير) =====
+  const handleExportJSON = () => {
+    try {
+      const payloads = reports.map((r) => r?.payload ?? r);
+      const bundle = {
+        type: "ftr2_personal_hygiene",
+        exportedAt: new Date().toISOString(),
+        count: payloads.length,
+        items: payloads,
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      a.href = url;
+      a.download = `FTR2_Personal_Hygiene_ALL_${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export JSON.");
+    }
+  };
+
+  // ===== Import JSON (رفع وإنشاء سجلات على السيرفر) =====
+  const triggerImport = () => fileInputRef.current?.click();
+
+  const handleImportJSON = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setLoading(true);
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      const itemsRaw =
+        Array.isArray(json) ? json :
+        Array.isArray(json?.items) ? json.items :
+        Array.isArray(json?.data) ? json.data : [];
+
+      if (!itemsRaw.length) {
+        alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
+        return;
+      }
+
+      let ok = 0, fail = 0;
+      for (const item of itemsRaw) {
+        const payload = item?.payload ?? item;
+        if (!payload || typeof payload !== "object") { fail++; continue; }
+
+        try {
+          const res = await fetch(`${API_BASE}/api/reports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "ftr2_personal_hygiene",
+              payload,
+            }),
+          });
+          if (res.ok) ok++; else fail++;
+        } catch {
+          fail++;
+        }
+      }
+
+      alert(`✅ Imported: ${ok} ${fail ? `| ❌ Failed: ${fail}` : ""}`);
+      await fetchReports();
+    } catch (err) {
+      console.error(err);
+      alert("❌ Invalid JSON file.");
+    } finally {
+      setLoading(false);
+      if (e?.target) e.target.value = ""; // يسمح بإعادة اختيار نفس الملف لاحقًا
     }
   };
 
@@ -142,25 +228,28 @@ export default function FTR2PersonalHygieneView() {
                         <details key={month} style={{ marginLeft: "1rem" }}>
                           <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {daysSorted.map((r, i) => (
-                              <li
-                                key={i}
-                                onClick={() => setSelectedReport(r)}
-                                style={{
-                                  padding: "6px 10px",
-                                  marginBottom: "4px",
-                                  borderRadius: "6px",
-                                  cursor: "pointer",
-                                  background:
-                                    selectedReport?.id === r.id ? "#6d28d9" : "#ecf0f1",
-                                  color: selectedReport?.id === r.id ? "#fff" : "#333",
-                                  fontWeight: 600,
-                                  textAlign: "center",
-                                }}
-                              >
-                                {`${r.day}/${month}/${year}`}
-                              </li>
-                            ))}
+                            {daysSorted.map((r, i) => {
+                              const isActive =
+                                getId(selectedReport) && getId(selectedReport) === getId(r);
+                              return (
+                                <li
+                                  key={i}
+                                  onClick={() => setSelectedReport(r)}
+                                  style={{
+                                    padding: "6px 10px",
+                                    marginBottom: "4px",
+                                    borderRadius: "6px",
+                                    cursor: "pointer",
+                                    background: isActive ? "#6d28d9" : "#ecf0f1",
+                                    color: isActive ? "#fff" : "#333",
+                                    fontWeight: 600,
+                                    textAlign: "center",
+                                  }}
+                                >
+                                  {`${r.day}/${month}/${year}`}
+                                </li>
+                              );
+                            })}
                           </ul>
                         </details>
                       );
@@ -208,6 +297,37 @@ export default function FTR2PersonalHygieneView() {
               >
                 ⬇ Export PDF
               </button>
+
+              <button
+                onClick={handleExportJSON}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  background: "#16a085",
+                  color: "#fff",
+                  fontWeight: "600",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                ⬇ Export JSON
+              </button>
+
+              <button
+                onClick={triggerImport}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  background: "#f39c12",
+                  color: "#fff",
+                  fontWeight: "600",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                ⬆ Import JSON
+              </button>
+
               <button
                 onClick={() => handleDelete(selectedReport)}
                 style={{
@@ -222,6 +342,15 @@ export default function FTR2PersonalHygieneView() {
               >
                 🗑 Delete
               </button>
+
+              {/* input مخفي لاستيراد JSON */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json"
+                style={{ display: "none" }}
+                onChange={handleImportJSON}
+              />
             </div>
 
             {/* Report content */}

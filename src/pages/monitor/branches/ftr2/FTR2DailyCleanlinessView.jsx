@@ -11,6 +11,7 @@ export default function FTR2DailyCleanlinessView() {
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const reportRef = useRef();
+  const fileInputRef = useRef(null);
 
   const getId = (r) => r?.id || r?._id;
 
@@ -18,15 +19,17 @@ export default function FTR2DailyCleanlinessView() {
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=ftr2_daily_cleanliness`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=ftr2_daily_cleanliness`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
       arr.sort(
         (a, b) =>
-          new Date(a.payload?.reportDate || 0) - new Date(b.payload?.reportDate || 0)
+          new Date(a.payload?.reportDate || 0) -
+          new Date(b.payload?.reportDate || 0)
       );
       setReports(arr);
       setSelectedReport(arr[0] || null);
@@ -42,7 +45,7 @@ export default function FTR2DailyCleanlinessView() {
     fetchReports();
   }, []);
 
-  // Export PDF
+  // ===== Export PDF =====
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
     const buttons = reportRef.current.querySelector(".action-buttons");
@@ -69,12 +72,14 @@ export default function FTR2DailyCleanlinessView() {
     const x = (pageWidth - imgWidth) / 2;
     const y = 20;
     pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
-    pdf.save(`FTR2_Cleanliness_${selectedReport?.payload?.reportDate || "report"}.pdf`);
+    pdf.save(
+      `FTR2_Cleanliness_${selectedReport?.payload?.reportDate || "report"}.pdf`
+    );
 
     if (buttons) buttons.style.display = "flex";
   };
 
-  // Delete
+  // ===== Delete =====
   const handleDelete = async (report) => {
     if (!window.confirm("⚠️ Delete this report?")) return;
     try {
@@ -87,6 +92,88 @@ export default function FTR2DailyCleanlinessView() {
     } catch (err) {
       console.error(err);
       alert("❌ Failed to delete.");
+    }
+  };
+
+  // ===== Export JSON (كل التقارير) =====
+  const handleExportJSON = () => {
+    try {
+      const payloads = reports.map((r) => r?.payload ?? r);
+      const bundle = {
+        type: "ftr2_daily_cleanliness",
+        exportedAt: new Date().toISOString(),
+        count: payloads.length,
+        items: payloads,
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      a.href = url;
+      a.download = `FTR2_Cleanliness_ALL_${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export JSON.");
+    }
+  };
+
+  // ===== Import JSON (رفع للسيرفر) =====
+  const triggerImport = () => fileInputRef.current?.click();
+
+  const handleImportJSON = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setLoading(true);
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      const itemsRaw =
+        Array.isArray(json) ? json :
+        Array.isArray(json?.items) ? json.items :
+        Array.isArray(json?.data) ? json.data : [];
+
+      if (!itemsRaw.length) {
+        alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
+        return;
+      }
+
+      let ok = 0, fail = 0;
+      for (const item of itemsRaw) {
+        const payload = item?.payload ?? item;
+        // يمكن إضافة تحققات خفيفة
+        if (!payload || typeof payload !== "object") { fail++; continue; }
+
+        try {
+          const res = await fetch(`${API_BASE}/api/reports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "ftr2_daily_cleanliness",
+              payload,
+            }),
+          });
+          if (res.ok) ok++; else fail++;
+        } catch {
+          fail++;
+        }
+      }
+
+      alert(`✅ Imported: ${ok}  ${fail ? `| ❌ Failed: ${fail}` : ""}`);
+      await fetchReports();
+    } catch (err) {
+      console.error(err);
+      alert("❌ Invalid JSON file.");
+    } finally {
+      setLoading(false);
+      // السماح باختيار نفس الملف لاحقًا
+      if (e?.target) e.target.value = "";
     }
   };
 
@@ -154,7 +241,9 @@ export default function FTR2DailyCleanlinessView() {
                                     color: isActive ? "#fff" : "#333",
                                     fontWeight: 600,
                                     textAlign: "center",
-                                    borderLeft: isActive ? "4px solid #4c1d95" : "4px solid transparent",
+                                    borderLeft: isActive
+                                      ? "4px solid #4c1d95"
+                                      : "4px solid transparent",
                                     display: "flex",
                                     justifyContent: "space-between",
                                     alignItems: "center",
@@ -163,7 +252,11 @@ export default function FTR2DailyCleanlinessView() {
                                   title={isActive ? "Currently open" : "Open report"}
                                 >
                                   <span>{`${r.day}/${month}/${year}`}</span>
-                                  {isActive ? <span>✔️</span> : <span style={{ opacity: 0.5 }}>•</span>}
+                                  {isActive ? (
+                                    <span>✔️</span>
+                                  ) : (
+                                    <span style={{ opacity: 0.5 }}>•</span>
+                                  )}
                                 </li>
                               );
                             })}
@@ -207,10 +300,24 @@ export default function FTR2DailyCleanlinessView() {
                 <button onClick={handleExportPDF} style={btnExport}>
                   ⬇ Export PDF
                 </button>
+                <button onClick={handleExportJSON} style={btnJson}>
+                  ⬇ Export JSON
+                </button>
+                <button onClick={triggerImport} style={btnImport}>
+                  ⬆ Import JSON
+                </button>
                 <button onClick={() => handleDelete(selectedReport)} style={btnDelete}>
                   🗑 Delete
                 </button>
               </div>
+              {/* input مخفي لاستيراد JSON */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json"
+                style={{ display: "none" }}
+                onChange={handleImportJSON}
+              />
             </div>
 
             {/* شعار المواشي */}
@@ -251,7 +358,14 @@ export default function FTR2DailyCleanlinessView() {
               </tbody>
             </table>
 
-            <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: "6px", marginBottom: "1rem" }}>
+            <h3
+              style={{
+                textAlign: "center",
+                background: "#e5e7eb",
+                padding: "6px",
+                marginBottom: "1rem",
+              }}
+            >
               AL MAWASHI BRAAI MAMZAR <br />
               CLEANING CHECKLIST – FTR2
             </h3>
@@ -314,22 +428,16 @@ const thStyle = {
 };
 const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
 
-const btnExport = {
+const btnBase = {
   padding: "8px 14px",
-  marginRight: "10px",
   borderRadius: "6px",
-  background: "#27ae60",
   color: "#fff",
   fontWeight: "600",
   border: "none",
   cursor: "pointer",
 };
-const btnDelete = {
-  padding: "8px 14px",
-  borderRadius: "6px",
-  background: "#c0392b",
-  color: "#fff",
-  fontWeight: "600",
-  border: "none",
-  cursor: "pointer",
-};
+
+const btnExport = { ...btnBase, background: "#27ae60" };
+const btnJson   = { ...btnBase, background: "#16a085" }; // Export JSON
+const btnImport = { ...btnBase, background: "#f39c12" }; // Import JSON
+const btnDelete = { ...btnBase, background: "#c0392b" };

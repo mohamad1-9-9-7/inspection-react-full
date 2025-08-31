@@ -11,6 +11,7 @@ export default function FTR2OilCalibrationView() {
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const reportRef = useRef();
+  const fileInputRef = useRef(null);
 
   /* ===== Helpers ===== */
   const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
@@ -93,6 +94,7 @@ export default function FTR2OilCalibrationView() {
     );
   }, [selectedReport]);
 
+  /* ===== Export PDF ===== */
   const handleExportPDF = async () => {
     if (!reportRef.current || !selectedReport) return;
 
@@ -123,6 +125,7 @@ export default function FTR2OilCalibrationView() {
     pdf.save(`FTR2_Oil_Calibration_${nameDate}.pdf`);
   };
 
+  /* ===== Delete ===== */
   const handleDelete = async (report) => {
     if (!report) return;
     if (!window.confirm("Are you sure you want to delete this report?")) return;
@@ -152,6 +155,86 @@ export default function FTR2OilCalibrationView() {
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to delete report.");
+    }
+  };
+
+  /* ===== Export JSON (كل التقارير) ===== */
+  const handleExportJSON = () => {
+    try {
+      const payloads = reports.map((r) => r?.payload ?? r);
+      const bundle = {
+        type: "ftr2_oil_calibration",
+        exportedAt: new Date().toISOString(),
+        count: payloads.length,
+        items: payloads,
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      a.href = url;
+      a.download = `FTR2_Oil_Calibration_ALL_${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to export JSON.");
+    }
+  };
+
+  /* ===== Import JSON (رفع للسيرفر وإنشاء سجلات) ===== */
+  const triggerImport = () => fileInputRef.current?.click();
+
+  const handleImportJSON = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setLoading(true);
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      const itemsRaw =
+        Array.isArray(json) ? json :
+        Array.isArray(json?.items) ? json.items :
+        Array.isArray(json?.data) ? json.data : [];
+
+      if (!itemsRaw.length) {
+        alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
+        return;
+      }
+
+      let ok = 0, fail = 0;
+      for (const item of itemsRaw) {
+        const payload = item?.payload ?? item;
+        if (!payload || typeof payload !== "object") { fail++; continue; }
+
+        try {
+          const res = await fetch(`${API_BASE}/api/reports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "ftr2_oil_calibration",
+              payload,
+            }),
+          });
+          if (res.ok) ok++; else fail++;
+        } catch {
+          fail++;
+        }
+      }
+
+      alert(`✅ Imported: ${ok} ${fail ? `| ❌ Failed: ${fail}` : ""}`);
+      await load();
+    } catch (err) {
+      console.error(err);
+      alert("❌ Invalid JSON file.");
+    } finally {
+      setLoading(false);
+      if (e?.target) e.target.value = ""; // يسمح بإعادة اختيار نفس الملف لاحقًا
     }
   };
 
@@ -227,7 +310,7 @@ export default function FTR2OilCalibrationView() {
                             fontWeight: 700,
                             marginBottom: 6,
                             display: "flex",
-                            justifyContent: "space-between",
+                            justifyContent: "space_between",
                             alignItems: "center",
                           }}
                         >
@@ -394,6 +477,36 @@ export default function FTR2OilCalibrationView() {
               </button>
 
               <button
+                onClick={handleExportJSON}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  background: "#16a085",
+                  color: "#fff",
+                  fontWeight: "600",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                ⬇ Export JSON
+              </button>
+
+              <button
+                onClick={triggerImport}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  background: "#f39c12",
+                  color: "#fff",
+                  fontWeight: "600",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                ⬆ Import JSON
+              </button>
+
+              <button
                 onClick={() => handleDelete(selectedReport)}
                 style={{
                   padding: "6px 12px",
@@ -407,6 +520,15 @@ export default function FTR2OilCalibrationView() {
               >
                 🗑 Delete
               </button>
+
+              {/* input مخفي لاستيراد JSON */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json"
+                style={{ display: "none" }}
+                onChange={handleImportJSON}
+              />
             </div>
 
             {/* Table */}
