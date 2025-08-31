@@ -1,5 +1,5 @@
 // src/pages/admin/QCSDailyView.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -55,6 +55,23 @@ async function deleteReportByDate(date) {
   });
   if (!res.ok && res.status !== 404) throw new Error("Failed to delete report");
   return true;
+}
+async function createQcsDailyReport(payload) {
+  const res = await fetch(REPORTS_URL, {
+    method: "POST",
+    credentials: IS_SAME_ORIGIN ? "include" : "omit",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      reporter: "admin-import",
+      type: "qcs-daily",
+      payload,
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(()=>"");
+    throw new Error(t || `Failed to create report (${res.status})`);
+  }
+  return res.json().catch(()=>({}));
 }
 
 /* ============ Constants ============ */
@@ -281,6 +298,10 @@ export default function QCSDailyView() {
   const [exportingPDF, setExportingPDF] = useState(false);
   const [exportingAll, setExportingAll] = useState(false);
 
+  // import state
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef(null);
+
   useEffect(()=>{ (async()=>{
     try { const dates = await listReportDates(); setReports(dates.map(d=>({date:d}))); setSelectedDate(dates[0]||null); }
     catch(e){ console.error(e); alert("Failed to fetch reports list from server."); }
@@ -327,7 +348,58 @@ export default function QCSDailyView() {
     } catch (e) { console.error(e); alert("Failed to export all."); }
     finally { setExportingAll(false); }
   };
-  const exportCurrent = () => selectedReport && downloadBlob(JSON.stringify(selectedReport, null, 2), "application/json", `qcs_report_${selectedDate}.json`);
+
+  const triggerImport = () => fileInputRef.current?.click();
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset input so same file can be re-selected later
+    if (!file) return;
+    try {
+      setIsImporting(true);
+      const text = await file.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch { throw new Error("Invalid JSON file."); }
+      const arr = Array.isArray(data) ? data : [data];
+
+      let ok = 0, skipped = 0, failed = 0;
+      for (const item of arr) {
+        try {
+          // item may be { date, ...payload } or just payload.
+          const payload = { ...item };
+          const dateStr = String(payload.reportDate || payload.date || "").trim();
+          if (!dateStr) { skipped++; continue; }
+
+          // ensure reportDate exists inside payload
+          payload.reportDate = dateStr;
+
+          // remove top-level 'date' if present (backend expects within payload)
+          delete payload.date;
+
+          // avoid duplicates: delete existing by date if found
+          try { await deleteReportByDate(dateStr); } catch {}
+
+          // create report
+          await createQcsDailyReport(payload);
+          ok++;
+        } catch (err) {
+          console.error("Import item failed:", err);
+          failed++;
+        }
+      }
+
+      // refresh list
+      const dates = await listReportDates();
+      setReports(dates.map(d=>({date:d})));
+      if (dates.length) setSelectedDate(dates[0]);
+
+      alert(`Import finished.\n✅ Imported: ${ok}\n⏭️ Skipped (no date): ${skipped}\n❌ Failed: ${failed}`);
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Import failed.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const handlePrint = () => { setAutoPrintScale(); setTimeout(()=>window.print(), 30); };
   const handleExportPDF = async () => {
@@ -367,6 +439,12 @@ export default function QCSDailyView() {
       <div className="app-shell" style={{ padding:"1rem", fontFamily:"Cairo, sans-serif" }}>
         <style>{printCss}</style><style>{screenCss}</style>
         <div className="print-area one-page" id="report-container"><p>No reports found.</p></div>
+        {/* أزرار التصدير/الاستيراد تبقى ظاهرة حتى بدون تقارير */}
+        <div className="no-print" style={{ marginTop:"1rem", display:"flex", gap:8 }}>
+          <button onClick={exportAll} style={{ ...btnDark, opacity:exportingAll?0.7:1 }} disabled={exportingAll}>⬇️⬇️ Export All (JSON)</button>
+          <button onClick={triggerImport} style={{ ...btnOutline, opacity:isImporting?0.7:1 }} disabled={isImporting}>⬆️ Import (JSON)</button>
+          <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImportFile} style={{ display:"none" }} />
+        </div>
       </div>
     );
   }
@@ -421,8 +499,9 @@ export default function QCSDailyView() {
           ))}
         </ul>
         <div style={{ marginTop:"1.2rem", display:"grid", gap:8 }}>
-          <button onClick={exportCurrent} style={btnPrimary} disabled={!selectedReport}>⬇️ Export Current (JSON)</button>
           <button onClick={exportAll} style={{ ...btnDark, opacity:exportingAll?0.7:1 }} disabled={exportingAll}>⬇️⬇️ Export All (JSON)</button>
+          <button onClick={triggerImport} style={{ ...btnOutline, opacity:isImporting?0.7:1 }} disabled={isImporting}>⬆️ Import (JSON)</button>
+          <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImportFile} style={{ display:"none" }} />
         </div>
       </aside>
 

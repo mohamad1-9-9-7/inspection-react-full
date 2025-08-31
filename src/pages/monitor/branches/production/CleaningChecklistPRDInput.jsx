@@ -22,104 +22,68 @@ const FOOT_DEFAULT = { checkedBy: "", verifiedBy: "" };
 
 /* ================== التمبلت الصحيح ================== */
 const TPL = [
-  {
-    no: 1,
-    title: "Hand Washing Area",
-    items: [
-      { t: "Hand wash Sink", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Hand wash soap available upon the request", c: "" },
-      { t: "Tissue available", c: "" },
-      { t: "Hair Net available", c: "" },
-      { t: "Face Masks available", c: "" },
-    ],
-  },
-  {
-    no: 2,
-    title: "Meat  Cutting Room",
-    items: [
-      { t: "Cutting Tables", c: "bh-30(surface sanitizer)30ml/bottle" },
-      { t: "Walls/Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Cutting Board", c: "bh-30(surface sanitizer)30ml/bottle" },
-      { t: "Drainage", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Cutting Knife", c: "bh-30(surface sanitizer)30ml/bottle" },
-      { t: "Waste Basket", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "weighing scales", c: "bh-30(surface sanitizer)30ml/bottle" },
-      { t: "Red crates", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Door", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-    ],
-  },
-  {
-    no: 3,
-    title: "Chiller Room 3",
-    items: [
-      { t: "Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Drainage", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Trolley & Racks", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Proper arrangement of Products", c: "" },
-      { t: "Door", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-    ],
-  },
-  {
-    no: 4,
-    title: "Chiller Room 4",
-    items: [
-      { t: "Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Trolley & Racks", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Drainage", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Proper arrangement of Products", c: "" },
-      { t: "Door", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-    ],
-  },
-  {
-    no: 5,
-    title: "Chiller Room 1",
-    items: [
-      { t: "Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Trolley & Racks", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Drainage", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Proper arrangement of Products", c: "" },
-      { t: "Door", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-    ],
-  },
-  {
-    no: 7,
-    title: "Machine Cleanliness",
-    items: [
-      { t: "Sausage Machine", c: "bh-20/multi clean & bh-30(surface sanitizer)30ml/bottle" },
-      { t: "Mincer", c: "bh-20/multi clean & bh-30(surface sanitizer)30ml/bottle" },
-      { t: "Wrapping Machine", c: "bh-20/multi clean & bh-30(surface sanitizer)30ml/bottle" },
-      { t: "Bone saw Machine", c: "bh-20/multi clean & bh-30(surface sanitizer)30ml/bottle" },
-    ],
-  },
-  {
-    no: 8,
-    title: "Packing Store",
-    items: [
-      { t: "Master Carton Stacking", c: "" },
-      { t: "Polythene bags", c: "" },
-      { t: "Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-    ],
-  },
-  {
-    no: 9,
-    title: "Waste Disposal",
-    items: [
-      { t: "Collection of waste", c: "" },
-      { t: "Disposal", c: "" },
-    ],
-  },
-  {
-    no: 10,
-    title: "Working Conditions & Cleanliness",
-    items: [
-      { t: "Lights", c: "" },
-      { t: "Fly Catchers", c: "" },
-      { t: "Floor/wall", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Painting and Plastering", c: "" },
-      { t: "Weighing Balance", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
-      { t: "Tap Water", c: "" },
-    ],
-  },
+  { no: 1, title: "Hand Washing Area", items: [
+    { t: "Hand wash Sink", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Hand wash soap available upon the request", c: "" },
+    { t: "Tissue available", c: "" },
+    { t: "Hair Net available", c: "" },
+    { t: "Face Masks available", c: "" },
+  ]},
+  { no: 2, title: "Meat  Cutting Room", items: [
+    { t: "Cutting Tables", c: "bh-30(surface sanitizer)30ml/bottle" },
+    { t: "Walls/Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Cutting Board", c: "bh-30(surface sanitizer)30ml/bottle" },
+    { t: "Drainage", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Cutting Knife", c: "bh-30(surface sanitizer)30ml/bottle" },
+    { t: "Waste Basket", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "weighing scales", c: "bh-30(surface sanitizer)30ml/bottle" },
+    { t: "Red crates", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Door", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+  ]},
+  { no: 3, title: "Chiller Room 3", items: [
+    { t: "Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Drainage", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Trolley & Racks", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Proper arrangement of Products", c: "" },
+    { t: "Door", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+  ]},
+  { no: 4, title: "Chiller Room 4", items: [
+    { t: "Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Trolley & Racks", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Drainage", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Proper arrangement of Products", c: "" },
+    { t: "Door", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+  ]},
+  { no: 5, title: "Chiller Room 1", items: [
+    { t: "Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Trolley & Racks", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Drainage", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Proper arrangement of Products", c: "" },
+    { t: "Door", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+  ]},
+  { no: 7, title: "Machine Cleanliness", items: [
+    { t: "Sausage Machine", c: "bh-20/multi clean & bh-30(surface sanitizer)30ml/bottle" },
+    { t: "Mincer", c: "bh-20/multi clean & bh-30(surface sanitizer)30ml/bottle" },
+    { t: "Wrapping Machine", c: "bh-20/multi clean & bh-30(surface sanitizer)30ml/bottle" },
+    { t: "Bone saw Machine", c: "bh-20/multi clean & bh-30(surface sanitizer)30ml/bottle" },
+  ]},
+  { no: 8, title: "Packing Store", items: [
+    { t: "Master Carton Stacking", c: "" },
+    { t: "Polythene bags", c: "" },
+    { t: "Floors", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+  ]},
+  { no: 9, title: "Waste Disposal", items: [
+    { t: "Collection of waste", c: "" },
+    { t: "Disposal", c: "" },
+  ]},
+  { no: 10, title: "Working Conditions & Cleanliness", items: [
+    { t: "Lights", c: "" },
+    { t: "Fly Catchers", c: "" },
+    { t: "Floor/wall", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Painting and Plastering", c: "" },
+    { t: "Weighing Balance", c: "bh-20 (General purpose) 10 ml/litr/Multi clean" },
+    { t: "Tap Water", c: "" },
+  ]},
 ];
 
 /* صف جديد حر */
@@ -163,23 +127,24 @@ const tdLeft = () => ({ padding: "6px", border: "1px solid #ccc", textAlign: "le
 const tdHeader = { border: "1px solid #ccc", padding: "4px 6px", fontSize: "0.85rem" };
 const inp = { padding: "6px", borderRadius: 6, border: "1px solid #aaa", width: "100%", boxSizing: "border-box" };
 const sel = { ...inp, background: "#fff" };
-const btn = { padding: "8px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", fontWeight: 800, cursor: "pointer" };
-const btnDanger = { ...btn, borderColor: "#ef4444", color: "#ef4444" };
 const btnSave = { background: "linear-gradient(180deg,#10b981,#059669)", color: "#fff", border: "none", padding: "12px 22px", borderRadius: 12, cursor: "pointer", fontWeight: 800 };
 
 /* ================== المكوّن ================== */
 export default function CleaningChecklistPRDInput() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [rows, setRows] = useState(buildDefaultRows());
+  const [rows] = useState(buildDefaultRows()); // أسطر ثابتة
   const [header] = useState(HEAD_DEFAULT);
   const [footer, setFooter] = useState(FOOT_DEFAULT);
   const [saving, setSaving] = useState(false);
   const [opMsg, setOpMsg] = useState("");
 
-  const onCell = (i, k, v) => setRows((p) => { const a = [...p]; a[i] = { ...a[i], [k]: v }; return a; });
-  const addRow = () => setRows((p) => [...p, emptyRow()]);
-  const removeRow = (i) => setRows((p) => p.filter((_, ix) => ix !== i));
-  const loadTemplate = () => setRows(buildDefaultRows());
+  const onCell = (i, k, v) =>
+    setRowsStateError(); // مكان حفظ الأسطر ثابت—لا تعديل للبنية (نعدّل القيم فقط عبر onChange أدناه)
+
+  // لأننا ثبتنا rows كقيمة ثابتة، نحتاج محدثًا داخليًا للقيم فقط:
+  const [rowsState, setRowsState] = useState(() => buildDefaultRows());
+  const setRows = (fn) => setRowsState((prev) => fn(prev));
+  const onVal = (i, k, v) => setRows((p) => { const a = [...p]; a[i] = { ...a[i], [k]: v }; return a; });
 
   async function saveToServer() {
     try {
@@ -187,7 +152,7 @@ export default function CleaningChecklistPRDInput() {
       setOpMsg("⏳ Saving...");
       const payload = {
         reportDate: date,
-        entries: rows,
+        entries: rowsState,
         header,
         footer,
         savedAt: Date.now(),
@@ -237,16 +202,12 @@ export default function CleaningChecklistPRDInput() {
         CLEANING CHECKLIST
       </h3>
 
-      {/* Date + tools */}
-      <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginBottom: 8 }}>
+      {/* Date فقط */}
+      <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 8 }}>
         <label style={{ fontWeight: 800 }}>
           Date:{" "}
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }} />
         </label>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={loadTemplate} style={btn}>📋 Load Default Template</button>
-          <button onClick={addRow} style={btn}>➕ Add Row</button>
-        </div>
       </div>
 
       {/* Table */}
@@ -254,16 +215,15 @@ export default function CleaningChecklistPRDInput() {
         <thead>
           <tr style={{ background: "#2980b9", color: "#fff" }}>
             <th style={th(70)}>SI-No</th>
-            <th style={th(340)}>General Cleaning</th>
-            <th style={th(260)}>Chemical &amp; Concentration</th>
+            <th style={th(360)}>General Cleaning</th>
+            <th style={th(280)}>Chemical &amp; Concentration</th>
             <th style={th(80)}>C/NC</th>
-            <th style={th(160)}>Done By:</th>
-            <th style={th(280)}>Remarks &amp; CA</th>
-            <th style={th(90)}>Actions</th>
+            <th style={th(180)}>Done By:</th>
+            <th style={th(300)}>Remarks &amp; CA</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => {
+          {rowsState.map((r, i) => {
             if (r.isSection) {
               return (
                 <tr key={`sec-${i}`} style={{ background: "#f3f4f6", fontWeight: 800 }}>
@@ -273,9 +233,6 @@ export default function CleaningChecklistPRDInput() {
                   <td style={tdCenter()}>—</td>
                   <td style={tdCenter()}>—</td>
                   <td style={tdCenter()}>—</td>
-                  <td style={tdCenter()}>
-                    <button onClick={() => removeRow(i)} style={btnDanger}>✖</button>
-                  </td>
                 </tr>
               );
             }
@@ -288,31 +245,28 @@ export default function CleaningChecklistPRDInput() {
                   </div>
                 </td>
                 <td style={tdLeft()}>
-                  <input value={r.chemical || ""} onChange={(e) => onCell(i, "chemical", e.target.value)} style={inp} />
+                  <input value={r.chemical || ""} onChange={(e) => onVal(i, "chemical", e.target.value)} style={inp} />
                 </td>
                 <td style={tdCenter()}>
-                  <select value={r.cnc || ""} onChange={(e) => onCell(i, "cnc", e.target.value)} style={sel}>
+                  <select value={r.cnc || ""} onChange={(e) => onVal(i, "cnc", e.target.value)} style={sel}>
                     <option value=""></option>
                     <option value="C">C</option>
                     <option value={"N\\C"}>N\C</option>
                   </select>
                 </td>
                 <td style={tdLeft()}>
-                  <input value={r.doneBy || ""} onChange={(e) => onCell(i, "doneBy", e.target.value)} style={inp} />
+                  <input value={r.doneBy || ""} onChange={(e) => onVal(i, "doneBy", e.target.value)} style={inp} />
                 </td>
                 <td style={tdLeft()}>
-                  <input value={r.remarks || ""} onChange={(e) => onCell(i, "remarks", e.target.value)} style={inp} />
-                </td>
-                <td style={tdCenter()}>
-                  <button onClick={() => removeRow(i)} style={btnDanger}>✖</button>
+                  <input value={r.remarks || ""} onChange={(e) => onVal(i, "remarks", e.target.value)} style={inp} />
                 </td>
               </tr>
             );
           })}
-          {rows.length === 0 && (
+          {rowsState.length === 0 && (
             <tr>
-              <td colSpan={7} style={{ ...tdCenter(), color: "#6b7280" }}>
-                No rows. Use “Load Default Template” or “Add Row”.
+              <td colSpan={6} style={{ ...tdCenter(), color: "#6b7280" }}>
+                No rows.
               </td>
             </tr>
           )}
@@ -346,4 +300,9 @@ export default function CleaningChecklistPRDInput() {
       </div>
     </div>
   );
+}
+
+/* helper to keep rows immutable structure warning-free */
+function setRowsStateError() {
+  // متروك عمداً لمنع استخدام onCell القديم بعد تثبيت الأسطر
 }

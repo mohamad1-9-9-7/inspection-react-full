@@ -6,67 +6,134 @@ import DailyCleanlinessTab from "./qcs/DailyCleanlinessTab";
 import CoolersTab from "./qcs/CoolersTab";
 
 export default function QCSReport() {
-  const [activeTab, setActiveTab] = useState("coolers");
+  // ✅ التبويب الافتراضي: الشحن
+  const [activeTab, setActiveTab] = useState("shipment");
+
+  // ========== UI ==========
+  const COLORS = {
+    ink: "#0f172a",
+    sub: "#475569",
+    bg: "#f1f5f9",
+    white: "#ffffff",
+    primary: "#2563eb",
+    primarySoft: "#e0e7ff",
+    border: "#e2e8f0",
+    shadow: "0 8px 20px rgba(2,6,23,.06)",
+  };
+
+  const page = {
+    padding: "1rem",
+    direction: "ltr",
+    background: COLORS.bg,
+    color: COLORS.ink,
+    fontFamily: "Cairo, Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+    minHeight: "100vh",
+    fontSize: "16px",
+    lineHeight: 1.6,
+  };
 
   const card = {
-    background: "#fff",
-    padding: "1rem",
+    background: COLORS.white,
+    padding: "1.25rem",
     marginBottom: "1rem",
-    borderRadius: 12,
-    boxShadow: "0 0 8px rgba(0,0,0,.10)",
+    borderRadius: 16,
+    boxShadow: COLORS.shadow,
+    border: `1px solid ${COLORS.border}`,
   };
+
+  // شريط التبويبات (يسار + مسافات أكبر + حجم أكبر)
+  const tabBar = {
+    ...card,
+    padding: "0.75rem 0.75rem",
+    display: "flex",
+    gap: 16, // مسافة أكبر بين التبويبات
+    alignItems: "center",
+    justifyContent: "flex-start", // 🔁 لليسار
+    overflowX: "auto",
+    scrollbarWidth: "thin",
+    flexWrap: "wrap",
+  };
+
   const tabBtn = (active) => ({
-    padding: "8px 16px",
-    borderRadius: 8,
-    border: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "12px 20px", // أكبر
+    borderRadius: 999,
+    border: `2px solid ${active ? COLORS.primary : COLORS.border}`, // أكثر وضوحًا
+    background: active ? COLORS.primary : COLORS.white,
+    color: active ? "#fff" : COLORS.sub,
+    fontWeight: 900,
+    fontSize: "1rem", // أكبر
+    letterSpacing: ".2px",
     cursor: "pointer",
-    fontWeight: active ? 700 : 500,
-    backgroundColor: active ? "#2980b9" : "#e5e7eb",
-    color: active ? "#fff" : "#374151",
+    boxShadow: active ? "0 8px 18px rgba(37,99,235,.25)" : "none",
+    transition: "transform .08s ease, background .15s ease, border-color .15s ease",
+    whiteSpace: "nowrap",
   });
 
+  const titleWrap = {
+    ...card,
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "1rem 1.25rem",
+  };
+
+  const title = {
+    margin: 0,
+    fontSize: "1.4rem",
+    fontWeight: 900,
+    letterSpacing: ".2px",
+  };
+
+  const subtitle = {
+    color: COLORS.sub,
+    fontWeight: 700,
+    fontSize: ".95rem",
+  };
+
+  // ✅ ترتيب التبويبات: الشحن أول واحد (أقصى اليسار)
   const tabs = [
+    { id: "shipment", label: "📦 Raw Material Receipt" },
     { id: "coolers", label: "🧊 Coolers Temperatures" },
     { id: "personalHygiene", label: "🧼 Personal Hygiene" },
     { id: "dailyCleanliness", label: "🧹 Daily Cleanliness" },
-    { id: "shipment", label: "📦 Raw Material Receipt" },
   ];
 
   return (
-    <div
-      style={{
-        padding: "1rem",
-        direction: "ltr",
-        background: "#f8fafc",
-        color: "#111827",
-        fontFamily: "Cairo, sans-serif",
-        minHeight: "100vh",
-      }}
-    >
-      {/* عنوان الصفحة فقط */}
-      <div
-        style={{
-          ...card,
-          display: "flex",
-          flexWrap: "wrap",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <h2 style={{ margin: 0 }}>📋 QCS Branch Daily Report</h2>
+    <div style={page}>
+      {/* العنوان */}
+      <div style={titleWrap}>
+        <h2 style={title}>📋 QCS Branch Daily Report</h2>
+        <span style={subtitle}>Quality Control • Daily Operations</span>
       </div>
 
-      {/* أزرار التبويبات */}
-      <div style={{ ...card, display: "flex", gap: 8, justifyContent: "center" }}>
+      {/* التبويبات */}
+      <div style={tabBar} role="tablist" aria-label="QCS sections">
         {tabs.map((t) => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={tabBtn(activeTab === t.id)}>
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            style={tabBtn(activeTab === t.id)}
+            role="tab"
+            aria-selected={activeTab === t.id}
+          >
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* محتوى التبويبات (كل تبويب مسؤول عن التاريخ والحفظ بنفسه) */}
+      {/* المحتوى */}
       <div>
+        {activeTab === "shipment" && (
+          <div style={card}>
+            <h3 style={{ marginTop: 0, fontSize: "1.15rem", fontWeight: 900 }}>Raw Material Receipt</h3>
+            <QCSRawMaterialInspection />
+          </div>
+        )}
+
         {activeTab === "coolers" && (
           <div style={card}>
             <CoolersTab />
@@ -82,13 +149,6 @@ export default function QCSReport() {
         {activeTab === "dailyCleanliness" && (
           <div style={card}>
             <DailyCleanlinessTab />
-          </div>
-        )}
-
-        {activeTab === "shipment" && (
-          <div style={card}>
-            <h3 style={{ marginTop: 0 }}>Raw Material Receipt</h3>
-            <QCSRawMaterialInspection />
           </div>
         )}
       </div>

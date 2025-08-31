@@ -96,7 +96,7 @@ const ATTRIBUTES = [
 ];
 
 const newSample = () => {
-  const s = { productName: "CHILLED LAMB CARCASS" };
+  const s = { productName: "" }; // اسم العينة يبدأ فارغ
   ATTRIBUTES.forEach((a) => (s[a.key] = a.default));
   return s;
 };
@@ -385,14 +385,6 @@ const styles = {
     padding: "10px 12px",
     background: "#fff",
   },
-  headerInput: {
-    width: "100%",
-    padding: "10px 12px",
-    border: "1px solid #e5e7eb",
-    borderRadius: 10,
-    outline: "none",
-    boxSizing: "border-box",
-  },
 
   toastWrap: {
     position: "fixed",
@@ -424,7 +416,7 @@ export default function QCSRawMaterialInspection() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [docMeta, setDocMeta] = useState({
-    documentTitle: "Raw Material Inspection Report - Chilled Lamb",
+    documentTitle: "Raw Material Inspection Report",
     documentNo: "FS-QM/REC/RMB",
     issueDate: "2020-02-10",
     revisionNo: "0",
@@ -457,6 +449,37 @@ export default function QCSRawMaterialInspection() {
   const [certificateName, setCertificateName] = useState("");
   const [images, setImages] = useState([]);
   const [notes, setNotes] = useState("");
+
+  // ======= Average of samples (Temperature & PH) =======
+  const parseNum = (v) => {
+    const n = parseFloat(String(v ?? "").replace(",", ".").replace(/[^\d.\-]/g, ""));
+    return Number.isFinite(n) ? n : null;
+    };
+  const avgOf = (arr) => {
+    const nums = arr.map(parseNum).filter((n) => n !== null);
+    if (!nums.length) return "";
+    const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+    return avg.toFixed(2);
+  };
+  const avgTemp = React.useMemo(() => avgOf(samples.map((s) => s.temperature)), [samples]);
+  const avgPh   = React.useMemo(() => avgOf(samples.map((s) => s.ph)), [samples]);
+
+  // خزّن المتوسطين داخل generalInfo لكي يروحوا مع الحفظ
+  useEffect(() => {
+    setGeneralInfo((prev) => {
+      if (prev.temperature === avgTemp && prev.ph === avgPh) return prev;
+      return { ...prev, temperature: avgTemp, ph: avgPh };
+    });
+  }, [avgTemp, avgPh]);
+
+  // Document Title يتبع Shipment Type
+  useEffect(() => {
+    const base = "Raw Material Inspection Report";
+    setDocMeta((prev) => ({
+      ...prev,
+      documentTitle: shipmentType ? `${base} - ${shipmentType}` : base,
+    }));
+  }, [shipmentType]);
 
   useEffect(() => {
     const q = parseFloat(totalQuantity);
@@ -629,7 +652,8 @@ export default function QCSRawMaterialInspection() {
               <tbody>
                 <tr>
                   <th style={styles.headerTh}>Document Title</th>
-                  <td style={styles.headerTd}>
+                  {/* 🔹 وسّعنا خلية العنوان */}
+                  <td style={styles.headerTd} colSpan={2}>
                     <input
                       {...inputProps("documentTitle")}
                       value={docMeta.documentTitle}
@@ -648,7 +672,6 @@ export default function QCSRawMaterialInspection() {
                       }
                     />
                   </td>
-                  <td />
                 </tr>
                 <tr>
                   <th style={styles.headerTh}>Issue Date</th>
@@ -752,11 +775,30 @@ export default function QCSRawMaterialInspection() {
                       {...inputProps(field)}
                     />
                   ) : (
-                    <input
-                      value={generalInfo[field]}
-                      onChange={(e) => handleGeneralChange(field, e.target.value)}
-                      {...inputProps(field)}
-                    />
+                    (() => {
+                      const isAvg = field === "temperature" || field === "ph";
+                      const value =
+                        field === "temperature"
+                          ? avgTemp
+                          : field === "ph"
+                          ? avgPh
+                          : generalInfo[field];
+                      const style = {
+                        ...inputProps(field).style,
+                        ...(isAvg ? { background: "#f3f4f6", fontWeight: 700 } : {}),
+                      };
+                      return (
+                        <input
+                          value={value}
+                          onChange={
+                            isAvg ? undefined : (e) => handleGeneralChange(field, e.target.value)
+                          }
+                          readOnly={isAvg}
+                          title={isAvg ? "Auto average from samples" : undefined}
+                          style={style}
+                        />
+                      );
+                    })()
                   )}
                 </div>
               ))}
