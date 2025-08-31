@@ -65,7 +65,33 @@ const MONTHS = [
   "July","August","September","October","November","December"
 ];
 
-/* Build Year→Month→Day tree (ASC) */
+/* ====== Image compress (to Base64 JPEG) ====== */
+async function compressImageToDataURL(file, maxDim = 1280, quality = 0.7) {
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = URL.createObjectURL(file);
+  });
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  let tw = w, th = h;
+  if (w > maxDim || h > maxDim) {
+    const r = Math.min(maxDim / w, maxDim / h);
+    tw = Math.round(w * r);
+    th = Math.round(h * r);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = tw;
+  canvas.height = th;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, tw, th);
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  URL.revokeObjectURL(img.src);
+  return dataUrl; // "data:image/jpeg;base64,..."
+}
+
+/* ====== Build Year→Month→Day tree (ASC) ====== */
 function buildTree(days) {
   const byYear = new Map();
   for (const d of days) {
@@ -79,19 +105,90 @@ function buildTree(days) {
     ym.get(m).push({ date: rd, count: d.items?.length || 0 });
   }
   const years = [...byYear.keys()]
-    .sort((a, b) => a.localeCompare(b)) // ASC
+    .sort((a, b) => a.localeCompare(b))
     .map((y) => {
       const monthsMap = byYear.get(y);
       const months = [...monthsMap.keys()]
-        .sort((a, b) => a.localeCompare(b)) // ASC
+        .sort((a, b) => a.localeCompare(b))
         .map((m) => ({
           month: m,
           label: `${MONTHS[parseInt(m, 10) - 1]} (${m})`,
-          days: monthsMap.get(m).sort((a, b) => a.date.localeCompare(b.date)), // ASC
+          days: monthsMap.get(m).sort((a, b) => a.date.localeCompare(b.date)),
         }));
       return { year: y, months };
     });
   return years;
+}
+
+/* ========= Images manager modal (unlimited) ========= */
+function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
+  const [previewSrc, setPreviewSrc] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) setPreviewSrc("");
+    const onEsc = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const handlePick = () => inputRef.current?.click();
+
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const dataURLs = [];
+    for (const f of files) {
+      try {
+        const durl = await compressImageToDataURL(f, 1280, 0.7);
+        dataURLs.push(durl);
+      } catch {}
+    }
+    onAddImages(dataURLs);
+    e.target.value = "";
+  };
+
+  return (
+    <div style={galleryBack} onClick={onClose}>
+      <div style={galleryCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
+            🖼️ Product Images {row?.productName ? `— ${row.productName}` : ""}
+          </div>
+          <button onClick={onClose} style={galleryClose}>✕</button>
+        </div>
+
+        {previewSrc && (
+          <div style={{ marginTop: 10, marginBottom: 8 }}>
+            <img src={previewSrc} alt="preview" style={{ maxWidth: "100%", maxHeight: 700, borderRadius: 15, boxShadow: "0 6px 18px rgba(0,0,0,.2)" }} />
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 }}>
+          <button onClick={handlePick} style={btnBlueModal}>
+            ⬆️ Upload images
+          </button>
+          <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} />
+          <div style={{ fontSize: 13, color: "#334155" }}>Unlimited images per product (be mindful of size).</div>
+        </div>
+
+        <div style={thumbsWrap}>
+          {(row?.images || []).length === 0 ? (
+            <div style={{ color: "#64748b" }}>No images yet.</div>
+          ) : (
+            row.images.map((src, i) => (
+              <div key={i} style={thumbTile} title={`Image ${i + 1}`}>
+                <img src={src} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
+                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>✕</button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function MeatDailyView() {
@@ -102,10 +199,14 @@ export default function MeatDailyView() {
   const [openMonths, setOpenMonths] = useState(new Set());
   const importRef = useRef(null);
 
+  // images modal
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageRowIndex, setImageRowIndex] = useState(-1);
+
   async function reload() {
     try {
       const raw = await fetchDays();
-      const normalized = pickLatestPerDate(raw); // ASC now
+      const normalized = pickLatestPerDate(raw);
       setDays(normalized);
 
       if (normalized.length) {
@@ -130,14 +231,57 @@ export default function MeatDailyView() {
   const tree = useMemo(() => buildTree(days), [days]);
   const day = useMemo(() => days.find((d) => d.reportDate === selected) || null, [days, selected]);
 
+  const ensureImagesArray = (r) => (Array.isArray(r.images) ? r.images : []);
+
   const editVal = (i, k, v) => {
     setDays((prev) =>
       prev.map((d) =>
         d.reportDate !== selected
           ? d
-          : { ...d, items: d.items.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)) }
+          : {
+              ...d,
+              items: d.items.map((r, idx) =>
+                idx === i ? { ...r, [k]: v } : r
+              ),
+            }
       )
     );
+  };
+
+  const handleAddRow = () => {
+    if (!day) return;
+    const blank = {
+      productName: "",
+      quantity: "",
+      qtyType: "KG",
+      status: "Near Expiry",
+      expiry: "",
+      remarks: "",
+      images: [],
+    };
+    setDays((prev) =>
+      prev.map((d) =>
+        d.reportDate !== selected ? d : { ...d, items: [...d.items, blank] }
+      )
+    );
+  };
+
+  const handleDeleteRow = async (i) => {
+    if (!day) return;
+    const ok = window.confirm("Delete this row?");
+    if (!ok) return;
+    try {
+      const newItems = day.items.filter((_, idx) => idx !== i);
+      setMsg("⏳ Deleting row…");
+      await saveDay(day.reportDate, newItems);
+      await reload();
+      setMsg("✅ Row deleted.");
+    } catch (e) {
+      console.error(e);
+      setMsg("❌ Failed to delete row.");
+    } finally {
+      setTimeout(() => setMsg(""), 2500);
+    }
   };
 
   const handleSave = async () => {
@@ -206,6 +350,50 @@ export default function MeatDailyView() {
     }
   };
 
+  // images modal handlers (persist immediately)
+  const openImagesFor = (i) => { setImageRowIndex(i); setImageModalOpen(true); };
+  const closeImages = () => setImageModalOpen(false);
+
+  const addImagesToRow = async (dataURLs) => {
+    if (!day || imageRowIndex < 0) return;
+    try {
+      const items = day.items || [];
+      const row = items[imageRowIndex] || {};
+      const cur = ensureImagesArray(row);
+      const merged = [...cur, ...dataURLs]; // ⬅️ لا يوجد حد أقصى
+      const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: merged } : r));
+      setMsg("⏳ Updating images…");
+      await saveDay(day.reportDate, newItems);
+      await reload();
+      setMsg("✅ Images updated.");
+    } catch (e) {
+      console.error(e);
+      setMsg("❌ Failed to update images.");
+    } finally {
+      setTimeout(() => setMsg(""), 2500);
+    }
+  };
+
+  const removeImageFromRow = async (imgIndex) => {
+    if (!day || imageRowIndex < 0) return;
+    try {
+      const items = day.items || [];
+      const row = items[imageRowIndex] || {};
+      const cur = [...ensureImagesArray(row)];
+      cur.splice(imgIndex, 1);
+      const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: cur } : r));
+      setMsg("⏳ Removing image…");
+      await saveDay(day.reportDate, newItems);
+      await reload();
+      setMsg("✅ Image removed.");
+    } catch (e) {
+      console.error(e);
+      setMsg("❌ Failed to remove image.");
+    } finally {
+      setTimeout(() => setMsg(""), 2500);
+    }
+  };
+
   const toggleYear = (y) =>
     setOpenYears((prev) => {
       const s = new Set(prev);
@@ -221,6 +409,8 @@ export default function MeatDailyView() {
     });
 
   const s = styles;
+  const activeRow =
+    day && imageRowIndex >= 0 ? (day.items?.[imageRowIndex] || {}) : null;
 
   return (
     <div style={s.page}>
@@ -228,7 +418,7 @@ export default function MeatDailyView() {
 
       {msg && <div style={s.note}>{msg}</div>}
 
-      {/* Left tree (Year → Month → Day) + right details */}
+      {/* Left tree + right details */}
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
         {/* Left: Date tree */}
         <div style={s.left}>
@@ -303,7 +493,8 @@ export default function MeatDailyView() {
                 <div style={{ fontWeight: 900, color: "#111" }}>
                   Report details ({day.reportDate})
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={handleAddRow} style={s.btnBlue}>➕ Add Row</button>
                   <button onClick={handleSave} style={s.btnSave}>💾 Save</button>
                   <button onClick={exportJSON} style={s.btnDark}>⬇️ Export JSON</button>
                   <button onClick={() => importRef.current?.click()} style={s.btnPurple}>
@@ -331,6 +522,8 @@ export default function MeatDailyView() {
                       <th style={s.th}>STATUS</th>
                       <th style={s.th}>EXPIRY DATE</th>
                       <th style={s.th}>REMARKS</th>
+                      <th style={s.th}>IMAGES</th>
+                      <th style={s.th}>ACTIONS</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -396,11 +589,36 @@ export default function MeatDailyView() {
                             aria-label="Remarks"
                           />
                         </td>
+
+                        {/* Images cell */}
+                        <td style={s.td}>
+                          <button
+                            onClick={() => openImagesFor(i)}
+                            style={s.btnBlue}
+                            title="Manage images"
+                          >
+                            🖼️ Images ({Array.isArray(r.images) ? r.images.length : 0})
+                          </button>
+                        </td>
+
+                        {/* Row actions */}
+                        <td style={s.td}>
+                          <button onClick={() => handleDeleteRow(i)} style={s.btnDelSmall}>🗑️ Delete</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+
+              {/* Images modal */}
+              <ImageManagerModal
+                open={imageModalOpen}
+                row={activeRow}
+                onClose={closeImages}
+                onAddImages={addImagesToRow}
+                onRemoveImage={removeImageFromRow}
+              />
             </>
           ) : (
             <div style={{ textAlign: "center", color: "#6b7280", padding: 60 }}>Select a day.</div>
@@ -499,6 +717,16 @@ const styles = {
     background: "#eef6ff",
   },
 
+  btnBlue: {
+    background: "#2563eb",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    padding: "8px 14px",
+    fontWeight: "bold",
+    cursor: "pointer",
+    boxShadow: "0 1px 6px #bfdbfe",
+  },
   btnSave: {
     background: "#16a34a",
     color: "#fff",
@@ -514,6 +742,16 @@ const styles = {
     border: "none",
     borderRadius: 10,
     padding: "8px 14px",
+    fontWeight: "bold",
+    cursor: "pointer",
+  },
+  btnDelSmall: {
+    background: "#ef4444",
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    fontSize: 14,
+    padding: "4px 10px",
     fontWeight: "bold",
     cursor: "pointer",
   },
@@ -535,4 +773,75 @@ const styles = {
     fontWeight: "bold",
     cursor: "pointer",
   },
+};
+
+/* ====== Gallery modal styles ====== */
+const galleryBack = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15,23,42,.35)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 999,
+};
+const galleryCard = {
+  width: "min(1400px, 1000vw)",
+  maxHeight: "80vh",
+  overflow: "auto",
+  background: "#fff",
+  color: "#111",
+  borderRadius: 14,
+  border: "1px solid #e5e7eb",
+  padding: "14px 16px",
+  boxShadow: "0 12px 32px rgba(0,0,0,.25)",
+};
+const galleryClose = {
+  background: "transparent",
+  border: "none",
+  color: "#111",
+  fontWeight: 900,
+  cursor: "pointer",
+  fontSize: 18,
+};
+const btnBlueModal = {
+  background: "#2563eb",
+  color: "#fff",
+  border: "none",
+  borderRadius: 10,
+  padding: "8px 14px",
+  fontWeight: "bold",
+  cursor: "pointer",
+  boxShadow: "0 1px 6px #bfdbfe",
+};
+const thumbsWrap = {
+  marginTop: 8,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: 10,
+};
+const thumbTile = {
+  position: "relative",
+  border: "1px solid #e5e7eb",
+  borderRadius: 10,
+  overflow: "hidden",
+  background: "#f8fafc",
+};
+const thumbImg = {
+  width: "100%",
+  height: 150,
+  objectFit: "cover",
+  display: "block",
+};
+const thumbRemove = {
+  position: "absolute",
+  top: 6,
+  right: 6,
+  background: "#ef4444",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  padding: "2px 8px",
+  fontWeight: 800,
+  cursor: "pointer",
 };

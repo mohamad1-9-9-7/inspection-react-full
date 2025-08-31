@@ -1,48 +1,82 @@
-// src/pages/BrowseMeatDaily.jsx
+// src/pages/BrowseCustomerReturns.jsx
 import React, { useEffect, useMemo, useState } from "react";
 
 /* ========== API ========== */
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
-async function fetchDays() {
-  const res = await fetch(`${API_BASE}/api/reports?type=meat_daily`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to fetch");
+async function fetchByType(type) {
+  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch " + type);
   const json = await res.json();
-  return Array.isArray(json) ? json : json?.data || [];
+  return Array.isArray(json) ? json : json?.data ?? [];
 }
 
 /* ========== Helpers ========== */
 function toTs(x) {
-  if (!x) return 0;
+  if (!x) return null;
   if (typeof x === "number") return x;
-  if (typeof x === "string" && /^[a-f0-9]{24}$/i.test(x)) return parseInt(x.slice(0, 8), 16) * 1000;
+  if (typeof x === "string" && /^[a-f0-9]{24}$/i.test(x)) {
+    return parseInt(x.slice(0, 8), 16) * 1000;
+  }
   const n = Date.parse(x);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? n : null;
 }
-function pickLatestPerDate(raw) {
-  const out = new Map();
-  raw.forEach((rec) => {
-    const p = rec?.payload || {};
-    const d = p.reportDate || rec?.reportDate || "";
-    if (!d) return;
-    const ts =
-      toTs(rec?.updatedAt) || toTs(rec?.createdAt) || toTs(rec?._id) || toTs(p?._clientSavedAt);
-    const curr = out.get(d);
-    if (!curr || ts > curr.ts)
-      out.set(d, { reportDate: d, items: Array.isArray(p.items) ? p.items : [], ts });
-  });
-  return Array.from(out.values());
+function bestTs(rec) {
+  return (
+    toTs(rec?.createdAt) ||
+    toTs(rec?.updatedAt) ||
+    toTs(rec?.timestamp) ||
+    toTs(rec?._id) ||
+    toTs(rec?.payload?._clientSavedAt) ||
+    0
+  );
+}
+function normalizeReturns(raw) {
+  if (!Array.isArray(raw)) return [];
+  const entries = raw
+    .map((rec) => {
+      const payload = rec?.payload || {};
+      return {
+        ts: bestTs(rec),
+        reportDate: payload.reportDate || rec?.reportDate || "",
+        items: Array.isArray(payload.items) ? payload.items : [],
+      };
+    })
+    .filter((e) => e.reportDate);
+
+  const byDate = new Map();
+  for (const e of entries) {
+    const prev = byDate.get(e.reportDate);
+    if (!prev || e.ts > prev.ts) byDate.set(e.reportDate, e);
+  }
+  return Array.from(byDate.values());
 }
 
-/* ===== Unified Donut KPI Card (نفس القديم) ===== */
+function itemKey(row) {
+  return [
+    (row?.productName || "").trim().toLowerCase(),
+    (row?.origin || "").trim().toLowerCase(),
+    (row?.customerName || "").trim().toLowerCase(),
+    (row?.expiry || "").trim().toLowerCase(),
+  ].join("|");
+}
+
+function actionText(row) {
+  return row?.action === "Other..." ? row?.customAction || "" : row?.action || "";
+}
+
+/* ===== Unified Donut KPI Card (SVG) ===== */
 function DonutCard({
   percent = 0,
   label = "",
   subLabel = "",
   count = null,
-  color = "#0ea5e9",
+  color = "#166534",
   centerText = null,
+  extra = null,
   size = 140,
   stroke = 14,
 }) {
@@ -52,41 +86,36 @@ function DonutCard({
   const offset = C * (1 - dash / 100);
 
   return (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.9)",
-        border: "1px solid rgba(255,255,255,0.7)",
-        borderRadius: 16,
-        boxShadow: "0 10px 24px rgba(2,6,23,.12)",
-        padding: "14px 16px",
-        display: "grid",
-        placeItems: "center",
-        gap: 8,
-        minWidth: 230,
-        backdropFilter: "blur(6px)",
-        color: "#0f172a",
-      }}
-    >
+    <div style={{
+      background: "rgba(255,255,255,0.85)",
+      border: "1px solid rgba(255,255,255,0.6)",
+      borderRadius: 16,
+      boxShadow: "0 10px 26px rgba(13, 10, 44, 0.12)",
+      padding: "16px 18px",
+      display: "grid",
+      placeItems: "center",
+      gap: 8,
+      minWidth: 230,
+      backdropFilter: "blur(6px)",
+    }}>
       <svg width={size} height={size} style={{ display: "block" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} stroke="#e5e7eb" strokeWidth={stroke} fill="none" />
+        <defs>
+          <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={color} />
+            <stop offset="100%" stopColor="#60a5fa" />
+          </linearGradient>
+        </defs>
+        <circle cx={size/2} cy={size/2} r={r} stroke="#e5e7eb" strokeWidth={stroke} fill="none"/>
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          stroke={color}
-          strokeWidth={stroke}
-          fill="none"
-          strokeDasharray={`${C} ${C}`}
-          strokeDashoffset={offset}
+          cx={size/2} cy={size/2} r={r}
+          stroke="url(#ringGrad)" strokeWidth={stroke} fill="none"
+          strokeDasharray={`${C} ${C}`} strokeDashoffset={offset}
           strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          transform={`rotate(-90 ${size/2} ${size/2})`}
         />
         <text
-          x="50%"
-          y="50%"
-          dominantBaseline="middle"
-          textAnchor="middle"
-          style={{ fontWeight: 900, fontSize: 22, fill: "#0f172a" }}
+          x="50%" y="50%" dominantBaseline="middle" textAnchor="middle"
+          style={{ fontWeight: 900, fontSize: 24, fill: "#0f172a" }}
         >
           {centerText != null ? centerText : `${dash}%`}
         </text>
@@ -95,8 +124,9 @@ function DonutCard({
       <div
         style={{
           fontWeight: 900,
+          color: "#0f172a",
           textAlign: "center",
-          maxWidth: 220,
+          maxWidth: 200,
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
@@ -111,7 +141,7 @@ function DonutCard({
         <div
           style={{
             fontSize: 12,
-            opacity: 0.85,
+            opacity: 0.8,
             textAlign: "center",
             maxWidth: 220,
             lineHeight: 1.25,
@@ -123,13 +153,14 @@ function DonutCard({
       ) : null}
 
       {count != null && (
-        <div style={{ opacity: 0.85, fontWeight: 800, marginTop: 2 }}>{count}</div>
+        <div style={{ opacity: .85, fontWeight: 800, marginTop: 2 }}>{count}</div>
       )}
+      {extra}
     </div>
   );
 }
 
-/* ====== نفس ستايل عارض الصور المستعمل في BrowseReturns ====== */
+/* ===== Read-only Image Viewer Modal ===== */
 const viewImgBtn = {
   marginLeft: 8,
   background: "#2563eb",
@@ -155,7 +186,7 @@ const viewerBack = {
 
 const viewerCard = {
   width: "min(1200px, 96vw)",
-  maxHeight: "92vh",
+  maxHeight: "90vh",
   overflow: "auto",
   background: "#fff",
   color: "#111",
@@ -177,7 +208,7 @@ const viewerClose = {
 const viewerBigImg = {
   width: "100%",
   height: "auto",
-  maxHeight: "78vh",
+  maxHeight: "70vh",
   objectFit: "contain",
   borderRadius: 12,
   boxShadow: "0 6px 18px rgba(0,0,0,.2)",
@@ -209,16 +240,13 @@ const viewerThumbImg = {
 
 function ImageViewerModal({ open, images = [], title = "", onClose }) {
   const [preview, setPreview] = React.useState(images[0] || "");
-
   React.useEffect(() => {
     if (open) setPreview(images[0] || "");
     const onEsc = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
   }, [open, images, onClose]);
-
   if (!open) return null;
-
   return (
     <div style={viewerBack} onClick={onClose}>
       <div style={viewerCard} onClick={(e) => e.stopPropagation()}>
@@ -239,12 +267,7 @@ function ImageViewerModal({ open, images = [], title = "", onClose }) {
 
         <div style={viewerThumbsWrap}>
           {images.map((src, i) => (
-            <button
-              key={i}
-              style={viewerThumbTile}
-              onClick={() => setPreview(src)}
-              title={`Image ${i + 1}`}
-            >
+            <button key={i} style={viewerThumbTile} onClick={() => setPreview(src)} title={`Image ${i + 1}`}>
               <img src={src} alt={`thumb-${i}`} style={viewerThumbImg} />
             </button>
           ))}
@@ -255,88 +278,117 @@ function ImageViewerModal({ open, images = [], title = "", onClose }) {
 }
 
 /* ========== Page ========== */
-export default function BrowseMeatDaily() {
-  const [days, setDays] = useState([]);
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [err, setErr] = useState("");
+export default function BrowseCustomerReturns() {
+  const [returnsData, setReturnsData] = useState([]);
+  const [changesData, setChangesData] = useState([]);
+
+  const [filterFrom, setFilterFrom] = useState("");
+  const [filterTo, setFilterTo] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
 
   const [openYears, setOpenYears] = useState({});
   const [openMonths, setOpenMonths] = useState({});
-  const [selectedDate, setSelectedDate] = useState("");
 
-  // 🖼️ حالة عارض الصور (نفس BrowseReturns)
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerData, setViewerData] = useState({ title: "", images: [] });
-
-  function openViewer(row) {
-    const imgs = Array.isArray(row.images) ? row.images : [];
-    if (!imgs.length) return;
-    setViewerData({ title: row.productName || "Images", images: imgs });
-    setViewerOpen(true);
-  }
-  function closeViewer() {
-    setViewerOpen(false);
-  }
+  const [loadingServer, setLoadingServer] = useState(false);
+  const [serverErr, setServerErr] = useState("");
 
   async function reload() {
+    setServerErr("");
+    setLoadingServer(true);
     try {
-      const raw = await fetchDays();
-      const latest = pickLatestPerDate(raw).sort((a, b) =>
-        (a.reportDate || "").localeCompare(b.reportDate || "")
-      );
-      setDays(latest);
-      if (!selectedDate && latest.length) {
-        setSelectedDate(latest[0].reportDate);
-        const y = latest[0].reportDate.slice(0, 4);
-        const m = latest[0].reportDate.slice(5, 7);
+      const [rawReturns, rawChanges] = await Promise.all([
+        fetchByType("returns_customers"),
+        fetchByType("returns_customers_changes"),
+      ]);
+      const normalized = normalizeReturns(rawReturns);
+      setReturnsData(normalized);
+      setChangesData(rawChanges);
+
+      if (!selectedDate && normalized.length) {
+        const oldest = [...normalized]
+          .map((r) => r.reportDate)
+          .sort((a, b) => a.localeCompare(b))[0];
+        setSelectedDate(oldest);
+        const y = oldest.slice(0, 4);
+        const m = oldest.slice(5, 7);
         setOpenYears((p) => ({ ...p, [y]: true }));
         setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
       }
     } catch (e) {
       console.error(e);
-      setErr("Failed to fetch from server.");
-      setTimeout(() => setErr(""), 2500);
+      setServerErr("Failed to fetch from server. (The server might be waking up).");
+    } finally {
+      setLoadingServer(false);
     }
   }
+
   useEffect(() => {
     reload();
-  }, []); // eslint-disable-line
+  }, []);
 
-  /* Filtered */
-  const filteredAsc = useMemo(() => {
-    const arr = days.filter((r) => {
+  /* Changes map: date -> Map(key -> {from,to,at,ts}) */
+  const changeMapByDate = useMemo(() => {
+    const map = new Map();
+    for (const rec of changesData) {
+      const d = rec?.payload?.reportDate || rec?.reportDate || "";
+      if (!d) continue;
+      const items = Array.isArray(rec?.payload?.items) ? rec.payload.items : [];
+      if (!map.has(d)) map.set(d, new Map());
+      const inner = map.get(d);
+      for (const ch of items) {
+        const k = ch?.key;
+        if (!k) continue;
+        const ts = toTs(ch?.at) || 0;
+        const prev = inner.get(k);
+        if (!prev || ts > prev.ts) inner.set(k, { from: ch.from, to: ch.to, at: ch.at, ts });
+      }
+    }
+    return map;
+  }, [changesData]);
+
+  /* Filter & sort (ascending) */
+  const filteredReportsAsc = useMemo(() => {
+    const arr = returnsData.filter((r) => {
       const d = r.reportDate || "";
-      if (from && d < from) return false;
-      if (to && d > to) return false;
+      if (filterFrom && d < filterFrom) return false;
+      if (filterTo && d > filterTo) return false;
       return true;
     });
     arr.sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || ""));
     return arr;
-  }, [days, from, to]);
+  }, [returnsData, filterFrom, filterTo]);
 
   useEffect(() => {
-    if (!filteredAsc.length) {
+    if (!filteredReportsAsc.length) {
       setSelectedDate("");
       return;
     }
-    const still = filteredAsc.some((r) => r.reportDate === selectedDate);
+    const still = filteredReportsAsc.some((r) => r.reportDate === selectedDate);
     if (!still) {
-      setSelectedDate(filteredAsc[0].reportDate);
-      const y = filteredAsc[0].reportDate.slice(0, 4);
-      const m = filteredAsc[0].reportDate.slice(5, 7);
+      setSelectedDate(filteredReportsAsc[0].reportDate);
+      const y = filteredReportsAsc[0].reportDate.slice(0, 4);
+      const m = filteredReportsAsc[0].reportDate.slice(5, 7);
       setOpenYears((p) => ({ ...p, [y]: true }));
       setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
     }
-  }, [filteredAsc, selectedDate]);
+  }, [filteredReportsAsc, selectedDate]);
 
-  const selectedReport =
-    filteredAsc.find((r) => r.reportDate === selectedDate) || null;
+  /* IMPORTANT: selectedReport MUST be defined before any usage */
+  const selectedReport = useMemo(
+    () => filteredReportsAsc.find((r) => r.reportDate === selectedDate) || null,
+    [filteredReportsAsc, selectedDate]
+  );
 
-  /* Year/Month hierarchy (ascending) */
+  /* We'll compute changeMap AFTER selectedReport exists */
+  const changeMap = useMemo(
+    () => changeMapByDate.get(selectedReport?.reportDate || "") || new Map(),
+    [changeMapByDate, selectedReport]
+  );
+
+  /* Year -> Month -> Day hierarchy (ascending) */
   const hierarchyAsc = useMemo(() => {
     const years = new Map();
-    filteredAsc.forEach((rep) => {
+    filteredReportsAsc.forEach((rep) => {
       const d = rep.reportDate;
       const y = d.slice(0, 4);
       const m = d.slice(5, 7);
@@ -357,61 +409,58 @@ export default function BrowseMeatDaily() {
         months: sortedMonths.map((m) => ({ month: m, days: months.get(m) })),
       };
     });
-  }, [filteredAsc]);
+  }, [filteredReportsAsc]);
 
-  /* ================= KPIs ================= */
+  /* ================= KPIs (Customers) =================
+     - Total returned items
+     - Total returned weight (kg)
+     - Total reports (days)
+     - Top 5 returned products (by count)
+     - Top 5 customers (by count)
+  */
   const kpi = useMemo(() => {
     let totalItems = 0;
-    let totalKg = 0;
-    let totalPcs = 0;
-    const byStatus = {};
-    const byPos = {};
+    let totalQtyKg = 0;
+
+    const byCustomerCount = {};
+    const byProductCount = {};
 
     const isKgType = (t) => {
       const s = (t || "").toString().toLowerCase();
       return s.includes("kg") || s.includes("كيلو") || s.includes("كجم");
     };
-    const parsePos = (remarks) => {
-      const m = /pos\s*(\d+)/i.exec(remarks || "");
-      return m ? `POS ${m[1]}` : "—";
-    };
 
-    filteredAsc.forEach((rep) => {
+    filteredReportsAsc.forEach((rep) => {
+      totalItems += (rep.items || []).length;
       (rep.items || []).forEach((it) => {
-        totalItems += 1;
         const q = Number(it.quantity || 0);
-        if (isKgType(it.qtyType)) totalKg += q;
-        else totalPcs += q;
 
-        const st = (it.status || "—").trim();
-        byStatus[st] = (byStatus[st] || 0) + 1;
+        const cust = it.customerName || "—";
+        byCustomerCount[cust] = (byCustomerCount[cust] || 0) + 1;
 
-        const pos = parsePos(it.remarks);
-        byPos[pos] = (byPos[pos] || 0) + 1;
+        const prod = it.productName || "—";
+        byProductCount[prod] = (byProductCount[prod] || 0) + 1;
+
+        if (isKgType(it.qtyType)) totalQtyKg += q;
       });
     });
 
-    const toArr = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]);
-    const topStatus = toArr(byStatus)[0] || ["—", 0];
-    const topPos = toArr(byPos)[0] || ["—", 0];
-
-    const totalStatus = Object.values(byStatus).reduce((a, b) => a + b, 0) || 1;
-    const statusShare = Math.round((topStatus[1] * 100) / totalStatus);
+    const top5 = (obj) =>
+      Object.entries(obj)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, count]) => ({ name, count }));
 
     return {
-      totalReports: filteredAsc.length,
       totalItems,
-      totalKg: Math.round(totalKg * 1000) / 1000,
-      totalPcs: Math.round(totalPcs * 1000) / 1000,
-      topStatusName: topStatus[0],
-      topStatusCount: topStatus[1],
-      statusShare,
-      topPosName: topPos[0],
-      topPosCount: topPos[1],
+      totalQtyKg: Math.round(totalQtyKg * 1000) / 1000,
+      totalReports: filteredReportsAsc.length,
+      topProducts: top5(byProductCount),
+      topCustomers: top5(byCustomerCount),
     };
-  }, [filteredAsc]);
+  }, [filteredReportsAsc]);
 
-  /* ========== PDF Export (نفس القديم) ========== */
+  /* ========== PDF Export (selected day) ========== */
   async function ensureJsPDF() {
     if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
     await new Promise((resolve, reject) => {
@@ -434,23 +483,26 @@ export default function BrowseMeatDaily() {
       document.head.appendChild(s);
     });
   }
+
   const handleExportPDF = async () => {
     if (!selectedReport) return;
     try {
       const JsPDF = await ensureJsPDF();
       await ensureAutoTable();
 
+      const isOther = (v) => v === "Other...";
+      const actionTextSafe = (row) =>
+        isOther(row?.action) ? row?.customAction || "" : row?.action || "";
+
       const doc = new JsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
-      const marginL = 20,
-        marginR = 20,
-        marginTop = 80;
+      const marginL = 20, marginR = 20, marginTop = 80;
       const pageWidth = doc.internal.pageSize.getWidth();
       const avail = pageWidth - marginL - marginR;
 
       const drawHeader = () => {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(16);
-        doc.text("Meat Daily Status Report", marginL, 36);
+        doc.text("Customer Returns Report", marginL, 36);
         doc.setFont("helvetica", "normal");
         doc.setFontSize(11);
         doc.text(`Date: ${selectedReport.reportDate}`, marginL, 54);
@@ -469,24 +521,47 @@ export default function BrowseMeatDaily() {
 
       drawHeader();
 
-      const head = [["SL", "PRODUCT", "QUANTITY", "QTY TYPE", "STATUS", "EXPIRY DATE", "REMARKS"]];
-      const body = (selectedReport.items || []).map((row, i) => [
-        String(i + 1),
-        row.productName || "",
-        String(row.quantity ?? ""),
-        row.qtyType || "",
-        row.status || "",
-        row.expiry || "",
-        row.remarks || "",
-      ]);
+      const head = [
+        ["SL", "PRODUCT", "ORIGIN", "CUSTOMER", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"],
+      ];
 
-      const frac = [0.06, 0.22, 0.11, 0.11, 0.14, 0.14, 0.22];
+      const body = (selectedReport.items || []).map((row, i) => {
+        const qtyType = row.qtyType === "أخرى / Other" ? row.customQtyType || "" : row.qtyType || "";
+        const curr = actionTextSafe(row);
+        const k = itemKey(row);
+        const ch = changeMap.get(k);
+        let actionCell = curr || "";
+        if (ch && (ch.to ?? "") === (curr ?? "")) {
+          const t = toTs(ch?.at);
+          const d = t ? new Date(t) : null;
+          const dd = d ? String(d.getDate()).padStart(2, "0") : "";
+          const mm = d ? String(d.getMonth() + 1).padStart(2, "0") : "";
+          const yyyy = d ? d.getFullYear() : "";
+          const dateTxt = d ? `${dd}/${mm}/${yyyy}` : "";
+          actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? `\n${dateTxt}` : ""}`;
+        }
+        return [
+          String(i + 1),
+          row.productName || "",
+          row.origin || "",
+          row.customerName || "",
+          String(row.quantity ?? ""),
+          qtyType,
+          row.expiry || "",
+          row.remarks || "",
+          actionCell,
+        ];
+      });
+
+      const frac = [0.05, 0.18, 0.09, 0.12, 0.06, 0.08, 0.08, 0.18, 0.20];
       const columnStyles = {};
-      frac.forEach((f, idx) => (columnStyles[idx] = { cellWidth: Math.floor(avail * f) }));
+      const pageAvail = avail;
+      frac.forEach((f, idx) => (columnStyles[idx] = { cellWidth: Math.floor(pageAvail * f) }));
       columnStyles[0].halign = "center";
-      columnStyles[2].halign = "center";
-      columnStyles[3].halign = "center";
-      columnStyles[5].halign = "center";
+      columnStyles[4].halign = "center";
+      columnStyles[6].halign = "center";
+      columnStyles[7].halign = "left";
+      columnStyles[8].halign = "left";
 
       doc.autoTable({
         head,
@@ -501,30 +576,33 @@ export default function BrowseMeatDaily() {
           lineWidth: 0.5,
           halign: "left",
           valign: "middle",
-          overflow: "linebreak",
-          wordBreak: "break-word",
-          minCellHeight: 16,
         },
-        headStyles: {
-          fillColor: [219, 234, 254],
-          textColor: [17, 17, 17],
-          fontStyle: "bold",
-          halign: "center",
-        },
+        headStyles: { fillColor: [219, 234, 254] },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
         columnStyles,
-        didDrawPage: () => {
-          drawHeader();
-        },
+        didDrawPage: () => drawHeader(),
       });
 
-      doc.save(`meat_daily_${selectedReport.reportDate}.pdf`);
+      const fileName = `customer_returns_${selectedReport.reportDate}.pdf`;
+      doc.save(fileName);
     } catch (e) {
       console.error(e);
-      alert("❌ Failed to generate PDF. Please try again.");
+      alert("Failed to create PDF");
     }
   };
 
-  /* ========== Styles ========== */
+  /* ===== Read-only Image Viewer State ===== */
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerTitle, setViewerTitle] = useState("");
+  const [viewerImages, setViewerImages] = useState([]);
+  const openViewer = (title, images) => {
+    setViewerTitle(title || "");
+    setViewerImages(Array.isArray(images) ? images : []);
+    setViewerOpen(true);
+  };
+  const closeViewer = () => setViewerOpen(false);
+
+  /* ===== Styling (background & layout) ===== */
   const bgWrap = {
     position: "fixed",
     inset: 0,
@@ -533,14 +611,7 @@ export default function BrowseMeatDaily() {
       "radial-gradient(1200px 600px at 100% -10%, #67e8f9 0%, transparent 60%), linear-gradient(135deg,#6d28d9 0%, #4f46e5 45%, #06b6d4 100%)",
   };
   const waveTop = { position: "absolute", top: 0, left: 0, width: "100%", opacity: 0.25 };
-  const waveBottom = {
-    position: "absolute",
-    bottom: -2,
-    left: 0,
-    width: "100%",
-    opacity: 0.22,
-    transform: "scaleY(-1)",
-  };
+  const waveBottom = { position: "absolute", bottom: -2, left: 0, width: "100%", opacity: 0.22, transform: "scaleY(-1)" };
 
   const pageWrap = {
     position: "relative",
@@ -574,18 +645,9 @@ export default function BrowseMeatDaily() {
     color: "transparent",
     letterSpacing: ".3px",
   };
-  const heroSub = { fontWeight: 600, fontSize: "0.95rem", color: "#0f172a", opacity: 0.85 };
-
-  const kpiBox = {
-    background: "rgba(255,255,255,0.9)",
-    border: "1px solid rgba(255,255,255,0.7)",
-    borderRadius: 14,
-    boxShadow: "0 2px 12px rgba(0,0,0,.08)",
-    padding: "12px 14px",
-    color: "#111",
-    minWidth: 210,
-    backdropFilter: "blur(6px)",
-  };
+  const brandWrap = { textAlign: "right" };
+  const brandTitle = { fontWeight: 900, letterSpacing: "1px", fontSize: "18px", color: "#b91c1c" };
+  const brandSub = { fontWeight: 600, fontSize: "11px", color: "#0f172a", opacity: 0.9 };
 
   const dateInputStyle = {
     borderRadius: 10,
@@ -596,7 +658,6 @@ export default function BrowseMeatDaily() {
     minWidth: 120,
     color: "#111",
     boxShadow: "0 4px 10px rgba(0,0,0,.06)",
-    marginLeft: 8,
   };
   const clearBtn = {
     background: "#3b82f6",
@@ -609,6 +670,7 @@ export default function BrowseMeatDaily() {
     cursor: "pointer",
     boxShadow: "0 6px 18px rgba(59,130,246,.25)",
   };
+
   const leftTree = {
     minWidth: 300,
     background: "rgba(255,255,255,.9)",
@@ -662,6 +724,7 @@ export default function BrowseMeatDaily() {
     border: "1px solid rgba(255,255,255,.7)",
     backdropFilter: "blur(6px)",
   };
+
   const table = {
     width: "100%",
     background: "#fff",
@@ -680,6 +743,7 @@ export default function BrowseMeatDaily() {
     border: "1px solid #b6c8e3",
     background: "#e6f0ff",
     color: "#0f172a",
+    userSelect: "none",
   };
   const td = {
     padding: "10px 8px",
@@ -690,20 +754,34 @@ export default function BrowseMeatDaily() {
     color: "#0f172a",
   };
 
-  const brandWrap = { textAlign: "right" };
-  const brandTitle = {
-    fontFamily: "Cairo, sans-serif",
-    fontWeight: 900,
-    letterSpacing: "1px",
-    fontSize: "18px",
-    color: "#b91c1c",
+  const listRow = {
+    display: "grid",
+    gridTemplateColumns: "28px 1fr auto",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 2px",
+    borderBottom: "1px dashed #e5e7eb",
   };
-  const brandSub = {
-    fontFamily: "Cairo, sans-serif",
-    fontWeight: 600,
-    fontSize: "11px",
-    color: "#0f172a",
-    opacity: 0.9,
+  const rankDot = {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    display: "grid",
+    placeItems: "center",
+    background: "#ecfdf5",
+    color: "#065f46",
+    fontWeight: 800,
+    border: "1px solid #a7f3d0",
+    fontSize: 12,
+  };
+  const countChip = {
+    background: "#eff6ff",
+    color: "#1e3a8a",
+    borderRadius: 999,
+    padding: "2px 10px",
+    fontSize: 12,
+    fontWeight: 800,
+    border: "1px solid #bfdbfe",
   };
 
   return (
@@ -711,10 +789,14 @@ export default function BrowseMeatDaily() {
       {/* Gradient & waves background */}
       <div style={bgWrap}>
         <svg style={waveTop} viewBox="0 0 1440 200" preserveAspectRatio="none">
-          <path d="M0,64L60,64C120,64,240,64,360,85.3C480,107,600,149,720,149.3C840,149,960,107,1080,80C1200,53,1320,43,1380,37.3L1440,32L1440,0L1380,0C1320,0,1200,0,1080,0C960,0,840,0,720,0C600,0,480,0,360,0C240,0,120,0,60,0L0,0Z" fill="#ffffff" />
+          <path
+            d="M0,64L60,64C120,64,240,64,360,85.3C480,107,600,149,720,149.3C840,149,960,107,1080,80C1200,53,1320,43,1380,37.3L1440,32L1440,0L1380,0C1320,0,1200,0,1080,0C960,0,840,0,720,0C600,0,480,0,360,0C240,0,120,0,60,0L0,0Z"
+            fill="#ffffff" />
         </svg>
         <svg style={waveBottom} viewBox="0 0 1440 200" preserveAspectRatio="none">
-          <path d="M0,128L60,122.7C120,117,240,107,360,112C480,117,600,139,720,149.3C840,160,960,160,1080,149.3C1200,139,1320,117,1380,106.7L1440,96L1440,200L1380,200C1320,200,1200,200,1080,200C960,200,840,200,720,200C600,200,480,200,360,200C240,200,120,200,60,200L0,200Z" fill="#ffffff" />
+          <path
+            d="M0,128L60,122.7C120,117,240,107,360,112C480,117,600,139,720,149.3C840,160,960,160,1080,149.3C1200,139,1320,117,1380,106.7L1440,96L1440,200L1380,200C1320,200,1200,200,1080,200C960,200,840,200,720,200C600,200,480,200,360,200C240,200,120,200,60,200L0,200Z"
+            fill="#ffffff" />
         </svg>
       </div>
 
@@ -722,8 +804,10 @@ export default function BrowseMeatDaily() {
         {/* glass hero header */}
         <div style={hero}>
           <div>
-            <div style={heroTitle}>📂 Browse Meat Daily Reports (View Only)</div>
-            <div style={heroSub}>KPIs, date filter, and per-day details with PDF export.</div>
+            <div style={heroTitle}>📂 Browse Customer Returns (View Only)</div>
+            <div style={{ fontWeight: 600, fontSize: ".95rem", color: "#0f172a", opacity: .85 }}>
+              Quick KPIs, date filter, and per-day details in a clean dashboard.
+            </div>
           </div>
           <div style={brandWrap}>
             <div style={brandTitle}>AL MAWASHI</div>
@@ -731,7 +815,7 @@ export default function BrowseMeatDaily() {
           </div>
         </div>
 
-        {/* KPI donuts */}
+        {/* KPI row (exactly the ones requested) */}
         <div
           style={{
             display: "grid",
@@ -743,53 +827,111 @@ export default function BrowseMeatDaily() {
         >
           <DonutCard
             percent={100}
-            centerText="ALL"
-            label="Total items"
-            subLabel="All items across selected range"
-            count={kpi.totalItems}
+            centerText={String(kpi.totalItems)}
+            label="Total returned items"
+            subLabel="Across selected range"
             color="#059669"
+          />
+          <DonutCard
+            percent={100}
+            centerText={String(kpi.totalQtyKg)}
+            label="Returned weight (kg)"
+            subLabel="Weight-based items only"
+            color="#1d4ed8"
           />
           <DonutCard
             percent={100}
             centerText={String(kpi.totalReports)}
             label="Total reports"
-            subLabel="Reports in selected range"
+            subLabel="Number of days"
             color="#0ea5e9"
           />
-          <DonutCard
-            percent={100}
-            centerText={String(kpi.totalKg)}
-            label="Total quantity (kg)"
-            subLabel="Weight-based items only"
-            color="#2563eb"
-          />
-          <DonutCard
-            percent={100}
-            centerText={String(kpi.totalPcs)}
-            label="Total quantity (pcs)"
-            subLabel="Piece-based items only"
-            color="#1d4ed8"
-          />
-          <DonutCard
-            percent={kpi.statusShare}
-            centerText={`${kpi.statusShare}%`}
-            label={kpi.topStatusName || "—"}
-            subLabel="Top status (share of items)"
-            count={`${kpi.topStatusCount} items`}
-            color="#b45309"
-          />
-          <DonutCard
-            percent={Math.min(100, Math.round((kpi.topPosCount * 100) / (kpi.totalItems || 1)))}
-            centerText={String(kpi.topPosCount)}
-            label={kpi.topPosName || "—"}
-            subLabel="Top POS by item count"
-            color="#0e7490"
-          />
+
+          {/* Top 5 returned products */}
+          <div style={{
+            background: "rgba(255,255,255,0.9)",
+            border: "1px solid rgba(255,255,255,0.7)",
+            borderRadius: 14,
+            boxShadow: "0 2px 12px rgba(0,0,0,.08)",
+            padding: "12px 14px",
+            minWidth: 210,
+            backdropFilter: "blur(6px)",
+          }}>
+            <div style={{ textAlign: "center", fontWeight: 900, marginBottom: 6 }}>
+              Top 5 Returned Products
+            </div>
+            {kpi.topProducts.length ? (
+              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {kpi.topProducts.map((p, i) => (
+                  <li key={i} style={listRow}>
+                    <span style={rankDot}>{i + 1}</span>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={p.name}
+                    >
+                      {p.name}
+                    </span>
+                    <span style={countChip}>{p.count}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div style={{ opacity: 0.75, textAlign: "center" }}>No data.</div>
+            )}
+          </div>
+
+          {/* Top 5 customers */}
+          <div style={{
+            background: "rgba(255,255,255,0.9)",
+            border: "1px solid rgba(255,255,255,0.7)",
+            borderRadius: 14,
+            boxShadow: "0 2px 12px rgba(0,0,0,.08)",
+            padding: "12px 14px",
+            minWidth: 210,
+            backdropFilter: "blur(6px)",
+          }}>
+            <div style={{ textAlign: "center", fontWeight: 900, marginBottom: 6 }}>
+              Top 5 Customers
+            </div>
+            {kpi.topCustomers.length ? (
+              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {kpi.topCustomers.map((p, i) => (
+                  <li key={i} style={listRow}>
+                    <span style={rankDot}>{i + 1}</span>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={p.name}
+                    >
+                      {p.name}
+                    </span>
+                    <span style={countChip}>{p.count}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div style={{ opacity: 0.75, textAlign: "center" }}>No data.</div>
+            )}
+          </div>
         </div>
 
-        {err && (
+        {loadingServer && (
+          <div style={{ textAlign: "center", marginBottom: 10, color: "#0f172a", fontWeight: 700 }}>
+            ⏳ Loading from server…
+          </div>
+        )}
+        {serverErr && (
           <div style={{ textAlign: "center", marginBottom: 10, color: "#b91c1c", fontWeight: 700 }}>
-            {err}
+            {serverErr}
           </div>
         )}
 
@@ -819,25 +961,25 @@ export default function BrowseMeatDaily() {
               From:
               <input
                 type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                style={dateInputStyle}
+                value={filterFrom}
+                onChange={(e) => setFilterFrom(e.target.value)}
+                style={{ ...dateInputStyle, marginLeft: 8 }}
               />
             </label>
             <label>
               To:
               <input
                 type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                style={dateInputStyle}
+                value={filterTo}
+                onChange={(e) => setFilterTo(e.target.value)}
+                style={{ ...dateInputStyle, marginLeft: 8 }}
               />
             </label>
-            {(from || to) && (
+            {(filterFrom || filterTo) && (
               <button
                 onClick={() => {
-                  setFrom("");
-                  setTo("");
+                  setFilterFrom("");
+                  setFilterTo("");
                 }}
                 style={clearBtn}
               >
@@ -892,7 +1034,7 @@ export default function BrowseMeatDaily() {
                                 <div>
                                   {days.map((d) => {
                                     const isSelected = selectedDate === d;
-                                    const rep = filteredAsc.find((r) => r.reportDate === d);
+                                    const rep = filteredReportsAsc.find((r) => r.reportDate === d);
                                     return (
                                       <div
                                         key={d}
@@ -933,7 +1075,7 @@ export default function BrowseMeatDaily() {
                   }}
                 >
                   <div style={{ fontWeight: "bold", color: "#0f172a", fontSize: "1.15em" }}>
-                    Meat daily details ({selectedReport.reportDate})
+                    Returns details ({selectedReport.reportDate})
                   </div>
                   <button
                     onClick={handleExportPDF}
@@ -945,7 +1087,7 @@ export default function BrowseMeatDaily() {
                       padding: "9px 14px",
                       fontWeight: "bold",
                       cursor: "pointer",
-                      boxShadow: "0 10px 22px rgba(17,24,39,.25)",
+                      boxShadow: "0 10px 22px rgba(17,24,39,.25)"
                     }}
                     title="Export PDF"
                   >
@@ -956,38 +1098,76 @@ export default function BrowseMeatDaily() {
                 <table style={table}>
                   <thead>
                     <tr>
-                      <th style={th}>SL.NO</th>
-                      <th style={th}>PRODUCT NAME</th>
-                      <th style={th}>QUANTITY</th>
+                      <th style={th}>SL</th>
+                      <th style={th}>PRODUCT</th>
+                      <th style={th}>ORIGIN</th>
+                      <th style={th}>CUSTOMER</th>
+                      <th style={th}>QTY</th>
                       <th style={th}>QTY TYPE</th>
-                      <th style={th}>STATUS</th>
-                      <th style={th}>EXPIRY DATE</th>
+                      <th style={th}>EXPIRY</th>
                       <th style={th}>REMARKS</th>
+                      <th style={th}>ACTION</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(selectedReport.items || []).map((row, i) => (
-                      <tr key={i}>
-                        <td style={td}>{i + 1}</td>
-                        <td style={td}>
-                          <span>{row.productName}</span>
-                          {Array.isArray(row.images) && row.images.length > 0 && (
-                            <button
-                              style={viewImgBtn}
-                              onClick={() => openViewer(row)}
-                              title="View images"
-                            >
-                              VIEW IMG ({row.images.length})
-                            </button>
-                          )}
-                        </td>
-                        <td style={td}>{row.quantity}</td>
-                        <td style={td}>{row.qtyType}</td>
-                        <td style={td}>{row.status}</td>
-                        <td style={td}>{row.expiry}</td>
-                        <td style={td}>{row.remarks}</td>
-                      </tr>
-                    ))}
+                    {(selectedReport.items || []).map((row, i) => {
+                      const curr = actionText(row);
+                      const k = itemKey(row);
+                      const ch = changeMap.get(k);
+                      const showChange = ch && ch.to === curr;
+
+                      return (
+                        <tr key={i}>
+                          <td style={td}>{i + 1}</td>
+                          <td style={td}>
+                            <span>{row.productName}</span>
+                            {Array.isArray(row.images) && row.images.length > 0 && (
+                              <button
+                                style={viewImgBtn}
+                                onClick={() => openViewer(row.productName || "", row.images)}
+                                title="View images"
+                              >
+                                View images ({row.images.length})
+                              </button>
+                            )}
+                          </td>
+                          <td style={td}>{row.origin}</td>
+                          <td style={td}>{row.customerName}</td>
+                          <td style={td}>{row.quantity}</td>
+                          <td style={td}>
+                            {row.qtyType === "أخرى / Other" ? row.customQtyType : row.qtyType || ""}
+                          </td>
+                          <td style={td}>{row.expiry}</td>
+                          <td style={td}>{row.remarks}</td>
+                          <td style={{ ...td, background: showChange ? "#e9fce9" : td.background }}>
+                            {showChange ? (
+                              <div style={{ lineHeight: 1.2 }}>
+                                <div>
+                                  <span style={{ opacity: 0.8 }}>{ch.from}</span>
+                                  <span style={{ margin: "0 6px" }}>→</span>
+                                  <b>{ch.to}</b>
+                                </div>
+                                {(() => {
+                                  const t = toTs(ch?.at);
+                                  if (!t) return null;
+                                  const d = new Date(t);
+                                  const dd = String(d.getDate()).padStart(2, "0");
+                                  const mm = String(d.getMonth() + 1).padStart(2, "0");
+                                  const yyyy = d.getFullYear();
+                                  return (
+                                    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85, color: "#111" }}>
+                                      🗓️ {dd}/{mm}/{yyyy}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            ) : (
+                              curr
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1000,13 +1180,8 @@ export default function BrowseMeatDaily() {
         </div>
       </div>
 
-      {/* عارض الصور (read-only) */}
-      <ImageViewerModal
-        open={viewerOpen}
-        images={viewerData.images}
-        title={viewerData.title}
-        onClose={closeViewer}
-      />
+      {/* View-only image viewer */}
+      <ImageViewerModal open={viewerOpen} images={viewerImages} title={viewerTitle} onClose={closeViewer} />
     </>
   );
 }

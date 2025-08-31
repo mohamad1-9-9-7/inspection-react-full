@@ -68,6 +68,11 @@ const PRDReportsView = lazy(() =>
   import("./pages/monitor/branches/production/PRDReportsView")
 );
 
+/* 🆕 مرتجعات الزبائن (جديد) */
+const CustomerReturns = lazy(() => import("./pages/CustomerReturns"));
+const CustomerReturnView = lazy(() => import("./pages/CustomerReturnView"));
+const BrowseCustomerReturns = lazy(() => import("./pages/BrowseCustomerReturns"));
+
 /**
  * حماية المسارات الخاصة
  */
@@ -309,6 +314,34 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <BrowseReturns />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        {/* 🆕 returns-customers/* — ربط الأزرار الجديدة */}
+        <Route path="/returns-customers">
+          <Route
+            path="new"
+            element={
+              <ProtectedRoute>
+                <CustomerReturns />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="view"
+            element={
+              <ProtectedRoute>
+                <CustomerReturnView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="browse"
+            element={
+              <ProtectedRoute>
+                <BrowseCustomerReturns />
               </ProtectedRoute>
             }
           />

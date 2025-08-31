@@ -75,6 +75,11 @@ export default function ReturnsMenu() {
                 <span className="btn__icon">📊</span>
                 <span>Browse Meat Daily</span>
               </Link>
+              {/* NEW: Browse Customer Returns (عرض) */}
+              <Link to="/returns-customers/browse" className="btn btn--ghost">
+                <span className="btn__icon">👤</span>
+                <span>Browse Customer Returns</span>
+              </Link>
             </div>
 
             {/* RIGHT: Create (no password anywhere) */}
@@ -86,6 +91,11 @@ export default function ReturnsMenu() {
               <Link to="/meat-daily/input" className="btn btn--primary" aria-label="Create meat daily report">
                 <span className="btn__icon">🧾</span>
                 <span>Create Meat Daily Report</span>
+              </Link>
+              {/* NEW: Create Customer Returns (ادخال) */}
+              <Link to="/returns-customers/new" className="btn btn--primary" aria-label="Create customer returns report">
+                <span className="btn__icon">✍️</span>
+                <span>Create Customer Returns</span>
               </Link>
             </div>
           </div>
