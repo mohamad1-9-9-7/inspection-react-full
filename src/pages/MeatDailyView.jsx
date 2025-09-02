@@ -5,6 +5,44 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
+/* رفع صورة للسيرفر -> يرجّع رابط Cloudinary (المضغوط إن وُجد) */
+async function uploadViaServer(file) {
+  const fd = new FormData();
+  fd.append("file", file); // موحّد مع السيرفر
+
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
+    throw new Error(data?.error || "Upload failed");
+  }
+  return data.optimized_url || data.url; // استخدم المضغوط إن متاح
+}
+
+/* حذف صورة من التخزين عبر السيرفر (Cloudinary) */
+async function deleteImage(url) {
+  if (!url) return;
+  // مسار متوافق: DELETE /api/images?url=<encoded>
+  const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || "Delete image failed");
+  }
+}
+
+/* حذف مجموعة صور بتسلسل مع تحمّل الأخطاء */
+async function deleteImagesMany(urls = []) {
+  const unique = [...new Set(urls.filter(Boolean))];
+  if (!unique.length) return { ok: true, deleted: 0, failed: 0 };
+
+  const results = await Promise.allSettled(unique.map((u) => deleteImage(u)));
+  const deleted = results.filter((r) => r.status === "fulfilled").length;
+  const failed = results.length - deleted;
+  return { ok: failed === 0, deleted, failed };
+}
+
+/* تقارير اليوميات */
 async function fetchDays() {
   const res = await fetch(`${API_BASE}/api/reports?type=meat_daily`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch");
@@ -53,8 +91,17 @@ function pickLatestPerDate(raw) {
       out.set(d, { reportDate: d, items: Array.isArray(p.items) ? p.items : [], ts });
     }
   });
-  // ASC: oldest first
   return Array.from(out.values()).sort((a, b) => a.reportDate.localeCompare(b.reportDate));
+}
+
+/* اجمع كل روابط الصور من عناصر يوم واحد */
+function collectImages(items = []) {
+  const all = [];
+  for (const it of items) {
+    const arr = Array.isArray(it?.images) ? it.images : [];
+    for (const u of arr) if (u) all.push(u);
+  }
+  return all;
 }
 
 /* ========== Constants ========== */
@@ -64,32 +111,6 @@ const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December"
 ];
-
-/* ====== Image compress (to Base64 JPEG) ====== */
-async function compressImageToDataURL(file, maxDim = 1280, quality = 0.7) {
-  const img = await new Promise((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = reject;
-    i.src = URL.createObjectURL(file);
-  });
-  const w = img.naturalWidth || img.width;
-  const h = img.naturalHeight || img.height;
-  let tw = w, th = h;
-  if (w > maxDim || h > maxDim) {
-    const r = Math.min(maxDim / w, maxDim / h);
-    tw = Math.round(w * r);
-    th = Math.round(h * r);
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = tw;
-  canvas.height = th;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0, 0, tw, th);
-  const dataUrl = canvas.toDataURL("image/jpeg", quality);
-  URL.revokeObjectURL(img.src);
-  return dataUrl; // "data:image/jpeg;base64,..."
-}
 
 /* ====== Build Year→Month→Day tree (ASC) ====== */
 function buildTree(days) {
@@ -120,7 +141,7 @@ function buildTree(days) {
   return years;
 }
 
-/* ========= Images manager modal (unlimited) ========= */
+/* ========= Images manager modal ========= */
 function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
   const [previewSrc, setPreviewSrc] = useState("");
   const inputRef = useRef(null);
@@ -139,14 +160,17 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    const dataURLs = [];
+
+    const urls = [];
     for (const f of files) {
       try {
-        const durl = await compressImageToDataURL(f, 1280, 0.7);
-        dataURLs.push(durl);
-      } catch {}
+        const url = await uploadViaServer(f);
+        urls.push(url);
+      } catch (err) {
+        console.error("upload failed:", err);
+      }
     }
-    onAddImages(dataURLs);
+    if (urls.length) onAddImages(urls);
     e.target.value = "";
   };
 
@@ -167,11 +191,16 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 }}>
-          <button onClick={handlePick} style={btnBlueModal}>
-            ⬆️ Upload images
-          </button>
-          <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} />
-          <div style={{ fontSize: 13, color: "#334155" }}>Unlimited images per product (be mindful of size).</div>
+          <button onClick={handlePick} style={btnBlueModal}>⬆️ Upload images</button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleFiles}
+            style={{ display: "none" }}
+          />
+          <div style={{ fontSize: 13, color: "#334155" }}>Unlimited images per product (server processes automatically).</div>
         </div>
 
         <div style={thumbsWrap}>
@@ -199,7 +228,6 @@ export default function MeatDailyView() {
   const [openMonths, setOpenMonths] = useState(new Set());
   const importRef = useRef(null);
 
-  // images modal
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageRowIndex, setImageRowIndex] = useState(-1);
 
@@ -210,7 +238,7 @@ export default function MeatDailyView() {
       setDays(normalized);
 
       if (normalized.length) {
-        const earliest = normalized[0].reportDate; // oldest
+        const earliest = normalized[0].reportDate;
         const y = earliest.slice(0, 4);
         const m = earliest.slice(5, 7);
         setOpenYears(new Set([y]));
@@ -225,8 +253,7 @@ export default function MeatDailyView() {
   }
   useEffect(() => {
     reload();
-    // eslint-disable-next-line
-  }, []);
+  }, []); // eslint-disable-line
 
   const tree = useMemo(() => buildTree(days), [days]);
   const day = useMemo(() => days.find((d) => d.reportDate === selected) || null, [days, selected]);
@@ -240,9 +267,7 @@ export default function MeatDailyView() {
           ? d
           : {
               ...d,
-              items: d.items.map((r, idx) =>
-                idx === i ? { ...r, [k]: v } : r
-              ),
+              items: d.items.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)),
             }
       )
     );
@@ -260,9 +285,7 @@ export default function MeatDailyView() {
       images: [],
     };
     setDays((prev) =>
-      prev.map((d) =>
-        d.reportDate !== selected ? d : { ...d, items: [...d.items, blank] }
-      )
+      prev.map((d) => (d.reportDate !== selected ? d : { ...d, items: [...d.items, blank] }))
     );
   };
 
@@ -271,6 +294,14 @@ export default function MeatDailyView() {
     const ok = window.confirm("Delete this row?");
     if (!ok) return;
     try {
+      const row = day.items[i] || {};
+      const urls = ensureImagesArray(row);
+      setMsg("⏳ Deleting row images…");
+      const res = await deleteImagesMany(urls);
+      if (res.failed > 0) {
+        console.warn("Some images failed to delete from storage.");
+      }
+
       const newItems = day.items.filter((_, idx) => idx !== i);
       setMsg("⏳ Deleting row…");
       await saveDay(day.reportDate, newItems);
@@ -303,7 +334,15 @@ export default function MeatDailyView() {
     const ok = window.confirm(`Delete report ${day.reportDate}?`);
     if (!ok) return;
     try {
-      setMsg("⏳ Deleting…");
+      // 1) احذف كل الصور من التخزين
+      const urls = collectImages(day.items);
+      setMsg("⏳ Deleting day images…");
+      const res = await deleteImagesMany(urls);
+      if (res.failed > 0) {
+        console.warn("Some images failed to delete from storage.");
+      }
+      // 2) احذف اليوم من قاعدة البيانات
+      setMsg("⏳ Deleting day…");
       await deleteDay(day.reportDate);
       await reload();
       setMsg("✅ Deleted.");
@@ -354,13 +393,13 @@ export default function MeatDailyView() {
   const openImagesFor = (i) => { setImageRowIndex(i); setImageModalOpen(true); };
   const closeImages = () => setImageModalOpen(false);
 
-  const addImagesToRow = async (dataURLs) => {
+  const addImagesToRow = async (urls) => {
     if (!day || imageRowIndex < 0) return;
     try {
       const items = day.items || [];
       const row = items[imageRowIndex] || {};
       const cur = ensureImagesArray(row);
-      const merged = [...cur, ...dataURLs]; // ⬅️ لا يوجد حد أقصى
+      const merged = [...cur, ...urls];
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: merged } : r));
       setMsg("⏳ Updating images…");
       await saveDay(day.reportDate, newItems);
@@ -380,9 +419,22 @@ export default function MeatDailyView() {
       const items = day.items || [];
       const row = items[imageRowIndex] || {};
       const cur = [...ensureImagesArray(row)];
+      const url = cur[imgIndex];
+
+      // 1) حاول حذف الصورة من التخزين
+      if (url) {
+        setMsg("⏳ Removing image from storage…");
+        try {
+          await deleteImage(url);
+        } catch (err) {
+          console.warn("Storage delete failed; proceeding to unlink from report.", err);
+        }
+      }
+
+      // 2) احذف الرابط من التقرير واحفظ
       cur.splice(imgIndex, 1);
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: cur } : r));
-      setMsg("⏳ Removing image…");
+      setMsg("⏳ Updating report…");
       await saveDay(day.reportDate, newItems);
       await reload();
       setMsg("✅ Image removed.");
@@ -418,9 +470,7 @@ export default function MeatDailyView() {
 
       {msg && <div style={s.note}>{msg}</div>}
 
-      {/* Left tree + right details */}
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-        {/* Left: Date tree */}
         <div style={s.left}>
           {tree.map(({ year, months }) => {
             const yOpen = openYears.has(year);
@@ -485,7 +535,6 @@ export default function MeatDailyView() {
           })}
         </div>
 
-        {/* Right: Day details */}
         <div style={s.right}>
           {day ? (
             <>
@@ -590,10 +639,9 @@ export default function MeatDailyView() {
                           />
                         </td>
 
-                        {/* Images cell */}
                         <td style={s.td}>
                           <button
-                            onClick={() => openImagesFor(i)}
+                            onClick={() => { setImageRowIndex(i); setImageModalOpen(true); }}
                             style={s.btnBlue}
                             title="Manage images"
                           >
@@ -601,7 +649,6 @@ export default function MeatDailyView() {
                           </button>
                         </td>
 
-                        {/* Row actions */}
                         <td style={s.td}>
                           <button onClick={() => handleDeleteRow(i)} style={s.btnDelSmall}>🗑️ Delete</button>
                         </td>
@@ -611,11 +658,10 @@ export default function MeatDailyView() {
                 </table>
               </div>
 
-              {/* Images modal */}
               <ImageManagerModal
                 open={imageModalOpen}
-                row={activeRow}
-                onClose={closeImages}
+                row={day && imageRowIndex >= 0 ? (day.items?.[imageRowIndex] || {}) : null}
+                onClose={() => setImageModalOpen(false)}
                 onAddImages={addImagesToRow}
                 onRemoveImage={removeImageFromRow}
               />

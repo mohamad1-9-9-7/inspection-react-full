@@ -1135,7 +1135,7 @@ export default function BrowseReturns() {
             label="Condemnation"
             subLabel="Share of latest actions"
             count={`${kpi.condemnationShare.count}`}
-            color="#047857"
+            color="#f40146ff"
           />
           <DonutCard
             percent={kpi.useProdShare.percent}

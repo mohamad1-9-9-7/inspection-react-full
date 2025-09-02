@@ -29,23 +29,23 @@ const IS_SAME_ORIGIN = (() => {
 })();
 
 /* =============================================================================
-   🧪 Attributes (transpose view)
+   🧪 Attributes (transpose view) — MATCH input page
 ============================================================================= */
 const ATTRIBUTES = [
-  { key: "temperature",      label: "Product Temperature" },
-  { key: "ph",               label: "Product PH" },
-  { key: "slaughterDate",    label: "Slaughter Date" },
-  { key: "expiryDate",       label: "Expiry Date" },
-  { key: "broken",           label: "Broken / Cut Pieces" },
-  { key: "appearance",       label: "Appearance" },
-  { key: "bloodClots",       label: "Blood Stain" },
-  { key: "colour",           label: "Colour" },
+  { key: "temperature", label: "Product Temperature" },
+  { key: "ph", label: "Product PH" },
+  { key: "slaughterDate", label: "Slaughter Date" },
+  { key: "expiryDate", label: "Expiry Date" },
+  { key: "broken", label: "Broken / Cut Pieces" },
+  { key: "appearance", label: "Appearance" },
+  { key: "bloodClots", label: "Blood Clots" },
+  { key: "colour", label: "Colour" },
   { key: "fatDiscoloration", label: "Fat Discoloration" },
-  { key: "meatDamage",       label: "Meat Damage" },
-  { key: "foreignMatter",    label: "Hair / Foreign Matter" },
-  { key: "texture",          label: "Texture" },
-  { key: "testicles",        label: "Testicles" },
-  { key: "smell",            label: "Bad Smell" },
+  { key: "meatDamage", label: "Meat Damage" },
+  { key: "foreignMatter", label: "Hair / Foreign Matter" },
+  { key: "texture", label: "Texture" },
+  { key: "testicles", label: "Testicles" },
+  { key: "smell", label: "Smell" },
 ];
 
 /* =============================================================================
@@ -118,7 +118,7 @@ const defaultDocMeta = {
 };
 
 /* =============================================================================
-   🧠 Field labels
+   🧠 Field labels (General Info)
 ============================================================================= */
 const keyLabels = {
   reportOn: "Report On",
@@ -134,13 +134,28 @@ const keyLabels = {
   internationalLogger: "International Logger",
 };
 
+/* ترتيب ثابت يطابق صفحة الإدخال */
+const GENERAL_FIELDS_ORDER = [
+  "reportOn",
+  "receivedOn",
+  "inspectionDate",
+  "temperature",
+  "brand",
+  "invoiceNo",
+  "ph",
+  "origin",
+  "airwayBill",
+  "localLogger",
+  "internationalLogger",
+];
+
 /* =============================================================================
    💾 Local cache key
 ============================================================================= */
 const LS_KEY_REPORTS = "qcs_raw_material_reports";
 
 /* =============================================================================
-   🎨 Theme and info grid (strong borders)
+   🎨 Theme and info grid
 ============================================================================= */
 const styles = {
   page: {
@@ -213,7 +228,58 @@ const styles = {
     minHeight: 66,
   },
   infoTitle: { fontWeight: 800, marginBottom: 5, color: "#111827" },
+
+  badge: {
+    display: "inline-block",
+    padding: "4px 10px",
+    border: "1px solid #000",
+    borderRadius: 999,
+    background: "#fff",
+    fontWeight: 800,
+    fontSize: 12,
+    marginLeft: 6,
+  },
 };
+
+/* =============================================================================
+   Helpers (id/created + date tree)
+============================================================================= */
+const getDisplayId = (r) =>
+  (r?.generalInfo?.airwayBill && String(r.generalInfo.airwayBill)) ||
+  (r?.generalInfo?.invoiceNo && String(r.generalInfo.invoiceNo)) ||
+  "No AWB / Invoice";
+
+const getCreatedDate = (r) =>
+  (r?.createdDate && String(r.createdDate)) ||
+  String((r?.createdAt || r?.date || "")).slice(0, 10);
+
+const monthNames = [
+  "01 - January",
+  "02 - February",
+  "03 - March",
+  "04 - April",
+  "05 - May",
+  "06 - June",
+  "07 - July",
+  "08 - August",
+  "09 - September",
+  "10 - October",
+  "11 - November",
+  "12 - December",
+];
+
+function groupByYMD(list) {
+  const map = {};
+  list.forEach((r) => {
+    const d = getCreatedDate(r) || "0000-00-00";
+    const [y, m, day] = d.split("-");
+    if (!map[y]) map[y] = {};
+    if (!map[y][m]) map[y][m] = {};
+    if (!map[y][m][day]) map[y][m][day] = [];
+    map[y][m][day].push(r);
+  });
+  return map; // {year:{month:{day:[reports]}}}
+}
 
 /* =============================================================================
    Page
@@ -222,9 +288,13 @@ export default function QCSRawMaterialView() {
   const [searchTerm, setSearchTerm] = useState("");
   const [reports, setReports] = useState([]);
   const [selectedReportId, setSelectedReportId] = useState(null);
-  const [openTypes, setOpenTypes] = useState({});
-  const [showAttachments, setShowAttachments] = useState(false); // bottom toggle
 
+  // فتح/إغلاق الشجرة
+  const [openYears, setOpenYears] = useState({});
+  const [openMonths, setOpenMonths] = useState({});
+  const [openDays, setOpenDays] = useState({});
+
+  const [showAttachments, setShowAttachments] = useState(false);
   const [loadingServer, setLoadingServer] = useState(false);
   const [serverErr, setServerErr] = useState("");
 
@@ -232,10 +302,6 @@ export default function QCSRawMaterialView() {
   const printAreaRef = useRef(null);
   const mainRef = useRef(null);
   const importRef = useRef(null);
-
-  /* helpers */
-  const toggleType = (type) =>
-    setOpenTypes((prev) => ({ ...prev, [type]: !prev[type] }));
 
   const ShipmentStatusPill = ({ status }) => {
     const statusMap = {
@@ -267,6 +333,9 @@ export default function QCSRawMaterialView() {
     const payloadId = p.id || p.payloadId || undefined;
     const dbId = rec?._id || rec?.id || undefined;
 
+    const createdAt = p.createdAt || rec?.createdAt || p.date || "";
+    const createdDate = p.createdDate || String(createdAt).slice(0, 10) || "";
+
     return {
       id:
         payloadId ||
@@ -289,7 +358,11 @@ export default function QCSRawMaterialView() {
       images: Array.isArray(p.images) ? p.images : [],
       docMeta: p.docMeta || {},
       notes: p.notes || "",
-      createdAt: rec?.createdAt || undefined,
+
+      createdAt,
+      createdDate,
+      uniqueKey: p.uniqueKey || undefined,
+      sequence: p.sequence || undefined,
       updatedAt: rec?.updatedAt || undefined,
     };
   };
@@ -349,8 +422,8 @@ export default function QCSRawMaterialView() {
 
       if (mounted) {
         const sortedLocal = local.sort((a, b) =>
-          String(b.date || b.createdAt || "").localeCompare(
-            String(a.date || a.createdAt || "")
+          String((b.createdAt || b.date || "")).localeCompare(
+            String(a.createdAt || a.date || "")
           )
         );
         setReports(sortedLocal);
@@ -362,8 +435,8 @@ export default function QCSRawMaterialView() {
       const server = await fetchFromServer();
       if (mounted) {
         const merged = mergeUniqueById(server, local).sort((a, b) =>
-          String(b.date || b.createdAt || "").localeCompare(
-            String(a.date || a.createdAt || "")
+          String((b.createdAt || b.date || "")).localeCompare(
+            String(a.createdAt || a.date || "")
           )
         );
         setReports(merged);
@@ -424,8 +497,8 @@ export default function QCSRawMaterialView() {
           const p = rec?.payload || {};
           return (
             (p.id && p.id === record.id) ||
-            (norm(p.generalInfo?.airwayBill) ===
-              norm(record.generalInfo?.airwayBill))
+            norm(p.generalInfo?.airwayBill) === norm(record.generalInfo?.airwayBill) ||
+            norm(p.generalInfo?.invoiceNo) === norm(record.generalInfo?.invoiceNo)
           );
         });
         const dbId = target?._id || target?.id;
@@ -487,8 +560,8 @@ export default function QCSRawMaterialView() {
           map.set(r.id, { ...map.get(r.id), ...r })
         );
         const merged = Array.from(map.values()).sort((a, b) =>
-          String(b.date || b.createdAt || "").localeCompare(
-            String(a.date || a.createdAt || "")
+          String((b.createdAt || b.date || "")).localeCompare(
+            String(a.createdAt || a.date || "")
           )
         );
         setReports(merged);
@@ -502,29 +575,45 @@ export default function QCSRawMaterialView() {
     e.target.value = "";
   };
 
-  /* filter/selection */
-  const filteredReports = reports.filter((r) =>
-    (r.generalInfo?.airwayBill || "")
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase())
-  );
-  const selectedReport =
-    filteredReports.find((r) => r.id === selectedReportId) || null;
+  /* filter/selection — search by AWB/Invoice/uniqueKey/shipmentType/date */
+  const term = searchTerm.toLowerCase();
+  const filteredReports = reports.filter((r) => {
+    const hay = [
+      r.generalInfo?.airwayBill,
+      r.generalInfo?.invoiceNo,
+      r.uniqueKey,
+      r.shipmentType,
+      r.status,
+      getCreatedDate(r),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(term);
+  });
 
-  /* export PDF (forces show attachments during export) */
+  const selectedReport =
+    filteredReports.find((r) => r.id === selectedReportId) ||
+    filteredReports[0] ||
+    null;
+
+  /* export PDF — اسم الملف: AWB أو Invoice */
   const exportToPDF = async () => {
     if (!selectedReport) return alert("No selected report to export.");
 
-    restoreShowRef.current = showAttachments;
+    const prevShow = showAttachments;
     setShowAttachments(true);
 
-    const filename =
-      (selectedReport?.generalInfo?.airwayBill &&
-        `QCS-${selectedReport.generalInfo.airwayBill}`) ||
-      `QCS-Report-${
-        (selectedReport?.date || "").replace(/[:/\\s]+/g, "_").slice(0, 40) ||
-        Date.now()
-      }`;
+    const idForFile =
+      selectedReport?.generalInfo?.airwayBill ||
+      selectedReport?.generalInfo?.invoiceNo;
+
+    const filename = idForFile
+      ? `QCS-${idForFile}`
+      : `QCS-Report-${
+          (selectedReport?.date || "").replace(/[:/\s]+/g, "_").slice(0, 40) ||
+          Date.now()
+        }`;
 
     const mainEl = mainRef.current;
     const originalMainStyle = {
@@ -543,9 +632,10 @@ export default function QCSRawMaterialView() {
     await new Promise((r) => setTimeout(r, 150));
 
     try {
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all(
-        [import("html2canvas"), import("jspdf")]
-      );
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
 
       const target = printAreaRef.current;
       const scale = window.devicePixelRatio > 1 ? 2 : 1;
@@ -569,16 +659,7 @@ export default function QCSRawMaterialView() {
       let heightLeft = imgHeight;
       let position = 0;
 
-      pdf.addImage(
-        imgData,
-        "PNG",
-        0,
-        position,
-        imgWidth,
-        imgHeight,
-        undefined,
-        "FAST"
-      );
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
       heightLeft -= pageHeight;
 
       while (heightLeft > 0) {
@@ -602,21 +683,30 @@ export default function QCSRawMaterialView() {
       console.error(err);
       alert("Failed to create PDF. Make sure jspdf and html2canvas are installed.");
     } finally {
-      if (mainEl) {
-        mainEl.style.maxHeight = originalMainStyle.maxHeight || "";
-        mainEl.style.overflowY = originalMainStyle.overflowY || "";
-        mainEl.style.boxShadow = originalMainStyle.boxShadow || "";
-        mainEl.style.border = originalMainStyle.border || "";
+      const mainEl2 = mainRef.current;
+      if (mainEl2) {
+        mainEl2.style.maxHeight = originalMainStyle.maxHeight || "";
+        mainEl2.style.overflowY = originalMainStyle.overflowY || "";
+        mainEl2.style.boxShadow = originalMainStyle.boxShadow || "";
+        mainEl2.style.border = originalMainStyle.border || "";
       }
-      setShowAttachments(restoreShowRef.current);
+      setShowAttachments(prevShow);
     }
   };
 
   /* titles/meta */
-  const reportTitle =
+  const titleId =
     (selectedReport?.generalInfo?.airwayBill &&
-      `📦 Air Way Bill: ${selectedReport.generalInfo.airwayBill}`) ||
-    "📋 Incoming Shipment Report";
+      selectedReport.generalInfo.airwayBill) ||
+    (selectedReport?.generalInfo?.invoiceNo &&
+      selectedReport.generalInfo.invoiceNo) ||
+    null;
+
+  const reportTitle = titleId
+    ? selectedReport?.generalInfo?.airwayBill
+      ? `📦 Air Way Bill: ${titleId}`
+      : `🧾 Invoice No: ${titleId}`
+    : "📋 Incoming Shipment Report";
 
   const docMeta = selectedReport?.docMeta
     ? {
@@ -630,6 +720,17 @@ export default function QCSRawMaterialView() {
         area: selectedReport.docMeta.area || defaultDocMeta.area,
       }
     : defaultDocMeta;
+
+  /* ========= Render ========= */
+  const tree = groupByYMD(
+    filteredReports
+      .slice()
+      .sort((a, b) =>
+        String((b.createdAt || b.date || "")).localeCompare(
+          String(a.createdAt || a.date || "")
+        )
+      )
+  );
 
   return (
     <div style={styles.page}>
@@ -660,7 +761,7 @@ export default function QCSRawMaterialView() {
           }}
         >
           <h3 style={{ marginBottom: "1rem", color: "#111827", fontWeight: 800 }}>
-            📦 Reports by Shipment Type
+            📅 Reports by Date
           </h3>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
@@ -714,7 +815,7 @@ export default function QCSRawMaterialView() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="🔍 Search by Air Way Bill"
+            placeholder="🔍 Search (AWB / Invoice / Key)"
             style={{
               width: "100%",
               padding: 10,
@@ -724,106 +825,189 @@ export default function QCSRawMaterialView() {
             }}
           />
 
-          {Object.entries(
-            filteredReports.reduce((acc, r) => {
-              const type = r.shipmentType || "Unspecified";
-              if (!acc[type]) acc[type] = [];
-              acc[type].push(r);
-              return acc;
-            }, {})
-          ).map(([type, reportsInType]) => (
-            <div key={type} style={{ marginBottom: "1.5rem" }}>
-              <button
-                onClick={() => toggleType(type)}
-                style={{
-                  width: "100%",
-                  background: "#f3f4f6",
-                  padding: "10px 12px",
-                  fontWeight: 800,
-                  textAlign: "left",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "10px",
-                  marginBottom: "0.5rem",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  cursor: "pointer",
-                  color: "#0f172a",
-                }}
-              >
-                📦 {type}
-                <span>{openTypes[type] ? "➖" : "➕"}</span>
-              </button>
+          {/* شجرة التاريخ */}
+          {Object.keys(tree)
+            .sort((a, b) => b.localeCompare(a))
+            .map((year) => (
+              <div key={year} style={{ marginBottom: "1rem" }}>
+                <button
+                  onClick={() =>
+                    setOpenYears((p) => ({ ...p, [year]: !p[year] }))
+                  }
+                  style={{
+                    width: "100%",
+                    background: "#f3f4f6",
+                    padding: "10px 12px",
+                    fontWeight: 800,
+                    textAlign: "left",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "10px",
+                    marginBottom: "0.5rem",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    color: "#0f172a",
+                  }}
+                >
+                  📅 {year}
+                  <span>{openYears[year] ? "➖" : "➕"}</span>
+                </button>
 
-              {openTypes[type] && (
-                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                  {reportsInType.map((r) => (
-                    <li key={r.id} style={{ marginBottom: "0.5rem" }}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <button
-                          onClick={() => {
-                            setSelectedReportId(r.id);
-                            setShowAttachments(false);
-                          }}
-                          title={`Open report ${r.generalInfo?.airwayBill || "No AWB"}`}
-                          style={{
-                            flex: 1,
-                            padding: "10px 12px",
-                            borderRadius: 10,
-                            cursor: "pointer",
-                            border:
-                              selectedReportId === r.id
-                                ? "2px solid #1f2937"
-                                : "1px solid #e5e7eb",
-                            background:
-                              selectedReportId === r.id ? "#f5f5f5" : "#fff",
-                            fontWeight: selectedReportId === r.id ? 800 : 600,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            textAlign: "left",
-                            color: "#0f172a",
-                          }}
-                        >
-                          <span>
-                            {r.generalInfo?.airwayBill || "No AWB"}{" "}
-                            <span style={{ fontWeight: 800, fontSize: "0.85rem" }}>
-                              {r.status === "Acceptable"
-                                ? "✅"
-                                : r.status === "Average"
-                                ? "⚠️"
-                                : "❌"}
-                            </span>
-                          </span>
-                        </button>
+                {openYears[year] &&
+                  Object.keys(tree[year])
+                    .sort((a, b) => b.localeCompare(a))
+                    .map((m) => {
+                      const ym = `${year}-${m}`;
+                      return (
+                        <div key={ym} style={{ marginLeft: 8, marginBottom: 8 }}>
+                          <button
+                            onClick={() =>
+                              setOpenMonths((p) => ({ ...p, [ym]: !p[ym] }))
+                            }
+                            style={{
+                              width: "100%",
+                              background: "#ffffff",
+                              padding: "8px 10px",
+                              fontWeight: 800,
+                              textAlign: "left",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: "10px",
+                              marginBottom: "0.5rem",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              cursor: "pointer",
+                              color: "#0f172a",
+                            }}
+                          >
+                            📆 {monthNames[parseInt(m, 10) - 1] || m}
+                            <span>{openMonths[ym] ? "➖" : "➕"}</span>
+                          </button>
 
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleDelete(r.id);
-                          }}
-                          style={{
-                            background: "#dc2626",
-                            color: "#fff",
-                            border: "1px solid #b91c1c",
-                            borderRadius: 8,
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                            fontWeight: 800,
-                            minWidth: 72,
-                          }}
-                          title="Delete report from server"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
+                          {openMonths[ym] &&
+                            Object.keys(tree[year][m])
+                              .sort((a, b) => b.localeCompare(a))
+                              .map((d) => {
+                                const ymd = `${ym}-${d}`;
+                                const dayReports = tree[year][m][d]
+                                  .slice()
+                                  .sort((a, b) =>
+                                    String((b.createdAt || b.date || "")).localeCompare(
+                                      String(a.createdAt || a.date || "")
+                                    )
+                                  );
+                                return (
+                                  <div key={ymd} style={{ marginLeft: 8, marginBottom: 8 }}>
+                                    <button
+                                      onClick={() =>
+                                        setOpenDays((p) => ({ ...p, [ymd]: !p[ymd] }))
+                                      }
+                                      style={{
+                                        width: "100%",
+                                        background: "#eef2ff",
+                                        padding: "8px 10px",
+                                        fontWeight: 800,
+                                        textAlign: "left",
+                                        border: "1px solid #c7d2fe",
+                                        borderRadius: "10px",
+                                        marginBottom: "0.5rem",
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        cursor: "pointer",
+                                        color: "#0f172a",
+                                      }}
+                                    >
+                                      📄 {year}-{m}-{d}
+                                      <span>{openDays[ymd] ? "➖" : "➕"}</span>
+                                    </button>
+
+                                    {openDays[ymd] && (
+                                      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                                        {dayReports.map((r) => (
+                                          <li key={r.id} style={{ marginBottom: "0.5rem" }}>
+                                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                              <button
+                                                onClick={() => {
+                                                  setSelectedReportId(r.id);
+                                                  setShowAttachments(false);
+                                                }}
+                                                title={`Open report ${getDisplayId(r)}`}
+                                                style={{
+                                                  flex: 1,
+                                                  padding: "8px 10px",
+                                                  borderRadius: 10,
+                                                  cursor: "pointer",
+                                                  border:
+                                                    selectedReportId === r.id
+                                                      ? "2px solid #1f2937"
+                                                      : "1px solid #e5e7eb",
+                                                  background:
+                                                    selectedReportId === r.id ? "#f5f5f5" : "#fff",
+                                                  fontWeight: selectedReportId === r.id ? 800 : 600,
+                                                  display: "flex",
+                                                  justifyContent: "space-between",
+                                                  alignItems: "center",
+                                                  textAlign: "left",
+                                                  color: "#0f172a",
+                                                }}
+                                              >
+                                                <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                                  <span>{getDisplayId(r)}</span>
+                                                  {r.sequence ? (
+                                                    <span style={{ fontSize: 12, opacity: 0.8 }}>
+                                                      · #{r.sequence}
+                                                    </span>
+                                                  ) : null}
+                                                  {r.shipmentType ? (
+                                                    <span style={{ fontSize: 12, opacity: 0.8 }}>
+                                                      · {r.shipmentType}
+                                                    </span>
+                                                  ) : null}
+                                                </span>
+                                                <span style={{ fontWeight: 800, fontSize: "0.85rem" }}>
+                                                  {r.status === "Acceptable"
+                                                    ? "✅"
+                                                    : r.status === "Average"
+                                                    ? "⚠️"
+                                                    : "❌"}
+                                                </span>
+                                              </button>
+
+                                              <button
+                                                onClick={(e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  handleDelete(r.id);
+                                                }}
+                                                style={{
+                                                  background: "#dc2626",
+                                                  color: "#fff",
+                                                  border: "1px solid #b91c1c",
+                                                  borderRadius: 8,
+                                                  padding: "8px 12px",
+                                                  cursor: "pointer",
+                                                  fontWeight: 800,
+                                                  minWidth: 72,
+                                                }}
+                                                title="Delete report from server"
+                                              >
+                                                Delete
+                                              </button>
+                                            </div>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                        </div>
+                      );
+                    })}
+              </div>
+            ))}
 
           <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
             <button
@@ -907,22 +1091,34 @@ export default function QCSRawMaterialView() {
                   <tbody>
                     <tr>
                       <th style={headerStyles.th}>Document Title</th>
-                      <td style={headerStyles.td}>{docMeta.documentTitle}</td>
+                      <td style={headerStyles.td}>
+                        {selectedReport?.docMeta?.documentTitle ||
+                          defaultDocMeta.documentTitle}
+                      </td>
                       <td />
                       <th style={headerStyles.th}>Document No</th>
-                      <td style={headerStyles.td}>{docMeta.documentNo}</td>
+                      <td style={headerStyles.td}>
+                        {selectedReport?.docMeta?.documentNo ||
+                          defaultDocMeta.documentNo}
+                      </td>
                     </tr>
                     <tr>
                       <th style={headerStyles.th}>Issue Date</th>
-                      <td style={headerStyles.td}>{docMeta.issueDate}</td>
+                      <td style={headerStyles.td}>
+                        {selectedReport?.docMeta?.issueDate ||
+                          defaultDocMeta.issueDate}
+                      </td>
                       <td />
                       <th style={headerStyles.th}>Revision No</th>
-                      <td style={headerStyles.td}>{docMeta.revisionNo}</td>
+                      <td style={headerStyles.td}>
+                        {selectedReport?.docMeta?.revisionNo ||
+                          defaultDocMeta.revisionNo}
+                      </td>
                     </tr>
                     <tr>
                       <th style={headerStyles.th}>Area</th>
                       <td style={headerStyles.td} colSpan={4}>
-                        {docMeta.area}
+                        {selectedReport?.docMeta?.area || defaultDocMeta.area}
                       </td>
                     </tr>
                   </tbody>
@@ -942,16 +1138,15 @@ export default function QCSRawMaterialView() {
                 <h3 style={{ margin: 0, color: "#111827", fontWeight: 800 }}>
                   {reportTitle}
                 </h3>
-                {/* (تم إزالة زر Show attachments من هنا) */}
               </div>
 
-              {/* General Info */}
+              {/* General Info — fixed order */}
               <section style={{ marginBottom: "1.5rem" }}>
                 <div style={styles.infoGrid}>
-                  {Object.entries(selectedReport.generalInfo || {}).map(([k, v]) => (
+                  {GENERAL_FIELDS_ORDER.map((k) => (
                     <div key={k} style={styles.infoCell}>
                       <div style={styles.infoTitle}>{keyLabels[k] || k}</div>
-                      <div>{v || "-"}</div>
+                      <div>{selectedReport.generalInfo?.[k] ?? "-"}</div>
                     </div>
                   ))}
                   <div style={styles.infoCell}>
@@ -966,6 +1161,28 @@ export default function QCSRawMaterialView() {
                     <div style={styles.infoTitle}>Entry Date</div>
                     <div>{selectedReport.date || "-"}</div>
                   </div>
+                  <div style={styles.infoCell}>
+                    <div style={styles.infoTitle}>Created Date</div>
+                    <div>{getCreatedDate(selectedReport) || "-"}</div>
+                  </div>
+                  <div style={styles.infoCell}>
+                    <div style={styles.infoTitle}>Created At</div>
+                    <div>{selectedReport.createdAt || "-"}</div>
+                  </div>
+                  {selectedReport.sequence ? (
+                    <div style={styles.infoCell}>
+                      <div style={styles.infoTitle}>Sequence (day)</div>
+                      <div>#{selectedReport.sequence}</div>
+                    </div>
+                  ) : null}
+                  {selectedReport.uniqueKey ? (
+                    <div style={{ ...styles.infoCell, gridColumn: "1 / -1" }}>
+                      <div style={styles.infoTitle}>Unique Key</div>
+                      <div style={{ wordBreak: "break-all" }}>
+                        {selectedReport.uniqueKey}
+                      </div>
+                    </div>
+                  ) : null}
                   <div style={styles.infoCell}>
                     <div style={styles.infoTitle}>Total Quantity (pcs)</div>
                     <div>{selectedReport.totalQuantity || "-"}</div>
@@ -1165,7 +1382,7 @@ export default function QCSRawMaterialView() {
                 )}
               </section>
 
-              {/* Attachments (moved to bottom) */}
+              {/* Attachments (toggle) */}
               {showAttachments && (
                 <section style={{ marginTop: "1.5rem" }}>
                   {(selectedReport.certificateFile ||
@@ -1188,7 +1405,7 @@ export default function QCSRawMaterialView() {
                       <div style={{ fontWeight: 800, marginBottom: 6, color: "#111827" }}>
                         {selectedReport.certificateName}
                       </div>
-                      {selectedReport.certificateFile.startsWith("data:image/") ? (
+                      {String(selectedReport.certificateFile).startsWith("data:image/") ? (
                         <img
                           src={selectedReport.certificateFile}
                           alt={selectedReport.certificateName || "Halal certificate"}
@@ -1199,9 +1416,7 @@ export default function QCSRawMaterialView() {
                             border: "1px solid #e5e7eb",
                           }}
                         />
-                      ) : selectedReport.certificateFile.startsWith(
-                          "data:application/pdf"
-                        ) ? (
+                      ) : String(selectedReport.certificateFile).startsWith("data:application/pdf") ? (
                         <div
                           style={{
                             padding: "8px 12px",

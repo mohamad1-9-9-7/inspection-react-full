@@ -55,24 +55,50 @@ async function sendToServer(payload) {
   return res.json().catch(() => ({}));
 }
 
-async function checkDuplicateAirway(airwayBill) {
-  if (!airwayBill) return false;
+async function fetchExistingRawMaterial() {
   try {
     const res = await fetch(`${REPORTS_URL}?type=qcs_raw_material`, {
       cache: "no-store",
       credentials: IS_SAME_ORIGIN ? "include" : "omit",
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) return false;
+    if (!res.ok) return [];
     const json = await res.json();
-    const arr = Array.isArray(json) ? json : json?.data || [];
-    const norm = (s) => String(s || "").trim().toLowerCase();
-    return arr.some(
-      (rec) => norm(rec?.payload?.generalInfo?.airwayBill) === norm(airwayBill)
-    );
+    return Array.isArray(json) ? json : json?.data || [];
   } catch {
-    return false;
+    return [];
   }
+}
+
+/* === مشتق المفتاح الفريد: تاريخ اليوم + نوع الشحنة + (AWB أو Invoice) + تسلسل === */
+function normStr(x) {
+  return String(x ?? "").trim().toUpperCase();
+}
+function todayIso() {
+  return new Date().toISOString(); // UTC ISO
+}
+function toYMD(iso) {
+  return String(iso || "").slice(0, 10);
+}
+async function deriveUniqueKey({ shipmentType, airwayBill, invoiceNo, createdDate }) {
+  const all = await fetchExistingRawMaterial();
+  const idPart = normStr(airwayBill || invoiceNo || "NA");
+  const typePart = normStr(shipmentType || "NA");
+  const datePart = normStr(createdDate);
+
+  const same = all.filter((r) => {
+    const p = r?.payload || {};
+    const pDate = normStr(p.createdDate || (p.date || "").slice(0, 10));
+    const pType = normStr(p.shipmentType);
+    const pId = normStr(p?.generalInfo?.airwayBill || p?.generalInfo?.invoiceNo || "NA");
+    return pDate === datePart && pType === typePart && pId === idPart;
+  });
+
+  const sequence = same.length + 1;
+  const baseKey = `${datePart}__${typePart}__${idPart}`;
+  const uniqueKey = sequence > 1 ? `${baseKey}-${sequence}` : baseKey;
+
+  return { uniqueKey, sequence };
 }
 
 /* =============================================================================
@@ -96,7 +122,7 @@ const ATTRIBUTES = [
 ];
 
 const newSample = () => {
-  const s = { productName: "" }; // اسم العينة يبدأ فارغ
+  const s = { productName: "" };
   ATTRIBUTES.forEach((a) => (s[a.key] = a.default));
   return s;
 };
@@ -454,7 +480,7 @@ export default function QCSRawMaterialInspection() {
   const parseNum = (v) => {
     const n = parseFloat(String(v ?? "").replace(",", ".").replace(/[^\d.\-]/g, ""));
     return Number.isFinite(n) ? n : null;
-    };
+  };
   const avgOf = (arr) => {
     const nums = arr.map(parseNum).filter((n) => n !== null);
     if (!nums.length) return "";
@@ -524,7 +550,7 @@ export default function QCSRawMaterialInspection() {
   };
   const triggerImagesSelect = () => imagesInputRef.current?.click();
 
-  const buildReportPayload = () => ({
+  const buildReportPayload = (extra) => ({
     clientId: makeClientId(),
     date: new Date().toISOString(),
     shipmentType,
@@ -541,6 +567,7 @@ export default function QCSRawMaterialInspection() {
     images,
     docMeta,
     notes,
+    ...extra, // createdAt, createdDate, sequence, uniqueKey
   });
 
   const showToast = (type, msg) => {
@@ -567,15 +594,16 @@ export default function QCSRawMaterialInspection() {
       alert("Please choose Shipment Type before saving.");
       return;
     }
-    const airway = (generalInfo.airwayBill || "").trim();
-    if (airway) {
-      const exists = await checkDuplicateAirway(airway);
-      if (exists) {
-        showToast("error", "Duplicate Air Way Bill detected.");
-        setSaveMsg("Duplicate Air Way Bill.");
-        return;
-      }
-    }
+
+    // اشتق الهوية المعتمدة لليوم + نوع الشحنة + (AWB أو Invoice)
+    const createdAt = todayIso();
+    const createdDate = toYMD(createdAt);
+    const { uniqueKey, sequence } = await deriveUniqueKey({
+      shipmentType,
+      airwayBill: generalInfo.airwayBill,
+      invoiceNo: generalInfo.invoiceNo,
+      createdDate,
+    });
 
     const ok = window.confirm("Confirm saving to external server?");
     if (!ok) {
@@ -588,9 +616,18 @@ export default function QCSRawMaterialInspection() {
       setIsSaving(true);
       setSaveMsg("Saving to server…");
       showToast("info", "Saving…");
-      await sendToServer(buildReportPayload());
+
+      await sendToServer(
+        buildReportPayload({
+          createdAt,       // تاريخ ووقت إنشاء التقرير
+          createdDate,     // اليوم فقط YYYY-MM-DD
+          uniqueKey,       // مفتاح فريد لليوم
+          sequence,        // تسلسل اليوم (1، 2، 3…)
+        })
+      );
+
       setSaveMsg("Saved successfully!");
-      showToast("success", "Saved successfully ✅");
+      showToast("success", `Saved successfully ✅ (#${sequence})`);
     } catch (e) {
       const msg = `Save failed: ${e?.message || e}`;
       setSaveMsg(msg);
@@ -652,7 +689,6 @@ export default function QCSRawMaterialInspection() {
               <tbody>
                 <tr>
                   <th style={styles.headerTh}>Document Title</th>
-                  {/* 🔹 وسّعنا خلية العنوان */}
                   <td style={styles.headerTd} colSpan={2}>
                     <input
                       {...inputProps("documentTitle")}
@@ -847,7 +883,7 @@ export default function QCSRawMaterialInspection() {
           {/* Transposed Samples */}
           <h4 style={styles.section}>Test Samples</h4>
           <div style={styles.tableWrap}>
-            <table style={{ ...styles.table, minWidth: tableMinWidth }}>
+            <table style={{ ...styles.table, minWidth: 240 + samples.length * 160 }}>
               <thead>
                 <tr>
                   <th style={{ ...styles.th, minWidth: 220, textAlign: "left" }}>

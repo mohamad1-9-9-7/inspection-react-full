@@ -27,20 +27,21 @@
     "build": "react-scripts build",
     "electron": "electron ."
   },
+  "eslintConfig": {
+    "extends": ["react-app", "react-app/jest"],
+    "rules": {
+      "react-hooks/exhaustive-deps": "off",
+      "no-unused-vars": "off",
+      "no-sequences": "off",
+      "no-useless-escape": "off",
+      "no-useless-computed-key": "off"
+    }
+  },
   "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
   },
   "devDependencies": {
-    "electron": "^37.2.5",
-    "eslint-plugin-react-hooks": "^5"
+    "electron": "^37.2.5"
   }
 }
