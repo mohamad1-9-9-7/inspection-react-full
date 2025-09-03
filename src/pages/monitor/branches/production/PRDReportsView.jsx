@@ -51,17 +51,21 @@ const tabWrap = {
   borderBottom: "1px solid #e5e7eb",
   paddingBottom: 6,
 };
+
 const tabBtn = {
   padding: "8px 12px",
   borderRadius: 10,
   background: "#fff",
+  // استخدم المختصر فقط هنا
   border: "1px solid #e5e7eb",
   cursor: "pointer",
   fontWeight: 800,
   fontSize: ".95rem",
 };
+
 const tabBtnActive = {
   background: "#1f2937",
   color: "#fff",
-  borderColor: "#1f2937",
+  // لا تستخدم borderColor؛ وحّد باستخدام المختصر
+  border: "1px solid #1f2937",
 };

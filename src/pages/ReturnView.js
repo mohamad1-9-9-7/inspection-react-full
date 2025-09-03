@@ -5,6 +5,38 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
+/* ===== Cloudinary via server (upload + delete) ===== */
+async function uploadViaServer(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
+    throw new Error(data?.error || "Upload failed");
+  }
+  return data.optimized_url || data.url; // compressed URL if available
+}
+async function deleteImage(url) {
+  if (!url) return;
+  const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) throw new Error(data?.error || "Delete image failed");
+}
+async function deleteImagesMany(urls = []) {
+  const unique = [...new Set((urls || []).filter(Boolean))];
+  if (!unique.length) return { ok: true, deleted: 0, failed: 0 };
+  const results = await Promise.allSettled(unique.map((u) => deleteImage(u)));
+  const deleted = results.filter((r) => r.status === "fulfilled").length;
+  return { ok: deleted === results.length, deleted, failed: results.length - deleted };
+}
+function collectImagesFromItems(items = []) {
+  const all = [];
+  for (const it of items) if (Array.isArray(it?.images)) for (const u of it.images) if (u) all.push(u);
+  return [...new Set(all)];
+}
+
 async function fetchReturns() {
   const res = await fetch(API_BASE + "/api/reports?type=returns", { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch");
@@ -122,17 +154,17 @@ const ACTIONS = [
 const BRANCHES = [
   "QCS",
   "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16", "POS 17",
-  "POS 18", // new
+  "POS 18",
   "POS 19", "POS 21", "POS 24", "POS 25",
-  "POS 26", // new
-  "POS 31", // new
-  "POS 34", // new
-  "POS 35", // new
-  "POS 36", // new
+  "POS 26",
+  "POS 31",
+  "POS 34",
+  "POS 35",
+  "POS 36",
   "POS 37", "POS 38",
-  "POS 41", // new
+  "POS 41",
   "POS 42",
-  "POS 43", // new
+  "POS 43",
   "POS 44", "POS 45",
   "فرع آخر... / Other branch"
 ];
@@ -205,16 +237,22 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
   if (!open) return null;
 
   const handlePick = () => inputRef.current?.click();
+
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const allowed = files.slice(0, remaining);
-    const b64s = await Promise.all(
-      allowed.map((f) => new Promise((resolve, reject) => {
-        const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(f);
-      }))
-    );
-    onAddImages(b64s);
+
+    const urls = [];
+    for (const f of allowed) {
+      try {
+        const url = await uploadViaServer(f);
+        urls.push(url);
+      } catch (err) {
+        console.error("upload failed:", err);
+      }
+    }
+    if (urls.length) onAddImages(urls);
     e.target.value = "";
   };
 
@@ -426,7 +464,7 @@ export default function ReturnView() {
     remarks: "",
     action: ACTIONS[0],
     customAction: "",
-    images: [], // ✅ ensure images field
+    images: [], // URLs (Cloudinary)
   };
 
   const startAddRow = () => {
@@ -453,7 +491,7 @@ export default function ReturnView() {
       remarks: row.remarks || "",
       action: row.action || "",
       customAction: row.customAction || "",
-      images: Array.isArray(row.images) ? row.images : [], // ✅ keep images in edit state
+      images: Array.isArray(row.images) ? row.images : [], // URLs
     });
   };
 
@@ -484,7 +522,7 @@ export default function ReturnView() {
       remarks: (row.remarks || "").trim(),
       action: row.action || "",
       customAction: row.action === "إجراء آخر..." ? (row.customAction || "").trim() : "",
-      images: Array.isArray(row.images) ? row.images : existingImages, // ✅ preserve or save images
+      images: Array.isArray(row.images) ? row.images : existingImages, // URLs
     };
   };
 
@@ -557,6 +595,11 @@ export default function ReturnView() {
     if (!sure) return;
 
     try {
+      setOpMsg("⏳ Deleting row images…");
+      const row = (selectedReport.items || [])[i] || {};
+      const urls = Array.isArray(row.images) ? row.images : [];
+      await deleteImagesMany(urls);
+
       setOpMsg("⏳ Deleting row…");
       const currentItems = selectedReport.items || [];
       const newItems = currentItems.filter((_, idx) => idx !== i);
@@ -576,13 +619,13 @@ export default function ReturnView() {
   const openImagesFor = (i) => { setImageRowIndex(i); setImageModalOpen(true); };
   const closeImages = () => setImageModalOpen(false);
 
-  const addImagesToRow = async (b64s) => {
+  const addImagesToRow = async (urls) => {
     if (!selectedReport || imageRowIndex < 0) return;
     try {
       const items = selectedReport.items || [];
       const row = items[imageRowIndex] || {};
       const cur = Array.isArray(row.images) ? row.images : [];
-      const merged = [...cur, ...b64s].slice(0, MAX_IMAGES_PER_PRODUCT);
+      const merged = [...cur, ...urls].slice(0, MAX_IMAGES_PER_PRODUCT);
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: merged } : r));
       setOpMsg("⏳ Updating images…");
       await saveReportToServer(selectedReport.reportDate, newItems);
@@ -602,9 +645,18 @@ export default function ReturnView() {
       const items = selectedReport.items || [];
       const row = items[imageRowIndex] || {};
       const cur = Array.isArray(row.images) ? [...row.images] : [];
+      const url = cur[imgIndex];
+
+      if (url) {
+        setOpMsg("⏳ Removing image from storage…");
+        try { await deleteImage(url); } catch (err) {
+          console.warn("Storage delete failed; proceeding to unlink from report.", err);
+        }
+      }
+
       cur.splice(imgIndex, 1);
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: cur } : r));
-      setOpMsg("⏳ Removing image…");
+      setOpMsg("⏳ Updating report…");
       await saveReportToServer(selectedReport.reportDate, newItems);
       await reloadFromServer();
       setOpMsg("✅ Image removed.");
@@ -624,6 +676,12 @@ export default function ReturnView() {
     if (!sure) return;
 
     try {
+      // 1) delete all images from storage
+      const urls = collectImagesFromItems(selectedReport.items || []);
+      setOpMsg("⏳ Deleting report images…");
+      await deleteImagesMany(urls);
+
+      // 2) delete report document
       setOpMsg("⏳ Deleting report from server…");
       const res = await fetch(
         `${API_BASE}/api/reports?type=returns&reportDate=${encodeURIComponent(d)}`,
@@ -631,9 +689,8 @@ export default function ReturnView() {
       );
       const json = await res.json().catch(() => null);
 
-      if (!res.ok) {
-        throw new Error(json?.error || res.statusText);
-      }
+      if (!res.ok) throw new Error(json?.error || res.statusText);
+
       if (json?.deleted === 0) {
         setOpMsg("ℹ️ Nothing to delete (it may already be deleted).");
       } else {

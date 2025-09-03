@@ -20,34 +20,44 @@ const IS_SAME_ORIGIN = (() => {
   catch { return false; }
 })();
 
-/* ============ API helpers ============ */
-async function listQcsDailyReports() {
-  const res = await fetch(`${REPORTS_URL}?type=qcs-daily`, {
+/* ============ Types per tab ============ */
+const TYPES = {
+  coolers: "qcs-coolers",
+  personalHygiene: "qcs-ph",
+  dailyCleanliness: "qcs-clean",
+};
+
+/* ============ API helpers (per type) ============ */
+async function listReportsByType(type) {
+  const res = await fetch(`${REPORTS_URL}?type=${encodeURIComponent(type)}`, {
     method: "GET",
     cache: "no-store",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
     headers: { Accept: "application/json" },
   });
-  if (!res.ok) throw new Error("Failed to list qcs-daily reports");
+  if (!res.ok) throw new Error(`Failed to list reports for ${type}`);
   const json = await res.json().catch(() => null);
   return Array.isArray(json) ? json : json?.data || [];
 }
-async function listReportDates() {
-  const rows = await listQcsDailyReports();
+async function listDatesByType(type) {
+  const rows = await listReportsByType(type);
   const dates = Array.from(new Set(
     rows.map(r => String(r?.payload?.reportDate || r?.payload?.date || "")).filter(Boolean)
   ));
   return dates.sort((a,b)=>b.localeCompare(a));
 }
-async function getReportByDate(date) {
-  const rows = await listQcsDailyReports();
+async function getReportByTypeAndDate(type, date) {
+  const rows = await listReportsByType(type);
   const found = rows.find(r => String(r?.payload?.reportDate || "") === String(date));
   return found?.payload || null;
 }
-async function deleteReportByDate(date) {
-  const rows = await listQcsDailyReports();
+async function getIdByTypeAndDate(type, date) {
+  const rows = await listReportsByType(type);
   const found = rows.find(r => String(r?.payload?.reportDate || "") === String(date));
-  const id = found?._id || found?.id;
+  return found?._id || found?.id || null;
+}
+async function deleteReportByTypeAndDate(type, date) {
+  const id = await getIdByTypeAndDate(type, date);
   if (!id) throw new Error("Report not found");
   const res = await fetch(`${REPORTS_URL}/${encodeURIComponent(id)}`, {
     method: "DELETE",
@@ -56,20 +66,29 @@ async function deleteReportByDate(date) {
   if (!res.ok && res.status !== 404) throw new Error("Failed to delete report");
   return true;
 }
-async function createQcsDailyReport(payload) {
+async function createReportByType(type, payload) {
   const res = await fetch(REPORTS_URL, {
     method: "POST",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      reporter: "admin-import",
-      type: "qcs-daily",
-      payload,
-    }),
+    body: JSON.stringify({ reporter: "admin-import", type, payload }),
   });
   if (!res.ok) {
     const t = await res.text().catch(()=>"");
     throw new Error(t || `Failed to create report (${res.status})`);
+  }
+  return res.json().catch(()=>({}));
+}
+async function upsertReportByType(type, payload) {
+  const res = await fetch(REPORTS_URL, {
+    method: "PUT",
+    credentials: IS_SAME_ORIGIN ? "include" : "omit",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ reporter: "admin-edit", type, payload }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(()=>"");
+    throw new Error(t || `Failed to update report (${res.status})`);
   }
   return res.json().catch(()=>({}));
 }
@@ -152,7 +171,24 @@ const defaultTMPHeader = {
   approvedBy:"Hussam O. Sarhan",
 };
 
-/* ============ Small row component ============ */
+/* ============ Helpers ============ */
+const thB = (txtCenter=false)=>({
+  border:"1px solid #000",
+  padding:"4px",
+  fontWeight:800,
+  textAlign: txtCenter?"center":"left",
+  whiteSpace:"nowrap"
+});
+const tdB = (txtCenter=false)=>({
+  border:"1px solid #000",
+  padding:"4px",
+  textAlign: txtCenter?"center":"left"
+});
+function labelForCooler(i){
+  return i===7 ? "FREEZER" : (i===2||i===3) ? "Production Room" : `Cooler ${i+1}`;
+}
+
+/* ============ Print Headers ============ */
 function Row({ label, value }) {
   return (
     <div style={{ display:"flex", borderBottom:"1px solid #000" }}>
@@ -161,8 +197,6 @@ function Row({ label, value }) {
     </div>
   );
 }
-
-/* ============ Headers for print ============ */
 function PHPrintHeader({ header, selectedDate }) {
   return (
     <div style={{ border:"1px solid #000", marginBottom:8, breakInside:"avoid" }}>
@@ -273,61 +307,200 @@ function TMPPrintHeader({ header }) {
   );
 }
 
-/* ============ Helpers ============ */
-const thB = (txtCenter=false)=>({ border:"1px solid #000", padding:"4px", fontWeight:800, textAlign: txtCenter?"center":"left", whiteSpace:"nowrap" });
-const tdB = (txtCenter=false)=>({ border:"1px solid #000", padding:"4px", textAlign: txtCenter?"center":"left" });
-
-function labelForCooler(i){
-  return i===7 ? "FREEZER" : (i===2||i===3) ? "Production Room" : `Cooler ${i+1}`;
-}
-
 /* ============ Page ============ */
 export default function QCSDailyView() {
-  const [reports, setReports] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(null);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [loadingReport, setLoadingReport] = useState(false);
+  /* حالة التبويب */
   const [activeTab, setActiveTab] = useState("coolers");
 
+  /* شجرات التواريخ المنفصلة */
+  const [coolersDates, setCoolersDates] = useState([]);
+  const [phDates, setPhDates] = useState([]);
+  const [cleanDates, setCleanDates] = useState([]);
+
+  /* التاريخ المختار لكل تبويب */
+  const [selectedCoolersDate, setSelectedCoolersDate] = useState(null);
+  const [selectedPHDate, setSelectedPHDate] = useState(null);
+  const [selectedCleanDate, setSelectedCleanDate] = useState(null);
+
+  /* التقرير المحمّل لكل تبويب */
+  const [coolersReport, setCoolersReport] = useState(null);
+  const [phReport, setPhReport] = useState(null);
+  const [cleanReport, setCleanReport] = useState(null);
+
+  /* هيدر/فووتر (local) */
   const [phHeaderLS] = useLocalJSON("qcs_ph_header_v1", defaultPHHeader);
   const [phFooterLS] = useLocalJSON("qcs_ph_footer_v1", defaultPHFooter);
   const [ccHeaderLS] = useLocalJSON("qcs_cc_header_v1", defaultCCHeader);
   const [ccFooterLS] = useLocalJSON("qcs_cc_footer_v1", defaultCCFooter);
   const [tmpHeaderLS] = useLocalJSON("qcs_tmp_header_v1", defaultTMPHeader);
 
+  const [loadingReport, setLoadingReport] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
   const [exportingAll, setExportingAll] = useState(false);
 
-  // import state
+  // import state (مشترك لكن خاص بالتبويب النشط فقط)
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef(null);
 
-  useEffect(()=>{ (async()=>{
-    try { const dates = await listReportDates(); setReports(dates.map(d=>({date:d}))); setSelectedDate(dates[0]||null); }
-    catch(e){ console.error(e); alert("Failed to fetch reports list from server."); }
-  })(); },[]);
-  useEffect(()=>{ if(!selectedDate){ setSelectedReport(null); return; }
-    setLoadingReport(true);
-    (async()=>{
-      try{ const payload = await getReportByDate(selectedDate); setSelectedReport(payload?{date:selectedDate,...payload}:null); }
-      catch(e){ console.error(e); setSelectedReport(null); alert("Failed to load the selected report from server."); }
-      finally{ setLoadingReport(false); }
-    })();
-  },[selectedDate]);
+  /* ✅ حالات التحرير لجدول درجات الحرارة */
+  const [editingCoolers, setEditingCoolers] = useState(false);
+  const [editCoolers, setEditCoolers] = useState([]);
 
-  const handleDeleteReport = async (dateToDelete) => {
-    if (!window.confirm(`Delete report dated ${dateToDelete}?`)) return;
+  /* ===== helpers to refresh dates per type ===== */
+  const refreshDates = async () => {
+    const [c, p, d] = await Promise.all([
+      listDatesByType(TYPES.coolers),
+      listDatesByType(TYPES.personalHygiene),
+      listDatesByType(TYPES.dailyCleanliness),
+    ]);
+    setCoolersDates(c);
+    setPhDates(p);
+    setCleanDates(d);
+
+    if (!selectedCoolersDate && c.length) setSelectedCoolersDate(c[0]);
+    if (!selectedPHDate && p.length) setSelectedPHDate(p[0]);
+    if (!selectedCleanDate && d.length) setSelectedCleanDate(d[0]);
+
+    if (selectedCoolersDate && !c.includes(selectedCoolersDate)) setSelectedCoolersDate(c[0] || null);
+    if (selectedPHDate && !p.includes(selectedPHDate)) setSelectedPHDate(p[0] || null);
+    if (selectedCleanDate && !d.includes(selectedCleanDate)) setSelectedCleanDate(d[0] || null);
+  };
+
+  useEffect(() => {
+    (async () => {
+      try { await refreshDates(); }
+      catch (e) { console.error(e); alert("Failed to fetch reports list from server."); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ===== Load report per tab/date ===== */
+  useEffect(() => {
+    if (!selectedCoolersDate) return;
+    setLoadingReport(true);
+    (async () => {
+      try {
+        const payload = await getReportByTypeAndDate(TYPES.coolers, selectedCoolersDate);
+        setCoolersReport(payload ? { date: selectedCoolersDate, ...payload } : null);
+      } catch (e) {
+        console.error(e);
+        setCoolersReport(null);
+        alert("Failed to load coolers report from server.");
+      } finally {
+        setLoadingReport(false);
+      }
+    })();
+  }, [selectedCoolersDate]);
+
+  useEffect(() => {
+    if (!selectedPHDate) return;
+    setLoadingReport(true);
+    (async () => {
+      try {
+        const payload = await getReportByTypeAndDate(TYPES.personalHygiene, selectedPHDate);
+        setPhReport(payload ? { date: selectedPHDate, ...payload } : null);
+      } catch (e) {
+        console.error(e);
+        setPhReport(null);
+        alert("Failed to load personal hygiene report from server.");
+      } finally {
+        setLoadingReport(false);
+      }
+    })();
+  }, [selectedPHDate]);
+
+  useEffect(() => {
+    if (!selectedCleanDate) return;
+    setLoadingReport(true);
+    (async () => {
+      try {
+        const payload = await getReportByTypeAndDate(TYPES.dailyCleanliness, selectedCleanDate);
+        setCleanReport(payload ? { date: selectedCleanDate, ...payload } : null);
+      } catch (e) {
+        console.error(e);
+        setCleanReport(null);
+        alert("Failed to load daily cleanliness report from server.");
+      } finally {
+        setLoadingReport(false);
+      }
+    })();
+  }, [selectedCleanDate]);
+
+  /* عند تغيّر تقرير الكولرز انسخ للتحرير */
+  useEffect(() => {
+    const src = Array.isArray(coolersReport?.coolers) ? coolersReport.coolers : [];
+    const clone = src.map((c) => ({
+      remarks: c?.remarks || "",
+      temps: { ...(c?.temps || {}) },
+    }));
+    setEditCoolers(clone);
+    setEditingCoolers(false);
+  }, [coolersReport?.coolers, selectedCoolersDate]);
+
+  /* معدّلات الحقول في وضع التحرير (coolers) */
+  const setTemp = (rowIdx, time, val) => {
+    setEditCoolers((prev) => {
+      const next = [...prev];
+      const row = { ...(next[rowIdx] || { temps: {} }) };
+      row.temps = { ...(row.temps || {}), [time]: val };
+      next[rowIdx] = row;
+      return next;
+    });
+  };
+  const setRemarksRow = (rowIdx, val) => {
+    setEditCoolers((prev) => {
+      const next = [...prev];
+      const row = { ...(next[rowIdx] || { temps: {} }) };
+      row.remarks = val;
+      next[rowIdx] = row;
+      return next;
+    });
+  };
+  const cancelCoolersEdit = () => {
+    const src = Array.isArray(coolersReport?.coolers) ? coolersReport.coolers : [];
+    const clone = src.map((c) => ({ remarks: c?.remarks || "", temps: { ...(c?.temps || {}) } }));
+    setEditCoolers(clone);
+    setEditingCoolers(false);
+  };
+  const saveCoolersEdit = async () => {
     try {
-      await deleteReportByDate(dateToDelete);
-      const filtered = reports.filter(r => r.date !== dateToDelete);
-      setReports(filtered);
-      if (selectedDate === dateToDelete) setSelectedDate(filtered[0]?.date || null);
+      const payloadToSave = {
+        ...(coolersReport || {}),
+        reportDate: selectedCoolersDate,
+        coolers: editCoolers,
+      };
+      delete payloadToSave.date;
+
+      await upsertReportByType(TYPES.coolers, payloadToSave);
+      const fresh = await getReportByTypeAndDate(TYPES.coolers, selectedCoolersDate);
+      setCoolersReport(fresh ? { date: selectedCoolersDate, ...fresh } : null);
+      await refreshDates();
+      setEditingCoolers(false);
+      alert("✅ Saved coolers temperatures.");
+    } catch (e) {
+      console.error(e);
+      alert("❌ Failed to save coolers.");
+    }
+  };
+
+  /* حذف تقرير تبويب محدد */
+  const handleDeleteActive = async (dateToDelete) => {
+    const type =
+      activeTab === "coolers" ? TYPES.coolers :
+      activeTab === "personalHygiene" ? TYPES.personalHygiene :
+      TYPES.dailyCleanliness;
+
+    if (!window.confirm(`Delete ${type} report dated ${dateToDelete}?`)) return;
+    try {
+      await deleteReportByTypeAndDate(type, dateToDelete);
+      await refreshDates();
     } catch (e) {
       console.error(e);
       alert("Failed to delete report from server.");
     }
   };
 
+  /* تنزيل/رفع خاص بالتبويب النشط */
   const downloadBlob = (str, mime, filename) => {
     const blob = new Blob([str], { type: mime });
     const url = URL.createObjectURL(blob);
@@ -336,16 +509,17 @@ export default function QCSDailyView() {
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   };
-  const exportAll = async () => {
+  const exportAllActive = async () => {
     try {
       setExportingAll(true);
-      const all = [];
-      for (const r of reports) {
-        try { const data = await getReportByDate(r.date); if (data) all.push({ date: r.date, ...data }); }
-        catch (e) { console.warn("Skip date due to fetch error:", r.date, e); }
-      }
-      downloadBlob(JSON.stringify(all, null, 2), "application/json", "qcs_reports_backup_all.json");
-    } catch (e) { console.error(e); alert("Failed to export all."); }
+      const type =
+        activeTab === "coolers" ? TYPES.coolers :
+        activeTab === "personalHygiene" ? TYPES.personalHygiene :
+        TYPES.dailyCleanliness;
+
+      const all = await listReportsByType(type);
+      downloadBlob(JSON.stringify(all, null, 2), "application/json", `${type}_backup.json`);
+    } catch (e) { console.error(e); alert("Failed to export."); }
     finally { setExportingAll(false); }
   };
 
@@ -354,6 +528,12 @@ export default function QCSDailyView() {
     const file = e.target.files?.[0];
     e.target.value = ""; // reset input so same file can be re-selected later
     if (!file) return;
+
+    const type =
+      activeTab === "coolers" ? TYPES.coolers :
+      activeTab === "personalHygiene" ? TYPES.personalHygiene :
+      TYPES.dailyCleanliness;
+
     try {
       setIsImporting(true);
       const text = await file.text();
@@ -364,22 +544,36 @@ export default function QCSDailyView() {
       let ok = 0, skipped = 0, failed = 0;
       for (const item of arr) {
         try {
-          // item may be { date, ...payload } or just payload.
           const payload = { ...item };
           const dateStr = String(payload.reportDate || payload.date || "").trim();
           if (!dateStr) { skipped++; continue; }
 
-          // ensure reportDate exists inside payload
-          payload.reportDate = dateStr;
+          // قصّ الأقسام حسب النوع
+          if (type === TYPES.coolers) {
+            if (!Array.isArray(payload.coolers)) { skipped++; continue; }
+            payload.reportDate = dateStr;
+            delete payload.date;
+            delete payload.personalHygiene;
+            delete payload.cleanlinessRows;
+          } else if (type === TYPES.personalHygiene) {
+            if (!Array.isArray(payload.personalHygiene)) { skipped++; continue; }
+            payload.reportDate = dateStr;
+            delete payload.date;
+            delete payload.coolers;
+            delete payload.cleanlinessRows;
+          } else {
+            if (!Array.isArray(payload.cleanlinessRows)) { skipped++; continue; }
+            payload.reportDate = dateStr;
+            delete payload.date;
+            delete payload.coolers;
+            delete payload.personalHygiene;
+          }
 
-          // remove top-level 'date' if present (backend expects within payload)
-          delete payload.date;
+          // حذف الموجود لنفس النوع/التاريخ
+          try { await deleteReportByTypeAndDate(type, dateStr); } catch {}
 
-          // avoid duplicates: delete existing by date if found
-          try { await deleteReportByDate(dateStr); } catch {}
-
-          // create report
-          await createQcsDailyReport(payload);
+          // إنشاء
+          await createReportByType(type, payload);
           ok++;
         } catch (err) {
           console.error("Import item failed:", err);
@@ -387,12 +581,8 @@ export default function QCSDailyView() {
         }
       }
 
-      // refresh list
-      const dates = await listReportDates();
-      setReports(dates.map(d=>({date:d})));
-      if (dates.length) setSelectedDate(dates[0]);
-
-      alert(`Import finished.\n✅ Imported: ${ok}\n⏭️ Skipped (no date): ${skipped}\n❌ Failed: ${failed}`);
+      await refreshDates();
+      alert(`Import finished.\n✅ Imported: ${ok}\n⏭️ Skipped: ${skipped}\n❌ Failed: ${failed}`);
     } catch (err) {
       console.error(err);
       alert(err?.message || "Import failed.");
@@ -428,69 +618,110 @@ export default function QCSDailyView() {
         pdf.addImage(imgData,"PNG",0,position,imgWidth,imgHeight);
         heightLeft -= pageHeight;
       }
-      const fileName = `qcs_report_${selectedDate || new Date().toISOString().split("T")[0]}.pdf`;
+      const dateStr =
+        activeTab === "coolers" ? (selectedCoolersDate || "") :
+        activeTab === "personalHygiene" ? (selectedPHDate || "") :
+        (selectedCleanDate || "");
+      const fileName = `qcs_${activeTab}_${dateStr || new Date().toISOString().split("T")[0]}.pdf`;
       pdf.save(fileName);
     } catch (e) { console.error(e); alert("Failed to generate PDF. Make sure jspdf and html2canvas are installed."); }
     finally { setExportingPDF(false); }
   };
 
-  if (reports.length === 0) {
-    return (
-      <div className="app-shell" style={{ padding:"1rem", fontFamily:"Cairo, sans-serif" }}>
-        <style>{printCss}</style><style>{screenCss}</style>
-        <div className="print-area one-page" id="report-container"><p>No reports found.</p></div>
-        {/* أزرار التصدير/الاستيراد تبقى ظاهرة حتى بدون تقارير */}
-        <div className="no-print" style={{ marginTop:"1rem", display:"flex", gap:8 }}>
-          <button onClick={exportAll} style={{ ...btnDark, opacity:exportingAll?0.7:1 }} disabled={exportingAll}>⬇️⬇️ Export All (JSON)</button>
-          <button onClick={triggerImport} style={{ ...btnOutline, opacity:isImporting?0.7:1 }} disabled={isImporting}>⬆️ Import (JSON)</button>
-          <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImportFile} style={{ display:"none" }} />
-        </div>
-      </div>
-    );
-  }
+  /* ===== اختيارات حسب التبويب ===== */
+  const datesForActiveTab =
+    activeTab === "coolers" ? coolersDates :
+    activeTab === "personalHygiene" ? phDates :
+    cleanDates;
 
-  const coolers = Array.isArray(selectedReport?.coolers) ? selectedReport.coolers : [];
-  const personalHygiene = Array.isArray(selectedReport?.personalHygiene) ? selectedReport.personalHygiene : [];
-  const cleanlinessRows = Array.isArray(selectedReport?.cleanlinessRows) ? selectedReport.cleanlinessRows : [];
+  const selectedDateForTab =
+    activeTab === "coolers" ? selectedCoolersDate :
+    activeTab === "personalHygiene" ? selectedPHDate :
+    selectedCleanDate;
+
+  const setSelectedDateForTab =
+    activeTab === "coolers" ? setSelectedCoolersDate :
+    activeTab === "personalHygiene" ? setSelectedPHDate :
+    setSelectedCleanDate;
+
+  const currentReport =
+    activeTab === "coolers" ? coolersReport :
+    activeTab === "personalHygiene" ? phReport :
+    cleanReport;
+
+  // الهيدرز
+  const headersObj = currentReport?.headers || {};
+  const phHeader = headersObj.phHeader || phHeaderLS || defaultPHHeader;
+  const phFooter = headersObj.phFooter || phFooterLS || defaultPHFooter;
+  const ccHeader = headersObj.dcHeader || ccHeaderLS || defaultCCHeader;
+  const ccFooter = headersObj.dcFooter || ccFooterLS || defaultCCFooter;
+  const tmpHeader = headersObj.tmpHeader || tmpHeaderLS || defaultTMPHeader;
+
+  const coolers = Array.isArray(currentReport?.coolers) ? currentReport.coolers : [];
+  const personalHygiene = Array.isArray(currentReport?.personalHygiene) ? currentReport.personalHygiene : [];
+  const cleanlinessRows = Array.isArray(currentReport?.cleanlinessRows) ? currentReport.cleanlinessRows : [];
 
   const phRowsCount = Math.max(MIN_PH_ROWS, personalHygiene.length || 0);
   const phDataForPrint = Array.from({length: phRowsCount}).map((_,i)=>personalHygiene[i]||{});
-
-  const headers = selectedReport?.headers || {};
-  const phHeader = headers.phHeader || defaultPHHeader;
-  const phFooter = headers.phFooter || defaultPHFooter;
-  const ccHeader = headers.dcHeader || defaultCCHeader;
-  const ccFooter = headers.dcFooter || defaultCCFooter;
-  const tmpHeader = headers.tmpHeader || defaultTMPHeader;
 
   return (
     <div className="app-shell" style={{ display:"flex", gap:"1rem", fontFamily:"Cairo, sans-serif", padding:"1rem" }}>
       <style>{printCss}</style><style>{screenCss}</style>
 
       {/* Sidebar */}
-      <aside className="no-print" style={{ flex:"0 0 290px", borderRight:"1px solid #e5e7eb", paddingRight:"1rem" }}>
+      <aside className="no-print" style={{ flex:"0 0 300px", borderRight:"1px solid #e5e7eb", paddingRight:"1rem" }}>
         <header style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <h3 style={{ margin:0 }}>Reports List</h3>
+          <h3 style={{ margin:0 }}>Reports</h3>
         </header>
+
+        {/* Tabs Switcher */}
+        <nav style={{ display:"flex", gap:"8px", margin:"10px 0" }}>
+          {[
+            { id:"coolers", label:"🧊 Coolers" },
+            { id:"personalHygiene", label:"🧼 Personal Hygiene" },
+            { id:"dailyCleanliness", label:"🧹 Daily Cleanliness" },
+          ].map(({id,label})=>(
+            <button key={id} onClick={()=>setActiveTab(id)}
+              style={{
+                padding:"6px 10px", borderRadius:"8px",
+                border: activeTab===id ? "2px solid #2980b9" : "1px solid #e5e7eb",
+                backgroundColor: activeTab===id ? "#d6eaf8" : "#fff",
+                cursor:"pointer", fontWeight: activeTab===id ? "bold" : 600,
+              }}>
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Date Select (per active tab) */}
         <div style={{ margin:"10px 0" }}>
-          <label style={{ display:"block", marginBottom:6, fontWeight:700 }}>Selected Date</label>
-          <select value={selectedDate ?? ""} onChange={e=>setSelectedDate(e.target.value)}
-                  style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #e5e7eb", outline:"none" }}>
-            {reports.map(r => <option key={r.date} value={r.date}>{r.date}</option>)}
+          <label style={{ display:"block", marginBottom:6, fontWeight:700 }}>
+            {activeTab === "coolers" ? "Selected Date (Coolers)" :
+             activeTab === "personalHygiene" ? "Selected Date (PH)" :
+             "Selected Date (Cleanliness)"}
+          </label>
+          <select
+            value={selectedDateForTab ?? ""}
+            onChange={(e)=>setSelectedDateForTab(e.target.value)}
+            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #e5e7eb", outline:"none" }}
+          >
+            {datesForActiveTab.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
+
+        {/* Dates list */}
         <ul style={{ listStyle:"none", padding:0, maxHeight:"55vh", overflowY:"auto" }}>
-          {reports.map(report => (
-            <li key={report.date}
+          {datesForActiveTab.map(date => (
+            <li key={date}
                 style={{
-                  marginBottom:".5rem", backgroundColor:selectedDate===report.date?"#2980b9":"#f6f7f9",
-                  color:selectedDate===report.date?"#fff":"#111827", borderRadius:"8px", padding:"8px",
+                  marginBottom:".5rem", backgroundColor:selectedDateForTab===date?"#2980b9":"#f6f7f9",
+                  color:selectedDateForTab===date?"#fff":"#111827", borderRadius:"8px", padding:"8px",
                   cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center",
-                  fontWeight:selectedDate===report.date?"bold":600,
+                  fontWeight:selectedDateForTab===date?"bold":600,
                 }}
-                onClick={()=>setSelectedDate(report.date)}>
-              <span>{report.date}</span>
-              <button onClick={(e)=>{ e.stopPropagation(); handleDeleteReport(report.date); }}
+                onClick={()=>setSelectedDateForTab(date)}>
+              <span>{date}</span>
+              <button onClick={(e)=>{ e.stopPropagation(); handleDeleteActive(date); }}
                       style={{ background:"#c0392b", color:"#fff", border:"none", borderRadius:"6px", padding:"6px 10px", cursor:"pointer", marginLeft:"6px" }}
                       title="Delete report">
                 Delete
@@ -498,50 +729,46 @@ export default function QCSDailyView() {
             </li>
           ))}
         </ul>
+
+        {/* Import/Export per active tab */}
         <div style={{ marginTop:"1.2rem", display:"grid", gap:8 }}>
-          <button onClick={exportAll} style={{ ...btnDark, opacity:exportingAll?0.7:1 }} disabled={exportingAll}>⬇️⬇️ Export All (JSON)</button>
-          <button onClick={triggerImport} style={{ ...btnOutline, opacity:isImporting?0.7:1 }} disabled={isImporting}>⬆️ Import (JSON)</button>
+          <button onClick={exportAllActive} style={{ ...btnDark, opacity:exportingAll?0.7:1 }} disabled={exportingAll}>⬇️ Export (Active Tab)</button>
+          <button onClick={triggerImport} style={{ ...btnOutline, opacity:isImporting?0.7:1 }} disabled={isImporting}>⬆️ Import (Active Tab)</button>
           <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImportFile} style={{ display:"none" }} />
         </div>
       </aside>
 
       {/* Main */}
       <main style={{ flex:1, minWidth:320, maxHeight:"calc(100vh - 3rem)", overflowY:"auto", paddingRight:"1rem" }}>
-        {/* Tabs */}
-        <nav className="no-print" style={{ display:"flex", gap:"10px", marginBottom:".6rem", position:"sticky", top:0, background:"#fff", paddingTop:6, paddingBottom:6, zIndex:5 }}>
-          {[
-            { id:"coolers", label:"🧊 Coolers Temperatures" },
-            { id:"personalHygiene", label:"🧼 Personal Hygiene" },
-            { id:"dailyCleanliness", label:"🧹 Daily Cleanliness" },
-          ].map(({id,label})=>(
-            <button key={id} onClick={()=>setActiveTab(id)}
-              style={{
-                padding:"9px 16px", borderRadius:"8px",
-                border: activeTab===id ? "2px solid #2980b9" : "1px solid #e5e7eb",
-                backgroundColor: activeTab===id ? "#d6eaf8" : "#fff",
-                cursor:"pointer", flex:1, fontWeight: activeTab===id ? "bold" : 600, fontSize:"1.02em",
-              }}>
-              {label}
-            </button>
-          ))}
-        </nav>
-
         {/* Actions */}
         <div className="no-print" style={{ display:"flex", gap:8, justifyContent:"flex-end", margin:"0 0 8px 0" }}>
-          <button onClick={handlePrint} style={btnOutline}>🖨️ Print Report</button>
+          <button onClick={handlePrint} style={btnOutline}>🖨️ Print</button>
           <button onClick={handleExportPDF} style={{ ...btnPrimary, opacity:exportingPDF?0.7:1 }} disabled={exportingPDF} title="Export as PDF (A4 Landscape)">
             {exportingPDF ? "… Generating PDF" : "📄 Export PDF"}
           </button>
         </div>
 
-        {loadingReport && <div className="no-print" style={{ marginBottom:8, fontStyle:"italic", color:"#6b7280" }}>Loading report…</div>}
+        {loadingReport && <div className="no-print" style={{ marginBottom:8, fontStyle:"italic", color:"#6b7280" }}>Loading…</div>}
 
         {/* Print area */}
         <div className="print-area one-page" id="report-container">
-          {/* ================= Coolers (COMPACT TABLE) ================= */}
+          {/* ================= Coolers ================= */}
           {activeTab === "coolers" && (
             <>
               <TMPPrintHeader header={tmpHeader} />
+
+              {/* أدوات التحرير */}
+              <div className="no-print" style={{ display:"flex", gap:8, justifyContent:"flex-end", margin:"0 0 8px 0" }}>
+                {!editingCoolers ? (
+                  <button onClick={()=>setEditingCoolers(true)} style={btnOutline}>✏️ Edit</button>
+                ) : (
+                  <>
+                    <button onClick={saveCoolersEdit} style={btnPrimary}>💾 Save</button>
+                    <button onClick={cancelCoolersEdit} style={btnOutline}>↩️ Cancel</button>
+                  </>
+                )}
+              </div>
+
               <table style={{ width:"100%", borderCollapse:"collapse", textAlign:"center", border:"1px solid #000", fontSize:"12px" }}>
                 <thead>
                   <tr style={{ background:"#d9d9d9" }}>
@@ -553,16 +780,41 @@ export default function QCSDailyView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {coolers.length>0 ? (
-                    coolers.map((c, i)=>(
+                  {Array.isArray(coolers) && coolers.length>0 ? (
+                    (editingCoolers ? editCoolers : coolers).map((c, i)=>(
                       <tr key={i}>
                         <td style={tdB(false)}>{labelForCooler(i)}</td>
                         {COOLER_TIMES.map(time=>{
-                          const raw = c?.temps?.[time];
-                          const val = (raw===undefined || raw==="" || raw===null) ? "—" : `${raw}°C`;
-                          return <td key={time} style={tdB(true)}>{val}</td>;
+                          const srcTemps = editingCoolers ? (editCoolers[i]?.temps || {}) : (coolers[i]?.temps || {});
+                          const raw = srcTemps[time];
+                          const val = (raw===undefined || raw==="" || raw===null)
+                            ? (editingCoolers ? "" : "—")
+                            : String(raw).trim() + (!editingCoolers ? "°C" : "");
+                          return (
+                            <td key={time} style={tdB(true)}>
+                              {editingCoolers ? (
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={String(raw ?? "")}
+                                  onChange={(e)=>setTemp(i, time, e.target.value)}
+                                  style={{ width: 70, padding: "4px 6px" }}
+                                  placeholder=".."
+                                />
+                              ) : (val)}
+                            </td>
+                          );
                         })}
-                        <td style={{ ...tdB(false), whiteSpace:"pre-wrap" }}>{c?.remarks || ""}</td>
+                        <td style={{ ...tdB(false), whiteSpace:"pre-wrap" }}>
+                          {editingCoolers ? (
+                            <input
+                              value={c?.remarks ?? ""}
+                              onChange={(e)=>setRemarksRow(i, e.target.value)}
+                              style={{ width: "100%", padding: "4px 6px" }}
+                              placeholder="Remarks"
+                            />
+                          ) : (c?.remarks || "")}
+                        </td>
                       </tr>
                     ))
                   ) : (
@@ -578,7 +830,7 @@ export default function QCSDailyView() {
           {/* ================= Personal Hygiene ================= */}
           {activeTab === "personalHygiene" && (
             <>
-              <PHPrintHeader header={phHeader} selectedDate={selectedDate} />
+              <PHPrintHeader header={phHeader} selectedDate={selectedPHDate} />
               <table style={{ width:"100%", borderCollapse:"collapse", textAlign:"center", border:"1px solid #000" }}>
                 <thead>
                   <tr style={{ background:"#d9d9d9" }}>
@@ -592,7 +844,7 @@ export default function QCSDailyView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {phDataForPrint.map((emp,i)=>(
+                  {phDataForPrint.length ? phDataForPrint.map((emp,i)=>(
                     <tr key={i}>
                       <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{i+1}</td>
                       <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.employName || ""}</td>
@@ -604,7 +856,9 @@ export default function QCSDailyView() {
                       <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.openWounds || ""}</td>
                       <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.remarks || ""}</td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr><td colSpan={9} style={{ ...tdB(true), color:"#6b7280" }}>No rows.</td></tr>
+                  )}
                 </tbody>
               </table>
               <div style={{ border:"1px solid #000", marginTop:8 }}>
@@ -615,11 +869,11 @@ export default function QCSDailyView() {
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
                   <div style={{ display:"flex" }}>
                     <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:120, fontWeight:700 }}>Checked By :</div>
-                    <div style={{ padding:"6px 8px", flex:1 }}>{phFooter.checkedBy || "\u00A0"}</div>
+                    <div style={{ padding:"6px 8px", flex:1 }}>{(phFooter?.checkedBy ?? "") || "\u00A0"}</div>
                   </div>
                   <div style={{ display:"flex", borderInlineStart:"1px solid #000" }}>
                     <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:120, fontWeight:700 }}>Verified  By :</div>
-                    <div style={{ padding:"6px 8px", flex:1 }}>{phFooter.verifiedBy || "\u00A0"}</div>
+                    <div style={{ padding:"6px 8px", flex:1 }}>{(phFooter?.verifiedBy ?? "") || "\u00A0"}</div>
                   </div>
                 </div>
               </div>
@@ -629,7 +883,7 @@ export default function QCSDailyView() {
           {/* ================= Daily Cleanliness ================= */}
           {activeTab === "dailyCleanliness" && (
             <>
-              <CCPrintHeader header={ccHeader} selectedDate={selectedDate} />
+              <CCPrintHeader header={ccHeader} selectedDate={selectedCleanDate} />
               <table style={{ width:"100%", borderCollapse:"collapse", textAlign:"left", border:"1px solid #000" }}>
                 <thead>
                   <tr style={{ background:"#d9d9d9" }}>
@@ -688,13 +942,13 @@ export default function QCSDailyView() {
                     <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:180, fontWeight:900, textDecoration:"underline" }}>
                       CHECKED BY: <span style={{ fontWeight:400 }}>(QC-ASSIST)</span>
                     </div>
-                    <div style={{ padding:"6px 8px", flex:1 }}>{ccFooter.checkedBy || "\u00A0"}</div>
+                    <div style={{ padding:"6px 8px", flex:1 }}>{(ccFooter?.checkedBy ?? "") || "\u00A0"}</div>
                   </div>
                   <div style={{ display:"flex", borderInlineStart:"1px solid #000", minHeight:42 }}>
                     <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:180, fontWeight:900, textDecoration:"underline" }}>
                       VERIFIED BY:
                     </div>
-                    <div style={{ padding:"6px 8px", flex:1 }}>{ccFooter.verifiedBy || "\u00A0"}</div>
+                    <div style={{ padding:"6px 8px", flex:1 }}>{(ccFooter?.verifiedBy ?? "") || "\u00A0"}</div>
                   </div>
                 </div>
                 <div style={{ padding:"8px 10px", lineHeight:1.6 }}>

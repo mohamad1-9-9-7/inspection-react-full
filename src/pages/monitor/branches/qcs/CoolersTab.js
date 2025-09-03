@@ -25,6 +25,9 @@ const IS_SAME_ORIGIN = (() => {
 /* ---- Config ---- */
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 
+/* ✅ نوع تقرير مستقل لهذا التبويب فقط */
+const COOLERS_TYPE = "qcs-coolers";
+
 /* ---- Time helpers (4AM → 8PM كل ساعتين) ---- */
 function formatHour(h) {
   const suffix = h < 12 ? "AM" : "PM";
@@ -198,7 +201,7 @@ function tempInputStyle(temp, coolerIndex) {
 }
 
 /* =========================
-   Server helpers (only external)
+   Server helpers (COOLERS only)
 ========================= */
 async function listReportsByType(type) {
   const res = await fetch(
@@ -210,7 +213,7 @@ async function listReportsByType(type) {
   return Array.isArray(json) ? json : json?.data || [];
 }
 async function fetchExistingByDate(dateStr) {
-  const rows = await listReportsByType("qcs-daily");
+  const rows = await listReportsByType(COOLERS_TYPE); // 👈 يبحث فقط ضمن نوع البرادات
   const found = rows.find(r => String(r?.payload?.reportDate || "") === String(dateStr));
   return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
 }
@@ -220,7 +223,7 @@ async function fetchExistingByDate(dateStr) {
 /* ================================================================== */
 /**
  * مستقل: فيه تاريخ إدخال وزر حفظ خاص به يحفظ فقط قسم البرادات + هيدر TMP
- * على السيرفر الخارجي. لا يوجد أي تخزين محلي.
+ * على السيرفر الخارجي تحت نوع qcs-coolers. لا يلمس أي تبويب آخر.
  */
 export default function CoolersTab(props) {
   const {
@@ -271,27 +274,27 @@ export default function CoolersTab(props) {
     });
   };
 
-  // حفظ على السيرفر الخارجي فقط (merge لحقول هذا التبويب)
+  // حفظ على السيرفر الخارجي فقط (بدون دمج تبويبات أخرى)
   const [saving, setSaving] = useState(false);
   async function saveCoolersToServer() {
     try {
       setSaving(true);
 
       const existing = await fetchExistingByDate(date);
-      const mergedPayload = {
-        ...(existing?.payload || {}),
+
+      // ✅ payload خاص بالبرادات فقط
+      const payload = {
         reportDate: date,
         coolers: dataCoolers,
         headers: {
-          ...(existing?.payload?.headers || {}),
           tmpHeader: header,
         },
       };
 
       const body = {
-        reporter: "QCS",
-        type: "qcs-daily",
-        payload: mergedPayload,
+        reporter: "QCS/COOLERS",
+        type: COOLERS_TYPE,     // 👈 نوع مستقل
+        payload,                // 👈 فقط حقول هذا التبويب
       };
 
       if (existing?.id) {
@@ -301,7 +304,7 @@ export default function CoolersTab(props) {
           credentials: IS_SAME_ORIGIN ? "include" : "omit",
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to update report");
+        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to update coolers report");
       } else {
         const res = await fetch(`${API_BASE}/api/reports`, {
           method: "POST",
@@ -309,10 +312,10 @@ export default function CoolersTab(props) {
           credentials: IS_SAME_ORIGIN ? "include" : "omit",
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create report");
+        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create coolers report");
       }
 
-      alert(`✅ Coolers saved for ${date}.`);
+      alert(`✅ Coolers saved for ${date}. (type: ${COOLERS_TYPE})`);
     } catch (e) {
       alert(`❌ Failed to save: ${e.message || e}`);
     } finally {

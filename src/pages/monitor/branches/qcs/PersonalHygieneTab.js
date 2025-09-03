@@ -189,8 +189,10 @@ const sel = (w)=>({
 });
 
 /* =========================
-   Server helpers (external only)
+   Server helpers (PH only)
 ========================= */
+const PH_TYPE = "qcs-ph";
+
 async function listReportsByType(type) {
   const res = await fetch(
     `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`,
@@ -200,8 +202,8 @@ async function listReportsByType(type) {
   const json = await res.json().catch(() => null);
   return Array.isArray(json) ? json : json?.data || [];
 }
-async function fetchExistingByDate(dateStr) {
-  const rows = await listReportsByType("qcs-daily");
+async function fetchExistingPHByDate(dateStr) {
+  const rows = await listReportsByType(PH_TYPE);
   const found = rows.find(r => String(r?.payload?.reportDate || "") === String(dateStr));
   return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
 }
@@ -243,47 +245,46 @@ export default function PersonalHygieneTab(props) {
 
   const [savingLocal, setSavingLocal] = useState(false);
 
+  // ✅ يحفظ وثيقة مستقلة بنوع qcs-ph فقط
   async function savePHToServer() {
     try {
       setSavingLocal(true);
 
-      const existing = await fetchExistingByDate(date);
-      const mergedPayload = {
-        ...(existing?.payload || {}),
+      const existing = await fetchExistingPHByDate(date);
+      const payload = {
         reportDate: date,
         personalHygiene: rows,
         headers: {
-          ...(existing?.payload?.headers || {}),
           phHeader: header,
           phFooter: footer,
         },
       };
 
       const body = {
-        reporter: "QCS",
-        type: "qcs-daily",
-        payload: mergedPayload,
+        reporter: "QCS/PH",
+        type: PH_TYPE,               // 👈 نوع مستقل
+        payload,                     // 👈 فقط حقول PH
       };
 
       if (existing?.id) {
         const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existing.id)}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
           credentials: IS_SAME_ORIGIN ? "include" : "omit",
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to update report");
+        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to update PH report");
       } else {
         const res = await fetch(`${API_BASE}/api/reports`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
           credentials: IS_SAME_ORIGIN ? "include" : "omit",
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create report");
+        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create PH report");
       }
 
-      alert(`✅ Personal Hygiene saved for ${date}.`);
+      alert(`✅ Personal Hygiene saved for ${date}. (type: ${PH_TYPE})`);
     } catch (e) {
       alert(`❌ Failed to save: ${e.message || e}`);
     } finally {
