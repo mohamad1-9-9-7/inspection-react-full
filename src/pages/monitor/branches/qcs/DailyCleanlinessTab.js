@@ -37,8 +37,8 @@ const defaultDCHeader = {
 };
 const defaultDCFooter = { checkedBy: "", verifiedBy: "" };
 
-/* 🔒 نوع التقرير الخاص بهذا التبويب فقط */
-const DC_TYPE = "qcs-cleanliness";
+/* --------- النوع المستقل لهذا التبويب --------- */
+const CLEAN_TYPE = "qcs-clean";
 
 /* Small UI helper (key/value row) */
 function RowKV({ label, value }) {
@@ -343,12 +343,9 @@ export default function DailyCleanlinessTab({
   const setHeader = typeof setDcHeader === "function" ? setDcHeader : setLocalHeader;
   const setFooter = typeof setDcFooter === "function" ? setDcFooter : setLocalFooter;
 
-  // حفظ للسيرفر الخارجي فقط
+  // حفظ للسيرفر (على نوع qcs-clean فقط)
   const [saving, setSaving] = useState(false);
 
-  /* =======================
-     Server helpers (DC only)
-  ======================= */
   async function listReportsByType(type) {
     const res = await fetch(
       `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`,
@@ -359,9 +356,9 @@ export default function DailyCleanlinessTab({
     return Array.isArray(json) ? json : json?.data || [];
   }
 
-  async function fetchExistingDCByDate(dateStr) {
-    const docs = await listReportsByType(DC_TYPE);
-    const found = docs.find(r => String(r?.payload?.reportDate || "") === String(dateStr));
+  async function fetchExistingByDate(dateStr) {
+    const arr = await listReportsByType(CLEAN_TYPE);   // 👈 هنا
+    const found = arr.find(r => String(r?.payload?.reportDate || "") === String(dateStr));
     return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
   }
 
@@ -369,22 +366,23 @@ export default function DailyCleanlinessTab({
     try {
       setSaving(true);
 
-      const existing = await fetchExistingDCByDate(date);
+      const existing = await fetchExistingByDate(date);
 
-      // ✅ payload خاص بنظافة المستودع فقط
-      const payload = {
+      const mergedPayload = {
+        ...(existing?.payload || {}),
         reportDate: date,
         cleanlinessRows: rows,
         headers: {
+          ...(existing?.payload?.headers || {}),
           dcHeader: header,
           dcFooter: footer,
         },
       };
 
       const body = {
-        reporter: "QCS/CLEAN",
-        type: DC_TYPE,             // 👈 نوع مستقل
-        payload,                   // 👈 فقط حقول هذا التبويب
+        reporter: "QCS",
+        type: CLEAN_TYPE,               // 👈 النوع الصحيح
+        payload: mergedPayload,
       };
 
       if (existing?.id) {
@@ -394,7 +392,7 @@ export default function DailyCleanlinessTab({
           credentials: IS_SAME_ORIGIN ? "include" : "omit",
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to update cleanliness report");
+        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to update report");
       } else {
         const res = await fetch(`${API_BASE}/api/reports`, {
           method: "POST",
@@ -402,10 +400,10 @@ export default function DailyCleanlinessTab({
           credentials: IS_SAME_ORIGIN ? "include" : "omit",
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create cleanliness report");
+        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create report");
       }
 
-      alert(`✅ Daily Cleanliness saved for ${date}. (type: ${DC_TYPE})`);
+      alert(`✅ Daily Cleanliness saved for ${date}.`);
     } catch (e) {
       alert(`❌ Failed to save: ${e.message || e}`);
     } finally {
@@ -439,7 +437,7 @@ export default function DailyCleanlinessTab({
 
       <DCEntryFooter footer={footer} />
 
-      {/* زر حفظ خاص بهذا التبويب فقط — على السيرفر الخارجي */}
+      {/* زر حفظ خاص بهذا التبويب فقط */}
       <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
         <button
           onClick={saveDailyCleanliness}
