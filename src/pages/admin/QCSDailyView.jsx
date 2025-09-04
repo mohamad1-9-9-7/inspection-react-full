@@ -16,8 +16,11 @@ const API_BASE = String(API_ROOT).replace(/\/$/, "");
 const REPORTS_URL = `${API_BASE}/api/reports`;
 
 const IS_SAME_ORIGIN = (() => {
-  try { return new URL(API_BASE).origin === window.location.origin; }
-  catch { return false; }
+  try {
+    return new URL(API_BASE).origin === window.location.origin;
+  } catch {
+    return false;
+  }
 })();
 
 /* ============ Types per tab ============ */
@@ -41,19 +44,29 @@ async function listReportsByType(type) {
 }
 async function listDatesByType(type) {
   const rows = await listReportsByType(type);
-  const dates = Array.from(new Set(
-    rows.map(r => String(r?.payload?.reportDate || r?.payload?.date || "")).filter(Boolean)
-  ));
-  return dates.sort((a,b)=>b.localeCompare(a));
+  const dates = Array.from(
+    new Set(
+      rows
+        .map((r) =>
+          String(r?.payload?.reportDate || r?.payload?.date || "").trim()
+        )
+        .filter(Boolean)
+    )
+  );
+  return dates.sort((a, b) => b.localeCompare(a));
 }
 async function getReportByTypeAndDate(type, date) {
   const rows = await listReportsByType(type);
-  const found = rows.find(r => String(r?.payload?.reportDate || "") === String(date));
+  const found = rows.find(
+    (r) => String(r?.payload?.reportDate || "") === String(date)
+  );
   return found?.payload || null;
 }
 async function getIdByTypeAndDate(type, date) {
   const rows = await listReportsByType(type);
-  const found = rows.find(r => String(r?.payload?.reportDate || "") === String(date));
+  const found = rows.find(
+    (r) => String(r?.payload?.reportDate || "") === String(date)
+  );
   return found?._id || found?.id || null;
 }
 async function deleteReportByTypeAndDate(type, date) {
@@ -63,41 +76,56 @@ async function deleteReportByTypeAndDate(type, date) {
     method: "DELETE",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
   });
-  if (!res.ok && res.status !== 404) throw new Error("Failed to delete report");
+  if (!res.ok && res.status !== 404)
+    throw new Error("Failed to delete report");
   return true;
 }
 async function createReportByType(type, payload) {
   const res = await fetch(REPORTS_URL, {
     method: "POST",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
     body: JSON.stringify({ reporter: "admin-import", type, payload }),
   });
   if (!res.ok) {
-    const t = await res.text().catch(()=>"");
+    const t = await res.text().catch(() => "");
     throw new Error(t || `Failed to create report (${res.status})`);
   }
-  return res.json().catch(()=>({}));
+  return res.json().catch(() => ({}));
 }
 async function upsertReportByType(type, payload) {
   const res = await fetch(REPORTS_URL, {
     method: "PUT",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
     body: JSON.stringify({ reporter: "admin-edit", type, payload }),
   });
   if (!res.ok) {
-    const t = await res.text().catch(()=>"");
+    const t = await res.text().catch(() => "");
     throw new Error(t || `Failed to update report (${res.status})`);
   }
-  return res.json().catch(()=>({}));
+  return res.json().catch(() => ({}));
 }
 
 /* ============ Constants ============ */
 const LOGO_URL = "/brand/al-mawashi.jpg";
 const MIN_PH_ROWS = 21;
 const COOLER_TIMES = [
-  "4:00 AM","6:00 AM","8:00 AM","10:00 AM","12:00 PM","2:00 PM","4:00 PM","6:00 PM","8:00 PM",
+  "4:00 AM",
+  "6:00 AM",
+  "8:00 AM",
+  "10:00 AM",
+  "12:00 PM",
+  "2:00 PM",
+  "4:00 PM",
+  "6:00 PM",
+  "8:00 PM",
 ];
 
 /* ============ Print CSS ============ */
@@ -128,13 +156,18 @@ const screenCss = `
 `;
 
 /* ============ print scale ============ */
-const PX_PER_MM = 96/25.4, PRINT_W_MM = 281, PRINT_H_MM = 194;
+const PX_PER_MM = 96 / 25.4,
+  PRINT_W_MM = 281,
+  PRINT_H_MM = 194;
 function setAutoPrintScale() {
-  const el = document.querySelector(".print-area.one-page") || document.querySelector(".print-area");
+  const el =
+    document.querySelector(".print-area.one-page") ||
+    document.querySelector(".print-area");
   if (!el) return 1;
   const rect = el.getBoundingClientRect();
-  const maxW = PRINT_W_MM*PX_PER_MM, maxH = PRINT_H_MM*PX_PER_MM;
-  const scale = Math.min(maxW/rect.width, maxH/rect.height, 1);
+  const maxW = PRINT_W_MM * PX_PER_MM,
+    maxH = PRINT_H_MM * PX_PER_MM;
+  const scale = Math.min(maxW / rect.width, maxH / rect.height, 1);
   el.style.setProperty("--print-scale", String(scale));
   return scale;
 }
@@ -142,69 +175,106 @@ function setAutoPrintScale() {
 /* ============ Local storage helper ============ */
 function useLocalJSON(key, initialValue) {
   const [val, setVal] = useState(() => {
-    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : initialValue; }
-    catch { return initialValue; }
+    try {
+      const s = localStorage.getItem(key);
+      return s ? JSON.parse(s) : initialValue;
+    } catch {
+      return initialValue;
+    }
   });
-  useEffect(()=>{ try{ localStorage.setItem(key, JSON.stringify(val)); }catch{} },[key,val]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+    } catch {}
+  }, [key, val]);
   return [val, setVal];
 }
 
 /* ============ Headers Defaults ============ */
 const defaultPHHeader = {
-  documentTitle:"Personal Hygiene Checklist", documentNo:"FS-QM/REC/PH",
-  issueDate:"05/02/2020", revisionNo:"0", area:"QA",
-  issuedBy:"MOHAMAD ABDULLAH QC", controllingOfficer:"Quality Controller",
-  approvedBy:"Hussam O. Sarhan",
+  documentTitle: "Personal Hygiene Checklist",
+  documentNo: "FS-QM/REC/PH",
+  issueDate: "05/02/2020",
+  revisionNo: "0",
+  area: "QA",
+  issuedBy: "MOHAMAD ABDULLAH QC",
+  controllingOfficer: "Quality Controller",
+  approvedBy: "Hussam O. Sarhan",
 };
-const defaultPHFooter = { checkedBy:"", verifiedBy:"" };
+const defaultPHFooter = { checkedBy: "", verifiedBy: "" };
 const defaultCCHeader = {
-  documentTitle:"Cleaning Checklist", documentNo:"FF-QM/REC/CC",
-  issueDate:"05/02/2020", revisionNo:"0", area:"QA",
-  issuedBy:"MOHAMAD ABDULLAH", controllingOfficer:"Quality Controller",
-  approvedBy:"Hussam O. Sarhan",
+  documentTitle: "Cleaning Checklist",
+  documentNo: "FF-QM/REC/CC",
+  issueDate: "05/02/2020",
+  revisionNo: "0",
+  area: "QA",
+  issuedBy: "MOHAMAD ABDULLAH",
+  controllingOfficer: "Quality Controller",
+  approvedBy: "Hussam O. Sarhan",
 };
-const defaultCCFooter = { checkedBy:"", verifiedBy:"" };
+const defaultCCFooter = { checkedBy: "", verifiedBy: "" };
 const defaultTMPHeader = {
-  documentTitle:"Temperature Control Record", documentNo:"FS-QM/REC/TMP",
-  issueDate:"05/02/2020", revisionNo:"0", area:"QA",
-  issuedBy:"MOHAMAD ABDULLAH", controllingOfficer:"Quality Controller",
-  approvedBy:"Hussam O. Sarhan",
+  documentTitle: "Temperature Control Record",
+  documentNo: "FS-QM/REC/TMP",
+  issueDate: "05/02/2020",
+  revisionNo: "0",
+  area: "QA",
+  issuedBy: "MOHAMAD ABDULLAH",
+  controllingOfficer: "Quality Controller",
+  approvedBy: "Hussam O. Sarhan",
 };
 
 /* ============ Helpers ============ */
-const thB = (txtCenter=false)=>({
-  border:"1px solid #000",
-  padding:"4px",
-  fontWeight:800,
-  textAlign: txtCenter?"center":"left",
-  whiteSpace:"nowrap"
-});
-const tdB = (txtCenter=false)=>({
-  border:"1px solid #000",
-  padding:"4px",
-  textAlign: txtCenter?"center":"left"
-});
-function labelForCooler(i){
-  return i===7 ? "FREEZER" : (i===2||i===3) ? "Production Room" : `Cooler ${i+1}`;
+const thB =
+  (txtCenter = false) =>
+  ({
+    border: "1px solid #000",
+    padding: "4px",
+    fontWeight: 800,
+    textAlign: txtCenter ? "center" : "left",
+    whiteSpace: "nowrap",
+  });
+const tdB =
+  (txtCenter = false) =>
+  ({
+    border: "1px solid #000",
+    padding: "4px",
+    textAlign: txtCenter ? "center" : "left",
+  });
+function labelForCooler(i) {
+  return i === 7
+    ? "FREEZER"
+    : i === 2 || i === 3
+    ? "Production Room"
+    : `Cooler ${i + 1}`;
 }
 
 /* ============ Print Headers ============ */
 function Row({ label, value }) {
   return (
-    <div style={{ display:"flex", borderBottom:"1px solid #000" }}>
-      <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:170, fontWeight:700 }}>{label}</div>
-      <div style={{ padding:"6px 8px", flex:1 }}>{value}</div>
+    <div style={{ display: "flex", borderBottom: "1px solid #000" }}>
+      <div
+        style={{
+          padding: "6px 8px",
+          borderInlineEnd: "1px solid #000",
+          minWidth: 170,
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ padding: "6px 8px", flex: 1 }}>{value}</div>
     </div>
   );
 }
 function PHPrintHeader({ header, selectedDate }) {
   return (
-    <div style={{ border:"1px solid #000", marginBottom:8, breakInside:"avoid" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"180px 1fr 1fr", alignItems:"stretch" }}>
-        <div style={{ borderInlineEnd:"1px solid #000", display:"flex", alignItems:"center", justifyContent:"center", padding:8 }}>
-          <img src={LOGO_URL} alt="Al Mawashi" style={{ maxWidth:"100%", maxHeight:80, objectFit:"contain" }} />
+    <div style={{ border: "1px solid #000", marginBottom: 8, breakInside: "avoid" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", alignItems: "stretch" }}>
+        <div style={{ borderInlineEnd: "1px solid #000", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}>
+          <img src={LOGO_URL} alt="Al Mawashi" style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }} />
         </div>
-        <div style={{ borderInlineEnd:"1px solid #000" }}>
+        <div style={{ borderInlineEnd: "1px solid #000" }}>
           <Row label="Document Title:" value={header.documentTitle} />
           <Row label="Issue Date:" value={header.issueDate} />
           <Row label="Area:" value={header.area} />
@@ -217,15 +287,15 @@ function PHPrintHeader({ header, selectedDate }) {
           <Row label="Approved By:" value={header.approvedBy} />
         </div>
       </div>
-      <div style={{ borderTop:"1px solid #000" }}>
-        <div style={{ background:"#c0c0c0", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+      <div style={{ borderTop: "1px solid #000" }}>
+        <div style={{ background: "#c0c0c0", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
           TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS
         </div>
-        <div style={{ background:"#d6d6d6", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+        <div style={{ background: "#d6d6d6", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
           PERSONAL HYGIENE CHECKLIST
         </div>
-        <div style={{ display:"flex", gap:8, alignItems:"center", padding:"6px 8px" }}>
-          <span style={{ fontWeight:900, textDecoration:"underline" }}>Date:</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px" }}>
+          <span style={{ fontWeight: 900, textDecoration: "underline" }}>Date:</span>
           <span>{selectedDate || ""}</span>
         </div>
       </div>
@@ -234,12 +304,12 @@ function PHPrintHeader({ header, selectedDate }) {
 }
 function CCPrintHeader({ header, selectedDate }) {
   return (
-    <div style={{ border:"1px solid #000", marginBottom:8, breakInside:"avoid" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"180px 1fr 1fr", alignItems:"stretch" }}>
-        <div style={{ borderInlineEnd:"1px solid #000", display:"flex", alignItems:"center", justifyContent:"center", padding:8 }}>
-          <img src={LOGO_URL} alt="Al Mawashi" style={{ maxWidth:"100%", maxHeight:80, objectFit:"contain" }} />
+    <div style={{ border: "1px solid #000", marginBottom: 8, breakInside: "avoid" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", alignItems: "stretch" }}>
+        <div style={{ borderInlineEnd: "1px solid #000", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}>
+          <img src={LOGO_URL} alt="Al Mawashi" style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }} />
         </div>
-        <div style={{ borderInlineEnd:"1px solid #000" }}>
+        <div style={{ borderInlineEnd: "1px solid #000" }}>
           <Row label="Document Title:" value={header.documentTitle} />
           <Row label="Issue Date:" value={header.issueDate} />
           <Row label="Area:" value={header.area} />
@@ -252,15 +322,15 @@ function CCPrintHeader({ header, selectedDate }) {
           <Row label="Approved By:" value={header.approvedBy} />
         </div>
       </div>
-      <div style={{ borderTop:"1px solid #000" }}>
-        <div style={{ background:"#c0c0c0", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+      <div style={{ borderTop: "1px solid #000" }}>
+        <div style={{ background: "#c0c0c0", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
           TRANS EMIRATES LIVESTOCK MEAT TRADING LLC
         </div>
-        <div style={{ background:"#d6d6d6", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+        <div style={{ background: "#d6d6d6", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
           CLEANING CHECKLIST - WAREHOUSE
         </div>
-        <div style={{ display:"flex", gap:8, alignItems:"center", padding:"6px 8px" }}>
-          <span style={{ fontWeight:900, textDecoration:"underline" }}>Date:</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px" }}>
+          <span style={{ fontWeight: 900, textDecoration: "underline" }}>Date:</span>
           <span>{selectedDate || ""}</span>
         </div>
       </div>
@@ -269,12 +339,12 @@ function CCPrintHeader({ header, selectedDate }) {
 }
 function TMPPrintHeader({ header }) {
   return (
-    <div style={{ border:"1px solid #000", marginBottom:8, breakInside:"avoid" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"180px 1fr 1fr", alignItems:"stretch" }}>
-        <div style={{ borderInlineEnd:"1px solid #000", display:"flex", alignItems:"center", justifyContent:"center", padding:8 }}>
-          <img src={LOGO_URL} alt="Al Mawashi" style={{ maxWidth:"100%", maxHeight:80, objectFit:"contain" }} />
+    <div style={{ border: "1px solid #000", marginBottom: 8, breakInside: "avoid" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", alignItems: "stretch" }}>
+        <div style={{ borderInlineEnd: "1px solid #000", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}>
+          <img src={LOGO_URL} alt="Al Mawashi" style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }} />
         </div>
-        <div style={{ borderInlineEnd:"1px solid #000" }}>
+        <div style={{ borderInlineEnd: "1px solid #000" }}>
           <Row label="Document Title:" value={header.documentTitle} />
           <Row label="Issue Date:" value={header.issueDate} />
           <Row label="Area:" value={header.area} />
@@ -287,18 +357,18 @@ function TMPPrintHeader({ header }) {
           <Row label="Approved by:" value={header.approvedBy} />
         </div>
       </div>
-      <div style={{ borderTop:"1px solid #000" }}>
-        <div style={{ background:"#c0c0c0", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+      <div style={{ borderTop: "1px solid #000" }}>
+        <div style={{ background: "#c0c0c0", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
           TRANS EMIRATES LIVESTOCK MEAT TRADING LLC
         </div>
-        <div style={{ background:"#d6d6d6", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+        <div style={{ background: "#d6d6d6", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
           TEMPERATURE CONTROL CHECKLIST (CCP)
         </div>
-        <div style={{ padding:"6px 8px", lineHeight:1.5 }}>
+        <div style={{ padding: "6px 8px", lineHeight: 1.5 }}>
           <div>1. If the temp is +5°C or more / Check product temperature – corrective action should be taken.</div>
           <div>2. If the loading area is more than +16°C – corrective action should be taken.</div>
           <div>3. If the preparation area is more than +10°C – corrective action should be taken.</div>
-          <div style={{ marginTop:6, fontWeight:700 }}>
+          <div style={{ marginTop: 6, fontWeight: 700 }}>
             Corrective action: Transfer the meat to another cold room and call maintenance department to check and solve the problem.
           </div>
         </div>
@@ -336,15 +406,21 @@ export default function QCSDailyView() {
 
   const [loadingReport, setLoadingReport] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
-  const [exportingAll, setExportingAll] = useState(false);
-
-  // import state (مشترك لكن خاص بالتبويب النشط فقط)
-  const [isImporting, setIsImporting] = useState(false);
-  const fileInputRef = useRef(null);
 
   /* ✅ حالات التحرير لجدول درجات الحرارة */
   const [editingCoolers, setEditingCoolers] = useState(false);
   const [editCoolers, setEditCoolers] = useState([]);
+
+  /* ✅ حالة تحرير Loading Area */
+  const [editLoadingArea, setEditLoadingArea] = useState({
+    temps: {},
+    remarks: "",
+  });
+
+  /* ===== JSON (All tabs) export/import state & refs ===== */
+  const [exportingJSONAll, setExportingJSONAll] = useState(false);
+  const [importingJSONAll, setImportingJSONAll] = useState(false);
+  const jsonInputRef = useRef(null);
 
   /* ===== helpers to refresh dates per type ===== */
   const refreshDates = async () => {
@@ -361,15 +437,22 @@ export default function QCSDailyView() {
     if (!selectedPHDate && p.length) setSelectedPHDate(p[0]);
     if (!selectedCleanDate && d.length) setSelectedCleanDate(d[0]);
 
-    if (selectedCoolersDate && !c.includes(selectedCoolersDate)) setSelectedCoolersDate(c[0] || null);
-    if (selectedPHDate && !p.includes(selectedPHDate)) setSelectedPHDate(p[0] || null);
-    if (selectedCleanDate && !d.includes(selectedCleanDate)) setSelectedCleanDate(d[0] || null);
+    if (selectedCoolersDate && !c.includes(selectedCoolersDate))
+      setSelectedCoolersDate(c[0] || null);
+    if (selectedPHDate && !p.includes(selectedPHDate))
+      setSelectedPHDate(p[0] || null);
+    if (selectedCleanDate && !d.includes(selectedCleanDate))
+      setSelectedCleanDate(d[0] || null);
   };
 
   useEffect(() => {
     (async () => {
-      try { await refreshDates(); }
-      catch (e) { console.error(e); alert("Failed to fetch reports list from server."); }
+      try {
+        await refreshDates();
+      } catch (e) {
+        console.error(e);
+        alert("Failed to fetch reports list from server.");
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -380,7 +463,10 @@ export default function QCSDailyView() {
     setLoadingReport(true);
     (async () => {
       try {
-        const payload = await getReportByTypeAndDate(TYPES.coolers, selectedCoolersDate);
+        const payload = await getReportByTypeAndDate(
+          TYPES.coolers,
+          selectedCoolersDate
+        );
         setCoolersReport(payload ? { date: selectedCoolersDate, ...payload } : null);
       } catch (e) {
         console.error(e);
@@ -397,7 +483,10 @@ export default function QCSDailyView() {
     setLoadingReport(true);
     (async () => {
       try {
-        const payload = await getReportByTypeAndDate(TYPES.personalHygiene, selectedPHDate);
+        const payload = await getReportByTypeAndDate(
+          TYPES.personalHygiene,
+          selectedPHDate
+        );
         setPhReport(payload ? { date: selectedPHDate, ...payload } : null);
       } catch (e) {
         console.error(e);
@@ -414,7 +503,10 @@ export default function QCSDailyView() {
     setLoadingReport(true);
     (async () => {
       try {
-        const payload = await getReportByTypeAndDate(TYPES.dailyCleanliness, selectedCleanDate);
+        const payload = await getReportByTypeAndDate(
+          TYPES.dailyCleanliness,
+          selectedCleanDate
+        );
         setCleanReport(payload ? { date: selectedCleanDate, ...payload } : null);
       } catch (e) {
         console.error(e);
@@ -428,14 +520,23 @@ export default function QCSDailyView() {
 
   /* عند تغيّر تقرير الكولرز انسخ للتحرير */
   useEffect(() => {
-    const src = Array.isArray(coolersReport?.coolers) ? coolersReport.coolers : [];
+    const src = Array.isArray(coolersReport?.coolers)
+      ? coolersReport.coolers
+      : [];
     const clone = src.map((c) => ({
       remarks: c?.remarks || "",
       temps: { ...(c?.temps || {}) },
     }));
     setEditCoolers(clone);
+
+    const la = coolersReport?.loadingArea || { temps: {}, remarks: "" };
+    setEditLoadingArea({
+      remarks: la.remarks || "",
+      temps: { ...(la.temps || {}) },
+    });
+
     setEditingCoolers(false);
-  }, [coolersReport?.coolers, selectedCoolersDate]);
+  }, [coolersReport?.coolers, coolersReport?.loadingArea, selectedCoolersDate]);
 
   /* معدّلات الحقول في وضع التحرير (coolers) */
   const setTemp = (rowIdx, time, val) => {
@@ -456,23 +557,52 @@ export default function QCSDailyView() {
       return next;
     });
   };
+
+  /* ✅ أحداث تحرير Loading Area */
+  const setLoadingTemp = (time, val) => {
+    setEditLoadingArea((prev) => ({
+      ...prev,
+      temps: { ...(prev.temps || {}), [time]: val },
+    }));
+  };
+  const setLoadingRemarks = (val) => {
+    setEditLoadingArea((prev) => ({ ...prev, remarks: val }));
+  };
+
   const cancelCoolersEdit = () => {
-    const src = Array.isArray(coolersReport?.coolers) ? coolersReport.coolers : [];
-    const clone = src.map((c) => ({ remarks: c?.remarks || "", temps: { ...(c?.temps || {}) } }));
+    const src = Array.isArray(coolersReport?.coolers)
+      ? coolersReport.coolers
+      : [];
+    const clone = src.map((c) => ({
+      remarks: c?.remarks || "",
+      temps: { ...(c?.temps || {}) },
+    }));
     setEditCoolers(clone);
+
+    const la = coolersReport?.loadingArea || { temps: {}, remarks: "" };
+    setEditLoadingArea({
+      remarks: la.remarks || "",
+      temps: { ...(la.temps || {}) },
+    });
+
     setEditingCoolers(false);
   };
+
   const saveCoolersEdit = async () => {
     try {
       const payloadToSave = {
         ...(coolersReport || {}),
         reportDate: selectedCoolersDate,
         coolers: editCoolers,
+        loadingArea: editLoadingArea, // ✅ حفظ الـ Loading Area
       };
       delete payloadToSave.date;
 
       await upsertReportByType(TYPES.coolers, payloadToSave);
-      const fresh = await getReportByTypeAndDate(TYPES.coolers, selectedCoolersDate);
+      const fresh = await getReportByTypeAndDate(
+        TYPES.coolers,
+        selectedCoolersDate
+      );
       setCoolersReport(fresh ? { date: selectedCoolersDate, ...fresh } : null);
       await refreshDates();
       setEditingCoolers(false);
@@ -486,9 +616,11 @@ export default function QCSDailyView() {
   /* حذف تقرير تبويب محدد */
   const handleDeleteActive = async (dateToDelete) => {
     const type =
-      activeTab === "coolers" ? TYPES.coolers :
-      activeTab === "personalHygiene" ? TYPES.personalHygiene :
-      TYPES.dailyCleanliness;
+      activeTab === "coolers"
+        ? TYPES.coolers
+        : activeTab === "personalHygiene"
+        ? TYPES.personalHygiene
+        : TYPES.dailyCleanliness;
 
     if (!window.confirm(`Delete ${type} report dated ${dateToDelete}?`)) return;
     try {
@@ -500,154 +632,282 @@ export default function QCSDailyView() {
     }
   };
 
-  /* تنزيل/رفع خاص بالتبويب النشط */
+  /* ===== تنزيل/رفع JSON (يشمل كل التبويبات) ===== */
   const downloadBlob = (str, mime, filename) => {
     const blob = new Blob([str], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
-  const exportAllActive = async () => {
+
+  const exportAllJSON = async () => {
     try {
-      setExportingAll(true);
-      const type =
-        activeTab === "coolers" ? TYPES.coolers :
-        activeTab === "personalHygiene" ? TYPES.personalHygiene :
-        TYPES.dailyCleanliness;
+      setExportingJSONAll(true);
+      const [c, p, d] = await Promise.all([
+        listReportsByType(TYPES.coolers),
+        listReportsByType(TYPES.personalHygiene),
+        listReportsByType(TYPES.dailyCleanliness),
+      ]);
+      const onlyPayloads = (arr) =>
+        arr
+          .map((x) => x?.payload || x)
+          .filter((x) => x && typeof x === "object");
 
-      const all = await listReportsByType(type);
-      downloadBlob(JSON.stringify(all, null, 2), "application/json", `${type}_backup.json`);
-    } catch (e) { console.error(e); alert("Failed to export."); }
-    finally { setExportingAll(false); }
+      const backup = {
+        meta: {
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          apiBase: API_BASE,
+          types: TYPES,
+        },
+        data: {
+          [TYPES.coolers]: onlyPayloads(c),
+          [TYPES.personalHygiene]: onlyPayloads(p),
+          [TYPES.dailyCleanliness]: onlyPayloads(d),
+        },
+      };
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadBlob(
+        JSON.stringify(backup, null, 2),
+        "application/json",
+        `qcs_all_tabs_backup_${stamp}.json`
+      );
+    } catch (e) {
+      console.error(e);
+      alert("Failed to export JSON.");
+    } finally {
+      setExportingJSONAll(false);
+    }
   };
 
-  const triggerImport = () => fileInputRef.current?.click();
-  const handleImportFile = async (e) => {
+  const triggerImportAll = () => jsonInputRef.current?.click();
+
+  const importArrayForType = async (type, arr, counters) => {
+    if (!Array.isArray(arr)) return;
+    for (const item of arr) {
+      try {
+        const payload = { ...item };
+        const dateStr = String(payload.reportDate || payload.date || "").trim();
+        if (!dateStr) {
+          counters.skipped++;
+          continue;
+        }
+
+        if (type === TYPES.coolers) {
+          if (!Array.isArray(payload.coolers)) {
+            counters.skipped++;
+            continue;
+          }
+          payload.reportDate = dateStr;
+          delete payload.date;
+          delete payload.personalHygiene;
+          delete payload.cleanlinessRows;
+        } else if (type === TYPES.personalHygiene) {
+          if (!Array.isArray(payload.personalHygiene)) {
+            counters.skipped++;
+            continue;
+          }
+          payload.reportDate = dateStr;
+          delete payload.date;
+          delete payload.coolers;
+          delete payload.cleanlinessRows;
+        } else {
+          if (!Array.isArray(payload.cleanlinessRows)) {
+            counters.skipped++;
+            continue;
+          }
+          payload.reportDate = dateStr;
+          delete payload.date;
+          delete payload.coolers;
+          delete payload.personalHygiene;
+        }
+
+        try {
+          await deleteReportByTypeAndDate(type, dateStr);
+        } catch {}
+        await createReportByType(type, payload);
+        counters.ok++;
+      } catch (err) {
+        console.error("Import item failed:", err);
+        counters.failed++;
+      }
+    }
+  };
+
+  const handleImportAllFile = async (e) => {
     const file = e.target.files?.[0];
-    e.target.value = ""; // reset input so same file can be re-selected later
+    e.target.value = "";
     if (!file) return;
 
-    const type =
-      activeTab === "coolers" ? TYPES.coolers :
-      activeTab === "personalHygiene" ? TYPES.personalHygiene :
-      TYPES.dailyCleanliness;
-
     try {
-      setIsImporting(true);
+      setImportingJSONAll(true);
       const text = await file.text();
       let data = null;
-      try { data = JSON.parse(text); } catch { throw new Error("Invalid JSON file."); }
-      const arr = Array.isArray(data) ? data : [data];
-
-      let ok = 0, skipped = 0, failed = 0;
-      for (const item of arr) {
-        try {
-          const payload = { ...item };
-          const dateStr = String(payload.reportDate || payload.date || "").trim();
-          if (!dateStr) { skipped++; continue; }
-
-          // قصّ الأقسام حسب النوع
-          if (type === TYPES.coolers) {
-            if (!Array.isArray(payload.coolers)) { skipped++; continue; }
-            payload.reportDate = dateStr;
-            delete payload.date;
-            delete payload.personalHygiene;
-            delete payload.cleanlinessRows;
-          } else if (type === TYPES.personalHygiene) {
-            if (!Array.isArray(payload.personalHygiene)) { skipped++; continue; }
-            payload.reportDate = dateStr;
-            delete payload.date;
-            delete payload.coolers;
-            delete payload.cleanlinessRows;
-          } else {
-            if (!Array.isArray(payload.cleanlinessRows)) { skipped++; continue; }
-            payload.reportDate = dateStr;
-            delete payload.date;
-            delete payload.coolers;
-            delete payload.personalHygiene;
-          }
-
-          // حذف الموجود لنفس النوع/التاريخ
-          try { await deleteReportByTypeAndDate(type, dateStr); } catch {}
-
-          // إنشاء
-          await createReportByType(type, payload);
-          ok++;
-        } catch (err) {
-          console.error("Import item failed:", err);
-          failed++;
-        }
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Invalid JSON file.");
       }
 
+      const byType = {
+        [TYPES.coolers]: [],
+        [TYPES.personalHygiene]: [],
+        [TYPES.dailyCleanliness]: [],
+      };
+
+      const inferType = (payload) => {
+        if (payload?.coolers) return TYPES.coolers;
+        if (payload?.personalHygiene) return TYPES.personalHygiene;
+        if (payload?.cleanlinessRows) return TYPES.dailyCleanliness;
+        return null;
+      };
+
+      if (data?.data && typeof data.data === "object") {
+        byType[TYPES.coolers] = Array.isArray(data.data[TYPES.coolers])
+          ? data.data[TYPES.coolers]
+          : [];
+        byType[TYPES.personalHygiene] = Array.isArray(
+          data.data[TYPES.personalHygiene]
+        )
+          ? data.data[TYPES.personalHygiene]
+          : [];
+        byType[TYPES.dailyCleanliness] = Array.isArray(
+          data.data[TYPES.dailyCleanliness]
+        )
+          ? data.data[TYPES.dailyCleanliness]
+          : [];
+      } else if (
+        data &&
+        (Array.isArray(data[TYPES.coolers]) ||
+          Array.isArray(data[TYPES.personalHygiene]) ||
+          Array.isArray(data[TYPES.dailyCleanliness]))
+      ) {
+        byType[TYPES.coolers] = Array.isArray(data[TYPES.coolers])
+          ? data[TYPES.coolers]
+          : [];
+        byType[TYPES.personalHygiene] = Array.isArray(
+          data[TYPES.personalHygiene]
+        )
+          ? data[TYPES.personalHygiene]
+          : [];
+        byType[TYPES.dailyCleanliness] = Array.isArray(
+          data[TYPES.dailyCleanliness]
+        )
+          ? data[TYPES.dailyCleanliness]
+          : [];
+      } else if (Array.isArray(data)) {
+        for (const item of data) {
+          const payload = item?.payload || item;
+          const t = inferType(payload);
+          if (t) byType[t].push(payload);
+        }
+      } else {
+        throw new Error("Unsupported JSON structure.");
+      }
+
+      const counters = { ok: 0, skipped: 0, failed: 0 };
+      await importArrayForType(TYPES.coolers, byType[TYPES.coolers], counters);
+      await importArrayForType(
+        TYPES.personalHygiene,
+        byType[TYPES.personalHygiene],
+        counters
+      );
+      await importArrayForType(
+        TYPES.dailyCleanliness,
+        byType[TYPES.dailyCleanliness],
+        counters
+      );
+
       await refreshDates();
-      alert(`Import finished.\n✅ Imported: ${ok}\n⏭️ Skipped: ${skipped}\n❌ Failed: ${failed}`);
+      alert(`Import finished (All Tabs).
+✅ Imported: ${counters.ok}
+⏭️ Skipped: ${counters.skipped}
+❌ Failed: ${counters.failed}`);
     } catch (err) {
       console.error(err);
       alert(err?.message || "Import failed.");
     } finally {
-      setIsImporting(false);
+      setImportingJSONAll(false);
     }
   };
 
-  const handlePrint = () => { setAutoPrintScale(); setTimeout(()=>window.print(), 30); };
+  const handlePrint = () => {
+    setAutoPrintScale();
+    setTimeout(() => window.print(), 30);
+  };
   const handleExportPDF = async () => {
     try {
       setExportingPDF(true);
       const input = document.getElementById("report-container");
-      if (!input) { alert("Report area not found."); setExportingPDF(false); return; }
+      if (!input) {
+        alert("Report area not found.");
+        setExportingPDF(false);
+        return;
+      }
       const canvas = await html2canvas(input, {
-        scale: 2, useCORS: true, allowTaint: true, backgroundColor: "#ffffff",
-        logging: false, scrollX: 0, scrollY: -window.scrollY,
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        scrollX: 0,
+        scrollY: -window.scrollY,
         windowWidth: document.documentElement.clientWidth,
         windowHeight: document.documentElement.clientHeight,
       });
       const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("landscape","pt","a4");
+      const pdf = new jsPDF("landscape", "pt", "a4");
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = pageWidth;
-      const imgHeight = (canvas.height*imgWidth)/canvas.width;
-      let position = 0, heightLeft = imgHeight;
-      pdf.addImage(imgData,"PNG",0,position,imgWidth,imgHeight);
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let position = 0,
+        heightLeft = imgHeight;
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
       while (heightLeft > 0) {
         position -= pageHeight;
         pdf.addPage();
-        pdf.addImage(imgData,"PNG",0,position,imgWidth,imgHeight);
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
         heightLeft -= pageHeight;
       }
       const dateStr =
-        activeTab === "coolers" ? (selectedCoolersDate || "") :
-        activeTab === "personalHygiene" ? (selectedPHDate || "") :
-        (selectedCleanDate || "");
-      const fileName = `qcs_${activeTab}_${dateStr || new Date().toISOString().split("T")[0]}.pdf`;
+        activeTab === "coolers"
+          ? selectedCoolersDate || ""
+          : activeTab === "personalHygiene"
+          ? selectedPHDate || ""
+          : selectedCleanDate || "";
+      const fileName = `qcs_${activeTab}_${
+        dateStr || new Date().toISOString().split("T")[0]
+      }.pdf`;
       pdf.save(fileName);
-    } catch (e) { console.error(e); alert("Failed to generate PDF. Make sure jspdf and html2canvas are installed."); }
-    finally { setExportingPDF(false); }
+    } catch (e) {
+      console.error(e);
+      alert(
+        "Failed to generate PDF. Make sure jspdf and html2canvas are installed."
+      );
+    } finally {
+      setExportingPDF(false);
+    }
   };
 
   /* ===== اختيارات حسب التبويب ===== */
   const datesForActiveTab =
-    activeTab === "coolers" ? coolersDates :
-    activeTab === "personalHygiene" ? phDates :
-    cleanDates;
+    activeTab === "coolers" ? coolersDates : activeTab === "personalHygiene" ? phDates : cleanDates;
 
   const selectedDateForTab =
-    activeTab === "coolers" ? selectedCoolersDate :
-    activeTab === "personalHygiene" ? selectedPHDate :
-    selectedCleanDate;
+    activeTab === "coolers" ? selectedCoolersDate : activeTab === "personalHygiene" ? selectedPHDate : selectedCleanDate;
 
   const setSelectedDateForTab =
-    activeTab === "coolers" ? setSelectedCoolersDate :
-    activeTab === "personalHygiene" ? setSelectedPHDate :
-    setSelectedCleanDate;
+    activeTab === "coolers" ? setSelectedCoolersDate : activeTab === "personalHygiene" ? setSelectedPHDate : setSelectedCleanDate;
 
   const currentReport =
-    activeTab === "coolers" ? coolersReport :
-    activeTab === "personalHygiene" ? phReport :
-    cleanReport;
+    activeTab === "coolers" ? coolersReport : activeTab === "personalHygiene" ? phReport : cleanReport;
 
   // الهيدرز
   const headersObj = currentReport?.headers || {};
@@ -657,98 +917,230 @@ export default function QCSDailyView() {
   const ccFooter = headersObj.dcFooter || ccFooterLS || defaultCCFooter;
   const tmpHeader = headersObj.tmpHeader || tmpHeaderLS || defaultTMPHeader;
 
-  const coolers = Array.isArray(currentReport?.coolers) ? currentReport.coolers : [];
-  const personalHygiene = Array.isArray(currentReport?.personalHygiene) ? currentReport.personalHygiene : [];
-  const cleanlinessRows = Array.isArray(currentReport?.cleanlinessRows) ? currentReport.cleanlinessRows : [];
+  const coolers = Array.isArray(currentReport?.coolers)
+    ? currentReport.coolers
+    : [];
+  const personalHygiene = Array.isArray(currentReport?.personalHygiene)
+    ? currentReport.personalHygiene
+    : [];
+  const cleanlinessRows = Array.isArray(currentReport?.cleanlinessRows)
+    ? currentReport.cleanlinessRows
+    : [];
+  const loadingArea = currentReport?.loadingArea || null; // ✅
 
   const phRowsCount = Math.max(MIN_PH_ROWS, personalHygiene.length || 0);
-  const phDataForPrint = Array.from({length: phRowsCount}).map((_,i)=>personalHygiene[i]||{});
+  const phDataForPrint = Array.from({ length: phRowsCount }).map(
+    (_, i) => personalHygiene[i] || {}
+  );
+
+  const hasCoolers = Array.isArray(coolers) && coolers.length > 0;
+  const hasLoadingArea = !!loadingArea;
 
   return (
-    <div className="app-shell" style={{ display:"flex", gap:"1rem", fontFamily:"Cairo, sans-serif", padding:"1rem" }}>
-      <style>{printCss}</style><style>{screenCss}</style>
+    <div
+      className="app-shell"
+      style={{
+        display: "flex",
+        gap: "1rem",
+        fontFamily: "Cairo, sans-serif",
+        padding: "1rem",
+      }}
+    >
+      <style>{printCss}</style>
+      <style>{screenCss}</style>
 
       {/* Sidebar */}
-      <aside className="no-print" style={{ flex:"0 0 300px", borderRight:"1px solid #e5e7eb", paddingRight:"1rem" }}>
-        <header style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <h3 style={{ margin:0 }}>Reports</h3>
+      <aside
+        className="no-print"
+        style={{
+          flex: "0 0 300px",
+          borderRight: "1px solid #e5e7eb",
+          paddingRight: "1rem",
+        }}
+      >
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <h3 style={{ margin: 0 }}>Reports</h3>
         </header>
 
         {/* Tabs Switcher */}
-        <nav style={{ display:"flex", gap:"8px", margin:"10px 0" }}>
+        <nav style={{ display: "flex", gap: "8px", margin: "10px 0" }}>
           {[
-            { id:"coolers", label:"🧊 Coolers" },
-            { id:"personalHygiene", label:"🧼 Personal Hygiene" },
-            { id:"dailyCleanliness", label:"🧹 Daily Cleanliness" },
-          ].map(({id,label})=>(
-            <button key={id} onClick={()=>setActiveTab(id)}
+            { id: "coolers", label: "🧊 Coolers" },
+            { id: "personalHygiene", label: "🧼 Personal Hygiene" },
+            { id: "dailyCleanliness", label: "🧹 Daily Cleanliness" },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
               style={{
-                padding:"6px 10px", borderRadius:"8px",
-                border: activeTab===id ? "2px solid #2980b9" : "1px solid #e5e7eb",
-                backgroundColor: activeTab===id ? "#d6eaf8" : "#fff",
-                cursor:"pointer", fontWeight: activeTab===id ? "bold" : 600,
-              }}>
+                padding: "6px 10px",
+                borderRadius: "8px",
+                border:
+                  activeTab === id
+                    ? "2px solid #2980b9"
+                    : "1px solid #e5e7eb",
+                backgroundColor: activeTab === id ? "#d6eaf8" : "#fff",
+                cursor: "pointer",
+                fontWeight: activeTab === id ? "bold" : 600,
+              }}
+            >
               {label}
             </button>
           ))}
         </nav>
 
         {/* Date Select (per active tab) */}
-        <div style={{ margin:"10px 0" }}>
-          <label style={{ display:"block", marginBottom:6, fontWeight:700 }}>
-            {activeTab === "coolers" ? "Selected Date (Coolers)" :
-             activeTab === "personalHygiene" ? "Selected Date (PH)" :
-             "Selected Date (Cleanliness)"}
+        <div style={{ margin: "10px 0" }}>
+          <label style={{ display: "block", marginBottom: 6, fontWeight: 700 }}>
+            {activeTab === "coolers"
+              ? "Selected Date (Coolers)"
+              : activeTab === "personalHygiene"
+              ? "Selected Date (PH)"
+              : "Selected Date (Cleanliness)"}
           </label>
           <select
             value={selectedDateForTab ?? ""}
-            onChange={(e)=>setSelectedDateForTab(e.target.value)}
-            style={{ width:"100%", padding:"8px 10px", borderRadius:8, border:"1px solid #e5e7eb", outline:"none" }}
+            onChange={(e) => setSelectedDateForTab(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid #e5e7eb",
+              outline: "none",
+            }}
           >
-            {datesForActiveTab.map(d => <option key={d} value={d}>{d}</option>)}
+            {datesForActiveTab.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
           </select>
         </div>
 
         {/* Dates list */}
-        <ul style={{ listStyle:"none", padding:0, maxHeight:"55vh", overflowY:"auto" }}>
-          {datesForActiveTab.map(date => (
-            <li key={date}
-                style={{
-                  marginBottom:".5rem", backgroundColor:selectedDateForTab===date?"#2980b9":"#f6f7f9",
-                  color:selectedDateForTab===date?"#fff":"#111827", borderRadius:"8px", padding:"8px",
-                  cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center",
-                  fontWeight:selectedDateForTab===date?"bold":600,
-                }}
-                onClick={()=>setSelectedDateForTab(date)}>
+        <ul
+          style={{
+            listStyle: "none",
+            padding: 0,
+            maxHeight: "55vh",
+            overflowY: "auto",
+          }}
+        >
+          {datesForActiveTab.map((date) => (
+            <li
+              key={date}
+              style={{
+                marginBottom: ".5rem",
+                backgroundColor:
+                  selectedDateForTab === date ? "#2980b9" : "#f6f7f9",
+                color: selectedDateForTab === date ? "#fff" : "#111827",
+                borderRadius: "8px",
+                padding: "8px",
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                fontWeight: selectedDateForTab === date ? "bold" : 600,
+              }}
+              onClick={() => setSelectedDateForTab(date)}
+            >
               <span>{date}</span>
-              <button onClick={(e)=>{ e.stopPropagation(); handleDeleteActive(date); }}
-                      style={{ background:"#c0392b", color:"#fff", border:"none", borderRadius:"6px", padding:"6px 10px", cursor:"pointer", marginLeft:"6px" }}
-                      title="Delete report">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteActive(date);
+                }}
+                style={{
+                  background: "#c0392b",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                  marginLeft: "6px",
+                }}
+                title="Delete report"
+              >
                 Delete
               </button>
             </li>
           ))}
         </ul>
-
-        {/* Import/Export per active tab */}
-        <div style={{ marginTop:"1.2rem", display:"grid", gap:8 }}>
-          <button onClick={exportAllActive} style={{ ...btnDark, opacity:exportingAll?0.7:1 }} disabled={exportingAll}>⬇️ Export (Active Tab)</button>
-          <button onClick={triggerImport} style={{ ...btnOutline, opacity:isImporting?0.7:1 }} disabled={isImporting}>⬆️ Import (Active Tab)</button>
-          <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImportFile} style={{ display:"none" }} />
-        </div>
       </aside>
 
       {/* Main */}
-      <main style={{ flex:1, minWidth:320, maxHeight:"calc(100vh - 3rem)", overflowY:"auto", paddingRight:"1rem" }}>
+      <main
+        style={{
+          flex: 1,
+          minWidth: 320,
+          maxHeight: "calc(100vh - 3rem)",
+          overflowY: "auto",
+          paddingRight: "1rem",
+        }}
+      >
         {/* Actions */}
-        <div className="no-print" style={{ display:"flex", gap:8, justifyContent:"flex-end", margin:"0 0 8px 0" }}>
-          <button onClick={handlePrint} style={btnOutline}>🖨️ Print</button>
-          <button onClick={handleExportPDF} style={{ ...btnPrimary, opacity:exportingPDF?0.7:1 }} disabled={exportingPDF} title="Export as PDF (A4 Landscape)">
+        <div
+          className="no-print"
+          style={{
+            display: "flex",
+            gap: 8,
+            justifyContent: "flex-end",
+            margin: "0 0 8px 0",
+            flexWrap: "wrap",
+          }}
+        >
+          <button onClick={handlePrint} style={btnOutline}>
+            🖨️ Print
+          </button>
+          <button
+            onClick={handleExportPDF}
+            style={{ ...btnPrimary, opacity: exportingPDF ? 0.7 : 1 }}
+            disabled={exportingPDF}
+            title="Export as PDF (A4 Landscape)"
+          >
             {exportingPDF ? "… Generating PDF" : "📄 Export PDF"}
           </button>
+
+          {/* ✅ زران عامّان للتصدير/الاستيراد JSON (يشمل كل التبويبات) */}
+          <button
+            onClick={exportAllJSON}
+            style={{ ...btnDark, opacity: exportingJSONAll ? 0.7 : 1 }}
+            disabled={exportingJSONAll}
+            title="Export ALL tabs as one JSON"
+          >
+            ⬇️ Export JSON (All)
+          </button>
+          <button
+            onClick={triggerImportAll}
+            style={{ ...btnOutline, opacity: importingJSONAll ? 0.7 : 1 }}
+            disabled={importingJSONAll}
+            title="Import JSON (All tabs)"
+          >
+            ⬆️ Import JSON (All)
+          </button>
+          <input
+            ref={jsonInputRef}
+            type="file"
+            accept="application/json"
+            onChange={handleImportAllFile}
+            style={{ display: "none" }}
+          />
         </div>
 
-        {loadingReport && <div className="no-print" style={{ marginBottom:8, fontStyle:"italic", color:"#6b7280" }}>Loading…</div>}
+        {loadingReport && (
+          <div
+            className="no-print"
+            style={{ marginBottom: 8, fontStyle: "italic", color: "#6b7280" }}
+          >
+            Loading…
+          </div>
+        )}
 
         {/* Print area */}
         <div className="print-area one-page" id="report-container">
@@ -758,38 +1150,72 @@ export default function QCSDailyView() {
               <TMPPrintHeader header={tmpHeader} />
 
               {/* أدوات التحرير */}
-              <div className="no-print" style={{ display:"flex", gap:8, justifyContent:"flex-end", margin:"0 0 8px 0" }}>
+              <div
+                className="no-print"
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  justifyContent: "flex-end",
+                  margin: "0 0 8px 0",
+                }}
+              >
                 {!editingCoolers ? (
-                  <button onClick={()=>setEditingCoolers(true)} style={btnOutline}>✏️ Edit</button>
+                  <button
+                    onClick={() => setEditingCoolers(true)}
+                    style={btnOutline}
+                  >
+                    ✏️ Edit
+                  </button>
                 ) : (
                   <>
-                    <button onClick={saveCoolersEdit} style={btnPrimary}>💾 Save</button>
-                    <button onClick={cancelCoolersEdit} style={btnOutline}>↩️ Cancel</button>
+                    <button onClick={saveCoolersEdit} style={btnPrimary}>
+                      💾 Save
+                    </button>
+                    <button onClick={cancelCoolersEdit} style={btnOutline}>
+                      ↩️ Cancel
+                    </button>
                   </>
                 )}
               </div>
 
-              <table style={{ width:"100%", borderCollapse:"collapse", textAlign:"center", border:"1px solid #000", fontSize:"12px" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  textAlign: "center",
+                  border: "1px solid #000",
+                  fontSize: "12px",
+                }}
+              >
                 <thead>
-                  <tr style={{ background:"#d9d9d9" }}>
+                  <tr style={{ background: "#d9d9d9" }}>
                     <th style={thB(true)}>Cooler</th>
-                    {COOLER_TIMES.map(t => (
-                      <th key={t} style={thB(true)}>{t}</th>
+                    {COOLER_TIMES.map((t) => (
+                      <th key={t} style={thB(true)}>
+                        {t}
+                      </th>
                     ))}
                     <th style={thB(false)}>Remarks</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.isArray(coolers) && coolers.length>0 ? (
-                    (editingCoolers ? editCoolers : coolers).map((c, i)=>(
+                  {/* صفوف البرادات إن وجدت */}
+                  {hasCoolers &&
+                    (editingCoolers ? editCoolers : coolers).map((c, i) => (
                       <tr key={i}>
                         <td style={tdB(false)}>{labelForCooler(i)}</td>
-                        {COOLER_TIMES.map(time=>{
-                          const srcTemps = editingCoolers ? (editCoolers[i]?.temps || {}) : (coolers[i]?.temps || {});
+                        {COOLER_TIMES.map((time) => {
+                          const srcTemps = editingCoolers
+                            ? editCoolers[i]?.temps || {}
+                            : coolers[i]?.temps || {};
                           const raw = srcTemps[time];
-                          const val = (raw===undefined || raw==="" || raw===null)
-                            ? (editingCoolers ? "" : "—")
-                            : String(raw).trim() + (!editingCoolers ? "°C" : "");
+                          const val =
+                            raw === undefined || raw === "" || raw === null
+                              ? editingCoolers
+                                ? ""
+                                : "—"
+                              : String(raw).trim() +
+                                (!editingCoolers ? "°C" : "");
                           return (
                             <td key={time} style={tdB(true)}>
                               {editingCoolers ? (
@@ -797,29 +1223,94 @@ export default function QCSDailyView() {
                                   type="number"
                                   step="0.1"
                                   value={String(raw ?? "")}
-                                  onChange={(e)=>setTemp(i, time, e.target.value)}
+                                  onChange={(e) =>
+                                    setTemp(i, time, e.target.value)
+                                  }
                                   style={{ width: 70, padding: "4px 6px" }}
                                   placeholder=".."
                                 />
-                              ) : (val)}
+                              ) : (
+                                val
+                              )}
                             </td>
                           );
                         })}
-                        <td style={{ ...tdB(false), whiteSpace:"pre-wrap" }}>
+                        <td style={{ ...tdB(false), whiteSpace: "pre-wrap" }}>
                           {editingCoolers ? (
                             <input
                               value={c?.remarks ?? ""}
-                              onChange={(e)=>setRemarksRow(i, e.target.value)}
+                              onChange={(e) => setRemarksRow(i, e.target.value)}
                               style={{ width: "100%", padding: "4px 6px" }}
                               placeholder="Remarks"
                             />
-                          ) : (c?.remarks || "")}
+                          ) : (
+                            c?.remarks || ""
+                          )}
                         </td>
                       </tr>
-                    ))
-                  ) : (
+                    ))}
+
+                  {/* ✅ صف Loading Area (إن وجد بالبيانات أو في وضع التحرير) */}
+                  {(hasLoadingArea || editingCoolers) && (
                     <tr>
-                      <td colSpan={COOLER_TIMES.length + 2} style={{ ...tdB(true), color:"#6b7280" }}>No coolers data.</td>
+                      <td style={{ ...tdB(false), fontWeight: 800 }}>
+                        Loading Area
+                      </td>
+                      {COOLER_TIMES.map((time) => {
+                        const srcTemps = editingCoolers
+                          ? editLoadingArea?.temps || {}
+                          : loadingArea?.temps || {};
+                        const raw = srcTemps?.[time];
+                        const val =
+                          raw === undefined || raw === "" || raw === null
+                            ? editingCoolers
+                              ? ""
+                              : "—"
+                            : String(raw).trim() +
+                              (!editingCoolers ? "°C" : "");
+                        return (
+                          <td key={`la-${time}`} style={tdB(true)}>
+                            {editingCoolers ? (
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={String(raw ?? "")}
+                                onChange={(e) =>
+                                  setLoadingTemp(time, e.target.value)
+                                }
+                                style={{ width: 70, padding: "4px 6px" }}
+                                placeholder=".."
+                              />
+                            ) : (
+                              val
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td style={{ ...tdB(false), whiteSpace: "pre-wrap" }}>
+                        {editingCoolers ? (
+                          <input
+                            value={editLoadingArea?.remarks ?? ""}
+                            onChange={(e) => setLoadingRemarks(e.target.value)}
+                            style={{ width: "100%", padding: "4px 6px" }}
+                            placeholder="Remarks"
+                          />
+                        ) : (
+                          loadingArea?.remarks || ""
+                        )}
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* لا توجد بيانات إطلاقًا */}
+                  {!hasCoolers && !hasLoadingArea && (
+                    <tr>
+                      <td
+                        colSpan={COOLER_TIMES.length + 2}
+                        style={{ ...tdB(true), color: "#6b7280" }}
+                      >
+                        No coolers data.
+                      </td>
                     </tr>
                   )}
                 </tbody>
@@ -831,49 +1322,87 @@ export default function QCSDailyView() {
           {activeTab === "personalHygiene" && (
             <>
               <PHPrintHeader header={phHeader} selectedDate={selectedPHDate} />
-              <table style={{ width:"100%", borderCollapse:"collapse", textAlign:"center", border:"1px solid #000" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  textAlign: "center",
+                  border: "1px solid #000",
+                }}
+              >
                 <thead>
-                  <tr style={{ background:"#d9d9d9" }}>
+                  <tr style={{ background: "#d9d9d9" }}>
                     {[
-                      "S. No","Employee Name","Nails","Hair","No jewelry",
+                      "S. No",
+                      "Employee Name",
+                      "Nails",
+                      "Hair",
+                      "No jewelry",
                       "Wearing clean clothes / hair net / gloves / face mask / shoes",
-                      "Communicable disease(s)","Open wounds / sores / cuts","Remarks & Corrective Actions",
-                    ].map((h,idx)=>(
-                      <th key={idx} style={{ border:"1px solid #000", padding:"6px 4px", fontWeight:800 }}>{h}</th>
+                      "Communicable disease(s)",
+                      "Open wounds / sores / cuts",
+                      "Remarks & Corrective Actions",
+                    ].map((h, idx) => (
+                      <th
+                        key={idx}
+                        style={{
+                          border: "1px solid #000",
+                          padding: "6px 4px",
+                          fontWeight: 800,
+                        }}
+                      >
+                        {h}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {phDataForPrint.length ? phDataForPrint.map((emp,i)=>(
-                    <tr key={i}>
-                      <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{i+1}</td>
-                      <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.employName || ""}</td>
-                      <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.nails || ""}</td>
-                      <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.hair || ""}</td>
-                      <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.notWearingJewelries || ""}</td>
-                      <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.wearingCleanCloth || ""}</td>
-                      <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.communicableDisease || ""}</td>
-                      <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.openWounds || ""}</td>
-                      <td style={{ border:"1px solid #000", padding:"6px 4px" }}>{emp?.remarks || ""}</td>
+                  {phDataForPrint.length ? (
+                    phDataForPrint.map((emp, i) => (
+                      <tr key={i}>
+                        <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{i + 1}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.employName || ""}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.nails || ""}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.hair || ""}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.notWearingJewelries || ""}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.wearingCleanCloth || ""}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.communicableDisease || ""}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.openWounds || ""}</td>
+                        <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.remarks || ""}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={9} style={{ ...tdB(true), color: "#6b7280" }}>
+                        No rows.
+                      </td>
                     </tr>
-                  )) : (
-                    <tr><td colSpan={9} style={{ ...tdB(true), color:"#6b7280" }}>No rows.</td></tr>
                   )}
                 </tbody>
               </table>
-              <div style={{ border:"1px solid #000", marginTop:8 }}>
-                <div style={{ padding:"6px 8px", borderBottom:"1px solid #000", fontWeight:900 }}>REMARKS/CORRECTIVE ACTIONS:</div>
-                <div style={{ padding:"8px", borderBottom:"1px solid #000", minHeight:56 }}>
+              <div style={{ border: "1px solid #000", marginTop: 8 }}>
+                <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>
+                  REMARKS/CORRECTIVE ACTIONS:
+                </div>
+                <div style={{ padding: "8px", borderBottom: "1px solid #000", minHeight: 56 }}>
                   <em>*(C – Conform &nbsp;&nbsp; N / C – Non Conform)</em>
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
-                  <div style={{ display:"flex" }}>
-                    <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:120, fontWeight:700 }}>Checked By :</div>
-                    <div style={{ padding:"6px 8px", flex:1 }}>{(phFooter?.checkedBy ?? "") || "\u00A0"}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                  <div style={{ display: "flex" }}>
+                    <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 120, fontWeight: 700 }}>
+                      Checked By :
+                    </div>
+                    <div style={{ padding: "6px 8px", flex: 1 }}>
+                      {(phFooter?.checkedBy ?? "") || "\u00A0"}
+                    </div>
                   </div>
-                  <div style={{ display:"flex", borderInlineStart:"1px solid #000" }}>
-                    <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:120, fontWeight:700 }}>Verified  By :</div>
-                    <div style={{ padding:"6px 8px", flex:1 }}>{(phFooter?.verifiedBy ?? "") || "\u00A0"}</div>
+                  <div style={{ display: "flex", borderInlineStart: "1px solid #000" }}>
+                    <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 120, fontWeight: 700 }}>
+                      Verified  By :
+                    </div>
+                    <div style={{ padding: "6px 8px", flex: 1 }}>
+                      {(phFooter?.verifiedBy ?? "") || "\u00A0"}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -884,28 +1413,42 @@ export default function QCSDailyView() {
           {activeTab === "dailyCleanliness" && (
             <>
               <CCPrintHeader header={ccHeader} selectedDate={selectedCleanDate} />
-              <table style={{ width:"100%", borderCollapse:"collapse", textAlign:"left", border:"1px solid #000" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  textAlign: "left",
+                  border: "1px solid #000",
+                }}
+              >
                 <thead>
-                  <tr style={{ background:"#d9d9d9" }}>
+                  <tr style={{ background: "#d9d9d9" }}>
                     <th style={thB(true)}>SI-No</th>
                     <th style={thB(false)}>General Cleaning</th>
-                    <th style={thB(true)}>Observation (C / N\\C)</th>
+                    <th style={thB(true)}>Observation (C / N / C)</th>
                     <th style={thB(false)}>Informed to</th>
                     <th style={thB(false)}>Remarks & CA</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.isArray(cleanlinessRows) && cleanlinessRows.length>0 ? (
-                    cleanlinessRows.map((r,i)=>{
+                  {Array.isArray(cleanlinessRows) && cleanlinessRows.length > 0 ? (
+                    cleanlinessRows.map((r, i) => {
                       const isSection = !!r?.isSection;
-                      const letter = r?.letter || (typeof r?.slNo!=="undefined" ? r.slNo : i+1);
-                      const general = r?.general || r?.itemEn || r?.itemAr || r?.groupEn || r?.groupAr || "";
+                      const letter =
+                        r?.letter || (typeof r?.slNo !== "undefined" ? r.slNo : i + 1);
+                      const general =
+                        r?.general ||
+                        r?.itemEn ||
+                        r?.itemAr ||
+                        r?.groupEn ||
+                        r?.groupAr ||
+                        "";
                       const observation = r?.observation || r?.result || "";
                       const informedTo = r?.informedTo || r?.informed || "";
                       const remarks = r?.remarks || "";
                       if (isSection) {
                         return (
-                          <tr key={`sec-${i}`} style={{ background:"#f2f2f2", fontWeight:800 }}>
+                          <tr key={`sec-${i}`} style={{ background: "#f2f2f2", fontWeight: 800 }}>
                             <td style={tdB(true)}>—</td>
                             <td style={tdB(false)}>{r.section || general}</td>
                             <td style={tdB(true)} />
@@ -925,33 +1468,57 @@ export default function QCSDailyView() {
                       );
                     })
                   ) : (
-                    <tr><td colSpan={5} style={{ ...tdB(true), color:"#6b7280" }}>No rows.</td></tr>
+                    <tr>
+                      <td colSpan={5} style={{ ...tdB(true), color: "#6b7280" }}>
+                        No rows.
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
 
-              <div style={{ marginTop:6, fontStyle:"italic" }}>
+              <div style={{ marginTop: 6, fontStyle: "italic" }}>
                 *(C – Conform &nbsp;&nbsp;&nbsp; N / C – Non Conform)
               </div>
-              <div style={{ border:"1px solid #000", marginTop:8 }}>
-                <div style={{ padding:"6px 8px", borderBottom:"1px solid #000", fontWeight:900 }}>
+              <div style={{ border: "1px solid #000", marginTop: 8 }}>
+                <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>
                   REMARKS/CORRECTIVE ACTIONS:
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", borderBottom:"1px solid #000" }}>
-                  <div style={{ display:"flex", minHeight:42 }}>
-                    <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:180, fontWeight:900, textDecoration:"underline" }}>
-                      CHECKED BY: <span style={{ fontWeight:400 }}>(QC-ASSIST)</span>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
+                  <div style={{ display: "flex", minHeight: 42 }}>
+                    <div
+                      style={{
+                        padding: "6px 8px",
+                        borderInlineEnd: "1px solid #000",
+                        minWidth: 180,
+                        fontWeight: 900,
+                        textDecoration: "underline",
+                      }}
+                    >
+                      CHECKED BY: <span style={{ fontWeight: 400 }}>(QC-ASSIST)</span>
                     </div>
-                    <div style={{ padding:"6px 8px", flex:1 }}>{(ccFooter?.checkedBy ?? "") || "\u00A0"}</div>
+                    <div style={{ padding: "6px 8px", flex: 1 }}>
+                      {(ccFooter?.checkedBy ?? "") || "\u00A0"}
+                    </div>
                   </div>
-                  <div style={{ display:"flex", borderInlineStart:"1px solid #000", minHeight:42 }}>
-                    <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:180, fontWeight:900, textDecoration:"underline" }}>
+                  <div style={{ display: "flex", borderInlineStart: "1px solid #000", minHeight: 42 }}>
+                    <div
+                      style={{
+                        padding: "6px 8px",
+                        borderInlineEnd: "1px solid #000",
+                        minWidth: 180,
+                        fontWeight: 900,
+                        textDecoration: "underline",
+                      }}
+                    >
                       VERIFIED BY:
                     </div>
-                    <div style={{ padding:"6px 8px", flex:1 }}>{(ccFooter?.verifiedBy ?? "") || "\u00A0"}</div>
+                    <div style={{ padding: "6px 8px", flex: 1 }}>
+                      {(ccFooter?.verifiedBy ?? "") || "\u00A0"}
+                    </div>
                   </div>
                 </div>
-                <div style={{ padding:"8px 10px", lineHeight:1.6 }}>
+                <div style={{ padding: "8px 10px", lineHeight: 1.6 }}>
                   <div>Remark: Frequency — Daily</div>
                   <div>* (C = Conform &nbsp;&nbsp;&nbsp;&nbsp; N / C = Non Conform)</div>
                 </div>
@@ -965,7 +1532,18 @@ export default function QCSDailyView() {
 }
 
 /* ============ Buttons ============ */
-const btnBase = { padding:"9px 12px", borderRadius:8, cursor:"pointer", border:"1px solid transparent", fontWeight:700 };
-const btnPrimary = { ...btnBase, background:"#2563eb", color:"#fff" };
-const btnDark    = { ...btnBase, background:"#111827", color:"#fff" };
-const btnOutline = { ...btnBase, background:"#fff", color:"#111827", border:"1px solid #e5e7eb" };
+const btnBase = {
+  padding: "9px 12px",
+  borderRadius: 8,
+  cursor: "pointer",
+  border: "1px solid transparent",
+  fontWeight: 700,
+};
+const btnPrimary = { ...btnBase, background: "#2563eb", color: "#fff" };
+const btnDark = { ...btnBase, background: "#111827", color: "#fff" };
+const btnOutline = {
+  ...btnBase,
+  background: "#fff",
+  color: "#111827",
+  border: "1px solid #e5e7eb",
+};

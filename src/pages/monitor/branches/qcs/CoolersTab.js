@@ -64,6 +64,12 @@ const makeDefaultCoolers = () =>
       remarks: "",
     }));
 
+/* ✅ Default Loading Area object */
+const makeDefaultLoadingArea = () => ({
+  temps: TIMES.reduce((acc, t) => { acc[t] = ""; return acc; }, {}),
+  remarks: "",
+});
+
 /* ---- Ranges + KPI ---- */
 function coolerRange(index) {
   if (index === 7) return { min: -19, max: -14 }; // FREEZER (8)
@@ -74,6 +80,15 @@ function inCoolerRange(index, t) {
   const { min, max } = coolerRange(index);
   return t >= min && t <= max;
 }
+/* ✅ Loading Area range (≤ 16°C) */
+function loadingAreaRange() {
+  return { min: 0, max: 16 };
+}
+function inLoadingAreaRange(t) {
+  const { min, max } = loadingAreaRange();
+  return t >= min && t <= max;
+}
+
 function calcCoolersKPI(coolers) {
   const all = [];
   let outOfRange = 0;
@@ -132,6 +147,7 @@ function TMPEntryHeader({ header, logoUrl }) {
             src={logoUrl || LOGO_FALLBACK}
             alt="Al Mawashi"
             style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }}
+            crossOrigin="anonymous"
           />
         </div>
         <div style={{ borderInlineEnd: "1px solid #000" }}>
@@ -200,6 +216,33 @@ function tempInputStyle(temp, coolerIndex) {
   return base;
 }
 
+/* ✅ نسخة خاصة بـ Loading Area */
+function tempInputStyleLoading(temp) {
+  const t = Number(temp);
+  const base = {
+    width: 80,
+    padding: "6px 8px",
+    borderRadius: 8,
+    border: "1.7px solid #94a3b8",
+    textAlign: "center",
+    fontWeight: 600,
+    color: "#111827",
+    background: "#ffffff",
+    transition: "all .18s",
+  };
+  if (Number.isNaN(t) || temp === "") return base;
+
+  const { min, max } = loadingAreaRange();
+  if (t < min || t > max) {
+    return { ...base, background: "#fee2e2", borderColor: "#ef4444", color: "#991b1b", fontWeight: 700 };
+  }
+  const warnBand = 1;
+  if (t >= max - warnBand) {
+    return { ...base, background: "#e0f2fe", borderColor: "#38bdf8", color: "#075985" };
+  }
+  return base;
+}
+
 /* =========================
    Server helpers (COOLERS only)
 ========================= */
@@ -246,13 +289,16 @@ export default function CoolersTab(props) {
   const [localCoolers, setLocalCoolers] = useState(makeDefaultCoolers());
   const [localHeader, setLocalHeader] = useState(defaultTMPHeader);
 
+  // ✅ حالة خاصة بـ Loading Area
+  const [loadingArea, setLoadingArea] = useState(makeDefaultLoadingArea());
+
   const dataCoolers = useExternalCoolers ? coolers : localCoolers;
   const updateCoolers = useExternalCoolers ? setCoolers : setLocalCoolers;
 
   const header = useExternalHeader ? tmpHeader : localHeader;
   const setHeader = useExternalHeader ? setTmpHeader : setLocalHeader;
 
-  // KPI آمن
+  // KPI آمن (يخص البرادات فقط)
   const computedKpi = useMemo(() => calcCoolersKPI(dataCoolers), [dataCoolers]);
   const safeKPI = kpi || computedKpi || { avg: "—", min: "—", max: "—", outOfRange: 0 };
 
@@ -274,6 +320,17 @@ export default function CoolersTab(props) {
     });
   };
 
+  /* ✅ أحداث التغيير الخاصة بـ Loading Area */
+  const handleLoadingChange = (time, value) => {
+    setLoadingArea((prev) => ({
+      ...prev,
+      temps: { ...(prev?.temps || {}), [time]: value },
+    }));
+  };
+  const handleLoadingRemarksChange = (value) => {
+    setLoadingArea((prev) => ({ ...prev, remarks: value }));
+  };
+
   // حفظ على السيرفر الخارجي فقط (بدون دمج تبويبات أخرى)
   const [saving, setSaving] = useState(false);
   async function saveCoolersToServer() {
@@ -282,10 +339,11 @@ export default function CoolersTab(props) {
 
       const existing = await fetchExistingByDate(date);
 
-      // ✅ payload خاص بالبرادات فقط
+      // ✅ payload خاص بالبرادات + Loading Area + هيدر TMP
       const payload = {
         reportDate: date,
         coolers: dataCoolers,
+        loadingArea,            // 👈 تمت الإضافة هنا
         headers: {
           tmpHeader: header,
         },
@@ -501,6 +559,74 @@ export default function CoolersTab(props) {
           </div>
         </div>
       ))}
+
+      {/* ✅ Loading Area — سطر تحت الفريزر */}
+      <div
+        style={{
+          marginBottom: "1.2rem",
+          padding: "1rem",
+          backgroundColor: "#fff7ed",
+          borderRadius: "10px",
+          boxShadow: "inset 0 0 6px rgba(245, 159, 11, 0.18)",
+          border: "1px dashed #f59e0b",
+        }}
+      >
+        <strong style={{ display: "block", marginBottom: "0.8rem", fontSize: "1.1rem", color: "#b45309" }}>
+          Loading Area (≤ 16°C)
+        </strong>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "0.7rem",
+            flexWrap: "wrap",
+            justifyContent: "flex-start",
+            alignItems: "flex-end",
+          }}
+        >
+          {TIMES.map((time) => (
+            <label
+              key={time}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                fontSize: "0.93rem",
+                color: "#92400e",
+                minWidth: "78px",
+              }}
+            >
+              <span style={{ marginBottom: "7px", fontWeight: "600" }}>{time}</span>
+              <input
+                type="number"
+                value={loadingArea?.temps?.[time] ?? ""}
+                onChange={(e) => handleLoadingChange(time, e.target.value)}
+                style={tempInputStyleLoading(loadingArea?.temps?.[time] ?? "")}
+                placeholder="°C"
+                min="-10"
+                max="50"
+                step="0.1"
+                title={`Allowed: ${(() => {
+                  const r = loadingAreaRange();
+                  return `${r.min}°C .. ${r.max}°C`;
+                })()}`}
+              />
+            </label>
+          ))}
+
+          {/* Remarks */}
+          <label style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 7, minWidth: 260 }}>
+            <span style={{ fontWeight: 600, color: "#92400e" }}>Remarks</span>
+            <input
+              type="text"
+              value={loadingArea?.remarks || ""}
+              onChange={(e) => handleLoadingRemarksChange(e.target.value)}
+              placeholder="Notes / observations"
+              style={remarksInputStyle}
+            />
+          </label>
+        </div>
+      </div>
 
       {/* زر حفظ خاص بالتبويب — على السيرفر الخارجي */}
       <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>

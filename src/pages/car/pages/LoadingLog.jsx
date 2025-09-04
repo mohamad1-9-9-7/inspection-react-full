@@ -1,368 +1,412 @@
-import React, { useMemo, useState } from "react";
+// src/pages/LoadingLog.jsx
+import React, { useState } from "react";
 
 /**
- * LoadingLog.jsx
- * - إدخال فقط (يحفظ إلى localStorage)
- * - عربي / إنكليزي مدمج بالليبلات
- * - السجلات تُعرض من تبويب Reports.jsx
+ * VISUAL INSPECTION (OUTBOUND CHECKLIST) — English-only
+ * - Header kept as-is (Document Title/No/Issue/Revision + Area/Issued/Controlling/Approved)
+ * - Multiple vehicles per single report date (rows you can add/remove)
+ * - Saves to server: POST /api/reports  { reporter, type, payload }
  */
 
-const STORAGE_KEY = "cars_loading_inspection_v1";
+const API_BASE =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+  (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
+  "https://inspection-server-4nvj.onrender.com";
 
-const Bidi = ({ ar, en }) => (
-  <span style={{ display: "inline-block", lineHeight: 1.2 }}>
-    <bdi style={{ fontWeight: 800 }}>{ar}</bdi>
-    <br />
-    <span style={{ opacity: 0.85, fontSize: ".92em" }}>
-      <bdi>{en}</bdi>
-    </span>
-  </span>
-);
+const TYPE = "cars_loading_inspection";
 
-// عناصر الفحص البصري (عربي/إنكليزي)
-const VI_PARAMS = [
-  { id: "sealIntact", ar: "ختم الباب سليم / الباب مقفول", en: "Seal Intact / Door Locked" },
-  { id: "containerClean", ar: "نظافة الحاوية", en: "Container Clean" },
-  { id: "pestDetection", ar: "وجود آفات", en: "Pest Detection" },
-  { id: "tempReader", ar: "قارئ الحرارة متاح", en: "Temperature Reader Available" },
-  { id: "plasticCurtain", ar: "ستارة بلاستيكية", en: "Plastic Curtain" },
-  { id: "badSmell", ar: "رائحة كريهة", en: "Bad Smell" },
-  { id: "ppeA", ar: "معدات وقاية: قناع وجه وواقي أذرع", en: "PPE: Face Mask & Hand Sleeve" },
-  { id: "ppeB", ar: "معدات وقاية: قفازات وغطاء حذاء", en: "PPE: Gloves – Shoe Cover" },
-  { id: "ppeC", ar: "معدات وقاية: معقّم ومريول", en: "PPE: Sanitizer - Apron" },
+async function saveToServer(payload) {
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reporter: "anonymous", type: TYPE, payload }),
+  });
+  if (!res.ok) throw new Error(`Server ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+const YESNO_FIELDS = [
+  "floorSealingIntact",
+  "floorCleaning",
+  "pestActivites", // keep sheet spelling
+  "plasticCurtain",
+  "badOdour",
+  "ppeAvailable",
 ];
 
-const makeId = () =>
-  (window.crypto?.randomUUID?.() || String(Date.now()) + Math.random().toString(16).slice(2));
+const HEAD_DEFAULT = {
+  documentTitle: "OUTBOUND CHECKLIST",
+  documentNo: "FSM-QM/REC/OCL",
+  issueDate: "24/04/2025",
+  revisionNo: "1",
+  area: "LOGISTIC",
+  issuedBy: "MOHAMAD ABDULLAH",
+  controllingOfficer: "LOGISTIC MANAGER",
+  approvedBy: "ALTAF KHAN",
+};
 
-function loadRows() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
-}
-function saveRows(rows) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rows)); } catch {}
-}
-
-export default function LoadingLog() {
-  const [saved, setSaved] = useState(false);
-  const [form, setForm] = useState({
-    // 🧾 ترويسة المستند (Editable هنا – تُعرض لاحقًا Read-only)
-    header: {
-      documentTitle: "OUTBOUND CHECKLIST",
-      documentNo: "FSM-QM/REC/OCL",
-      issueDate: "05/02/2020",
-      revisionNo: "0",
-      area: "LOGISTIC",
-      issuedBy: "MOHAMAD ABDULLAH",
-      controllingOfficer: "LOGISTIC MANAGER",
-      approvedBy: "HUSSAM O.SARHAN",
-    },
-
-    date: new Date().toISOString().split("T")[0],
+function newRow() {
+  return {
     vehicleNo: "",
     driverName: "",
-    location: "",
     timeStart: "",
     timeEnd: "",
     tempCheck: "",
-    visual: VI_PARAMS.reduce((a, p) => ((a[p.id] = { value: "", remarks: "" }), a), {}),
+    floorSealingIntact: "", // yes|no
+    floorCleaning: "",
+    pestActivites: "",
+    plasticCurtain: "",
+    badOdour: "",
+    ppeAvailable: "",
+    informedTo: "",
     remarks: "",
-    inspectedBy1: "",
-    verifiedBy1: "",
-    inspectedBy2: "",
-    verifiedBy2: "",
-  });
+  };
+}
 
-  const durationMin = useMemo(() => {
-    if (!form.timeStart || !form.timeEnd) return "";
-    const [sh, sm] = form.timeStart.split(":").map(Number);
-    const [eh, em] = form.timeEnd.split(":").map(Number);
-    let d = eh * 60 + em - (sh * 60 + sm);
-    if (d < 0) d += 24 * 60;
-    return `${d} دقيقة / min`;
-  }, [form.timeStart, form.timeEnd]);
+export default function LoadingLog() {
+  const [header, setHeader] = useState({ ...HEAD_DEFAULT });
+  const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
+  const [inspectedBy, setInspectedBy] = useState("");
+  const [verifiedBy, setVerifiedBy] = useState("");
+  const [rows, setRows] = useState([newRow()]);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-  const updateHeader = (k, v) => setForm((f) => ({ ...f, header: { ...f.header, [k]: v } }));
-  const updateVisual = (id, field, value) =>
-    setForm((f) => ({ ...f, visual: { ...f.visual, [id]: { ...f.visual[id], [field]: value } } }));
-
-  const resetForm = () =>
-    setForm({
-      header: {
-        documentTitle: "OUTBOUND CHECKLIST",
-        documentNo: "FSM-QM/REC/OCL",
-        issueDate: "05/02/2020",
-        revisionNo: "0",
-        area: "LOGISTIC",
-        issuedBy: "MOHAMAD ABDULLAH",
-        controllingOfficer: "LOGISTIC MANAGER",
-        approvedBy: "HUSSAM O.SARHAN",
-      },
-      date: new Date().toISOString().split("T")[0],
-      vehicleNo: "",
-      driverName: "",
-      location: "",
-      timeStart: "",
-      timeEnd: "",
-      tempCheck: "",
-      visual: VI_PARAMS.reduce((a, p) => ((a[p.id] = { value: "", remarks: "" }), a), {}),
-      remarks: "",
-      inspectedBy1: "",
-      verifiedBy1: "",
-      inspectedBy2: "",
-      verifiedBy2: "",
+  const setHead = (k, v) => setHeader((h) => ({ ...h, [k]: v }));
+  const setRow = (i, k, v) =>
+    setRows((rs) => {
+      const n = rs.slice();
+      n[i] = { ...n[i], [k]: v };
+      return n;
     });
+  const addRow = () => setRows((rs) => [...rs, newRow()]);
+  const removeRow = (i) => setRows((rs) => rs.filter((_, idx) => idx !== i));
 
-  const handleSubmit = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
-    const record = { id: makeId(), createdAt: Date.now(), ...form };
-    const next = [record, ...loadRows()];
-    saveRows(next);
-    setSaved(true);
-    resetForm();
-    setTimeout(() => setSaved(false), 1800);
+    const cleanRows = rows.filter((r) => Object.values(r).some((v) => String(v || "").trim()));
+    if (!cleanRows.length) {
+      setMsg("Add at least one vehicle row.");
+      setTimeout(() => setMsg(""), 2000);
+      return;
+    }
+    try {
+      setBusy(true);
+      setMsg("Saving to server…");
+      await saveToServer({
+        id: crypto.randomUUID?.() || String(Date.now()),
+        createdAt: Date.now(),
+        header,
+        reportDate,
+        inspectedBy,
+        verifiedBy,
+        rows: cleanRows,
+      });
+      setMsg("Saved successfully.");
+      setRows([newRow()]);
+    } catch (err) {
+      console.error(err);
+      setMsg("Save failed. Please try again.");
+    } finally {
+      setBusy(false);
+      setTimeout(() => setMsg(""), 3000);
+    }
   };
 
-  /* ========== تنسيقك الأصلي ========== */
-  const page = {
-    direction: "rtl",
-    fontFamily: "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
-    padding: "1rem",
-    color: "#0f172a",
+  /* ===== Styled Components Objects ===== */
+  const wrapStyle = {
+    padding: "32px",
+    fontFamily: "Arial, sans-serif",
+    backgroundColor: "#f7f9fc",
+    color: "#333",
+    minHeight: "100vh",
+    boxSizing: "border-box",
+    direction: "ltr", // CHANGED: left-to-right direction
   };
-  const section = {
-    background: "#fff",
-    borderRadius: 16,
-    padding: "1rem",
-    marginBottom: 16,
-    border: "1px solid #e7eef5",
-    boxShadow: "0 6px 24px rgba(15,23,42,.04)",
+
+  const cardStyle = {
+    backgroundColor: "#ffffff",
+    borderRadius: "12px",
+    boxShadow: "0 10px 25px rgba(0, 0, 0, 0.08)",
+    overflow: "hidden",
   };
-  const header = {
-    margin: "0 0 12px",
-    fontSize: "1.1rem",
-    fontWeight: 900,
-    color: "#0f172a",
-    letterSpacing: ".2px",
+
+  const sectionStyle = {
+    padding: "16px 24px",
+    borderBottom: "1px solid #e0e6ed",
   };
-  const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 };
-  const gridWide = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 };
-  const label = { display: "grid", gap: 8 };
-  const input = {
-    padding: "11px 12px",
-    borderRadius: 12,
-    border: "1px solid #cbd5e1",
-    background: "#fff",
+
+  const grid4Style = {
+    display: "grid",
+    gridTemplateColumns: "repeat(1, 1fr)",
+    gap: "16px",
+  };
+
+  const grid2Style = {
+    display: "grid",
+    gridTemplateColumns: "repeat(1, 1fr)",
+    gap: "24px",
+  };
+
+  const labelStyle = {
+    fontSize: "13px",
+    fontWeight: "600",
+    color: "#1a202c",
+    marginBottom: "4px",
+  };
+
+  const inputStyle = {
+    width: "100%",
+    padding: "10px 12px",
+    fontSize: "14px",
+    border: "1px solid #c0d0e0",
+    borderRadius: "8px",
+    backgroundColor: "#fefefe",
+    transition: "border-color 0.2s",
+    boxSizing: "border-box",
+  };
+
+  const inputFocusStyle = {
     outline: "none",
-    fontWeight: 600,
+    borderColor: "#4a90e2",
+    boxShadow: "0 0 0 2px rgba(74, 144, 226, 0.2)",
   };
-  const hint = { color: "#64748b", fontSize: ".9rem" };
-  const tableWrap = { overflowX: "auto", borderRadius: 12, border: "1px solid #e7eef5" };
-  const table = { width: "100%", borderCollapse: "collapse" };
-  const th = {
-    padding: "12px 10px",
-    background: "#f8fafc",
-    borderBottom: "1px solid #e7eef5",
-    textAlign: "center",
-    fontWeight: 900,
-    whiteSpace: "nowrap",
+
+  const titleStyle = {
+    fontSize: "22px",
+    fontWeight: "700",
+    color: "#1a202c",
+    textAlign: "left", // CHANGED: Align left
+    padding: "8px 0",
+    textTransform: "uppercase",
   };
-  const td = {
-    padding: "10px",
-    borderBottom: "1px solid #eef2f7",
-    textAlign: "center",
+
+  const tableWrapperStyle = {
+    overflowX: "auto",
+    padding: "0",
+  };
+
+  const tableStyle = {
+    width: "100%",
+    borderCollapse: "collapse",
+    minWidth: "1200px",
+  };
+
+  const thStyle = {
+    backgroundColor: "#f0f2f5",
+    padding: "12px 8px",
+    fontSize: "11px",
+    fontWeight: "700",
+    color: "#4a5568",
+    textAlign: "left", // CHANGED: Align left
+    textTransform: "uppercase",
+    border: "1px solid #c0d0e0",
+  };
+
+  const tdStyle = {
+    padding: "10px 8px",
+    border: "1px solid #c0d0e0",
+    textAlign: "left", // CHANGED: Align left
     verticalAlign: "middle",
+    boxSizing: "border-box",
   };
-  const tdLeft = { ...td, textAlign: "right" };
-  const radioGrp = { display: "flex", gap: 18, justifyContent: "center" };
-  const btnRow = { display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 };
-  const btn = {
-    padding: "12px 16px",
-    borderRadius: 12,
-    border: "1px solid #e5e7eb",
-    background: "#fff",
+
+  const radioGroupStyle = {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: "16px",
+  };
+
+  const radioLabelStyle = {
+    fontSize: "13px",
+    color: "#4a5568",
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+  };
+
+  const buttonStyle = {
+    padding: "10px 20px",
+    fontSize: "14px",
+    fontWeight: "600",
+    borderRadius: "8px",
     cursor: "pointer",
-    fontWeight: 900,
+    border: "none",
+    transition: "background-color 0.2s, box-shadow 0.2s",
   };
-  const btnPrimary = { ...btn, background: "#2563eb", borderColor: "#2563eb", color: "#fff" };
-  const toast = {
-    position: "fixed",
-    right: 16,
-    bottom: 16,
-    background: "#16a34a",
+
+  const addButton = {
+    ...buttonStyle,
+    backgroundColor: "#e2e8f0",
+    color: "#4a5568",
+    border: "1px solid #cbd5e1",
+  };
+
+  const saveButton = {
+    ...buttonStyle,
+    backgroundColor: busy ? "#87b6f5" : "#4a90e2",
     color: "#fff",
-    padding: "10px 14px",
-    borderRadius: 12,
-    boxShadow: "0 8px 24px rgba(0,0,0,.12)",
-    fontWeight: 800,
+    border: "1px solid #4a90e2",
+    cursor: busy ? "not-allowed" : "pointer",
   };
+
+  const removeBtnStyle = {
+    backgroundColor: "transparent",
+    border: "none",
+    cursor: "pointer",
+    color: "#e53e3e",
+    fontSize: "18px",
+    padding: "0",
+  };
+  
+  const toolbarStyle = {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: "12px",
+    padding: "16px 24px",
+  };
+
+  /* Mobile adjustments for grids */
+  const responsiveGrid4 = window.innerWidth <= 768 ? grid4Style : { ...grid4Style, gridTemplateColumns: "repeat(4, 1fr)" };
+  const responsiveGrid2 = window.innerWidth <= 768 ? grid2Style : { ...grid2Style, gridTemplateColumns: "repeat(2, 1fr)" };
 
   return (
-    <div style={page}>
-      <form onSubmit={handleSubmit} noValidate>
-
-        {/* 🧾 0) ترويسة المستند */}
-        <div style={section}>
-          <h3 style={header}>🧾 <Bidi ar="ترويسة المستند" en="Document Header" /></h3>
-          <div style={gridWide}>
-            <label style={label}>
-              <Bidi ar="عنوان المستند" en="Document Title" />
-              <input value={form.header.documentTitle} onChange={(e) => updateHeader("documentTitle", e.target.value)} style={input} />
-            </label>
-            <label style={label}>
-              <Bidi ar="رقم المستند" en="Document No" />
-              <input value={form.header.documentNo} onChange={(e) => updateHeader("documentNo", e.target.value)} style={input} />
-            </label>
-            <label style={label}>
-              <Bidi ar="تاريخ الإصدار" en="Issue Date" />
-              <input value={form.header.issueDate} onChange={(e) => updateHeader("issueDate", e.target.value)} style={input} placeholder="DD/MM/YYYY" />
-            </label>
-            <label style={label}>
-              <Bidi ar="رقم المراجعة" en="Revision No" />
-              <input value={form.header.revisionNo} onChange={(e) => updateHeader("revisionNo", e.target.value)} style={input} />
-            </label>
-            <label style={label}>
-              <Bidi ar="المنطقة" en="Area" />
-              <input value={form.header.area} onChange={(e) => updateHeader("area", e.target.value)} style={input} />
-            </label>
-            <label style={label}>
-              <Bidi ar="صُدر بواسطة" en="Issued By" />
-              <input value={form.header.issuedBy} onChange={(e) => updateHeader("issuedBy", e.target.value)} style={input} />
-            </label>
-            <label style={label}>
-              <Bidi ar="الضابط المسؤول" en="Controlling Officer" />
-              <input value={form.header.controllingOfficer} onChange={(e) => updateHeader("controllingOfficer", e.target.value)} style={input} />
-            </label>
-            <label style={label}>
-              <Bidi ar="تمّت الموافقة من قبل" en="Approved By" />
-              <input value={form.header.approvedBy} onChange={(e) => updateHeader("approvedBy", e.target.value)} style={input} />
-            </label>
+    <form onSubmit={handleSave} style={wrapStyle}>
+      <div style={cardStyle}>
+        {/* Header row 1 & 2 */}
+        <div style={{ ...sectionStyle, backgroundColor: "#f0f2f5" }}>
+          <div style={responsiveGrid4}>
+            <div>
+              <label style={labelStyle}>Document Title:</label>
+              <input style={inputStyle} value={header.documentTitle} onChange={(e) => setHead("documentTitle", e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Document No.:</label>
+              <input style={inputStyle} value={header.documentNo} onChange={(e) => setHead("documentNo", e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Issue Date:</label>
+              <input style={inputStyle} placeholder="DD/MM/YYYY" value={header.issueDate} onChange={(e) => setHead("issueDate", e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Revision No.:</label>
+              <input style={inputStyle} value={header.revisionNo} onChange={(e) => setHead("revisionNo", e.target.value)} />
+            </div>
           </div>
-        </div>
-
-        {/* 1) بيانات أساسية */}
-        <div style={section}>
-          <h3 style={header}>🚚 <Bidi ar="بيانات أساسية" en="Basic Information" /></h3>
-          <div style={grid}>
-            <label style={label}>
-              <Bidi ar="التاريخ" en="Date" />
-              <input type="date" value={form.date} onChange={(e) => update("date", e.target.value)} style={input} />
-            </label>
-            <label style={label}>
-              <Bidi ar="رقم السيارة" en="Vehicle No" />
-              <input value={form.vehicleNo} onChange={(e) => update("vehicleNo", e.target.value)} style={input} placeholder="DUB-12345" />
-            </label>
-            <label style={label}>
-              <Bidi ar="اسم السائق" en="Driver Name" />
-              <input value={form.driverName} onChange={(e) => update("driverName", e.target.value)} style={input} placeholder="Driver Name" />
-            </label>
-            <label style={label}>
-              <Bidi ar="الموقع" en="Location" />
-              <input value={form.location} onChange={(e) => update("location", e.target.value)} style={input} placeholder="Location" />
-            </label>
-          </div>
-        </div>
-
-        {/* 2) الأوقات والحرارة */}
-        <div style={section}>
-          <h3 style={header}>⏱️ <Bidi ar="الأوقات ودرجة الحرارة" en="Times & Temperature" /></h3>
-          <div style={grid}>
-            <label style={label}>
-              <Bidi ar="وقت البدء" en="Time Start" />
-              <input type="time" value={form.timeStart} onChange={(e) => update("timeStart", e.target.value)} style={input} />
-            </label>
-            <label style={label}>
-              <Bidi ar="وقت الانتهاء" en="Time End" />
-              <input type="time" value={form.timeEnd} onChange={(e) => update("timeEnd", e.target.value)} style={input} />
-            </label>
-            <label style={label}>
-              <Bidi ar="فحص الحرارة (°C)" en="Temp Check (°C)" />
-              <input type="number" step="0.1" value={form.tempCheck} onChange={(e) => update("tempCheck", e.target.value)} style={input} placeholder="مثال: 3.5" />
-            </label>
-            <div style={{ alignSelf: "end" }}>
-              <div style={hint}>{durationMin ? `المدة: ${durationMin}` : <>&nbsp;</>}</div>
+          <div style={{...responsiveGrid4, marginTop: "16px"}}>
+            <div>
+              <label style={labelStyle}>Area:</label>
+              <input style={inputStyle} value={header.area} onChange={(e) => setHead("area", e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Issued By:</label>
+              <input style={inputStyle} value={header.issuedBy} onChange={(e) => setHead("issuedBy", e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Controlling Officer:</label>
+              <input style={inputStyle} value={header.controllingOfficer} onChange={(e) => setHead("controllingOfficer", e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Approved By:</label>
+              <input style={inputStyle} value={header.approvedBy} onChange={(e) => setHead("approvedBy", e.target.value)} />
             </div>
           </div>
         </div>
 
-        {/* 3) فحص بصري */}
-        <div style={section}>
-          <h3 style={header}>👁️‍🗨️ <Bidi ar="فحص بصري" en="Visual Inspection" /></h3>
-          <div style={tableWrap}>
-            <table style={table}>
-              <thead>
-                <tr>
-                  <th style={{ ...th, textAlign: "right" }}><Bidi ar="المعيار" en="Parameters" /></th>
-                  <th style={th}><Bidi ar="نعم" en="YES" /></th>
-                  <th style={th}><Bidi ar="لا" en="NO" /></th>
-                  <th style={th}><Bidi ar="ملاحظات" en="Remarks" /></th>
+        {/* Title + Report date */}
+        <div style={{ ...sectionStyle, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+          <div style={titleStyle}>VISUAL INSPECTION (OUTBOUND CHECKLIST)</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <label style={labelStyle}>Report Date:</label>
+            <input type="date" style={{...inputStyle, width: "auto"}} value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
+          </div>
+        </div>
+
+        {/* Table */}
+        <div style={tableWrapperStyle}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {[
+                  "VEHICLE NO",
+                  "DRIVER NAME",
+                  "TIME START",
+                  "TIME END",
+                  "TRUCK TEMPERATURE",
+                  "FLOOR SEALING INTACT",
+                  "FLOOR CLEANING",
+                  "PEST ACTIVITES",
+                  "PLASTIC CURTAIN AVAILABLE/ CLEANING",
+                  "BAD ODOUR",
+                  "PPE AVAILABLE",
+                  "INFORMED TO",
+                  "REMARKS",
+                  "",
+                ].map((h) => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i}>
+                  <td style={tdStyle}><input style={inputStyle} value={r.vehicleNo} onChange={(e) => setRow(i, "vehicleNo", e.target.value)} /></td>
+                  <td style={tdStyle}><input style={inputStyle} value={r.driverName} onChange={(e) => setRow(i, "driverName", e.target.value)} /></td>
+                  <td style={tdStyle}><input type="time" style={inputStyle} value={r.timeStart} onChange={(e) => setRow(i, "timeStart", e.target.value)} /></td>
+                  <td style={tdStyle}><input type="time" style={inputStyle} value={r.timeEnd} onChange={(e) => setRow(i, "timeEnd", e.target.value)} /></td>
+                  <td style={tdStyle}><input type="number" step="0.1" style={inputStyle} value={r.tempCheck} onChange={(e) => setRow(i, "tempCheck", e.target.value)} /></td>
+
+                  {YESNO_FIELDS.map((k) => (
+                    <td key={k} style={tdStyle}>
+                      <div style={radioGroupStyle}>
+                        <label style={radioLabelStyle}><input type="radio" name={`${k}-${i}`} checked={r[k] === "yes"} onChange={() => setRow(i, k, "yes")} style={{accentColor: "#4a90e2"}}/> YES</label>
+                        <label style={radioLabelStyle}><input type="radio" name={`${k}-${i}`} checked={r[k] === "no"} onChange={() => setRow(i, k, "no")} style={{accentColor: "#4a90e2"}}/> NO</label>
+                      </div>
+                    </td>
+                  ))}
+
+                  <td style={tdStyle}><input style={inputStyle} value={r.informedTo} onChange={(e) => setRow(i, "informedTo", e.target.value)} /></td>
+                  <td style={tdStyle}><input style={inputStyle} value={r.remarks} onChange={(e) => setRow(i, "remarks", e.target.value)} /></td>
+                  <td style={tdStyle}>
+                    {rows.length > 1 && (
+                      <button type="button" onClick={() => removeRow(i)} style={removeBtnStyle}>
+                        ✖
+                      </button>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {VI_PARAMS.map((p) => {
-                  const cur = form.visual[p.id];
-                  return (
-                    <tr key={p.id}>
-                      <td style={tdLeft}>
-                        <div><bdi style={{ fontWeight: 800 }}>{p.ar}</bdi></div>
-                        <div style={{ opacity: 0.75, fontSize: ".92em" }}><bdi>{p.en}</bdi></div>
-                      </td>
-                      <td style={td}>
-                        <div style={radioGrp}>
-                          <label><input type="radio" name={`vi-${p.id}`} checked={cur.value === "yes"} onChange={() => updateVisual(p.id, "value", "yes")} /></label>
-                        </div>
-                      </td>
-                      <td style={td}>
-                        <div style={radioGrp}>
-                          <label><input type="radio" name={`vi-${p.id}`} checked={cur.value === "no"} onChange={() => updateVisual(p.id, "value", "no")} /></label>
-                        </div>
-                      </td>
-                      <td style={td}>
-                        <input
-                          style={{ ...input, minWidth: 220 }}
-                          value={cur.remarks}
-                          onChange={(e) => updateVisual(p.id, "remarks", e.target.value)}
-                          placeholder="—"
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Signatures */}
+        <div style={sectionStyle}>
+          <div style={responsiveGrid2}>
+            <div>
+              <label style={labelStyle}>INSPECTED BY:</label>
+              <input style={inputStyle} value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} />
+            </div>
+            <div>
+              <label style={labelStyle}>VERIFIED BY:</label>
+              <input style={inputStyle} value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} />
+            </div>
           </div>
         </div>
 
-        {/* 4) ملاحظات عامة */}
-        <div style={section}>
-          <h3 style={header}>📝 <Bidi ar="ملاحظات" en="Remarks" /></h3>
-          <textarea
-            style={{ ...input, minHeight: 90, resize: "vertical" }}
-            value={form.remarks}
-            onChange={(e) => update("remarks", e.target.value)}
-            placeholder="—"
-          />
+        {/* Toolbar */}
+        <div style={toolbarStyle}>
+          <button type="button" onClick={addRow} style={addButton}>
+            ➕ Add Vehicle
+          </button>
+          <button type="submit" disabled={busy} style={saveButton}>
+            {busy ? "Saving…" : "💾 Save Report"}
+          </button>
+          {msg && <strong style={{ marginLeft: "12px", color: "#4a5568", fontSize: "14px" }}>{msg}</strong>}
         </div>
-
-        {/* 5) التواقيع */}
-        <div style={section}>
-          <h3 style={header}>✍️ <Bidi ar="التواقيع" en="Signatures" /></h3>
-          <div style={grid}>
-            <label style={label}><Bidi ar="المفتش (1)" en="Inspected By (1)" /><input style={input} value={form.inspectedBy1} onChange={(e)=>update("inspectedBy1", e.target.value)} /></label>
-            <label style={label}><Bidi ar="المصادِق (1)" en="Verified By (1)" /><input style={input} value={form.verifiedBy1} onChange={(e)=>update("verifiedBy1", e.target.value)} /></label>
-            <label style={label}><Bidi ar="المفتش (2)" en="Inspected By (2)" /><input style={input} value={form.inspectedBy2} onChange={(e)=>update("inspectedBy2", e.target.value)} /></label>
-            <label style={label}><Bidi ar="المصادِق (2)" en="Verified By (2)" /><input style={input} value={form.verifiedBy2} onChange={(e)=>update("verifiedBy2", e.target.value)} /></label>
-          </div>
-        </div>
-
-        {/* أزرار */}
-        <div style={btnRow}>
-          <button type="submit" style={btnPrimary}>💾 <Bidi ar="حفظ السجل" en="Save Record" /></button>
-          <button type="button" style={btn} onClick={resetForm}>🧹 <Bidi ar="تفريغ الحقول" en="Clear" /></button>
-        </div>
-      </form>
-
-      {saved && <div style={toast}>✅ <bdi>تم الحفظ / Saved</bdi></div>}
-    </div>
+      </div>
+    </form>
   );
 }
