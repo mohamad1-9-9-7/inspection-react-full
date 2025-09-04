@@ -1,5 +1,6 @@
 // src/pages/admin/DailyReportsTab.jsx
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const branches = [
   "QCS", "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16",
@@ -55,18 +56,30 @@ export default function DailyReportsTab({
   onOpenFTR2Report,
   onOpenProductionReport,   // 👈 ربط تبويب PRODUCTION
 }) {
+  const navigate = useNavigate();
+
   const [showPwd, setShowPwd] = useState(false);
   const [pendingBranch, setPendingBranch] = useState(null);
   const [pwd, setPwd] = useState("");
   const [pwdError, setPwdError] = useState("");
 
   const openBranchAfterAuth = (branch) => {
-    if (branch === "QCS") onOpenQCSReport?.();
-    else if (branch === "POS 19") onOpenPOS19Report?.();
-    else if (branch === "FTR 1") onOpenFTR1Report?.();
-    else if (branch === "FTR 2") onOpenFTR2Report?.();
-    else if (branch === "PRODUCTION") onOpenProductionReport?.(); // 👈 هنا تم الربط
-    else alert(`📌 لا يوجد تقرير متاح حاليًا لهذا الفرع: ${branch}`);
+    if (branch === "QCS") {
+      onOpenQCSReport?.();
+    } else if (branch === "POS 19") {
+      onOpenPOS19Report?.();
+    } else if (branch === "FTR 1") {
+      // 👇 ربط عرض FTR1 مباشرة إذا لم يُمرّر هاندلر من الأب
+      if (onOpenFTR1Report) onOpenFTR1Report();
+      else navigate("/admin/ftr1");
+    } else if (branch === "FTR 2") {
+      if (onOpenFTR2Report) onOpenFTR2Report();
+      else navigate("/admin/ftr2");
+    } else if (branch === "PRODUCTION") {
+      onOpenProductionReport?.();
+    } else {
+      alert(`📌 لا يوجد تقرير متاح حاليًا لهذا الفرع: ${branch}`);
+    }
   };
 
   const handleCardClick = (branch) => {

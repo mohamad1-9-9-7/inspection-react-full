@@ -2,18 +2,18 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+
 import ReportsTab from "./admin/ReportsTab";
 import DailyReportsTab from "./admin/DailyReportsTab";
 import QCSDailyView from "./admin/QCSDailyView";
 import POS19DailyView from "./admin/POS19DailyView";
 import QCSRawMaterialView from "./admin/QCSRawMaterialView";
 import KPIDashboard from "./KPIDashboard";
-import FTR2ReportView from "./monitor/branches/ftr2/FTR2ReportView";
 
-/* وهمي مؤقت لـ FTR1 */
-function FTR1DailyView() {
-  return <div style={{ fontSize: "1.2rem", fontWeight: "bold" }}>📄 FTR1 Report View</div>;
-}
+// ✅ عرض تقارير FTR1 الحقيقي
+import FTR1ReportView from "./monitor/branches/ftr1/FTR1ReportView";
+// ✅ عرض تقارير FTR2
+import FTR2ReportView from "./monitor/branches/ftr2/FTR2ReportView";
 
 /* ====== API BASE (server-only, no localStorage) ====== */
 const API_BASE =
@@ -81,10 +81,71 @@ function HideDeleteScope({ children }) {
   return <div ref={ref}>{children}</div>;
 }
 
+/* ========== لائحة الأنواع التي نصدّرها/نستوردها (تجميع كل الأيقونات الشغالة) ========== */
+/* ملاحظة: لو نوع غير موجود على السيرفر بيرجع مصفوفة فاضية — ما بيأثر */
+const TYPES_BY_GROUP = {
+  QCS: ["qcs-coolers", "qcs-ph", "qcs-clean"],
+  FTR1: [
+    "ftr1_temperature",
+    "ftr1_daily_cleanliness",
+    "ftr1_oil_calibration",
+    "ftr1_personal_hygiene",
+  ],
+  FTR2: [
+    "ftr2_temperature",
+    "ftr2_daily_cleanliness",
+    "ftr2_oil_calibration",
+    "ftr2_personal_hygiene",
+  ],
+  PRODUCTION: [
+    "prod_cleaning_checklist",
+    "prod_personal_hygiene",
+    "prod_defrosting_record", // ✅ تصحيح الاسم
+  ],
+};
+// مستثنى: QCS Shipments / Raw Material (مش ضمن القائمة عمداً)
+
+/* === تحميل كل الأنواع ومعرفة الأعداد === */
+async function fetchAllTypes() {
+  const data = {};
+  const counts = {};
+  const groups = {};
+
+  for (const [group, typeList] of Object.entries(TYPES_BY_GROUP)) {
+    groups[group] = [...typeList];
+    for (const type of typeList) {
+      try {
+        const arr = await fetchByType(type);
+        data[type] = arr;
+        counts[type] = Array.isArray(arr) ? arr.length : 0;
+      } catch (e) {
+        console.warn("Fetch failed for type:", type, e);
+        data[type] = [];
+        counts[type] = 0;
+      }
+    }
+  }
+
+  return { data, counts, groups };
+}
+
+/* ===== Export helper ===== */
+function downloadJson(data, filename) {
+  const jsonStr = JSON.stringify(data, null, 2);
+  const blob = new Blob([jsonStr], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function AdminDashboard() {
   const [reports, setReports] = useState([]);
   const [dailyReports, setDailyReports] = useState([]);
-  const [activeView, setActiveView] = useState("kpi"); // KPI default
+  // الافتراضي: Daily Reports
+  const [activeView, setActiveView] = useState("dailyReports");
   const [loading, setLoading] = useState(false);
   const [opMsg, setOpMsg] = useState("");
   const fileInputRef = useRef(null);
@@ -104,7 +165,7 @@ export default function AdminDashboard() {
       console.error(e);
       setOpMsg("Failed to load data from server.");
     } finally {
-           setLoading(false);
+      setLoading(false);
       setTimeout(() => setOpMsg(""), 3500);
     }
   }
@@ -153,52 +214,112 @@ export default function AdminDashboard() {
     };
   }
 
-  /* ===== Export: Dump current server-loaded arrays ===== */
-  function exportToJson(data, filename) {
-    const jsonStr = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  /* ========== تصدير “كل شيء” ========== */
+  async function handleExportAll() {
+    try {
+      setOpMsg("Preparing full export…");
+      setLoading(true);
+      const { data, counts, groups } = await fetchAllTypes();
+      const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
-  /* ===== Import: Upload array to server (UPSERT per item) ===== */
-  async function handleServerImport(file, type) {
-    const text = await file.text();
-    let data = JSON.parse(text);
-    if (!Array.isArray(data)) throw new Error("Invalid JSON: expected an array");
-    setOpMsg(`Uploading ${data.length} item(s) to ${type}…`);
-    for (const item of data) {
-      await upsertOne(type, item);
+      const out = {
+        meta: {
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          apiBase: API_BASE,
+          totals: { ...counts, __grandTotal: total },
+          groups,
+        },
+        data,
+      };
+      downloadJson(out, `qms_all_reports_${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+      setOpMsg(`✅ Exported ${total} record(s) from all types.`);
+    } catch (e) {
+      console.error(e);
+      setOpMsg("❌ Export failed.");
+    } finally {
+      setLoading(false);
+      setTimeout(() => setOpMsg(""), 4000);
     }
-    await reloadFromServer();
-    setOpMsg(`✅ Imported ${data.length} item(s) to ${type}.`);
-    setTimeout(() => setOpMsg(""), 3500);
   }
 
-  function handleImport(e) {
+  /* ========== استيراد “متعدد الأنواع” ========== */
+  async function multiTypeImport(parsed) {
+    // يقبل:
+    // 1) { data: { "<type>": [payload/persistedObjects...] } }
+    // 2) { type, items: [ { type?, reporter?, payload? | rawPayload }, ... ] }
+    // 3) مصفوفة عناصر جاهزة [ { type, payload }, ... ]
+    let queue = [];
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      if (parsed.data && typeof parsed.data === "object") {
+        for (const [type, arr] of Object.entries(parsed.data)) {
+          if (!Array.isArray(arr)) continue;
+          for (const item of arr) {
+            // إذا العنصر كامل أصلاً {type, payload} حافظ عليه، وإلا اعتبره payload خام
+            if (item && item.type && item.payload) {
+              queue.push({ type: item.type, payload: item.payload });
+            } else {
+              queue.push({ type, payload: item });
+            }
+          }
+        }
+      } else if (parsed.type && Array.isArray(parsed.items)) {
+        const defaultType = parsed.type;
+        for (const item of parsed.items) {
+          if (item && item.type && item.payload) {
+            queue.push({ type: item.type, payload: item.payload });
+          } else if (item && item.payload) {
+            queue.push({ type: defaultType, payload: item.payload });
+          } else {
+            // اعتبر العنصر هو الـ payload نفسه
+            queue.push({ type: defaultType, payload: item });
+          }
+        }
+      } else {
+        throw new Error("Unsupported JSON structure for import.");
+      }
+    } else if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (item && item.type && item.payload) {
+          queue.push({ type: item.type, payload: item.payload });
+        } else {
+          throw new Error("Array import requires items like {type, payload}.");
+        }
+      }
+    } else {
+      throw new Error("Invalid JSON for import.");
+    }
+
+    // تنفيذ الرفع للسيرفر
+    let ok = 0;
+    for (const rec of queue) {
+      await upsertOne(rec.type, rec.payload);
+      ok++;
+    }
+    return ok;
+  }
+
+  async function handleImport(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const currentType =
-      activeView === "reports"
-        ? "reports"
-        : activeView === "dailyReports"
-        ? "dailyReports"
-        : null;
-    if (!currentType) {
-      alert("Import is only available in Reports or Daily Reports tabs.");
-      e.target.value = "";
-      return;
-    }
-    handleServerImport(file, currentType).catch((err) => {
+    try {
+      setLoading(true);
+      setOpMsg("Reading import file…");
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      setOpMsg("Uploading to server…");
+      const count = await multiTypeImport(parsed);
+      await reloadFromServer();
+      setOpMsg(`✅ Imported ${count} item(s) across types.`);
+    } catch (err) {
       console.error(err);
       setOpMsg("❌ Import failed. Check file format and try again.");
+    } finally {
+      setLoading(false);
       setTimeout(() => setOpMsg(""), 4000);
-    });
-    e.target.value = "";
+      if (e?.target) e.target.value = "";
+    }
   }
 
   return (
@@ -231,6 +352,7 @@ export default function AdminDashboard() {
         <div style={{ fontWeight: 900, fontSize: "1.5rem", color: "#0f172a" }}>
           📊 Admin Dashboard
         </div>
+
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {loading && (
             <span style={{ fontWeight: 800, color: THEME.purple }}>⏳ Loading…</span>
@@ -279,12 +401,22 @@ export default function AdminDashboard() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-        <button style={tabButtonStyle("reports")} onClick={() => setActiveView("reports")}>
-          📑 Reports
-        </button>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          marginBottom: 14,
+          // أول زر يظهر على اليمين
+          flexDirection: "row-reverse",
+        }}
+      >
+        {/* Daily Reports أول عنصر (سيظهر يمينًا) */}
         <button style={tabButtonStyle("dailyReports")} onClick={() => setActiveView("dailyReports")}>
           🗓️ Daily Reports
+        </button>
+        <button style={tabButtonStyle("reports")} onClick={() => setActiveView("reports")}>
+          📑 Reports
         </button>
         <button style={tabButtonStyle("qcsShipment")} onClick={() => setActiveView("qcsShipment")}>
           📦 QCS Shipments
@@ -294,72 +426,62 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {/* Import/Export */}
-      {["reports", "dailyReports"].includes(activeView) && (
-        <div
+      {/* Import/Export — الآن يصدّر/يستورد كل الأنواع بغض النظر عن التبويب */}
+      <div
+        style={{
+          background: THEME.glass,
+          border: "1.5px solid " + THEME.border,
+          borderRadius: 16,
+          padding: "10px",
+          marginBottom: 12,
+          backdropFilter: "blur(8px)",
+          boxShadow: THEME.shadow,
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <button
+          onClick={handleExportAll}
           style={{
-            background: THEME.glass,
-            border: "1.5px solid " + THEME.border,
-            borderRadius: 16,
-            padding: "10px",
-            marginBottom: 12,
-            backdropFilter: "blur(8px)",
-            boxShadow: THEME.shadow,
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
+            background: "linear-gradient(180deg,#6d28d9,#8e44ad)",
+            color: "#fff",
+            border: "none",
+            padding: "9px 16px",
+            borderRadius: 12,
+            cursor: "pointer",
+            fontWeight: 900,
+            boxShadow: "0 10px 20px rgba(141,73,170,.28)",
           }}
         >
-          <button
-            onClick={() => {
-              const data =
-                activeView === "reports" ? reports : dailyReports;
-              const name =
-                activeView === "reports"
-                  ? "reports_server_export.json"
-                  : "daily_reports_server_export.json";
-              exportToJson(data, name);
-            }}
-            style={{
-              background: "linear-gradient(180deg,#6d28d9,#8e44ad)",
-              color: "#fff",
-              border: "none",
-              padding: "9px 16px",
-              borderRadius: 12,
-              cursor: "pointer",
-              fontWeight: 900,
-              boxShadow: "0 10px 20px rgba(141,73,170,.28)",
-            }}
-          >
-            ⬇️ Export JSON (from Server)
-          </button>
+          ⬇️ Export JSON (All Reports)
+        </button>
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              background: "linear-gradient(180deg,#10b981,#059669)",
-              color: "#fff",
-              border: "none",
-              padding: "9px 16px",
-              borderRadius: 12,
-              cursor: "pointer",
-              fontWeight: 900,
-              boxShadow: "0 10px 20px rgba(16,185,129,.28)",
-            }}
-          >
-            ⬆️ Import JSON (to Server)
-          </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          style={{
+            background: "linear-gradient(180deg,#10b981,#059669)",
+            color: "#fff",
+            border: "none",
+            padding: "9px 16px",
+            borderRadius: 12,
+            cursor: "pointer",
+            fontWeight: 900,
+            boxShadow: "0 10px 20px rgba(16,185,129,.28)",
+          }}
+        >
+          ⬆️ Import JSON (Multi-Type)
+        </button>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json"
-            onChange={handleImport}
-            style={{ display: "none" }}
-          />
-        </div>
-      )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json"
+          onChange={handleImport}
+          style={{ display: "none" }}
+        />
+      </div>
 
       {/* Main Content */}
       <div
@@ -388,7 +510,6 @@ export default function AdminDashboard() {
             language="en"
           />
         ) : activeView === "qcsShipment" ? (
-          // ⬇️ الإخفاء هنا فقط
           <HideDeleteScope>
             <QCSRawMaterialView language="en" />
           </HideDeleteScope>
@@ -399,9 +520,13 @@ export default function AdminDashboard() {
         ) : activeView === "pos19" ? (
           <POS19DailyView language="en" />
         ) : activeView === "ftr1" ? (
-          <FTR1DailyView />
+          <HideDeleteScope>
+            <FTR1ReportView />
+          </HideDeleteScope>
         ) : activeView === "ftr2" ? (
-          <FTR2ReportView language="en" />
+          <HideDeleteScope>
+            <FTR2ReportView language="en" />
+          </HideDeleteScope>
         ) : null}
       </div>
 

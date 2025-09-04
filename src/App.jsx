@@ -11,8 +11,14 @@ const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 const DailyMonitorDashboard = lazy(() => import("./pages/monitor/DailyMonitorDashboard"));
 const QCSReport = lazy(() => import("./pages/monitor/branches/QCSReport"));
 const POS19Report = lazy(() => import("./pages/monitor/branches/POS19Report"));
-const FTR2Report = lazy(() => import("./pages/monitor/branches/ftr2/FTR2Report"));       // ✅ الإدخال
-const FTR2ReportView = lazy(() => import("./pages/monitor/branches/ftr2/FTR2ReportView")); // ✅ العرض
+
+// ✅ FTR1 (إدخال + عرض)
+const FTR1Report = lazy(() => import("./pages/monitor/branches/ftr1/FTR1Report"));
+const FTR1ReportView = lazy(() => import("./pages/monitor/branches/ftr1/FTR1ReportView")); // نفس الملف لكن نعرضه كـ FTR1
+
+// ✅ FTR2 (إدخال + عرض)
+const FTR2Report = lazy(() => import("./pages/monitor/branches/ftr2/FTR2Report"));
+const FTR2ReportView = lazy(() => import("./pages/monitor/branches/ftr2/FTR2ReportView"));
 
 const OHCUpload = lazy(() => import("./pages/ohc/OHCUpload"));
 const OHCView = lazy(() => import("./pages/ohc/OHCView"));
@@ -44,12 +50,12 @@ const BrowseMaintenanceRequests = lazy(() =>
   import("./pages/maintenance/BrowseMaintenanceRequests")
 );
 
-// 🆕 🍖 Meat Daily (الإدخال/العرض/التصفّح)
+// 🆕 🍖 Meat Daily
 const MeatDailyInput = lazy(() => import("./pages/MeatDailyInput"));
 const MeatDailyView = lazy(() => import("./pages/MeatDailyView"));
 const BrowseMeatDaily = lazy(() => import("./pages/BrowseMeatDaily"));
 
-/* 🆕 Production (بنفس المسار المطلوب) */
+/* 🆕 Production */
 const ProductionHub = lazy(() =>
   import("./pages/monitor/branches/production/ProductionHub")
 );
@@ -63,19 +69,17 @@ const PRDDefrostingRecordInput = lazy(() =>
   import("./pages/monitor/branches/production/PRDDefrostingRecordInput")
 );
 
-// 🆕 ✅ عرض تقارير الإنتاج الموحّد (Tabs)
+// 🆕 ✅ عرض تقارير الإنتاج
 const PRDReportsView = lazy(() =>
   import("./pages/monitor/branches/production/PRDReportsView")
 );
 
-/* 🆕 مرتجعات الزبائن (جديد) */
+/* 🆕 مرتجعات الزبائن */
 const CustomerReturns = lazy(() => import("./pages/CustomerReturns"));
 const CustomerReturnView = lazy(() => import("./pages/CustomerReturnView"));
 const BrowseCustomerReturns = lazy(() => import("./pages/BrowseCustomerReturns"));
 
-/**
- * حماية المسارات الخاصة
- */
+/** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
   let isAuthed = false;
   try {
@@ -156,6 +160,17 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* 🆕 FTR1 إدخال */}
+          <Route
+            path="ftr1"
+            element={
+              <ProtectedRoute>
+                <FTR1Report />
+              </ProtectedRoute>
+            }
+          />
+
           {/* 🆕 Production Hub + إدخالاته */}
           <Route
             path="production"
@@ -207,14 +222,17 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* FTR2 إدخال */}
           <Route
             path="ftr2"
             element={
               <ProtectedRoute>
-                <FTR2Report />   {/* ✅ الإدخال */}
+                <FTR2Report />
               </ProtectedRoute>
             }
           />
+
           <Route
             path="qcs-raw-material-inspection"
             element={
@@ -223,6 +241,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
           {/* يُترك في النهاية */}
           <Route
             path=":slug"
@@ -235,14 +254,26 @@ export default function App() {
         </Route>
 
         {/* admin/* */}
+        {/* 🆕 FTR1 عرض */}
+        <Route
+          path="/admin/ftr1"
+          element={
+            <ProtectedRoute>
+              <FTR1ReportView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* FTR2 عرض */}
         <Route
           path="/admin/ftr2"
           element={
             <ProtectedRoute>
-              <FTR2ReportView />   {/* ✅ العرض للأدمن */}
+              <FTR2ReportView />
             </ProtectedRoute>
           }
         />
+
         {/* 🆕 ✅ مسار عرض تقارير الإنتاج الموحّد */}
         <Route
           path="/admin/production"
@@ -319,7 +350,7 @@ export default function App() {
           />
         </Route>
 
-        {/* 🆕 returns-customers/* — ربط الأزرار الجديدة */}
+        {/* 🆕 returns-customers/* */}
         <Route path="/returns-customers">
           <Route
             path="new"
