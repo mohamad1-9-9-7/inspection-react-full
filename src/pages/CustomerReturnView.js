@@ -125,7 +125,7 @@ async function appendActionChange(reportDate, changeItem) {
         existing = Array.isArray(latest?.payload?.items) ? latest.payload.items : [];
       }
     }
-  } catch { }
+  } catch {}
   const merged = [...existing, changeItem];
   const upsertPayload = {
     reporter: "anonymous",
@@ -893,7 +893,10 @@ export default function CustomerReturnView() {
             <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <div style={{ fontWeight: 900, color: "#0f172a" }}>Date: {selectedReport.reportDate}</div>
-                <button onClick={handleDeleteDay} style={btnDanger}>🗑️ Delete this day's report from server</button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={startAddRow} style={btnBlue} disabled={!selectedReport}>➕ Add Row</button>
+                  <button onClick={handleDeleteDay} style={btnDanger}>🗑️ Delete this day's report from server</button>
+                </div>
               </div>
 
               <div style={tableWrap}>

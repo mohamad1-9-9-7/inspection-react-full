@@ -55,6 +55,37 @@ async function sendToServer(payload) {
   return res.json().catch(() => ({}));
 }
 
+/* === generic list by type (meta) === */
+async function listReportsByType(type) {
+  try {
+    const res = await fetch(`${REPORTS_URL}?type=${encodeURIComponent(type)}`, {
+      cache: "no-store",
+      credentials: IS_SAME_ORIGIN ? "include" : "omit",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return Array.isArray(json) ? json : json?.data || [];
+  } catch {
+    return [];
+  }
+}
+
+async function postMeta(type, payload) {
+  const reporter = getReporter();
+  const res = await fetch(REPORTS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    credentials: IS_SAME_ORIGIN ? "include" : "omit",
+    body: JSON.stringify({ reporter, type, payload }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(t || `Server error ${res.status}`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function fetchExistingRawMaterial() {
   try {
     const res = await fetch(`${REPORTS_URL}?type=qcs_raw_material`, {
@@ -70,7 +101,7 @@ async function fetchExistingRawMaterial() {
   }
 }
 
-/* === مشتق المفتاح الفريد: تاريخ اليوم + نوع الشحنة + (AWB أو Invoice) + تسلسل === */
+/* === unique key helpers === */
 function normStr(x) {
   return String(x ?? "").trim().toUpperCase();
 }
@@ -80,6 +111,12 @@ function todayIso() {
 function toYMD(iso) {
   return String(iso || "").slice(0, 10);
 }
+function ymdToDMY(ymd) {
+  if (!ymd) return "";
+  const [y, m, d] = String(ymd).split("-");
+  return `${d}/${m}/${y}`;
+}
+
 async function deriveUniqueKey({ shipmentType, airwayBill, invoiceNo, createdDate }) {
   const all = await fetchExistingRawMaterial();
   const idPart = normStr(airwayBill || invoiceNo || "NA");
@@ -128,7 +165,7 @@ const newSample = () => {
 };
 
 /* =============================================================================
-   🎨 Styles — hero + strong table borders
+   🎨 Styles
 ============================================================================= */
 const styles = {
   page: {
@@ -255,15 +292,7 @@ const styles = {
     marginTop: "12px",
   },
   row: { display: "flex", flexDirection: "column", gap: "6px" },
-  statusContainer: {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.75rem",
-    marginTop: "0.5rem",
-    flexWrap: "wrap",
-  },
 
-  /* ==== Samples table: strong borders (#000) ==== */
   tableWrap: {
     overflowX: "auto",
     background: "#fff",
@@ -317,12 +346,6 @@ const styles = {
     boxSizing: "border-box",
   },
 
-  actionsRow: {
-    display: "flex",
-    gap: "12px",
-    flexWrap: "wrap",
-    marginTop: "1rem",
-  },
   addButton: {
     padding: "10px 16px",
     background: "#4f46e5",
@@ -350,13 +373,6 @@ const styles = {
     cursor: "pointer",
     marginBottom: "0.75rem",
     fontWeight: 700,
-  },
-  previewImage: { maxWidth: "200px", marginTop: "0.5rem", borderRadius: "8px" },
-  previewGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-    gap: "8px",
-    marginTop: "8px",
   },
 
   formRow3: {
@@ -432,6 +448,41 @@ const styles = {
 /* =============================================================================
    👇 Component
 ============================================================================= */
+const TYPES_LS_KEY = "qcs_shipment_types_v1";
+const DEFAULT_TYPES = [
+  "LAMB AUS",
+  "MUTTON AUS",
+  "LAMB S.A",
+  "MUTTON S.A",
+  "VACUUM",
+  "FROZEN",
+  "PAK",
+  "KHZ",
+  "IND MUTTON",
+  "IND VEAL",
+  "FRESH LAMB",
+  "FRESH CHICKEN",
+];
+function uniq(arr) {
+  const set = new Set(arr.map((x) => normStr(x)));
+  return Array.from(set);
+}
+function getLocalTypes() {
+  try {
+    const raw = localStorage.getItem(TYPES_LS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+function saveLocalType(name) {
+  try {
+    const arr = uniq([...getLocalTypes(), name]);
+    localStorage.setItem(TYPES_LS_KEY, JSON.stringify(arr));
+  } catch {}
+}
+
 export default function QCSRawMaterialInspection() {
   const navigate = useNavigate();
   const certInputRef = useRef(null);
@@ -451,12 +502,15 @@ export default function QCSRawMaterialInspection() {
 
   const [samples, setSamples] = useState([newSample()]);
   const [shipmentType, setShipmentType] = useState("");
+  const [shipmentTypes, setShipmentTypes] = useState(DEFAULT_TYPES);
+  const [newType, setNewType] = useState("");
+
   const [shipmentStatus, setShipmentStatus] = useState("Acceptable");
   const [inspectedBy, setInspectedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
-  const [totalQuantity, setTotalQuantity] = useState("");
-  const [totalWeight, setTotalWeight] = useState("");
-  const [averageWeight, setAverageWeight] = useState("0");
+  const [totalQuantity, setTotalQuantity] = useState(""); // populated from productLines
+  const [totalWeight, setTotalWeight] = useState("");     // populated from productLines
+  const [averageWeight, setAverageWeight] = useState(""); // derived
   const [isFocused, setIsFocused] = useState(null);
   const [generalInfo, setGeneralInfo] = useState({
     reportOn: "",
@@ -465,6 +519,7 @@ export default function QCSRawMaterialInspection() {
     temperature: "",
     brand: "",
     invoiceNo: "",
+    supplierName: "", // ✅ Supplier next to invoice
     ph: "",
     origin: "",
     airwayBill: "",
@@ -475,6 +530,28 @@ export default function QCSRawMaterialInspection() {
   const [certificateName, setCertificateName] = useState("");
   const [images, setImages] = useState([]);
   const [notes, setNotes] = useState("");
+
+  // === NEW: Product lines (name, qty, weight) =================================
+  const [productLines, setProductLines] = useState([
+    { name: "", qty: "", weight: "" },
+  ]);
+  const sanitizeNum = (v) => {
+    const n = parseFloat(String(v ?? "").replace(",", ".").replace(/[^\d.\-]/g, ""));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  const totalQtyCalc = React.useMemo(
+    () => productLines.reduce((acc, r) => acc + sanitizeNum(r.qty), 0),
+    [productLines]
+  );
+  const totalWeightCalc = React.useMemo(
+    () => productLines.reduce((acc, r) => acc + sanitizeNum(r.weight), 0),
+    [productLines]
+  );
+  // sync totals (as strings) so they go with payload + feed average calc
+  useEffect(() => {
+    setTotalQuantity(totalQtyCalc > 0 ? String(totalQtyCalc) : "");
+    setTotalWeight(totalWeightCalc > 0 ? String(totalWeightCalc) : "");
+  }, [totalQtyCalc, totalWeightCalc]);
 
   // ======= Average of samples (Temperature & PH) =======
   const parseNum = (v) => {
@@ -490,7 +567,6 @@ export default function QCSRawMaterialInspection() {
   const avgTemp = React.useMemo(() => avgOf(samples.map((s) => s.temperature)), [samples]);
   const avgPh   = React.useMemo(() => avgOf(samples.map((s) => s.ph)), [samples]);
 
-  // خزّن المتوسطين داخل generalInfo لكي يروحوا مع الحفظ
   useEffect(() => {
     setGeneralInfo((prev) => {
       if (prev.temperature === avgTemp && prev.ph === avgPh) return prev;
@@ -507,11 +583,23 @@ export default function QCSRawMaterialInspection() {
     }));
   }, [shipmentType]);
 
+  // Average Weight (kg/pc) from totals
   useEffect(() => {
     const q = parseFloat(totalQuantity);
     const w = parseFloat(totalWeight);
-    setAverageWeight(q > 0 && w > 0 ? (w / q).toFixed(3) : "0");
+    setAverageWeight(q > 0 && w > 0 ? (w / q).toFixed(3) : ""); // فرغ بدل 0
   }, [totalQuantity, totalWeight]);
+
+  // === load shipment types (server + local + defaults)
+  useEffect(() => {
+    (async () => {
+      const serverList = (await listReportsByType("qcs_shipment_type"))
+        .map((r) => normStr(r?.payload?.name))
+        .filter(Boolean);
+      const merged = uniq([...DEFAULT_TYPES, ...serverList, ...getLocalTypes()]);
+      setShipmentTypes(merged);
+    })();
+  }, []);
 
   const setSampleValue = (index, key, value) => {
     setSamples((prev) =>
@@ -562,12 +650,13 @@ export default function QCSRawMaterialInspection() {
     totalQuantity,
     totalWeight,
     averageWeight,
+    productLines, // ✅ NEW: included in payload
     certificateFile,
     certificateName,
     images,
     docMeta,
     notes,
-    ...extra, // createdAt, createdDate, sequence, uniqueKey
+    ...extra,
   });
 
   const showToast = (type, msg) => {
@@ -588,21 +677,54 @@ export default function QCSRawMaterialInspection() {
     }
   };
 
+  // === daily seq / uniqueKey
+  const [createdDate, setCreatedDate] = useState(toYMD(todayIso()));
+  const [entrySequence, setEntrySequence] = useState(1);
+  const [entryKey, setEntryKey] = useState("");
+  useEffect(() => {
+    let stop = false;
+    const recalc = async () => {
+      const idOk = (generalInfo.airwayBill || generalInfo.invoiceNo || "").trim() !== "";
+      if (!shipmentType || !idOk || !createdDate) {
+        setEntrySequence(1);
+        setEntryKey("");
+        return;
+      }
+      try {
+        const { uniqueKey, sequence } = await deriveUniqueKey({
+          shipmentType,
+          airwayBill: generalInfo.airwayBill,
+          invoiceNo: generalInfo.invoiceNo,
+          createdDate,
+        });
+        if (!stop) {
+          setEntrySequence(sequence);
+          setEntryKey(uniqueKey);
+        }
+      } catch {
+        if (!stop) {
+          setEntrySequence(1);
+          setEntryKey("");
+        }
+      }
+    };
+    recalc();
+    return () => { stop = true; };
+  }, [shipmentType, generalInfo.airwayBill, generalInfo.invoiceNo, createdDate]);
+
   const handleSave = async () => {
     if (isSaving) return;
     if (!shipmentType.trim()) {
       alert("Please choose Shipment Type before saving.");
       return;
     }
-
-    // اشتق الهوية المعتمدة لليوم + نوع الشحنة + (AWB أو Invoice)
     const createdAt = todayIso();
-    const createdDate = toYMD(createdAt);
+    const userDate = toYMD(createdDate);
     const { uniqueKey, sequence } = await deriveUniqueKey({
       shipmentType,
       airwayBill: generalInfo.airwayBill,
       invoiceNo: generalInfo.invoiceNo,
-      createdDate,
+      createdDate: userDate,
     });
 
     const ok = window.confirm("Confirm saving to external server?");
@@ -619,15 +741,17 @@ export default function QCSRawMaterialInspection() {
 
       await sendToServer(
         buildReportPayload({
-          createdAt,       // تاريخ ووقت إنشاء التقرير
-          createdDate,     // اليوم فقط YYYY-MM-DD
-          uniqueKey,       // مفتاح فريد لليوم
-          sequence,        // تسلسل اليوم (1، 2، 3…)
+          createdAt,
+          createdDate: userDate,
+          uniqueKey,
+          sequence,
         })
       );
 
       setSaveMsg("Saved successfully!");
-      showToast("success", `Saved successfully ✅ (#${sequence})`);
+      showToast("success", `Saved ✅ (${ymdToDMY(userDate)} · #${sequence})`);
+      setEntrySequence(sequence);
+      setEntryKey(uniqueKey);
     } catch (e) {
       const msg = `Save failed: ${e?.message || e}`;
       setSaveMsg(msg);
@@ -650,8 +774,41 @@ export default function QCSRawMaterialInspection() {
     style: { ...styles.select, ...(isFocused === name ? styles.focused : {}) },
   });
 
-  // Ensure enough width; allow horizontal scroll
-  const tableMinWidth = 240 /* first col */ + samples.length * 160;
+  // === shipment type add
+  const handleAddType = async () => {
+    const name = normStr(newType);
+    if (!name) return;
+    if (shipmentTypes.includes(name)) {
+      setShipmentType(name);
+      setNewType("");
+      return;
+    }
+    try {
+      await postMeta("qcs_shipment_type", { name });
+      setShipmentTypes((prev) => uniq([...prev, name]));
+      setShipmentType(name);
+      setNewType("");
+      saveLocalType(name);
+      showToast("success", "Shipment type saved to server.");
+    } catch {
+      saveLocalType(name);
+      setShipmentTypes((prev) => uniq([...prev, name]));
+      setShipmentType(name);
+      setNewType("");
+      showToast("error", "Server unreachable. Saved locally as backup.");
+    }
+  };
+
+  // helpers for product lines UI
+  const updateLine = (i, field, value) => {
+    setProductLines((prev) =>
+      prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r))
+    );
+  };
+  const addLine = () =>
+    setProductLines((prev) => [...prev, { name: "", qty: "", weight: "" }]);
+  const removeLine = (i) =>
+    setProductLines((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
 
   return (
     <div style={styles.page}>
@@ -671,12 +828,25 @@ export default function QCSRawMaterialInspection() {
         <div style={styles.container}>
           <div style={styles.titleWrap}>
             <h2 style={styles.title}>📦 QCS Incoming Shipments Report</h2>
-            <span style={styles.badge}>
-              Manual Save Only{saveMsg ? <b> · {saveMsg}</b> : null}
-            </span>
+            <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+              <span style={styles.badge}>
+                Manual Save Only{saveMsg ? <b> · {saveMsg}</b> : null}
+              </span>
+              <span
+                style={{
+                  ...styles.badge,
+                  background:"#e0f2fe",
+                  borderColor:"#7dd3fc",
+                  color:"#075985"
+                }}
+                title="Daily number is based on Entry Date + Shipment Type + AWB/Invoice"
+              >
+                {ymdToDMY(createdDate)} · #{entrySequence}
+              </span>
+            </div>
           </div>
 
-          {/* Header (editable) */}
+          {/* Header */}
           <div style={styles.headerWrap}>
             <table style={styles.headerTable}>
               <colgroup>
@@ -750,28 +920,65 @@ export default function QCSRawMaterialInspection() {
             </table>
           </div>
 
-          {/* Shipment Type */}
+          {/* Entry Date + Daily Sequence */}
+          <div style={styles.section}>
+            <label style={styles.label}>Entry Date & Daily No.:</label>
+            <div style={{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap", marginTop:6 }}>
+              <input
+                type="date"
+                value={createdDate}
+                onChange={(e) => setCreatedDate(e.target.value)}
+                {...inputProps("createdDate")}
+                title="This date is used to assign the daily number (#1, #2…) for same day"
+              />
+              <div
+                title="Daily auto-number for this date + shipment + AWB/Invoice"
+                style={{
+                  padding:"10px 12px",
+                  border:"1px solid #000",
+                  borderRadius:10,
+                  fontWeight:800,
+                  background:"#f8fafc"
+                }}
+              >
+                {ymdToDMY(createdDate)} <span style={{ opacity:.7 }}>#</span>{entrySequence}
+              </div>
+              {entryKey ? (
+                <div style={{ fontSize:12, color:"#334155" }}>
+                  Key: <code style={{ fontSize:12 }}>{entryKey}</code>
+                </div>
+              ) : (
+                <div style={{ fontSize:12, color:"#64748b" }}>
+                  سيظهر الرقم بعد إدخال Shipment Type و AWB/Invoice.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Shipment Type (server-first + add new) */}
           <div style={styles.section}>
             <label style={styles.label}>Shipment Type:</label>
-            <select
-              value={shipmentType}
-              onChange={(e) => setShipmentType(e.target.value)}
-              {...selectProps("shipmentType")}
-            >
-              <option value="">-- Select --</option>
-              <option value="LAMB AUS">LAMB AUS</option>
-              <option value="MUTTON AUS">MUTTON AUS</option>
-              <option value="LAMB S.A">LAMB S.A</option>
-              <option value="MUTTON S.A">MUTTON S.A</option>
-              <option value="VACUUM">VACUUM</option>
-              <option value="FROZEN">FROZEN</option>
-              <option value="PAK">PAK</option>
-              <option value="KHZ">KHZ</option>
-              <option value="IND MUTTON">IND MUTTON</option>
-              <option value="IND VEAL">IND VEAL</option>
-              <option value="FRESH LAMB">FRESH LAMB</option>
-              <option value="FRESH CHICKEN">FRESH CHICKEN</option>
-            </select>
+            <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr auto", gap:8 }}>
+              <select
+                value={shipmentType}
+                onChange={(e) => setShipmentType(e.target.value)}
+                {...selectProps("shipmentType")}
+              >
+                <option value="">-- Select --</option>
+                {shipmentTypes.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              <input
+                placeholder="Add new type…"
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+                {...inputProps("newType")}
+              />
+              <button onClick={handleAddType} style={styles.addButton} title="Save to server">
+                ➕ Add Type
+              </button>
+            </div>
           </div>
 
           {/* General Information */}
@@ -785,6 +992,7 @@ export default function QCSRawMaterialInspection() {
                 ["Temperature", "temperature", "text"],
                 ["Brand", "brand", "text"],
                 ["Invoice No", "invoiceNo", "text"],
+                ["Supplier Name", "supplierName", "text"],
                 ["PH", "ph", "text"],
                 ["Origin", "origin", "text"],
                 ["Air Way Bill No", "airwayBill", "text"],
@@ -843,7 +1051,7 @@ export default function QCSRawMaterialInspection() {
             {/* Status */}
             <div style={{ marginTop: "1rem" }}>
               <label style={styles.label}>Shipment Status:</label>
-              <div style={styles.statusContainer}>
+              <div style={{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap", marginTop:6 }}>
                 <select
                   value={shipmentStatus}
                   onChange={(e) => setShipmentStatus(e.target.value)}
@@ -863,17 +1071,15 @@ export default function QCSRawMaterialInspection() {
                   <option value="Average">⚠️ Average</option>
                   <option value="Below Average">❌ Below Average</option>
                 </select>
-                <span
-                  style={{
-                    fontWeight: 800,
-                    color:
-                      shipmentStatus === "Acceptable"
-                        ? "#16a34a"
-                        : shipmentStatus === "Average"
-                        ? "#d97706"
-                        : "#dc2626",
-                  }}
-                >
+                <span style={{
+                  fontWeight: 800,
+                  color:
+                    shipmentStatus === "Acceptable"
+                      ? "#16a34a"
+                      : shipmentStatus === "Average"
+                      ? "#d97706"
+                      : "#dc2626",
+                }}>
                   {shipmentStatus}
                 </span>
               </div>
@@ -897,7 +1103,6 @@ export default function QCSRawMaterialInspection() {
                 </tr>
               </thead>
               <tbody>
-                {/* Product Name row */}
                 <tr>
                   <td style={styles.firstColCell}>PRODUCT NAME</td>
                   {samples.map((s, i) => (
@@ -909,8 +1114,7 @@ export default function QCSRawMaterialInspection() {
                         }
                         style={styles.tdInput}
                         onFocus={(e) => {
-                          e.currentTarget.style.boxShadow =
-                            "0 0 0 3px rgba(37,99,235,.25)";
+                          e.currentTarget.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)";
                           e.currentTarget.style.borderColor = "#2563eb";
                         }}
                         onBlur={(e) => {
@@ -926,9 +1130,7 @@ export default function QCSRawMaterialInspection() {
                   <tr
                     key={attr.key}
                     style={
-                      ["temperature", "ph", "slaughterDate", "expiryDate"].includes(
-                        attr.key
-                      )
+                      ["temperature", "ph", "slaughterDate", "expiryDate"].includes(attr.key)
                         ? { background: "#f8fafc" }
                         : undefined
                     }
@@ -941,8 +1143,7 @@ export default function QCSRawMaterialInspection() {
                           onChange={(e) => setSampleValue(i, attr.key, e.target.value)}
                           style={styles.tdInput}
                           onFocus={(e) => {
-                            e.currentTarget.style.boxShadow =
-                              "0 0 0 3px rgba(37,99,235,.25)";
+                            e.currentTarget.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)";
                             e.currentTarget.style.borderColor = "#2563eb";
                           }}
                           onBlur={(e) => {
@@ -955,20 +1156,9 @@ export default function QCSRawMaterialInspection() {
                   </tr>
                 ))}
 
-                {/* Add/Remove sample (columns) */}
                 <tr>
-                  <td
-                    colSpan={1 + samples.length}
-                    style={{ padding: "1rem" }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        justifyContent: "center",
-                        flexWrap: "wrap",
-                      }}
-                    >
+                  <td colSpan={1 + samples.length} style={{ padding: "1rem" }}>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                       <button onClick={addSample} style={styles.addButton}>
                         ➕ Add Sample (column)
                       </button>
@@ -976,11 +1166,7 @@ export default function QCSRawMaterialInspection() {
                         onClick={removeSample}
                         style={styles.dangerButton}
                         disabled={samples.length <= 1}
-                        title={
-                          samples.length <= 1
-                            ? "At least one sample is required"
-                            : "Remove last sample column"
-                        }
+                        title={samples.length <= 1 ? "At least one sample is required" : "Remove last sample column"}
                       >
                         🗑 Remove Sample (column)
                       </button>
@@ -991,6 +1177,89 @@ export default function QCSRawMaterialInspection() {
             </table>
           </div>
 
+          {/* NEW: Product Lines (Name, Qty, Weight) */}
+          <div style={{ marginTop: 18 }}>
+            <label style={styles.label}>Product Lines:</label>
+            <div style={{ marginTop: 8 }}>
+              {productLines.map((row, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 8, marginBottom: 8 }}>
+                  <input
+                    placeholder="Product Name"
+                    value={row.name}
+                    onChange={(e) => updateLine(i, "name", e.target.value)}
+                    {...inputProps(`pl_name_${i}`)}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="Qty (pcs)"
+                    value={row.qty}
+                    onChange={(e) => updateLine(i, "qty", e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    {...inputProps(`pl_qty_${i}`)}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    placeholder="Weight (kg)"
+                    value={row.weight}
+                    onChange={(e) => updateLine(i, "weight", e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    {...inputProps(`pl_weight_${i}`)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeLine(i)}
+                    style={{ ...styles.dangerButton, padding: "10px 12px" }}
+                    disabled={productLines.length <= 1}
+                    title={productLines.length <= 1 ? "At least one line is required" : "Remove line"}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={addLine} style={styles.addButton}>
+                ➕ Add Line
+              </button>
+            </div>
+          </div>
+
+          {/* Totals (auto) */}
+          <div style={styles.formRow3}>
+            <div>
+              <label style={styles.label}>Total Quantity (pcs):</label>
+              <input
+                type="text"
+                value={totalQuantity}
+                readOnly
+                style={{ ...styles.input, background: "#f3f4f6", color: "#111827", fontWeight: 700 }}
+                title="Sum of product lines"
+              />
+            </div>
+            <div>
+              <label style={styles.label}>Total Weight (kg):</label>
+              <input
+                type="text"
+                value={totalWeight}
+                readOnly
+                style={{ ...styles.input, background: "#f3f4f6", color: "#111827", fontWeight: 700 }}
+                title="Sum of product lines"
+              />
+            </div>
+            <div>
+              <label style={styles.label}>Average Weight (kg/pc):</label>
+              <input
+                type="text"
+                value={averageWeight}
+                readOnly
+                style={{ ...styles.input, background: "#f3f4f6", color: "#111827", fontWeight: 700 }}
+                title="Total Weight / Total Quantity"
+              />
+            </div>
+          </div>
+
           {/* Notes */}
           <div style={{ marginTop: 12 }}>
             <label style={styles.label}>Notes:</label>
@@ -999,50 +1268,8 @@ export default function QCSRawMaterialInspection() {
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
               placeholder="Write any additional notes here..."
-              style={{
-                ...styles.input,
-                minHeight: "110px",
-                resize: "vertical",
-                lineHeight: "1.6",
-              }}
+              style={{ ...styles.input, minHeight: "110px", resize: "vertical", lineHeight: "1.6" }}
             />
-          </div>
-
-          {/* Quantity & Weights */}
-          <div style={styles.formRow3}>
-            <div>
-              <label style={styles.label}>Total Quantity (pcs):</label>
-              <input
-                type="number"
-                value={totalQuantity}
-                onChange={(e) => setTotalQuantity(e.target.value)}
-                placeholder="e.g., 1000"
-                {...inputProps("totalQuantity")}
-              />
-            </div>
-            <div>
-              <label style={styles.label}>Total Weight (kg):</label>
-              <input
-                type="number"
-                value={totalWeight}
-                onChange={(e) => setTotalWeight(e.target.value)}
-                placeholder="e.g., 750"
-                {...inputProps("totalWeight")}
-              />
-            </div>
-            <div>
-              <label style={styles.label}>Average Weight (kg):</label>
-              <input
-                type="text"
-                value={averageWeight}
-                disabled
-                style={{
-                  ...styles.input,
-                  background: "#f3f4f6",
-                  color: "#111827",
-                }}
-              />
-            </div>
           </div>
 
           {/* Uploads */}
@@ -1075,11 +1302,7 @@ export default function QCSRawMaterialInspection() {
             {certificateName && <div>{certificateName}</div>}
             {certificateFile &&
               (String(certificateFile).startsWith("data:image/") ? (
-                <img
-                  src={certificateFile}
-                  alt="Certificate Preview"
-                  style={styles.previewImage}
-                />
+                <img src={certificateFile} alt="Certificate Preview" style={{ maxWidth: 200, marginTop: 6, borderRadius: 8 }} />
               ) : (
                 <div style={{ marginTop: 6, fontSize: 13, color: "#374151" }}>
                   ✔️ PDF certificate uploaded (Base64 will be saved with the report)
@@ -1087,17 +1310,13 @@ export default function QCSRawMaterialInspection() {
               ))}
 
             {images.length > 0 && (
-              <div style={styles.previewGrid}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginTop: 8 }}>
                 {images.map((img, i) => (
                   <img
                     key={`${img.name}-${i}`}
                     src={img.data}
                     alt={img.name}
-                    style={{
-                      width: "100%",
-                      borderRadius: 8,
-                      border: "1px solid #e5e7eb",
-                    }}
+                    style={{ width: "100%", borderRadius: 8, border: "1px solid #e5e7eb" }}
                   />
                 ))}
               </div>
@@ -1105,14 +1324,7 @@ export default function QCSRawMaterialInspection() {
           </div>
 
           {/* Signatures */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-              gap: "12px",
-              marginTop: "0.75rem",
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginTop: 12 }}>
             <div>
               <label style={styles.label}>Inspected By:</label>
               <input
@@ -1134,29 +1346,16 @@ export default function QCSRawMaterialInspection() {
           </div>
 
           {/* Actions */}
-          <div
-            style={{
-              marginTop: "1.25rem",
-              display: "flex",
-              gap: "10px",
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ marginTop: "1.25rem", display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               onClick={handleSave}
-              style={{
-                ...styles.saveButton,
-                ...(isSaving ? styles.saveButtonDisabled : {}),
-              }}
+              style={{ ...styles.saveButton, ...(isSaving ? styles.saveButtonDisabled : {}) }}
               disabled={isSaving}
               title={isSaving ? "Saving..." : "Save report"}
             >
               {isSaving ? "⏳ Saving..." : "💾 Save Report"}
             </button>
-            <button
-              onClick={() => navigate("/qcs-raw-material-view")}
-              style={styles.viewButton}
-            >
+            <button onClick={() => navigate("/qcs-raw-material-view")} style={styles.viewButton}>
               📄 View Reports
             </button>
           </div>
