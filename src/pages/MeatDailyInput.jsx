@@ -1,10 +1,34 @@
 // src/pages/MeatDailyInput.jsx
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 
 /* ========== API ========== */
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+
+/* رفع صورة للسيرفر -> يرجّع رابط Cloudinary (المضغوط إن وُجد) */
+async function uploadViaServer(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
+    throw new Error(data?.error || "Upload failed");
+  }
+  return data.optimized_url || data.url;
+}
+
+/* حذف صورة من التخزين عبر السيرفر (Cloudinary) */
+async function deleteImage(url) {
+  if (!url) return;
+  const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || "Delete image failed");
+  }
+}
 
 async function saveDayToServer(reportDate, items) {
   const payload = {
@@ -50,7 +74,87 @@ const baseRow = () => ({
   status: "Near Expiry",
   expiry: "",
   remarks: "",
+  images: [], // ✅ دعم الصور داخل الإدخال
 });
+
+/* ========= Images manager modal ========= */
+function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
+  const [previewSrc, setPreviewSrc] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) setPreviewSrc("");
+    const onEsc = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const handlePick = () => inputRef.current?.click();
+
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const urls = [];
+    for (const f of files) {
+      try {
+        const url = await uploadViaServer(f);
+        urls.push(url);
+      } catch (err) {
+        console.error("upload failed:", err);
+      }
+    }
+    if (urls.length) onAddImages(urls);
+    e.target.value = "";
+  };
+
+  return (
+    <div style={galleryBack} onClick={onClose}>
+      <div style={galleryCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
+            🖼️ Product Images {row?.productName ? `— ${row.productName}` : ""}
+          </div>
+          <button onClick={onClose} style={galleryClose}>✕</button>
+        </div>
+
+        {previewSrc && (
+          <div style={{ marginTop: 10, marginBottom: 8 }}>
+            <img src={previewSrc} alt="preview" style={{ maxWidth: "100%", maxHeight: 700, borderRadius: 15, boxShadow: "0 6px 18px rgba(0,0,0,.2)" }} />
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 }}>
+          <button onClick={handlePick} style={btnBlueModal}>⬆️ Upload images</button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleFiles}
+            style={{ display: "none" }}
+          />
+          <div style={{ fontSize: 13, color: "#334155" }}>Unlimited images per product (server compresses automatically).</div>
+        </div>
+
+        <div style={thumbsWrap}>
+          {(row?.images || []).length === 0 ? (
+            <div style={{ color: "#64748b" }}>No images yet.</div>
+          ) : (
+            row.images.map((src, i) => (
+              <div key={i} style={thumbTile} title={`Image ${i + 1}`}>
+                <img src={src} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
+                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>✕</button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function MeatDailyInput() {
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -61,6 +165,10 @@ export default function MeatDailyInput() {
   const [authed, setAuthed] = useState(false);
   const [pwd, setPwd] = useState("");
   const [err, setErr] = useState("");
+
+  // صور: حالة المودال + أي صف مفتوح
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageRowIndex, setImageRowIndex] = useState(-1);
 
   const submitPwd = () => {
     if (pwd === "9999") {
@@ -102,6 +210,44 @@ export default function MeatDailyInput() {
   const delRow = (idx) => setRows((p) => p.filter((_, i) => i !== idx));
   const setVal = (i, k, v) => setRows((p) => p.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
 
+  // فتح/إغلاق مدير الصور
+  const openImagesFor = (i) => { setImageRowIndex(i); setImageModalOpen(true); };
+  const closeImages = () => setImageModalOpen(false);
+
+  // إضافة روابط صور (بعد رفعها) للصف المفتوح
+  const addImagesToRow = async (urls) => {
+    if (imageRowIndex < 0) return;
+    setRows((prev) => prev.map((r, i) =>
+      i === imageRowIndex ? { ...r, images: [...(r.images || []), ...urls] } : r
+    ));
+    setMsg("✅ Images added.");
+    setTimeout(() => setMsg(""), 2000);
+  };
+
+  // إزالة صورة واحدة من الصف مع محاولة حذفها من التخزين
+  const removeImageFromRow = async (imgIndex) => {
+    if (imageRowIndex < 0) return;
+    try {
+      const url = rows?.[imageRowIndex]?.images?.[imgIndex];
+      if (url) {
+        try { await deleteImage(url); }
+        catch (e) { console.warn("Storage delete failed; un-linking anyway."); }
+      }
+      setRows((prev) => prev.map((r, i) => {
+        if (i !== imageRowIndex) return r;
+        const next = Array.isArray(r.images) ? [...r.images] : [];
+        next.splice(imgIndex, 1);
+        return { ...r, images: next };
+      }));
+      setMsg("✅ Image removed.");
+    } catch (e) {
+      console.error(e);
+      setMsg("❌ Failed to remove image.");
+    } finally {
+      setTimeout(() => setMsg(""), 2000);
+    }
+  };
+
   const handleSave = async () => {
     if (!reportDate) return setMsg("❌ Please enter the report date.");
 
@@ -114,6 +260,7 @@ export default function MeatDailyInput() {
         expiry: (r.expiry || "").trim(),
         remarks: (r.remarks || "").trim(),
         quantity: Number(r.quantity || 0),
+        images: Array.isArray(r.images) ? r.images : [], // ✅ احفظ الصور
       }))
       .filter((r) => r.productName && r.quantity > 0);
 
@@ -168,6 +315,7 @@ export default function MeatDailyInput() {
               <th style={s.th}>STATUS</th>
               <th style={s.th}>EXPIRY DATE</th>
               <th style={s.th}>REMARKS</th>
+              <th style={s.th}>IMAGES</th>{/* ✅ عمود الصور */}
               <th style={s.th}></th>
             </tr>
           </thead>
@@ -234,13 +382,25 @@ export default function MeatDailyInput() {
                     aria-label="Remarks"
                   />
                 </td>
+
+                {/* زر إدارة الصور لكل صف */}
+                <td style={s.td}>
+                  <button
+                    onClick={() => openImagesFor(i)}
+                    style={s.btnBlue}
+                    title="Manage images"
+                  >
+                    🖼️ Images ({Array.isArray(r.images) ? r.images.length : 0})
+                  </button>
+                </td>
+
                 <td style={s.td}>
                   <button onClick={() => delRow(i)} style={s.btnDel} title="Delete row">🗑️</button>
                 </td>
               </tr>
             ))}
             <tr>
-              <td colSpan={8} style={{ textAlign: "center", padding: 10 }}>
+              <td colSpan={9} style={{ textAlign: "center", padding: 10 }}>
                 <button onClick={addRow} style={s.btnAdd}>➕ Add new row</button>
               </td>
             </tr>
@@ -253,6 +413,15 @@ export default function MeatDailyInput() {
         <button onClick={handleSave} style={s.btnSave}>💾 Save</button>
         {msg && <div style={s.msg}>{msg}</div>}
       </div>
+
+      {/* مودال إدارة الصور */}
+      <ImageManagerModal
+        open={imageModalOpen}
+        row={imageRowIndex >= 0 ? (rows?.[imageRowIndex] || {}) : null}
+        onClose={closeImages}
+        onAddImages={addImagesToRow}
+        onRemoveImage={removeImageFromRow}
+      />
     </div>
   );
 }
@@ -324,14 +493,95 @@ const styles = {
     padding: "10px 18px", fontWeight: "bold", cursor: "pointer",
     boxShadow: "0 6px 16px rgba(22,163,74,.25)",
   },
+  btnBlue: {
+    background: "#2563eb",
+    color: "#fff",
+    border: "none",
+    borderRadius: 10,
+    padding: "6px 12px",
+    fontWeight: "bold",
+    cursor: "pointer",
+    boxShadow: "0 1px 6px #bfdbfe",
+  },
   msg: { alignSelf: "center", fontWeight: 800 },
+};
+
+/* ====== Gallery modal styles ====== */
+const galleryBack = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15,23,42,.35)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 999,
+};
+const galleryCard = {
+  width: "min(1400px, 1000vw)",
+  maxHeight: "80vh",
+  overflow: "auto",
+  background: "#fff",
+  color: "#111",
+  borderRadius: 14,
+  border: "1px solid #e5e7eb",
+  padding: "14px 16px",
+  boxShadow: "0 12px 32px rgba(0,0,0,.25)",
+};
+const galleryClose = {
+  background: "transparent",
+  border: "none",
+  color: "#111",
+  fontWeight: 900,
+  cursor: "pointer",
+  fontSize: 18,
+};
+const btnBlueModal = {
+  background: "#2563eb",
+  color: "#fff",
+  border: "none",
+  borderRadius: 10,
+  padding: "8px 14px",
+  fontWeight: "bold",
+  cursor: "pointer",
+  boxShadow: "0 1px 6px #bfdbfe",
+};
+const thumbsWrap = {
+  marginTop: 8,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: 10,
+};
+const thumbTile = {
+  position: "relative",
+  border: "1px solid #e5e7eb",
+  borderRadius: 10,
+  overflow: "hidden",
+  background: "#f8fafc",
+};
+const thumbImg = {
+  width: "100%",
+  height: 150,
+  objectFit: "cover",
+  display: "block",
+};
+const thumbRemove = {
+  position: "absolute",
+  top: 6,
+  right: 6,
+  background: "#ef4444",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  padding: "2px 8px",
+  fontWeight: 800,
+  cursor: "pointer",
 };
 
 /* ===== auth (small box) styles ===== */
 const auth = {
   overlay: {
     minHeight: "100vh",
-    background: "#e5e7eb",            // خلفية رمادية فاتحة (مثل الصورة)
+    background: "#e5e7eb",
     display: "grid",
     placeItems: "center",
     padding: "1rem",
@@ -375,7 +625,7 @@ const auth = {
     borderRadius: 10,
     fontWeight: 900,
     color: "#fff",
-    background: "#6d28d9",           // بنفسجي مثل الزر في الصورة
+    background: "#6d28d9",
     cursor: "pointer",
     boxShadow: "0 10px 24px rgba(109,40,217,.28)",
   },

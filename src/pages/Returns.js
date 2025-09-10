@@ -1,6 +1,6 @@
 // src/pages/Returns.js
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 // رابط الـ API (من متغيّر البيئة في CRA)
@@ -10,29 +10,28 @@ const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nv
 const BRANCHES = [
   "QCS",
   "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16", "POS 17",
-  "POS 18", // جديد
+  "POS 18",
   "POS 19", "POS 21", "POS 24", "POS 25",
-  "POS 26", // جديد
-  "POS 31", // جديد
-  "POS 34", // جديد
-  "POS 35", // جديد
-  "POS 36", // جديد
+  "POS 26",
+  "POS 31",
+  "POS 34",
+  "POS 35",
+  "POS 36",
   "POS 37", "POS 38",
-  "POS 41", // جديد
+  "POS 41",
   "POS 42",
-  "POS 43", // جديد
+  "POS 43",
   "POS 44", "POS 45",
   "فرع آخر... / Other branch"
 ];
 
 // خيارات الإجراء — English ONLY (ثابتة للتخزين والمقارنة)
-// تمت إضافة "Separated expired shelf"
 const ACTIONS = [
   "Use in production",
   "Condemnation",
   "Use in kitchen",
   "Send to market",
-  "Separated expired shelf", // جديد
+  "Separated expired shelf",
   "Other..."
 ];
 
@@ -43,6 +42,27 @@ const RETURNS_CREATE_PASSWORD = "9999";
 
 function getToday() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/* ===== Helpers: Images API ===== */
+async function uploadViaServer(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
+    throw new Error(data?.error || "Upload failed");
+  }
+  return data.optimized_url || data.url; // استخدم المضغوط إن توفر
+}
+
+async function deleteImage(url) {
+  if (!url) return;
+  const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) throw new Error(data?.error || "Delete image failed");
 }
 
 // إرسال تقرير واحد للسيرفر (API Only)
@@ -67,7 +87,7 @@ async function sendOneToServer({ reportDate, items }) {
 function PasswordModal({ show, onSubmit, onClose, error }) {
   const [password, setPassword] = useState("");
 
-  React.useEffect(() => { if (show) setPassword(""); }, [show]);
+  useEffect(() => { if (show) setPassword(""); }, [show]);
   if (!show) return null;
 
   return (
@@ -129,6 +149,77 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
   );
 }
 
+/* ===== Images Manager Modal ===== */
+function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
+  const [previewSrc, setPreviewSrc] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) setPreviewSrc("");
+    const onEsc = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const pick = () => inputRef.current?.click();
+
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const urls = [];
+    for (const f of files) {
+      try { urls.push(await uploadViaServer(f)); }
+      catch (err) { console.error("upload failed:", err); }
+    }
+    if (urls.length) onAddImages(urls);
+    e.target.value = "";
+  };
+
+  return (
+    <div style={galleryBack} onClick={onClose}>
+      <div style={galleryCard} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
+            🖼️ Product Images {row?.productName ? `— ${row.productName}` : ""}
+          </div>
+          <button onClick={onClose} style={galleryClose}>✕</button>
+        </div>
+
+        {previewSrc && (
+          <div style={{ marginTop: 10, marginBottom: 8 }}>
+            <img src={previewSrc} alt="preview" style={{ maxWidth: "100%", maxHeight: 700, borderRadius: 15, boxShadow: "0 6px 18px rgba(0,0,0,.2)" }} />
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 }}>
+          <button onClick={pick} style={btnBlueModal}>⬆️ Upload images</button>
+          <input
+            ref={inputRef}
+            type="file" accept="image/*" multiple
+            onChange={handleFiles} style={{ display: "none" }}
+          />
+          <div style={{ fontSize: 13, color: "#334155" }}>Unlimited images per item (server compresses automatically).</div>
+        </div>
+
+        <div style={thumbsWrap}>
+          {(row?.images || []).length === 0 ? (
+            <div style={{ color: "#64748b" }}>No images yet.</div>
+          ) : (
+            row.images.map((src, i) => (
+              <div key={i} style={thumbTile} title={`Image ${i + 1}`}>
+                <img src={src} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
+                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>✕</button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Returns() {
   const navigate = useNavigate();
 
@@ -164,29 +255,32 @@ export default function Returns() {
       expiry: "",
       remarks: "",
       action: "",
-      customAction: ""
+      customAction: "",
+      images: [] // ✅ دعم الصور
     }
   ]);
   const [saveMsg, setSaveMsg] = useState("");
 
+  // حالة مودال الصور
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageRowIndex, setImageRowIndex] = useState(-1);
+
   // إضافة صف جديد
   const addRow = () => {
-    setRows([
-      ...rows,
-      {
-        productName: "",
-        origin: "",
-        butchery: "",
-        customButchery: "",
-        quantity: "",
-        qtyType: "KG",
-        customQtyType: "",
-        expiry: "",
-        remarks: "",
-        action: "",
-        customAction: ""
-      }
-    ]);
+    setRows((prev) => [...prev, {
+      productName: "",
+      origin: "",
+      butchery: "",
+      customButchery: "",
+      quantity: "",
+      qtyType: "KG",
+      customQtyType: "",
+      expiry: "",
+      remarks: "",
+      action: "",
+      customAction: "",
+      images: []
+    }]);
   };
 
   // حذف صف
@@ -205,21 +299,64 @@ export default function Returns() {
     setRows(updated);
   };
 
+  // صور: فتح/إغلاق وإضافة/حذف
+  const openImagesFor = (idx) => { setImageRowIndex(idx); setImageModalOpen(true); };
+  const closeImages = () => setImageModalOpen(false);
+
+  const addImagesToRow = async (urls) => {
+    if (imageRowIndex < 0) return;
+    setRows((prev) => prev.map((r, i) =>
+      i === imageRowIndex ? { ...r, images: [...(r.images || []), ...urls] } : r
+    ));
+    setSaveMsg("✅ Images added.");
+    setTimeout(() => setSaveMsg(""), 2000);
+  };
+
+  const removeImageFromRow = async (imgIndex) => {
+    if (imageRowIndex < 0) return;
+    try {
+      const url = rows?.[imageRowIndex]?.images?.[imgIndex];
+      if (url) { try { await deleteImage(url); } catch { /* ignore */ } }
+      setRows((prev) => prev.map((r, i) => {
+        if (i !== imageRowIndex) return r;
+        const next = Array.isArray(r.images) ? [...r.images] : [];
+        next.splice(imgIndex, 1);
+        return { ...r, images: next };
+      }));
+      setSaveMsg("✅ Image removed.");
+    } catch (e) {
+      console.error(e);
+      setSaveMsg("❌ Failed to remove image.");
+    } finally {
+      setTimeout(() => setSaveMsg(""), 2000);
+    }
+  };
+
   // حفظ عبر API فقط (بدون أي حفظ محلي/طابور/باندينغ)
   const handleSave = async () => {
-    // حذف الصفوف الفارغة بالكامل
-    const filtered = rows.filter(
-      r =>
-        r.productName.trim() ||
-        r.origin.trim() ||
-        r.butchery.trim() ||
-        r.customButchery.trim() ||
-        r.quantity ||
-        r.expiry ||
-        r.remarks.trim() ||
-        r.action.trim() ||
-        r.customAction.trim()
-    );
+    // حذف الصفوف الفارغة بالكامل لكن اسمح بالحفظ إذا فيه صور فقط
+    const filtered = rows
+      .map((r) => ({
+        ...r,
+        productName: (r.productName || "").trim(),
+        origin: (r.origin || "").trim(),
+        butchery: (r.butchery || "").trim(),
+        customButchery: (r.customButchery || "").trim(),
+        quantity: (r.quantity || "").toString().trim(),
+        qtyType: (r.qtyType || "").trim(),
+        customQtyType: (r.customQtyType || "").trim(),
+        expiry: (r.expiry || "").trim(),
+        remarks: (r.remarks || "").trim(),
+        action: (r.action || "").trim(),
+        customAction: (r.customAction || "").trim(),
+        images: Array.isArray(r.images) ? r.images : [], // ✅ احفظ الصور
+      }))
+      .filter(r =>
+        r.productName || r.origin || r.butchery || r.customButchery ||
+        r.quantity || r.expiry || r.remarks || r.action || r.customAction ||
+        (r.images && r.images.length)
+      );
+
     if (!filtered.length) {
       setSaveMsg("يجب إضافة بيانات على الأقل! / Please add at least one row.");
       setTimeout(() => setSaveMsg(""), 1700);
@@ -356,7 +493,7 @@ export default function Returns() {
           borderRadius: 16,
           boxShadow: "0 2px 16px #dcdcdc70",
           borderCollapse: "collapse",
-          minWidth: 1300
+          minWidth: 1400
         }}>
           <thead>
             <tr style={{ background: "#e8daef", color: "#512e5f" }}>
@@ -369,6 +506,7 @@ export default function Returns() {
               <th style={th}>تاريخ الانتهاء / EXPIRY DATE</th>
               <th style={th}>ملاحظات / REMARKS</th>
               <th style={th}>الإجراء / ACTION</th>
+              <th style={th}>الصور / IMAGES</th> {/* ✅ */}
               <th style={th}></th>
             </tr>
           </thead>
@@ -453,6 +591,18 @@ export default function Returns() {
                       onChange={e => handleChange(idx, "customAction", e.target.value)} />
                   )}
                 </td>
+
+                {/* ✅ زر إدارة الصور */}
+                <td style={td}>
+                  <button
+                    onClick={() => openImagesFor(idx)}
+                    style={btnImg}
+                    title="Manage images"
+                  >
+                    🖼️ Images ({Array.isArray(row.images) ? row.images.length : 0})
+                  </button>
+                </td>
+
                 <td style={td}>
                   {rows.length > 1 && (
                     <button onClick={() => removeRow(idx)}
@@ -480,6 +630,15 @@ export default function Returns() {
             boxShadow: "0 2px 8px #d2b4de"
           }}>➕ إضافة صف جديد / Add new row</button>
       </div>
+
+      {/* مودال الصور */}
+      <ImageManagerModal
+        open={imageModalOpen}
+        row={imageRowIndex >= 0 ? (rows?.[imageRowIndex] || {}) : null}
+        onClose={closeImages}
+        onAddImages={addImagesToRow}
+        onRemoveImage={removeImageFromRow}
+      />
     </div>
   );
 }
@@ -505,4 +664,44 @@ const input = {
   background: "#fcf6ff",
   fontSize: "1em",
   minWidth: 90
+};
+
+const btnImg = {
+  background: "#2563eb", color: "#fff", border: "none",
+  padding: "6px 12px", borderRadius: 10, fontWeight: 800,
+  cursor: "pointer", boxShadow: "0 1px 6px #bfdbfe",
+};
+
+/* ====== Gallery modal styles ====== */
+const galleryBack = {
+  position: "fixed", inset: 0, background: "rgba(15,23,42,.35)",
+  display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999,
+};
+const galleryCard = {
+  width: "min(1400px, 1000vw)", maxHeight: "80vh", overflow: "auto",
+  background: "#fff", color: "#111", borderRadius: 14, border: "1px solid #e5e7eb",
+  padding: "14px 16px", boxShadow: "0 12px 32px rgba(0,0,0,.25)",
+};
+const galleryClose = {
+  background: "transparent", border: "none", color: "#111",
+  fontWeight: 900, cursor: "pointer", fontSize: 18,
+};
+const btnBlueModal = {
+  background: "#2563eb", color: "#fff", border: "none",
+  borderRadius: 10, padding: "8px 14px", fontWeight: "bold",
+  cursor: "pointer", boxShadow: "0 1px 6px #bfdbfe",
+};
+const thumbsWrap = {
+  marginTop: 8, display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10,
+};
+const thumbTile = {
+  position: "relative", border: "1px solid #e5e7eb",
+  borderRadius: 10, overflow: "hidden", background: "#f8fafc",
+};
+const thumbImg = { width: "100%", height: 150, objectFit: "cover", display: "block" };
+const thumbRemove = {
+  position: "absolute", top: 6, right: 6, background: "#ef4444",
+  color: "#fff", border: "none", borderRadius: 8, padding: "2px 8px",
+  fontWeight: 800, cursor: "pointer",
 };
