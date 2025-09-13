@@ -38,6 +38,7 @@ const ATTRIBUTES = [
   { key: "testicles", label: "Testicles", default: "NIL" },
   { key: "smell", label: "Smell", default: "NIL" },
 ];
+
 const newSample = () => {
   const s = { id: makeStableId(), productName: "" };
   ATTRIBUTES.forEach((a) => (s[a.key] = a.default));
@@ -63,6 +64,15 @@ const saveLocalType = (name) => {
     localStorage.setItem(TYPES_LS_KEY, JSON.stringify(arr));
   } catch {}
 };
+
+/* ===== BRANCHES (Receiving Address) ===== */
+const BRANCHES = [
+  "QCS",
+  "POS 6","POS 7","POS 10","POS 11","POS 14","POS 15","POS 16","POS 17",
+  "POS 18","POS 19","POS 21","POS 24","POS 25",
+  "POS 26","POS 31","POS 34","POS 35","POS 36",
+  "POS 37","POS 38","POS 41","POS 43",
+];
 
 /* ===== styles بسيطة ===== */
 const styles = {
@@ -155,6 +165,7 @@ export default function QCSRawMaterialForm() {
     airwayBill: "",
     localLogger: "",
     internationalLogger: "",
+    receivingAddress: "", // NEW: عنوان الاستلام
   });
 
   // شهادة: رابط فقط
@@ -456,7 +467,7 @@ export default function QCSRawMaterialForm() {
     const createdAt = todayIso();
     const userDate = toYMD(createdDate);
 
-    // 🟢 استخدم القيم المحسوبة مسبقًا لتسريع الحفظ
+    // استخدم القيم المحسوبة مسبقًا لتسريع الحفظ
     const idPart = normStr(generalInfo.invoiceNo || "NA");
     const typePart = normStr(shipmentType || "NA");
     const baseKey = `${userDate}__${typePart}__${idPart}`;
@@ -581,8 +592,8 @@ export default function QCSRawMaterialForm() {
               {[
                 ["Report On","reportOn","date"],["Sample Received On","receivedOn","date"],["Inspection Date","inspectionDate","date"],
                 ["Temperature","temperature","text"],["Brand","brand","text"],["Invoice No","invoiceNo","text"],["Supplier Name","supplierName","text"],
-                ["PH","ph","text"],["Origin","origin","text"],["Air Way Bill No","airwayBill","text"],["Local Logger","localLogger","select"],
-                ["International Logger","internationalLogger","select"],
+                ["PH","ph","text"],["Origin","origin","text"],["Receiving Address (عنوان الاستلام)","receivingAddress","branch"],
+                ["Air Way Bill No","airwayBill","text"],["Local Logger","localLogger","select"],["International Logger","internationalLogger","select"],
               ].map(([label, field, type]) => (
                 <div key={field} style={styles.row}>
                   <label style={styles.label}>{label}:</label>
@@ -591,6 +602,13 @@ export default function QCSRawMaterialForm() {
                       <option value="">-- Select --</option>
                       <option value="YES">YES</option>
                       <option value="NO">NO</option>
+                    </select>
+                  ) : type === "branch" ? (
+                    <select value={generalInfo[field]} onChange={(e) => handleGeneralChange(field, e.target.value)} {...selectProps(field)}>
+                      <option value="">-- اختر الفرع --</option>
+                      {BRANCHES.map((b) => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
                     </select>
                   ) : type === "date" ? (
                     <input type="date" value={generalInfo[field]} onChange={(e) => handleGeneralChange(field, e.target.value)} {...inputProps(field)} />

@@ -54,7 +54,8 @@ export default function DailyReportsTab({
   onOpenQCSShipmentReport,
   onOpenFTR1Report,
   onOpenFTR2Report,
-  onOpenProductionReport,   // 👈 ربط تبويب PRODUCTION
+  onOpenProductionReport,
+  onOpenPOS15Report, // ✅ اختياري: إن مرّرته من الأب يستخدمه بدل التنقّل
 }) {
   const navigate = useNavigate();
 
@@ -69,7 +70,6 @@ export default function DailyReportsTab({
     } else if (branch === "POS 19") {
       onOpenPOS19Report?.();
     } else if (branch === "FTR 1") {
-      // 👇 ربط عرض FTR1 مباشرة إذا لم يُمرّر هاندلر من الأب
       if (onOpenFTR1Report) onOpenFTR1Report();
       else navigate("/admin/ftr1");
     } else if (branch === "FTR 2") {
@@ -77,6 +77,10 @@ export default function DailyReportsTab({
       else navigate("/admin/ftr2");
     } else if (branch === "PRODUCTION") {
       onOpenProductionReport?.();
+    } else if (branch === "POS 15") {
+      // ✅ افتح صفحة عرض POS 15 (الملف ذو التبويبات)
+      if (onOpenPOS15Report) onOpenPOS15Report();
+      else navigate("/admin/pos15"); // تأكد إنك ضايف هذا المسار في App.jsx
     } else {
       alert(`📌 لا يوجد تقرير متاح حاليًا لهذا الفرع: ${branch}`);
     }
@@ -93,7 +97,7 @@ export default function DailyReportsTab({
     e?.preventDefault();
     if (!pendingBranch) return;
 
-    // ✅ تعديل كلمة السر لفرع PRODUCTION
+    // كلمة السر: افتراضي "اسم الفرع + 123" باستثناء PRODUCTION = PRD123
     let expected;
     if (pendingBranch === "PRODUCTION") {
       expected = "PRD123";

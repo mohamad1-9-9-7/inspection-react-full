@@ -166,6 +166,8 @@ const BRANCHES = [
   "POS 42",
   "POS 43",
   "POS 44", "POS 45",
+  "FTR 1",
+  "FTR 2",
   "فرع آخر... / Other branch"
 ];
 

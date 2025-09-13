@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import LoadingLog from "./LoadingLog";
 import LoadingReports from "./LoadingReports";
+import Cleaning from "./Cleaning";                 // ✅ جديد: إدخال تنظيف
+import CleaningReports from "./CleaningReports";   // ✅ جديد: عرض تقارير تنظيف
 
 /* يدعم نص ثنائي اللغة */
 const Bidi = ({ ar, en }) => (
@@ -128,7 +130,6 @@ function ThemeStyles() {
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
       }
-      /* حدّ متدرّج يطابق شكل القص */
       .panel::before {
         content: "";
         position: absolute; inset: 0;
@@ -146,12 +147,7 @@ function ThemeStyles() {
       .panel:hover { transform: translateY(-2px); box-shadow: 0 14px 36px rgba(2,6,23,0.12); }
       .panel .panel-body { padding: 12px; }
 
-      /* عنواين أقسام */
-      .section-title {
-        font-weight: 800; letter-spacing: .3px;
-        color: var(--primary-600);
-        margin: 6px 0 12px;
-      }
+      .section-title { font-weight: 800; letter-spacing: .3px; color: var(--primary-600); margin: 6px 0 12px; }
 
       /* =============== جداول وحقول محسّنة =============== */
       .car-app table { width: 100%; border-collapse: separate; border-spacing: 0; }
@@ -189,15 +185,12 @@ function ThemeStyles() {
       }
       .car-app :where(input[type="date"])::-webkit-calendar-picker-indicator { filter: opacity(.9); }
 
-      /* سكروول بار لطيف */
       .car-app *::-webkit-scrollbar { height: 10px; width: 10px; }
       .car-app *::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
       .car-app *::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-      /* هوامش لمساحات العمل */
       .layout-pad { padding: 14px 16px; }
 
-      /* تقليل الحركة */
       @media (prefers-reduced-motion: reduce) {
         .tablike, .panel { transition: none; }
       }
@@ -208,7 +201,6 @@ function ThemeStyles() {
 export default function CarIcon() {
   const [activeTab, setActiveTab] = useState("loading");
 
-  /* تخطيط أساسي */
   const wrap = {
     direction: "rtl",
     fontFamily: "Cairo, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, 'Apple Color Emoji','Segoe UI Emoji'",
@@ -216,7 +208,7 @@ export default function CarIcon() {
     minHeight: "100vh",
     width: "100%",
     position: "relative",
-    zIndex: 1,           // المحتوى فوق خلفية aurora
+    zIndex: 1,
   };
 
   const row = { width: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" };
@@ -224,7 +216,6 @@ export default function CarIcon() {
   const groupLeft  = { display: "flex", gap: 8, flexWrap: "wrap" };
   const spacer = { flex: 1, minWidth: 8 };
 
-  /* محتوى */
   const content = { width: "100%", maxWidth: "100%" };
   const cardBox = { marginBottom: 16 };
 
@@ -251,13 +242,13 @@ export default function CarIcon() {
                 🕐 <Bidi ar="أوقات التحميل" en="Loading" />
               </button>
 
+              {/* ✅ تفعيل تبويب تنظيف السيارات (إدخال) */}
               <button
                 type="button"
-                className={tabBtnClass(activeTab === "cleaning", true)}
-                onClick={() => {}}
-                disabled
-                title="قريباً / Coming soon"
-                aria-label="Cleaning (coming soon)"
+                className={tabBtnClass(activeTab === "cleaning", false)}
+                onClick={() => setActiveTab("cleaning")}
+                title="إدخال تنظيف السيارات / Truck Daily Cleaning input"
+                aria-label="Cleaning input"
               >
                 🧼 <Bidi ar="تنظيف السيارات" en="Cleaning" />
               </button>
@@ -277,6 +268,18 @@ export default function CarIcon() {
                 📄 <Bidi ar="تقارير الأوقات" en="Loading Reports" />
               </button>
 
+              {/* ✅ تبويب عرض تقارير تنظيف السيارات */}
+              <button
+                type="button"
+                className={tabBtnClass(activeTab === "cleanReports", false)}
+                onClick={() => setActiveTab("cleanReports")}
+                title="عرض تقارير تنظيف السيارات / View truck cleaning reports"
+                aria-label="Cleaning reports"
+              >
+                🧾 <Bidi ar="تقارير التنظيف" en="Cleaning Reports" />
+              </button>
+
+              {/* (اختياري لاحقًا) */}
               <button
                 type="button"
                 className={tabBtnClass(activeTab === "approvals", true)}
@@ -310,10 +313,20 @@ export default function CarIcon() {
           </div>
         )}
 
+        {/* ✅ إدخال تنظيف السيارات */}
         {activeTab === "cleaning" && (
           <div className="panel" style={cardBox}>
             <div className="panel-body">
-              🚧 <Bidi ar="سيُضاف تبويب التنظيف قريباً" en="Cleaning tab coming soon" />
+              <Cleaning />
+            </div>
+          </div>
+        )}
+
+        {/* ✅ عرض تقارير تنظيف السيارات */}
+        {activeTab === "cleanReports" && (
+          <div className="panel" style={cardBox}>
+            <div className="panel-body">
+              <CleaningReports />
             </div>
           </div>
         )}

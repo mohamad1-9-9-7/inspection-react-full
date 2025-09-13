@@ -9,6 +9,25 @@ import {
   deleteImageUrl,       // من viewUtils
 } from "./viewUtils";
 
+/* ================= Helpers للإجماليات ================= */
+const toNum = (v) => {
+  const n = Number(String(v ?? "").replace(/[^\d.\-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+const pick = (obj, keys) => {
+  for (const k of keys) {
+    const val = obj?.[k];
+    if (val !== undefined && val !== null && String(val) !== "") return val;
+  }
+  return 0;
+};
+const show = (v) => {
+  if (v === 0) return "0";
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  const s = String(v ?? "").trim();
+  return s ? s : "-";
+};
+
 const headerStyles = {
   table: {
     width: "100%",
@@ -293,6 +312,7 @@ export default function ReportDetails({
       </div>
     );
 
+  // لا نستخدم return مبكّر — حتى نحافظ على ترتيب الـHooks ثابت
   const idForTitle = useMemo(() => {
     if (!selectedReport) return null;
     const awb = selectedReport?.generalInfo?.airwayBill;
@@ -300,21 +320,6 @@ export default function ReportDetails({
     const norm = (s) => String(s ?? "").trim();
     return norm(awb) || norm(inv) || null;
   }, [selectedReport]);
-
-  if (!selectedReport) {
-    return (
-      <p
-        style={{
-          textAlign: "center",
-          fontWeight: 800,
-          color: "#dc2626",
-          padding: "2rem",
-        }}
-      >
-        ❌ No report selected.
-      </p>
-    );
-  }
 
   // ===== Helpers =====
   const displayFieldValue = (k) => {
@@ -357,7 +362,7 @@ export default function ReportDetails({
     input.onchange = async (ev) => {
       const f = ev.target.files?.[0];
       if (!f) return;
-      const oldUrl = (selectedReport.images || [])[idx];
+      const oldUrl = (selectedReport?.images || [])[idx];
 
       try {
         const newUrl = await uploadImageViaServer(f);
@@ -377,7 +382,7 @@ export default function ReportDetails({
   };
 
   const handleDeleteImage = async (idx) => {
-    const url = (selectedReport.images || [])[idx];
+    const url = (selectedReport?.images || [])[idx];
     if (!isUrl(url)) return; // نحذف فقط الصور المرفوعة كرابط
     if (!window.confirm("Delete this image from server?")) return;
     try {
@@ -398,7 +403,7 @@ export default function ReportDetails({
     e.target.value = "";
     if (!file) return;
 
-    const wasUrl = selectedReport.certificateUrl || "";
+    const wasUrl = selectedReport?.certificateUrl || "";
 
     if (file.type.startsWith("image/")) {
       try {
@@ -442,7 +447,7 @@ export default function ReportDetails({
   };
 
   const handleDeleteCertificate = async () => {
-    const url = selectedReport.certificateUrl;
+    const url = selectedReport?.certificateUrl;
     if (!isUrl(url)) return; // حذف فعلي فقط لو URL
     if (!window.confirm("Delete certificate image from server?")) return;
     try {
@@ -457,283 +462,117 @@ export default function ReportDetails({
   };
 
   // ===== Derived totals from product lines =====
-  const lines = Array.isArray(selectedReport.productLines)
+  const lines = Array.isArray(selectedReport?.productLines)
     ? selectedReport.productLines
     : [];
-  const sumQty = lines.reduce((a, l) => a + (parseFloat(l?.qty) || 0), 0);
-  const sumWgt = lines.reduce((a, l) => a + (parseFloat(l?.weight) || 0), 0);
-  const avgW = sumQty > 0 ? (sumWgt / sumQty).toFixed(3) : "";
+
+  const sumQty = lines.reduce(
+    (a, l) => a + toNum(pick(l, ["qty", "quantity", "pcs", "pieces"])),
+    0
+  );
+  const sumWgt = lines.reduce(
+    (a, l) => a + toNum(pick(l, ["weight", "wt", "kg", "kgs", "weightKg"])),
+    0
+  );
+  const avgW = sumQty > 0 ? Number((sumWgt / sumQty).toFixed(3)) : 0;
+
+  /* ===== حقول المعلومات العامة بما فيها Receiving Address =====
+     نستخدم GENERAL_FIELDS_ORDER، ونضيف receivingAddress إن لم تكن موجودة،
+     ونجعلها بعد "origin" إن وُجد، وإلا في النهاية. */
+  const generalFields = useMemo(() => {
+    const arr = Array.isArray(GENERAL_FIELDS_ORDER) ? [...GENERAL_FIELDS_ORDER] : [];
+    if (!arr.includes("receivingAddress")) {
+      const idx = arr.indexOf("origin");
+      if (idx >= 0) arr.splice(idx + 1, 0, "receivingAddress");
+      else arr.push("receivingAddress");
+    }
+    return arr;
+  }, []);
+
+  const noReport = !selectedReport;
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ marginBottom: "10px" }}>
-        <table className="headerTable" style={headerStyles.table}>
-          <colgroup>
-            <col />
-            <col />
-            <col style={headerStyles.spacerCol} />
-            <col />
-            <col />
-          </colgroup>
-          <tbody>
-            <tr>
-              <th style={headerStyles.th}>Document Title</th>
-              <td style={headerStyles.td}>
-                {selectedReport?.docMeta?.documentTitle || defaultDocMeta.documentTitle}
-              </td>
-              <td />
-              <th style={headerStyles.th}>Document No</th>
-              <td style={headerStyles.td}>
-                {selectedReport?.docMeta?.documentNo || defaultDocMeta.documentNo}
-              </td>
-            </tr>
-            <tr>
-              <th style={headerStyles.th}>Issue Date</th>
-              <td style={headerStyles.td}>
-                {selectedReport?.docMeta?.issueDate || defaultDocMeta.issueDate}
-              </td>
-              <td />
-              <th style={headerStyles.th}>Revision No</th>
-              <td style={headerStyles.td}>
-                {selectedReport?.docMeta?.revisionNo || defaultDocMeta.revisionNo}
-              </td>
-            </tr>
-            <tr>
-              <th style={headerStyles.th}>Area</th>
-              <td style={headerStyles.td} colSpan={4}>
-                {selectedReport?.docMeta?.area || defaultDocMeta.area}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* Title + toggles */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-          marginBottom: "1rem",
-        }}
-      >
-        <h3 style={{ margin: 0, color: "#111827", fontWeight: 800 }}>
-          {idForTitle
-            ? (selectedReport?.generalInfo?.airwayBill
-                ? `📦 Air Way Bill: ${idForTitle}`
-                : `🧾 Invoice No: ${idForTitle}`)
-            : "📋 Incoming Shipment Report"}
-        </h3>
-
-        <button
-          onClick={() => setShowAttachments((s) => !s)}
+      {/* رسالة عدم وجود تقرير */}
+      {noReport && (
+        <p
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #e5e7eb",
-            background: "#ffffff",
-            cursor: "pointer",
+            textAlign: "center",
             fontWeight: 800,
-            color: "#0f172a",
-          }}
-          className="no-print"
-          title={showAttachments ? "Hide attachments" : "Show attachments"}
-        >
-          {showAttachments ? "🙈 Hide attachments" : "👀 Show attachments"}
-        </button>
-      </div>
-
-      {/* General Info grid */}
-      <section style={{ marginBottom: "1.5rem" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: 0,
-            border: "1px solid #000",
-            background: "#fff",
+            color: "#dc2626",
+            padding: "2rem",
           }}
         >
-          {GENERAL_FIELDS_ORDER.map((k) => (
-            <div key={k} style={{ border: "1px solid #000", padding: 12, minHeight: 66 }}>
-              <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-                {keyLabels[k] || k}
-              </div>
-              <div>{displayFieldValue(k)}</div>
-            </div>
-          ))}
-          <div style={{ border: "1px solid #000", padding: 12 }}>
-            <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-              Shipment Type
-            </div>
-            <div>{selectedReport.shipmentType || "-"}</div>
-          </div>
-          <div style={{ border: "1px solid #000", padding: 12 }}>
-            <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-              Shipment Status
-            </div>
-            <div>{selectedReport.status || "-"}</div>
-          </div>
-          <div style={{ border: "1px solid #000", padding: 12 }}>
-            <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-              Entry Date
-            </div>
-            <div>{selectedReport.date || "-"}</div>
-          </div>
-          <div style={{ border: "1px solid #000", padding: 12 }}>
-            <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-              Created Date
-            </div>
-            <div>{getCreatedDate(selectedReport) || "-"}</div>
-          </div>
-          {selectedReport.sequence ? (
-            <div style={{ border: "1px solid #000", padding: 12 }}>
-              <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-                Sequence (day)
-              </div>
-              <div>#{selectedReport.sequence}</div>
-            </div>
-          ) : null}
-          {selectedReport.uniqueKey ? (
-            <div style={{ border: "1px solid #000", padding: 12, gridColumn: "1 / -1" }}>
-              <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-                Unique Key
-              </div>
-              <div style={{ wordBreak: "break-all" }}>{selectedReport.uniqueKey}</div>
-            </div>
-          ) : null}
-          <div style={{ border: "1px solid #000", padding: 12 }}>
-            <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-              Total Quantity (pcs)
-            </div>
-            <div>{selectedReport.totalQuantity || (sumQty ? String(sumQty) : "-")}</div>
-          </div>
-          <div style={{ border: "1px solid #000", padding: 12 }}>
-            <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-              Total Weight (kg)
-            </div>
-            <div>{selectedReport.totalWeight || (sumWgt ? String(sumWgt) : "-")}</div>
-          </div>
-          <div style={{ border: "1px solid #000", padding: 12 }}>
-            <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
-              Average Weight (kg)
-            </div>
-            <div>{selectedReport.averageWeight || (avgW || "-")}</div>
-          </div>
-        </div>
-      </section>
+          ❌ No report selected.
+        </p>
+      )}
 
-      {/* Samples */}
-      <section>
-        <h4 style={sectionTitle}>Test Samples</h4>
-        <div style={{ overflowX: "auto", border: "1px solid #000" }}>
-          <table
+      {/* باقي المحتوى يظهر فقط عند توفر تقرير */}
+      {!noReport && (
+        <>
+          {/* Header */}
+          <div style={{ marginBottom: "10px" }}>
+            <table className="headerTable" style={headerStyles.table}>
+              <colgroup>
+                <col />
+                <col />
+                <col style={headerStyles.spacerCol} />
+                <col />
+                <col />
+              </colgroup>
+              <tbody>
+                <tr>
+                  <th style={headerStyles.th}>Document Title</th>
+                  <td style={headerStyles.td}>
+                    {selectedReport?.docMeta?.documentTitle || defaultDocMeta.documentTitle}
+                  </td>
+                  <td />
+                  <th style={headerStyles.th}>Document No</th>
+                  <td style={headerStyles.td}>
+                    {selectedReport?.docMeta?.documentNo || defaultDocMeta.documentNo}
+                  </td>
+                </tr>
+                <tr>
+                  <th style={headerStyles.th}>Issue Date</th>
+                  <td style={headerStyles.td}>
+                    {selectedReport?.docMeta?.issueDate || defaultDocMeta.issueDate}
+                  </td>
+                  <td />
+                  <th style={headerStyles.th}>Revision No</th>
+                  <td style={headerStyles.td}>
+                    {selectedReport?.docMeta?.revisionNo || defaultDocMeta.revisionNo}
+                  </td>
+                </tr>
+                <tr>
+                  <th style={headerStyles.th}>Area</th>
+                  <td style={headerStyles.td} colSpan={4}>
+                    {selectedReport?.docMeta?.area || defaultDocMeta.area}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Title + toggles */}
+          <div
             style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: "0.95rem",
-              minWidth: "900px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: "1rem",
             }}
           >
-            <thead>
-              <tr style={{ background: "#f5f5f5", textAlign: "center", fontWeight: 800 }}>
-                <th
-                  style={{
-                    padding: "10px 6px",
-                    border: "1px solid #000",
-                    whiteSpace: "nowrap",
-                    textAlign: "left",
-                  }}
-                >
-                  Attribute
-                </th>
-                {selectedReport.samples?.map((_, idx) => (
-                  <th
-                    key={idx}
-                    style={{ padding: "10px 6px", border: "1px solid #000", whiteSpace: "nowrap" }}
-                  >
-                    Sample {idx + 1}
-                  </th>
-                ))}
-              </tr>
-              <tr style={{ background: "#fafafa", textAlign: "center" }}>
-                <th style={{ padding: "10px 6px", border: "1px solid #000", textAlign: "left" }}>
-                  PRODUCT NAME
-                </th>
-                {selectedReport.samples?.map((s, idx) => (
-                  <th
-                    key={`pn-${idx}`}
-                    style={{ padding: "8px 6px", border: "1px solid #000", fontWeight: 600 }}
-                  >
-                    {s?.productName || "-"}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {ATTRIBUTES.map((attr) => (
-                <tr
-                  key={attr.key}
-                  style={
-                    ["temperature", "ph", "slaughterDate", "expiryDate"].includes(attr.key)
-                      ? { background: "#f9fafb" }
-                      : undefined
-                  }
-                >
-                  <td style={{ padding: "8px 6px", border: "1px solid #000", fontWeight: 600 }}>
-                    {attr.label}
-                  </td>
-                  {selectedReport.samples?.map((s, i) => (
-                    <td
-                      key={`${attr.key}-${i}`}
-                      style={{ padding: "8px 6px", border: "1px solid #000", textAlign: "center" }}
-                    >
-                      {s?.[attr.key] || "-"}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            <h3 style={{ margin: 0, color: "#111827", fontWeight: 800 }}>
+              {idForTitle
+                ? (selectedReport?.generalInfo?.airwayBill
+                    ? `📦 Air Way Bill: ${idForTitle}`
+                    : `🧾 Invoice No: ${idForTitle}`)
+                : "📋 Incoming Shipment Report"}
+            </h3>
 
-      {/* Notes */}
-      <section style={{ marginTop: "1rem" }}>
-        <h4 style={{ marginBottom: "0.5rem", fontWeight: 800, color: "#111827" }}>📝 Notes</h4>
-        <div
-          style={{
-            border: "1px solid #000",
-            padding: "10px 12px",
-            minHeight: "6em",
-            whiteSpace: "pre-wrap",
-            lineHeight: 1.6,
-            background: "#fff",
-          }}
-        >
-          {(selectedReport?.notes ?? selectedReport?.generalInfo?.notes ?? "")?.trim() || "—"}
-        </div>
-      </section>
-
-      {/* Attachments */}
-      {showAttachments && (
-        <section style={{ marginTop: "1.5rem" }}>
-          {(selectedReport.certificateUrl ||
-            selectedReport.certificateFile ||
-            (Array.isArray(selectedReport.images) && selectedReport.images.length > 0)) && (
-            <h4 style={{ marginBottom: 8, fontWeight: 800, color: "#111827" }}>Attachments</h4>
-          )}
-
-          {/* أزرار الرفع */}
-          <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             <button
-              onClick={() => certUploadRef.current?.click()}
-              title="Upload/Replace halal certificate (image/PDF)"
+              onClick={() => setShowAttachments((s) => !s)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -741,237 +580,519 @@ export default function ReportDetails({
                 padding: "10px 12px",
                 borderRadius: 10,
                 border: "1px solid #e5e7eb",
-                background: "#fff7ed",
+                background: "#ffffff",
                 cursor: "pointer",
                 fontWeight: 800,
-                color: "#7c2d12",
+                color: "#0f172a",
               }}
+              className="no-print"
+              title={showAttachments ? "Hide attachments" : "Show attachments"}
             >
-              🕌 Upload / Replace certificate
+              {showAttachments ? "🙈 Hide attachments" : "👀 Show attachments"}
             </button>
-            <input
-              ref={certUploadRef}
-              type="file"
-              accept="image/*,.pdf"
-              onChange={handleUploadOrReplaceCertificate}
-              style={{ display: "none" }}
-            />
-
-            <button
-              onClick={() => imagesUploadRef.current?.click()}
-              title="Upload images"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: "#eff6ff",
-                cursor: "pointer",
-                fontWeight: 800,
-                color: "#1e3a8a",
-              }}
-            >
-              📸 Upload images
-            </button>
-            <input
-              ref={imagesUploadRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleAddImages}
-              style={{ display: "none" }}
-            />
           </div>
 
-          {/* Certificate preview */}
-          {(selectedReport.certificateUrl || selectedReport.certificateFile) && (
-            <div style={{ margin: "0.5rem 0 1rem" }}>
-              <div style={{ fontWeight: 800, marginBottom: 6, color: "#111827" }}>
-                {selectedReport.certificateName || "Certificate"}
-              </div>
-
-              {/* رابط/صورة الشهادة */}
-              {selectedReport.certificateUrl ? (
-                isPdfUrl(selectedReport.certificateUrl) ? (
-                  <a
-                    href={selectedReport.certificateUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ fontWeight: 700 }}
-                  >
-                    📄 Open certificate (PDF)
-                  </a>
-                ) : (
-                  <img
-                    src={selectedReport.certificateUrl}
-                    alt={selectedReport.certificateName || "Certificate"}
-                    onClick={openCertViewer}
-                    style={{
-                      maxWidth: 350,
-                      borderRadius: 8,
-                      border: "1px solid #e5e7eb",
-                      display: "block",
-                      marginBottom: 6,
-                      cursor: "zoom-in",
-                    }}
-                  />
-                )
-              ) : null}
-
-              {/* Base64 قديم */}
-              {!selectedReport.certificateUrl && selectedReport.certificateFile ? (
-                isBase64Image(selectedReport.certificateFile) ? (
-                  <img
-                    src={selectedReport.certificateFile}
-                    alt={selectedReport.certificateName || "Certificate"}
-                    onClick={openCertViewer}
-                    style={{
-                      maxWidth: 350,
-                      borderRadius: 8,
-                      border: "1px solid #e5e7eb",
-                      display: "block",
-                      marginBottom: 6,
-                      cursor: "zoom-in",
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      padding: "8px 12px",
-                      border: "1px dashed #94a3b8",
-                      display: "inline-block",
-                      borderRadius: 8,
-                      marginBottom: 6,
-                    }}
-                  >
-                    📄 PDF attached — file name:{" "}
-                    <strong>{selectedReport.certificateName}</strong>
-                  </div>
-                )
-              ) : null}
-
-              {/* أزرار الشهادة */}
-              <div className="no-print" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => certUploadRef.current?.click()}
-                  style={{
-                    background: "#2563eb",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "6px 10px",
-                    fontWeight: 800,
-                    cursor: "pointer",
-                  }}
-                  title="Replace certificate"
-                >
-                  Replace
-                </button>
-
-                {isUrl(selectedReport.certificateUrl) && (
-                  <button
-                    onClick={handleDeleteCertificate}
-                    style={{
-                      background: "#ef4444",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: 8,
-                      padding: "6px 10px",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                    }}
-                    title="Delete certificate from server"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Images grid */}
-          {Array.isArray(selectedReport.images) && selectedReport.images.length > 0 && (
+          {/* General Info grid (تشمل Receiving Address) */}
+          <section style={{ marginBottom: "1.5rem" }}>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                gap: 10,
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 0,
+                border: "1px solid #000",
+                background: "#fff",
               }}
             >
-              {selectedReport.images.map((src, i) => {
-                const canDelete = isUrl(src);
-                return (
-                  <div
-                    key={`${src}-${i}`}
-                    style={{
-                      position: "relative",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 10,
-                      overflow: "hidden",
-                      background: "#f8fafc",
-                    }}
-                    title={`Image ${i + 1}`}
-                  >
-                    <img
-                      src={src}
-                      alt={`image-${i + 1}`}
-                      onClick={() => openImageViewer(i, src)}
-                      style={{ width: "100%", height: 150, objectFit: "cover", display: "block", cursor: "zoom-in" }}
-                    />
-                    <div
-                      className="no-print"
+              {generalFields.map((k) => (
+                <div key={k} style={{ border: "1px solid #000", padding: 12, minHeight: 66 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                    {k === "receivingAddress"
+                      ? (keyLabels[k] || "Receiving Address (عنوان الاستلام)")
+                      : (keyLabels[k] || k)}
+                  </div>
+                  <div>{displayFieldValue(k)}</div>
+                </div>
+              ))}
+              <div style={{ border: "1px solid #000", padding: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                  Shipment Type
+                </div>
+                <div>{selectedReport?.shipmentType || "-"}</div>
+              </div>
+              <div style={{ border: "1px solid #000", padding: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                  Shipment Status
+                </div>
+                <div>{selectedReport?.status || "-"}</div>
+              </div>
+              <div style={{ border: "1px solid #000", padding: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                  Entry Date
+                </div>
+                <div>{selectedReport?.date || "-"}</div>
+              </div>
+              <div style={{ border: "1px solid #000", padding: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                  Created Date
+                </div>
+                <div>{getCreatedDate(selectedReport) || "-"}</div>
+              </div>
+              {selectedReport?.sequence ? (
+                <div style={{ border: "1px solid #000", padding: 12 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                    Sequence (day)
+                  </div>
+                  <div>
+                    <span>#</span>{selectedReport.sequence}
+                  </div>
+                </div>
+              ) : null}
+              {selectedReport?.uniqueKey ? (
+                <div style={{ border: "1px solid #000", padding: 12, gridColumn: "1 / -1" }}>
+                  <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                    Unique Key
+                  </div>
+                  <div style={{ wordBreak: "break-all" }}>{selectedReport.uniqueKey}</div>
+                </div>
+              ) : null}
+              <div style={{ border: "1px solid #000", padding: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                  Total Quantity (pcs)
+                </div>
+                <div>{show(selectedReport?.totalQuantity ?? sumQty)}</div>
+              </div>
+              <div style={{ border: "1px solid #000", padding: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                  Total Weight (kg)
+                </div>
+                <div>{show(selectedReport?.totalWeight ?? sumWgt)}</div>
+              </div>
+              <div style={{ border: "1px solid #000", padding: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                  Average Weight (kg)
+                </div>
+                <div>{show(selectedReport?.averageWeight ?? avgW)}</div>
+              </div>
+            </div>
+          </section>
+
+          {/* Samples */}
+          <section>
+            <h4 style={sectionTitle}>Test Samples</h4>
+            <div style={{ overflowX: "auto", border: "1px solid #000" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "0.95rem",
+                  minWidth: "900px",
+                }}
+              >
+                <thead>
+                  <tr style={{ background: "#f5f5f5", textAlign: "center", fontWeight: 800 }}>
+                    <th
                       style={{
-                        position: "absolute",
-                        left: 6,
-                        right: 6,
-                        bottom: 6,
-                        display: "flex",
-                        gap: 6,
-                        justifyContent: "space-between",
+                        padding: "10px 6px",
+                        border: "1px solid #000",
+                        whiteSpace: "nowrap",
+                        textAlign: "left",
                       }}
                     >
-                      <button
-                        onClick={() => handleReplaceImage(i)}
+                      Attribute
+                    </th>
+                    {selectedReport?.samples?.map((_, idx) => (
+                      <th
+                        key={idx}
+                        style={{ padding: "10px 6px", border: "1px solid #000", whiteSpace: "nowrap" }}
+                      >
+                        Sample {idx + 1}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr style={{ background: "#fafafa", textAlign: "center" }}>
+                    <th style={{ padding: "10px 6px", border: "1px solid #000", textAlign: "left" }}>
+                      PRODUCT NAME
+                    </th>
+                    {selectedReport?.samples?.map((s, idx) => (
+                      <th
+                        key={`pn-${idx}`}
+                        style={{ padding: "8px 6px", border: "1px solid #000", fontWeight: 600 }}
+                      >
+                        {s?.productName || "-"}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ATTRIBUTES.map((attr) => (
+                    <tr
+                      key={attr.key}
+                      style={
+                        ["temperature", "ph", "slaughterDate", "expiryDate"].includes(attr.key)
+                          ? { background: "#f9fafb" }
+                          : undefined
+                      }
+                    >
+                      <td style={{ padding: "8px 6px", border: "1px solid #000", fontWeight: 600 }}>
+                        {attr.label}
+                      </td>
+                      {selectedReport?.samples?.map((s, i) => (
+                        <td
+                          key={`${attr.key}-${i}`}
+                          style={{ padding: "8px 6px", border: "1px solid #000", textAlign: "center" }}
+                        >
+                          {s?.[attr.key] || "-"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Product Lines */}
+          <section style={{ marginTop: "1.5rem" }}>
+            <h4 style={sectionTitle}>Product Lines (تفاصيل أسطر المنتجات)</h4>
+            <div style={{ overflowX: "auto", border: "1px solid #000", background: "#fff" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "0.95rem",
+                  minWidth: "640px",
+                }}
+              >
+                <thead>
+                  <tr style={{ background: "#f5f5f5", fontWeight: 800 }}>
+                    <th style={{ border: "1px solid #000", padding: "10px 8px", textAlign: "left" }}>
+                      Product Name
+                    </th>
+                    <th style={{ border: "1px solid #000", padding: "10px 8px", width: 140, textAlign: "center" }}>
+                      Qty (pcs)
+                    </th>
+                    <th style={{ border: "1px solid #000", padding: "10px 8px", width: 160, textAlign: "center" }}>
+                      Weight (kg)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.length > 0 ? (
+                    lines.map((r, idx) => (
+                      <tr key={r?.id || idx}>
+                        <td style={{ border: "1px solid #000", padding: "8px 8px" }}>
+                          {String(r?.name ?? r?.productName ?? "").trim() || "-"}
+                        </td>
+                        <td style={{ border: "1px solid #000", padding: "8px 8px", textAlign: "center" }}>
+                          {show(pick(r, ["qty", "quantity", "pcs", "pieces"]))}
+                        </td>
+                        <td style={{ border: "1px solid #000", padding: "8px 8px", textAlign: "center" }}>
+                          {show(pick(r, ["weight", "wt", "kg", "kgs", "weightKg"]))}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={3} style={{ border: "1px solid #000", padding: "10px 8px", textAlign: "center", color: "#6b7280" }}>
+                        لا توجد أسطر منتجات مسجلة.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: "#fafafa", fontWeight: 800 }}>
+                    <td style={{ border: "1px solid #000", padding: "10px 8px", textAlign: "right" }}>
+                      الإجمالي:
+                    </td>
+                    <td style={{ border: "1px solid #000", padding: "10px 8px", textAlign: "center" }}>
+                      {show(selectedReport?.totalQuantity ?? sumQty)}
+                    </td>
+                    <td style={{ border: "1px solid #000", padding: "10px 8px", textAlign: "center" }}>
+                      {show(selectedReport?.totalWeight ?? sumWgt)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colSpan={3} style={{ border: "1px solid #000", padding: "8px 8px", textAlign: "right" }}>
+                      <strong>Average Weight (kg/pc):</strong>{" "}
+                      {show(selectedReport?.averageWeight ?? avgW)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+
+          {/* Notes */}
+          <section style={{ marginTop: "1rem" }}>
+            <h4 style={{ marginBottom: "0.5rem", fontWeight: 800, color: "#111827" }}>📝 Notes</h4>
+            <div
+              style={{
+                border: "1px solid #000",
+                padding: "10px 12px",
+                minHeight: "6em",
+                whiteSpace: "pre-wrap",
+                lineHeight: 1.6,
+                background: "#fff",
+              }}
+            >
+              {(selectedReport?.notes ?? selectedReport?.generalInfo?.notes ?? "")?.trim() || "—"}
+            </div>
+          </section>
+
+          {/* Attachments */}
+          {showAttachments && (
+            <section style={{ marginTop: "1.5rem" }}>
+              {(selectedReport?.certificateUrl ||
+                selectedReport?.certificateFile ||
+                (Array.isArray(selectedReport?.images) && selectedReport.images.length > 0)) && (
+                <h4 style={{ marginBottom: 8, fontWeight: 800, color: "#111827" }}>Attachments</h4>
+              )}
+
+              {/* أزرار الرفع */}
+              <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                <button
+                  onClick={() => certUploadRef.current?.click()}
+                  title="Upload/Replace halal certificate (image/PDF)"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #e5e7eb",
+                    background: "#fff7ed",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                    color: "#7c2d12",
+                  }}
+                >
+                  🕌 Upload / Replace certificate
+                </button>
+                <input
+                  ref={certUploadRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={handleUploadOrReplaceCertificate}
+                  style={{ display: "none" }}
+                />
+
+                <button
+                  onClick={() => imagesUploadRef.current?.click()}
+                  title="Upload images"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #e5e7eb",
+                    background: "#eff6ff",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                    color: "#1e3a8a",
+                  }}
+                >
+                  📸 Upload images
+                </button>
+                <input
+                  ref={imagesUploadRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleAddImages}
+                  style={{ display: "none" }}
+                />
+              </div>
+
+              {/* Certificate preview */}
+              {(selectedReport?.certificateUrl || selectedReport?.certificateFile) && (
+                <div style={{ margin: "0.5rem 0 1rem" }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6, color: "#111827" }}>
+                    {selectedReport?.certificateName || "Certificate"}
+                  </div>
+
+                  {/* رابط/صورة الشهادة */}
+                  {selectedReport?.certificateUrl ? (
+                    isPdfUrl(selectedReport.certificateUrl) ? (
+                      <a
+                        href={selectedReport.certificateUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontWeight: 700 }}
+                      >
+                        📄 Open certificate (PDF)
+                      </a>
+                    ) : (
+                      <img
+                        src={selectedReport.certificateUrl}
+                        alt={selectedReport?.certificateName || "Certificate"}
+                        onClick={openCertViewer}
                         style={{
-                          background: "#2563eb",
+                          maxWidth: 350,
+                          borderRadius: 8,
+                          border: "1px solid #e5e7eb",
+                          display: "block",
+                          marginBottom: 6,
+                          cursor: "zoom-in",
+                        }}
+                      />
+                    )
+                  ) : null}
+
+                  {/* Base64 قديم */}
+                  {!selectedReport?.certificateUrl && selectedReport?.certificateFile ? (
+                    isBase64Image(selectedReport.certificateFile) ? (
+                      <img
+                        src={selectedReport.certificateFile}
+                        alt={selectedReport?.certificateName || "Certificate"}
+                        onClick={openCertViewer}
+                        style={{
+                          maxWidth: 350,
+                          borderRadius: 8,
+                          border: "1px solid #e5e7eb",
+                          display: "block",
+                          marginBottom: 6,
+                          cursor: "zoom-in",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          padding: "8px 12px",
+                          border: "1px dashed #94a3b8",
+                          display: "inline-block",
+                          borderRadius: 8,
+                          marginBottom: 6,
+                        }}
+                      >
+                        📄 PDF attached — file name:{" "}
+                        <strong>{selectedReport?.certificateName}</strong>
+                      </div>
+                    )
+                  ) : null}
+
+                  {/* أزرار الشهادة */}
+                  <div className="no-print" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => certUploadRef.current?.click()}
+                      style={{
+                        background: "#2563eb",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "6px 10px",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                      title="Replace certificate"
+                    >
+                      Replace
+                    </button>
+
+                    {isUrl(selectedReport?.certificateUrl) && (
+                      <button
+                        onClick={handleDeleteCertificate}
+                        style={{
+                          background: "#ef4444",
                           color: "#fff",
                           border: "none",
                           borderRadius: 8,
-                          padding: "4px 8px",
+                          padding: "6px 10px",
                           fontWeight: 800,
                           cursor: "pointer",
                         }}
-                        title="Replace image"
+                        title="Delete certificate from server"
                       >
-                        Replace
+                        Delete
                       </button>
-
-                      {canDelete && (
-                        <button
-                          onClick={() => handleDeleteImage(i)}
-                          style={{
-                            background: "#ef4444",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: 8,
-                            padding: "4px 8px",
-                            fontWeight: 800,
-                            cursor: "pointer",
-                          }}
-                          title="Delete image from server"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              )}
+
+              {/* Images grid */}
+              {Array.isArray(selectedReport?.images) && selectedReport.images.length > 0 && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  {selectedReport.images.map((src, i) => {
+                    const canDelete = isUrl(src);
+                    return (
+                      <div
+                        key={`${src}-${i}`}
+                        style={{
+                          position: "relative",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          background: "#f8fafc",
+                        }}
+                        title={`Image ${i + 1}`}
+                      >
+                        <img
+                          src={src}
+                          alt={`image-${i + 1}`}
+                          onClick={() => openImageViewer(i, src)}
+                          style={{ width: "100%", height: 150, objectFit: "cover", display: "block", cursor: "zoom-in" }}
+                        />
+                        <div
+                          className="no-print"
+                          style={{
+                            position: "absolute",
+                            left: 6,
+                            right: 6,
+                            bottom: 6,
+                            display: "flex",
+                            gap: 6,
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <button
+                            onClick={() => handleReplaceImage(i)}
+                            style={{
+                              background: "#2563eb",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: 8,
+                              padding: "4px 8px",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                            title="Replace image"
+                          >
+                            Replace
+                          </button>
+
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDeleteImage(i)}
+                              style={{
+                                background: "#ef4444",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: 8,
+                                padding: "4px 8px",
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                              title="Delete image from server"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           )}
-        </section>
+        </>
       )}
 
       {/* Modal component */}

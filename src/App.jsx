@@ -10,15 +10,23 @@ const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 
 const DailyMonitorDashboard = lazy(() => import("./pages/monitor/DailyMonitorDashboard"));
 const QCSReport = lazy(() => import("./pages/monitor/branches/QCSReport"));
-const POS19Report = lazy(() => import("./pages/monitor/branches/POS19Report"));
 
-// ✅ FTR1 (إدخال + عرض)
+const POS19Layout = lazy(() => import("./pages/monitor/branches/pos19/POS19Layout"));
+const POS24Layout = lazy(() => import("./pages/monitor/branches/pos24/POS24Layout"));
+const POS26Layout = lazy(() => import("./pages/monitor/branches/pos26/POS26Layout"));
+const POS15Layout = lazy(() => import("./pages/monitor/branches/pos15/POS15Layout"));
+
+// ✅ إدخال + عرض FTR1
 const FTR1Report = lazy(() => import("./pages/monitor/branches/ftr1/FTR1Report"));
-const FTR1ReportView = lazy(() => import("./pages/monitor/branches/ftr1/FTR1ReportView")); // نفس الملف لكن نعرضه كـ FTR1
+const FTR1ReportView = lazy(() =>
+  import("./pages/monitor/branches/ftr1/FTR1ReportView")
+);
 
-// ✅ FTR2 (إدخال + عرض)
+// ✅ إدخال + عرض FTR2
 const FTR2Report = lazy(() => import("./pages/monitor/branches/ftr2/FTR2Report"));
-const FTR2ReportView = lazy(() => import("./pages/monitor/branches/ftr2/FTR2ReportView"));
+const FTR2ReportView = lazy(() =>
+  import("./pages/monitor/branches/ftr2/FTR2ReportView")
+);
 
 const OHCUpload = lazy(() => import("./pages/ohc/OHCUpload"));
 const OHCView = lazy(() => import("./pages/ohc/OHCView"));
@@ -36,16 +44,26 @@ const ReturnsMenu = lazy(() => import("./ReturnsMenu"));
 const LoginKPI = lazy(() => import("./pages/LoginKPI"));
 const KPIDashboard = lazy(() => import("./pages/KPIDashboard"));
 
-const FinishedProductsData = lazy(() => import("./pages/finished/FinishedProductsData"));
-const FinishedProductEntry = lazy(() => import("./pages/finished/FinishedProductEntry"));
-const FinishedProductReports = lazy(() => import("./pages/finished/FinishedProductReports"));
+const FinishedProductsData = lazy(() =>
+  import("./pages/finished/FinishedProductsData")
+);
+const FinishedProductEntry = lazy(() =>
+  import("./pages/finished/FinishedProductEntry")
+);
+const FinishedProductReports = lazy(() =>
+  import("./pages/finished/FinishedProductReports")
+);
 
 // 🆕 سيارات
 const CarIconPage = lazy(() => import("./pages/car/pages/CarIcon"));
 
 // 🆕 صيانة
-const MaintenanceRequests = lazy(() => import("./pages/maintenance/MaintenanceRequests"));
-const MaintenanceHome = lazy(() => import("./pages/maintenance/MaintenanceHome"));
+const MaintenanceRequests = lazy(() =>
+  import("./pages/maintenance/MaintenanceRequests")
+);
+const MaintenanceHome = lazy(() =>
+  import("./pages/maintenance/MaintenanceHome")
+);
 const BrowseMaintenanceRequests = lazy(() =>
   import("./pages/maintenance/BrowseMaintenanceRequests")
 );
@@ -77,13 +95,26 @@ const PRDReportsView = lazy(() =>
 /* 🆕 مرتجعات الزبائن */
 const CustomerReturns = lazy(() => import("./pages/CustomerReturns"));
 const CustomerReturnView = lazy(() => import("./pages/CustomerReturnView"));
-const BrowseCustomerReturns = lazy(() => import("./pages/BrowseCustomerReturns"));
+const BrowseCustomerReturns = lazy(() =>
+  import("./pages/BrowseCustomerReturns")
+);
+
+// 🆕 ✅ عرض تقارير POS 15 (التبويبات)
+const POS15ReportsView = lazy(() =>
+  import("./pages/monitor/branches/pos15/POS15ReportsView")
+);
+
+// 🆕 ✅ عرض تقارير النظافة الشخصية POS 15
+const POS15PersonalHygieneView = lazy(() =>
+  import("./pages/monitor/branches/pos15/POS15PersonalHygieneView")
+);
 
 /** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
   let isAuthed = false;
   try {
-    const raw = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
+    const raw =
+      typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
     isAuthed = !!(raw && JSON.parse(raw));
   } catch {
     isAuthed = false;
@@ -104,11 +135,15 @@ function BranchMonitorPage() {
   };
 
   return (
-    <div style={{ padding: "2rem", direction: "rtl", fontFamily: "Cairo, sans-serif" }}>
-      <h2>📝 صفحة تقارير الفرع / Branch Reports Page: {prettyName(slug)}</h2>
+    <div
+      style={{ padding: "2rem", direction: "rtl", fontFamily: "Cairo, sans-serif" }}
+    >
+      <h2>
+        📝 صفحة تقارير الفرع / Branch Reports Page: {prettyName(slug)}
+      </h2>
       <p>
-        هذه صفحة مؤقتة. يمكنك لاحقًا استبدالها بنموذج الفرع الحقيقي. / This is a temporary
-        page; you can later replace it with the real branch form.
+        هذه صفحة مؤقتة. يمكنك لاحقًا استبدالها بنموذج الفرع الحقيقي. / This is a
+        temporary page; you can later replace it with the real branch form.
       </p>
     </div>
   );
@@ -116,12 +151,22 @@ function BranchMonitorPage() {
 
 // 404
 function NotFound() {
-  return <div style={{ padding: 24, direction: "rtl" }}>الصفحة غير موجودة / Page not found</div>;
+  return (
+    <div style={{ padding: 24, direction: "rtl" }}>
+      الصفحة غير موجودة / Page not found
+    </div>
+  );
 }
 
 export default function App() {
   return (
-    <Suspense fallback={<div style={{ padding: 24, direction: "rtl" }}>جارٍ التحميل… / Loading…</div>}>
+    <Suspense
+      fallback={
+        <div style={{ padding: 24, direction: "rtl" }}>
+          جارٍ التحميل… / Loading…
+        </div>
+      }
+    >
       <Routes>
         {/* الجذر */}
         <Route path="/" element={<Login />} />
@@ -214,11 +259,46 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* ✅ POS — تبويبات داخلية */}
           <Route
             path="pos19"
             element={
               <ProtectedRoute>
-                <POS19Report />
+                <POS19Layout />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="pos24"
+            element={
+              <ProtectedRoute>
+                <POS24Layout />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="pos26"
+            element={
+              <ProtectedRoute>
+                <POS26Layout />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="pos15"
+            element={
+              <ProtectedRoute>
+                <POS15Layout />
+              </ProtectedRoute>
+            }
+          />
+          {/* 🆕 عرض تقارير النظافة الشخصية POS15 */}
+          <Route
+            path="pos15/personal-hygiene"
+            element={
+              <ProtectedRoute>
+                <POS15PersonalHygieneView />
               </ProtectedRoute>
             }
           />
@@ -254,7 +334,6 @@ export default function App() {
         </Route>
 
         {/* admin/* */}
-        {/* 🆕 FTR1 عرض */}
         <Route
           path="/admin/ftr1"
           element={
@@ -263,8 +342,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* FTR2 عرض */}
         <Route
           path="/admin/ftr2"
           element={
@@ -273,13 +350,19 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* 🆕 ✅ مسار عرض تقارير الإنتاج الموحّد */}
         <Route
           path="/admin/production"
           element={
             <ProtectedRoute>
               <PRDReportsView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/pos15"
+          element={
+            <ProtectedRoute>
+              <POS15ReportsView />
             </ProtectedRoute>
           }
         />

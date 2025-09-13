@@ -902,7 +902,7 @@ export default function LoadingReports() {
                   return (
                     <div key={key} style={{ margin: "4px 0 6px" }}>
                       <div
-                        style={{ ...subHeader, background: mOpen ? "#f0f9ff" : "rgba(255,255,255,0.85)" }}
+                        style={{ ...subHeader, background: mOpen ? "#97d7a4ff" : "rgba(255,255,255,0.85)" }}
                         onClick={() => setOpenMonths((p) => ({ ...p, [key]: !p[key] }))}
                       >
                         <span>🗓 Month: {month}</span>
@@ -916,7 +916,7 @@ export default function LoadingReports() {
                             const iso = isISO ? k.slice(4) : null;
                             const labelTxt = isISO ? (
                               <>
-                                {displayDate(iso)} <small style={{ color: "#6b7280" }}>{relativeLabel(iso)}</small>
+                                {displayDate(iso)} <small style={{ color: "#150202ff" }}>{relativeLabel(iso)}</small>
                               </>
                             ) : (
                               k.slice(4)
@@ -939,7 +939,7 @@ export default function LoadingReports() {
                             );
                           })}
                           {filteredDays.length === 0 && (
-                            <div style={{ textAlign: "center", color: "#6b7280", padding: 8 }}>No days in filter</div>
+                            <div style={{ textAlign: "center", color: "#806b6bff", padding: 8 }}>No days in filter</div>
                           )}
                         </div>
                       )}
@@ -961,7 +961,7 @@ export default function LoadingReports() {
         const iso = isISO ? k.slice(4) : null;
         const labelTxt = isISO ? (
           <>
-            {displayDate(iso)} <small style={{ color: "#6b7280" }}>{relativeLabel(iso)}</small>
+            {displayDate(iso)} <small style={{ color: "#806b6dff" }}>{relativeLabel(iso)}</small>
           </>
         ) : (
           k.slice(4)
@@ -984,7 +984,7 @@ export default function LoadingReports() {
         );
       })}
       {filteredFlat.length === 0 && (
-        <div style={{ textAlign: "center", color: "#6b7280", padding: 16 }}>No days</div>
+        <div style={{ textAlign: "center", color: "#1358e0ff", padding: 16 }}>No days</div>
       )}
     </div>
   );
@@ -1051,7 +1051,7 @@ export default function LoadingReports() {
       </div>
 
       {(loading) ? (
-        <p style={{ textAlign: "center", color: "#6b7280" }}>Loading…</p>
+        <p style={{ textAlign: "center", color: "#1353d3ff" }}>Loading…</p>
       ) : (hierarchy.length === 0) ? (
         <p style={{ textAlign: "center", color: "#6b7280" }}>No reports on server.</p>
       ) : (
@@ -1091,7 +1091,7 @@ export default function LoadingReports() {
                   {/* ===== Document Header (ONCE per day) ===== */}
                   {dayHeader.header && (
                     <div className="panel" style={{ marginBottom: 16, overflow: "hidden" }}>
-                      <div className="panel-body" style={{ background: "rgba(255,255,255,0.8)" }}>
+                      <div className="panel-body" style={{ background: "rgba(205, 210, 213, 0.8)" }}>
                         <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>
                           Document Header
                         </div>
@@ -1145,7 +1145,7 @@ export default function LoadingReports() {
                       />
                     </div>
                     <div className="panel" style={{ padding: 12 }}>
-                      <div style={{ fontWeight: 800, color: "#7c3aed", marginBottom: 6 }}>Last days history</div>
+                      <div style={{ fontWeight: 800, color: "#6310f1ff", marginBottom: 6 }}>Last days history</div>
                       <Sparkline points={sparkPoints} />
                       <div style={{ color: "#6b7280", fontSize: ".88em", marginTop: 6 }}>
                         Trend of records/day for the last {sparkPoints.length || 0} day(s).
@@ -1185,7 +1185,7 @@ export default function LoadingReports() {
                               {VI_PARAMS.map(p => (
                                 <td key={p.id}>
                                   <span style={{ color: v[p.id] === "yes" ? "#16a34a" : "#dc2626", fontWeight: 700 }}>
-                                    {v[p.id] === "yes" ? "✅" : "❌"}
+                                    {v[p.id] === "yes" ? "YES" : "NO"}
                                   </span>
                                 </td>
                               ))}
