@@ -3,9 +3,7 @@ import React, { useState } from "react";
 
 // 👇 استيراد ملفات العرض الخاصة بفرع POS 15 (نفس المجلّد)
 import POS15DailyCleaningView from "./POS15DailyCleaningView";
-import POS15OilCalibrationView from "./POS15OilCalibrationView";
 import POS15PersonalHygieneView from "./POS15PersonalHygieneView";
-import POS15DetergentCalibrationView from "./POS15DetergentCalibrationView";
 // 🆕 🌡️ درجة الحرارة
 import POS15TemperatureView from "./POS15TemperatureView";
 
@@ -44,14 +42,6 @@ export default function POS15ReportsView() {
 
         <button
           type="button"
-          style={tabButtonStyle("oil")}
-          onClick={() => setActiveTab("oil")}
-        >
-          🛢️ Oil Calibration
-        </button>
-
-        <button
-          type="button"
           style={tabButtonStyle("hygiene")}
           onClick={() => setActiveTab("hygiene")}
         >
@@ -66,14 +56,6 @@ export default function POS15ReportsView() {
         >
           🌡️ Temperature
         </button>
-
-        <button
-          type="button"
-          style={tabButtonStyle("detergent")}
-          onClick={() => setActiveTab("detergent")}
-        >
-          🧴 Detergent Calibration
-        </button>
       </div>
 
       {/* Tabs Content */}
@@ -86,11 +68,9 @@ export default function POS15ReportsView() {
         }}
       >
         {activeTab === "cleanliness" && <POS15DailyCleaningView />}
-        {activeTab === "oil" && <POS15OilCalibrationView />}
         {activeTab === "hygiene" && <POS15PersonalHygieneView />}
         {/* 🆕 محتوى الحرارة */}
         {activeTab === "temperature" && <POS15TemperatureView />}
-        {activeTab === "detergent" && <POS15DetergentCalibrationView />}
       </div>
     </div>
   );

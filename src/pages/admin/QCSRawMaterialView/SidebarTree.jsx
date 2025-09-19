@@ -13,7 +13,6 @@ export default function SidebarTree({
   onExportPDF,
   searchTerm,
   setSearchTerm,
-  onDeleteReport,
   onExportJSON,
   onImportJSON,
   getDisplayId,
@@ -89,7 +88,6 @@ export default function SidebarTree({
         }}
       />
 
-      {/* Date tree */}
       {Object.keys(tree)
         .sort((a, b) => b.localeCompare(a))
         .map((year) => (
@@ -153,16 +151,15 @@ export default function SidebarTree({
 
                                 {openDays[ymd] && (
                                   <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                                    {dayReports.map((r) => (
-                                      <li key={r.id} style={{ marginBottom: "0.5rem" }}>
-                                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                    {dayReports.map((r, idx) => {
+                                      const uniqueKey = `${ymd}-${r.id || "noid"}-${r.serverId || "nosid"}-${r.uniqueKey || "nokey"}-${idx}`;
+                                      return (
+                                        <li key={uniqueKey} style={{ marginBottom: "0.5rem" }}>
                                           <button
-                                            onClick={() => {
-                                              setSelectedReportId(r.id);
-                                            }}
+                                            onClick={() => { setSelectedReportId(r.id); }}
                                             title={`Open report ${getDisplayId(r)}`}
                                             style={{
-                                              flex: 1, padding: "8px 10px", borderRadius: 10, cursor: "pointer",
+                                              width: "100%", padding: "8px 10px", borderRadius: 10, cursor: "pointer",
                                               border: selectedReportId === r.id ? "2px solid #1f2937" : "1px solid #e5e7eb",
                                               background: selectedReportId === r.id ? "#f5f5f5" : "#fff",
                                               fontWeight: selectedReportId === r.id ? 800 : 600,
@@ -183,20 +180,9 @@ export default function SidebarTree({
                                               {r.status === "Acceptable" ? "✅" : r.status === "Average" ? "⚠️" : "❌"}
                                             </span>
                                           </button>
-
-                                          <button
-                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteReport(r.id); }}
-                                            style={{
-                                              background: "#dc2626", color: "#fff", border: "1px solid #b91c1c",
-                                              borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontWeight: 800, minWidth: 72,
-                                            }}
-                                            title="Delete report from server"
-                                          >
-                                            Delete
-                                          </button>
-                                        </div>
-                                      </li>
-                                    ))}
+                                        </li>
+                                      );
+                                    })}
                                   </ul>
                                 )}
                               </div>
@@ -223,7 +209,8 @@ export default function SidebarTree({
           onClick={() => importRef.current?.click()}
           style={{
             padding: 10, background: "#16a34a", color: "#fff",
-            border: "1px solid #15803d", borderRadius: 10,
+            border: "1px solid #15803d",
+            borderRadius: 10,
             width: "100%", fontWeight: 800,
           }}
         >

@@ -7,6 +7,7 @@ import {
   keyLabels,
   uploadImageViaServer, // من viewUtils
   deleteImageUrl,       // من viewUtils
+  upsertReportOnServer, // ✅ الحفظ على السيرفر (UPSERT)
 } from "./viewUtils";
 
 /* ================= Helpers للإجماليات ================= */
@@ -63,13 +64,44 @@ const isPdfUrl = (u) => typeof u === "string" && /\.pdf(\?|#|$)/i.test(u);
 const isBase64Image = (u) =>
   typeof u === "string" && u.startsWith("data:image/");
 
+/* ================= Helper: نحفظ ونثبت serverId ================= */
+async function commitToServer(nextReport, updateSelectedReport) {
+  const saved = await upsertReportOnServer(nextReport);
+  const srv = saved?.data || saved || {};
+  const dbId =
+    srv?._id || srv?.id || srv?.data?._id || nextReport?.serverId || undefined;
+  const payload = srv?.payload || null;
+
+  const merged = payload
+    ? { ...nextReport, ...payload, serverId: dbId }
+    : { ...nextReport, serverId: dbId };
+
+  updateSelectedReport(() => merged);
+  return merged;
+}
+
 export default function ReportDetails({
   selectedReport,
   getDisplayId,
   getCreatedDate,
   updateSelectedReport,
+  onDeleteReport,            // ← استلام دالة الحذف من index.jsx
 }) {
   const [showAttachments, setShowAttachments] = useState(true);
+  const [deleting, setDeleting] = useState(false); // حالة زر الحذف
+
+  // زر الحذف مع تأكيد
+  const handleDeleteReport = async () => {
+    if (!selectedReport || !onDeleteReport) return;
+    const name = getDisplayId?.(selectedReport) || "this report";
+    if (!window.confirm(`Are you sure you want to delete "${name}" from the server?`)) return;
+    try {
+      setDeleting(true);
+      await onDeleteReport(selectedReport); // يمرّر الكائن كامل
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // refs
   const imagesUploadRef = useRef(null);
@@ -99,7 +131,6 @@ export default function ReportDetails({
     const url = selectedReport?.certificateUrl;
     const b64 = selectedReport?.certificateFile;
     const name = selectedReport?.certificateName || "Certificate";
-    // افتح فقط لو صورة (رابط أو Base64). الـ PDF يضل لينك عادي.
     const src = url || b64 || "";
     if (!src || isPdfUrl(src)) return;
     setViewer({
@@ -237,31 +268,6 @@ export default function ReportDetails({
             }}
           >
             <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => {
-                  if (viewer.kind === "image") {
-                    // استبدال صورة من المعرض
-                    handleReplaceImage(viewer.index);
-                  } else {
-                    // استبدال شهادة: افتح مدخل الشهادة ثم سكّر المودال
-                    certUploadRef.current?.click();
-                  }
-                  closeViewer();
-                }}
-                style={{
-                  background: "#2563eb",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 10,
-                  padding: "8px 12px",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
-                title="Replace"
-              >
-                Replace
-              </button>
-
               {viewer.canDelete && (
                 <button
                   onClick={() => {
@@ -340,7 +346,7 @@ export default function ReportDetails({
     const urls = [];
     for (const f of files) {
       try {
-        const u = await uploadImageViaServer(f); // يرفع ويعيد URL
+        const u = await uploadImageViaServer(f);
         urls.push(u);
       } catch (err) {
         console.warn("Upload failed:", err);
@@ -348,53 +354,33 @@ export default function ReportDetails({
     }
     if (!urls.length) return;
 
-    updateSelectedReport((rec) => {
-      const prev = Array.isArray(rec.images) ? rec.images : [];
-      rec.images = [...prev, ...urls];
-    });
+    const next = (() => {
+      const prev = Array.isArray(selectedReport?.images) ? selectedReport.images : [];
+      return { ...selectedReport, images: [...prev, ...urls] };
+    })();
+
+    updateSelectedReport(() => next);
     setShowAttachments(true);
+
+    try { await commitToServer(next, updateSelectedReport); } catch {}
   };
 
-  const handleReplaceImage = (idx) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = async (ev) => {
-      const f = ev.target.files?.[0];
-      if (!f) return;
-      const oldUrl = (selectedReport?.images || [])[idx];
-
-      try {
-        const newUrl = await uploadImageViaServer(f);
-        if (isUrl(oldUrl)) {
-          try { await deleteImageUrl(oldUrl); } catch {}
-        }
-        updateSelectedReport((rec) => {
-          const arr = Array.isArray(rec.images) ? [...rec.images] : [];
-          arr[idx] = newUrl;
-          rec.images = arr;
-        });
-      } catch (err) {
-        alert("❌ Failed to replace image.");
-      }
-    };
-    input.click();
-  };
-
+  // ====== حذف صورة ======
   const handleDeleteImage = async (idx) => {
     const url = (selectedReport?.images || [])[idx];
-    if (!isUrl(url)) return; // نحذف فقط الصور المرفوعة كرابط
-    if (!window.confirm("Delete this image from server?")) return;
-    try {
+    if (!window.confirm("Delete this image?")) return;
+
+    if (isUrl(url)) {
       try { await deleteImageUrl(url); } catch {}
-      updateSelectedReport((rec) => {
-        const arr = Array.isArray(rec.images) ? [...rec.images] : [];
-        arr.splice(idx, 1);
-        rec.images = arr;
-      });
-    } catch {
-      alert("❌ Failed to delete image.");
     }
+
+    const nextImages = Array.isArray(selectedReport?.images) ? [...selectedReport.images] : [];
+    nextImages.splice(idx, 1);
+    const nextReport = { ...selectedReport, images: nextImages };
+    updateSelectedReport(() => nextReport);
+
+    try { await commitToServer(nextReport, updateSelectedReport); }
+    catch { alert("⚠️ Image removed locally, but saving to server failed."); }
   };
 
   // ===== شهادة الحلال =====
@@ -411,12 +397,15 @@ export default function ReportDetails({
         if (wasUrl && isUrl(wasUrl)) {
           try { await deleteImageUrl(wasUrl); } catch {}
         }
-        updateSelectedReport((rec) => {
-          rec.certificateUrl = newUrl;
-          rec.certificateFile = "";
-          rec.certificateName = file.name;
-        });
+        const nextReport = {
+          ...selectedReport,
+          certificateUrl: newUrl,
+          certificateFile: "",
+          certificateName: file.name,
+        };
+        updateSelectedReport(() => nextReport);
         setShowAttachments(true);
+        await commitToServer(nextReport, updateSelectedReport);
       } catch (err) {
         alert("❌ Failed to upload certificate image.");
       }
@@ -434,12 +423,15 @@ export default function ReportDetails({
       if (wasUrl && isUrl(wasUrl)) {
         try { await deleteImageUrl(wasUrl); } catch {}
       }
-      updateSelectedReport((rec) => {
-        rec.certificateUrl = "";
-        rec.certificateFile = data;
-        rec.certificateName = file.name;
-      });
+      const nextReport = {
+        ...selectedReport,
+        certificateUrl: "",
+        certificateFile: data,
+        certificateName: file.name,
+      };
+      updateSelectedReport(() => nextReport);
       setShowAttachments(true);
+      try { await commitToServer(nextReport, updateSelectedReport); } catch {}
       return;
     }
 
@@ -448,14 +440,13 @@ export default function ReportDetails({
 
   const handleDeleteCertificate = async () => {
     const url = selectedReport?.certificateUrl;
-    if (!isUrl(url)) return; // حذف فعلي فقط لو URL
+    if (!isUrl(url)) return;
     if (!window.confirm("Delete certificate image from server?")) return;
     try {
       try { await deleteImageUrl(url); } catch {}
-      updateSelectedReport((rec) => {
-        rec.certificateUrl = "";
-        rec.certificateName = "";
-      });
+      const nextReport = { ...selectedReport, certificateUrl: "", certificateName: "" };
+      updateSelectedReport(() => nextReport);
+      try { await commitToServer(nextReport, updateSelectedReport); } catch {}
     } catch {
       alert("❌ Failed to delete certificate.");
     }
@@ -476,9 +467,7 @@ export default function ReportDetails({
   );
   const avgW = sumQty > 0 ? Number((sumWgt / sumQty).toFixed(3)) : 0;
 
-  /* ===== حقول المعلومات العامة بما فيها Receiving Address =====
-     نستخدم GENERAL_FIELDS_ORDER، ونضيف receivingAddress إن لم تكن موجودة،
-     ونجعلها بعد "origin" إن وُجد، وإلا في النهاية. */
+  /* ===== حقول المعلومات العامة بما فيها Receiving Address ===== */
   const generalFields = useMemo(() => {
     const arr = Array.isArray(GENERAL_FIELDS_ORDER) ? [...GENERAL_FIELDS_ORDER] : [];
     if (!arr.includes("receivingAddress")) {
@@ -510,7 +499,67 @@ export default function ReportDetails({
       {/* باقي المحتوى يظهر فقط عند توفر تقرير */}
       {!noReport && (
         <>
-          {/* Header */}
+          {/* Title + actions */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: "1rem",
+            }}
+          >
+            <h3 style={{ margin: 0, color: "#111827", fontWeight: 800 }}>
+              {idForTitle
+                ? (selectedReport?.generalInfo?.airwayBill
+                    ? `📦 Air Way Bill: ${idForTitle}`
+                    : `🧾 Invoice No: ${idForTitle}`)
+                : "📋 Incoming Shipment Report"}
+            </h3>
+
+            <div className="no-print" style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleDeleteReport}
+                disabled={!selectedReport || deleting}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #b91c1c",
+                  background: deleting ? "#fca5a5" : "#dc2626",
+                  cursor: deleting ? "not-allowed" : "pointer",
+                  color: "#fff",
+                  fontWeight: 800,
+                }}
+                title="Delete this report from server"
+              >
+                {deleting ? "Deleting..." : "🗑 Delete report"}
+              </button>
+
+              <button
+                onClick={() => setShowAttachments((s) => !s)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #e5e7eb",
+                  background: "#ffffff",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                  color: "#0f172a",
+                }}
+                title={showAttachments ? "Hide attachments" : "Show attachments"}
+              >
+                {showAttachments ? "🙈 Hide attachments" : "👀 Show attachments"}
+              </button>
+            </div>
+          </div>
+
+          {/* Header (Document meta) */}
           <div style={{ marginBottom: "10px" }}>
             <table className="headerTable" style={headerStyles.table}>
               <colgroup>
@@ -553,46 +602,7 @@ export default function ReportDetails({
             </table>
           </div>
 
-          {/* Title + toggles */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              marginBottom: "1rem",
-            }}
-          >
-            <h3 style={{ margin: 0, color: "#111827", fontWeight: 800 }}>
-              {idForTitle
-                ? (selectedReport?.generalInfo?.airwayBill
-                    ? `📦 Air Way Bill: ${idForTitle}`
-                    : `🧾 Invoice No: ${idForTitle}`)
-                : "📋 Incoming Shipment Report"}
-            </h3>
-
-            <button
-              onClick={() => setShowAttachments((s) => !s)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: "#ffffff",
-                cursor: "pointer",
-                fontWeight: 800,
-                color: "#0f172a",
-              }}
-              className="no-print"
-              title={showAttachments ? "Hide attachments" : "Show attachments"}
-            >
-              {showAttachments ? "🙈 Hide attachments" : "👀 Show attachments"}
-            </button>
-          </div>
-
-          {/* General Info grid (تشمل Receiving Address) */}
+          {/* General Info grid */}
           <section style={{ marginBottom: "1.5rem" }}>
             <div
               style={{
@@ -911,7 +921,6 @@ export default function ReportDetails({
                     {selectedReport?.certificateName || "Certificate"}
                   </div>
 
-                  {/* رابط/صورة الشهادة */}
                   {selectedReport?.certificateUrl ? (
                     isPdfUrl(selectedReport.certificateUrl) ? (
                       <a
@@ -939,7 +948,6 @@ export default function ReportDetails({
                     )
                   ) : null}
 
-                  {/* Base64 قديم */}
                   {!selectedReport?.certificateUrl && selectedReport?.certificateFile ? (
                     isBase64Image(selectedReport.certificateFile) ? (
                       <img
@@ -971,24 +979,8 @@ export default function ReportDetails({
                     )
                   ) : null}
 
-                  {/* أزرار الشهادة */}
+                  {/* أزرار الشهادة: حذف فقط */}
                   <div className="no-print" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => certUploadRef.current?.click()}
-                      style={{
-                        background: "#2563eb",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 8,
-                        padding: "6px 10px",
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                      title="Replace certificate"
-                    >
-                      Replace
-                    </button>
-
                     {isUrl(selectedReport?.certificateUrl) && (
                       <button
                         onClick={handleDeleteCertificate}
@@ -1048,25 +1040,9 @@ export default function ReportDetails({
                             bottom: 6,
                             display: "flex",
                             gap: 6,
-                            justifyContent: "space-between",
+                            justifyContent: "flex-end",
                           }}
                         >
-                          <button
-                            onClick={() => handleReplaceImage(i)}
-                            style={{
-                              background: "#2563eb",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: 8,
-                              padding: "4px 8px",
-                              fontWeight: 800,
-                              cursor: "pointer",
-                            }}
-                            title="Replace image"
-                          >
-                            Replace
-                          </button>
-
                           {canDelete && (
                             <button
                               onClick={() => handleDeleteImage(i)}

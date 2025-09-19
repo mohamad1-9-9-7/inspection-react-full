@@ -23,16 +23,6 @@ const POS15DailyCleaning = lazy(() =>
     default: m.default || m.POS15DailyCleaning,
   }))
 );
-const POS15OilCalibration = lazy(() =>
-  import("./POS15OilCalibration").then((m) => ({
-    default: m.default || m.POS15OilCalibration,
-  }))
-);
-const POS15DetergentCalibration = lazy(() =>
-  import("./POS15DetergentCalibration").then((m) => ({
-    default: m.default || m.POS15DetergentCalibration,
-  }))
-);
 
 // 🆕 🌡️ Temperature (Input)
 const POS15TemperatureInput = lazy(() =>
@@ -59,9 +49,6 @@ export default function POS15Layout() {
     { key: "shipments",   label: "📦 Shipments" },
     { key: "personal",    label: "🧑‍🔬 Personal Hygiene" },
     { key: "daily",       label: "🧹 Daily Cleaning" },
-    { key: "oil",         label: "🛢️ Oil Calibration" },
-    { key: "detergent",   label: "🧴 Detergent Calibration" },
-    // 🆕
     { key: "temperature", label: "🌡️ Temperature" },
   ];
 
@@ -106,23 +93,6 @@ export default function POS15Layout() {
             </Suspense>
           </Card>
         );
-      case "oil":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Oil Calibration…</div>}>
-              <POS15OilCalibration />
-            </Suspense>
-          </Card>
-        );
-      case "detergent":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Detergent Calibration…</div>}>
-              <POS15DetergentCalibration />
-            </Suspense>
-          </Card>
-        );
-      // 🆕 Temperature tab content
       case "temperature":
         return (
           <Card>
@@ -163,7 +133,7 @@ export default function POS15Layout() {
             📋 POS 15 — Operations Inputs
           </h2>
           <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Oil Calibration, Detergent Calibration, and Temperature) in one place.
+            All input tabs (Shipments, Personal Hygiene, Daily Cleaning, and Temperature) in one place.
           </p>
         </div>
 
@@ -179,7 +149,7 @@ export default function POS15Layout() {
           {tabs.map((tab) => (
             <button
               key={tab.key}
-              type="button" // مهم حتى ما يعمل submit لو فيه form بالصفحة
+              type="button"
               onClick={() => setActiveTab(tab.key)}
               style={{
                 flex: "1",

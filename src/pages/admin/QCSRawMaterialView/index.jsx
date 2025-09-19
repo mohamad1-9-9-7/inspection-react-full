@@ -76,20 +76,20 @@ export default function QCSRawMaterialView() {
     });
   };
 
-  // delete report
-  const handleDelete = async (id) => {
-    const rec = reports.find((r) => r.id === id);
-    if (!rec) return;
+  // ===== delete report (now receives the whole record) =====
+  const handleDelete = async (record) => {
+    if (!record) return;
     if (!window.confirm("Are you sure you want to delete this report?")) return;
 
+    // تحديث الواجهة محليًا (نفس أسلوبك السابق)
     setReports((prev) => {
-      const newList = prev.filter((r) => r.id !== id);
+      const newList = prev.filter((r) => r.id !== record.id);
       saveToLocal(newList);
-      if (selectedReportId === id) setSelectedReportId(newList[0]?.id || null);
+      if (selectedReportId === record.id) setSelectedReportId(newList[0]?.id || null);
       return newList;
     });
 
-    const ok = await deleteOnServer(rec);
+    const ok = await deleteOnServer(record);
     if (!ok) alert("⚠️ Failed to delete from server. Removed locally.");
   };
 
@@ -116,7 +116,7 @@ export default function QCSRawMaterialView() {
     filteredReports[0] ||
     null;
 
-  // PDF export (نفس طريقتك، أبقيناه في الرئيسي)
+  // PDF export
   const printAreaRef = useRef(null);
   const mainRef = useRef(null);
   const exportToPDF = async () => {
@@ -201,7 +201,6 @@ export default function QCSRawMaterialView() {
     reader.readAsText(file);
   };
 
-  // styles
   const styles = {
     page: {
       minHeight: "100vh",
@@ -248,7 +247,7 @@ export default function QCSRawMaterialView() {
           onExportPDF={exportToPDF}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
-          onDeleteReport={handleDelete}
+          // حذفنا onDeleteReport من الشجرة
           onExportJSON={handleExportJSON}
           onImportJSON={handleImportJSON}
           getDisplayId={getDisplayId}
@@ -271,6 +270,7 @@ export default function QCSRawMaterialView() {
               getDisplayId={getDisplayId}
               getCreatedDate={getCreatedDate}
               updateSelectedReport={updateSelectedReport}
+              onDeleteReport={handleDelete}   // ← زر الحذف صار داخل التقرير
             />
           </div>
         </main>

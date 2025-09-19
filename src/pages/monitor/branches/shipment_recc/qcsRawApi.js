@@ -7,7 +7,7 @@ const API_ROOT =
   (typeof window !== "undefined" && window.__QCS_API__) ||
   (typeof process !== "undefined" &&
     process.env &&
-    process.env.REACT_APP_API_URL) ||
+    (process.env.REACT_APP_API_URL || process.env.VITE_API_URL)) ||
   API_ROOT_DEFAULT;
 
 export const API_BASE = String(API_ROOT).replace(/\/$/, "");
@@ -28,7 +28,7 @@ export const IMAGE_API_BASE =
   (typeof window !== "undefined" && window.__QCS_IMAGE_API__) ||
   (typeof process !== "undefined" &&
     process.env &&
-    process.env.REACT_APP_IMAGE_API_URL) ||
+    (process.env.REACT_APP_IMAGE_API_URL || process.env.VITE_IMAGE_API_URL)) ||
   API_BASE;
 
 /* =============================================================================
@@ -49,7 +49,9 @@ export function ymdToDMY(ymd) {
   return `${d}/${m}/${y}`;
 }
 export function makeClientId() {
-  return `cli_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  return `cli_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
 }
 export function getReporter() {
   try {
@@ -62,23 +64,78 @@ export function getReporter() {
 }
 
 /* =============================================================================
-   📄 Reports API
+   📄 Reports API (UPSERT)
+   - body موحّد: { reporter, type, payload }
+   - PUT عند وجود payload._id (من السيرفر)، وإلا POST
+   - Fallback: لو PUT رجع 404 → POST
 ============================================================================= */
-export async function sendToServer(payload) {
-  const reporter = getReporter();
-  const res = await fetch(REPORTS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+async function requestJSON(url, opts = {}) {
+  const res = await fetch(url, {
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
-    body: JSON.stringify({ reporter, type: "qcs_raw_material", payload }),
+    ...opts,
   });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(t || `Server ${res.status}`);
+    const t = (data && (data.message || data.error)) || (await res.text().catch(() => ""));
+    throw new Error(t || `HTTP ${res.status}`);
   }
-  return res.json().catch(() => ({}));
+  return data;
 }
 
+/** حفظ/تحديث تقرير qcs_raw_material */
+export async function sendToServer(payload) {
+  const reporter = getReporter();
+  const type = "qcs_raw_material";
+
+  // لا نثق بأي id محلي؛ نعتمد فقط على _id القادم من السيرفر
+  const { id, localId, ...clean } = payload || {};
+  const hasServerId = !!clean?._id;
+
+  // طلبات
+  const makeBody = (doc) =>
+    JSON.stringify({ reporter, type, payload: doc || {} });
+
+  async function doPost(doc) {
+    return requestJSON(REPORTS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: makeBody(doc),
+    });
+  }
+  async function doPut(doc) {
+    const url = `${REPORTS_URL}/${encodeURIComponent(doc?._id || "")}?type=${encodeURIComponent(type)}`;
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: IS_SAME_ORIGIN ? "include" : "omit",
+      body: makeBody(doc),
+    });
+
+    // Fallback إلى POST إذا كان السجل غير موجود
+    if (res.status === 404) return doPost(doc);
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const t = (data && (data.message || data.error)) || (await res.text().catch(() => ""));
+      throw new Error(t || `HTTP ${res.status}`);
+    }
+    return data;
+  }
+
+  return hasServerId ? doPut(clean) : doPost(clean);
+}
+
+/** حفظ meta (يبقى POST) */
+export async function postMeta(metaType, payload) {
+  const reporter = getReporter();
+  return requestJSON(REPORTS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ reporter, type: metaType, payload }),
+  });
+}
+
+/** جلب قائمة حسب النوع */
 export async function listReportsByType(type) {
   try {
     const res = await fetch(`${REPORTS_URL}?type=${encodeURIComponent(type)}`, {
@@ -94,21 +151,7 @@ export async function listReportsByType(type) {
   }
 }
 
-export async function postMeta(type, payload) {
-  const reporter = getReporter();
-  const res = await fetch(REPORTS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    credentials: IS_SAME_ORIGIN ? "include" : "omit",
-    body: JSON.stringify({ reporter, type, payload }),
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(t || `Server ${res.status}`);
-  }
-  return res.json().catch(() => ({}));
-}
-
+/** جلب كل تقارير المواد الخام (للاشتقاق) */
 export async function fetchExistingRawMaterial() {
   try {
     const res = await fetch(`${REPORTS_URL}?type=qcs_raw_material`, {
@@ -149,7 +192,7 @@ export async function deriveUniqueKey({ shipmentType, airwayBill, invoiceNo, cre
 
 /* =============================================================================
    📤 Image Upload + 🗑️ Delete
-   - الرفع حصراً إلى IMAGE_API_BASE (لا يوجد fallback)
+   - الرفع حصراً إلى IMAGE_API_BASE (ضغط تلقائي: 1280px / جودة 80%)
 ============================================================================= */
 export async function uploadImageToServer(file, purpose = "qcs_raw_material") {
   const fd = new FormData();
