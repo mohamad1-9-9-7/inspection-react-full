@@ -16,6 +16,9 @@ const roles = [
   { id: 'cars',         label: 'السيارات / Cars',                 route: '/cars',                   icon: '🚗' },
   // 🆕 صفحة الهب للصيانة
   { id: 'maintenance',  label: 'طلبات الصيانة / Maintenance',     route: '/maintenance-home',       icon: '🔧' },
+
+  // 🆕✅ عرض شحنات QCS مباشرة (عرض فقط)
+  { id: 'qcsView',      label: 'عرض شحنات QCS / QCS Shipments (View)', route: '/qcs-raw-material-view', icon: '📦' },
 ];
 
 function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
@@ -117,9 +120,10 @@ function Login() {
   const [selectedRole, setSelectedRole] = useState(null);
   const [modalError, setModalError] = useState("");
 
-  // 🔐 كلمات السر: الافتراضي 9999 لكل الأدوار، وreturns = 0000
+  // 🔐 كلمات السر: الافتراضي 9999 لكل الأدوار، returns = 0000، qcsView = 0000
   const PASSWORDS = {
     returns: "0000",
+    qcsView: "0000",
     default: "9999",
   };
 

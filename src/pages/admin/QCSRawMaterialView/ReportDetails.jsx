@@ -80,6 +80,20 @@ async function commitToServer(nextReport, updateSelectedReport) {
   return merged;
 }
 
+/* ===== PIN للحذف (يسأل كل مرة) ===== */
+const DELETE_PIN = "9999";
+function ensureDeleteAuth() {
+  try {
+    const pin = window.prompt("Enter delete password (PIN):");
+    if (pin === null) return false; // Cancel
+    if (String(pin) === DELETE_PIN) return true;
+    alert("❌ Wrong password.");
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export default function ReportDetails({
   selectedReport,
   getDisplayId,
@@ -90,9 +104,10 @@ export default function ReportDetails({
   const [showAttachments, setShowAttachments] = useState(true);
   const [deleting, setDeleting] = useState(false); // حالة زر الحذف
 
-  // زر الحذف مع تأكيد
+  // زر الحذف مع تأكيد + حماية PIN
   const handleDeleteReport = async () => {
     if (!selectedReport || !onDeleteReport) return;
+    if (!ensureDeleteAuth()) return;
     const name = getDisplayId?.(selectedReport) || "this report";
     if (!window.confirm(`Are you sure you want to delete "${name}" from the server?`)) return;
     try {
@@ -365,8 +380,9 @@ export default function ReportDetails({
     try { await commitToServer(next, updateSelectedReport); } catch {}
   };
 
-  // ====== حذف صورة ======
+  // ====== حذف صورة (مع PIN) ======
   const handleDeleteImage = async (idx) => {
+    if (!ensureDeleteAuth()) return;
     const url = (selectedReport?.images || [])[idx];
     if (!window.confirm("Delete this image?")) return;
 
@@ -439,6 +455,7 @@ export default function ReportDetails({
   };
 
   const handleDeleteCertificate = async () => {
+    if (!ensureDeleteAuth()) return;
     const url = selectedReport?.certificateUrl;
     if (!isUrl(url)) return;
     if (!window.confirm("Delete certificate image from server?")) return;
@@ -477,6 +494,33 @@ export default function ReportDetails({
     }
     return arr;
   }, []);
+
+  /* ===== Helpers لأسماء المفتش والمدقق ===== */
+  const firstNonEmpty = (...vals) => {
+    for (const v of vals) {
+      const s = String(v ?? "").trim();
+      if (s) return s;
+    }
+    return "-";
+  };
+  const getInspectorName = () =>
+    firstNonEmpty(
+      selectedReport?.inspectorName,
+      selectedReport?.inspector?.name,
+      selectedReport?.generalInfo?.inspectorName,
+      selectedReport?.generalInfo?.inspector,
+      selectedReport?.checkedBy,
+      selectedReport?.inspectedBy
+    );
+  const getAuditorName = () =>
+    firstNonEmpty(
+      selectedReport?.auditorName,
+      selectedReport?.auditor?.name,
+      selectedReport?.generalInfo?.auditorName,
+      selectedReport?.generalInfo?.auditor,
+      selectedReport?.verifiedBy,
+      selectedReport?.approvedBy
+    );
 
   const noReport = !selectedReport;
 
@@ -786,6 +830,7 @@ export default function ReportDetails({
                     </th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {lines.length > 0 ? (
                     lines.map((r, idx) => (
@@ -829,6 +874,32 @@ export default function ReportDetails({
                   </tr>
                 </tfoot>
               </table>
+            </div>
+          </section>
+
+          {/* ✅ القسم المضاف: اسم المفتش والمدقق أسفل جدول الأسطر مباشرة */}
+          <section style={{ marginTop: "1rem" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 0,
+                border: "1px solid #000",
+                background: "#fff",
+              }}
+            >
+              <div style={{ border: "1px solid #000", padding: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                  Inspector Name (اسم المفتش)
+                </div>
+                <div>{getInspectorName()}</div>
+              </div>
+              <div style={{ border: "1px solid #000", padding: 12 }}>
+                <div style={{ fontWeight: 800, marginBottom: 5, color: "#111827" }}>
+                  Auditor / Verifier Name (اسم المدقق)
+                </div>
+                <div>{getAuditorName()}</div>
+              </div>
             </div>
           </section>
 
