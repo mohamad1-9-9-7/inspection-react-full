@@ -184,6 +184,7 @@ function actionText(row) {
 }
 function itemKey(row) {
   return [
+    (row?.itemCode || "").trim().toLowerCase(),
     (row?.productName || "").trim().toLowerCase(),
     (row?.origin || "").trim().toLowerCase(),
     (safeButchery(row) || "").trim().toLowerCase(),
@@ -455,6 +456,7 @@ export default function ReturnView() {
 
   /* ========== Row add/edit/delete logic ========== */
   const blankRow = {
+    itemCode: "",
     productName: "",
     origin: "",
     butchery: "",
@@ -466,7 +468,7 @@ export default function ReturnView() {
     remarks: "",
     action: ACTIONS[0],
     customAction: "",
-    images: [], // URLs (Cloudinary)
+    images: [],
   };
 
   const startAddRow = () => {
@@ -482,6 +484,7 @@ export default function ReturnView() {
     setAddingRow(false);
     setEditRowIdx(i);
     setEditRowData({
+      itemCode: row.itemCode || "",
       productName: row.productName || "",
       origin: row.origin || "",
       butchery: row.butchery || "",
@@ -493,7 +496,7 @@ export default function ReturnView() {
       remarks: row.remarks || "",
       action: row.action || "",
       customAction: row.customAction || "",
-      images: Array.isArray(row.images) ? row.images : [], // URLs
+      images: Array.isArray(row.images) ? row.images : [],
     });
   };
 
@@ -513,6 +516,7 @@ export default function ReturnView() {
       : chosen;
 
     return {
+      itemCode: (row.itemCode || "").trim(),
       productName: (row.productName || "").trim(),
       origin: (row.origin || "").trim(),
       butchery: butcheryLabel,
@@ -524,7 +528,7 @@ export default function ReturnView() {
       remarks: (row.remarks || "").trim(),
       action: row.action || "",
       customAction: row.action === "إجراء آخر..." ? (row.customAction || "").trim() : "",
-      images: Array.isArray(row.images) ? row.images : existingImages, // URLs
+      images: Array.isArray(row.images) ? row.images : existingImages,
     };
   };
 
@@ -739,6 +743,7 @@ export default function ReturnView() {
       doc.text(`Date: ${selectedReport.reportDate}`, marginX, y);
       y += 20;
 
+      // NOTE: PDF layout remains as before (without item code) to keep width stable
       const headers = [
         "SL",
         "PRODUCT",
@@ -1136,6 +1141,7 @@ export default function ReturnView() {
                 <thead>
                   <tr style={{ background: "#dbeafe", color: "#111" }}>
                     <th style={th}>SL.NO</th>
+                    <th style={th}>ITEM CODE</th>
                     <th style={th}>PRODUCT NAME</th>
                     <th style={th}>ORIGIN</th>
                     <th style={th}>BUTCHERY</th>
@@ -1151,6 +1157,22 @@ export default function ReturnView() {
                   {(selectedReport.items || []).map((row, i) => (
                     <tr key={i}>
                       <td style={td}>{i + 1}</td>
+
+                      {/* ITEM CODE */}
+                      <td style={td}>
+                        {editRowIdx === i ? (
+                          <input
+                            style={{ ...cellInputStyle, minWidth: 120 }}
+                            value={editRowData.itemCode}
+                            onChange={(e) =>
+                              setEditRowData((s) => ({ ...s, itemCode: e.target.value }))
+                            }
+                            placeholder="ITEM CODE"
+                          />
+                        ) : (
+                          row.itemCode || ""
+                        )}
+                      </td>
 
                       {/* PRODUCT */}
                       <td style={td}>
@@ -1317,7 +1339,7 @@ export default function ReturnView() {
                         )}
                       </td>
 
-                      {/* ROW BUTTONS (Edit/Delete/Images) */}
+                      {/* ROW BUTTONS */}
                       <td style={td}>
                         {editRowIdx === i ? (
                           <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
@@ -1352,6 +1374,17 @@ export default function ReturnView() {
                   {addingRow && editRowIdx === (selectedReport.items || []).length && (
                     <tr>
                       <td style={td}>{(selectedReport.items || []).length + 1}</td>
+
+                      {/* ITEM CODE (new) */}
+                      <td style={td}>
+                        <input
+                          style={{ ...cellInputStyle, minWidth: 120 }}
+                          value={editRowData.itemCode}
+                          onChange={(e) => setEditRowData((s) => ({ ...s, itemCode: e.target.value }))}
+                          placeholder="ITEM CODE"
+                        />
+                      </td>
+
                       <td style={td}>
                         <input
                           style={cellInputStyle}
@@ -1634,7 +1667,7 @@ const detailTable = {
   borderCollapse: "collapse",
   border: "1px solid #b6c8e3",
   marginTop: 6,
-  minWidth: 800,
+  minWidth: 950,
   color: "#111",
 };
 const th = {

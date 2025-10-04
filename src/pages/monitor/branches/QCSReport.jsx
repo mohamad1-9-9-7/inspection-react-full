@@ -5,11 +5,12 @@ import PersonalHygieneTab from "./qcs/PersonalHygieneTab";
 import DailyCleanlinessTab from "./qcs/DailyCleanlinessTab";
 import CoolersTab from "./qcs/CoolersTab";
 
+// ✅ استيراد الصفحة الجديدة من نفس مسار التبويبات القديمة (داخل مجلد qcs)
+import FreshChickenInter from "./qcs/FreshChickenInter";
+
 export default function QCSReport() {
-  // ✅ التبويب الافتراضي: الشحن
   const [activeTab, setActiveTab] = useState("shipment");
 
-  // ========== UI ==========
   const COLORS = {
     ink: "#0f172a",
     sub: "#475569",
@@ -26,7 +27,8 @@ export default function QCSReport() {
     direction: "ltr",
     background: COLORS.bg,
     color: COLORS.ink,
-    fontFamily: "Cairo, Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+    fontFamily:
+      "Cairo, Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
     minHeight: "100vh",
     fontSize: "16px",
     lineHeight: 1.6,
@@ -41,14 +43,13 @@ export default function QCSReport() {
     border: `1px solid ${COLORS.border}`,
   };
 
-  // شريط التبويبات (يسار + مسافات أكبر + حجم أكبر)
   const tabBar = {
     ...card,
     padding: "0.75rem 0.75rem",
     display: "flex",
-    gap: 16, // مسافة أكبر بين التبويبات
+    gap: 16,
     alignItems: "center",
-    justifyContent: "flex-start", // 🔁 لليسار
+    justifyContent: "flex-start",
     overflowX: "auto",
     scrollbarWidth: "thin",
     flexWrap: "wrap",
@@ -58,13 +59,13 @@ export default function QCSReport() {
     display: "inline-flex",
     alignItems: "center",
     gap: 10,
-    padding: "12px 20px", // أكبر
+    padding: "12px 20px",
     borderRadius: 999,
-    border: `2px solid ${active ? COLORS.primary : COLORS.border}`, // أكثر وضوحًا
+    border: `2px solid ${active ? COLORS.primary : COLORS.border}`,
     background: active ? COLORS.primary : COLORS.white,
     color: active ? "#fff" : COLORS.sub,
     fontWeight: 900,
-    fontSize: "1rem", // أكبر
+    fontSize: "1rem",
     letterSpacing: ".2px",
     cursor: "pointer",
     boxShadow: active ? "0 8px 18px rgba(37,99,235,.25)" : "none",
@@ -94,23 +95,22 @@ export default function QCSReport() {
     fontSize: ".95rem",
   };
 
-  // ✅ ترتيب التبويبات: الشحن أول واحد (أقصى اليسار)
   const tabs = [
     { id: "shipment", label: "📦 Raw Material Receipt" },
     { id: "coolers", label: "🧊 Coolers Temperatures" },
     { id: "personalHygiene", label: "🧼 Personal Hygiene" },
     { id: "dailyCleanliness", label: "🧹 Daily Cleanliness" },
+    // 🆕 تبويب القصيص
+    { id: "qusaisFreshChicken", label: "🍗 Al Qusais • Fresh Chicken" },
   ];
 
   return (
     <div style={page}>
-      {/* العنوان */}
       <div style={titleWrap}>
         <h2 style={title}>📋 QCS Branch Daily Report</h2>
         <span style={subtitle}>Quality Control • Daily Operations</span>
       </div>
 
-      {/* التبويبات */}
       <div style={tabBar} role="tablist" aria-label="QCS sections">
         {tabs.map((t) => (
           <button
@@ -125,11 +125,12 @@ export default function QCSReport() {
         ))}
       </div>
 
-      {/* المحتوى */}
       <div>
         {activeTab === "shipment" && (
           <div style={card}>
-            <h3 style={{ marginTop: 0, fontSize: "1.15rem", fontWeight: 900 }}>Raw Material Receipt</h3>
+            <h3 style={{ marginTop: 0, fontSize: "1.15rem", fontWeight: 900 }}>
+              Raw Material Receipt
+            </h3>
             <QCSRawMaterialInspection />
           </div>
         )}
@@ -151,7 +152,15 @@ export default function QCSReport() {
             <DailyCleanlinessTab />
           </div>
         )}
+
+        {/* تبويب القصيص — صفحة الإدخال الجديدة */}
+        {activeTab === "qusaisFreshChicken" && (
+          <div style={card}>
+            <FreshChickenInter />
+          </div>
+        )}
       </div>
     </div>
   );
 }
+// ✅ استيراد الصفحة الجديدة من نفس مسار التبويبات القديمة (داخل مجلد qcs)  

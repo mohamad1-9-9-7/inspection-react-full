@@ -106,6 +106,11 @@ function isCondemnation(s) {
 function isSendToMarket(s) {
   return (s ?? "").toString().trim().toLowerCase() === "send to market";
 }
+function isDisposed(s) {
+  // يدعم تهجئات مثل "DESPOSED" أو مسافات زائدة
+  const v = (s ?? "").toString().trim().toLowerCase();
+  return v === "disposed" || v === "desposed";
+}
 
 /* ===== Unified Donut KPI Card (SVG) ===== */
 function DonutCard({
@@ -473,6 +478,10 @@ export default function BrowseReturns() {
     let sepExpiredCount = 0;
     let marketKg = 0;
 
+    // NEW: disposed counters
+    let disposedCount = 0;
+    let disposedKg = 0; // <<============ NEW
+
     const isKgType = (t) => {
       const s = (t || "").toString().toLowerCase();
       return s.includes("kg") || s.includes("كيلو") || s.includes("كجم");
@@ -519,6 +528,10 @@ export default function BrowseReturns() {
         }
         if (isSendToMarket(act) && isKgType(it.qtyType)) {
           marketKg += q;
+        }
+        if (isDisposed(act)) {
+          disposedCount += 1;
+          if (isKgType(it.qtyType)) disposedKg += q; // <<============ NEW
         }
       });
     });
@@ -574,22 +587,10 @@ export default function BrowseReturns() {
       count: sepExpiredCount,
       percent: Math.round((sepExpiredCount * 100) / actionTotal),
     };
-
-    // Top actions EXCLUDING the ones we show as dedicated donuts to avoid duplicates
-    const EXCLUDE = new Set([
-      "condemnation",
-      "use in production",
-      "separated expired shelf",
-    ]);
-    const topActions = Object.entries(byActionLatest)
-      .filter(([name]) => !EXCLUDE.has((name || "").toLowerCase()))
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([name, count]) => ({
-        name,
-        count,
-        percent: Math.round((count * 100) / actionTotal),
-      }));
+    const disposedShare = {
+      count: disposedCount,
+      percent: Math.round((disposedCount * 100) / actionTotal),
+    };
 
     return {
       totalReports: filteredReportsAsc.length,
@@ -606,9 +607,25 @@ export default function BrowseReturns() {
       condemnationShare,
       useProdShare,
       sepExpiredShare,
+      disposedShare,
 
-      marketKg: Math.round(marketKg * 1000) / 1000, // Send to market (kg)
-      topActions,
+      disposedKg: Math.round(disposedKg * 1000) / 1000, // <<============ NEW
+      marketKg: Math.round(marketKg * 1000) / 1000,     // Send to market (kg)
+      topActions: Object.entries(byActionLatest)
+        .filter(([name]) => !new Set([
+          "condemnation",
+          "use in production",
+          "separated expired shelf",
+          "disposed",
+          "desposed",
+        ]).has((name || "").toLowerCase()))
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name, count]) => ({
+          name,
+          count,
+          percent: Math.round((count * 100) / (Object.values(byActionLatest).reduce((a, b) => a + b, 0) || 1)),
+        })),
       actionTotal,
     };
   }, [filteredReportsAsc, changeMapByDate]);
@@ -907,7 +924,7 @@ export default function BrowseReturns() {
     borderCollapse: "collapse",
     border: "1px solid #b6c8e3",
     marginTop: 8,
-    minWidth: 800,
+    minWidth: 920, // زاد لأننا أضفنا عمود الكود
     color: "#111",
   };
   const th = {
@@ -1011,6 +1028,7 @@ export default function BrowseReturns() {
 
   function getCellValue(row, key) {
     switch (key) {
+      case "itemCode":    return row.itemCode || "";
       case "productName": return row.productName || "";
       case "origin":      return row.origin || "";
       case "pos":         return row.butchery === "فرع آخر..." ? (row.customButchery || "") : (row.butchery || "");
@@ -1091,7 +1109,7 @@ export default function BrowseReturns() {
         {/* bottom wave */}
         <svg style={waveBottom} viewBox="0 0 1440 200" preserveAspectRatio="none">
           <path
-            d="M0,128L60,122.7C120,117,240,107,360,112C480,117,600,139,720,149.3C840,160,960,160,1080,149.3C1200,139,1320,117,1380,106.7L1440,96L1440,200L1380,200C1320,200,1200,200,1080,200C960,200,840,200,720,200C600,200,480,200,360,200C240,200,120,200,60,200L0,200Z"
+            d="M0,128L60,122.7C120,117,240,107,360,112C480,117,600,139,720,149.3C840,160,960,160,1080,149.3C1200,139,1320,117,1380,106.7L1440,96L1440,200L1380,200C1320,200,1200,200,1080,200C960,200,840,200,720,200C600,200,480,200,360,200,240,200,120,200,60,200L0,200Z"
             fill="#ffffff" />
         </svg>
       </div>
@@ -1150,6 +1168,16 @@ export default function BrowseReturns() {
             subLabel="Share of latest actions"
             count={`${kpi.sepExpiredShare.count}`}
             color="#2563eb"
+          />
+
+          {/* NEW: Disposed KPI (center shows KG) */}
+          <DonutCard
+            percent={kpi.disposedShare.percent}       // الحلقة = نسبة المشاركة من الإجراءات
+            centerText={String(kpi.disposedKg)}       // الرقم في الوسط = الوزن بالكيلو
+            label="Disposed (kg)"
+            subLabel="Total weight (latest action)"
+            count={`${kpi.disposedShare.count} items`}
+            color="#dc2626"
           />
 
           <DonutCard
@@ -1435,6 +1463,7 @@ export default function BrowseReturns() {
                   <thead>
                     <tr>
                       <th style={th}><span style={{ opacity: .8 }}>SL.NO</span></th>
+                      <th style={th}><SortHeader sortKey="itemCode"    label="ITEM CODE" /></th>{/* NEW */}
                       <th style={th}><SortHeader sortKey="productName" label="PRODUCT NAME" /></th>
                       <th style={th}><SortHeader sortKey="origin"      label="ORIGIN" /></th>
                       <th style={th}><SortHeader sortKey="pos"         label="POS" /></th>
@@ -1455,6 +1484,7 @@ export default function BrowseReturns() {
                       return (
                         <tr key={row.__i ?? i}>
                           <td style={td}>{i + 1}</td>
+                          <td style={td}>{row.itemCode || ""}</td>{/* NEW */}
                           <td style={td}>
                             <span>{row.productName}</span>
                             {Array.isArray(row.images) && row.images.length > 0 && (

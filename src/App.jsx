@@ -109,6 +109,14 @@ const POS15PersonalHygieneView = lazy(() =>
   import("./pages/monitor/branches/pos15/POS15PersonalHygieneView")
 );
 
+// 🆕 ✅ Fresh Chicken (عرض + إدخال)
+const FreshChickenReportsView = lazy(() =>
+  import("./pages/monitor/branches/qcs/FreshChickenReportsView")
+);
+const FreshChickenInter = lazy(() =>
+  import("./pages/monitor/branches/qcs/FreshChickenInter")
+);
+
 /** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
   let isAuthed = false;
@@ -322,6 +330,16 @@ export default function App() {
             }
           />
 
+          {/* 🆕 Fresh Chicken: صفحة الإدخال (اختياري) */}
+          <Route
+            path="branches/qcs/fresh-chicken-inter"
+            element={
+              <ProtectedRoute>
+                <FreshChickenInter />
+              </ProtectedRoute>
+            }
+          />
+
           {/* يُترك في النهاية */}
           <Route
             path=":slug"
@@ -363,6 +381,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <POS15ReportsView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 Fresh Chicken: صفحة العرض (Viewer) */}
+        <Route
+          path="/admin/monitor/branches/qcs/fresh-chicken-reports"
+          element={
+            <ProtectedRoute>
+              <FreshChickenReportsView />
             </ProtectedRoute>
           }
         />
