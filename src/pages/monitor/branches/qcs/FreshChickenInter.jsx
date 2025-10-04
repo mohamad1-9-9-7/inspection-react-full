@@ -77,8 +77,8 @@ const ROWS_MIXED = [
   { key: "packingSize", label: "Packing Size" },
   { key: "sifNo", label: "SIF No" },
   { key: "lotNo", label: "Lot No." },
-  { key: "productionDate", label: "Production Date", type: "text" },
-  { key: "expiryDate", label: "Expiry Date", type: "text" },
+  { key: "productionDate", label: "Production Date" }, // ← حقل عادي
+  { key: "expiryDate", label: "Expiry Date" },         // ← حقل عادي
   { key: "totalPiece", label: "Total Piece", type: "number" },
   { key: "pw350_400", label: "Piece Weight 350/400", type: "number" },
   { key: "pw300_350", label: "Piece Weight 300/350", type: "number" },
@@ -109,8 +109,8 @@ const ROWS_GRILLER = [
   { key: "sizeGrade", label: "Size / Grade" },
   { key: "packingSize", label: "Packing Size" },
   { key: "sifNo", label: "SIF No" },
-  { key: "productionDate", label: "Production Date", type: "text" },
-  { key: "expiryDate", label: "Expiry Date", type: "text" },
+  { key: "productionDate", label: "Production Date" }, // ← حقل عادي
+  { key: "expiryDate", label: "Expiry Date" },         // ← حقل عادي
   { key: "ntWeight", label: "Net Weight", type: "number" },
   { key: "totalPiece", label: "Total Piece", type: "number" },
   { key: "pieceWeight1", label: "Piece Weight", type: "number" },
@@ -143,8 +143,8 @@ const ROWS_LIVER = [
   { key: "packingSize", label: "Packing Size" },
   { key: "sifNo", label: "SIF No" },
   { key: "lotNo", label: "Lot No." },
-  { key: "productionDate", label: "Production Date", type: "text" },
-  { key: "expiryDate", label: "Expiry Date", type: "text" },
+  { key: "productionDate", label: "Production Date" }, // ← حقل عادي
+  { key: "expiryDate", label: "Expiry Date" },         // ← حقل عادي
   { key: "temperature", label: "Temperature (°C)", type: "number" },
   { key: "fat", label: "Fat" },
   { key: "discolour", label: "Discolour %" },
@@ -257,18 +257,7 @@ export default function FreshChickenInter() {
     bad: "#dc2626",
   };
 
-  // يغطي الشاشة بالكامل مع تمرير داخلي
-  const page = {
-    position: "fixed",
-    inset: 0,                 // top/right/bottom/left = 0
-    padding: 18,
-    overflowY: "auto",
-    background: COLORS.bg,
-    fontFamily: "Inter, -apple-system, Segoe UI, Roboto, sans-serif",
-    color: COLORS.ink,
-  };
-
-  // عرض كامل بدون حد أقصى
+  const page = { position: "fixed", inset: 0, padding: 18, overflowY: "auto", background: COLORS.bg, fontFamily: "Inter, -apple-system, Segoe UI, Roboto, sans-serif", color: COLORS.ink };
   const container = { width: "100%", maxWidth: "100%", margin: 0 };
 
   const sectionCard = { background: COLORS.card, border: `2px solid ${COLORS.line}`, borderRadius: 14, boxShadow: "0 8px 20px rgba(0,0,0,.05)", padding: 16, marginBottom: 16, overflow: "hidden" };
@@ -348,11 +337,11 @@ export default function FreshChickenInter() {
     const missing = [];
     const invalid = [];
 
-    // Report Entry Date
+    // Report Entry Date (ما زال بصيغة تاريخ)
     const entryDateISO = (entryDates[variant] || "").trim();
     if (!isValidISO(entryDateISO)) missing.push(`Report Entry Date — Variant: ${variant}`);
 
-    // Header required
+    // Header required (تبقى كما هي)
     if (!isValidISO(header.sampleReceivedOn || "")) missing.push("Sample Received On (date)");
     if (!isValidISO(header.inspectionDate || "")) missing.push("Inspection Date (date)");
 
@@ -377,15 +366,8 @@ export default function FreshChickenInter() {
     if (!(checkedBy || "").trim()) missing.push("CHECKED BY");
     if (!(verifiedBy || "").trim()) missing.push("VERIFIED BY");
 
-    // Per-sample dates
-    const columns = samplesByVariant[variant] || [];
-    columns.forEach((col, idx) => {
-      const label = `Sample ${idx + 1}`;
-      const p = (col.productionDate || "").trim();
-      const e = (col.expiryDate || "").trim();
-      if (!isValidISO(p)) missing.push(`${label}: Production Date (YYYY-MM-DD)`);
-      if (!isValidISO(e)) missing.push(`${label}: Expiry Date (YYYY-MM-DD)`);
-    });
+    // ✅ لا نتحقق من صيغة تواريخ الإنتاج/الانتهاء داخل العينات — صارت حقول عادية
+    // يمكنك تركها فارغة أو كتابة أي نص مناسب حسب المستند.
 
     return { missing, invalid, entryDateISO };
   };
@@ -405,7 +387,6 @@ export default function FreshChickenInter() {
     const rows = rowsFor(variant);
     const columns = samplesByVariant[variant];
 
-    // Auto-fill product name if empty
     const ensuredHeader = {
       ...header,
       productName: (header.productName || "").trim() || defaultProductName,
