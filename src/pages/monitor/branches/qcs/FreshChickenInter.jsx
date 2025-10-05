@@ -77,8 +77,8 @@ const ROWS_MIXED = [
   { key: "packingSize", label: "Packing Size" },
   { key: "sifNo", label: "SIF No" },
   { key: "lotNo", label: "Lot No." },
-  { key: "productionDate", label: "Production Date" }, // ← حقل عادي
-  { key: "expiryDate", label: "Expiry Date" },         // ← حقل عادي
+  { key: "productionDate", label: "Production Date" },
+  { key: "expiryDate", label: "Expiry Date" },
   { key: "totalPiece", label: "Total Piece", type: "number" },
   { key: "pw350_400", label: "Piece Weight 350/400", type: "number" },
   { key: "pw300_350", label: "Piece Weight 300/350", type: "number" },
@@ -109,8 +109,8 @@ const ROWS_GRILLER = [
   { key: "sizeGrade", label: "Size / Grade" },
   { key: "packingSize", label: "Packing Size" },
   { key: "sifNo", label: "SIF No" },
-  { key: "productionDate", label: "Production Date" }, // ← حقل عادي
-  { key: "expiryDate", label: "Expiry Date" },         // ← حقل عادي
+  { key: "productionDate", label: "Production Date" },
+  { key: "expiryDate", label: "Expiry Date" },
   { key: "ntWeight", label: "Net Weight", type: "number" },
   { key: "totalPiece", label: "Total Piece", type: "number" },
   { key: "pieceWeight1", label: "Piece Weight", type: "number" },
@@ -143,8 +143,8 @@ const ROWS_LIVER = [
   { key: "packingSize", label: "Packing Size" },
   { key: "sifNo", label: "SIF No" },
   { key: "lotNo", label: "Lot No." },
-  { key: "productionDate", label: "Production Date" }, // ← حقل عادي
-  { key: "expiryDate", label: "Expiry Date" },         // ← حقل عادي
+  { key: "productionDate", label: "Production Date" },
+  { key: "expiryDate", label: "Expiry Date" },
   { key: "temperature", label: "Temperature (°C)", type: "number" },
   { key: "fat", label: "Fat" },
   { key: "discolour", label: "Discolour %" },
@@ -235,7 +235,31 @@ export default function FreshChickenInter() {
 
   const [images, setImages] = useState([]); // [{ url, name }]
   const [certs, setCerts] = useState([]);   // [{ url, name }]
-  const [breakup, setBreakup] = useState([]);
+
+  /* ===== Break Up per-variant ===== */
+  const [breakupByVariant, setBreakupByVariant] = useState({
+    mixed_parts: [],
+    griller: [],
+    liver: [],
+  });
+  const currentBreakup = breakupByVariant[reportVariant];
+  const setCurrentBreakup = (updater) =>
+    setBreakupByVariant((prev) => ({
+      ...prev,
+      [reportVariant]:
+        typeof updater === "function" ? updater(prev[reportVariant]) : updater,
+    }));
+  const addBreakupRow = () =>
+    setCurrentBreakup((p) => [...p, { productName: "", packing: "", totalQty: "" }]);
+  const setBreakupCell = (i, k, v) =>
+    setCurrentBreakup((p) => {
+      const n = [...p];
+      n[i] = { ...n[i], [k]: v };
+      return n;
+    });
+  const removeBreakupRow = (i) =>
+    setCurrentBreakup((p) => p.filter((_, idx) => idx !== i));
+
   const [remarks, setRemarks] = useState("Overall quality found satisfactory");
   const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
@@ -295,9 +319,6 @@ export default function FreshChickenInter() {
     });
   const addSampleColumn = () => setCurrentSamples((prev) => [...prev, makeSampleCol(reportVariant, prev.length)]);
   const removeLastSampleColumn = () => setCurrentSamples((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
-  const addBreakupRow = () => setBreakup((p) => [...p, { productName: "", packing: "", totalQty: "" }]);
-  const setBreakupCell = (i, k, v) => setBreakup((p) => { const n = [...p]; n[i] = { ...n[i], [k]: v }; return n; });
-  const removeBreakupRow = (i) => setBreakup((p) => p.filter((_, idx) => idx !== i));
 
   /* Attachments (Images & Certificates) */
   const doUploadList = async (fileList, dest = "images") => {
@@ -337,11 +358,9 @@ export default function FreshChickenInter() {
     const missing = [];
     const invalid = [];
 
-    // Report Entry Date (ما زال بصيغة تاريخ)
     const entryDateISO = (entryDates[variant] || "").trim();
     if (!isValidISO(entryDateISO)) missing.push(`Report Entry Date — Variant: ${variant}`);
 
-    // Header required (تبقى كما هي)
     if (!isValidISO(header.sampleReceivedOn || "")) missing.push("Sample Received On (date)");
     if (!isValidISO(header.inspectionDate || "")) missing.push("Inspection Date (date)");
 
@@ -357,22 +376,17 @@ export default function FreshChickenInter() {
     if (!(header.origin || "").trim()) missing.push("Origin");
     if (!(header.supplier || "").trim()) missing.push("Supplier");
 
-    // Product Name
     if (!((header.productName || "").trim() || (defaultProductName || "").trim())) {
       missing.push("PRODUCT NAME");
     }
 
-    // Footer required
     if (!(checkedBy || "").trim()) missing.push("CHECKED BY");
     if (!(verifiedBy || "").trim()) missing.push("VERIFIED BY");
-
-    // ✅ لا نتحقق من صيغة تواريخ الإنتاج/الانتهاء داخل العينات — صارت حقول عادية
-    // يمكنك تركها فارغة أو كتابة أي نص مناسب حسب المستند.
 
     return { missing, invalid, entryDateISO };
   };
 
-  /* Save using same contract as Returns.js: POST /api/reports */
+  /* Save */
   const onSaveVariant = async (variant) => {
     const { missing, invalid, entryDateISO } = validateBeforeSave(variant);
     if (missing.length || invalid.length) {
@@ -400,7 +414,7 @@ export default function FreshChickenInter() {
         rows: rows.map((r) => ({ key: r.key, label: r.label, type: r.type || "text" })),
         columns,
       },
-      breakup,
+      breakup: breakupByVariant[variant],
       remarks,
       footer: { checkedBy, verifiedBy },
       images, certificates: certs,
@@ -553,12 +567,52 @@ export default function FreshChickenInter() {
         <div style={sectionCard}>
           <div style={sectionBar(COLORS.greenBar)} />
           <h3 style={sectionTitle}>Break Up</h3>
-          {breakup.length === 0 && <button type="button" style={btnGhost} onClick={addBreakupRow}>+ Add Product Row</button>}
-          {breakup.map((r, i) => (
+          {currentBreakup.length === 0 && (
+            <button type="button" style={btnGhost} onClick={addBreakupRow}>+ Add Product Row</button>
+          )}
+          {currentBreakup.map((r, i) => (
             <div key={i} style={{ ...grid(4), marginBottom: 10, alignItems: "end" }}>
-              <div><label style={label}>Product Name</label><input style={input} value={r.productName} onChange={(e)=>setBreakupCell(i,"productName",e.target.value)} placeholder="e.g., FRESH CHICKEN WINGS" /></div>
-              <div><label style={label}>Packing</label><input style={input} value={r.packing} onChange={(e)=>setBreakupCell(i,"packing",e.target.value)} placeholder="e.g., 500 GM * 1 PLATE" /></div>
-              <div><label style={label}>Total Qty</label><input type="number" min={0} step="0.1" style={input} value={r.totalQty} onChange={(e)=>setBreakupCell(i,"totalQty",e.target.value)} placeholder="e.g., 8 KG" /></div>
+              <div>
+                <label style={label}>Product Name</label>
+                <input style={input} value={r.productName} onChange={(e)=>setBreakupCell(i,"productName",e.target.value)} placeholder="e.g., FRESH CHICKEN WINGS" />
+              </div>
+              <div>
+                <label style={label}>Packing</label>
+                <input style={input} value={r.packing} onChange={(e)=>setBreakupCell(i,"packing",e.target.value)} placeholder="e.g., 500 GM * 1 PLATE" />
+              </div>
+
+              {/* === Total Qty with KG suffix === */}
+              <div>
+                <label style={label}>Total Qty (KG)</label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    style={{ ...input, paddingRight: 56 }}
+                    value={r.totalQty}
+                    onChange={(e)=>setBreakupCell(i,"totalQty",e.target.value)}
+                    placeholder="e.g., 8"
+                  />
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: 8,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      border: `2px solid ${COLORS.line}`,
+                      background: "#fff",
+                      padding: "4px 10px",
+                      borderRadius: 8,
+                      fontWeight: 900,
+                      fontSize: 12
+                    }}
+                  >
+                    KG
+                  </span>
+                </div>
+              </div>
+
               <div style={{ display: "flex", gap: 8 }}>
                 <button type="button" style={btnGhost} onClick={addBreakupRow}>+ Add</button>
                 <button type="button" style={{ ...btnGhost, borderStyle: "solid" }} onClick={()=>removeBreakupRow(i)}>Remove</button>

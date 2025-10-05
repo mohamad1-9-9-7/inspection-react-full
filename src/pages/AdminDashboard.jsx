@@ -6,9 +6,11 @@ import { useNavigate } from "react-router-dom";
 import ReportsTab from "./admin/ReportsTab";
 import DailyReportsTab from "./admin/DailyReportsTab";
 import QCSDailyView from "./admin/QCSDailyView";
-import POS19DailyView from "./admin/POS19DailyView";
 import QCSRawMaterialView from "./admin/QCSRawMaterialView";
 import KPIDashboard from "./KPIDashboard";
+
+// ✅ استيراد عرض POS19 من المسار الجديد تحت monitor/branches/pos19
+import POS19DailyView from "./monitor/branches/pos19/POS19DailyView";
 
 // ✅ عرض تقارير FTR1 الحقيقي
 import FTR1ReportView from "./monitor/branches/ftr1/FTR1ReportView";

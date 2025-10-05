@@ -16,6 +16,11 @@ const POS24Layout = lazy(() => import("./pages/monitor/branches/pos24/POS24Layou
 const POS26Layout = lazy(() => import("./pages/monitor/branches/pos26/POS26Layout"));
 const POS15Layout = lazy(() => import("./pages/monitor/branches/pos15/POS15Layout"));
 
+// 🆕 ✅ POS 19 — Viewer Hub (13 تبويب عرض)
+const POS19DailyView = lazy(() =>
+  import("./pages/monitor/branches/pos19/POS19DailyView")
+);
+
 // ✅ إدخال + عرض FTR1
 const FTR1Report = lazy(() => import("./pages/monitor/branches/ftr1/FTR1Report"));
 const FTR1ReportView = lazy(() =>
@@ -381,6 +386,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <POS15ReportsView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 POS 19 — صفحة العرض */}
+        <Route
+          path="/admin/pos19"
+          element={
+            <ProtectedRoute>
+              <POS19DailyView />
             </ProtectedRoute>
           }
         />
