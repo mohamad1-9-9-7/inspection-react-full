@@ -1,10 +1,11 @@
 // src/pages/finished/FinishedProductEntry.jsx
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx-js-style";
 
-// نموذج واحد لسطر منتج جديد
-const emptyProductRow = {
+/** نموذج صف مطابق للأعمدة الأساسية */
+const emptyRow = {
   product: "",
   customer: "",
   orderNo: "",
@@ -13,316 +14,281 @@ const emptyProductRow = {
   expiryDate: "",
   temp: "",
   quantity: "",
-  unit: "KG",
-  condition: "",
+  unitOfMeasure: "KG",
+  overallCondition: "",
   remarks: "",
 };
 
+/** أسماء الأعمدة الأساسية */
+const CORE_HEADERS = [
+  "Product",
+  "Customer",
+  "Order No",
+  "TIME",
+  "Slaughter Date",
+  "Expiry Date",
+  "TEMP",
+  "Quantity",
+  "Unit of Measure",
+  "OVERALL CONDITION",
+  "REMARKS",
+];
+
+const toNumStr = (v) => {
+  if (v === "" || v == null) return "";
+  const n = Number(v);
+  return Number.isFinite(n) ? String(n) : "";
+};
+
+/** Excel serial date → yyyy-mm-dd */
+function parseExcelDate(v) {
+  if (typeof v === "number") {
+    const d = XLSX.SSF.parse_date_code(v);
+    if (d) {
+      const y = String(d.y).padStart(4, "0");
+      const m = String(d.m).padStart(2, "0");
+      const dd = String(d.d).padStart(2, "0");
+      return `${y}-${m}-${dd}`;
+    }
+  }
+  return String(v ?? "");
+}
+
+/** تحويل قياسي 1:1 إذا كانت رؤوس الملف مطابقة للرؤوس الأساسية */
+function transformIncoming(record) {
+  const out = { ...emptyRow };
+  const hasExact = CORE_HEADERS.every((h) => record.hasOwnProperty(h));
+  if (hasExact) {
+    out.product = String(record["Product"] ?? "");
+    out.customer = String(record["Customer"] ?? "");
+    out.orderNo = String(record["Order No"] ?? "");
+    out.time = String(record["TIME"] ?? "");
+    out.slaughterDate = parseExcelDate(record["Slaughter Date"]);
+    out.expiryDate = parseExcelDate(record["Expiry Date"]);
+    out.temp = toNumStr(record["TEMP"]);
+    out.quantity = toNumStr(record["Quantity"]);
+    out.unitOfMeasure = String(record["Unit of Measure"] ?? "KG") || "KG";
+    out.overallCondition = String(record["OVERALL CONDITION"] ?? "");
+    out.remarks = String(record["REMARKS"] ?? "");
+  }
+  return out;
+}
+
 export default function FinishedProductEntry() {
   const navigate = useNavigate();
+
   const [reportDate, setReportDate] = useState("");
-  const [rows, setRows] = useState([{ ...emptyProductRow }]);
+  const [rows, setRows] = useState([{ ...emptyRow }]);
   const [savedMsg, setSavedMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [importSummary, setImportSummary] = useState("");
+  const [importMode, setImportMode] = useState("append"); // append | replace
+  const fileRef = useRef(null);
 
-  // إضافة صف جديد
-  const addRow = () => setRows([...rows, { ...emptyProductRow }]);
-
-  // حذف صف معين
+  const addRow = () => setRows((r) => [...r, { ...emptyRow }]);
   const removeRow = (idx) => {
     if (rows.length === 1) return;
     setRows(rows.filter((_, i) => i !== idx));
   };
-
-  // تعديل البيانات داخل الجدول
   const handleChange = (idx, key, value) => {
     const updated = [...rows];
     updated[idx][key] = value;
     setRows(updated);
   };
 
-  // حفظ التقرير في localStorage
   const handleSave = () => {
-    for (let row of rows) {
-      if (
-        !row.product ||
-        !row.customer ||
-        !row.orderNo ||
-        !row.slaughterDate ||
-        !row.expiryDate ||
-        !row.temp ||
-        !row.quantity
-      ) {
-        setErrorMsg("يرجى تعبئة جميع الحقول الأساسية لكل منتج!");
-        setTimeout(() => setErrorMsg(""), 2500);
+    for (const r of rows) {
+      if (!r.product || !r.customer || !r.orderNo || !r.slaughterDate || (!r.quantity && r.quantity !== "0")) {
+        setErrorMsg("يرجى تعبئة الحقول الأساسية: Product, Customer, Order No, Slaughter Date, Quantity");
+        setTimeout(() => setErrorMsg(""), 2600);
         return;
       }
     }
-    const allReports = JSON.parse(localStorage.getItem("finished_products_reports") || "[]");
-    allReports.push({
-      id: Date.now(),
-      reportDate,
-      products: rows,
-    });
-    localStorage.setItem("finished_products_reports", JSON.stringify(allReports));
+    const all = JSON.parse(localStorage.getItem("finished_products_reports") || "[]");
+    all.push({ id: Date.now(), reportDate, products: rows });
+    localStorage.setItem("finished_products_reports", JSON.stringify(all));
     setSavedMsg("✅ تم حفظ التقرير بنجاح!");
     setTimeout(() => setSavedMsg(""), 2000);
-    setRows([{ ...emptyProductRow }]);
+    setRows([{ ...emptyRow }]);
     setReportDate("");
+  };
+
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([CORE_HEADERS, []]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template");
+    XLSX.writeFile(wb, "FinishedProduct_Template.xlsx");
+  };
+
+  const onPick = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const ab = await f.arrayBuffer();
+      const wb = XLSX.read(ab, { type: "array" });
+      const sheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const json = XLSX.utils.sheet_to_json(ws, { defval: "", raw: true });
+      if (!json.length) {
+        setErrorMsg("لا توجد صفوف بيانات في الملف.");
+        setTimeout(() => setErrorMsg(""), 2600);
+        return;
+      }
+      const transformed = json
+        .map((rec) => transformIncoming(rec))
+        .filter((r) => Object.values(r).some((v) => String(v).trim() !== ""));
+      if (!transformed.length) {
+        setErrorMsg("تمت القراءة لكن الرؤوس لا تطابق القالب. زوّدني بالماب إن احتجت تخصيصًا.");
+        setTimeout(() => setErrorMsg(""), 3200);
+        return;
+      }
+      setRows((prev) => (importMode === "replace" ? transformed : [...prev, ...transformed]));
+      setImportSummary(`📥 استيراد: ${transformed.length} صف من "${sheetName}".`);
+      setTimeout(() => setImportSummary(""), 3500);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("فشل قراءة الملف.");
+      setTimeout(() => setErrorMsg(""), 3000);
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
   };
 
   return (
     <div
       style={{
-        maxWidth: 1100,
-        margin: "40px auto",
+        width: "100%",           // ⬅️ امتلاء العرض
+        margin: 0,               // ⬅️ بدون هوامش خارجية
         background: "#fff",
-        borderRadius: 16,
-        boxShadow: "0 4px 18px #bfc9e066",
-        padding: "32px 26px",
+        borderRadius: 0,         // ⬅️ إلغاء الحواف لتبدو صفحة كاملة
+        boxShadow: "none",       // ⬅️ إلغاء الظل
+        padding: "24px 24px",
         fontFamily: "Cairo, sans-serif",
         direction: "rtl",
       }}
     >
-      {/* ===== أزرار التنقل أعلى الصفحة ===== */}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "16px", marginBottom: 20 }}>
-        <button
-          onClick={() => navigate("/finished-product-reports")}
-          style={{
-            background: "#884ea0",
-            color: "#fff",
-            fontWeight: "bold",
-            border: "none",
-            borderRadius: 12,
-            padding: "9px 22px",
-            fontSize: "1em",
-            cursor: "pointer",
-            boxShadow: "0 2px 10px #e8daef77",
-            letterSpacing: "0.5px",
-          }}
-        >
-          📑 عرض التقارير المحفوظة / View Reports
-        </button>
-        <button
-          onClick={() => navigate("/finished-products-data")}
-          style={{
-            background: "#229954",
-            color: "#fff",
-            fontWeight: "bold",
-            border: "none",
-            borderRadius: 12,
-            padding: "9px 22px",
-            fontSize: "1em",
-            cursor: "pointer",
-            boxShadow: "0 2px 10px #d4efdf99",
-            letterSpacing: "0.5px",
-          }}
-        >
-          🗃️ قاعدة بيانات المنتجات / Products Database
-        </button>
+      {/* شريط علوي: استيراد وتنقل */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={downloadTemplate}
+            style={{ background: "#2e86c1", color: "#fff", fontWeight: "bold", border: "none", borderRadius: 10, padding: "9px 18px", cursor: "pointer" }}
+          >
+            ⬇️ تنزيل قالب (Core Headers)
+          </button>
+
+          <label
+            style={{ background: "#5dade2", color: "#fff", fontWeight: "bold", borderRadius: 10, padding: "9px 18px", cursor: "pointer" }}
+            title="استيراد XLSX/XLS/CSV"
+          >
+            📥 استيراد ملف
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+              style={{ display: "none" }}
+              onChange={onPick}
+            />
+          </label>
+
+          <select
+            value={importMode}
+            onChange={(e) => setImportMode(e.target.value)}
+            style={{ padding: "9px 10px", borderRadius: 10, border: "1.7px solid #bfc9e0", background: "#f5f8fa", fontWeight: "bold", color: "#273746" }}
+            title="طريقة الإدراج"
+          >
+            <option value="append">إضافة للصفوف الحالية</option>
+            <option value="replace">استبدال الصفوف الحالية</option>
+          </select>
+        </div>
+
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={() => navigate("/finished-product-reports")}
+            style={{ background: "#884ea0", color: "#fff", fontWeight: "bold", border: "none", borderRadius: 10, padding: "9px 22px", cursor: "pointer" }}
+          >
+            📑 عرض التقارير المحفوظة
+          </button>
+          <button
+            onClick={() => navigate("/finished-products-data")}
+            style={{ background: "#229954", color: "#fff", fontWeight: "bold", border: "none", borderRadius: 10, padding: "9px 22px", cursor: "pointer" }}
+          >
+            🗃️ قاعدة بيانات المنتجات
+          </button>
+        </div>
       </div>
 
-      <h2
-        style={{
-          color: "#273746",
-          textAlign: "center",
-          marginBottom: 30,
-          fontWeight: "bold",
-        }}
-      >
-        📝 إدخال تقرير المنتج النهائي<br />
-        <span style={{ color: "#616a6b", fontWeight: 500, fontSize: "1rem" }}>
-          Finished Product Entry
-        </span>
+      {importSummary && (
+        <div style={{ background: "#eaf2f8", color: "#1b4f72", borderRadius: 8, padding: "10px 12px", marginBottom: 14, fontWeight: "bold", textAlign: "center" }}>
+          {importSummary}
+        </div>
+      )}
+
+      <h2 style={{ color: "#273746", textAlign: "start", marginBottom: 16, fontWeight: "bold" }}>
+        📝 Finished Product Entry (Full Width)
       </h2>
 
       {/* تاريخ التقرير */}
-      <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 15 }}>
-        <label style={{ fontWeight: "bold", minWidth: 140 }}>تاريخ التقرير / Report Date:</label>
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <label style={{ fontWeight: "bold", minWidth: 160 }}>تاريخ التقرير / Report Date:</label>
         <input
           type="text"
           value={reportDate}
-          onChange={e => setReportDate(e.target.value)}
-          style={{
-            padding: "9px 13px",
-            borderRadius: 10,
-            border: "1.7px solid #bfc9e0",
-            fontSize: "1.02em",
-            background: "#f5f8fa",
-            width: 220,
-            direction: "ltr",
-          }}
-          placeholder="مثال: 2025-08-06 or 06/08/2025"
+          onChange={(e) => setReportDate(e.target.value)}
+          placeholder="YYYY-MM-DD"
+          style={{ padding: "9px 13px", borderRadius: 10, border: "1.7px solid #bfc9e0", background: "#f5f8fa", width: 240, direction: "ltr" }}
         />
       </div>
 
       {/* رسائل */}
       {savedMsg && (
-        <div
-          style={{
-            background: "#d4efdf",
-            color: "#229954",
-            borderRadius: 11,
-            padding: "12px 0",
-            marginBottom: 17,
-            fontWeight: "bold",
-            textAlign: "center",
-          }}
-        >
+        <div style={{ background: "#d4efdf", color: "#229954", borderRadius: 8, padding: "12px 0", marginBottom: 14, fontWeight: "bold", textAlign: "center" }}>
           {savedMsg}
         </div>
       )}
       {errorMsg && (
-        <div
-          style={{
-            background: "#fadbd8",
-            color: "#c0392b",
-            borderRadius: 11,
-            padding: "12px 0",
-            marginBottom: 17,
-            fontWeight: "bold",
-            textAlign: "center",
-          }}
-        >
+        <div style={{ background: "#fadbd8", color: "#c0392b", borderRadius: 8, padding: "12px 0", marginBottom: 14, fontWeight: "bold", textAlign: "center" }}>
           {errorMsg}
         </div>
       )}
 
-      <div style={{ overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "1em",
-            background: "#f8fafc",
-            borderRadius: 14,
-            marginBottom: 20,
-          }}
-        >
+      {/* الجدول — بالعرض الكامل، مع تمرير أفقي عند الضيق */}
+      <div style={{ overflowX: "auto", width: "100%" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.98em", background: "#f8fafc" }}>
           <thead>
-            <tr style={{ background: "#a9cce3", color: "#273746" }}>
-              <th style={th}>المنتج<br />Product</th>
-              <th style={th}>العميل<br />Customer</th>
-              <th style={th}>رقم الطلب<br />Order No</th>
-              <th style={th}>الوقت<br />Time</th>
-              <th style={th}>تاريخ الذبح<br />Slaughter Date</th>
-              <th style={th}>تاريخ الانتهاء<br />Expiry Date</th>
-              <th style={th}>درجة الحرارة<br />Temp</th>
-              <th style={th}>الكمية<br />Quantity</th>
-              <th style={th}>الوحدة<br />Unit</th>
-              <th style={th}>الحالة العامة<br />Overall Condition</th>
-              <th style={th}>ملاحظات<br />Remarks</th>
-              <th style={th}>إزالة<br />Remove</th>
+            <tr style={{ background: "#eeeeee", color: "#273746" }}>
+              {CORE_HEADERS.map((h) => (
+                <th key={h} style={th}>{h}</th>
+              ))}
+              <th style={th}>Remove</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, idx) => (
+            {rows.map((r, idx) => (
               <tr key={idx} style={{ background: idx % 2 ? "#fdf6fa" : "#fff" }}>
+                <td style={td}><input value={r.product} onChange={(e) => handleChange(idx, "product", e.target.value)} style={inputStyle} placeholder="Product" /></td>
+                <td style={td}><input value={r.customer} onChange={(e) => handleChange(idx, "customer", e.target.value)} style={inputStyle} placeholder="Customer" /></td>
+                <td style={td}><input value={r.orderNo} onChange={(e) => handleChange(idx, "orderNo", e.target.value)} style={inputStyle} placeholder="Order No" /></td>
+                <td style={td}><input value={r.time} onChange={(e) => handleChange(idx, "time", e.target.value)} style={inputStyle} placeholder="TIME (e.g., 08:45:14)" /></td>
+                <td style={td}><input value={r.slaughterDate} onChange={(e) => handleChange(idx, "slaughterDate", e.target.value)} style={inputStyle} placeholder="YYYY-MM-DD" /></td>
+                <td style={td}><input value={r.expiryDate} onChange={(e) => handleChange(idx, "expiryDate", e.target.value)} style={inputStyle} placeholder="YYYY-MM-DD (optional)" /></td>
+                <td style={td}><input type="number" value={r.temp} onChange={(e) => handleChange(idx, "temp", e.target.value)} style={inputStyle} placeholder="TEMP" /></td>
+                <td style={td}><input type="number" value={r.quantity} onChange={(e) => handleChange(idx, "quantity", e.target.value)} style={inputStyle} placeholder="Quantity" /></td>
                 <td style={td}>
-                  <input
-                    value={row.product}
-                    onChange={e => handleChange(idx, "product", e.target.value)}
-                    style={inputStyle}
-                    placeholder="اسم المنتج / Product Name"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    value={row.customer}
-                    onChange={e => handleChange(idx, "customer", e.target.value)}
-                    style={inputStyle}
-                    placeholder="اسم العميل / Customer"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    value={row.orderNo}
-                    onChange={e => handleChange(idx, "orderNo", e.target.value)}
-                    style={inputStyle}
-                    placeholder="رقم الطلب / Order No"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    value={row.time}
-                    onChange={e => handleChange(idx, "time", e.target.value)}
-                    style={inputStyle}
-                    placeholder="الوقت / Time (مثال: 3:28 AM)"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    value={row.slaughterDate}
-                    onChange={e => handleChange(idx, "slaughterDate", e.target.value)}
-                    style={inputStyle}
-                    placeholder="تاريخ الذبح / Slaughter Date"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    value={row.expiryDate}
-                    onChange={e => handleChange(idx, "expiryDate", e.target.value)}
-                    style={inputStyle}
-                    placeholder="تاريخ الانتهاء / Expiry Date"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    type="number"
-                    value={row.temp}
-                    onChange={e => handleChange(idx, "temp", e.target.value)}
-                    style={inputStyle}
-                    placeholder="الحرارة / Temp"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    type="number"
-                    value={row.quantity}
-                    onChange={e => handleChange(idx, "quantity", e.target.value)}
-                    style={inputStyle}
-                    placeholder="الكمية / Quantity"
-                  />
-                </td>
-                <td style={td}>
-                  <select
-                    value={row.unit}
-                    onChange={e => handleChange(idx, "unit", e.target.value)}
-                    style={inputStyle}
-                  >
+                  <select value={r.unitOfMeasure} onChange={(e) => handleChange(idx, "unitOfMeasure", e.target.value)} style={inputStyle}>
                     <option value="KG">KG</option>
+                    <option value="BOX">BOX</option>
+                    <option value="PLATE">PLATE</option>
                     <option value="Piece">Piece</option>
                   </select>
                 </td>
-                <td style={td}>
-                  <input
-                    value={row.condition}
-                    onChange={e => handleChange(idx, "condition", e.target.value)}
-                    style={inputStyle}
-                    placeholder="مثال: OK / Example: OK"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    value={row.remarks}
-                    onChange={e => handleChange(idx, "remarks", e.target.value)}
-                    style={inputStyle}
-                    placeholder="ملاحظات / Remarks"
-                  />
-                </td>
+                <td style={td}><input value={r.overallCondition} onChange={(e) => handleChange(idx, "overallCondition", e.target.value)} style={inputStyle} placeholder="OVERALL CONDITION" /></td>
+                <td style={td}><input value={r.remarks} onChange={(e) => handleChange(idx, "remarks", e.target.value)} style={inputStyle} placeholder="REMARKS" /></td>
                 <td style={td}>
                   <button
                     onClick={() => removeRow(idx)}
                     disabled={rows.length === 1}
-                    style={{
-                      background: "#c0392b",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: 8,
-                      fontWeight: "bold",
-                      padding: "5px 11px",
-                      cursor: rows.length === 1 ? "not-allowed" : "pointer",
-                    }}
+                    style={{ background: "#c0392b", color: "#fff", border: "none", borderRadius: 8, fontWeight: "bold", padding: "5px 11px", cursor: rows.length === 1 ? "not-allowed" : "pointer" }}
                   >
                     🗑️
                   </button>
@@ -333,66 +299,26 @@ export default function FinishedProductEntry() {
         </table>
       </div>
 
-      {/* إضافة صف جديد */}
-      <button
-        onClick={addRow}
-        style={{
-          background: "#5dade2",
-          color: "#fff",
-          padding: "10px 28px",
-          fontSize: "1.08em",
-          border: "none",
-          borderRadius: 12,
-          marginBottom: 24,
-          marginRight: 10,
-          cursor: "pointer",
-          fontWeight: "bold",
-          boxShadow: "0 2px 10px #aed6f133",
-        }}
-      >
-        ➕ إضافة منتج جديد / Add New Product
-      </button>
-
-      {/* زر الحفظ */}
-      <button
-        onClick={handleSave}
-        style={{
-          background: "#229954",
-          color: "#fff",
-          padding: "11px 44px",
-          fontSize: "1.22em",
-          border: "none",
-          borderRadius: 16,
-          marginRight: 15,
-          fontWeight: "bold",
-          cursor: "pointer",
-          boxShadow: "0 2px 14px #d4efdf99",
-          letterSpacing: "1px",
-        }}
-      >
-        💾 حفظ التقرير / Save Report
-      </button>
+      {/* أزرار أسفل */}
+      <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+        <button
+          onClick={addRow}
+          style={{ background: "#5dade2", color: "#fff", padding: "10px 28px", border: "none", borderRadius: 10, cursor: "pointer", fontWeight: "bold" }}
+        >
+          ➕ Add Row
+        </button>
+        <button
+          onClick={handleSave}
+          style={{ background: "#229954", color: "#fff", padding: "11px 44px", border: "none", borderRadius: 12, cursor: "pointer", fontWeight: "bold" }}
+        >
+          💾 Save Report
+        </button>
+      </div>
     </div>
   );
 }
 
-// أنماط الأعمدة
-const th = {
-  padding: "13px 8px",
-  fontWeight: "bold",
-  fontSize: "1.04em",
-  textAlign: "center",
-  borderBottom: "2px solid #aed6f1",
-};
-const td = {
-  padding: "7px 5px",
-  textAlign: "center",
-};
-const inputStyle = {
-  width: "97%",
-  padding: "8px",
-  borderRadius: "8px",
-  border: "1.5px solid #d4e6f1",
-  fontSize: "1em",
-  background: "#fff",
-};
+/* تنسيقات */
+const th = { padding: "12px 8px", fontWeight: "bold", fontSize: "1.02em", textAlign: "center", borderBottom: "2px solid #ddd", whiteSpace: "nowrap" };
+const td = { padding: "7px 6px", textAlign: "center" };
+const inputStyle = { width: "100%", padding: "8px", borderRadius: "8px", border: "1.5px solid #d4e6f1", fontSize: "1em", background: "#fff" };

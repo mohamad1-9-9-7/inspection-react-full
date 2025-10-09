@@ -11,6 +11,11 @@ const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 const DailyMonitorDashboard = lazy(() => import("./pages/monitor/DailyMonitorDashboard"));
 const QCSReport = lazy(() => import("./pages/monitor/branches/QCSReport"));
 
+// 🆕 Internal Audit – Reports Viewer
+const InternalAuditReportsView = lazy(() =>
+  import("./pages/monitor/InternalAuditReportsView")
+);
+
 const POS19Layout = lazy(() => import("./pages/monitor/branches/pos19/POS19Layout"));
 const POS24Layout = lazy(() => import("./pages/monitor/branches/pos24/POS24Layout"));
 const POS26Layout = lazy(() => import("./pages/monitor/branches/pos26/POS26Layout"));
@@ -219,6 +224,16 @@ export default function App() {
             }
           />
 
+          {/* 🆕 Internal Audit – Reports Viewer */}
+          <Route
+            path="internal-audit"
+            element={
+              <ProtectedRoute>
+                <InternalAuditReportsView />
+              </ProtectedRoute>
+            }
+          />
+
           {/* 🆕 FTR1 إدخال */}
           <Route
             path="ftr1"
@@ -345,7 +360,7 @@ export default function App() {
             }
           />
 
-          {/* يُترك في النهاية */}
+          {/* يُترك في النهاية (لا تضع أي مسارات بعده تخص monitor) */}
           <Route
             path=":slug"
             element={
