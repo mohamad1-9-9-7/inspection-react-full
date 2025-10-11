@@ -54,9 +54,7 @@ const ReturnsMenu = lazy(() => import("./ReturnsMenu"));
 const LoginKPI = lazy(() => import("./pages/LoginKPI"));
 const KPIDashboard = lazy(() => import("./pages/KPIDashboard"));
 
-const FinishedProductsData = lazy(() =>
-  import("./pages/finished/FinishedProductsData")
-);
+// ✅ تم الإبقاء فقط على الإدخال والتقارير
 const FinishedProductEntry = lazy(() =>
   import("./pages/finished/FinishedProductEntry")
 );
@@ -560,14 +558,7 @@ export default function App() {
 
         {/* finished/* */}
         <Route path="/finished">
-          <Route
-            path="data"
-            element={
-              <ProtectedRoute>
-                <FinishedProductsData />
-              </ProtectedRoute>
-            }
-          />
+          {/* ✅ تم حذف مسار /finished/data نهائيًا */}
           <Route
             path="entry"
             element={
@@ -586,6 +577,15 @@ export default function App() {
           />
         </Route>
 
+        {/* ✅ Alias للمسار القديم */}
+        <Route
+          path="/finished-product-reports"
+          element={
+            <ProtectedRoute>
+              <FinishedProductReports />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/finished-product-entry"
           element={
