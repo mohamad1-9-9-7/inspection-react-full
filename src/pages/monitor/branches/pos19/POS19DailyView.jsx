@@ -4,15 +4,21 @@ import React, { useEffect, useMemo, useState, Suspense, lazy } from "react";
 /* 
   POS19DailyView — Viewer Hub
   - يحتوي 13 تبويب لعرض التقارير (Views) + تبويب Overview لعرض المحتوى القديم.
-  - Personal hygiene و Daily cleaning و Equipment inspection مربوطة بملفات العرض الفعلية عبر lazy imports.
+  - Personal hygiene و Daily cleaning و Equipment inspection و Glass Items و Receiving Log و Oil Quality مربوطة بملفات العرض الفعلية عبر lazy imports.
 */
 
 // ✅ Personal Hygiene View
 const PHView = lazy(() => import("./view pos 19/PersonalHygieneChecklistView"));
 // ✅ Daily Cleaning (Butchery) View
 const DCView = lazy(() => import("./view pos 19/DailyCleaningChecklistView"));
-// ✅ Equipment Inspection & Sanitizing Log View (جديد)
+// ✅ Equipment Inspection & Sanitizing Log View
 const EIView = lazy(() => import("./view pos 19/EquipmentInspectionSanitizingLogView"));
+// ✅ Glass Items Condition Monitoring Checklist View
+const GlassView = lazy(() => import("./view pos 19/GlassItemsConditionChecklistView"));
+// ✅ Receiving Log (Butchery) View
+const RLView = lazy(() => import("./view pos 19/ReceivingLogView"));
+// ✅ Oil Quality Monitoring View (جديد)
+const OilView = lazy(() => import("./view pos 19/OilQualityMonitoringView"));
 
 export default function POS19DailyView() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -54,11 +60,11 @@ export default function POS19DailyView() {
     { key: "dailyCleaningButchery", label: "🧹 Daily Cleaning checklist – Butchery" }, // ← DCView
     { key: "equipmentInspection", label: "🧪 Equipment Inspection & Sanitizing Log" }, // ← EIView
     { key: "foodTempVerification", label: "🌡️ Food Temperature Verification Log" },
-    { key: "glassItemsCondition", label: "🧯 Glass items Condition Monitoring Checklist" },
+    { key: "glassItemsCondition", label: "🧯 Glass items Condition Monitoring Checklist" }, // ← GlassView
     { key: "hotHoldingTemp", label: "🔥 Hot Holding Temperature Monitoring Log Sheet" },
-    { key: "oilQuality", label: "🛢️ Oil Quality Monitoring Form" },
+    { key: "oilQuality", label: "🛢️ Oil Quality Monitoring Form" }, // ← OilView
     { key: "personalHygiene", label: "🧑‍🔬 Personal hygiene checklist" }, // ← PHView
-    { key: "receivingLog", label: "📦 Receiving Log" },
+    { key: "receivingLog", label: "📦 Receiving Log" }, // ← RLView
     { key: "sanitizerConcentration", label: "🧴 Sanitizer Concentration Verification Log" },
     { key: "temperatureMonitoring", label: "🌡️ Temperature Monitoring Log" },
     { key: "traceability", label: "🔗 Traceability Log" },
@@ -85,20 +91,13 @@ export default function POS19DailyView() {
     <div style={{ fontWeight: 700, color: "#6b7280" }}>{text}</div>
   );
 
-  // ——————————— Placeholders لباقي التبويبات ———————————
+  // ——————————— Placeholders لباقي التبويبات غير المربوطة ———————————
   const CleaningProgrammeScheduleView = () => (
     <div style={panelStyle}>
       <h4>🧼 Cleaning Programme Schedule (View)</h4>
       <LoadingLike />
     </div>
   );
-  const DailyCleaningButcheryPlaceholder = () => (
-    <div style={panelStyle}>
-      <h4>🧹 Daily Cleaning checklist – Butchery (View)</h4>
-      <LoadingLike />
-    </div>
-  );
-  // أزلنا الـ placeholder الخاص بـ Equipment Inspection لأننا ربطناه فعليًا
 
   const FoodTemperatureVerificationView = () => (
     <div style={panelStyle}>
@@ -106,29 +105,9 @@ export default function POS19DailyView() {
       <LoadingLike />
     </div>
   );
-  const GlassItemsConditionChecklistView = () => (
-    <div style={panelStyle}>
-      <h4>🧯 Glass items Condition Monitoring Checklist (View)</h4>
-      <LoadingLike />
-    </div>
-  );
   const HotHoldingTemperatureLogView = () => (
     <div style={panelStyle}>
       <h4>🔥 Hot Holding Temperature Monitoring Log Sheet (View)</h4>
-      <LoadingLike />
-    </div>
-  );
-  const OilQualityMonitoringView = () => (
-    <div style={panelStyle}>
-      <h4>🛢️ Oil Quality Monitoring Form (View)</h4>
-      <LoadingLike />
-    </div>
-  );
-  // PHView لا يحتاج Placeholder
-
-  const ReceivingLogView = () => (
-    <div style={panelStyle}>
-      <h4>📦 Receiving Log (View)</h4>
       <LoadingLike />
     </div>
   );
@@ -243,11 +222,23 @@ export default function POS19DailyView() {
       case "foodTempVerification":
         return <FoodTemperatureVerificationView />;
       case "glassItemsCondition":
-        return <GlassItemsConditionChecklistView />;
+        return (
+          <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Glass Items…</div>}>
+              <GlassView />
+            </Suspense>
+          </div>
+        );
       case "hotHoldingTemp":
         return <HotHoldingTemperatureLogView />;
       case "oilQuality":
-        return <OilQualityMonitoringView />;
+        return (
+          <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Oil Quality…</div>}>
+              <OilView />
+            </Suspense>
+          </div>
+        );
       case "personalHygiene":
         return (
           <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
@@ -257,7 +248,13 @@ export default function POS19DailyView() {
           </div>
         );
       case "receivingLog":
-        return <ReceivingLogView />;
+        return (
+          <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Receiving Log…</div>}>
+              <RLView />
+            </Suspense>
+          </div>
+        );
       case "sanitizerConcentration":
         return <SanitizerConcentrationVerificationView />;
       case "temperatureMonitoring":
@@ -308,4 +305,4 @@ export default function POS19DailyView() {
     </div>
   );
 }
-// انتهى الملف تاريخ 05/10/2025
+// انتهى — تم ربط تبويب 🛢️ Oil Quality Monitoring بملف العرض الفعلي عبر lazy import

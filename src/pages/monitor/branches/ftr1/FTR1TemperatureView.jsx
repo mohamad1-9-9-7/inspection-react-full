@@ -56,8 +56,9 @@ export default function FTR1TemperatureView() {
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
 
-    const buttons = reportRef.current.querySelector(".action-buttons");
-    if (buttons) buttons.style.display = "none";
+    const toolbar = reportRef.current.querySelector(".action-toolbar");
+    const prev = toolbar?.style.display;
+    if (toolbar) toolbar.style.display = "none";
 
     const canvas = await html2canvas(reportRef.current, {
       scale: 4,
@@ -82,12 +83,72 @@ export default function FTR1TemperatureView() {
     pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
     pdf.save(`FTR1_Temperature_${selectedReport?.payload?.date || "report"}.pdf`);
 
-    if (buttons) buttons.style.display = "flex";
+    if (toolbar) toolbar.style.display = prev || "flex";
   };
 
-  // ===== Delete =====
+  // ===== Export XLS (CSV متوافق) =====
+  const handleExportXLS = () => {
+    if (!selectedReport) return;
+
+    const times =
+      (selectedReport?.payload?.times || [
+        "4:00 AM","6:00 AM","8:00 AM","10:00 AM","12:00 PM","2:00 PM","4:00 PM","6:00 PM","8:00 PM",
+      ]).filter((t) => String(t).toLowerCase() !== "corrective action");
+
+    const coolersRaw = (selectedReport?.payload?.coolers || []).map((c, idx) => ({
+      ...c,
+      __idx: idx,
+      __name: String(c?.name || c?.label || `Cooler ${idx + 1}`),
+    }));
+    const coolers = coolersRaw.filter((c) => {
+      const nm = c.__name.trim().toLowerCase().replace(/\s+/g, "");
+      return nm !== "cooler9" && c.__idx !== 8;
+    });
+
+    const header = ["Cooler", ...times, "Remarks"];
+    const rows = [header, ...coolers.map((c) => [
+      c.__name,
+      ...times.map((t) => c?.temps?.[t] ?? ""),
+      c?.remarks ?? "",
+    ])];
+
+    const csv = rows
+      .map((r) =>
+        r
+          .map((cell) => {
+            const s = String(cell ?? "");
+            const needsQuotes = /[",\n;]/.test(s);
+            const escaped = s.replace(/"/g, '""');
+            return needsQuotes ? `"${escaped}"` : escaped;
+          })
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const nameDate = selectedReport?.payload?.date || "report";
+    a.href = url;
+    a.download = `FTR1_Temperature_${nameDate}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // ===== Delete (بكلمة سر) =====
   const handleDelete = async (report) => {
+    const pwd = window.prompt("Enter password to delete this report:");
+    if (pwd === null) return;
+    if (pwd.trim() !== "9999") {
+      alert("❌ Wrong password.");
+      return;
+    }
     if (!window.confirm("Are you sure you want to delete this report?")) return;
+
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
     try {
@@ -194,7 +255,7 @@ export default function FTR1TemperatureView() {
       "4:00 AM","6:00 AM","8:00 AM","10:00 AM","12:00 PM","2:00 PM","4:00 PM","6:00 PM","8:00 PM",
     ]).filter((t) => String(t).toLowerCase() !== "corrective action");
 
-  // ==== إزالة COOLER 9 من العرض ==== (احتياط لو كان محفوظ قديمًا)
+  // ==== إزالة COOLER 9 من العرض ==== (احتياط)
   const coolersRaw = (selectedReport?.payload?.coolers || []).map((c, idx) => ({
     ...c,
     __idx: idx,
@@ -207,6 +268,15 @@ export default function FTR1TemperatureView() {
 
   return (
     <div style={{ display: "flex", gap: "1rem" }}>
+      {/* حارس CSS: يضمن ظهور زر الحذف مثل بقية الأزرار */}
+      <style>{`
+        .ftr1-temp .action-toolbar .btn-delete {
+          display: inline-flex !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+        }
+      `}</style>
+
       {/* Sidebar dates */}
       <div
         style={{
@@ -276,6 +346,7 @@ export default function FTR1TemperatureView() {
 
       {/* Report display */}
       <div
+        className="ftr1-temp"
         style={{
           flex: 1,
           background: "#eef3f8",
@@ -288,20 +359,33 @@ export default function FTR1TemperatureView() {
           <p>❌ No report selected.</p>
         ) : (
           <div ref={reportRef}>
-            {/* شريط أزرار */}
+            {/* شريط الأزرار (ثابت ومرئي دائمًا) */}
             <div
-              className="action-buttons"
+              className="action-toolbar"
               style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 5,
                 display: "flex",
                 justifyContent: "flex-end",
                 gap: "0.6rem",
-                marginBottom: "0.8rem",
+                padding: "8px 0 12px",
+                background: "linear-gradient(to bottom, #eef3f8, #eef3f8cc)",
+                flexWrap: "wrap",
               }}
             >
+              <button
+                onClick={() => handleDelete(selectedReport)}
+                className="btn-delete"
+                style={btn("#c0392b")}
+                title="Delete this report (password: 9999)"
+              >
+                🗑 Delete
+              </button>
               <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
               <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
+              <button onClick={handleExportXLS} style={btn("#0ea5e9")}>⬇ Export XLS</button>
               <button onClick={triggerImport} style={btn("#f39c12")}>⬆ Import JSON</button>
-              <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")}>🗑 Delete</button>
               <input
                 ref={fileInputRef}
                 type="file"

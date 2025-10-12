@@ -45,8 +45,9 @@ export default function FTR1DailyCleanlinessView() {
   // ===== Export PDF =====
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
-    const buttons = reportRef.current.querySelector(".action-buttons");
-    if (buttons) buttons.style.display = "none";
+
+    const actions = reportRef.current.querySelector(".action-buttons");
+    if (actions) actions.style.display = "none";
 
     const canvas = await html2canvas(reportRef.current, {
       scale: 4,
@@ -71,17 +72,28 @@ export default function FTR1DailyCleanlinessView() {
     pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
     pdf.save(`FTR1_Cleanliness_${selectedReport?.payload?.reportDate || "report"}.pdf`);
 
-    if (buttons) buttons.style.display = "flex";
+    if (actions) actions.style.display = "flex";
   };
 
-  // ===== Delete =====
+  // ===== Delete (بكلمة سر) =====
   const handleDelete = async (report) => {
-    if (!window.confirm("⚠️ Delete this report?")) return;
+    if (!report) return;
+
+    // كلمة السر البسيطة: 9999
+    const pwd = window.prompt("Enter password to delete this report:");
+    if (pwd === null) return; // Cancel
+    if (pwd.trim() !== "9999") {
+      alert("❌ Wrong password.");
+      return;
+    }
+
+    if (!window.confirm("⚠️ Delete this report? This action cannot be undone.")) return;
+
     try {
       const res = await fetch(`${API_BASE}/api/reports/${getId(report)}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
       alert("✅ Report deleted.");
-      fetchReports();
+      await fetchReports();
     } catch (err) {
       console.error(err);
       alert("❌ Failed to delete.");
@@ -181,7 +193,13 @@ export default function FTR1DailyCleanlinessView() {
   }, {});
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
+    <div className="ftr1-clean" style={{ display: "flex", gap: "1rem" }}>
+      {/* حارس CSS لتعطيل أي إخفاء للأزرار */}
+      <style>{`
+        .ftr1-clean .action-buttons { display: flex !important; }
+        .ftr1-clean .action-buttons button { display: inline-flex !important; visibility: visible !important; opacity: 1 !important; }
+      `}</style>
+
       {/* Sidebar */}
       <div
         style={{
@@ -277,17 +295,33 @@ export default function FTR1DailyCleanlinessView() {
                 justifyContent: "space-between",
                 alignItems: "center",
                 marginBottom: "1rem",
+                gap: "0.75rem",
+                flexWrap: "wrap",
               }}
             >
-              <h3 style={{ color: "#2980b9" }}>
+              <h3 style={{ color: "#2980b9", margin: 0 }}>
                 🧹 Report: {selectedReport.payload?.reportDate}
               </h3>
-              <div className="action-buttons" style={{ display: "flex", gap: "0.6rem" }}>
-                <button onClick={handleExportPDF} style={btnExport}>⬇ Export PDF</button>
-                <button onClick={handleExportJSON} style={btnJson}>⬇ Export JSON</button>
-                <button onClick={triggerImport} style={btnImport}>⬆ Import JSON</button>
-                <button onClick={() => handleDelete(selectedReport)} style={btnDelete}>🗑 Delete</button>
+
+              {/* كل الأزرار معًا */}
+              <div
+                className="action-buttons"
+                style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}
+              >
+                <button onClick={handleExportPDF} style={btnExport} title="Export PDF">⬇ Export PDF</button>
+                <button onClick={handleExportJSON} style={btnJson} title="Export JSON">⬇ Export JSON</button>
+                <button onClick={triggerImport} style={btnImport} title="Import JSON">⬆ Import JSON</button>
+
+                {/* زر الحذف بجانب الأزرار */}
+                <button
+                  onClick={() => handleDelete(selectedReport)}
+                  style={{ ...btnDelete }}
+                  title="Delete this report (password required)"
+                >
+                  🗑 Delete
+                </button>
               </div>
+
               {/* input مخفي لاستيراد JSON */}
               <input
                 ref={fileInputRef}
@@ -298,7 +332,7 @@ export default function FTR1DailyCleanlinessView() {
               />
             </div>
 
-            {/* شعار المواشي */}
+            {/* شعار المواشي (نص بدل صورة خارج src) */}
             <div style={{ textAlign: "right", marginBottom: "1rem" }}>
               <h2 style={{ margin: 0, color: "darkred" }}>AL MAWASHI</h2>
               <div style={{ fontSize: "0.95rem", color: "#333" }}>
@@ -418,4 +452,8 @@ const btnBase = {
 const btnExport = { ...btnBase, background: "#27ae60" };
 const btnJson   = { ...btnBase, background: "#16a085" }; // Export JSON
 const btnImport = { ...btnBase, background: "#f39c12" }; // Import JSON
-const btnDelete = { ...btnBase, background: "#c0392b" };
+const btnDelete = {
+  ...btnBase,
+  background: "#c0392b",
+  boxShadow: "0 0 0 1.5px rgba(192,57,43,.25) inset",
+};

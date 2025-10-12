@@ -29,18 +29,13 @@ export default function FTR1PersonalHygieneView() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=ftr1_personal_hygiene`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`${API_BASE}/api/reports?type=ftr1_personal_hygiene`, { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
-
-      // تنازلي: الأحدث أولاً
-      arr.sort((a, b) => getReportDate(b) - getReportDate(a));
-
+      arr.sort((a, b) => getReportDate(b) - getReportDate(a)); // أحدث أولاً
       setReports(arr);
-      setSelectedReport(arr[0] || null); // الأحدث
+      setSelectedReport(arr[0] || null);
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
@@ -49,9 +44,13 @@ export default function FTR1PersonalHygieneView() {
     }
   };
 
-  // PDF
+  // ===== PDF (يُخفي الشريط مؤقتاً) =====
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
+    const toolbar = reportRef.current.querySelector(".action-toolbar");
+    const prev = toolbar?.style.display;
+    if (toolbar) toolbar.style.display = "none";
+
     const canvas = await html2canvas(reportRef.current, {
       scale: 2,
       windowWidth: reportRef.current.scrollWidth,
@@ -59,29 +58,75 @@ export default function FTR1PersonalHygieneView() {
     });
     const imgData = canvas.toDataURL("image/png");
 
-    const pdf = new jsPDF("l", "pt", "a4"); // Landscape
+    const pdf = new jsPDF("l", "pt", "a4");
     const pageWidth = pdf.internal.pageSize.getWidth();
-    const imgWidth = pageWidth - 40;
+    const margin = 20;
+    const imgWidth = pageWidth - margin * 2;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    // عنوان الشركة
     pdf.setFontSize(18);
     pdf.setFont("helvetica", "bold");
     pdf.text("AL MAWASHI", pageWidth / 2, 30, { align: "center" });
-
-    pdf.addImage(imgData, "PNG", 20, 50, imgWidth, imgHeight);
+    pdf.addImage(imgData, "PNG", margin, 50, imgWidth, imgHeight);
     pdf.save(`FTR1_Personal_Hygiene_${selectedReport?.payload?.reportDate || "report"}.pdf`);
+
+    if (toolbar) toolbar.style.display = prev || "flex";
   };
 
-  // حذف تقرير
+  // ===== XLS (CSV متوافق) =====
+  const handleExportXLS = () => {
+    if (!selectedReport) return;
+    const header = ["S.No", "Employee Name", ...columns, "Remarks and Corrective Actions"];
+    const rows = [
+      header,
+      ...(selectedReport?.payload?.entries || []).map((entry, i) => ([
+        i + 1,
+        entry.name || "",
+        ...columns.map((c) => entry[c] || ""),
+        entry.remarks || "",
+      ])),
+    ];
+
+    const csv = rows
+      .map((r) =>
+        r
+          .map((cell) => {
+            const s = String(cell ?? "");
+            const needsQuotes = /[",\n;]/.test(s);
+            const escaped = s.replace(/"/g, '""');
+            return needsQuotes ? `"${escaped}"` : escaped;
+          })
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const nameDate = selectedReport?.payload?.reportDate || "report";
+    a.href = url;
+    a.download = `FTR1_Personal_Hygiene_${nameDate}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // ===== Delete (بكلمة سر 9999) =====
   const handleDelete = async (report) => {
+    if (!report) return;
+    const pwd = window.prompt("Enter password to delete this report:");
+    if (pwd === null) return;
+    if (pwd.trim() !== "9999") {
+      alert("❌ Wrong password.");
+      return;
+    }
     if (!window.confirm("Are you sure you want to delete this report?")) return;
+
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
       alert("✅ Report deleted successfully.");
       fetchReports();
@@ -91,7 +136,7 @@ export default function FTR1PersonalHygieneView() {
     }
   };
 
-  // Export JSON (كل التقارير)
+  // ===== Export JSON (كل التقارير) =====
   const handleExportJSON = () => {
     try {
       const payloads = reports.map((r) => r?.payload ?? r);
@@ -101,9 +146,7 @@ export default function FTR1PersonalHygieneView() {
         count: payloads.length,
         items: payloads,
       };
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-        type: "application/json",
-      });
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
@@ -119,9 +162,8 @@ export default function FTR1PersonalHygieneView() {
     }
   };
 
-  // Import JSON
+  // ===== Import JSON =====
   const triggerImport = () => fileInputRef.current?.click();
-
   const handleImportJSON = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -149,11 +191,7 @@ export default function FTR1PersonalHygieneView() {
           const res = await fetch(`${API_BASE}/api/reports`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reporter: "ftr1",
-              type: "ftr1_personal_hygiene",
-              payload,
-            }),
+            body: JSON.stringify({ reporter: "ftr1", type: "ftr1_personal_hygiene", payload }),
           });
           if (res.ok) ok++; else fail++;
         } catch {
@@ -172,7 +210,7 @@ export default function FTR1PersonalHygieneView() {
     }
   };
 
-  // Group by year → month → day (تنازلي في الشريط)
+  // Group by year → month → day
   const groupedReports = reports.reduce((acc, r) => {
     const date = getReportDate(r);
     if (isNaN(date)) return acc;
@@ -208,7 +246,7 @@ export default function FTR1PersonalHygieneView() {
         ) : (
           <div>
             {Object.entries(groupedReports)
-              .sort(([ya], [yb]) => Number(yb) - Number(ya)) // سنوات تنازلي
+              .sort(([ya], [yb]) => Number(yb) - Number(ya))
               .map(([year, months]) => (
                 <details key={year} open>
                   <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
@@ -216,11 +254,11 @@ export default function FTR1PersonalHygieneView() {
                   </summary>
 
                   {Object.entries(months)
-                    .sort(([ma], [mb]) => Number(mb) - Number(ma)) // أشهر تنازلي
+                    .sort(([ma], [mb]) => Number(mb) - Number(ma))
                     .map(([month, days]) => {
-                      const daysSorted = [...days].sort((a, b) => b._dt - a._dt); // أيام تنازلي
+                      const daysSorted = [...days].sort((a, b) => b._dt - a._dt);
                       return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
+                        <details key={month} style={{ marginLeft: "1rem" }} open>
                           <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                             {daysSorted.map((r, i) => {
@@ -268,76 +306,41 @@ export default function FTR1PersonalHygieneView() {
         {!selectedReport ? (
           <p>❌ No report selected.</p>
         ) : (
-          <>
-            {/* Actions */}
+          <div ref={reportRef}>
+            {/* حارس CSS لضمان ظهور الأزرار دائماً */}
+            <style>{`
+              .action-toolbar { display: flex !important; }
+              .action-toolbar button { display: inline-flex !important; visibility: visible !important; opacity: 1 !important; }
+            `}</style>
+
+            {/* Toolbar */}
             <div
+              className="action-toolbar"
               style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 5,
                 display: "flex",
                 justifyContent: "flex-end",
                 gap: "0.6rem",
-                marginBottom: "1rem",
+                padding: "8px 0 12px",
+                background: "linear-gradient(to bottom, #f6f8fa, #f6f8facc)",
+                flexWrap: "wrap",
               }}
             >
-              <button
-                onClick={handleExportPDF}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background: "#27ae60",
-                  color: "#fff",
-                  fontWeight: "600",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                ⬇ Export PDF
-              </button>
-
-              <button
-                onClick={handleExportJSON}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background: "#16a085",
-                  color: "#fff",
-                  fontWeight: "600",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                ⬇ Export JSON
-              </button>
-
-              <button
-                onClick={triggerImport}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background: "#f39c12",
-                  color: "#fff",
-                  fontWeight: "600",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                ⬆ Import JSON
-              </button>
-
+              {/* زر الحذف مرئي دائماً */}
               <button
                 onClick={() => handleDelete(selectedReport)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background: "#c0392b",
-                  color: "#fff",
-                  fontWeight: "600",
-                  border: "none",
-                  cursor: "pointer",
-                }}
+                style={btn("#c0392b")}
+                title="Delete this report (password: 9999)"
               >
                 🗑 Delete
               </button>
 
+              <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
+              <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
+              <button onClick={handleExportXLS} style={btn("#0ea5e9")}>⬇ Export XLS</button>
+              <button onClick={triggerImport} style={btn("#f39c12")}>⬆ Import JSON</button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -347,121 +350,98 @@ export default function FTR1PersonalHygieneView() {
               />
             </div>
 
-            {/* Report content */}
-            <div ref={reportRef}>
-              {/* Header info */}
-              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
-                <tbody>
-                  <tr>
-                    <td style={tdHeader}>
-                      <strong>Document Title:</strong> Personal Hygiene Check List
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Document No:</strong> FS-QM /REC/PH
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <strong>Issue Date:</strong> 05/02/2020
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Revision No:</strong> 0
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <strong>Area:</strong> QA
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Issued By:</strong> MOHAMAD ABDULLAH QC
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <strong>Controlling Officer:</strong> Quality Controller
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Approved By:</strong> Hussam.O.Sarhan
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            {/* Header info */}
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+              <tbody>
+                <tr>
+                  <td style={tdHeader}><strong>Document Title:</strong> Personal Hygiene Check List</td>
+                  <td style={tdHeader}><strong>Document No:</strong> FS-QM /REC/PH</td>
+                </tr>
+                <tr>
+                  <td style={tdHeader}><strong>Issue Date:</strong> 05/02/2020</td>
+                  <td style={tdHeader}><strong>Revision No:</strong> 0</td>
+                </tr>
+                <tr>
+                  <td style={tdHeader}><strong>Area:</strong> QA</td>
+                  <td style={tdHeader}><strong>Issued By:</strong> MOHAMAD ABDULLAH QC</td>
+                </tr>
+                <tr>
+                  <td style={tdHeader}><strong>Controlling Officer:</strong> Quality Controller</td>
+                  <td style={tdHeader}><strong>Approved By:</strong> Hussam.O.Sarhan</td>
+                </tr>
+              </tbody>
+            </table>
 
-              {/* Title */}
-              <h3
-                style={{
-                  textAlign: "center",
-                  background: "#e5e7eb",
-                  padding: "6px",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                AL MAWASHI BRAAI MAMZAR
-                <br />
-                PERSONAL HYGIENE CHECKLIST FTR-1
-              </h3>
+            {/* Title */}
+            <h3
+              style={{
+                textAlign: "center",
+                background: "#e5e7eb",
+                padding: "6px",
+                marginBottom: "0.5rem",
+              }}
+            >
+              AL MAWASHI BRAAI MAMZAR
+              <br />
+              PERSONAL HYGIENE CHECKLIST FTR-1
+            </h3>
 
-              {/* Date */}
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong>Date:</strong> {selectedReport?.payload?.reportDate || "—"}
-              </div>
-
-              {/* Table */}
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  tableLayout: "fixed",
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#2980b9", color: "#fff" }}>
-                    <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-                    <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
-                    {columns.map((col, i) => (
-                      <th key={i} style={{ ...thStyle, width: "120px" }}>
-                        {col}
-                      </th>
-                    ))}
-                    <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedReport?.payload?.entries?.map((entry, i) => (
-                    <tr key={i}>
-                      <td style={tdStyle}>{i + 1}</td>
-                      <td style={tdStyle}>{entry.name || "—"}</td>
-                      {columns.map((col, cIndex) => (
-                        <td key={cIndex} style={tdStyle}>
-                          {entry[col] || "—"}
-                        </td>
-                      ))}
-                      <td style={tdStyle}>{entry.remarks || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Footers */}
-              <div style={{ marginTop: "1rem", fontWeight: "600" }}>
-                REMARKS / CORRECTIVE ACTIONS:
-              </div>
-              <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
-                *(C – Conform &nbsp;&nbsp;&nbsp; N/C – Non Conform)
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginTop: "1rem",
-                  fontWeight: 600,
-                }}
-              >
-                <div>Checked By: {selectedReport?.payload?.checkedBy || "—"}</div>
-                <div>Verified By: {selectedReport?.payload?.verifiedBy || "—"}</div>
-              </div>
+            {/* Date */}
+            <div style={{ marginBottom: "0.5rem" }}>
+              <strong>Date:</strong> {selectedReport?.payload?.reportDate || "—"}
             </div>
-          </>
+
+            {/* Table */}
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                tableLayout: "fixed",
+              }}
+            >
+              <thead>
+                <tr style={{ background: "#2980b9", color: "#fff" }}>
+                  <th style={{ ...thStyle, width: "50px" }}>S.No</th>
+                  <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
+                  {columns.map((col, i) => (
+                    <th key={i} style={{ ...thStyle, width: "120px" }}>{col}</th>
+                  ))}
+                  <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(selectedReport?.payload?.entries || []).map((entry, i) => (
+                  <tr key={i}>
+                    <td style={tdStyle}>{i + 1}</td>
+                    <td style={tdStyle}>{entry.name || "—"}</td>
+                    {columns.map((col, cIndex) => (
+                      <td key={cIndex} style={tdStyle}>{entry[col] || "—"}</td>
+                    ))}
+                    <td style={tdStyle}>{entry.remarks || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Footers */}
+            <div style={{ marginTop: "1rem", fontWeight: "600" }}>
+              REMARKS / CORRECTIVE ACTIONS:
+            </div>
+            <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
+              *(C – Conform &nbsp;&nbsp;&nbsp; N/C – Non Conform)
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginTop: "1rem",
+                fontWeight: 600,
+              }}
+            >
+              <div>Checked By: {selectedReport?.payload?.checkedBy || "—"}</div>
+              <div>Verified By: {selectedReport?.payload?.verifiedBy || "—"}</div>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -493,3 +473,13 @@ const tdHeader = {
   padding: "4px 6px",
   fontSize: "0.85rem",
 };
+
+const btn = (bg) => ({
+  padding: "6px 12px",
+  borderRadius: "6px",
+  background: bg,
+  color: "#fff",
+  fontWeight: 600,
+  border: "none",
+  cursor: "pointer",
+});

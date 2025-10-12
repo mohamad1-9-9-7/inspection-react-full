@@ -36,15 +36,14 @@ export default function FTR1OilCalibrationView() {
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data || [];
 
-      // تنازلي: الأحدث أولاً (بعكس نسختك)
       arr.sort((a, b) => {
         const ta = safeDate(firstEntryDate(a))?.getTime() || 0;
         const tb = safeDate(firstEntryDate(b))?.getTime() || 0;
-        return tb - ta;
+        return tb - ta; // latest first
       });
 
       setReports(arr);
-      setSelectedReport(arr[0] || null); // افتح الأحدث
+      setSelectedReport(arr[0] || null);
     } catch (e) {
       console.error(e);
     } finally {
@@ -54,7 +53,7 @@ export default function FTR1OilCalibrationView() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Group: Year -> Month -> [reports] (تنازلي)
+  // Group: Year -> Month -> [reports]
   const grouped = useMemo(() => {
     const acc = {};
     for (const r of reports) {
@@ -78,7 +77,6 @@ export default function FTR1OilCalibrationView() {
     return acc;
   }, [reports]);
 
-  // ترتيب قيود التقرير المختار تنازليًا
   const sortedEntries = useMemo(() => {
     const items = selectedReport?.payload?.entries || [];
     return [...items].sort(
@@ -91,6 +89,10 @@ export default function FTR1OilCalibrationView() {
   /* ===== Export PDF ===== */
   const handleExportPDF = async () => {
     if (!reportRef.current || !selectedReport) return;
+
+    const toolbar = reportRef.current.querySelector(".action-toolbar");
+    const prev = toolbar?.style.display;
+    if (toolbar) toolbar.style.display = "none";
 
     const canvas = await html2canvas(reportRef.current, { scale: 2, useCORS: true });
     const imgData = canvas.toDataURL("image/png");
@@ -117,12 +119,62 @@ export default function FTR1OilCalibrationView() {
 
     const nameDate = selectedReport?.payload?.entries?.[0]?.date || "report";
     pdf.save(`FTR1_Oil_Calibration_${nameDate}.pdf`);
+
+    if (toolbar) toolbar.style.display = prev || "flex";
   };
 
-  /* ===== Delete ===== */
+  /* ===== Export XLS ===== */
+  const handleExportXLS = () => {
+    if (!selectedReport) return;
+    const rows = [
+      ["Date", "Evaluation Results", "Corrective Action", "Checked By", "Verified By"],
+      ...sortedEntries.map((e) => [
+        formatDate(e?.date),
+        e?.result || "",
+        e?.action || "",
+        e?.checkedBy || "",
+        e?.verifiedBy || "",
+      ]),
+    ];
+
+    const csv = rows
+      .map((r) =>
+        r
+          .map((cell) => {
+            const s = String(cell ?? "");
+            const needsQuotes = /[",\n;]/.test(s);
+            const escaped = s.replace(/"/g, '""');
+            return needsQuotes ? `"${escaped}"` : escaped;
+          })
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const nameDate = selectedReport?.payload?.entries?.[0]?.date || "report";
+    a.href = url;
+    a.download = `FTR1_Oil_Calibration_${nameDate}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  /* ===== Delete (password 9999) ===== */
   const handleDelete = async (report) => {
     if (!report) return;
-    if (!window.confirm("Are you sure you want to delete this report?")) return;
+
+    const pwd = window.prompt("Enter password to delete this report:");
+    if (pwd === null) return;
+    if (pwd.trim() !== "9999") {
+      alert("❌ Wrong password.");
+      return;
+    }
+    if (!window.confirm("⚠️ Delete this report? This action cannot be undone.")) return;
 
     const rid = getId(report);
     if (!rid) {
@@ -149,7 +201,7 @@ export default function FTR1OilCalibrationView() {
     }
   };
 
-  /* ===== Export JSON (كل التقارير) ===== */
+  /* ===== Export/Import JSON ===== */
   const handleExportJSON = () => {
     try {
       const payloads = reports.map((r) => r?.payload ?? r);
@@ -175,7 +227,6 @@ export default function FTR1OilCalibrationView() {
     }
   };
 
-  /* ===== Import JSON (رفع للسيرفر وإنشاء سجلات) ===== */
   const triggerImport = () => fileInputRef.current?.click();
 
   const handleImportJSON = async (e) => {
@@ -229,7 +280,16 @@ export default function FTR1OilCalibrationView() {
   };
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
+    <div className="ftr1-oil" style={{ display: "flex", gap: "1rem" }}>
+      {/* حارس CSS: يضمن ظهور زر الحذف مهما كانت قواعد عامة */}
+      <style>{`
+        .ftr1-oil .action-toolbar .btn-delete {
+          display: inline-flex !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+        }
+      `}</style>
+
       {/* Sidebar */}
       <div
         style={{
@@ -270,7 +330,7 @@ export default function FTR1OilCalibrationView() {
         ) : (
           <div>
             {Object.entries(grouped)
-              .sort(([a], [b]) => Number(b) - Number(a)) // السنوات تنازلي
+              .sort(([a], [b]) => Number(b) - Number(a))
               .map(([year, months]) => (
                 <details key={year} open>
                   <summary style={{ fontWeight: "bold", margin: "8px 0" }}>
@@ -278,7 +338,7 @@ export default function FTR1OilCalibrationView() {
                   </summary>
 
                   {Object.entries(months)
-                    .sort(([a], [b]) => Number(b) - Number(a)) // الأشهر تنازلي
+                    .sort(([a], [b]) => Number(b) - Number(a))
                     .map(([month, reportsInMonth]) => (
                       <div
                         key={month}
@@ -304,7 +364,6 @@ export default function FTR1OilCalibrationView() {
                           </span>
                         </div>
 
-                        {/* داخل الشهر: الأحدث أولاً */}
                         {reportsInMonth.map((r) => {
                           const isActive = getId(selectedReport) === getId(r);
                           const dt = firstEntryDate(r);
@@ -357,6 +416,45 @@ export default function FTR1OilCalibrationView() {
           <p>❌ No report selected.</p>
         ) : (
           <div ref={reportRef}>
+            {/* شريط الأزرار أعلى يمين التقرير (ظاهر دائمًا) */}
+            <div
+              className="action-toolbar hide-on-pdf"
+              style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 5,
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.6rem",
+                padding: "8px 0 12px",
+                background: "linear-gradient(to bottom, #ffffff, #ffffffcc)",
+                flexWrap: "wrap",
+              }}
+            >
+              {/* الحذف ليس آخر زر + له className محمي */}
+              <button
+                onClick={() => handleDelete(selectedReport)}
+                className="btn-delete"
+                style={btnDel}
+                title="Delete this report (password: 9999)"
+              >
+                🗑 Delete
+              </button>
+
+              <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
+              <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
+              <button onClick={handleExportXLS} style={btn("#0ea5e9")}>⬇ Export XLS</button>
+              <button onClick={triggerImport} style={btn("#f39c12")}>⬆ Import JSON</button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json"
+                style={{ display: "none" }}
+                onChange={handleImportJSON}
+              />
+            </div>
+
             {/* Header */}
             <div
               style={{
@@ -439,15 +537,6 @@ export default function FTR1OilCalibrationView() {
                 )}
               </tbody>
             </table>
-
-            {/* Actions */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.6rem", marginTop: "1rem" }}>
-              <button onClick={handleExportPDF} style={{ padding: "6px 12px", borderRadius: 6, background: "#27ae60", color: "#fff", fontWeight: 600, border: "none", cursor: "pointer" }}>⬇ Export PDF</button>
-              <button onClick={handleExportJSON} style={{ padding: "6px 12px", borderRadius: 6, background: "#16a085", color: "#fff", fontWeight: 600, border: "none", cursor: "pointer" }}>⬇ Export JSON</button>
-              <button onClick={triggerImport} style={{ padding: "6px 12px", borderRadius: 6, background: "#f39c12", color: "#fff", fontWeight: 600, border: "none", cursor: "pointer" }}>⬆ Import JSON</button>
-              <button onClick={() => handleDelete(selectedReport)} style={{ padding: "6px 12px", borderRadius: 6, background: "#c0392b", color: "#fff", fontWeight: 600, border: "none", cursor: "pointer" }}>🗑 Delete</button>
-              <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportJSON} />
-            </div>
           </div>
         )}
       </div>
@@ -470,4 +559,20 @@ const tdStyle = {
   padding: "6px",
   border: "1px solid #ccc",
   textAlign: "center",
+};
+
+/* Button helpers */
+const btn = (bg) => ({
+  padding: "6px 12px",
+  borderRadius: 6,
+  background: bg,
+  color: "#fff",
+  fontWeight: 600,
+  border: "none",
+  cursor: "pointer",
+});
+const btnDel = {
+  ...btn("#c0392b"),
+  fontWeight: 700,
+  boxShadow: "0 0 0 1.5px rgba(192,57,43,.25) inset",
 };
