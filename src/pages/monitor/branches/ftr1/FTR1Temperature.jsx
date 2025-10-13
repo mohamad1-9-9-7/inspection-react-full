@@ -24,28 +24,43 @@ const defaultRows = [
   "Cooler 4",
   "Cooler 5",
   "Cooler 6",
-  "Cooler 7",
-  "Cooler 8",
+  "FREEZER 1",
+  "FREEZER 2",
 ];
 
-// KPI Helper
+/* ===== Helpers للنطاقات ===== */
+function isFreezer(c, idx) {
+  // نعتمد على الفهرس (6 و7) أو على الاسم يحتوي FREEZER
+  const byIndex = idx === 6 || idx === 7;
+  const byName = String(c?.name || "").toUpperCase().includes("FREEZER");
+  return byIndex || byName;
+}
+function getRangeFor(c, idx) {
+  // FREEZER 1/2: -20..-16 — البرادات الأخرى: 0..5
+  if (isFreezer(c, idx)) return { min: -20, max: -16 };
+  return { min: 0, max: 5 };
+}
+
+// KPI Helper (مع اختلاف النطاق للفريزر)
 function calculateKPI(coolers) {
   const all = [];
   let out = 0;
-  for (const c of coolers) {
+  for (let i = 0; i < coolers.length; i++) {
+    const c = coolers[i];
+    const { min, max } = getRangeFor(c, i);
     for (const [key, v] of Object.entries(c.temps || {})) {
       if (key === "Corrective Action") continue;
       const n = Number(v);
       if (v !== "" && !isNaN(n)) {
         all.push(n);
-        if (n < 0 || n > 5) out += 1;
+        if (n < min || n > max) out += 1;
       }
     }
   }
   const avg = all.length ? (all.reduce((a, b) => a + b, 0) / all.length).toFixed(2) : "—";
-  const min = all.length ? Math.min(...all) : "—";
-  const max = all.length ? Math.max(...all) : "—";
-  return { avg, min, max, out };
+  const minVal = all.length ? Math.min(...all) : "—";
+  const maxVal = all.length ? Math.max(...all) : "—";
+  return { avg, min: minVal, max: maxVal, out };
 }
 
 export default function FTR1Temperature() {
@@ -71,14 +86,30 @@ export default function FTR1Temperature() {
     background: "#fafbff",
     transition: "all .18s",
   };
-  const tempInputStyle = (val) => {
+
+  // تلوين ديناميكي حسب نوع السطر (فريزر أو براد)
+  const tempInputStyle = (rowIdx, val) => {
     const t = Number(val);
     if (val === "" || isNaN(t)) return baseInput;
-    if (t > 5 || t < 0)
-      return { ...baseInput, background: "#fdecea", borderColor: "#e74c3c", color: "#c0392b", fontWeight: 700 };
-    if (t >= 3)
-      return { ...baseInput, background: "#eaf6fb", borderColor: "#3498db", color: "#2471a3" };
-    return baseInput;
+
+    const { min, max } = getRangeFor(coolers[rowIdx], rowIdx);
+
+    if (t < min || t > max) {
+      return {
+        ...baseInput,
+        background: "#fdecea",
+        borderColor: "#e74c3c",
+        color: "#c0392b",
+        fontWeight: 700,
+      };
+    }
+    // لو ضمن المجال: لون بارد خفيف
+    return {
+      ...baseInput,
+      background: "#eaf6fb",
+      borderColor: "#3498db",
+      color: "#2471a3",
+    };
   };
 
   const setTemp = (rowIdx, time, value) => {
@@ -179,6 +210,9 @@ export default function FTR1Temperature() {
         <div style={{ marginTop: 6 }}>
           <b>Corrective action:</b> Transfer the meat to another cold room and call maintenance department to check and solve the problem.
         </div>
+        <div style={{ marginTop: 6, fontWeight: 700 }}>
+          • Freezers (FREEZER 1 & 2): acceptable range −20°C to −16°C. • Coolers: acceptable range 0°C to 5°C.
+        </div>
       </div>
 
       {/* جدول الإدخال */}
@@ -205,9 +239,10 @@ export default function FTR1Temperature() {
                     type="number"
                     value={c.temps?.[t] ?? ""}
                     onChange={(e) => setTemp(row, t, e.target.value)}
-                    style={tempInputStyle(c.temps?.[t])}
+                    style={tempInputStyle(row, c.temps?.[t])}
                     placeholder="°C"
-                    min="-10"
+                    // سماح بنطاق واسع للإدخال، والتلوين/الـKPI يضبط الصحة
+                    min="-30"
                     max="50"
                     step="0.1"
                   />

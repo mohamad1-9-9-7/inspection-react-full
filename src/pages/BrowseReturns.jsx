@@ -53,19 +53,27 @@ function normalizeReturns(raw) {
   }
   return Array.from(byDate.values());
 }
-function safeButchery(row) {
-  return row?.butchery === "فرع آخر..." ? row?.customButchery || "" : row?.butchery || "";
+
+/* ==== Branch & action helpers (موحّدة مع ReturnView.js) ==== */
+function isOtherBranch(val) {
+  const s = String(val || "").toLowerCase();
+  return s.includes("other branch") || s.includes("فرع آخر");
 }
+function safeButchery(row) {
+  return isOtherBranch(row?.butchery) ? row?.customButchery || "" : row?.butchery || "";
+}
+function actionText(row) {
+  return row?.action === "إجراء آخر..." ? row?.customAction || "" : row?.action || "";
+}
+/* مفتاح المطابقة للتغييرات — الآن يتضمن itemCode مثل ReturnView.js */
 function itemKey(row) {
   return [
+    (row?.itemCode || "").trim().toLowerCase(),     // ✅ الكود
     (row?.productName || "").trim().toLowerCase(),
     (row?.origin || "").trim().toLowerCase(),
     (safeButchery(row) || "").trim().toLowerCase(),
     (row?.expiry || "").trim().toLowerCase(),
   ].join("|");
-}
-function actionText(row) {
-  return row?.action === "إجراء آخر..." ? row?.customAction || "" : row?.action || "";
 }
 
 /* UI date for table: DD/MM/YYYY with Latin digits */
@@ -107,7 +115,6 @@ function isSendToMarket(s) {
   return (s ?? "").toString().trim().toLowerCase() === "send to market";
 }
 function isDisposed(s) {
-  // يدعم تهجئات مثل "DESPOSED" أو مسافات زائدة
   const v = (s ?? "").toString().trim().toLowerCase();
   return v === "disposed" || v === "desposed";
 }
@@ -480,7 +487,7 @@ export default function BrowseReturns() {
 
     // NEW: disposed counters
     let disposedCount = 0;
-    let disposedKg = 0; // <<============ NEW
+    let disposedKg = 0;
 
     const isKgType = (t) => {
       const s = (t || "").toString().toLowerCase();
@@ -499,8 +506,7 @@ export default function BrowseReturns() {
       (rep.items || []).forEach((it) => {
         const q = Number(it.quantity || 0);
 
-        const pos =
-          it.butchery === "فرع آخر..." ? it.customButchery || "—" : it.butchery || "—";
+        const pos = safeButchery(it) || "—"; // ✅ موحّد
         posCountItems[pos] = (posCountItems[pos] || 0) + 1;
 
         if (isKgType(it.qtyType)) {
@@ -531,7 +537,7 @@ export default function BrowseReturns() {
         }
         if (isDisposed(act)) {
           disposedCount += 1;
-          if (isKgType(it.qtyType)) disposedKg += q; // <<============ NEW
+          if (isKgType(it.qtyType)) disposedKg += q;
         }
       });
     });
@@ -609,8 +615,8 @@ export default function BrowseReturns() {
       sepExpiredShare,
       disposedShare,
 
-      disposedKg: Math.round(disposedKg * 1000) / 1000, // <<============ NEW
-      marketKg: Math.round(marketKg * 1000) / 1000,     // Send to market (kg)
+      disposedKg: Math.round(disposedKg * 1000) / 1000,
+      marketKg: Math.round(marketKg * 1000) / 1000,
       topActions: Object.entries(byActionLatest)
         .filter(([name]) => !new Set([
           "condemnation",
@@ -698,8 +704,11 @@ export default function BrowseReturns() {
       const changeMap = changeMapByDate.get(selectedReport?.reportDate || "") || new Map();
 
       const body = (selectedReport.items || []).map((row, i) => {
-        const pos = row.butchery === "فرع آخر..." ? row.customButchery || "" : row.butchery || "";
-        const qtyType = row.qtyType === "أخرى" ? row.customQtyType || "" : row.qtyType || "";
+        const pos = safeButchery(row); // ✅
+        const qtyType =
+          (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other")
+            ? row.customQtyType || ""
+            : row.qtyType || "";
         const curr = actionTextSafe(row);
         let actionCell = curr || "";
         const k = itemKey(row);
@@ -712,7 +721,7 @@ export default function BrowseReturns() {
           String(i + 1),
           row.productName || "",
           row.origin || "",
-          pos,
+          pos || "",
           String(row.quantity ?? ""),
           qtyType,
           row.expiry || "",
@@ -763,6 +772,137 @@ export default function BrowseReturns() {
     } catch (e) {
       console.error(e);
       alert("❌ Failed to generate PDF. Please try again.");
+    }
+  };
+
+  /* ========== XLSX Export (Selected & ALL) ========== */
+  async function ensureXLSX() {
+    if (window.XLSX?.utils) return window.XLSX;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("Failed to load XLSX"));
+      document.head.appendChild(s);
+    });
+    return window.XLSX;
+  }
+
+  // بناء صفوف XLSX لليوم المحدد/لكل الأيام بنفس الأعمدة
+  const columns = [
+    "SL.NO",
+    "ITEM CODE",
+    "PRODUCT NAME",
+    "ORIGIN",
+    "POS",
+    "QUANTITY",
+    "QTY TYPE",
+    "EXPIRY DATE",
+    "REMARKS",
+    "ACTION",
+  ];
+
+  function buildRowsForReport(rep) {
+    const changeMap = changeMapByDate.get(rep?.reportDate || "") || new Map();
+    const isOther = (v) => v === "إجراء آخر..." || v === "Other...";
+    const actionTextSafe = (row) =>
+      isOther(row?.action) ? row?.customAction || "" : row?.action || "";
+
+    const rows = (rep.items || []).map((row, i) => {
+      const pos = safeButchery(row);
+      const qtyType =
+        (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other")
+          ? row.customQtyType || ""
+          : row.qtyType || "";
+      const curr = actionTextSafe(row);
+      const k = itemKey(row);
+      const ch = changeMap.get(k);
+      let actionCell = curr || "";
+      if (ch && (ch.to ?? "") === (curr ?? "")) {
+        const dateTxt = formatChangeDatePDF(ch);
+        actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? ` (${dateTxt})` : ""}`;
+      }
+      return [
+        i + 1,
+        row.itemCode || "",
+        row.productName || "",
+        row.origin || "",
+        pos || "",
+        Number(row.quantity ?? 0),
+        qtyType || "",
+        row.expiry || "",
+        row.remarks || "",
+        actionCell,
+      ];
+    });
+    return rows;
+  }
+
+  function autosizeColumns(ws, data) {
+    const colWidths = (data[0] || []).map((_, colIdx) => {
+      let maxLen = 10;
+      for (let r = 0; r < data.length; r++) {
+        const cell = data[r][colIdx];
+        const len = (cell == null ? 0 : String(cell)).length;
+        if (len > maxLen) maxLen = len;
+      }
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 60) };
+    });
+    ws['!cols'] = colWidths;
+    ws['!freeze'] = { xSplit: 1, ySplit: 1 };
+  }
+
+  const handleExportXLSXSelected = async () => {
+    if (!selectedReport) {
+      alert("Select a date first.");
+      return;
+    }
+    try {
+      const XLSX = await ensureXLSX();
+      const wb = XLSX.utils.book_new();
+      const data = [columns, ...buildRowsForReport(selectedReport)];
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      autosizeColumns(ws, data);
+      XLSX.utils.book_append_sheet(wb, ws, selectedReport.reportDate);
+      XLSX.writeFile(wb, `returns_${selectedReport.reportDate}.xlsx`);
+    } catch (e) {
+      console.error(e);
+      alert("❌ Failed to export XLSX.");
+    }
+  };
+
+  // ✅ الجديد: تصدير كل الأيام مع كلمة سر على زر التنفيذ (9999)
+  const handleExportXLSXAllLocked = async () => {
+    const code = window.prompt("Enter password to export ALL reports:");
+    if (code !== "9999") {
+      if (code !== null) alert("❌ Incorrect password.");
+      return;
+    }
+    try {
+      const XLSX = await ensureXLSX();
+      const wb = XLSX.utils.book_new();
+
+      // نرتب كل الأيام تصاعديًا ونبني شيت لكل يوم
+      const all = [...returnsData].sort((a, b) =>
+        (a.reportDate || "").localeCompare(b.reportDate || "")
+      );
+
+      if (!all.length) {
+        alert("No reports to export.");
+        return;
+      }
+
+      for (const rep of all) {
+        const data = [columns, ...buildRowsForReport(rep)];
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        autosizeColumns(ws, data);
+        // اسم الشيت: YYYY-MM-DD (قصير وآمن)
+        XLSX.utils.book_append_sheet(wb, ws, (rep.reportDate || "DAY").slice(0, 31));
+      }
+      XLSX.writeFile(wb, `returns_ALL_days.xlsx`);
+    } catch (e) {
+      console.error(e);
+      alert("❌ Failed to export ALL XLSX.");
     }
   };
 
@@ -924,7 +1064,7 @@ export default function BrowseReturns() {
     borderCollapse: "collapse",
     border: "1px solid #b6c8e3",
     marginTop: 8,
-    minWidth: 920, // زاد لأننا أضفنا عمود الكود
+    minWidth: 920,
     color: "#111",
   };
   const th = {
@@ -1020,9 +1160,9 @@ export default function BrowseReturns() {
 
   function toggleSort(key) {
     setSort((prev) => {
-      if (prev.key !== key) return { key, dir: "asc" };    // أول كبسة: تصاعدي
-      if (prev.dir === "asc") return { key, dir: "desc" }; // ثاني كبسة: تنازلي
-      return { key: null, dir: null };                     // ثالث كبسة: إلغاء الفرز
+      if (prev.key !== key) return { key, dir: "asc" };
+      if (prev.dir === "asc") return { key, dir: "desc" };
+      return { key: null, dir: null };
     });
   }
 
@@ -1031,9 +1171,9 @@ export default function BrowseReturns() {
       case "itemCode":    return row.itemCode || "";
       case "productName": return row.productName || "";
       case "origin":      return row.origin || "";
-      case "pos":         return row.butchery === "فرع آخر..." ? (row.customButchery || "") : (row.butchery || "");
+      case "pos":         return safeButchery(row) || ""; // ✅
       case "quantity":    return Number(row.quantity || 0);
-      case "qtyType":     return row.qtyType === "أخرى" ? (row.customQtyType || "") : (row.qtyType || "");
+      case "qtyType":     return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""); // ✅
       case "expiry":      return row.expiry || "";
       case "remarks":     return row.remarks || "";
       case "action":      return actionText(row) || "";
@@ -1043,7 +1183,7 @@ export default function BrowseReturns() {
 
   const sortedRows = useMemo(() => {
     if (!selectedReport) return [];
-    const rows = (selectedReport.items || []).map((r, i) => ({ ...r, __i: i })); // __i tie-break
+    const rows = (selectedReport.items || []).map((r, i) => ({ ...r, __i: i }));
 
     if (!sort.key || !sort.dir) return rows;
 
@@ -1060,7 +1200,7 @@ export default function BrowseReturns() {
         cmp = collator.compare(String(va ?? ""), String(vb ?? ""));
       }
 
-      if (cmp === 0) cmp = a.__i - b.__i; // استقرار
+      if (cmp === 0) cmp = a.__i - b.__i;
       return sort.dir === "desc" ? -cmp : cmp;
     });
 
@@ -1172,8 +1312,8 @@ export default function BrowseReturns() {
 
           {/* NEW: Disposed KPI (center shows KG) */}
           <DonutCard
-            percent={kpi.disposedShare.percent}       // الحلقة = نسبة المشاركة من الإجراءات
-            centerText={String(kpi.disposedKg)}       // الرقم في الوسط = الوزن بالكيلو
+            percent={kpi.disposedShare.percent}
+            centerText={String(kpi.disposedKg)}
             label="Disposed (kg)"
             subLabel="Total weight (latest action)"
             count={`${kpi.disposedShare.count} items`}
@@ -1436,34 +1576,73 @@ export default function BrowseReturns() {
                     alignItems: "center",
                     gap: 10,
                     marginBottom: 8,
+                    flexWrap: "wrap",
                   }}
                 >
                   <div style={{ fontWeight: "bold", color: "#0f172a", fontSize: "1.15em" }}>
                     Returns details ({selectedReport.reportDate})
                   </div>
-                  <button
-                    onClick={handleExportPDF}
-                    style={{
-                      background: "#111827",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: 12,
-                      padding: "9px 14px",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                      boxShadow: "0 10px 22px rgba(17,24,39,.25)"
-                    }}
-                    title="Export PDF"
-                  >
-                    ⬇️ Export PDF
-                  </button>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      onClick={handleExportPDF}
+                      style={{
+                        background: "#111827",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 12,
+                        padding: "9px 14px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        boxShadow: "0 10px 22px rgba(17,24,39,.25)"
+                      }}
+                      title="Export PDF"
+                    >
+                      ⬇️ Export PDF
+                    </button>
+
+                    {/* XLSX: اليوم المحدد */}
+                    <button
+                      onClick={handleExportXLSXSelected}
+                      style={{
+                        background: "#2563eb",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 12,
+                        padding: "9px 14px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        boxShadow: "0 6px 14px rgba(37,99,235,.25)"
+                      }}
+                      title="Export XLSX (selected day)"
+                    >
+                      ⬇️ Export XLSX
+                    </button>
+
+                    {/* XLSX: كل الأيام مع كلمة سر على الزر */}
+                    <button
+                      onClick={handleExportXLSXAllLocked}
+                      style={{
+                        background: "#0f766e",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 12,
+                        padding: "9px 14px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        boxShadow: "0 6px 14px rgba(15,118,110,.25)"
+                      }}
+                      title="Export ALL days to XLSX (password 9999)"
+                    >
+                      🔒 Export XLSX (ALL)
+                    </button>
+                  </div>
                 </div>
 
                 <table style={table}>
                   <thead>
                     <tr>
                       <th style={th}><span style={{ opacity: .8 }}>SL.NO</span></th>
-                      <th style={th}><SortHeader sortKey="itemCode"    label="ITEM CODE" /></th>{/* NEW */}
+                      <th style={th}><SortHeader sortKey="itemCode"    label="ITEM CODE" /></th>
                       <th style={th}><SortHeader sortKey="productName" label="PRODUCT NAME" /></th>
                       <th style={th}><SortHeader sortKey="origin"      label="ORIGIN" /></th>
                       <th style={th}><SortHeader sortKey="pos"         label="POS" /></th>
@@ -1484,7 +1663,7 @@ export default function BrowseReturns() {
                       return (
                         <tr key={row.__i ?? i}>
                           <td style={td}>{i + 1}</td>
-                          <td style={td}>{row.itemCode || ""}</td>{/* NEW */}
+                          <td style={td}>{row.itemCode || ""}</td>
                           <td style={td}>
                             <span>{row.productName}</span>
                             {Array.isArray(row.images) && row.images.length > 0 && (
@@ -1498,12 +1677,10 @@ export default function BrowseReturns() {
                             )}
                           </td>
                           <td style={td}>{row.origin}</td>
-                          <td style={td}>
-                            {row.butchery === "فرع آخر..." ? row.customButchery : row.butchery}
-                          </td>
+                          <td style={td}>{safeButchery(row)}</td>
                           <td style={td}>{row.quantity}</td>
                           <td style={td}>
-                            {row.qtyType === "أخرى" ? row.customQtyType : row.qtyType || ""}
+                            {(row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType : row.qtyType || ""}
                           </td>
                           <td style={td}>{row.expiry}</td>
                           <td style={td}>{row.remarks}</td>
