@@ -111,6 +111,33 @@ function calcCoolersKPI(coolers) {
   };
 }
 
+/* ===== تنسيق التاريخ الذكي (يعرض DD/MM/YYYY) ===== */
+function formatDMYSmart(value) {
+  if (!value) return "";
+  const s = String(value).trim();
+
+  // YYYY-MM-DD
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+
+  // ISO
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T\s].*$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+
+  // DD/MM/YYYY (اتركه كما هو)
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return s;
+
+  const d = new Date(s);
+  if (!isNaN(d)) {
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yy = d.getFullYear();
+    return `${dd}/${mm}/${yy}`;
+  }
+  return s;
+}
+
 /* ---- Small UI helpers ---- */
 function RowKV({ label, value }) {
   return (
@@ -129,7 +156,9 @@ function RowKV({ label, value }) {
     </div>
   );
 }
-function TMPEntryHeader({ header, logoUrl }) {
+
+/* ✅ الهيدر مع صف Report Date يحتوي إنپوت التاريخ داخل الهيدر */
+function TMPEntryHeader({ header, logoUrl, reportDate, dateValue, onDateChange }) {
   const h = header || defaultTMPHeader;
   return (
     <div style={{ border: "1px solid #000", marginBottom: 12, background: "#fff" }}>
@@ -179,6 +208,24 @@ function TMPEntryHeader({ header, logoUrl }) {
           <div style={{ marginTop: 6, fontWeight: 700 }}>
             Corrective action: transfer the meat to another cold room and call maintenance to check and solve the
             problem.
+          </div>
+        </div>
+
+        {/* ✅ Report Date row (مع إنپوت التاريخ داخل الهيدر) */}
+        <div style={{ borderTop: "1px solid #000" }}>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 170, fontWeight: 700 }}>
+              Report Date:
+            </div>
+            <div style={{ padding: "6px 8px", flex: 1, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 800 }}>{reportDate || "—"}</span>
+              <input
+                type="date"
+                value={dateValue}
+                onChange={onDateChange}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -264,10 +311,6 @@ async function fetchExistingByDate(dateStr) {
 /* ================================================================== */
 /*                          CoolersTab Component                       */
 /* ================================================================== */
-/**
- * مستقل: فيه تاريخ إدخال وزر حفظ خاص به يحفظ فقط قسم البرادات + هيدر TMP
- * على السيرفر الخارجي تحت نوع qcs-coolers. لا يلمس أي تبويب آخر.
- */
 export default function CoolersTab(props) {
   const {
     coolers,
@@ -278,7 +321,7 @@ export default function CoolersTab(props) {
     logoUrl,
   } = props || {};
 
-  // تاريخ الإدخال داخل التبويب
+  // تاريخ الإدخال (يرتبط بعرض Report Date داخل الهيدر)
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   // هل لدينا state خارجي من الوالد؟
@@ -343,16 +386,14 @@ export default function CoolersTab(props) {
       const payload = {
         reportDate: date,
         coolers: dataCoolers,
-        loadingArea,            // 👈 تمت الإضافة هنا
-        headers: {
-          tmpHeader: header,
-        },
+        loadingArea,
+        headers: { tmpHeader: header },
       };
 
       const body = {
         reporter: "QCS/COOLERS",
-        type: COOLERS_TYPE,     // 👈 نوع مستقل
-        payload,                // 👈 فقط حقول هذا التبويب
+        type: COOLERS_TYPE,
+        payload,
       };
 
       if (existing?.id) {
@@ -401,26 +442,17 @@ export default function CoolersTab(props) {
     background: "#059669",
     color: "#fff",
   };
-  const card = { background: "#fff", padding: "1rem", marginBottom: "1rem", borderRadius: 12, boxShadow: "0 0 8px rgba(0,0,0,.10)" };
 
   return (
     <div>
-      {/* عنوان صغير + تاريخ إدخال داخل التبويب */}
-      <div style={{ ...card, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h3 style={{ margin: 0 }}>🧊 Coolers Temperatures</h3>
-        <label style={{ fontWeight: 700 }}>
-          Date:{" "}
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
-      </div>
-
-      {/* Header */}
-      <TMPEntryHeader header={header} logoUrl={logoUrl} />
+      {/* ✅ Header داخلُه سطر Report Date + إنپوت التاريخ */}
+      <TMPEntryHeader
+        header={header}
+        logoUrl={logoUrl}
+        reportDate={formatDMYSmart(date)}
+        dateValue={date}
+        onDateChange={(e) => setDate(e.target.value)}
+      />
 
       {/* KPI */}
       <div
@@ -447,10 +479,10 @@ export default function CoolersTab(props) {
             style={{
               fontSize: "1.25rem",
               fontWeight: 800,
-              color: safeKPI.outOfRange > 0 ? "#b91c1c" : "#16a34a",
+              color: (kpi || {}).outOfRange > 0 ? "#b91c1c" : "#16a34a",
             }}
           >
-            {safeKPI.avg}
+            {(kpi || safeKPI).avg}
             <span style={{ fontSize: ".9em", color: "#475569" }}> °C</span>
           </div>
         </div>
@@ -465,7 +497,7 @@ export default function CoolersTab(props) {
           }}
         >
           <div style={{ color: "#b91c1c", fontWeight: 700 }}>Out of Range</div>
-          <div style={{ fontSize: "1.25rem", fontWeight: 800 }}>{safeKPI.outOfRange}</div>
+          <div style={{ fontSize: "1.25rem", fontWeight: 800 }}>{(kpi || safeKPI).outOfRange}</div>
         </div>
         <div
           style={{
@@ -479,9 +511,9 @@ export default function CoolersTab(props) {
         >
           <div style={{ color: "#0ea5e9", fontWeight: 700 }}>Min / Max</div>
           <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
-            <span style={{ color: "#0369a1" }}>{safeKPI.min}</span>
+            <span style={{ color: "#0369a1" }}>{(kpi || safeKPI).min}</span>
             <span style={{ color: "#94a3b8" }}> / </span>
-            <span style={{ color: "#b91c1c" }}>{safeKPI.max}</span>
+            <span style={{ color: "#b91c1c" }}>{(kpi || safeKPI).max}</span>
             <span style={{ fontSize: ".9em", color: "#475569" }}> °C</span>
           </div>
         </div>

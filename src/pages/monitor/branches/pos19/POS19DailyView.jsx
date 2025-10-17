@@ -17,8 +17,12 @@ const EIView = lazy(() => import("./view pos 19/EquipmentInspectionSanitizingLog
 const GlassView = lazy(() => import("./view pos 19/GlassItemsConditionChecklistView"));
 // ✅ Receiving Log (Butchery) View
 const RLView = lazy(() => import("./view pos 19/ReceivingLogView"));
-// ✅ Oil Quality Monitoring View (جديد)
+// ✅ Oil Quality Monitoring View
 const OilView = lazy(() => import("./view pos 19/OilQualityMonitoringView"));
+// ✅ Food Temperature Verification Log View
+const FTView = lazy(() => import("./view pos 19/FoodTemperatureVerificationView"));
+// ✅ Cleaning Programme Schedule View (جديد)
+const CPSView = lazy(() => import("./view pos 19/CleaningProgrammeScheduleView"));
 
 export default function POS19DailyView() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -56,10 +60,10 @@ export default function POS19DailyView() {
   // ——————————— التبويبات ———————————
   const tabs = [
     { key: "overview", label: "📊 Overview (POS19)" },
-    { key: "cleaningProgramme", label: "🧼 Cleaning Programme Schedule" },
+    { key: "cleaningProgramme", label: "🧼 Cleaning Programme Schedule" }, // ← CPSView
     { key: "dailyCleaningButchery", label: "🧹 Daily Cleaning checklist – Butchery" }, // ← DCView
     { key: "equipmentInspection", label: "🧪 Equipment Inspection & Sanitizing Log" }, // ← EIView
-    { key: "foodTempVerification", label: "🌡️ Food Temperature Verification Log" },
+    { key: "foodTempVerification", label: "🌡️ Food Temperature Verification Log" }, // ← FTView
     { key: "glassItemsCondition", label: "🧯 Glass items Condition Monitoring Checklist" }, // ← GlassView
     { key: "hotHoldingTemp", label: "🔥 Hot Holding Temperature Monitoring Log Sheet" },
     { key: "oilQuality", label: "🛢️ Oil Quality Monitoring Form" }, // ← OilView
@@ -91,20 +95,7 @@ export default function POS19DailyView() {
     <div style={{ fontWeight: 700, color: "#6b7280" }}>{text}</div>
   );
 
-  // ——————————— Placeholders لباقي التبويبات غير المربوطة ———————————
-  const CleaningProgrammeScheduleView = () => (
-    <div style={panelStyle}>
-      <h4>🧼 Cleaning Programme Schedule (View)</h4>
-      <LoadingLike />
-    </div>
-  );
-
-  const FoodTemperatureVerificationView = () => (
-    <div style={panelStyle}>
-      <h4>🌡️ Food Temperature Verification Log (View)</h4>
-      <LoadingLike />
-    </div>
-  );
+  // ——————————— Placeholders للتبويبات غير المربوطة ———————————
   const HotHoldingTemperatureLogView = () => (
     <div style={panelStyle}>
       <h4>🔥 Hot Holding Temperature Monitoring Log Sheet (View)</h4>
@@ -202,10 +193,16 @@ export default function POS19DailyView() {
       case "overview":
         return <OverviewView />;
       case "cleaningProgramme":
-        return <CleaningProgrammeScheduleView />;
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Cleaning Programme…</div>}>
+              <CPSView />
+            </Suspense>
+          </div>
+        );
       case "dailyCleaningButchery":
         return (
-          <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
+          <div style={panelStyle}>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Daily Cleaning…</div>}>
               <DCView />
             </Suspense>
@@ -213,17 +210,23 @@ export default function POS19DailyView() {
         );
       case "equipmentInspection":
         return (
-          <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
+          <div style={panelStyle}>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Equipment Inspection…</div>}>
               <EIView />
             </Suspense>
           </div>
         );
       case "foodTempVerification":
-        return <FoodTemperatureVerificationView />;
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Food Temperature…</div>}>
+              <FTView />
+            </Suspense>
+          </div>
+        );
       case "glassItemsCondition":
         return (
-          <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
+          <div style={panelStyle}>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Glass Items…</div>}>
               <GlassView />
             </Suspense>
@@ -233,7 +236,7 @@ export default function POS19DailyView() {
         return <HotHoldingTemperatureLogView />;
       case "oilQuality":
         return (
-          <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
+          <div style={panelStyle}>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Oil Quality…</div>}>
               <OilView />
             </Suspense>
@@ -241,7 +244,7 @@ export default function POS19DailyView() {
         );
       case "personalHygiene":
         return (
-          <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
+          <div style={panelStyle}>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض النظافة الشخصية…</div>}>
               <PHView />
             </Suspense>
@@ -249,7 +252,7 @@ export default function POS19DailyView() {
         );
       case "receivingLog":
         return (
-          <div style={{ background: "#fafafa", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: "1rem", minHeight: 220 }}>
+          <div style={panelStyle}>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>جاري تحميل عرض Receiving Log…</div>}>
               <RLView />
             </Suspense>
@@ -305,4 +308,4 @@ export default function POS19DailyView() {
     </div>
   );
 }
-// انتهى — تم ربط تبويب 🛢️ Oil Quality Monitoring بملف العرض الفعلي عبر lazy import
+// انتهى — تم ربط تبويب 🧼 Cleaning Programme Schedule بملف العرض الحقيقي عبر lazy import (CPSView)

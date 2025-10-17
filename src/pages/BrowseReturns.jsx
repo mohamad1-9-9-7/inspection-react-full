@@ -874,7 +874,7 @@ export default function BrowseReturns() {
   // ✅ الجديد: تصدير كل الأيام مع كلمة سر على زر التنفيذ (9999)
   const handleExportXLSXAllLocked = async () => {
     const code = window.prompt("Enter password to export ALL reports:");
-    if (code !== "9999") {
+    if (code !== "0585446473") {
       if (code !== null) alert("❌ Incorrect password.");
       return;
     }
@@ -1631,7 +1631,7 @@ export default function BrowseReturns() {
                         cursor: "pointer",
                         boxShadow: "0 6px 14px rgba(15,118,110,.25)"
                       }}
-                      title="Export ALL days to XLSX (password 9999)"
+                      title="Export ALL days to XLSX (password @@@)"
                     >
                       🔒 Export XLSX (ALL)
                     </button>

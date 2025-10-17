@@ -8,8 +8,8 @@ const API_ROOT =
   (typeof process !== "undefined" &&
     process.env &&
     (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
+      process.env.VITE_API_URL ||
+      process.env.RENDER_EXTERNAL_URL)) ||
   (typeof import.meta !== "undefined" &&
     import.meta.env &&
     (import.meta.env.VITE_API_URL || import.meta.env.RENDER_EXTERNAL_URL)) ||
@@ -20,11 +20,8 @@ const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE_COOLERS = "qcs-coolers";
 
 const IS_SAME_ORIGIN = (() => {
-  try {
-    return new URL(API_BASE).origin === window.location.origin;
-  } catch {
-    return false;
-  }
+  try { return new URL(API_BASE).origin === window.location.origin; }
+  catch { return false; }
 })();
 
 async function listReportsByType(type) {
@@ -43,7 +40,11 @@ async function getReportByTypeAndDate(type, date) {
   const found = rows.find((r) => {
     const p = r?.payload || {};
     const d = String(
-      p.reportDate || p.date || p.header?.reportEntryDate || p.meta?.entryDate || ""
+      p.reportDate ||
+      p.date ||
+      p.header?.reportEntryDate ||
+      p.meta?.entryDate ||
+      ""
     ).trim();
     return d === String(date);
   });
@@ -53,10 +54,7 @@ async function upsertReportByType(type, payload) {
   const res = await fetch(REPORTS_URL, {
     method: "PUT",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ reporter: "admin-edit", type, payload }),
   });
   if (!res.ok) {
@@ -92,7 +90,8 @@ function Row({label, value}) {
     </div>
   );
 }
-function TMPPrintHeader({ header }) {
+
+function TMPPrintHeader({ header, reportDate }) {
   return (
     <div style={{ border:"1px solid #000", marginBottom:8, breakInside:"avoid" }}>
       <div style={{ display:"grid", gridTemplateColumns:"180px 1fr 1fr", alignItems:"stretch" }}>
@@ -112,6 +111,7 @@ function TMPPrintHeader({ header }) {
           <Row label="Approved by:" value={header.approvedBy} />
         </div>
       </div>
+
       <div style={{ borderTop:"1px solid #000" }}>
         <div style={{ background:"#c0c0c0", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
           TRANS EMIRATES LIVESTOCK MEAT TRADING LLC
@@ -127,9 +127,61 @@ function TMPPrintHeader({ header }) {
             Corrective action: Transfer the meat to another cold room and call maintenance department to check and solve the problem.
           </div>
         </div>
+
+        {/* ✅ Report Date (داخل الهيدر) */}
+        <div style={{ borderTop:"1px solid #000" }}>
+          <div style={{ display:"flex" }}>
+            <div style={{padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:170, fontWeight:700}}>
+              Report Date:
+            </div>
+            <div style={{padding:"6px 8px", flex:1}}>
+              {reportDate || "—"}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
+}
+
+/* ===== أدوات مساعدة للتاريخ ===== */
+function formatDMYSmart(value) {
+  if (!value) return "";
+  const s = String(value).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);             // YYYY-MM-DD
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T\s].*$/);          // ISO
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);               // already D/M/Y
+  if (m) return s;
+  const d = new Date(s);
+  if (!isNaN(d)) {
+    const dd = String(d.getDate()).padStart(2,"0");
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const yy = d.getFullYear();
+    return `${dd}/${mm}/${yy}`;
+  }
+  return s;
+}
+function extractAnyDate(payloadOrRow) {
+  const p = payloadOrRow?.payload || payloadOrRow || {};
+  return (
+    p.reportDate ||
+    p.date ||
+    p.header?.reportEntryDate ||
+    p.meta?.entryDate ||
+    payloadOrRow?.created_at ||
+    ""
+  );
+}
+function toYMD(value) {
+  if (!value) return "";
+  const s = String(value);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(s);
+  if (!isNaN(d)) return d.toISOString().slice(0,10);
+  return s;
 }
 
 /* ===== أزرار محلية ===== */
@@ -137,20 +189,30 @@ const btnBase = { padding:"9px 12px", borderRadius:8, cursor:"pointer", border:"
 const btnPrimary = { ...btnBase, background:"#2563eb", color:"#fff" };
 const btnOutline = { ...btnBase, background:"#fff", color:"#111827", border:"1px solid #e5e7eb" };
 
-/* ===== المكوّن المعزول ===== */
+/* ===== المكوّن ===== */
 export default function CoolersView({ selectedDate }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // تقرير اليوم المحدد
-  const [report, setReport] = useState(null);
-
-  // وضع التحرير + نسخ محرَّرة
+  const [report, setReport] = useState(null);               // payload + {date}
   const [editing, setEditing] = useState(false);
   const [editCoolers, setEditCoolers] = useState([]);
   const [editLoadingArea, setEditLoadingArea] = useState({ temps:{}, remarks:"" });
 
-  const tmpHeader = useMemo(()=>({
+  // ✅ تاريخ معروض يدعم القديم والجديد
+  const reportDateText = useMemo(() => {
+    const d =
+      selectedDate ||
+      report?.reportDate ||
+      report?.date ||
+      report?.header?.reportEntryDate ||
+      report?.meta?.entryDate ||
+      report?.created_at ||
+      "";
+    return formatDMYSmart(d);
+  }, [selectedDate, report]);
+
+  const tmpHeader = useMemo(() => ({
     documentTitle: "Temperature Control Record",
     documentNo: "FS-QM/REC/TMP",
     issueDate: "05/02/2020",
@@ -159,18 +221,35 @@ export default function CoolersView({ selectedDate }) {
     issuedBy: "MOHAMAD ABDULLAH",
     controllingOfficer: "Quality Controller",
     approvedBy: "Hussam O. Sarhan",
-  }),[]);
+  }), []);
 
-  // تحميل تقرير التاريخ المحدد
+  // تحميل التقرير
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!selectedDate) { setReport(null); return; }
       try {
         setLoading(true);
-        const payload = await getReportByTypeAndDate(TYPE_COOLERS, selectedDate);
+        let repPayload = null;
+        let repDate = selectedDate;
+
+        if (selectedDate) {
+          repPayload = await getReportByTypeAndDate(TYPE_COOLERS, selectedDate);
+        } else {
+          const rows = await listReportsByType(TYPE_COOLERS);
+          if (rows.length) {
+            rows.sort((a,b) => {
+              const da = new Date(extractAnyDate(a)).getTime() || 0;
+              const db = new Date(extractAnyDate(b)).getTime() || 0;
+              return db - da; // أحدث أولاً
+            });
+            repPayload = rows[0]?.payload || null;
+            repDate = toYMD(extractAnyDate(rows[0]));
+          }
+        }
+
+        const rep = repPayload ? { date: repDate, ...repPayload } : null;
         if (cancelled) return;
-        const rep = payload ? { date: selectedDate, ...payload } : null;
+
         setReport(rep);
 
         // إعداد النسخ القابلة للتحرير
@@ -190,7 +269,7 @@ export default function CoolersView({ selectedDate }) {
         if (!cancelled) setLoading(false);
       }
     })();
-    return ()=>{ cancelled = true; };
+    return () => { cancelled = true; };
   }, [selectedDate]);
 
   // معدلّات التحرير
@@ -232,11 +311,23 @@ export default function CoolersView({ selectedDate }) {
 
   const saveEditing = async () => {
     try {
-      if (!selectedDate) return;
+      const dateToSave =
+        report?.reportDate ||
+        selectedDate ||
+        report?.date ||
+        report?.header?.reportEntryDate ||
+        report?.meta?.entryDate ||
+        toYMD(report?.created_at) ||
+        "";
+      if (!dateToSave) {
+        alert("⚠️ No date to save with this report.");
+        return;
+      }
+
       setSaving(true);
       const payloadToSave = {
         ...(report || {}),
-        reportDate: selectedDate,
+        reportDate: String(dateToSave),
         coolers: editCoolers,
         loadingArea: editLoadingArea,
       };
@@ -244,9 +335,8 @@ export default function CoolersView({ selectedDate }) {
 
       await upsertReportByType(TYPE_COOLERS, payloadToSave);
 
-      // إعادة الجلب لتحديث العرض
-      const fresh = await getReportByTypeAndDate(TYPE_COOLERS, selectedDate);
-      const rep = fresh ? { date: selectedDate, ...fresh } : null;
+      const fresh = await getReportByTypeAndDate(TYPE_COOLERS, dateToSave);
+      const rep = fresh ? { date: dateToSave, ...fresh } : null;
       setReport(rep);
       setEditing(false);
       alert("✅ Saved coolers temperatures.");
@@ -263,10 +353,10 @@ export default function CoolersView({ selectedDate }) {
 
   return (
     <>
-      <TMPPrintHeader header={tmpHeader} />
+      <TMPPrintHeader header={tmpHeader} reportDate={reportDateText} />
 
       {/* أدوات التحرير */}
-      <div className="no-print" style={{ display:"flex", gap:8, justifyContent:"flex-end", margin:"0 0 8px 0" }}>
+      <div className="no-print" style={{ display:"flex", gap:8, justifyContent:"flex-end", margin:"8px 0" }}>
         {!editing ? (
           <button onClick={()=>setEditing(true)} style={btnOutline} disabled={loading || !report}>✏️ Edit</button>
         ) : (
@@ -276,10 +366,6 @@ export default function CoolersView({ selectedDate }) {
           </>
         )}
       </div>
-
-      {loading ? (
-        <div className="no-print" style={{ color:"#6b7280", marginBottom:8 }}>Loading…</div>
-      ) : null}
 
       <table
         style={{
@@ -302,21 +388,31 @@ export default function CoolersView({ selectedDate }) {
           </tr>
         </thead>
         <tbody>
-          {/* صفوف البرادات إن وجدت */}
+          {/* ✅ سطر التاريخ أعلى الجدول (داخل tbody لضمان الظهور) */}
+          <tr>
+            <td
+              colSpan={COOLER_TIMES.length + 2}
+              style={{
+                ...tdB(false),
+                textAlign: "left",
+                background: "#f3f4f6",
+                fontWeight: 800,
+              }}
+            >
+              Report Date: <span style={{ fontWeight: 900 }}>{reportDateText || "—"}</span>
+            </td>
+          </tr>
+
           {hasCoolers &&
             (editing ? editCoolers : report.coolers).map((c, i) => (
               <tr key={i}>
                 <td style={tdB(false)}>{labelForCooler(i)}</td>
                 {COOLER_TIMES.map((time) => {
-                  const srcTemps = editing
-                    ? editCoolers[i]?.temps || {}
-                    : report.coolers[i]?.temps || {};
+                  const srcTemps = editing ? editCoolers[i]?.temps || {} : report.coolers[i]?.temps || {};
                   const raw = srcTemps[time];
                   const val =
                     raw === undefined || raw === "" || raw === null
-                      ? editing
-                        ? ""
-                        : "—"
+                      ? editing ? "" : "—"
                       : String(raw).trim() + (!editing ? "°C" : "");
                   return (
                     <td key={time} style={tdB(true)}>
@@ -329,9 +425,7 @@ export default function CoolersView({ selectedDate }) {
                           style={{ width: 70, padding: "4px 6px" }}
                           placeholder=".."
                         />
-                      ) : (
-                        val
-                      )}
+                      ) : val}
                     </td>
                   );
                 })}
@@ -343,27 +437,20 @@ export default function CoolersView({ selectedDate }) {
                       style={{ width: "100%", padding: "4px 6px" }}
                       placeholder="Remarks"
                     />
-                  ) : (
-                    c?.remarks || ""
-                  )}
+                  ) : (c?.remarks || "")}
                 </td>
               </tr>
             ))}
 
-          {/* ✅ صف Loading Area */}
           {(hasLoadingArea || editing) && (
             <tr>
               <td style={{ ...tdB(false), fontWeight: 800 }}>Loading Area</td>
               {COOLER_TIMES.map((time) => {
-                const srcTemps = editing
-                  ? editLoadingArea?.temps || {}
-                  : report?.loadingArea?.temps || {};
+                const srcTemps = editing ? editLoadingArea?.temps || {} : report?.loadingArea?.temps || {};
                 const raw = srcTemps?.[time];
                 const val =
                   raw === undefined || raw === "" || raw === null
-                    ? editing
-                      ? ""
-                      : "—"
+                    ? editing ? "" : "—"
                     : String(raw).trim() + (!editing ? "°C" : "");
                 return (
                   <td key={`la-${time}`} style={tdB(true)}>
@@ -376,9 +463,7 @@ export default function CoolersView({ selectedDate }) {
                         style={{ width: 70, padding: "4px 6px" }}
                         placeholder=".."
                       />
-                    ) : (
-                      val
-                    )}
+                    ) : val}
                   </td>
                 );
               })}
@@ -390,14 +475,11 @@ export default function CoolersView({ selectedDate }) {
                     style={{ width: "100%", padding: "4px 6px" }}
                     placeholder="Remarks"
                   />
-                ) : (
-                  report?.loadingArea?.remarks || ""
-                )}
+                ) : (report?.loadingArea?.remarks || "")}
               </td>
             </tr>
           )}
 
-          {/* لا توجد بيانات إطلاقًا */}
           {!hasCoolers && !hasLoadingArea && (
             <tr>
               <td colSpan={COOLER_TIMES.length + 2} style={{ ...tdB(true), color: "#6b7280" }}>
