@@ -68,6 +68,10 @@ function download(name, content, mime="application/json") {
   a.href = url; a.download = name; a.click();
   URL.revokeObjectURL(url);
 }
+function fmtDT(x) {
+  if (!x) return "-";
+  try { return new Date(x).toLocaleString(); } catch { return String(x); }
+}
 
 /* ================= Component ================= */
 export default function CleaningReports() {
@@ -118,6 +122,12 @@ export default function CleaningReports() {
   const signBar = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 };
   const signLeft = { borderTop:"1px solid #e5e7eb", paddingTop:10, textAlign:"left", fontWeight:800 };
   const signRight = { borderTop:"1px solid #e5e7eb", paddingTop:10, textAlign:"right", fontWeight:800 };
+
+  // نمط كارت الملاحظات لكل تقرير
+  const remarksCard = { background:"#ffffff", border:"1px solid #e5e7eb", borderRadius:14, padding:12, boxShadow:"0 6px 16px rgba(2,6,23,.06)" };
+  const remarksGrid = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:8 };
+  const boxLabel = { fontWeight:800, marginBottom:4 };
+  const boxField = { padding:"10px 12px", borderRadius:10, border:"1.5px solid #c9d3e6", background:"#f9fafb" };
 
   /* ===== data ===== */
   const [list, setList] = useState([]);
@@ -540,12 +550,15 @@ export default function CleaningReports() {
 
                   <div style={kpiBox}>
                     <div style={{fontWeight:800}}>Remark</div>
-                    <div style={{opacity:.85}}>{dayData.meta.remark || "-"}</div>
+                    <div style={{opacity:.85}}>
+                      {/* نعرض أول Remark من أول تقرير في اليوم إن وجد */}
+                      {dayData.records?.[0]?.payload?.frequencyRemark || dayData.meta.remark || "-"}
+                    </div>
                   </div>
 
                   <div style={kpiBox}>
                     <div style={{fontWeight:800}}>Chemical used</div>
-                    <div style={{opacity:.85}}>{dayData.chemicalUsed || "-"}</div>
+                    <div style={{opacity:.85}}>{dayData.records?.[0]?.payload?.chemicalUsed || dayData.chemicalUsed || "-"}</div>
                   </div>
                 </div>
               </div>
@@ -620,6 +633,57 @@ export default function CleaningReports() {
                   <div style={signRight}>Verified By: <b>{dayData.verifiedBy || "-"}</b></div>
                 </div>
               </div>
+
+              {/* ===== NEW: Remarks/Corrective Actions per record (نفس مكان الإدخال – أسفل العرض) ===== */}
+              {!!dayData.records?.length && (
+                <div style={{marginTop:12, display:"grid", gap:12}}>
+                  {dayData.records.map((rec, idx)=>{
+                    const p = rec.payload || {};
+                    return (
+                      <section key={rec.id || idx} style={remarksCard}>
+                        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+                          <h3 style={{margin:0}}>REMARKS / CORRECTIVE ACTIONS</h3>
+                          <div style={{opacity:.75, fontWeight:700}}>
+                            ID: {rec.id || "(no-id)"} • Created: {fmtDT(rec.createdAt)}
+                          </div>
+                        </div>
+
+                        <div style={remarksGrid}>
+                          <div>
+                            <div style={boxLabel}>Checked By :</div>
+                            <div style={boxField}>{p.checkedBy || "-"}</div>
+                          </div>
+                          <div>
+                            <div style={boxLabel}>Verified By :</div>
+                            <div style={boxField}>{p.verifiedBy || "-"}</div>
+                          </div>
+
+                          <div style={{gridColumn:"1 / -1"}}>
+                            <div style={boxLabel}>Chemical used:</div>
+                            <div style={boxField}>{p.chemicalUsed || "All-purpose cleaner (Multi clean)"}</div>
+                          </div>
+
+                          <div style={{gridColumn:"1 / -1"}}>
+                            <div style={boxLabel}>Cleaning Procedure:</div>
+                            <div style={{...boxField, whiteSpace:"pre-wrap"}}>
+                              {p.cleaningProcedure || "Remove all left-over material inside, clean the floor with a broom or brush to remove debris, apply Multi clean detergent, scrub inside the chiller vehicle with clean brush, use water pressure pump to clean with water, after cleaning disinfect the inside truck."}
+                            </div>
+                          </div>
+
+                          <div style={{gridColumn:"1 / -1"}}>
+                            <div style={boxLabel}>Remark:</div>
+                            <div style={boxField}>{p.frequencyRemark || "-"}</div>
+                          </div>
+                        </div>
+
+                        <div style={{padding:"8px 0 0", fontSize:12, opacity:.9, borderTop:"1px solid #e5e7eb", marginTop:12}}>
+                          *(C = Conform, N/C = Non-conform)
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
             </>
           )}
         </main>
