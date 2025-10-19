@@ -67,13 +67,17 @@ async function listDatesByType(type) {
   return dates.sort((a, b) => b.localeCompare(a));
 }
 
-/* ✅ تصحيح المطابقة: دعم reportDate أو date أو header.reportEntryDate أو meta.entryDate */
+/* ✅ المطابقة المرنة للتاريخ */
 async function getReportByTypeAndDate(type, date) {
   const rows = await listReportsByType(type);
   const found = rows.find((r) => {
     const p = r?.payload || {};
     const d = String(
-      p.reportDate || p.date || p.header?.reportEntryDate || p.meta?.entryDate || ""
+      p.reportDate ||
+        p.date ||
+        p.header?.reportEntryDate ||
+        p.meta?.entryDate ||
+        ""
     ).trim();
     return d === String(date);
   });
@@ -84,13 +88,16 @@ async function getIdByTypeAndDate(type, date) {
   const found = rows.find((r) => {
     const p = r?.payload || {};
     const d = String(
-      p.reportDate || p.date || p.header?.reportEntryDate || p.meta?.entryDate || ""
+      p.reportDate ||
+        p.date ||
+        p.header?.reportEntryDate ||
+        p.meta?.entryDate ||
+        ""
     ).trim();
     return d === String(date);
   });
   return found?._id || found?.id || null;
 }
-
 async function deleteReportByTypeAndDate(type, date) {
   const id = await getIdByTypeAndDate(type, date);
   if (!id) throw new Error("Report not found");
@@ -98,18 +105,14 @@ async function deleteReportByTypeAndDate(type, date) {
     method: "DELETE",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
   });
-  if (!res.ok && res.status !== 404)
-    throw new Error("Failed to delete report");
+  if (!res.ok && res.status !== 404) throw new Error("Failed to delete report");
   return true;
 }
 async function createReportByType(type, payload) {
   const res = await fetch(REPORTS_URL, {
     method: "POST",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ reporter: "admin-import", type, payload }),
   });
   if (!res.ok) {
@@ -122,10 +125,7 @@ async function upsertReportByType(type, payload) {
   const res = await fetch(REPORTS_URL, {
     method: "PUT",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ reporter: "admin-edit", type, payload }),
   });
   if (!res.ok) {
@@ -294,7 +294,6 @@ function PHPrintHeader({ header, selectedDate }) {
     <div style={{ border: "1px solid #000", marginBottom: 8, breakInside: "avoid" }}>
       <div style={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", alignItems: "stretch" }}>
         <div style={{ borderInlineEnd: "1px solid #000", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}>
-          {/* ✅ CORS لالتقاط الشعار داخل PDF */}
           <img src={LOGO_URL} crossOrigin="anonymous" alt="Al Mawashi" style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }} />
         </div>
         <div style={{ borderInlineEnd: "1px solid #000" }}>
@@ -402,28 +401,27 @@ function TMPPrintHeader({ header }) {
 
 /* ============ Page ============ */
 export default function QCSDailyView() {
-  /* حالة التبويب */
   const [activeTab, setActiveTab] = useState("coolers");
 
-  /* شجرات التواريخ المنفصلة */
+  /* dates per tab */
   const [coolersDates, setCoolersDates] = useState([]);
   const [phDates, setPhDates] = useState([]);
   const [cleanDates, setCleanDates] = useState([]);
   const [freshDates, setFreshDates] = useState([]);
 
-  /* التاريخ المختار لكل تبويب */
+  /* selected date per tab */
   const [selectedCoolersDate, setSelectedCoolersDate] = useState(null);
   const [selectedPHDate, setSelectedPHDate] = useState(null);
   const [selectedCleanDate, setSelectedCleanDate] = useState(null);
   const [selectedFreshDate, setSelectedFreshDate] = useState(null);
 
-  /* التقرير المحمّل لكل تبويب */
+  /* loaded report per tab */
   const [coolersReport, setCoolersReport] = useState(null);
   const [phReport, setPhReport] = useState(null);
   const [cleanReport, setCleanReport] = useState(null);
   const [freshReport, setFreshReport] = useState(null);
 
-  /* هيدر/فووتر (local) */
+  /* headers (local) */
   const [phHeaderLS] = useLocalJSON("qcs_ph_header_v1", defaultPHHeader);
   const [phFooterLS] = useLocalJSON("qcs_ph_footer_v1", defaultPHFooter);
   const [ccHeaderLS] = useLocalJSON("qcs_cc_header_v1", defaultCCHeader);
@@ -433,22 +431,25 @@ export default function QCSDailyView() {
   const [loadingReport, setLoadingReport] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
 
-  /* ✅ حالات التحرير لجدول درجات الحرارة */
+  /* XLSX exporting state */
+  const [exportingXLSX, setExportingXLSX] = useState(false);
+
+  /* editing coolers */
   const [editingCoolers, setEditingCoolers] = useState(false);
   const [editCoolers, setEditCoolers] = useState([]);
 
-  /* ✅ حالة تحرير Loading Area */
+  /* Loading Area edit */
   const [editLoadingArea, setEditLoadingArea] = useState({
     temps: {},
     remarks: "",
   });
 
-  /* ===== JSON (All tabs) export/import state & refs ===== */
+  /* JSON export/import (all tabs) */
   const [exportingJSONAll, setExportingJSONAll] = useState(false);
   const [importingJSONAll, setImportingJSONAll] = useState(false);
   const jsonInputRef = useRef(null);
 
-  /* ===== helpers to refresh dates per type ===== */
+  /* refresh dates */
   const refreshDates = async () => {
     const [c, p, d, f] = await Promise.all([
       listDatesByType(TYPES.coolers),
@@ -460,7 +461,6 @@ export default function QCSDailyView() {
     setPhDates(p);
     setCleanDates(d);
     setFreshDates(f);
-
     if (!selectedCoolersDate && c.length) setSelectedCoolersDate(c[0]);
     if (!selectedPHDate && p.length) setSelectedPHDate(p[0]);
     if (!selectedCleanDate && d.length) setSelectedCleanDate(d[0]);
@@ -488,7 +488,7 @@ export default function QCSDailyView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ===== Load report per tab/date ===== */
+  /* load per date */
   useEffect(() => {
     if (!selectedCoolersDate) return;
     setLoadingReport(true);
@@ -569,7 +569,7 @@ export default function QCSDailyView() {
     })();
   }, [selectedFreshDate]);
 
-  /* عند تغيّر تقرير الكولرز انسخ للتحرير */
+  /* copy coolers for edit */
   useEffect(() => {
     const src = Array.isArray(coolersReport?.coolers)
       ? coolersReport.coolers
@@ -579,17 +579,11 @@ export default function QCSDailyView() {
       temps: { ...(c?.temps || {}) },
     }));
     setEditCoolers(clone);
-
     const la = coolersReport?.loadingArea || { temps: {}, remarks: "" };
-    setEditLoadingArea({
-      remarks: la.remarks || "",
-      temps: { ...(la.temps || {}) },
-    });
-
+    setEditLoadingArea({ remarks: la.remarks || "", temps: { ...(la.temps || {}) } });
     setEditingCoolers(false);
   }, [coolersReport?.coolers, coolersReport?.loadingArea, selectedCoolersDate]);
 
-  /* معدّلات الحقول في وضع التحرير (coolers) */
   const setTemp = (rowIdx, time, val) => {
     setEditCoolers((prev) => {
       const next = [...prev];
@@ -608,18 +602,13 @@ export default function QCSDailyView() {
       return next;
     });
   };
-
-  /* ✅ أحداث تحرير Loading Area */
-  const setLoadingTemp = (time, val) => {
+  const setLoadingTemp = (time, val) =>
     setEditLoadingArea((prev) => ({
       ...prev,
       temps: { ...(prev.temps || {}), [time]: val },
     }));
-  };
-  const setLoadingRemarks = (val) => {
+  const setLoadingRemarks = (val) =>
     setEditLoadingArea((prev) => ({ ...prev, remarks: val }));
-  };
-
   const cancelCoolersEdit = () => {
     const src = Array.isArray(coolersReport?.coolers)
       ? coolersReport.coolers
@@ -629,31 +618,21 @@ export default function QCSDailyView() {
       temps: { ...(c?.temps || {}) },
     }));
     setEditCoolers(clone);
-
     const la = coolersReport?.loadingArea || { temps: {}, remarks: "" };
-    setEditLoadingArea({
-      remarks: la.remarks || "",
-      temps: { ...(la.temps || {}) },
-    });
-
+    setEditLoadingArea({ remarks: la.remarks || "", temps: { ...(la.temps || {}) } });
     setEditingCoolers(false);
   };
-
   const saveCoolersEdit = async () => {
     try {
       const payloadToSave = {
         ...(coolersReport || {}),
         reportDate: selectedCoolersDate,
         coolers: editCoolers,
-        loadingArea: editLoadingArea, // ✅ حفظ الـ Loading Area
+        loadingArea: editLoadingArea,
       };
       delete payloadToSave.date;
-
       await upsertReportByType(TYPES.coolers, payloadToSave);
-      const fresh = await getReportByTypeAndDate(
-        TYPES.coolers,
-        selectedCoolersDate
-      );
+      const fresh = await getReportByTypeAndDate(TYPES.coolers, selectedCoolersDate);
       setCoolersReport(fresh ? { date: selectedCoolersDate, ...fresh } : null);
       await refreshDates();
       setEditingCoolers(false);
@@ -664,7 +643,7 @@ export default function QCSDailyView() {
     }
   };
 
-  /* حذف تقرير تبويب محدد */
+  /* delete current-date report of active tab */
   const handleDeleteActive = async (dateToDelete) => {
     const type =
       activeTab === "coolers"
@@ -685,7 +664,7 @@ export default function QCSDailyView() {
     }
   };
 
-  /* ===== تنزيل/رفع JSON (يشمل كل التبويبات) ===== */
+  /* helpers */
   const downloadBlob = (str, mime, filename) => {
     const blob = new Blob([str], { type: mime });
     const url = URL.createObjectURL(blob);
@@ -698,6 +677,7 @@ export default function QCSDailyView() {
     URL.revokeObjectURL(url);
   };
 
+  /* Export JSON (All) */
   const exportAllJSON = async () => {
     try {
       setExportingJSONAll(true);
@@ -707,10 +687,7 @@ export default function QCSDailyView() {
         listReportsByType(TYPES.dailyCleanliness),
       ]);
       const onlyPayloads = (arr) =>
-        arr
-          .map((x) => x?.payload || x)
-          .filter((x) => x && typeof x === "object");
-
+        arr.map((x) => x?.payload || x).filter((x) => x && typeof x === "object");
       const backup = {
         meta: {
           version: 1,
@@ -738,8 +715,8 @@ export default function QCSDailyView() {
     }
   };
 
+  /* Import JSON (All) */
   const triggerImportAll = () => jsonInputRef.current?.click();
-
   const importArrayForType = async (type, arr, counters) => {
     if (!Array.isArray(arr)) return;
     for (const item of arr) {
@@ -756,7 +733,6 @@ export default function QCSDailyView() {
           counters.skipped++;
           continue;
         }
-
         if (type === TYPES.coolers) {
           if (!Array.isArray(payload.coolers)) {
             counters.skipped++;
@@ -785,10 +761,8 @@ export default function QCSDailyView() {
           delete payload.coolers;
           delete payload.personalHygiene;
         } else if (type === TYPES.freshChicken) {
-          // تُحفظ كما تأتي من FreshChickenInter
           payload.reportDate = dateStr;
         }
-
         try {
           await deleteReportByTypeAndDate(type, dateStr);
         } catch {}
@@ -800,12 +774,10 @@ export default function QCSDailyView() {
       }
     }
   };
-
   const handleImportAllFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-
     try {
       setImportingJSONAll(true);
       const text = await file.text();
@@ -815,14 +787,12 @@ export default function QCSDailyView() {
       } catch {
         throw new Error("Invalid JSON file.");
       }
-
       const byType = {
         [TYPES.coolers]: [],
         [TYPES.personalHygiene]: [],
         [TYPES.dailyCleanliness]: [],
         [TYPES.freshChicken]: [],
       };
-
       const inferType = (payload) => {
         if (payload?.coolers) return TYPES.coolers;
         if (payload?.personalHygiene) return TYPES.personalHygiene;
@@ -830,7 +800,6 @@ export default function QCSDailyView() {
         if (payload?.reportVariant && payload?.samplesTable) return TYPES.freshChicken;
         return null;
       };
-
       if (data?.data && typeof data.data === "object") {
         byType[TYPES.coolers] = Array.isArray(data.data[TYPES.coolers])
           ? data.data[TYPES.coolers]
@@ -916,6 +885,7 @@ export default function QCSDailyView() {
     }
   };
 
+  /* Print / PDF */
   const handlePrint = () => {
     setAutoPrintScale();
     setTimeout(() => window.print(), 30);
@@ -1015,7 +985,7 @@ export default function QCSDailyView() {
       ? cleanReport
       : freshReport;
 
-  // الهيدرز
+  // headers
   const headersObj = currentReport?.headers || {};
   const phHeader = headersObj.phHeader || phHeaderLS || defaultPHHeader;
   const phFooter = headersObj.phFooter || phFooterLS || defaultPHFooter;
@@ -1032,15 +1002,546 @@ export default function QCSDailyView() {
   const cleanlinessRows = Array.isArray(currentReport?.cleanlinessRows)
     ? currentReport.cleanlinessRows
     : [];
-  const loadingArea = currentReport?.loadingArea || null; // ✅
+  const loadingArea = currentReport?.loadingArea || null;
 
   const phRowsCount = Math.max(MIN_PH_ROWS, personalHygiene.length || 0);
-  const phDataForPrint = Array.from({ length: phRowsCount }).map(
-    (_, i) => personalHygiene[i] || {}
-  );
 
   const hasCoolers = Array.isArray(coolers) && coolers.length > 0;
   const hasLoadingArea = !!loadingArea;
+
+  /* ✅ تاريخ التقرير للكولرز */
+  const coolersReportDateText = React.useMemo(() => {
+    const p = coolersReport || {};
+    return (
+      selectedCoolersDate ||
+      p.reportDate ||
+      p.date ||
+      p.header?.reportEntryDate ||
+      p.meta?.entryDate ||
+      ""
+    );
+  }, [selectedCoolersDate, coolersReport]);
+
+  const verifiedByManager = React.useMemo(() => {
+    const p = coolersReport || {};
+    return (
+      p.verifiedByManager ||
+      p.headers?.verifiedByManager ||
+      p.headers?.tmpHeader?.verifiedByManager ||
+      p.meta?.verifiedByManager ||
+      "—"
+    );
+  }, [coolersReport]);
+
+  /* ============ ExcelJS helpers & builders ============ */
+  const getExcelWorkbook = async () => {
+    const Excel = await import("exceljs");
+    const Workbook = Excel?.Workbook || Excel?.default?.Workbook;
+    return new Workbook();
+  };
+
+  // تحويل الشعار إلى Base64 مع استخراج الامتداد بدون استخدام Sparse Array
+  const toBase64Parts = (blob) =>
+    new Promise((resolve) => {
+      const r = new FileReader();
+      r.onload = () => {
+        const dataUrl = String(r.result || "");
+        const [head, data] = dataUrl.split(",");
+        const match = head.match(/data:image\/([a-zA-Z0-9+.-]+);base64/);
+        const ext = match ? match[1] : "jpeg";
+        resolve({ base64: data, ext });
+      };
+      r.readAsDataURL(blob);
+    });
+
+  const fetchLogoBase64 = async () => {
+    try {
+      const res = await fetch(LOGO_URL, { mode: "cors" });
+      if (!res || !res.ok) return null;
+      const b = await res.blob();
+      return await toBase64Parts(b); // { base64, ext }
+    } catch {
+      return null;
+    }
+  };
+
+  const thinBorder = {
+    top: { style: "thin", color: { argb: "FF000000" } },
+    left: { style: "thin", color: { argb: "FF000000" } },
+    bottom: { style: "thin", color: { argb: "FF000000" } },
+    right: { style: "thin", color: { argb: "FF000000" } },
+  };
+
+  const paintHeaderBlock = (ws, startRow, headerLeft, headerRight) => {
+    let r = startRow;
+    const rowsHeader = [
+      ["Document Title:", headerLeft.documentTitle, "Document No:", headerRight.documentNo],
+      ["Issue Date:", headerLeft.issueDate, "Revision No:", headerRight.revisionNo],
+      ["Area:", headerLeft.area, "Issued By:", headerRight.issuedBy],
+      ["Controlling Officer:", headerLeft.controllingOfficer, "Approved By:", headerRight.approvedBy],
+    ];
+    rowsHeader.forEach((row) => {
+      ws.mergeCells(r, 3, r, 4); // C..D
+      ws.mergeCells(r, 5, r, 6); // E..F
+      ws.getCell(r, 3).value = `${row[0]} ${row[1] || ""}`;
+      ws.getCell(r, 5).value = `${row[2]} ${row[3] || ""}`;
+      ws.getRow(r).height = 20;
+      [3, 4, 5, 6].forEach((c) => {
+        const cell = ws.getCell(r, c);
+        cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+        cell.border = thinBorder;
+      });
+      r++;
+    });
+    return r - 1;
+  };
+
+  async function buildCoolersSheetExcel({ workbook, data, reportDate, verifiedBy }) {
+    const ws = workbook.addWorksheet("Coolers", {
+      pageSetup: { orientation: "landscape", paperSize: 9, margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3 } },
+      views: [{ state: "frozen", ySplit: 10 }],
+    });
+
+    // أعمدة الجدول
+    const columns = [{ header: "Cooler", key: "cooler", width: 20 }];
+    COOLER_TIMES.forEach((t) => columns.push({ header: t, key: t, width: 12 }));
+    columns.push({ header: "Remarks", key: "remarks", width: 30 });
+    ws.columns = columns;
+
+    // مساحة الترويسة
+    ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); // r1..r9
+
+    // شعار
+    try {
+      const logo = await fetchLogoBase64();
+      if (logo) {
+        const imgId = workbook.addImage({ base64: logo.base64, extension: logo.ext });
+        ws.mergeCells("A1:B6");
+        ws.addImage(imgId, { tl: { col: 0, row: 0 }, br: { col: 2, row: 6 } });
+        ["A1","A2","A3","A4","A5","A6","B1","B2","B3","B4","B5","B6"].forEach(addr => {
+          ws.getCell(addr).border = thinBorder;
+        });
+      }
+    } catch {}
+
+    // حقول الترويسة
+    const h = data?.headers?.tmpHeader || tmpHeader;
+    paintHeaderBlock(ws, 1, h, h);
+
+    // سطر اسم الشركة
+    ws.mergeCells("A7:K7");
+    Object.assign(ws.getCell("A7"), {
+      value: "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC",
+      alignment: { vertical: "middle", horizontal: "center" },
+      font: { bold: true },
+      fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFD0D0D0" } },
+      border: thinBorder,
+    });
+    ws.getRow(7).height = 20;
+
+    // عنوان النموذج
+    ws.mergeCells("A8:K8");
+    Object.assign(ws.getCell("A8"), {
+      value: "TEMPERATURE CONTROL CHECKLIST (CCP)",
+      alignment: { vertical: "middle", horizontal: "center" },
+      font: { bold: true },
+      fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8E8E8" } },
+      border: thinBorder,
+    });
+    ws.getRow(8).height = 20;
+
+    // التاريخ
+    ws.mergeCells("A9:C9");
+    const rd = ws.getCell("A9");
+    rd.value = `Date: ${reportDate || ""}`;
+    rd.font = { bold: true };
+    rd.alignment = { vertical: "middle", horizontal: "left" };
+    rd.border = thinBorder;
+
+    // سطر التعليمات
+    ws.mergeCells("A10:K10");
+    ws.getCell("A10").value =
+      "1) If the temp is +5°C or more, check product temperature – CA should be taken.  2) If the loading area is more than +16°C – CA should be taken.  3) If the preparation area is more than +10°C – CA should be taken.  Corrective action: Transfer meat & call maintenance.";
+    ws.getCell("A10").alignment = { wrapText: true };
+    ws.getCell("A10").border = thinBorder;
+    ws.getRow(10).height = 42;
+
+    // رؤوس الجدول
+    const head = ws.addRow(columns.map((c) => c.header));
+    head.eachCell((c) => {
+      c.font = { bold: true };
+      c.alignment = { vertical: "middle", horizontal: "center" };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
+      c.border = thinBorder;
+    });
+    ws.getRow(head.number).height = 20;
+
+    // بيانات
+    const coolersArr = Array.isArray(data?.coolers) ? data.coolers : [];
+    coolersArr.forEach((row, idx) => {
+      const excelRow = {};
+      excelRow["cooler"] = labelForCooler(idx);
+      COOLER_TIMES.forEach((t) => (excelRow[t] = row?.temps?.[t] ?? ""));
+      excelRow["remarks"] = row?.remarks || "";
+      const r = ws.addRow(excelRow);
+      r.eachCell((c, col) => {
+        c.border = thinBorder;
+        c.alignment = { vertical: "middle", horizontal: col === 1 || col === columns.length ? "left" : "center", wrapText: true };
+      });
+    });
+    if (data?.loadingArea) {
+      const la = {};
+      la["cooler"] = "Loading Area";
+      COOLER_TIMES.forEach((t) => (la[t] = data.loadingArea?.temps?.[t] ?? ""));
+      la["remarks"] = data.loadingArea?.remarks || "";
+      const rla = ws.addRow(la);
+      rla.eachCell((c, col) => {
+        c.border = thinBorder;
+        c.alignment = { vertical: "middle", horizontal: col === 1 || col === columns.length ? "left" : "center", wrapText: true };
+      });
+    }
+
+    // Verified by
+    const last = ws.lastRow.number + 1;
+    ws.mergeCells(`I${last}:K${last}`);
+    const v = ws.getCell(`I${last}`);
+    v.value = `Verified by (Manager): ${verifiedBy || ""}`;
+    v.font = { bold: true };
+    v.alignment = { vertical: "middle", horizontal: "right" };
+  }
+
+  async function buildPHSheetExcel({ workbook, data, reportDate, phHeader, phFooter }) {
+    const ws = workbook.addWorksheet("PersonalHygiene", {
+      pageSetup: { orientation: "landscape", paperSize: 9, margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3 } },
+      views: [{ state: "frozen", ySplit: 9 }],
+    });
+
+    // شعار + ترويسة
+    ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); // r1..r8
+
+    try {
+      const logo = await fetchLogoBase64();
+      if (logo) {
+        const imgId = workbook.addImage({ base64: logo.base64, extension: logo.ext });
+        ws.mergeCells("A1:B6");
+        ws.addImage(imgId, { tl: { col: 0, row: 0 }, br: { col: 2, row: 6 } });
+        ["A1","A2","A3","A4","A5","A6","B1","B2","B3","B4","B5","B6"].forEach(addr => {
+          ws.getCell(addr).border = thinBorder;
+        });
+      }
+    } catch {}
+
+    paintHeaderBlock(ws, 1, phHeader, phHeader);
+
+    ws.mergeCells("A7:I7");
+    Object.assign(ws.getCell("A7"), {
+      value: "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS",
+      alignment: { vertical: "middle", horizontal: "center" },
+      font: { bold: true },
+      fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFD0D0D0" } },
+      border: thinBorder,
+    });
+    ws.mergeCells("A8:I8");
+    Object.assign(ws.getCell("A8"), {
+      value: "PERSONAL HYGIENE CHECKLIST",
+      alignment: { vertical: "middle", horizontal: "center" },
+      font: { bold: true },
+      fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8E8E8" } },
+      border: thinBorder,
+    });
+    ws.mergeCells("A9:C9");
+    Object.assign(ws.getCell("A9"), {
+      value: `Date: ${reportDate || ""}`,
+      font: { bold: true },
+      alignment: { vertical: "middle", horizontal: "left" },
+      border: thinBorder,
+    });
+
+    // أعمدة الجدول
+    const columns = [
+      { header: "S. No", key: "s", width: 7 },
+      { header: "Employee Name", key: "name", width: 28 },
+      { header: "Nails", key: "nails", width: 10 },
+      { header: "Hair", key: "hair", width: 10 },
+      { header: "No jewelry", key: "noj", width: 12 },
+      { header: "Wearing clean clothes / hair net / gloves / face mask / shoes", key: "ppe", width: 42 },
+      { header: "Communicable disease(s)", key: "cd", width: 24 },
+      { header: "Open wounds / sores / cuts", key: "ow", width: 20 },
+      { header: "Remarks & Corrective Actions", key: "rem", width: 36 },
+    ];
+    ws.columns = columns;
+
+    const headerRow = ws.addRow(columns.map((c) => c.header));
+    headerRow.eachCell((c) => {
+      c.font = { bold: true };
+      c.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
+      c.border = thinBorder;
+    });
+    ws.getRow(headerRow.number).height = 28;
+
+    const rows = Array.isArray(data?.personalHygiene) ? data.personalHygiene : [];
+    const totalRows = Math.max(rows.length, MIN_PH_ROWS);
+    for (let i = 0; i < totalRows; i++) {
+      const e = rows[i] || {};
+      const r = ws.addRow({
+        s: i + 1,
+        name: e?.employName || e?.employeeName || "",
+        nails: e?.nails || "",
+        hair: e?.hair || "",
+        noj: e?.notWearingJewelries || "",
+        ppe: e?.wearingCleanCloth || "",
+        cd: e?.communicableDisease || "",
+        ow: e?.openWounds || "",
+        rem: e?.remarks || "",
+      });
+      r.eachCell((c, col) => {
+        c.border = thinBorder;
+        c.alignment = { vertical: "middle", horizontal: col === 2 || col === 9 ? "left" : "center", wrapText: true };
+      });
+    }
+
+    // الفوتر (Checked/Verified)
+    const last = ws.lastRow.number + 1;
+    ws.mergeCells(`A${last}:I${last}`);
+    Object.assign(ws.getCell(`A${last}`), {
+      value: "REMARKS/CORRECTIVE ACTIONS:",
+      font: { bold: true },
+      border: thinBorder,
+    });
+    ws.mergeCells(`A${last + 1}:I${last + 1}`);
+    Object.assign(ws.getCell(`A${last + 1}`), {
+      value: "*(C – Conform   N / C – Non Conform)",
+      border: thinBorder,
+    });
+
+    ws.mergeCells(`A${last + 2}:E${last + 2}`);
+    Object.assign(ws.getCell(`A${last + 2}`), {
+      value: `Checked By : ${phFooter?.checkedBy || ""}`,
+      border: thinBorder,
+    });
+    ws.mergeCells(`F${last + 2}:I${last + 2}`);
+    Object.assign(ws.getCell(`F${last + 2}`), {
+      value: `Verified By : ${phFooter?.verifiedBy || ""}`,
+      border: thinBorder,
+    });
+  }
+
+  async function buildCleanSheetExcel({ workbook, data, reportDate, ccHeader, ccFooter }) {
+    const ws = workbook.addWorksheet("DailyCleanliness", {
+      pageSetup: { orientation: "landscape", paperSize: 9, margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3 } },
+      views: [{ state: "frozen", ySplit: 9 }],
+    });
+
+    // شعار + ترويسة
+    ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); ws.addRow([]); // r1..r8
+    try {
+      const logo = await fetchLogoBase64();
+      if (logo) {
+        const imgId = workbook.addImage({ base64: logo.base64, extension: logo.ext });
+        ws.mergeCells("A1:B6");
+        ws.addImage(imgId, { tl: { col: 0, row: 0 }, br: { col: 2, row: 6 } });
+        ["A1","A2","A3","A4","A5","A6","B1","B2","B3","B4","B5","B6"].forEach(addr => {
+          ws.getCell(addr).border = thinBorder;
+        });
+      }
+    } catch {}
+
+    paintHeaderBlock(ws, 1, ccHeader, ccHeader);
+
+    ws.mergeCells("A7:E7");
+    Object.assign(ws.getCell("A7"), {
+      value: "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC",
+      alignment: { vertical: "middle", horizontal: "center" },
+      font: { bold: true },
+      fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFD0D0D0" } },
+      border: thinBorder,
+    });
+    ws.mergeCells("A8:E8");
+    Object.assign(ws.getCell("A8"), {
+      value: "CLEANING CHECKLIST - WAREHOUSE",
+      alignment: { vertical: "middle", horizontal: "center" },
+      font: { bold: true },
+      fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8E8E8" } },
+      border: thinBorder,
+    });
+    ws.mergeCells("A9:B9");
+    Object.assign(ws.getCell("A9"), {
+      value: `Date: ${reportDate || ""}`,
+      font: { bold: true },
+      alignment: { vertical: "middle", horizontal: "left" },
+      border: thinBorder,
+    });
+
+    // أعمدة الجدول
+    const columns = [
+      { header: "SI-No", key: "si", width: 10 },
+      { header: "General Cleaning", key: "gen", width: 46 },
+      { header: "Observation (C / N / C)", key: "obs", width: 24 },
+      { header: "Informed to", key: "inf", width: 22 },
+      { header: "Remarks & CA", key: "rem", width: 36 },
+    ];
+    ws.columns = columns;
+
+    const headerRow = ws.addRow(columns.map((c) => c.header));
+    headerRow.eachCell((c) => {
+      c.font = { bold: true };
+      c.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
+      c.border = thinBorder;
+    });
+    ws.getRow(headerRow.number).height = 22;
+
+    const rows = Array.isArray(data?.cleanlinessRows) ? data.cleanlinessRows : [];
+    rows.forEach((r, i) => {
+      const isSection = !!r?.isSection;
+      const si = r?.letter || (typeof r?.slNo !== "undefined" ? r.slNo : i + 1);
+      const gen = r?.general || r?.itemEn || r?.itemAr || r?.groupEn || r?.groupAr || r?.section || "";
+      const obs = r?.observation || r?.result || "";
+      const inf = r?.informedTo || r?.informed || "";
+      const rem = r?.remarks || "";
+
+      const row = ws.addRow({
+        si: isSection ? "—" : si,
+        gen,
+        obs: isSection ? "" : obs,
+        inf: isSection ? "" : inf,
+        rem: isSection ? "" : rem,
+      });
+      if (isSection) {
+        row.eachCell((c) => {
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F2F2" } };
+          c.font = { bold: true };
+        });
+      }
+      row.eachCell((c, col) => {
+        c.border = thinBorder;
+        c.alignment = { vertical: "middle", horizontal: col === 2 || col === 5 ? "left" : "center", wrapText: true };
+      });
+    });
+
+    // الفوتر
+    const last = ws.lastRow.number + 1;
+    ws.mergeCells(`A${last}:E${last}`);
+    Object.assign(ws.getCell(`A${last}`), {
+      value: "REMARKS/CORRECTIVE ACTIONS:",
+      font: { bold: true },
+      border: thinBorder,
+    });
+
+    ws.mergeCells(`A${last + 1}:C${last + 1}`);
+    Object.assign(ws.getCell(`A${last + 1}`), {
+      value: `CHECKED BY: (QC-ASSIST) ${ccFooter?.checkedBy || ""}`,
+      border: thinBorder,
+    });
+    ws.mergeCells(`D${last + 1}:E${last + 1}`);
+    Object.assign(ws.getCell(`D${last + 1}`), {
+      value: `VERIFIED BY: ${ccFooter?.verifiedBy || ""}`,
+      border: thinBorder,
+    });
+
+    ws.mergeCells(`A${last + 2}:E${last + 2}`);
+    Object.assign(ws.getCell(`A${last + 2}`), {
+      value: "Remark: Frequency — Daily   * (C = Conform    N / C = Non Conform)",
+      border: thinBorder,
+    });
+  }
+
+  /* ============ XLSX Export (current tab & day only) — ExcelJS مع ترويسة وشعار ============ */
+  const exportXLSXForCurrentTab = async () => {
+    try {
+      setExportingXLSX(true);
+
+      const dateStr =
+        activeTab === "coolers"
+          ? selectedCoolersDate
+          : activeTab === "personalHygiene"
+          ? selectedPHDate
+          : activeTab === "dailyCleanliness"
+          ? selectedCleanDate
+          : selectedFreshDate;
+
+      if (!currentReport || !dateStr) {
+        alert("No report data for this date.");
+        return;
+      }
+
+      const wb = await getExcelWorkbook();
+
+      if (activeTab === "coolers") {
+        await buildCoolersSheetExcel({
+          workbook: wb,
+          data: currentReport,
+          reportDate: dateStr,
+          verifiedBy: verifiedByManager || "",
+        });
+      } else if (activeTab === "personalHygiene") {
+        await buildPHSheetExcel({
+          workbook: wb,
+          data: currentReport,
+          reportDate: dateStr,
+          phHeader,
+          phFooter,
+        });
+      } else if (activeTab === "dailyCleanliness") {
+        await buildCleanSheetExcel({
+          workbook: wb,
+          data: currentReport,
+          reportDate: dateStr,
+          ccHeader,
+          ccFooter,
+        });
+      } else if (activeTab === "freshChicken") {
+        // تصدير مبسط
+        const ws = wb.addWorksheet("FreshChicken", {
+          pageSetup: { orientation: "landscape" },
+        });
+        ws.columns = [
+          { header: "Date", key: "d", width: 16 },
+          { header: "Variant", key: "v", width: 18 },
+          { header: "SummaryJSON", key: "j", width: 80 },
+        ];
+        const r0 = ws.addRow(["Date", "Variant", "SummaryJSON"]);
+        r0.font = { bold: true };
+        ws.addRow([dateStr, currentReport?.reportVariant || "", JSON.stringify(currentReport || {})]);
+        if (Array.isArray(currentReport?.samplesTable)) {
+          const ws2 = wb.addWorksheet("Samples");
+          const rows = currentReport.samplesTable;
+          const cols = Object.keys(rows[0] || {}).map((k) => ({ header: String(k), key: k, width: 18 }));
+          ws2.columns = cols;
+          rows.forEach((row) => ws2.addRow(row));
+        }
+      }
+
+      const safeTab =
+        activeTab === "personalHygiene"
+          ? "ph"
+          : activeTab === "dailyCleanliness"
+          ? "clean"
+          : activeTab;
+
+      const fname = `qcs_${safeTab}_${dateStr}.xlsx`;
+
+      // كتابة الملف (browser)
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to export XLSX. Make sure 'exceljs' is installed.");
+    } finally {
+      setExportingXLSX(false);
+    }
+  };
 
   return (
     <div
@@ -1165,9 +1666,19 @@ export default function QCSDailyView() {
           paddingRight: "1rem",
         }}
       >
-        {/* Tabs (Centered in main) */}
-        <div className="no-print" style={{ display: "flex", justifyContent: "center", margin: "0 0 12px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, width: "min(900px, 100%)" }}>
+        {/* Tabs */}
+        <div
+          className="no-print"
+          style={{ display: "flex", justifyContent: "center", margin: "0 0 12px" }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: 8,
+              width: "min(900px, 100%)",
+            }}
+          >
             {[
               { id: "coolers", label: "🧊 Coolers" },
               { id: "personalHygiene", label: "🧼 Personal Hygiene" },
@@ -1217,7 +1728,17 @@ export default function QCSDailyView() {
             {exportingPDF ? "… Generating PDF" : "📄 Export PDF"}
           </button>
 
-          {/* ✅ زران عامّان للتصدير/الاستيراد JSON (يشمل كل التبويبات) */}
+          {/* ✅ زر تصدير XLSX للتبويب والتاريخ الحاليين فقط (ExcelJS مع ترويسة وشعار) */}
+          <button
+            onClick={exportXLSXForCurrentTab}
+            style={{ ...btnDark, opacity: exportingXLSX ? 0.7 : 1 }}
+            disabled={exportingXLSX}
+            title="Export current tab & selected date to Excel"
+          >
+            📊 Export XLSX (This tab)
+          </button>
+
+          {/* JSON (backup) */}
           <button
             onClick={exportAllJSON}
             style={{ ...btnDark, opacity: exportingJSONAll ? 0.7 : 1 }}
@@ -1244,10 +1765,7 @@ export default function QCSDailyView() {
         </div>
 
         {loadingReport && (
-          <div
-            className="no-print"
-            style={{ marginBottom: 8, fontStyle: "italic", color: "#6b7280" }}
-          >
+          <div className="no-print" style={{ marginBottom: 8, fontStyle: "italic", color: "#6b7280" }}>
             Loading…
           </div>
         )}
@@ -1259,33 +1777,37 @@ export default function QCSDailyView() {
             <>
               <TMPPrintHeader header={tmpHeader} />
 
-              {/* أدوات التحرير */}
+              {/* Report date (top-left) */}
               <div
-                className="no-print"
                 style={{
                   display: "flex",
-                  gap: 8,
-                  justifyContent: "flex-end",
-                  margin: "0 0 8px 0",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  margin: "6px 0 8px 0",
                 }}
               >
-                {!editingCoolers ? (
-                  <button
-                    onClick={() => setEditingCoolers(true)}
-                    style={btnOutline}
-                  >
-                    ✏️ Edit
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={saveCoolersEdit} style={btnPrimary}>
-                      💾 Save
+                <div style={{ fontWeight: 900 }}>
+                  <span style={{ textDecoration: "underline" }}>Report Date:</span>{" "}
+                  <span>{coolersReportDateText || "—"}</span>
+                </div>
+
+                {/* edit controls */}
+                <div className="no-print" style={{ display: "flex", gap: 8 }}>
+                  {!editingCoolers ? (
+                    <button onClick={() => setEditingCoolers(true)} style={btnOutline}>
+                      ✏️ Edit
                     </button>
-                    <button onClick={cancelCoolersEdit} style={btnOutline}>
-                      ↩️ Cancel
-                    </button>
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <button onClick={saveCoolersEdit} style={btnPrimary}>
+                        💾 Save
+                      </button>
+                      <button onClick={cancelCoolersEdit} style={btnOutline}>
+                        ↩️ Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               <table
@@ -1295,7 +1817,7 @@ export default function QCSDailyView() {
                   textAlign: "center",
                   border: "1px solid #000",
                   fontSize: "12px",
-                  tableLayout: "fixed",           /* ✅ منع تكسّر الأعمدة */
+                  tableLayout: "fixed",
                   wordBreak: "word-break",
                 }}
               >
@@ -1311,7 +1833,6 @@ export default function QCSDailyView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* صفوف البرادات إن وجدت */}
                   {hasCoolers &&
                     (editingCoolers ? editCoolers : coolers).map((c, i) => (
                       <tr key={i}>
@@ -1335,9 +1856,7 @@ export default function QCSDailyView() {
                                   type="number"
                                   step="0.1"
                                   value={String(raw ?? "")}
-                                  onChange={(e) =>
-                                    setTemp(i, time, e.target.value)
-                                  }
+                                  onChange={(e) => setTemp(i, time, e.target.value)}
                                   style={{ width: 70, padding: "4px 6px" }}
                                   placeholder=".."
                                 />
@@ -1362,12 +1881,9 @@ export default function QCSDailyView() {
                       </tr>
                     ))}
 
-                  {/* ✅ صف Loading Area (إن وجد بالبيانات أو في وضع التحرير) */}
                   {(hasLoadingArea || editingCoolers) && (
                     <tr>
-                      <td style={{ ...tdB(false), fontWeight: 800 }}>
-                        Loading Area
-                      </td>
+                      <td style={{ ...tdB(false), fontWeight: 800 }}>Loading Area</td>
                       {COOLER_TIMES.map((time) => {
                         const srcTemps = editingCoolers
                           ? editLoadingArea?.temps || {}
@@ -1387,9 +1903,7 @@ export default function QCSDailyView() {
                                 type="number"
                                 step="0.1"
                                 value={String(raw ?? "")}
-                                onChange={(e) =>
-                                  setLoadingTemp(time, e.target.value)
-                                }
+                                onChange={(e) => setLoadingTemp(time, e.target.value)}
                                 style={{ width: 70, padding: "4px 6px" }}
                                 placeholder=".."
                               />
@@ -1414,7 +1928,6 @@ export default function QCSDailyView() {
                     </tr>
                   )}
 
-                  {/* لا توجد بيانات إطلاقًا */}
                   {!hasCoolers && !hasLoadingArea && (
                     <tr>
                       <td
@@ -1427,6 +1940,16 @@ export default function QCSDailyView() {
                   )}
                 </tbody>
               </table>
+
+              {/* Verified by (keep under table) */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 16, marginTop: 6, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}>
+                  <span>Verified by (Manager):</span>
+                  <span style={{ padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 8, minWidth: 240, background: "#fff", fontWeight: 700 }}>
+                    {verifiedByManager}
+                  </span>
+                </div>
+              </div>
             </>
           )}
 
@@ -1440,8 +1963,8 @@ export default function QCSDailyView() {
                   borderCollapse: "collapse",
                   textAlign: "center",
                   border: "1px solid #000",
-                  tableLayout: "fixed",         /* ✅ */
-                  wordBreak: "break-word",
+                  tableLayout: "fixed",
+                  wordBreak: "word-break",
                 }}
               >
                 <thead>
@@ -1457,14 +1980,7 @@ export default function QCSDailyView() {
                       "Open wounds / sores / cuts",
                       "Remarks & Corrective Actions",
                     ].map((h, idx) => (
-                      <th
-                        key={idx}
-                        style={{
-                          border: "1px solid #000",
-                          padding: "6px 4px",
-                          fontWeight: 800,
-                        }}
-                      >
+                      <th key={idx} style={{ border: "1px solid #000", padding: "6px 4px", fontWeight: 800 }}>
                         {h}
                       </th>
                     ))}
@@ -1473,11 +1989,10 @@ export default function QCSDailyView() {
                 <tbody>
                   {phRowsCount ? (
                     Array.from({ length: phRowsCount }).map((_, i) => {
-                      const emp = (personalHygiene[i] || {});
+                      const emp = personalHygiene[i] || {};
                       return (
                         <tr key={i}>
                           <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{i + 1}</td>
-                          {/* ✅ تحوّط لاسم الموظف */}
                           <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.employName || emp?.employeeName || ""}</td>
                           <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.nails || ""}</td>
                           <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.hair || ""}</td>
@@ -1485,7 +2000,7 @@ export default function QCSDailyView() {
                           <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.wearingCleanCloth || ""}</td>
                           <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.communicableDisease || ""}</td>
                           <td style={{ border: "1px solid #000", padding: "6px 4px" }}>{emp?.openWounds || ""}</td>
-                          <td style={{ border: "1px solid #000", padding: "6px 4px", whiteSpace:"pre-wrap", wordBreak:"break-word" }}>{emp?.remarks || ""}</td>
+                          <td style={{ border: "1px solid #000", padding: "6px 4px", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{emp?.remarks || ""}</td>
                         </tr>
                       );
                     })
@@ -1499,28 +2014,18 @@ export default function QCSDailyView() {
                 </tbody>
               </table>
               <div style={{ border: "1px solid #000", marginTop: 8 }}>
-                <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>
-                  REMARKS/CORRECTIVE ACTIONS:
-                </div>
+                <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>REMARKS/CORRECTIVE ACTIONS:</div>
                 <div style={{ padding: "8px", borderBottom: "1px solid #000", minHeight: 56 }}>
                   <em>*(C – Conform &nbsp;&nbsp; N / C – Non Conform)</em>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
                   <div style={{ display: "flex" }}>
-                    <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 120, fontWeight: 700 }}>
-                      Checked By :
-                    </div>
-                    <div style={{ padding: "6px 8px", flex: 1 }}>
-                      {(phFooter?.checkedBy ?? "") || "\u00A0"}
-                    </div>
+                    <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 120, fontWeight: 700 }}>Checked By :</div>
+                    <div style={{ padding: "6px 8px", flex: 1 }}>{(phFooter?.checkedBy ?? "") || "\u00A0"}</div>
                   </div>
                   <div style={{ display: "flex", borderInlineStart: "1px solid #000" }}>
-                    <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 120, fontWeight: 700 }}>
-                      Verified  By :
-                    </div>
-                    <div style={{ padding: "6px 8px", flex: 1 }}>
-                      {(phFooter?.verifiedBy ?? "") || "\u00A0"}
-                    </div>
+                    <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 120, fontWeight: 700 }}>Verified  By :</div>
+                    <div style={{ padding: "6px 8px", flex: 1 }}>{(phFooter?.verifiedBy ?? "") || "\u00A0"}</div>
                   </div>
                 </div>
               </div>
@@ -1537,8 +2042,8 @@ export default function QCSDailyView() {
                   borderCollapse: "collapse",
                   textAlign: "left",
                   border: "1px solid #000",
-                  tableLayout: "fixed",         /* ✅ */
-                  wordBreak: "break-word",
+                  tableLayout: "fixed",
+                  wordBreak: "word-break",
                 }}
               >
                 <thead>
@@ -1554,8 +2059,7 @@ export default function QCSDailyView() {
                   {Array.isArray(cleanlinessRows) && cleanlinessRows.length > 0 ? (
                     cleanlinessRows.map((r, i) => {
                       const isSection = !!r?.isSection;
-                      const letter =
-                        r?.letter || (typeof r?.slNo !== "undefined" ? r.slNo : i + 1);
+                      const letter = r?.letter || (typeof r?.slNo !== "undefined" ? r.slNo : i + 1);
                       const general =
                         r?.general ||
                         r?.itemEn ||
@@ -1580,10 +2084,10 @@ export default function QCSDailyView() {
                       return (
                         <tr key={`row-${i}`}>
                           <td style={tdB(true)}>{letter}</td>
-                          <td style={{ ...tdB(false), whiteSpace:"pre-wrap", wordBreak:"break-word" }}>{general}</td>
+                          <td style={{ ...tdB(false), whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{general}</td>
                           <td style={tdB(true)}>{observation}</td>
                           <td style={tdB(false)}>{informedTo}</td>
-                          <td style={{ ...tdB(false), whiteSpace:"pre-wrap", wordBreak:"break-word" }}>{remarks}</td>
+                          <td style={{ ...tdB(false), whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{remarks}</td>
                         </tr>
                       );
                     })
@@ -1617,9 +2121,7 @@ export default function QCSDailyView() {
                     >
                       CHECKED BY: <span style={{ fontWeight: 400 }}>(QC-ASSIST)</span>
                     </div>
-                    <div style={{ padding: "6px 8px", flex: 1 }}>
-                      {(ccFooter?.checkedBy ?? "") || "\u00A0"}
-                    </div>
+                    <div style={{ padding: "6px 8px", flex: 1 }}>{(ccFooter?.checkedBy ?? "") || "\u00A0"}</div>
                   </div>
                   <div style={{ display: "flex", borderInlineStart: "1px solid #000", minHeight: 42 }}>
                     <div
@@ -1633,9 +2135,7 @@ export default function QCSDailyView() {
                     >
                       VERIFIED BY:
                     </div>
-                    <div style={{ padding: "6px 8px", flex: 1 }}>
-                      {(ccFooter?.verifiedBy ?? "") || "\u00A0"}
-                    </div>
+                    <div style={{ padding: "6px 8px", flex: 1 }}>{(ccFooter?.verifiedBy ?? "") || "\u00A0"}</div>
                   </div>
                 </div>
                 <div style={{ padding: "8px 10px", lineHeight: 1.6 }}>
@@ -1648,22 +2148,22 @@ export default function QCSDailyView() {
 
           {/* ================= FRESH CHICKEN REBORT -> linked to viewer ================= */}
           {activeTab === "freshChicken" && (
-            <div className="no-print" style={{ display:"grid", gap:10 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <h2 style={{ margin:0 }}>FRESH CHICKEN REBORT</h2>
+            <div className="no-print" style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h2 style={{ margin: 0 }}>FRESH CHICKEN REBORT</h2>
                 <a
                   href={FRESH_VIEWER_URL}
                   target="_blank"
                   rel="noreferrer"
                   style={{
-                    display:"inline-block",
-                    padding:"10px 14px",
-                    borderRadius:10,
-                    border:"2px solid #0b132b",
-                    background:"#0b132b",
-                    color:"#fff",
-                    fontWeight:900,
-                    textDecoration:"none"
+                    display: "inline-block",
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "2px solid #0b132b",
+                    background: "#0b132b",
+                    color: "#fff",
+                    fontWeight: 900,
+                    textDecoration: "none",
                   }}
                 >
                   Open in new tab
@@ -1673,11 +2173,11 @@ export default function QCSDailyView() {
                 title="Fresh Chicken Reports Viewer"
                 src={FRESH_VIEWER_URL}
                 style={{
-                  width:"100%",
-                  minHeight:"75vh",
-                  border:"2px solid #cbd5e1",
-                  borderRadius:12,
-                  background:"#fff",
+                  width: "100%",
+                  minHeight: "75vh",
+                  border: "2px solid #cbd5e1",
+                  borderRadius: 12,
+                  background: "#fff",
                 }}
               />
             </div>

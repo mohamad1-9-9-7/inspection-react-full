@@ -116,15 +116,12 @@ function formatDMYSmart(value) {
   if (!value) return "";
   const s = String(value).trim();
 
-  // YYYY-MM-DD
   let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) return `${m[3]}/${m[2]}/${m[1]}`;
 
-  // ISO
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T\s].*$/);
   if (m) return `${m[3]}/${m[2]}/${m[1]}`;
 
-  // DD/MM/YYYY (اتركه كما هو)
   m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (m) return s;
 
@@ -157,7 +154,7 @@ function RowKV({ label, value }) {
   );
 }
 
-/* ✅ الهيدر مع صف Report Date يحتوي إنپوت التاريخ داخل الهيدر */
+/* ✅ الهيدر بدون خانة التحقق */
 function TMPEntryHeader({ header, logoUrl, reportDate, dateValue, onDateChange }) {
   const h = header || defaultTMPHeader;
   return (
@@ -211,7 +208,7 @@ function TMPEntryHeader({ header, logoUrl, reportDate, dateValue, onDateChange }
           </div>
         </div>
 
-        {/* ✅ Report Date row (مع إنپوت التاريخ داخل الهيدر) */}
+        {/* Report Date */}
         <div style={{ borderTop: "1px solid #000" }}>
           <div style={{ display: "flex", alignItems: "center" }}>
             <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 170, fontWeight: 700 }}>
@@ -249,17 +246,13 @@ function tempInputStyle(temp, coolerIndex) {
   if (Number.isNaN(t) || temp === "") return base;
 
   const { min, max } = coolerRange(coolerIndex);
-  // Out of range -> red
   if (t < min || t > max) {
     return { ...base, background: "#fee2e2", borderColor: "#ef4444", color: "#991b1b", fontWeight: 700 };
   }
-
-  // Near upper band -> soft blue
   const warnBand = coolerIndex === 7 ? 1 : coolerIndex === 2 || coolerIndex === 3 ? 1 : 2;
   if (t >= max - warnBand) {
     return { ...base, background: "#e0f2fe", borderColor: "#38bdf8", color: "#075985" };
   }
-
   return base;
 }
 
@@ -303,7 +296,7 @@ async function listReportsByType(type) {
   return Array.isArray(json) ? json : json?.data || [];
 }
 async function fetchExistingByDate(dateStr) {
-  const rows = await listReportsByType(COOLERS_TYPE); // 👈 يبحث فقط ضمن نوع البرادات
+  const rows = await listReportsByType(COOLERS_TYPE);
   const found = rows.find(r => String(r?.payload?.reportDate || "") === String(dateStr));
   return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
 }
@@ -317,22 +310,21 @@ export default function CoolersTab(props) {
     setCoolers,
     tmpHeader,
     setTmpHeader,
-    kpi,       // اختياري — إن لم يصل سيتم حسابه محليًا
+    kpi,
     logoUrl,
   } = props || {};
 
-  // تاريخ الإدخال (يرتبط بعرض Report Date داخل الهيدر)
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
 
-  // هل لدينا state خارجي من الوالد؟
+  /* ✅ اسم/توقيع المدير للتحقق (أسفل الصفحة) */
+  const [verifiedByManager, setVerifiedByManager] = useState("");
+
   const useExternalCoolers = Array.isArray(coolers) && typeof setCoolers === "function";
   const useExternalHeader = tmpHeader && typeof setTmpHeader === "function";
 
-  // حالـة داخلية احتياطية
   const [localCoolers, setLocalCoolers] = useState(makeDefaultCoolers());
   const [localHeader, setLocalHeader] = useState(defaultTMPHeader);
 
-  // ✅ حالة خاصة بـ Loading Area
   const [loadingArea, setLoadingArea] = useState(makeDefaultLoadingArea());
 
   const dataCoolers = useExternalCoolers ? coolers : localCoolers;
@@ -341,11 +333,9 @@ export default function CoolersTab(props) {
   const header = useExternalHeader ? tmpHeader : localHeader;
   const setHeader = useExternalHeader ? setTmpHeader : setLocalHeader;
 
-  // KPI آمن (يخص البرادات فقط)
   const computedKpi = useMemo(() => calcCoolersKPI(dataCoolers), [dataCoolers]);
   const safeKPI = kpi || computedKpi || { avg: "—", min: "—", max: "—", outOfRange: 0 };
 
-  // أحداث التغيير
   const handleCoolerChange = (index, time, value) => {
     updateCoolers((prev) => {
       const next = [...(prev || [])];
@@ -363,7 +353,6 @@ export default function CoolersTab(props) {
     });
   };
 
-  /* ✅ أحداث التغيير الخاصة بـ Loading Area */
   const handleLoadingChange = (time, value) => {
     setLoadingArea((prev) => ({
       ...prev,
@@ -374,27 +363,21 @@ export default function CoolersTab(props) {
     setLoadingArea((prev) => ({ ...prev, remarks: value }));
   };
 
-  // حفظ على السيرفر الخارجي فقط (بدون دمج تبويبات أخرى)
   const [saving, setSaving] = useState(false);
   async function saveCoolersToServer() {
     try {
       setSaving(true);
-
       const existing = await fetchExistingByDate(date);
 
-      // ✅ payload خاص بالبرادات + Loading Area + هيدر TMP
       const payload = {
         reportDate: date,
         coolers: dataCoolers,
         loadingArea,
         headers: { tmpHeader: header },
+        verifiedByManager, // يبقى محفوظًا
       };
 
-      const body = {
-        reporter: "QCS/COOLERS",
-        type: COOLERS_TYPE,
-        payload,
-      };
+      const body = { reporter: "QCS/COOLERS", type: COOLERS_TYPE, payload };
 
       if (existing?.id) {
         const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existing.id)}`, {
@@ -422,7 +405,6 @@ export default function CoolersTab(props) {
     }
   }
 
-  // ستايلات بسيطة
   const remarksInputStyle = {
     width: 260,
     padding: "6px 10px",
@@ -445,7 +427,7 @@ export default function CoolersTab(props) {
 
   return (
     <div>
-      {/* ✅ Header داخلُه سطر Report Date + إنپوت التاريخ */}
+      {/* Header */}
       <TMPEntryHeader
         header={header}
         logoUrl={logoUrl}
@@ -464,51 +446,17 @@ export default function CoolersTab(props) {
           marginBottom: 16,
         }}
       >
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: 12,
-            padding: "0.75rem 1.25rem",
-            boxShadow: "0 2px 12px rgba(0,0,0,.06)",
-            minWidth: 160,
-            textAlign: "center",
-          }}
-        >
+        <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
           <div style={{ color: "#7c3aed", fontWeight: 700 }}>Average Temp</div>
-          <div
-            style={{
-              fontSize: "1.25rem",
-              fontWeight: 800,
-              color: (kpi || {}).outOfRange > 0 ? "#b91c1c" : "#16a34a",
-            }}
-          >
-            {(kpi || safeKPI).avg}
-            <span style={{ fontSize: ".9em", color: "#475569" }}> °C</span>
+          <div style={{ fontSize: "1.25rem", fontWeight: 800, color: (kpi || {}).outOfRange > 0 ? "#b91c1c" : "#16a34a" }}>
+            {(kpi || safeKPI).avg}<span style={{ fontSize: ".9em", color: "#475569" }}> °C</span>
           </div>
         </div>
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: 12,
-            padding: "0.75rem 1.25rem",
-            boxShadow: "0 2px 12px rgba(0,0,0,.06)",
-            minWidth: 160,
-            textAlign: "center",
-          }}
-        >
+        <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
           <div style={{ color: "#b91c1c", fontWeight: 700 }}>Out of Range</div>
           <div style={{ fontSize: "1.25rem", fontWeight: 800 }}>{(kpi || safeKPI).outOfRange}</div>
         </div>
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: 12,
-            padding: "0.75rem 1.25rem",
-            boxShadow: "0 2px 12px rgba(0,0,0,.06)",
-            minWidth: 160,
-            textAlign: "center",
-          }}
-        >
+        <div style={{ background: "#fff", borderRadius: 12, padding: "0.75rem 1.25rem", boxShadow: "0 2px 12px rgba(0,0,0,.06)", minWidth: 160, textAlign: "center" }}>
           <div style={{ color: "#0ea5e9", fontWeight: 700 }}>Min / Max</div>
           <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
             <span style={{ color: "#0369a1" }}>{(kpi || safeKPI).min}</span>
@@ -660,11 +608,31 @@ export default function CoolersTab(props) {
         </div>
       </div>
 
-      {/* زر حفظ خاص بالتبويب — على السيرفر الخارجي */}
-      <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+      {/* ✅ الشريط السفلي: زر الحفظ + Verified by (Manager) على يمينه */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          gap: 12,
+          flexWrap: "wrap",
+          alignItems: "center",
+          marginTop: 12,
+        }}
+      >
         <button onClick={saveCoolersToServer} disabled={saving} style={btnSave}>
           {saving ? "⏳ Saving..." : "💾 Save Coolers"}
         </button>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontWeight: 700 }}>Verified by (Manager):</span>
+          <input
+            type="text"
+            value={verifiedByManager}
+            onChange={(e) => setVerifiedByManager(e.target.value)}
+            placeholder="Manager name / signature"
+            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", minWidth: 260, fontWeight: 700 }}
+          />
+        </label>
       </div>
     </div>
   );

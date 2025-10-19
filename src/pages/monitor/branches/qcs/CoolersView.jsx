@@ -128,7 +128,7 @@ function TMPPrintHeader({ header, reportDate }) {
           </div>
         </div>
 
-        {/* ✅ Report Date (داخل الهيدر) */}
+        {/* Report Date (داخل الهيدر) */}
         <div style={{ borderTop:"1px solid #000" }}>
           <div style={{ display:"flex" }}>
             <div style={{padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:170, fontWeight:700}}>
@@ -351,6 +351,9 @@ export default function CoolersView({ selectedDate }) {
   const hasCoolers = Array.isArray(report?.coolers) && report.coolers.length > 0;
   const hasLoadingArea = !!report?.loadingArea;
 
+  /* ✅ اسم المدير من التقرير (إن وُجد) */
+  const verifiedByManager = report?.verifiedByManager || "—";
+
   return (
     <>
       <TMPPrintHeader header={tmpHeader} reportDate={reportDateText} />
@@ -388,7 +391,7 @@ export default function CoolersView({ selectedDate }) {
           </tr>
         </thead>
         <tbody>
-          {/* ✅ سطر التاريخ أعلى الجدول (داخل tbody لضمان الظهور) */}
+          {/* سطر التاريخ */}
           <tr>
             <td
               colSpan={COOLER_TIMES.length + 2}
@@ -489,6 +492,25 @@ export default function CoolersView({ selectedDate }) {
           )}
         </tbody>
       </table>
+
+      {/* ✅ أسفل التقرير: عرض Verified by (Manager) (قابل للطباعة) */}
+      <div style={{ display:"flex", justifyContent:"flex-end", marginTop:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ fontWeight: 700 }}>Verified by (Manager):</span>
+          <span
+            style={{
+              padding: "6px 10px",
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              minWidth: 240,
+              background: "#fff",
+              fontWeight: 700,
+            }}
+          >
+            {verifiedByManager}
+          </span>
+        </div>
+      </div>
     </>
   );
 }

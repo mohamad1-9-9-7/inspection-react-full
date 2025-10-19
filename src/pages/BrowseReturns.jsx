@@ -54,7 +54,7 @@ function normalizeReturns(raw) {
   return Array.from(byDate.values());
 }
 
-/* ==== Branch & action helpers (موحّدة مع ReturnView.js) ==== */
+/* ==== Branch & action helpers ==== */
 function isOtherBranch(val) {
   const s = String(val || "").toLowerCase();
   return s.includes("other branch") || s.includes("فرع آخر");
@@ -63,12 +63,14 @@ function safeButchery(row) {
   return isOtherBranch(row?.butchery) ? row?.customButchery || "" : row?.butchery || "";
 }
 function actionText(row) {
-  return row?.action === "إجراء آخر..." ? row?.customAction || "" : row?.action || "";
+  return row?.action === "إجراء آخر..." || row?.action === "Other..."
+    ? row?.customAction || ""
+    : row?.action || "";
 }
-/* مفتاح المطابقة للتغييرات — الآن يتضمن itemCode مثل ReturnView.js */
+/* مفتاح المطابقة للتغييرات */
 function itemKey(row) {
   return [
-    (row?.itemCode || "").trim().toLowerCase(),     // ✅ الكود
+    (row?.itemCode || "").trim().toLowerCase(),
     (row?.productName || "").trim().toLowerCase(),
     (row?.origin || "").trim().toLowerCase(),
     (safeButchery(row) || "").trim().toLowerCase(),
@@ -117,6 +119,21 @@ function isSendToMarket(s) {
 function isDisposed(s) {
   const v = (s ?? "").toString().trim().toLowerCase();
   return v === "disposed" || v === "desposed";
+}
+
+/* ===== Qty helpers ===== */
+function isKgType(t) {
+  const s = (t || "").toString().toLowerCase();
+  return s.includes("kg") || s.includes("كيلو") || s.includes("كجم");
+}
+function isPcsType(t) {
+  const s = (t || "").toString().toLowerCase();
+  return s.includes("pcs") || s.includes("قطعة") || s.includes("حبة") || s.includes("pc");
+}
+function qtyKind(row) {
+  if (isKgType(row?.qtyType)) return "kg";
+  if (isPcsType(row?.qtyType)) return "pcs";
+  return "other";
 }
 
 /* ===== Unified Donut KPI Card (SVG) ===== */
@@ -341,6 +358,102 @@ function ImageViewerModal({ open, images = [], title = "", onClose }) {
   );
 }
 
+/* ===== Simple Multi-Select (native details/checkboxes) ===== */
+function MultiSelect({ label, options = [], selected = [], onChange, placeholder = "All" }) {
+  const toggle = (val) => {
+    const set = new Set(selected);
+    if (set.has(val)) set.delete(val); else set.add(val);
+    onChange(Array.from(set));
+  };
+  const clearAll = () => onChange([]);
+  const selectAll = () => onChange(options);
+
+  const badge = selected.length === 0 ? placeholder : `${selected.length} selected`;
+
+  return (
+    <details style={{ position: "relative" }}>
+      <summary
+        style={{
+          listStyle: "none",
+          cursor: "pointer",
+          userSelect: "none",
+          borderRadius: 12,
+          border: "1.5px solid rgba(255,255,255,.8)",
+          background: "rgba(255,255,255,.9)",
+          padding: "8px 12px",
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          boxShadow: "0 4px 10px rgba(0,0,0,.06)",
+          minWidth: 200,
+        }}
+      >
+        <span style={{ fontWeight: 800, color: "#0f172a" }}>{label}</span>
+        <span
+          style={{
+            marginLeft: "auto",
+            background: "#eef2ff",
+            border: "1px solid #c7d2fe",
+            color: "#3730a3",
+            borderRadius: 999,
+            padding: "2px 8px",
+            fontSize: 12,
+            fontWeight: 800,
+          }}
+        >
+          {badge}
+        </span>
+      </summary>
+      <div
+        style={{
+          position: "absolute",
+          zIndex: 50,
+          top: "calc(100% + 6px)",
+          left: 0,
+          width: 280,
+          maxHeight: 260,
+          overflow: "auto",
+          background: "#fff",
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          boxShadow: "0 18px 28px rgba(2,6,23,.18)",
+          padding: 10,
+        }}
+      >
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <button onClick={selectAll} style={miniBtn}>Select all</button>
+          <button onClick={clearAll} style={{...miniBtn, background:"#fee2e2", borderColor:"#fecaca", color:"#991b1b"}}>Clear</button>
+        </div>
+        {options.length === 0 ? (
+          <div style={{ color:"#64748b", padding:8 }}>No options.</div>
+        ) : options.map((opt, i) => (
+          <label key={i} style={{
+            display:"flex", alignItems:"center", gap:8, padding:"6px 4px",
+            borderBottom: "1px dashed #f1f5f9"
+          }}>
+            <input
+              type="checkbox"
+              checked={selected.includes(opt)}
+              onChange={() => toggle(opt)}
+            />
+            <span style={{ color:"#0f172a" }}>{opt || "—"}</span>
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+const miniBtn = {
+  background:"#eff6ff",
+  border:"1px solid #bfdbfe",
+  color:"#1e3a8a",
+  borderRadius:10,
+  padding:"6px 10px",
+  fontWeight:800,
+  cursor:"pointer",
+};
+
 /* ========== Page ========== */
 export default function BrowseReturns() {
   const [returnsData, setReturnsData] = useState([]);
@@ -355,6 +468,43 @@ export default function BrowseReturns() {
 
   const [loadingServer, setLoadingServer] = useState(false);
   const [serverErr, setServerErr] = useState("");
+
+  // NEW: Excel-like search (filters table rows in selected day)
+  const [search, setSearch] = useState("");
+
+  // ===== Global Search (across ALL reports) =====
+  const [globalQ, setGlobalQ] = useState("");
+  const [showResults, setShowResults] = useState(false);
+  const [resPage, setResPage] = useState(1);
+  const RES_PAGE_SIZE = 50;
+
+  const SEARCH_FIELDS = [
+    "itemCode","productName","origin","butchery","customButchery",
+    "quantity","qtyType","customQtyType","expiry","remarks","action","customAction"
+  ];
+
+  function normalizeField(row, key) {
+    if (key === "butchery") return safeButchery(row);
+    if (key === "qtyType")
+      return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+    if (key === "action") return actionText(row);
+    return row?.[key];
+  }
+
+  function scoreRow(row, q) {
+    const needle = q.toLowerCase().trim();
+    if (!needle) return { score: 0, hits: [] };
+    let score = 0;
+    const hits = [];
+    for (const f of SEARCH_FIELDS) {
+      const val = (normalizeField(row, f) ?? "").toString().toLowerCase();
+      if (!val) continue;
+      if (val === needle) { score += 3; hits.push(f); }
+      else if (val.startsWith(needle)) { score += 2; hits.push(f); }
+      else if (val.includes(needle)) { score += 1; hits.push(f); }
+    }
+    return { score, hits: Array.from(new Set(hits)) };
+  }
 
   async function reload() {
     setServerErr("");
@@ -466,6 +616,75 @@ export default function BrowseReturns() {
     });
   }, [filteredReportsAsc]);
 
+  /* ================= Advanced Filters (POS, Origin, Action, QtyType, Images, Remarks) ================= */
+  const [posSel, setPosSel] = useState([]);
+  const [originSel, setOriginSel] = useState([]);
+  const [actionSel, setActionSel] = useState([]);
+  const [qtySel, setQtySel] = useState("any"); // 'any' | 'kg' | 'pcs' | 'other'
+  const [hasImages, setHasImages] = useState("any"); // 'any' | 'yes' | 'no'
+  const [remarksState, setRemarksState] = useState("any"); // 'any' | 'empty' | 'nonempty'
+
+  // Options extracted from current (date-filtered) reports:
+  const { posOpts, originOpts, actionOpts } = useMemo(() => {
+    const posSet = new Set();
+    const originSet = new Set();
+    const actionSet = new Set();
+    for (const rep of filteredReportsAsc) {
+      for (const it of (rep.items || [])) {
+        posSet.add(safeButchery(it) || "—");
+        originSet.add(it.origin || "—");
+        actionSet.add(actionText(it) || "—");
+      }
+    }
+    const sortFn = (a, b) => String(a || "").localeCompare(String(b || ""), undefined, { sensitivity: "base" });
+    return {
+      posOpts: Array.from(posSet).sort(sortFn),
+      originOpts: Array.from(originSet).sort(sortFn),
+      actionOpts: Array.from(actionSet).sort(sortFn),
+    };
+  }, [filteredReportsAsc]);
+
+  function rowPassesAdvanced(row) {
+    const pos = safeButchery(row) || "—";
+    const origin = row.origin || "—";
+    const action = actionText(row) || "—";
+
+    if (posSel.length && !posSel.includes(pos)) return false;
+    if (originSel.length && !originSel.includes(origin)) return false;
+    if (actionSel.length && !actionSel.includes(action)) return false;
+
+    if (qtySel !== "any") {
+      const kind = qtyKind(row);
+      if (kind !== qtySel) return false;
+    }
+
+    if (hasImages !== "any") {
+      const has = Array.isArray(row.images) && row.images.length > 0;
+      if (hasImages === "yes" && !has) return false;
+      if (hasImages === "no" && has) return false;
+    }
+
+    const rem = (row.remarks ?? "").toString().trim();
+    if (remarksState === "empty" && rem.length !== 0) return false;
+    if (remarksState === "nonempty" && rem.length === 0) return false;
+
+    return true;
+  }
+
+  function clearAllFilters() {
+    setPosSel([]); setOriginSel([]); setActionSel([]);
+    setQtySel("any"); setHasImages("any"); setRemarksState("any");
+  }
+
+  function setQuickDays(days) {
+    const today = new Date();
+    const to = today.toISOString().slice(0,10);
+    const fromD = new Date(today.getTime() - (days-1)*24*60*60*1000);
+    const from = fromD.toISOString().slice(0,10);
+    setFilterFrom(from);
+    setFilterTo(to);
+  }
+
   /* ================= KPIs ================= */
   const kpi = useMemo(() => {
     let totalItems = 0;
@@ -478,21 +697,14 @@ export default function BrowseReturns() {
     const byActionLatest = {};
     const condemnationNames = {};
 
-    // dedicated counters for special actions
     let condemnationCount = 0;
     let condemnationKg = 0;
     let useProdCount = 0;
     let sepExpiredCount = 0;
     let marketKg = 0;
 
-    // NEW: disposed counters
     let disposedCount = 0;
     let disposedKg = 0;
-
-    const isKgType = (t) => {
-      const s = (t || "").toString().toLowerCase();
-      return s.includes("kg") || s.includes("كيلو") || s.includes("كجم");
-    };
 
     const latestActionFor = (date, row) => {
       const inner = changeMapByDate.get(date) || new Map();
@@ -502,17 +714,18 @@ export default function BrowseReturns() {
 
     filteredReportsAsc.forEach((rep) => {
       const date = rep.reportDate;
-      totalItems += (rep.items || []).length;
       (rep.items || []).forEach((it) => {
-        const q = Number(it.quantity || 0);
+        if (!rowPassesAdvanced(it)) return; // KPIs تُحترم الفلاتر المتقدمة أيضاً
+        totalItems += 1;
 
-        const pos = safeButchery(it) || "—"; // ✅ موحّد
+        const q = Number(it.quantity || 0);
+        const pos = safeButchery(it) || "—";
         posCountItems[pos] = (posCountItems[pos] || 0) + 1;
 
         if (isKgType(it.qtyType)) {
           posKg[pos] = (posKg[pos] || 0) + q;
           totalQtyKg += q;
-        } else {
+        } else if (isPcsType(it.qtyType)) {
           posPcs[pos] = (posPcs[pos] || 0) + q;
           totalQtyPcs += q;
         }
@@ -555,16 +768,12 @@ export default function BrowseReturns() {
     };
 
     const topPosByItems = pickMax(posCountItems);
-
-    // Top POS by kg
     const topKg = pickMax(posKg);
     const topPosByQtyKg = {
       key: topKg.key,
       kg: Math.round((topKg.value || 0) * 1000) / 1000,
       percent: Math.round(((topKg.value || 0) * 100) / (totalQtyKg || 1)),
     };
-
-    // Top POS by pcs
     const topPcs = pickMax(posPcs);
     const topPosByQtyPcs = {
       key: topPcs.key,
@@ -579,7 +788,6 @@ export default function BrowseReturns() {
 
     const actionTotal = Object.values(byActionLatest).reduce((a, b) => a + b, 0) || 1;
 
-    // shares
     const condemnationShare = {
       count: condemnationCount,
       percent: Math.round((condemnationCount * 100) / actionTotal),
@@ -634,7 +842,7 @@ export default function BrowseReturns() {
         })),
       actionTotal,
     };
-  }, [filteredReportsAsc, changeMapByDate]);
+  }, [filteredReportsAsc, changeMapByDate, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   /* ========== PDF Export ========== */
   async function ensureJsPDF() {
@@ -703,32 +911,34 @@ export default function BrowseReturns() {
 
       const changeMap = changeMapByDate.get(selectedReport?.reportDate || "") || new Map();
 
-      const body = (selectedReport.items || []).map((row, i) => {
-        const pos = safeButchery(row); // ✅
-        const qtyType =
-          (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other")
-            ? row.customQtyType || ""
-            : row.qtyType || "";
-        const curr = actionTextSafe(row);
-        let actionCell = curr || "";
-        const k = itemKey(row);
-        const ch = changeMap.get(k);
-        if (ch && (ch.to ?? "") === (curr ?? "")) {
-          const dateTxt = formatChangeDatePDF(ch);
-          actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? `\n${dateTxt}` : ""}`;
-        }
-        return [
-          String(i + 1),
-          row.productName || "",
-          row.origin || "",
-          pos || "",
-          String(row.quantity ?? ""),
-          qtyType,
-          row.expiry || "",
-          row.remarks || "",
-          actionCell,
-        ];
-      });
+      const body = (selectedReport.items || [])
+        .filter((row) => rowPassesAdvanced(row))
+        .map((row, i) => {
+          const pos = safeButchery(row);
+          const qtyType =
+            (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other")
+              ? row.customQtyType || ""
+              : row.qtyType || "";
+          const curr = actionTextSafe(row);
+          let actionCell = curr || "";
+          const k = itemKey(row);
+          const ch = changeMap.get(k);
+          if (ch && (ch.to ?? "") === (curr ?? "")) {
+            const dateTxt = formatChangeDatePDF(ch);
+            actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? `\n${dateTxt}` : ""}`;
+          }
+          return [
+            String(i + 1),
+            row.productName || "",
+            row.origin || "",
+            pos || "",
+            String(row.quantity ?? ""),
+            qtyType,
+            row.expiry || "",
+            row.remarks || "",
+            actionCell,
+          ];
+        });
 
       const frac = [0.05, 0.18, 0.09, 0.08, 0.06, 0.08, 0.08, 0.18, 0.20];
       const columnStyles = {};
@@ -788,7 +998,6 @@ export default function BrowseReturns() {
     return window.XLSX;
   }
 
-  // بناء صفوف XLSX لليوم المحدد/لكل الأيام بنفس الأعمدة
   const columns = [
     "SL.NO",
     "ITEM CODE",
@@ -808,33 +1017,35 @@ export default function BrowseReturns() {
     const actionTextSafe = (row) =>
       isOther(row?.action) ? row?.customAction || "" : row?.action || "";
 
-    const rows = (rep.items || []).map((row, i) => {
-      const pos = safeButchery(row);
-      const qtyType =
-        (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other")
-          ? row.customQtyType || ""
-          : row.qtyType || "";
-      const curr = actionTextSafe(row);
-      const k = itemKey(row);
-      const ch = changeMap.get(k);
-      let actionCell = curr || "";
-      if (ch && (ch.to ?? "") === (curr ?? "")) {
-        const dateTxt = formatChangeDatePDF(ch);
-        actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? ` (${dateTxt})` : ""}`;
-      }
-      return [
-        i + 1,
-        row.itemCode || "",
-        row.productName || "",
-        row.origin || "",
-        pos || "",
-        Number(row.quantity ?? 0),
-        qtyType || "",
-        row.expiry || "",
-        row.remarks || "",
-        actionCell,
-      ];
-    });
+    const rows = (rep.items || [])
+      .filter((row) => rowPassesAdvanced(row))
+      .map((row, i) => {
+        const pos = safeButchery(row);
+        const qtyType =
+          (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other")
+            ? row.customQtyType || ""
+            : row.qtyType || "";
+        const curr = actionTextSafe(row);
+        const k = itemKey(row);
+        const ch = changeMap.get(k);
+        let actionCell = curr || "";
+        if (ch && (ch.to ?? "") === (curr ?? "")) {
+          const dateTxt = formatChangeDatePDF(ch);
+          actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? ` (${dateTxt})` : ""}`;
+        }
+        return [
+          i + 1,
+          row.itemCode || "",
+          row.productName || "",
+          row.origin || "",
+          pos || "",
+          Number(row.quantity ?? 0),
+          qtyType || "",
+          row.expiry || "",
+          row.remarks || "",
+          actionCell,
+        ];
+      });
     return rows;
   }
 
@@ -871,7 +1082,7 @@ export default function BrowseReturns() {
     }
   };
 
-  // ✅ الجديد: تصدير كل الأيام مع كلمة سر على زر التنفيذ (9999)
+  // ALL days export (prompt password)
   const handleExportXLSXAllLocked = async () => {
     const code = window.prompt("Enter password to export ALL reports:");
     if (code !== "0585446473") {
@@ -882,7 +1093,6 @@ export default function BrowseReturns() {
       const XLSX = await ensureXLSX();
       const wb = XLSX.utils.book_new();
 
-      // نرتب كل الأيام تصاعديًا ونبني شيت لكل يوم
       const all = [...returnsData].sort((a, b) =>
         (a.reportDate || "").localeCompare(b.reportDate || "")
       );
@@ -896,7 +1106,6 @@ export default function BrowseReturns() {
         const data = [columns, ...buildRowsForReport(rep)];
         const ws = XLSX.utils.aoa_to_sheet(data);
         autosizeColumns(ws, data);
-        // اسم الشيت: YYYY-MM-DD (قصير وآمن)
         XLSX.utils.book_append_sheet(wb, ws, (rep.reportDate || "DAY").slice(0, 31));
       }
       XLSX.writeFile(wb, `returns_ALL_days.xlsx`);
@@ -907,7 +1116,6 @@ export default function BrowseReturns() {
   };
 
   /* ========== Styles ========== */
-  // Waves background
   const bgWrap = {
     position: "fixed",
     inset: 0,
@@ -941,7 +1149,6 @@ export default function BrowseReturns() {
     color: "#111",
   };
 
-  // Glass hero
   const hero = {
     background: "linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.35))",
     border: "1px solid rgba(255,255,255,.6)",
@@ -1155,8 +1362,8 @@ export default function BrowseReturns() {
 
   const changeMap = changeMapByDate.get(selectedReport?.reportDate || "") || new Map();
 
-  /* ==================== SORTING ==================== */
-  const [sort, setSort] = useState({ key: null, dir: null }); // dir: 'asc' | 'desc' | null
+  /* ==================== SORTING + SEARCH ==================== */
+  const [sort, setSort] = useState({ key: null, dir: null });
 
   function toggleSort(key) {
     setSort((prev) => {
@@ -1171,9 +1378,9 @@ export default function BrowseReturns() {
       case "itemCode":    return row.itemCode || "";
       case "productName": return row.productName || "";
       case "origin":      return row.origin || "";
-      case "pos":         return safeButchery(row) || ""; // ✅
+      case "pos":         return safeButchery(row) || "";
       case "quantity":    return Number(row.quantity || 0);
-      case "qtyType":     return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""); // ✅
+      case "qtyType":     return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
       case "expiry":      return row.expiry || "";
       case "remarks":     return row.remarks || "";
       case "action":      return actionText(row) || "";
@@ -1181,9 +1388,29 @@ export default function BrowseReturns() {
     }
   }
 
+  // NEW: search match (day table)
+  function rowMatchesSearch(row, qRaw) {
+    const q = (qRaw || "").trim().toLowerCase();
+    if (!q) return true;
+    const fields = [
+      row.itemCode,
+      row.productName,
+      row.origin,
+      safeButchery(row),
+      String(row.quantity ?? ""),
+      (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
+      row.expiry,
+      row.remarks,
+      actionText(row),
+    ];
+    return fields.some((v) => (v ?? "").toString().toLowerCase().includes(q));
+  }
+
   const sortedRows = useMemo(() => {
     if (!selectedReport) return [];
-    const rows = (selectedReport.items || []).map((r, i) => ({ ...r, __i: i }));
+    let rows = (selectedReport.items || []).map((r, i) => ({ ...r, __i: i }));
+    rows = rows.filter((r) => rowMatchesSearch(r, search));
+    rows = rows.filter((r) => rowPassesAdvanced(r));
 
     if (!sort.key || !sort.dir) return rows;
 
@@ -1205,7 +1432,7 @@ export default function BrowseReturns() {
     });
 
     return rows;
-  }, [selectedReport, sort]);
+  }, [selectedReport, sort, search, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   const SortHeader = ({ sortKey, label }) => {
     const active = sort.key === sortKey;
@@ -1236,6 +1463,125 @@ export default function BrowseReturns() {
     setViewerOpen(false);
   }
 
+  // ===== Global Search index & results (respect date filter + advanced filters) =====
+  const globalIndex = useMemo(() => {
+    const out = [];
+    for (const rep of filteredReportsAsc) {
+      const date = rep.reportDate;
+      (rep.items || []).forEach((row, i) => {
+        out.push({ date, row, idx: i });
+      });
+    }
+    return out;
+  }, [filteredReportsAsc]);
+
+  const globalResults = useMemo(() => {
+    const q = globalQ.trim();
+    if (!q) return [];
+    const scored = globalIndex
+      .filter((r) => rowPassesAdvanced(r.row)) // أحترم الفلاتر المتقدمة
+      .map((r) => {
+        const s = scoreRow(r.row, q);
+        return { ...r, score: s.score, hits: s.hits };
+      })
+      .filter((r) => r.score > 0);
+
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (b.date || "").localeCompare(a.date || "");
+    });
+    return scored;
+  }, [globalQ, globalIndex, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+
+  const totalPages = Math.max(1, Math.ceil(globalResults.length / RES_PAGE_SIZE));
+  const pagedResults = useMemo(() => {
+    const start = (resPage - 1) * RES_PAGE_SIZE;
+    return globalResults.slice(start, start + RES_PAGE_SIZE);
+  }, [globalResults, resPage]);
+
+  function jumpToDay(d) {
+    setSelectedDate(d);
+    setShowResults(false);
+    const y = d.slice(0,4), m = d.slice(5,7);
+    setOpenYears(p => ({...p, [y]: true}));
+    setOpenMonths(p => ({...p, [`${y}-${m}`]: true}));
+  }
+
+  function highlight(text, q) {
+    if (!q) return text;
+    const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\\\$&")})`, "ig");
+    const parts = String(text ?? "").split(re);
+    return parts.map((p, i) => (re.test(p) ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>));
+  }
+
+  function exportSearchResultsXLSX() {
+    if (!globalResults.length) return alert("No results to export.");
+    const rows = globalResults.map((r, i) => {
+      const row = r.row;
+      const pos = safeButchery(row);
+      const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+      return [
+        i+1, r.date, row.itemCode || "", row.productName || "", row.origin || "",
+        pos || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "",
+        row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")
+      ];
+    });
+
+    (async () => {
+      try {
+        const XLSX = await ensureXLSX();
+        const wb = XLSX.utils.book_new();
+        const head = [
+          "SL.NO","DATE","ITEM CODE","PRODUCT NAME","ORIGIN","POS",
+          "QUANTITY","QTY TYPE","EXPIRY","REMARKS","ACTION","SCORE","MATCH IN"
+        ];
+        const data = [head, ...rows];
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const colWidths = head.map((_, c) => {
+          let max = 10;
+          for (let r = 0; r < data.length; r++) {
+            const len = String(data[r][c] ?? "").length;
+            if (len > max) max = len;
+          }
+          return { wch: Math.min(Math.max(max + 2, 10), 60) };
+        });
+        ws["!cols"] = colWidths;
+        ws["!freeze"] = { xSplit: 1, ySplit: 1 };
+        XLSX.utils.book_append_sheet(wb, ws, "Search_Results");
+        XLSX.writeFile(wb, `returns_search_results.xlsx`);
+      } catch(e) {
+        console.error(e);
+        alert("❌ Failed to export search results.");
+      }
+    })();
+  }
+
+  /* ======== Enhanced Search Bar styles ======== */
+  const searchWrap = {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    background: "rgba(255,255,255,.95)",
+    border: "1.5px solid rgba(255,255,255,.8)",
+    borderRadius: 14,
+    padding: "6px 10px",
+    boxShadow: "0 6px 14px rgba(0,0,0,.06)",
+  };
+  const searchInput = {
+    ...dateInputStyle,
+    minWidth: 280,
+    padding: "10px 14px 10px 38px",
+    border: "none",
+    boxShadow: "none",
+    background: "transparent",
+  };
+  const searchIcon = {
+    position: "absolute",
+    left: 12,
+    fontSize: 16,
+    opacity: 0.6,
+  };
+
   return (
     <>
       {/* Gradient & waves background */}
@@ -1260,7 +1606,7 @@ export default function BrowseReturns() {
           <div>
             <div style={heroTitle}>📂 Browse Returns Reports (View Only)</div>
             <div style={heroSub}>
-              Quick KPIs, date filter, and per-day details in a clean dashboard.
+              Quick KPIs, date filter, advanced filters, sleek search, and global search across all reports.
             </div>
           </div>
           <div style={brandWrap}>
@@ -1283,7 +1629,7 @@ export default function BrowseReturns() {
             percent={100}
             centerText="ALL"
             label="Total items"
-            subLabel="All items across selected range"
+            subLabel="All items across selected range & filters"
             count={kpi.totalItems}
             color="#059669"
           />
@@ -1310,7 +1656,6 @@ export default function BrowseReturns() {
             color="#2563eb"
           />
 
-          {/* NEW: Disposed KPI (center shows KG) */}
           <DonutCard
             percent={kpi.disposedShare.percent}
             centerText={String(kpi.disposedKg)}
@@ -1453,45 +1798,292 @@ export default function BrowseReturns() {
         >
           <div
             style={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
               gap: 12,
-              justifyContent: "center",
               alignItems: "center",
-              flexWrap: "wrap",
             }}
           >
-            <span style={{ fontWeight: 800, color: "#0f172a" }}>Filter by report date:</span>
-            <label>
-              From:
-              <input
-                type="date"
-                value={filterFrom}
-                onChange={(e) => setFilterFrom(e.target.value)}
-                style={{ ...dateInputStyle, marginLeft: 8 }}
+            {/* Date range + quick buttons */}
+            <div style={{ display:"flex", gap: 8, alignItems:"center", flexWrap:"wrap" }}>
+              <span style={{ fontWeight: 800, color: "#0f172a" }}>Date:</span>
+              <label>
+                From:
+                <input
+                  type="date"
+                  value={filterFrom}
+                  onChange={(e) => setFilterFrom(e.target.value)}
+                  style={{ ...dateInputStyle, marginLeft: 8 }}
+                />
+              </label>
+              <label>
+                To:
+                <input
+                  type="date"
+                  value={filterTo}
+                  onChange={(e) => setFilterTo(e.target.value)}
+                  style={{ ...dateInputStyle, marginLeft: 8 }}
+                />
+              </label>
+              <button onClick={()=>setQuickDays(7)} style={{...miniBtn}}>Last 7 days</button>
+              <button onClick={()=>setQuickDays(30)} style={{...miniBtn}}>Last 30 days</button>
+              {(filterFrom || filterTo) && (
+                <button
+                  onClick={() => { setFilterFrom(""); setFilterTo(""); }}
+                  style={{ ...clearBtn, padding:"9px 12px" }}
+                >
+                  🧹 Clear date
+                </button>
+              )}
+            </div>
+
+            {/* Multi-select filters */}
+            <div style={{ display:"flex", gap: 12, flexWrap:"wrap" }}>
+              <MultiSelect
+                label="POS"
+                options={posOpts}
+                selected={posSel}
+                onChange={setPosSel}
               />
-            </label>
-            <label>
-              To:
-              <input
-                type="date"
-                value={filterTo}
-                onChange={(e) => setFilterTo(e.target.value)}
-                style={{ ...dateInputStyle, marginLeft: 8 }}
+              <MultiSelect
+                label="Origin"
+                options={originOpts}
+                selected={originSel}
+                onChange={setOriginSel}
               />
-            </label>
-            {(filterFrom || filterTo) && (
-              <button
-                onClick={() => {
-                  setFilterFrom("");
-                  setFilterTo("");
-                }}
-                style={clearBtn}
-              >
-                🧹 Clear filter
+              <MultiSelect
+                label="Action"
+                options={actionOpts}
+                selected={actionSel}
+                onChange={setActionSel}
+              />
+            </div>
+
+            {/* Qty / Images / Remarks */}
+            <div style={{ display:"flex", gap: 10, alignItems:"center", flexWrap:"wrap" }}>
+              <div style={searchWrap}>
+                <span style={{ fontWeight:800, color:"#0f172a", marginRight:8 }}>Qty Type</span>
+                <select
+                  value={qtySel}
+                  onChange={(e)=> setQtySel(e.target.value)}
+                  style={{ ...dateInputStyle, padding:"8px 12px", minWidth:140 }}
+                >
+                  <option value="any">Any</option>
+                  <option value="kg">KG</option>
+                  <option value="pcs">PCS</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div style={searchWrap}>
+                <span style={{ fontWeight:800, color:"#0f172a", marginRight:8 }}>Has Images</span>
+                <select
+                  value={hasImages}
+                  onChange={(e)=> setHasImages(e.target.value)}
+                  style={{ ...dateInputStyle, padding:"8px 12px", minWidth:140 }}
+                >
+                  <option value="any">Any</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+              <div style={searchWrap}>
+                <span style={{ fontWeight:800, color:"#0f172a", marginRight:8 }}>Remarks</span>
+                <select
+                  value={remarksState}
+                  onChange={(e)=> setRemarksState(e.target.value)}
+                  style={{ ...dateInputStyle, padding:"8px 12px", minWidth:160 }}
+                >
+                  <option value="any">Any</option>
+                  <option value="empty">Empty only</option>
+                  <option value="nonempty">Has text</option>
+                </select>
+              </div>
+              <button onClick={clearAllFilters} style={{ ...clearBtn, background:"#ef4444" }}>
+                ✨ Clear all filters
               </button>
-            )}
+            </div>
+
+            {/* NEW: Enhanced Excel-like search box (selected day) */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap:"wrap" }}>
+              <div style={searchWrap}>
+                <span style={searchIcon}>🔎</span>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search current day (code, name, origin, POS, qty, action...)"
+                  style={searchInput}
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    style={{ ...miniBtn, marginLeft: 6 }}
+                    title="Clear search"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* === Global Search across ALL reports === */}
+            <div style={{
+              display:"flex", gap:8, alignItems:"center", flexWrap:"wrap",
+              borderTop:"1px dashed #e5e7eb", paddingTop:10
+            }}>
+              <div style={{ ...searchWrap, minWidth:360, flex:1 }}>
+                <span style={searchIcon}>🌐</span>
+                <input
+                  type="text"
+                  value={globalQ}
+                  onChange={(e)=>{ setGlobalQ(e.target.value); setResPage(1); }}
+                  placeholder="Global search across ALL reports (code, name, origin, POS, qty, action...)"
+                  style={{ ...searchInput, minWidth:360 }}
+                />
+                {globalQ && (
+                  <button
+                    onClick={()=>{ setGlobalQ(""); setShowResults(false); setResPage(1); }}
+                    style={{ ...miniBtn, marginLeft: 6 }}
+                    title="Clear global search"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={()=> setShowResults(true)}
+                disabled={!globalQ.trim()}
+                style={{
+                  background: "#0ea5e9", color:"#fff", border:"none", borderRadius:12,
+                  padding:"10px 16px", fontWeight:"bold", cursor:"pointer",
+                  boxShadow:"0 6px 14px rgba(14,165,233,.25)"
+                }}
+                title="Show search results"
+              >
+                🔎 Show Results
+              </button>
+
+              {showResults && (
+                <>
+                  <span style={{ fontWeight:800, color:"#0f172a" }}>
+                    {globalResults.length} result(s){globalResults.length>RES_PAGE_SIZE ? ` – page ${resPage}/${totalPages}` : ""}
+                  </span>
+                  {totalPages>1 && (
+                    <div style={{ display:"inline-flex", gap:8, alignItems:"center" }}>
+                      <button
+                        onClick={()=> setResPage(p=> Math.max(1, p-1))}
+                        style={{ ...clearBtn, background:"#e5e7eb", color:"#111" }}
+                      >◀ Prev</button>
+                      <button
+                        onClick={()=> setResPage(p=> Math.min(totalPages, p+1))}
+                        style={{ ...clearBtn, background:"#e5e7eb", color:"#111" }}
+                      >Next ▶</button>
+                    </div>
+                  )}
+                  <button
+                    onClick={exportSearchResultsXLSX}
+                    style={{
+                      background:"#10b981", color:"#fff", border:"none", borderRadius:12,
+                      padding:"10px 16px", fontWeight:"bold", cursor:"pointer",
+                      boxShadow:"0 6px 14px rgba(16,185,129,.25)"
+                    }}
+                    title="Export search results to XLSX"
+                  >
+                    ⬇️ Export Results
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* ==== Global Search Results Panel ==== */}
+        {showResults && (
+          <div style={{
+            background:"rgba(255,255,255,.95)", border:"1px solid #e5e7eb",
+            borderRadius:16, padding:16, marginBottom:16, boxShadow:"0 8px 20px rgba(2,6,23,.08)"
+          }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <div style={{ fontWeight:900, fontSize:"1.05rem", color:"#0f172a" }}>
+                🔎 Search Results ({globalResults.length})
+              </div>
+              <button
+                onClick={()=> setShowResults(false)}
+                style={{ background:"transparent", border:"1px solid #e5e7eb", borderRadius:10, padding:"6px 10px", fontWeight:800, cursor:"pointer" }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div style={{ overflowX:"auto" }}>
+              <table style={{
+                width:"100%", borderCollapse:"collapse", minWidth:980,
+                border:"1px solid #b6c8e3", background:"#fff", borderRadius:10
+              }}>
+                <thead>
+                  <tr>
+                    {["SL","DATE","CODE","PRODUCT","ORIGIN","POS","QTY","QTY TYPE","EXPIRY","ACTION","MATCH IN","SCORE","ACTIONS"].map(h=>(
+                      <th key={h} style={{
+                        padding:"10px 8px", border:"1px solid #b6c8e3", background:"#e6f0ff",
+                        textAlign:"center", fontWeight:900, color:"#0f172a"
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedResults.map((r, i) => {
+                    const row = r.row;
+                    const pos = safeButchery(row);
+                    const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+                    return (
+                      <tr key={`${r.date}-${r.idx}-${i}`}>
+                        <td style={td}>{(resPage-1)*RES_PAGE_SIZE + i + 1}</td>
+                        <td style={td}>{r.date}</td>
+                        <td style={td}>{highlight(row.itemCode || "", globalQ)}</td>
+                        <td style={td}>
+                          <span>{highlight(row.productName || "", globalQ)}</span>
+                          {Array.isArray(row.images) && row.images.length>0 && (
+                            <button
+                              style={viewImgBtn}
+                              onClick={() => openViewer(row)}
+                              title="View images"
+                            >
+                              VIEW IMG ({row.images.length})
+                            </button>
+                          )}
+                        </td>
+                        <td style={td}>{highlight(row.origin || "", globalQ)}</td>
+                        <td style={td}>{highlight(pos || "", globalQ)}</td>
+                        <td style={td}>{highlight(row.quantity ?? "", globalQ)}</td>
+                        <td style={td}>{highlight(qtyType || "", globalQ)}</td>
+                        <td style={td}>{highlight(row.expiry || "", globalQ)}</td>
+                        <td style={td}>{highlight(actionText(row) || "", globalQ)}</td>
+                        <td style={td}>
+                          {r.hits.length ? r.hits.join(", ") : "—"}
+                        </td>
+                        <td style={td}>{r.score}</td>
+                        <td style={{ ...td, minWidth:180 }}>
+                          <button
+                            onClick={()=> jumpToDay(r.date)}
+                            style={{ ...clearBtn, padding:"6px 10px", background:"#111827", boxShadow:"0 6px 14px rgba(17,24,39,.25)" }}
+                            title="Open this day"
+                          >
+                            Open day
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {pagedResults.length === 0 && (
+                    <tr>
+                      <td colSpan={13} style={{ ...td, textAlign:"center" }}>No results.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Layout: left tree + right details */}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, minHeight: 420 }}>
@@ -1547,7 +2139,7 @@ export default function BrowseReturns() {
                                       >
                                         <div>📅 {d}</div>
                                         <div style={{ color: "#0f172a", fontWeight: 700 }}>
-                                          {(rep?.items?.length || 0)} items
+                                          {(rep?.items?.filter(rowPassesAdvanced).length || 0)} items
                                         </div>
                                       </div>
                                     );
@@ -1618,7 +2210,7 @@ export default function BrowseReturns() {
                       ⬇️ Export XLSX
                     </button>
 
-                    {/* XLSX: كل الأيام مع كلمة سر على الزر */}
+                    {/* XLSX: كل الأيام */}
                     <button
                       onClick={handleExportXLSXAllLocked}
                       style={{
@@ -1631,7 +2223,7 @@ export default function BrowseReturns() {
                         cursor: "pointer",
                         boxShadow: "0 6px 14px rgba(15,118,110,.25)"
                       }}
-                      title="Export ALL days to XLSX (password @@@)"
+                      title="Export ALL days to XLSX"
                     >
                       🔒 Export XLSX (ALL)
                     </button>
