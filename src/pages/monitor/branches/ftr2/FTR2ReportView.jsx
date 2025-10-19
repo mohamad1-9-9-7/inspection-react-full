@@ -4,6 +4,7 @@ import FTR2DailyCleanlinessView from "./FTR2DailyCleanlinessView";
 import FTR2OilCalibrationView from "./FTR2OilCalibrationView";
 import FTR2PersonalHygieneView from "./FTR2PersonalHygieneView";
 import FTR2TemperatureView from "./FTR2TemperatureView";
+import FTR2ReceivingLogView from "./FTR2ReceivingLogView"; // NEW
 
 export default function FTR2ReportView() {
   const [activeTab, setActiveTab] = useState("temperature");
@@ -41,6 +42,9 @@ export default function FTR2ReportView() {
         <button style={tabButtonStyle("hygiene")} onClick={() => setActiveTab("hygiene")}>
           🧑‍🔬 Personal Hygiene
         </button>
+        <button style={tabButtonStyle("receiving")} onClick={() => setActiveTab("receiving")}>
+          🚚 Receiving Log (Food Truck)
+        </button>
       </div>
 
       {/* Tabs Content */}
@@ -56,6 +60,7 @@ export default function FTR2ReportView() {
         {activeTab === "cleanliness" && <FTR2DailyCleanlinessView />}
         {activeTab === "oil" && <FTR2OilCalibrationView />}
         {activeTab === "hygiene" && <FTR2PersonalHygieneView />}
+        {activeTab === "receiving" && <FTR2ReceivingLogView />} {/* NEW */}
       </div>
     </div>
   );

@@ -5,14 +5,19 @@ import FTR1DailyCleanliness from "./FTR1DailyCleanliness";
 import FTR1Temperature from "./FTR1Temperature";
 import FTR1OilCalibration from "./FTR1OilCalibration";
 
+// ✅ التبويب الجديد (ملف الإدخال)
+import FTR1ReceivingLog from "./FTR1ReceivingLog";
+
 export default function FTR1Report() {
   const [activeTab, setActiveTab] = useState("personal");
 
   const tabs = [
-    { key: "personal", label: "🧑‍🔬 Personal Hygiene" },
-    { key: "daily", label: "🧹 Daily Cleanliness" },
-    { key: "temp", label: "🌡️ Temperature" },
-    { key: "oil", label: "🛢️ Oil Calibration" },
+    { key: "personal",  label: "🧑‍🔬 Personal Hygiene" },
+    { key: "daily",     label: "🧹 Daily Cleanliness" },
+    { key: "temp",      label: "🌡️ Temperature" },
+    { key: "oil",       label: "🛢️ Oil Calibration" },
+    // ✅ تبويب ملف الإدخال الجديد
+    { key: "receiving", label: "🚚 Receiving Log (FTR-1)" },
   ];
 
   const renderContent = () => {
@@ -25,6 +30,9 @@ export default function FTR1Report() {
         return <FTR1Temperature />;
       case "oil":
         return <FTR1OilCalibration />;
+      // ✅ محتوى التبويب الجديد
+      case "receiving":
+        return <FTR1ReceivingLog />;
       default:
         return null;
     }
@@ -60,7 +68,7 @@ export default function FTR1Report() {
             📋 FTR 1 Reports
           </h2>
           <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All tabs for hygiene, cleanliness, temperature, and oil calibration in one place
+            All tabs for hygiene, cleanliness, temperature, oil calibration, and receiving in one place
           </p>
         </div>
 

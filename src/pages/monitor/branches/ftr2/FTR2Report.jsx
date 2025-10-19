@@ -4,15 +4,17 @@ import FTR2PersonalHygiene from "./FTR2PersonalHygiene";
 import FTR2DailyCleanliness from "./FTR2DailyCleanliness";
 import FTR2Temperature from "./FTR2Temperature";
 import FTR2OilCalibration from "./FTR2OilCalibration";
+import FTR2ReceivingLog from "./FTR2ReceivingLog"; // NEW
 
 export default function FTR2Report() {
   const [activeTab, setActiveTab] = useState("personal");
 
   const tabs = [
-    { key: "personal", label: "🧑‍🔬 Personal Hygiene" },
-    { key: "daily", label: "🧹 Daily Cleanliness" },
-    { key: "temp", label: "🌡️ Temperature" },
-    { key: "oil", label: "🛢️ Oil Calibration" },
+    { key: "personal",  label: "🧑‍🔬 Personal Hygiene" },
+    { key: "daily",     label: "🧹 Daily Cleanliness" },
+    { key: "temp",      label: "🌡️ Temperature" },
+    { key: "oil",       label: "🛢️ Oil Calibration" },
+    { key: "receiving", label: "📦 Receiving Log" }, // NEW
   ];
 
   const renderContent = () => {
@@ -25,6 +27,8 @@ export default function FTR2Report() {
         return <FTR2Temperature />;
       case "oil":
         return <FTR2OilCalibration />;
+      case "receiving": // NEW
+        return <FTR2ReceivingLog />;
       default:
         return null;
     }
@@ -44,7 +48,7 @@ export default function FTR2Report() {
           borderRadius: "16px",
           padding: "2rem",
           boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
-          maxWidth: "95%", // Expand width
+          maxWidth: "95%",
           margin: "0 auto",
         }}
       >
@@ -60,7 +64,7 @@ export default function FTR2Report() {
             📋 FTR 2 Reports
           </h2>
           <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All tabs for hygiene, cleanliness, temperature, and oil calibration in one place
+            All tabs for hygiene, cleanliness, temperature, oil calibration, and receiving log in one place
           </p>
         </div>
 
@@ -78,7 +82,7 @@ export default function FTR2Report() {
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               style={{
-                flex: "1", // each button takes more space
+                flex: "1",
                 minWidth: "200px",
                 padding: "12px 20px",
                 borderRadius: "10px",
@@ -107,7 +111,7 @@ export default function FTR2Report() {
             borderRadius: "12px",
             padding: "1.5rem",
             boxShadow: "inset 0 0 6px rgba(0,0,0,0.05)",
-            minHeight: "400px", // Expand content area
+            minHeight: "400px",
           }}
         >
           {renderContent()}

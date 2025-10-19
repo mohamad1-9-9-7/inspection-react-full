@@ -40,8 +40,11 @@ async function fileToCompressedDataURL(file, maxSide = 1280, quality = 0.8) {
 
 /* ===== Options ===== */
 const BRANCHES = [
-  "QCS","POS 6","POS 7","POS 10","POS 11","POS 14","POS 15","POS 16",
-  "POS 17","POS 19","POS 21","POS 24","POS 25","POS 37","POS 38","POS 42","POS 44","POS 45"
+  "QCS",
+  "POS 6","POS 7","POS 10","POS 11","POS 14","POS 15","POS 16","POS 17","POS 18",
+  "POS 19","POS 21","POS 24","POS 25","POS 26","POS 31","POS 34","POS 35","POS 36",
+  "POS 37","POS 38","POS 41","POS 42","POS 43","POS 44","POS 45",
+  "FTR1","FTR2"
 ];
 
 const RISK_OPTIONS = ["Low","Medium","High"];
@@ -66,6 +69,10 @@ export default function Inspection() {
   const [commentNextAudit, setCommentNextAudit] = useState("");
   const [nextAudit, setNextAudit] = useState("nil");
   const [reviewedBy, setReviewedBy] = useState("");
+
+  /* Modal state */
+  const [modal, setModal] = useState({ open: false, stage: "idle", message: "" }); // stage: 'saving' | 'success' | 'error'
+  const isSaving = modal.open && modal.stage === "saving";
 
   /* Calc helpers */
   const percentageClosed = useMemo(() => {
@@ -109,6 +116,7 @@ export default function Inspection() {
       }
       updateRow(idx, { [field]: [...current, ...dataURLs] });
     } catch {
+      // نترك تنبيه فشل معالجة الصورة كما هو، لأنه قبل الحفظ
       alert("Image processing failed");
     }
   };
@@ -122,9 +130,11 @@ export default function Inspection() {
   /* ===== Save to server (type fixed) ===== */
   const confirmSave = async () => {
     if (!branch || !date) {
+      // بظل استخدام alert هنا للتحقق المسبق، لأننا لم نبدأ الحفظ بعد
       alert("Please select Branch and Date.");
       return;
     }
+
     const reportName = `${branch} - ${date}`;
     const payload = {
       template: "capa_v1",
@@ -151,20 +161,33 @@ export default function Inspection() {
 
     const body = { type: "internal_multi_audit", branch, payload };
 
+    // افتح النافذة: جاري الحفظ
+    setModal({ open: true, stage: "saving", message: "جاري الحفظ..." });
+
     try {
       const res = await fetch(REPORTS_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error("400");
-      alert("✅ Report saved successfully on server");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+
+      // نجاح
+      setModal({ open: true, stage: "success", message: "تم الحفظ بنجاح ✅" });
+
+      // تفريغ الحقول
       setRows([makeEmptyRow(), makeEmptyRow(), makeEmptyRow()]);
       setCommentNextAudit("");
       setNextAudit("nil");
       setReviewedBy("");
-    } catch {
-      alert("❌ Failed to save report on server");
+
+      // اغلاق تلقائي بعد لحظات
+      setTimeout(() => {
+        setModal({ open: false, stage: "idle", message: "" });
+      }, 1600);
+    } catch (e) {
+      // فشل
+      setModal({ open: true, stage: "error", message: "فشل الحفظ ❌" });
     }
   };
 
@@ -313,9 +336,29 @@ export default function Inspection() {
         <div style={{opacity:0.8}}>Closed Items: <b>{percentageClosed}%</b></div>
         <div style={{display:"flex", gap:10}}>
           <button onClick={()=>navigate(REPORTS_ROUTE)} style={viewBtn}>📄 View Reports</button>
-          <button onClick={confirmSave} style={saveBtn}>💾 Save Report</button>
+          <button onClick={confirmSave} style={{...saveBtn, opacity: isSaving ? .7 : 1, pointerEvents: isSaving ? "none" : "auto"}}>
+            {isSaving ? "Saving…" : "💾 Save Report"}
+          </button>
         </div>
       </div>
+
+      {/* ===== Modal (Saving / Success / Error) ===== */}
+      {modal.open && (
+        <div style={modalBackdrop} onClick={()=> modal.stage!=="saving" && setModal({open:false, stage:"idle", message:""})}>
+          <div style={modalCard} onClick={(e)=>e.stopPropagation()}>
+            {modal.stage === "saving" && <div style={spinner}/>}
+            <div style={{fontSize:16, fontWeight:800, marginTop: modal.stage==="saving" ? 10 : 0, textAlign:"center"}}>
+              {modal.message || (modal.stage==="saving" ? "جاري الحفظ..." : "")}
+            </div>
+
+            {modal.stage === "error" && (
+              <button onClick={()=>setModal({open:false,stage:"idle",message:""})} style={{...smallBtn, marginTop:12}}>
+                إغلاق
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -398,5 +441,34 @@ const footerCard = { background:"#fff", border:`1px solid ${BORDER}`, borderRadi
 const viewBtn    = { background:"#0ea5e9", color:"#fff", padding:"12px 18px", border:"none", borderRadius:10, cursor:"pointer", fontWeight:600 };
 const saveBtn    = { background:"#16a34a", color:"#fff", padding:"12px 18px", border:"none", borderRadius:10, cursor:"pointer", fontWeight:600 };
 
+/* ⬇️ هذا التعريف كان ناقص — تمت إضافته لإصلاح ESLint */
+const smallBtn   = { padding:"6px 10px", borderRadius:8, border:`1px solid ${BORDER}`, background:"#fff", cursor:"pointer", fontSize:13 };
+
 const uploadBtn = { display:"inline-block", fontSize:12, border:`1px solid ${BORDER}`, borderRadius:8, padding:"6px 10px", cursor:"pointer", background:"#fff" };
 const thumbX    = { position:"absolute", top:2, right:2, width:20, height:20, borderRadius:"50%", border:"none", background:"rgba(239,68,68,.9)", color:"#fff", cursor:"pointer", lineHeight:"20px" };
+
+/* ===== Modal styles ===== */
+const modalBackdrop = {
+  position:"fixed", inset:0, background:"rgba(0,0,0,.45)",
+  display:"flex", alignItems:"center", justifyContent:"center",
+  zIndex: 9999
+};
+const modalCard = {
+  width: 320, maxWidth: "90vw",
+  background:"#fff", border:"1px solid #e5e7eb", borderRadius:12,
+  boxShadow:"0 20px 50px rgba(0,0,0,.25)",
+  padding:"16px 18px", textAlign:"center"
+};
+const spinner = {
+  width: 36, height: 36, borderRadius:"50%",
+  border: "4px solid #e5e7eb", borderTop: "4px solid #16a34a",
+  margin: "0 auto",
+  animation: "spin 1s linear infinite"
+};
+// inject keyframes (once)
+if (typeof document !== "undefined" && !document.getElementById("spin-keyframes")) {
+  const style = document.createElement("style");
+  style.id = "spin-keyframes";
+  style.textContent = `@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`;
+  document.head.appendChild(style);
+}

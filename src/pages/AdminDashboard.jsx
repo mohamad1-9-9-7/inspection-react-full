@@ -522,13 +522,9 @@ export default function AdminDashboard() {
         ) : activeView === "pos19" ? (
           <POS19DailyView language="en" />
         ) : activeView === "ftr1" ? (
-          <HideDeleteScope>
-            <FTR1ReportView />
-          </HideDeleteScope>
+          <FTR1ReportView />
         ) : activeView === "ftr2" ? (
-          <HideDeleteScope>
-            <FTR2ReportView language="en" />
-          </HideDeleteScope>
+          <FTR2ReportView language="en" />
         ) : null}
       </div>
 
