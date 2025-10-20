@@ -31,6 +31,13 @@ const POS15TemperatureInput = lazy(() =>
   }))
 );
 
+// 🆕 📥 Receiving Log (Input)
+const POS15ReceivingLogInput = lazy(() =>
+  import("./POS15ReceivingLogInput").then((m) => ({
+    default: m.default || m.POS15ReceivingLogInput,
+  }))
+);
+
 export default function POS15Layout() {
   const [activeTab, setActiveTab] = useState("shipments");
 
@@ -50,6 +57,7 @@ export default function POS15Layout() {
     { key: "personal",    label: "🧑‍🔬 Personal Hygiene" },
     { key: "daily",       label: "🧹 Daily Cleaning" },
     { key: "temperature", label: "🌡️ Temperature" },
+    { key: "receiving",   label: "📥 Receiving Log" }, // <-- NEW
   ];
 
   const Card = ({ children }) => (
@@ -101,6 +109,14 @@ export default function POS15Layout() {
             </Suspense>
           </Card>
         );
+      case "receiving":
+        return (
+          <Card>
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Receiving Log…</div>}>
+              <POS15ReceivingLogInput />
+            </Suspense>
+          </Card>
+        );
       default:
         return null;
     }
@@ -133,7 +149,7 @@ export default function POS15Layout() {
             📋 POS 15 — Operations Inputs
           </h2>
           <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All input tabs (Shipments, Personal Hygiene, Daily Cleaning, and Temperature) in one place.
+            All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, and Receiving Log) in one place.
           </p>
         </div>
 

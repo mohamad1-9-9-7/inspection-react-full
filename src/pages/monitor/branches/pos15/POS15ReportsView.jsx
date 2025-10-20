@@ -4,8 +4,10 @@ import React, { useState } from "react";
 // 👇 استيراد ملفات العرض الخاصة بفرع POS 15 (نفس المجلّد)
 import POS15DailyCleaningView from "./POS15DailyCleaningView";
 import POS15PersonalHygieneView from "./POS15PersonalHygieneView";
-// 🆕 🌡️ درجة الحرارة
+// 🌡️ درجة الحرارة
 import POS15TemperatureView from "./POS15TemperatureView";
+// 🆕 📥 Receiving Log (View)
+import POS15ReceivingLogView from "./POS15ReceivingLogView";
 
 export default function POS15ReportsView() {
   // الافتراضي: النظافة اليومية
@@ -48,13 +50,21 @@ export default function POS15ReportsView() {
           🧑‍🔬 Personal Hygiene
         </button>
 
-        {/* 🆕 تبويب الحرارة */}
         <button
           type="button"
           style={tabButtonStyle("temperature")}
           onClick={() => setActiveTab("temperature")}
         >
           🌡️ Temperature
+        </button>
+
+        {/* 🆕 Receiving Log */}
+        <button
+          type="button"
+          style={tabButtonStyle("receiving")}
+          onClick={() => setActiveTab("receiving")}
+        >
+          📥 Receiving Log
         </button>
       </div>
 
@@ -69,8 +79,9 @@ export default function POS15ReportsView() {
       >
         {activeTab === "cleanliness" && <POS15DailyCleaningView />}
         {activeTab === "hygiene" && <POS15PersonalHygieneView />}
-        {/* 🆕 محتوى الحرارة */}
         {activeTab === "temperature" && <POS15TemperatureView />}
+        {/* 🆕 محتوى Receiving Log */}
+        {activeTab === "receiving" && <POS15ReceivingLogView />}
       </div>
     </div>
   );
