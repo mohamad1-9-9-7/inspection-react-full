@@ -37,7 +37,6 @@ const IconShield = () => (
     <path d="M9.5 12.5l2 2 3.5-3.5" />
   </svg>
 );
-/* أيقونة المصنع لفرع PRODUCTION */
 const IconFactory = () => (
   <svg {...Svg()}>
     <path d="M3 21V9l6 3V9l6 3V9l6 3v9H3z" />
@@ -55,7 +54,8 @@ export default function DailyReportsTab({
   onOpenFTR1Report,
   onOpenFTR2Report,
   onOpenProductionReport,
-  onOpenPOS15Report, // ✅ اختياري: إن مرّرته من الأب يستخدمه بدل التنقّل
+  onOpenPOS15Report,   // اختياري
+  onOpenPOS10Report,   // ✅ جديد: ربط POS 10
 }) {
   const navigate = useNavigate();
 
@@ -67,20 +67,29 @@ export default function DailyReportsTab({
   const openBranchAfterAuth = (branch) => {
     if (branch === "QCS") {
       onOpenQCSReport?.();
+
+    } else if (branch === "POS 10") {            // ✅ فتح تبويب POS 10
+      if (onOpenPOS10Report) onOpenPOS10Report();
+      else navigate("/admin/pos10");
+
     } else if (branch === "POS 19") {
       onOpenPOS19Report?.();
+
     } else if (branch === "FTR 1") {
       if (onOpenFTR1Report) onOpenFTR1Report();
       else navigate("/admin/ftr1");
+
     } else if (branch === "FTR 2") {
       if (onOpenFTR2Report) onOpenFTR2Report();
       else navigate("/admin/ftr2");
+
     } else if (branch === "PRODUCTION") {
       onOpenProductionReport?.();
+
     } else if (branch === "POS 15") {
-      // ✅ افتح صفحة عرض POS 15 (الملف ذو التبويبات)
       if (onOpenPOS15Report) onOpenPOS15Report();
-      else navigate("/admin/pos15"); // تأكد إنك ضايف هذا المسار في App.jsx
+      else navigate("/admin/pos15");
+
     } else {
       alert(`📌 لا يوجد تقرير متاح حاليًا لهذا الفرع: ${branch}`);
     }
@@ -97,13 +106,8 @@ export default function DailyReportsTab({
     e?.preventDefault();
     if (!pendingBranch) return;
 
-    // كلمة السر: افتراضي "اسم الفرع + 123" باستثناء PRODUCTION = PRD123
-    let expected;
-    if (pendingBranch === "PRODUCTION") {
-      expected = "PRD123";
-    } else {
-      expected = `${pendingBranch}123`;
-    }
+    // كلمة السر: "اسم الفرع + 123" (PRODUCTION = PRD123)
+    let expected = pendingBranch === "PRODUCTION" ? "PRD123" : `${pendingBranch}123`;
 
     if (pwd === expected) {
       setShowPwd(false);
@@ -122,14 +126,7 @@ export default function DailyReportsTab({
           --text:#0f172a; --muted:#64748b;
           --ring:#2563eb; --ring-soft:rgba(37,99,235,.14);
         }
-        body{
-          background:
-            radial-gradient(1100px 520px at -10% -20%, rgba(255,255,255,.25), transparent 55%),
-            radial-gradient(900px 520px at 120% -10%, rgba(255,255,255,.18), transparent 60%),
-            linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 100%);
-        }
         .shell{ max-width:1200px; margin:0 auto; }
-
         .hero{
           position:relative; color:#fff;
           background:linear-gradient(180deg, rgba(255,255,255,.25), rgba(255,255,255,.1));
@@ -190,7 +187,7 @@ export default function DailyReportsTab({
         .actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
         .btn{ padding:10px 14px; border-radius:10px; border:1px solid transparent; font-weight:900; cursor:pointer; }
         .btn.primary{ background:var(--ring); color:#fff; }
-        .btn.ghost{ background:#fff; color:#111827; border-color:#var(--border); }
+        .btn.ghost{ background:#fff; color:#111827; border-color:var(--border); }
       `}</style>
 
       <div className="shell">
@@ -224,9 +221,7 @@ export default function DailyReportsTab({
                   onClick={() => handleCardClick(branch)}
                   onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleCardClick(branch)}
                 >
-                  <div className={`tile ${
-                    type === "POS" ? "pos" : type === "FTR" ? "ftr" : type === "QCS" ? "qcs" : "prod"
-                  }`}>
+                  <div className={`tile ${type === "POS" ? "pos" : type === "FTR" ? "ftr" : type === "QCS" ? "qcs" : "prod"}`}>
                     {type === "POS" && <IconStore />}
                     {type === "FTR" && <IconTruck />}
                     {type === "QCS" && <IconShield />}

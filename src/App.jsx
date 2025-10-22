@@ -21,6 +21,11 @@ const POS24Layout = lazy(() => import("./pages/monitor/branches/pos24/POS24Layou
 const POS26Layout = lazy(() => import("./pages/monitor/branches/pos26/POS26Layout"));
 const POS15Layout = lazy(() => import("./pages/monitor/branches/pos15/POS15Layout"));
 
+// 🆕 ✅ POS 10 — التبويبات (إضافة جديدة)
+const POS10Layout = lazy(() =>
+  import("./pages/monitor/branches/pos 10/POS10Layout")
+);
+
 // 🆕 ✅ POS 19 — Viewer Hub (13 تبويب عرض)
 const POS19DailyView = lazy(() =>
   import("./pages/monitor/branches/pos19/POS19DailyView")
@@ -319,6 +324,16 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          {/* 🆕 POS 10 */}
+          <Route
+            path="pos10"
+            element={
+              <ProtectedRoute>
+                <POS10Layout />
+              </ProtectedRoute>
+            }
+          />
+
           {/* 🆕 عرض تقارير النظافة الشخصية POS15 */}
           <Route
             path="pos15/personal-hygiene"

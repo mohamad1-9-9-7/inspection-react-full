@@ -9,13 +9,15 @@ import QCSDailyView from "./admin/QCSDailyView";
 import QCSRawMaterialView from "./admin/QCSRawMaterialView";
 import KPIDashboard from "./KPIDashboard";
 
-// ✅ استيراد عرض POS19 من المسار الجديد تحت monitor/branches/pos19
+// ✅ POS19
 import POS19DailyView from "./monitor/branches/pos19/POS19DailyView";
 
-// ✅ عرض تقارير FTR1 الحقيقي
+// ✅ FTR1/FTR2
 import FTR1ReportView from "./monitor/branches/ftr1/FTR1ReportView";
-// ✅ عرض تقارير FTR2
 import FTR2ReportView from "./monitor/branches/ftr2/FTR2ReportView";
+
+// ✅ POS 10 (المجلد باسم: pos 10)
+import POS10ReportsView from "./monitor/branches/pos 10/POS10ReportsView";
 
 /* ====== API BASE (server-only, no localStorage) ====== */
 const API_BASE =
@@ -83,29 +85,14 @@ function HideDeleteScope({ children }) {
   return <div ref={ref}>{children}</div>;
 }
 
-/* ========== لائحة الأنواع التي نصدّرها/نستوردها (تجميع كل الأيقونات الشغالة) ========== */
-/* ملاحظة: لو نوع غير موجود على السيرفر بيرجع مصفوفة فاضية — ما بيأثر */
+/* ========== الأنواع التي نصدّرها/نستوردها ========== */
 const TYPES_BY_GROUP = {
   QCS: ["qcs-coolers", "qcs-ph", "qcs-clean"],
-  FTR1: [
-    "ftr1_temperature",
-    "ftr1_daily_cleanliness",
-    "ftr1_oil_calibration",
-    "ftr1_personal_hygiene",
-  ],
-  FTR2: [
-    "ftr2_temperature",
-    "ftr2_daily_cleanliness",
-    "ftr2_oil_calibration",
-    "ftr2_personal_hygiene",
-  ],
-  PRODUCTION: [
-    "prod_cleaning_checklist",
-    "prod_personal_hygiene",
-    "prod_defrosting_record", // ✅ تصحيح الاسم
-  ],
+  FTR1: ["ftr1_temperature", "ftr1_daily_cleanliness", "ftr1_oil_calibration", "ftr1_personal_hygiene"],
+  FTR2: ["ftr2_temperature", "ftr2_daily_cleanliness", "ftr2_oil_calibration", "ftr2_personal_hygiene"],
+  PRODUCTION: ["prod_cleaning_checklist", "prod_personal_hygiene", "prod_defrosting_record"],
 };
-// مستثنى: QCS Shipments / Raw Material (مش ضمن القائمة عمداً)
+// مستثنى: الشحنات/الخام
 
 /* === تحميل كل الأنواع ومعرفة الأعداد === */
 async function fetchAllTypes() {
@@ -146,8 +133,7 @@ function downloadJson(data, filename) {
 export default function AdminDashboard() {
   const [reports, setReports] = useState([]);
   const [dailyReports, setDailyReports] = useState([]);
-  // الافتراضي: Daily Reports
-  const [activeView, setActiveView] = useState("dailyReports");
+  const [activeView, setActiveView] = useState("dailyReports"); // الافتراضي
   const [loading, setLoading] = useState(false);
   const [opMsg, setOpMsg] = useState("");
   const fileInputRef = useRef(null);
@@ -157,10 +143,7 @@ export default function AdminDashboard() {
     setLoading(true);
     setOpMsg("");
     try {
-      const [r, d] = await Promise.all([
-        fetchByType("reports"),
-        fetchByType("dailyReports"),
-      ]);
+      const [r, d] = await Promise.all([fetchByType("reports"), fetchByType("dailyReports")]);
       setReports(r);
       setDailyReports(d);
     } catch (e) {
@@ -176,9 +159,7 @@ export default function AdminDashboard() {
     reloadFromServer();
   }, []);
 
-  const handleLogout = () => {
-    navigate("/");
-  };
+  const handleLogout = () => navigate("/");
 
   const THEME = {
     pageGradient:
@@ -216,7 +197,7 @@ export default function AdminDashboard() {
     };
   }
 
-  /* ========== تصدير “كل شيء” ========== */
+  /* ========== Export All ========== */
   async function handleExportAll() {
     try {
       setOpMsg("Preparing full export…");
@@ -245,12 +226,8 @@ export default function AdminDashboard() {
     }
   }
 
-  /* ========== استيراد “متعدد الأنواع” ========== */
+  /* ========== Import (multi-type) ========== */
   async function multiTypeImport(parsed) {
-    // يقبل:
-    // 1) { data: { "<type>": [payload/persistedObjects...] } }
-    // 2) { type, items: [ { type?, reporter?, payload? | rawPayload }, ... ] }
-    // 3) مصفوفة عناصر جاهزة [ { type, payload }, ... ]
     let queue = [];
 
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -258,7 +235,6 @@ export default function AdminDashboard() {
         for (const [type, arr] of Object.entries(parsed.data)) {
           if (!Array.isArray(arr)) continue;
           for (const item of arr) {
-            // إذا العنصر كامل أصلاً {type, payload} حافظ عليه، وإلا اعتبره payload خام
             if (item && item.type && item.payload) {
               queue.push({ type: item.type, payload: item.payload });
             } else {
@@ -274,7 +250,6 @@ export default function AdminDashboard() {
           } else if (item && item.payload) {
             queue.push({ type: defaultType, payload: item.payload });
           } else {
-            // اعتبر العنصر هو الـ payload نفسه
             queue.push({ type: defaultType, payload: item });
           }
         }
@@ -293,7 +268,6 @@ export default function AdminDashboard() {
       throw new Error("Invalid JSON for import.");
     }
 
-    // تنفيذ الرفع للسيرفر
     let ok = 0;
     for (const rec of queue) {
       await upsertOne(rec.type, rec.payload);
@@ -356,9 +330,7 @@ export default function AdminDashboard() {
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {loading && (
-            <span style={{ fontWeight: 800, color: THEME.purple }}>⏳ Loading…</span>
-          )}
+          {loading && <span style={{ fontWeight: 800, color: THEME.purple }}>⏳ Loading…</span>}
           {opMsg && (
             <span
               style={{
@@ -409,11 +381,9 @@ export default function AdminDashboard() {
           gap: 10,
           flexWrap: "wrap",
           marginBottom: 14,
-          // أول زر يظهر على اليمين
-          flexDirection: "row-reverse",
+          flexDirection: "row-reverse", // أول زر يمينًا
         }}
       >
-        {/* Daily Reports أول عنصر (سيظهر يمينًا) */}
         <button style={tabButtonStyle("dailyReports")} onClick={() => setActiveView("dailyReports")}>
           🗓️ Daily Reports
         </button>
@@ -426,9 +396,25 @@ export default function AdminDashboard() {
         <button style={tabButtonStyle("kpi")} onClick={() => setActiveView("kpi")}>
           📈 KPI
         </button>
+
+        {/* POS 10 */}
+        <button
+          style={tabButtonStyle("pos10")}
+          onClick={() => {
+            console.log("[Admin] open pos10");
+            setActiveView("pos10");
+          }}
+        >
+          🏷️ POS 10 Reports
+        </button>
+
+        {/* POS19 */}
+        <button style={tabButtonStyle("pos19")} onClick={() => setActiveView("pos19")}>
+          🏷️ POS 19 Reports
+        </button>
       </div>
 
-      {/* Import/Export — الآن يصدّر/يستورد كل الأنواع بغض النظر عن التبويب */}
+      {/* Import/Export */}
       <div
         style={{
           background: THEME.glass,
@@ -505,6 +491,7 @@ export default function AdminDashboard() {
             setDailyReports={setDailyReports}
             onOpenQCSReport={() => setActiveView("qcs")}
             onOpenPOS19Report={() => setActiveView("pos19")}
+            onOpenPOS10Report={() => setActiveView("pos10")}   
             onOpenQCSShipmentReport={() => setActiveView("qcsShipment")}
             onOpenFTR1Report={() => setActiveView("ftr1")}
             onOpenFTR2Report={() => setActiveView("ftr2")}
@@ -521,6 +508,8 @@ export default function AdminDashboard() {
           <QCSDailyView language="en" />
         ) : activeView === "pos19" ? (
           <POS19DailyView language="en" />
+        ) : activeView === "pos10" ? (
+          <POS10ReportsView />
         ) : activeView === "ftr1" ? (
           <FTR1ReportView />
         ) : activeView === "ftr2" ? (
