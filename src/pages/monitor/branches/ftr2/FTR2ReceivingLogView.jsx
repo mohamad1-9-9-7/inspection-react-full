@@ -26,11 +26,7 @@ function checkPin() {
 const COLS = [
   { key: "supplier", label: "Name of the Supplier", align: "left" },
   { key: "foodItem", label: "Food Item", align: "left" },
-  {
-    key: "dmApprovalNo",
-    label: "DM approval number of the delivery vehicle",
-    align: "left",
-  },
+  { key: "dmApprovalNo", label: "DM approval number of the delivery vehicle", align: "left" },
   { key: "vehicleTemp", label: "Vehicle Temp (°C)", align: "center" },
   { key: "foodTemp", label: "Food Temp (°C)", align: "center" },
   { key: "vehicleClean", label: "Vehicle clean", align: "center" },
@@ -50,17 +46,27 @@ const COLS = [
   { key: "receivedBy", label: "Received by", align: "center" },
 ];
 
-/* أبعاد الأعمدة الأساسية (قبل التحجيم) — أزلنا عمود الصور */
+/* أبعاد الأعمدة الأساسية (قبل التحجيم) — أول خانة لـ S.No */
 const COL_WIDTHS_PX = [
   64, 160, 140, 240, 110, 110, 130, 160, 130, 110, 300, 140, 140, 140, 260, 160,
 ];
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
-const MIN_SCALE = 0.75; // حد أدنى للتحجيم
+const MIN_SCALE = 0.75;
+
+/* ألوان/ثوابت نمط إكسل */
+const GRID_COLOR   = "#9aa3b2";   // حدود الشبكة
+const HEADER_BG    = "#eaf1fb";   // خلفية العناوين
+const HEADER_BORDER= "#7f93ad";   // حدود العناوين
+const CELL_BG_ODD  = "#ffffff";   // صف فردي
+const CELL_BG_EVEN = "#f9fbff";   // صف زوجي
 
 export default function FTR2ReceivingLogView() {
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // لمنع نقرات مزدوجة أثناء الحذف/الحفظ
+  const [busy, setBusy] = useState(false);
 
   // ===== Auto-Scale (بدون تمرير أفقي) =====
   const [scale, setScale] = useState(1);
@@ -148,7 +154,6 @@ export default function FTR2ReceivingLogView() {
   }, [selectedReport, isEditing]);
 
   // ===== Fetch =====
-  // ✅ getId تقبل نص/رقم (ما منروح لـ POST بالغلط)
   const getId = (r) => {
     const cand = r?._id || r?.payload?._id || r?.id || r?.payload?.id;
     return cand === undefined || cand === null ? null : String(cand);
@@ -175,7 +180,8 @@ export default function FTR2ReceivingLogView() {
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a, b) => getReportDate(a) - getReportDate(b));
+      // الأحدث أولاً
+      arr.sort((a, b) => getReportDate(b) - getReportDate(a));
       setReports(arr);
       setSelectedReport(arr[0] || null);
       setIsEditing(false);
@@ -234,21 +240,25 @@ export default function FTR2ReceivingLogView() {
 
   // ===== Delete (محمي بالـ PIN) =====
   const handleDelete = async (report) => {
+    if (busy) return;
     if (!checkPin()) return;
     if (!window.confirm("Are you sure you want to delete this report?")) return;
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
     try {
+      setBusy(true);
       const res = await fetch(
         `${API_BASE}/api/reports/${encodeURIComponent(rid)}`,
         { method: "DELETE" }
       );
       if (!res.ok) throw new Error(await res.text().catch(() => "Failed to delete"));
       alert("✅ Report deleted successfully.");
-      fetchReports();
+      await fetchReports();
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to delete report.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -259,6 +269,9 @@ export default function FTR2ReceivingLogView() {
     if (!Array.isArray(base.entries)) {
       base.entries = structuredClone(selectedReport?.payload?.entries || []);
     }
+    // ضمان وجود الحقول الأساسية
+    if (!base.branch) base.branch = "FTR 2";
+    if (!base.reportDate) base.reportDate = new Date().toISOString().slice(0, 10);
     setDraft(base);
     setIsEditing(true);
   };
@@ -269,15 +282,27 @@ export default function FTR2ReceivingLogView() {
   };
 
   const saveEdit = async () => {
+    if (busy) return;
     if (!draft) return;
 
-    // ضمان وجود entries وبعض الحقول المفيدة
-    if (!Array.isArray(draft.entries)) draft.entries = [];
-    if (!draft.branch) draft.branch = "FTR 2";
+    // ترتيب الأسطر وحذف الفراغات لتحسين العرض
+    draft.entries = Array.isArray(draft.entries)
+      ? draft.entries
+          .map((r) => (r && typeof r === "object" ? r : {}))
+          .filter((r) => Object.values(r).some((v) => v !== "" && v != null))
+      : [];
+
+    // حفظ بصيغة موحّدة للتواريخ
+    const normDate = (v) => (v ? new Date(v).toISOString().slice(0, 10) : "");
+    draft.reportDate = normDate(draft.reportDate);
+    draft.entries = draft.entries.map((r) => ({
+      ...r,
+      productionDate: normDate(r.productionDate),
+      expiryDate: normDate(r.expiryDate),
+    }));
 
     const body = { type: "ftr2_receiving_log_butchery", payload: draft };
 
-    // helper to read text
     const readTxt = async (res) => {
       try {
         return await res.text();
@@ -286,25 +311,25 @@ export default function FTR2ReceivingLogView() {
       }
     };
 
-    // نحضر نسخة احتياطية من القديم للـ rollback
     const oldId = getId(selectedReport);
     const oldPayload = structuredClone(selectedReport?.payload || null);
 
     try {
-      // المطلوب: حذف القديم ثم إنشاء الجديد (لتفادي unique constraint)
+      setBusy(true);
+
+      // حذف القديم لتفادي قيود uniqueness المحتملة
       if (oldId) {
         const del = await fetch(
           `${API_BASE}/api/reports/${encodeURIComponent(oldId)}`,
           { method: "DELETE" }
         );
         if (!del.ok) {
-          // لو ما رضي يحذف، أوقف واحكي السبب
           const msg = await readTxt(del);
           throw new Error(msg || "Failed to delete old report before saving.");
         }
       }
 
-      // بعد الحذف، ننشئ الجديد
+      // إنشاء الجديد
       const post = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -312,8 +337,8 @@ export default function FTR2ReceivingLogView() {
       });
 
       if (!post.ok) {
-        // محاولة تراجع: إعادة القديم إن وجد
         const msg = await readTxt(post);
+        // محاولة تراجع: إعادة القديم إن وجد
         if (oldPayload) {
           try {
             const rollback = await fetch(`${API_BASE}/api/reports`, {
@@ -335,10 +360,14 @@ export default function FTR2ReceivingLogView() {
       alert("✅ Saved successfully.");
       setIsEditing(false);
       setDraft(null);
+
+      // إعادة الجلب مع ضمان اختيار آخر تقرير (الأحدث)
       await fetchReports();
     } catch (e) {
       console.error(e);
       alert("❌ Failed to save changes.\n" + (e?.message || ""));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -405,8 +434,7 @@ export default function FTR2ReceivingLogView() {
         alert("⚠️ JSON file has no importable items.");
         return;
       }
-      let ok = 0,
-        fail = 0;
+      let ok = 0, fail = 0;
       for (const item of itemsRaw) {
         const payload = item?.payload ?? item;
         if (!payload || typeof payload !== "object") {
@@ -439,7 +467,7 @@ export default function FTR2ReceivingLogView() {
     }
   };
 
-  // ===== Grouping =====
+  // ===== Grouping (بعد ترتيب الأحدث أولًا) =====
   const groupedReports = useMemo(() => {
     return reports.reduce((acc, r) => {
       const date = getReportDate(r);
@@ -473,28 +501,32 @@ export default function FTR2ReceivingLogView() {
     boxShadow: "0 6px 22px rgba(95,61,196,0.12)",
     border: "1px solid #ececf5",
     overflowX: "hidden",
+    fontSize: 16, // خط أوضح
   };
   const headerCell = {
-    border: "1px solid #d7dbe7",
-    padding: "8px 10px",
-    fontSize: "0.95rem",
-    background: "#f4f6fb",
+    border: `1.4px solid ${GRID_COLOR}`,
+    padding: "10px 12px",
+    fontSize: 16,
+    background: HEADER_BG,
+    fontWeight: 700,
+    color: "#1e293b",
   };
   const baseCell = {
-    padding: "8px 10px",
-    border: "1px solid #e1e5ee",
+    padding: "10px 12px",
+    border: `1.2px solid ${GRID_COLOR}`, // حدود مثل إكسل
     verticalAlign: "middle",
-    fontSize: "0.94rem",
-    lineHeight: 1.35,
+    fontSize: 16,
+    lineHeight: 1.55,
     wordBreak: "break-word",
     whiteSpace: "normal",
+    background: "#fff",
   };
   const thStyle = {
     ...baseCell,
-    background: "#2345a5",
-    color: "#fff",
-    fontWeight: 700,
-    borderColor: "#1f3b70",
+    background: HEADER_BG,
+    color: "#0f172a",
+    fontWeight: 800,
+    border: `1.5px solid ${HEADER_BORDER}`,
     position: "sticky",
     top: 0,
     zIndex: 1,
@@ -570,7 +602,6 @@ export default function FTR2ReceivingLogView() {
     );
   };
 
-  // helper for date input value
   const asDateValue = (v) => (v ? new Date(v).toISOString().slice(0, 10) : "");
 
   return (
@@ -587,18 +618,18 @@ export default function FTR2ReceivingLogView() {
         ) : (
           <div>
             {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(a) - Number(b))
+              .sort(([a], [b]) => Number(b) - Number(a))
               .map(([year, months]) => (
                 <details key={year} open>
                   <summary style={{ fontWeight: 700, marginBottom: 6 }}>
                     📅 Year {year}
                   </summary>
                   {Object.entries(months)
-                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .sort(([a], [b]) => Number(b) - Number(a))
                     .map(([month, days]) => {
-                      const ddays = [...days].sort((a, b) => a._dt - b._dt);
+                      const ddays = [...days].sort((a, b) => b._dt - a._dt);
                       return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
+                        <details key={month} style={{ marginLeft: "1rem" }} open>
                           <summary style={{ fontWeight: 600 }}>📅 Month {month}</summary>
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                             {ddays.map((r, i) => {
@@ -658,70 +689,75 @@ export default function FTR2ReceivingLogView() {
                 <>
                   <button
                     onClick={startEdit}
+                    disabled={busy}
                     style={{
                       padding: "8px 14px",
                       borderRadius: 8,
-                      background: "#2563eb",
+                      background: busy ? "#93c5fd" : "#2563eb",
                       color: "#fff",
                       fontWeight: 700,
                       border: "none",
-                      cursor: "pointer",
+                      cursor: busy ? "not-allowed" : "pointer",
                     }}
                   >
                     ✏ Edit
                   </button>
                   <button
                     onClick={handleExportPDF}
+                    disabled={busy}
                     style={{
                       padding: "8px 14px",
                       borderRadius: 8,
-                      background: "#10b981",
+                      background: busy ? "#a7f3d0" : "#10b981",
                       color: "#fff",
                       fontWeight: 700,
                       border: "none",
-                      cursor: "pointer",
+                      cursor: busy ? "not-allowed" : "pointer",
                     }}
                   >
                     ⬇ Export PDF
                   </button>
                   <button
                     onClick={handleExportJSON}
+                    disabled={busy}
                     style={{
                       padding: "8px 14px",
                       borderRadius: 8,
-                      background: "#059669",
+                      background: busy ? "#6ee7b7" : "#059669",
                       color: "#fff",
                       fontWeight: 700,
                       border: "none",
-                      cursor: "pointer",
+                      cursor: busy ? "not-allowed" : "pointer",
                     }}
                   >
                     ⬇ Export JSON
                   </button>
                   <button
                     onClick={triggerImport}
+                    disabled={busy}
                     style={{
                       padding: "8px 14px",
                       borderRadius: 8,
-                      background: "#f59e0b",
+                      background: busy ? "#fde68a" : "#f59e0b",
                       color: "#fff",
                       fontWeight: 700,
                       border: "none",
-                      cursor: "pointer",
+                      cursor: busy ? "not-allowed" : "pointer",
                     }}
                   >
                     ⬆ Import JSON
                   </button>
                   <button
                     onClick={() => handleDelete(selectedReport)}
+                    disabled={busy}
                     style={{
                       padding: "8px 14px",
                       borderRadius: 8,
-                      background: "#ef4444",
+                      background: busy ? "#fca5a5" : "#ef4444",
                       color: "#fff",
                       fontWeight: 700,
                       border: "none",
-                      cursor: "pointer",
+                      cursor: busy ? "not-allowed" : "pointer",
                     }}
                   >
                     🗑 Delete
@@ -731,28 +767,30 @@ export default function FTR2ReceivingLogView() {
                 <>
                   <button
                     onClick={saveEdit}
+                    disabled={busy}
                     style={{
                       padding: "8px 14px",
                       borderRadius: 8,
-                      background: "#16a34a",
+                      background: busy ? "#86efac" : "#16a34a",
                       color: "#fff",
                       fontWeight: 800,
                       border: "none",
-                      cursor: "pointer",
+                      cursor: busy ? "not-allowed" : "pointer",
                     }}
                   >
                     💾 Save
                   </button>
                   <button
                     onClick={cancelEdit}
+                    disabled={busy}
                     style={{
                       padding: "8px 14px",
                       borderRadius: 8,
-                      background: "#6b7280",
+                      background: busy ? "#9ca3af" : "#6b7280",
                       color: "#fff",
                       fontWeight: 700,
                       border: "none",
-                      cursor: "pointer",
+                      cursor: busy ? "not-allowed" : "pointer",
                     }}
                   >
                     ↩ Cancel
@@ -930,6 +968,8 @@ export default function FTR2ReceivingLogView() {
                       borderCollapse: "collapse",
                       tableLayout: "fixed",
                       width: TABLE_BASE_WIDTH,
+                      border: `1.6px solid ${GRID_COLOR}`,
+                      background: "#fff",
                     }}
                   >
                     <colgroup>
@@ -955,13 +995,23 @@ export default function FTR2ReceivingLogView() {
                       ).map((row, i) => (
                         <tr
                           key={i}
-                          style={{ background: i % 2 ? "#fafbff" : "#ffffff" }}
+                          style={{
+                            background: i % 2 ? CELL_BG_EVEN : CELL_BG_ODD,
+                            transition: "background 120ms",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "#eef4ff")}
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = i % 2 ? CELL_BG_EVEN : CELL_BG_ODD)
+                          }
                         >
                           <td
                             style={{
                               ...baseCell,
                               textAlign: "center",
                               fontWeight: 700,
+                              position: "sticky",
+                              left: 0,
+                              background: "inherit",
                             }}
                           >
                             {i + 1}
@@ -970,8 +1020,7 @@ export default function FTR2ReceivingLogView() {
                           {COLS.map((c) => {
                             const val = row?.[c.key];
                             const type =
-                              c.key === "productionDate" ||
-                              c.key === "expiryDate"
+                              c.key === "productionDate" || c.key === "expiryDate"
                                 ? "date"
                                 : "text";
                             const imgs = getRowImages(row);
@@ -1004,9 +1053,7 @@ export default function FTR2ReceivingLogView() {
                                     value={val}
                                     type={type}
                                     align={c.align || "center"}
-                                    onChange={(v) =>
-                                      updateDraftEntry(i, c.key, v)
-                                    }
+                                    onChange={(v) => updateDraftEntry(i, c.key, v)}
                                   />
                                 )}
                               </td>
@@ -1040,9 +1087,7 @@ export default function FTR2ReceivingLogView() {
                         <input
                           type="text"
                           value={draft?.checkedBy ?? ""}
-                          onChange={(e) =>
-                            updateDraftMeta("checkedBy", e.target.value)
-                          }
+                          onChange={(e) => updateDraftMeta("checkedBy", e.target.value)}
                           style={{
                             padding: "6px 8px",
                             borderRadius: 6,
@@ -1061,9 +1106,7 @@ export default function FTR2ReceivingLogView() {
                         <input
                           type="text"
                           value={draft?.verifiedBy ?? ""}
-                          onChange={(e) =>
-                            updateDraftMeta("verifiedBy", e.target.value)
-                          }
+                          onChange={(e) => updateDraftMeta("verifiedBy", e.target.value)}
                           style={{
                             padding: "6px 8px",
                             borderRadius: 6,

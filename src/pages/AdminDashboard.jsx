@@ -301,7 +301,10 @@ export default function AdminDashboard() {
   return (
     <div
       style={{
-        background: `${THEME.pageOverlay}, ${THEME.pageGradient}`,
+        // استخدم خلفيتين معًا بشكل صحيح
+        backgroundImage: `${THEME.pageOverlay}, ${THEME.pageGradient}`,
+        backgroundRepeat: "no-repeat, no-repeat",
+        backgroundSize: "cover, cover",
         minHeight: "100vh",
         padding: "22px 20px 24px",
         direction: "ltr",
@@ -397,21 +400,21 @@ export default function AdminDashboard() {
           📈 KPI
         </button>
 
-        {/* POS 10 */}
+        {/* ✅ حذفت تبويبات POS 10 و POS 19 لمنع التكرار في الشريط العلوي */}
+        {/*
         <button
           style={tabButtonStyle("pos10")}
-          onClick={() => {
-            console.log("[Admin] open pos10");
-            setActiveView("pos10");
-          }}
+          onClick={() => setActiveView("pos10")}
         >
           🏷️ POS 10 Reports
         </button>
-
-        {/* POS19 */}
-        <button style={tabButtonStyle("pos19")} onClick={() => setActiveView("pos19")}>
+        <button
+          style={tabButtonStyle("pos19")}
+          onClick={() => setActiveView("pos19")}
+        >
           🏷️ POS 19 Reports
         </button>
+        */}
       </div>
 
       {/* Import/Export */}
@@ -491,7 +494,7 @@ export default function AdminDashboard() {
             setDailyReports={setDailyReports}
             onOpenQCSReport={() => setActiveView("qcs")}
             onOpenPOS19Report={() => setActiveView("pos19")}
-            onOpenPOS10Report={() => setActiveView("pos10")}   
+            onOpenPOS10Report={() => setActiveView("pos10")}
             onOpenQCSShipmentReport={() => setActiveView("qcsShipment")}
             onOpenFTR1Report={() => setActiveView("ftr1")}
             onOpenFTR2Report={() => setActiveView("ftr2")}

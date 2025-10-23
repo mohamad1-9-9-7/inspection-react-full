@@ -55,8 +55,8 @@ function normalizeInspection(raw) {
   });
 }
 
-/** QCS Daily (type=qcs_reports): نتوقع coolers داخل payload */
-function normalizeQCSDaily(raw) {
+/** QCS Coolers فقط: نحتاج درجات الحرارة */
+function normalizeQcsCoolers(raw) {
   return raw.map((r) => {
     const payload = r?.payload || r || {};
     return {
@@ -67,7 +67,12 @@ function normalizeQCSDaily(raw) {
   });
 }
 
-/** شحنات QCS (type=qcs_raw_material_reports): status/shipmentType/.. */
+/** أي نوع بسيط نحتاج منه التاريخ فقط (ph/clean …) */
+function normalizeSimpleWithDate(raw) {
+  return raw.map((r) => ({ date: pickDate(r) })).filter((x) => x.date);
+}
+
+/** شحنات QCS (type=qcs_raw_material_reports) */
 function normalizeShipments(raw) {
   return raw.map((r) => {
     const payload = r?.payload || r || {};
@@ -101,7 +106,6 @@ function normalizeLoading(raw) {
 
 /** المرتجعات (type=returns) ← نعتمد نفس بنية ReturnView: [{reportDate, items[]}] */
 function normalizeReturns(raw) {
-  // احتمال يكون فيه نسخ متعددة بنفس التاريخ—نأخذ الأحدث
   function ts(x) {
     if (!x) return 0;
     if (typeof x === "number") return x;
@@ -255,7 +259,11 @@ function Modal({ show, onClose, title, children }) {
 export default function KPIDashboard() {
   // مصادر البيانات (من السيرفر فقط)
   const [inspection, setInspection] = useState([]);
-  const [qcsDaily, setQCSDaily] = useState([]);
+
+  // QCS: نفصل Coolers عن باقي اليوميات، ونكوّن قائمة موحّدة للحصر
+  const [qcsCoolers, setQcsCoolers] = useState([]);
+  const [qcsDailyAll, setQcsDailyAll] = useState([]); // coolers + ph + clean (للحصر فقط)
+
   const [shipments, setShipments] = useState([]);
   const [loadingReports, setLoadingReports] = useState([]);
   const [returnsReports, setReturnsReports] = useState([]);
@@ -269,9 +277,10 @@ export default function KPIDashboard() {
   const [dateTo, setDateTo] = useState("");
 
   // مودالات
-  const [wasatOpen, setWasatOpen] = useState(false);
-  const [tahtWasatOpen, setTahtWasatOpen] = useState(false);
-  const [returnsDetailsOpen, setReturnsDetailsOpen] = useState(false);
+const [wasatOpen, setWasatOpen] = useState(false);
+const [tahtWasatOpen, setTahtWasatOpen] = useState(false);
+const [returnsDetailsOpen, setReturnsDetailsOpen] = useState(false);
+
 
   // استيراد/تصدير KPIs (ملف)
   const [importError, setImportError] = useState("");
@@ -285,24 +294,43 @@ export default function KPIDashboard() {
         setLoading(true);
         setLoadErr("");
 
+        // ⬅️ جلب QCS Daily من 3 أنواع صحيحة
         const [
           rawInspection,
-          rawQCSDaily,
+          rawCoolers,
+          rawQcsPH,
+          rawQcsClean,
           rawShipments,
           rawLoading,
           rawReturns,
         ] = await Promise.all([
-          fetchByType("reports").catch(() => []),
-          fetchByType("qcs_reports").catch(() => []),
-          fetchByType("qcs_raw_material_reports").catch(() => []),
+          fetchByType("reports").catch(() => []),                 // التفتيش العام
+          fetchByType("qcs-coolers").catch(() => []),             // QCS Coolers
+          fetchByType("qcs-ph").catch(() => []),                  // QCS Personal Hygiene
+          fetchByType("qcs-clean").catch(() => []),               // QCS Daily Cleanliness
+          fetchByType("qcs_raw_material_reports").catch(() => []),// شحنات QCS
           fetchByType("cars_loading_inspection_v1").catch(() => []),
           fetchByType("returns").catch(() => []),
         ]);
 
         if (!mounted) return;
 
-        setInspection(normalizeInspection(rawInspection));
-        setQCSDaily(normalizeQCSDaily(rawQCSDaily));
+        // تطبيع
+        const nInspection = normalizeInspection(rawInspection);
+        const nCoolers = normalizeQcsCoolers(rawCoolers);
+        const nPH = normalizeSimpleWithDate(rawQcsPH);
+        const nClean = normalizeSimpleWithDate(rawQcsClean);
+
+        // القائمة الموحّدة للحصر: (coolers + ph + clean) بالحد الأدنى تاريخ فقط
+        const unifiedDaily = [
+          ...nCoolers.map((x) => ({ date: x.date, _src: "coolers" })),
+          ...nPH.map((x) => ({ date: x.date, _src: "ph" })),
+          ...nClean.map((x) => ({ date: x.date, _src: "clean" })),
+        ];
+
+        setInspection(nInspection);
+        setQcsCoolers(nCoolers);
+        setQcsDailyAll(unifiedDaily);
         setShipments(normalizeShipments(rawShipments));
         setLoadingReports(normalizeLoading(rawLoading));
         setReturnsReports(normalizeReturns(rawReturns));
@@ -323,7 +351,8 @@ export default function KPIDashboard() {
     (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
 
   const filteredInspection = inspection.filter((r) => inRange(r.date || ""));
-  const filteredQCSDaily = qcsDaily.filter((r) => inRange(r.date || ""));
+  const filteredQcsCoolers = qcsCoolers.filter((r) => inRange(r.date || ""));
+  const filteredQCSDailyAll = qcsDailyAll.filter((r) => inRange(r.date || ""));
   const filteredShipments = shipments.filter((r) => inRange(r.date || ""));
   const filteredLoading = loadingReports.filter((r) => inRange(r.date || ""));
   const filteredReturns = returnsReports.filter((r) => inRange(r.reportDate || ""));
@@ -341,11 +370,13 @@ export default function KPIDashboard() {
       ).toFixed(1)
     : 0;
 
-  // QCS: متوسط حرارة البرادات
-  const qcsDailyCount = filteredQCSDaily.length;
+  // QCS: عدد التقارير اليومية (3 أنواع)
+  const qcsDailyCount = filteredQCSDailyAll.length;
+
+  // QCS: متوسط حرارة البرادات من coolers فقط
   const qcsCoolersAvg = (() => {
     let temps = [];
-    filteredQCSDaily.forEach((rep) =>
+    filteredQcsCoolers.forEach((rep) =>
       (rep.coolers || []).forEach((c) => {
         // نتوقع c.temps = {a:val, b:val ...}
         const vals = Object.values(c?.temps || {}).filter((v) => v !== "");
@@ -360,8 +391,7 @@ export default function KPIDashboard() {
   // شحنات
   const shipmentsCount = filteredShipments.length;
   const shipmentsMardi =
-    filteredShipments.filter((r) => (r.status || "").trim() === "مرضي")
-      .length;
+    filteredShipments.filter((r) => (r.status || "").trim() === "مرضي").length;
   const shipmentsWasatArr = filteredShipments.filter(
     (r) => (r.status || "").trim() === "وسط"
   );
@@ -382,7 +412,7 @@ export default function KPIDashboard() {
     if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return null;
     const [h, m] = t.split(":").map(Number);
     return h * 60 + m;
-    };
+  };
   const loadingDurations = filteredLoading
     .map((r) => {
       const s = toMinutes(r.timeStart);
@@ -400,9 +430,7 @@ export default function KPIDashboard() {
     .map((r) => Number(r.tempCheck))
     .filter((v) => !isNaN(v));
   const loadingAvgTemp = loadingTemps.length
-    ? (loadingTemps.reduce((a, b) => a + b, 0) / loadingTemps.length).toFixed(
-        1
-      )
+    ? (loadingTemps.reduce((a, b) => a + b, 0) / loadingTemps.length).toFixed(1)
     : 0;
 
   const VI_KEYS = [
@@ -440,10 +468,7 @@ export default function KPIDashboard() {
   const returnsTotalQty = filteredReturns.reduce(
     (acc, rep) =>
       acc +
-      (rep.items?.reduce(
-        (sum, it) => sum + Number(it.quantity || 0),
-        0
-      ) || 0),
+      (rep.items?.reduce((sum, it) => sum + Number(it.quantity || 0), 0) || 0),
     0
   );
 
@@ -712,7 +737,7 @@ export default function KPIDashboard() {
             cursor: "pointer",
             boxShadow: "0 2px 8px #d4efdf",
           }}
-          onClick={() => fileInputRef.current.click()}
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
         >
           ⬆️ استيراد نتائج (JSON)
         </button>
@@ -1008,15 +1033,13 @@ export default function KPIDashboard() {
             <div style={{ fontSize: "0.93em" }}>
               {topBranches.length > 0 && (
                 <div>
-                  فرع:{" "}
-                  <b style={{ color: "#884ea0" }}>{topBranches[0][0]}</b> (
+                  فرع: <b style={{ color: "#884ea0" }}>{topBranches[0][0]}</b> (
                   <b>{topBranches[0][1]}</b>)
                 </div>
               )}
               {topActions.length > 0 && (
                 <div>
-                  إجراء:{" "}
-                  <b style={{ color: "#c0392b" }}>{topActions[0][0]}</b> (
+                  إجراء: <b style={{ color: "#c0392b" }}>{topActions[0][0]}</b> (
                   <b>{topActions[0][1]}</b>)
                 </div>
               )}
@@ -1108,10 +1131,7 @@ export default function KPIDashboard() {
               </thead>
               <tbody>
                 {shipmentsWasatArr.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}
-                  >
+                  <tr key={idx} style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}>
                     <td style={td}>{idx + 1}</td>
                     <td style={td}>
                       {row.date || <span style={{ color: "#b2babb" }}>---</span>}
@@ -1176,10 +1196,7 @@ export default function KPIDashboard() {
               </thead>
               <tbody>
                 {shipmentsTahtWasatArr.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}
-                  >
+                  <tr key={idx} style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}>
                     <td style={td}>{idx + 1}</td>
                     <td style={td}>
                       {row.date || <span style={{ color: "#b2babb" }}>---</span>}
