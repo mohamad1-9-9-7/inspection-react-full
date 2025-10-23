@@ -87,57 +87,81 @@ export default function POS10PersonalHygiene() {
 
   return (
     <div style={{ padding: "1rem", background: "#fff", borderRadius: 12 }}>
-      {/* Header info */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+      {/* ===== ترويسة موحدة AL MAWASHI ===== */}
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          marginBottom: "0.5rem",
+          fontSize: "0.9rem",
+          border: "1px solid #9aa4ae",
+          background: "#f8fbff",
+        }}
+      >
         <tbody>
           <tr>
-            <td style={tdHeader}>
-              <strong>Document Title:</strong> Personal Hygiene Check List
+            <td
+              rowSpan={4}
+              style={{
+                border: "1px solid #9aa4ae",
+                padding: "8px",
+                width: 120,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontWeight: 900, color: "#a00", lineHeight: 1.1 }}>
+                AL
+                <br />
+                MAWASHI
+              </div>
             </td>
-            <td style={tdHeader}>
-              <strong>Document No:</strong> FS-QM /REC/PH
+            <td style={tdHeader2}>
+              <b>Document Title:</b> Personal Hygiene Check List
+            </td>
+            <td style={tdHeader2}>
+              <b>Document No:</b> FS-QM/REC/PH
             </td>
           </tr>
           <tr>
-            <td style={tdHeader}>
-              <strong>Issue Date:</strong> 05/02/2020
+            <td style={tdHeader2}>
+              <b>Issue Date:</b> 05/02/2020
             </td>
-            <td style={tdHeader}>
-              <strong>Revision No:</strong> 0
-            </td>
-          </tr>
-          <tr>
-            <td style={tdHeader}>
-              <strong>Area:</strong> {branch}
-            </td>
-            <td style={tdHeader}>
-              <strong>Issued By:</strong> MOHAMAD ABDULLAH QC
+            <td style={tdHeader2}>
+              <b>Revision No:</b> 0
             </td>
           </tr>
           <tr>
-            <td style={tdHeader}>
-              <strong>Controlling Officer:</strong> Quality Controller
+            <td style={tdHeader2}>
+              <b>Area:</b> {branch}
             </td>
-            <td style={tdHeader}>
-              <strong>Approved By:</strong> Hussam.O.Sarhan
+            <td style={tdHeader2}>
+              <b>Date:</b> {date || "—"}
+            </td>
+          </tr>
+          <tr>
+            <td style={tdHeader2}>
+              <b>Controlling Officer:</b> Quality Controller
+            </td>
+            <td style={tdHeader2}>
+              <b>Approved By:</b> Hussam O.Sarhan
             </td>
           </tr>
         </tbody>
       </table>
 
-      {/* Title */}
-      <h3
+      <div
         style={{
           textAlign: "center",
-          background: "#e5e7eb",
-          padding: "6px",
-          marginBottom: "0.5rem",
+          background: "#dde3e9",
+          fontWeight: 700,
+          padding: "6px 4px",
+          border: "1px solid #9aa4ae",
+          borderTop: "none",
+          marginBottom: "0.75rem",
         }}
       >
-        POS 10
-        <br />
-        PERSONAL HYGIENE CHECKLIST
-      </h3>
+        PERSONAL HYGIENE CHECKLIST — {branch}
+      </div>
 
       {/* Date */}
       <div style={{ marginBottom: "0.5rem" }}>
@@ -171,7 +195,9 @@ export default function POS10PersonalHygiene() {
                 {col}
               </th>
             ))}
-            <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
+            <th style={{ ...thStyle, width: "250px" }}>
+              Remarks and Corrective Actions
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -300,12 +326,6 @@ const tdStyle = {
   textAlign: "center",
 };
 
-const tdHeader = {
-  border: "1px solid #ccc",
-  padding: "4px 6px",
-  fontSize: "0.85rem",
-};
-
 const inputStyle = {
   padding: "4px 6px",
   borderRadius: "4px",
@@ -318,4 +338,11 @@ const footerInput = {
   borderRadius: "6px",
   padding: "4px 6px",
   minWidth: "160px",
+};
+
+// ترويسة موحدة (مطابقة لباقي النماذج)
+const tdHeader2 = {
+  border: "1px solid #9aa4ae",
+  padding: "6px 8px",
+  verticalAlign: "middle",
 };

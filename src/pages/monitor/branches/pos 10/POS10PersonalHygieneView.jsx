@@ -16,6 +16,10 @@ export default function POS10PersonalHygieneView() {
   // helper: ID موحّد للحذف والمقارنة
   const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 
+  // 🔐 مطالبة كلمة السر (9999)
+  const askPass = (label = "") =>
+    (window.prompt(`${label}\nEnter password:`) || "") === "9999";
+
   useEffect(() => {
     fetchReports();
   }, []);
@@ -94,9 +98,14 @@ export default function POS10PersonalHygieneView() {
     pdf.save(`POS10_Personal_Hygiene_${fileDate}.pdf`);
   };
 
-  // حذف التقرير
+  // 📌 حذف التقرير (يتطلب كلمة سر 9999 + تأكيد)
   const handleDelete = async (report) => {
+    if (!askPass("Delete confirmation")) {
+      alert("❌ Wrong password");
+      return;
+    }
     if (!window.confirm("Are you sure you want to delete this report?")) return;
+
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
     try {

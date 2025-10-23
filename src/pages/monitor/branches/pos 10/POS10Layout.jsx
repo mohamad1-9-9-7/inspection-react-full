@@ -48,6 +48,20 @@ const POS10TraceabilityLogInput = lazy(() =>
   }))
 );
 
+// 🪲 Pest Control (NEW INPUT)
+const POS10PestControlInput = lazy(() =>
+  import("./POS10PestControlInput").then((m) => ({
+    default: m.default || m.POS10PestControlInput,
+  }))
+);
+
+// 🧰 Calibration (NEW INPUT)
+const POS10CalibrationInput = lazy(() =>
+  import("./POS10CalibrationInput").then((m) => ({
+    default: m.default || m.POS10CalibrationInput,
+  }))
+);
+
 export default function POS10Layout() {
   const [activeTab, setActiveTab] = useState("shipments");
 
@@ -67,8 +81,11 @@ export default function POS10Layout() {
     { key: "personal",     label: "🧑‍🔬 Personal Hygiene" },
     { key: "daily",        label: "🧹 Daily Cleaning" },
     { key: "temperature",  label: "🌡️ Temperature" },
-    { key: "traceability", label: "🧬 Traceability Log" }, // NEW
+    { key: "traceability", label: "🧬 Traceability Log" },
     { key: "receiving",    label: "📥 Receiving Log" },
+    // NEW:
+    { key: "pest",         label: "🪲 Pest Control" },
+    { key: "calibration",  label: "🧰 Calibration" },
   ];
 
   const Card = ({ children }) => (
@@ -136,6 +153,22 @@ export default function POS10Layout() {
             </Suspense>
           </Card>
         );
+      case "pest":
+        return (
+          <Card>
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Pest Control…</div>}>
+              <POS10PestControlInput />
+            </Suspense>
+          </Card>
+        );
+      case "calibration":
+        return (
+          <Card>
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Calibration…</div>}>
+              <POS10CalibrationInput />
+            </Suspense>
+          </Card>
+        );
       default:
         return null;
     }
@@ -168,7 +201,7 @@ export default function POS10Layout() {
             📋 POS 10 — Operations Inputs
           </h2>
           <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, and Receiving Log) in one place.
+            All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, Pest Control, and Calibration) in one place.
           </p>
         </div>
 

@@ -53,7 +53,7 @@ const sections = [
       "Mincer",
       "Wrapping Machine",
       "Bone saw Machine",
-      "Vacuum Machine",            // ← تمت الإضافة هنا
+      "Vacuum Machine",
     ],
   },
   {
@@ -146,36 +146,92 @@ export default function POS10DailyCleaning() {
 
   return (
     <div style={{ padding: "1.5rem", background: "#fff", borderRadius: 12 }}>
-      {/* Header */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+      {/* ===== ترويسة موحدة AL MAWASHI ===== */}
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          marginBottom: "0.5rem",
+          fontSize: "0.9rem",
+          border: "1px solid #9aa4ae",
+          background: "#f8fbff",
+        }}
+      >
         <tbody>
           <tr>
-            <td style={tdHeader}><strong>Document Title:</strong> Cleaning Checklist</td>
-            <td style={tdHeader}><strong>Document No:</strong> FF-QM/REC/CC</td>
+            <td
+              rowSpan={4}
+              style={{
+                border: "1px solid #9aa4ae",
+                padding: "8px",
+                width: 120,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontWeight: 900, color: "#a00", lineHeight: 1.1 }}>
+                AL
+                <br />
+                MAWASHI
+              </div>
+            </td>
+            <td style={tdHeader2}>
+              <b>Document Title:</b> Cleaning Checklist
+            </td>
+            <td style={tdHeader2}>
+              <b>Document No:</b> FF-QM/REC/CC
+            </td>
           </tr>
           <tr>
-            <td style={tdHeader}><strong>Issue Date:</strong> 05/02/2020</td>
-            <td style={tdHeader}><strong>Revision No:</strong> 0</td>
+            <td style={tdHeader2}>
+              <b>Issue Date:</b> 05/02/2020
+            </td>
+            <td style={tdHeader2}>
+              <b>Revision No:</b> 0
+            </td>
           </tr>
           <tr>
-            <td style={tdHeader}><strong>Area:</strong> POS 10</td>
-            <td style={tdHeader}><strong>Issued By:</strong> MOHAMAD ABDULLAH</td>
+            <td style={tdHeader2}>
+              <b>Area:</b> POS 10
+            </td>
+            <td style={tdHeader2}>
+              <b>Date:</b> {date || "—"}
+            </td>
           </tr>
           <tr>
-            <td style={tdHeader}><strong>Controlling Officer:</strong> Quality Controller</td>
-            <td style={tdHeader}><strong>Approved By:</strong> Hussam O.Sarhan</td>
+            <td style={tdHeader2}>
+              <b>Controlling Officer:</b> Quality Controller
+            </td>
+            <td style={tdHeader2}>
+              <b>Approved By:</b> Hussam O.Sarhan
+            </td>
           </tr>
         </tbody>
       </table>
 
-      {/* Title */}
-      <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: "6px", marginBottom: "1rem" }}>
-        TRANS EMIRATES LIVESTOCK (AL BARSHA BUTCHRY) <br />
-        CLEANING CHECKLIST – POS 10
-      </h3>
+      <div
+        style={{
+          textAlign: "center",
+          background: "#dde3e9",
+          fontWeight: 700,
+          padding: "6px 4px",
+          border: "1px solid #9aa4ae",
+          borderTop: "none",
+          marginBottom: "1rem",
+        }}
+      >
+        TRANS EMIRATES LIVESTOCK (AL BARSHA BUTCHRY) — CLEANING CHECKLIST (POS 10)
+      </div>
 
       {/* Date & Time */}
-      <div style={{ marginBottom: "1rem", display: "flex", gap: "2rem", justifyContent: "center" }}>
+      <div
+        style={{
+          marginBottom: "1rem",
+          display: "flex",
+          gap: "2rem",
+          justifyContent: "center",
+          flexWrap: "wrap",
+        }}
+      >
         <div>
           <label style={{ fontWeight: 600, marginRight: 8 }}>📅 Date:</label>
           <input
@@ -214,7 +270,13 @@ export default function POS10DailyCleaning() {
               <td style={tdStyle}>
                 {entry.isSection ? entry.secNo : entry.subLetter}
               </td>
-              <td style={{ ...tdStyle, fontWeight: entry.isSection ? 700 : 400, textAlign: "left" }}>
+              <td
+                style={{
+                  ...tdStyle,
+                  fontWeight: entry.isSection ? 700 : 400,
+                  textAlign: "left",
+                }}
+              >
                 {entry.section || entry.item}
               </td>
               <td style={tdStyle}>
@@ -228,7 +290,9 @@ export default function POS10DailyCleaning() {
                     <option value="C">C</option>
                     <option value="NC">NC</option>
                   </select>
-                ) : "—"}
+                ) : (
+                  "—"
+                )}
               </td>
               <td style={tdStyle}>
                 {!entry.isSection && (
@@ -269,12 +333,23 @@ export default function POS10DailyCleaning() {
       </table>
 
       {/* Footer */}
-      <div style={{ marginTop: "1.5rem", fontWeight: 600 }}>REMARKS / CORRECTIVE ACTIONS:</div>
+      <div style={{ marginTop: "1.5rem", fontWeight: 600 }}>
+        REMARKS / CORRECTIVE ACTIONS:
+      </div>
       <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
         *(C = Conform &nbsp;&nbsp;&nbsp; N/C = Non Conform)
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "1rem", fontWeight: 600, gap: "1rem", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginTop: "1rem",
+          fontWeight: 600,
+          gap: "1rem",
+          flexWrap: "wrap",
+        }}
+      >
         <div>
           Checked By:{" "}
           <input
@@ -332,4 +407,10 @@ export default function POS10DailyCleaning() {
 const thStyle = { padding: "8px", border: "1px solid #ccc", textAlign: "center" };
 const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "center" };
 const inputStyle = { padding: "6px", borderRadius: "6px", border: "1px solid #aaa", width: "100%" };
-const tdHeader = { border: "1px solid #ccc", padding: "4px 6px", fontSize: "0.85rem" };
+
+// ترويسة محدثة (مطابقة لباقي النماذج)
+const tdHeader2 = {
+  border: "1px solid #9aa4ae",
+  padding: "6px 8px",
+  verticalAlign: "middle",
+};

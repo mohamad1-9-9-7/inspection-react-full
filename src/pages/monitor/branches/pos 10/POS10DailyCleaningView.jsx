@@ -14,6 +14,10 @@ export default function POS10DailyCleaningView() {
 
   const getId = (r) => r?.id || r?._id;
 
+  // 🔐 مطالبة كلمة السر (9999)
+  const askPass = (label = "") =>
+    (window.prompt(`${label}\nEnter password:`) || "") === "9999";
+
   // ===== Fetch (أقدم ← أحدث)
   async function fetchReports() {
     setLoading(true);
@@ -78,9 +82,14 @@ export default function POS10DailyCleaningView() {
     if (buttons) buttons.style.display = "flex";
   };
 
-  // ===== Delete
+  // ===== Delete (بكلمة سر 9999 + تأكيد)
   const handleDelete = async (report) => {
+    if (!askPass("Delete confirmation")) {
+      alert("❌ Wrong password");
+      return;
+    }
     if (!window.confirm("⚠️ Delete this report?")) return;
+
     try {
       const res = await fetch(`${API_BASE}/api/reports/${getId(report)}`, {
         method: "DELETE",

@@ -50,6 +50,10 @@ export default function POS10TemperatureView() {
 
   const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 
+  // 🔐 مطالبة كلمة السر (9999)
+  const askPass = (label = "") =>
+    (window.prompt(`${label}\nEnter password:`) || "") === "9999";
+
   // يلتقط تاريخ الحقل الصحيح: payload.date (من الإدخال) أو created_at
   const getReportDate = (r) => {
     const d =
@@ -109,8 +113,14 @@ export default function POS10TemperatureView() {
     pdf.save(`POS10_Temperature_${fileDate}.pdf`);
   };
 
+  // 📌 حذف التقرير (يتطلب كلمة سر 9999 + تأكيد)
   const handleDelete = async (report) => {
+    if (!askPass("Delete confirmation")) {
+      alert("❌ Wrong password");
+      return;
+    }
     if (!window.confirm("Are you sure you want to delete this report?")) return;
+
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
     try {

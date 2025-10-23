@@ -8,8 +8,12 @@ import POS10PersonalHygieneView from "./POS10PersonalHygieneView";
 import POS10TemperatureView from "./POS10TemperatureView";
 // 📥 Receiving Log (View)
 import POS10ReceivingLogView from "./POS10ReceivingLogView";
-// 🧬 Traceability Log (View) — NEW
+// 🧬 Traceability Log (View)
 import POS10TraceabilityLogView from "./POS10TraceabilityLogView";
+// 🪲 Pest Control (View) — NEW
+import POS10PestControlView from "./POS10PestControlView";
+// 🧰 Calibration Log (View) — NEW
+import POS10CalibrationView from "./POS10CalibrationView";
 
 export default function POS10ReportsView() {
   // الافتراضي: النظافة اليومية
@@ -68,13 +72,30 @@ export default function POS10ReportsView() {
           📥 Receiving Log
         </button>
 
-        {/* NEW: Traceability */}
         <button
           type="button"
           style={tabButtonStyle("traceability")}
           onClick={() => setActiveTab("traceability")}
         >
           🧬 Traceability Log
+        </button>
+
+        {/* NEW: Pest Control */}
+        <button
+          type="button"
+          style={tabButtonStyle("pest")}
+          onClick={() => setActiveTab("pest")}
+        >
+          🪲 Pest Control
+        </button>
+
+        {/* NEW: Calibration */}
+        <button
+          type="button"
+          style={tabButtonStyle("calibration")}
+          onClick={() => setActiveTab("calibration")}
+        >
+          🧰 Calibration Log
         </button>
       </div>
 
@@ -91,7 +112,10 @@ export default function POS10ReportsView() {
         {activeTab === "hygiene" && <POS10PersonalHygieneView />}
         {activeTab === "temperature" && <POS10TemperatureView />}
         {activeTab === "receiving" && <POS10ReceivingLogView />}
-        {activeTab === "traceability" && <POS10TraceabilityLogView />}{/* NEW */}
+        {activeTab === "traceability" && <POS10TraceabilityLogView />}
+        {/* NEW: محتوى التبويبين الجدد */}
+        {activeTab === "pest" && <POS10PestControlView />}
+        {activeTab === "calibration" && <POS10CalibrationView />}
       </div>
     </div>
   );

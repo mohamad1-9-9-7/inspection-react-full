@@ -15,9 +15,9 @@ const API_BASE = String(
 const TYPE   = "pos10_traceability_log";
 const BRANCH = "POS 10";
 
-const safe = (v) => (v ?? "");
+const safe  = (v) => (v ?? "");
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" });
+const btn   = (bg) => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" });
 
 const formatDMY = (iso) => {
   if (!iso) return iso;
@@ -25,16 +25,27 @@ const formatDMY = (iso) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 };
 
+// صف ممتلئ
 const isFilledRow = (r = {}) =>
   Object.values(r).some((v) => String(v ?? "").trim() !== "");
 
-// نفس بنية صف الإدخال
+// نموذج صف
 function emptyRow() {
   return {
+    batchId: "",
     rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "",
+    rawWeight: "",
     finalName: "", finalProdDate: "", finalExpDate: "",
+    finalWeight: "",
   };
 }
+
+// مساواة الحقول عبر مجموعة صفوف
+const equalAcross = (rows, keys) => {
+  if (!rows.length) return false;
+  const f = rows[0];
+  return rows.every(r => keys.every(k => String(r?.[k] ?? "") === String(f?.[k] ?? "")));
+};
 
 export default function POS10TraceabilityLogView() {
   const reportRef = useRef(null);
@@ -61,7 +72,7 @@ export default function POS10TraceabilityLogView() {
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
 
-  // Styles (أوسع وخط أكبر ومسافة أكبر بين الصفوف)
+  // Styles
   const gridStyle = useMemo(() => ({
     width: "max-content",
     borderCollapse: "collapse",
@@ -90,16 +101,19 @@ export default function POS10TraceabilityLogView() {
     padding: "6px 8px",
   };
 
-  // columns widths (matching input)
+  // أعمدة الجدول
   const colDefs = useMemo(() => ([
-    <col key="rawName" style={{ width: 280 }} />,
-    <col key="origProdDate" style={{ width: 150 }} />,
-    <col key="origExpDate" style={{ width: 150 }} />,
-    <col key="openedDate" style={{ width: 130 }} />,
-    <col key="bestBefore" style={{ width: 150 }} />,
-    <col key="finalName" style={{ width: 280 }} />,
-    <col key="finalProdDate" style={{ width: 170 }} />,
-    <col key="finalExpDate" style={{ width: 170 }} />,
+    <col key="batchId"       style={{ width: 180 }} />,
+    <col key="rawName"       style={{ width: 260 }} />,
+    <col key="origProdDate"  style={{ width: 140 }} />,
+    <col key="origExpDate"   style={{ width: 140 }} />,
+    <col key="openedDate"    style={{ width: 120 }} />,
+    <col key="bestBefore"    style={{ width: 140 }} />,
+    <col key="rawWeight"     style={{ width: 120 }} />,
+    <col key="finalName"     style={{ width: 260 }} />,
+    <col key="finalProdDate" style={{ width: 160 }} />,
+    <col key="finalExpDate"  style={{ width: 160 }} />,
+    <col key="finalWeight"   style={{ width: 120 }} />,
   ]), []);
 
   /* ===== Fetch dates ===== */
@@ -142,7 +156,17 @@ export default function POS10TraceabilityLogView() {
       setRecord(match);
 
       // Init edit buffers
-      const rows = Array.from({ length: 12 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
+      const rows = Array.from({ length: 12 }, (_, i) => {
+        const e = match?.payload?.entries?.[i];
+        return e ? {
+          batchId: e.batchId ?? "",
+          rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
+          openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
+          rawWeight: e.rawWeight ?? "",
+          finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
+          finalWeight: e.finalWeight ?? "",
+        } : emptyRow();
+      });
       setEditRows(rows);
       setEditCheckedBy(match?.payload?.checkedBy || "");
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
@@ -163,8 +187,17 @@ export default function POS10TraceabilityLogView() {
 
   function toggleEdit() {
     if (editing) {
-      // cancel → restore
-      const rows = Array.from({ length: 12 }, (_, i) => record?.payload?.entries?.[i] || emptyRow());
+      const rows = Array.from({ length: 12 }, (_, i) => {
+        const e = record?.payload?.entries?.[i];
+        return e ? {
+          batchId: e.batchId ?? "",
+          rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
+          openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
+          rawWeight: e.rawWeight ?? "",
+          finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
+          finalWeight: e.finalWeight ?? "",
+        } : emptyRow();
+      });
       setEditRows(rows);
       setEditCheckedBy(record?.payload?.checkedBy || "");
       setEditVerifiedBy(record?.payload?.verifiedBy || "");
@@ -179,7 +212,6 @@ export default function POS10TraceabilityLogView() {
     if (!askPass("Save changes")) return alert("❌ Wrong password");
     if (!record) return;
 
-    // Basic validation: at least one filled row
     if (!editRows.some(isFilledRow)) {
       return alert("⚠️ Please fill at least one row before saving.");
     }
@@ -191,7 +223,7 @@ export default function POS10TraceabilityLogView() {
       ...(record?.payload || {}),
       branch: BRANCH,
       reportDate: record?.payload?.reportDate,
-      entries: cleaned,
+      entries: cleaned, // يحتوي على batchId و الأوزان
       checkedBy: editCheckedBy,
       verifiedBy: editVerifiedBy,
       savedAt: Date.now(),
@@ -261,24 +293,28 @@ export default function POS10TraceabilityLogView() {
     URL.revokeObjectURL(url);
   }
 
-  // CSV fallback
+  // CSV (مع الأوزان)
   function fallbackCSV(p) {
     const headers = [
+      "Batch / Lot ID",
       "Name of Raw Material Used for Preparation",
       "Original Production Date",
       "Original Expiry Date",
       "Opened Date",
       "Best Before Date",
+      "Raw Weight (kg)",
       "Name of Product Prepared (Final Product)",
       "Production Date (Final Product)",
       "Expiry Date (Final Product)",
+      "Final Weight (kg)",
       "Checked by",
       "Verified by",
     ];
     const rows = (p.entries || []).filter(isFilledRow).map(e => ([
+      e?.batchId ?? "",
       e?.rawName ?? "", e?.origProdDate ?? "", e?.origExpDate ?? "",
-      e?.openedDate ?? "", e?.bestBefore ?? "", e?.finalName ?? "",
-      e?.finalProdDate ?? "", e?.finalExpDate ?? "",
+      e?.openedDate ?? "", e?.bestBefore ?? "", e?.rawWeight ?? "",
+      e?.finalName ?? "", e?.finalProdDate ?? "", e?.finalExpDate ?? "", e?.finalWeight ?? "",
       p?.checkedBy ?? "", p?.verifiedBy ?? "",
     ]));
     const csv = [headers, ...rows]
@@ -292,10 +328,9 @@ export default function POS10TraceabilityLogView() {
     URL.revokeObjectURL(a.href);
   }
 
-  // XLSX export
+  // XLSX
   async function exportXLSX() {
     try {
-      // lazy load exceljs + file-saver
       async function loadExcelJS() {
         try {
           const m = await import("exceljs/dist/exceljs.min.js");
@@ -320,8 +355,8 @@ export default function POS10TraceabilityLogView() {
       const headBlue = "DCE6F1";
       const borderThin = { style: "thin", color: { argb: "1F3B70" } };
 
-      // Title
-      ws.mergeCells(1,1,1,8);
+      // Title (11 عمود)
+      ws.mergeCells(1,1,1,11);
       const r1 = ws.getCell(1,1);
       r1.value = "POS 10 | Traceability Log";
       r1.alignment = { horizontal: "center", vertical: "middle" };
@@ -329,7 +364,7 @@ export default function POS10TraceabilityLogView() {
       r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
       ws.getRow(1).height = 26;
 
-      // Meta (right-aligned)
+      // Meta (يمين)
       const meta = [
         ["Branch:",     p.branch     || "POS 10"],
         ["Report Date:",p.reportDate || ""],
@@ -338,28 +373,32 @@ export default function POS10TraceabilityLogView() {
       ];
       for (let i = 0; i < meta.length; i++) {
         const rowIdx = 2 + i;
-        ws.mergeCells(rowIdx, 4, rowIdx, 8);
-        const c = ws.getCell(rowIdx, 4);
+        ws.mergeCells(rowIdx, 6, rowIdx, 11);
+        const c = ws.getCell(rowIdx, 6);
         c.value = `${meta[i][0]} ${meta[i][1]}`;
         c.alignment = { horizontal: "right", vertical: "middle" };
         ws.getRow(rowIdx).height = 18;
       }
 
       ws.columns = [
-        { width: 30 }, { width: 20 }, { width: 20 }, { width: 18 },
-        { width: 22 }, { width: 30 }, { width: 22 }, { width: 22 },
+        { width: 24 }, // batch
+        { width: 28 }, { width: 18 }, { width: 18 }, { width: 16 },
+        { width: 18 }, { width: 14 }, // rawWeight
+        { width: 28 }, { width: 20 }, { width: 20 }, { width: 14 }, // finalWeight
       ];
 
-      // Header row
       const COL_HEADERS = [
+        "Batch / Lot ID",
         "Name of Raw Material Used for Preparation",
         "Original Production Date",
         "Original Expiry Date",
         "Opened Date",
         "Best Before Date",
+        "Raw Weight (kg)",
         "Name of Product Prepared (Final Product)",
         "Production Date (Final Product)",
         "Expiry Date (Final Product)",
+        "Final Weight (kg)",
       ];
       const hr = ws.getRow(7);
       hr.values = COL_HEADERS;
@@ -371,13 +410,13 @@ export default function POS10TraceabilityLogView() {
       });
       hr.height = 28;
 
-      // Data
       let rowIdx = 8;
       rawRows.forEach((e) => {
         ws.getRow(rowIdx).values = [
+          e?.batchId || "",
           e?.rawName || "", e?.origProdDate || "", e?.origExpDate || "",
-          e?.openedDate || "", e?.bestBefore || "", e?.finalName || "",
-          e?.finalProdDate || "", e?.finalExpDate || "",
+          e?.openedDate || "", e?.bestBefore || "", e?.rawWeight || "",
+          e?.finalName || "", e?.finalProdDate || "", e?.finalExpDate || "", e?.finalWeight || "",
         ];
         ws.getRow(rowIdx).eachCell((cell) => {
           cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
@@ -433,7 +472,7 @@ export default function POS10TraceabilityLogView() {
     }
   }
 
-  /* ===== PDF export (report only) ===== */
+  /* ===== PDF export ===== */
   async function exportPDF() {
     if (!reportRef.current) return;
 
@@ -492,8 +531,20 @@ export default function POS10TraceabilityLogView() {
     pdf.save(`POS10_TraceabilityLog_${p.reportDate || date}.pdf`);
   }
 
-  /* ===== Group dates (Year → Month → Dates) ===== */
+  /* ===== Grouping by batchId ===== */
   const grouped = useMemo(() => {
+    const entries = record?.payload?.entries || [];
+    const groups = new Map();
+    for (const e of entries) {
+      const key = (e?.batchId ?? "").trim() || "—";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(e);
+    }
+    return groups;
+  }, [record]);
+
+  /* ===== Date tree ===== */
+  const groupedDates = useMemo(() => {
     const out = {};
     for (const d of allDates) {
       const [y, m] = d.split("-");
@@ -558,8 +609,8 @@ export default function POS10TraceabilityLogView() {
         <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
           <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
           <div style={{ maxHeight:380, overflowY:"auto" }}>
-            {Object.keys(grouped).length ? (
-              Object.entries(grouped).map(([year, months]) => {
+            {Object.keys(groupedDates).length ? (
+              Object.entries(groupedDates).map(([year, months]) => {
                 const yOpen = !!expandedYears[year];
                 return (
                   <div key={year} style={{ marginBottom:8 }}>
@@ -643,8 +694,8 @@ export default function POS10TraceabilityLogView() {
           {record && (
             <div style={{ overflowX:"auto", overflowY:"hidden" }}>
               <div ref={reportRef} style={{ width: "max-content" }}>
-                {/* Meta band — عرض الفرع والتاريخ فقط (تم حذف Checked/Verified من الأعلى) */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(2, 1fr)", gap:8, marginBottom:8, fontSize:12, minWidth: 900 }}>
+                {/* Meta */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(2, 1fr)", gap:8, marginBottom:8, fontSize:12, minWidth: 1300 }}>
                   <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
                   <div><strong>Report Date:</strong> {safe(record.payload?.reportDate)}</div>
                 </div>
@@ -654,33 +705,109 @@ export default function POS10TraceabilityLogView() {
                   <colgroup>{colDefs}</colgroup>
                   <thead>
                     <tr>
+                      <th style={thCell}>Batch / Lot ID</th>
                       <th style={thCell}>Name of Raw Material Used for Preparation</th>
                       <th style={thCell}>Original Production Date</th>
                       <th style={thCell}>Original Expiry Date</th>
                       <th style={thCell}>Opened Date</th>
                       <th style={thCell}>Best Before Date</th>
+                      <th style={thCell}>Raw Weight (kg)</th>
                       <th style={thCell}>Name of Product Prepared (Final Product)</th>
                       <th style={thCell}>Production Date (Final Product)</th>
                       <th style={thCell}>Expiry Date (Final Product)</th>
+                      <th style={thCell}>Final Weight (kg)</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {!editing ? (
-                      (record.payload?.entries || []).filter(isFilledRow).map((r, idx) => (
-                        <tr key={idx}>
-                          <td style={tdCell}>{safe(r.rawName)}</td>
-                          <td style={tdCell}>{formatDMY(safe(r.origProdDate))}</td>
-                          <td style={tdCell}>{formatDMY(safe(r.origExpDate))}</td>
-                          <td style={tdCell}>{formatDMY(safe(r.openedDate))}</td>
-                          <td style={tdCell}>{formatDMY(safe(r.bestBefore))}</td>
-                          <td style={tdCell}>{safe(r.finalName)}</td>
-                          <td style={tdCell}>{formatDMY(safe(r.finalProdDate))}</td>
-                          <td style={tdCell}>{formatDMY(safe(r.finalExpDate))}</td>
-                        </tr>
-                      ))
+                      // === عرض مع دمج خلايا عند تكرار جانب واحد (raw أو final) + دمج batchId ===
+                      Array.from(grouped.entries()).map(([batchId, allRows], gi) => {
+                        const rows = allRows.filter(isFilledRow);
+                        if (!rows.length) return null;
+
+                        const rawsSame   = equalAcross(rows, ["rawName","origProdDate","origExpDate","openedDate","bestBefore","rawWeight"]);
+                        const finalsSame = equalAcross(rows, ["finalName","finalProdDate","finalExpDate","finalWeight"]);
+                        const span = rows.length;
+
+                        return (
+                          <React.Fragment key={`g-${gi}`}>
+                            {/* عنوان الباتش */}
+                            <tr>
+                              <td colSpan={11} style={{
+                                background: "#eef2ff",
+                                color: "#1e3a8a",
+                                fontWeight: 800,
+                                textAlign: "left",
+                                border: "1px solid #1f3b70",
+                                padding: "8px 10px"
+                              }}>
+                                Batch / Lot: {batchId} — {rows.length} row(s)
+                              </td>
+                            </tr>
+
+                            {rows.map((r, idx) => (
+                              <tr key={`${gi}-${idx}`}>
+                                {/* ✅ Batch id — خلية مدموجة مرة واحدة */}
+                                {idx === 0 && (
+                                  <td style={tdCell} rowSpan={span}>
+                                    {safe(batchId)}
+                                  </td>
+                                )}
+
+                                {/* RAW side */}
+                                {rawsSame ? (
+                                  idx === 0 ? (
+                                    <>
+                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].rawName)}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origProdDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origExpDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].openedDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].bestBefore))}</td>
+                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].rawWeight) ? `${rows[0].rawWeight} kg` : ""}</td>
+                                    </>
+                                  ) : null
+                                ) : (
+                                  <>
+                                    <td style={tdCell}>{safe(r.rawName)}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.origProdDate))}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.origExpDate))}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.openedDate))}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.bestBefore))}</td>
+                                    <td style={tdCell}>{safe(r.rawWeight) ? `${r.rawWeight} kg` : ""}</td>
+                                  </>
+                                )}
+
+                                {/* FINAL side */}
+                                {finalsSame ? (
+                                  idx === 0 ? (
+                                    <>
+                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].finalName)}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalProdDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalExpDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].finalWeight) ? `${rows[0].finalWeight} kg` : ""}</td>
+                                    </>
+                                  ) : null
+                                ) : (
+                                  <>
+                                    <td style={tdCell}>{safe(r.finalName)}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.finalProdDate))}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.finalExpDate))}</td>
+                                    <td style={tdCell}>{safe(r.finalWeight) ? `${r.finalWeight} kg` : ""}</td>
+                                  </>
+                                )}
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        );
+                      })
                     ) : (
+                      // === وضع التعديل (يشمل batchId و الأوزان) ===
                       editRows.map((r, idx) => (
                         <tr key={idx}>
+                          <td style={tdCell}>
+                            <input type="text" value={r.batchId || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], batchId:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
                           <td style={tdCell}>
                             <input type="text" value={r.rawName || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], rawName:e.target.value}; return n;})} style={inputStyle}/>
                           </td>
@@ -697,6 +824,9 @@ export default function POS10TraceabilityLogView() {
                             <input type="date" value={r.bestBefore || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], bestBefore:e.target.value}; return n;})} style={inputStyle}/>
                           </td>
                           <td style={tdCell}>
+                            <input type="number" step="0.01" min="0" value={r.rawWeight || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], rawWeight:e.target.value}; return n;})} style={inputStyle} placeholder="e.g., 2.50"/>
+                          </td>
+                          <td style={tdCell}>
                             <input type="text" value={r.finalName || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], finalName:e.target.value}; return n;})} style={inputStyle}/>
                           </td>
                           <td style={tdCell}>
@@ -705,13 +835,16 @@ export default function POS10TraceabilityLogView() {
                           <td style={tdCell}>
                             <input type="date" value={r.finalExpDate || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], finalExpDate:e.target.value}; return n;})} style={inputStyle}/>
                           </td>
+                          <td style={tdCell}>
+                            <input type="number" step="0.01" min="0" value={r.finalWeight || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], finalWeight:e.target.value}; return n;})} style={inputStyle} placeholder="e.g., 1.20"/>
+                          </td>
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
 
-                {/* Note (same as input) */}
+                {/* Note */}
                 <div
                   style={{
                     marginTop: 10,
@@ -743,7 +876,6 @@ export default function POS10TraceabilityLogView() {
                     fontSize: 12,
                   }}
                 >
-                  {/* Left: Checked by */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 320px", minWidth: 300 }}>
                     <strong>Checked by:</strong>
                     {!editing ? (
@@ -759,7 +891,6 @@ export default function POS10TraceabilityLogView() {
                     )}
                   </div>
 
-                  {/* Right: Verified by */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 320px", minWidth: 300, justifyContent: "flex-end" }}>
                     <strong>Verified by:</strong>
                     {!editing ? (

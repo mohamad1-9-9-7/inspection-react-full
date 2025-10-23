@@ -13,6 +13,15 @@ import jsPDF from "jspdf";
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
+/* ===== Admin PIN ===== */
+const ADMIN_PIN = "9999";
+function checkPin() {
+  const pin = window.prompt("Enter PIN to proceed:");
+  if (pin === ADMIN_PIN) return true;
+  alert("❌ Wrong PIN.");
+  return false;
+}
+
 /* ================== Columns ================== */
 const COLS = [
   { key: "supplier", label: "Name of the Supplier", align: "left" },
@@ -117,7 +126,6 @@ export default function FTR2ReceivingLogView() {
         setMeasureReady(true);
       }
 
-      // هامش أمان بسيط لمنع قصّ البيكسل الأخير
       const available = Math.max(0, vp.clientWidth - 2);
       const s = Math.min(1, Math.max(MIN_SCALE, available / TABLE_BASE_WIDTH));
       setScale(Number.isFinite(s) && s > 0 ? s : 1);
@@ -137,10 +145,15 @@ export default function FTR2ReceivingLogView() {
       cancelAnimationFrame(raf2);
       ro.disconnect();
     };
-  }, [selectedReport, isEditing]); // لو فتحنا وضع التحرير، نقيس من جديد
+  }, [selectedReport, isEditing]);
 
   // ===== Fetch =====
-  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
+  // ✅ getId تقبل نص/رقم (ما منروح لـ POST بالغلط)
+  const getId = (r) => {
+    const cand = r?._id || r?.payload?._id || r?.id || r?.payload?.id;
+    return cand === undefined || cand === null ? null : String(cand);
+  };
+
   const getReportDate = (r) => {
     const d1 = new Date(r?.payload?.reportDate);
     if (!isNaN(d1)) return d1;
@@ -219,8 +232,9 @@ export default function FTR2ReceivingLogView() {
     pdf.save(`FTR2_Receiving_Log_${dt}.pdf`);
   };
 
-  // ===== Delete =====
+  // ===== Delete (محمي بالـ PIN) =====
   const handleDelete = async (report) => {
+    if (!checkPin()) return;
     if (!window.confirm("Are you sure you want to delete this report?")) return;
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
@@ -229,7 +243,7 @@ export default function FTR2ReceivingLogView() {
         `${API_BASE}/api/reports/${encodeURIComponent(rid)}`,
         { method: "DELETE" }
       );
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) throw new Error(await res.text().catch(() => "Failed to delete"));
       alert("✅ Report deleted successfully.");
       fetchReports();
     } catch (err) {
@@ -238,60 +252,97 @@ export default function FTR2ReceivingLogView() {
     }
   };
 
-  // ===== Edit / Save =====
+  // ===== Edit / Save (Edit محمي بالـ PIN) =====
   const startEdit = () => {
-    setDraft(structuredClone(selectedReport?.payload || {}));
+    if (!checkPin()) return;
+    const base = structuredClone(selectedReport?.payload || {});
+    if (!Array.isArray(base.entries)) {
+      base.entries = structuredClone(selectedReport?.payload?.entries || []);
+    }
+    setDraft(base);
     setIsEditing(true);
   };
+
   const cancelEdit = () => {
     setIsEditing(false);
     setDraft(null);
   };
+
   const saveEdit = async () => {
     if (!draft) return;
-    const rid = getId(selectedReport);
+
+    // ضمان وجود entries وبعض الحقول المفيدة
+    if (!Array.isArray(draft.entries)) draft.entries = [];
+    if (!draft.branch) draft.branch = "FTR 2";
+
+    const body = { type: "ftr2_receiving_log_butchery", payload: draft };
+
+    // helper to read text
+    const readTxt = async (res) => {
+      try {
+        return await res.text();
+      } catch {
+        return "";
+      }
+    };
+
+    // نحضر نسخة احتياطية من القديم للـ rollback
+    const oldId = getId(selectedReport);
+    const oldPayload = structuredClone(selectedReport?.payload || null);
+
     try {
-      const body = {
-        type: "ftr2_receiving_log_butchery",
-        payload: draft,
-      };
-      let ok = false;
-      // جرّب PUT أولاً
-      const put = await fetch(
-        `${API_BASE}/api/reports/${encodeURIComponent(rid)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      );
-      ok = put.ok;
-      // لو PUT غير مدعوم نعمل POST جديد ثم DELETE القديم
-      if (!ok) {
-        const post = await fetch(`${API_BASE}/api/reports`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (post.ok) {
-          await fetch(
-            `${API_BASE}/api/reports/${encodeURIComponent(rid)}`,
-            { method: "DELETE" }
-          );
-          ok = true;
+      // المطلوب: حذف القديم ثم إنشاء الجديد (لتفادي unique constraint)
+      if (oldId) {
+        const del = await fetch(
+          `${API_BASE}/api/reports/${encodeURIComponent(oldId)}`,
+          { method: "DELETE" }
+        );
+        if (!del.ok) {
+          // لو ما رضي يحذف، أوقف واحكي السبب
+          const msg = await readTxt(del);
+          throw new Error(msg || "Failed to delete old report before saving.");
         }
       }
-      if (!ok) throw new Error("Save failed");
+
+      // بعد الحذف، ننشئ الجديد
+      const post = await fetch(`${API_BASE}/api/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!post.ok) {
+        // محاولة تراجع: إعادة القديم إن وجد
+        const msg = await readTxt(post);
+        if (oldPayload) {
+          try {
+            const rollback = await fetch(`${API_BASE}/api/reports`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type: "ftr2_receiving_log_butchery", payload: oldPayload }),
+            });
+            if (!rollback.ok) {
+              const rbMsg = await readTxt(rollback);
+              throw new Error(`Save failed (${msg}). Rollback also failed: ${rbMsg}`);
+            }
+          } catch (rbErr) {
+            throw rbErr;
+          }
+        }
+        throw new Error(msg || "Save failed");
+      }
+
       alert("✅ Saved successfully.");
       setIsEditing(false);
       setDraft(null);
       await fetchReports();
     } catch (e) {
       console.error(e);
-      alert("❌ Failed to save changes.");
+      alert("❌ Failed to save changes.\n" + (e?.message || ""));
     }
   };
 
+  // تحديث صفوف الجدول أثناء التحرير
   const updateDraftEntry = (rowIdx, key, value) => {
     setDraft((d) => {
       const entries = Array.isArray(d?.entries) ? [...d.entries] : [];
@@ -301,6 +352,10 @@ export default function FTR2ReceivingLogView() {
       return { ...d, entries };
     });
   };
+
+  // تحديث الحقول العلوية (التاريخ/الإنفويس/المحقَّق/المُدقَّق)
+  const updateDraftMeta = (key, value) =>
+    setDraft((d) => ({ ...(d || {}), [key]: value }));
 
   // ===== Export/Import JSON =====
   const handleExportJSON = () => {
@@ -514,6 +569,9 @@ export default function FTR2ReceivingLogView() {
       />
     );
   };
+
+  // helper for date input value
+  const asDateValue = (v) => (v ? new Date(v).toISOString().slice(0, 10) : "");
 
   return (
     <div style={shell}>
@@ -812,13 +870,44 @@ export default function FTR2ReceivingLogView() {
                   >
                     <div>
                       <strong>Date:</strong>{" "}
-                      {(!isEditing ? selectedReport?.payload : draft)
-                        ?.reportDate || "—"}
+                      {!isEditing ? (
+                        selectedReport?.payload?.reportDate || "—"
+                      ) : (
+                        <input
+                          type="date"
+                          value={asDateValue(draft?.reportDate)}
+                          onChange={(e) =>
+                            updateDraftMeta("reportDate", e.target.value)
+                          }
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            border: "1px solid #cfd6e6",
+                            fontSize: "0.92rem",
+                          }}
+                        />
+                      )}
                     </div>
                     <div>
                       <strong>Invoice No:</strong>{" "}
-                      {(!isEditing ? selectedReport?.payload : draft)
-                        ?.invoiceNo || "—"}
+                      {!isEditing ? (
+                        selectedReport?.payload?.invoiceNo || "—"
+                      ) : (
+                        <input
+                          type="text"
+                          value={draft?.invoiceNo ?? ""}
+                          onChange={(e) =>
+                            updateDraftMeta("invoiceNo", e.target.value)
+                          }
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            border: "1px solid #cfd6e6",
+                            fontSize: "0.92rem",
+                            minWidth: 160,
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -945,13 +1034,45 @@ export default function FTR2ReceivingLogView() {
                   >
                     <div>
                       Checked By:{" "}
-                      {(!isEditing ? selectedReport?.payload : draft)
-                        ?.checkedBy || "—"}
+                      {!isEditing ? (
+                        selectedReport?.payload?.checkedBy || "—"
+                      ) : (
+                        <input
+                          type="text"
+                          value={draft?.checkedBy ?? ""}
+                          onChange={(e) =>
+                            updateDraftMeta("checkedBy", e.target.value)
+                          }
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            border: "1px solid #cfd6e6",
+                            fontSize: "0.92rem",
+                            minWidth: 180,
+                          }}
+                        />
+                      )}
                     </div>
                     <div>
                       Verified By:{" "}
-                      {(!isEditing ? selectedReport?.payload : draft)
-                        ?.verifiedBy || "—"}
+                      {!isEditing ? (
+                        selectedReport?.payload?.verifiedBy || "—"
+                      ) : (
+                        <input
+                          type="text"
+                          value={draft?.verifiedBy ?? ""}
+                          onChange={(e) =>
+                            updateDraftMeta("verifiedBy", e.target.value)
+                          }
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            border: "1px solid #cfd6e6",
+                            fontSize: "0.92rem",
+                            minWidth: 180,
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>

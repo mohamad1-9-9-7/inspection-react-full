@@ -26,7 +26,6 @@ const TICK_COLS = [
 
 function emptyRow() {
   return {
-    // ❌ لا توجد date / time / dmApprovalNo / invoiceNo / receivedBy هنا بعد الآن
     supplier: "", foodItem: "",
     vehicleTemp: "", foodTemp: "",
     vehicleClean: "", handlerHygiene: "", appearanceOK: "", firmnessOK: "", smellOK: "", packagingGood: "",
@@ -46,28 +45,24 @@ export default function POS10ReceivingLogInput() {
     }
   });
 
-  // ⏱️ الوقت في أعلى التقرير (بديل لعمود الوقت)
-  const [reportTime, setReportTime] = useState("");
-
   // 🧾 رقم الفاتورة في أعلى التقرير (إلزامي)
   const [invoiceNo, setInvoiceNo] = useState("");
-  const [invoiceError, setInvoiceError] = useState(""); // رسالة خطأ خاصة بالفاتورة
+  const [invoiceError, setInvoiceError] = useState("");
   const invoiceRef = useRef(null);
 
   // عدد الصفوف
   const ROW_COUNT = 15;
   const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, () => emptyRow()));
 
-  // هيدر (أسماء عامة)
+  // هيدر (Document No مربوط بهذا الحقل)
   const [formRef, setFormRef] = useState("FSMS/BR/F01A");
-  const [classification] = useState("Official");
 
   // فوتر
   const [verifiedBy, setVerifiedBy] = useState("");
   const [receivedBy, setReceivedBy] = useState("");
 
   const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState(""); // رسالة حالة الحفظ
+  const [saveMsg, setSaveMsg] = useState("");
 
   // month text
   const monthText = useMemo(() => {
@@ -94,7 +89,27 @@ export default function POS10ReceivingLogInput() {
     fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,.15)",
   });
 
-  // ✅ تعريف الأعمدة بعد الحذف
+  // ===== ترويسة المواشي + جدول المستند =====
+  const topTable = {
+    width: "100%",
+    borderCollapse: "collapse",
+    marginBottom: 10,
+    fontSize: "0.9rem",
+    border: "1px solid #9aa4ae",
+    background: "#f8fbff",
+  };
+  const tdHeader = { border: "1px solid #9aa4ae", padding: "6px 8px", verticalAlign: "middle" };
+  const bandTitle = {
+    textAlign: "center",
+    background: "#dde3e9",
+    fontWeight: 700,
+    padding: "6px 4px",
+    border: "1px solid #9aa4ae",
+    borderTop: "none",
+    marginBottom: 10,
+  };
+
+  // ✅ تعريف الأعمدة
   const colDefs = useMemo(() => ([
     <col key="supplier" style={{ width: 170 }} />,
     <col key="food" style={{ width: 160 }} />,
@@ -143,9 +158,10 @@ export default function POS10ReceivingLogInput() {
 
     const payload = {
       branch: BRANCH,
-      formRef, classification,
-      reportDate, reportTime, month: monthText,
-      invoiceNo, // 🧾 إلزامي
+      formRef,
+      reportDate,
+      month: monthText,
+      invoiceNo,
       entries,
       verifiedBy,
       receivedBy,
@@ -161,14 +177,11 @@ export default function POS10ReceivingLogInput() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSaveMsg("✅ تم الحفظ بنجاح!");
-      // اختيارياً: إعادة ضبط بعض الحقول بعد النجاح
-      // setInvoiceNo(""); setRows(Array.from({ length: ROW_COUNT }, () => emptyRow()));
     } catch (e) {
       console.error(e);
       setSaveMsg("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
     } finally {
       setSaving(false);
-      // إزالة رسالة النجاح/الفشل بعد فترة بسيطة
       setTimeout(() => setSaveMsg(""), 3500);
     }
   }
@@ -177,47 +190,63 @@ export default function POS10ReceivingLogInput() {
 
   return (
     <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d" }}>
-      {/* Header — بدون شعار أو اسم جهة */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-        <div style={{ flex:1 }}>
-          <div style={{ fontWeight:800, fontSize:18 }}>Receiving Log</div>
-          <div style={{ fontWeight:800, fontSize:16 }}>
-            Butchery — {BRANCH}
-          </div>
-        </div>
-
-        {/* Right meta */}
-        <div style={{ display:"grid", gridTemplateColumns:"auto 210px", gap:6, alignItems:"center", fontSize:12 }}>
-          <div>Form Ref. No :</div>
-          <input value={formRef} onChange={(e)=>setFormRef(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
-
-          <div>Classification :</div>
-          <div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>Official</div>
-
-          <div>Date :</div>
-          <input type="date" value={reportDate} onChange={(e)=>setReportDate(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
-
-          <div>Time :</div>
-          <input type="time" value={reportTime} onChange={(e)=>setReportTime(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
-
-          <div>Invoice No <span style={{color:"#b91c1c"}}>*</span> :</div>
-          <div style={{ display:"grid", gap:4 }}>
-            <input
-              ref={invoiceRef}
-              type="text"
-              value={invoiceNo}
-              onChange={(e)=>{ setInvoiceNo(e.target.value); if (invoiceError) setInvoiceError(""); }}
-              placeholder="Enter invoice number (required)"
-              aria-invalid={!!invoiceError}
-              aria-describedby={invoiceError ? "invoice-error" : undefined}
-              style={{ ...inputStyle, borderColor: invoiceBorder }}
-            />
-            {invoiceError && (
-              <div id="invoice-error" style={{ color:"#b91c1c", fontWeight:700, fontSize:12 }}>
-                {invoiceError}
+      {/* === ترويسة AL MAWASHI + جدول المستند === */}
+      <table style={topTable}>
+        <tbody>
+          <tr>
+            <td rowSpan={3} style={{ ...tdHeader, width:120, textAlign:"center" }}>
+              <div style={{ fontWeight: 900, color: "#a00", lineHeight: 1.1 }}>
+                AL<br/>MAWASHI
               </div>
-            )}
-          </div>
+            </td>
+            <td style={tdHeader}><b>Document Title:</b> Receiving Log (Butchery)</td>
+            <td style={tdHeader}>
+              <b>Document No:</b>{" "}
+              <input
+                value={formRef}
+                onChange={(e)=>setFormRef(e.target.value)}
+                style={{
+                  border: "1px solid #9aa4ae",
+                  borderRadius: 6,
+                  padding: "3px 6px",
+                  width: "60%",
+                }}
+              />
+            </td>
+          </tr>
+          <tr>
+            <td style={tdHeader}><b>Issue Date:</b> 05/02/2020</td>
+            <td style={tdHeader}><b>Revision No:</b> 0</td>
+          </tr>
+          <tr>
+            <td style={tdHeader}><b>Area:</b> {BRANCH}</td>
+            <td style={tdHeader}><b>Date:</b> {reportDate || "—"}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style={bandTitle}>RECEIVING LOG — {BRANCH}</div>
+
+      {/* شريط الميتا (فقط رقم الفاتورة) */}
+      <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:8, alignItems:"center", marginBottom:12 }}>
+        <div style={{ fontWeight:700, color:"#0b1f4d" }}>
+          Invoice No <span style={{color:"#b91c1c"}}>*</span> :
+        </div>
+        <div style={{ display:"grid", gap:4 }}>
+          <input
+            ref={invoiceRef}
+            type="text"
+            value={invoiceNo}
+            onChange={(e)=>{ setInvoiceNo(e.target.value); if (invoiceError) setInvoiceError(""); }}
+            placeholder="Enter invoice number (required)"
+            aria-invalid={!!invoiceError}
+            aria-describedby={invoiceError ? "invoice-error" : undefined}
+            style={{ ...inputStyle, borderColor: invoiceBorder, minWidth: 220 }}
+          />
+          {invoiceError && (
+            <div id="invoice-error" style={{ color:"#b91c1c", fontWeight:700, fontSize:12 }}>
+              {invoiceError}
+            </div>
+          )}
         </div>
       </div>
 
