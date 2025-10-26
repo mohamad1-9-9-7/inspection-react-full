@@ -4,7 +4,8 @@ import FTR2PersonalHygiene from "./FTR2PersonalHygiene";
 import FTR2DailyCleanliness from "./FTR2DailyCleanliness";
 import FTR2Temperature from "./FTR2Temperature";
 import FTR2OilCalibration from "./FTR2OilCalibration";
-import FTR2ReceivingLog from "./FTR2ReceivingLog"; // NEW
+import FTR2ReceivingLog from "./FTR2ReceivingLog"; // EXISTING
+import FTR2CookingTemperatureLogInput from "./FTR2CookingTemperatureLogInput"; // NEW
 
 export default function FTR2Report() {
   const [activeTab, setActiveTab] = useState("personal");
@@ -14,7 +15,8 @@ export default function FTR2Report() {
     { key: "daily",     label: "🧹 Daily Cleanliness" },
     { key: "temp",      label: "🌡️ Temperature" },
     { key: "oil",       label: "🛢️ Oil Calibration" },
-    { key: "receiving", label: "📦 Receiving Log" }, // NEW
+    { key: "receiving", label: "📦 Receiving Log" },
+    { key: "cooklog",   label: "🍳 Cooking Temp Log" }, // NEW
   ];
 
   const renderContent = () => {
@@ -27,8 +29,10 @@ export default function FTR2Report() {
         return <FTR2Temperature />;
       case "oil":
         return <FTR2OilCalibration />;
-      case "receiving": // NEW
+      case "receiving":
         return <FTR2ReceivingLog />;
+      case "cooklog": // NEW
+        return <FTR2CookingTemperatureLogInput />;
       default:
         return null;
     }
@@ -52,31 +56,16 @@ export default function FTR2Report() {
           margin: "0 auto",
         }}
       >
-        {/* Header */}
         <div style={{ marginBottom: "1.5rem" }}>
-          <h2
-            style={{
-              fontSize: "1.9rem",
-              marginBottom: "0.5rem",
-              color: "#1f2937",
-            }}
-          >
+          <h2 style={{ fontSize: "1.9rem", marginBottom: "0.5rem", color: "#1f2937" }}>
             📋 FTR 2 Reports
           </h2>
           <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All tabs for hygiene, cleanliness, temperature, oil calibration, and receiving log in one place
+            All tabs for hygiene, cleanliness, temperature, oil calibration, receiving log, and cooking temp log in one place
           </p>
         </div>
 
-        {/* Tabs */}
-        <div
-          style={{
-            display: "flex",
-            gap: "1rem",
-            marginBottom: "1.5rem",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -91,10 +80,7 @@ export default function FTR2Report() {
                 border: "1.5px solid #d1d5db",
                 background: activeTab === tab.key ? "#2563eb" : "#f3f4f6",
                 color: activeTab === tab.key ? "#fff" : "#111827",
-                boxShadow:
-                  activeTab === tab.key
-                    ? "0 4px 12px rgba(37,99,235,0.25)"
-                    : "none",
+                boxShadow: activeTab === tab.key ? "0 4px 12px rgba(37,99,235,0.25)" : "none",
                 transition: "all 0.2s",
               }}
             >
@@ -103,7 +89,6 @@ export default function FTR2Report() {
           ))}
         </div>
 
-        {/* Tabs Content */}
         <div
           style={{
             background: "#fafafa",

@@ -1,78 +1,77 @@
-// src/pages/monitor/branches/pos15/POS15Layout.jsx
-// POS 15 — Input Tabs (FTR1-style).
+// src/pages/monitor/branches/pos 11/POS11Layout.jsx
+// POS 11 — Input Tabs (FTR1-style).
 // "Shipments" renders the real form inline; other tabs load from their own files (same folder).
 
 import React, { useState, useEffect, Suspense, lazy } from "react";
 import { useSearchParams } from "react-router-dom";
 
-// Inline the original shipments form
+/* ================== Shared Shipments Form (inline) ================== */
 const QCSRawMaterialInspection = lazy(() =>
   import("../shipment_recc/QCSRawMaterialInspection").then((m) => ({
     default: m.default || m.QCSRawMaterialInspection,
   }))
 );
 
-// 🔧 تبويبات بنفس المجلّد — نلتقط default أو named
-const POS15PersonalHygiene = lazy(() =>
-  import("./POS15PersonalHygiene").then((m) => ({
-    default: m.default || m.POS15PersonalHygiene,
+/* ================== Local Tabs (same folder) ================== */
+// 🧑‍🔬 Personal Hygiene (Input)
+const POS11PersonalHygiene = lazy(() =>
+  import("./POS11PersonalHygiene").then((m) => ({
+    default: m.default || m.POS11PersonalHygiene,
   }))
 );
-const POS15DailyCleaning = lazy(() =>
-  import("./POS15DailyCleaning").then((m) => ({
-    default: m.default || m.POS15DailyCleaning,
+
+// 🧹 Daily Cleaning (Input)
+const POS11DailyCleaning = lazy(() =>
+  import("./POS11DailyCleaning").then((m) => ({
+    default: m.default || m.POS11DailyCleaning,
   }))
 );
 
 // 🌡️ Temperature (Input)
-const POS15TemperatureInput = lazy(() =>
-  import("./POS15TemperatureInput").then((m) => ({
-    default: m.default || m.POS15TemperatureInput,
+const POS11TemperatureInput = lazy(() =>
+  import("./POS11TemperatureInput").then((m) => ({
+    default: m.default || m.POS11TemperatureInput,
   }))
 );
 
 // 📥 Receiving Log (Input)
-const POS15ReceivingLogInput = lazy(() =>
-  import("./POS15ReceivingLogInput").then((m) => ({
-    default: m.default || m.POS15ReceivingLogInput,
+const POS11ReceivingLogInput = lazy(() =>
+  import("./POS11ReceivingLogInput").then((m) => ({
+    default: m.default || m.POS11ReceivingLogInput,
   }))
 );
 
-// 🧬 Traceability Log (Input)
-const POS15TraceabilityLogInput = lazy(() =>
-  import("./POS15TraceabilityLogInput").then((m) => ({
-    default: m.default || m.POS15TraceabilityLogInput,
+// 🧬 Traceability Log (NEW)
+const POS11TraceabilityLogInput = lazy(() =>
+  import("./TraceabilityLogInput").then((m) => ({
+    default: m.default || m.POS11TraceabilityLogInput || m.TraceabilityLogInput,
   }))
 );
 
-// 🧪 Equipment Inspection & Sanitizing Log (Input)
-const POS15EquipInspectSanitizingInput = lazy(() =>
-  import("./POS15EquipmentInspectionSanitizingLogInput").then((m) => ({
-    default:
-      m.default ||
-      m.POS15EquipmentInspectionSanitizingLogInput ||
-      m.EquipmentInspectionSanitizingLogInput,
+// 🪲 Pest Control (NEW INPUT)
+const POS11PestControlInput = lazy(() =>
+  import("./POS11PestControlInput").then((m) => ({
+    default: m.default || m.POS11PestControlInput,
   }))
 );
 
-// 🪲 Pest Control (Input) ⬅️ جديد
-// يلتقط أي من الأسماء المحتملة للمكوّن
-const POS15PestControlInput = lazy(() =>
-  import("./POS15PestControlInput").then((m) => ({
-    default: m.default || m.POS15PestControlInput || m.PestControlInput,
+// 🧰 Calibration (NEW INPUT)
+const POS11CalibrationInput = lazy(() =>
+  import("./POS11CalibrationInput").then((m) => ({
+    default: m.default || m.POS11CalibrationInput,
   }))
 );
 
-export default function POS15Layout() {
+export default function POS11Layout() {
   const [activeTab, setActiveTab] = useState("shipments");
 
-  // Ensure URL params match the old flow (if the form reads branch/source from query)
+  // Ensure URL params match the expected flow (branch/source used by forms)
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     const qs = new URLSearchParams(searchParams);
     let changed = false;
-    if (!qs.get("branch")) { qs.set("branch", "POS 15"); changed = true; }
-    if (!qs.get("source")) { qs.set("source", "pos15-tabs"); changed = true; }
+    if (!qs.get("branch")) { qs.set("branch", "POS 11"); changed = true; }
+    if (!qs.get("source")) { qs.set("source", "pos11-tabs"); changed = true; }
     if (changed) setSearchParams(qs, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -82,10 +81,11 @@ export default function POS15Layout() {
     { key: "personal",     label: "🧑‍🔬 Personal Hygiene" },
     { key: "daily",        label: "🧹 Daily Cleaning" },
     { key: "temperature",  label: "🌡️ Temperature" },
-    { key: "receiving",    label: "📥 Receiving Log" },
     { key: "traceability", label: "🧬 Traceability Log" },
-    { key: "equip_sanit",  label: "🧪 Equipment Inspection & Sanitizing" },
-    { key: "pest",         label: "🪲 Pest Control" }, // ⬅️ جديد
+    { key: "receiving",    label: "📥 Receiving Log" },
+    // NEW:
+    { key: "pest",         label: "🪲 Pest Control" },
+    { key: "calibration",  label: "🧰 Calibration" },
   ];
 
   const Card = ({ children }) => (
@@ -117,7 +117,7 @@ export default function POS15Layout() {
         return (
           <Card>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Personal Hygiene…</div>}>
-              <POS15PersonalHygiene />
+              <POS11PersonalHygiene />
             </Suspense>
           </Card>
         );
@@ -125,7 +125,7 @@ export default function POS15Layout() {
         return (
           <Card>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Daily Cleaning…</div>}>
-              <POS15DailyCleaning />
+              <POS11DailyCleaning />
             </Suspense>
           </Card>
         );
@@ -133,15 +133,7 @@ export default function POS15Layout() {
         return (
           <Card>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Temperature…</div>}>
-              <POS15TemperatureInput />
-            </Suspense>
-          </Card>
-        );
-      case "receiving":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Receiving Log…</div>}>
-              <POS15ReceivingLogInput />
+              <POS11TemperatureInput />
             </Suspense>
           </Card>
         );
@@ -149,23 +141,31 @@ export default function POS15Layout() {
         return (
           <Card>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Traceability Log…</div>}>
-              <POS15TraceabilityLogInput />
+              <POS11TraceabilityLogInput />
             </Suspense>
           </Card>
         );
-      case "equip_sanit":
+      case "receiving":
         return (
           <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Equipment Inspection & Sanitizing…</div>}>
-              <POS15EquipInspectSanitizingInput />
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Receiving Log…</div>}>
+              <POS11ReceivingLogInput />
             </Suspense>
           </Card>
         );
-      case "pest": // ⬅️ جديد
+      case "pest":
         return (
           <Card>
             <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Pest Control…</div>}>
-              <POS15PestControlInput />
+              <POS11PestControlInput />
+            </Suspense>
+          </Card>
+        );
+      case "calibration":
+        return (
+          <Card>
+            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Calibration…</div>}>
+              <POS11CalibrationInput />
             </Suspense>
           </Card>
         );
@@ -198,10 +198,10 @@ export default function POS15Layout() {
         {/* Header */}
         <div style={{ marginBottom: "1.5rem" }}>
           <h2 style={{ fontSize: "1.9rem", marginBottom: "0.5rem", color: "#1f2937" }}>
-            📋 POS 15 — Operations Inputs
+            📋 POS 11 — Operations Inputs (Al Ain Butchery)
           </h2>
           <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Receiving Log, Traceability Log, Equipment Inspection & Sanitizing, and Pest Control) in one place.
+            All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, Pest Control, and Calibration) in one place.
           </p>
         </div>
 

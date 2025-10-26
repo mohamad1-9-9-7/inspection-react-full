@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/pos15/POS15ReceivingLogView.jsx
+// src/pages/monitor/branches/POS 11/POS11ReceivingLogView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -12,9 +12,9 @@ const API_BASE = String(
   "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
-// مطابق لملف الإدخال (POS 15) + بدون أي إشارات خارجية
-const TYPE   = "pos15_receiving_log_butchery";
-const BRANCH = "POS 15";
+// مطابق لملف الإدخال POS11ReceivingLogInput.jsx
+const TYPE   = "pos11_receiving_log_butchery";
+const BRANCH = "POS 11";
 
 // أعمدة C/NC
 const TICK_COLS = [
@@ -37,19 +37,22 @@ const formatDMY = (iso) => {
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 };
+// صف ممتلئ إن وُجدت أي قيمة
 const isFilledRow = (r = {}) => Object.values(r).some(v => String(v ?? "").trim() !== "");
 
+// نفس بنية الإدخال (يشمل weightKg)
 function emptyRow() {
   return {
-    date: "", time: "", supplier: "", foodItem: "",
-    netWeight: "", // ✅ جديد: الوزن
+    supplier: "", foodItem: "",
     vehicleTemp: "", foodTemp: "",
+    weightKg: "",
     vehicleClean: "", handlerHygiene: "", appearanceOK: "", firmnessOK: "", smellOK: "", packagingGood: "",
-    countryOfOrigin: "", productionDate: "", expiryDate: "", invoiceNo: "", remarks: "", receivedBy: "",
+    countryOfOrigin: "", productionDate: "", expiryDate: "",
+    remarks: "",
   };
 }
 
-export default function POS15ReceivingLogView() {
+export default function POS11ReceivingLogView() {
   const reportRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -62,23 +65,24 @@ export default function POS15ReceivingLogView() {
     }
   }, []);
 
-  // state
+  // الحالة
   const [date, setDate] = useState(todayDubai);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [record, setRecord] = useState(null);
 
-  // وضع تعديل اختياري مع كلمة سر 9999 (مثل POS19)
+  // وضع تعديل (بكلمة سر 9999)
   const [editRows, setEditRows] = useState(Array.from({ length: 15 }, () => emptyRow()));
   const [editing, setEditing] = useState(false);
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
+  const [editReceivedBy, setEditReceivedBy] = useState("");
   const [allDates, setAllDates] = useState([]);
 
-  // Accordion
+  // أكورديون
   const [expandedYears, setExpandedYears] = useState({});
   const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
 
-  // styles
+  // أنماط
   const gridStyle = useMemo(() => ({
     width: "max-content",
     borderCollapse: "collapse",
@@ -100,6 +104,13 @@ export default function POS15ReceivingLogView() {
     textAlign: "center",
     verticalAlign: "middle",
   };
+  // خلية ترويسة الإدخال
+  const tdHeader = {
+    border: "1px solid #d1d5db",
+    padding: "6px 8px",
+    fontSize: 12,
+    lineHeight: 1.35,
+  };
   const inputStyle = {
     width: "100%",
     border: "1px solid #c7d2fe",
@@ -107,15 +118,13 @@ export default function POS15ReceivingLogView() {
     padding: "4px 6px",
   };
 
-  // ✅ colgroup مع عمود الوزن بعد Food Item
+  // أعمدة الجدول — نفس تصميم POS10 مع إضافة Weight بعد Food Temp
   const colDefs = useMemo(() => ([
-    <col key="date" style={{ width: 100 }} />,
-    <col key="time" style={{ width: 84 }} />,
     <col key="supplier" style={{ width: 170 }} />,
     <col key="food" style={{ width: 160 }} />,
-    <col key="netW" style={{ width: 110 }} />, // ✅ جديد
     <col key="vehT" style={{ width: 90 }} />,
     <col key="foodT" style={{ width: 90 }} />,
+    <col key="weight" style={{ width: 110 }} />,
     <col key="vehClean" style={{ width: 120 }} />,
     <col key="handler" style={{ width: 140 }} />,
     <col key="appearanceOK" style={{ width: 120 }} />,
@@ -125,9 +134,7 @@ export default function POS15ReceivingLogView() {
     <col key="origin" style={{ width: 120 }} />,
     <col key="prod" style={{ width: 120 }} />,
     <col key="exp" style={{ width: 120 }} />,
-    <col key="inv" style={{ width: 120 }} />,
-    <col key="remarks" style={{ width: 180 }} />,
-    <col key="received" style={{ width: 120 }} />,
+    <col key="remarks" style={{ width: 200 }} />,
   ]), []);
 
   /* ====== Fetch ====== */
@@ -171,10 +178,11 @@ export default function POS15ReceivingLogView() {
       const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
       setRecord(match);
 
-      // تهيئة وضع التعديل (حتى 15 سطر)
+      // تهيئة التعديل (حتى 15 صف)
       const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
+      setEditReceivedBy(match?.payload?.receivedBy || "");
       setEditing(false);
     } catch (e) {
       console.error(e);
@@ -187,15 +195,16 @@ export default function POS15ReceivingLogView() {
   useEffect(() => { fetchAllDates(); }, []);
   useEffect(() => { if (date) fetchRecord(date); }, [date]);
 
-  /* ====== Edit / Save / Delete with password ====== */
+  /* ====== Edit / Save / Delete (password protected) ====== */
   const askPass = (label="") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   function toggleEdit() {
     if (editing) {
-      // إلغاء: ارجع للبيانات الأصلية من السجل
+      // إلغاء: رجوع للبيانات الأصلية
       const rows = Array.from({ length: 15 }, (_, i) => record?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
       setEditVerifiedBy(record?.payload?.verifiedBy || "");
+      setEditReceivedBy(record?.payload?.receivedBy || "");
       setEditing(false);
       return;
     }
@@ -214,8 +223,9 @@ export default function POS15ReceivingLogView() {
       ...(record?.payload || {}),
       branch: BRANCH,
       reportDate: record?.payload?.reportDate,
-      entries: cleaned,                 // حتى 15 سطر
+      entries: cleaned,
       verifiedBy: editVerifiedBy,
+      receivedBy: editReceivedBy,
       savedAt: Date.now(),
     };
 
@@ -233,7 +243,7 @@ export default function POS15ReceivingLogView() {
       const postRes = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }),
+        body: JSON.stringify({ reporter: "pos11", type: TYPE, payload }),
       });
       if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
 
@@ -281,12 +291,12 @@ export default function POS15ReceivingLogView() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `POS15_ReceivingLog_${record?.payload?.reportDate || date}.json`;
+    a.download = `POS11_ReceivingLog_${record?.payload?.reportDate || date}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  // exceljs loader (متوافق للمتصفح)
+  // تحميل exceljs والمتصفح
   async function loadExcelJS() {
     try {
       const m = await import(/* webpackChunkName: "exceljs-browser" */ "exceljs/dist/exceljs.min.js");
@@ -308,20 +318,19 @@ export default function POS15ReceivingLogView() {
     return mod?.saveAs || mod?.default?.saveAs || mod?.default || mod;
   }
 
-  // ✅ CSV مع عمود الوزن
+  // CSV fallback (يشمل Weight)
   function fallbackCSV(p) {
     const headers = [
-      "Date","Time","Supplier","Food Item","Net Weight (kg)","Vehicle Temp (°C)","Food Temp (°C)",
+      "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Weight (kg)",
       "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
       "Packaging good/undamaged/clean/no pests",
-      "Country of origin","Production Date","Expiry Date","Invoice No","Remarks (if any)","Received by"
+      "Country of origin","Production Date","Expiry Date","Remarks (if any)"
     ];
-    const rows = (p.entries || []).map(e => ([
-      e?.date ?? "", e?.time ?? "", e?.supplier ?? "", e?.foodItem ?? "", e?.netWeight ?? "",
-      e?.vehicleTemp ?? "", e?.foodTemp ?? "",
+    const rows = (p.entries || []).filter(isFilledRow).map(e => ([
+      e?.supplier ?? "", e?.foodItem ?? "", e?.vehicleTemp ?? "", e?.foodTemp ?? "", e?.weightKg ?? "",
       e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "", e?.firmnessOK ?? "", e?.smellOK ?? "",
       e?.packagingGood ?? "", e?.countryOfOrigin ?? "", e?.productionDate ?? "", e?.expiryDate ?? "",
-      e?.invoiceNo ?? "", e?.remarks ?? "", e?.receivedBy ?? ""
+      e?.remarks ?? ""
     ]));
     const csv = [headers, ...rows]
       .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(","))
@@ -329,19 +338,19 @@ export default function POS15ReceivingLogView() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `POS15_ReceivingLog_${p.reportDate || date}.csv`;
+    a.download = `POS11_ReceivingLog_${p.reportDate || date}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
 
-  // ✅ XLSX مع عمود الوزن + تعديل الدمج إلى 19 عمود
+  // XLSX (نفس التصميم مع عمود Weight)
   async function exportXLSX() {
     try {
       const ExcelJS = await loadExcelJS();
       const saveAs = await resolveSaveAs();
 
       const p = record?.payload || {};
-      const rawRows = Array.isArray(p.entries) ? p.entries : [];
+      const rawRows = Array.isArray(p.entries) ? p.entries.filter(isFilledRow) : [];
 
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("ReceivingLog");
@@ -350,47 +359,47 @@ export default function POS15ReceivingLogView() {
       const tableHeaderBlue = "DCE6F1";
       const borderThin = { style: "thin", color: { argb: "1F3B70" } };
 
-      // Title (row 1) — 19 عمود بعد إضافة الوزن
-      ws.mergeCells(1,1,1,19);
+      // Title (15 عمود)
+      ws.mergeCells(1,1,1,15);
       const r1 = ws.getCell(1,1);
-      r1.value = "POS 15 | Receiving Log (Butchery)";
+      r1.value = "POS 11 | Receiving Log (Butchery)";
       r1.alignment = { horizontal: "center", vertical: "middle" };
       r1.font = { size: 14, bold: true };
       r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
       ws.getRow(1).height = 26;
 
-      // Meta (rows 2-4) on the right — حتى العمود 19
+      // Meta
       const meta = [
-        ["Classification:", p.classification || "Official"],
-        ["Branch:",        p.branch        || "POS 15"],
+        ["Branch:",        p.branch        || BRANCH],
         ["Date:",          p.reportDate    || ""],
+        ["Invoice No:",    p.invoiceNo     || ""],
+        ["Verified by:",   p.verifiedBy    || ""],
+        ["Received by:",   p.receivedBy    || ""],
       ];
       for (let i = 0; i < meta.length; i++) {
         const rowIdx = 2 + i;
-        ws.mergeCells(rowIdx, 9, rowIdx, 19);
-        const c = ws.getCell(rowIdx, 9);
+        ws.mergeCells(rowIdx, 10, rowIdx, 15);
+        const c = ws.getCell(rowIdx, 10);
         c.value = `${meta[i][0]} ${meta[i][1]}`;
         c.alignment = { horizontal: "right", vertical: "middle" };
         ws.getRow(rowIdx).height = 18;
       }
 
-      // Column widths (19 عمود)
+      // Column widths
       ws.columns = [
-        { width: 12 }, { width: 10 }, { width: 24 }, { width: 20 }, { width: 12 }, // + Net Weight
-        { width: 14 }, { width: 14 }, { width: 16 }, { width: 18 }, { width: 14 },
-        { width: 12 }, { width: 12 }, { width: 36 }, { width: 16 }, { width: 15 },
-        { width: 15 }, { width: 14 }, { width: 22 }, { width: 16 },
+        { width: 24 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 12 },
+        { width: 16 }, { width: 18 }, { width: 14 }, { width: 12 }, { width: 12 },
+        { width: 36 }, { width: 16 }, { width: 15 }, { width: 15 }, { width: 22 },
       ];
 
-      // Headers (row 6) — مع Net Weight
+      // Header row
       const COL_HEADERS = [
-        "Date","Time","Name of the Supplier","Food Item","Net Weight (kg)",
-        "Vehicle Temp (°C)","Food Temp (°C)",
+        "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Weight (kg)",
         "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
         "Packaging of food is good and undamaged, clean and no signs of pest infestation",
-        "Country of origin","Production Date","Expiry Date","Invoice No:","Remarks (if any)","Received by"
+        "Country of origin","Production Date","Expiry Date","Remarks (if any)"
       ];
-      const hr = ws.getRow(6);
+      const hr = ws.getRow(7);
       hr.values = COL_HEADERS;
       hr.eachCell((cell) => {
         cell.font = { bold: true };
@@ -400,16 +409,14 @@ export default function POS15ReceivingLogView() {
       });
       hr.height = 28;
 
-      // Data (filled rows only) — مع netWeight
-      const rows = rawRows.filter(isFilledRow);
-      let rowIdx = 7;
-      rows.forEach((e) => {
+      // Data
+      let rowIdx = 8;
+      rawRows.forEach((e) => {
         ws.getRow(rowIdx).values = [
-          e?.date || "", e?.time || "", e?.supplier || "", e?.foodItem || "", e?.netWeight || "",
-          e?.vehicleTemp || "", e?.foodTemp || "",
+          e?.supplier || "", e?.foodItem || "", e?.vehicleTemp || "", e?.foodTemp || "", e?.weightKg || "",
           e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "", e?.firmnessOK || "", e?.smellOK || "",
           e?.packagingGood || "", e?.countryOfOrigin || "", e?.productionDate || "", e?.expiryDate || "",
-          e?.invoiceNo || "", e?.remarks || "", e?.receivedBy || "",
+          e?.remarks || "",
         ];
         ws.getRow(rowIdx).eachCell((cell) => {
           cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
@@ -421,7 +428,7 @@ export default function POS15ReceivingLogView() {
 
       // Legend
       const legendRow = rowIdx + 1;
-      ws.mergeCells(legendRow, 1, legendRow, 10);
+      ws.mergeCells(legendRow, 1, legendRow, 6);
       const legCell = ws.getCell(legendRow, 1);
       legCell.value = "Legend: (C) – Conform   (NC) – Non-Conform";
       legCell.font = { bold: true };
@@ -431,16 +438,16 @@ export default function POS15ReceivingLogView() {
       const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
       saveAs(
         new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-        `POS15_ReceivingLog_${p.reportDate || date}.xlsx`
+        `POS11_ReceivingLog_${p.reportDate || date}.xlsx`
       );
     } catch (err) {
       console.error("[XLSX export error]", err);
       try {
         const p = record?.payload || {};
         fallbackCSV(p);
-        alert("⚠️ تعذر تصدير XLSX، تم تصدير CSV بدلاً منه.\n" + (err?.message || err));
+        alert("⚠️ XLSX export failed, CSV exported instead.\n" + (err?.message || err));
       } catch (e2) {
-        alert("⚠️ فشل تصدير XLSX وCSV.\n" + (err?.message || err));
+        alert("⚠️ XLSX and CSV export both failed.\n" + (err?.message || err));
       }
     }
   }
@@ -457,7 +464,7 @@ export default function POS15ReceivingLogView() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }),
+        body: JSON.stringify({ reporter: "pos11", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -474,7 +481,7 @@ export default function POS15ReceivingLogView() {
     }
   }
 
-  /* ====== PDF (التقرير فقط) ====== */
+  /* ====== PDF export ====== */
   async function exportPDF() {
     if (!reportRef.current) return;
 
@@ -491,13 +498,13 @@ export default function POS15ReceivingLogView() {
     const margin = 20;
     const headerH = 50;
 
-    // header (بسيط بدون شعارات)
+    // Header
     pdf.setFillColor(247, 249, 252);
     pdf.rect(0, 0, pageW, headerH, "F");
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(16);
     pdf.text(
-      `POS 15 | Receiving Log (Butchery) (${record?.payload?.reportDate || date})`,
+      `POS 11 | Receiving Log (Butchery) (${record?.payload?.reportDate || date})`,
       pageW / 2,
       28,
       { align: "center" }
@@ -531,7 +538,7 @@ export default function POS15ReceivingLogView() {
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(16);
         pdf.text(
-          `POS 15 | Receiving Log (Butchery) (${record?.payload?.reportDate || date})`,
+          `POS 11 | Receiving Log (Butchery) (${record?.payload?.reportDate || date})`,
           pageW / 2,
           28,
           { align: "center" }
@@ -539,10 +546,10 @@ export default function POS15ReceivingLogView() {
       }
     }
 
-    pdf.save(`POS15_ReceivingLog_${record?.payload?.reportDate || date}.pdf`);
+    pdf.save(`POS11_ReceivingLog_${record?.payload?.reportDate || date}.pdf`);
   }
 
-  /* ====== Group dates (Year -> Month -> Dates) ====== */
+  /* ====== Group dates ====== */
   const grouped = useMemo(() => {
     const out = {};
     for (const d of allDates) {
@@ -567,7 +574,7 @@ export default function POS15ReceivingLogView() {
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
         <div style={{ fontWeight:800, fontSize:18 }}>
-          Receiving Log (Butchery) — View (POS 15)
+          Receiving Log (Butchery) — View (POS 11)
         </div>
 
         {/* Actions */}
@@ -693,26 +700,68 @@ export default function POS15ReceivingLogView() {
           {record && (
             <div style={{ overflowX:"auto", overflowY:"hidden" }}>
               <div ref={reportRef} style={{ width: "max-content" }}>
-                {/* Info band */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:8, marginBottom:8, fontSize:12, minWidth: 1000 }}>
-                  <div><strong>Date:</strong> {safe(record.payload?.reportDate)}</div>
-                  <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
-                  <div><strong>Form Ref:</strong> {safe(record.payload?.formRef || "FSMS/BR/F01A")}</div>
-                  <div><strong>Classification:</strong> {safe(record.payload?.classification || "Official")}</div>
+                {/* ===== Header (same as INPUT header) ===== */}
+                <div style={{ minWidth: 1200, marginBottom: 8 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 6 }}>
+                    <tbody>
+                      <tr>
+                        <td style={tdHeader}>
+                          <strong>Document Title:</strong> Receiving Log (Butchery)
+                        </td>
+                        <td style={tdHeader}>
+                          <strong>Document No:</strong> FS-QM/REC/RLB
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={tdHeader}>
+                          <strong>Issue Date:</strong> 05/02/2020
+                        </td>
+                        <td style={tdHeader}>
+                          <strong>Revision No:</strong> 0
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={tdHeader}>
+                          <strong>Area:</strong> {BRANCH}
+                        </td>
+                        <td style={tdHeader}>
+                          <strong>Approved By:</strong> Hussam O.Sarhan
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={tdHeader} colSpan={2}>
+                          <strong>Controlling Officer:</strong> Quality Controller
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* Title strip like the input screenshot */}
+                  <div
+                    style={{
+                      textAlign: "center",
+                      background: "#e5ebf7",
+                      border: "1px solid #1f3b70",
+                      padding: "6px",
+                      fontWeight: 800,
+                      color: "#0b1f4d",
+                      marginBottom: 10,
+                    }}
+                  >
+                    RECEIVING LOG — {BRANCH}
+                  </div>
                 </div>
 
-                {/* Table */}
+                {/* Table — نفس تصميم POS10 + عمود وزن */}
                 <table style={gridStyle}>
                   <colgroup>{colDefs}</colgroup>
                   <thead>
                     <tr>
-                      <th style={thCell}>Date</th>
-                      <th style={thCell}>Time</th>
                       <th style={thCell}>Name of the Supplier</th>
                       <th style={thCell}>Food Item</th>
-                      <th style={thCell}>Net Weight (kg)</th> {/* ✅ جديد */}
                       <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
+                      <th style={thCell}>Weight (kg)</th>
                       <th style={thCell}>Vehicle clean</th>
                       <th style={thCell}>Food handler hygiene</th>
                       <th style={thCell}>Appearance</th>
@@ -722,22 +771,18 @@ export default function POS15ReceivingLogView() {
                       <th style={thCell}>Country of origin</th>
                       <th style={thCell}>Production Date</th>
                       <th style={thCell}>Expiry Date</th>
-                      <th style={thCell}>Invoice No:</th>
                       <th style={thCell}>Remarks (if any)</th>
-                      <th style={thCell}>Received by</th>
                     </tr>
                   </thead>
                   <tbody>
                     {!editing ? (
                       (record.payload?.entries || []).filter(isFilledRow).map((r, idx) => (
                         <tr key={idx}>
-                          <td style={tdCell}>{formatDMY(safe(r.date))}</td>
-                          <td style={tdCell}>{safe(r.time)}</td>
                           <td style={tdCell}>{safe(r.supplier)}</td>
                           <td style={tdCell}>{safe(r.foodItem)}</td>
-                          <td style={tdCell}>{safe(r.netWeight)}</td> {/* ✅ عرض الوزن */}
                           <td style={tdCell}>{safe(r.vehicleTemp)}</td>
                           <td style={tdCell}>{safe(r.foodTemp)}</td>
+                          <td style={tdCell}>{safe(r.weightKg)}</td>
                           <td style={tdCell}>{safe(r.vehicleClean)}</td>
                           <td style={tdCell}>{safe(r.handlerHygiene)}</td>
                           <td style={tdCell}>{safe(r.appearanceOK)}</td>
@@ -747,30 +792,12 @@ export default function POS15ReceivingLogView() {
                           <td style={tdCell}>{safe(r.countryOfOrigin)}</td>
                           <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td>
                           <td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
-                          <td style={tdCell}>{safe(r.invoiceNo)}</td>
                           <td style={tdCell}>{safe(r.remarks)}</td>
-                          <td style={tdCell}>{safe(r.receivedBy)}</td>
                         </tr>
                       ))
                     ) : (
                       editRows.map((r, idx) => (
                         <tr key={idx}>
-                          <td style={tdCell}>
-                            <input
-                              type="date"
-                              value={r.date || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], date:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="time"
-                              value={r.time || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], time:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
                           <td style={tdCell}>
                             <input
                               type="text"
@@ -789,18 +816,11 @@ export default function POS15ReceivingLogView() {
                           </td>
                           <td style={tdCell}>
                             <input
-                              type="number" step="0.01"
-                              value={r.netWeight || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], netWeight:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
                               type="number" step="0.1"
                               value={r.vehicleTemp || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], vehicleTemp:e.target.value}; return n; })}
                               style={inputStyle}
+                              placeholder="°C"
                             />
                           </td>
                           <td style={tdCell}>
@@ -809,6 +829,18 @@ export default function POS15ReceivingLogView() {
                               value={r.foodTemp || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], foodTemp:e.target.value}; return n; })}
                               style={inputStyle}
+                              placeholder="°C"
+                            />
+                          </td>
+
+                          {/* Weight (kg) */}
+                          <td style={tdCell}>
+                            <input
+                              type="number" step="0.01" min="0"
+                              value={r.weightKg || ""}
+                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], weightKg:e.target.value}; return n; })}
+                              style={inputStyle}
+                              placeholder="kg"
                             />
                           </td>
 
@@ -854,24 +886,8 @@ export default function POS15ReceivingLogView() {
                           <td style={tdCell}>
                             <input
                               type="text"
-                              value={r.invoiceNo || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], invoiceNo:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="text"
                               value={r.remarks || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], remarks:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.receivedBy || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], receivedBy:e.target.value}; return n; })}
                               style={inputStyle}
                             />
                           </td>
@@ -880,11 +896,6 @@ export default function POS15ReceivingLogView() {
                     )}
                   </tbody>
                 </table>
-
-                {/* Legend — C/NC */}
-                <div style={{ marginTop:8, fontSize:12, fontWeight:700, width:"max-content" }}>
-                  Legend: (C) – Conform  &  (NC) – Non-Conform
-                </div>
 
                 {/* Notes */}
                 <div style={{ marginTop:10, fontSize:11, color:"#0b1f4d", width:"max-content" }}>
@@ -900,18 +911,46 @@ export default function POS15ReceivingLogView() {
                   </div>
                 </div>
 
-                {/* Footer info */}
-                <div style={{ marginTop:12, width:"max-content" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:12 }}>
-                    <strong>Verified by:</strong>
+                {/* Footer: Received left | Verified right */}
+                <div
+                  style={{
+                    marginTop: 12,
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 16,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                  }}
+                >
+                  {/* Left: Received by */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 12,
+                      flex: "1 1 320px",
+                      minWidth: 300,
+                    }}
+                  >
+                    <strong>Received by:</strong>
                     {!editing ? (
-                      <span style={{ display:"inline-block", minWidth:260, borderBottom:"2px solid #1f3b70", lineHeight:"1.8" }}>
-                        {safe(record.payload?.verifiedBy)}
+                      <span
+                        style={{
+                          display: "inline-block",
+                          minWidth: 260,
+                          borderBottom: "2px solid #1f3b70",
+                          lineHeight: "1.8",
+                          textAlign: "left",
+                        }}
+                      >
+                        {safe(record.payload?.receivedBy)}
                       </span>
                     ) : (
                       <input
-                        value={editVerifiedBy}
-                        onChange={(e)=>setEditVerifiedBy(e.target.value)}
+                        value={editReceivedBy}
+                        onChange={(e) => setEditReceivedBy(e.target.value)}
                         style={{
                           border: "none",
                           borderBottom: "2px solid #1f3b70",
@@ -919,6 +958,51 @@ export default function POS15ReceivingLogView() {
                           outline: "none",
                           fontSize: 12,
                           color: "#0b1f4d",
+                          minWidth: 260,
+                          textAlign: "left",
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Right: Verified by */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 12,
+                      flex: "1 1 320px",
+                      minWidth: 300,
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    <strong>Verified by:</strong>
+                    {!editing ? (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          minWidth: 260,
+                          borderBottom: "2px solid #1f3b70",
+                          lineHeight: "1.8",
+                          textAlign: "left",
+                        }}
+                      >
+                        {safe(record.payload?.verifiedBy)}
+                      </span>
+                    ) : (
+                      <input
+                        value={editVerifiedBy}
+                        onChange={(e) => setEditVerifiedBy(e.target.value)}
+                        style={{
+                          border: "none",
+                          borderBottom: "2px solid #1f3b70",
+                          padding: "4px 6px",
+                          outline: "none",
+                          fontSize: 12,
+                          color: "#0b1f4d",
+                          minWidth: 260,
+                          textAlign: "left",
                         }}
                       />
                     )}

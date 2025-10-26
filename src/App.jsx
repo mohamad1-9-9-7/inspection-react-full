@@ -26,6 +26,16 @@ const POS10Layout = lazy(() =>
   import("./pages/monitor/branches/pos 10/POS10Layout")
 );
 
+// 🆕 ✅ POS 11 — التبويبات (جديد) ← تم تصحيح حالة الأحرف بالمجلّد
+const POS11Layout = lazy(() =>
+  import("./pages/monitor/branches/POS 11/POS11Layout")
+);
+
+// 🆕 ✅ POS 11 — عرض التبويبات (Views)
+const POS11ReportsViewLayout = lazy(() =>
+  import("./pages/monitor/branches/POS 11/POS11ReportsViewLayout")
+);
+
 // 🆕 ✅ POS 19 — Viewer Hub (13 تبويب عرض)
 const POS19DailyView = lazy(() =>
   import("./pages/monitor/branches/pos19/POS19DailyView")
@@ -333,6 +343,15 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          {/* 🆕 POS 11 */}
+          <Route
+            path="pos11"
+            element={
+              <ProtectedRoute>
+                <POS11Layout />
+              </ProtectedRoute>
+            }
+          />
 
           {/* 🆕 عرض تقارير النظافة الشخصية POS15 */}
           <Route
@@ -424,6 +443,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <POS19DailyView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 POS 11 — صفحة العرض (Views Tabs) */}
+        <Route
+          path="/admin/pos11"
+          element={
+            <ProtectedRoute>
+              <POS11ReportsViewLayout />
             </ProtectedRoute>
           }
         />

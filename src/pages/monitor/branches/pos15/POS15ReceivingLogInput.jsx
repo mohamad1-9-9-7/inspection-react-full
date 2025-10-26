@@ -26,7 +26,8 @@ const TICK_COLS = [
 
 function emptyRow() {
   return {
-    date: "", time: "", supplier: "", foodItem: "", dmApprovalNo: "",
+    date: "", time: "", supplier: "", foodItem: "",
+    netWeight: "", // ✅ جديد
     vehicleTemp: "", foodTemp: "",
     vehicleClean: "", handlerHygiene: "", appearanceOK: "", firmnessOK: "", smellOK: "", packagingGood: "",
     countryOfOrigin: "", productionDate: "", expiryDate: "", invoiceNo: "", remarks: "", receivedBy: "",
@@ -82,10 +83,12 @@ export default function POS15ReceivingLogInput() {
     fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,.15)",
   });
 
+  // ✅ بعد الإضافة: أضفنا عمود الوزن بعد Food Item
   const colDefs = useMemo(() => ([
     <col key="date" style={{ width: 100 }} />,   <col key="time" style={{ width: 84 }} />,
     <col key="supplier" style={{ width: 170 }} />, <col key="food" style={{ width: 160 }} />,
-    <col key="dm" style={{ width: 140 }} />, <col key="vehT" style={{ width: 90 }} />, <col key="foodT" style={{ width: 90 }} />,
+    <col key="netW" style={{ width: 110 }} />, // ✅ جديد
+    <col key="vehT" style={{ width: 90 }} />, <col key="foodT" style={{ width: 90 }} />,
     <col key="vehClean" style={{ width: 120 }} />, <col key="handler" style={{ width: 140 }} />,
     <col key="appearanceOK" style={{ width: 120 }} />, <col key="firmnessOK" style={{ width: 110 }} />, <col key="smellOK" style={{ width: 110 }} />,
     <col key="pack" style={{ width: 220 }} />,
@@ -168,7 +171,7 @@ export default function POS15ReceivingLogInput() {
               <th style={thCell}>Time</th>
               <th style={thCell}>Name of the Supplier</th>
               <th style={thCell}>Food Item</th>
-              <th style={thCell}>DM approval number of the delivery vehicle</th>
+              <th style={thCell}>Net Weight (kg)</th> {/* ✅ جديد */}
               <th style={thCell}>Vehicle Temp (°C)</th>
               <th style={thCell}>Food Temp (°C)</th>
               <th style={thCell}>Vehicle clean</th>
@@ -200,9 +203,18 @@ export default function POS15ReceivingLogInput() {
                 <td style={tdCell}>
                   <input type="text" value={r.foodItem} onChange={(e)=>updateRow(idx, "foodItem", e.target.value)} style={inputStyle} />
                 </td>
+
+                {/* ✅ خلية الوزن */}
                 <td style={tdCell}>
-                  <input type="text" value={r.dmApprovalNo} onChange={(e)=>updateRow(idx, "dmApprovalNo", e.target.value)} style={inputStyle} />
+                  <input
+                    type="number" step="0.01"
+                    value={r.netWeight}
+                    onChange={(e)=>updateRow(idx, "netWeight", e.target.value)}
+                    style={inputStyle}
+                    placeholder="kg"
+                  />
                 </td>
+
                 <td style={tdCell}>
                   <input type="number" step="0.1" value={r.vehicleTemp} onChange={(e)=>updateRow(idx, "vehicleTemp", e.target.value)} style={inputStyle} placeholder="°C" />
                 </td>

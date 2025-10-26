@@ -4,9 +4,10 @@ import FTR1PersonalHygiene from "./FTR1PersonalHygiene";
 import FTR1DailyCleanliness from "./FTR1DailyCleanliness";
 import FTR1Temperature from "./FTR1Temperature";
 import FTR1OilCalibration from "./FTR1OilCalibration";
-
-// ✅ التبويب الجديد (ملف الإدخال)
 import FTR1ReceivingLog from "./FTR1ReceivingLog";
+
+/* ✅ التبويب/الملف الجديد: Cooking Temperature Log */
+import FTR1CookingTemperatureLogInput from "./FTR1CookingTemperatureLogInput";
 
 export default function FTR1Report() {
   const [activeTab, setActiveTab] = useState("personal");
@@ -16,8 +17,9 @@ export default function FTR1Report() {
     { key: "daily",     label: "🧹 Daily Cleanliness" },
     { key: "temp",      label: "🌡️ Temperature" },
     { key: "oil",       label: "🛢️ Oil Calibration" },
-    // ✅ تبويب ملف الإدخال الجديد
     { key: "receiving", label: "🚚 Receiving Log (FTR-1)" },
+    /* ✅ التبويب المضاف */
+    { key: "cook",      label: "🍳 Cooking Temp Log" },
   ];
 
   const renderContent = () => {
@@ -30,9 +32,11 @@ export default function FTR1Report() {
         return <FTR1Temperature />;
       case "oil":
         return <FTR1OilCalibration />;
-      // ✅ محتوى التبويب الجديد
       case "receiving":
         return <FTR1ReceivingLog />;
+      /* ✅ محتوى التبويب الجديد */
+      case "cook":
+        return <FTR1CookingTemperatureLogInput />;
       default:
         return null;
     }
@@ -68,7 +72,7 @@ export default function FTR1Report() {
             📋 FTR 1 Reports
           </h2>
           <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All tabs for hygiene, cleanliness, temperature, oil calibration, and receiving in one place
+            All tabs for hygiene, cleanliness, temperature, oil calibration, cooking temp, and receiving in one place
           </p>
         </div>
 

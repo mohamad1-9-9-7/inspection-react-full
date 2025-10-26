@@ -55,7 +55,8 @@ export default function DailyReportsTab({
   onOpenFTR2Report,
   onOpenProductionReport,
   onOpenPOS15Report,   // اختياري
-  onOpenPOS10Report,   // ✅ جديد: ربط POS 10
+  onOpenPOS10Report,   // ✅ POS 10
+  onOpenPOS11Report,   // ✅ جديد: ربط POS 11 (Views)
 }) {
   const navigate = useNavigate();
 
@@ -72,6 +73,14 @@ export default function DailyReportsTab({
       if (onOpenPOS10Report) onOpenPOS10Report();
       else navigate("/admin/pos10");
 
+    } else if (branch === "POS 11") {            // ✅ فتح تبويب عرض POS 11
+      if (onOpenPOS11Report) onOpenPOS11Report();
+      else navigate("/admin/pos11");             // ← يعرض POS11ReportsViewLayout
+
+    } else if (branch === "POS 15") {
+      if (onOpenPOS15Report) onOpenPOS15Report();
+      else navigate("/admin/pos15");
+
     } else if (branch === "POS 19") {
       onOpenPOS19Report?.();
 
@@ -85,10 +94,6 @@ export default function DailyReportsTab({
 
     } else if (branch === "PRODUCTION") {
       onOpenProductionReport?.();
-
-    } else if (branch === "POS 15") {
-      if (onOpenPOS15Report) onOpenPOS15Report();
-      else navigate("/admin/pos15");
 
     } else {
       alert(`📌 لا يوجد تقرير متاح حاليًا لهذا الفرع: ${branch}`);

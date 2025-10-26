@@ -4,9 +4,10 @@ import FTR1DailyCleanlinessView from "./FTR1DailyCleanlinessView";
 import FTR1OilCalibrationView from "./FTR1OilCalibrationView";
 import FTR1PersonalHygieneView from "./FTR1PersonalHygieneView";
 import FTR1TemperatureView from "./FTR1TemperatureView";
-
-// ✅ التبويب الجديد (عرض سجل الاستلام)
 import FTR1ReceivingLogView from "./FTR1ReceivingLogView";
+
+/* ✅ ملف العرض الجديد */
+import FTR1CookingTemperatureLogView from "./FTR1CookingTemperatureLogView";
 
 export default function FTR1ReportView() {
   const [activeTab, setActiveTab] = useState("temperature");
@@ -44,9 +45,12 @@ export default function FTR1ReportView() {
         <button style={tabButtonStyle("hygiene")} onClick={() => setActiveTab("hygiene")}>
           🧑‍🔬 Personal Hygiene
         </button>
-        {/* ✅ زر التبويب الجديد */}
         <button style={tabButtonStyle("receiving")} onClick={() => setActiveTab("receiving")}>
           🚚 Receiving Log
+        </button>
+        {/* ✅ التبويب الجديد */}
+        <button style={tabButtonStyle("cook")} onClick={() => setActiveTab("cook")}>
+          🍳 Cooking Temp Log
         </button>
       </div>
 
@@ -63,8 +67,9 @@ export default function FTR1ReportView() {
         {activeTab === "cleanliness" && <FTR1DailyCleanlinessView />}
         {activeTab === "oil" && <FTR1OilCalibrationView />}
         {activeTab === "hygiene" && <FTR1PersonalHygieneView />}
-        {/* ✅ ربط التبويب بالملف الجديد */}
         {activeTab === "receiving" && <FTR1ReceivingLogView />}
+        {/* ✅ عرض سجل الطهي */}
+        {activeTab === "cook" && <FTR1CookingTemperatureLogView />}
       </div>
     </div>
   );
