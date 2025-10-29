@@ -76,7 +76,7 @@ export default function PersonalHygienePRDView() {
       arr.sort((a, b) => new Date(a.__dateStr || 0) - new Date(b.__dateStr || 0));
 
       setReports(arr);
-      setSelected(arr[arr.length - 1] || null);
+      setSelected(arr[arr.length - 1] || null); // آخر تقرير افتراضياً
     } finally {
       setLoading(false);
     }
@@ -85,6 +85,12 @@ export default function PersonalHygienePRDView() {
 
   const groups = useMemo(() => groupByYMD(reports), [reports]);
   const selectedKey = getKey(selected);
+
+  /* ===== Date tree: collapsed by default (like Traceability) ===== */
+  const [expandedYears, setExpandedYears] = useState({});
+  const [expandedMonths, setExpandedMonths] = useState({}); // key = "YYYY-MM"
+  const toggleYear  = (y)    => setExpandedYears((p)  => ({ ...p, [y]: !p[y] }));
+  const toggleMonth = (y, m) => setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
 
   /* ===== Export PDF (sheet only) ===== */
   function exportPDF() {
@@ -117,7 +123,7 @@ export default function PersonalHygienePRDView() {
     setTimeout(() => { w.focus(); w.print(); }, 100);
   }
 
-  /* ===== NEW: Export all reports as JSON ===== */
+  /* ===== Export all reports as JSON ===== */
   function exportJSONAll() {
     const dump = {
       meta: {
@@ -139,7 +145,7 @@ export default function PersonalHygienePRDView() {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  /* ===== NEW: Import JSON → save to server → refresh ===== */
+  /* ===== Import JSON → save to server → refresh ===== */
   function triggerImport() {
     fileRef.current?.click();
   }
@@ -238,7 +244,7 @@ export default function PersonalHygienePRDView() {
       <div style={styles.layout}>
         {/* Sidebar */}
         <aside style={styles.sidebar}>
-          {/* NEW: import/export toolbar */}
+          {/* import/export toolbar */}
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
             <button onClick={exportJSONAll} style={btnDark}>⇩ Export JSON (all)</button>
             <button onClick={triggerImport} style={btnBlue} disabled={importing}>
@@ -263,6 +269,10 @@ export default function PersonalHygienePRDView() {
                 months={groups.years[yy]}
                 selectedKey={selectedKey}
                 onPick={setSelected}
+                expandedYears={expandedYears}
+                expandedMonths={expandedMonths}
+                toggleYear={toggleYear}
+                toggleMonth={toggleMonth}
               />
             ))}
         </aside>
@@ -301,17 +311,37 @@ export default function PersonalHygienePRDView() {
   );
 }
 
-/* ===== Sidebar blocks ===== */
-function YearBlock({ year, months, onPick, selectedKey }) {
-  const [open, setOpen] = useState(true);
+/* ===== Sidebar blocks (collapsed by default) ===== */
+function YearBlock({
+  year, months, onPick, selectedKey,
+  expandedYears, expandedMonths, toggleYear, toggleMonth
+}) {
+  // مطوي افتراضيًا
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+   if (expandedYears[year] !== undefined) setOpen(!!expandedYears[year]);
+  }, [expandedYears, year]);
+
+  useEffect(() => {
+    // مزامنة مع الحالة العامة
+    if (open !== !!expandedYears[year]) {
+      // لا تغيير هنا؛ التحكم الأساسي عبر toggleYear
+    }
+  }, [open, expandedYears, year]);
+
   const daysCount = Object.keys(months).reduce((acc, m) => acc + Object.keys(months[m]).length, 0);
   return (
     <div style={sb.year}>
-      <div style={sb.yearHeader} onClick={() => setOpen(!open)}>
+      <div
+        style={sb.yearHeader}
+        onClick={() => { toggleYear(year); setOpen(!open); }}
+        title={open ? "Collapse" : "Expand"}
+      >
         <span>{open ? "▾" : "▸"}</span>
         <strong>Year {year}</strong>
         <span style={sb.badge}>{daysCount} days</span>
       </div>
+
       {open &&
         Object.keys(months)
           .sort((a, b) => Number(a) - Number(b))
@@ -323,22 +353,36 @@ function YearBlock({ year, months, onPick, selectedKey }) {
               days={months[mm]}
               onPick={onPick}
               selectedKey={selectedKey}
+              expandedMonths={expandedMonths}
+              toggleMonth={toggleMonth}
             />
           ))}
     </div>
   );
 }
-function MonthBlock({ year, month, days, onPick, selectedKey }) {
-  const [open, setOpen] = useState(true);
+
+function MonthBlock({ year, month, days, onPick, selectedKey, expandedMonths, toggleMonth }) {
+  // مطوي افتراضيًا
+  const [open, setOpen] = useState(false);
+  const key = `${year}-${month}`;
+  useEffect(() => {
+    if (expandedMonths[key] !== undefined) setOpen(!!expandedMonths[key]);
+  }, [expandedMonths, key]);
+
   const totalItems = Object.values(days).reduce((acc, v) => acc + (v.items || 0), 0);
   return (
     <div style={sb.month}>
-      <div style={sb.monthHeader} onClick={() => setOpen(!open)}>
+      <div
+        style={sb.monthHeader}
+        onClick={() => { toggleMonth(year, month); setOpen(!open); }}
+        title={open ? "Collapse" : "Expand"}
+      >
         <span>{open ? "▾" : "▸"}</span>
         <span style={{ fontWeight: 900 }}>Month {month}</span>
         <span style={sb.badge}>{Object.keys(days).length} days</span>
         <span style={sb.badgeMuted}>{totalItems} items</span>
       </div>
+
       {open &&
         Object.keys(days)
           .sort((a, b) => Number(a) - Number(b))
@@ -356,6 +400,7 @@ function MonthBlock({ year, month, days, onPick, selectedKey }) {
     </div>
   );
 }
+
 function DateChip({ y, m, d, info, onPick, selectedKey }) {
   const list = info?.list || [];
   const first = list[0];

@@ -316,7 +316,7 @@ export default function CoolersTab(props) {
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
 
-  /* ✅ اسم/توقيع المدير للتحقق (أسفل الصفحة) */
+  /* ✅ اسم/توقيع للتحقق (أسفل الصفحة) */
   const [verifiedByManager, setVerifiedByManager] = useState("");
 
   const useExternalCoolers = Array.isArray(coolers) && typeof setCoolers === "function";
@@ -608,7 +608,7 @@ export default function CoolersTab(props) {
         </div>
       </div>
 
-      {/* ✅ الشريط السفلي: زر الحفظ + Verified by (Manager) على يمينه */}
+      {/* ✅ الشريط السفلي: زر الحفظ + Verified by على يمينه */}
       <div
         style={{
           display: "flex",
@@ -624,7 +624,7 @@ export default function CoolersTab(props) {
         </button>
 
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontWeight: 700 }}>Verified by (Manager):</span>
+          <span style={{ fontWeight: 700 }}>Verified by:</span>
           <input
             type="text"
             value={verifiedByManager}

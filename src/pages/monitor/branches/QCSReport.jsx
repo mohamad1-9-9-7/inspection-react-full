@@ -5,8 +5,16 @@ import PersonalHygieneTab from "./qcs/PersonalHygieneTab";
 import DailyCleanlinessTab from "./qcs/DailyCleanlinessTab";
 import CoolersTab from "./qcs/CoolersTab";
 
-// ✅ استيراد الصفحة الجديدة من نفس مسار التبويبات القديمة (داخل مجلد qcs)
+// ✅ تبويبات إضافية
 import FreshChickenInter from "./qcs/FreshChickenInter";
+
+// ✅ تقارير تفتيش ما قبل التحميل
+import MamzarMeatInspection from "./qcs/MeatProductInspectionReport";       // FTR 2 (Mamzar)
+import MushrifMeatInspection from "./qcs/MeatProductInspectionReportFTR1"; // FTR 1 (Mushrif)
+
+// ✅ ربط التبوبيبن الجدد
+import RMInspectionReportIngredients from "./qcs/RMInspectionReportIngredients";
+import RMInspectionReportPackaging from "./qcs/RMInspectionReportPackaging";
 
 export default function QCSReport() {
   const [activeTab, setActiveTab] = useState("shipment");
@@ -45,6 +53,7 @@ export default function QCSReport() {
 
   const tabBar = {
     ...card,
+    background: COLORS.primarySoft,
     padding: "0.75rem 0.75rem",
     display: "flex",
     gap: 16,
@@ -100,8 +109,15 @@ export default function QCSReport() {
     { id: "coolers", label: "🧊 Coolers Temperatures" },
     { id: "personalHygiene", label: "🧼 Personal Hygiene" },
     { id: "dailyCleanliness", label: "🧹 Daily Cleanliness" },
-    // 🆕 تبويب القصيص
     { id: "qusaisFreshChicken", label: "🍗 Al Qusais • Fresh Chicken" },
+
+    // 🆕 تفتيش ما قبل التحميل لكل موقع
+    { id: "meatInspectionMamzar",  label: "🚚 Mamzar Park • MEAT INSPECTION (FTR 2)" },
+    { id: "meatInspectionMushrif", label: "🚚 Mushrif Park • MEAT INSPECTION (FTR 1)" },
+
+    // 🆕 المطلوبين
+    { id: "physical_ing",  label: "🧾 PHYSICAL INSPECTION REPORT-INgrediants" },
+    { id: "physical_pack", label: "📦 PHYSICAL INSPECTION REPORT-packaging" },
   ];
 
   return (
@@ -153,14 +169,40 @@ export default function QCSReport() {
           </div>
         )}
 
-        {/* تبويب القصيص — صفحة الإدخال الجديدة */}
         {activeTab === "qusaisFreshChicken" && (
           <div style={card}>
             <FreshChickenInter />
+          </div>
+        )}
+
+        {/* 🆕 Mamzar (FTR 2) */}
+        {activeTab === "meatInspectionMamzar" && (
+          <div style={card}>
+            <MamzarMeatInspection />
+          </div>
+        )}
+
+        {/* 🆕 Mushrif (FTR 1) */}
+        {activeTab === "meatInspectionMushrif" && (
+          <div style={card}>
+            <MushrifMeatInspection />
+          </div>
+        )}
+
+        {/* 🧾 INgrediants */}
+        {activeTab === "physical_ing" && (
+          <div style={card}>
+            <RMInspectionReportIngredients />
+          </div>
+        )}
+
+        {/* 📦 Packaging */}
+        {activeTab === "physical_pack" && (
+          <div style={card}>
+            <RMInspectionReportPackaging />
           </div>
         )}
       </div>
     </div>
   );
 }
-// ✅ استيراد الصفحة الجديدة من نفس مسار التبويبات القديمة (داخل مجلد qcs)  

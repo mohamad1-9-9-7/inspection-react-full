@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/production/CleaningChecklistPRDView.jsx
+// src/pages/monitor/branches/production/PersonalHygienePRDView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE =
@@ -6,7 +6,16 @@ const API_BASE =
   (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
   "https://inspection-server-4nvj.onrender.com";
 
-const TYPE = "prod_cleaning_checklist";
+const TYPE = "prod_personal_hygiene";
+
+const COLUMNS = [
+  "Nails",
+  "Hair",
+  "Not wearing Jewelry",
+  "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe",
+  "Communicable Disease",
+  "Open wounds/sores & cut",
+];
 
 /* ===== Helpers ===== */
 function normYMD(dateStr) {
@@ -44,7 +53,7 @@ function groupByYMD(arr) {
 }
 
 /* ===== Main View ===== */
-export default function CleaningChecklistPRDView() {
+export default function PersonalHygienePRDView() {
   const [reports, setReports] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -62,12 +71,12 @@ export default function CleaningChecklistPRDView() {
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
 
-      // فرز قديم → جديد (والاختيار الافتراضي أحدث تقرير)
+      // فرز قديم → جديد للسايدبار
       arr.forEach((r) => (r.__dateStr = r.payload?.reportDate || r.createdAt || ""));
       arr.sort((a, b) => new Date(a.__dateStr || 0) - new Date(b.__dateStr || 0));
 
       setReports(arr);
-      setSelected(arr[arr.length - 1] || null);
+      setSelected(arr[arr.length - 1] || null); // آخر تقرير افتراضياً
     } finally {
       setLoading(false);
     }
@@ -76,6 +85,12 @@ export default function CleaningChecklistPRDView() {
 
   const groups = useMemo(() => groupByYMD(reports), [reports]);
   const selectedKey = getKey(selected);
+
+  /* ===== Date tree: collapsed by default (like Traceability) ===== */
+  const [expandedYears, setExpandedYears] = useState({});
+  const [expandedMonths, setExpandedMonths] = useState({}); // key = "YYYY-MM"
+  const toggleYear  = (y)    => setExpandedYears((p)  => ({ ...p, [y]: !p[y] }));
+  const toggleMonth = (y, m) => setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
 
   /* ===== Export PDF (sheet only) ===== */
   function exportPDF() {
@@ -95,7 +110,7 @@ export default function CleaningChecklistPRDView() {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Cleaning Checklist (PRD) - ${titleDate}</title>
+          <title>Personal Hygiene (PRD) - ${titleDate}</title>
           <style>${PRINT_CSS}</style>
         </head>
         <body>${sheetRef.current.outerHTML}</body>
@@ -108,7 +123,7 @@ export default function CleaningChecklistPRDView() {
     setTimeout(() => { w.focus(); w.print(); }, 100);
   }
 
-  /* ===== NEW: Export all reports as JSON ===== */
+  /* ===== Export all reports as JSON ===== */
   function exportJSONAll() {
     const dump = {
       meta: {
@@ -130,8 +145,10 @@ export default function CleaningChecklistPRDView() {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  /* ===== NEW: Import JSON → save to server → refresh ===== */
-  function triggerImport() { fileRef.current?.click(); }
+  /* ===== Import JSON → save to server → refresh ===== */
+  function triggerImport() {
+    fileRef.current?.click();
+  }
   async function handleImportFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -149,7 +166,7 @@ export default function CleaningChecklistPRDView() {
       const base = String(API_BASE).replace(/\/$/, "");
       let ok = 0, fail = 0;
       for (const raw of items) {
-        const payload = raw?.payload ?? raw;
+        const payload = raw?.payload ?? raw; // دعم الحالتين
         const reporter = raw?.reporter ?? "production";
         const type = raw?.type ?? TYPE;
         try {
@@ -215,7 +232,7 @@ export default function CleaningChecklistPRDView() {
       {/* Top bar */}
       <div style={styles.topBar}>
         <div style={{ fontWeight: 900, color: "#fff" }}>
-          Cleaning Checklist details {selected ? `(${selected?.payload?.reportDate || ""})` : ""}
+          Personal Hygiene details {selected ? `(${selected?.payload?.reportDate || ""})` : ""}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={load} style={btnBlue}>⟳ Refresh</button>
@@ -227,7 +244,7 @@ export default function CleaningChecklistPRDView() {
       <div style={styles.layout}>
         {/* Sidebar */}
         <aside style={styles.sidebar}>
-          {/* NEW: import/export toolbar */}
+          {/* import/export toolbar */}
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
             <button onClick={exportJSONAll} style={btnDark}>⇩ Export JSON (all)</button>
             <button onClick={triggerImport} style={btnBlue} disabled={importing}>
@@ -252,6 +269,10 @@ export default function CleaningChecklistPRDView() {
                 months={groups.years[yy]}
                 selectedKey={selectedKey}
                 onPick={setSelected}
+                expandedYears={expandedYears}
+                expandedMonths={expandedMonths}
+                toggleYear={toggleYear}
+                toggleMonth={toggleMonth}
               />
             ))}
         </aside>
@@ -268,7 +289,7 @@ export default function CleaningChecklistPRDView() {
         </main>
       </div>
 
-      {/* Table CSS */}
+      {/* Tables CSS */}
       <style>{`
         .tbl { width:100%; border-collapse:collapse; box-shadow:0 6px 18px rgba(2,6,23,.06); }
         .tbl th, .tbl td { border:1.5px solid #94a3b8; }
@@ -282,7 +303,7 @@ export default function CleaningChecklistPRDView() {
         .tbl tbody tr:nth-child(2n) td { background:#f8fafc; }
 
         .hdrTable { width:100%; border-collapse:collapse; margin-bottom:10px; }
-        /* أغمق شوي كما طلبت */
+        /* حدود الترويسة أوضح */
         .hdrTable td { border:2px solid #334155; padding:8px 10px; font-weight:800; background:#fff; }
         .hdrTable tr:nth-child(odd) td { background:#f1f5f9; }
       `}</style>
@@ -290,17 +311,30 @@ export default function CleaningChecklistPRDView() {
   );
 }
 
-/* ===== Sidebar blocks ===== */
-function YearBlock({ year, months, onPick, selectedKey }) {
-  const [open, setOpen] = useState(true);
+/* ===== Sidebar blocks (collapsed by default) ===== */
+function YearBlock({
+  year, months, onPick, selectedKey,
+  expandedYears, expandedMonths, toggleYear, toggleMonth
+}) {
+  // مطوي افتراضيًا
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+   if (expandedYears[year] !== undefined) setOpen(!!expandedYears[year]);
+  }, [expandedYears, year]);
+
   const daysCount = Object.keys(months).reduce((acc, m) => acc + Object.keys(months[m]).length, 0);
   return (
     <div style={sb.year}>
-      <div style={sb.yearHeader} onClick={() => setOpen(!open)}>
+      <div
+        style={sb.yearHeader}
+        onClick={() => { toggleYear(year); setOpen(!open); }}
+        title={open ? "Collapse" : "Expand"}
+      >
         <span>{open ? "▾" : "▸"}</span>
         <strong>Year {year}</strong>
         <span style={sb.badge}>{daysCount} days</span>
       </div>
+
       {open &&
         Object.keys(months)
           .sort((a, b) => Number(a) - Number(b))
@@ -312,23 +346,36 @@ function YearBlock({ year, months, onPick, selectedKey }) {
               days={months[mm]}
               onPick={onPick}
               selectedKey={selectedKey}
+              expandedMonths={expandedMonths}
+              toggleMonth={toggleMonth}
             />
           ))}
     </div>
   );
 }
 
-function MonthBlock({ year, month, days, onPick, selectedKey }) {
-  const [open, setOpen] = useState(true);
+function MonthBlock({ year, month, days, onPick, selectedKey, expandedMonths, toggleMonth }) {
+  // مطوي افتراضيًا
+  const [open, setOpen] = useState(false);
+  const key = `${year}-${month}`;
+  useEffect(() => {
+    if (expandedMonths[key] !== undefined) setOpen(!!expandedMonths[key]);
+  }, [expandedMonths, key]);
+
   const totalItems = Object.values(days).reduce((acc, v) => acc + (v.items || 0), 0);
   return (
     <div style={sb.month}>
-      <div style={sb.monthHeader} onClick={() => setOpen(!open)}>
+      <div
+        style={sb.monthHeader}
+        onClick={() => { toggleMonth(year, month); setOpen(!open); }}
+        title={open ? "Collapse" : "Expand"}
+      >
         <span>{open ? "▾" : "▸"}</span>
         <span style={{ fontWeight: 900 }}>Month {month}</span>
         <span style={sb.badge}>{Object.keys(days).length} days</span>
         <span style={sb.badgeMuted}>{totalItems} items</span>
       </div>
+
       {open &&
         Object.keys(days)
           .sort((a, b) => Number(a) - Number(b))
@@ -347,7 +394,6 @@ function MonthBlock({ year, month, days, onPick, selectedKey }) {
   );
 }
 
-/* زر التاريخ فقط + تمييز أزرق عند الاختيار */
 function DateChip({ y, m, d, info, onPick, selectedKey }) {
   const list = info?.list || [];
   const first = list[0];
@@ -367,9 +413,23 @@ function DateChip({ y, m, d, info, onPick, selectedKey }) {
 
 /* ===== Report Sheet ===== */
 const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
-  const header = data?.header || {};
-  const rows = data?.entries || [];
-  const footer = data?.footer || {};
+  // Header (من البيانات أو قيم افتراضية مطابقة لصفحة الإدخال)
+  const h = data?.header || {};
+  const header = {
+    documentTitle: h.documentTitle || "Personal Hygiene Check List",
+    documentNo: h.documentNo || "FS-QM /REC/PH",
+    issueDate: h.issueDate || "05/02/2020",
+    revisionNo: h.revisionNo || "0",
+    area: h.area || "Production",
+    issuedBy: h.issuedBy || "QA",
+    controllingOfficer: h.controllingOfficer || "Quality Controller",
+    company: h.company || "TRANS EMIRATES LIVESTOCK TRADING LLC",
+  };
+
+  const date = data?.reportDate || "—";
+  const entries = data?.entries || [];
+  const checkedBy = data?.checkedBy || "—";
+  const verifiedBy = data?.verifiedBy || "—";
 
   return (
     <div ref={ref} className="paper">
@@ -378,88 +438,88 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
         <table className="hdrTable">
           <tbody>
             <tr>
-              <td><strong>Document Title:</strong> {header.documentTitle || "Cleaning Checklist"}</td>
-              <td><strong>Document No:</strong> {header.documentNo || "—"}</td>
+              <td><strong>Document Title:</strong> {header.documentTitle}</td>
+              <td><strong>Document No:</strong> {header.documentNo}</td>
             </tr>
             <tr>
-              <td><strong>Issue Date:</strong> {header.issueDate || "—"}</td>
-              <td><strong>Revision No:</strong> {header.revisionNo || "—"}</td>
+              <td><strong>Issue Date:</strong> {header.issueDate}</td>
+              <td><strong>Revision No:</strong> {header.revisionNo}</td>
             </tr>
             <tr>
-              <td><strong>Area:</strong> {header.area || "—"}</td>
-              <td><strong>Issued By:</strong> {header.issuedBy || "—"}</td>
+              <td><strong>Area:</strong> {header.area}</td>
+              <td><strong>Issued By:</strong> {header.issuedBy}</td>
             </tr>
             <tr>
-              <td><strong>Controlling Officer:</strong> {header.controllingOfficer || "—"}</td>
-              <td><strong>Approved By:</strong> {header.approvedBy || "—"}</td>
+              <td><strong>Controlling Officer:</strong> {header.controllingOfficer}</td>
+              <td><strong>Company:</strong> {header.company}</td>
             </tr>
+            {/* Approved By محذوف من الترويسة كما طلبت */}
           </tbody>
         </table>
 
         <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: 6, marginBottom: 8 }}>
-          TRANS EMIRATES LIVESTOCK TRADING LLC<br/>CLEANING CHECKLIST — PRODUCTION
+          AL MAWASHI — PRODUCTION<br/>PERSONAL HYGIENE CHECKLIST (PRD)
         </h3>
 
-        {/* Date */}
-        <div style={{ marginBottom: 8, fontWeight: 900 }}>
-          Date: {data?.reportDate || "—"}
-        </div>
+        {/* التاريخ */}
+        <table className="hdrTable" style={{ marginTop: -6 }}>
+          <tbody>
+            <tr>
+              <td colSpan={2}><strong>Date:</strong> {date}</td>
+            </tr>
+          </tbody>
+        </table>
 
         {/* Table */}
         <div style={{ overflowX: "auto" }}>
           <table className="tbl">
             <thead>
               <tr>
-                <th style={{ width: 70 }}>SI-No</th>
-                <th style={{ minWidth: 340 }}>General Cleaning</th>
-                <th style={{ minWidth: 260 }}>Chemical &amp; Concentration</th>
-                <th style={{ width: 80 }}>C/NC</th>
-                <th style={{ minWidth: 160 }}>Done By</th>
-                <th style={{ minWidth: 280 }}>Remarks &amp; CA</th>
+                <th style={{ width: 70 }}>S.No</th>
+                <th style={{ minWidth: 180 }}>Employee Name</th>
+                {COLUMNS.map((c, i) => (<th key={i} style={{ minWidth: 140 }}>{c}</th>))}
+                <th style={{ minWidth: 260 }}>Remarks and Corrective Actions</th>
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {entries.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: "center", color: "#64748b", fontWeight: 800 }}>
+                  <td colSpan={COLUMNS.length + 3} style={{ textAlign:"center", color:"#64748b", fontWeight: 800 }}>
                     No entries
                   </td>
                 </tr>
-              ) : rows.map((r, i) => r.isSection ? (
-                <tr key={"sec-"+i} style={{ background:"#f3f4f6", fontWeight:800 }}>
-                  <td>{r.sectionNo}</td>
-                  <td>{r.section}</td>
-                  <td colSpan={4} style={{ textAlign:"center" }}>—</td>
-                </tr>
-              ) : (
+              ) : entries.map((row, i) => (
                 <tr key={i}>
-                  <td>{r.letter || "—"}</td>
-                  <td style={{ textAlign:"left" }}>{r.general || ""}</td>
-                  <td style={{ textAlign:"left" }}>{r.chemical || ""}</td>
-                  <td>{r.cnc || ""}</td>
-                  <td style={{ textAlign:"left" }}>{r.doneBy || ""}</td>
-                  <td style={{ textAlign:"left" }}>{r.remarks || ""}</td>
+                  <td>{i + 1}</td>
+                  <td style={{ textAlign:"left" }}>{row.name || ""}</td>
+                  {COLUMNS.map((c, k) => (<td key={k}>{row[c] || ""}</td>))}
+                  <td style={{ textAlign:"left" }}>{row.remarks || ""}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        {/* Footer (CHECKED يسار / VERIFIED يمين) */}
+        {/* Signatures: Checked By يسار — Verified By يمين */}
         <div style={{
           marginTop: 10,
           fontWeight: 900,
-          display:"flex",
-          alignItems:"center",
-          justifyContent:"space-between",
-          gap:12,
-          flexWrap:"wrap"
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          width: "100%",
         }}>
-          <div style={{ textAlign:"left", flex:1 }}>CHECKED BY: {footer.checkedBy || "—"}</div>
-          <div style={{ textAlign:"right", flex:1 }}>VERIFIED BY: {footer.verifiedBy || "—"}</div>
+          <div style={{ textAlign: "left", flex: 1 }}>
+            Checked By: {checkedBy}
+          </div>
+          <div style={{ textAlign: "right", flex: 1 }}>
+            Verified By: {verifiedBy}
+          </div>
         </div>
+
         <div style={{ marginTop: 6, fontSize: ".9rem", fontWeight: 800 }}>
-          Remark:-Frequency-Daily &nbsp;&nbsp;&nbsp; (C = Conform, N/C = Non Conform)
+          *(C – Conform &nbsp;&nbsp; N/C – Non Conform)
         </div>
       </div>
     </div>

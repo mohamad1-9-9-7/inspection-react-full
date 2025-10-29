@@ -2,9 +2,10 @@
 import React, { useState, Suspense, lazy } from "react";
 
 /* ===== Lazy Inputs (يتم عرضها داخل التبويبات) ===== */
-const PersonalHygienePRDInput = lazy(() => import("./PersonalHygienePRDInput"));
+const PersonalHygienePRDInput   = lazy(() => import("./PersonalHygienePRDInput"));
 const CleaningChecklistPRDInput = lazy(() => import("./CleaningChecklistPRDInput"));
-const PRDDefrostingRecordInput = lazy(() => import("./PRDDefrostingRecordInput"));
+const PRDDefrostingRecordInput  = lazy(() => import("./PRDDefrostingRecordInput"));
+const PRDTraceabilityLogInput   = lazy(() => import("./PRDTraceabilityLogInput")); // ⬅️ جديد
 
 /* أيقونات بسيطة */
 const Svg = (p) => ({
@@ -21,11 +22,21 @@ const IconCleaning = () => (
 const IconDefrost = () => (
   <svg {...Svg()}><path d="M12 2v20"/><path d="M4 6l16 12"/><path d="M20 6L4 18"/></svg>
 );
+/* أيقونة التتبّع */
+const IconTrace = () => (
+  <svg {...Svg()}>
+    <path d="M7 7l-3 3a4 4 0 0 0 0 6l1 1a4 4 0 0 0 6 0l3-3" />
+    <path d="M17 17l3-3a4 4 0 0 0 0-6l-1-1a4 4 0 0 0-6 0l-3 3" />
+    <path d="M9 12a3 3 0 0 1 3-3h2" />
+    <path d="M15 12a3 3 0 0 1-3 3H10" />
+  </svg>
+);
 
 const TABS = [
-  { key: "personal", title: "Personal Hygiene (PRD)", Icon: IconHygiene, Comp: PersonalHygienePRDInput },
-  { key: "cleaning", title: "CLEANING CHECKLIST (PRD)", Icon: IconCleaning, Comp: CleaningChecklistPRDInput },
-  { key: "defrost",  title: "PRD Defrosting Record",   Icon: IconDefrost,  Comp: PRDDefrostingRecordInput },
+  { key: "personal",     title: "Personal Hygiene (PRD)",   Icon: IconHygiene, Comp: PersonalHygienePRDInput },
+  { key: "cleaning",     title: "CLEANING CHECKLIST (PRD)", Icon: IconCleaning, Comp: CleaningChecklistPRDInput },
+  { key: "defrost",      title: "PRD Defrosting Record",    Icon: IconDefrost,  Comp: PRDDefrostingRecordInput },
+  { key: "traceability", title: "Traceability Log (PRD)",   Icon: IconTrace,    Comp: PRDTraceabilityLogInput }, // ⬅️ جديد
 ];
 
 export default function ProductionHub() {

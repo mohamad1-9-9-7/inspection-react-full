@@ -26,7 +26,7 @@ const POS10Layout = lazy(() =>
   import("./pages/monitor/branches/pos 10/POS10Layout")
 );
 
-// 🆕 ✅ POS 11 — التبويبات (جديد) ← تم تصحيح حالة الأحرف بالمجلّد
+// 🆕 ✅ POS 11 — التبويبات (جديد)
 const POS11Layout = lazy(() =>
   import("./pages/monitor/branches/POS 11/POS11Layout")
 );
@@ -138,6 +138,11 @@ const FreshChickenReportsView = lazy(() =>
 );
 const FreshChickenInter = lazy(() =>
   import("./pages/monitor/branches/qcs/FreshChickenInter")
+);
+
+/* 🆕 ✅ QCS — تبويبات عرض فقط (الجديدة) */
+const QCSReportsView = lazy(() =>
+  import("./pages/monitor/branches/qcs/QCSReportsView")
 );
 
 /** حماية المسارات الخاصة */
@@ -463,6 +468,37 @@ export default function App() {
           element={
             <ProtectedRoute>
               <FreshChickenReportsView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 ✅ QCS — صفحة تبويبات العرض فقط */}
+        <Route
+          path="/admin/monitor/branches/qcs/reports"
+          element={
+            <ProtectedRoute>
+              <QCSReportsView />
+            </ProtectedRoute>
+          }
+        />
+        {/* 🆕 Aliases لسهولة الوصول */}
+        <Route
+          path="/admin/monitor/branches/qcs"
+          element={<Navigate to="/admin/monitor/branches/qcs/reports" replace />}
+        />
+        <Route
+          path="/admin/monitor/qcs"
+          element={
+            <ProtectedRoute>
+              <QCSReportsView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/qcs"
+          element={
+            <ProtectedRoute>
+              <QCSReportsView />
             </ProtectedRoute>
           }
         />

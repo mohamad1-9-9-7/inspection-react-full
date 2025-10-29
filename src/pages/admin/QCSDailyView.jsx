@@ -3,6 +3,11 @@ import React, { useEffect, useState, useRef } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
+/* ⬇️⬇️⬇️ إضافات الاستيراد للتبويبين (عرض فقط) ⬇️⬇️⬇️ */
+import FTR1PreloadingViewer from "../monitor/branches/qcs/FTR1PreloadingViewer";
+import FTR2PreloadingViewer from "../monitor/branches/qcs/FTR2PreloadingViewer";
+/* ⬆️⬆️⬆️ */
+
 /* ============ API base ============ */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const API_ROOT =
@@ -1684,6 +1689,9 @@ export default function QCSDailyView() {
               { id: "personalHygiene", label: "🧼 Personal Hygiene" },
               { id: "dailyCleanliness", label: "🧹 Daily Cleanliness" },
               { id: "freshChicken", label: "🍗 FRESH CHICKEN REBORT" },
+              /* ⬇️ تبويبَي العرض الجدد */
+              { id: "ftr1Preloading", label: "🚚 FTR1 Preloading (View)" },
+              { id: "ftr2Preloading", label: "🚚 FTR2 Preloading (View)" },
             ].map(({ id, label }) => (
               <button
                 key={id}
@@ -2180,6 +2188,20 @@ export default function QCSDailyView() {
                   background: "#fff",
                 }}
               />
+            </div>
+          )}
+
+          {/* ================= تبويب عرض: FTR1 (Viewer) ================= */}
+          {activeTab === "ftr1Preloading" && (
+            <div style={{ background: "#fff", borderRadius: 12, padding: 8 }}>
+              <FTR1PreloadingViewer />
+            </div>
+          )}
+
+          {/* ================= تبويب عرض: FTR2 (Viewer) ================= */}
+          {activeTab === "ftr2Preloading" && (
+            <div style={{ background: "#fff", borderRadius: 12, padding: 8 }}>
+              <FTR2PreloadingViewer />
             </div>
           )}
         </div>

@@ -22,6 +22,23 @@ function toIsoYMD(value) {
   return `${y}-${m}-${dd}`;
 }
 
+/* صف فارغ لبنائه عند الحاجة */
+const EMPTY_ROW = () => ({
+  rawMaterial: "",
+  quantity: "",
+  brand: "",
+  rmProdDate: "",
+  rmExpDate: "",
+  defStartDate: "",
+  defStartTime: "",
+  startTemp: "",
+  defEndDate: "",
+  defEndTime: "",
+  endTemp: "",
+  defrostTemp: "",
+  remarks: "",
+});
+
 /* ─── Row Component ───────────────────────────────────────────────────────── */
 function Row({ idx, row, onChange, onRemove, canRemove }) {
   const set = (k, v) => onChange(idx, { ...row, [k]: v });
@@ -64,49 +81,15 @@ export default function PRDDefrostingRecordInput() {
   const approvedBy = "Hussam O Sarhan";
 
   const [recordDate, setRecordDate] = useState(today()); // YYYY-MM-DD
-
   const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
 
-  const [entries, setEntries] = useState(
-    Array.from({ length: 16 }).map(() => ({
-      rawMaterial: "",
-      quantity: "",
-      brand: "",
-      rmProdDate: "",
-      rmExpDate: "",
-      defStartDate: "",
-      defStartTime: "",
-      startTemp: "",
-      defEndDate: "",
-      defEndTime: "",
-      endTemp: "",
-      defrostTemp: "",
-      remarks: "",
-    }))
-  );
+  // ✅ 3 أسطر افتراضيًا (بدل 16) مع إمكانية الإضافة/الحذف
+  const [entries, setEntries] = useState([EMPTY_ROW(), EMPTY_ROW(), EMPTY_ROW()]);
   const [saving, setSaving] = useState(false);
 
   const chRow = (i, v) => setEntries(entries.map((r, ix) => (ix === i ? v : r)));
-  const addRow = () =>
-    setEntries([
-      ...entries,
-      {
-        rawMaterial: "",
-        quantity: "",
-        brand: "",
-        rmProdDate: "",
-        rmExpDate: "",
-        defStartDate: "",
-        defStartTime: "",
-        startTemp: "",
-        defEndDate: "",
-        defEndTime: "",
-        endTemp: "",
-        defrostTemp: "",
-        remarks: "",
-      },
-    ]);
+  const addRow = () => setEntries((prev) => [...prev, EMPTY_ROW()]);
   const rmRow = (i) => setEntries(entries.filter((_, ix) => ix !== i));
 
   const rowHasData = (r) =>

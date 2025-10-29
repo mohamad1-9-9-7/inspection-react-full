@@ -12,6 +12,9 @@ let fromVite;
 try { fromVite = import.meta.env && (import.meta.env.VITE_API_URL || import.meta.env.RENDER_EXTERNAL_URL); } catch { fromVite = undefined; }
 const API_BASE = String(fromWindow || fromProcess || fromVite || API_ROOT_DEFAULT).replace(/\/$/, "");
 
+/* ===== Document No (fixed) ===== */
+const DOC_NO = "FS-QM/REC/FC-001";
+
 /* Images API: POST /api/images, DELETE /api/images?url=... */
 async function uploadImageViaServer(file) {
   const fd = new FormData();
@@ -265,7 +268,7 @@ export default function FreshChickenInter() {
   const [verifiedBy, setVerifiedBy] = useState("");
   const [saving, setSaving] = useState(false);
 
-  /* ====== Styles (FULL SCREEN) ====== */
+  /* ====== Styles (EMBEDDED IN TAB) ====== */
   const COLORS = {
     ink: "#0b132b",
     line: "#0b132b",
@@ -281,7 +284,14 @@ export default function FreshChickenInter() {
     bad: "#dc2626",
   };
 
-  const page = { position: "fixed", inset: 0, padding: 18, overflowY: "auto", background: COLORS.bg, fontFamily: "Inter, -apple-system, Segoe UI, Roboto, sans-serif", color: COLORS.ink };
+  // ⬇️ إصلاح: بدون position: fixed / inset: 0
+  const page = {
+    padding: 18,
+    overflowY: "auto",
+    background: COLORS.bg,
+    fontFamily: "Inter, -apple-system, Segoe UI, Roboto, sans-serif",
+    color: COLORS.ink,
+  };
   const container = { width: "100%", maxWidth: "100%", margin: 0 };
 
   const sectionCard = { background: COLORS.card, border: `2px solid ${COLORS.line}`, borderRadius: 14, boxShadow: "0 8px 20px rgba(0,0,0,.05)", padding: 16, marginBottom: 16, overflow: "hidden" };
@@ -323,10 +333,27 @@ export default function FreshChickenInter() {
   /* Attachments (Images & Certificates) */
   const doUploadList = async (fileList, dest = "images") => {
     const files = Array.from(fileList || []); if (!files.length) return;
-    const setters = { images: setImages, certs: setCerts }; const setFn = setters[dest] || setImages;
+
+    // Enforce: Certificates max 2 files
+    if (dest === "certs") {
+      const remaining = Math.max(0, 2 - certs.length);
+      if (remaining <= 0) {
+        alert("يسمح بملفين كحد أقصى لشهادات الحلال.");
+        return;
+      }
+      const limited = files.slice(0, remaining);
+      if (limited.length < files.length) alert("تم تجاوز الحد — أُضيف أول ملفين فقط لشهادات الحلال.");
+      for (const file of limited) {
+        try { const { url } = await uploadImageViaServer(file); if (url) setCerts((p) => [...p, { url, name: file.name }]); }
+        catch { alert(`Upload failed: ${file?.name || ""}`); }
+      }
+      return;
+    }
+
+    // Images (no strict limit)
     for (const file of files) {
-      try { const { url } = await uploadImageViaServer(file); if (url) setFn((p) => [...p, { url, name: file.name }]); }
-      catch (err) { alert(`Upload failed: ${file?.name || ""}`); }
+      try { const { url } = await uploadImageViaServer(file); if (url) setImages((p) => [...p, { url, name: file.name }]); }
+      catch { alert(`Upload failed: ${file?.name || ""}`); }
     }
   };
   const onPickImages = async (e, to = "images") => { await doUploadList(e.target.files, to); e.target.value = ""; };
@@ -450,14 +477,18 @@ export default function FreshChickenInter() {
             <div style={{ borderRight: `2px solid ${COLORS.line}`, padding: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: 1 }}>AL MAWASHI</div>
             </div>
+
+            {/* Middle column: add Document No under Document Title */}
             <div style={{ borderRight: `2px solid ${COLORS.line}` }}>
-              <BannerRow title="Document Title" value="Raw Material Inspection Report [Chicken Liver]" />
+              <BannerRow title="Document Title" value="Raw Material Inspection Report [Fresh Chicken]" />
+              <BannerRow title="Document No" value={DOC_NO} />
               <BannerRow title="Issue Date" value="05/05/2022" />
               <BannerRow title="Area" value="QA" />
               <BannerRow title="Controlling Officer" value="Online Quality Controller" />
             </div>
+
+            {/* Right column: without Document No (to avoid duplication) */}
             <div>
-              <BannerRow title="Document No" value="FS /QA/RMC" />
               <BannerRow title="Revision No" value="0" />
               <BannerRow title="Issued By" value="MOHAMAD ABDULLAH" />
               <BannerRow title="Approved By" value="Hussam Sarhan" />
@@ -640,13 +671,18 @@ export default function FreshChickenInter() {
               <ThumbGrid items={images} onDelete={(url)=>onDeleteImg(url,"images")} />
             </div>
 
-            {/* Certificates */}
+            {/* Certificates (max 2) */}
             <div onDragEnter={prevent} onDragOver={prevent} onDrop={onDropZone("certs")} style={{ padding: 14, border: `2px dashed ${COLORS.line}`, borderRadius: 12, background: "#fff" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <strong>Certificates / Docs</strong>
                 <label style={{ ...btnGhost, cursor: "pointer", margin: 0 }}>
                   Choose files
-                  <input type="file" multiple style={{ display: "none" }} onChange={(e)=>onPickImages(e,"certs")} />
+                  <input
+                    type="file"
+                    multiple
+                    style={{ display: "none" }}
+                    onChange={(e)=>onPickImages(e,"certs")}
+                  />
                 </label>
               </div>
               <div style={{ fontSize: 12, opacity: .8, marginBottom: 8 }}>Drag & drop files here or use “Choose files”.</div>

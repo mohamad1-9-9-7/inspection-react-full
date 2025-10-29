@@ -1,5 +1,5 @@
 // src/pages/monitor/InternalAuditReportsView.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 
 /* ===== API base (aligned with your project) ===== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -129,6 +129,9 @@ export default function InternalAuditReportsView() {
 
   // فتح/إغلاق لكل تقرير بشكل منفصل
   const [openCards, setOpenCards] = useState(() => new Set());
+
+  // refs لكروت التقارير (لاستخراج PDF من نفس التصميم)
+  const cardRefs = useRef({});
 
   useEffect(() => {
     let alive = true;
@@ -308,7 +311,7 @@ export default function InternalAuditReportsView() {
     setDraft({ ...draft });
   };
 
-  /* ===== Export ===== */
+  /* ===== Export: JSON ===== */
   const exportReportJSON = (raw) => {
     const blob = new Blob([JSON.stringify(raw, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -318,41 +321,218 @@ export default function InternalAuditReportsView() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  /* ===== Export: XLSX (counts only) ===== */
   const exportReportXLSX = async (view) => {
     try {
       const XLSX = await import("xlsx");
-      const flat = [];
-      (view.table || []).forEach((line, i) => {
-        flat.push({
-          Branch: view.branch,
-          Title: view.title,
-          Date: view.date,
-          ReportNo: view.reportNo,
-          Auditor: view.auditBy,
-          ApprovedBy: view.approvedBy,
-          IssuedBy: view.issuedBy,
-          Row: i + 1,
-          "Non-Conformance": line.nonConformance || "",
-          "Root Cause": line.rootCause || "",
-          "Corrective/Preventive Action": line.corrective || "",
-          "Risk": line.risk || "",
-          "Status": line.status || "",
+
+      // helper: auto column widths
+      const autosize = (arr) => {
+        const colCount = arr.reduce((m, r) => Math.max(m, r.length), 0);
+        const widths = new Array(colCount).fill(8);
+        arr.forEach(row => {
+          row.forEach((cell, i) => {
+            const v = cell == null ? "" : String(cell);
+            widths[i] = Math.max(widths[i], Math.min(80, v.length + 2));
+          });
         });
-      });
-      if (!flat.length) {
-        flat.push({
-          Branch: view.branch, Title: view.title, Date: view.date, ReportNo: view.reportNo,
-          Auditor: view.auditBy, ApprovedBy: view.approvedBy, IssuedBy: view.issuedBy,
-          Row: 0, "Non-Conformance":"", "Root Cause":"", "Corrective/Preventive Action":"", "Risk":"", "Status":""
-        });
-      }
+        return widths.map(w => ({ wch: w }));
+      };
+
+      const meta = [
+        ["Branch", view.branch],
+        ["Title", view.title],
+        ["Date", view.date],
+        ["Report No", view.reportNo],
+        ["Auditor", view.auditBy],
+        ["Approved By", view.approvedBy],
+        ["Issued By", view.issuedBy],
+        ["Closed %", `${calcClosedPct(view.table || [])}%`],
+      ];
+
+      const header = [
+        "Row",
+        "Non-Conformance",
+        "Root Cause",
+        "Corrective / Preventive action",
+        "Evidence (images count)",
+        "Closed Evidence (images count)",
+        "Risk Category",
+        "Status",
+      ];
+
+      const body = (view.table || []).map((line, i) => ([
+        i + 1,
+        line.nonConformance || "",
+        line.rootCause || "",
+        line.corrective || "",
+        Array.isArray(line.evidenceImgs) ? line.evidenceImgs.length : 0,
+        Array.isArray(line.closedEvidenceImgs) ? line.closedEvidenceImgs.length : 0,
+        line.risk || "",
+        line.status || "",
+      ]));
+
+      const sheetRows = [
+        ...meta,
+        [""],
+        header,
+        ...body,
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(sheetRows);
+      ws["!cols"] = autosize(sheetRows);
+
       const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(flat);
       XLSX.utils.book_append_sheet(wb, ws, "Report");
+
       const name = `internal-audit-${view.reportNo || "report"}.xlsx`;
       XLSX.writeFile(wb, name);
-    } catch {
+    } catch (e) {
+      console.error(e);
       alert("XLSX export requires the 'xlsx' package.");
+    }
+  };
+
+  /* ===== Export: PDF (same design + clickable thumbs to big gallery) ===== */
+  const exportReportPDF = async (view) => {
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf")
+      ]);
+
+      // 1) عنصر الكارت الحالي
+      const el = cardRefs.current[view.id];
+      if (!el) { alert("Open the report card first, then export."); return; }
+
+      // 2) لقطة عالية الجودة
+      const scale = 2;
+      const canvas = await html2canvas(el, {
+        scale,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false
+      });
+
+      // 3) إعداد صفحات A4 Landscape
+      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = pdf.internal.pageSize.getHeight();
+
+      // الصورة الأساسية (نقسّم الطول على صفحات)
+      const imgW = pdfW;
+      const imgH = (canvas.height * pdfW) / canvas.width;
+      const pageCount = Math.ceil(imgH / pdfH);
+
+      // 4) إضافة صفحات المحتوى (نفس التصميم)
+      for (let i = 0; i < pageCount; i++) {
+        if (i > 0) pdf.addPage();
+        const sy = (canvas.height / pageCount) * i;
+        const sH = (canvas.height / pageCount);
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sH;
+        const ctx = pageCanvas.getContext("2d");
+        ctx.drawImage(canvas, 0, sy, canvas.width, sH, 0, 0, canvas.width, sH);
+        const dataUrl = pageCanvas.toDataURL("image/jpeg", 0.95);
+        pdf.addImage(dataUrl, "JPEG", 0, 0, imgW, (sH * pdfW) / canvas.width);
+      }
+
+      // 5) تجهيز معرض الصور الكبير (نستخرج كل الصور من الجدول)
+      const allImages = [];
+      (view.table || []).forEach((row, idx) => {
+        const e1 = Array.isArray(row.evidenceImgs) ? row.evidenceImgs : [];
+        const e2 = Array.isArray(row.closedEvidenceImgs) ? row.closedEvidenceImgs : [];
+        e1.forEach((src) => allImages.push({ src, label: `Row ${idx+1} - Evidence` }));
+        e2.forEach((src) => allImages.push({ src, label: `Row ${idx+1} - Closed Evidence` }));
+      });
+
+      const galleryStartPage = pdf.getNumberOfPages() + 1;
+      if (allImages.length) {
+        pdf.addPage(); // صفحة عنوان
+        pdf.setFontSize(18);
+        pdf.text("Images Gallery", 40, 50);
+        pdf.setFontSize(11);
+        pdf.text(`Total images: ${allImages.length}`, 40, 70);
+
+        // كل صورة صفحة منفصلة بحجم كبير
+        for (let i = 0; i < allImages.length; i++) {
+          if (i > 0) pdf.addPage();
+          const { src, label } = allImages[i];
+          // العنوان
+          pdf.setFontSize(12);
+          pdf.text(label, 40, 40);
+
+          // إضافة الصورة بالحجم الأقصى مع هوامش
+          const margin = 40;
+          const boxW = pdfW - margin * 2;
+          const boxH = pdfH - margin * 2 - 20;
+          // تحميل مصدر الصورة (قد يكون dataURL جاهز)
+          let base64 = src;
+          if (!String(src).startsWith("data:image")) {
+            const resp = await fetch(src);
+            const blob = await resp.blob();
+            base64 = await new Promise((ok) => {
+              const fr = new FileReader();
+              fr.onload = () => ok(fr.result);
+              fr.readAsDataURL(blob);
+            });
+          }
+          // حساب نسبة الاحتفاظ
+          const tmp = new Image();
+          await new Promise((res, rej) => { tmp.onload = res; tmp.onerror = rej; tmp.src = base64; });
+          const ratio = Math.min(boxW / tmp.width, boxH / tmp.height);
+          const w = tmp.width * ratio;
+          const h = tmp.height * ratio;
+          const x = margin + (boxW - w) / 2;
+          const y = margin + 20 + (boxH - h) / 2;
+          pdf.addImage(base64, "JPEG", x, y, w, h);
+        }
+      }
+
+      // 6) جعل الصور المصغرة في صفحات المحتوى قابلة للنقر وتنقلك لصفحة الصورة الكبيرة
+      if (allImages.length) {
+        // نقرأ مواضع <img> داخل الكارت الحالي (Thumbs)
+        const cardRect = el.getBoundingClientRect();
+        const imgs = Array.from(el.querySelectorAll("img[alt='evidence']"));
+
+        // خريطة تربط كل صورة مصغرة بأقرب صورة مطابقة في معرض الصور بنفس الترتيب
+        let targetPage = galleryStartPage; // أول صفحة بعد عنوان المعرض
+        imgs.forEach((imgEl) => {
+          const r = imgEl.getBoundingClientRect();
+          // إحداثيات نسبية للكارت
+          const relX = (r.left - cardRect.left) / cardRect.width;
+          const relY = (r.top  - cardRect.top ) / cardRect.height;
+          const relW = r.width / cardRect.width;
+          const relH = r.height / cardRect.height;
+
+          // تحويلها لإحداثيات PDF الكلي
+          const totalPdfH = imgH; // ارتفاع الصورة المضافة على كل الصفحات
+          const pdfX = relX * pdfW;
+          const pdfY = relY * totalPdfH;
+          const pdfWrect = relW * pdfW;
+          const pdfHrect = relH * totalPdfH;
+
+          // تحديد الصفحة التي يقع ضمنها هذا المستطيل
+          const pageIndex = Math.floor(pdfY / pdfH); // صفرية
+          const yOnPage = pdfY - pageIndex * pdfH;
+
+          const pageNo = 1 + pageIndex; // صفحات المحتوى تبدأ من 1
+          pdf.setPage(pageNo);
+          // مستطيل رابط يقفز لصفحة الصورة الكبيرة المقابلة
+          pdf.link(pdfX, yOnPage, pdfWrect, pdfHrect, { pageNumber: Math.min(targetPage, pdf.getNumberOfPages()) });
+
+          // ننقل المؤشر لصفحة الصورة التالية
+          targetPage = Math.min(targetPage + 1, pdf.getNumberOfPages());
+        });
+      }
+
+      // 7) حفظ
+      pdf.save(`internal-audit-${view.reportNo || "report"}.pdf`);
+    } catch (e) {
+      console.error(e);
+      alert("PDF export failed.");
     }
   };
 
@@ -501,7 +681,11 @@ export default function InternalAuditReportsView() {
                       const table = Array.isArray(p.table) ? p.table : [];
 
                       return (
-                        <div key={idx} style={{ ...cardStyle, background: C.cardBg }}>
+                        <div
+                          key={idx}
+                          ref={(el) => { if (el) cardRefs.current[r.id] = el; }}
+                          style={{ ...cardStyle, background: C.cardBg }}
+                        >
                           {/* Document banner */}
                           <div style={{ background: C.bandSilver, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 10px", marginBottom: 8, display:"flex", flexWrap:"wrap", gap:10, fontSize:12 }}>
                             <b>Document Number:</b>&nbsp;FS-QM/REC/CA/1
@@ -574,6 +758,7 @@ export default function InternalAuditReportsView() {
                             {!isEditing ? (
                               <>
                                 <button onClick={(e)=>{e.stopPropagation(); exportReportXLSX(r);}} style={smallBtn}>Export XLSX</button>
+                                <button onClick={(e)=>{e.stopPropagation(); exportReportPDF(r);}} style={smallBtn}>Export PDF</button>
                                 <button onClick={(e)=>{e.stopPropagation(); exportReportJSON(r._raw);}} style={smallBtn}>Export JSON</button>
                                 <button onClick={(e)=>{e.stopPropagation(); handleEdit(r);}} style={smallBtn}>Edit</button>
                                 <button onClick={(e)=>{e.stopPropagation(); handleDelete(r);}} style={dangerBtn}>Delete</button>

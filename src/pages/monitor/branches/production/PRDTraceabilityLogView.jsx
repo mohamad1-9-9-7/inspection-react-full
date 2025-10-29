@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/pos15/POS15TraceabilityLogView.jsx
+// src/pages/monitor/branches/production/PRDTraceabilityLogView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -12,12 +12,12 @@ const API_BASE = String(
   "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
-const TYPE   = "pos15_traceability_log";
-const BRANCH = "POS 15";
+const TYPE   = "prd_traceability_log";
+const BRANCH = "PRODUCTION";
 
 const DOC = {
-  title: "Traceability Record",     // ← عنوان التقرير المطلوب
-  no: "FS-QM/REC/TBL",              // ← رقم المستند المطلوب
+  title: "Traceability Record",
+  no: "FS-QM/REC/TBL",
   issueDate: "05/02/2020",
   revisionNo: "0",
   area: BRANCH,
@@ -36,11 +36,9 @@ const formatDMY = (iso) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 };
 
-// صف ممتلئ
 const isFilledRow = (r = {}) =>
   Object.values(r).some((v) => String(v ?? "").trim() !== "");
 
-// نموذج صف
 function emptyRow() {
   return {
     batchId: "",
@@ -51,14 +49,13 @@ function emptyRow() {
   };
 }
 
-// مساواة الحقول عبر مجموعة صفوف
 const equalAcross = (rows, keys) => {
   if (!rows.length) return false;
   const f = rows[0];
   return rows.every(r => keys.every(k => String(r?.[k] ?? "") === String(f?.[k] ?? "")));
 };
 
-export default function POS15TraceabilityLogView() {
+export default function PRDTraceabilityLogView() {
   const reportRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -72,19 +69,16 @@ export default function POS15TraceabilityLogView() {
   const [err, setErr] = useState("");
   const [record, setRecord] = useState(null);
 
-  // Edit mode (password 9999)
   const [editing, setEditing] = useState(false);
   const [editRows, setEditRows] = useState(Array.from({ length: 12 }, () => emptyRow()));
   const [editCheckedBy, setEditCheckedBy] = useState("");
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
-  const [editReportDate, setEditReportDate] = useState(""); // تاريخ التقرير في وضع التعديل
+  const [editReportDate, setEditReportDate] = useState("");
   const [allDates, setAllDates] = useState([]);
 
-  // Accordion state
   const [expandedYears, setExpandedYears] = useState({});
-  const  [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
+  const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
 
-  // Styles
   const gridStyle = useMemo(() => ({
     width: "max-content",
     borderCollapse: "collapse",
@@ -113,7 +107,6 @@ export default function POS15TraceabilityLogView() {
     padding: "6px 8px",
   };
 
-  // أعمدة الجدول
   const colDefs = useMemo(() => ([
     <col key="batchId"       style={{ width: 180 }} />,
     <col key="rawName"       style={{ width: 260 }} />,
@@ -167,7 +160,6 @@ export default function POS15TraceabilityLogView() {
       const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
       setRecord(match);
 
-      // Init edit buffers
       const rows = Array.from({ length: 12 }, (_, i) => {
         const e = match?.payload?.entries?.[i];
         return e ? {
@@ -188,7 +180,7 @@ export default function POS15TraceabilityLogView() {
       console.error(e);
       setErr("Failed to fetch data.");
     } finally {
-           setLoading(false);
+      setLoading(false);
     }
   }
 
@@ -257,7 +249,7 @@ export default function POS15TraceabilityLogView() {
       const postRes = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }),
+        body: JSON.stringify({ reporter: "production", type: TYPE, payload }), // ⬅️ production
       });
       if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
 
@@ -306,12 +298,11 @@ export default function POS15TraceabilityLogView() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `POS15_TraceabilityLog_${record?.payload?.reportDate || date}.json`;
+    a.download = `PRD_TraceabilityLog_${record?.payload?.reportDate || date}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  // CSV (مع الأوزان)
   function fallbackCSV(p) {
     const headers = [
       "Batch / Lot ID",
@@ -341,12 +332,11 @@ export default function POS15TraceabilityLogView() {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `POS15_TraceabilityLog_${p.reportDate || date}.csv`;
+    a.download = `PRD_TraceabilityLog_${p.reportDate || date}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
 
-  // XLSX
   async function exportXLSX() {
     try {
       async function loadExcelJS() {
@@ -373,18 +363,16 @@ export default function POS15TraceabilityLogView() {
       const headBlue = "DCE6F1";
       const borderThin = { style: "thin", color: { argb: "1F3B70" } };
 
-      // Title (11 عمود)
       ws.mergeCells(1,1,1,11);
       const r1 = ws.getCell(1,1);
-      r1.value = "POS 15 | Traceability Log";
+      r1.value = "PRODUCTION | Traceability Log";
       r1.alignment = { horizontal: "center", vertical: "middle" };
       r1.font = { size: 14, bold: true };
       r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
       ws.getRow(1).height = 26;
 
-      // Meta (يمين)
       const meta = [
-        ["Branch:",     p.branch     || "POS 15"],
+        ["Area:",       p.branch     || BRANCH],
         ["Report Date:",p.reportDate || ""],
         ["Checked by:", p.checkedBy  || ""],
         ["Verified by:",p.verifiedBy || ""],
@@ -399,10 +387,10 @@ export default function POS15TraceabilityLogView() {
       }
 
       ws.columns = [
-        { width: 24 }, // batch
+        { width: 24 },
         { width: 28 }, { width: 18 }, { width: 18 }, { width: 16 },
-        { width: 18 }, { width: 14 }, // rawWeight
-        { width: 28 }, { width: 20 }, { width: 20 }, { width: 14 }, // finalWeight
+        { width: 18 }, { width: 14 },
+        { width: 28 }, { width: 20 }, { width: 20 }, { width: 14 },
       ];
 
       const COL_HEADERS = [
@@ -447,7 +435,7 @@ export default function POS15TraceabilityLogView() {
       const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
       saveAs(
         new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-        `POS15_TraceabilityLog_${p.reportDate || date}.xlsx`
+        `PRD_TraceabilityLog_${p.reportDate || date}.xlsx`
       );
     } catch (err) {
       console.error("[XLSX export error]", err);
@@ -473,7 +461,7 @@ export default function POS15TraceabilityLogView() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }),
+        body: JSON.stringify({ reporter: "production", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -508,12 +496,11 @@ export default function POS15TraceabilityLogView() {
     const margin = 20;
     const headerH = 50;
 
-    // Header شريط علوي ثابت
     pdf.setFillColor(247, 249, 252);
     pdf.rect(0, 0, pageW, headerH, "F");
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(16);
-    pdf.text(`POS 15 | Traceability Log (${p.reportDate || date})`, pageW / 2, 28, { align: "center" });
+    pdf.text(`PRODUCTION | Traceability Log (${p.reportDate || date})`, pageW / 2, 28, { align: "center" });
 
     const usableW = pageW - margin * 2;
     const availableH = pageH - (headerH + 10) - margin;
@@ -542,11 +529,11 @@ export default function POS15TraceabilityLogView() {
         pdf.rect(0, 0, pageW, headerH, "F");
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(16);
-        pdf.text(`POS 15 | Traceability Log (${p.reportDate || date})`, pageW / 2, 28, { align: "center" });
+        pdf.text(`PRODUCTION | Traceability Log (${p.reportDate || date})`, pageW / 2, 28, { align: "center" });
       }
     }
 
-    pdf.save(`POS15_TraceabilityLog_${p.reportDate || date}.pdf`);
+    pdf.save(`PRD_TraceabilityLog_${p.reportDate || date}.pdf`);
   }
 
   /* ===== Grouping by batchId ===== */
@@ -587,13 +574,12 @@ export default function POS15TraceabilityLogView() {
 
   return (
     <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d", direction:"ltr" }}>
-      {/* Header (الأزرار) */}
+      {/* Header (actions) */}
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
         <div style={{ fontWeight:800, fontSize:18 }}>
-          Traceability Log — View (POS 15)
+          Traceability Log — View (PRODUCTION)
         </div>
 
-        {/* Actions */}
         <div style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
             {editing ? "Cancel Edit" : "Edit (password)"}
@@ -716,7 +702,7 @@ export default function POS15TraceabilityLogView() {
           {record && (
             <div style={{ overflowX:"auto", overflowY:"hidden" }}>
               <div ref={reportRef} style={{ width: "max-content" }}>
-                {/* ======== ترويسة المواشي بنفس تصميم الصورة ======== */}
+                {/* Header box */}
                 <div style={{ marginBottom: 10, minWidth: 1300 }}>
                   <table style={{ borderCollapse:"collapse", width:"100%", border:"1px solid #1f3b70" }}>
                     <colgroup>
@@ -726,34 +712,49 @@ export default function POS15TraceabilityLogView() {
                     </colgroup>
                     <tbody>
                       <tr>
-                        <td rowSpan={4} style={{ border: headBorder, background: headBoxBg, textAlign:"center", verticalAlign:"middle" }}>
+                        <td rowSpan={4} style={{ border: "1px solid #1f3b70", background: "#f5f8ff", textAlign:"center", verticalAlign:"middle" }}>
                           <div style={{ color:"#b91c1c", fontWeight:900, lineHeight:1.15, fontSize:16, padding:"12px 8px" }}>
                             A<br/>L<br/><br/>M<br/>A<br/>W<br/>A<br/>S<br/>H<br/>I
                           </div>
                         </td>
-                        <td style={headTd}><strong>Document Title:</strong> {DOC.title}</td>
-                        <td style={headTd}><strong>Document No:</strong> {DOC.no}</td>
+                        <td style={{ border: "1px solid #1f3b70", padding: "10px 12px", background: "#f5f8ff", fontSize: 12, color:"#0b1f4d" }}>
+                          <strong>Document Title:</strong> {DOC.title}
+                        </td>
+                        <td style={{ border: "1px solid #1f3b70", padding: "10px 12px", background: "#f5f8ff", fontSize: 12, color:"#0b1f4d" }}>
+                          <strong>Document No:</strong> {DOC.no}
+                        </td>
                       </tr>
                       <tr>
-                        <td style={headTd}><strong>Issue Date:</strong> {DOC.issueDate}</td>
-                        <td style={headTd}><strong>Revision No:</strong> {DOC.revisionNo}</td>
+                        <td style={{ border: "1px solid #1f3b70", padding: "10px 12px", background: "#f5f8ff", fontSize: 12, color:"#0b1f4d" }}>
+                          <strong>Issue Date:</strong> {DOC.issueDate}
+                        </td>
+                        <td style={{ border: "1px solid #1f3b70", padding: "10px 12px", background: "#f5f8ff", fontSize: 12, color:"#0b1f4d" }}>
+                          <strong>Revision No:</strong> {DOC.revisionNo}
+                        </td>
                       </tr>
                       <tr>
-                        <td style={headTd}><strong>Area:</strong> {DOC.area}</td>
-                        <td style={headTd}><strong>Issued by:</strong> {DOC.issuedBy}</td>
+                        <td style={{ border: "1px solid #1f3b70", padding: "10px 12px", background: "#f5f8ff", fontSize: 12, color:"#0b1f4d" }}>
+                          <strong>Area:</strong> {DOC.area}
+                        </td>
+                        <td style={{ border: "1px solid #1f3b70", padding: "10px 12px", background: "#f5f8ff", fontSize: 12, color:"#0b1f4d" }}>
+                          <strong>Issued by:</strong> {DOC.issuedBy}
+                        </td>
                       </tr>
                       <tr>
-                        <td style={headTd}><strong>Controlling Officer:</strong> {DOC.officer}</td>
-                        <td style={headTd}><strong>Approved by:</strong> {DOC.approvedBy}</td>
+                        <td style={{ border: "1px solid #1f3b70", padding: "10px 12px", background: "#f5f8ff", fontSize: 12, color:"#0b1f4d" }}>
+                          <strong>Controlling Officer:</strong> {DOC.officer}
+                        </td>
+                        <td style={{ border: "1px solid #1f3b70", padding: "10px 12px", background: "#f5f8ff", fontSize: 12, color:"#0b1f4d" }}>
+                          <strong>Approved by:</strong> {DOC.approvedBy}
+                        </td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
-                {/* ========= نهاية الترويسة ========= */}
 
                 {/* Meta */}
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(2, 1fr)", gap:8, marginBottom:8, fontSize:12, minWidth: 1300 }}>
-                  <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
+                  <div><strong>Area:</strong> {safe(record.payload?.branch)}</div>
                   <div>
                     <strong>Report Date:</strong>{" "}
                     {!editing ? (
@@ -790,7 +791,6 @@ export default function POS15TraceabilityLogView() {
 
                   <tbody>
                     {!editing ? (
-                      // عرض مع دمج خلايا
                       Array.from(grouped.entries()).map(([batchId, allRows], gi) => {
                         const rows = allRows.filter(isFilledRow);
                         if (!rows.length) return null;
@@ -801,7 +801,6 @@ export default function POS15TraceabilityLogView() {
 
                         return (
                           <React.Fragment key={`g-${gi}`}>
-                            {/* عنوان الباتش */}
                             <tr>
                               <td colSpan={11} style={{
                                 background: "#eef2ff",
@@ -817,14 +816,12 @@ export default function POS15TraceabilityLogView() {
 
                             {rows.map((r, idx) => (
                               <tr key={`${gi}-${idx}`}>
-                                {/* Batch id — خلية مدموجة */}
                                 {idx === 0 && (
                                   <td style={tdCell} rowSpan={span}>
                                     {safe(batchId)}
                                   </td>
                                 )}
 
-                                {/* RAW side */}
                                 {rawsSame ? (
                                   idx === 0 ? (
                                     <>
@@ -847,7 +844,6 @@ export default function POS15TraceabilityLogView() {
                                   </>
                                 )}
 
-                                {/* FINAL side */}
                                 {finalsSame ? (
                                   idx === 0 ? (
                                     <>
@@ -871,7 +867,6 @@ export default function POS15TraceabilityLogView() {
                         );
                       })
                     ) : (
-                      // وضع التعديل
                       editRows.map((r, idx) => (
                         <tr key={idx}>
                           <td style={tdCell}>
@@ -932,7 +927,7 @@ export default function POS15TraceabilityLogView() {
                   </span>
                 </div>
 
-                {/* Footer: Checked left | Verified right */}
+                {/* Footer */}
                 <div
                   style={{
                     marginTop: 12,

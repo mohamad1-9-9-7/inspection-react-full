@@ -5,19 +5,17 @@ import { useNavigate } from "react-router-dom";
 
 import ReportsTab from "./admin/ReportsTab";
 import DailyReportsTab from "./admin/DailyReportsTab";
-import QCSDailyView from "./admin/QCSDailyView";
+// ❌ أزلنا: import QCSDailyView from "./admin/QCSDailyView";
 import QCSRawMaterialView from "./admin/QCSRawMaterialView";
 import KPIDashboard from "./KPIDashboard";
-
-// ✅ POS19
-import POS19DailyView from "./monitor/branches/pos19/POS19DailyView";
 
 // ✅ FTR1/FTR2
 import FTR1ReportView from "./monitor/branches/ftr1/FTR1ReportView";
 import FTR2ReportView from "./monitor/branches/ftr2/FTR2ReportView";
 
-// ✅ POS 10 (المجلد باسم: pos 10)
-import POS10ReportsView from "./monitor/branches/pos 10/POS10ReportsView";
+// ❌ أزلنا هذين لأننا سننتقل لصفحاتهم بدل تضمينهم هنا
+// import POS19DailyView from "./monitor/branches/pos19/POS19DailyView";
+// import POS10ReportsView from "./monitor/branches/pos 10/POS10ReportsView";
 
 /* ====== API BASE (server-only, no localStorage) ====== */
 const API_BASE =
@@ -301,7 +299,6 @@ export default function AdminDashboard() {
   return (
     <div
       style={{
-        // استخدم خلفيتين معًا بشكل صحيح
         backgroundImage: `${THEME.pageOverlay}, ${THEME.pageGradient}`,
         backgroundRepeat: "no-repeat, no-repeat",
         backgroundSize: "cover, cover",
@@ -384,7 +381,7 @@ export default function AdminDashboard() {
           gap: 10,
           flexWrap: "wrap",
           marginBottom: 14,
-          flexDirection: "row-reverse", // أول زر يمينًا
+          flexDirection: "row-reverse",
         }}
       >
         <button style={tabButtonStyle("dailyReports")} onClick={() => setActiveView("dailyReports")}>
@@ -400,21 +397,7 @@ export default function AdminDashboard() {
           📈 KPI
         </button>
 
-        {/* ✅ حذفت تبويبات POS 10 و POS 19 لمنع التكرار في الشريط العلوي */}
-        {/*
-        <button
-          style={tabButtonStyle("pos10")}
-          onClick={() => setActiveView("pos10")}
-        >
-          🏷️ POS 10 Reports
-        </button>
-        <button
-          style={tabButtonStyle("pos19")}
-          onClick={() => setActiveView("pos19")}
-        >
-          🏷️ POS 19 Reports
-        </button>
-        */}
+        {/* تركنا تبويبات POS10/POS19 خارج الشريط لتجنب التكرار */}
       </div>
 
       {/* Import/Export */}
@@ -492,9 +475,10 @@ export default function AdminDashboard() {
           <DailyReportsTab
             dailyReports={dailyReports}
             setDailyReports={setDailyReports}
-            onOpenQCSReport={() => setActiveView("qcs")}
-            onOpenPOS19Report={() => setActiveView("pos19")}
-            onOpenPOS10Report={() => setActiveView("pos10")}
+            // ⬇️ بدل setActiveView بالتنقّل المباشر
+            onOpenQCSReport={() => navigate("/admin/monitor/branches/qcs/reports")}
+            onOpenPOS19Report={() => navigate("/admin/pos19")}
+            onOpenPOS10Report={() => navigate("/monitor/pos10")}
             onOpenQCSShipmentReport={() => setActiveView("qcsShipment")}
             onOpenFTR1Report={() => setActiveView("ftr1")}
             onOpenFTR2Report={() => setActiveView("ftr2")}
@@ -507,12 +491,6 @@ export default function AdminDashboard() {
           </HideDeleteScope>
         ) : activeView === "kpi" ? (
           <KPIDashboard />
-        ) : activeView === "qcs" ? (
-          <QCSDailyView language="en" />
-        ) : activeView === "pos19" ? (
-          <POS19DailyView language="en" />
-        ) : activeView === "pos10" ? (
-          <POS10ReportsView />
         ) : activeView === "ftr1" ? (
           <FTR1ReportView />
         ) : activeView === "ftr2" ? (
