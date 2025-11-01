@@ -161,17 +161,15 @@ export default function InventoryDailyBrowse() {
     return pwd === "12345";
   }
 
+  // ==== حذف مُصلّح (بدون body/headers) ====
   async function handleDelete() {
     if (!selected) return;
     if (!requirePassword()) return;
     if (!window.confirm(`Delete report dated ${selected.date}? This cannot be undone.`)) return;
     try {
       setMsg("Deleting…");
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(selected.id)}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "inventory_daily_grouped" }),
-      });
+      const url = `${API_BASE}/api/reports/${encodeURIComponent(selected.id)}?type=inventory_daily_grouped`;
+      const res = await fetch(url, { method: "DELETE" });
       if (!res.ok) {
         const t = await res.text().catch(() => "");
         throw new Error(`Server ${res.status}: ${t || res.statusText}`);
@@ -193,56 +191,237 @@ export default function InventoryDailyBrowse() {
     window.location.href = url;
   }
 
+  // ==== تصدير XLSX احترافي مع دمج/تلوين/حدود ====
   async function handleExportXLSX() {
     if (!selected) return;
     setMsg("Preparing XLSX…");
     try {
-      const xlsx = await import("xlsx");
-      const rows = [];
-      for (const sec of selected.sections || []) {
-        rows.push({
-          Section: sec.title,
-          "#": "",
-          "Product Code": "",
-          "Product Name": "",
-          "Qty (pcs)": "",
-          "Qty (kg)": "",
-          "Production Date": "",
-          "Expiry Date": "",
-          "AWB No.": "",
-          "SIF No.": "",
-          "Supplier Name": "",
-          Status: "",
-          Remarks: "",
+      // نستخدم xlsx-js-style إن وُجد؛ وإلا نرجع لـ xlsx
+      let xlsx;
+      try {
+        const mod = await import("xlsx-js-style");
+        xlsx = mod.default || mod;
+      } catch {
+        const mod = await import("xlsx");
+        xlsx = mod.default || mod;
+      }
+
+      const HEAD = [
+        "#",
+        "Product Code",
+        "Product Name",
+        "Qty (pcs)",
+        "Qty (kg)",
+        "Production Date",
+        "Expiry Date",
+        "AWB No.",
+        "SIF No.",
+        "Supplier Name",
+        "Status",
+        "Remarks",
+      ];
+
+      const AOA = [];
+      AOA.push(HEAD.slice()); // العناوين
+
+      const merges = [];
+      let row = 1; // بعد العناوين
+      let globalCounter = 1;
+
+      const sectionRows = new Set();
+      const subtotalRows = new Set();
+      let grandRowIndex = -1;
+
+      function addSectionRow(title) {
+        const line = [`SECTION — ${title}`, ...Array(HEAD.length - 1).fill("")];
+        AOA.push(line);
+        merges.push({
+          s: { r: row, c: 0 },
+          e: { r: row, c: HEAD.length - 1 },
         });
-        let i = 1;
+        sectionRows.add(row);
+        row += 1;
+      }
+
+      for (const sec of selected.sections || []) {
+        addSectionRow(sec.title || "Untitled Section");
+
         for (const r of sec.rows || []) {
-          rows.push({
-            Section: sec.title,
-            "#": i++,
-            "Product Code": r.code || "",
-            "Product Name": r.name || "",
-            "Qty (pcs)": r.qtyPcs ?? "",
-            "Qty (kg)": r.qtyKg ?? "",
-            "Production Date": r.prodDate || "",
-            "Expiry Date": r.expDate || "",
-            "AWB No.": r.awbNo || "",
-            "SIF No.": r.sifNo || "",
-            "Supplier Name": r.supplierName || "",
-            Status: STATUS_LABELS[r.status] || r.status || "",
-            Remarks: r.remarks || "",
-          });
+          AOA.push([
+            globalCounter++,
+            r.code || "",
+            r.name || "",
+            +(r.qtyPcs || 0),
+            +(r.qtyKg || 0),
+            r.prodDate || "",
+            r.expDate || "",
+            r.awbNo || "",
+            r.sifNo || "",
+            r.supplierName || "",
+            (STATUS_LABELS[r.status] || r.status || "").toString(),
+            r.remarks || "",
+          ]);
+          row += 1;
+        }
+
+        const secQtyPcs = (sec.rows || []).reduce((a, x) => a + (+x.qtyPcs || 0), 0);
+        const secQtyKg  = (sec.rows || []).reduce((a, x) => a + (+x.qtyKg  || 0), 0);
+
+        const subtotalRow = [
+          `Section Total — ${sec.title || ""}`,
+          "", "",
+          secQtyPcs,
+          secQtyKg,
+          "", "", "", "", "", "", "",
+        ];
+        AOA.push(subtotalRow);
+        merges.push({ s: { r: row, c: 0 }, e: { r: row, c: 2 } });
+        subtotalRows.add(row);
+        row += 1;
+      }
+
+      // إجمالي عام
+      const allRows = (selected.sections || []).flatMap((s) => s.rows || []);
+      const grandPcs = allRows.reduce((a, x) => a + (+x.qtyPcs || 0), 0);
+      const grandKg  = allRows.reduce((a, x) => a + (+x.qtyKg  || 0), 0);
+      const grandRow = [
+        "Totals (All Sections)", "", "",
+        grandPcs, grandKg,
+        "", "", "", "", "", "", "",
+      ];
+      AOA.push(grandRow);
+      merges.push({ s: { r: row, c: 0 }, e: { r: row, c: 2 } });
+      grandRowIndex = row;
+      row += 1;
+
+      // إنشاء الورقة
+      const ws = xlsx.utils.aoa_to_sheet(AOA);
+      ws["!merges"] = merges;
+
+      // أعمدة
+      ws["!cols"] = [
+        { wch: 4 },   // #
+        { wch: 12 },  // Product Code
+        { wch: 30 },  // Product Name
+        { wch: 12 },  // Qty (pcs)
+        { wch: 12 },  // Qty (kg)
+        { wch: 16 },  // Production Date
+        { wch: 16 },  // Expiry Date
+        { wch: 14 },  // AWB No.
+        { wch: 12 },  // SIF No.
+        { wch: 22 },  // Supplier Name
+        { wch: 14 },  // Status
+        { wch: 30 },  // Remarks
+      ];
+
+      // AutoFilter
+      ws["!autofilter"] = {
+        ref: xlsx.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 0, c: HEAD.length - 1 } }),
+      };
+
+      // تنسيق خانتين عشريتين للأعمدة D و E
+      const fmt2 = "#,##0.00";
+      for (let rr = 1; rr < AOA.length; rr++) {
+        const pcsCell = xlsx.utils.encode_cell({ r: rr, c: 3 }); // D
+        const kgCell  = xlsx.utils.encode_cell({ r: rr, c: 4 }); // E
+        if (ws[pcsCell] && typeof ws[pcsCell].v === "number") ws[pcsCell].z = fmt2;
+        if (ws[kgCell]  && typeof ws[kgCell].v === "number") ws[kgCell].z  = fmt2;
+      }
+
+      // ===== تنسيقات مرئية (تعمل بالكامل مع xlsx-js-style) =====
+      const BORDER_THIN = { style: "thin", color: { rgb: "475569" } }; // حد واضح رمادي غامق
+      const ALL_BORDERS = { top: BORDER_THIN, bottom: BORDER_THIN, left: BORDER_THIN, right: BORDER_THIN };
+
+      const STYLE_HEAD = {
+        font: { bold: true, color: { rgb: "0F172A" } },
+        fill: { patternType: "solid", fgColor: { rgb: "F1F5F9" } }, // رأس الجدول
+        alignment: { vertical: "center", horizontal: "left", wrapText: true },
+        border: ALL_BORDERS,
+      };
+
+      const STYLE_SECTION = {
+        font: { bold: true, color: { rgb: "0F172A" } },
+        fill: { patternType: "solid", fgColor: { rgb: "EFF6FF" } }, // لون خفيف للأقسام
+        alignment: { vertical: "center", horizontal: "left" },
+        border: ALL_BORDERS,
+      };
+
+      const STYLE_SUBTOTAL = {
+        font: { bold: true, color: { rgb: "0F172A" } },
+        fill: { patternType: "solid", fgColor: { rgb: "F8FAFC" } },
+        alignment: { vertical: "center", horizontal: "left" },
+        border: ALL_BORDERS,
+      };
+
+      const STYLE_GRAND = {
+        font: { bold: true, color: { rgb: "0F172A" } },
+        fill: { patternType: "solid", fgColor: { rgb: "EEF2FF" } },
+        alignment: { vertical: "center", horizontal: "left" },
+        border: ALL_BORDERS,
+      };
+
+      const STYLE_BODY = {
+        alignment: { vertical: "top", horizontal: "left", wrapText: true },
+        border: ALL_BORDERS,
+      };
+
+      // اجعل كل الخلايا موجودة وطبّق حدود/ستايل عام
+      const ref = ws["!ref"] || xlsx.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: AOA.length - 1, c: HEAD.length - 1 } });
+      const range = xlsx.utils.decode_range(ref);
+
+      for (let r = range.s.r; r <= range.e.r; r++) {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const addr = xlsx.utils.encode_cell({ r, c });
+          if (!ws[addr]) ws[addr] = { t: "s", v: "" }; // إنشاء خلية فارغة ليظهر الحد
+          ws[addr].s = { ...(ws[addr].s || {}), ...STYLE_BODY };
         }
       }
-      const ws = xlsx.utils.json_to_sheet(rows, { skipHeader: false });
+
+      // رأس الجدول
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const addr = xlsx.utils.encode_cell({ r: 0, c });
+        ws[addr].s = { ...(ws[addr].s || {}), ...STYLE_HEAD };
+      }
+
+      // صفوف الأقسام
+      sectionRows.forEach((r) => {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const addr = xlsx.utils.encode_cell({ r, c });
+          ws[addr].s = { ...(ws[addr].s || {}), ...STYLE_SECTION };
+        }
+      });
+
+      // صفوف Subtotal
+      subtotalRows.forEach((r) => {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const addr = xlsx.utils.encode_cell({ r, c });
+          ws[addr].s = { ...(ws[addr].s || {}), ...STYLE_SUBTOTAL };
+        }
+      });
+
+      // صف الإجمالي العام
+      if (grandRowIndex >= 0) {
+        for (let c = range.s.c; c <= range.e.c; c++) {
+          const addr = xlsx.utils.encode_cell({ r: grandRowIndex, c });
+          ws[addr].s = { ...(ws[addr].s || {}), ...STYLE_GRAND };
+        }
+      }
+
+      // تجميد الصف الأول
+      ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+
+      // إنشاء المصنف وحفظه
       const wb = xlsx.utils.book_new();
       xlsx.utils.book_append_sheet(wb, ws, "Inventory");
-      const fname = `inventory_grouped_${selected.date}.xlsx`;
+
+      const branchSafe = (selected.branch || "branch").replace(/[^\w-]+/g, "_");
+      const fname = `inventory_grouped_${branchSafe}_${selected.date}.xlsx`;
       xlsx.writeFile(wb, fname);
+
       setMsg("Exported.");
     } catch (e) {
       console.error(e);
-      setMsg("XLSX export failed. Make sure 'xlsx' is installed.");
+      setMsg("XLSX export failed. Make sure 'xlsx' (or xlsx-js-style) is installed.");
     }
   }
 
@@ -423,7 +602,7 @@ export default function InventoryDailyBrowse() {
                         <React.Fragment key={sec.id}>
                           {/* section header row */}
                           <tr>
-                            <td style={secHeaderTd} colSpan={12}>
+                            <td style={{ ...secHeaderTd, background: "#eff6ff", borderColor: "#94a3b8" }} colSpan={12}>
                               {sIdx + 1}. {sec.title}
                             </td>
                           </tr>

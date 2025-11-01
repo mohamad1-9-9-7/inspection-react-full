@@ -1,16 +1,16 @@
-// src/pages/LoadingLog.jsx
+// src/pages/car/pages/LoadingLog.jsx
 import React, { useState } from "react";
 
 /**
- * VISUAL INSPECTION (OUTBOUND CHECKLIST) — English-only
+ * VISUAL INSPECTION (OUTBOUND CHECKLIST) - English-only
  * - Header kept as-is (Document Title/No/Issue/Revision + Area/Issued/Controlling/Approved)
  * - Multiple vehicles per single report date (rows you can add/remove)
- * - Saves to server: POST /api/reports  { reporter, type, payload }
+ * - Saves to server: POST /api/reports  { reporter, type, payload }
  */
 
 const API_BASE =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
+  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL) ||
+  (typeof process !== "undefined" && process.env && process.env.REACT_APP_API_URL) ||
   "https://inspection-server-4nvj.onrender.com";
 
 const TYPE = "cars_loading_inspection";
@@ -21,7 +21,7 @@ async function saveToServer(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reporter: "anonymous", type: TYPE, payload }),
   });
-  if (!res.ok) throw new Error(`Server ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error("Server " + res.status + ": " + (await res.text()));
   return res.json();
 }
 
@@ -34,6 +34,21 @@ const YESNO_FIELDS = [
   "ppeAvailable",
 ];
 
+const REQUIRED_FIELDS = {
+  vehicleNo: "VEHICLE NO",
+  driverName: "DRIVER NAME",
+  timeStart: "TIME START",
+  timeEnd: "TIME END",
+  tempCheck: "TRUCK TEMPERATURE",
+  floorSealingIntact: "FLOOR SEALING INTACT",
+  floorCleaning: "FLOOR CLEANING",
+  pestActivites: "PEST ACTIVITES",
+  plasticCurtain: "PLASTIC CURTAIN AVAILABLE/ CLEANING",
+  badOdour: "BAD ODOUR",
+  ppeAvailable: "PPE AVAILABLE",
+  informedTo: "INFORMED TO",
+};
+
 const HEAD_DEFAULT = {
   documentTitle: "OUTBOUND CHECKLIST",
   documentNo: "FSM-QM/REC/OCL",
@@ -45,6 +60,7 @@ const HEAD_DEFAULT = {
   approvedBy: "ALTAF KHAN",
 };
 
+// Default row matches your screenshot
 function newRow() {
   return {
     vehicleNo: "",
@@ -52,12 +68,12 @@ function newRow() {
     timeStart: "",
     timeEnd: "",
     tempCheck: "",
-    floorSealingIntact: "", // yes|no
-    floorCleaning: "",
-    pestActivites: "",
-    plasticCurtain: "",
-    badOdour: "",
-    ppeAvailable: "",
+    floorSealingIntact: "yes",
+    floorCleaning: "yes",
+    pestActivites: "no",
+    plasticCurtain: "yes",
+    badOdour: "no",
+    ppeAvailable: "yes",
     informedTo: "",
     remarks: "",
   };
@@ -71,6 +87,7 @@ export default function LoadingLog() {
   const [rows, setRows] = useState([newRow()]);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [errors, setErrors] = useState({}); // { [rowIndex]: Set(fieldKeys) }
 
   const setHead = (k, v) => setHeader((h) => ({ ...h, [k]: v }));
   const setRow = (i, k, v) =>
@@ -80,30 +97,94 @@ export default function LoadingLog() {
       return n;
     });
   const addRow = () => setRows((rs) => [...rs, newRow()]);
-  const removeRow = (i) => setRows((rs) => rs.filter((_, idx) => idx !== i));
+  const removeRow = (i) => {
+    setRows((rs) => rs.filter((_, idx) => idx !== i));
+    setErrors((e) => {
+      const ne = { ...e };
+      delete ne[i];
+      const reindexed = {};
+      Object.keys(ne)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .forEach((oldIdx, j) => {
+          reindexed[j] = ne[oldIdx];
+        });
+      return reindexed;
+    });
+  };
+
+  const isInvalid = (i, key) => Boolean(errors[i] && errors[i].has(key));
+
+  function validateRows(rawRows) {
+    const clean = rawRows.filter((r) => Object.values(r).some((v) => String(v || "").trim()));
+    const errorMap = {};
+    const messages = [];
+
+    clean.forEach((r, idx) => {
+      const missing = [];
+      const setForRow = new Set();
+
+      ["vehicleNo", "driverName", "timeStart", "timeEnd", "tempCheck", "informedTo"].forEach((k) => {
+        const val = String(r[k] || "").trim();
+        if (!val) {
+          missing.push(REQUIRED_FIELDS[k]);
+          setForRow.add(k);
+        }
+      });
+
+      YESNO_FIELDS.forEach((k) => {
+        const val = String(r[k] || "").trim().toLowerCase();
+        if (val !== "yes" && val !== "no") {
+          missing.push(REQUIRED_FIELDS[k]);
+          setForRow.add(k);
+        }
+      });
+
+      if (missing.length) {
+        errorMap[idx] = setForRow;
+        messages.push("Row " + (idx + 1) + ": " + missing.join(", "));
+      }
+    });
+
+    return { validCleanRows: clean, errorMap, messages };
+  }
 
   const handleSave = async (e) => {
     e.preventDefault();
-    const cleanRows = rows.filter((r) => Object.values(r).some((v) => String(v || "").trim()));
-    if (!cleanRows.length) {
+    const { validCleanRows, errorMap, messages } = validateRows(rows);
+
+    if (!validCleanRows.length) {
+      setErrors(errorMap);
       setMsg("Add at least one vehicle row.");
-      setTimeout(() => setMsg(""), 2000);
+      setTimeout(() => setMsg(""), 2500);
       return;
     }
+
+    if (Object.keys(errorMap).length) {
+      setErrors(errorMap);
+      setMsg("Please complete required fields:\n" + messages.join(" | "));
+      return;
+    }
+
     try {
       setBusy(true);
-      setMsg("Saving to server…");
+      setMsg("Saving to server...");
+      const id =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : String(Date.now());
       await saveToServer({
-        id: crypto.randomUUID?.() || String(Date.now()),
+        id,
         createdAt: Date.now(),
         header,
         reportDate,
         inspectedBy,
         verifiedBy,
-        rows: cleanRows,
+        rows: validCleanRows,
       });
       setMsg("Saved successfully.");
       setRows([newRow()]);
+      setErrors({});
     } catch (err) {
       console.error(err);
       setMsg("Save failed. Please try again.");
@@ -113,15 +194,16 @@ export default function LoadingLog() {
     }
   };
 
-  /* ===== Styled Components Objects ===== */
+  /* ===== Styles ===== */
+  // NOTE: كل ألوان HEX داخل strings لتجنّب خطأ “Unexpected digit after hash token”.
   const wrapStyle = {
     padding: "32px",
     fontFamily: "Arial, sans-serif",
     backgroundColor: "#f7f9fc",
-    color: "#333",
+    color: "#333333",
     minHeight: "100vh",
     boxSizing: "border-box",
-    direction: "ltr", // CHANGED: left-to-right direction
+    direction: "ltr",
   };
 
   const cardStyle = {
@@ -166,17 +248,17 @@ export default function LoadingLog() {
     boxSizing: "border-box",
   };
 
-  const inputFocusStyle = {
-    outline: "none",
-    borderColor: "#4a90e2",
-    boxShadow: "0 0 0 2px rgba(74, 144, 226, 0.2)",
+  const inputInvalid = {
+    ...inputStyle,
+    border: "1px solid #ef4444",
+    boxShadow: "0 0 0 2px rgba(239, 68, 68, 0.15)",
   };
 
   const titleStyle = {
     fontSize: "22px",
     fontWeight: "700",
     color: "#1a202c",
-    textAlign: "left", // CHANGED: Align left
+    textAlign: "left",
     padding: "8px 0",
     textTransform: "uppercase",
   };
@@ -198,7 +280,7 @@ export default function LoadingLog() {
     fontSize: "11px",
     fontWeight: "700",
     color: "#4a5568",
-    textAlign: "left", // CHANGED: Align left
+    textAlign: "left",
     textTransform: "uppercase",
     border: "1px solid #c0d0e0",
   };
@@ -206,9 +288,15 @@ export default function LoadingLog() {
   const tdStyle = {
     padding: "10px 8px",
     border: "1px solid #c0d0e0",
-    textAlign: "left", // CHANGED: Align left
+    textAlign: "left",
     verticalAlign: "middle",
     boxSizing: "border-box",
+  };
+
+  const tdInvalid = {
+    ...tdStyle,
+    backgroundColor: "#fff1f2",
+    border: "1px solid #ef4444",
   };
 
   const radioGroupStyle = {
@@ -246,7 +334,7 @@ export default function LoadingLog() {
   const saveButton = {
     ...buttonStyle,
     backgroundColor: busy ? "#87b6f5" : "#4a90e2",
-    color: "#fff",
+    color: "#ffffff",
     border: "1px solid #4a90e2",
     cursor: busy ? "not-allowed" : "pointer",
   };
@@ -256,10 +344,10 @@ export default function LoadingLog() {
     border: "none",
     cursor: "pointer",
     color: "#e53e3e",
-    fontSize: "18px",
-    padding: "0",
+    fontSize: "16px",
+    padding: "0 6px",
   };
-  
+
   const toolbarStyle = {
     display: "flex",
     justifyContent: "flex-end",
@@ -268,9 +356,19 @@ export default function LoadingLog() {
     padding: "16px 24px",
   };
 
-  /* Mobile adjustments for grids */
-  const responsiveGrid4 = window.innerWidth <= 768 ? grid4Style : { ...grid4Style, gridTemplateColumns: "repeat(4, 1fr)" };
-  const responsiveGrid2 = window.innerWidth <= 768 ? grid2Style : { ...grid2Style, gridTemplateColumns: "repeat(2, 1fr)" };
+  const responsiveGrid4 =
+    typeof window !== "undefined" && window.innerWidth <= 768
+      ? grid4Style
+      : { ...grid4Style, gridTemplateColumns: "repeat(4, 1fr)" };
+
+  const responsiveGrid2 =
+    typeof window !== "undefined" && window.innerWidth <= 768
+      ? grid2Style
+      : { ...grid2Style, gridTemplateColumns: "repeat(2, 1fr)" };
+
+  // helper colors (strings) to use in JSX inline style safely
+  const COLOR_RED = "#ef4444";
+  const COLOR_BLUE = "#4a90e2";
 
   return (
     <form onSubmit={handleSave} style={wrapStyle}>
@@ -280,47 +378,95 @@ export default function LoadingLog() {
           <div style={responsiveGrid4}>
             <div>
               <label style={labelStyle}>Document Title:</label>
-              <input style={inputStyle} value={header.documentTitle} onChange={(e) => setHead("documentTitle", e.target.value)} />
+              <input
+                style={inputStyle}
+                value={header.documentTitle}
+                onChange={(e) => setHead("documentTitle", e.target.value)}
+                aria-required="true"
+              />
             </div>
             <div>
               <label style={labelStyle}>Document No.:</label>
-              <input style={inputStyle} value={header.documentNo} onChange={(e) => setHead("documentNo", e.target.value)} />
+              <input
+                style={inputStyle}
+                value={header.documentNo}
+                onChange={(e) => setHead("documentNo", e.target.value)}
+              />
             </div>
             <div>
               <label style={labelStyle}>Issue Date:</label>
-              <input style={inputStyle} placeholder="DD/MM/YYYY" value={header.issueDate} onChange={(e) => setHead("issueDate", e.target.value)} />
+              <input
+                style={inputStyle}
+                placeholder="DD/MM/YYYY"
+                value={header.issueDate}
+                onChange={(e) => setHead("issueDate", e.target.value)}
+              />
             </div>
             <div>
               <label style={labelStyle}>Revision No.:</label>
-              <input style={inputStyle} value={header.revisionNo} onChange={(e) => setHead("revisionNo", e.target.value)} />
+              <input
+                style={inputStyle}
+                value={header.revisionNo}
+                onChange={(e) => setHead("revisionNo", e.target.value)}
+              />
             </div>
           </div>
-          <div style={{...responsiveGrid4, marginTop: "16px"}}>
+          <div style={{ ...responsiveGrid4, marginTop: "16px" }}>
             <div>
               <label style={labelStyle}>Area:</label>
-              <input style={inputStyle} value={header.area} onChange={(e) => setHead("area", e.target.value)} />
+              <input
+                style={inputStyle}
+                value={header.area}
+                onChange={(e) => setHead("area", e.target.value)}
+              />
             </div>
             <div>
               <label style={labelStyle}>Issued By:</label>
-              <input style={inputStyle} value={header.issuedBy} onChange={(e) => setHead("issuedBy", e.target.value)} />
+              <input
+                style={inputStyle}
+                value={header.issuedBy}
+                onChange={(e) => setHead("issuedBy", e.target.value)}
+              />
             </div>
             <div>
               <label style={labelStyle}>Controlling Officer:</label>
-              <input style={inputStyle} value={header.controllingOfficer} onChange={(e) => setHead("controllingOfficer", e.target.value)} />
+              <input
+                style={inputStyle}
+                value={header.controllingOfficer}
+                onChange={(e) => setHead("controllingOfficer", e.target.value)}
+              />
             </div>
             <div>
               <label style={labelStyle}>Approved By:</label>
-              <input style={inputStyle} value={header.approvedBy} onChange={(e) => setHead("approvedBy", e.target.value)} />
+              <input
+                style={inputStyle}
+                value={header.approvedBy}
+                onChange={(e) => setHead("approvedBy", e.target.value)}
+              />
             </div>
           </div>
         </div>
 
         {/* Title + Report date */}
-        <div style={{ ...sectionStyle, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+        <div
+          style={{
+            ...sectionStyle,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "16px",
+          }}
+        >
           <div style={titleStyle}>VISUAL INSPECTION (OUTBOUND CHECKLIST)</div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <label style={labelStyle}>Report Date:</label>
-            <input type="date" style={{...inputStyle, width: "auto"}} value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
+            <input
+              type="date"
+              style={{ ...inputStyle, width: "auto" }}
+              value={reportDate}
+              onChange={(e) => setReportDate(e.target.value)}
+            />
           </div>
         </div>
 
@@ -343,36 +489,100 @@ export default function LoadingLog() {
                   "PPE AVAILABLE",
                   "INFORMED TO",
                   "REMARKS",
-                  "",
                 ].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
+                <th style={thStyle}></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i}>
-                  <td style={tdStyle}><input style={inputStyle} value={r.vehicleNo} onChange={(e) => setRow(i, "vehicleNo", e.target.value)} /></td>
-                  <td style={tdStyle}><input style={inputStyle} value={r.driverName} onChange={(e) => setRow(i, "driverName", e.target.value)} /></td>
-                  <td style={tdStyle}><input type="time" style={inputStyle} value={r.timeStart} onChange={(e) => setRow(i, "timeStart", e.target.value)} /></td>
-                  <td style={tdStyle}><input type="time" style={inputStyle} value={r.timeEnd} onChange={(e) => setRow(i, "timeEnd", e.target.value)} /></td>
-                  <td style={tdStyle}><input type="number" step="0.1" style={inputStyle} value={r.tempCheck} onChange={(e) => setRow(i, "tempCheck", e.target.value)} /></td>
+                  <td style={isInvalid(i, "vehicleNo") ? tdInvalid : tdStyle}>
+                    <input
+                      style={isInvalid(i, "vehicleNo") ? inputInvalid : inputStyle}
+                      value={r.vehicleNo}
+                      onChange={(e) => setRow(i, "vehicleNo", e.target.value)}
+                    />
+                  </td>
+                  <td style={isInvalid(i, "driverName") ? tdInvalid : tdStyle}>
+                    <input
+                      style={isInvalid(i, "driverName") ? inputInvalid : inputStyle}
+                      value={r.driverName}
+                      onChange={(e) => setRow(i, "driverName", e.target.value)}
+                    />
+                  </td>
+                  <td style={isInvalid(i, "timeStart") ? tdInvalid : tdStyle}>
+                    <input
+                      type="time"
+                      style={isInvalid(i, "timeStart") ? inputInvalid : inputStyle}
+                      value={r.timeStart}
+                      onChange={(e) => setRow(i, "timeStart", e.target.value)}
+                    />
+                  </td>
+                  <td style={isInvalid(i, "timeEnd") ? tdInvalid : tdStyle}>
+                    <input
+                      type="time"
+                      style={isInvalid(i, "timeEnd") ? inputInvalid : inputStyle}
+                      value={r.timeEnd}
+                      onChange={(e) => setRow(i, "timeEnd", e.target.value)}
+                    />
+                  </td>
+                  <td style={isInvalid(i, "tempCheck") ? tdInvalid : tdStyle}>
+                    <input
+                      type="number"
+                      step="0.1"
+                      style={isInvalid(i, "tempCheck") ? inputInvalid : inputStyle}
+                      value={r.tempCheck}
+                      onChange={(e) => setRow(i, "tempCheck", e.target.value)}
+                    />
+                  </td>
 
                   {YESNO_FIELDS.map((k) => (
-                    <td key={k} style={tdStyle}>
+                    <td key={k} style={isInvalid(i, k) ? tdInvalid : tdStyle}>
                       <div style={radioGroupStyle}>
-                        <label style={radioLabelStyle}><input type="radio" name={`${k}-${i}`} checked={r[k] === "yes"} onChange={() => setRow(i, k, "yes")} style={{accentColor: "#4a90e2"}}/> YES</label>
-                        <label style={radioLabelStyle}><input type="radio" name={`${k}-${i}`} checked={r[k] === "no"} onChange={() => setRow(i, k, "no")} style={{accentColor: "#4a90e2"}}/> NO</label>
+                        <label style={radioLabelStyle}>
+                          <input
+                            type="radio"
+                            name={k + "-" + i}
+                            checked={r[k] === "yes"}
+                            onChange={() => setRow(i, k, "yes")}
+                            style={{ outline: "none" }}
+                          />
+                          YES
+                        </label>
+                        <label style={radioLabelStyle}>
+                          <input
+                            type="radio"
+                            name={k + "-" + i}
+                            checked={r[k] === "no"}
+                            onChange={() => setRow(i, k, "no")}
+                            style={{ outline: "none" }}
+                          />
+                          NO
+                        </label>
                       </div>
                     </td>
                   ))}
 
-                  <td style={tdStyle}><input style={inputStyle} value={r.informedTo} onChange={(e) => setRow(i, "informedTo", e.target.value)} /></td>
-                  <td style={tdStyle}><input style={inputStyle} value={r.remarks} onChange={(e) => setRow(i, "remarks", e.target.value)} /></td>
+                  <td style={isInvalid(i, "informedTo") ? tdInvalid : tdStyle}>
+                    <input
+                      style={isInvalid(i, "informedTo") ? inputInvalid : inputStyle}
+                      value={r.informedTo}
+                      onChange={(e) => setRow(i, "informedTo", e.target.value)}
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    <input
+                      style={inputStyle}
+                      value={r.remarks}
+                      onChange={(e) => setRow(i, "remarks", e.target.value)}
+                    />
+                  </td>
                   <td style={tdStyle}>
                     {rows.length > 1 && (
-                      <button type="button" onClick={() => removeRow(i)} style={removeBtnStyle}>
-                        ✖
+                      <button type="button" onClick={() => removeRow(i)} style={removeBtnStyle} title="Remove row">
+                        X
                       </button>
                     )}
                   </td>
@@ -387,11 +597,19 @@ export default function LoadingLog() {
           <div style={responsiveGrid2}>
             <div>
               <label style={labelStyle}>INSPECTED BY:</label>
-              <input style={inputStyle} value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} />
+              <input
+                style={inputStyle}
+                value={inspectedBy}
+                onChange={(e) => setInspectedBy(e.target.value)}
+              />
             </div>
             <div>
               <label style={labelStyle}>VERIFIED BY:</label>
-              <input style={inputStyle} value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} />
+              <input
+                style={inputStyle}
+                value={verifiedBy}
+                onChange={(e) => setVerifiedBy(e.target.value)}
+              />
             </div>
           </div>
         </div>
@@ -399,12 +617,16 @@ export default function LoadingLog() {
         {/* Toolbar */}
         <div style={toolbarStyle}>
           <button type="button" onClick={addRow} style={addButton}>
-            ➕ Add Vehicle
+            + Add Vehicle
           </button>
           <button type="submit" disabled={busy} style={saveButton}>
-            {busy ? "Saving…" : "💾 Save Report"}
+            {busy ? "Saving..." : "Save Report"}
           </button>
-          {msg && <strong style={{ marginLeft: "12px", color: "#4a5568", fontSize: "14px" }}>{msg}</strong>}
+          {msg && (
+            <strong style={{ marginLeft: "12px", color: "#4a5568", fontSize: "14px", whiteSpace: "pre-wrap" }}>
+              {msg}
+            </strong>
+          )}
         </div>
       </div>
     </form>
