@@ -75,14 +75,19 @@ export default function ReturnsMenu() {
                 <span className="btn__icon">📊</span>
                 <span>Browse Meat Daily</span>
               </Link>
-              {/* NEW: Browse Customer Returns (عرض) */}
+              {/* Browse Customer Returns */}
               <Link to="/returns-customers/browse" className="btn btn--ghost">
                 <span className="btn__icon">👤</span>
                 <span>Browse Customer Returns</span>
               </Link>
+              {/* NEW: Browse Inventory Daily */}
+              <Link to="/inventory-daily/browse" className="btn btn--ghost">
+                <span className="btn__icon">📦</span>
+                <span>Browse Inventory Daily</span>
+              </Link>
             </div>
 
-            {/* RIGHT: Create (no password anywhere) */}
+            {/* RIGHT: Create */}
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <Link to="/returns" className="btn btn--primary" aria-label="Create returns report">
                 <span className="btn__icon">📝</span>
@@ -92,10 +97,15 @@ export default function ReturnsMenu() {
                 <span className="btn__icon">🧾</span>
                 <span>Create Meat Daily Report</span>
               </Link>
-              {/* NEW: Create Customer Returns (ادخال) */}
+              {/* Create Customer Returns */}
               <Link to="/returns-customers/new" className="btn btn--primary" aria-label="Create customer returns report">
                 <span className="btn__icon">✍️</span>
                 <span>Create Customer Returns</span>
+              </Link>
+              {/* NEW: Create Inventory Daily */}
+              <Link to="/inventory-daily/input" className="btn btn--primary" aria-label="Create inventory daily report">
+                <span className="btn__icon">🧮</span>
+                <span>Create Inventory Daily Report</span>
               </Link>
             </div>
           </div>

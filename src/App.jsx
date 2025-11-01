@@ -145,6 +145,14 @@ const QCSReportsView = lazy(() =>
   import("./pages/monitor/branches/qcs/QCSReportsView")
 );
 
+/* 🆕 🧾 Inventory Daily (Store) — إدخال + عرض */
+const InventoryDailyInput = lazy(() =>
+  import("./pages/store/InventoryDailyInput")
+);
+const InventoryDailyBrowse = lazy(() =>
+  import("./pages/store/InventoryDailyBrowse")
+);
+
 /** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
   let isAuthed = false;
@@ -620,6 +628,26 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <BrowseMeatDaily />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        {/* 🆕 🧾 inventory-daily/* */}
+        <Route path="/inventory-daily">
+          <Route
+            path="input"
+            element={
+              <ProtectedRoute>
+                <InventoryDailyInput />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="browse"
+            element={
+              <ProtectedRoute>
+                <InventoryDailyBrowse />
               </ProtectedRoute>
             }
           />
