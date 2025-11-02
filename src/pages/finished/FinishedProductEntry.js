@@ -1,4 +1,3 @@
-// src/pages/finished/FinishedProductEntry.jsx
 import React, { useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx-js-style";
@@ -125,7 +124,6 @@ const CORE_HEADERS = [
 ];
 
 /* ===================== Helpers ===================== */
-// digits normalization
 function toAsciiDigits(value) {
   if (value == null) return "";
   let s = String(value);
@@ -163,7 +161,7 @@ function autoTempForProduct(product) {
   return randTemp(1.1, 4.8, 1);
 }
 
-/* ===== Date parsing/formatting (DD/MM/YYYY) ===== */
+/* ===== Date helpers ===== */
 function pad2(x) { return String(x).padStart(2, "0"); }
 function excelSerialToDMY(n) {
   const base = new Date(Date.UTC(1899, 11, 30));
@@ -172,36 +170,60 @@ function excelSerialToDMY(n) {
   if (isNaN(d)) return "";
   return `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
 }
+
+/** 🔧 محوّل تاريخ ذكي → دائمًا DD/MM/YYYY */
 function toDMY(val) {
   if (val == null || val === "") return "";
   const s0 = toAsciiDigits(String(val).trim());
+
+  // رقم سيريال من إكسل
+  if (/^\d+(\.\d+)?$/.test(s0) && Number(s0) > 59) {
+    return excelSerialToDMY(Number(s0));
+  }
+
   const s = s0.replace(/[.\- ]/g, "/");
-  if (/^\d+(\.\d+)?$/.test(s0) && Number(s0) > 59) return excelSerialToDMY(Number(s0));
+
+  // 1) نمط رقم/رقم/سنة — نحاول تمييز DD/MM مقابل MM/DD
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (m) {
-    let dd = pad2(m[1]), mm = pad2(m[2]); let yyyy = m[3];
+    let a = Number(m[1]); // part1
+    let b = Number(m[2]); // part2
+    let yyyy = m[3];
     if (yyyy.length === 2) yyyy = Number(yyyy) < 50 ? `20${yyyy}` : `19${yyyy}`;
-    return `${dd}/${mm}/${yyyy}`;
+
+    if (b > 12 && a <= 12) [a, b] = [b, a];
+
+    if (a >= 1 && a <= 31 && b >= 1 && b <= 12) {
+      return `${pad2(a)}/${pad2(b)}/${yyyy}`;
+    }
   }
+
+  // 2) نمط YYYY/MM/DD
   m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-  if (m) return `${pad2(m[3])}/${pad2(m[2])}/${m[1]}`;
+  if (m) {
+    const yyyy = m[1];
+    const mm = Number(m[2]);
+    const dd = Number(m[3]);
+    if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) {
+      return `${pad2(dd)}/${pad2(mm)}/${yyyy}`;
+    }
+  }
+
+  // 3) محاولة أخيرة بإنشاء Date
   const d = new Date(s0);
-  if (!isNaN(d)) return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+  if (!isNaN(d)) {
+    return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+  }
+
   return "";
 }
+
 function maskDateTyped(input) {
   const ascii = toAsciiDigits(String(input));
   const s = ascii.replace(/[^\d]/g, "");
   if (s.length <= 2) return s;
   if (s.length <= 4) return `${s.slice(0, 2)}/${s.slice(2)}`;
   return `${s.slice(0, 2)}/${s.slice(2, 4)}/${s.slice(4, 8)}`;
-}
-function cmpDMY(a, b) {
-  const pa = parseDMY(a); const pb = parseDMY(b);
-  if (!pa || !pb) return null;
-  if (pa.getTime() < pb.getTime()) return -1;
-  if (pa.getTime() > pb.getTime()) return 1;
-  return 0;
 }
 function parseDMY(s) {
   const t = toAsciiDigits(String(s || ""));
@@ -210,6 +232,48 @@ function parseDMY(s) {
   const dd = Number(m[1]), mm = Number(m[2]), yyyy = Number(m[3]);
   const d = new Date(yyyy, mm - 1, dd);
   return d && d.getMonth() + 1 === mm && d.getDate() === dd ? d : null;
+}
+function cmpDMY(a, b) {
+  const pa = parseDMY(a); const pb = parseDMY(b);
+  if (!pa || !pb) return null;
+  if (pa.getTime() < pb.getTime()) return -1;
+  if (pa.getTime() > pb.getTime()) return 1;
+  return 0;
+}
+
+/* ==== توابع تصحيح انتهاء مقلوب مقارنة بالذبح ==== */
+function partsDMY(s) {
+  const m = String(s || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  return { dd: Number(m[1]), mm: Number(m[2]), yyyy: Number(m[3]) };
+}
+function canSwapDMY(s) {
+  const p = partsDMY(s);
+  if (!p) return false;
+  return p.dd >= 1 && p.dd <= 12 && p.mm >= 1 && p.mm <= 12; // حالة لبس فقط
+}
+function swapDMY(s) {
+  const p = partsDMY(s);
+  if (!p) return s;
+  return `${pad2(p.mm)}/${pad2(p.dd)}/${p.yyyy}`;
+}
+function daysBetweenDMY(a, b) {
+  const da = parseDMY(a), db = parseDMY(b);
+  if (!da || !db) return null;
+  const diffMs = db.getTime() - da.getTime();
+  return Math.round(diffMs / 86400000);
+}
+/** يصلح فقط Expiry إذا كان قبل الذبح أو بفارق غير منطقي */
+function smartFixExpiry(sd, ed, maxGap = 60) {
+  if (!sd || !ed) return ed;
+  const diff = daysBetweenDMY(sd, ed);
+  if (diff !== null && diff >= 0 && diff <= maxGap) return ed; // سليم
+  if (canSwapDMY(ed)) {
+    const ed2 = swapDMY(ed);
+    const diff2 = daysBetweenDMY(sd, ed2);
+    if (diff2 !== null && diff2 >= 0 && diff2 <= maxGap) return ed2; // تم التصحيح
+  }
+  return ed;
 }
 
 /** Quantity from stock-like */
@@ -236,7 +300,7 @@ function extractCodeAndName(raw = "") {
   return { code: "", name: s };
 }
 
-/** Excel helpers for dates import */
+/** Excel helpers */
 function getCellText(ws, r, c) {
   try {
     const addr = XLSX.utils.encode_cell({ r, c });
@@ -247,6 +311,19 @@ function getCellText(ws, r, c) {
     return "";
   } catch { return ""; }
 }
+
+/* خذ التاريخ كما يظهر في الإكسل (w) وإلا حوّل السيريال فقط */
+function getDateExact(ws, r, c) {
+  try {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    const cell = ws[addr];
+    if (!cell) return "";
+    if (cell.w != null && String(cell.w).trim() !== "") return String(cell.w).trim();
+    if (typeof cell.v === "number") return excelSerialToDMY(cell.v);
+    return String(cell.v ?? "").trim();
+  } catch { return ""; }
+}
+
 function findPSE(ws) {
   const ref = ws["!ref"];
   if (!ref) return { p: 0, s: 1, e: 2, headerRow: 0 };
@@ -287,6 +364,7 @@ function splitDateParts(v) {
   }
   return { date: "", time: "" };
 }
+
 function transformIncoming(record) {
   const out = { ...emptyRow };
 
@@ -294,18 +372,19 @@ function transformIncoming(record) {
     Object.prototype.hasOwnProperty.call(record, h)
   );
   if (hasExact) {
-    out.product = String(record["Product"] ?? "");
+    out.product  = String(record["Product"] ?? "");
     out.customer = String(record["Customer"] ?? "");
-    out.orderNo = toAsciiDigits(record["Order No"] ?? "");
-    out.time = toAsciiDigits(record["TIME"] ?? "");
-    out.slaughterDate = "";
-    out.expiryDate = "";
+    out.orderNo  = toAsciiDigits(record["Order No"] ?? "");
+    out.time     = toAsciiDigits(record["TIME"] ?? "");
+    // خليه كما في الملف (سيتم تطبيعه لاحقًا بـ normalizeRow → toDMY الذكي)
+    out.slaughterDate = String(record["Slaughter Date"] ?? "");
+    out.expiryDate    = String(record["Expiry Date"] ?? "");
     const q = toNumOrEmpty(record["Quantity"]);
-    out.quantity = !q || q === 0 ? "" : String(q);
-    out.temp = toNumStr(record["TEMP"]) || "";
-    out.unitOfMeasure = String(record["Unit of Measure"] ?? "KG") || "KG";
-    out.overallCondition = "OK";
-    out.remarks = String(record["REMARKS"] ?? "");
+    out.quantity          = !q || q === 0 ? "" : String(q);
+    out.temp              = toNumStr(record["TEMP"]) || "";
+    out.unitOfMeasure     = String(record["Unit of Measure"] ?? "KG") || "KG";
+    out.overallCondition  = "OK";
+    out.remarks           = String(record["REMARKS"] ?? "");
     if (out.temp === "") out.temp = autoTempForProduct(out.product);
     return out;
   }
@@ -340,7 +419,6 @@ function transformIncoming(record) {
 export default function FinishedProductEntry() {
   const navigate = useNavigate();
 
-  // ✅ تم إخفاء حقل العنوان واستبداله بقيمة افتراضية داخلية
   const [reportTitle] = useState("FINISHED PRODUCTS");
   const [reportDate, setReportDate] = useState("");
   const [rows, setRows] = useState([{ ...emptyRow }]);
@@ -355,13 +433,11 @@ export default function FinishedProductEntry() {
 
   const [savingStage, setSavingStage] = useState("");
 
-  /* ===== Customers datalist ===== */
   const customerOptions = useMemo(() => {
     const set = new Set(rows.map((r) => (r.customer || "").trim()).filter(Boolean));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
-  /* ===== Derived errors + row status ===== */
   function getRowErrors(r) {
     const errs = {};
     if (!String(r.product).trim()) errs.product = "Required";
@@ -399,7 +475,7 @@ export default function FinishedProductEntry() {
     return { label: "✅ مكتمل", color: "#065f46" };
   }
 
-  /* ===== Drag & Drop ===== */
+  /* Drag & Drop */
   const dragIndex = useRef(-1);
   const onDragStart = (i) => (e) => {
     dragIndex.current = i;
@@ -423,7 +499,7 @@ export default function FinishedProductEntry() {
     dragIndex.current = -1;
   };
 
-  /* ===== Change handlers ===== */
+  /* Change handlers */
   const handleChange = (idx, key, value) => {
     const updated = [...rows];
     let v = value;
@@ -459,7 +535,7 @@ export default function FinishedProductEntry() {
     }
   };
 
-  /* ===== Normalize rows before save ===== */
+  /* Normalize before save */
   function normalizeRow(r) {
     const uom = ["KG", "BOX", "PLATE", "Piece"].includes(r.unitOfMeasure) ? r.unitOfMeasure : "KG";
     const temp = String(r.temp ?? "").trim();
@@ -479,10 +555,9 @@ export default function FinishedProductEntry() {
     return norm;
   }
 
-  /* ===== Save with validations (server only) ===== */
+  /* Save (server only) */
   const handleSave = async () => {
     setSavingStage("saving");
-    // ✅ أزلنا فحص العنوان — نستخدم قيمة افتراضية داخلية
     if (!reportDate.trim()) {
       setSavingStage("");
       setErrorMsg("Please select the Report Date.");
@@ -500,11 +575,10 @@ export default function FinishedProductEntry() {
         setTimeout(() => setErrorMsg(""), 3500);
         return;
       }
-      r.overallCondition = "OK";
     }
 
     const cleanRows = rows.map(normalizeRow);
-    const ymd = String(reportDate || "").slice(0, 10); // YYYY-MM-DD
+    const ymd = String(reportDate || "").slice(0, 10);
 
     const doc = {
       id: Date.now(),
@@ -527,7 +601,7 @@ export default function FinishedProductEntry() {
     }
   };
 
-  /* ===== Import (full rows) ===== */
+  /* Import (full rows) */
   const onPick = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -545,7 +619,7 @@ export default function FinishedProductEntry() {
           const t = transformIncoming(rec);
           t.overallCondition = "OK";
           if (!String(t.temp).trim()) t.temp = autoTempForProduct(t.product);
-          return normalizeRow(t);
+          return normalizeRow(t); // ← سيحوّل التواريخ لـ DD/MM/YYYY
         })
         .filter((r) => Object.values(r).some((v) => String(v).trim() !== ""));
 
@@ -562,7 +636,7 @@ export default function FinishedProductEntry() {
     }
   };
 
-  /* ===== Import only dates (Product, Slaughter Date, Expiry Date) ===== */
+  /* Import only dates by [CODE] → مع تصحيح Expiry إن كان مقلوب */
   const onPickDates = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -579,16 +653,27 @@ export default function FinishedProductEntry() {
 
       const codeToDates = new Map();
       let scanned = 0;
+      let swapped = 0;
+
       for (let r = headerRow + 1; r <= range.e.r; r++) {
         const prodText = getCellText(ws, r, idxP);
-        const sdText = getCellText(ws, r, idxS);
-        const edText = getCellText(ws, r, idxE);
+        const sdText = getDateExact(ws, r, idxS);
+        const edText = getDateExact(ws, r, idxE);
         if (!prodText && !sdText && !edText) continue;
         const { code } = extractCodeAndName(prodText);
         if (!code) continue;
         scanned++;
         const prev = codeToDates.get(code) || { sd: "", ed: "" };
-        codeToDates.set(code, { sd: toDMY(sdText) || prev.sd, ed: toDMY(edText) || prev.ed });
+
+        const sd = toDMY(sdText);
+        let ed = toDMY(edText);
+
+        // جرّب إصلاح الانتهاء فقط إذا كان مقلوب مقارنة بالذبح
+        const before = ed;
+        ed = smartFixExpiry(sd, ed, 60);
+        if (before !== ed) swapped++;
+
+        codeToDates.set(code, { sd: sd || prev.sd, ed: ed || prev.ed });
       }
 
       if (codeToDates.size === 0) {
@@ -602,16 +687,20 @@ export default function FinishedProductEntry() {
         const code = extractCodeFromProductText(r.product);
         if (!code || !codeToDates.has(code)) return r;
         const { sd, ed } = codeToDates.get(code);
-        const hasChange = (sd && sd !== r.slaughterDate) || (ed && ed !== r.expiryDate);
+        const hasChange = (sd && sd !== toDMY(r.slaughterDate)) || (ed && ed !== toDMY(r.expiryDate));
         if (hasChange) updated++;
-        return normalizeRow({ ...r, slaughterDate: sd || r.slaughterDate, expiryDate: ed || r.expiryDate });
+        return {
+          ...r,
+          slaughterDate: sd || r.slaughterDate,
+          expiryDate: ed || r.expiryDate,
+          overallCondition: "OK"
+        };
       });
 
       setRows(nextRows);
-      setImportSummary(`📥 Dates import: matched ${updated} row(s) / scanned ${scanned}. (format DD/MM/YYYY)`);
+      setImportSummary(`📥 Dates import: matched ${updated} row(s) / scanned ${scanned}. Fixed expiry swaps: ${swapped}.`);
       setTimeout(() => setImportSummary(""), 3500);
     } catch (err) {
-      console.error(err);
       setErrorMsg("Failed to import dates.");
       setTimeout(() => setErrorMsg(""), 3000);
     } finally {
@@ -619,10 +708,10 @@ export default function FinishedProductEntry() {
     }
   };
 
-  /* ===== عرض الصفوف (بدون عدّادات أو فرز) ===== */
+  /* View */
   const viewRows = useMemo(() => rows.map((r, i) => ({ r, idx: i })), [rows]);
 
-  /* ===== UI ===== */
+  /* UI */
   const addRow = () => setRows((r) => [...r, { ...emptyRow }]);
   const removeRow = (idx) => { if (rows.length === 1) return; setRows(rows.filter((_, i) => i !== idx)); };
 
@@ -639,19 +728,16 @@ export default function FinishedProductEntry() {
         direction: "ltr",
       }}
     >
-      {/* Top Bar (Sticky) — تاريخ فقط + أزرار الاستيراد/التقارير */}
       <div style={{
         position: "sticky", top: 0, zIndex: 20, background: "#fff",
         paddingBottom: 10, marginBottom: 14, borderBottom: "1px solid #e5e7eb"
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
-          {/* ✅ التاريخ فقط كما طلبت */}
           <div style={{ display: "grid", gap: 6 }}>
             <label style={labelStyle}>Report Date</label>
             <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} style={metaInput} />
           </div>
 
-          {/* Import/Views */}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <label style={btnPurple} title="Import XLSX/XLS/CSV (full rows)">
               📥 Import File
@@ -664,7 +750,7 @@ export default function FinishedProductEntry() {
               />
             </label>
 
-            <label style={btnPurple} title="Import Slaughter/Expiry dates only (DD/MM/YYYY)">
+            <label style={btnPurple} title="Import Slaughter/Expiry dates only (smart expiry fix)">
               📥 Import Dates (2 cols)
               <input
                 ref={datesFileRef}
@@ -689,7 +775,6 @@ export default function FinishedProductEntry() {
       {savedMsg && <div style={okBanner}>{savedMsg}</div>}
       {errorMsg && <div style={errBanner}>{errorMsg}</div>}
 
-      {/* Table */}
       <div style={{ overflowX: "auto", width: "100%" }}>
         <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontSize: "0.98em", background: "#f8fafc", border: "1px solid #000" }}>
           <colgroup>
@@ -747,7 +832,6 @@ export default function FinishedProductEntry() {
                   onDrop={onDrop(realIdx)}
                   title="Drag to reorder rows"
                 >
-                  {/* row index + status chip */}
                   <td style={td}>
                     <div style={{ fontSize: 12, color: "#64748b" }}>{realIdx + 1}</div>
                     <div style={{ marginTop: 4, fontSize: 11, fontWeight: 800, color: rowStatus.color }}>
@@ -929,7 +1013,6 @@ export default function FinishedProductEntry() {
           </tbody>
         </table>
 
-        {/* customers datalist */}
         <datalist id="customer-list">
           {customerOptions.map((c) => (
             <option key={c} value={c} />
@@ -937,13 +1020,11 @@ export default function FinishedProductEntry() {
         </datalist>
       </div>
 
-      {/* Bottom actions */}
       <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
         <button onClick={addRow} style={btnInfo}>➕ Add Row</button>
         <button onClick={handleSave} style={btnSuccessWide}>💾 Save Report</button>
       </div>
 
-      {/* Saving overlay */}
       {savingStage && (
         <div style={saveOverlayBack}>
           <div style={saveOverlayCard}>

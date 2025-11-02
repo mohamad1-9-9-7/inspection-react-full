@@ -270,7 +270,7 @@ export default function FinishedProductReports() {
 
   const [confirmState, setConfirmState] = useState({ open: false, target: null, type: null });
   const [banner, setBanner] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false); // <-- keep variable name as in your file
 
   // مراجع أقسام التقارير للتمرير
   const sectionRefs = useRef({});
@@ -444,7 +444,9 @@ export default function FinishedProductReports() {
     data.forEach((r) => {
       const st = statusFromDates(r.reportDate, r.expiryDate);
       aoa.push([
-        r.product, r.customer, r.orderNo, r.time, r.slaughterDate, r.expiryDate,
+        r.product, r.customer, r.orderNo, r.time,
+        formatDMY(r.slaughterDate),         // ← تنسيق يوم/شهر/سنة
+        formatDMY(r.expiryDate),            // ← تنسيق يوم/شهر/سنة
         r.temp, r.quantity, r.unitOfMeasure || "KG", r.overallCondition, r.remarks,
         r.reportTitle || "", r.reportDate || "", st.days === "" ? "" : st.days, st.label
       ]);
@@ -857,8 +859,10 @@ export default function FinishedProductReports() {
                             <td style={{ ...td, textAlign: "left", wordBreak: "break-word" }}>{highlightMatch(row.customer, debouncedSearch)}</td>
                             <td style={td}>{highlightMatch(row.orderNo, debouncedSearch)}</td>
                             <td className="col-time" style={td}>{row.time}</td>
-                            <td className="col-slaughter" style={td}>{row.slaughterDate}</td>
-                            <td style={td}>{row.expiryDate}</td>
+                            {/* ▼▼ تم التنسيق إلى يوم/شهر/سنة فقط ▼▼ */}
+                            <td className="col-slaughter" style={td}>{formatDMY(row.slaughterDate)}</td>
+                            <td style={td}>{formatDMY(row.expiryDate)}</td>
+                            {/* ▲▲ لا تغيير آخر ▲▲ */}
                             <td className="col-temp" style={td}>{row.temp}</td>
                             <td style={td}>{row.quantity}</td>
                             <td className="col-unit" style={td}>{row.unitOfMeasure || "KG"}</td>
