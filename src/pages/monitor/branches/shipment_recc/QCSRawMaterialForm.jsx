@@ -966,7 +966,16 @@ export default function QCSRawMaterialForm() {
             >
               {isSaving ? "⏳ Saving..." : "💾 Save Report"}
             </button>
-            <button onClick={() => navigate("/qcs-raw-material-view")} style={styles.viewButton}>📄 View Reports</button>
+
+            {/* عرض التقارير التفصيلية */}
+            <button onClick={() => navigate("/qcs-raw-material-view")} style={styles.viewButton}>
+              📄 View Reports
+            </button>
+
+            {/* 🔥 الزر الجديد: التقرير العام الموحّد */}
+            <button onClick={() => navigate("/admin/all-reports-view")} style={styles.viewButton}>
+              📊 All Reports (Summary)
+            </button>
           </div>
         </div>
       </div>

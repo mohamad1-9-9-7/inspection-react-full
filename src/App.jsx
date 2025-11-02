@@ -61,6 +61,9 @@ const QCSRawMaterialInspection = lazy(() =>
 );
 const QCSRawMaterialView = lazy(() => import("./pages/admin/QCSRawMaterialView"));
 
+// 🆕 ✅ تقرير عام موحّد (All Reports Summary)
+const AllReportsView = lazy(() => import("./pages/admin/AllReportsView"));
+
 const Returns = lazy(() => import("./pages/Returns"));
 const ReturnView = lazy(() => import("./pages/ReturnView"));
 const BrowseReturns = lazy(() => import("./pages/BrowseReturns"));
@@ -537,6 +540,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <QCSRawMaterialView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 ✅ All Reports Summary (المسار الجديد) */}
+        <Route
+          path="/admin/all-reports-view"
+          element={
+            <ProtectedRoute>
+              <AllReportsView />
             </ProtectedRoute>
           }
         />
