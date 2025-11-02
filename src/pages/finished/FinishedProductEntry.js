@@ -3,27 +3,95 @@ import React, { useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx-js-style";
 
-/* ========= API (upload/delete images via server) ========= */
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+/* ========= API ========= */
+const API_BASE = String(
+  (typeof window !== "undefined" && window.__QCS_API__) ||
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+  (typeof process !== "undefined" &&
+    (process.env?.REACT_APP_API_URL || process.env?.VITE_API_URL || process.env?.RENDER_EXTERNAL_URL)) ||
+  "https://inspection-server-4nvj.onrender.com"
+).replace(/\/$/, "");
 
-async function uploadViaServer(file) {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
-    throw new Error(data?.error || "Upload failed");
-  }
-  return data.optimized_url || data.url;
+/* نوع التقرير على السيرفر */
+const TYPE = "finished_products_report";
+
+/* ===== Helpers: common fetch wrappers ===== */
+async function jsonFetch(url, opts = {}) {
+  const res = await fetch(url, opts);
+  let data = null;
+  try { data = await res.json(); } catch { data = null; }
+  return { ok: res.ok, status: res.status, data };
 }
-async function deleteImage(url) {
-  if (!url) return;
-  const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
-    method: "DELETE",
+function extractReportsList(data) {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.items)) return data.items;
+  return [];
+}
+function normalizeServerItem(item) {
+  const payload = item?.payload && typeof item.payload === "object" ? item.payload : item || {};
+  return {
+    id: item?.id || item?._id,
+    reportDate: payload.reportDate || item?.reportDate || "",
+    reportTitle: payload.reportTitle || item?.reportTitle || "",
+    products: Array.isArray(payload.products) ? payload.products : [],
+  };
+}
+
+/** ابحث عن تقرير بنفس التاريخ (حسب النوع) وأرجع {id, ...} إن وجد */
+async function findReportByDate(reportDate) {
+  const { ok, data } = await jsonFetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`);
+  if (!ok) return null;
+  const list = extractReportsList(data).map(normalizeServerItem);
+  return list.find(r => String(r.reportDate) === String(reportDate)) || null;
+}
+
+/** إنشاء تقرير جديد (POST) */
+async function createReportOnServer(doc) {
+  const body = { reporter: "finished_products", type: TYPE, payload: doc };
+  const { ok, data, status } = await jsonFetch(`${API_BASE}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data?.ok) throw new Error(data?.error || "Delete image failed");
+  if (!ok) {
+    const msg = data?.error || `Server save failed (${status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+/** استبدال تقرير موجود (PUT) */
+async function replaceReportOnServer(existingId, doc) {
+  const { ok, data, status } = await jsonFetch(`${API_BASE}/api/reports/${encodeURIComponent(existingId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payload: doc }),
+  });
+  if (!ok) {
+    const msg = data?.error || `Update failed (${status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+/** واجهة موحّدة للحفظ: POST → إن تكرّر التاريخ نعمل PUT لنفس اليوم */
+async function saveReportToServerUpsert(doc) {
+  try {
+    return await createReportOnServer(doc);
+  } catch (err) {
+    const emsg = String(err?.message || "");
+    const duplicate =
+      emsg.includes("duplicate key value") ||
+      emsg.includes("already exists") ||
+      emsg.includes("ux_reports_type_reportdate");
+
+    if (!duplicate) throw err;
+
+    const existing = await findReportByDate(doc.reportDate);
+    if (!existing || !existing.id) throw err;
+    return await replaceReportOnServer(existing.id, doc);
+  }
 }
 
 /* ========= Row shape ========= */
@@ -39,7 +107,6 @@ const emptyRow = {
   unitOfMeasure: "KG",
   overallCondition: "OK",
   remarks: "",
-  images: [],
 };
 
 /* ========= Headers ========= */
@@ -92,18 +159,12 @@ function randTemp(min, max, dp = 1) {
   return String(fixed);
 }
 function autoTempForProduct(product) {
-  if (isFrozenProduct(product)) {
-    // -18.0 to -16.0 (one decimal)
-    return randTemp(-18.0, -16.0, 1);
-  }
-  // 1.1 to 4.8 (one decimal)
+  if (isFrozenProduct(product)) return randTemp(-18.0, -16.0, 1);
   return randTemp(1.1, 4.8, 1);
 }
 
 /* ===== Date parsing/formatting (DD/MM/YYYY) ===== */
-function pad2(x) {
-  return String(x).padStart(2, "0");
-}
+function pad2(x) { return String(x).padStart(2, "0"); }
 function excelSerialToDMY(n) {
   const base = new Date(Date.UTC(1899, 11, 30));
   const ms = Number(n) * 86400000;
@@ -111,39 +172,30 @@ function excelSerialToDMY(n) {
   if (isNaN(d)) return "";
   return `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
 }
-/** try to understand many inputs and return DD/MM/YYYY or "" */
 function toDMY(val) {
   if (val == null || val === "") return "";
-  const s0 = String(val).trim();
-  const s = s0.replace(/[.\- ]/g, "/"); // unify separators
-
-  // Excel serial
+  const s0 = toAsciiDigits(String(val).trim());
+  const s = s0.replace(/[.\- ]/g, "/");
   if (/^\d+(\.\d+)?$/.test(s0) && Number(s0) > 59) return excelSerialToDMY(Number(s0));
-
-  // DD/MM/YYYY or D/M/YY
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (m) {
     let dd = pad2(m[1]), mm = pad2(m[2]); let yyyy = m[3];
     if (yyyy.length === 2) yyyy = Number(yyyy) < 50 ? `20${yyyy}` : `19${yyyy}`;
     return `${dd}/${mm}/${yyyy}`;
   }
-  // ISO → DD/MM/YYYY
   m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
   if (m) return `${pad2(m[3])}/${pad2(m[2])}/${m[1]}`;
-
-  // fallback Date()
   const d = new Date(s0);
   if (!isNaN(d)) return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
   return "";
 }
-/** mask while typing: keep digits, auto insert "/" at 2,5 */
 function maskDateTyped(input) {
-  const s = input.replace(/[^\d]/g, "");
+  const ascii = toAsciiDigits(String(input));
+  const s = ascii.replace(/[^\d]/g, "");
   if (s.length <= 2) return s;
   if (s.length <= 4) return `${s.slice(0, 2)}/${s.slice(2)}`;
   return `${s.slice(0, 2)}/${s.slice(2, 4)}/${s.slice(4, 8)}`;
 }
-/** compare DMY strings → -1 / 0 / 1 ; invalid => null */
 function cmpDMY(a, b) {
   const pa = parseDMY(a); const pb = parseDMY(b);
   if (!pa || !pb) return null;
@@ -152,7 +204,8 @@ function cmpDMY(a, b) {
   return 0;
 }
 function parseDMY(s) {
-  const m = String(s || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const t = toAsciiDigits(String(s || ""));
+  const m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
   const dd = Number(m[1]), mm = Number(m[2]), yyyy = Number(m[3]);
   const d = new Date(yyyy, mm - 1, dd);
@@ -249,12 +302,11 @@ function transformIncoming(record) {
     out.expiryDate = "";
     const q = toNumOrEmpty(record["Quantity"]);
     out.quantity = !q || q === 0 ? "" : String(q);
-    out.temp = toNumStr(record["TEMP"]) || ""; // read if exists, else autofill below
+    out.temp = toNumStr(record["TEMP"]) || "";
     out.unitOfMeasure = String(record["Unit of Measure"] ?? "KG") || "KG";
     out.overallCondition = "OK";
     out.remarks = String(record["REMARKS"] ?? "");
-    out.images = [];
-    if (out.temp === "") out.temp = autoTempForProduct(out.product); // ★ auto temp
+    if (out.temp === "") out.temp = autoTempForProduct(out.product);
     return out;
   }
 
@@ -271,100 +323,25 @@ function transformIncoming(record) {
     out.time = toAsciiDigits(time);
     out.slaughterDate = "";
     out.expiryDate = "";
-    out.temp = ""; // will auto-fill below
+    out.temp = "";
     out.quantity = chooseQtyFromStockLike(record);
     out.unitOfMeasure =
       String(record["Unit of Measure"] ?? record["Unit of measure"] ?? "KG") || "KG";
     out.overallCondition = "OK";
     out.remarks = "";
-    out.images = [];
-    if (out.temp === "") out.temp = autoTempForProduct(out.product); // ★ auto temp
+    if (out.temp === "") out.temp = autoTempForProduct(out.product);
     return out;
   }
 
   return out;
 }
 
-/* ========= Image Manager ========= */
-function ImageManager({ open, row, onClose, onAddImages, onRemoveImage }) {
-  const inputRef = useRef(null);
-  const [preview, setPreview] = useState("");
-  React.useEffect(() => {
-    if (!open) setPreview("");
-    const onEsc = (e) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [open, onClose]);
-  if (!open) return null;
-
-  const MAX = 2;
-  const handlePick = () => inputRef.current?.click();
-  const handleFiles = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    const remain = MAX - (row?.images?.length || 0);
-    if (files.length > remain) {
-      alert(`You can upload ${remain} image(s) only (max ${MAX}).`);
-      e.target.value = "";
-      return;
-    }
-    const urls = [];
-    for (const f of files) {
-      try { const url = await uploadViaServer(f); urls.push(url); }
-      catch (err) { console.error("upload failed:", err); }
-    }
-    if (urls.length) onAddImages(urls);
-    e.target.value = "";
-  };
-
-  return (
-    <div style={galleryBack} onClick={onClose}>
-      <div style={galleryCard} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
-            🖼️ Product Images {row?.product ? `— ${row.product}` : ""}
-          </div>
-          <button onClick={onClose} style={galleryClose}>✕</button>
-        </div>
-
-        {preview && (
-          <div style={{ marginTop: 10, marginBottom: 8 }}>
-            <img
-              src={preview}
-              alt="preview"
-              style={{ maxWidth: "100%", maxHeight: 700, borderRadius: 15, boxShadow: "0 6px 18px rgba(0,0,0,.2)" }}
-            />
-          </div>
-        )}
-
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 }}>
-          <button onClick={handlePick} style={btnBlueModal}>⬆️ Upload Images</button>
-          <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} />
-          <div style={{ fontSize: 13, color: "#334155" }}>Max two images per product (server compresses automatically).</div>
-        </div>
-
-        <div style={thumbsWrap}>
-          {(row?.images || []).length === 0 ? (
-            <div style={{ color: "#64748b" }}>No images yet.</div>
-          ) : (
-            row.images.map((src, i) => (
-              <div key={i} style={thumbTile} title={`Image ${i + 1}`}>
-                <img src={src} alt={`img-${i}`} style={thumbImg} onClick={() => setPreview(src)} />
-                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>✕</button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ========= Main ========= */
 export default function FinishedProductEntry() {
   const navigate = useNavigate();
 
-  const [reportTitle, setReportTitle] = useState("");
+  // ✅ تم إخفاء حقل العنوان واستبداله بقيمة افتراضية داخلية
+  const [reportTitle] = useState("FINISHED PRODUCTS");
   const [reportDate, setReportDate] = useState("");
   const [rows, setRows] = useState([{ ...emptyRow }]);
 
@@ -376,14 +353,7 @@ export default function FinishedProductEntry() {
   const fileRef = useRef(null);
   const datesFileRef = useRef(null);
 
-  const [imageModalOpen, setImageModalOpen] = useState(false);
-  const [imageRowIndex, setImageRowIndex] = useState(-1);
   const [savingStage, setSavingStage] = useState("");
-
-  /* ===== Sorting/Filtering state ===== */
-  const [sortBy, setSortBy] = useState("none"); // none | slaughterAsc|slaughterDesc|expiryAsc|expiryDesc|customerAsc|customerDesc
-  const [filterCustomer, setFilterCustomer] = useState("");
-  const [filterHasImages, setFilterHasImages] = useState("any"); // any|with|without
 
   /* ===== Customers datalist ===== */
   const customerOptions = useMemo(() => {
@@ -394,25 +364,21 @@ export default function FinishedProductEntry() {
   /* ===== Derived errors + row status ===== */
   function getRowErrors(r) {
     const errs = {};
-    // required
     if (!String(r.product).trim()) errs.product = "Required";
     if (!String(r.customer).trim()) errs.customer = "Required";
     if (!String(r.orderNo).trim()) errs.orderNo = "Required";
     const qOk = !(r.quantity === "" || isNaN(Number(r.quantity)));
     if (!qOk) errs.quantity = "Required (number)";
-    // dates
     const sd = toDMY(r.slaughterDate) || "";
     const ed = toDMY(r.expiryDate) || "";
     if (!sd) errs.slaughterDate = "Required (DD/MM/YYYY)";
     if (!ed) errs.expiryDate = "Required (DD/MM/YYYY)";
-    // order check
     if (sd && ed) {
       const cmp = cmpDMY(sd, ed);
       if (cmp !== null && cmp > 0) {
         errs.dateOrder = "Expiry must be after or same day as Slaughter";
       }
     }
-    // temp
     if (String(r.temp).trim() !== "") {
       const t = Number(toAsciiDigits(r.temp).replace(/,/g, "."));
       if (!Number.isFinite(t)) errs.temp = "Not a number";
@@ -432,18 +398,6 @@ export default function FinishedProductEntry() {
     }
     return { label: "✅ مكتمل", color: "#065f46" };
   }
-
-  /* ===== Counters ===== */
-  const missingCount = useMemo(
-    () =>
-      rows.reduce((acc, r) => {
-        const e = getRowErrors(r);
-        const missing =
-          e.product || e.customer || e.orderNo || e.quantity || e.slaughterDate || e.expiryDate || e.dateOrder;
-        return acc + (missing ? 1 : 0);
-      }, 0),
-    [rows]
-  );
 
   /* ===== Drag & Drop ===== */
   const dragIndex = useRef(-1);
@@ -475,8 +429,7 @@ export default function FinishedProductEntry() {
     let v = value;
 
     if (key === "slaughterDate" || key === "expiryDate") {
-      // mask typing
-      v = maskDateTyped(v.replace(/[.\- ]/g, "/"));
+      v = maskDateTyped(toAsciiDigits(v).replace(/[.\- ]/g, "/"));
     } else if (key === "quantity" || key === "temp") {
       v = toAsciiDigits(v).replace(/,/g, ".");
     } else if (key === "time" || key === "orderNo") {
@@ -506,43 +459,30 @@ export default function FinishedProductEntry() {
     }
   };
 
-  /* ===== Images modal ===== */
-  const openImagesFor = (i) => { setImageRowIndex(i); setImageModalOpen(true); };
-  const closeImages = () => setImageModalOpen(false);
-  const addImagesToRow = async (urls) => {
-    setRows((prev) =>
-      prev.map((r, i) =>
-        i === imageRowIndex ? { ...r, images: [...(r.images || []), ...urls].slice(0, 2) } : r
-      )
-    );
-    setSavedMsg("✅ Images added."); setTimeout(() => setSavedMsg(""), 1600);
-  };
-  const removeImageFromRow = async (imgIndex) => {
-    try {
-      const url = rows?.[imageRowIndex]?.images?.[imgIndex];
-      if (url) { try { await deleteImage(url); } catch {} }
-      setRows((prev) =>
-        prev.map((r, i) => {
-          if (i !== imageRowIndex) return r;
-          const next = Array.isArray(r.images) ? [...r.images] : [];
-          next.splice(imgIndex, 1);
-          return { ...r, images: next };
-        })
-      );
-      setSavedMsg("✅ Image removed.");
-    } catch { setErrorMsg("❌ Failed to remove the image."); }
-    finally { setTimeout(() => { setSavedMsg(""); setErrorMsg(""); }, 1800); }
-  };
+  /* ===== Normalize rows before save ===== */
+  function normalizeRow(r) {
+    const uom = ["KG", "BOX", "PLATE", "Piece"].includes(r.unitOfMeasure) ? r.unitOfMeasure : "KG";
+    const temp = String(r.temp ?? "").trim();
+    const norm = {
+      product: String(r.product || "").trim(),
+      customer: String(r.customer || "").trim(),
+      orderNo: toAsciiDigits(r.orderNo || "").trim(),
+      time: toAsciiDigits(r.time || "").trim(),
+      slaughterDate: toDMY(r.slaughterDate || ""),
+      expiryDate: toDMY(r.expiryDate || ""),
+      temp: temp === "" ? "" : String(Number(toAsciiDigits(temp).replace(/,/g, ".")).toFixed(1)),
+      quantity: String(toNumOrEmpty(r.quantity || "")),
+      unitOfMeasure: uom,
+      overallCondition: "OK",
+      remarks: String(r.remarks || "").trim(),
+    };
+    return norm;
+  }
 
-  /* ===== Save with validations ===== */
-  const handleSave = () => {
+  /* ===== Save with validations (server only) ===== */
+  const handleSave = async () => {
     setSavingStage("saving");
-    if (!reportTitle.trim()) {
-      setSavingStage("");
-      setErrorMsg("Please enter the Report Title.");
-      setTimeout(() => setErrorMsg(""), 2600);
-      return;
-    }
+    // ✅ أزلنا فحص العنوان — نستخدم قيمة افتراضية داخلية
     if (!reportDate.trim()) {
       setSavingStage("");
       setErrorMsg("Please select the Report Date.");
@@ -563,24 +503,27 @@ export default function FinishedProductEntry() {
       r.overallCondition = "OK";
     }
 
+    const cleanRows = rows.map(normalizeRow);
+    const ymd = String(reportDate || "").slice(0, 10); // YYYY-MM-DD
+
+    const doc = {
+      id: Date.now(),
+      reportTitle: "FINISHED PRODUCTS",
+      reportDate: ymd,
+      reportSavedAt: new Date().toISOString(),
+      products: cleanRows,
+    };
+
     try {
-      const all = JSON.parse(localStorage.getItem("finished_products_reports") || "[]");
-      all.push({
-        id: Date.now(),
-        reportTitle,
-        reportDate,
-        reportSavedAt: new Date().toISOString(),
-        products: rows,
-      });
-      localStorage.setItem("finished_products_reports", JSON.stringify(all));
-      setSavingStage("done"); setSavedMsg("✅ Report saved successfully!");
-      setTimeout(() => setSavedMsg(""), 2000);
-      setRows([{ ...emptyRow }]); setReportTitle(""); setReportDate("");
-      setTimeout(() => setSavingStage(""), 1000);
-    } catch {
+      const res = await saveReportToServerUpsert(doc);
+      setSavingStage("done");
+      setSavedMsg(`✅ Saved on server (ID: ${res?.id || res?._id || "OK"}) — افتح التقارير من زر "Saved Reports" بالأعلى`);
+      setRows([{ ...emptyRow }]);
+      setTimeout(() => setSavingStage(""), 400);
+    } catch (err) {
       setSavingStage("");
-      setErrorMsg("Failed to save the report.");
-      setTimeout(() => setErrorMsg(""), 2600);
+      setErrorMsg(`Failed to save on server: ${err?.message || "Unknown error"}`);
+      setTimeout(() => setErrorMsg(""), 4000);
     }
   };
 
@@ -598,12 +541,11 @@ export default function FinishedProductEntry() {
       if (!json.length) { setErrorMsg("No data rows found in the file."); setTimeout(() => setErrorMsg(""), 2600); return; }
 
       const transformed = json
-        .map((rec) => { 
-          const t = transformIncoming(rec); 
-          t.overallCondition = "OK"; 
-          // ★ Auto temp if still empty
+        .map((rec) => {
+          const t = transformIncoming(rec);
+          t.overallCondition = "OK";
           if (!String(t.temp).trim()) t.temp = autoTempForProduct(t.product);
-          return t; 
+          return normalizeRow(t);
         })
         .filter((r) => Object.values(r).some((v) => String(v).trim() !== ""));
 
@@ -662,7 +604,7 @@ export default function FinishedProductEntry() {
         const { sd, ed } = codeToDates.get(code);
         const hasChange = (sd && sd !== r.slaughterDate) || (ed && ed !== r.expiryDate);
         if (hasChange) updated++;
-        return { ...r, slaughterDate: sd || r.slaughterDate, expiryDate: ed || r.expiryDate };
+        return normalizeRow({ ...r, slaughterDate: sd || r.slaughterDate, expiryDate: ed || r.expiryDate });
       });
 
       setRows(nextRows);
@@ -677,36 +619,8 @@ export default function FinishedProductEntry() {
     }
   };
 
-  /* ===== Filtering + Sorting view ===== */
-  const viewRows = useMemo(() => {
-    let list = rows.map((r, i) => ({ r, idx: i }));
-    if (filterCustomer.trim()) {
-      const q = filterCustomer.trim().toLowerCase();
-      list = list.filter(({ r }) => (r.customer || "").toLowerCase().includes(q));
-    }
-    if (filterHasImages !== "any") {
-      const need = filterHasImages === "with";
-      list = list.filter(({ r }) => (Array.isArray(r.images) && r.images.length > 0) === need);
-    }
-
-    // comparator that closes over (k, dir)
-    const byDateKey = (k, dir) => (a, b) => {
-      const da = parseDMY(a.r[k]); const db = parseDMY(b.r[k]);
-      const va = da ? da.getTime() : -Infinity; const vb = db ? db.getTime() : -Infinity;
-      return dir * (va - vb);
-    };
-
-    switch (sortBy) {
-      case "slaughterAsc": list.sort(byDateKey("slaughterDate", 1)); break;
-      case "slaughterDesc": list.sort(byDateKey("slaughterDate", -1)); break;
-      case "expiryAsc": list.sort(byDateKey("expiryDate", 1)); break;
-      case "expiryDesc": list.sort(byDateKey("expiryDate", -1)); break;
-      case "customerAsc": list.sort((a, b) => (a.r.customer || "").localeCompare(b.r.customer || "")); break;
-      case "customerDesc": list.sort((a, b) => (b.r.customer || "").localeCompare(a.r.customer || "")); break;
-      default: break;
-    }
-    return list;
-  }, [rows, sortBy, filterCustomer, filterHasImages]);
+  /* ===== عرض الصفوف (بدون عدّادات أو فرز) ===== */
+  const viewRows = useMemo(() => rows.map((r, i) => ({ r, idx: i })), [rows]);
 
   /* ===== UI ===== */
   const addRow = () => setRows((r) => [...r, { ...emptyRow }]);
@@ -725,79 +639,50 @@ export default function FinishedProductEntry() {
         direction: "ltr",
       }}
     >
-      {/* Top Bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
-        {/* Report meta */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ display: "grid", gap: 6 }}>
-            <label style={labelStyle}>Report Title</label>
-            <input value={reportTitle} onChange={(e) => setReportTitle(e.target.value)} placeholder="e.g., Finished Products – POS 19" style={metaInput} />
-          </div>
+      {/* Top Bar (Sticky) — تاريخ فقط + أزرار الاستيراد/التقارير */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 20, background: "#fff",
+        paddingBottom: 10, marginBottom: 14, borderBottom: "1px solid #e5e7eb"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+          {/* ✅ التاريخ فقط كما طلبت */}
           <div style={{ display: "grid", gap: 6 }}>
             <label style={labelStyle}>Report Date</label>
             <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} style={metaInput} />
           </div>
+
+          {/* Import/Views */}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={btnPurple} title="Import XLSX/XLS/CSV (full rows)">
+              📥 Import File
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                style={{ display: "none" }}
+                onChange={onPick}
+              />
+            </label>
+
+            <label style={btnPurple} title="Import Slaughter/Expiry dates only (DD/MM/YYYY)">
+              📥 Import Dates (2 cols)
+              <input
+                ref={datesFileRef}
+                type="file"
+                accept=".xlsx,.xls,.xlsm,.xlsb,.csv"
+                style={{ display: "none" }}
+                onChange={onPickDates}
+              />
+            </label>
+
+            <select value={importMode} onChange={(e) => setImportMode(e.target.value)} style={selectStyle} title="Append or replace current rows">
+              <option value="append">Append</option>
+              <option value="replace">Replace</option>
+            </select>
+
+            <button onClick={() => navigate("/finished-product-reports")} style={btnPurple}>📑 Saved Reports</button>
+          </div>
         </div>
-
-        {/* Import/Views + Filters */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <label style={btnInfo} title="Import XLSX/XLS/CSV (full rows)">
-            📥 Import File
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx,.xls,.xlsm,.xlsb,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-              style={{ display: "none" }}
-              onChange={onPick}
-            />
-          </label>
-
-          <label style={btnPurple} title="Import Slaughter/Expiry dates only (DD/MM/YYYY)">
-            📥 Import Dates (2 cols)
-            <input
-              ref={datesFileRef}
-              type="file"
-              accept=".xlsx,.xls,.xlsm,.xlsb,.csv"
-              style={{ display: "none" }}
-              onChange={onPickDates}
-            />
-          </label>
-
-          <select value={importMode} onChange={(e) => setImportMode(e.target.value)} style={selectStyle} title="Append or replace current rows">
-            <option value="append">Append</option>
-            <option value="replace">Replace</option>
-          </select>
-
-          <button onClick={() => navigate("/finished-product-reports")} style={btnPurple}>📑 Saved Reports</button>
-        </div>
-      </div>
-
-      {/* Counters + Filters/Sort */}
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
-        <div style={{ fontWeight: 800, color: "#334155" }}>
-          Rows: {rows.length} • Incomplete: {missingCount}
-        </div>
-
-        <input
-          value={filterCustomer}
-          onChange={(e) => setFilterCustomer(e.target.value)}
-          placeholder="Filter by customer…"
-          style={{ ...inputStyle, maxWidth: 220 }}
-        />
-        <select value={filterHasImages} onChange={(e) => setFilterHasImages(e.target.value)} style={selectStyle}>
-          <option value="any">All</option>
-          <option value="with">With images</option>
-          <option value="without">Without images</option>
-        </select>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={selectStyle}>
-          <option value="none">No sort</option>
-          <option value="slaughterAsc">Slaughter ↑</option>
-          <option value="slaughterDesc">Slaughter ↓</option>
-          <option value="expiryAsc">Expiry ↑</option>
-          <option value="expiryDesc">Expiry ↓</option>
-          <option value="customerAsc">Customer A-Z</option>
-          <option value="customerDesc">Customer Z-A</option>
-        </select>
       </div>
 
       {importSummary && <div style={infoBanner}>{importSummary}</div>}
@@ -871,26 +756,20 @@ export default function FinishedProductEntry() {
                   </td>
 
                   <td style={td}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <input
-                        value={r.product}
-                        onChange={(e) => {
-                          const updated = [...rows];
-                          updated[realIdx].product = e.target.value;
-                          // ★ auto-fill temp only if empty
-                          if (!String(updated[realIdx].temp).trim()) {
-                            updated[realIdx].temp = autoTempForProduct(updated[realIdx].product);
-                          }
-                          updated[realIdx].overallCondition = "OK";
-                          setRows(updated);
-                        }}
-                        style={errStyle("product")}
-                        placeholder="Product"
-                      />
-                      <button onClick={() => { setImageRowIndex(realIdx); setImageModalOpen(true); }} style={btnBlueSmall} title="Manage product images">
-                        🖼️ ({Array.isArray(r.images) ? r.images.length : 0}/2)
-                      </button>
-                    </div>
+                    <input
+                      value={r.product}
+                      onChange={(e) => {
+                        const updated = [...rows];
+                        updated[realIdx].product = e.target.value;
+                        if (!String(updated[realIdx].temp).trim()) {
+                          updated[realIdx].temp = autoTempForProduct(updated[realIdx].product);
+                        }
+                        updated[realIdx].overallCondition = "OK";
+                        setRows(updated);
+                      }}
+                      style={errStyle("product")}
+                      placeholder="Product"
+                    />
                     {errs.product && <div style={hintErr}>{errs.product}</div>}
                   </td>
 
@@ -1064,15 +943,6 @@ export default function FinishedProductEntry() {
         <button onClick={handleSave} style={btnSuccessWide}>💾 Save Report</button>
       </div>
 
-      {/* Images modal */}
-      <ImageManager
-        open={imageModalOpen}
-        row={imageRowIndex >= 0 ? (rows?.[imageRowIndex] || {}) : null}
-        onClose={() => setImageModalOpen(false)}
-        onAddImages={addImagesToRow}
-        onRemoveImage={removeImageFromRow}
-      />
-
       {/* Saving overlay */}
       {savingStage && (
         <div style={saveOverlayBack}>
@@ -1134,16 +1004,6 @@ const btnSuccess = {
   padding: "9px 22px",
 };
 const btnSuccessWide = { ...btnSuccess, padding: "11px 44px", borderRadius: 12 };
-const btnBlueSmall = {
-  background: "#2563eb",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "6px 10px",
-  fontWeight: "bold",
-  whiteSpace: "nowrap",
-  boxShadow: "0 1px 6px #bfdbfe",
-};
 
 const selectStyle = {
   padding: "9px 10px",
@@ -1184,16 +1044,5 @@ const errBanner = {
 const hintErr = { color: "#b91c1c", fontSize: 11, marginTop: 4, textAlign: "left" };
 const hintWarn = { color: "#b45309", fontSize: 11, marginTop: 4, textAlign: "left" };
 
-/* Gallery modal styles */
-const galleryBack = { position: "fixed", inset: 0, background: "rgba(15,23,42,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 };
-const galleryCard = { width: "min(1200px, 96vw)", maxHeight: "80vh", overflow: "auto", background: "#fff", color: "#111", borderRadius: 14, border: "1px solid #e5e7eb", padding: "14px 16px", boxShadow: "0 12px 32px rgba(0,0,0,.25)" };
-const galleryClose = { background: "transparent", border: "none", color: "#111", fontWeight: 900, cursor: "pointer", fontSize: 18 };
-const btnBlueModal = { background: "#2563eb", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer", boxShadow: "0 1px 6px #bfdbfe" };
-const thumbsWrap = { marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 };
-const thumbTile = { position: "relative", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", background: "#f8fafc" };
-const thumbImg = { width: "100%", height: 150, objectFit: "cover", display: "block" };
-const thumbRemove = { position: "absolute", top: 6, right: 6, background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, padding: "2px 8px", fontWeight: 800, cursor: "pointer" };
-
-/* Saving overlay styles */
 const saveOverlayBack = { position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 };
 const saveOverlayCard = { minWidth: 240, textAlign: "center", background: "#ffffff", color: "#0f172a", fontWeight: 800, fontSize: "1.05rem", borderRadius: 14, border: "1px solid #e5e7eb", padding: "16px 20px", boxShadow: "0 12px 30px rgba(0,0,0,.25)" };
