@@ -161,7 +161,7 @@ function autoTempForProduct(product) {
   return randTemp(1.1, 4.8, 1);
 }
 
-/* ===== Date helpers ===== */
+/* ===== Date helpers (للتحقق فقط) ===== */
 function pad2(x) { return String(x).padStart(2, "0"); }
 function excelSerialToDMY(n) {
   const base = new Date(Date.UTC(1899, 11, 30));
@@ -170,54 +170,27 @@ function excelSerialToDMY(n) {
   if (isNaN(d)) return "";
   return `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
 }
-
-/** 🔧 محوّل تاريخ ذكي → دائمًا DD/MM/YYYY */
 function toDMY(val) {
   if (val == null || val === "") return "";
   const s0 = toAsciiDigits(String(val).trim());
-
-  // رقم سيريال من إكسل
-  if (/^\d+(\.\d+)?$/.test(s0) && Number(s0) > 59) {
-    return excelSerialToDMY(Number(s0));
-  }
-
+  if (/^\d+(\.\d+)?$/.test(s0) && Number(s0) > 59) return excelSerialToDMY(Number(s0));
   const s = s0.replace(/[.\- ]/g, "/");
-
-  // 1) نمط رقم/رقم/سنة — نحاول تمييز DD/MM مقابل MM/DD
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (m) {
-    let a = Number(m[1]); // part1
-    let b = Number(m[2]); // part2
-    let yyyy = m[3];
+    let a = Number(m[1]); let b = Number(m[2]); let yyyy = m[3];
     if (yyyy.length === 2) yyyy = Number(yyyy) < 50 ? `20${yyyy}` : `19${yyyy}`;
-
     if (b > 12 && a <= 12) [a, b] = [b, a];
-
-    if (a >= 1 && a <= 31 && b >= 1 && b <= 12) {
-      return `${pad2(a)}/${pad2(b)}/${yyyy}`;
-    }
+    if (a >= 1 && a <= 31 && b >= 1 && b <= 12) return `${pad2(a)}/${pad2(b)}/${yyyy}`;
   }
-
-  // 2) نمط YYYY/MM/DD
   m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
   if (m) {
-    const yyyy = m[1];
-    const mm = Number(m[2]);
-    const dd = Number(m[3]);
-    if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) {
-      return `${pad2(dd)}/${pad2(mm)}/${yyyy}`;
-    }
+    const yyyy = m[1]; const mm = Number(m[2]); const dd = Number(m[3]);
+    if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) return `${pad2(dd)}/${pad2(mm)}/${yyyy}`;
   }
-
-  // 3) محاولة أخيرة بإنشاء Date
   const d = new Date(s0);
-  if (!isNaN(d)) {
-    return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
-  }
-
+  if (!isNaN(d)) return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
   return "";
 }
-
 function maskDateTyped(input) {
   const ascii = toAsciiDigits(String(input));
   const s = ascii.replace(/[^\d]/g, "");
@@ -241,89 +214,17 @@ function cmpDMY(a, b) {
   return 0;
 }
 
-/* ==== توابع تصحيح انتهاء مقلوب مقارنة بالذبح ==== */
-function partsDMY(s) {
-  const m = String(s || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  return { dd: Number(m[1]), mm: Number(m[2]), yyyy: Number(m[3]) };
-}
-function canSwapDMY(s) {
-  const p = partsDMY(s);
-  if (!p) return false;
-  return p.dd >= 1 && p.dd <= 12 && p.mm >= 1 && p.mm <= 12; // حالة لبس فقط
-}
-function swapDMY(s) {
-  const p = partsDMY(s);
-  if (!p) return s;
-  return `${pad2(p.mm)}/${pad2(p.dd)}/${p.yyyy}`;
-}
-function daysBetweenDMY(a, b) {
-  const da = parseDMY(a), db = parseDMY(b);
-  if (!da || !db) return null;
-  const diffMs = db.getTime() - da.getTime();
-  return Math.round(diffMs / 86400000);
-}
-/** يصلح فقط Expiry إذا كان قبل الذبح أو بفارق غير منطقي */
-function smartFixExpiry(sd, ed, maxGap = 60) {
-  if (!sd || !ed) return ed;
-  const diff = daysBetweenDMY(sd, ed);
-  if (diff !== null && diff >= 0 && diff <= maxGap) return ed; // سليم
-  if (canSwapDMY(ed)) {
-    const ed2 = swapDMY(ed);
-    const diff2 = daysBetweenDMY(sd, ed2);
-    if (diff2 !== null && diff2 >= 0 && diff2 <= maxGap) return ed2; // تم التصحيح
-  }
-  return ed;
-}
-
-/** Quantity from stock-like */
-function chooseQtyFromStockLike(rec) {
-  const done = toNumOrEmpty(rec["Done"]);
-  const rrq = toNumOrEmpty(rec["Real Reserved Quantity"] ?? rec["Real reserved quantity"]);
-  const a = done === "" ? 0 : done;
-  const b = rrq === "" ? 0 : rrq;
-  const sum = a + b;
-  return sum === 0 ? "" : String(sum);
-}
-
-/** Product code utilities */
-function extractCodeFromProductText(s = "") {
-  const m = String(s).match(/\[(\d+)\]/);
-  return m ? m[1] : "";
-}
-function extractCodeAndName(raw = "") {
-  const s = String(raw).trim();
-  let m = s.match(/^\s*\[(\d+)\]\s*(.+)$/);
-  if (m) return { code: m[1], name: m[2].trim() };
-  m = s.match(/^\s*(\d{3,})\s*[-–—]\s*(.+)$/);
-  if (m) return { code: m[1], name: m[2].trim() };
-  return { code: "", name: s };
-}
-
-/** Excel helpers */
-function getCellText(ws, r, c) {
+/* === Utilities لزر Import Dates فقط (as-is) === */
+/** نعيد نص الخلية كما يظهر في إكسل (display text). لا نحاول تحويل السيريال إطلاقًا. */
+function getExcelDisplayText(ws, r, c) {
   try {
     const addr = XLSX.utils.encode_cell({ r, c });
     const cell = ws[addr];
-    if (!cell) return "";
-    if (cell.w != null && String(cell.w).trim() !== "") return String(cell.w).trim();
-    if (cell.v != null && String(cell.v).trim() !== "") return String(cell.v).trim();
-    return "";
+    const raw = (cell?.w ?? "").toString().trim();
+    return raw; // as is
   } catch { return ""; }
 }
-
-/* خذ التاريخ كما يظهر في الإكسل (w) وإلا حوّل السيريال فقط */
-function getDateExact(ws, r, c) {
-  try {
-    const addr = XLSX.utils.encode_cell({ r, c });
-    const cell = ws[addr];
-    if (!cell) return "";
-    if (cell.w != null && String(cell.w).trim() !== "") return String(cell.w).trim();
-    if (typeof cell.v === "number") return excelSerialToDMY(cell.v);
-    return String(cell.v ?? "").trim();
-  } catch { return ""; }
-}
-
+/** إيجاد أعمدة Product / Slaughter / Expiry */
 function findPSE(ws) {
   const ref = ws["!ref"];
   if (!ref) return { p: 0, s: 1, e: 2, headerRow: 0 };
@@ -331,13 +232,24 @@ function findPSE(ws) {
   let idxP = 0, idxS = 1, idxE = 2, headerRow = range.s.r;
   for (let r = range.s.r; r <= Math.min(range.s.r + 5, range.e.r); r++) {
     for (let c = range.s.c; c <= range.e.c; c++) {
-      const t = getCellText(ws, r, c).toLowerCase();
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      const t = (cell?.w || cell?.v || "").toString().toLowerCase();
       if (t.includes("product")) { idxP = c; headerRow = r; }
       if (t.includes("slaughter") || t.includes("production")) { idxS = c; headerRow = r; }
       if (t.includes("expiry") || t.includes("expiration")) { idxE = c; headerRow = r; }
     }
   }
   return { p: idxP, s: idxS, e: idxE, headerRow };
+}
+
+/** Quantity from stock-like (مطلوبة في onPick) */
+function chooseQtyFromStockLike(rec) {
+  const done = toNumOrEmpty(rec["Done"]);
+  const rrq = toNumOrEmpty(rec["Real Reserved Quantity"] ?? rec["Real reserved quantity"]);
+  const a = done === "" ? 0 : done;
+  const b = rrq === "" ? 0 : rrq;
+  const sum = a + b;
+  return sum === 0 ? "" : String(sum);
 }
 
 /* ========= Transform incoming rows ========= */
@@ -376,7 +288,6 @@ function transformIncoming(record) {
     out.customer = String(record["Customer"] ?? "");
     out.orderNo  = toAsciiDigits(record["Order No"] ?? "");
     out.time     = toAsciiDigits(record["TIME"] ?? "");
-    // خليه كما في الملف (سيتم تطبيعه لاحقًا بـ normalizeRow → toDMY الذكي)
     out.slaughterDate = String(record["Slaughter Date"] ?? "");
     out.expiryDate    = String(record["Expiry Date"] ?? "");
     const q = toNumOrEmpty(record["Quantity"]);
@@ -619,7 +530,7 @@ export default function FinishedProductEntry() {
           const t = transformIncoming(rec);
           t.overallCondition = "OK";
           if (!String(t.temp).trim()) t.temp = autoTempForProduct(t.product);
-          return normalizeRow(t); // ← سيحوّل التواريخ لـ DD/MM/YYYY
+          return normalizeRow(t);
         })
         .filter((r) => Object.values(r).some((v) => String(v).trim() !== ""));
 
@@ -636,7 +547,7 @@ export default function FinishedProductEntry() {
     }
   };
 
-  /* Import only dates by [CODE] → مع تصحيح Expiry إن كان مقلوب */
+  /* 📥 Import Dates (2 cols) — as-is (نص الخلية كما يظهر في إكسل) */
   const onPickDates = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -653,27 +564,28 @@ export default function FinishedProductEntry() {
 
       const codeToDates = new Map();
       let scanned = 0;
-      let swapped = 0;
 
       for (let r = headerRow + 1; r <= range.e.r; r++) {
-        const prodText = getCellText(ws, r, idxP);
-        const sdText = getDateExact(ws, r, idxS);
-        const edText = getDateExact(ws, r, idxE);
-        if (!prodText && !sdText && !edText) continue;
-        const { code } = extractCodeAndName(prodText);
+        const prodCell = ws[XLSX.utils.encode_cell({ r, c: idxP })];
+        const prodText = (prodCell?.w || prodCell?.v || "").toString().trim();
+
+        // نص التاريخ كما يظهر في الشيت — بدون أي معالجة
+        const sdRaw = getExcelDisplayText(ws, r, idxS);
+        const edRaw = getExcelDisplayText(ws, r, idxE);
+
+        if (!prodText && !sdRaw && !edRaw) continue;
+
+        const m = String(prodText).match(/\[(\d+)\]/);
+        const code = m ? m[1] : "";
         if (!code) continue;
+
         scanned++;
         const prev = codeToDates.get(code) || { sd: "", ed: "" };
 
-        const sd = toDMY(sdText);
-        let ed = toDMY(edText);
-
-        // جرّب إصلاح الانتهاء فقط إذا كان مقلوب مقارنة بالذبح
-        const before = ed;
-        ed = smartFixExpiry(sd, ed, 60);
-        if (before !== ed) swapped++;
-
-        codeToDates.set(code, { sd: sd || prev.sd, ed: ed || prev.ed });
+        codeToDates.set(code, {
+          sd: sdRaw || prev.sd,
+          ed: edRaw || prev.ed,
+        });
       }
 
       if (codeToDates.size === 0) {
@@ -684,23 +596,28 @@ export default function FinishedProductEntry() {
 
       let updated = 0;
       const nextRows = rows.map((r) => {
-        const code = extractCodeFromProductText(r.product);
+        const m = String(r.product).match(/\[(\d+)\]/);
+        const code = m ? m[1] : "";
         if (!code || !codeToDates.has(code)) return r;
         const { sd, ed } = codeToDates.get(code);
-        const hasChange = (sd && sd !== toDMY(r.slaughterDate)) || (ed && ed !== toDMY(r.expiryDate));
+
+        const hasChange =
+          (sd && sd !== String(r.slaughterDate || "")) ||
+          (ed && ed !== String(r.expiryDate || ""));
         if (hasChange) updated++;
+
         return {
           ...r,
           slaughterDate: sd || r.slaughterDate,
           expiryDate: ed || r.expiryDate,
-          overallCondition: "OK"
+          overallCondition: "OK",
         };
       });
 
       setRows(nextRows);
-      setImportSummary(`📥 Dates import: matched ${updated} row(s) / scanned ${scanned}. Fixed expiry swaps: ${swapped}.`);
+      setImportSummary(`📥 Dates import: matched ${updated} row(s) / scanned ${scanned}.`);
       setTimeout(() => setImportSummary(""), 3500);
-    } catch (err) {
+    } catch {
       setErrorMsg("Failed to import dates.");
       setTimeout(() => setErrorMsg(""), 3000);
     } finally {
@@ -750,7 +667,7 @@ export default function FinishedProductEntry() {
               />
             </label>
 
-            <label style={btnPurple} title="Import Slaughter/Expiry dates only (smart expiry fix)">
+            <label style={btnPurple} title="Import Slaughter/Expiry dates only (as-is)">
               📥 Import Dates (2 cols)
               <input
                 ref={datesFileRef}
