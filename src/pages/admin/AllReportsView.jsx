@@ -14,7 +14,8 @@ const toYMD = (d) => {
 const today = () => new Date().toISOString().slice(0, 10);
 
 async function jsonFetch(url, opts = {}) {
-  const res = await fetch(url, { headers: { Accept: "application/json" }, ...opts });
+  const { signal, ...rest } = opts || {};
+  const res = await fetch(url, { headers: { Accept: "application/json" }, signal, ...rest });
   let data = null;
   try { data = await res.json(); } catch { data = null; }
   return { ok: res.ok, status: res.status, data };
@@ -41,7 +42,7 @@ const pick = (obj, paths, fallback = "") => {
 /* ===== Normalizers ===== */
 /* يقبل:
    - YYYY-MM-DD / DD-MM-YYYY / DD/MM/YYYY
-   - YYYY-MM / YYYY/MM / MM-YYYY / MM/YYYY  (شهر/سنة)
+   - YYYY-MM / YYYY/MM / MM-YYYY / MM/YYYY  (شهر/سنة) — تُحفظ كنص حتى لا يغيّرها Excel
 */
 const MONTH_RE_1 = /^(\d{4})[\/\-](\d{1,2})$/;     // 2025-07 أو 2025/07
 const MONTH_RE_2 = /^(\d{1,2})[\/\-](\d{4})$/;     // 07-2025 أو 07/2025
@@ -51,8 +52,9 @@ const DATE_RE =
 const normDate = (v) => {
   if (!v) return "";
   const s = String(v).trim();
-  // يوم/شهر/سنة أو سنة-شهر-يوم
+  // سنة-شهر-يوم
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // يوم/شهر/سنة
   const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m1) {
     let d = +m1[1], mn = +m1[2], y = +m1[3];
@@ -63,7 +65,7 @@ const normDate = (v) => {
   let m = s.match(MONTH_RE_1);
   if (m) {
     const y = +m[1], mn = +m[2];
-    return `${y}-${pad2(mn)}`; // نُبقيها شهر/سنة
+    return `${y}-${pad2(mn)}`; // نحافظ على شهر/سنة كنص
   }
   m = s.match(MONTH_RE_2);
   if (m) {
@@ -236,9 +238,9 @@ function signatureFromRaw(doc) {
 }
 
 /* جلب QCS RAW فقط + إزالة التكرار */
-async function fetchQcsRawOnly() {
+async function fetchQcsRawOnly({ signal } = {}) {
   const q = `${REPORTS_URL}?type=${encodeURIComponent("qcs_raw_material")}&limit=500`;
-  const { ok, data } = await jsonFetch(q);
+  const { ok, data } = await jsonFetch(q, { signal });
   const items = Array.isArray(data) ? data : (data && (data.data || data.items || data.reports)) || [];
   if (!ok) return [];
 
@@ -257,6 +259,74 @@ async function fetchQcsRawOnly() {
   return Array.from(groups.values());
 }
 
+/* ===== Debounce Hook ===== */
+function useDebounced(value, ms = 250) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
+/* زر نسخ صغير */
+function Copy({ text }) {
+  if (!text) return null;
+  return (
+    <button
+      title="Copy"
+      onClick={() => navigator.clipboard.writeText(text)}
+      style={{
+        marginLeft: 6,
+        fontSize: 12,
+        padding: "2px 6px",
+        borderRadius: 6,
+        border: "1px solid #acc3f2ff",
+        background: "#75b3f2ff",
+        cursor: "pointer",
+      }}
+    >
+      ⧉
+    </button>
+  );
+}
+
+/* Chip بسيط للفلترة */
+function Chip({ active, children, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "6px 10px",
+        borderRadius: 999,
+        border: active ? "2px solid #111827" : "1px solid #d1d5db",
+        background: active ? "#e5e7eb" : "#fff",
+        cursor: "pointer",
+        fontSize: 13,
+        marginRight: 6,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ===== منطق التلوين حسب حالة الشحنة ===== */
+function getStatusRowBg(status) {
+  if (!status) return null;
+  const s = String(status).toLowerCase().trim();
+
+  // Acceptable → أخضر فاتح
+  if (s.includes("acceptable")) return "#a9dca9ff";
+
+  // Average → أصفر فاتح
+  if (s.includes("average")) return "#ecdd92ff";
+
+  // غير ذلك → بدون تلوين
+  return null;
+}
+
+
 /* ===== المكوّن الأساسي ===== */
 export default function AllReportsView() {
   const [raw, setRaw] = useState([]);
@@ -265,86 +335,163 @@ export default function AllReportsView() {
   const [from, setFrom] = useState(""); // عرض الكل إذا فارغ
   const [to, setTo] = useState("");     // عرض الكل إذا فارغ
   const [err, setErr] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
+  // تحميل الحالة من URL عند البداية
   useEffect(() => {
-    let mounted = true;
+    const p = new URL(window.location).searchParams;
+    setQ(p.get("q") || "");
+    setFrom(p.get("from") || "");
+    setTo(p.get("to") || "");
+    setStatusFilter(p.get("status") || "");
+  }, []);
+
+  // مزامنة الحالة مع URL
+  useEffect(() => {
+    const u = new URL(window.location);
+    q ? u.searchParams.set("q", q) : u.searchParams.delete("q");
+    from ? u.searchParams.set("from", from) : u.searchParams.delete("from");
+    to ? u.searchParams.set("to", to) : u.searchParams.delete("to");
+    statusFilter ? u.searchParams.set("status", statusFilter) : u.searchParams.delete("status");
+    window.history.replaceState({}, "", u);
+  }, [q, from, to, statusFilter]);
+
+  // جلب البيانات مع إلغاء عند التفكيك
+  useEffect(() => {
+    const ac = new AbortController();
     (async () => {
       setLoading(true);
       setErr("");
       try {
-        const items = await fetchQcsRawOnly();
-        if (mounted) setRaw(items);
+        const items = await fetchQcsRawOnly({ signal: ac.signal });
+        setRaw(items);
       } catch (e) {
-        if (mounted) setErr(e?.message || "Fetch failed");
+        if (e?.name !== "AbortError") setErr(e?.message || "Fetch failed");
       } finally {
-        if (mounted) setLoading(false);
+        setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => ac.abort();
   }, []);
 
-  const rows = useMemo(() => {
-    const norm = raw.map(normalizeQcsRaw);
+  // تطبيع + فلترة نطاق التاريخ
+  const normalized = useMemo(() => raw.map(normalizeQcsRaw), [raw]);
 
-    const inRange = norm.filter((r) => {
+  const inRange = useMemo(() => {
+    return normalized.filter((r) => {
       if (!from && !to) return true;
       const d = r.reportDate;
       if (!d) return false;
       if (from && d < from) return false;
-      if (to && d > to) return false;
+      if (to && d > to) return false; // YYYY-MM-DD مقارنة نصية كافية
       return true;
     });
+  }, [normalized, from, to]);
 
-    const qx = String(q || "").trim().toLowerCase();
-    if (!qx) return inRange;
+  // قائمة الحالات المتاحة (من جميع البيانات المطبّعة)
+  const allStatuses = useMemo(() => {
+    const s = new Set();
+    normalized.forEach((r) => r.status && s.add(String(r.status)));
+    return ["All", ...Array.from(s)];
+  }, [normalized]);
 
-    return inRange.filter((r) => {
-      const hay =
-        [
-          r.supplier,
-          r.shipmentType,
-          r.invoiceNo,
-          r.awb,
-          r.status
-        ]
-          .join(" ")
-          .toLowerCase();
+  // فلترة حسب الحالة (Chip)
+  const byStatus = useMemo(() => {
+    if (!statusFilter || statusFilter === "All") return inRange;
+    const key = String(statusFilter).toLowerCase();
+    return inRange.filter((r) => String(r.status || "").toLowerCase() === key);
+  }, [inRange, statusFilter]);
+
+  // Debounced بحث نصي
+  const qx = useDebounced(String(q || "").trim().toLowerCase(), 250);
+
+  // فلترة البحث
+  const rows = useMemo(() => {
+    if (!qx) return byStatus;
+    return byStatus.filter((r) => {
+      const hay = [r.supplier, r.shipmentType, r.invoiceNo, r.awb, r.status].join(" ").toLowerCase();
       return hay.indexOf(qx) !== -1;
     });
-  }, [raw, q, from, to]);
+  }, [byStatus, qx]);
+
+  // ملخص KPI
+  const summary = useMemo(() => {
+    const n = rows.length;
+    const qty = rows.reduce((a, r) => a + (Number(r.totalQty) || 0), 0);
+    const wt = rows.reduce((a, r) => a + (Number(r.totalWeightKg) || 0), 0);
+    return { n, qty, wt };
+  }, [rows]);
 
   const exportExcel = () => {
     const data = rows.map((r) => ({
       "Report Date": r.reportDate,
       "Supplier": r.supplier,
       "Shipment Type": r.shipmentType,
-      "Invoice No": r.invoiceNo,
-      "Air Way Bill": r.awb,
-      "Status": r.status,
+      "Invoice No": r.invoiceNo || "—",
+      "Air Way Bill": r.awb || "—",
+      "Status": r.status || "—",
       "Total Qty (pcs)": r.totalQty,
       "Total Weight (kg)": r.totalWeightKg,
-      "Slaughter Date": r.slaughterDate,
-      "Expiry Date": r.expiryDate
+      // نحافظ على YYYY-MM أو النطاق كنص حتى لا يحوّله Excel
+      "Slaughter Date": String(r.slaughterDate || ""),
+      "Expiry Date": String(r.expiryDate || ""),
     }));
     const ws = XLSX.utils.json_to_sheet(data);
+    // عرض الأعمدة
+    ws["!cols"] = [
+      { wch: 12 }, // Report Date
+      { wch: 22 }, // Supplier
+      { wch: 18 }, // Shipment Type
+      { wch: 16 }, // Invoice
+      { wch: 16 }, // AWB
+      { wch: 12 }, // Status
+      { wch: 14 }, // Qty
+      { wch: 16 }, // Weight
+      { wch: 18 }, // Slaughter
+      { wch: 18 }, // Expiry
+    ];
+    // Freeze أول صف + AutoFilter
+    try { ws["!freeze"] = { xSplit: 0, ySplit: 1 }; } catch {}
+    if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] };
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "QCS RAW");
     XLSX.writeFile(wb, `QCS_RAW_Shipments_${today()}.xlsx`);
   };
 
-  const dark = "#111827"; // أسود غامق
+  const dark = "#01050eff"; // أسود غامق
 
   return (
     <div style={{ padding: 16 }}>
-      <h2 style={{ marginBottom: 12 }}>Shipment Summary — QCS RAW (qcs_raw_material)</h2>
+      <h2 style={{ marginBottom: 8 }}>Shipment Summary — QCS RAW (qcs_raw_material)</h2>
 
+      {/* شريط الملخص */}
+      <div
+        style={{
+          display: "flex",
+          gap: 16,
+          alignItems: "center",
+          marginBottom: 12,
+          padding: "8px 12px",
+          border: `2px solid ${dark}`,
+          borderRadius: 8,
+          background: "#f0acdfff",
+          fontWeight: 600,
+        }}
+      >
+        <span>Shipments: {summary.n}</span>
+        <span>Qty (pcs): {summary.qty}</span>
+        <span>Weight (kg): {summary.wt}</span>
+      </div>
+
+      {/* أدوات البحث/الفلترة */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 140px 140px 140px",
           gap: 8,
           alignItems: "center",
-          marginBottom: 12
+          marginBottom: 8,
         }}
       >
         <input
@@ -355,7 +502,7 @@ export default function AllReportsView() {
           style={{
             padding: "10px 12px",
             border: `2px solid ${dark}`,
-            borderRadius: 8
+            borderRadius: 8,
           }}
         />
         <input
@@ -378,11 +525,24 @@ export default function AllReportsView() {
             color: "#fff",
             border: "0",
             borderRadius: 8,
-            cursor: "pointer"
+            cursor: "pointer",
           }}
         >
           Export Excel
         </button>
+      </div>
+
+      {/* Chips للحالة */}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+        {allStatuses.map((s) => (
+          <Chip
+            key={s || "NA"}
+            active={(statusFilter || "All") === s}
+            onClick={() => setStatusFilter(s)}
+          >
+            {s || "—"}
+          </Chip>
+        ))}
       </div>
 
       <div style={{ overflow: "auto", border: `2px solid ${dark}`, borderRadius: 8 }}>
@@ -390,10 +550,10 @@ export default function AllReportsView() {
           style={{
             width: "100%",
             borderCollapse: "collapse",
-            border: `2px solid ${dark}`
+            border: `2px solid ${dark}`,
           }}
         >
-          <thead>
+          <thead style={{ position: "sticky", top: 0, zIndex: 1, background: "#ffffff" }}>
             <tr>
               <Th dark={dark}>#</Th>
               <Th dark={dark}>Date</Th>
@@ -416,21 +576,34 @@ export default function AllReportsView() {
             ) : rows.length === 0 ? (
               <tr><Td colSpan={11} dark={dark}>No data</Td></tr>
             ) : (
-              rows.map((r, i) => (
-                <tr key={`${r.reportDate}-${r.shipmentType}-${r.invoiceNo}-${r.awb}-${i}`}>
-                  <Td dark={dark}>{i + 1}</Td>
-                  <Td dark={dark}>{r.reportDate}</Td>
-                  <Td dark={dark}>{r.supplier}</Td>
-                  <Td dark={dark}>{r.shipmentType}</Td>
-                  <Td dark={dark}>{r.invoiceNo}</Td>
-                  <Td dark={dark}>{r.awb}</Td>
-                  <Td dark={dark}>{r.status}</Td>
-                  <Td dark={dark}>{r.totalQty}</Td>
-                  <Td dark={dark}>{r.totalWeightKg}</Td>
-                  <Td dark={dark}>{r.slaughterDate}</Td>
-                  <Td dark={dark}>{r.expiryDate}</Td>
-                </tr>
-              ))
+              rows.map((r, i) => {
+                const bg = getStatusRowBg(r.status);
+                const base = i % 2 ? "#fafafa" : "#fff";
+                return (
+                  <tr
+                    key={`${r.reportDate}-${r.shipmentType}-${r.invoiceNo}-${r.awb}-${i}`}
+                    style={{ background: bg || base }}
+                  >
+                    <Td dark={dark}>{i + 1}</Td>
+                    <Td dark={dark}>{r.reportDate}</Td>
+                    <Td dark={dark}>{r.supplier}</Td>
+                    <Td dark={dark}>{r.shipmentType}</Td>
+                    <Td dark={dark}>
+                      {r.invoiceNo}
+                      <Copy text={r.invoiceNo} />
+                    </Td>
+                    <Td dark={dark}>
+                      {r.awb}
+                      <Copy text={r.awb} />
+                    </Td>
+                    <Td dark={dark}>{r.status}</Td>
+                    <Td dark={dark}>{r.totalQty}</Td>
+                    <Td dark={dark}>{r.totalWeightKg}</Td>
+                    <Td dark={dark}>{r.slaughterDate}</Td>
+                    <Td dark={dark}>{r.expiryDate}</Td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -450,7 +623,7 @@ function Th({ children, dark = "#111827" }) {
         color: dark,
         border: `2px solid ${dark}`,
         whiteSpace: "nowrap",
-        background: "#ffffff"
+        background: "#9cf3e3ff",
       }}
     >
       {children}
@@ -465,7 +638,7 @@ function Td({ children, colSpan, dark = "#111827" }) {
         padding: "8px 12px",
         verticalAlign: "top",
         whiteSpace: "nowrap",
-        border: `2px solid ${dark}`
+        border: `2px solid ${dark}`,
       }}
     >
       {children}

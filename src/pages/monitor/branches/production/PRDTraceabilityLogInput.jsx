@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/production/PRDTraceabilityLogInput.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { REPORTS_URL } from "../shipment_recc/qcsRawApi";
 
 /* ===== API base ===== */
 const API_BASE = String(
@@ -49,6 +50,207 @@ function emptyBatch() {
   };
 }
 
+/* ===== Helpers: pick / pad2 / toYMD / fetch ===== */
+const pad2 = (v) => String(v || "").padStart(2, "0");
+const toYMD = (d) => {
+  if (!d) return "";
+  const x = new Date(d);
+  if (isNaN(x)) return "";
+  return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`;
+};
+async function jsonFetch(url, opts = {}) {
+  const { signal, ...rest } = opts || {};
+  const res = await fetch(url, { headers: { Accept: "application/json" }, signal, ...rest });
+  let data = null;
+  try { data = await res.json(); } catch { data = null; }
+  return { ok: res.ok, status: res.status, data };
+}
+const pick = (obj, paths, fallback = "") => {
+  for (const p of paths) {
+    let cur = obj;
+    const parts = p.split(".");
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (cur && Object.prototype.hasOwnProperty.call(cur, part)) {
+        cur = cur[part];
+      } else {
+        cur = undefined;
+        break;
+      }
+    }
+    if (cur !== undefined && cur !== null && cur !== "") return cur;
+  }
+  return fallback;
+};
+
+/* ===== Date extraction for RAW ===== */
+const MONTH_RE_1 = /^(\d{4})[\/\-](\d{1,2})$/;
+const MONTH_RE_2 = /^(\d{1,2})[\/\-](\d{4})$/;
+const DATE_RE =
+  /(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})|(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})|(\d{4}[\/\-]\d{1,2})|(\d{1,2}[\/\-]\d{4})/g;
+
+const normDate = (v) => {
+  if (!v) return "";
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m1) {
+    let d = +m1[1], mn = +m1[2], y = +m1[3];
+    if (y < 100) y += 2000;
+    return `${y}-${pad2(mn)}-${pad2(d)}`;
+  }
+  let m = s.match(MONTH_RE_1);
+  if (m) {
+    const y = +m[1], mn = +m[2];
+    return `${y}-${pad2(mn)}`;
+  }
+  m = s.match(MONTH_RE_2);
+  if (m) {
+    const mn = +m[1], y = +m[2];
+    return `${y}-${pad2(mn)}`;
+  }
+  const asYMD = toYMD(s);
+  return asYMD || "";
+};
+
+function extractAllDates(value) {
+  if (!value) return [];
+  const s = String(value);
+  const seen = new Set();
+  const out = [];
+  const matches = s.match(DATE_RE) || [];
+  for (const raw of matches) {
+    const n = normDate(raw);
+    if (n && !seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
+  }
+  return out.sort();
+}
+function formatDateList(arr) {
+  if (!arr || arr.length === 0) return "";
+  if (arr.length === 1) return arr[0];
+  return `${arr[0]} - ${arr[arr.length - 1]}`;
+}
+
+/* ===== Key normalizer + collectors ===== */
+const _alias = (s) => String(s||"").toLowerCase().replace(/[\s_\-./]/g, "");
+function _valuesByAliases(obj, aliases) {
+  const out = [];
+  if (!obj || typeof obj !== "object") return out;
+  for (const [k, v] of Object.entries(obj)) {
+    const nk = _alias(k);
+    if (aliases.has(nk) && (typeof v === "string" || typeof v === "number")) out.push(String(v));
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      for (const [kk, vv] of Object.entries(v)) {
+        const nnk = _alias(kk);
+        if (aliases.has(nnk) && (typeof vv === "string" || typeof vv === "number")) out.push(String(vv));
+      }
+    }
+  }
+  return out;
+}
+const SLAUGHTER_KEYS = new Set([
+  "slaughterdate","dateofslaughter","productiondate","manufacturedate","manufactureddate","mfgdate","mfd","proddate","dateofproduction"
+]);
+const EXPIRY_KEYS = new Set([
+  "expirydate","expdate","expiry","bestbefore","bestbeforedate","bbd","useby","usebydate"
+]);
+
+function deriveSlaughterAndExpiry(payloadIn) {
+  const payload = payloadIn || {};
+  const header  = payload.header || payload;
+  const gi      = payload.generalInfo || payload.info || {};
+
+  const sDates = [];
+  const eDates = [];
+
+  [payload, header, gi].forEach((o) => {
+    _valuesByAliases(o, SLAUGHTER_KEYS).forEach(v => extractAllDates(v).forEach(d => sDates.push(d)));
+    _valuesByAliases(o, EXPIRY_KEYS).forEach(v => extractAllDates(v).forEach(d => eDates.push(d)));
+  });
+
+  const rows =
+    payload.rows || payload.products || payload.items || payload.lines || payload.details || [];
+  if (Array.isArray(rows)) {
+    rows.forEach((r) => {
+      _valuesByAliases(r, SLAUGHTER_KEYS).forEach(v => extractAllDates(v).forEach(d => sDates.push(d)));
+      _valuesByAliases(r, EXPIRY_KEYS).forEach(v => extractAllDates(v).forEach(d => eDates.push(d)));
+    });
+  }
+  const samples = Array.isArray(payload.samples) ? payload.samples : [];
+  samples.forEach((s) => {
+    _valuesByAliases(s, SLAUGHTER_KEYS).forEach(v => extractAllDates(v).forEach(d => sDates.push(d)));
+    _valuesByAliases(s, EXPIRY_KEYS).forEach(v => extractAllDates(v).forEach(d => eDates.push(d)));
+  });
+
+  const uniqS = Array.from(new Set(sDates)).sort();
+  const uniqE = Array.from(new Set(eDates)).sort();
+  return {
+    slaughterDate: formatDateList(uniqS),
+    expiryDate:    formatDateList(uniqE),
+  };
+}
+
+/* ===== تطبيع سجل RAW (AWB, Shipment, Slaughter, Expiry, Invoice) ===== */
+function normalizeRawForIndex(doc) {
+  const payload = doc?.payload || doc || {};
+  const header  = payload.header || payload;
+  const gi      = payload.generalInfo || payload.info || {};
+
+  const awb =
+    pick(header, ["airWayBillNo","airWayBill","airwayBill","airway_bill","awb","AWB","airWaybillNo","airwayBillNo"]) ||
+    pick(gi,     ["airWayBillNo","airWayBill","airwayBill","airway_bill","awb","AWB","airWaybillNo","airwayBillNo"]) ||
+    pick(payload,["airWayBillNo","airWayBill","airwayBill","airway_bill","awb","AWB","airWaybillNo","airwayBillNo"]) ||
+    pick(doc,    ["airWayBillNo","airWayBill","airwayBill","airway_bill","awb","AWB","airWaybillNo","airwayBillNo"]) ||
+    "";
+
+  const invoice =
+    pick(header,  ["invoiceNo","invoiceNumber","invoice","invNo","billNo","billNumber","invoice no"]) ||
+    pick(gi,      ["invoiceNo","invoiceNumber","invoice","invNo","billNo","billNumber","invoice no"]) ||
+    pick(payload, ["invoiceNo","invoiceNumber","invoice","invNo","billNo","billNumber","invoice no"]) ||
+    pick(doc,     ["invoiceNo","invoiceNumber","invoice","invNo","billNo","billNumber","invoice no"]) ||
+    "";
+
+  const shipment =
+    pick(header, ["shipmentType","shipment","brandType","category","productGroup"]) ||
+    pick(gi,     ["shipmentType","shipment"]) ||
+    pick(payload,["shipmentType","shipment","brandType","category","productGroup"]) ||
+    pick(doc,    ["shipmentType","shipment","brandType","category","productGroup"]) ||
+    "";
+
+  const { slaughterDate, expiryDate } = deriveSlaughterAndExpiry(payload);
+
+  return {
+    id: doc?.id || doc?._id || payload?.id || payload?._id || "",
+    awb: String(awb || "").trim(),
+    invoice: String(invoice || "").trim(),
+    shipment: String(shipment || "").trim(),
+    slaughterDate: String(slaughterDate || "").trim(),
+    expiryDate: String(expiryDate || "").trim(),
+  };
+}
+
+/* ===== جلب وبناء فهرس RAW ===== */
+async function fetchRawIndex({ signal } = {}) {
+  const q = `${REPORTS_URL}?type=${encodeURIComponent("qcs_raw_material")}&limit=500`;
+  const { ok, data } = await jsonFetch(q, { signal });
+  if (!ok) return [];
+  const items = Array.isArray(data) ? data : (data && (data.data || data.items || data.reports)) || [];
+  return items.map(normalizeRawForIndex);
+}
+
+/* ===== أزرار مصغّرة ===== */
+const miniBtn = {
+  border: "1px solid",
+  borderRadius: 8,
+  padding: "4px 6px",
+  fontSize: 10,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
 export default function PRDTraceabilityLogInput() {
   /* ===== ترويسة ===== */
   const [section, setSection] = useState("");
@@ -62,6 +264,50 @@ export default function PRDTraceabilityLogInput() {
   const [checkedBy, setCheckedBy]   = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [saving, setSaving] = useState(false);
+
+  /* ===== RAW Index ===== */
+  const [rawIndex, setRawIndex] = useState([]);
+  const [rawQ, setRawQ] = useState("");
+  const [showRawModal, setShowRawModal] = useState(false);
+  const [activeBatch, setActiveBatch] = useState(null);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const list = await fetchRawIndex({ signal: ac.signal });
+        setRawIndex(list);
+      } catch (e) {
+        if (e?.name !== "AbortError") console.error(e);
+      }
+    })();
+    return () => ac.abort();
+  }, []);
+
+  const filteredRaw = useMemo(() => {
+    const q = String(rawQ || "").toLowerCase().trim();
+    if (!q) return rawIndex;
+    return rawIndex.filter(r => {
+      const hay = [r.awb, r.invoice, r.shipment, r.slaughterDate, r.expiryDate].join(" ").toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
+  }, [rawIndex, rawQ]);
+
+  const openRawModal = (batchIndex) => { setActiveBatch(batchIndex); setRawQ(""); setShowRawModal(true); };
+  const closeRawModal = () => { setShowRawModal(false); setActiveBatch(null); setRawQ(""); };
+  const chooseRaw = (r) => {
+    if (activeBatch === null || activeBatch === undefined) return;
+    const awbIsNil = !r.awb || r.awb.trim().toUpperCase() === "NIL";
+    const val = awbIsNil
+      ? (r.invoice || `${r.shipment || "Shipment"}-${(r.slaughterDate || "").replaceAll(" ", "")}`)
+      : (r.awb || `${r.shipment || "Shipment"}-${(r.slaughterDate || "").replaceAll(" ", "")}`);
+    setBatches((prev) => {
+      const next = [...prev];
+      next[activeBatch] = { ...next[activeBatch], batchId: val };
+      return next;
+    });
+    closeRawModal();
+  };
 
   /* ===== تنسيقات عامة ===== */
   const gridStyle = useMemo(() => ({
@@ -99,7 +345,7 @@ export default function PRDTraceabilityLogInput() {
     minWidth: 0,
   };
 
-  /* ===== تنسيقات ترويسة + جدول المستند ===== */
+  /* ===== ترويسة + عنوان ===== */
   const topTable = {
     width: "100%",
     borderCollapse: "collapse",
@@ -122,7 +368,7 @@ export default function PRDTraceabilityLogInput() {
   /* ===== colgroup ===== */
   const colDefs = useMemo(() => ([
     <col key="actions" style={{ width: 180 }} />,
-    <col key="batchId" style={{ width: 180 }} />,
+    <col key="batchId" style={{ width: 260 }} />,
     <col key="inputs"  style={{ width: 520 }} />,
     <col key="outputs" style={{ width: 520 }} />,
   ]), []);
@@ -272,7 +518,7 @@ export default function PRDTraceabilityLogInput() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "production", type: TYPE, payload }), // ⬅️ للإنتاج
+        body: JSON.stringify({ reporter: "production", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ تم الحفظ بنجاح");
@@ -363,15 +609,22 @@ export default function PRDTraceabilityLogInput() {
                   </div>
                 </td>
 
-                {/* Batch ID */}
-                <td style={tdCell}>
-                  <input
-                    type="text"
-                    placeholder="e.g., B-20251023-001"
-                    value={b.batchId}
-                    onChange={(e) => updateBatchField(bi, "batchId", e.target.value)}
-                    style={inputStyle}
-                  />
+                {/* Batch ID + Link from RAW بنفس العمود */}
+                <td style={{ ...tdCell, textAlign:"left" }}>
+                  <div style={{ display:"grid", gap:6 }}>
+                    <input
+                      type="text"
+                      placeholder="e.g., B-20251023-001 or AWB/Invoice"
+                      value={b.batchId}
+                      onChange={(e) => updateBatchField(bi, "batchId", e.target.value)}
+                      style={inputStyle}
+                    />
+                    <button
+                      onClick={() => openRawModal(bi)}
+                      style={{ ...miniBtn, background:"#e2e8f0", borderColor:"#475569", color:"#0f172a" }}
+                      title="Link Batch / Lot ID from RAW shipments"
+                    >Link from RAW</button>
+                  </div>
                 </td>
 
                 {/* Inputs */}
@@ -519,6 +772,88 @@ export default function PRDTraceabilityLogInput() {
           <b> entries</b> array on save for backend compatibility.
         </span>
       </div>
+
+      {/* ===== RAW Modal ===== */}
+      {showRawModal && (
+        <>
+          <div
+            onClick={closeRawModal}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 50 }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: "fixed",
+              top: "50%", left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: "min(900px, 95vw)",
+              maxHeight: "80vh",
+              background: "#fff",
+              borderRadius: 12,
+              border: "1px solid #cbd5e1",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+              zIndex: 51,
+              display: "flex",
+              flexDirection: "column"
+            }}
+          >
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>Link from RAW</div>
+              <button onClick={closeRawModal} style={{ ...miniBtn, background:"#e2e8f0", borderColor:"#475569", color:"#0f172a" }}>Close</button>
+            </div>
+
+            <div style={{ padding: 12, borderBottom: "1px solid #e2e8f0" }}>
+              <input
+                placeholder="Search AWB / Invoice / Shipment / Slaughter Date / Expiry Date"
+                value={rawQ}
+                onChange={(e)=>setRawQ(e.target.value)}
+                style={{ width:"100%", border:"1px solid #94a3b8", borderRadius:8, padding:"8px 10px" }}
+              />
+            </div>
+
+            <div style={{ padding: 12, overflow: "auto" }}>
+              {filteredRaw.length === 0 ? (
+                <div style={{ fontSize: 12, color: "#64748b" }}>No matches.</div>
+              ) : (
+                <div style={{ display:"grid", gap:8 }}>
+                  {filteredRaw.map((r, idx) => {
+                    const awbIsNil = !r.awb || r.awb.trim().toUpperCase() === "NIL";
+                    return (
+                      <div
+                        key={r.id || idx}
+                        onClick={() => chooseRaw(r)}
+                        style={{
+                          display:"grid",
+                          gridTemplateColumns:"1fr auto",
+                          gap:8,
+                          alignItems:"center",
+                          padding:"8px 10px",
+                          border:"1px solid #cbd5e1",
+                          borderRadius:8,
+                          background:"#ffffff",
+                          cursor:"pointer"
+                        }}
+                        title="Click to fill Batch / Lot ID"
+                      >
+                        <div style={{ fontSize:12 }}>
+                          <div><b>AWB:</b> {r.awb || "-"}</div>
+                          {awbIsNil && <div><b>Invoice:</b> {r.invoice || "-"}</div>}
+                          <div><b>Shipment:</b> {r.shipment || "-"}</div>
+                        </div>
+                        <div style={{ fontSize:12, textAlign:"right" }}>
+                          <div><b>Slaughter Date:</b> {r.slaughterDate || "-"}</div>
+                          <div><b>Expiry Date:</b> {r.expiryDate || "-"}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -535,13 +870,3 @@ function btnStyle(bg) {
     boxShadow: "0 4px 12px rgba(0,0,0,.15)",
   };
 }
-
-/* أزرار مصغّرة */
-const miniBtn = {
-  border: "1px solid",
-  borderRadius: 8,
-  padding: "4px 6px",
-  fontSize: 10,
-  fontWeight: 700,
-  cursor: "pointer",
-};
