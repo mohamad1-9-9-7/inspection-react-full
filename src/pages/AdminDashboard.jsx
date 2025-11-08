@@ -13,10 +13,6 @@ import KPIDashboard from "./KPIDashboard";
 import FTR1ReportView from "./monitor/branches/ftr1/FTR1ReportView";
 import FTR2ReportView from "./monitor/branches/ftr2/FTR2ReportView";
 
-// ❌ أزلنا هذين لأننا سننتقل لصفحاتهم بدل تضمينهم هنا
-// import POS19DailyView from "./monitor/branches/pos19/POS19DailyView";
-// import POS10ReportsView from "./monitor/branches/pos 10/POS10ReportsView";
-
 /* ====== API BASE (server-only, no localStorage) ====== */
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -86,9 +82,23 @@ function HideDeleteScope({ children }) {
 /* ========== الأنواع التي نصدّرها/نستوردها ========== */
 const TYPES_BY_GROUP = {
   QCS: ["qcs-coolers", "qcs-ph", "qcs-clean"],
-  FTR1: ["ftr1_temperature", "ftr1_daily_cleanliness", "ftr1_oil_calibration", "ftr1_personal_hygiene"],
-  FTR2: ["ftr2_temperature", "ftr2_daily_cleanliness", "ftr2_oil_calibration", "ftr2_personal_hygiene"],
-  PRODUCTION: ["prod_cleaning_checklist", "prod_personal_hygiene", "prod_defrosting_record"],
+  FTR1: [
+    "ftr1_temperature",
+    "ftr1_daily_cleanliness",
+    "ftr1_oil_calibration",
+    "ftr1_personal_hygiene",
+  ],
+  FTR2: [
+    "ftr2_temperature",
+    "ftr2_daily_cleanliness",
+    "ftr2_oil_calibration",
+    "ftr2_personal_hygiene",
+  ],
+  PRODUCTION: [
+    "prod_cleaning_checklist",
+    "prod_personal_hygiene",
+    "prod_defrosting_record",
+  ],
 };
 // مستثنى: الشحنات/الخام
 
@@ -141,7 +151,10 @@ export default function AdminDashboard() {
     setLoading(true);
     setOpMsg("");
     try {
-      const [r, d] = await Promise.all([fetchByType("reports"), fetchByType("dailyReports")]);
+      const [r, d] = await Promise.all([
+        fetchByType("reports"),
+        fetchByType("dailyReports"),
+      ]);
       setReports(r);
       setDailyReports(d);
     } catch (e) {
@@ -187,7 +200,9 @@ export default function AdminDashboard() {
       color: isActive ? "#fff" : "#0f172a",
       fontWeight: 900,
       fontSize: "0.98rem",
-      boxShadow: isActive ? "0 12px 24px rgba(109,40,217,.28)" : "0 6px 16px rgba(17,24,39,.12)",
+      boxShadow: isActive
+        ? "0 12px 24px rgba(109,40,217,.28)"
+        : "0 6px 16px rgba(17,24,39,.12)",
       transform: isActive ? "translateY(-1px)" : "none",
       transition: "all .18s ease",
       backdropFilter: "blur(8px)",
@@ -213,7 +228,10 @@ export default function AdminDashboard() {
         },
         data,
       };
-      downloadJson(out, `qms_all_reports_${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+      downloadJson(
+        out,
+        `qms_all_reports_${new Date().toISOString().replace(/[:.]/g, "-")}.json`
+      );
       setOpMsg(`✅ Exported ${total} record(s) from all types.`);
     } catch (e) {
       console.error(e);
@@ -330,7 +348,11 @@ export default function AdminDashboard() {
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {loading && <span style={{ fontWeight: 800, color: THEME.purple }}>⏳ Loading…</span>}
+          {loading && (
+            <span style={{ fontWeight: 800, color: THEME.purple }}>
+              ⏳ Loading…
+            </span>
+          )}
           {opMsg && (
             <span
               style={{
@@ -384,13 +406,22 @@ export default function AdminDashboard() {
           flexDirection: "row-reverse",
         }}
       >
-        <button style={tabButtonStyle("dailyReports")} onClick={() => setActiveView("dailyReports")}>
+        <button
+          style={tabButtonStyle("dailyReports")}
+          onClick={() => setActiveView("dailyReports")}
+        >
           🗓️ Daily Reports
         </button>
-        <button style={tabButtonStyle("reports")} onClick={() => setActiveView("reports")}>
+        <button
+          style={tabButtonStyle("reports")}
+          onClick={() => setActiveView("reports")}
+        >
           📑 Reports
         </button>
-        <button style={tabButtonStyle("qcsShipment")} onClick={() => setActiveView("qcsShipment")}>
+        <button
+          style={tabButtonStyle("qcsShipment")}
+          onClick={() => setActiveView("qcsShipment")}
+        >
           📦 QCS Shipments
         </button>
         <button style={tabButtonStyle("kpi")} onClick={() => setActiveView("kpi")}>
@@ -475,10 +506,15 @@ export default function AdminDashboard() {
           <DailyReportsTab
             dailyReports={dailyReports}
             setDailyReports={setDailyReports}
-            // ⬇️ بدل setActiveView بالتنقّل المباشر
-            onOpenQCSReport={() => navigate("/admin/monitor/branches/qcs/reports")}
+            // QCS viewer
+            onOpenQCSReport={() =>
+              navigate("/admin/monitor/branches/qcs/reports")
+            }
+            // POS 19 viewer
             onOpenPOS19Report={() => navigate("/admin/pos19")}
-            onOpenPOS10Report={() => navigate("/monitor/pos10")}
+            // ✅ POS 10 viewer (المشكلة كانت هنا)
+            onOpenPOS10Report={() => navigate("/admin/pos10")}
+            // باقي التبويبات
             onOpenQCSShipmentReport={() => setActiveView("qcsShipment")}
             onOpenFTR1Report={() => setActiveView("ftr1")}
             onOpenFTR2Report={() => setActiveView("ftr2")}

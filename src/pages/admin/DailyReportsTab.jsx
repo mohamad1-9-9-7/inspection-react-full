@@ -54,9 +54,9 @@ export default function DailyReportsTab({
   onOpenFTR1Report,
   onOpenFTR2Report,
   onOpenProductionReport,
-  onOpenPOS15Report,   // اختياري
-  onOpenPOS10Report,   // ✅ POS 10
-  onOpenPOS11Report,   // ✅ جديد: ربط POS 11 (Views)
+  onOpenPOS15Report,   // optional
+  onOpenPOS10Report,   // POS 10
+  onOpenPOS11Report,   // POS 11 (Views)
 }) {
   const navigate = useNavigate();
 
@@ -67,22 +67,24 @@ export default function DailyReportsTab({
 
   const openBranchAfterAuth = (branch) => {
     if (branch === "QCS") {
-      onOpenQCSReport?.();
+      if (onOpenQCSReport) onOpenQCSReport();
+      else navigate("/admin/monitor/branches/qcs/reports");
 
-    } else if (branch === "POS 10") {            // ✅ فتح تبويب POS 10
+    } else if (branch === "POS 10") {
       if (onOpenPOS10Report) onOpenPOS10Report();
       else navigate("/admin/pos10");
 
-    } else if (branch === "POS 11") {            // ✅ فتح تبويب عرض POS 11
+    } else if (branch === "POS 11") {
       if (onOpenPOS11Report) onOpenPOS11Report();
-      else navigate("/admin/pos11");             // ← يعرض POS11ReportsViewLayout
+      else navigate("/admin/pos11"); // shows POS11ReportsViewLayout
 
     } else if (branch === "POS 15") {
       if (onOpenPOS15Report) onOpenPOS15Report();
       else navigate("/admin/pos15");
 
     } else if (branch === "POS 19") {
-      onOpenPOS19Report?.();
+      if (onOpenPOS19Report) onOpenPOS19Report();
+      else navigate("/admin/pos19");
 
     } else if (branch === "FTR 1") {
       if (onOpenFTR1Report) onOpenFTR1Report();
@@ -93,10 +95,11 @@ export default function DailyReportsTab({
       else navigate("/admin/ftr2");
 
     } else if (branch === "PRODUCTION") {
-      onOpenProductionReport?.();
+      if (onOpenProductionReport) onOpenProductionReport();
+      else navigate("/admin/production");
 
     } else {
-      alert(`📌 لا يوجد تقرير متاح حاليًا لهذا الفرع: ${branch}`);
+      alert("No report available for this branch: " + branch);
     }
   };
 
@@ -111,8 +114,8 @@ export default function DailyReportsTab({
     e?.preventDefault();
     if (!pendingBranch) return;
 
-    // كلمة السر: "اسم الفرع + 123" (PRODUCTION = PRD123)
-    let expected = pendingBranch === "PRODUCTION" ? "PRD123" : `${pendingBranch}123`;
+    // Password rule: "BranchName + 123" (PRODUCTION uses PRD123)
+    const expected = pendingBranch === "PRODUCTION" ? "PRD123" : pendingBranch + "123";
 
     if (pwd === expected) {
       setShowPwd(false);
@@ -248,7 +251,7 @@ export default function DailyReportsTab({
             })}
           </div>
 
-          {/* زر تقرير استلام الشحنات لفرع QCS فقط */}
+          {/* QCS shipments button */}
           <div style={{ marginTop: "1.2rem", textAlign: "center" }}>
             <button
               onClick={onOpenQCSShipmentReport}

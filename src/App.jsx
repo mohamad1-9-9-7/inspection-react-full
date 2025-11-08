@@ -21,22 +21,27 @@ const POS24Layout = lazy(() => import("./pages/monitor/branches/pos24/POS24Layou
 const POS26Layout = lazy(() => import("./pages/monitor/branches/pos26/POS26Layout"));
 const POS15Layout = lazy(() => import("./pages/monitor/branches/pos15/POS15Layout"));
 
-// 🆕 ✅ POS 10 — التبويبات (إضافة جديدة)
+// 🆕 ✅ POS 10 — التبويبات (إدخال)
 const POS10Layout = lazy(() =>
   import("./pages/monitor/branches/pos 10/POS10Layout")
 );
 
-// 🆕 ✅ POS 11 — التبويبات (جديد)
+// 🆕 ✅ POS 10 — عرض التقارير (Viewer)
+const POS10ReportsView = lazy(() =>
+  import("./pages/monitor/branches/pos 10/POS10ReportsView")
+);
+
+// 🆕 ✅ POS 11 — إدخال
 const POS11Layout = lazy(() =>
   import("./pages/monitor/branches/POS 11/POS11Layout")
 );
 
-// 🆕 ✅ POS 11 — عرض التبويبات (Views)
+// 🆕 ✅ POS 11 — عرض (Views Tabs)
 const POS11ReportsViewLayout = lazy(() =>
   import("./pages/monitor/branches/POS 11/POS11ReportsViewLayout")
 );
 
-// 🆕 ✅ POS 19 — Viewer Hub (13 تبويب عرض)
+// 🆕 ✅ POS 19 — Viewer Hub
 const POS19DailyView = lazy(() =>
   import("./pages/monitor/branches/pos19/POS19DailyView")
 );
@@ -185,9 +190,7 @@ function BranchMonitorPage() {
     <div
       style={{ padding: "2rem", direction: "rtl", fontFamily: "Cairo, sans-serif" }}
     >
-      <h2>
-        📝 صفحة تقارير الفرع / Branch Reports Page: {prettyName(slug)}
-      </h2>
+      <h2>📝 صفحة تقارير الفرع / Branch Reports Page: {prettyName(slug)}</h2>
       <p>
         هذه صفحة مؤقتة. يمكنك لاحقًا استبدالها بنموذج الفرع الحقيقي. / This is a
         temporary page; you can later replace it with the real branch form.
@@ -317,7 +320,7 @@ export default function App() {
             }
           />
 
-          {/* ✅ POS — تبويبات داخلية */}
+          {/* ✅ POS — إدخال */}
           <Route
             path="pos19"
             element={
@@ -350,7 +353,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          {/* 🆕 POS 10 */}
           <Route
             path="pos10"
             element={
@@ -359,12 +361,21 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          {/* 🆕 POS 11 */}
           <Route
             path="pos11"
             element={
               <ProtectedRoute>
                 <POS11Layout />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ✅ POS 10 — Viewer (اختياري تحت monitor) */}
+          <Route
+            path="pos10/reports"
+            element={
+              <ProtectedRoute>
+                <POS10ReportsView />
               </ProtectedRoute>
             }
           />
@@ -398,7 +409,7 @@ export default function App() {
             }
           />
 
-          {/* 🆕 Fresh Chicken: صفحة الإدخال (اختياري) */}
+          {/* 🆕 Fresh Chicken: صفحة الإدخال */}
           <Route
             path="branches/qcs/fresh-chicken-inter"
             element={
@@ -408,7 +419,7 @@ export default function App() {
             }
           />
 
-          {/* يُترك في النهاية (لا تضع أي مسارات بعده تخص monitor) */}
+          {/* يُترك في النهاية */}
           <Route
             path=":slug"
             element={
@@ -473,6 +484,16 @@ export default function App() {
           }
         />
 
+        {/* 🆕 POS 10 — صفحة العرض (Viewer) */}
+        <Route
+          path="/admin/pos10"
+          element={
+            <ProtectedRoute>
+              <POS10ReportsView />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 🆕 Fresh Chicken: صفحة العرض (Viewer) */}
         <Route
           path="/admin/monitor/branches/qcs/fresh-chicken-reports"
@@ -492,7 +513,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        {/* 🆕 Aliases لسهولة الوصول */}
+        {/* 🆕 Aliases */}
         <Route
           path="/admin/monitor/branches/qcs"
           element={<Navigate to="/admin/monitor/branches/qcs/reports" replace />}
@@ -544,7 +565,7 @@ export default function App() {
           }
         />
 
-        {/* 🆕 ✅ All Reports Summary (المسار الجديد) */}
+        {/* 🆕 ✅ All Reports Summary */}
         <Route
           path="/admin/all-reports-view"
           element={
@@ -590,7 +611,7 @@ export default function App() {
           />
         </Route>
 
-        {/* 🆕 returns-customers/* */}
+        {/* returns-customers/* */}
         <Route path="/returns-customers">
           <Route
             path="new"
@@ -618,7 +639,7 @@ export default function App() {
           />
         </Route>
 
-        {/* 🆕 meat-daily/* */}
+        {/* meat-daily/* */}
         <Route path="/meat-daily">
           <Route
             path="input"
@@ -646,7 +667,7 @@ export default function App() {
           />
         </Route>
 
-        {/* 🆕 🧾 inventory-daily/* */}
+        {/* inventory-daily/* */}
         <Route path="/inventory-daily">
           <Route
             path="input"
@@ -679,7 +700,6 @@ export default function App() {
 
         {/* finished/* */}
         <Route path="/finished">
-          {/* ✅ تم حذف مسار /finished/data نهائيًا */}
           <Route
             path="entry"
             element={
@@ -698,7 +718,7 @@ export default function App() {
           />
         </Route>
 
-        {/* ✅ Alias للمسار القديم */}
+        {/* ✅ Aliases للمسارات القديمة */}
         <Route
           path="/finished-product-reports"
           element={
