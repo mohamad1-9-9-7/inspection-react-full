@@ -129,12 +129,13 @@ function emptySample(no) {
     quantity: "",
     colorCode: "",
     productTemp: "",
-    labelling: "",
-    appearance: "",
-    color: "",
-    brokenDamage: "",
-    badSmell: "",
-    overallCondition: "",
+    // نفس FTR2 (افتراضات افتراضية جاهزة)
+    labelling: "OK",
+    appearance: "OK",
+    color: "OK",
+    brokenDamage: "NIL",
+    badSmell: "NIL",
+    overallCondition: "OK",
     remarks: "",
     photo1Base64: "",
     photo2Base64: "",
@@ -194,6 +195,10 @@ export default function MeatProductInspectionReportFTR1() {
     const b64 = await fileToBase64Compressed(file);
     setVal(colIdx, key, b64);
   }
+
+  // 🆕 أسماء المسؤولين (أسفل التقرير فقط)
+  const [verifiedBy, setVerifiedBy] = useState("");
+  const [matchedBy, setMatchedBy]   = useState("");
 
   // Modal + حالة حفظ
   const [saving, setSaving] = useState(false);
@@ -261,6 +266,8 @@ export default function MeatProductInspectionReportFTR1() {
       },
       samples,                         // احتفاظ للتوافق
       samplesTable: { rows: DEFAULT_ROWS_DEF, columns },
+      // 🆕 توقيعات
+      signoff: { verifiedBy, matchedBy },
       savedAt: Date.now(),
       reporterNote:
         "FTR1 • Mushrif Park • Pre-loading inspection (columns=samples -> samplesTable.columns) + photos per sample",
@@ -279,6 +286,8 @@ export default function MeatProductInspectionReportFTR1() {
       setSamples(initialSamples());
       setReportDate(todayDubai());
       setReportDay("Saturday");
+      setVerifiedBy("");
+      setMatchedBy("");
     } catch (e) {
       console.error(e);
       setModalState({ open: true, text: "❌ فشل الحفظ. تحقق من الشبكة/الخادم.", kind: "error" });
@@ -577,6 +586,33 @@ export default function MeatProductInspectionReportFTR1() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* ✅ خانتا التوقيع على الأطراف (أسفل التقرير) */}
+      <div style={{ marginTop: 12, padding: 8, border: "1px solid #94a3b8", borderRadius: 8, background: "#f8fafc" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center" }}>
+          {/* يسار: Verified by */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, minWidth: 0 }}>
+            <div style={{ fontWeight:800, color:"#0b1f4d", whiteSpace:"nowrap" }}>Verified by:</div>
+            <input
+              value={verifiedBy}
+              onChange={(e)=>setVerifiedBy(e.target.value)}
+              style={{ ...baseInput, maxWidth: 220 }}
+              placeholder="Name"
+            />
+          </div>
+          {/* يمين: CHECKED BY */}
+<div style={{ display:"flex", alignItems:"center", gap:8, minWidth: 0 }}>
+  <div style={{ fontWeight:800, color:"#0b1f4d", whiteSpace:"nowrap" }}>CHECKED BY:</div>
+  <input
+    value={matchedBy}
+    onChange={(e)=>setMatchedBy(e.target.value)}
+    style={{ ...baseInput, maxWidth: 220 }}
+    placeholder="Name"
+  />
+</div>
+
         </div>
       </div>
 

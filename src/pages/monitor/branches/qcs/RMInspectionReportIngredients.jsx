@@ -60,22 +60,41 @@ export default function RMInspectionReportIngredients() {
   const td   = { border: `1.5px solid ${COLORS.lightLine}`, padding: 8, textAlign: "center", verticalAlign: "middle", background: "#fff" };
   const inp  = { width: "100%", border: `1.5px solid ${COLORS.lightLine}`, borderRadius: 10, padding: "8px 10px", boxSizing: "border-box", height: 38, background: "#fff" };
   const select = { ...inp, appearance: "menulist" };
+  const btn = (bg) => ({ background: bg, color:"#fff", border:"none", borderRadius:10, padding:"10px 14px", fontWeight:800, cursor:"pointer" });
+  const btnGhost = { border:"1px solid #94a3b8", background:"#fff", color:"#0f172a", borderRadius:10, padding:"8px 12px", fontWeight:700, cursor:"pointer" };
 
   /* ====== الحقول ====== */
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
-  const emptyRow = () => ({ item:"", supplier:"", prodDate:"", expDate:"", qty:"", pest:"", broken:"", physical:"", remarks:"" });
+
+  // ✅ عدّلنا الحقل qty → invoiceNo
+  const emptyRow = () => ({
+    item:"", supplier:"", prodDate:"", expDate:"",
+    invoiceNo:"", // ← كان qty
+    pest:"", broken:"", physical:"", remarks:""
+  });
+
   const [rows, setRows] = useState(Array.from({ length: 8 }, () => emptyRow()));
-  const setCell = (i, key, value) => { const copy = [...rows]; copy[i] = { ...copy[i], [key]: value }; setRows(copy); };
+  const setCell = (i, key, value) => {
+    setRows((prev) => {
+      const copy = [...prev];
+      copy[i] = { ...copy[i], [key]: value };
+      return copy;
+    });
+  };
+
   const yesNoOptions = (<><option value="">--</option><option value="Yes">Yes</option><option value="No">No</option></>);
+
   const [checkedBy, setCheckedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [correctiveAction, setCorrectiveAction] = useState("");
 
+  /* ====== إضافة/حذف أسطر ====== */
+  const addRow = () => setRows((r) => [...r, emptyRow()]);
+  const deleteRow = (idx) => setRows((r) => r.filter((_, i) => i !== idx));
+
   /* ====== حفظ على السيرفر (مثل باقي الملفات) ====== */
   const [saving, setSaving] = useState(false);
   const [modal, setModal]   = useState({ open:false, text:"", kind:"info" }); // info | success | error
-
-  const btn = (bg) => ({ background: bg, color:"#fff", border:"none", borderRadius:10, padding:"10px 14px", fontWeight:800, cursor:"pointer" });
 
   const filteredRows = useMemo(() => {
     // تجاهل الصفوف الفارغة بالكامل
@@ -167,13 +186,14 @@ export default function RMInspectionReportIngredients() {
           </tbody>
         </table>
 
-        {/* تاريخ + زر الحفظ */}
+        {/* تاريخ + أزرار */}
         <div style={{ borderTop:`1px solid ${COLORS.line}`, padding:"8px 10px", display:"flex", alignItems:"center", gap:10, justifyContent:"space-between", flexWrap:"wrap" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <b>Report Date:</b>
             <input type="date" value={reportDate} onChange={(e)=>setReportDate(e.target.value)} style={{ border:`1px solid ${COLORS.line}`, borderRadius:6, padding:"6px 8px", height:36 }} />
           </div>
           <div style={{ display:"flex", gap:8 }}>
+            <button onClick={addRow} style={btnGhost} title="Add a row">+ Add Row</button>
             <button onClick={handleSave} disabled={saving} style={btn(saving ? "#94a3b8" : COLORS.primary)} title="Save to server">
               {saving ? "Saving…" : "💾 Save"}
             </button>
@@ -190,11 +210,12 @@ export default function RMInspectionReportIngredients() {
             <col style={{ width: "16%" }} />
             <col style={{ width: "11%" }} />
             <col style={{ width: "11%" }} />
-            <col style={{ width: "9%" }} />
+            <col style={{ width: "12%" }} />  {/* Invoice No */}
             <col style={{ width: "8%" }} />
             <col style={{ width: "8%" }} />
             <col style={{ width: "10%" }} />
             <col style={{ width: "16%" }} />
+            <col style={{ width: "6%" }} />   {/* delete */}
           </colgroup>
           <thead>
             <tr>
@@ -203,11 +224,12 @@ export default function RMInspectionReportIngredients() {
               <th style={th}>Supplier Details</th>
               <th style={th}>Prod Date</th>
               <th style={th}>Exp Date</th>
-              <th style={th}>Quantity</th>
+              <th style={th}>Invoice No</th> {/* ← كان Quantity */}
               <th style={th}>Pest Activity</th>
               <th style={th}>Broken / Damaged</th>
               <th style={th}>Physical Contamination</th>
               <th style={th}>Remarks</th>
+              <th style={th}>—</th>
             </tr>
           </thead>
           <tbody>
@@ -218,7 +240,7 @@ export default function RMInspectionReportIngredients() {
                 <td style={td}><input style={inp} value={r.supplier} onChange={(e)=>setCell(i,"supplier",e.target.value)} /></td>
                 <td style={td}><input style={inp} type="date" value={r.prodDate} onChange={(e)=>setCell(i,"prodDate",e.target.value)} /></td>
                 <td style={td}><input style={inp} type="date" value={r.expDate} onChange={(e)=>setCell(i,"expDate",e.target.value)} /></td>
-                <td style={td}><input style={inp} value={r.qty} onChange={(e)=>setCell(i,"qty",e.target.value)} /></td>
+                <td style={td}><input style={inp} value={r.invoiceNo} onChange={(e)=>setCell(i,"invoiceNo",e.target.value)} placeholder="e.g., INV-12345" /></td>
                 <td style={td}>
                   <select style={select} value={r.pest} onChange={(e)=>setCell(i,"pest",e.target.value)}>
                     {yesNoOptions}
@@ -235,6 +257,13 @@ export default function RMInspectionReportIngredients() {
                   </select>
                 </td>
                 <td style={td}><input style={inp} value={r.remarks} onChange={(e)=>setCell(i,"remarks",e.target.value)} /></td>
+                <td style={{ ...td, padding: 4 }}>
+                  <button
+                    onClick={() => deleteRow(i)}
+                    title="Delete row"
+                    style={{ width:32, height:32, border:"1px solid #ef4444", background:"#fef2f2", color:"#b91c1c", borderRadius:8, fontWeight:800, cursor:"pointer" }}
+                  >×</button>
+                </td>
               </tr>
             ))}
           </tbody>

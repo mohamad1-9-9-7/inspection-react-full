@@ -62,16 +62,28 @@ export default function RMInspectionReportPackaging() {
   const inp  = { width: "100%", border: `1.5px solid ${COLORS.lightLine}`, borderRadius: 10, padding: "8px 10px", boxSizing: "border-box", height: 38, background: "#fff" };
   const select = { ...inp, appearance: "menulist" };
   const btn = (bg) => ({ background: bg, color: "#fff", border: "none", borderRadius: 10, padding: "10px 14px", fontWeight: 800, cursor: "pointer" });
+  const btnGhost = { border:"1px solid #94a3b8", background:"#fff", color:"#0f172a", borderRadius:10, padding:"8px 12px", fontWeight:700, cursor:"pointer" };
 
   /* ===== State ===== */
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
 
+  // ✅ qty → invoiceNo
   const emptyRow = () => ({
-    item: "", supplier: "", specs: "", qty: "",
+    item: "", supplier: "", specs: "", invoiceNo: "",
     pest: "", broken: "", physical: "", remarks: "",
   });
+
   const [rows, setRows] = useState(Array.from({ length: 8 }, () => emptyRow()));
-  const setCell = (i, key, value) => { const copy = [...rows]; copy[i] = { ...copy[i], [key]: value }; setRows(copy); };
+  const setCell = (i, key, value) => {
+    setRows((prev) => {
+      const copy = [...prev];
+      copy[i] = { ...copy[i], [key]: value };
+      return copy;
+    });
+  };
+
+  const addRow = () => setRows((r) => [...r, emptyRow()]);
+  const deleteRow = (idx) => setRows((r) => r.filter((_, i) => i !== idx));
 
   const yesNoOptions = (<><option value="">--</option><option value="Yes">Yes</option><option value="No">No</option></>);
 
@@ -170,7 +182,7 @@ export default function RMInspectionReportPackaging() {
           </tbody>
         </table>
 
-        {/* Date + Save */}
+        {/* Date + Actions */}
         <div style={{ borderTop:`1px solid ${COLORS.line}`, padding:"8px 10px", display:"flex", alignItems:"center", gap:10, justifyContent:"space-between", flexWrap:"wrap" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <b>Report Date:</b>
@@ -182,6 +194,7 @@ export default function RMInspectionReportPackaging() {
             />
           </div>
           <div style={{ display:"flex", gap:8 }}>
+            <button onClick={addRow} style={btnGhost} title="Add a row">+ Add Row</button>
             <button onClick={handleSave} disabled={saving} style={btn(saving ? "#94a3b8" : COLORS.primary)} title="Save to server">
               {saving ? "Saving…" : "💾 Save"}
             </button>
@@ -197,11 +210,12 @@ export default function RMInspectionReportPackaging() {
             <col style={{ width:"16%" }} />
             <col style={{ width:"16%" }} />
             <col style={{ width:"14%" }} />
+            <col style={{ width:"12%" }} /> {/* Invoice No */}
+            <col style={{ width:"8%" }} />
+            <col style={{ width:"8%" }} />
             <col style={{ width:"10%" }} />
-            <col style={{ width:"9%" }} />
-            <col style={{ width:"8%" }} />
-            <col style={{ width:"8%" }} />
             <col style={{ width:"14%" }} />
+            <col style={{ width:"6%" }} />  {/* delete */}
           </colgroup>
           <thead>
             <tr>
@@ -209,11 +223,12 @@ export default function RMInspectionReportPackaging() {
               <th style={th}>Item Name</th>
               <th style={th}>Supplier Details</th>
               <th style={th}>Specifications</th>
-              <th style={th}>Quantity</th>
+              <th style={th}>Invoice No</th> {/* ← كان Quantity */}
               <th style={th}>Pest Activity</th>
               <th style={th}>Broken / Damaged</th>
               <th style={th}>Physical Contamination</th>
               <th style={th}>Remarks</th>
+              <th style={th}>—</th>
             </tr>
           </thead>
           <tbody>
@@ -223,7 +238,7 @@ export default function RMInspectionReportPackaging() {
                 <td style={td}><input style={inp} value={r.item} onChange={(e)=>setCell(i,"item",e.target.value)} /></td>
                 <td style={td}><input style={inp} value={r.supplier} onChange={(e)=>setCell(i,"supplier",e.target.value)} /></td>
                 <td style={td}><input style={inp} value={r.specs} onChange={(e)=>setCell(i,"specs",e.target.value)} /></td>
-                <td style={td}><input style={inp} value={r.qty} onChange={(e)=>setCell(i,"qty",e.target.value)} /></td>
+                <td style={td}><input style={inp} value={r.invoiceNo} onChange={(e)=>setCell(i,"invoiceNo",e.target.value)} placeholder="e.g., INV-12345" /></td>
                 <td style={td}>
                   <select style={select} value={r.pest} onChange={(e)=>setCell(i,"pest",e.target.value)}>
                     {yesNoOptions}
@@ -240,6 +255,13 @@ export default function RMInspectionReportPackaging() {
                   </select>
                 </td>
                 <td style={td}><input style={inp} value={r.remarks} onChange={(e)=>setCell(i,"remarks",e.target.value)} /></td>
+                <td style={{ ...td, padding: 4 }}>
+                  <button
+                    onClick={() => deleteRow(i)}
+                    title="Delete row"
+                    style={{ width:32, height:32, border:"1px solid #ef4444", background:"#fef2f2", color:"#b91c1c", borderRadius:8, fontWeight:800, cursor:"pointer" }}
+                  >×</button>
+                </td>
               </tr>
             ))}
           </tbody>

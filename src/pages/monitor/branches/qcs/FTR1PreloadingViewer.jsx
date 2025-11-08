@@ -56,6 +56,15 @@ function pickEntryDate(p = {}) {
   return h.reportEntryDate || p?.meta?.entryDate || h.date || "";
 }
 
+// ✅ sign-off reader (يدعم matchedBy أو checkedBy)
+function getSignoff(payload) {
+  const s = ensureObject(payload?.signoff) || {};
+  return {
+    verifiedBy: s.verifiedBy || "",
+    checkedBy: s.checkedBy || s.matchedBy || "",
+  };
+}
+
 // ✅ يقبل samplesTable أو samples (القديم) ويضمن arrays آمنة
 function normalizeTable(rawPayload) {
   const payload = ensureObject(rawPayload);
@@ -206,6 +215,30 @@ const modalBtn = (bg="#eef2ff", bd="#c7d2fe") => ({
 const modalBody = { padding: 10, overflow: "auto", background: "#f8fafc" };
 const fullImg = { maxWidth: "100%", maxHeight: "76vh", objectFit: "contain" };
 
+/* ===== ✅ Sign-off styles ===== */
+const signWrap = {
+  marginTop: 12,
+  padding: 10,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: 10,
+  background: "#f8fafc",
+};
+const signRow = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" };
+const signBox = { display: "flex", alignItems: "center", gap: 8, minWidth: 0 };
+const signLabel = { fontWeight: 900, color: COLORS.ink, whiteSpace: "nowrap" };
+const signValue = {
+  padding: "6px 10px",
+  border: `1px dashed ${COLORS.border}`,
+  borderRadius: 8,
+  minWidth: 220,
+  background: "#ffffff",
+  fontWeight: 800,
+  color: COLORS.ink,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
 /* ===== Component ===== */
 export default function FTR1PreloadingViewer() {
   const [date, setDate] = useState(todayDubai());           // آخر تاريخ مفتوح
@@ -296,7 +329,7 @@ export default function FTR1PreloadingViewer() {
       setDaysTree([]);
       setError("فشل جلب شجرة التواريخ.");
     } finally {
-           setLoading(false);
+      setLoading(false);
     }
   }
 
@@ -488,6 +521,9 @@ export default function FTR1PreloadingViewer() {
   const hasAnyPhotos = (columns || []).some(
     (c) => c?.photo1Base64 || c?.photo2Base64
   );
+
+  // 🆕 sign-off values
+  const sign = getSignoff(report?.payload || {});
 
   return (
     <div>
@@ -732,6 +768,21 @@ export default function FTR1PreloadingViewer() {
               </div>
             )}
           </div>
+
+          {/* 🆕 ✅ خانتا التوقيع بأسفل العارض */}
+          <div style={signWrap}>
+            <div style={signRow}>
+              <div style={signBox}>
+                <div style={signLabel}>Verified by:</div>
+                <div style={signValue}>{sign.verifiedBy || "\u200b"}</div>
+              </div>
+              <div style={signBox}>
+                <div style={signLabel}>CHECKED BY:</div>
+                <div style={signValue}>{sign.checkedBy || "\u200b"}</div>
+              </div>
+            </div>
+          </div>
+          {/* نهاية خانتي التوقيع */}
         </div>
       </div>
 

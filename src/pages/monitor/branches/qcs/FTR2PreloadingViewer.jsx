@@ -55,6 +55,15 @@ function ensureObject(v) {
   return v;
 }
 
+/* ✅ sign-off reader (يدعم matchedBy أو checkedBy) */
+function getSignoff(payload) {
+  const s = ensureObject(payload?.signoff) || {};
+  return {
+    verifiedBy: s.verifiedBy || "",
+    checkedBy: s.checkedBy || s.matchedBy || "",
+  };
+}
+
 /* تحويل مصفوفة samples إلى أعمدة عند غياب samplesTable */
 function samplesToColumns(samples = []) {
   if (!Array.isArray(samples)) return [];
@@ -202,7 +211,7 @@ const btn = (bg, color = "#0b1220", bd = COLORS.border) => ({ background: bg, co
 /* جدول العرض — فواصل أعمدة واضحة */
 const tableShell = { background: "#fff", borderRadius: 12, overflow: "hidden", border: `1px solid ${COLORS.border}` };
 const th = {
-  border: `1px solid #cbd5e1`,          // ← حدود كاملة (أوضح)
+  border: `1px solid #cbd5e1`,
   padding: "10px 8px",
   textAlign: "center",
   background: "#f7fafc",
@@ -211,7 +220,7 @@ const th = {
   color: COLORS.ink
 };
 const td = {
-  border: `1px solid #e2e8f0`,          // ← حدود كاملة لكل خلية
+  border: `1px solid #e2e8f0`,
   padding: "9px 8px",
   textAlign: "center",
   verticalAlign: "top",
@@ -225,7 +234,7 @@ const tdAttr = {
   position: "sticky",
   left: 0,
   zIndex: 1,
-  borderRight: "2px solid #94a3b8"      // ← فصل أوضح للعمود الأول
+  borderRight: "2px solid #94a3b8"
 };
 const grid = { width: "100%", borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed", fontSize: 13 };
 const baseInput = { width: "100%", boxSizing: "border-box", border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "7px 10px", minWidth: 0, background: "#fff" };
@@ -255,6 +264,30 @@ const modalBtn = (bg="#eef2ff", bd="#c7d2fe") => ({
 const modalBody = { padding: 10, overflow: "auto", background: "#f8fafc" };
 const fullImg = { maxWidth: "100%", maxHeight: "76vh", objectFit: "contain" };
 
+/* ===== ✅ Sign-off styles ===== */
+const signWrap = {
+  marginTop: 12,
+  padding: 10,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: 10,
+  background: "#f8fafc",
+};
+const signRow = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" };
+const signBox = { display: "flex", alignItems: "center", gap: 8, minWidth: 0 };
+const signLabel = { fontWeight: 900, color: COLORS.ink, whiteSpace: "nowrap" };
+const signValue = {
+  padding: "6px 10px",
+  border: `1px dashed ${COLORS.border}`,
+  borderRadius: 8,
+  minWidth: 220,
+  background: "#ffffff",
+  fontWeight: 800,
+  color: COLORS.ink,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
 /* ===== Component ===== */
 export default function FTR2PreloadingViewer() {
   const [date, setDate] = useState(todayDubai());
@@ -270,6 +303,7 @@ export default function FTR2PreloadingViewer() {
   const [viewer, setViewer] = useState({ open: false, src: "", name: "" });
   const openPreview = (src, name) => setViewer({ open: true, src, name });
   const closePreview = () => setViewer({ open: false, src: "", name: "" });
+
   const downloadCurrent = () => {
     if (!viewer.src) return;
     const a = document.createElement("a");
@@ -435,6 +469,9 @@ export default function FTR2PreloadingViewer() {
   const norm = normalizeTable(report?.payload);
   const rows = norm.rows;
   const columns = editMode ? editCols : norm.columns;
+
+  // 🆕 sign-off values
+  const sign = getSignoff(ensureObject(report?.payload) || {});
 
   return (
     <div>
@@ -652,6 +689,20 @@ export default function FTR2PreloadingViewer() {
             </div>
           </div>
 
+          {/* 🆕 ✅ خانتا التوقيع بأسفل العارض */}
+          <div style={signWrap}>
+            <div style={signRow}>
+              <div style={signBox}>
+                <div style={signLabel}>Verified by:</div>
+                <div style={signValue}>{sign.verifiedBy || "\u200b"}</div>
+              </div>
+              <div style={signBox}>
+                <div style={signLabel}>CHECKED BY:</div>
+                <div style={signValue}>{sign.checkedBy || "\u200b"}</div>
+              </div>
+            </div>
+          </div>
+          {/* نهاية خانتي التوقيع */}
         </div>
       </div>
 

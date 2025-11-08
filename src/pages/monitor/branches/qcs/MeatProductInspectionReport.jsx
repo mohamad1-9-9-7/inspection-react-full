@@ -147,6 +147,7 @@ async function fileToBase64Compressed(file) {
   });
 }
 
+/* === DEFAULTS per screenshot === */
 function emptySample(no) {
   return {
     no,
@@ -159,12 +160,12 @@ function emptySample(no) {
     quantity: "",
     colorCode: "",
     productTemp: "",
-    labelling: "",
-    appearance: "",
-    color: "",
-    brokenDamage: "",
-    badSmell: "",
-    overallCondition: "",
+    labelling: "OK",
+    appearance: "OK",
+    color: "OK",
+    brokenDamage: "NIL",
+    badSmell: "NIL",
+    overallCondition: "OK",
     remarks: "",
     photo1Base64: "",
     photo2Base64: "",
@@ -203,6 +204,10 @@ export default function MeatProductInspectionReport() {
   const [reportDay, setReportDay] = useState("Saturday");
   const activeColor = dayColorMap[reportDay] || "#0b1f4d";
 
+  // أسماء المسؤولين (أسفل التقرير فقط)
+  const [verifiedBy, setVerifiedBy] = useState("");
+  const [matchedBy, setMatchedBy]   = useState("");
+
   // الأعمدة (عينتين افتراضيًا)
   const initialSamples = () => [emptySample(1), emptySample(2)];
   const [samples, setSamples] = useState(initialSamples());
@@ -223,10 +228,8 @@ export default function MeatProductInspectionReport() {
     });
   }
 
-  // حقول يتغير لون خطها حسب اليوم
   const coloredInput = (extra = {}) => ({ ...baseInput, color: activeColor, ...extra });
 
-  // رفع الصور
   async function onPickPhoto(colIdx, key, file) {
     if (!file) return;
     const b64 = await fileToBase64Compressed(file);
@@ -238,7 +241,6 @@ export default function MeatProductInspectionReport() {
   const [modalState, setModalState] = useState({ open: false, text: "", kind: "info" });
   const closeModal = () => setModalState((m) => ({ ...m, open: false }));
 
-  // تحقق "تقرير واحد لكل يوم"
   async function checkDuplicateForDay(dateStr) {
     try {
       const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`);
@@ -268,7 +270,6 @@ export default function MeatProductInspectionReport() {
       return;
     }
 
-    // منع التكرار
     setSaving(true);
     setModalState({ open: true, text: "Saving… يرجى الانتظار", kind: "info" });
     const duplicate = await checkDuplicateForDay(reportDate);
@@ -278,7 +279,6 @@ export default function MeatProductInspectionReport() {
       return;
     }
 
-    // بناء payload
     const columns = samples.map(sampleToColumn);
     const payload = {
       branchCode: BRANCH,
@@ -291,6 +291,7 @@ export default function MeatProductInspectionReport() {
       },
       samples,
       samplesTable: { rows: DEFAULT_ROWS_DEF, columns },
+      signoff: { verifiedBy, matchedBy },
       savedAt: Date.now(),
       reporterNote:
         "FTR2 • Mamzar Park • Pre-loading inspection (columns=samples -> samplesTable.columns) + photos per sample",
@@ -304,17 +305,17 @@ export default function MeatProductInspectionReport() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      // نجاح: أظهر نجاح + صفّر البيانات
       setModalState({ open: true, text: "✅ تم الحفظ بنجاح", kind: "success" });
       setSamples(initialSamples());
       setReportDate(todayDubai());
       setReportDay("Saturday");
+      setVerifiedBy("");
+      setMatchedBy("");
     } catch (e) {
       console.error(e);
       setModalState({ open: true, text: "❌ فشل الحفظ. تحقق من الشبكة/الخادم.", kind: "error" });
     } finally {
       setSaving(false);
-      // إغلاق تلقائي بعد 1.5 ثانية (يمكنك الإبقاء مفتوحة حتى يغلقها المستخدم)
       setTimeout(() => setModalState((m) => ({ ...m, open: false })), 1500);
     }
   }
@@ -352,7 +353,7 @@ export default function MeatProductInspectionReport() {
         </div>
       </div>
 
-      {/* سطر التاريخ + اختيار اليوم */}
+      {/* التاريخ + اليوم */}
       <div
         style={{
           border: "1px solid #64748b",
@@ -398,199 +399,200 @@ export default function MeatProductInspectionReport() {
             ))}
           </colgroup>
 
-        <thead>
-          <tr>
-            <th style={th}></th>
-            {samples.map((s, idx) => (
-              <th key={idx} style={th}>{s.no}</th>
-            ))}
-          </tr>
-        </thead>
+          <thead>
+            <tr>
+              <th style={th}></th>
+              {samples.map((s, idx) => (
+                <th key={idx} style={th}>{s.no}</th>
+              ))}
+            </tr>
+          </thead>
 
-        <tbody>
-          <tr>
-            <td style={rowHead}>SAMPLE NO</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input
-                  type="number"
-                  value={s.no}
-                  onChange={(e) => setVal(i, "no", Number(e.target.value || 0))}
-                  style={baseInput}
-                />
-              </td>
-            ))}
-          </tr>
+          <tbody>
+            <tr>
+              <td style={rowHead}>SAMPLE NO</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input
+                    type="number"
+                    value={s.no}
+                    onChange={(e) => setVal(i, "no", Number(e.target.value || 0))}
+                    style={baseInput}
+                  />
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>PRODUCT NAME</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input
-                  value={s.productName}
-                  onChange={(e) => setVal(i, "productName", e.target.value)}
-                  style={baseInput}
-                  placeholder="LAMB TIKKA EXTRA"
-                />
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>PRODUCT NAME</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input
+                    value={s.productName}
+                    onChange={(e) => setVal(i, "productName", e.target.value)}
+                    style={baseInput}
+                    placeholder="LAMB TIKKA EXTRA"
+                  />
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>AREA</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input value={FIXED_AREA} readOnly style={{ ...baseInput, background: "#f1f5f9" }} />
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>AREA</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input value={FIXED_AREA} readOnly style={{ ...baseInput, background: "#f1f5f9" }} />
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>TRUCK TEMP</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={s.truckTemp}
-                  onChange={(e) => setVal(i, "truckTemp", e.target.value)}
-                  style={baseInput}
-                  placeholder="°C"
-                />
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>TRUCK TEMP</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={s.truckTemp}
+                    onChange={(e) => setVal(i, "truckTemp", e.target.value)}
+                    style={baseInput}
+                    placeholder="°C"
+                  />
+                </td>
+              ))}
+            </tr>
 
-          {/* الحقول الملوّنة حسب اليوم */}
-          <tr>
-            <td style={rowHead}>PRO DATE</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input type="date" value={s.proDate} onChange={(e) => setVal(i, "proDate", e.target.value)} style={coloredInput()} />
-              </td>
-            ))}
-          </tr>
+            {/* الحقول الملوّنة حسب اليوم */}
+            <tr>
+              <td style={rowHead}>PRO DATE</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input type="date" value={s.proDate} onChange={(e) => setVal(i, "proDate", e.target.value)} style={coloredInput()} />
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>EXP DATE</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input type="date" value={s.expDate} onChange={(e) => setVal(i, "expDate", e.target.value)} style={coloredInput()} />
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>EXP DATE</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input type="date" value={s.expDate} onChange={(e) => setVal(i, "expDate", e.target.value)} style={coloredInput()} />
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>DELIVERY  DATE</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input type="date" value={s.deliveryDate} onChange={(e) => setVal(i, "deliveryDate", e.target.value)} style={coloredInput()} />
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>DELIVERY  DATE</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input type="date" value={s.deliveryDate} onChange={(e) => setVal(i, "deliveryDate", e.target.value)} style={coloredInput()} />
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>QUANTITY</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input value={s.quantity} onChange={(e) => setVal(i, "quantity", e.target.value)} style={coloredInput()} placeholder="e.g., 6 BOX" />
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>QUANTITY</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input value={s.quantity} onChange={(e) => setVal(i, "quantity", e.target.value)} style={coloredInput()} placeholder="e.g., 6 BOX" />
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>COLOR CODE</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input value={s.colorCode} onChange={(e) => setVal(i, "colorCode", e.target.value)} style={coloredInput()} placeholder="SATURDAY-PINK" />
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>COLOR CODE</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input value={s.colorCode} onChange={(e) => setVal(i, "colorCode", e.target.value)} style={coloredInput()} placeholder="SATURDAY-PINK" />
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>PRODUCT  TEMP °C</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input type="number" step="0.1" value={s.productTemp} onChange={(e) => setVal(i, "productTemp", e.target.value)} style={baseInput} placeholder="°C" />
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>PRODUCT  TEMP °C</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input type="number" step="0.1" value={s.productTemp} onChange={(e) => setVal(i, "productTemp", e.target.value)} style={baseInput} placeholder="°C" />
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>LABELLING</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <select value={s.labelling} onChange={(e) => setVal(i, "labelling", e.target.value)} style={baseInput}>
-                  <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
-                </select>
-              </td>
-            ))}
-          </tr>
+            {/* Default-select fields */}
+            <tr>
+              <td style={rowHead}>LABELLING</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <select value={s.labelling} onChange={(e) => setVal(i, "labelling", e.target.value)} style={baseInput}>
+                    <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>APPEARANCE</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <select value={s.appearance} onChange={(e) => setVal(i, "appearance", e.target.value)} style={baseInput}>
-                  <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
-                </select>
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>APPEARANCE</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <select value={s.appearance} onChange={(e) => setVal(i, "appearance", e.target.value)} style={baseInput}>
+                    <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>COLOR</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <select value={s.color} onChange={(e) => setVal(i, "color", e.target.value)} style={baseInput}>
-                  <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
-                </select>
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>COLOR</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <select value={s.color} onChange={(e) => setVal(i, "color", e.target.value)} style={baseInput}>
+                    <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>BROKEN/DAMAGE</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <select value={s.brokenDamage} onChange={(e) => setVal(i, "brokenDamage", e.target.value)} style={baseInput}>
-                  <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
-                </select>
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>BROKEN/DAMAGE</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <select value={s.brokenDamage} onChange={(e) => setVal(i, "brokenDamage", e.target.value)} style={baseInput}>
+                    <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>BAD SMELL</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <select value={s.badSmell} onChange={(e) => setVal(i, "badSmell", e.target.value)} style={baseInput}>
-                  <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
-                </select>
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>BAD SMELL</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <select value={s.badSmell} onChange={(e) => setVal(i, "badSmell", e.target.value)} style={baseInput}>
+                    <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>OVERALL CONDITION</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <select value={s.overallCondition} onChange={(e) => setVal(i, "overallCondition", e.target.value)} style={baseInput}>
-                  <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
-                </select>
-              </td>
-            ))}
-          </tr>
+            <tr>
+              <td style={rowHead}>OVERALL CONDITION</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <select value={s.overallCondition} onChange={(e) => setVal(i, "overallCondition", e.target.value)} style={baseInput}>
+                    <option value="">--</option><option>OK</option><option>NIL</option><option>NC</option>
+                  </select>
+                </td>
+              ))}
+            </tr>
 
-          <tr>
-            <td style={rowHead}>REMARKS</td>
-            {samples.map((s, i) => (
-              <td key={i} style={td}>
-                <input value={s.remarks} onChange={(e) => setVal(i, "remarks", e.target.value)} style={baseInput} placeholder="Notes / observations" />
-              </td>
-            ))}
-          </tr>
-        </tbody>
+            <tr>
+              <td style={rowHead}>REMARKS</td>
+              {samples.map((s, i) => (
+                <td key={i} style={td}>
+                  <input value={s.remarks} onChange={(e) => setVal(i, "remarks", e.target.value)} style={baseInput} placeholder="Notes / observations" />
+                </td>
+              ))}
+            </tr>
+          </tbody>
         </table>
 
         {/* إدارة الأعمدة */}
@@ -600,27 +602,29 @@ export default function MeatProductInspectionReport() {
         </div>
       </div>
 
-      {/* صور أسفل الجدول */}
-      <div style={{ marginTop: 12, padding: 10, border: "1px dashed #64748b", borderRadius: 8, background: "#eef2ff" }}>
-        <div style={{ fontWeight: 800, marginBottom: 8 }}>Photos (2 per product) — optional</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
-          {samples.map((s, i) => (
-            <div key={`ph-${i}`} style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8, background: "#fff" }}>
-              <div style={{ fontWeight: 800, marginBottom: 6, textAlign: "center" }}>Sample {s.no}</div>
-
-              <div style={photoWrap}>
-                {s.photo1Base64 ? <img alt="" src={s.photo1Base64} style={preview} /> : <div style={{ ...preview, display:"flex", alignItems:"center", justifyContent:"center", color:"#64748b" }}>Photo 1</div>}
-                <input type="file" accept="image/*" style={photoBtn} onChange={(e) => onPickPhoto(i, "photo1Base64", e.target.files?.[0])} title="Upload Photo 1" />
-              </div>
-
-              <div style={{ height: 8 }} />
-
-              <div style={photoWrap}>
-                {s.photo2Base64 ? <img alt="" src={s.photo2Base64} style={preview} /> : <div style={{ ...preview, display:"flex", alignItems:"center", justifyContent:"center", color:"#64748b" }}>Photo 2</div>}
-                <input type="file" accept="image/*" style={photoBtn} onChange={(e) => onPickPhoto(i, "photo2Base64", e.target.files?.[0])} title="Upload Photo 2" />
-              </div>
-            </div>
-          ))}
+      {/* ✅ خانتا التوقيع على الأطراف */}
+      <div style={{ marginTop: 12, padding: 8, border: "1px solid #94a3b8", borderRadius: 8, background: "#f8fafc" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center" }}>
+          {/* يسار: Verified by */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, minWidth: 0 }}>
+            <div style={{ fontWeight:800, color:"#0b1f4d", whiteSpace:"nowrap" }}>Verified by:</div>
+            <input
+              value={verifiedBy}
+              onChange={(e)=>setVerifiedBy(e.target.value)}
+              style={{ ...baseInput, maxWidth: 220 }}
+              placeholder="Name"
+            />
+          </div>
+          {/* يمين: CHECKED by */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, minWidth: 0 }}>
+            <div style={{ fontWeight:800, color:"#0b1f4d", whiteSpace:"nowrap" }}>Checked by:</div>
+            <input
+              value={matchedBy}
+              onChange={(e)=>setMatchedBy(e.target.value)}
+              style={{ ...baseInput, maxWidth: 220 }}
+              placeholder="Name"
+            />
+          </div>
         </div>
       </div>
 
