@@ -12,24 +12,36 @@ const API_BASE = String(
   "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
-const TYPE   = "qcs_rm_ingredients";
-const TITLE  = "RAW MATERIAL INSPECTION REPORT [INGREDIENTS]";
-const DOC_NO = "FF-QM/RMR/ING";
+const TYPE = "qcs_rm_ingredients";
+
+/* ====== نفس الترويسة المستخدمـة في الإدخال (نصوص بالحرف) ====== */
+const DOC = {
+  title: "RM INSPECTION REPORT [INGREDIANTS MATERIAL]",
+  no: "FF-QM/RMR/ING",
+  issueDate: "05/02/2020",
+  revNo: "0",
+  area: "QA",
+  issuedBy: "MOHAMAD ABDULLAH",
+  controllingOfficer: "Quality Controller",
+  approvedBy: "Hussam O. Sarhan",
+  company: "TRANS EMIRATES LIVESTOCK TRADING LLC",
+  reportTitle: "RAW MATERIAL INSPECTION REPORT-TRANS EMIRATES LIVESTOCK [INGREDIANTS]",
+};
 
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 
-/* ===== ترتيب ثابت 100% مطابق للصورة ===== */
+/* ===== ترتيب الأعمدة مطابق للإدخال بعد تعديل Quantity -> Invoice No ===== */
 const FIXED_COLUMNS = [
-  { label: "S. No",                 aliases: ["s_no","sno","no","serial","sample_no","sampleNo"], isSerial: true },
-  { label: "Item Name",             aliases: ["item_name","itemName","item","product","product_name","productName"] },
-  { label: "Supplier Details",      aliases: ["supplier","supplier_name","supplierDetails","supplier_details","supplierInfo"] },
-  { label: "Prod Date",             aliases: ["prod_date","prodDate","production_date","productionDate","mfg","mfg_date"] },
-  { label: "Exp Date",              aliases: ["exp_date","expDate","expiry","expiry_date","expiryDate"] },
-  { label: "Quantity",              aliases: ["quantity","qty","qty_kg","quantity_kg"] },
-  { label: "Pest Activity",         aliases: ["pest_activity","pestActivity","pest"] },
-  { label: "Broken / Damaged",      aliases: ["broken_damaged","brokenDamaged","broken","damaged"] },
-  { label: "Physical Contamination",aliases: ["physical_contamination","physicalContamination","physical"] },
-  { label: "Remarks",               aliases: ["remarks","remark","comment","comments","note","notes"] },
+  { label: "S. No",                  aliases: ["s_no","sno","no","serial","sample_no","sampleNo"], isSerial: true },
+  { label: "Item Name",              aliases: ["item_name","itemName","item","product","product_name","productName"] },
+  { label: "Supplier Details",       aliases: ["supplier","supplier_name","supplierDetails","supplier_details","supplierInfo"] },
+  { label: "Prod Date",              aliases: ["prod_date","prodDate","production_date","productionDate","mfg","mfg_date"] },
+  { label: "Exp Date",               aliases: ["exp_date","expDate","expiry","expiry_date","expiryDate"] },
+  { label: "Invoice No",             aliases: ["invoiceNo","invoice","inv","invoice_no","bill","bill_no","ref","reference"] },
+  { label: "Pest Activity",          aliases: ["pest_activity","pestActivity","pest"] },
+  { label: "Broken / Damaged",       aliases: ["broken_damaged","brokenDamaged","broken","damaged"] },
+  { label: "Physical Contamination", aliases: ["physical_contamination","physicalContamination","physical"] },
+  { label: "Remarks",                aliases: ["remarks","remark","comment","comments","note","notes"] },
 ];
 
 /* جلب أول مفتاح مطابق لأي alias داخل صف */
@@ -99,9 +111,9 @@ export default function RMInspectionReportIngredientsView() {
     const pageWidth = pdf.internal.pageSize.getWidth();
 
     pdf.setFontSize(16); pdf.setFont("helvetica", "bold");
-    pdf.text(`AL MAWASHI — QCS`, pageWidth/2, 28, { align: "center" });
+    pdf.text("AL MAWASHI - QCS", pageWidth/2, 28, { align: "center" }); // استبدال em-dash
     pdf.setFontSize(12); pdf.setFont("helvetica", "normal");
-    pdf.text(TITLE, pageWidth/2, 46, { align: "center" });
+    pdf.text(DOC.reportTitle, pageWidth/2, 46, { align: "center" });
 
     const imgWidth = pageWidth - 40;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -157,7 +169,7 @@ export default function RMInspectionReportIngredientsView() {
     return acc;
   }, {});
 
-  /* ================= Styles ================= */
+  /* ================= Styles (خطوط سوداء مثل الإدخال) ================= */
   const tdHeader = {
     border: "1.5px solid #000",
     padding: "6px 8px",
@@ -181,7 +193,7 @@ export default function RMInspectionReportIngredientsView() {
     <div style={{ display:"flex", gap:"1rem" }}>
       <aside style={{ minWidth:260, background:"#f9f9f9", padding:"1rem", borderRadius:10, boxShadow:"0 3px 10px rgba(0,0,0,.1)" }}>
         <h4 style={{ textAlign:"center", marginBottom:10 }}>🗓️ Saved Reports</h4>
-        {loading ? "⏳ Loading…" : Object.keys(grouped).length===0 ? "❌ No reports" : (
+        {loading ? "⏳ Loading..." : Object.keys(grouped).length===0 ? "❌ No reports" : (
           Object.entries(grouped).sort(([a],[b])=>Number(a)-Number(b)).map(([y, months]) => (
             <details key={y} open>
               <summary style={{ fontWeight:800 }}>📅 Year {y}</summary>
@@ -193,6 +205,8 @@ export default function RMInspectionReportIngredientsView() {
                     <ul style={{ listStyle:"none", paddingLeft:12 }}>
                       {days.map((r,i)=>{
                         const active = getId(selected) && getId(selected)===getId(r);
+                        const d = new Date(r?._dt || 0);
+                        const label = isNaN(d) ? "-" : `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
                         return (
                           <li key={i}
                               onClick={()=>setSelected(r)}
@@ -202,7 +216,7 @@ export default function RMInspectionReportIngredientsView() {
                                 background: active ? "#0b132b" : "#ecf0f1",
                                 color: active ? "#fff" : "#333", fontWeight:600
                               }}>
-                            {`${r._day}/${m}/${y}`}
+                            {label}
                           </li>
                         );
                       })}
@@ -228,7 +242,7 @@ export default function RMInspectionReportIngredientsView() {
 
             {/* العارض مع الترويسة وخطوط سوداء */}
             <div ref={ref} style={{ background:"#fff", border:"1.5px solid #000", borderRadius:12, padding:16 }}>
-              {/* ترويسة ISO */}
+              {/* ترويسة مطابقة */}
               <table style={topTable}>
                 <tbody>
                   <tr>
@@ -237,52 +251,46 @@ export default function RMInspectionReportIngredientsView() {
                         AL<br/>MAWASHI
                       </div>
                     </td>
-                    <td style={tdHeader}><b>Document Title:</b> RM INSPECTION REPORT [INGREDIENTS MATERIAL]</td>
-                    <td style={tdHeader}><b>Document No:</b> {DOC_NO}</td>
+                    <td style={tdHeader}><b>Document Title:</b> {DOC.title}</td>
+                    <td style={tdHeader}><b>Document No:</b> {DOC.no}</td>
                   </tr>
                   <tr>
-                    <td style={tdHeader}><b>Issue Date:</b> 05/02/2020</td>
-                    <td style={tdHeader}><b>Revision No:</b> 0</td>
+                    <td style={tdHeader}><b>Issue Date:</b> {DOC.issueDate}</td>
+                    <td style={tdHeader}><b>Revision No:</b> {DOC.revNo}</td>
                   </tr>
                   <tr>
-                    <td style={tdHeader}><b>Area:</b> QA</td>
-                    <td style={tdHeader}><b>Issued by:</b> MOHAMAD ABDULLAH</td>
+                    <td style={tdHeader}><b>Area:</b> {DOC.area}</td>
+                    <td style={tdHeader}><b>Issued by:</b> {DOC.issuedBy}</td>
                   </tr>
                   <tr>
-                    <td style={tdHeader}><b>Controlling Officer:</b> Quality Controller</td>
-                    <td style={tdHeader}><b>Approved by:</b> Hussam O. Sarhan</td>
+                    <td style={tdHeader}><b>Controlling Officer:</b> {DOC.controllingOfficer}</td>
+                    <td style={tdHeader}><b>Approved by:</b> {DOC.approvedBy}</td>
                   </tr>
                 </tbody>
               </table>
 
-              <div style={band("#e5e7eb")}>TRANS EMIRATES LIVESTOCK TRADING LLC</div>
-              <div style={band("#f3f4f6")}>{TITLE}</div>
+              <div style={band("#e5e7eb")}>{DOC.company}</div>
+              <div style={band("#f3f4f6")}>{DOC.reportTitle}</div>
 
               {/* معلومات عامة للتقرير */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8, margin:"10px 0 12px" }}>
-                <div><b>Report Date:</b> {payload?.reportDate || "—"}</div>
+                <div><b>Report Date:</b> {payload?.reportDate || "-"}</div>
                 <div><b>Branch/Area:</b> {payload?.branch || payload?.area || "QCS"}</div>
-                {payload?.checkedBy && <div><b>Checked By:</b> {payload.checkedBy}</div>}
-                {payload?.verifiedBy && <div><b>Verified By:</b> {payload.verifiedBy}</div>}
               </div>
 
-              {/* الجدول — ترتيب مطابق للصورة */}
+              {/* الجدول - ترتيب مطابق للإدخال */}
               {Array.isArray(payload?.entries) && payload.entries.length ? (
                 <div style={{ overflowX:"auto" }}>
                   <table style={gridStyle}>
                     <thead>
                       <tr>
-                        {FIXED_COLUMNS.map((c)=>(
-                          <th key={c.label} style={thCell}>{c.label}</th>
-                        ))}
+                        {FIXED_COLUMNS.map((c)=>(<th key={c.label} style={thCell}>{c.label}</th>))}
                       </tr>
                     </thead>
                     <tbody>
                       {payload.entries.map((row,i)=>(
                         <tr key={i}>
-                          {FIXED_COLUMNS.map((c)=>(
-                            <td key={c.label} style={tdCell}>{getVal(row, c, i)}</td>
-                          ))}
+                          {FIXED_COLUMNS.map((c)=>(<td key={c.label} style={tdCell}>{getVal(row, c, i)}</td>))}
                         </tr>
                       ))}
                     </tbody>
@@ -292,15 +300,31 @@ export default function RMInspectionReportIngredientsView() {
                 <div style={{ color:"#6b7280" }}>No entries available.</div>
               )}
 
-              {/* ملاحظات إن وجدت */}
-              {Array.isArray(payload?.notes) && payload.notes.length > 0 && (
-                <div style={{ marginTop:12 }}>
-                  <b>Notes:</b>
-                  <ul style={{ margin:"6px 0 0 16px" }}>
-                    {payload.notes.map((n, i)=><li key={i}>{String(n)}</li>)}
-                  </ul>
+              {/* Corrective Action مطابق */}
+              {payload?.correctiveAction && String(payload.correctiveAction).trim() !== "" && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>Corrective Action:</div>
+                  <div style={{ border:"1.5px solid #000", borderRadius:6, padding:"8px 10px", whiteSpace:"pre-wrap", background:"#fff" }}>
+                    {payload.correctiveAction}
+                  </div>
                 </div>
               )}
+
+              {/* التواقيع يمين/يسار بخانات صغيرة */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginTop:16, alignItems:"end" }}>
+                <div>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>CHECKED BY :</div>
+                  <div style={{ border:"1.5px solid #000", borderRadius:6, padding:"8px 10px", minHeight:36, background:"#fff" }}>
+                    {payload?.checkedBy || ""}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 900, marginBottom: 6, textAlign:"right" }}>VERIFIED BY :</div>
+                  <div style={{ border:"1.5px solid #000", borderRadius:6, padding:"8px 10px", minHeight:36, background:"#fff", textAlign:"right" }}>
+                    {payload?.verifiedBy || ""}
+                  </div>
+                </div>
+              </div>
             </div>
           </>
         )}
