@@ -5,13 +5,19 @@ import DailyCleanlinessView from "./DailyCleanlinessView";
 import PersonalHygieneView from "./PersonalHygieneView";
 import FreshChickenReportsView from "./FreshChickenReportsView";
 
-// 🆕 عارِض ما قبل التحميل (FTR 1 • Mushrif) و (FTR 2 • Mamzar)
+// ما قبل التحميل
 import FTR1PreloadingViewer from "./FTR1PreloadingViewer";
 import FTR2PreloadingViewer from "./FTR2PreloadingViewer";
 
-// 🆕 عارِض تقارير المواد الخام: المكوّنات + مواد التغليف
+// تقارير المواد الخام
 import RMInspectionReportIngredientsView from "./RMInspectionReportIngredientsView";
 import RMInspectionReportPackagingView from "./RMInspectionReportPackagingView";
+
+// عدم المطابقة
+import NonConformanceReportsView from "./NonConformanceReportsView";
+
+// ✅ تبويب العرض الجديد: Corrective Action (سيُنشأ مكوّنه لاحقًا)
+import CorrectiveActionReportsView from "./CorrectiveActionReportsView";
 
 export default function QCSReportsView() {
   const [tab, setTab] = useState("coolers");
@@ -51,7 +57,7 @@ export default function QCSReportsView() {
         background: "#f3f4f6",
       }}
     >
-      {/* 🔝 الهيدر + التبويبات (Sticky) */}
+      {/* الهيدر + التبويبات */}
       <div
         style={{
           position: "sticky",
@@ -102,7 +108,7 @@ export default function QCSReportsView() {
               🚚 FTR 2 • Preloading (Mamzar)
             </button>
 
-            {/* 🆕 تبويبات تقارير المواد الخام */}
+            {/* تقارير المواد الخام */}
             <button
               style={btn("rm_ing")}
               onClick={() => setTab("rm_ing")}
@@ -117,11 +123,29 @@ export default function QCSReportsView() {
             >
               📦 RM — Packaging
             </button>
+
+            {/* عدم المطابقة */}
+            <button
+              style={btn("nc_reports")}
+              onClick={() => setTab("nc_reports")}
+              title="Non-Conformance Reports"
+            >
+              🚫 Non-Conformance
+            </button>
+
+            {/* ✅ Corrective Action */}
+            <button
+              style={btn("car_reports")}
+              onClick={() => setTab("car_reports")}
+              title="Corrective Action Reports"
+            >
+              🛠️ Corrective Action
+            </button>
           </div>
         </div>
       </div>
 
-      {/* 🧾 المحتوى */}
+      {/* المحتوى */}
       <div
         style={{
           flex: 1,
@@ -171,7 +195,7 @@ export default function QCSReportsView() {
             </div>
           )}
 
-          {/* 🆕 عروض تقارير المواد الخام */}
+          {/* عروض تقارير المواد الخام */}
           {tab === "rm_ing" && (
             <div style={{ position: "relative", overflow: "auto" }}>
               <RMInspectionReportIngredientsView />
@@ -181,6 +205,21 @@ export default function QCSReportsView() {
           {tab === "rm_pack" && (
             <div style={{ position: "relative", overflow: "auto" }}>
               <RMInspectionReportPackagingView />
+            </div>
+          )}
+
+          {/* عدم المطابقة */}
+          {tab === "nc_reports" && (
+            <div style={{ position: "relative", overflow: "auto" }}>
+              <NonConformanceReportsView />
+            </div>
+          )}
+
+          {/* ✅ Corrective Action (سيتم إنشاء المكوّن لاحقًا) */}
+          {tab === "car_reports" && (
+            <div style={{ position: "relative", overflow: "auto" }}>
+              <CorrectiveActionReportsView />
+              {/* ملاحظة: تأكد من إنشاء ./CorrectiveActionReportsView.jsx لاحقًا */}
             </div>
           )}
         </div>

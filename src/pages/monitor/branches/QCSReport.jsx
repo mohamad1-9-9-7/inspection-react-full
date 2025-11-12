@@ -16,6 +16,15 @@ import MushrifMeatInspection from "./qcs/MeatProductInspectionReportFTR1"; // FT
 import RMInspectionReportIngredients from "./qcs/RMInspectionReportIngredients";
 import RMInspectionReportPackaging from "./qcs/RMInspectionReportPackaging";
 
+// ✅ عدم المطابقة (إدخال)
+import NonConformanceReportInput from "./qcs/NonConformanceReportInput";
+
+// ✅ Corrective Action Report (Input)
+import CorrectiveActionReportInput from "./qcs/CorrectiveActionReportInput";
+
+// ✅ NEW: Internal Audit (Input) — سيتم إنشاء الملف لاحقًا
+import InternalAuditInput from "./qcs/InternalAuditInput";
+
 export default function QCSReport() {
   const [activeTab, setActiveTab] = useState("shipment");
 
@@ -118,6 +127,15 @@ export default function QCSReport() {
     // 🆕 المطلوبين
     { id: "physical_ing",  label: "🧾 PHYSICAL INSPECTION REPORT-INgrediants" },
     { id: "physical_pack", label: "📦 PHYSICAL INSPECTION REPORT-packaging" },
+
+    // 🆕 عدم المطابقة (إدخال)
+    { id: "nonConformance", label: "🚫 NON-CONFORMANCE REPORT" },
+
+    // 🛠️ Corrective Action Report
+    { id: "car", label: "🛠️ Corrective Action Report" },
+
+    // 📝 Internal Audit
+    { id: "internalAudit", label: "📝 INTERNAL AUDIT" },
   ];
 
   return (
@@ -200,6 +218,27 @@ export default function QCSReport() {
         {activeTab === "physical_pack" && (
           <div style={card}>
             <RMInspectionReportPackaging />
+          </div>
+        )}
+
+        {/* 🚫 NON-CONFORMANCE REPORT (Input) */}
+        {activeTab === "nonConformance" && (
+          <div style={card}>
+            <NonConformanceReportInput />
+          </div>
+        )}
+
+        {/* 🛠️ Corrective Action Report */}
+        {activeTab === "car" && (
+          <div style={card}>
+            <CorrectiveActionReportInput />
+          </div>
+        )}
+
+        {/* 📝 INTERNAL AUDIT (Input) — ستنشئ الملف لاحقًا */}
+        {activeTab === "internalAudit" && (
+          <div style={card}>
+            <InternalAuditInput />
           </div>
         )}
       </div>
