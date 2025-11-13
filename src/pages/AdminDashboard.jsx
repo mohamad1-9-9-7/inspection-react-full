@@ -138,12 +138,26 @@ function downloadJson(data, filename) {
   URL.revokeObjectURL(url);
 }
 
+/* تنسيق الوقت للعرض في الهيدر */
+function formatDateTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString();
+}
+
 export default function AdminDashboard() {
   const [reports, setReports] = useState([]);
   const [dailyReports, setDailyReports] = useState([]);
   const [activeView, setActiveView] = useState("dailyReports"); // الافتراضي
   const [loading, setLoading] = useState(false);
   const [opMsg, setOpMsg] = useState("");
+  const [lastSync, setLastSync] = useState("");
+  const [stats, setStats] = useState({
+    daily: 0,
+    master: 0,
+    total: 0,
+  });
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -151,12 +165,38 @@ export default function AdminDashboard() {
     setLoading(true);
     setOpMsg("");
     try {
-      const [r, d] = await Promise.all([
+      // 1) تحميل reports + dailyReports كما كان
+      const [r, d, allTypes] = await Promise.all([
         fetchByType("reports"),
         fetchByType("dailyReports"),
+        fetchAllTypes(),
       ]);
+
       setReports(r);
       setDailyReports(d);
+      setLastSync(new Date().toISOString());
+
+      // 2) حساب الإحصائيات من كل الأنواع
+      const { counts, groups } = allTypes || { counts: {}, groups: {} };
+
+      // مجموع كل الأنواع داخل المجموعات (QCS, FTR1, FTR2, PRODUCTION)
+      let dailyFromGroups = 0;
+      Object.values(groups).forEach((typeList) => {
+        typeList.forEach((t) => {
+          dailyFromGroups += counts[t] || 0;
+        });
+      });
+
+      const masterReports = Array.isArray(r) ? r.length : 0; // تقارير تجميعية
+      const metaDaily = Array.isArray(d) ? d.length : 0; // dailyReports meta
+      const dailyTotal = dailyFromGroups + metaDaily;
+      const totalAll = dailyTotal + masterReports;
+
+      setStats({
+        daily: dailyTotal,
+        master: masterReports,
+        total: totalAll,
+      });
     } catch (e) {
       console.error(e);
       setOpMsg("Failed to load data from server.");
@@ -177,8 +217,8 @@ export default function AdminDashboard() {
       "linear-gradient(130deg, #6d28d9 0%, #6840e0 18%, #4865e0 38%, #2f89db 63%, #2cb4e8 88%)",
     pageOverlay:
       "radial-gradient(1200px 300px at 20% 0%, rgba(255,255,255,.16), rgba(255,255,255,0))",
-    card: "rgba(255,255,255,0.88)",
-    glass: "rgba(255,255,255,0.75)",
+    card: "rgba(255,255,255,0.95)",
+    glass: "rgba(255,255,255,0.80)",
     border: "rgba(255,255,255,0.35)",
     purple: "#6d28d9",
     lilac: "#8e44ad",
@@ -190,23 +230,26 @@ export default function AdminDashboard() {
   function tabButtonStyle(view) {
     const isActive = activeView === view;
     return {
-      padding: "12px 22px",
-      borderRadius: "14px",
-      border: "1.5px solid " + THEME.border,
+      padding: "10px 18px",
+      borderRadius: "999px",
+      border: "1px solid " + THEME.border,
       cursor: "pointer",
       background: isActive
         ? "linear-gradient(90deg, #6d28d9 0%, #8e44ad 70%)"
-        : "rgba(255,255,255,0.70)",
+        : "rgba(255,255,255,0.65)",
       color: isActive ? "#fff" : "#0f172a",
-      fontWeight: 900,
-      fontSize: "0.98rem",
+      fontWeight: 800,
+      fontSize: "0.95rem",
       boxShadow: isActive
-        ? "0 12px 24px rgba(109,40,217,.28)"
-        : "0 6px 16px rgba(17,24,39,.12)",
+        ? "0 10px 22px rgba(109,40,217,.30)"
+        : "0 4px 10px rgba(17,24,39,.10)",
       transform: isActive ? "translateY(-1px)" : "none",
       transition: "all .18s ease",
-      backdropFilter: "blur(8px)",
+      backdropFilter: "blur(10px)",
       outline: "none",
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
     };
   }
 
@@ -295,6 +338,16 @@ export default function AdminDashboard() {
   async function handleImport(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to import:\n\n"${file.name}"?\n\n` +
+        "This may overwrite existing records with the same keys/types."
+    );
+    if (!confirmed) {
+      if (e?.target) e.target.value = "";
+      return;
+    }
+
     try {
       setLoading(true);
       setOpMsg("Reading import file…");
@@ -328,224 +381,426 @@ export default function AdminDashboard() {
         overflowX: "hidden",
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          background: THEME.card,
-          border: "1.5px solid " + THEME.border,
-          borderRadius: 18,
-          padding: "12px 16px",
-          marginBottom: 14,
-          boxShadow: THEME.shadow,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          backdropFilter: "blur(6px)",
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: "1.5rem", color: "#0f172a" }}>
-          📊 Admin Dashboard
-        </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {loading && (
-            <span style={{ fontWeight: 800, color: THEME.purple }}>
-              ⏳ Loading…
-            </span>
-          )}
-          {opMsg && (
-            <span
+      <div style={{ maxWidth: 1240, margin: "0 auto" }}>
+        {/* Header */}
+        <div
+          style={{
+            background: THEME.card,
+            border: "1.5px solid " + THEME.border,
+            borderRadius: 22,
+            padding: "14px 18px",
+            marginBottom: 16,
+            boxShadow: THEME.shadow,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <div>
+            <div
               style={{
-                fontWeight: 800,
-                color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46",
+                fontWeight: 900,
+                fontSize: "1.6rem",
+                color: "#0f172a",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
               }}
             >
-              {opMsg}
-            </span>
-          )}
-          <button
-            onClick={reloadFromServer}
+              <span>📊 Admin Dashboard</span>
+            </div>
+            <div
+              style={{
+                marginTop: 3,
+                fontSize: "0.85rem",
+                color: "#6b7280",
+                fontWeight: 500,
+              }}
+            >
+              Central control for all QMS & daily inspection reports.
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div
+              style={{
+                textAlign: "right",
+                fontSize: "0.78rem",
+                color: "#4b5563",
+                lineHeight: 1.3,
+              }}
+            >
+              <div>
+                <strong>Last sync:</strong> {formatDateTime(lastSync)}
+              </div>
+              {loading && (
+                <div style={{ color: THEME.purple, fontWeight: 700 }}>
+                  ⏳ Loading…
+                </div>
+              )}
+              {opMsg && (
+                <div
+                  style={{
+                    marginTop: 2,
+                    fontWeight: 700,
+                    color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46",
+                  }}
+                >
+                  {opMsg}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={reloadFromServer}
+              style={{
+                background: "linear-gradient(180deg,#3b82f6,#2563eb)",
+                color: "#fff",
+                border: "none",
+                padding: "9px 13px",
+                borderRadius: 999,
+                cursor: "pointer",
+                fontWeight: 900,
+                fontSize: "0.86rem",
+                boxShadow: "0 10px 24px rgba(59,130,246,.28)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>🔄</span>
+              <span>Refresh</span>
+            </button>
+            <button
+              onClick={handleLogout}
+              style={{
+                background: "linear-gradient(180deg,#ef4444, #dc2626)",
+                color: "#fff",
+                border: "none",
+                padding: "9px 15px",
+                borderRadius: 999,
+                cursor: "pointer",
+                fontWeight: 900,
+                fontSize: "0.86rem",
+                boxShadow: "0 10px 24px rgba(220,38,38,.28)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>🚪</span>
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            marginBottom: 14,
+          }}
+        >
+          <div
             style={{
-              background: "linear-gradient(180deg,#3b82f6,#2563eb)",
-              color: "#fff",
-              border: "none",
-              padding: "10px 14px",
-              borderRadius: 12,
-              cursor: "pointer",
-              fontWeight: 900,
-              boxShadow: "0 10px 24px rgba(59,130,246,.28)",
+              flex: "1 1 160px",
+              minWidth: 160,
+              background: THEME.glass,
+              borderRadius: 16,
+              border: "1px solid " + THEME.border,
+              padding: "10px 12px",
+              boxShadow: "0 10px 24px rgba(15,23,42,.20)",
             }}
           >
-            🔄 Refresh
+            <div
+              style={{
+                fontSize: "0.80rem",
+                textTransform: "uppercase",
+                letterSpacing: ".06em",
+                color: "#6b7280",
+                fontWeight: 700,
+                marginBottom: 4,
+              }}
+            >
+              Daily Reports
+            </div>
+            <div
+              style={{
+                fontSize: "1.4rem",
+                fontWeight: 900,
+                color: "#111827",
+                marginBottom: 2,
+              }}
+            >
+              {stats.daily}
+            </div>
+            <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>
+              POS / QCS / FTR / Production daily checklists
+            </div>
+          </div>
+
+          <div
+            style={{
+              flex: "1 1 160px",
+              minWidth: 160,
+              background: THEME.glass,
+              borderRadius: 16,
+              border: "1px solid " + THEME.border,
+              padding: "10px 12px",
+              boxShadow: "0 10px 24px rgba(15,23,42,.15)",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "0.80rem",
+                textTransform: "uppercase",
+                letterSpacing: ".06em",
+                color: "#6b7280",
+                fontWeight: 700,
+                marginBottom: 4,
+              }}
+            >
+              Master Reports
+            </div>
+            <div
+              style={{
+                fontSize: "1.4rem",
+                fontWeight: 900,
+                color: "#111827",
+                marginBottom: 2,
+              }}
+            >
+              {stats.master}
+            </div>
+            <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>
+              Consolidated / summary types
+            </div>
+          </div>
+
+          <div
+            style={{
+              flex: "1 1 160px",
+              minWidth: 160,
+              background:
+                "linear-gradient(135deg, rgba(16,185,129,.96), rgba(5,150,105,.96))",
+              borderRadius: 16,
+              border: "1px solid rgba(16,185,129,.6)",
+              padding: "10px 12px",
+              boxShadow: "0 10px 30px rgba(5,150,105,.45)",
+              color: "#ecfdf5",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "0.80rem",
+                textTransform: "uppercase",
+                letterSpacing: ".06em",
+                opacity: 0.9,
+                fontWeight: 700,
+                marginBottom: 4,
+              }}
+            >
+              Total Records
+            </div>
+            <div
+              style={{
+                fontSize: "1.4rem",
+                fontWeight: 900,
+                marginBottom: 2,
+              }}
+            >
+              {stats.total}
+            </div>
+            <div style={{ fontSize: "0.78rem", opacity: 0.9 }}>
+              All records currently loaded
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            marginBottom: 14,
+            flexDirection: "row-reverse",
+          }}
+        >
+          <button
+            style={tabButtonStyle("dailyReports")}
+            onClick={() => setActiveView("dailyReports")}
+          >
+            <span>🗓️</span>
+            <span>Daily Reports</span>
           </button>
           <button
-            onClick={handleLogout}
-            style={{
-              background: "linear-gradient(180deg,#ef4444, #dc2626)",
-              color: "#fff",
-              border: "none",
-              padding: "10px 16px",
-              borderRadius: 12,
-              cursor: "pointer",
-              fontWeight: 900,
-              boxShadow: "0 10px 24px rgba(220,38,38,.28)",
-            }}
+            style={tabButtonStyle("reports")}
+            onClick={() => setActiveView("reports")}
           >
-            🚪 Logout
+            <span>📑</span>
+            <span>Reports</span>
+          </button>
+          <button
+            style={tabButtonStyle("qcsShipment")}
+            onClick={() => setActiveView("qcsShipment")}
+          >
+            <span>📦</span>
+            <span>QCS Shipments</span>
+          </button>
+          <button
+            style={tabButtonStyle("kpi")}
+            onClick={() => setActiveView("kpi")}
+          >
+            <span>📈</span>
+            <span>KPI</span>
           </button>
         </div>
-      </div>
 
-      {/* Tabs */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          marginBottom: 14,
-          flexDirection: "row-reverse",
-        }}
-      >
-        <button
-          style={tabButtonStyle("dailyReports")}
-          onClick={() => setActiveView("dailyReports")}
-        >
-          🗓️ Daily Reports
-        </button>
-        <button
-          style={tabButtonStyle("reports")}
-          onClick={() => setActiveView("reports")}
-        >
-          📑 Reports
-        </button>
-        <button
-          style={tabButtonStyle("qcsShipment")}
-          onClick={() => setActiveView("qcsShipment")}
-        >
-          📦 QCS Shipments
-        </button>
-        <button style={tabButtonStyle("kpi")} onClick={() => setActiveView("kpi")}>
-          📈 KPI
-        </button>
-
-        {/* تركنا تبويبات POS10/POS19 خارج الشريط لتجنب التكرار */}
-      </div>
-
-      {/* Import/Export */}
-      <div
-        style={{
-          background: THEME.glass,
-          border: "1.5px solid " + THEME.border,
-          borderRadius: 16,
-          padding: "10px",
-          marginBottom: 12,
-          backdropFilter: "blur(8px)",
-          boxShadow: THEME.shadow,
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <button
-          onClick={handleExportAll}
+        {/* Import/Export Tools */}
+        <div
           style={{
-            background: "linear-gradient(180deg,#6d28d9,#8e44ad)",
-            color: "#fff",
-            border: "none",
-            padding: "9px 16px",
-            borderRadius: 12,
-            cursor: "pointer",
-            fontWeight: 900,
-            boxShadow: "0 10px 20px rgba(141,73,170,.28)",
+            background: THEME.glass,
+            border: "1.5px solid " + THEME.border,
+            borderRadius: 18,
+            padding: "10px 12px",
+            marginBottom: 14,
+            backdropFilter: "blur(10px)",
+            boxShadow: THEME.shadow,
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
           }}
         >
-          ⬇️ Export JSON (All Reports)
-        </button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={handleExportAll}
+              style={{
+                background: "linear-gradient(180deg,#6d28d9,#8e44ad)",
+                color: "#fff",
+                border: "none",
+                padding: "8px 14px",
+                borderRadius: 999,
+                cursor: "pointer",
+                fontWeight: 900,
+                fontSize: "0.86rem",
+                boxShadow: "0 10px 20px rgba(141,73,170,.28)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>⬇️</span>
+              <span>Export JSON (All)</span>
+            </button>
 
-        <button
-          onClick={() => fileInputRef.current?.click()}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                background: "linear-gradient(180deg,#10b981,#059669)",
+                color: "#fff",
+                border: "none",
+                padding: "8px 14px",
+                borderRadius: 999,
+                cursor: "pointer",
+                fontWeight: 900,
+                fontSize: "0.86rem",
+                boxShadow: "0 10px 20px rgba(16,185,129,.28)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>⬆️</span>
+              <span>Import JSON</span>
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              onChange={handleImport}
+              style={{ display: "none" }}
+            />
+          </div>
+
+          <div
+            style={{
+              fontSize: "0.8rem",
+              color: "#4b5563",
+              maxWidth: 360,
+              lineHeight: 1.4,
+            }}
+          >
+            Use <strong>Export</strong> for full backups and{" "}
+            <strong>Import</strong> to restore or migrate data between servers.
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div
           style={{
-            background: "linear-gradient(180deg,#10b981,#059669)",
-            color: "#fff",
-            border: "none",
-            padding: "9px 16px",
-            borderRadius: 12,
-            cursor: "pointer",
-            fontWeight: 900,
-            boxShadow: "0 10px 20px rgba(16,185,129,.28)",
+            background: THEME.card,
+            border: "1.5px solid " + THEME.border,
+            borderRadius: 20,
+            padding: "16px 14px",
+            minHeight: "66vh",
+            boxShadow: THEME.shadow,
+            backdropFilter: "blur(8px)",
           }}
         >
-          ⬆️ Import JSON (Multi-Type)
-        </button>
+          {activeView === "reports" ? (
+            <ReportsTab reports={reports} setReports={setReports} language="en" />
+          ) : activeView === "dailyReports" ? (
+            <DailyReportsTab
+              dailyReports={dailyReports}
+              setDailyReports={setDailyReports}
+              // QCS viewer
+              onOpenQCSReport={() =>
+                navigate("/admin/monitor/branches/qcs/reports")
+              }
+              // POS 19 viewer
+              onOpenPOS19Report={() => navigate("/admin/pos19")}
+              // POS 10 viewer
+              onOpenPOS10Report={() => navigate("/admin/pos10")}
+              // باقي التبويبات
+              onOpenQCSShipmentReport={() => setActiveView("qcsShipment")}
+              onOpenFTR1Report={() => setActiveView("ftr1")}
+              onOpenFTR2Report={() => setActiveView("ftr2")}
+              onOpenProductionReport={() => navigate("/admin/production")}
+              language="en"
+            />
+          ) : activeView === "qcsShipment" ? (
+            <HideDeleteScope>
+              <QCSRawMaterialView language="en" />
+            </HideDeleteScope>
+          ) : activeView === "kpi" ? (
+            <KPIDashboard />
+          ) : activeView === "ftr1" ? (
+            <FTR1ReportView />
+          ) : activeView === "ftr2" ? (
+            <FTR2ReportView language="en" />
+          ) : null}
+        </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json"
-          onChange={handleImport}
-          style={{ display: "none" }}
-        />
-      </div>
-
-      {/* Main Content */}
-      <div
-        style={{
-          background: THEME.card,
-          border: "1.5px solid " + THEME.border,
-          borderRadius: 18,
-          padding: "16px 14px",
-          minHeight: "66vh",
-          boxShadow: THEME.shadow,
-          backdropFilter: "blur(6px)",
-        }}
-      >
-        {activeView === "reports" ? (
-          <ReportsTab reports={reports} setReports={setReports} language="en" />
-        ) : activeView === "dailyReports" ? (
-          <DailyReportsTab
-            dailyReports={dailyReports}
-            setDailyReports={setDailyReports}
-            // QCS viewer
-            onOpenQCSReport={() =>
-              navigate("/admin/monitor/branches/qcs/reports")
-            }
-            // POS 19 viewer
-            onOpenPOS19Report={() => navigate("/admin/pos19")}
-            // ✅ POS 10 viewer (المشكلة كانت هنا)
-            onOpenPOS10Report={() => navigate("/admin/pos10")}
-            // باقي التبويبات
-            onOpenQCSShipmentReport={() => setActiveView("qcsShipment")}
-            onOpenFTR1Report={() => setActiveView("ftr1")}
-            onOpenFTR2Report={() => setActiveView("ftr2")}
-            onOpenProductionReport={() => navigate("/admin/production")}
-            language="en"
-          />
-        ) : activeView === "qcsShipment" ? (
-          <HideDeleteScope>
-            <QCSRawMaterialView language="en" />
-          </HideDeleteScope>
-        ) : activeView === "kpi" ? (
-          <KPIDashboard />
-        ) : activeView === "ftr1" ? (
-          <FTR1ReportView />
-        ) : activeView === "ftr2" ? (
-          <FTR2ReportView language="en" />
-        ) : null}
-      </div>
-
-      {/* Footer */}
-      <div
-        style={{
-          marginTop: 18,
-          textAlign: "center",
-          color: "rgba(255,255,255,.9)",
-          fontSize: ".95rem",
-          fontWeight: 800,
-          textShadow: "0 1px 2px rgba(0,0,0,.15)",
-        }}
-      >
-        All rights reserved © Quality Management System
+        {/* Footer */}
+        <div
+          style={{
+            marginTop: 18,
+            textAlign: "center",
+            color: "rgba(255,255,255,.94)",
+            fontSize: ".92rem",
+            fontWeight: 800,
+            textShadow: "0 1px 3px rgba(0,0,0,.25)",
+          }}
+        >
+          All rights reserved © Quality Management System
+        </div>
       </div>
     </div>
   );
