@@ -3,18 +3,41 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const branches = [
-  "QCS", "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16",
-  "POS 17", "POS 19", "POS 21", "POS 24", "POS 25", "POS 37", "POS 38",
-  "POS 42", "POS 44", "POS 45",
-  "FTR 1", "FTR 2",
-  "PRODUCTION"
+  "QCS",
+  "POS 6",
+  "POS 7",
+  "POS 10",
+  "POS 11",
+  "POS 14",
+  "POS 15",
+  "POS 16",
+  "POS 17",
+  "POS 19",
+  "POS 21",
+  "POS 24",
+  "POS 25",
+  "POS 26",
+  "POS 37",
+  "POS 38",
+  "POS 42",
+  "POS 44",
+  "POS 45",
+  "FTR 1",
+  "FTR 2",
+  "PRODUCTION",
 ];
 
 /* ==== Icons ==== */
 const Svg = (p) => ({
-  width: 22, height: 22, viewBox: "0 0 24 24",
-  fill: "none", stroke: "currentColor", strokeWidth: 1.8,
-  strokeLinecap: "round", strokeLinejoin: "round", ...p
+  width: 22,
+  height: 22,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  ...p,
 });
 const IconStore = () => (
   <svg {...Svg()}>
@@ -54,9 +77,10 @@ export default function DailyReportsTab({
   onOpenFTR1Report,
   onOpenFTR2Report,
   onOpenProductionReport,
-  onOpenPOS15Report,   // optional
-  onOpenPOS10Report,   // POS 10
-  onOpenPOS11Report,   // POS 11 (Views)
+  onOpenPOS15Report, // optional
+  onOpenPOS10Report, // POS 10
+  onOpenPOS11Report, // POS 11 (Views)
+  onOpenPOS26Report, // POS 26 (optional)
 }) {
   const navigate = useNavigate();
 
@@ -69,35 +93,30 @@ export default function DailyReportsTab({
     if (branch === "QCS") {
       if (onOpenQCSReport) onOpenQCSReport();
       else navigate("/admin/monitor/branches/qcs/reports");
-
     } else if (branch === "POS 10") {
       if (onOpenPOS10Report) onOpenPOS10Report();
       else navigate("/admin/pos10");
-
     } else if (branch === "POS 11") {
       if (onOpenPOS11Report) onOpenPOS11Report();
       else navigate("/admin/pos11"); // shows POS11ReportsViewLayout
-
     } else if (branch === "POS 15") {
       if (onOpenPOS15Report) onOpenPOS15Report();
       else navigate("/admin/pos15");
-
     } else if (branch === "POS 19") {
       if (onOpenPOS19Report) onOpenPOS19Report();
       else navigate("/admin/pos19");
-
+    } else if (branch === "POS 26") {
+      if (onOpenPOS26Report) onOpenPOS26Report();
+      else navigate("/admin/pos26");
     } else if (branch === "FTR 1") {
       if (onOpenFTR1Report) onOpenFTR1Report();
       else navigate("/admin/ftr1");
-
     } else if (branch === "FTR 2") {
       if (onOpenFTR2Report) onOpenFTR2Report();
       else navigate("/admin/ftr2");
-
     } else if (branch === "PRODUCTION") {
       if (onOpenProductionReport) onOpenProductionReport();
       else navigate("/admin/production");
-
     } else {
       alert("No report available for this branch: " + branch);
     }
@@ -115,7 +134,8 @@ export default function DailyReportsTab({
     if (!pendingBranch) return;
 
     // Password rule: "BranchName + 123" (PRODUCTION uses PRD123)
-    const expected = pendingBranch === "PRODUCTION" ? "PRD123" : pendingBranch + "123";
+    const expected =
+      pendingBranch === "PRODUCTION" ? "PRD123" : pendingBranch + "123";
 
     if (pwd === expected) {
       setShowPwd(false);
@@ -125,8 +145,36 @@ export default function DailyReportsTab({
     }
   };
 
+  // === badge text حسب الفرع ===
+  const getBadgeText = (branch, type) => {
+    // QCS
+    if (branch === "QCS") return "Al Qusais Warehouse";
+
+    // POS custom names
+    if (branch === "POS 10") return "Abu Dhabi Butchery";
+    if (branch === "POS 11") return "Al Ain Butchery";
+    if (branch === "POS 15") return "Al Barsha Butchery";
+    if (branch === "POS 19") return "Motor City Branch";
+    if (branch === "POS 24") return "Silicon Branch";
+    if (branch === "POS 26") return "Al Barsha South Branch";
+
+    // FTR / Production
+    if (type === "FTR") return "FTR Branch";
+    if (type === "PROD") return "Production";
+
+    // Default POS
+    return "Point of Sale";
+  };
+
   return (
-    <div style={{ padding: 16, direction: "ltr", fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" }}>
+    <div
+      style={{
+        padding: 16,
+        direction: "ltr",
+        fontFamily:
+          "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
+      }}
+    >
       <style>{`
         :root{
           --bg1:#6d28d9; --bg2:#2563eb;
@@ -210,7 +258,13 @@ export default function DailyReportsTab({
 
         {/* Grid */}
         <section className="grid" aria-label="Branches list">
-          <div style={{ margin: "0 0 10px 2px", color: "#64748b", fontWeight: 800 }}>
+          <div
+            style={{
+              margin: "0 0 10px 2px",
+              color: "#64748b",
+              fontWeight: 800,
+            }}
+          >
             عدد التقارير الحالية: {dailyReports.length}
           </div>
           <div className="cards">
@@ -227,9 +281,22 @@ export default function DailyReportsTab({
                   tabIndex={0}
                   aria-label={`Open ${branch} report`}
                   onClick={() => handleCardClick(branch)}
-                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleCardClick(branch)}
+                  onKeyDown={(e) =>
+                    (e.key === "Enter" || e.key === " ") &&
+                    handleCardClick(branch)
+                  }
                 >
-                  <div className={`tile ${type === "POS" ? "pos" : type === "FTR" ? "ftr" : type === "QCS" ? "qcs" : "prod"}`}>
+                  <div
+                    className={`tile ${
+                      type === "POS"
+                        ? "pos"
+                        : type === "FTR"
+                        ? "ftr"
+                        : type === "QCS"
+                        ? "qcs"
+                        : "prod"
+                    }`}
+                  >
                     {type === "POS" && <IconStore />}
                     {type === "FTR" && <IconTruck />}
                     {type === "QCS" && <IconShield />}
@@ -237,13 +304,19 @@ export default function DailyReportsTab({
                   </div>
                   <div>
                     <div className="title">{branch}</div>
-                    {!isQCS && (
-                      <div className="badge">
-                        {type === "FTR" ? "FTR Branch" : type === "PROD" ? "Production" : "Point of Sale"}
-                      </div>
-                    )}
+                    <div className="badge">{getBadgeText(branch, type)}</div>
                   </div>
-                  <svg className="arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    className="arrow"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M9 18l6-6-6-6" />
                   </svg>
                 </div>
@@ -277,20 +350,33 @@ export default function DailyReportsTab({
         <div className="backdrop" onClick={() => setShowPwd(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>إدخال كلمة السر</h3>
-            <p>الفرع: <strong>{pendingBranch}</strong></p>
+            <p>
+              الفرع: <strong>{pendingBranch}</strong>
+            </p>
             <form onSubmit={submitPwd}>
               <input
                 className="input"
                 type="password"
                 placeholder="كلمة السر"
                 value={pwd}
-                onChange={(e) => { setPwd(e.target.value); setPwdError(""); }}
+                onChange={(e) => {
+                  setPwd(e.target.value);
+                  setPwdError("");
+                }}
                 autoFocus
               />
               {pwdError && <div className="err">{pwdError}</div>}
               <div className="actions">
-                <button type="button" className="btn ghost" onClick={() => setShowPwd(false)}>إلغاء</button>
-                <button type="submit" className="btn primary">متابعة</button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => setShowPwd(false)}
+                >
+                  إلغاء
+                </button>
+                <button type="submit" className="btn primary">
+                  متابعة
+                </button>
               </div>
             </form>
           </div>

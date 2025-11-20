@@ -381,7 +381,8 @@ export default function AdminDashboard() {
         overflowX: "hidden",
       }}
     >
-      <div style={{ maxWidth: 1240, margin: "0 auto" }}>
+      {/* ✅ جعل المحتوى بعرض كامل الشاشة */}
+      <div style={{ width: "100%" }}>
         {/* Header */}
         <div
           style={{
