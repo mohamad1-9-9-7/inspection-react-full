@@ -130,7 +130,7 @@ export default function NonConformanceReportInput(props) {
     issueDate: "30/09/2023",
     revisionNo: "0",
     area: "QA",
-    issuedBy: "Suresh Sekar",
+    issuedBy: "MOHAMAD ABDULLAH",
     controllingOfficer: "QC",
     approvedBy: "Hussam",
   });

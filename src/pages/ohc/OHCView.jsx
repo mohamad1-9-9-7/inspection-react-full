@@ -14,6 +14,10 @@ const API_BASE = String(
 
 const TYPE = "ohc_certificate";
 
+/* ضغط الصور */
+const MAX_IMG_DIM = 1280;
+const IMG_QUALITY = 0.8;
+
 async function jsonFetch(url, opts = {}) {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -136,6 +140,9 @@ export default function OHCView() {
     branch: "",
   });
 
+  // صورة جديدة للتعديل
+  const [editImage, setEditImage] = useState(null); // { dataUrl, name, type }
+
   // image modal
   const [modalImage, setModalImage] = useState(null); // { src, appNo, name, serverId }
 
@@ -237,15 +244,85 @@ export default function OHCView() {
       result: row.result || "",
       branch: row.branch || "",
     });
+    setEditImage(null);
     setMsg({ type: "", text: "" });
   }
   function cancelEdit() {
     setEditingIndex(null);
+    setEditImage(null);
   }
   function setEditField(k, v) {
     setEdit((p) => ({ ...p, [k]: v }));
   }
 
+  // اختيار صورة جديدة مع ضغط
+  async function handleEditImageSelect(e) {
+    const file = e.target.files && e.target.files[0];
+    // تنظيف قيمة المدخل بحيث يمكن اختيار نفس الملف مرة أخرى لاحقاً
+    e.target.value = "";
+    if (!file) return;
+
+    if (!file.type || !file.type.startsWith("image/")) {
+      setMsg({
+        type: "error",
+        text: "Selected file is not an image.",
+      });
+      return;
+    }
+
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            let { width, height } = img;
+            if (width > height && width > MAX_IMG_DIM) {
+              height = (height * MAX_IMG_DIM) / width;
+              width = MAX_IMG_DIM;
+            } else if (height >= width && height > MAX_IMG_DIM) {
+              width = (width * MAX_IMG_DIM) / height;
+              height = MAX_IMG_DIM;
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              // لو صار خطأ في الكانفا، نستعمل الداتا الأصلية
+              resolve(ev.target.result);
+              return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            const out = canvas.toDataURL("image/jpeg", IMG_QUALITY);
+            resolve(out);
+          };
+          img.onerror = reject;
+          img.src = ev.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      setEditImage({
+        dataUrl,
+        name: file.name,
+        type: file.type || "image/jpeg",
+      });
+      setMsg({
+        type: "ok",
+        text: "Image loaded for update. Please click Save to apply changes.",
+      });
+    } catch (err) {
+      console.error("Image compress error:", err);
+      setMsg({
+        type: "error",
+        text: "Failed to process image. Please try another file.",
+      });
+    }
+  }
+
+  // ==== تعديل: إنشاء سجل جديد ثم حذف القديم بدل PUT (مع دعم صورة جديدة) ====
   async function saveEdit() {
     const row = filtered[editingIndex];
     if (!row?._server?.id) return;
@@ -286,36 +363,59 @@ export default function OHCView() {
       if (!cont) return;
     }
 
+    // نحافظ على الـ payload الأصلي (يشمل الصورة الحالية) ونحدّث الحقول فقط
     const base = row._server.rawPayload || {};
     const payload = {
       ...base,
+      appNo: row.appNo, // رقم الموظف ثابت
       name: edit.name,
       nationality: edit.nationality,
       job: edit.job,
       expiryDate: expiryIso,
       result: edit.result,
       branch: edit.branch,
+      savedAt: new Date().toISOString(),
     };
 
-    try {
-      const { ok, status, data } = await jsonFetch(
-        `${API_BASE}/api/reports/${row._server.id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ payload }),
-        }
-      );
+    // لو تم اختيار صورة جديدة نستبدل حقول الصورة
+    if (editImage && editImage.dataUrl) {
+      payload.imageData = editImage.dataUrl;
+      payload.imageUrl = ""; // نفضّل data URL
+      payload.imageName = editImage.name;
+      payload.imageType = editImage.type;
+    }
 
-      if (!ok) {
+    try {
+      // 1) إنشاء سجل جديد
+      const createRes = await jsonFetch(`${API_BASE}/api/reports`, {
+        method: "POST",
+        body: JSON.stringify({
+          reporter: "MOHAMAD ABDULLAH",
+          type: TYPE,
+          payload,
+        }),
+      });
+
+      if (!createRes.ok) {
         setMsg({
           type: "error",
-          text: `Update failed (HTTP ${status}). ${data?.message || ""}`,
+          text: `Update failed (create) (HTTP ${createRes.status}). ${
+            createRes.data?.message || ""
+          }`,
         });
         return;
       }
 
+      // 2) حذف السجل القديم
+      if (row._server.id) {
+        await jsonFetch(`${API_BASE}/api/reports/${row._server.id}`, {
+          method: "DELETE",
+        });
+      }
+
       setMsg({ type: "ok", text: "Updated successfully." });
       setEditingIndex(null);
+      setEditImage(null);
       await load();
     } catch (err) {
       console.error("OHC update error:", err);
@@ -804,16 +904,123 @@ export default function OHCView() {
                     { value: "UNFIT", label: "UNFIT" },
                   ]}
                 />
-                <Select
+                {/* Branch text field */}
+                <Field
                   label="Branch"
                   value={edit.branch}
                   onChange={(v) => setEditField("branch", v)}
-                  options={[
-                    { value: "", label: "-- Select Branch --" },
-                    ...BRANCHES.map((b) => ({ value: b, label: b })),
-                  ]}
                 />
               </div>
+
+              {/* Image edit block */}
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 10,
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  background:
+                    "linear-gradient(135deg,#f9fafb,#f1f5f9,#e5e7eb)",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 12,
+                  alignItems: "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 13,
+                    color: "#111827",
+                    minWidth: 120,
+                  }}
+                >
+                  Certificate Image
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    {(editImage?.dataUrl ||
+                      filtered[editingIndex]?.image) && (
+                      <img
+                        src={
+                          editImage?.dataUrl ||
+                          filtered[editingIndex]?.image
+                        }
+                        alt="preview"
+                        style={{
+                          height: 60,
+                          borderRadius: 8,
+                          border: "1px solid #cbd5e1",
+                          objectFit: "cover",
+                          boxShadow:
+                            "0 6px 14px rgba(15,23,42,0.35)",
+                        }}
+                      />
+                    )}
+                    {!editImage?.dataUrl &&
+                      !filtered[editingIndex]?.image && (
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "#6b7280",
+                          }}
+                        >
+                          No image attached.
+                        </span>
+                      )}
+                  </div>
+
+                  <label
+                    style={{
+                      padding: "7px 14px",
+                      borderRadius: 999,
+                      background:
+                        "linear-gradient(135deg,#0ea5e9,#0369a1)",
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      border: "none",
+                    }}
+                  >
+                    Change / Upload Image
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditImageSelect}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+
+                  {editImage && (
+                    <button
+                      type="button"
+                      onClick={() => setEditImage(null)}
+                      style={{
+                        padding: "7px 14px",
+                        borderRadius: 999,
+                        background:
+                          "linear-gradient(135deg,#94a3b8,#64748b)",
+                        color: "#fff",
+                        fontWeight: 700,
+                        fontSize: 12,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Reset Image
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
                 <button
                   onClick={saveEdit}
