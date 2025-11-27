@@ -215,16 +215,14 @@ function cmpDMY(a, b) {
 }
 
 /* === Utilities لزر Import Dates فقط (as-is) === */
-/** نعيد نص الخلية كما يظهر في إكسل (display text). لا نحاول تحويل السيريال إطلاقًا. */
 function getExcelDisplayText(ws, r, c) {
   try {
     const addr = XLSX.utils.encode_cell({ r, c });
     const cell = ws[addr];
     const raw = (cell?.w ?? "").toString().trim();
-    return raw; // as is
+    return raw;
   } catch { return ""; }
 }
-/** إيجاد أعمدة Product / Slaughter / Expiry */
 function findPSE(ws) {
   const ref = ws["!ref"];
   if (!ref) return { p: 0, s: 1, e: 2, headerRow: 0 };
@@ -241,8 +239,6 @@ function findPSE(ws) {
   }
   return { p: idxP, s: idxS, e: idxE, headerRow };
 }
-
-/** Quantity from stock-like (مطلوبة في onPick) */
 function chooseQtyFromStockLike(rec) {
   const done = toNumOrEmpty(rec["Done"]);
   const rrq = toNumOrEmpty(rec["Real Reserved Quantity"] ?? rec["Real reserved quantity"]);
@@ -343,6 +339,10 @@ export default function FinishedProductEntry() {
   const datesFileRef = useRef(null);
 
   const [savingStage, setSavingStage] = useState("");
+
+  // 🔹 New: footer fields
+  const [checkedBy, setCheckedBy] = useState("");
+  const [verifiedBy, setVerifiedBy] = useState("");
 
   const customerOptions = useMemo(() => {
     const set = new Set(rows.map((r) => (r.customer || "").trim()).filter(Boolean));
@@ -497,6 +497,9 @@ export default function FinishedProductEntry() {
       reportDate: ymd,
       reportSavedAt: new Date().toISOString(),
       products: cleanRows,
+      // 🔹 New footer fields saved with report
+      checkedBy: checkedBy.trim(),
+      verifiedBy: verifiedBy.trim(),
     };
 
     try {
@@ -504,6 +507,8 @@ export default function FinishedProductEntry() {
       setSavingStage("done");
       setSavedMsg(`✅ Saved on server (ID: ${res?.id || res?._id || "OK"}) — افتح التقارير من زر "Saved Reports" بالأعلى`);
       setRows([{ ...emptyRow }]);
+      setCheckedBy("");
+      setVerifiedBy("");
       setTimeout(() => setSavingStage(""), 400);
     } catch (err) {
       setSavingStage("");
@@ -569,7 +574,6 @@ export default function FinishedProductEntry() {
         const prodCell = ws[XLSX.utils.encode_cell({ r, c: idxP })];
         const prodText = (prodCell?.w || prodCell?.v || "").toString().trim();
 
-        // نص التاريخ كما يظهر في الشيت — بدون أي معالجة
         const sdRaw = getExcelDisplayText(ws, r, idxS);
         const edRaw = getExcelDisplayText(ws, r, idxE);
 
@@ -625,10 +629,8 @@ export default function FinishedProductEntry() {
     }
   };
 
-  /* View */
   const viewRows = useMemo(() => rows.map((r, i) => ({ r, idx: i })), [rows]);
 
-  /* UI */
   const addRow = () => setRows((r) => [...r, { ...emptyRow }]);
   const removeRow = (idx) => { if (rows.length === 1) return; setRows(rows.filter((_, i) => i !== idx)); };
 
@@ -937,6 +939,30 @@ export default function FinishedProductEntry() {
         </datalist>
       </div>
 
+      {/* 🔹 New footer fields under the table */}
+      <div style={{ display: "flex", gap: 16, marginTop: 18, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 240 }}>
+          <label style={labelStyle}>Checked By</label>
+          <input
+            type="text"
+            value={checkedBy}
+            onChange={(e) => setCheckedBy(e.target.value)}
+            style={metaInput}
+            placeholder="Checked By"
+          />
+        </div>
+        <div style={{ minWidth: 240 }}>
+          <label style={labelStyle}>Verified By</label>
+          <input
+            type="text"
+            value={verifiedBy}
+            onChange={(e) => setVerifiedBy(e.target.value)}
+            style={metaInput}
+            placeholder="Verified By"
+          />
+        </div>
+      </div>
+
       <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
         <button onClick={addRow} style={btnInfo}>➕ Add Row</button>
         <button onClick={handleSave} style={btnSuccessWide}>💾 Save Report</button>
@@ -959,7 +985,7 @@ const th = {
   fontWeight: "bold",
   fontSize: "0.98em",
   textAlign: "center",
-  border: "1px solid #000",
+  border: "1px solid #6c0addff",
   whiteSpace: "nowrap",
 };
 const td = { padding: "6px 6px", textAlign: "center", verticalAlign: "top", border: "1px solid #000", whiteSpace: "nowrap" };

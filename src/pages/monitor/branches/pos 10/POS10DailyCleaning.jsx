@@ -1,5 +1,5 @@
 // src/pages/monitor/branches/pos 10/POS10DailyCleaning.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -100,17 +100,89 @@ export default function POS10DailyCleaning() {
 
   const [opMsg, setOpMsg] = useState("");
 
+  // للتحقق من وجود تقرير لنفس التاريخ والفرع
+  const [checkingDup, setCheckingDup] = useState(false);
+  const [hasDuplicate, setHasDuplicate] = useState(false);
+
   const handleChange = (index, field, value) => {
     const updated = [...entries];
     updated[index][field] = value;
     setEntries(updated);
   };
 
+  // دالة تتحقق من وجود تقرير محفوظ لنفس التاريخ لنفس الفرع
+  const hasDuplicateForDate = async (d) => {
+    if (!d) return false;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=${encodeURIComponent(
+          "pos10_daily_cleanliness"
+        )}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const list =
+        Array.isArray(json) ? json :
+        Array.isArray(json?.data) ? json.data :
+        Array.isArray(json?.items) ? json.items :
+        Array.isArray(json?.rows) ? json.rows : [];
+
+      return list.some((r) => {
+        const p = r?.payload || {};
+        const recBranch = p.branch || r.branch;
+        const recDate = p.reportDate || p.header?.reportDate;
+        return String(recBranch) === "POS 10" && String(recDate) === String(d);
+      });
+    } catch (e) {
+      console.warn("Duplicate check failed:", e);
+      // في حال فشل التحقق من السيرفر لا نمنع الحفظ، فقط نسمح للمستخدم بالمحاولة
+      return false;
+    }
+  };
+
+  // عندما يتغيّر التاريخ نتحقق تلقائيًا إن كان هناك تقرير لنفس اليوم
+  useEffect(() => {
+    let cancelled = false;
+    if (!date) {
+      setHasDuplicate(false);
+      return;
+    }
+
+    (async () => {
+      setCheckingDup(true);
+      const exists = await hasDuplicateForDate(date);
+      if (!cancelled) {
+        setHasDuplicate(exists);
+        setCheckingDup(false);
+        if (exists) {
+          setOpMsg(
+            "⚠️ Report for this branch and date already exists. Please change the date or review the report from the reports screen.\n⚠️ تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد. يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير."
+          );
+        } else {
+          setOpMsg("");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [date]);
+
   const handleSave = async () => {
     if (!date) return alert("⚠️ Please select report date.");
     if (!time) return alert("⚠️ Please enter Time.");
     if (!checkedBy || !verifiedBy)
       return alert("⚠️ Checked By and Verified By are mandatory.");
+
+    // منع الحفظ في حال هناك تقرير لنفس اليوم
+    if (hasDuplicate) {
+      alert(
+        "⚠️ Report for this branch and date already exists. Please change the date or review the report from the reports screen.\n⚠️ تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد. يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير."
+      );
+      return;
+    }
 
     try {
       setOpMsg("⏳ Saving...");
@@ -143,6 +215,8 @@ export default function POS10DailyCleaning() {
       setTimeout(() => setOpMsg(""), 4000);
     }
   };
+
+  const saveDisabled = checkingDup || hasDuplicate;
 
   return (
     <div style={{ padding: "1.5rem", background: "#fff", borderRadius: 12 }}>
@@ -225,7 +299,7 @@ export default function POS10DailyCleaning() {
       {/* Date & Time */}
       <div
         style={{
-          marginBottom: "1rem",
+          marginBottom: "0.75rem",
           display: "flex",
           gap: "2rem",
           justifyContent: "center",
@@ -251,6 +325,25 @@ export default function POS10DailyCleaning() {
           />
         </div>
       </div>
+
+      {/* رسالة تكرار التاريخ */}
+      {hasDuplicate && (
+        <div
+          style={{
+            textAlign: "center",
+            color: "#b91c1c",
+            fontWeight: 600,
+            marginBottom: "1rem",
+            whiteSpace: "pre-line",
+          }}
+        >
+          Report for this branch and date already exists. Please change the date
+          or review the report from the reports screen.
+          {"\n"}
+          تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد.
+          يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير.
+        </div>
+      )}
 
       {/* Table */}
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -374,19 +467,21 @@ export default function POS10DailyCleaning() {
       <div style={{ textAlign: "center", marginTop: 20 }}>
         <button
           onClick={handleSave}
+          disabled={saveDisabled}
           style={{
             background: "linear-gradient(180deg,#10b981,#059669)",
             color: "#fff",
             border: "none",
             padding: "12px 22px",
             borderRadius: 12,
-            cursor: "pointer",
+            cursor: saveDisabled ? "not-allowed" : "pointer",
             fontWeight: 800,
             fontSize: "1rem",
             boxShadow: "0 6px 14px rgba(16,185,129,.3)",
+            opacity: saveDisabled ? 0.6 : 1,
           }}
         >
-          💾 Save to Server
+          {checkingDup ? "⏳ Checking..." : "💾 Save to Server"}
         </button>
         {opMsg && (
           <div
@@ -394,6 +489,7 @@ export default function POS10DailyCleaning() {
               marginTop: 10,
               fontWeight: 700,
               color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46",
+              whiteSpace: "pre-line",
             }}
           >
             {opMsg}

@@ -14,7 +14,7 @@ const HEAD_DEFAULT = {
   issueDate: "05/02/2020",
   revisionNo: "0",
   area: "QA",
-  issuedBy: "Sajid Aboobacker",
+  issuedBy: "MOHAMAD ABDULLAH",
   controllingOfficer: "Quality Controller",
   approvedBy: "Hussam O.Sarhan",
 };

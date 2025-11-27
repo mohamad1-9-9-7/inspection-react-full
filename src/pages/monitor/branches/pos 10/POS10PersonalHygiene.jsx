@@ -2,7 +2,7 @@
 // Personal Hygiene input — POS 10
 // يحفظ بنفس أسلوب التقارير عبر /api/reports مع تمييز الفرع (POS 10)
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 const API_BASE =
@@ -39,11 +39,76 @@ export default function POS10PersonalHygiene() {
   const [verifiedBy, setVerifiedBy] = useState("");
   const [opMsg, setOpMsg] = useState("");
 
+  // للتحقق من وجود تقرير لنفس التاريخ والفرع
+  const [checkingDup, setCheckingDup] = useState(false);
+  const [hasDuplicate, setHasDuplicate] = useState(false);
+
   const handleChange = (rowIndex, field, value) => {
     const updated = [...entries];
     updated[rowIndex][field] = value;
     setEntries(updated);
   };
+
+  // دالة تتحقق من وجود تقرير محفوظ لنفس التاريخ لنفس الفرع
+  const hasDuplicateForDate = async (d) => {
+    if (!d) return false;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=${encodeURIComponent(
+          "pos10_personal_hygiene"
+        )}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const json = await res.json();
+      const list =
+        Array.isArray(json) ? json :
+        Array.isArray(json?.data) ? json.data :
+        Array.isArray(json?.items) ? json.items :
+        Array.isArray(json?.rows) ? json.rows : [];
+
+      return list.some((r) => {
+        const p = r?.payload || {};
+        const recBranch = p.branch || r.branch;
+        const recDate = p.reportDate || p.header?.reportDate;
+        return String(recBranch) === String(branch) && String(recDate) === String(d);
+      });
+    } catch (e) {
+      console.warn("Duplicate check failed:", e);
+      // في حال فشل التحقق لا نمنع الحفظ، فقط نسمح للمستخدم بالمحاولة
+      return false;
+    }
+  };
+
+  // عندما يتغيّر التاريخ نتحقق تلقائيًا إن كان هناك تقرير لنفس اليوم
+  useEffect(() => {
+    let cancelled = false;
+    if (!date) {
+      setHasDuplicate(false);
+      return;
+    }
+
+    (async () => {
+      setCheckingDup(true);
+      const exists = await hasDuplicateForDate(date);
+      if (!cancelled) {
+        setHasDuplicate(exists);
+        setCheckingDup(false);
+        if (exists) {
+          setOpMsg(
+            "⚠️ Report for this branch and date already exists. Please change the date or review the report from the reports screen.\n⚠️ تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد. يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير."
+          );
+        } else {
+          setOpMsg("");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [date, branch]);
 
   const handleSave = async () => {
     if (!date) {
@@ -54,6 +119,15 @@ export default function POS10PersonalHygiene() {
       alert("⚠️ Checked By and Verified By are required");
       return;
     }
+
+    // منع الحفظ في حال هناك تقرير لنفس اليوم
+    if (hasDuplicate) {
+      alert(
+        "⚠️ Report for this branch and date already exists. Please change the date or review the report from the reports screen.\n⚠️ تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد. يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير."
+      );
+      return;
+    }
+
     try {
       setOpMsg("⏳ Saving...");
       const payload = {
@@ -69,8 +143,8 @@ export default function POS10PersonalHygiene() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reporter: "pos10",                // ✅ تمييز الفرع
-          type: "pos10_personal_hygiene",   // ✅ نوع التقرير
+          reporter: "pos10", // ✅ تمييز الفرع
+          type: "pos10_personal_hygiene", // ✅ نوع التقرير
           payload,
         }),
       });
@@ -84,6 +158,8 @@ export default function POS10PersonalHygiene() {
       setTimeout(() => setOpMsg(""), 4000);
     }
   };
+
+  const saveDisabled = checkingDup || hasDuplicate;
 
   return (
     <div style={{ padding: "1rem", background: "#fff", borderRadius: 12 }}>
@@ -177,6 +253,25 @@ export default function POS10PersonalHygiene() {
           }}
         />
       </div>
+
+      {/* رسالة تكرار التاريخ */}
+      {hasDuplicate && (
+        <div
+          style={{
+            textAlign: "center",
+            color: "#b91c1c",
+            fontWeight: 600,
+            marginBottom: "0.75rem",
+            whiteSpace: "pre-line",
+          }}
+        >
+          Report for this branch and date already exists. Please change the date
+          or review the report from the reports screen.
+          {"\n"}
+          تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد.
+          يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير.
+        </div>
+      )}
 
       {/* Table */}
       <table
@@ -292,22 +387,32 @@ export default function POS10PersonalHygiene() {
         <button
           type="button"
           onClick={handleSave}
+          disabled={saveDisabled}
           style={{
             padding: "10px 18px",
             background: "linear-gradient(180deg,#10b981,#059669)",
             color: "#fff",
             border: "none",
             borderRadius: "8px",
-            cursor: "pointer",
+            cursor: saveDisabled ? "not-allowed" : "pointer",
             fontWeight: 600,
+            opacity: saveDisabled ? 0.6 : 1,
           }}
         >
-          💾 Save Report
+          {checkingDup ? "⏳ Checking..." : "💾 Save Report"}
         </button>
       </div>
 
       {opMsg && (
-        <div style={{ marginTop: "1rem", fontWeight: "600" }}>{opMsg}</div>
+        <div
+          style={{
+            marginTop: "1rem",
+            fontWeight: "600",
+            whiteSpace: "pre-line",
+          }}
+        >
+          {opMsg}
+        </div>
       )}
     </div>
   );
