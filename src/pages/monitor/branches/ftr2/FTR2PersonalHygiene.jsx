@@ -1,8 +1,10 @@
 // src/pages/monitor/branches/ftr2/FTR2PersonalHygiene.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+
+const TYPE = "ftr2_personal_hygiene";
 
 const columns = [
   "Nails",
@@ -12,6 +14,19 @@ const columns = [
   "Communicable Disease",
   "Open wounds/sores & cut",
 ];
+
+/* ===== Helpers للتاريخ ===== */
+const toISODate = (s) => {
+  try {
+    if (!s) return "";
+    const m = String(s).match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : "";
+  } catch {
+    return "";
+  }
+};
+
+const sameDay = (a, b) => toISODate(a) === toISODate(b);
 
 export default function FTR2PersonalHygiene() {
   const [date, setDate] = useState("");
@@ -31,11 +46,72 @@ export default function FTR2PersonalHygiene() {
   const [verifiedBy, setVerifiedBy] = useState("");
   const [opMsg, setOpMsg] = useState("");
 
+  // حالة فحص تكرار التاريخ
+  const [dateBusy, setDateBusy] = useState(false);   // جاري التحقق؟
+  const [dateTaken, setDateTaken] = useState(false); // هل اليوم محجوز؟
+  const [dateError, setDateError] = useState("");    // رسالة خطأ في التحقق
+
   const handleChange = (rowIndex, field, value) => {
     const updated = [...entries];
     updated[rowIndex][field] = value;
     setEntries(updated);
   };
+
+  /* ===================== التحقق من التكرار =====================
+     عند تغيير التاريخ:
+     - نجلب تقارير TYPE=ftr2_personal_hygiene
+     - نفلتر محليًا على branch=FTR 2 + نفس اليوم
+  ============================================================ */
+  useEffect(() => {
+    let abort = false;
+
+    async function checkDuplicate() {
+      const d = toISODate(date);
+      setDateError("");
+      setDateTaken(false);
+
+      if (!d) return; // لو التاريخ فاضي ما في حاجة نتحقق
+
+      setDateBusy(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const arr = Array.isArray(json)
+          ? json
+          : json?.data || json?.items || json?.rows || [];
+
+        const exists = arr.some((r) => {
+          const p = r?.payload ?? r;
+          const b = String(p?.branch || "").toLowerCase().trim();
+          const pd = p?.reportDate || r?.created_at;
+          return b === "ftr 2".toLowerCase() && sameDay(pd, d);
+        });
+
+        if (!abort) {
+          setDateTaken(exists);
+        }
+      } catch (e) {
+        if (!abort) {
+          console.error(e);
+          setDateError(
+            "⚠️ فشل التحقق من وجود تقرير لهذا اليوم. يمكن المتابعة لكن يُفضّل المراجعة لاحقًا."
+          );
+          setDateTaken(false); // لا نمنع الحفظ إذا فشل التحقق، فقط تحذير
+        }
+      } finally {
+        if (!abort) setDateBusy(false);
+      }
+    }
+
+    checkDuplicate();
+    return () => {
+      abort = true;
+    };
+  }, [date]);
 
   const handleSave = async () => {
     if (!date) {
@@ -46,15 +122,26 @@ export default function FTR2PersonalHygiene() {
       alert("⚠️ Checked By and Verified By are required");
       return;
     }
+
+    // منع حفظ تقريرين لنفس اليوم
+    if (dateTaken) {
+      alert(
+        "⛔ غير مسموح بحفظ أكثر من تقرير ليوم واحد لنفس الفرع.\nNot allowed to save more than one report for the same date and branch.\n\nاختر تاريخًا آخر أو عدّل التقرير السابق من شاشة التقارير.\nPlease choose another date or edit the previous report from the reports screen."
+      );
+      return;
+    }
+
     try {
       setOpMsg("⏳ Saving...");
       const payload = {
         branch: "FTR 2",
-        reportDate: date,
+        reportDate: toISODate(date),
         entries,
         checkedBy,
         verifiedBy,
         savedAt: Date.now(),
+        // مفتاح فريد اختياري (لو السيرفر يدعمه)
+        unique_key: `ftr2_personal_hygiene_${toISODate(date)}`,
       };
 
       const res = await fetch(`${API_BASE}/api/reports`, {
@@ -62,16 +149,23 @@ export default function FTR2PersonalHygiene() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reporter: "ftr2",
-          type: "ftr2_personal_hygiene",
+          type: TYPE,
           payload,
         }),
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        if (res.status === 409) {
+          throw new Error(
+            "⛔ يوجد بالفعل تقرير لنفس اليوم (409 Conflict من السيرفر)."
+          );
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
       setOpMsg("✅ Saved successfully!");
     } catch (err) {
       console.error(err);
-      setOpMsg("❌ Failed to save.");
+      setOpMsg(`❌ Failed to save. ${err?.message || ""}`);
     } finally {
       setTimeout(() => setOpMsg(""), 4000);
     }
@@ -80,7 +174,13 @@ export default function FTR2PersonalHygiene() {
   return (
     <div style={{ padding: "1rem", background: "#fff", borderRadius: 12 }}>
       {/* Header info */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          marginBottom: "1rem",
+        }}
+      >
         <tbody>
           <tr>
             <td style={tdHeader}>
@@ -131,8 +231,16 @@ export default function FTR2PersonalHygiene() {
         PERSONAL HYGIENE CHECKLIST FTR-2
       </h3>
 
-      {/* Date */}
-      <div style={{ marginBottom: "0.5rem" }}>
+      {/* Date + حالة التحقق */}
+      <div
+        style={{
+          marginBottom: "0.5rem",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "0.5rem",
+          alignItems: "center",
+        }}
+      >
         <strong>Date:</strong>{" "}
         <input
           type="date"
@@ -144,6 +252,30 @@ export default function FTR2PersonalHygiene() {
             border: "1px solid #ccc",
           }}
         />
+        {date && (
+          <>
+            {dateBusy && (
+              <span style={{ color: "#6b7280", fontWeight: 600 }}>
+                جارٍ التحقق من وجود تقرير لهذا اليوم…
+              </span>
+            )}
+            {!dateBusy && dateTaken && (
+              <span style={{ color: "#b91c1c", fontWeight: 600 }}>
+                ⛔ يوجد تقرير محفوظ لهذا اليوم (FTR 2)
+              </span>
+            )}
+            {!dateBusy && !dateTaken && !dateError && (
+              <span style={{ color: "#065f46", fontWeight: 600 }}>
+                ✅ التاريخ متاح للحفظ
+              </span>
+            )}
+            {dateError && (
+              <span style={{ color: "#b45309", fontWeight: 600 }}>
+                {dateError}
+              </span>
+            )}
+          </>
+        )}
       </div>
 
       {/* Table */}
@@ -163,7 +295,9 @@ export default function FTR2PersonalHygiene() {
                 {col}
               </th>
             ))}
-            <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
+            <th style={{ ...thStyle, width: "250px" }}>
+              Remarks and Corrective Actions
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -178,7 +312,7 @@ export default function FTR2PersonalHygiene() {
                   style={{
                     ...inputStyle,
                     width: "100%",
-                    maxWidth: "140px",   // 👈 ضبط عرض خانة الاسم
+                    maxWidth: "140px", // ضبط عرض خانة الاسم
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                   }}
@@ -201,7 +335,9 @@ export default function FTR2PersonalHygiene() {
                 <input
                   type="text"
                   value={entry.remarks}
-                  onChange={(e) => handleChange(i, "remarks", e.target.value)}
+                  onChange={(e) =>
+                    handleChange(i, "remarks", e.target.value)
+                  }
                   style={{ ...inputStyle, width: "100%" }}
                 />
               </td>
@@ -255,14 +391,16 @@ export default function FTR2PersonalHygiene() {
       <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
         <button
           onClick={handleSave}
+          disabled={dateTaken}
           style={{
             padding: "10px 18px",
             background: "linear-gradient(180deg,#10b981,#059669)",
             color: "#fff",
             border: "none",
             borderRadius: "8px",
-            cursor: "pointer",
+            cursor: dateTaken ? "not-allowed" : "pointer",
             fontWeight: 600,
+            opacity: dateTaken ? 0.6 : 1,
           }}
         >
           💾 Save Report

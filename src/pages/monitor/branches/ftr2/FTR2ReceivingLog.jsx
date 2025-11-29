@@ -26,6 +26,18 @@ const TICK_COLS = [
   },
 ];
 
+/* ===== Helpers للتاريخ ===== */
+const toISODate = (s) => {
+  try {
+    if (!s) return "";
+    const m = String(s).match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : "";
+  } catch {
+    return "";
+  }
+};
+const sameDay = (a, b) => toISODate(a) === toISODate(b);
+
 function emptyRow() {
   return {
     supplier: "",
@@ -283,10 +295,10 @@ export default function FTR2ReceivingLog() {
       setCheckingExisting(true);
       setHasReportToday(false);
       try {
-        const url = `${API_BASE}/api/reports?type=${encodeURIComponent(
-          TYPE
-        )}&branch=${encodeURIComponent(BRANCH)}`;
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetch(
+          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+          { cache: "no-store" }
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const list = Array.isArray(data)
@@ -296,11 +308,10 @@ export default function FTR2ReceivingLog() {
           : [];
 
         const found = list.some((r) => {
-          const p = r.payload || r.data || {};
-          return (
-            p.branch === BRANCH &&
-            (p.reportDate === reportDate || p.date === reportDate)
-          );
+          const p = r?.payload ?? r;
+          const b = String(p?.branch || "").toLowerCase().trim();
+          const d = p?.reportDate || p?.date || r?.created_at;
+          return b === BRANCH.toLowerCase() && sameDay(d, reportDate);
         });
 
         if (!cancelled) {
@@ -326,16 +337,19 @@ export default function FTR2ReceivingLog() {
   async function handleSave() {
     if (hasReportToday) {
       showToast(
-        "يوجد تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد.",
+        "⛔ غير مسموح بحفظ أكثر من تقرير لنفس التاريخ ولنفس الفرع.\n" +
+          "Not allowed to save more than one report for the same date and branch.\n\n" +
+          "يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير.\n" +
+          "Please change the date or review the report from the reports screen.",
         "error",
-        4000
+        5000
       );
       return;
     }
 
     const entries = rows.filter(hasData);
     if (entries.length === 0) {
-      showToast("لا يوجد بيانات للحفظ.", "error", 3000);
+      showToast("⚠️ لا يوجد بيانات للحفظ.\n⚠️ No data to save.", "error", 4000);
       return;
     }
 
@@ -343,7 +357,7 @@ export default function FTR2ReceivingLog() {
       branch: BRANCH,
       formRef,
       classification,
-      reportDate,
+      reportDate: toISODate(reportDate),
       month: monthText,
       invoiceNo,
       entries, // includes base64 images
@@ -354,18 +368,22 @@ export default function FTR2ReceivingLog() {
 
     try {
       setSaving(true);
-      showToast("جارٍ الحفظ…", "info");
+      showToast("جارٍ الحفظ… / Saving…", "info");
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "ftr2", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showToast("تم الحفظ ✅", "success", 2000);
+      showToast("تم الحفظ ✅ / Saved successfully ✅", "success", 2500);
       setHasReportToday(true);
     } catch (e) {
       console.error(e);
-      showToast("فشل الحفظ. تحقّق من السيرفر أو الشبكة.", "error", 3000);
+      showToast(
+        "❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.\n❌ Failed to save. Please check server or network.",
+        "error",
+        4000
+      );
     } finally {
       setSaving(false);
     }
@@ -445,12 +463,31 @@ export default function FTR2ReceivingLog() {
         </div>
       </div>
 
-      {/* Legend */}
+      {/* Legend + حالة التكرار */}
       <div style={{ border: "1px solid #1f3b70", borderBottom: "none" }}>
         <div style={{ ...thCell, position: "static", background: "#e9f0ff" }}>
           LEGEND: (C) – Compliant &nbsp;&nbsp; / &nbsp;&nbsp; (NC) – Non-Compliant
         </div>
       </div>
+      {reportDate && (
+        <div style={{ margin: "4px 0 8px 0", fontSize: 12 }}>
+          {checkingExisting && (
+            <span style={{ color: "#6b7280", fontWeight: 600 }}>
+              جارٍ التحقق من وجود تقرير لهذا التاريخ…
+            </span>
+          )}
+          {!checkingExisting && hasReportToday && (
+            <span style={{ color: "#b91c1c", fontWeight: 600 }}>
+              ⛔ تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع.
+            </span>
+          )}
+          {!checkingExisting && !hasReportToday && (
+            <span style={{ color: "#065f46", fontWeight: 600 }}>
+              ✅ التاريخ متاح للحفظ.
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div style={{ overflowX: "auto", width: "100%" }}>
@@ -785,13 +822,12 @@ export default function FTR2ReceivingLog() {
           }}
         >
           تم العثور على تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد.
-    يرجى تغيير التاريخ أو مراجعة التقرير من شاشة التقارير.
-    <br />
-    A report for this branch is already saved for the selected date. Saving a new
-    report is not allowed. Please change the date or review the report from the
-    reports screen.
-  </div>
-)}  
+          <br />
+          A report for this branch is already saved for the selected date. Saving a new
+          report is not allowed. Please change the date or review the report from the
+          reports screen.
+        </div>
+      )}
 
       {/* Notes */}
       <div style={{ marginTop: 10, fontSize: 11, color: "#0b1f4d" }}>

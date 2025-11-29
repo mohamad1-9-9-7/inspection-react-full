@@ -1,8 +1,23 @@
 // src/pages/monitor/branches/ftr2/FTR2DailyCleanliness.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+
+// نوع التقرير لطلبات الـ API
+const TYPE = "ftr2_daily_cleanliness";
+
+/* ===== Helpers للتاريخ ===== */
+const toISODate = (s) => {
+  try {
+    if (!s) return "";
+    const m = String(s).match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : "";
+  } catch {
+    return "";
+  }
+};
+const sameDay = (a, b) => toISODate(a) === toISODate(b);
 
 // 🔹 تعريف الأقسام + البنود
 const sections = [
@@ -71,28 +86,110 @@ export default function FTR2DailyCleanliness() {
 
   const [opMsg, setOpMsg] = useState("");
 
+  // حالة فحص تكرار التاريخ
+  const [dateBusy, setDateBusy] = useState(false);   // جاري التحقق؟
+  const [dateTaken, setDateTaken] = useState(false); // هل اليوم محجوز؟
+  const [dateError, setDateError] = useState("");    // رسالة خطأ في التحقق
+
   const handleChange = (index, field, value) => {
     const updated = [...entries];
     updated[index][field] = value;
     setEntries(updated);
   };
 
+  /* ===================== التحقق من التكرار =====================
+     عند تغيير التاريخ:
+     - نجلب تقارير TYPE=ftr2_daily_cleanliness
+     - نفلتر محليًا على branch=FTR 2 + نفس اليوم
+  ============================================================ */
+  useEffect(() => {
+    let abort = false;
+
+    async function checkDuplicate() {
+      const d = toISODate(date);
+      setDateError("");
+      setDateTaken(false);
+
+      if (!d) return; // لو التاريخ فاضي ما في حاجة نتحقق
+
+      setDateBusy(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const arr = Array.isArray(json)
+          ? json
+          : json?.data || json?.items || json?.rows || [];
+
+        const exists = arr.some((r) => {
+          const p = r?.payload ?? r;
+          const b = String(p?.branch || "").toLowerCase().trim();
+          const rd = p?.reportDate || r?.created_at;
+          return b === "ftr 2" && sameDay(rd, d);
+        });
+
+        if (!abort) {
+          setDateTaken(exists);
+        }
+      } catch (e) {
+        if (!abort) {
+          console.error(e);
+          setDateError(
+            "⚠️ فشل التحقق من وجود تقرير لهذا التاريخ. يمكن المتابعة لكن يُفضّل المراجعة لاحقًا."
+          );
+          setDateTaken(false); // لا نمنع الحفظ إذا فشل التحقق، فقط تحذير
+        }
+      } finally {
+        if (!abort) setDateBusy(false);
+      }
+    }
+
+    checkDuplicate();
+    return () => {
+      abort = true;
+    };
+  }, [date]);
+
   const handleSave = async () => {
-    if (!date) return alert("⚠️ Please select report date.");
-    if (!time) return alert("⚠️ Please enter Time.");
+    if (!date)
+      return alert(
+        "⚠️ يرجى اختيار تاريخ التقرير.\n⚠️ Please select report date."
+      );
+    if (!time)
+      return alert(
+        "⚠️ يرجى إدخال الوقت.\n⚠️ Please enter time."
+      );
     if (!checkedBy || !verifiedBy)
-      return alert("⚠️ Checked By and Verified By are mandatory.");
+      return alert(
+        "⚠️ Checked By و Verified By إلزاميان.\n⚠️ Checked By and Verified By are mandatory."
+      );
+
+    // منع حفظ تقريرين لنفس اليوم
+    if (dateTaken) {
+      alert(
+        "⛔ غير مسموح بحفظ أكثر من تقرير لنفس التاريخ ولنفس الفرع.\n" +
+        "Not allowed to save more than one report for the same date and branch.\n\n" +
+        "اختر تاريخًا آخر أو عدّل التقرير السابق من شاشة التقارير.\n" +
+        "Please choose another date or edit the previous report from the reports screen."
+      );
+      return;
+    }
 
     try {
       setOpMsg("⏳ Saving...");
       const payload = {
         branch: "FTR 2",
-        reportDate: date,
+        reportDate: toISODate(date),
         reportTime: time,
         checkedBy,
         verifiedBy,
         entries,
         savedAt: Date.now(),
+        // مفتاح فريد اختياري لو حابب تستخدمه في السيرفر
+        unique_key: `ftr2_daily_cleanliness_${toISODate(date)}`,
       };
 
       const res = await fetch(`${API_BASE}/api/reports`, {
@@ -100,7 +197,7 @@ export default function FTR2DailyCleanliness() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reporter: "ftr2",
-          type: "ftr2_daily_cleanliness",
+          type: TYPE,
           payload,
         }),
       });
@@ -146,16 +243,56 @@ export default function FTR2DailyCleanliness() {
       </h3>
 
       {/* Date & Time */}
-      <div style={{ marginBottom: "1rem", display: "flex", gap: "2rem", justifyContent: "center" }}>
+      <div
+        style={{
+          marginBottom: "1rem",
+          display: "flex",
+          gap: "2rem",
+          justifyContent: "center",
+          flexWrap: "wrap",
+        }}
+      >
         <div>
           <label style={{ fontWeight: 600, marginRight: 8 }}>📅 Date:</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc" }}/>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc" }}
+          />
+          {date && (
+            <div style={{ marginTop: 4 }}>
+              {dateBusy && (
+                <span style={{ color: "#6b7280", fontWeight: 600 }}>
+                  جارٍ التحقق من وجود تقرير لهذا التاريخ…
+                </span>
+              )}
+              {!dateBusy && dateTaken && (
+                <span style={{ color: "#b91c1c", fontWeight: 600 }}>
+                  ⛔ يوجد تقرير محفوظ لهذا التاريخ (FTR 2)
+                </span>
+              )}
+              {!dateBusy && !dateTaken && !dateError && (
+                <span style={{ color: "#065f46", fontWeight: 600 }}>
+                  ✅ التاريخ متاح للحفظ
+                </span>
+              )}
+              {dateError && (
+                <span style={{ color: "#b45309", fontWeight: 600 }}>
+                  {dateError}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div>
           <label style={{ fontWeight: 600, marginRight: 8 }}>⏰ Time:</label>
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc" }}/>
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc" }}
+          />
         </div>
       </div>
 
@@ -195,23 +332,35 @@ export default function FTR2DailyCleanliness() {
               </td>
               <td style={tdStyle}>
                 {!entry.isSection && (
-                  <input type="text" value={entry.observation}
+                  <input
+                    type="text"
+                    value={entry.observation}
                     onChange={(e) => handleChange(i, "observation", e.target.value)}
-                    style={inputStyle} placeholder="Observation"/>
+                    style={inputStyle}
+                    placeholder="Observation"
+                  />
                 )}
               </td>
               <td style={tdStyle}>
                 {!entry.isSection && (
-                  <input type="text" value={entry.informed}
+                  <input
+                    type="text"
+                    value={entry.informed}
                     onChange={(e) => handleChange(i, "informed", e.target.value)}
-                    style={inputStyle} placeholder="Informed To"/>
+                    style={inputStyle}
+                    placeholder="Informed To"
+                  />
                 )}
               </td>
               <td style={tdStyle}>
                 {!entry.isSection && (
-                  <input type="text" value={entry.remarks}
+                  <input
+                    type="text"
+                    value={entry.remarks}
                     onChange={(e) => handleChange(i, "remarks", e.target.value)}
-                    style={inputStyle} placeholder="Remarks & CA"/>
+                    style={inputStyle}
+                    placeholder="Remarks & CA"
+                  />
                 )}
               </td>
             </tr>
@@ -225,35 +374,64 @@ export default function FTR2DailyCleanliness() {
         *(C = Conform &nbsp;&nbsp;&nbsp; N/C = Non Conform)
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "1rem", fontWeight: 600 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginTop: "1rem",
+          fontWeight: 600,
+          flexWrap: "wrap",
+          gap: "1rem",
+        }}
+      >
         <div>
           Checked By:{" "}
-          <input type="text" value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)}
-            style={{ ...inputStyle, minWidth: "180px" }}/>
+          <input
+            type="text"
+            value={checkedBy}
+            onChange={(e) => setCheckedBy(e.target.value)}
+            style={{ ...inputStyle, minWidth: "180px" }}
+          />
         </div>
         <div>
           Verified By:{" "}
-          <input type="text" value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)}
-            style={{ ...inputStyle, minWidth: "180px" }}/>
+          <input
+            type="text"
+            value={verifiedBy}
+            onChange={(e) => setVerifiedBy(e.target.value)}
+            style={{ ...inputStyle, minWidth: "180px" }}
+          />
         </div>
       </div>
 
       {/* Save */}
       <div style={{ textAlign: "center", marginTop: 20 }}>
-        <button onClick={handleSave}
+        <button
+          onClick={handleSave}
+          disabled={dateTaken}
           style={{
             background: "linear-gradient(180deg,#10b981,#059669)",
-            color: "#fff", border: "none", padding: "12px 22px",
-            borderRadius: 12, cursor: "pointer", fontWeight: 800,
-            fontSize: "1rem", boxShadow: "0 6px 14px rgba(16,185,129,.3)",
-          }}>
+            color: "#fff",
+            border: "none",
+            padding: "12px 22px",
+            borderRadius: 12,
+            cursor: dateTaken ? "not-allowed" : "pointer",
+            fontWeight: 800,
+            fontSize: "1rem",
+            boxShadow: "0 6px 14px rgba(16,185,129,.3)",
+            opacity: dateTaken ? 0.6 : 1,
+          }}
+        >
           💾 Save to Server
         </button>
         {opMsg && (
-          <div style={{
-            marginTop: 10, fontWeight: 700,
-            color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46",
-          }}>
+          <div
+            style={{
+              marginTop: 10,
+              fontWeight: 700,
+              color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46",
+            }}
+          >
             {opMsg}
           </div>
         )}

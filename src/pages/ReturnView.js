@@ -144,8 +144,10 @@ function normalizeServerReturns(raw) {
 const ACTIONS = [
   "Use in production",
   "Condemnation",
+  "Condemnation / Cooking",
   "Use in kitchen",
   "Send to market",
+  "Disposed",
   "Separated expired shelf",
   "إجراء آخر...", // keep exact value for backward compatibility
 ];

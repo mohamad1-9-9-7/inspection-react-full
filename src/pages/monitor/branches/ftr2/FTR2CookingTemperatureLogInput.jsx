@@ -1,5 +1,5 @@
 // src/pages/monitor/branches/ftr2/FTR2CookingTemperatureLogInput.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 /* ===== API base ===== */
 const API_BASE = String(
@@ -16,6 +16,18 @@ const TYPE   = "ftr2_cooking_temperature_log";
 const BRANCH = "FTR 2 Food Truck";
 /* رقم المستند */
 const DOC_NO = "FS-QM/REC/CTL"; // Cooking Temperature Log
+
+/* ===== Helpers للتاريخ ===== */
+const toISODate = (s) => {
+  try {
+    if (!s) return "";
+    const m = String(s).match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : "";
+  } catch {
+    return "";
+  }
+};
+const sameDay = (a, b) => toISODate(a) === toISODate(b);
 
 /* قالب سطر */
 const emptyRow = () => ({
@@ -43,6 +55,11 @@ export default function FTR2CookingTemperatureLogInput() {
   // 3 أسطر افتراضيًا
   const [rows, setRows] = useState(() => Array.from({ length: 3 }, () => emptyRow()));
   const [saving, setSaving] = useState(false);
+
+  // حالة فحص تكرار التاريخ
+  const [dateBusy, setDateBusy] = useState(false);   // جاري التحقق؟
+  const [dateTaken, setDateTaken] = useState(false); // هل اليوم محجوز؟
+  const [dateError, setDateError] = useState("");    // رسالة خطأ في التحقق
 
   /* ===== ستايلات ===== */
   const gridStyle = useMemo(() => ({
@@ -108,18 +125,93 @@ export default function FTR2CookingTemperatureLogInput() {
   }
   function addRow() { setRows((prev) => [...prev, emptyRow()]); }
 
+  /* ===================== التحقق من التكرار =====================
+     عند تغيير reportDate:
+     - نجلب تقارير TYPE=ftr2_cooking_temperature_log
+     - نفلتر محليًا على branch=BRANCH + نفس اليوم
+  ============================================================ */
+  useEffect(() => {
+    let abort = false;
+
+    async function checkDuplicate() {
+      const d = toISODate(reportDate);
+      setDateError("");
+      setDateTaken(false);
+
+      if (!d) return; // لو التاريخ فاضي ما في حاجة نتحقق
+
+      setDateBusy(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const arr = Array.isArray(json)
+          ? json
+          : json?.data || json?.items || json?.rows || [];
+
+        const exists = arr.some((r) => {
+          const p  = r?.payload ?? r;
+          const br = String(p?.branch || "").toLowerCase().trim();
+          const rd = p?.reportDate || r?.created_at;
+          return br === BRANCH.toLowerCase() && sameDay(rd, d);
+        });
+
+        if (!abort) {
+          setDateTaken(exists);
+        }
+      } catch (e) {
+        if (!abort) {
+          console.error(e);
+          setDateError(
+            "⚠️ فشل التحقق من وجود تقرير لهذا التاريخ. يمكن المتابعة لكن يُفضّل المراجعة لاحقًا."
+          );
+          setDateTaken(false); // لا نمنع الحفظ إذا فشل التحقق، فقط تحذير
+        }
+      } finally {
+        if (!abort) setDateBusy(false);
+      }
+    }
+
+    checkDuplicate();
+    return () => { abort = true; };
+  }, [reportDate]);
+
   async function handleSave() {
     const entries = rows.filter((r) =>
       Object.values(r).some((v) => String(v || "").trim() !== "")
     );
-    if (!entries.length) return alert("لا يوجد بيانات للحفظ.");
+    if (!entries.length) return alert("لا يوجد بيانات للحفظ.\nNo data to save.");
+
+    if (!reportDate) {
+      alert("⚠️ يرجى اختيار تاريخ التقرير.\n⚠️ Please select a report date.");
+      return;
+    }
+
+    if (!verifiedBy.trim()) {
+      alert("⚠️ يرجى إدخال اسم الشخص الذي قام بالتحقق.\n⚠️ Please enter the name of the person who verified.");
+      return;
+    }
+
+    // منع حفظ تقريرين لنفس التاريخ لنفس الفرع
+    if (dateTaken) {
+      alert(
+        "⛔ غير مسموح بحفظ أكثر من تقرير لنفس التاريخ ولنفس الفرع.\n" +
+        "Not allowed to save more than one report for the same date and branch.\n\n" +
+        "اختر تاريخًا آخر أو عدّل التقرير السابق من شاشة التقارير.\n" +
+        "Please choose another date or edit the previous report from the reports screen."
+      );
+      return;
+    }
 
     const payload = {
       company: "Trans Emirates Livestock Trading L.L.C. (Al Mawashi)",
       documentTitle: "Cooking Temperature Log",
       documentNo: DOC_NO,
       branch: BRANCH,
-      reportDate,
+      reportDate: toISODate(reportDate),
       entries: entries.map((r) => ({
         date: r.date || "",
         timeOfCooking: r.timeOfCooking || "",
@@ -131,6 +223,8 @@ export default function FTR2CookingTemperatureLogInput() {
       })),
       verifiedBy,
       savedAt: Date.now(),
+      // مفتاح فريد اختياري لو حابب تستخدمه في السيرفر
+      unique_key: `ftr2_cooking_temperature_log_${toISODate(reportDate)}`,
     };
 
     try {
@@ -141,11 +235,11 @@ export default function FTR2CookingTemperatureLogInput() {
         body: JSON.stringify({ reporter: "ftr2", type: TYPE, payload }), // reporter=ftr2
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("✅ تم الحفظ بنجاح!");
+      alert("✅ تم الحفظ بنجاح!\n✅ Saved successfully!");
       // بإمكانك هنا تصفير الحقول إذا رغبت
     } catch (e) {
       console.error(e);
-      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.\n❌ Failed to save. Please check the server or network.");
     } finally {
       setSaving(false);
     }
@@ -180,15 +274,39 @@ export default function FTR2CookingTemperatureLogInput() {
         </tbody>
       </table>
 
-      {/* Report Date */}
-      <div style={{ marginBottom: "0.8rem" }}>
-        <label style={{ fontWeight: 700, marginRight: 8 }}>Report Date:</label>
+      {/* Report Date + حالة التحقق */}
+      <div style={{ marginBottom: "0.8rem", display:"flex", flexWrap:"wrap", gap:8, alignItems:"center" }}>
+        <label style={{ fontWeight: 700 }}>Report Date:</label>
         <input
           type="date"
           value={reportDate}
           onChange={(e)=>setReportDate(e.target.value)}
           style={{ ...inputStyle, maxWidth: 220 }}
         />
+        {reportDate && (
+          <>
+            {dateBusy && (
+              <span style={{ color: "#6b7280", fontWeight: 600 }}>
+                جارٍ التحقق من وجود تقرير لهذا التاريخ…
+              </span>
+            )}
+            {!dateBusy && dateTaken && (
+              <span style={{ color: "#b91c1c", fontWeight: 600 }}>
+                ⛔ يوجد تقرير محفوظ لهذا التاريخ ({BRANCH})
+              </span>
+            )}
+            {!dateBusy && !dateTaken && !dateError && (
+              <span style={{ color: "#065f46", fontWeight: 600 }}>
+                ✅ التاريخ متاح للحفظ
+              </span>
+            )}
+            {dateError && (
+              <span style={{ color: "#b45309", fontWeight: 600 }}>
+                {dateError}
+              </span>
+            )}
+          </>
+        )}
       </div>
 
       {/* Table */}
@@ -272,7 +390,15 @@ export default function FTR2CookingTemperatureLogInput() {
 
       {/* Actions */}
       <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:14 }}>
-        <button onClick={handleSave} disabled={saving} style={btn("#1d4ed8")}>
+        <button
+          onClick={handleSave}
+          disabled={saving || dateTaken}
+          style={{
+            ...btn("#1d4ed8"),
+            cursor: (saving || dateTaken) ? "not-allowed" : "pointer",
+            opacity: dateTaken ? 0.6 : 1,
+          }}
+        >
           {saving ? "Saving…" : "💾 Save to Server"}
         </button>
       </div>
