@@ -11,14 +11,41 @@ const roles = [
   { id: 'supervisor',   label: 'مشرف / Supervisor',               route: '/supervisor',             icon: '🛠️' },
   { id: 'daily',        label: 'مراقبة يومية / Daily Monitor',    route: '/monitor',                icon: '📅' },
   { id: 'ohc',          label: 'OHC',                             route: '/ohc',                    icon: '🩺' },
+
   { id: 'returns',      label: 'مرتجعات / Returns',               route: '/returns/menu',           icon: '♻️' }, // ✅ كما هو
   { id: 'finalProduct', label: 'تقرير المنتج النهائي / Final Product Report', route: '/finished-product-entry', icon: '🏷️' },
   { id: 'cars',         label: 'السيارات / Cars',                 route: '/cars',                   icon: '🚗' },
-  // 🆕 صفحة الهب للصيانة
+  // صفحة الهب للصيانة
   { id: 'maintenance',  label: 'طلبات الصيانة / Maintenance',     route: '/maintenance-home',       icon: '🔧' },
 
-  // 🆕✅ عرض شحنات QCS مباشرة (عرض فقط)
+  // عرض شحنات QCS مباشرة (عرض فقط)
   { id: 'qcsView',      label: 'عرض شحنات QCS / QCS Shipments (View)', route: '/qcs-raw-material-view', icon: '📦' },
+
+  // 👇 الكروت الجديدة في النهاية
+
+  // شهادات التدريب Basic Food Safety / EFST / PIC
+  {
+    id: 'training',
+    label: 'شهادات التدريب / Training (BFS / EFST OR PIC)',
+    route: '/training-certificates',
+    icon: '🎓'
+  },
+
+  // كرت ISO 22000 & HACCP
+  {
+    id: 'iso',
+    label: 'ISO 22000 & HACCP',
+    route: '/iso-haccp',
+    icon: '📘'
+  },
+
+  // كرت HALAL AUDIT
+  {
+    id: 'halalAudit',
+    label: 'HALAL AUDIT',
+    route: '/halal-audit',
+    icon: '📋'
+  },
 ];
 
 function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
@@ -209,7 +236,7 @@ function Login() {
   };
 
   const roleTile = (active) => ({
-    width: 160,              // أكبر وضوحاً
+    width: 160,
     height: 160,
     borderRadius: 24,
     cursor: "pointer",

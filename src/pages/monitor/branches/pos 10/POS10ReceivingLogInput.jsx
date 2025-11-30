@@ -34,6 +34,7 @@ function emptyRow() {
     foodItem: "",
     vehicleTemp: "",
     foodTemp: "",
+    quantity: "",            // ✅ عمود الكمية الجديد
     vehicleClean: "",
     handlerHygiene: "",
     appearanceOK: "",
@@ -170,6 +171,7 @@ export default function POS10ReceivingLogInput() {
       <col key="food" style={{ width: 160 }} />,
       <col key="vehT" style={{ width: 90 }} />,
       <col key="foodT" style={{ width: 90 }} />,
+      <col key="qty" style={{ width: 110 }} />,          // ✅ عمود الكمية
       <col key="vehClean" style={{ width: 120 }} />,
       <col key="handler" style={{ width: 140 }} />,
       <col key="appearanceOK" style={{ width: 120 }} />,
@@ -532,6 +534,7 @@ export default function POS10ReceivingLogInput() {
               <th style={thCell}>Food Item</th>
               <th style={thCell}>Vehicle Temp (°C)</th>
               <th style={thCell}>Food Temp (°C)</th>
+              <th style={thCell}>Quantity KG\PCS</th> {/* ✅ الهيدر الجديد */}
               <th style={thCell}>Vehicle clean</th>
               <th style={thCell}>Food handler hygiene</th>
               <th style={thCell}>Appearance</th>
@@ -593,6 +596,18 @@ export default function POS10ReceivingLogInput() {
                     }
                     style={inputStyle}
                     placeholder="°C"
+                  />
+                </td>
+                {/* ✅ خانة الكمية */}
+                <td style={tdCell}>
+                  <input
+                    type="text"
+                    value={r.quantity}
+                    onChange={(e) =>
+                      updateRow(idx, "quantity", e.target.value)
+                    }
+                    style={inputStyle}
+                    placeholder="e.g., 10 KG / 5 PCS"
                   />
                 </td>
 

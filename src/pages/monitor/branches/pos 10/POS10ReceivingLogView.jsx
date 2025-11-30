@@ -45,6 +45,7 @@ function emptyRow() {
   return {
     supplier: "", foodItem: "",
     vehicleTemp: "", foodTemp: "",
+    quantity: "",                            // ✅ New quantity field
     vehicleClean: "", handlerHygiene: "", appearanceOK: "", firmnessOK: "", smellOK: "", packagingGood: "",
     countryOfOrigin: "", productionDate: "", expiryDate: "",
     remarks: "",
@@ -116,6 +117,7 @@ export default function POS10ReceivingLogView() {
     <col key="food" style={{ width: 160 }} />,
     <col key="vehT" style={{ width: 90 }} />,
     <col key="foodT" style={{ width: 90 }} />,
+    <col key="qty" style={{ width: 110 }} />,          // ✅ Quantity column
     <col key="vehClean" style={{ width: 120 }} />,
     <col key="handler" style={{ width: 140 }} />,
     <col key="appearanceOK" style={{ width: 120 }} />,
@@ -312,13 +314,13 @@ export default function POS10ReceivingLogView() {
   // CSV fallback (matches the new columns)
   function fallbackCSV(p) {
     const headers = [
-      "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)",
+      "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Quantity KG\\PCS",
       "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
       "Packaging good/undamaged/clean/no pests",
       "Country of origin","Production Date","Expiry Date","Remarks (if any)"
     ];
     const rows = (p.entries || []).filter(isFilledRow).map(e => ([
-      e?.supplier ?? "", e?.foodItem ?? "", e?.vehicleTemp ?? "", e?.foodTemp ?? "",
+      e?.supplier ?? "", e?.foodItem ?? "", e?.vehicleTemp ?? "", e?.foodTemp ?? "", e?.quantity ?? "",
       e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "", e?.firmnessOK ?? "", e?.smellOK ?? "",
       e?.packagingGood ?? "", e?.countryOfOrigin ?? "", e?.productionDate ?? "", e?.expiryDate ?? "",
       e?.remarks ?? ""
@@ -351,7 +353,7 @@ export default function POS10ReceivingLogView() {
       const borderThin = { style: "thin", color: { argb: "1F3B70" } };
 
       // Title
-      ws.mergeCells(1,1,1,14);
+      ws.mergeCells(1,1,1,15);
       const r1 = ws.getCell(1,1);
       r1.value = "POS 10 | Receiving Log (Butchery)";
       r1.alignment = { horizontal: "center", vertical: "middle" };
@@ -369,23 +371,23 @@ export default function POS10ReceivingLogView() {
       ];
       for (let i = 0; i < meta.length; i++) {
         const rowIdx = 2 + i;
-        ws.mergeCells(rowIdx, 8, rowIdx, 14);
+        ws.mergeCells(rowIdx, 8, rowIdx, 15);
         const c = ws.getCell(rowIdx, 8);
         c.value = `${meta[i][0]} ${meta[i][1]}`;
         c.alignment = { horizontal: "right", vertical: "middle" };
         ws.getRow(rowIdx).height = 18;
       }
 
-      // Column widths
+      // Column widths (15 columns now)
       ws.columns = [
-        { width: 24 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 18 },
-        { width: 14 }, { width: 12 }, { width: 12 }, { width: 36 }, { width: 16 }, { width: 15 },
-        { width: 15 }, { width: 22 },
+        { width: 24 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 16 },
+        { width: 16 }, { width: 18 }, { width: 14 }, { width: 12 }, { width: 12 },
+        { width: 36 }, { width: 16 }, { width: 15 }, { width: 15 }, { width: 22 },
       ];
 
       // Header row
       const COL_HEADERS = [
-        "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)",
+        "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Quantity KG\\PCS",
         "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
         "Packaging of food is good and undamaged, clean and no signs of pest infestation",
         "Country of origin","Production Date","Expiry Date","Remarks (if any)"
@@ -404,7 +406,7 @@ export default function POS10ReceivingLogView() {
       let rowIdx = 8;
       rawRows.forEach((e) => {
         ws.getRow(rowIdx).values = [
-          e?.supplier || "", e?.foodItem || "", e?.vehicleTemp || "", e?.foodTemp || "",
+          e?.supplier || "", e?.foodItem || "", e?.vehicleTemp || "", e?.foodTemp || "", e?.quantity || "",
           e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "", e?.firmnessOK || "", e?.smellOK || "",
           e?.packagingGood || "", e?.countryOfOrigin || "", e?.productionDate || "", e?.expiryDate || "",
           e?.remarks || "",
@@ -717,6 +719,7 @@ export default function POS10ReceivingLogView() {
                       <th style={thCell}>Food Item</th>
                       <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
+                      <th style={thCell}>Quantity KG\PCS</th> {/* ✅ New header */}
                       <th style={thCell}>Vehicle clean</th>
                       <th style={thCell}>Food handler hygiene</th>
                       <th style={thCell}>Appearance</th>
@@ -737,6 +740,7 @@ export default function POS10ReceivingLogView() {
                           <td style={tdCell}>{safe(r.foodItem)}</td>
                           <td style={tdCell}>{safe(r.vehicleTemp)}</td>
                           <td style={tdCell}>{safe(r.foodTemp)}</td>
+                          <td style={tdCell}>{safe(r.quantity)}</td> {/* ✅ View quantity */}
                           <td style={tdCell}>{safe(r.vehicleClean)}</td>
                           <td style={tdCell}>{safe(r.handlerHygiene)}</td>
                           <td style={tdCell}>{safe(r.appearanceOK)}</td>
@@ -784,6 +788,15 @@ export default function POS10ReceivingLogView() {
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], foodTemp:e.target.value}; return n; })}
                               style={inputStyle}
                               placeholder="°C"
+                            />
+                          </td>
+                          <td style={tdCell}>
+                            <input
+                              type="text"
+                              value={r.quantity || ""}
+                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], quantity:e.target.value}; return n; })}
+                              style={inputStyle}
+                              placeholder="e.g., 10 KG / 5 PCS"
                             />
                           </td>
 
