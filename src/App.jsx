@@ -201,6 +201,21 @@ const TrainingCertificatesView = lazy(() =>
   import("./pages/BFS PIC EFST/TrainingCertificatesView")
 );
 
+// 🆕 📘 ISO 22000 & HACCP Hub
+const HaccpIsoMenu = lazy(() =>
+  import("./pages/haccp and iso/HaccpIsoMenu")
+);
+
+// 🆕 📦 Product Details Input
+const ProductDetailsInput = lazy(() =>
+  import("./pages/haccp and iso/ProductDetailsInput")
+);
+
+// 🆕 📦 Product Details View (saved products)
+const ProductDetailsView = lazy(() =>
+  import("./pages/haccp and iso/ProductDetailsView")
+);
+
 /** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
   let isAuthed = false;
@@ -416,7 +431,7 @@ export default function App() {
             }
           />
 
-          {/* ✅ POS 10 — Viewer (اختياري تحت monitor) */}
+          {/* ✅ POS 10 — Viewer */}
           <Route
             path="pos10/reports"
             element={
@@ -737,6 +752,36 @@ export default function App() {
             }
           />
         </Route>
+
+        {/* 🆕 📘 ISO 22000 & HACCP Hub */}
+        <Route
+          path="/iso-haccp"
+          element={
+            <ProtectedRoute>
+              <HaccpIsoMenu />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 Product Details & Specifications (per product) */}
+        <Route
+          path="/haccp-iso/product-details"
+          element={
+            <ProtectedRoute>
+              <ProductDetailsInput />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 Product Details View – saved products */}
+        <Route
+          path="/haccp-iso/product-details/view"
+          element={
+            <ProtectedRoute>
+              <ProductDetailsView />
+            </ProtectedRoute>
+          }
+        />
 
         {/* KPI */}
         <Route path="/kpi-login" element={<LoginKPI />} />
