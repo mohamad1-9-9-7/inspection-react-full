@@ -8,18 +8,30 @@ const Inspection = lazy(() => import("./pages/Inspection"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 
-const DailyMonitorDashboard = lazy(() => import("./pages/monitor/DailyMonitorDashboard"));
-const QCSReport = lazy(() => import("./pages/monitor/branches/QCSReport"));
+const DailyMonitorDashboard = lazy(() =>
+  import("./pages/monitor/DailyMonitorDashboard")
+);
+const QCSReport = lazy(() =>
+  import("./pages/monitor/branches/QCSReport")
+);
 
 // 🆕 Internal Audit – Reports Viewer
 const InternalAuditReportsView = lazy(() =>
   import("./pages/monitor/InternalAuditReportsView")
 );
 
-const POS19Layout = lazy(() => import("./pages/monitor/branches/pos19/POS19Layout"));
-const POS24Layout = lazy(() => import("./pages/monitor/branches/pos24/POS24Layout"));
-const POS26Layout = lazy(() => import("./pages/monitor/branches/pos26/POS26Layout"));
-const POS15Layout = lazy(() => import("./pages/monitor/branches/pos15/POS15Layout"));
+const POS19Layout = lazy(() =>
+  import("./pages/monitor/branches/pos19/POS19Layout")
+);
+const POS24Layout = lazy(() =>
+  import("./pages/monitor/branches/pos24/POS24Layout")
+);
+const POS26Layout = lazy(() =>
+  import("./pages/monitor/branches/pos26/POS26Layout")
+);
+const POS15Layout = lazy(() =>
+  import("./pages/monitor/branches/pos15/POS15Layout")
+);
 
 // 🆕 ✅ POS 10 — التبويبات (إدخال)
 const POS10Layout = lazy(() =>
@@ -47,13 +59,17 @@ const POS19DailyView = lazy(() =>
 );
 
 // ✅ إدخال + عرض FTR1
-const FTR1Report = lazy(() => import("./pages/monitor/branches/ftr1/FTR1Report"));
+const FTR1Report = lazy(() =>
+  import("./pages/monitor/branches/ftr1/FTR1Report")
+);
 const FTR1ReportView = lazy(() =>
   import("./pages/monitor/branches/ftr1/FTR1ReportView")
 );
 
 // ✅ إدخال + عرض FTR2
-const FTR2Report = lazy(() => import("./pages/monitor/branches/ftr2/FTR2Report"));
+const FTR2Report = lazy(() =>
+  import("./pages/monitor/branches/ftr2/FTR2Report")
+);
 const FTR2ReportView = lazy(() =>
   import("./pages/monitor/branches/ftr2/FTR2ReportView")
 );
@@ -64,10 +80,14 @@ const OHCView = lazy(() => import("./pages/ohc/OHCView"));
 const QCSRawMaterialInspection = lazy(() =>
   import("./pages/monitor/branches/shipment_recc/QCSRawMaterialInspection")
 );
-const QCSRawMaterialView = lazy(() => import("./pages/admin/QCSRawMaterialView"));
+const QCSRawMaterialView = lazy(() =>
+  import("./pages/admin/QCSRawMaterialView")
+);
 
 // 🆕 ✅ تقرير عام موحّد (All Reports Summary)
-const AllReportsView = lazy(() => import("./pages/admin/AllReportsView"));
+const AllReportsView = lazy(() =>
+  import("./pages/admin/AllReportsView")
+);
 
 const Returns = lazy(() => import("./pages/Returns"));
 const ReturnView = lazy(() => import("./pages/ReturnView"));
@@ -86,7 +106,9 @@ const FinishedProductReports = lazy(() =>
 );
 
 // 🆕 سيارات
-const CarIconPage = lazy(() => import("./pages/car/pages/CarIcon"));
+const CarIconPage = lazy(() =>
+  import("./pages/car/pages/CarIcon")
+);
 
 // 🆕 صيانة
 const MaintenanceRequests = lazy(() =>
@@ -100,9 +122,15 @@ const BrowseMaintenanceRequests = lazy(() =>
 );
 
 // 🆕 🍖 Meat Daily
-const MeatDailyInput = lazy(() => import("./pages/MeatDailyInput"));
-const MeatDailyView = lazy(() => import("./pages/MeatDailyView"));
-const BrowseMeatDaily = lazy(() => import("./pages/BrowseMeatDaily"));
+const MeatDailyInput = lazy(() =>
+  import("./pages/MeatDailyInput")
+);
+const MeatDailyView = lazy(() =>
+  import("./pages/MeatDailyView")
+);
+const BrowseMeatDaily = lazy(() =>
+  import("./pages/BrowseMeatDaily")
+);
 
 /* 🆕 Production */
 const ProductionHub = lazy(() =>
@@ -124,8 +152,12 @@ const PRDReportsView = lazy(() =>
 );
 
 /* 🆕 مرتجعات الزبائن */
-const CustomerReturns = lazy(() => import("./pages/CustomerReturns"));
-const CustomerReturnView = lazy(() => import("./pages/CustomerReturnView"));
+const CustomerReturns = lazy(() =>
+  import("./pages/CustomerReturns")
+);
+const CustomerReturnView = lazy(() =>
+  import("./pages/CustomerReturnView")
+);
 const BrowseCustomerReturns = lazy(() =>
   import("./pages/BrowseCustomerReturns")
 );
@@ -161,12 +193,22 @@ const InventoryDailyBrowse = lazy(() =>
   import("./pages/store/InventoryDailyBrowse")
 );
 
+// 🆕 🎓 Training Certificates – BFS / PIC / EFST
+const TrainingCertificatesUpload = lazy(() =>
+  import("./pages/BFS PIC EFST/TrainingCertificatesUpload")
+);
+const TrainingCertificatesView = lazy(() =>
+  import("./pages/BFS PIC EFST/TrainingCertificatesView")
+);
+
 /** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
   let isAuthed = false;
   try {
     const raw =
-      typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
+      typeof window !== "undefined"
+        ? localStorage.getItem("currentUser")
+        : null;
     isAuthed = !!(raw && JSON.parse(raw));
   } catch {
     isAuthed = false;
@@ -188,7 +230,11 @@ function BranchMonitorPage() {
 
   return (
     <div
-      style={{ padding: "2rem", direction: "rtl", fontFamily: "Cairo, sans-serif" }}
+      style={{
+        padding: "2rem",
+        direction: "rtl",
+        fontFamily: "Cairo, sans-serif",
+      }}
     >
       <h2>📝 صفحة تقارير الفرع / Branch Reports Page: {prettyName(slug)}</h2>
       <p>
@@ -516,7 +562,12 @@ export default function App() {
         {/* 🆕 Aliases */}
         <Route
           path="/admin/monitor/branches/qcs"
-          element={<Navigate to="/admin/monitor/branches/qcs/reports" replace />}
+          element={
+            <Navigate
+              to="/admin/monitor/branches/qcs/reports"
+              replace
+            />
+          }
         />
         <Route
           path="/admin/monitor/qcs"
@@ -768,6 +819,24 @@ export default function App() {
           element={
             <ProtectedRoute>
               <MaintenanceHome />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🆕 🎓 Training Certificates – BFS Card */}
+        <Route
+          path="/training-certificates"
+          element={
+            <ProtectedRoute>
+              <TrainingCertificatesUpload />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/training-certificates/view"
+          element={
+            <ProtectedRoute>
+              <TrainingCertificatesView />
             </ProtectedRoute>
           }
         />

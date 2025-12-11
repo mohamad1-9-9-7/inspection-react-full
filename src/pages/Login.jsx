@@ -27,7 +27,7 @@ const roles = [
   {
     id: 'training',
     label: 'شهادات التدريب / Training (BFS / EFST OR PIC)',
-    route: '/training-certificates',
+    route: '/training-certificates',   // ✅ نفس المسار الموجود في App.jsx // ✅ تم التعديل هنا
     icon: '🎓'
   },
 
