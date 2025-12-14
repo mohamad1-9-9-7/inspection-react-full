@@ -216,6 +216,16 @@ const ProductDetailsView = lazy(() =>
   import("./pages/haccp and iso/ProductDetailsView")
 );
 
+// ✅ 🆕 Licenses & Contracts Input
+const LicensesContractsInput = lazy(() =>
+  import("./pages/haccp and iso/Licenses and Contracts/LicensesContractsInput")
+);
+
+// ✅ 🆕 Licenses & Contracts View
+const LicensesContractsView = lazy(() =>
+  import("./pages/haccp and iso/Licenses and Contracts/LicensesContractsView")
+);
+
 /** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
   let isAuthed = false;
@@ -577,12 +587,7 @@ export default function App() {
         {/* 🆕 Aliases */}
         <Route
           path="/admin/monitor/branches/qcs"
-          element={
-            <Navigate
-              to="/admin/monitor/branches/qcs/reports"
-              replace
-            />
-          }
+          element={<Navigate to="/admin/monitor/branches/qcs/reports" replace />}
         />
         <Route
           path="/admin/monitor/qcs"
@@ -754,14 +759,17 @@ export default function App() {
         </Route>
 
         {/* 🆕 📘 ISO 22000 & HACCP Hub */}
+        {/* ✅ alias جديد حتى كل /haccp-iso يشتغل */}
         <Route
-          path="/iso-haccp"
+          path="/haccp-iso"
           element={
             <ProtectedRoute>
               <HaccpIsoMenu />
             </ProtectedRoute>
           }
         />
+        {/* ✅ مسارك القديم يبقى شغال */}
+        <Route path="/iso-haccp" element={<Navigate to="/haccp-iso" replace />} />
 
         {/* 🆕 Product Details & Specifications (per product) */}
         <Route
@@ -779,6 +787,26 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ProductDetailsView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ 🆕 Licenses & Contracts Input */}
+        <Route
+          path="/haccp-iso/licenses-contracts"
+          element={
+            <ProtectedRoute>
+              <LicensesContractsInput />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ 🆕 Licenses & Contracts View */}
+        <Route
+          path="/haccp-iso/licenses-contracts/view"
+          element={
+            <ProtectedRoute>
+              <LicensesContractsView />
             </ProtectedRoute>
           }
         />

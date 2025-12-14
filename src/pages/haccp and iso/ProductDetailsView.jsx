@@ -302,6 +302,13 @@ export default function ProductDetailsView() {
             const productImages = splitLinesToList(p.productImageUrls);
             const testImages = splitLinesToList(p.testImagesUrls);
 
+            const dmRegImages = splitLinesToList(p.dmRegistrationImagesUrls);
+            const assessImages = splitLinesToList(p.assessmentCertImagesUrls);
+            const halalImages = splitLinesToList(p.halalCertImagesUrls);
+            const nutritionImages = splitLinesToList(
+              p.nutritionFactsImagesUrls
+            );
+
             const shelfLifeText =
               p.shelfLifeValue && p.shelfLifeUnit
                 ? `${p.shelfLifeValue} ${p.shelfLifeUnit}`
@@ -467,13 +474,13 @@ export default function ProductDetailsView() {
                             color: "#111827",
                           }}
                         >
-                          Basic information
+                          1. Basic information
                         </h4>
-                        <div>Brand: {p.brand || "-"}</div>
+                        <div>1.2 Brand: {p.brand || "-"}</div>
                         <div>Product code / SKU: {p.productCode || "-"}</div>
                         <div>Product type: {p.productType || "-"}</div>
-                        <div>Country of origin: {p.countryOfOrigin || "-"}</div>
-                        <div>Storage condition: {p.storageCondition || "-"}</div>
+                        <div>1.3 Country of origin: {p.countryOfOrigin || "-"}</div>
+                        <div>2.1 Storage condition: {p.storageCondition || "-"}</div>
                         <div>Shelf life: {shelfLifeText || "-"}</div>
                       </div>
 
@@ -486,10 +493,10 @@ export default function ProductDetailsView() {
                             color: "#111827",
                           }}
                         >
-                          Registration & certificates
+                          3. Registration & certificates
                         </h4>
                         <div>
-                          DM registration status:{" "}
+                          3.1 DM registration status:{" "}
                           {p.dmRegisteredStatus || "-"}
                         </div>
                         <div>DM registration No.: {p.dmRegistrationNo || "-"}</div>
@@ -497,11 +504,11 @@ export default function ProductDetailsView() {
                           Other authorities: {p.otherAuthorityRegs || "-"}
                         </div>
                         <div>
-                          Assessment cert. No.: {p.assessmentCertNo || "-"}
+                          3.3 Assessment cert. No.: {p.assessmentCertNo || "-"}
                         </div>
                         <div>Assessment body: {p.assessmentBody || "-"}</div>
                         <div>Assessment date: {p.assessmentDate || "-"}</div>
-                        <div>Halal cert. No.: {p.halalCertNo || "-"}</div>
+                        <div>3.5 Halal cert. No.: {p.halalCertNo || "-"}</div>
                         <div>Halal CB: {p.halalCB || "-"}</div>
                         <div>Halal expiry: {p.halalCertExpiry || "-"}</div>
                       </div>
@@ -526,7 +533,7 @@ export default function ProductDetailsView() {
                             color: "#111827",
                           }}
                         >
-                          Ingredients
+                          2.2 Ingredients
                         </h4>
                         {Array.isArray(p.ingredients) &&
                         p.ingredients.length > 0 ? (
@@ -598,7 +605,7 @@ export default function ProductDetailsView() {
                             color: "#111827",
                           }}
                         >
-                          Allergens & Instructions
+                          2.3–2.4 Allergens & Instructions
                         </h4>
                         <div
                           style={{
@@ -606,7 +613,7 @@ export default function ProductDetailsView() {
                             whiteSpace: "pre-wrap",
                           }}
                         >
-                          <strong>Allergens:</strong>{" "}
+                          <strong>2.3 Allergens:</strong>{" "}
                           {p.allergens || "(none specified)"}
                         </div>
                         <div
@@ -614,21 +621,23 @@ export default function ProductDetailsView() {
                             whiteSpace: "pre-wrap",
                           }}
                         >
-                          <strong>Instructions:</strong>{" "}
+                          <strong>2.4 Instructions:</strong>{" "}
                           {p.instructionsForUse || "(no instructions)"}
                         </div>
                       </div>
                     </div>
 
-                    {/* Images */}
+                    {/* Images sections */}
                     <div
                       style={{
                         display: "grid",
                         gridTemplateColumns: "1.4fr 1.6fr",
                         gap: 12,
                         fontSize: 12,
+                        marginBottom: 10,
                       }}
                     >
+                      {/* Product images */}
                       <div>
                         <h4
                           style={{
@@ -638,7 +647,7 @@ export default function ProductDetailsView() {
                             color: "#111827",
                           }}
                         >
-                          Product images
+                          5. Product images
                         </h4>
                         {productImages.length > 0 ? (
                           <div
@@ -679,6 +688,7 @@ export default function ProductDetailsView() {
                         )}
                       </div>
 
+                      {/* Test images */}
                       <div>
                         <h4
                           style={{
@@ -688,7 +698,7 @@ export default function ProductDetailsView() {
                             color: "#111827",
                           }}
                         >
-                          Test images
+                          4. Test images
                         </h4>
                         {testImages.length > 0 ? (
                           <div
@@ -725,6 +735,222 @@ export default function ProductDetailsView() {
                             No test images.
                           </div>
                         )}
+                      </div>
+                    </div>
+
+                    {/* Registration-related images (DM, Assessment, Halal, Nutrition) */}
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 12,
+                        fontSize: 12,
+                      }}
+                    >
+                      {/* DM & Assessment */}
+                      <div>
+                        <h4
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            marginBottom: 6,
+                            color: "#111827",
+                          }}
+                        >
+                          3. DM & Assessment images
+                        </h4>
+
+                        {/* DM registration images */}
+                        <div style={{ marginBottom: 8 }}>
+                          <strong>DM registration images (max 10):</strong>
+                          {dmRegImages.length > 0 ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                marginTop: 4,
+                              }}
+                            >
+                              {dmRegImages.map((url, i) => (
+                                <a
+                                  key={i}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ textDecoration: "none" }}
+                                >
+                                  <img
+                                    src={url}
+                                    alt={`DM reg ${i + 1}`}
+                                    style={{
+                                      width: 70,
+                                      height: 70,
+                                      objectFit: "cover",
+                                      borderRadius: 10,
+                                      border: "1px solid #e5e7eb",
+                                    }}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <div
+                              style={{ color: "#6b7280", marginTop: 2 }}
+                            >
+                              No DM registration images.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Assessment images */}
+                        <div>
+                          <strong>
+                            Assessment certificate images (max 10):
+                          </strong>
+                          {assessImages.length > 0 ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                marginTop: 4,
+                              }}
+                            >
+                              {assessImages.map((url, i) => (
+                                <a
+                                  key={i}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ textDecoration: "none" }}
+                                >
+                                  <img
+                                    src={url}
+                                    alt={`Assessment ${i + 1}`}
+                                    style={{
+                                      width: 70,
+                                      height: 70,
+                                      objectFit: "cover",
+                                      borderRadius: 10,
+                                      border: "1px solid #e5e7eb",
+                                    }}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <div
+                              style={{ color: "#6b7280", marginTop: 2 }}
+                            >
+                              No assessment images.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Halal & Nutrition facts */}
+                      <div>
+                        <h4
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            marginBottom: 6,
+                            color: "#111827",
+                          }}
+                        >
+                          3.6–3.7 Halal & Nutrition images
+                        </h4>
+
+                        {/* Halal images */}
+                        <div style={{ marginBottom: 8 }}>
+                          <strong>
+                            3.6 Halal certificate images (max 10):
+                          </strong>
+                          {halalImages.length > 0 ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                marginTop: 4,
+                              }}
+                            >
+                              {halalImages.map((url, i) => (
+                                <a
+                                  key={i}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ textDecoration: "none" }}
+                                >
+                                  <img
+                                    src={url}
+                                    alt={`Halal ${i + 1}`}
+                                    style={{
+                                      width: 70,
+                                      height: 70,
+                                      objectFit: "cover",
+                                      borderRadius: 10,
+                                      border: "1px solid #e5e7eb",
+                                    }}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <div
+                              style={{ color: "#6b7280", marginTop: 2 }}
+                            >
+                              No Halal images.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Nutrition facts images */}
+                        <div>
+                          <strong>
+                            3.7 Nutrition facts images (max 10):
+                          </strong>
+                          {nutritionImages.length > 0 ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                marginTop: 4,
+                              }}
+                            >
+                              {nutritionImages.map((url, i) => (
+                                <a
+                                  key={i}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ textDecoration: "none" }}
+                                >
+                                  <img
+                                    src={url}
+                                    alt={`Nutrition ${i + 1}`}
+                                    style={{
+                                      width: 70,
+                                      height: 70,
+                                      objectFit: "cover",
+                                      borderRadius: 10,
+                                      border: "1px solid #e5e7eb",
+                                    }}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <div
+                              style={{ color: "#6b7280", marginTop: 2 }}
+                            >
+                              No nutrition facts images.
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
