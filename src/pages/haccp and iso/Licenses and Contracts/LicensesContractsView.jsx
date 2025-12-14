@@ -144,6 +144,28 @@ function niceFileLabel(url, idx) {
   return `${kind} #${idx + 1}`;
 }
 
+/* ===== ✅ Speed up Cloudinary images (thumb/preview) ===== */
+function cloudinaryResize(url, w) {
+  const u = String(url || "").trim();
+  if (!u) return u;
+  // only if it looks like Cloudinary image upload
+  if (!u.includes("/image/upload/")) return u;
+
+  // avoid double inserting if already has transformations
+  // We'll safely insert "f_auto,q_auto,w_xxx,c_limit" right after /upload/
+  return u.replace(
+    "/image/upload/",
+    `/image/upload/f_auto,q_auto,w_${w},c_limit/`
+  );
+}
+function displayImageUrl(url, size = 1200) {
+  const u = String(url || "").trim();
+  if (!u) return u;
+  if (!isImageUrl(u)) return u;
+  // for cloudinary -> optimized
+  return cloudinaryResize(u, size);
+}
+
 /* ===== UI styles ===== */
 const shellStyle = {
   minHeight: "100vh",
@@ -235,6 +257,18 @@ const inputStyle = {
   background: "rgba(255,255,255,0.95)",
 };
 
+const tableInput = {
+  width: "100%",
+  boxSizing: "border-box",
+  border: "1px solid rgba(30, 41, 59, 0.28)",
+  borderRadius: 10,
+  padding: "8px 10px",
+  fontSize: 12,
+  fontWeight: 800,
+  outline: "none",
+  background: "rgba(255,255,255,0.95)",
+};
+
 const miniBtn = {
   background: "rgba(99,102,241,0.10)",
   border: "1px solid rgba(99,102,241,0.28)",
@@ -303,6 +337,8 @@ function Badge({ expiryDate }) {
 
 /* ===== Modal ===== */
 function PreviewModal({ open, title, urls, index, onClose, onPrev, onNext }) {
+  const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
@@ -314,10 +350,35 @@ function PreviewModal({ open, title, urls, index, onClose, onPrev, onNext }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose, onPrev, onNext]);
 
+  // ✅ prefetch current + neighbors (improves perceived speed)
+  useEffect(() => {
+    if (!open) return;
+    const list = Array.isArray(urls) ? urls : [];
+    const cur = list[index];
+    const prev = list[(index - 1 + list.length) % (list.length || 1)];
+    const next = list[(index + 1) % (list.length || 1)];
+    [cur, prev, next]
+      .filter(Boolean)
+      .forEach((u) => {
+        if (isImageUrl(u)) {
+          const img = new Image();
+          img.decoding = "async";
+          img.src = displayImageUrl(u, 1400);
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, index]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoaded(false);
+  }, [open, index]);
+
   if (!open) return null;
 
   const current = urls?.[index] || "";
   const img = isImageUrl(current);
+  const previewSrc = img ? displayImageUrl(current, 1400) : current;
 
   return (
     <div
@@ -415,17 +476,37 @@ function PreviewModal({ open, title, urls, index, onClose, onPrev, onNext }) {
           }}
         >
           {img ? (
-            <img
-              src={current}
-              alt="preview"
-              style={{
-                maxWidth: "100%",
-                maxHeight: "76vh",
-                borderRadius: 14,
-                border: "1px solid rgba(30,41,59,0.18)",
-                boxShadow: "0 10px 26px rgba(15, 23, 42, 0.10)",
-              }}
-            />
+            <div style={{ width: "100%", display: "grid", placeItems: "center" }}>
+              {!loaded ? (
+                <div
+                  style={{
+                    padding: 14,
+                    borderRadius: 14,
+                    background: "rgba(99,102,241,0.08)",
+                    border: "1px solid rgba(99,102,241,0.18)",
+                    fontWeight: 950,
+                    color: "#3730a3",
+                    marginBottom: 10,
+                  }}
+                >
+                  Loading image...
+                </div>
+              ) : null}
+
+              <img
+                src={previewSrc}
+                alt="preview"
+                onLoad={() => setLoaded(true)}
+                onError={() => setLoaded(true)}
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "76vh",
+                  borderRadius: 14,
+                  border: "1px solid rgba(30,41,59,0.18)",
+                  boxShadow: "0 10px 26px rgba(15, 23, 42, 0.10)",
+                }}
+              />
+            </div>
           ) : (
             <div style={{ padding: 18, fontWeight: 900, color: "#475569" }}>
               This file is not an image preview. Use <b>Open</b> to view it.
@@ -460,7 +541,15 @@ export default function LicensesContractsView() {
   // ✅ Details collapse (default: collapsed)
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  // ✅ Edit mode
+  const [editing, setEditing] = useState(false);
+  const [editLicense, setEditLicense] = useState({});
+  const [editContracts, setEditContracts] = useState([]);
+
   const firstLoad = useRef(true);
+
+  const askPass = (label = "") =>
+    (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   function openPreview(title, urls, startIndex = 0) {
     const list = safeArr(urls).filter(Boolean);
@@ -540,6 +629,8 @@ export default function LicensesContractsView() {
       if (!res.ok) throw new Error("Delete failed");
       alert("✅ Report deleted.");
       await fetchReports();
+      setEditing(false);
+      setDetailsOpen(false);
     } catch (e) {
       console.error(e);
       alert("❌ Failed to delete report.");
@@ -612,6 +703,16 @@ export default function LicensesContractsView() {
     [licenseFiles]
   );
 
+  // ✅ Prefetch thumbs when selected changes (reduces delay)
+  useEffect(() => {
+    const list = licenseImages.slice(0, 8).map((u) => displayImageUrl(u, 320));
+    list.forEach((u) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = u;
+    });
+  }, [licenseImages]);
+
   // Sidebar summary
   function sidebarBadges(r) {
     const p = r?.payload || {};
@@ -645,6 +746,106 @@ export default function LicensesContractsView() {
     ).length;
 
     return { worst, countContracts, hasLic };
+  }
+
+  // ===== Edit handlers =====
+  function startEdit() {
+    if (!selected) return;
+    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
+    setEditLicense(JSON.parse(JSON.stringify(license || {})));
+    setEditContracts(JSON.parse(JSON.stringify(contracts || [])));
+    setEditing(true);
+    setDetailsOpen(true); // open details automatically
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setEditLicense({});
+    setEditContracts([]);
+  }
+
+  function updateContract(i, field, value) {
+    setEditContracts((prev) => {
+      const next = Array.isArray(prev) ? [...prev] : [];
+      next[i] = { ...(next[i] || {}), [field]: value };
+      return next;
+    });
+  }
+
+  function addContractRow() {
+    setEditContracts((prev) => [
+      ...(Array.isArray(prev) ? prev : []),
+      {
+        contractType: "",
+        companyName: "",
+        expiryDate: "",
+        notes: "",
+      },
+    ]);
+  }
+
+  function deleteContractRow(i) {
+    setEditContracts((prev) =>
+      (Array.isArray(prev) ? prev : []).filter((_, idx) => idx !== i)
+    );
+  }
+
+  async function saveEdit() {
+    if (!selected) return;
+    if (!askPass("Save changes")) return alert("❌ Wrong password");
+
+    const rid = getId(selected);
+    if (!rid) return alert("⚠️ Missing report ID.");
+
+    // keep any other payload fields as-is
+    const newPayload = {
+      ...(payload || {}),
+      branch: selectedBranch,
+      license: editLicense || {},
+      contracts: Array.isArray(editContracts) ? editContracts : [],
+      savedAt: Date.now(),
+    };
+
+    try {
+      setLoading(true);
+
+      // delete old record
+      try {
+        await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+          method: "DELETE",
+        });
+      } catch (e) {
+        console.warn("DELETE (ignored)", e);
+      }
+
+      // post new record
+      const postRes = await fetch(`${API_BASE}/api/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          type: TYPE,
+          branch: newPayload.branch,
+          uniqueKey: selected?.uniqueKey || undefined,
+          payload: newPayload,
+        }),
+      });
+
+      if (!postRes.ok) {
+        const t = await postRes.text().catch(() => "");
+        throw new Error(`HTTP ${postRes.status} ${t}`);
+      }
+
+      alert("✅ Changes saved");
+      setEditing(false);
+      setEditLicense({});
+      setEditContracts([]);
+      await fetchReports();
+    } catch (e) {
+      console.error(e);
+      alert("❌ Saving failed.\n" + String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -807,7 +1008,8 @@ export default function LicensesContractsView() {
 
                     <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
                       {groupedByBranch[br].map((r, i) => {
-                        const active = getId(selected) && getId(selected) === getId(r);
+                        const active =
+                          getId(selected) && getId(selected) === getId(r);
                         const meta = sidebarBadges(r);
 
                         return (
@@ -817,6 +1019,9 @@ export default function LicensesContractsView() {
                             onClick={() => {
                               setSelected(r);
                               setDetailsOpen(false); // ✅ كل ما تختار سجل: التفاصيل ترجع مطوية
+                              setEditing(false); // ✅ ونعطل edit mode عند تغيير السجل
+                              setEditLicense({});
+                              setEditContracts([]);
                             }}
                             style={{
                               textAlign: "left",
@@ -892,9 +1097,7 @@ export default function LicensesContractsView() {
               }}
             >
               <div>
-                <div style={{ fontSize: 18, fontWeight: 950 }}>
-                  Report Details
-                </div>
+                <div style={{ fontSize: 18, fontWeight: 950 }}>Report Details</div>
                 <div
                   style={{
                     marginTop: 6,
@@ -903,7 +1106,8 @@ export default function LicensesContractsView() {
                     color: "#64748b",
                   }}
                 >
-                  Branch: <span style={{ color: "#0b1f4d" }}>{selectedBranch}</span>
+                  Branch:{" "}
+                  <span style={{ color: "#0b1f4d" }}>{selectedBranch}</span>
                 </div>
               </div>
 
@@ -918,6 +1122,41 @@ export default function LicensesContractsView() {
                 >
                   {detailsOpen ? "▲ Hide Details" : "▼ Show Details"}
                 </button>
+
+                {/* ✅ Edit controls */}
+                {selected && !editing ? (
+                  <button
+                    type="button"
+                    style={btn("#6366f1")}
+                    onClick={startEdit}
+                    title="Edit this report"
+                  >
+                    ✎ Edit
+                  </button>
+                ) : null}
+
+                {selected && editing ? (
+                  <>
+                    <button
+                      type="button"
+                      style={btn("#10b981")}
+                      onClick={saveEdit}
+                      disabled={loading}
+                      title="Save changes"
+                    >
+                      {loading ? "Saving..." : "✓ Save"}
+                    </button>
+                    <button
+                      type="button"
+                      style={btnGhost}
+                      onClick={cancelEdit}
+                      disabled={loading}
+                      title="Cancel changes"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : null}
 
                 {selected ? (
                   <button
@@ -974,7 +1213,7 @@ export default function LicensesContractsView() {
                     <div style={{ fontSize: 14, fontWeight: 950 }}>
                       Company License
                     </div>
-                    <Badge expiryDate={license?.expiryDate} />
+                    <Badge expiryDate={(editing ? editLicense : license)?.expiryDate} />
                   </div>
 
                   <div
@@ -987,16 +1226,43 @@ export default function LicensesContractsView() {
                   >
                     <div>
                       <div style={fieldLabel}>Name</div>
-                      <div style={{ fontWeight: 900, color: "#0b1f4d" }}>
-                        {license?.name || "—"}
-                      </div>
+                      {!editing ? (
+                        <div style={{ fontWeight: 900, color: "#0b1f4d" }}>
+                          {license?.name || "—"}
+                        </div>
+                      ) : (
+                        <input
+                          style={inputStyle}
+                          value={editLicense?.name || ""}
+                          onChange={(e) =>
+                            setEditLicense((p) => ({ ...(p || {}), name: e.target.value }))
+                          }
+                          placeholder="License name"
+                        />
+                      )}
                     </div>
+
                     <div>
                       <div style={fieldLabel}>Expiry</div>
-                      <div style={{ fontWeight: 900, color: "#0b1f4d" }}>
-                        {license?.expiryDate || "—"}
-                      </div>
+                      {!editing ? (
+                        <div style={{ fontWeight: 900, color: "#0b1f4d" }}>
+                          {license?.expiryDate || "—"}
+                        </div>
+                      ) : (
+                        <input
+                          type="date"
+                          style={inputStyle}
+                          value={editLicense?.expiryDate || ""}
+                          onChange={(e) =>
+                            setEditLicense((p) => ({
+                              ...(p || {}),
+                              expiryDate: e.target.value,
+                            }))
+                          }
+                        />
+                      )}
                     </div>
+
                     <div>
                       <div style={fieldLabel}>Files</div>
 
@@ -1054,17 +1320,28 @@ export default function LicensesContractsView() {
                   {/* Thumbnails */}
                   {licenseImages.length > 0 ? (
                     <div style={thumbWrap}>
-                      {licenseImages.slice(0, 8).map((u, idx) => (
-                        <button
-                          key={u}
-                          type="button"
-                          style={thumbBtn}
-                          title={`Open image #${idx + 1}`}
-                          onClick={() => openPreview("License Images", licenseImages, idx)}
-                        >
-                          <img src={u} alt={`thumb-${idx + 1}`} style={thumbImg} />
-                        </button>
-                      ))}
+                      {licenseImages.slice(0, 8).map((u, idx) => {
+                        const thumbSrc = displayImageUrl(u, 320);
+                        const high = idx < 2 ? "high" : "auto";
+                        return (
+                          <button
+                            key={u}
+                            type="button"
+                            style={thumbBtn}
+                            title={`Open image #${idx + 1}`}
+                            onClick={() => openPreview("License Images", licenseImages, idx)}
+                          >
+                            <img
+                              src={thumbSrc}
+                              alt={`thumb-${idx + 1}`}
+                              style={thumbImg}
+                              loading="eager"
+                              decoding="async"
+                              fetchPriority={high}
+                            />
+                          </button>
+                        );
+                      })}
                       {licenseImages.length > 8 ? (
                         <button
                           type="button"
@@ -1085,27 +1362,64 @@ export default function LicensesContractsView() {
                     </div>
                   ) : null}
 
-                  {license?.notes ? (
-                    <div
-                      style={{
-                        marginTop: 10,
-                        fontSize: 12,
-                        fontWeight: 900,
-                        color: "#334155",
-                      }}
-                    >
-                      Notes: <span style={{ fontWeight: 800 }}>{license.notes}</span>
+                  {!editing ? (
+                    license?.notes ? (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          fontSize: 12,
+                          fontWeight: 900,
+                          color: "#334155",
+                        }}
+                      >
+                        Notes:{" "}
+                        <span style={{ fontWeight: 800 }}>{license.notes}</span>
+                      </div>
+                    ) : null
+                  ) : (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={fieldLabel}>Notes</div>
+                      <input
+                        style={inputStyle}
+                        value={editLicense?.notes || ""}
+                        onChange={(e) =>
+                          setEditLicense((p) => ({ ...(p || {}), notes: e.target.value }))
+                        }
+                        placeholder="Notes..."
+                      />
                     </div>
-                  ) : null}
+                  )}
                 </div>
 
                 {/* Contracts */}
                 <div style={{ marginTop: 14 }}>
-                  <div style={{ fontSize: 14, fontWeight: 950, marginBottom: 10 }}>
-                    Contracts ({contracts.length})
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 950 }}>
+                      Contracts ({(editing ? editContracts : contracts).length})
+                    </div>
+
+                    {editing ? (
+                      <button
+                        type="button"
+                        style={miniBtn}
+                        onClick={addContractRow}
+                        title="Add contract row"
+                      >
+                        + Add Contract
+                      </button>
+                    ) : null}
                   </div>
 
-                  {contracts.length === 0 ? (
+                  {(editing ? editContracts : contracts).length === 0 ? (
                     <div style={{ fontWeight: 900, color: "#64748b" }}>
                       No contracts
                     </div>
@@ -1120,8 +1434,9 @@ export default function LicensesContractsView() {
                       >
                         <thead>
                           <tr>
-                            {["Type", "Company", "Expiry", "Status", "Files", "Notes"].map(
-                              (h) => (
+                            {["Type", "Company", "Expiry", "Status", "Files", "Notes", editing ? "Actions" : ""]
+                              .filter(Boolean)
+                              .map((h) => (
                                 <th
                                   key={h}
                                   style={{
@@ -1132,16 +1447,17 @@ export default function LicensesContractsView() {
                                     color: "#0b1f4d",
                                     borderBottom: "1px solid rgba(30,41,59,0.22)",
                                     background: "rgba(99,102,241,0.08)",
+                                    whiteSpace: "nowrap",
                                   }}
                                 >
                                   {h}
                                 </th>
-                              )
-                            )}
+                              ))}
                           </tr>
                         </thead>
+
                         <tbody>
-                          {contracts.map((c, i) => {
+                          {(editing ? editContracts : contracts).map((c, i) => {
                             const cFiles = normalizeFiles(c);
                             const cImages = cFiles.filter((u) => isImageUrl(u));
                             const hasAny = cFiles.length > 0;
@@ -1153,32 +1469,72 @@ export default function LicensesContractsView() {
                                     padding: 10,
                                     borderBottom: "1px solid rgba(30,41,59,0.16)",
                                     fontWeight: 900,
+                                    minWidth: 170,
                                   }}
                                 >
-                                  {c.contractType || "—"}
+                                  {!editing ? (
+                                    c.contractType || "—"
+                                  ) : (
+                                    <input
+                                      style={tableInput}
+                                      value={c.contractType || ""}
+                                      onChange={(e) =>
+                                        updateContract(i, "contractType", e.target.value)
+                                      }
+                                      placeholder="Contract type"
+                                    />
+                                  )}
                                 </td>
+
                                 <td
                                   style={{
                                     padding: 10,
                                     borderBottom: "1px solid rgba(30,41,59,0.16)",
                                     fontWeight: 900,
+                                    minWidth: 220,
                                   }}
                                 >
-                                  {c.companyName || "—"}
+                                  {!editing ? (
+                                    c.companyName || "—"
+                                  ) : (
+                                    <input
+                                      style={tableInput}
+                                      value={c.companyName || ""}
+                                      onChange={(e) =>
+                                        updateContract(i, "companyName", e.target.value)
+                                      }
+                                      placeholder="Company name"
+                                    />
+                                  )}
                                 </td>
+
                                 <td
                                   style={{
                                     padding: 10,
                                     borderBottom: "1px solid rgba(30,41,59,0.16)",
                                     fontWeight: 900,
+                                    minWidth: 140,
                                   }}
                                 >
-                                  {c.expiryDate || "—"}
+                                  {!editing ? (
+                                    c.expiryDate || "—"
+                                  ) : (
+                                    <input
+                                      type="date"
+                                      style={tableInput}
+                                      value={c.expiryDate || ""}
+                                      onChange={(e) =>
+                                        updateContract(i, "expiryDate", e.target.value)
+                                      }
+                                    />
+                                  )}
                                 </td>
+
                                 <td
                                   style={{
                                     padding: 10,
                                     borderBottom: "1px solid rgba(30,41,59,0.16)",
+                                    minWidth: 150,
                                   }}
                                 >
                                   <Badge expiryDate={c.expiryDate} />
@@ -1189,6 +1545,7 @@ export default function LicensesContractsView() {
                                   style={{
                                     padding: 10,
                                     borderBottom: "1px solid rgba(30,41,59,0.16)",
+                                    minWidth: 220,
                                   }}
                                 >
                                   {!hasAny ? (
@@ -1209,7 +1566,13 @@ export default function LicensesContractsView() {
                                           : `Files: ${cFiles.length}`}
                                       </div>
 
-                                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          gap: 8,
+                                          flexWrap: "wrap",
+                                        }}
+                                      >
                                         {cImages.length > 0 ? (
                                           <button
                                             type="button"
@@ -1284,7 +1647,10 @@ export default function LicensesContractsView() {
                                                     href={u}
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    style={{ ...miniBtn, textDecoration: "none" }}
+                                                    style={{
+                                                      ...miniBtn,
+                                                      textDecoration: "none",
+                                                    }}
                                                   >
                                                     Open
                                                   </a>
@@ -1293,7 +1659,10 @@ export default function LicensesContractsView() {
                                                 <a
                                                   href={u}
                                                   download
-                                                  style={{ ...miniBtn, textDecoration: "none" }}
+                                                  style={{
+                                                    ...miniBtn,
+                                                    textDecoration: "none",
+                                                  }}
                                                 >
                                                   DL
                                                 </a>
@@ -1323,10 +1692,42 @@ export default function LicensesContractsView() {
                                     borderBottom: "1px solid rgba(30,41,59,0.16)",
                                     fontWeight: 900,
                                     color: "#334155",
+                                    minWidth: 240,
                                   }}
                                 >
-                                  {c.notes || "—"}
+                                  {!editing ? (
+                                    c.notes || "—"
+                                  ) : (
+                                    <input
+                                      style={tableInput}
+                                      value={c.notes || ""}
+                                      onChange={(e) =>
+                                        updateContract(i, "notes", e.target.value)
+                                      }
+                                      placeholder="Notes..."
+                                    />
+                                  )}
                                 </td>
+
+                                {editing ? (
+                                  <td
+                                    style={{
+                                      padding: 10,
+                                      borderBottom:
+                                        "1px solid rgba(30,41,59,0.16)",
+                                      minWidth: 120,
+                                    }}
+                                  >
+                                    <button
+                                      type="button"
+                                      style={miniBtnDanger}
+                                      onClick={() => deleteContractRow(i)}
+                                      title="Delete contract row"
+                                    >
+                                      Remove
+                                    </button>
+                                  </td>
+                                ) : null}
                               </tr>
                             );
                           })}

@@ -7,8 +7,8 @@ import logo from '../assets/almawashi-logo.jpg';
 // الأدوار (ثنائي اللغة فقط دون تغيير أي من المسارات/المنطق)
 const roles = [
   { id: 'admin',        label: 'مدير / Admin',                    route: '/admin',                  icon: '👑' },
-  { id: 'inspector',    label: 'مفتش / Inspector',                route: '/inspection',             icon: '🔍' },
-  { id: 'supervisor',   label: 'مشرف / Supervisor',               route: '/supervisor',             icon: '🛠️' },
+  { id: 'inspector',    label: 'مفتش / Inspector',               route: '/inspection',             icon: '🔍' },
+  { id: 'supervisor',   label: 'مشرف / Supervisor',              route: '/supervisor',             icon: '🛠️' },
   { id: 'daily',        label: 'مراقبة يومية / Daily Monitor',    route: '/monitor',                icon: '📅' },
   { id: 'ohc',          label: 'OHC',                             route: '/ohc',                    icon: '🩺' },
 
@@ -222,6 +222,7 @@ function Login() {
     textShadow: "0 1px 6px rgba(0,0,0,0.25)"
   };
 
+  // ✅ نفس الكرت كما هو (ما غيّرنا المقاس/المكان)، فقط أضفنا class لزجاج+نيون
   const card = {
     width: "min(100%, 980px)",
     margin: "0 auto",
@@ -235,6 +236,7 @@ function Login() {
     zIndex: 2,
   };
 
+  // ✅ نفس شكل ومقاس الكروت
   const roleTile = (active) => ({
     width: 160,
     height: 160,
@@ -258,11 +260,13 @@ function Login() {
     transform: active ? "translateY(-3px) scale(1.05)" : "translateY(0) scale(1)",
     textAlign: "center",
     userSelect: "none",
+    position: "relative",
+    overflow: "hidden",
   });
 
   return (
     <div
-      className="login-container"
+      className="login-container mx-bg"
       style={{
         minHeight: '100vh',
         display: 'flex',
@@ -277,6 +281,136 @@ function Login() {
         background: 'linear-gradient(135deg, #0ea5e9 0%, #7c3aed 55%, #111827 100%)',
       }}
     >
+      {/* ✅ CSS مؤثرات فقط (بدون تغيير الـ layout) */}
+      <style>{`
+        .mx-bg{ position:relative; }
+        .mx-blob{
+          position:absolute;
+          width: 540px;
+          height: 540px;
+          border-radius: 999px;
+          filter: blur(34px);
+          opacity: .72;
+          pointer-events:none;
+          z-index: 0;
+          mix-blend-mode: screen;
+          animation: mxFloat 18s ease-in-out infinite;
+          transform: translate3d(0,0,0);
+        }
+        .mx-blob.b1{
+          left:-200px; top:-180px;
+          background: radial-gradient(circle at 30% 30%, rgba(34,211,238,.88), rgba(59,130,246,.16) 60%, transparent 72%);
+        }
+        .mx-blob.b2{
+          right:-240px; top:-170px;
+          background: radial-gradient(circle at 30% 30%, rgba(124,58,237,.88), rgba(236,72,153,.14) 60%, transparent 72%);
+          animation-duration: 20s;
+        }
+        .mx-blob.b3{
+          left:20%; bottom:-260px;
+          background: radial-gradient(circle at 30% 30%, rgba(34,197,94,.80), rgba(16,185,129,.14) 60%, transparent 72%);
+          animation-duration: 22s;
+        }
+        @keyframes mxFloat{
+          0%{ transform: translate3d(0,0,0) scale(1); }
+          50%{ transform: translate3d(46px, -22px, 0) scale(1.08); }
+          100%{ transform: translate3d(0,0,0) scale(1); }
+        }
+
+        /* Noise خفيف */
+        .mx-noise{
+          position:absolute; inset:0;
+          background-image:
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.30'/%3E%3C/svg%3E");
+          opacity:.10;
+          mix-blend-mode: overlay;
+          pointer-events:none;
+          z-index: 0;
+        }
+
+        /* Glass + Neon للكرت الرئيسي */
+        .mx-card-glass{
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+        }
+        .mx-card-glass::before{
+          content:"";
+          position:absolute;
+          inset:-2px;
+          border-radius: 24px;
+          background: conic-gradient(from 180deg,
+            rgba(34,211,238,0),
+            rgba(34,211,238,.55),
+            rgba(124,58,237,.55),
+            rgba(236,72,153,.42),
+            rgba(34,211,238,0)
+          );
+          filter: blur(14px);
+          opacity: .45;
+          pointer-events:none;
+          z-index: -1;
+        }
+        .mx-card-glass::after{
+          content:"";
+          position:absolute;
+          inset:0;
+          border-radius: 22px;
+          background:
+            radial-gradient(700px 260px at 10% 0%, rgba(255,255,255,.22), transparent 60%),
+            radial-gradient(700px 260px at 90% 20%, rgba(255,255,255,.14), transparent 60%);
+          opacity:.55;
+          pointer-events:none;
+        }
+
+        /* Glass + Neon + Spotlight للكروت (بدون تغيير شكلها) */
+        .mx-role-glass{
+          border: 2px solid rgba(255,255,255,0.72) !important;
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+        }
+        .mx-role-glass::before{
+          content:"";
+          position:absolute;
+          inset:-2px;
+          border-radius: 26px;
+          background: conic-gradient(from 180deg,
+            rgba(34,211,238,0),
+            rgba(34,211,238,.65),
+            rgba(124,58,237,.65),
+            rgba(236,72,153,.50),
+            rgba(34,211,238,0)
+          );
+          filter: blur(12px);
+          opacity: 0;
+          transition: opacity .18s ease;
+          pointer-events:none;
+        }
+        .mx-role-glass:hover::before{ opacity: .65; }
+
+        /* Hover Spotlight */
+        .mx-role-glass::after{
+          content:"";
+          position:absolute;
+          inset:0;
+          border-radius: 24px;
+          background: radial-gradient(160px 160px at var(--mx-x, 50%) var(--mx-y, 45%),
+            rgba(255,255,255,.34),
+            rgba(255,255,255,.14) 35%,
+            transparent 65%
+          );
+          opacity: 0;
+          transition: opacity .16s ease;
+          pointer-events:none;
+        }
+        .mx-role-glass:hover::after{ opacity: .9; }
+      `}</style>
+
+      {/* ✅ Animated Blobs خلفية */}
+      <div className="mx-blob b1" />
+      <div className="mx-blob b2" />
+      <div className="mx-blob b3" />
+      <div className="mx-noise" />
+
       {/* زخرفة موجية علوية */}
       <svg
         viewBox="0 0 1440 320"
@@ -306,7 +440,7 @@ function Login() {
       </div>
 
       {/* بطاقة ترحيب + شبكة الأدوار */}
-      <div style={card}>
+      <div style={card} className="mx-card-glass">
         {/* شعار أعلى البطاقة */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
           <img
@@ -332,6 +466,7 @@ function Login() {
         }}>
           مرحبًا بك — اختر دورك / Welcome — choose your role
         </h2>
+
         <div style={{ textAlign: "center", color: "#334155", marginBottom: 20, fontWeight: 600 }}>
           تسجيل دخول سريع بالأدوار المتاحة / Quick role-based access
         </div>
@@ -369,15 +504,26 @@ function Login() {
               onClick={() => handleRoleClick(role)}
               onMouseEnter={() => setHoveredRoleId(role.id)}
               onMouseLeave={() => setHoveredRoleId(null)}
+              onMouseMove={(e) => {
+                // ✅ Hover Spotlight (بدون تغيير الشكل)
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 100;
+                const y = ((e.clientY - rect.top) / rect.height) * 100;
+                e.currentTarget.style.setProperty("--mx-x", `${x}%`);
+                e.currentTarget.style.setProperty("--mx-y", `${y}%`);
+              }}
               style={roleTile(hoveredRoleId === role.id)}
+              className="mx-role-glass"
               title={role.label}
             >
-              <div style={{ fontSize: "3rem", lineHeight: 1 }}>{role.icon}</div>
+              <div style={{ fontSize: "3rem", lineHeight: 1, position: "relative", zIndex: 1 }}>{role.icon}</div>
               <div style={{
                 fontSize: "0.95rem",
                 textAlign: "center",
                 marginTop: "0.2rem",
-                color: "#0b1220"
+                color: "#0b1220",
+                position: "relative",
+                zIndex: 1
               }}>
                 {role.label}
               </div>
