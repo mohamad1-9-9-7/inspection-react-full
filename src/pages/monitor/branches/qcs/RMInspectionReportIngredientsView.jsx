@@ -5,11 +5,11 @@ import jsPDF from "jspdf";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
+    (typeof process !== "undefined" &&
+      (process.env.REACT_APP_API_URL ||
+        process.env.VITE_API_URL ||
+        process.env.RENDER_EXTERNAL_URL)) ||
+    "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
 const TYPE = "qcs_rm_ingredients";
@@ -32,24 +32,24 @@ const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 
 /* ===== ترتيب الأعمدة مطابق للإدخال بعد تعديل Quantity -> Invoice No ===== */
 const FIXED_COLUMNS = [
-  { label: "S. No",                  aliases: ["s_no","sno","no","serial","sample_no","sampleNo"], isSerial: true },
-  { label: "Item Name",              aliases: ["item_name","itemName","item","product","product_name","productName"] },
-  { label: "Supplier Details",       aliases: ["supplier","supplier_name","supplierDetails","supplier_details","supplierInfo"] },
-  { label: "Prod Date",              aliases: ["prod_date","prodDate","production_date","productionDate","mfg","mfg_date"] },
-  { label: "Exp Date",               aliases: ["exp_date","expDate","expiry","expiry_date","expiryDate"] },
-  { label: "Invoice No",             aliases: ["invoiceNo","invoice","inv","invoice_no","bill","bill_no","ref","reference"] },
-  { label: "Pest Activity",          aliases: ["pest_activity","pestActivity","pest"] },
-  { label: "Broken / Damaged",       aliases: ["broken_damaged","brokenDamaged","broken","damaged"] },
-  { label: "Physical Contamination", aliases: ["physical_contamination","physicalContamination","physical"] },
-  { label: "Remarks",                aliases: ["remarks","remark","comment","comments","note","notes"] },
+  { label: "S. No", aliases: ["s_no", "sno", "no", "serial", "sample_no", "sampleNo"], isSerial: true },
+  { label: "Item Name", aliases: ["item_name", "itemName", "item", "product", "product_name", "productName"] },
+  { label: "Supplier Details", aliases: ["supplier", "supplier_name", "supplierDetails", "supplier_details", "supplierInfo"] },
+  { label: "Prod Date", aliases: ["prod_date", "prodDate", "production_date", "productionDate", "mfg", "mfg_date"] },
+  { label: "Exp Date", aliases: ["exp_date", "expDate", "expiry", "expiry_date", "expiryDate"] },
+  { label: "Invoice No", aliases: ["invoiceNo", "invoice", "inv", "invoice_no", "bill", "bill_no", "ref", "reference"] },
+  { label: "Pest Activity", aliases: ["pest_activity", "pestActivity", "pest"] },
+  { label: "Broken / Damaged", aliases: ["broken_damaged", "brokenDamaged", "broken", "damaged"] },
+  { label: "Physical Contamination", aliases: ["physical_contamination", "physicalContamination", "physical"] },
+  { label: "Remarks", aliases: ["remarks", "remark", "comment", "comments", "note", "notes"] },
 ];
 
 /* جلب أول مفتاح مطابق لأي alias داخل صف */
 function findKeyInRow(row, aliases) {
   if (!row) return null;
   const keys = Object.keys(row);
-  const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g,"").replace(/[_-]+/g,"");
-  const map = new Map(keys.map(k => [norm(k), k]));
+  const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, "").replace(/[_-]+/g, "");
+  const map = new Map(keys.map((k) => [norm(k), k]));
   for (const a of aliases) {
     const hit = map.get(norm(a));
     if (hit) return hit;
@@ -65,11 +65,46 @@ function getVal(row, col, index) {
   return v == null ? "" : String(v);
 }
 
+function safeClone(obj) {
+  try {
+    return JSON.parse(JSON.stringify(obj ?? {}));
+  } catch {
+    return obj ?? {};
+  }
+}
+
+function toISODateOnly(v) {
+  if (!v) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return String(v);
+  const d = new Date(v);
+  if (isNaN(d)) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/* ✅ سطر جديد فارغ */
+function makeEmptyEntry() {
+  const row = {};
+  for (const c of FIXED_COLUMNS) {
+    if (c.isSerial) continue;
+    const key = c.aliases?.[0] || c.label;
+    row[key] = "";
+  }
+  return row;
+}
+
 export default function RMInspectionReportIngredientsView() {
   const [reports, setReports] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const ref = useRef();
+
+  // ✅ Edit mode
+  const [editMode, setEditMode] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const getReportDate = (r) => {
     const p = r?.payload || {};
@@ -77,15 +112,20 @@ export default function RMInspectionReportIngredientsView() {
     return isNaN(d) ? new Date(0) : d;
   };
 
+  async function fetchAll() {
+    const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
+    arr.sort((a, b) => getReportDate(a) - getReportDate(b)); // الأقدم أولاً
+    return arr;
+  }
+
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
-        arr.sort((a,b)=> getReportDate(a) - getReportDate(b)); // الأقدم أولاً
+        const arr = await fetchAll();
         setReports(arr);
         setSelected(arr[0] || null);
       } catch (e) {
@@ -97,7 +137,67 @@ export default function RMInspectionReportIngredientsView() {
     })();
   }, []);
 
+  // لو المستخدم اختار تقرير ثاني أثناء التعديل: نطلع من التعديل
+  useEffect(() => {
+    setEditMode(false);
+    setDraft(null);
+  }, [getId(selected)]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const payload = useMemo(() => selected?.payload || selected || {}, [selected]);
+  const currentPayload = editMode ? (draft || {}) : payload;
+
+  const startEdit = () => {
+    const base = safeClone(payload);
+    base.reportDate = toISODateOnly(base.reportDate || base.date || "");
+    if (!Array.isArray(base.entries)) base.entries = Array.isArray(payload?.entries) ? safeClone(payload.entries) : [];
+    setDraft(base);
+    setEditMode(true);
+  };
+
+  const cancelEdit = () => {
+    setEditMode(false);
+    setDraft(null);
+  };
+
+  const updateDraftField = (key, value) => {
+    setDraft((prev) => ({ ...(prev || {}), [key]: value }));
+  };
+
+  const updateEntryCell = (rowIdx, col, value) => {
+    setDraft((prev) => {
+      const next = safeClone(prev || {});
+      const entries = Array.isArray(next.entries) ? [...next.entries] : [];
+      const row = { ...(entries[rowIdx] || {}) };
+
+      const existingKey = findKeyInRow(row, col.aliases);
+      const targetKey = existingKey || col.aliases?.[0] || col.label;
+
+      row[targetKey] = value;
+      entries[rowIdx] = row;
+      next.entries = entries;
+      return next;
+    });
+  };
+
+  // ✅ إضافة/حذف أسطر أثناء التعديل
+  const addEntryRow = () => {
+    setDraft((prev) => {
+      const next = safeClone(prev || {});
+      const entries = Array.isArray(next.entries) ? [...next.entries] : [];
+      entries.push(makeEmptyEntry());
+      next.entries = entries;
+      return next;
+    });
+  };
+
+  const removeEntryRow = (idx) => {
+    setDraft((prev) => {
+      const next = safeClone(prev || {});
+      const entries = Array.isArray(next.entries) ? [...next.entries] : [];
+      next.entries = entries.filter((_, i) => i !== idx);
+      return next;
+    });
+  };
 
   const handleExportPDF = async () => {
     if (!ref.current) return;
@@ -110,29 +210,34 @@ export default function RMInspectionReportIngredientsView() {
     const pdf = new jsPDF("l", "pt", "a4");
     const pageWidth = pdf.internal.pageSize.getWidth();
 
-    pdf.setFontSize(16); pdf.setFont("helvetica", "bold");
-    pdf.text("AL MAWASHI - QCS", pageWidth/2, 28, { align: "center" }); // استبدال em-dash
-    pdf.setFontSize(12); pdf.setFont("helvetica", "normal");
-    pdf.text(DOC.reportTitle, pageWidth/2, 46, { align: "center" });
+    pdf.setFontSize(16);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("AL MAWASHI - QCS", pageWidth / 2, 28, { align: "center" });
+    pdf.setFontSize(12);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(DOC.reportTitle, pageWidth / 2, 46, { align: "center" });
 
     const imgWidth = pageWidth - 40;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
     pdf.addImage(imgData, "PNG", 20, 60, imgWidth, imgHeight);
-    pdf.save(`QCS_RM_Ingredients_${payload?.reportDate || "report"}.pdf`);
+    pdf.save(`QCS_RM_Ingredients_${currentPayload?.reportDate || "report"}.pdf`);
   };
 
   const handleExportJSON = () => {
     try {
       const bundle = {
-        type: TYPE, exportedAt: new Date().toISOString(),
+        type: TYPE,
+        exportedAt: new Date().toISOString(),
         items: reports.map((r) => r?.payload ?? r),
       };
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `QCS_RM_Ingredients_ALL_${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
-      document.body.appendChild(a); a.click(); a.remove();
+      a.download = `QCS_RM_Ingredients_ALL_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       URL.revokeObjectURL(url);
     } catch {
       alert("❌ Failed to export JSON.");
@@ -147,14 +252,57 @@ export default function RMInspectionReportIngredientsView() {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
       alert("✅ Deleted.");
-      const fresh = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`);
-      const js = await fresh.json();
-      const arr = Array.isArray(js) ? js : js?.data || js?.items || js?.rows || [];
-      arr.sort((a,b)=> getReportDate(a) - getReportDate(b));
+      const arr = await fetchAll();
       setReports(arr);
       setSelected(arr[0] || null);
     } catch (e) {
-      console.error(e); alert("❌ Failed to delete.");
+      console.error(e);
+      alert("❌ Failed to delete.");
+    }
+  };
+
+  // ✅ حفظ تعديل التقرير
+  const handleUpdate = async () => {
+    const rid = getId(selected);
+    if (!rid) return alert("⚠️ Missing report ID.");
+
+    const rd = String(draft?.reportDate || "").trim();
+    if (!rd) return alert("⚠️ Report Date is required.");
+
+    try {
+      setSavingEdit(true);
+
+      const body = {
+        reporter: selected?.reporter || "qcs",
+        type: TYPE,
+        payload: {
+          ...(draft || {}),
+          entries: Array.isArray(draft?.entries) ? draft.entries : [],
+          updatedAt: Date.now(),
+        },
+      };
+
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) throw new Error(`Update failed HTTP ${res.status}`);
+
+      alert("✅ Updated.");
+      const arr = await fetchAll();
+      setReports(arr);
+
+      const updated = arr.find((x) => getId(x) === rid) || arr[0] || null;
+      setSelected(updated);
+      setEditMode(false);
+      setDraft(null);
+    } catch (e) {
+      console.error(e);
+      alert("❌ Failed to update. (Check if server supports PUT /api/reports/:id)");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -162,19 +310,16 @@ export default function RMInspectionReportIngredientsView() {
   const grouped = reports.reduce((acc, r) => {
     const d = getReportDate(r);
     const y = d.getFullYear();
-    const m = String(d.getMonth()+1).padStart(2,"0");
-    const day = String(d.getDate()).padStart(2,"0");
-    acc[y] ??= {}; acc[y][m] ??= [];
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    acc[y] ??= {};
+    acc[y][m] ??= [];
     acc[y][m].push({ ...r, _dt: d.getTime(), _day: day });
     return acc;
   }, {});
 
   /* ================= Styles (خطوط سوداء مثل الإدخال) ================= */
-  const tdHeader = {
-    border: "1.5px solid #000",
-    padding: "6px 8px",
-    fontSize: 12,
-  };
+  const tdHeader = { border: "1.5px solid #000", padding: "6px 8px", fontSize: 12 };
   const topTable = { width: "100%", borderCollapse: "collapse", marginBottom: 8 };
   const band = (bg) => ({
     background: bg,
@@ -189,82 +334,179 @@ export default function RMInspectionReportIngredientsView() {
   const thCell = { border: "1.5px solid #000", padding: "6px 4px", background: "#f5f5f5" };
   const tdCell = { border: "1.5px solid #000", padding: "6px 4px", textAlign: "center", background: "#fff" };
 
+  const smallInput = {
+    width: "100%",
+    boxSizing: "border-box",
+    border: "1px solid #cbd5e1",
+    borderRadius: 6,
+    padding: "6px 8px",
+    fontSize: 12,
+    background: "#fff",
+  };
+
+  const miniBtn = (bg) => ({
+    background: bg,
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    padding: "8px 10px",
+    fontWeight: 800,
+    cursor: "pointer",
+  });
+
   return (
-    <div style={{ display:"flex", gap:"1rem" }}>
-      <aside style={{ minWidth:260, background:"#f9f9f9", padding:"1rem", borderRadius:10, boxShadow:"0 3px 10px rgba(0,0,0,.1)" }}>
-        <h4 style={{ textAlign:"center", marginBottom:10 }}>🗓️ Saved Reports</h4>
-        {loading ? "⏳ Loading..." : Object.keys(grouped).length===0 ? "❌ No reports" : (
-          Object.entries(grouped).sort(([a],[b])=>Number(a)-Number(b)).map(([y, months]) => (
-            <details key={y} open>
-              <summary style={{ fontWeight:800 }}>📅 Year {y}</summary>
-              {Object.entries(months).sort(([a],[b])=>Number(a)-Number(b)).map(([m, arr])=> {
-                const days = [...arr].sort((a,b)=>a._dt-b._dt);
-                return (
-                  <details key={m} style={{ marginLeft:12 }}>
-                    <summary style={{ fontWeight:600 }}>📅 Month {m}</summary>
-                    <ul style={{ listStyle:"none", paddingLeft:12 }}>
-                      {days.map((r,i)=>{
-                        const active = getId(selected) && getId(selected)===getId(r);
-                        const d = new Date(r?._dt || 0);
-                        const label = isNaN(d) ? "-" : `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
-                        return (
-                          <li key={i}
-                              onClick={()=>setSelected(r)}
-                              style={{
-                                padding:"6px 10px", margin:"4px 0", borderRadius:6,
-                                cursor:"pointer", textAlign:"center",
-                                background: active ? "#0b132b" : "#ecf0f1",
-                                color: active ? "#fff" : "#333", fontWeight:600
-                              }}>
-                            {label}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </details>
-                );
-              })}
-            </details>
-          ))
+    <div style={{ display: "flex", gap: "1rem" }}>
+      <aside
+        style={{
+          minWidth: 260,
+          background: "#f9f9f9",
+          padding: "1rem",
+          borderRadius: 10,
+          boxShadow: "0 3px 10px rgba(0,0,0,.1)",
+        }}
+      >
+        <h4 style={{ textAlign: "center", marginBottom: 10 }}>🗓️ Saved Reports</h4>
+        {loading ? (
+          "⏳ Loading..."
+        ) : Object.keys(grouped).length === 0 ? (
+          "❌ No reports"
+        ) : (
+          Object.entries(grouped)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([y, months]) => (
+              <details key={y} open>
+                <summary style={{ fontWeight: 800 }}>📅 Year {y}</summary>
+                {Object.entries(months)
+                  .sort(([a], [b]) => Number(a) - Number(b))
+                  .map(([m, arr]) => {
+                    const days = [...arr].sort((a, b) => a._dt - b._dt);
+                    return (
+                      <details key={m} style={{ marginLeft: 12 }}>
+                        <summary style={{ fontWeight: 600 }}>📅 Month {m}</summary>
+                        <ul style={{ listStyle: "none", paddingLeft: 12 }}>
+                          {days.map((r, i) => {
+                            const active = getId(selected) && getId(selected) === getId(r);
+                            const d = new Date(r?._dt || 0);
+                            const label = isNaN(d)
+                              ? "-"
+                              : `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(
+                                  2,
+                                  "0"
+                                )}/${d.getFullYear()}`;
+                            return (
+                              <li
+                                key={i}
+                                onClick={() => setSelected(r)}
+                                style={{
+                                  padding: "6px 10px",
+                                  margin: "4px 0",
+                                  borderRadius: 6,
+                                  cursor: "pointer",
+                                  textAlign: "center",
+                                  background: active ? "#0b132b" : "#ecf0f1",
+                                  color: active ? "#fff" : "#333",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {label}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </details>
+                    );
+                  })}
+              </details>
+            ))
         )}
       </aside>
 
-      <main style={{ flex:1, background:"linear-gradient(120deg, #f6f8fa 65%, #e8daef 100%)", padding:"1rem", borderRadius:14, boxShadow:"0 4px 18px #d2b4de44" }}>
+      <main
+        style={{
+          flex: 1,
+          background: "linear-gradient(120deg, #f6f8fa 65%, #e8daef 100%)",
+          padding: "1rem",
+          borderRadius: 14,
+          boxShadow: "0 4px 18px #d2b4de44",
+        }}
+      >
         {!selected ? (
           <p>❌ No report selected.</p>
         ) : (
           <>
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginBottom:12 }}>
-              <button onClick={handleExportPDF} style={{ padding:"6px 12px", borderRadius:6, background:"#27ae60", color:"#fff", fontWeight:600, border:"none", cursor:"pointer" }}>⬇ Export PDF</button>
-              <button onClick={handleExportJSON} style={{ padding:"6px 12px", borderRadius:6, background:"#16a085", color:"#fff", fontWeight:600, border:"none", cursor:"pointer" }}>⬇ Export JSON</button>
-              <button onClick={() => handleDelete(selected)} style={{ padding:"6px 12px", borderRadius:6, background:"#c0392b", color:"#fff", fontWeight:600, border:"none", cursor:"pointer" }}>🗑 Delete</button>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              {!editMode ? (
+                <button onClick={startEdit} style={miniBtn("#2563eb")}>
+                  ✏️ Edit
+                </button>
+              ) : (
+                <>
+                  <button onClick={handleUpdate} disabled={savingEdit} style={miniBtn(savingEdit ? "#64748b" : "#0f766e")}>
+                    {savingEdit ? "Saving..." : "✅ Save Changes"}
+                  </button>
+                  <button onClick={cancelEdit} disabled={savingEdit} style={miniBtn("#475569")}>
+                    ↩ Cancel
+                  </button>
+                </>
+              )}
+
+              <button onClick={handleExportPDF} style={miniBtn("#27ae60")}>
+                ⬇ Export PDF
+              </button>
+              <button onClick={handleExportJSON} style={miniBtn("#16a085")}>
+                ⬇ Export JSON
+              </button>
+              <button
+                onClick={() => handleDelete(selected)}
+                disabled={editMode}
+                title={editMode ? "Exit edit mode first" : "Delete"}
+                style={miniBtn(editMode ? "#9ca3af" : "#c0392b")}
+              >
+                🗑 Delete
+              </button>
             </div>
 
-            {/* العارض مع الترويسة وخطوط سوداء */}
-            <div ref={ref} style={{ background:"#fff", border:"1.5px solid #000", borderRadius:12, padding:16 }}>
-              {/* ترويسة مطابقة */}
+            {/* العارض */}
+            <div ref={ref} style={{ background: "#fff", border: "1.5px solid #000", borderRadius: 12, padding: 16 }}>
+              {/* ترويسة */}
               <table style={topTable}>
                 <tbody>
                   <tr>
                     <td rowSpan={4} style={{ ...tdHeader, width: 140, textAlign: "center" }}>
                       <div style={{ fontWeight: 900, color: "#a00", fontSize: 14, lineHeight: 1.2 }}>
-                        AL<br/>MAWASHI
+                        AL<br />MAWASHI
                       </div>
                     </td>
-                    <td style={tdHeader}><b>Document Title:</b> {DOC.title}</td>
-                    <td style={tdHeader}><b>Document No:</b> {DOC.no}</td>
+                    <td style={tdHeader}>
+                      <b>Document Title:</b> {DOC.title}
+                    </td>
+                    <td style={tdHeader}>
+                      <b>Document No:</b> {DOC.no}
+                    </td>
                   </tr>
                   <tr>
-                    <td style={tdHeader}><b>Issue Date:</b> {DOC.issueDate}</td>
-                    <td style={tdHeader}><b>Revision No:</b> {DOC.revNo}</td>
+                    <td style={tdHeader}>
+                      <b>Issue Date:</b> {DOC.issueDate}
+                    </td>
+                    <td style={tdHeader}>
+                      <b>Revision No:</b> {DOC.revNo}
+                    </td>
                   </tr>
                   <tr>
-                    <td style={tdHeader}><b>Area:</b> {DOC.area}</td>
-                    <td style={tdHeader}><b>Issued by:</b> {DOC.issuedBy}</td>
+                    <td style={tdHeader}>
+                      <b>Area:</b> {DOC.area}
+                    </td>
+                    <td style={tdHeader}>
+                      <b>Issued by:</b> {DOC.issuedBy}
+                    </td>
                   </tr>
                   <tr>
-                    <td style={tdHeader}><b>Controlling Officer:</b> {DOC.controllingOfficer}</td>
-                    <td style={tdHeader}><b>Approved by:</b> {DOC.approvedBy}</td>
+                    <td style={tdHeader}>
+                      <b>Controlling Officer:</b> {DOC.controllingOfficer}
+                    </td>
+                    <td style={tdHeader}>
+                      <b>Approved by:</b> {DOC.approvedBy}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -272,57 +514,187 @@ export default function RMInspectionReportIngredientsView() {
               <div style={band("#e5e7eb")}>{DOC.company}</div>
               <div style={band("#f3f4f6")}>{DOC.reportTitle}</div>
 
-              {/* معلومات عامة للتقرير */}
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:8, margin:"10px 0 12px" }}>
-                <div><b>Report Date:</b> {payload?.reportDate || "-"}</div>
-                <div><b>Branch/Area:</b> {payload?.branch || payload?.area || "QCS"}</div>
+              {/* معلومات عامة */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8, margin: "10px 0 12px" }}>
+                <div>
+                  <b>Report Date:</b>{" "}
+                  {!editMode ? (
+                    currentPayload?.reportDate || "-"
+                  ) : (
+                    <input
+                      type="date"
+                      value={toISODateOnly(currentPayload?.reportDate)}
+                      onChange={(e) => updateDraftField("reportDate", e.target.value)}
+                      style={{ ...smallInput, maxWidth: 220, display: "inline-block", marginLeft: 8 }}
+                    />
+                  )}
+                </div>
+                <div>
+                  <b>Branch/Area:</b>{" "}
+                  {!editMode ? (
+                    currentPayload?.branch || currentPayload?.area || "QCS"
+                  ) : (
+                    <input
+                      value={currentPayload?.branch || currentPayload?.area || "QCS"}
+                      onChange={(e) => updateDraftField("branch", e.target.value)}
+                      style={{ ...smallInput, maxWidth: 320, display: "inline-block", marginLeft: 8 }}
+                    />
+                  )}
+                </div>
               </div>
 
-              {/* الجدول - ترتيب مطابق للإدخال */}
-              {Array.isArray(payload?.entries) && payload.entries.length ? (
-                <div style={{ overflowX:"auto" }}>
+              {/* ✅ أدوات الأسطر في وضع التعديل */}
+              {editMode && (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                  <button onClick={addEntryRow} style={miniBtn("#0ea5e9")}>
+                    ➕ Add Row
+                  </button>
+                </div>
+              )}
+
+              {/* الجدول */}
+              {Array.isArray(currentPayload?.entries) && currentPayload.entries.length ? (
+                <div style={{ overflowX: "auto" }}>
                   <table style={gridStyle}>
                     <thead>
                       <tr>
-                        {FIXED_COLUMNS.map((c)=>(<th key={c.label} style={thCell}>{c.label}</th>))}
+                        {FIXED_COLUMNS.map((c) => (
+                          <th key={c.label} style={thCell}>
+                            {c.label}
+                          </th>
+                        ))}
+                        {editMode && <th style={thCell}>—</th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {payload.entries.map((row,i)=>(
+                      {currentPayload.entries.map((row, i) => (
                         <tr key={i}>
-                          {FIXED_COLUMNS.map((c)=>(<td key={c.label} style={tdCell}>{getVal(row, c, i)}</td>))}
+                          {FIXED_COLUMNS.map((c) => {
+                            if (c.isSerial) return <td key={c.label} style={tdCell}>{String(i + 1)}</td>;
+
+                            const val = getVal(row, c, i);
+                            const isDateCol = c.label === "Prod Date" || c.label === "Exp Date";
+
+                            return (
+                              <td key={c.label} style={tdCell}>
+                                {!editMode ? (
+                                  val
+                                ) : isDateCol ? (
+                                  <input
+                                    type="date"
+                                    value={toISODateOnly(val)}
+                                    onChange={(e) => updateEntryCell(i, c, e.target.value)}
+                                    style={smallInput}
+                                  />
+                                ) : (
+                                  <input
+                                    value={val}
+                                    onChange={(e) => updateEntryCell(i, c, e.target.value)}
+                                    style={smallInput}
+                                  />
+                                )}
+                              </td>
+                            );
+                          })}
+
+                          {editMode && (
+                            <td style={tdCell}>
+                              <button onClick={() => removeEntryRow(i)} style={miniBtn("#dc2626")}>
+                                Delete
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+              ) : editMode ? (
+                <div style={{ color: "#6b7280" }}>
+                  No entries available. اضغط <b>Add Row</b> لإضافة سطر.
+                </div>
               ) : (
-                <div style={{ color:"#6b7280" }}>No entries available.</div>
+                <div style={{ color: "#6b7280" }}>No entries available.</div>
               )}
 
-              {/* Corrective Action مطابق */}
-              {payload?.correctiveAction && String(payload.correctiveAction).trim() !== "" && (
+              {/* Corrective Action */}
+              {!editMode ? (
+                currentPayload?.correctiveAction &&
+                String(currentPayload.correctiveAction).trim() !== "" && (
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ fontWeight: 900, marginBottom: 6 }}>Corrective Action:</div>
+                    <div
+                      style={{
+                        border: "1.5px solid #000",
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        whiteSpace: "pre-wrap",
+                        background: "#fff",
+                      }}
+                    >
+                      {currentPayload.correctiveAction}
+                    </div>
+                  </div>
+                )
+              ) : (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ fontWeight: 900, marginBottom: 6 }}>Corrective Action:</div>
-                  <div style={{ border:"1.5px solid #000", borderRadius:6, padding:"8px 10px", whiteSpace:"pre-wrap", background:"#fff" }}>
-                    {payload.correctiveAction}
-                  </div>
+                  <textarea
+                    value={String(currentPayload?.correctiveAction || "")}
+                    onChange={(e) => updateDraftField("correctiveAction", e.target.value)}
+                    style={{
+                      width: "100%",
+                      minHeight: 80,
+                      border: "1.5px solid #000",
+                      borderRadius: 6,
+                      padding: "8px 10px",
+                      background: "#fff",
+                      fontSize: 12,
+                      boxSizing: "border-box",
+                    }}
+                  />
                 </div>
               )}
 
-              {/* التواقيع يمين/يسار بخانات صغيرة */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginTop:16, alignItems:"end" }}>
+              {/* التواقيع */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16, alignItems: "end" }}>
                 <div>
                   <div style={{ fontWeight: 900, marginBottom: 6 }}>CHECKED BY :</div>
-                  <div style={{ border:"1.5px solid #000", borderRadius:6, padding:"8px 10px", minHeight:36, background:"#fff" }}>
-                    {payload?.checkedBy || ""}
-                  </div>
+                  {!editMode ? (
+                    <div style={{ border: "1.5px solid #000", borderRadius: 6, padding: "8px 10px", minHeight: 36, background: "#fff" }}>
+                      {currentPayload?.checkedBy || ""}
+                    </div>
+                  ) : (
+                    <input
+                      value={String(currentPayload?.checkedBy || "")}
+                      onChange={(e) => updateDraftField("checkedBy", e.target.value)}
+                      style={smallInput}
+                    />
+                  )}
                 </div>
+
                 <div>
-                  <div style={{ fontWeight: 900, marginBottom: 6, textAlign:"right" }}>VERIFIED BY :</div>
-                  <div style={{ border:"1.5px solid #000", borderRadius:6, padding:"8px 10px", minHeight:36, background:"#fff", textAlign:"right" }}>
-                    {payload?.verifiedBy || ""}
-                  </div>
+                  <div style={{ fontWeight: 900, marginBottom: 6, textAlign: "right" }}>VERIFIED BY :</div>
+                  {!editMode ? (
+                    <div
+                      style={{
+                        border: "1.5px solid #000",
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        minHeight: 36,
+                        background: "#fff",
+                        textAlign: "right",
+                      }}
+                    >
+                      {currentPayload?.verifiedBy || ""}
+                    </div>
+                  ) : (
+                    <input
+                      value={String(currentPayload?.verifiedBy || "")}
+                      onChange={(e) => updateDraftField("verifiedBy", e.target.value)}
+                      style={smallInput}
+                    />
+                  )}
                 </div>
               </div>
             </div>

@@ -1,5 +1,5 @@
 // src/pages/haccp and iso/ProductDetailsInput.jsx
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 /* ===== API base (aligned with the rest of the project) ===== */
@@ -16,7 +16,7 @@ const API_BASE = String(
 /* Report type */
 const TYPE = "product_details";
 
-/* Helper for uploading images via server */
+/* Helper for uploading images via server (ONLY on Save) */
 async function uploadViaServer(file) {
   const fd = new FormData();
   fd.append("file", file);
@@ -54,6 +54,29 @@ async function jsonFetch(url, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+/* ===== Helpers for URL lists ===== */
+function parseUrls(multiline) {
+  return String(multiline || "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+function joinUrls(arr) {
+  return (Array.isArray(arr) ? arr : []).filter(Boolean).join("\n");
+}
+
+/* ===== ID helper ===== */
+function uid() {
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+/**
+ * pendingFiles structure:
+ * {
+ *   fieldKey: [{ id, file, previewUrl }]
+ * }
+ */
+
 export default function ProductDetailsInput() {
   const navigate = useNavigate();
 
@@ -65,7 +88,6 @@ export default function ProductDetailsInput() {
 
     async function loadItems() {
       try {
-        // المحاولة الأولى: /data/items.json
         const r1 = await fetch("/data/items.json", { cache: "no-store" });
         if (r1.ok) {
           const j = await r1.json();
@@ -75,11 +97,8 @@ export default function ProductDetailsInput() {
           }
         }
 
-        // fallback: PUBLIC_URL/data/items.json
         const base = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
-        const r2 = await fetch(`${base}/data/items.json`, {
-          cache: "no-store",
-        });
+        const r2 = await fetch(`${base}/data/items.json`, { cache: "no-store" });
         if (r2.ok) {
           const j = await r2.json();
           if (!cancelled && Array.isArray(j)) {
@@ -102,19 +121,14 @@ export default function ProductDetailsInput() {
     productName: "",
     productCode: "",
     brand: "",
-    productType: "", // Raw / Raw marinated / Cooked / Frozen / Chilled / Ambient
+    productType: "",
     countryOfOrigin: "",
 
     // Label & shelf life
     storageCondition: "",
     shelfLifeValue: "",
     shelfLifeUnit: "",
-    ingredients: [
-      {
-        name: "",
-        amount: "",
-      },
-    ],
+    ingredients: [{ name: "", amount: "" }],
     allergens: "",
     instructionsForUse: "",
 
@@ -129,23 +143,52 @@ export default function ProductDetailsInput() {
     halalCB: "",
     halalCertExpiry: "",
 
-    // Images for each registration line
+    // Images URLs (stored but not shown)
     dmRegistrationImagesUrls: "",
     assessmentCertImagesUrls: "",
     halalCertImagesUrls: "",
     nutritionFactsImagesUrls: "",
-
-    // Product images (URLs)
     productImageUrls: "",
-
-    // Test images (URLs) – max 10 images
     testImagesUrls: "",
   });
 
+  const [pendingFiles, setPendingFiles] = useState({});
   const [preview, setPreview] = useState(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [uploadingField, setUploadingField] = useState(null); // "images" | "test-images" | section name
+
+  /* ===== Image modal ===== */
+  const [imgModal, setImgModal] = useState({ open: false, url: "", title: "" });
+  const openImage = (url, title = "Image preview") =>
+    setImgModal({ open: true, url, title });
+  const closeImage = () => setImgModal({ open: false, url: "", title: "" });
+
+  /* ===== Fields config (limits) ===== */
+  const FIELDS = useMemo(
+    () => [
+      { key: "dmRegistrationImagesUrls", label: "DM registration images", max: 10 },
+      { key: "assessmentCertImagesUrls", label: "Assessment certificate images", max: 10 },
+      { key: "halalCertImagesUrls", label: "Halal certificate images", max: 10 },
+      { key: "nutritionFactsImagesUrls", label: "Nutrition facts images", max: 10 },
+      { key: "testImagesUrls", label: "Test images", max: 10 },
+      { key: "productImageUrls", label: "Product images", max: null }, // no limit
+    ],
+    []
+  );
+
+  /* ===== cleanup object URLs on unmount ===== */
+  useEffect(() => {
+    return () => {
+      try {
+        Object.values(pendingFiles || {}).forEach((arr) => {
+          (arr || []).forEach((it) => {
+            if (it?.previewUrl) URL.revokeObjectURL(it.previewUrl);
+          });
+        });
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleChange = (field) => (e) => {
     setForm((prev) => ({
@@ -154,7 +197,7 @@ export default function ProductDetailsInput() {
     }));
   };
 
-  // ✅ خاص لـ Product code: يجيب الاسم من items.json
+  // ✅ Product code: auto fill name from items.json
   const handleProductCodeChange = (e) => {
     const code = e.target.value;
 
@@ -185,18 +228,10 @@ export default function ProductDetailsInput() {
   const handleIngredientChange = (index, field) => (e) => {
     const value = e.target.value;
     setForm((prev) => {
-      const list = Array.isArray(prev.ingredients)
-        ? [...prev.ingredients]
-        : [];
+      const list = Array.isArray(prev.ingredients) ? [...prev.ingredients] : [];
       const current = list[index] || { name: "", amount: "" };
-      list[index] = {
-        ...current,
-        [field]: value,
-      };
-      return {
-        ...prev,
-        ingredients: list,
-      };
+      list[index] = { ...current, [field]: value };
+      return { ...prev, ingredients: list };
     });
   };
 
@@ -212,174 +247,113 @@ export default function ProductDetailsInput() {
 
   const removeIngredientRow = (index) => {
     setForm((prev) => {
-      const list = Array.isArray(prev.ingredients)
-        ? [...prev.ingredients]
-        : [];
-      if (list.length <= 1) {
-        return {
-          ...prev,
-          ingredients: [{ name: "", amount: "" }],
-        };
-      }
+      const list = Array.isArray(prev.ingredients) ? [...prev.ingredients] : [];
+      if (list.length <= 1) return { ...prev, ingredients: [{ name: "", amount: "" }] };
       list.splice(index, 1);
-      return {
-        ...prev,
-        ingredients: list,
-      };
+      return { ...prev, ingredients: list };
     });
   };
 
-  // Upload multiple product images
-  const handleImagesUpload = async (e) => {
+  /* ===== Add selected files (NO upload here) ===== */
+  const addFilesToPending = (fieldKey, label, max) => (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    setUploadingField("images");
-    setStatusMessage("⏳ Uploading product images to the server...");
+    setStatusMessage(""); // clear previous message
 
-    try {
-      const urls = [];
-      for (const file of files) {
-        const url = await uploadViaServer(file);
-        urls.push(url);
-      }
+    setPendingFiles((prev) => {
+      const prevArr = Array.isArray(prev[fieldKey]) ? [...prev[fieldKey]] : [];
+      const existingRemote = parseUrls(form[fieldKey]).length;
+      const existingPending = prevArr.length;
+      const totalExisting = existingRemote + existingPending;
 
-      setForm((prev) => ({
-        ...prev,
-        productImageUrls: (
-          (prev.productImageUrls || "").trim() +
-          (prev.productImageUrls ? "\n" : "") +
-          urls.join("\n")
-        ).trim(),
-      }));
+      let allowed = files;
 
-      setStatusMessage("✅ Product images uploaded and URLs stored in the form.");
-    } catch (err) {
-      console.error("Product images upload error:", err);
-      setStatusMessage(
-        `❌ Error while uploading product images: ${err.message || "Upload error"}`
-      );
-    } finally {
-      setUploadingField(null);
-      e.target.value = "";
-    }
-  };
-
-  // Upload multiple test images – max 10
-  const handleTestImagesUpload = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-
-    const existing = (form.testImagesUrls || "")
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    if (existing.length >= 10) {
-      setStatusMessage("❌ Maximum limit reached (10 test images).");
-      e.target.value = "";
-      return;
-    }
-
-    const remainingSlots = 10 - existing.length;
-    const filesToUpload = files.slice(0, remainingSlots);
-
-    setUploadingField("test-images");
-    setStatusMessage("⏳ Uploading test report images to the server...");
-
-    try {
-      const newUrls = [];
-      for (const file of filesToUpload) {
-        const url = await uploadViaServer(file);
-        newUrls.push(url);
-      }
-
-      const combined = [...existing, ...newUrls];
-
-      setForm((prev) => ({
-        ...prev,
-        testImagesUrls: combined.join("\n"),
-      }));
-
-      if (files.length > remainingSlots) {
-        setStatusMessage(
-          `✅ Uploaded ${newUrls.length} test images, skipped ${
-            files.length - remainingSlots
-          } file(s) because the maximum limit is 10 images.`
-        );
-      } else {
-        setStatusMessage("✅ Test report images uploaded and URLs stored.");
-      }
-    } catch (err) {
-      console.error("Test images upload error:", err);
-      setStatusMessage(
-        `❌ Error while uploading test images: ${err.message || "Upload error"}`
-      );
-    } finally {
-      setUploadingField(null);
-      e.target.value = "";
-    }
-  };
-
-  /* 🔹 upload handler for registration lines (10 images per line) */
-  const handleSectionImagesUpload =
-    (fieldKey, labelForStatus) =>
-    async (e) => {
-      const files = Array.from(e.target.files || []);
-      if (!files.length) return;
-
-      const existing = (form[fieldKey] || "")
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      if (existing.length >= 10) {
-        setStatusMessage(`❌ Maximum limit reached (10 images) for ${labelForStatus}.`);
-        e.target.value = "";
-        return;
-      }
-
-      const remainingSlots = 10 - existing.length;
-      const filesToUpload = files.slice(0, remainingSlots);
-
-      setUploadingField(labelForStatus);
-      setStatusMessage(`⏳ Uploading images for ${labelForStatus}...`);
-
-      try {
-        const newUrls = [];
-        for (const file of filesToUpload) {
-          const url = await uploadViaServer(file);
-          newUrls.push(url);
+      if (typeof max === "number") {
+        const remaining = Math.max(0, max - totalExisting);
+        if (remaining <= 0) {
+          setStatusMessage(`❌ Maximum limit reached (${max}) for ${label}.`);
+          e.target.value = "";
+          return prev;
         }
-
-        const combined = [...existing, ...newUrls];
-
-        setForm((prev) => ({
-          ...prev,
-          [fieldKey]: combined.join("\n"),
-        }));
-
-        if (files.length > remainingSlots) {
+        allowed = files.slice(0, remaining);
+        if (files.length > remaining) {
           setStatusMessage(
-            `✅ Uploaded ${newUrls.length} images for ${labelForStatus}, skipped ${
-              files.length - remainingSlots
-            } file(s) (limit is 10).`
+            `ℹ️ Added ${allowed.length} image(s) for ${label}. Skipped ${
+              files.length - remaining
+            } file(s) (limit is ${max}).`
           );
         } else {
-          setStatusMessage(`✅ Images for ${labelForStatus} uploaded and URLs stored.`);
+          setStatusMessage(`✅ Added ${allowed.length} image(s) for ${label} (pending upload).`);
         }
-      } catch (err) {
-        console.error(`Section images upload error (${labelForStatus}):`, err);
-        setStatusMessage(
-          `❌ Error while uploading images for ${labelForStatus}: ${
-            err.message || "Upload error"
-          }`
-        );
-      } finally {
-        setUploadingField(null);
-        e.target.value = "";
+      } else {
+        setStatusMessage(`✅ Added ${allowed.length} image(s) for ${label} (pending upload).`);
       }
-    };
+
+      const mapped = allowed.map((file) => ({
+        id: uid(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+
+      return {
+        ...prev,
+        [fieldKey]: [...prevArr, ...mapped],
+      };
+    });
+
+    e.target.value = "";
+  };
+
+  /* ===== Remove pending file ===== */
+  const removePending = (fieldKey, idToRemove) => {
+    setPendingFiles((prev) => {
+      const arr = Array.isArray(prev[fieldKey]) ? [...prev[fieldKey]] : [];
+      const hit = arr.find((x) => x?.id === idToRemove);
+      if (hit?.previewUrl) {
+        try {
+          URL.revokeObjectURL(hit.previewUrl);
+        } catch {}
+      }
+      const next = arr.filter((x) => x?.id !== idToRemove);
+      return { ...prev, [fieldKey]: next };
+    });
+  };
+
+  /* ===== Remove remote URL (already stored in form) ===== */
+  const removeRemoteUrl = (fieldKey, urlToRemove) => {
+    setForm((prev) => {
+      const arr = parseUrls(prev[fieldKey]);
+      const next = arr.filter((u) => u !== urlToRemove);
+      return { ...prev, [fieldKey]: joinUrls(next) };
+    });
+  };
+
+  /* ===== Clear all images (remote + pending) for a field ===== */
+  const clearAllForField = (fieldKey) => {
+    // revoke previews
+    const arr = Array.isArray(pendingFiles[fieldKey]) ? pendingFiles[fieldKey] : [];
+    arr.forEach((it) => {
+      if (it?.previewUrl) {
+        try {
+          URL.revokeObjectURL(it.previewUrl);
+        } catch {}
+      }
+    });
+
+    setPendingFiles((prev) => ({ ...prev, [fieldKey]: [] }));
+    setForm((prev) => ({ ...prev, [fieldKey]: "" }));
+  };
+
+  const uploadingSummaryText = (payload) => {
+    // show count for UX
+    const parts = FIELDS.map((f) => {
+      const remote = parseUrls(payload[f.key]).length;
+      const pend = Array.isArray(pendingFiles[f.key]) ? pendingFiles[f.key].length : 0;
+      return `${f.label}: ${remote + pend}`;
+    });
+    return parts.join(" | ");
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -391,39 +365,145 @@ export default function ProductDetailsInput() {
     }
 
     setLoading(true);
-    setStatusMessage("⏳ Saving product data to the external server...");
+    setStatusMessage("⏳ Preparing to upload images (only on Save) ...");
+
+    // we will build payload with uploaded URLs
+    let payload = { ...form };
+    // track which pending items successfully uploaded, so we can remove them from pending
+    const uploadedIdsByField = {};
+    const uploadedUrlsByField = {};
 
     try {
+      // 1) Upload all pending files field-by-field
+      const anyPending = Object.values(pendingFiles || {}).some(
+        (arr) => Array.isArray(arr) && arr.length
+      );
+
+      if (anyPending) {
+        setStatusMessage(`⏳ Uploading pending images... (${uploadingSummaryText(payload)})`);
+
+        for (const f of FIELDS) {
+          const fieldKey = f.key;
+          const pendingArr = Array.isArray(pendingFiles[fieldKey]) ? pendingFiles[fieldKey] : [];
+          if (!pendingArr.length) continue;
+
+          uploadedIdsByField[fieldKey] = [];
+          uploadedUrlsByField[fieldKey] = [];
+
+          for (let i = 0; i < pendingArr.length; i++) {
+            const it = pendingArr[i];
+            setStatusMessage(
+              `⏳ Uploading ${f.label} (${i + 1}/${pendingArr.length})...`
+            );
+
+            const url = await uploadViaServer(it.file);
+
+            uploadedIdsByField[fieldKey].push(it.id);
+            uploadedUrlsByField[fieldKey].push(url);
+          }
+
+          // merge into payload
+          const existingRemote = parseUrls(payload[fieldKey]);
+          payload[fieldKey] = joinUrls([...existingRemote, ...uploadedUrlsByField[fieldKey]]);
+        }
+
+        setStatusMessage("✅ Images uploaded. Now saving the report...");
+      } else {
+        setStatusMessage("⏳ No pending images. Saving the report...");
+      }
+
+      // 2) Save report
       const { ok, data, status } = await jsonFetch(`${API_BASE}/api/reports`, {
         method: "POST",
         body: JSON.stringify({
           type: TYPE,
-          payload: form,
+          payload,
         }),
       });
 
       if (!ok || !data || data.ok === false) {
         throw new Error(
-          (data && (data.error || data.message)) ||
-            `Server error (status ${status})`
+          (data && (data.error || data.message)) || `Server error (status ${status})`
         );
       }
 
-      const savedPayload =
-        data.report?.payload || data.row?.payload || form;
+      const savedPayload = data.report?.payload || data.row?.payload || payload;
+
+      // 3) Commit local form to reflect saved payload (includes URLs)
+      setForm((prev) => ({ ...prev, ...savedPayload }));
+
+      // 4) Remove uploaded pending items (and revoke their preview URLs)
+      setPendingFiles((prev) => {
+        const next = { ...prev };
+
+        for (const fieldKey of Object.keys(uploadedIdsByField)) {
+          const ids = uploadedIdsByField[fieldKey] || [];
+          const arr = Array.isArray(next[fieldKey]) ? [...next[fieldKey]] : [];
+          const remain = [];
+
+          for (const it of arr) {
+            if (ids.includes(it.id)) {
+              if (it?.previewUrl) {
+                try {
+                  URL.revokeObjectURL(it.previewUrl);
+                } catch {}
+              }
+            } else {
+              remain.push(it);
+            }
+          }
+
+          next[fieldKey] = remain;
+        }
+        return next;
+      });
 
       setPreview(savedPayload);
       setStatusMessage("✅ Product details saved successfully on the server.");
     } catch (err) {
-      console.error("Product details save error:", err);
-      setStatusMessage(
-        `❌ Error while saving to the server: ${err.message || "Unknown error"}`
-      );
+      console.error("Save error:", err);
+
+      // If some uploads succeeded before failure, we keep payload URLs locally to avoid re-upload duplicates
+      try {
+        const nextForm = { ...form };
+        for (const f of FIELDS) {
+          const fieldKey = f.key;
+          const newUrls = uploadedUrlsByField[fieldKey] || [];
+          if (newUrls.length) {
+            nextForm[fieldKey] = joinUrls([...parseUrls(nextForm[fieldKey]), ...newUrls]);
+          }
+        }
+        setForm(nextForm);
+
+        // remove only uploaded pending items
+        setPendingFiles((prev) => {
+          const next = { ...prev };
+          for (const fieldKey of Object.keys(uploadedIdsByField)) {
+            const ids = uploadedIdsByField[fieldKey] || [];
+            const arr = Array.isArray(next[fieldKey]) ? [...next[fieldKey]] : [];
+            const remain = [];
+            for (const it of arr) {
+              if (ids.includes(it.id)) {
+                if (it?.previewUrl) {
+                  try {
+                    URL.revokeObjectURL(it.previewUrl);
+                  } catch {}
+                }
+              } else remain.push(it);
+            }
+            next[fieldKey] = remain;
+          }
+          return next;
+        });
+      } catch {}
+
+      setStatusMessage(`❌ Error: ${err.message || "Unknown error"}`);
     } finally {
       setLoading(false);
     }
   };
 
+  /* ===== Styles ===== */
   const sectionBox = {
     borderRadius: 18,
     padding: "18px 20px",
@@ -439,7 +519,7 @@ export default function ProductDetailsInput() {
     display: "block",
     fontSize: 14,
     fontWeight: 700,
-    color: "#1e3a8a", // أزرق غامق وواضح
+    color: "#1e3a8a",
     marginBottom: 4,
   };
 
@@ -447,7 +527,7 @@ export default function ProductDetailsInput() {
     width: "100%",
     padding: "9px 11px",
     borderRadius: 10,
-    border: "1px solid #000000", // أسود غامق
+    border: "1px solid #000000",
     fontSize: 14,
     outline: "none",
     boxSizing: "border-box",
@@ -466,6 +546,191 @@ export default function ProductDetailsInput() {
     marginTop: 2,
   };
 
+  const thumbsWrap = {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+  };
+
+  const thumbBox = {
+    width: 86,
+    height: 86,
+    borderRadius: 12,
+    border: "1px solid rgba(148,163,184,0.55)",
+    background: "#fff",
+    overflow: "hidden",
+    position: "relative",
+    boxShadow: "0 6px 14px rgba(15,23,42,0.08)",
+    cursor: "pointer",
+  };
+
+  const thumbImg = {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  };
+
+  const removeBtn = {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    border: "1px solid rgba(239,68,68,0.55)",
+    background: "rgba(254,242,242,0.95)",
+    color: "#b91c1c",
+    fontWeight: 900,
+    cursor: "pointer",
+    lineHeight: "20px",
+    textAlign: "center",
+  };
+
+  const badge = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "3px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(148,163,184,0.45)",
+    background: "rgba(255,255,255,0.75)",
+    fontSize: 12,
+    color: "#334155",
+    fontWeight: 700,
+  };
+
+  /* ===== Gallery component (shows remote + pending previews, NO textarea, NO upload here) ===== */
+  const Gallery = useMemo(() => {
+    return function Gallery({ title, fieldKey, max, labelForStatus }) {
+      const remoteUrls = parseUrls(form[fieldKey]);
+      const pendingArr = Array.isArray(pendingFiles[fieldKey]) ? pendingFiles[fieldKey] : [];
+      const total = remoteUrls.length + pendingArr.length;
+
+      return (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <label style={labelStyle}>
+              {title}{" "}
+              <span style={{ fontSize: 11, color: "#64748b" }}>
+                {typeof max === "number" ? `(max ${max})` : `(no limit)`}
+              </span>
+            </label>
+
+            <div style={badge}>
+              Total: {total}{" "}
+              {typeof max === "number" ? `/ ${max}` : ""}
+              {pendingArr.length ? (
+                <span style={{ color: "#1d4ed8" }}>
+                  | Pending: {pendingArr.length} (not uploaded)
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={addFilesToPending(fieldKey, labelForStatus || title, max)}
+            style={{ marginBottom: 6, fontSize: 13 }}
+          />
+
+          <div style={smallHint}>
+            اختر صور للمعاينة فقط. الرفع يتم عند الضغط على <b>Save</b>.
+          </div>
+
+          {(remoteUrls.length > 0 || pendingArr.length > 0) && (
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => clearAllForField(fieldKey)}
+                style={{
+                  padding: "7px 12px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(239,68,68,0.35)",
+                  background: "rgba(254,242,242,0.85)",
+                  color: "#b91c1c",
+                  fontWeight: 800,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Clear all
+              </button>
+
+              <div style={{ fontSize: 12, color: "#64748b" }}>
+                (Links are stored internally only after Save)
+              </div>
+            </div>
+          )}
+
+          {(remoteUrls.length > 0 || pendingArr.length > 0) && (
+            <div style={thumbsWrap}>
+              {/* Remote */}
+              {remoteUrls.map((u, idx) => (
+                <div
+                  key={`remote_${u}_${idx}`}
+                  style={thumbBox}
+                  onClick={() => openImage(u, title)}
+                  title="Click to preview"
+                >
+                  <img src={u} alt={`${title} ${idx + 1}`} style={thumbImg} />
+                  <button
+                    type="button"
+                    style={removeBtn}
+                    title="Remove"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      removeRemoteUrl(fieldKey, u);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+
+              {/* Pending (local previews) */}
+              {pendingArr.map((it, idx) => (
+                <div
+                  key={`pending_${it.id}_${idx}`}
+                  style={{
+                    ...thumbBox,
+                    border: "1px dashed rgba(29,78,216,0.55)",
+                  }}
+                  onClick={() => openImage(it.previewUrl, `${title} (Pending)`)}
+                  title="Pending (not uploaded) - Click to preview"
+                >
+                  <img
+                    src={it.previewUrl}
+                    alt={`Pending ${title} ${idx + 1}`}
+                    style={thumbImg}
+                  />
+                  <button
+                    type="button"
+                    style={removeBtn}
+                    title="Remove"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      removePending(fieldKey, it.id);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!remoteUrls.length && !pendingArr.length && (
+            <div style={{ ...smallHint, marginTop: 8 }}>No images selected.</div>
+          )}
+        </div>
+      );
+    };
+  }, [form, pendingFiles]);
+
   return (
     <div
       style={{
@@ -479,12 +744,90 @@ export default function ProductDetailsInput() {
         fontSize: 14,
       }}
     >
-      <div
-        style={{
-          maxWidth: 1100,
-          margin: "0 auto",
-        }}
-      >
+      {/* ===== Image Preview Modal ===== */}
+      {imgModal.open && (
+        <div
+          onClick={closeImage}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 14,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(980px, 96vw)",
+              maxHeight: "88vh",
+              background: "#fff",
+              borderRadius: 16,
+              overflow: "hidden",
+              boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+              border: "1px solid rgba(255,255,255,0.25)",
+            }}
+          >
+            <div
+              style={{
+                padding: "10px 12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderBottom: "1px solid #e5e7eb",
+                background: "linear-gradient(135deg,#eff6ff,#ffffff)",
+              }}
+            >
+              <div style={{ fontWeight: 900, color: "#1e3a8a" }}>
+                {imgModal.title || "Image Preview"}
+              </div>
+              <button
+                type="button"
+                onClick={closeImage}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  fontSize: 22,
+                  cursor: "pointer",
+                  lineHeight: 1,
+                  padding: "2px 6px",
+                }}
+                aria-label="Close"
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                padding: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#0b1220",
+              }}
+            >
+              <img
+                src={imgModal.url}
+                alt="Preview"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "78vh",
+                  objectFit: "contain",
+                  borderRadius: 12,
+                  background: "#fff",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         {/* Top left company name */}
         <div
           style={{
@@ -530,16 +873,11 @@ export default function ProductDetailsInput() {
             >
               Product Details & Specifications
             </div>
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: "#4b5563",
-              }}
-            >
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#4b5563" }}>
               One product per record – assessment, registration, images & tests
             </div>
           </div>
+
           <div
             style={{
               textAlign: "right",
@@ -552,9 +890,7 @@ export default function ProductDetailsInput() {
               border: "1px solid rgba(209,213,219,0.7)",
             }}
           >
-            Unified template to capture product details, assessment, registration
-            and laboratory tests. One product per record, saved directly to the
-            external server.
+            Images will NOT upload on selection. Upload happens only when you Save.
           </div>
         </header>
 
@@ -567,18 +903,18 @@ export default function ProductDetailsInput() {
               borderRadius: 12,
               background: statusMessage.startsWith("✅")
                 ? "linear-gradient(135deg,#ecfdf3,#dcfce7)"
-                : statusMessage.startsWith("⏳")
+                : statusMessage.startsWith("⏳") || statusMessage.startsWith("ℹ️")
                 ? "linear-gradient(135deg,#eff6ff,#dbeafe)"
                 : "linear-gradient(135deg,#fef2f2,#fee2e2)",
               color: statusMessage.startsWith("✅")
                 ? "#166534"
-                : statusMessage.startsWith("⏳")
+                : statusMessage.startsWith("⏳") || statusMessage.startsWith("ℹ️")
                 ? "#1d4ed8"
                 : "#b91c1c",
               fontSize: 13,
               border: statusMessage.startsWith("✅")
                 ? "1px solid #bbf7d0"
-                : statusMessage.startsWith("⏳")
+                : statusMessage.startsWith("⏳") || statusMessage.startsWith("ℹ️")
                 ? "1px solid #bfdbfe"
                 : "1px solid #fecaca",
               boxShadow: "0 8px 20px rgba(15,23,42,0.08)",
@@ -588,7 +924,6 @@ export default function ProductDetailsInput() {
           </div>
         )}
 
-        {/* FORM full width */}
         <form
           onSubmit={handleSubmit}
           style={{
@@ -598,32 +933,17 @@ export default function ProductDetailsInput() {
             alignItems: "flex-start",
           }}
         >
-          {/* القسم الأول: الإدخال + التسجيل + الاختبارات */}
           <div>
             {/* 1. Basic information */}
             <section style={sectionBox}>
-              <h3
-                style={{
-                  fontSize: 16,
-                  fontWeight: 800,
-                  marginBottom: 12,
-                  color: "#1e3a8a",
-                }}
-              >
+              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "#1e3a8a" }}>
                 1. Basic Product Information
               </h3>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.3fr 1fr",
-                  gap: 12,
-                  marginBottom: 10,
-                }}
-              >
+
+              <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 12, marginBottom: 10 }}>
                 <div>
                   <label style={labelStyle}>
-                    1.1 Product name{" "}
-                    <span style={{ color: "#b91c1c" }}>*</span>
+                    1.1 Product name <span style={{ color: "#b91c1c" }}>*</span>
                   </label>
                   <input
                     style={inputStyle}
@@ -632,6 +952,7 @@ export default function ProductDetailsInput() {
                     placeholder="Example: AUS CHILLED LAMB CARCASS"
                   />
                 </div>
+
                 <div>
                   <label style={labelStyle}>Product code / SKU</label>
                   <input
@@ -643,32 +964,19 @@ export default function ProductDetailsInput() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <label style={labelStyle}>1.2 Brand</label>
-                  <select
-                    style={inputStyle}
-                    value={form.brand}
-                    onChange={handleChange("brand")}
-                  >
+                  <select style={inputStyle} value={form.brand} onChange={handleChange("brand")}>
                     <option value="">Select brand...</option>
                     <option value="Al Mawashi">Al Mawashi</option>
                     <option value="BBayti">BBayti</option>
                   </select>
                 </div>
+
                 <div>
                   <label style={labelStyle}>Product type</label>
-                  <select
-                    style={inputStyle}
-                    value={form.productType}
-                    onChange={handleChange("productType")}
-                  >
+                  <select style={inputStyle} value={form.productType} onChange={handleChange("productType")}>
                     <option value="">Select...</option>
                     <option value="Raw">Raw</option>
                     <option value="Raw marinated">Raw marinated</option>
@@ -680,11 +988,7 @@ export default function ProductDetailsInput() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  marginTop: 12,
-                }}
-              >
+              <div style={{ marginTop: 12 }}>
                 <label style={labelStyle}>1.3 Country of origin</label>
                 <input
                   style={inputStyle}
@@ -697,24 +1001,11 @@ export default function ProductDetailsInput() {
 
             {/* 2. Label & shelf life */}
             <section style={sectionBox}>
-              <h3
-                style={{
-                  fontSize: 16,
-                  fontWeight: 800,
-                  marginBottom: 12,
-                  color: "#1e3a8a",
-                }}
-              >
+              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "#1e3a8a" }}>
                 2. Label & Shelf Life
               </h3>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                  marginBottom: 10,
-                }}
-              >
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 10 }}>
                 <div>
                   <label style={labelStyle}>2.1 Storage condition</label>
                   <input
@@ -724,16 +1015,10 @@ export default function ProductDetailsInput() {
                     placeholder="Keep chilled 0–5°C, frozen ≤ -18°C..."
                   />
                 </div>
+
                 <div>
                   <label style={labelStyle}>Shelf life</label>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 0.9fr",
-                      gap: 8,
-                      alignItems: "center",
-                    }}
-                  >
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 0.9fr", gap: 8, alignItems: "center" }}>
                     <input
                       type="number"
                       min="0"
@@ -742,29 +1027,21 @@ export default function ProductDetailsInput() {
                       onChange={handleChange("shelfLifeValue")}
                       placeholder="e.g. 12"
                     />
-                    <select
-                      style={inputStyle}
-                      value={form.shelfLifeUnit}
-                      onChange={handleChange("shelfLifeUnit")}
-                    >
+                    <select style={inputStyle} value={form.shelfLifeUnit} onChange={handleChange("shelfLifeUnit")}>
                       <option value="">Unit</option>
                       <option value="days">Days</option>
                       <option value="months">Months</option>
                     </select>
                   </div>
-                  <div style={smallHint}>
-                    Example: 12 months, 10 days, etc.
-                  </div>
+                  <div style={smallHint}>Example: 12 months, 10 days, etc.</div>
                 </div>
               </div>
 
-              {/* Ingredients dynamic rows */}
+              {/* Ingredients */}
               <div style={{ marginBottom: 8 }}>
                 <label style={labelStyle}>2.2 Ingredients</label>
-                {(Array.isArray(form.ingredients)
-                  ? form.ingredients
-                  : []
-                ).map((row, index) => (
+
+                {(Array.isArray(form.ingredients) ? form.ingredients : []).map((row, index) => (
                   <div
                     key={index}
                     style={{
@@ -779,13 +1056,13 @@ export default function ProductDetailsInput() {
                       style={inputStyle}
                       value={row.name}
                       onChange={handleIngredientChange(index, "name")}
-                      placeholder="Ingredient name (e.g. beef, water, salt, spice mix...)"
+                      placeholder="Ingredient name..."
                     />
                     <input
                       style={inputStyle}
                       value={row.amount}
                       onChange={handleIngredientChange(index, "amount")}
-                      placeholder="% or weight (e.g. 70%, 2.5%)"
+                      placeholder="% or weight..."
                     />
                     <button
                       type="button"
@@ -803,6 +1080,7 @@ export default function ProductDetailsInput() {
                     </button>
                   </div>
                 ))}
+
                 <button
                   type="button"
                   onClick={addIngredientRow}
@@ -819,10 +1097,8 @@ export default function ProductDetailsInput() {
                 >
                   + Add ingredient row
                 </button>
-                <div style={smallHint}>
-                  One ingredient per row with its percentage or weight. You can
-                  add unlimited rows as needed.
-                </div>
+
+                <div style={smallHint}>One ingredient per row with its percentage or weight.</div>
               </div>
 
               <div style={{ marginBottom: 8 }}>
@@ -848,26 +1124,11 @@ export default function ProductDetailsInput() {
 
             {/* 3. Registration & certificates */}
             <section style={sectionBox}>
-              <h3
-                style={{
-                  fontSize: 16,
-                  fontWeight: 800,
-                  marginBottom: 12,
-                  color: "#1e3a8a",
-                }}
-              >
+              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "#1e3a8a" }}>
                 3. Registration & Certificates
               </h3>
 
-              {/* DM registration row */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  gap: 12,
-                  marginBottom: 6,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 6 }}>
                 <div>
                   <label style={labelStyle}>3.1 DM registration status</label>
                   <select
@@ -901,42 +1162,14 @@ export default function ProductDetailsInput() {
                 </div>
               </div>
 
-              {/* DM registration images */}
-              <div style={{ marginBottom: 12 }}>
-                <label style={labelStyle}>
-                  DM registration images (max 10)
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleSectionImagesUpload(
-                    "dmRegistrationImagesUrls",
-                    "DM registration"
-                  )}
-                  style={{ marginBottom: 4, fontSize: 13 }}
-                />
-                <div style={smallHint}>
-                  Upload images of DM product registration / approval. URLs will
-                  be stored below (one per line).
-                </div>
-                <textarea
-                  style={{ ...textareaStyle, marginTop: 4 }}
-                  value={form.dmRegistrationImagesUrls}
-                  onChange={handleChange("dmRegistrationImagesUrls")}
-                  placeholder="DM registration image URLs (one URL per line)"
-                />
-              </div>
+              <Gallery
+                title="DM registration images"
+                fieldKey="dmRegistrationImagesUrls"
+                labelForStatus="DM registration"
+                max={10}
+              />
 
-              {/* Assessment certificate row */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  gap: 12,
-                  marginBottom: 6,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 6 }}>
                 <div>
                   <label style={labelStyle}>3.3 Assessment certificate No.</label>
                   <input
@@ -957,8 +1190,7 @@ export default function ProductDetailsInput() {
                 </div>
                 <div>
                   <label style={labelStyle}>
-                    Assessment date{" "}
-                    <span style={{ fontSize: 11 }}> (يوم/شهر/سنة)</span>
+                    Assessment date <span style={{ fontSize: 11 }}> (يوم/شهر/سنة)</span>
                   </label>
                   <input
                     type="date"
@@ -969,42 +1201,14 @@ export default function ProductDetailsInput() {
                 </div>
               </div>
 
-              {/* Assessment certificate images */}
-              <div style={{ marginBottom: 12 }}>
-                <label style={labelStyle}>
-                  Assessment certificate images (max 10)
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleSectionImagesUpload(
-                    "assessmentCertImagesUrls",
-                    "Assessment certificate"
-                  )}
-                  style={{ marginBottom: 4, fontSize: 13 }}
-                />
-                <div style={smallHint}>
-                  Upload images of label assessment / product assessment
-                  certificates. URLs will be stored below (one per line).
-                </div>
-                <textarea
-                  style={{ ...textareaStyle, marginTop: 4 }}
-                  value={form.assessmentCertImagesUrls}
-                  onChange={handleChange("assessmentCertImagesUrls")}
-                  placeholder="Assessment certificate image URLs (one URL per line)"
-                />
-              </div>
+              <Gallery
+                title="Assessment certificate images"
+                fieldKey="assessmentCertImagesUrls"
+                labelForStatus="Assessment certificate"
+                max={10}
+              />
 
-              {/* Halal certificate row */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  gap: 12,
-                  marginBottom: 6,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 6 }}>
                 <div>
                   <label style={labelStyle}>3.5 Halal certificate No.</label>
                   <input
@@ -1025,8 +1229,7 @@ export default function ProductDetailsInput() {
                 </div>
                 <div>
                   <label style={labelStyle}>
-                    Halal certificate expiry{" "}
-                    <span style={{ fontSize: 11 }}> (يوم/شهر/سنة)</span>
+                    Halal certificate expiry <span style={{ fontSize: 11 }}> (يوم/شهر/سنة)</span>
                   </label>
                   <input
                     type="date"
@@ -1037,148 +1240,46 @@ export default function ProductDetailsInput() {
                 </div>
               </div>
 
-              {/* Halal certificate images */}
-              <div style={{ marginBottom: 12 }}>
-                <label style={labelStyle}>
-                  3.6 Halal certificate images (max 10)
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleSectionImagesUpload(
-                    "halalCertImagesUrls",
-                    "Halal certificate"
-                  )}
-                  style={{ marginBottom: 4, fontSize: 13 }}
-                />
-                <div style={smallHint}>
-                  Upload images of Halal certificates and approvals. URLs will be
-                  stored below (one per line).
-                </div>
-                <textarea
-                  style={{ ...textareaStyle, marginTop: 4 }}
-                  value={form.halalCertImagesUrls}
-                  onChange={handleChange("halalCertImagesUrls")}
-                  placeholder="Halal certificate image URLs (one URL per line)"
-                />
-              </div>
+              <Gallery
+                title="Halal certificate images"
+                fieldKey="halalCertImagesUrls"
+                labelForStatus="Halal certificate"
+                max={10}
+              />
 
-              {/* Nutrition facts images */}
-              <div>
-                <label style={labelStyle}>
-                  3.7 Nutrition facts images (max 10)
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleSectionImagesUpload(
-                    "nutritionFactsImagesUrls",
-                    "Nutrition facts"
-                  )}
-                  style={{ marginBottom: 4, fontSize: 13 }}
-                />
-                <div style={smallHint}>
-                  Upload images of the nutrition facts panel on the label. URLs will
-                  be stored below (one per line).
-                </div>
-                <textarea
-                  style={{ ...textareaStyle, marginTop: 4 }}
-                  value={form.nutritionFactsImagesUrls}
-                  onChange={handleChange("nutritionFactsImagesUrls")}
-                  placeholder="Nutrition facts image URLs (one URL per line)"
-                />
-              </div>
+              <Gallery
+                title="Nutrition facts images"
+                fieldKey="nutritionFactsImagesUrls"
+                labelForStatus="Nutrition facts"
+                max={10}
+              />
             </section>
 
-            {/* 4. Tests & analysis – images only */}
+            {/* 4. Tests */}
             <section style={sectionBox}>
-              <h3
-                style={{
-                  fontSize: 16,
-                  fontWeight: 800,
-                  marginBottom: 12,
-                  color: "#1e3a8a",
-                }}
-              >
+              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "#1e3a8a" }}>
                 4. Tests & Analysis
               </h3>
-              <div>
-                <label style={labelStyle}>Test images (max 10)</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleTestImagesUpload}
-                  style={{ marginBottom: 6, fontSize: 13 }}
-                />
-                <div style={smallHint}>
-                  Upload up to 10 images for test reports or results (microbiology,
-                  chemical, packaging, shelf-life studies, etc.). Images are uploaded
-                  to the external server and URLs are stored below.
-                </div>
-                <textarea
-                  style={{ ...textareaStyle, marginTop: 6 }}
-                  value={form.testImagesUrls}
-                  onChange={handleChange("testImagesUrls")}
-                  placeholder="Test images URLs (one URL per line)"
-                />
-              </div>
+
+              <Gallery title="Test images" fieldKey="testImagesUrls" labelForStatus="Test images" max={10} />
             </section>
           </div>
 
-          {/* القسم الثاني: صور المنتج + الحفظ + المعاينة */}
+          {/* Attachments + Save */}
           <div>
-            {/* Product images */}
             <section style={sectionBox}>
-              <h3
-                style={{
-                  fontSize: 16,
-                  fontWeight: 800,
-                  marginBottom: 12,
-                  color: "#1e3a8a",
-                }}
-              >
+              <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "#1e3a8a" }}>
                 5. Attachments – Product Images
               </h3>
 
-              <div>
-                <label style={labelStyle}>Product images (upload)</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImagesUpload}
-                  style={{ marginBottom: 6, fontSize: 13 }}
-                />
-                <div style={smallHint}>
-                  You can select multiple images. They will be uploaded to the external
-                  server (with compression handled server-side), and the URLs will be
-                  stored in the field below.
-                </div>
-                <textarea
-                  style={{ ...textareaStyle, marginTop: 6 }}
-                  value={form.productImageUrls}
-                  onChange={handleChange("productImageUrls")}
-                  placeholder="Product image URLs (one URL per line)"
-                />
-              </div>
-
-              {uploadingField && (
-                <div
-                  style={{
-                    marginTop: 8,
-                    fontSize: 12,
-                    color: "#1d4ed8",
-                  }}
-                >
-                  ⏳ Uploading files ({uploadingField})...
-                </div>
-              )}
+              <Gallery
+                title="Product images"
+                fieldKey="productImageUrls"
+                labelForStatus="Product images"
+                max={null}
+              />
             </section>
 
-            {/* Save + view buttons */}
             <section style={sectionBox}>
               <button
                 type="submit"
@@ -1192,25 +1293,13 @@ export default function ProductDetailsInput() {
                   fontSize: 15,
                   cursor: loading ? "not-allowed" : "pointer",
                   opacity: loading ? 0.7 : 1,
-                  background:
-                    "linear-gradient(135deg, #4f46e5, #2563eb, #0ea5e9)",
+                  background: "linear-gradient(135deg, #4f46e5, #2563eb, #0ea5e9)",
                   color: "#ffffff",
                   boxShadow: "0 12px 30px rgba(37,99,235,0.5)",
                   marginBottom: 8,
-                  transition: "transform 0.15s.ease, box-shadow 0.15s ease",
-                }}
-                onMouseDown={(e) => {
-                  e.currentTarget.style.transform = "translateY(1px)";
-                  e.currentTarget.style.boxShadow =
-                    "0 8px 20px rgba(37,99,235,0.4)";
-                }}
-                onMouseUp={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow =
-                    "0 12px 30px rgba(37,99,235,0.5)";
                 }}
               >
-                {loading ? "Saving to server..." : "Save product to server"}
+                {loading ? "Saving (uploading images now)..." : "Save product to server"}
               </button>
 
               <button
@@ -1221,8 +1310,7 @@ export default function ProductDetailsInput() {
                   padding: "9px 0",
                   borderRadius: 999,
                   border: "1px solid #93c5fd",
-                  background:
-                    "linear-gradient(135deg, #eff6ff, #dbeafe)",
+                  background: "linear-gradient(135deg, #eff6ff, #dbeafe)",
                   fontWeight: 700,
                   fontSize: 14,
                   cursor: "pointer",
@@ -1233,23 +1321,13 @@ export default function ProductDetailsInput() {
               </button>
 
               <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
-                Data is always saved to the external server via /api/reports (type:
-                {` "${TYPE}"`}). No local storage is used, only a preview of the saved
-                payload below.
+                ✅ الصور لا تُرفع عند الاختيار — تُرفع فقط عند الضغط على Save.
               </div>
             </section>
 
-            {/* Preview */}
             {preview && (
               <section style={sectionBox}>
-                <h3
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 800,
-                    marginBottom: 8,
-                    color: "#1e3a8a",
-                  }}
-                >
+                <h3 style={{ fontSize: 15, fontWeight: 800, marginBottom: 8, color: "#1e3a8a" }}>
                   Preview – Saved Product Payload
                 </h3>
                 <div
