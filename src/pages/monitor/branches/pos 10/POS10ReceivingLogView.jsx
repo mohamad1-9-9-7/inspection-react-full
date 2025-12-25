@@ -5,49 +5,109 @@ import jsPDF from "jspdf";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
+    (typeof process !== "undefined" &&
+      (process.env.REACT_APP_API_URL ||
+        process.env.VITE_API_URL ||
+        process.env.RENDER_EXTERNAL_URL)) ||
+    "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
 // Matches the POS10 input file (no external references)
-const TYPE   = "pos10_receiving_log_butchery";
+const TYPE = "pos10_receiving_log_butchery";
 const BRANCH = "POS 10";
 
 // C/NC columns
 const TICK_COLS = [
-  { key: "vehicleClean",   label: "Vehicle clean" },
+  { key: "vehicleClean", label: "Vehicle clean" },
   { key: "handlerHygiene", label: "Food handler hygiene" },
-  { key: "appearanceOK",   label: "Appearance" },
-  { key: "firmnessOK",     label: "Firmness" },
-  { key: "smellOK",        label: "Smell" },
-  { key: "packagingGood",  label: "Packaging good/undamaged/clean/no pests" },
+  { key: "appearanceOK", label: "Appearance" },
+  { key: "firmnessOK", label: "Firmness" },
+  { key: "smellOK", label: "Smell" },
+  { key: "packagingGood", label: "Packaging good/undamaged/clean/no pests" },
 ];
 
-const safe = (v) => (v ?? "");
+const safe = (v) => v ?? "";
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 const btn = (bg) => ({
-  background: bg, color: "#fff", border: "none", borderRadius: 8,
-  padding: "8px 12px", fontWeight: 700, cursor: "pointer"
+  background: bg,
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  padding: "8px 12px",
+  fontWeight: 700,
+  cursor: "pointer",
 });
 const formatDMY = (iso) => {
   if (!iso) return iso;
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 };
+
 // A row is considered filled if any field has a value
-const isFilledRow = (r = {}) => Object.values(r).some(v => String(v ?? "").trim() !== "");
+const isFilledRow = (r = {}) =>
+  Object.values(r).some((v) => String(v ?? "").trim() !== "");
+
+/* ===== Search helpers ===== */
+const norm = (s) =>
+  String(s ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+function rowHaystack(r = {}) {
+  return norm(
+    [
+      r.supplier,
+      r.foodItem,
+      r.countryOfOrigin,
+      r.productionDate,
+      r.expiryDate,
+      r.vehicleTemp,
+      r.foodTemp,
+      r.quantity,
+      r.remarks,
+      r.vehicleClean,
+      r.handlerHygiene,
+      r.appearanceOK,
+      r.firmnessOK,
+      r.smellOK,
+      r.packagingGood,
+    ].join(" | ")
+  );
+}
+
+function metaHaystack(p = {}) {
+  return norm(
+    [
+      p.branch,
+      p.reportDate,
+      p.reportTime,
+      p.invoiceNo,
+      p.formRef,
+      p.classification,
+      p.receivedBy,
+      p.verifiedBy,
+    ].join(" | ")
+  );
+}
 
 // Same row structure as the input component
 function emptyRow() {
   return {
-    supplier: "", foodItem: "",
-    vehicleTemp: "", foodTemp: "",
-    quantity: "",                            // ✅ New quantity field
-    vehicleClean: "", handlerHygiene: "", appearanceOK: "", firmnessOK: "", smellOK: "", packagingGood: "",
-    countryOfOrigin: "", productionDate: "", expiryDate: "",
+    supplier: "",
+    foodItem: "",
+    vehicleTemp: "",
+    foodTemp: "",
+    quantity: "",
+    vehicleClean: "",
+    handlerHygiene: "",
+    appearanceOK: "",
+    firmnessOK: "",
+    smellOK: "",
+    packagingGood: "",
+    countryOfOrigin: "",
+    productionDate: "",
+    expiryDate: "",
     remarks: "",
   };
 }
@@ -61,7 +121,10 @@ export default function POS10ReceivingLogView() {
       return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
     } catch {
       const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(d.getDate()).padStart(2, "0")}`;
     }
   }, []);
 
@@ -71,8 +134,16 @@ export default function POS10ReceivingLogView() {
   const [err, setErr] = useState("");
   const [record, setRecord] = useState(null);
 
+  // ✅ Global search (across ALL days + within selected day table)
+  const [search, setSearch] = useState("");
+
+  // Cache: all payloads for this TYPE+BRANCH (used for global search)
+  const [allPayloads, setAllPayloads] = useState([]);
+
   // Optional edit mode (password 9999)
-  const [editRows, setEditRows] = useState(Array.from({ length: 15 }, () => emptyRow()));
+  const [editRows, setEditRows] = useState(
+    Array.from({ length: 15 }, () => emptyRow())
+  );
   const [editing, setEditing] = useState(false);
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
   const [editReceivedBy, setEditReceivedBy] = useState("");
@@ -83,12 +154,15 @@ export default function POS10ReceivingLogView() {
   const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
 
   // Styles
-  const gridStyle = useMemo(() => ({
-    width: "max-content",
-    borderCollapse: "collapse",
-    tableLayout: "fixed",
-    fontSize: 12,
-  }), []);
+  const gridStyle = useMemo(
+    () => ({
+      width: "max-content",
+      borderCollapse: "collapse",
+      tableLayout: "fixed",
+      fontSize: 12,
+    }),
+    []
+  );
   const thCell = {
     border: "1px solid #1f3b70",
     padding: "6px 4px",
@@ -112,45 +186,67 @@ export default function POS10ReceivingLogView() {
   };
 
   // Table columns (aligned with the input component)
-  const colDefs = useMemo(() => ([
-    <col key="supplier" style={{ width: 170 }} />,
-    <col key="food" style={{ width: 160 }} />,
-    <col key="vehT" style={{ width: 90 }} />,
-    <col key="foodT" style={{ width: 90 }} />,
-    <col key="qty" style={{ width: 110 }} />,          // ✅ Quantity column
-    <col key="vehClean" style={{ width: 120 }} />,
-    <col key="handler" style={{ width: 140 }} />,
-    <col key="appearanceOK" style={{ width: 120 }} />,
-    <col key="firmnessOK" style={{ width: 110 }} />,
-    <col key="smellOK" style={{ width: 110 }} />,
-    <col key="pack" style={{ width: 220 }} />,
-    <col key="origin" style={{ width: 120 }} />,
-    <col key="prod" style={{ width: 120 }} />,
-    <col key="exp" style={{ width: 120 }} />,
-    <col key="remarks" style={{ width: 200 }} />,
-  ]), []);
+  const colDefs = useMemo(
+    () => [
+      <col key="supplier" style={{ width: 170 }} />,
+      <col key="food" style={{ width: 160 }} />,
+      <col key="vehT" style={{ width: 90 }} />,
+      <col key="foodT" style={{ width: 90 }} />,
+      <col key="qty" style={{ width: 110 }} />,
+      <col key="vehClean" style={{ width: 120 }} />,
+      <col key="handler" style={{ width: 140 }} />,
+      <col key="appearanceOK" style={{ width: 120 }} />,
+      <col key="firmnessOK" style={{ width: 110 }} />,
+      <col key="smellOK" style={{ width: 110 }} />,
+      <col key="pack" style={{ width: 220 }} />,
+      <col key="origin" style={{ width: 120 }} />,
+      <col key="prod" style={{ width: 120 }} />,
+      <col key="exp" style={{ width: 120 }} />,
+      <col key="remarks" style={{ width: 200 }} />,
+    ],
+    []
+  );
+
+  const openInTree = (d) => {
+    if (!d) return;
+    const parts = String(d).split("-");
+    const y = parts[0];
+    const m = parts[1];
+    setExpandedYears((prev) => ({ ...prev, [y]: true }));
+    setExpandedMonths((prev) => ({ ...prev, [`${y}-${m}`]: true }));
+  };
 
   /* ====== Fetch ====== */
   async function fetchAllDates() {
     try {
       const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, {
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data?.data ?? [];
 
-      const filtered = list
+      // payloads for POS 10 only
+      const payloads = list
         .map((r) => r?.payload)
         .filter((p) => p && p.branch === BRANCH && p.reportDate);
 
-      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
+      // cache for global search
+      payloads.sort((a, b) =>
+        String(b.reportDate || "").localeCompare(String(a.reportDate || ""))
+      );
+      setAllPayloads(payloads);
+
+      const uniq = Array.from(new Set(payloads.map((p) => p.reportDate))).sort(
+        (a, b) => String(b).localeCompare(String(a))
+      );
       setAllDates(uniq);
 
       if (uniq.length) {
-        const [y, m] = uniq[0].split("-");
-        setExpandedYears((prev) => ({ ...prev, [y]: true }));
-        setExpandedMonths((prev) => ({ ...prev, [`${y}-${m}`]: true }));
+        openInTree(uniq[0]);
       }
+
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) {
       console.warn("Failed to fetch dates", e);
@@ -161,17 +257,41 @@ export default function POS10ReceivingLogView() {
     setLoading(true);
     setErr("");
     setRecord(null);
+
     try {
+      // fast path from cached payloads
+      const cached = allPayloads.find((p) => p?.reportDate === d);
+      if (cached) {
+        // emulate record shape (payload only is used heavily)
+        const pseudo = { payload: cached };
+        setRecord(pseudo);
+
+        const rows = Array.from({ length: 15 }, (_, i) => cached?.entries?.[i] || emptyRow());
+        setEditRows(rows);
+        setEditVerifiedBy(cached?.verifiedBy || "");
+        setEditReceivedBy(cached?.receivedBy || "");
+        setEditing(false);
+        return;
+      }
+
+      // fallback: fetch all and find match (kept for safety)
       const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, {
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data?.data ?? [];
 
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match =
+        list.find(
+          (r) =>
+            r?.payload?.branch === BRANCH &&
+            r?.payload?.reportDate === d
+        ) || null;
+
       setRecord(match);
 
-      // Initialize edit state (up to 15 rows)
       const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
@@ -185,16 +305,29 @@ export default function POS10ReceivingLogView() {
     }
   }
 
-  useEffect(() => { fetchAllDates(); }, []);
-  useEffect(() => { if (date) fetchRecord(date); }, [date]);
+  useEffect(() => {
+    fetchAllDates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (date) {
+      openInTree(date);
+      fetchRecord(date);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
 
   /* ====== Edit / Save / Delete (password protected) ====== */
-  const askPass = (label="") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
+  const askPass = (label = "") =>
+    (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   function toggleEdit() {
     if (editing) {
-      // Cancel: restore from record
-      const rows = Array.from({ length: 15 }, (_, i) => record?.payload?.entries?.[i] || emptyRow());
+      const rows = Array.from(
+        { length: 15 },
+        (_, i) => record?.payload?.entries?.[i] || emptyRow()
+      );
       setEditRows(rows);
       setEditVerifiedBy(record?.payload?.verifiedBy || "");
       setEditReceivedBy(record?.payload?.receivedBy || "");
@@ -227,7 +360,9 @@ export default function POS10ReceivingLogView() {
 
       if (rid) {
         try {
-          await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
+          await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+            method: "DELETE",
+          });
         } catch (e) {
           console.warn("DELETE (ignored error):", e);
         }
@@ -242,8 +377,11 @@ export default function POS10ReceivingLogView() {
 
       alert("✅ Changes saved");
       setEditing(false);
-      await fetchRecord(payload.reportDate);
+
+      // refresh cache + current record
       await fetchAllDates();
+      setDate(payload.reportDate);
+      await fetchRecord(payload.reportDate);
     } catch (e) {
       console.error(e);
       alert("❌ Saving failed.\n" + String(e?.message || e));
@@ -262,11 +400,16 @@ export default function POS10ReceivingLogView() {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+        method: "DELETE",
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       alert("✅ Deleted");
       await fetchAllDates();
-      const next = allDates.find((d) => d !== record?.payload?.reportDate) || todayDubai;
+
+      const current = record?.payload?.reportDate;
+      const next = allDates.find((d) => d !== current) || todayDubai;
       setDate(next);
     } catch (e) {
       console.error(e);
@@ -280,7 +423,9 @@ export default function POS10ReceivingLogView() {
   function exportJSON() {
     if (!record) return;
     const out = { type: TYPE, payload: record.payload };
-    const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(out, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -289,15 +434,18 @@ export default function POS10ReceivingLogView() {
     URL.revokeObjectURL(url);
   }
 
-  // Browser-friendly exceljs loader
   async function loadExcelJS() {
     try {
-      const m = await import(/* webpackChunkName: "exceljs-browser" */ "exceljs/dist/exceljs.min.js");
+      const m = await import(
+        /* webpackChunkName: "exceljs-browser" */ "exceljs/dist/exceljs.min.js"
+      );
       const ExcelJS = m?.default ?? m;
       if (ExcelJS?.Workbook) return ExcelJS;
     } catch (_) {}
     try {
-      const m2 = await import(/* webpackChunkName: "exceljs-browser" */ "exceljs/dist/exceljs.min");
+      const m2 = await import(
+        /* webpackChunkName: "exceljs-browser" */ "exceljs/dist/exceljs.min"
+      );
       const ExcelJS2 = m2?.default ?? m2;
       if (ExcelJS2?.Workbook) return ExcelJS2;
     } catch (_) {}
@@ -306,27 +454,51 @@ export default function POS10ReceivingLogView() {
     if (ExcelJS3?.Workbook) return ExcelJS3;
     throw new Error("Failed to load ExcelJS");
   }
+
   async function resolveSaveAs() {
     const mod = await import("file-saver");
     return mod?.saveAs || mod?.default?.saveAs || mod?.default || mod;
   }
 
-  // CSV fallback (matches the new columns)
   function fallbackCSV(p) {
     const headers = [
-      "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Quantity KG\\PCS",
-      "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
+      "Name of the Supplier",
+      "Food Item",
+      "Vehicle Temp (°C)",
+      "Food Temp (°C)",
+      "Quantity KG\\PCS",
+      "Vehicle clean",
+      "Food handler hygiene",
+      "Appearance",
+      "Firmness",
+      "Smell",
       "Packaging good/undamaged/clean/no pests",
-      "Country of origin","Production Date","Expiry Date","Remarks (if any)"
+      "Country of origin",
+      "Production Date",
+      "Expiry Date",
+      "Remarks (if any)",
     ];
-    const rows = (p.entries || []).filter(isFilledRow).map(e => ([
-      e?.supplier ?? "", e?.foodItem ?? "", e?.vehicleTemp ?? "", e?.foodTemp ?? "", e?.quantity ?? "",
-      e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "", e?.firmnessOK ?? "", e?.smellOK ?? "",
-      e?.packagingGood ?? "", e?.countryOfOrigin ?? "", e?.productionDate ?? "", e?.expiryDate ?? "",
-      e?.remarks ?? ""
-    ]));
+    const rows = (p.entries || [])
+      .filter(isFilledRow)
+      .map((e) => [
+        e?.supplier ?? "",
+        e?.foodItem ?? "",
+        e?.vehicleTemp ?? "",
+        e?.foodTemp ?? "",
+        e?.quantity ?? "",
+        e?.vehicleClean ?? "",
+        e?.handlerHygiene ?? "",
+        e?.appearanceOK ?? "",
+        e?.firmnessOK ?? "",
+        e?.smellOK ?? "",
+        e?.packagingGood ?? "",
+        e?.countryOfOrigin ?? "",
+        e?.productionDate ?? "",
+        e?.expiryDate ?? "",
+        e?.remarks ?? "",
+      ]);
     const csv = [headers, ...rows]
-      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(","))
+      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
       .join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -336,7 +508,6 @@ export default function POS10ReceivingLogView() {
     URL.revokeObjectURL(a.href);
   }
 
-  // XLSX export (meta header + new table columns)
   async function exportXLSX() {
     try {
       const ExcelJS = await loadExcelJS();
@@ -352,22 +523,20 @@ export default function POS10ReceivingLogView() {
       const tableHeaderBlue = "DCE6F1";
       const borderThin = { style: "thin", color: { argb: "1F3B70" } };
 
-      // Title
-      ws.mergeCells(1,1,1,15);
-      const r1 = ws.getCell(1,1);
+      ws.mergeCells(1, 1, 1, 15);
+      const r1 = ws.getCell(1, 1);
       r1.value = "POS 10 | Receiving Log (Butchery)";
       r1.alignment = { horizontal: "center", vertical: "middle" };
       r1.font = { size: 14, bold: true };
       r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
       ws.getRow(1).height = 26;
 
-      // Meta (right-aligned block)
       const meta = [
         ["Classification:", p.classification || "Official"],
-        ["Branch:",        p.branch        || "POS 10"],
-        ["Date:",          p.reportDate    || ""],
-        ["Time:",          p.reportTime    || ""],
-        ["Invoice No:",    p.invoiceNo     || ""],
+        ["Branch:", p.branch || "POS 10"],
+        ["Date:", p.reportDate || ""],
+        ["Time:", p.reportTime || ""],
+        ["Invoice No:", p.invoiceNo || ""],
       ];
       for (let i = 0; i < meta.length; i++) {
         const rowIdx = 2 + i;
@@ -378,19 +547,40 @@ export default function POS10ReceivingLogView() {
         ws.getRow(rowIdx).height = 18;
       }
 
-      // Column widths (15 columns now)
       ws.columns = [
-        { width: 24 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 16 },
-        { width: 16 }, { width: 18 }, { width: 14 }, { width: 12 }, { width: 12 },
-        { width: 36 }, { width: 16 }, { width: 15 }, { width: 15 }, { width: 22 },
+        { width: 24 },
+        { width: 20 },
+        { width: 14 },
+        { width: 14 },
+        { width: 16 },
+        { width: 16 },
+        { width: 18 },
+        { width: 14 },
+        { width: 12 },
+        { width: 12 },
+        { width: 36 },
+        { width: 16 },
+        { width: 15 },
+        { width: 15 },
+        { width: 22 },
       ];
 
-      // Header row
       const COL_HEADERS = [
-        "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Quantity KG\\PCS",
-        "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
+        "Name of the Supplier",
+        "Food Item",
+        "Vehicle Temp (°C)",
+        "Food Temp (°C)",
+        "Quantity KG\\PCS",
+        "Vehicle clean",
+        "Food handler hygiene",
+        "Appearance",
+        "Firmness",
+        "Smell",
         "Packaging of food is good and undamaged, clean and no signs of pest infestation",
-        "Country of origin","Production Date","Expiry Date","Remarks (if any)"
+        "Country of origin",
+        "Production Date",
+        "Expiry Date",
+        "Remarks (if any)",
       ];
       const hr = ws.getRow(7);
       hr.values = COL_HEADERS;
@@ -402,13 +592,23 @@ export default function POS10ReceivingLogView() {
       });
       hr.height = 28;
 
-      // Data
       let rowIdx = 8;
       rawRows.forEach((e) => {
         ws.getRow(rowIdx).values = [
-          e?.supplier || "", e?.foodItem || "", e?.vehicleTemp || "", e?.foodTemp || "", e?.quantity || "",
-          e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "", e?.firmnessOK || "", e?.smellOK || "",
-          e?.packagingGood || "", e?.countryOfOrigin || "", e?.productionDate || "", e?.expiryDate || "",
+          e?.supplier || "",
+          e?.foodItem || "",
+          e?.vehicleTemp || "",
+          e?.foodTemp || "",
+          e?.quantity || "",
+          e?.vehicleClean || "",
+          e?.handlerHygiene || "",
+          e?.appearanceOK || "",
+          e?.firmnessOK || "",
+          e?.smellOK || "",
+          e?.packagingGood || "",
+          e?.countryOfOrigin || "",
+          e?.productionDate || "",
+          e?.expiryDate || "",
           e?.remarks || "",
         ];
         ws.getRow(rowIdx).eachCell((cell) => {
@@ -419,7 +619,6 @@ export default function POS10ReceivingLogView() {
         rowIdx++;
       });
 
-      // Legend
       const legendRow = rowIdx + 1;
       ws.mergeCells(legendRow, 1, legendRow, 6);
       const legCell = ws.getCell(legendRow, 1);
@@ -430,17 +629,19 @@ export default function POS10ReceivingLogView() {
 
       const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
       saveAs(
-        new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+        new Blob([buf], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
         `POS10_ReceivingLog_${p.reportDate || date}.xlsx`
       );
-    } catch (err) {
-      console.error("[XLSX export error]", err);
+    } catch (xerr) {
+      console.error("[XLSX export error]", xerr);
       try {
         const p = record?.payload || {};
         fallbackCSV(p);
-        alert("⚠️ XLSX export failed, CSV exported instead.\n" + (err?.message || err));
+        alert("⚠️ XLSX export failed, CSV exported instead.\n" + (xerr?.message || xerr));
       } catch (e2) {
-        alert("⚠️ XLSX and CSV export both failed.\n" + (err?.message || err));
+        alert("⚠️ XLSX and CSV export both failed.\n" + (xerr?.message || xerr));
       }
     }
   }
@@ -462,8 +663,8 @@ export default function POS10ReceivingLogView() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       alert("✅ Imported and saved");
-      setDate(payload.reportDate);
       await fetchAllDates();
+      setDate(payload.reportDate);
       await fetchRecord(payload.reportDate);
     } catch (e) {
       console.error(e);
@@ -491,7 +692,6 @@ export default function POS10ReceivingLogView() {
     const margin = 20;
     const headerH = 50;
 
-    // Header
     pdf.setFillColor(247, 249, 252);
     pdf.rect(0, 0, pageW, headerH, "F");
     pdf.setFont("helvetica", "bold");
@@ -545,80 +745,278 @@ export default function POS10ReceivingLogView() {
   /* ====== Group dates (Year -> Month -> Dates) ====== */
   const grouped = useMemo(() => {
     const out = {};
-    for (const d of allDates) {
-      const [y, m] = d.split("-");
-      (out[y] ||= {});
-      (out[y][m] ||= []).push(d);
+    for (let i = 0; i < allDates.length; i++) {
+      const d = allDates[i];
+      const parts = String(d).split("-");
+      const y = parts[0];
+      const m = parts[1];
+      if (!out[y]) out[y] = {};
+      if (!out[y][m]) out[y][m] = [];
+      out[y][m].push(d);
     }
-    for (const y of Object.keys(out))
-      out[y] = Object.fromEntries(
-        Object.entries(out[y])
-          .sort(([a],[b]) => Number(a) - Number(b))
-          .map(([m, arr]) => [m, arr.sort((a,b)=>a.localeCompare(b))])
-      );
-    return Object.fromEntries(Object.entries(out).sort(([a],[b]) => Number(a) - Number(b)));
+
+    const years = Object.keys(out).sort((a, b) => Number(a) - Number(b));
+    const finalOut = {};
+    for (let yi = 0; yi < years.length; yi++) {
+      const y = years[yi];
+      const monthsObj = out[y];
+      const months = Object.keys(monthsObj).sort((a, b) => Number(a) - Number(b));
+      const mOut = {};
+      for (let mi = 0; mi < months.length; mi++) {
+        const m = months[mi];
+        mOut[m] = (monthsObj[m] || []).slice().sort((a, b) => String(a).localeCompare(String(b)));
+      }
+      finalOut[y] = mOut;
+    }
+    return finalOut;
   }, [allDates]);
 
-  const toggleYear  = (y)    => setExpandedYears((p)  => ({ ...p, [y]: !p[y] }));
-  const toggleMonth = (y, m) => setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
+  const toggleYear = (y) => setExpandedYears((p) => ({ ...p, [y]: !p[y] }));
+  const toggleMonth = (y, m) =>
+    setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
+
+  /* ====== GLOBAL Search results across ALL days ====== */
+  const globalResults = useMemo(() => {
+    const q = norm(search);
+    if (!q) return [];
+
+    const res = [];
+    for (let i = 0; i < allPayloads.length; i++) {
+      const p = allPayloads[i];
+      const d = p?.reportDate;
+      if (!d) continue;
+
+      const metaHit = metaHaystack(p).includes(q);
+      const entries = Array.isArray(p.entries) ? p.entries.filter(isFilledRow) : [];
+
+      if (metaHit) {
+        res.push({
+          kind: "meta",
+          reportDate: d,
+          label: `Header match (Invoice/Time/Verified/Received/etc.)`,
+        });
+      }
+
+      for (let j = 0; j < entries.length; j++) {
+        const r = entries[j];
+        if (rowHaystack(r).includes(q)) {
+          res.push({
+            kind: "row",
+            reportDate: d,
+            row: r,
+          });
+        }
+      }
+    }
+
+    // newest first by date
+    res.sort((a, b) => String(b.reportDate).localeCompare(String(a.reportDate)));
+    return res;
+  }, [allPayloads, search]);
+
+  const limitedGlobal = useMemo(() => globalResults.slice(0, 200), [globalResults]);
+
+  /* ====== Current day table filtering uses same search (so user sees matches when opens date) ====== */
+  const viewRows = useMemo(() => {
+    const entries = (record?.payload?.entries || []).filter(isFilledRow);
+    const q = norm(search);
+    if (!q) return entries;
+
+    const headerHit = metaHaystack(record?.payload || {}).includes(q);
+    if (headerHit) return entries;
+
+    return entries.filter((r) => rowHaystack(r).includes(q));
+  }, [record, search]);
+
+  const editMatch = useMemo(() => {
+    const q = norm(search);
+    if (!q) return () => false;
+
+    const headerHit = metaHaystack(record?.payload || {}).includes(q);
+    if (headerHit) return () => true;
+
+    return (r) => rowHaystack(r).includes(q);
+  }, [search, record]);
+
+  const jumpTo = (d) => {
+    openInTree(d);
+    setDate(d);
+  };
 
   return (
-    <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d", direction:"ltr" }}>
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #dbe3f4",
+        borderRadius: 12,
+        padding: 16,
+        color: "#0b1f4d",
+        direction: "ltr",
+      }}
+    >
       {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-        <div style={{ fontWeight:800, fontSize:18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>
           Receiving Log (Butchery) — View (POS 10)
         </div>
 
         {/* Actions */}
-        <div style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+        <div style={{ marginInlineStart: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
             {editing ? "Cancel Edit" : "Edit (password)"}
           </button>
-          {editing && (
-            <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
-          )}
+          {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
           <button onClick={handleDelete} style={btn("#dc2626")}>Delete (password)</button>
 
-          <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>
-            Export XLSX
-          </button>
-          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>
-            Export JSON
-          </button>
-          <button onClick={exportPDF} style={btn("#374151")}>
-            Export PDF
-          </button>
-          <label style={{ ...btn("#059669"), display:"inline-block" }}>
+          <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>Export XLSX</button>
+          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
+          <button onClick={exportPDF} style={btn("#374151")}>Export PDF</button>
+
+          <label style={{ ...btn("#059669"), display: "inline-block" }}>
             Import JSON
             <input
               ref={fileInputRef}
               type="file"
               accept="application/json"
-              onChange={(e)=>importJSON(e.target.files?.[0])}
-              style={{ display:"none" }}
+              onChange={(e) => importJSON(e.target.files?.[0])}
+              style={{ display: "none" }}
             />
           </label>
         </div>
       </div>
 
+      {/* ✅ One search input that searches ALL DAYS + filters current table */}
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 10,
+          padding: 10,
+          marginBottom: 12,
+          background: "#fafafa",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ fontWeight: 900 }}>🔎 Search (ALL days)</div>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search anything across all days: supplier / item / invoice / temps / expiry / remarks / received / verified ..."
+          style={{
+            flex: "1 1 520px",
+            minWidth: 260,
+            border: "1px solid #c7d2fe",
+            borderRadius: 8,
+            padding: "8px 10px",
+            outline: "none",
+          }}
+        />
+        <button
+          onClick={() => setSearch("")}
+          disabled={!search}
+          style={{
+            ...btn(search ? "#6b7280" : "#9ca3af"),
+            opacity: search ? 1 : 0.6,
+            cursor: search ? "pointer" : "not-allowed",
+          }}
+          title="Clear search"
+        >
+          Clear
+        </button>
+
+        <div style={{ marginInlineStart: "auto", fontSize: 12, color: "#374151", fontWeight: 800 }}>
+          {norm(search) ? (
+            <>Matches (all days): <span style={{ color: "#111827" }}>{globalResults.length}</span></>
+          ) : (
+            <>Search is empty</>
+          )}
+        </div>
+      </div>
+
       {/* Layout: Date tree + content */}
-      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
-        {/* Date tree */}
-        <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
-          <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
-          <div style={{ maxHeight:380, overflowY:"auto" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 12 }}>
+        {/* Left: Date tree + Global results */}
+        <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, background: "#fafafa" }}>
+          {/* Global results panel */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>🧭 Global Results</div>
+
+            {!norm(search) ? (
+              <div style={{ color: "#6b7280", fontSize: 12 }}>
+                Type in the search box to see matches across all saved days.
+              </div>
+            ) : globalResults.length === 0 ? (
+              <div style={{ color: "#b91c1c", fontSize: 12 }}>
+                No matches across all days.
+              </div>
+            ) : (
+              <div style={{ maxHeight: 210, overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff" }}>
+                {limitedGlobal.map((g, idx) => {
+                  const d = g.reportDate;
+                  const label =
+                    g.kind === "meta"
+                      ? g.label
+                      : `${safe(g.row?.supplier)} — ${safe(g.row?.foodItem)} (Exp: ${formatDMY(safe(g.row?.expiryDate)) || "-"})`;
+
+                  return (
+                    <button
+                      key={`${g.kind}-${d}-${idx}`}
+                      onClick={() => jumpTo(d)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "8px 10px",
+                        border: "none",
+                        borderBottom: "1px solid #eef2ff",
+                        background: d === date ? "#eff6ff" : "#fff",
+                        cursor: "pointer",
+                      }}
+                      title="Open this date"
+                    >
+                      <div style={{ fontWeight: 900, fontSize: 12, color: "#111827" }}>
+                        {formatDMY(d)}
+                        <span style={{ marginLeft: 8, fontWeight: 700, color: "#6b7280" }}>
+                          {g.kind === "meta" ? "• Header" : "• Row"}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "#0b1f4d", marginTop: 2 }}>
+                        {label || "(match)"}
+                      </div>
+                    </button>
+                  );
+                })}
+                {globalResults.length > 200 && (
+                  <div style={{ padding: 8, fontSize: 12, color: "#6b7280" }}>
+                    Showing first 200 results (refine search to narrow).
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Date tree */}
+          <div style={{ fontWeight: 900, marginBottom: 8 }}>📅 Date Tree</div>
+          <div style={{ maxHeight: 360, overflowY: "auto" }}>
             {Object.keys(grouped).length ? (
               Object.entries(grouped).map(([year, months]) => {
                 const yOpen = !!expandedYears[year];
                 return (
-                  <div key={year} style={{ marginBottom:8 }}>
+                  <div key={year} style={{ marginBottom: 8 }}>
                     <button
-                      onClick={()=>toggleYear(year)}
+                      onClick={() => toggleYear(year)}
                       style={{
-                        display:"flex", alignItems:"center", justifyContent:"space-between",
-                        width:"100%", padding:"6px 10px", borderRadius:8,
-                        border:"1px solid #d1d5db", background:"#fff", cursor:"pointer", fontWeight:800
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        width: "100%",
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor: "pointer",
+                        fontWeight: 900,
                       }}
                       title={yOpen ? "Collapse" : "Expand"}
                     >
@@ -626,75 +1024,87 @@ export default function POS10ReceivingLogView() {
                       <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
                     </button>
 
-                    {yOpen && Object.entries(months).map(([month, days]) => {
-                      const key = `${year}-${month}`;
-                      const mOpen = !!expandedMonths[key];
-                      return (
-                        <div key={key} style={{ marginTop:6, marginLeft:8 }}>
-                          <button
-                            onClick={()=>toggleMonth(year, month)}
-                            style={{
-                              display:"flex", alignItems:"center", justifyContent:"space-between",
-                              width:"100%", padding:"6px 10px", borderRadius:8,
-                              border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", fontWeight:700
-                            }}
-                            title={mOpen ? "Collapse" : "Expand"}
-                          >
-                            <span>Month {month}</span>
-                            <span aria-hidden="true">{mOpen ? "▾" : "▸"}</span>
-                          </button>
+                    {yOpen &&
+                      Object.entries(months).map(([month, days]) => {
+                        const key = `${year}-${month}`;
+                        const mOpen = !!expandedMonths[key];
+                        return (
+                          <div key={key} style={{ marginTop: 6, marginLeft: 8 }}>
+                            <button
+                              onClick={() => toggleMonth(year, month)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                width: "100%",
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #e5e7eb",
+                                background: "#fff",
+                                cursor: "pointer",
+                                fontWeight: 800,
+                              }}
+                              title={mOpen ? "Collapse" : "Expand"}
+                            >
+                              <span>Month {month}</span>
+                              <span aria-hidden="true">{mOpen ? "▾" : "▸"}</span>
+                            </button>
 
-                          {mOpen && (
-                            <div style={{ padding:"6px 2px 0 2px" }}>
-                              <ul style={{ listStyle:"none", padding:0, margin:0 }}>
-                                {days.map((d)=>(
-                                  <li key={d} style={{ marginBottom:6 }}>
-                                    <button
-                                      onClick={()=>setDate(d)}
-                                      style={{
-                                        width:"100%", textAlign:"left", padding:"8px 10px",
-                                        borderRadius:8, border:"1px solid #d1d5db",
-                                        background: d===date ? "#2563eb" : "#fff",
-                                        color: d===date ? "#fff" : "#111827",
-                                        fontWeight:700, cursor:"pointer"
-                                      }}
-                                      title={formatDMY(d)}
-                                    >
-                                      {formatDMY(d)}
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                            {mOpen && (
+                              <div style={{ padding: "6px 2px 0 2px" }}>
+                                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                                  {days.map((d) => (
+                                    <li key={d} style={{ marginBottom: 6 }}>
+                                      <button
+                                        onClick={() => setDate(d)}
+                                        style={{
+                                          width: "100%",
+                                          textAlign: "left",
+                                          padding: "8px 10px",
+                                          borderRadius: 8,
+                                          border: "1px solid #d1d5db",
+                                          background: d === date ? "#2563eb" : "#fff",
+                                          color: d === date ? "#fff" : "#111827",
+                                          fontWeight: 800,
+                                          cursor: "pointer",
+                                        }}
+                                        title={formatDMY(d)}
+                                      >
+                                        {formatDMY(d)}
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 );
               })
             ) : (
-              <div style={{ color:"#6b7280" }}>No available dates.</div>
+              <div style={{ color: "#6b7280" }}>No available dates.</div>
             )}
           </div>
         </div>
 
-        {/* Report content */}
+        {/* Right: Report content */}
         <div style={{ minWidth: 0 }}>
           {loading && <p>Loading…</p>}
-          {err && <p style={{ color:"#b91c1c" }}>{err}</p>}
+          {err && <p style={{ color: "#b91c1c" }}>{err}</p>}
 
           {!loading && !err && !record && (
-            <div style={{ padding:12, border:"1px dashed #9ca3af", borderRadius:8, textAlign:"center" }}>
+            <div style={{ padding: 12, border: "1px dashed #9ca3af", borderRadius: 8, textAlign: "center" }}>
               No report for this date.
             </div>
           )}
 
           {record && (
-            <div style={{ overflowX:"auto", overflowY:"hidden" }}>
+            <div style={{ overflowX: "auto", overflowY: "hidden" }}>
               <div ref={reportRef} style={{ width: "max-content" }}>
-                {/* Info band — mirrors the input header */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(5, 1fr)", gap:8, marginBottom:8, fontSize:12, minWidth: 1100 }}>
+                {/* Info band */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 8, fontSize: 12, minWidth: 1100 }}>
                   <div><strong>Date:</strong> {safe(record.payload?.reportDate)}</div>
                   <div><strong>Time:</strong> {safe(record.payload?.reportTime)}</div>
                   <div><strong>Invoice No:</strong> {safe(record.payload?.invoiceNo)}</div>
@@ -704,13 +1114,13 @@ export default function POS10ReceivingLogView() {
                 </div>
 
                 {/* Legend strip */}
-                <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
-                  <div style={{ ...thCell, background:"#e9f0ff" }}>
+                <div style={{ border: "1px solid #1f3b70", borderBottom: "none" }}>
+                  <div style={{ ...thCell, background: "#e9f0ff" }}>
                     LEGEND: (C) – Conform &nbsp;&nbsp; / &nbsp;&nbsp; (NC) – Non-Conform
                   </div>
                 </div>
 
-                {/* Table — same columns as input */}
+                {/* Table */}
                 <table style={gridStyle}>
                   <colgroup>{colDefs}</colgroup>
                   <thead>
@@ -719,147 +1129,227 @@ export default function POS10ReceivingLogView() {
                       <th style={thCell}>Food Item</th>
                       <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
-                      <th style={thCell}>Quantity KG\PCS</th> {/* ✅ New header */}
+                      <th style={thCell}>Quantity KG\PCS</th>
                       <th style={thCell}>Vehicle clean</th>
                       <th style={thCell}>Food handler hygiene</th>
                       <th style={thCell}>Appearance</th>
                       <th style={thCell}>Firmness</th>
                       <th style={thCell}>Smell</th>
-                      <th style={thCell}>Packaging of food is good and undamaged, clean and no signs of pest infestation</th>
+                      <th style={thCell}>
+                        Packaging of food is good and undamaged, clean and no signs of pest infestation
+                      </th>
                       <th style={thCell}>Country of origin</th>
                       <th style={thCell}>Production Date</th>
                       <th style={thCell}>Expiry Date</th>
                       <th style={thCell}>Remarks (if any)</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {!editing ? (
-                      (record.payload?.entries || []).filter(isFilledRow).map((r, idx) => (
-                        <tr key={idx}>
-                          <td style={tdCell}>{safe(r.supplier)}</td>
-                          <td style={tdCell}>{safe(r.foodItem)}</td>
-                          <td style={tdCell}>{safe(r.vehicleTemp)}</td>
-                          <td style={tdCell}>{safe(r.foodTemp)}</td>
-                          <td style={tdCell}>{safe(r.quantity)}</td> {/* ✅ View quantity */}
-                          <td style={tdCell}>{safe(r.vehicleClean)}</td>
-                          <td style={tdCell}>{safe(r.handlerHygiene)}</td>
-                          <td style={tdCell}>{safe(r.appearanceOK)}</td>
-                          <td style={tdCell}>{safe(r.firmnessOK)}</td>
-                          <td style={tdCell}>{safe(r.smellOK)}</td>
-                          <td style={tdCell}>{safe(r.packagingGood)}</td>
-                          <td style={tdCell}>{safe(r.countryOfOrigin)}</td>
-                          <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td>
-                          <td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
-                          <td style={tdCell}>{safe(r.remarks)}</td>
+                      viewRows.length ? (
+                        viewRows.map((r, idx) => (
+                          <tr key={idx}>
+                            <td style={tdCell}>{safe(r.supplier)}</td>
+                            <td style={tdCell}>{safe(r.foodItem)}</td>
+                            <td style={tdCell}>{safe(r.vehicleTemp)}</td>
+                            <td style={tdCell}>{safe(r.foodTemp)}</td>
+                            <td style={tdCell}>{safe(r.quantity)}</td>
+                            <td style={tdCell}>{safe(r.vehicleClean)}</td>
+                            <td style={tdCell}>{safe(r.handlerHygiene)}</td>
+                            <td style={tdCell}>{safe(r.appearanceOK)}</td>
+                            <td style={tdCell}>{safe(r.firmnessOK)}</td>
+                            <td style={tdCell}>{safe(r.smellOK)}</td>
+                            <td style={tdCell}>{safe(r.packagingGood)}</td>
+                            <td style={tdCell}>{safe(r.countryOfOrigin)}</td>
+                            <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td>
+                            <td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
+                            <td style={tdCell}>{safe(r.remarks)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td style={{ ...tdCell, textAlign: "left" }} colSpan={15}>
+                            No matching results in this day for: <strong>{search}</strong>
+                          </td>
                         </tr>
-                      ))
+                      )
                     ) : (
-                      editRows.map((r, idx) => (
-                        <tr key={idx}>
-                          <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.supplier || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], supplier:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.foodItem || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], foodItem:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="number" step="0.1"
-                              value={r.vehicleTemp || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], vehicleTemp:e.target.value}; return n; })}
-                              style={inputStyle}
-                              placeholder="°C"
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="number" step="0.1"
-                              value={r.foodTemp || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], foodTemp:e.target.value}; return n; })}
-                              style={inputStyle}
-                              placeholder="°C"
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.quantity || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], quantity:e.target.value}; return n; })}
-                              style={inputStyle}
-                              placeholder="e.g., 10 KG / 5 PCS"
-                            />
-                          </td>
-
-                          {TICK_COLS.map((c) => (
-                            <td key={c.key} style={tdCell}>
-                              <select
-                                value={r[c.key] || ""}
-                                onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], [c.key]:e.target.value}; return n; })}
+                      editRows.map((r, idx) => {
+                        const hit = editMatch(r);
+                        return (
+                          <tr
+                            key={idx}
+                            style={hit ? { background: "rgba(245, 158, 11, 0.12)" } : undefined}
+                            title={hit ? "Matches search" : ""}
+                          >
+                            <td style={tdCell}>
+                              <input
+                                type="text"
+                                value={r.supplier || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], supplier: e.target.value };
+                                    return n;
+                                  })
+                                }
                                 style={inputStyle}
-                                title="C = Conform, NC = Non-Conform"
-                              >
-                                <option value=""></option>
-                                <option value="C">C</option>
-                                <option value="NC">NC</option>
-                              </select>
+                              />
                             </td>
-                          ))}
+                            <td style={tdCell}>
+                              <input
+                                type="text"
+                                value={r.foodItem || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], foodItem: e.target.value };
+                                    return n;
+                                  })
+                                }
+                                style={inputStyle}
+                              />
+                            </td>
+                            <td style={tdCell}>
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={r.vehicleTemp || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], vehicleTemp: e.target.value };
+                                    return n;
+                                  })
+                                }
+                                style={inputStyle}
+                                placeholder="°C"
+                              />
+                            </td>
+                            <td style={tdCell}>
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={r.foodTemp || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], foodTemp: e.target.value };
+                                    return n;
+                                  })
+                                }
+                                style={inputStyle}
+                                placeholder="°C"
+                              />
+                            </td>
+                            <td style={tdCell}>
+                              <input
+                                type="text"
+                                value={r.quantity || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], quantity: e.target.value };
+                                    return n;
+                                  })
+                                }
+                                style={inputStyle}
+                                placeholder="e.g., 10 KG / 5 PCS"
+                              />
+                            </td>
 
-                          <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.countryOfOrigin || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], countryOfOrigin:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="date"
-                              value={r.productionDate || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], productionDate:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="date"
-                              value={r.expiryDate || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], expiryDate:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.remarks || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], remarks:e.target.value}; return n; })}
-                              style={inputStyle}
-                            />
-                          </td>
-                        </tr>
-                      ))
+                            {TICK_COLS.map((c) => (
+                              <td key={c.key} style={tdCell}>
+                                <select
+                                  value={r[c.key] || ""}
+                                  onChange={(e) =>
+                                    setEditRows((prev) => {
+                                      const n = [...prev];
+                                      n[idx] = { ...n[idx], [c.key]: e.target.value };
+                                      return n;
+                                    })
+                                  }
+                                  style={inputStyle}
+                                  title="C = Conform, NC = Non-Conform"
+                                >
+                                  <option value=""></option>
+                                  <option value="C">C</option>
+                                  <option value="NC">NC</option>
+                                </select>
+                              </td>
+                            ))}
+
+                            <td style={tdCell}>
+                              <input
+                                type="text"
+                                value={r.countryOfOrigin || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], countryOfOrigin: e.target.value };
+                                    return n;
+                                  })
+                                }
+                                style={inputStyle}
+                              />
+                            </td>
+                            <td style={tdCell}>
+                              <input
+                                type="date"
+                                value={r.productionDate || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], productionDate: e.target.value };
+                                    return n;
+                                  })
+                                }
+                                style={inputStyle}
+                              />
+                            </td>
+                            <td style={tdCell}>
+                              <input
+                                type="date"
+                                value={r.expiryDate || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], expiryDate: e.target.value };
+                                    return n;
+                                  })
+                                }
+                                style={inputStyle}
+                              />
+                            </td>
+                            <td style={tdCell}>
+                              <input
+                                type="text"
+                                value={r.remarks || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], remarks: e.target.value };
+                                    return n;
+                                  })
+                                }
+                                style={inputStyle}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
 
                 {/* Notes */}
-                <div style={{ marginTop:10, fontSize:11, color:"#0b1f4d", width:"max-content" }}>
-                  <div style={{ fontWeight:700, marginBottom:4 }}>Organoleptic Checks*</div>
+                <div style={{ marginTop: 10, fontSize: 11, color: "#0b1f4d", width: "max-content" }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Organoleptic Checks*</div>
                   <div>Appearance: Normal colour (Free from discoloration)</div>
                   <div>Firmness: Firm rather than soft.</div>
                   <div>Smell: Normal smell (No rancid or strange smell)</div>
-                  <div style={{ marginTop:8 }}>
+                  <div style={{ marginTop: 8 }}>
                     <strong>Note:</strong> For Chilled Food: Target ≤ 5°C; Critical Limit: 5°C (short deviations ≤ 15 minutes during transfer).&nbsp;
                     For Frozen Food: Target ≤ -18°C (RTE ≤ -18°C, Raw Frozen ≤ -10°C).&nbsp;
                     For Hot Food: Target ≥ 60°C; Critical Limit: 60°C.&nbsp;
@@ -867,7 +1357,7 @@ export default function POS10ReceivingLogView() {
                   </div>
                 </div>
 
-                {/* Footer: left = Received, right = Verified (text left-aligned) */}
+                {/* Footer */}
                 <div
                   style={{
                     marginTop: 12,
@@ -879,91 +1369,43 @@ export default function POS10ReceivingLogView() {
                     alignItems: "center",
                   }}
                 >
-                  {/* Left: Received by */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      fontSize: 12,
-                      flex: "1 1 320px",
-                      minWidth: 300,
-                    }}
-                  >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, flex: "1 1 320px", minWidth: 300 }}>
                     <strong>Received by:</strong>
                     {!editing ? (
-                      <span
-                        style={{
-                          display: "inline-block",
-                          minWidth: 260,
-                          borderBottom: "2px solid #1f3b70",
-                          lineHeight: "1.8",
-                          textAlign: "left",
-                        }}
-                      >
+                      <span style={{ display: "inline-block", minWidth: 260, borderBottom: "2px solid #1f3b70", lineHeight: "1.8", textAlign: "left" }}>
                         {safe(record.payload?.receivedBy)}
                       </span>
                     ) : (
                       <input
                         value={editReceivedBy}
                         onChange={(e) => setEditReceivedBy(e.target.value)}
-                        style={{
-                          border: "none",
-                          borderBottom: "2px solid #1f3b70",
-                          padding: "4px 6px",
-                          outline: "none",
-                          fontSize: 12,
-                          color: "#0b1f4d",
-                          minWidth: 260,
-                          textAlign: "left",
-                        }}
+                        style={{ border: "none", borderBottom: "2px solid #1f3b70", padding: "4px 6px", outline: "none", fontSize: 12, color: "#0b1f4d", minWidth: 260, textAlign: "left" }}
                       />
                     )}
                   </div>
 
-                  {/* Right: Verified by (container sits right, text inside stays left) */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      fontSize: 12,
-                      flex: "1 1 320px",
-                      minWidth: 300,
-                      justifyContent: "flex-end",
-                    }}
-                  >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, flex: "1 1 320px", minWidth: 300, justifyContent: "flex-end" }}>
                     <strong>Verified by:</strong>
                     {!editing ? (
-                      <span
-                        style={{
-                          display: "inline-block",
-                          minWidth: 260,
-                          borderBottom: "2px solid #1f3b70",
-                          lineHeight: "1.8",
-                          textAlign: "left",
-                        }}
-                      >
+                      <span style={{ display: "inline-block", minWidth: 260, borderBottom: "2px solid #1f3b70", lineHeight: "1.8", textAlign: "left" }}>
                         {safe(record.payload?.verifiedBy)}
                       </span>
                     ) : (
                       <input
                         value={editVerifiedBy}
                         onChange={(e) => setEditVerifiedBy(e.target.value)}
-                        style={{
-                          border: "none",
-                          borderBottom: "2px solid #1f3b70",
-                          padding: "4px 6px",
-                          outline: "none",
-                          fontSize: 12,
-                          color: "#0b1f4d",
-                          minWidth: 260,
-                          textAlign: "left",
-                        }}
+                        style={{ border: "none", borderBottom: "2px solid #1f3b70", padding: "4px 6px", outline: "none", fontSize: 12, color: "#0b1f4d", minWidth: 260, textAlign: "left" }}
                       />
                     )}
                   </div>
                 </div>
+
+                {/* Quick hint */}
+                {norm(search) && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
+                    Tip: search is global — use the left “Global Results” to jump to other dates quickly.
+                  </div>
+                )}
               </div>
             </div>
           )}

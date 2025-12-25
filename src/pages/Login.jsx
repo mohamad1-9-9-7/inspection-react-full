@@ -147,10 +147,11 @@ function Login() {
   const [selectedRole, setSelectedRole] = useState(null);
   const [modalError, setModalError] = useState("");
 
-  // 🔐 كلمات السر: الافتراضي 9999 لكل الأدوار، returns = 0000، qcsView = 0000
+  // 🔐 كلمات السر: الافتراضي 9999 لكل الأدوار، returns = 0000، qcsView = 0000، iso = 802410
   const PASSWORDS = {
     returns: "0000",
     qcsView: "0000",
+    iso: "802410",      // ✅ ISO 22000 & HACCP
     default: "9999",
   };
 

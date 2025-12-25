@@ -23,6 +23,14 @@ const sections = [
     subtitle: "Company licenses, permits, contracts & expiry tracking",
     route: "/haccp-iso/licenses-contracts",
   },
+
+  // ✅ NEW: Dubai Municipality Inspection
+  {
+    id: "dm-inspection",
+    title: "Dubai Municipality Inspection",
+    subtitle: "DM inspection checklists, findings, photos & corrective actions",
+    route: "/haccp-iso/dm-inspection",
+  },
 ];
 
 // أيقونة بسيطة

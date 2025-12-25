@@ -11,9 +11,7 @@ const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 const DailyMonitorDashboard = lazy(() =>
   import("./pages/monitor/DailyMonitorDashboard")
 );
-const QCSReport = lazy(() =>
-  import("./pages/monitor/branches/QCSReport")
-);
+const QCSReport = lazy(() => import("./pages/monitor/branches/QCSReport"));
 
 // 🆕 Internal Audit – Reports Viewer
 const InternalAuditReportsView = lazy(() =>
@@ -59,17 +57,13 @@ const POS19DailyView = lazy(() =>
 );
 
 // ✅ إدخال + عرض FTR1
-const FTR1Report = lazy(() =>
-  import("./pages/monitor/branches/ftr1/FTR1Report")
-);
+const FTR1Report = lazy(() => import("./pages/monitor/branches/ftr1/FTR1Report"));
 const FTR1ReportView = lazy(() =>
   import("./pages/monitor/branches/ftr1/FTR1ReportView")
 );
 
 // ✅ إدخال + عرض FTR2
-const FTR2Report = lazy(() =>
-  import("./pages/monitor/branches/ftr2/FTR2Report")
-);
+const FTR2Report = lazy(() => import("./pages/monitor/branches/ftr2/FTR2Report"));
 const FTR2ReportView = lazy(() =>
   import("./pages/monitor/branches/ftr2/FTR2ReportView")
 );
@@ -80,14 +74,10 @@ const OHCView = lazy(() => import("./pages/ohc/OHCView"));
 const QCSRawMaterialInspection = lazy(() =>
   import("./pages/monitor/branches/shipment_recc/QCSRawMaterialInspection")
 );
-const QCSRawMaterialView = lazy(() =>
-  import("./pages/admin/QCSRawMaterialView")
-);
+const QCSRawMaterialView = lazy(() => import("./pages/admin/QCSRawMaterialView"));
 
 // 🆕 ✅ تقرير عام موحّد (All Reports Summary)
-const AllReportsView = lazy(() =>
-  import("./pages/admin/AllReportsView")
-);
+const AllReportsView = lazy(() => import("./pages/admin/AllReportsView"));
 
 const Returns = lazy(() => import("./pages/Returns"));
 const ReturnView = lazy(() => import("./pages/ReturnView"));
@@ -106,31 +96,21 @@ const FinishedProductReports = lazy(() =>
 );
 
 // 🆕 سيارات
-const CarIconPage = lazy(() =>
-  import("./pages/car/pages/CarIcon")
-);
+const CarIconPage = lazy(() => import("./pages/car/pages/CarIcon"));
 
 // 🆕 صيانة
 const MaintenanceRequests = lazy(() =>
   import("./pages/maintenance/MaintenanceRequests")
 );
-const MaintenanceHome = lazy(() =>
-  import("./pages/maintenance/MaintenanceHome")
-);
+const MaintenanceHome = lazy(() => import("./pages/maintenance/MaintenanceHome"));
 const BrowseMaintenanceRequests = lazy(() =>
   import("./pages/maintenance/BrowseMaintenanceRequests")
 );
 
 // 🆕 🍖 Meat Daily
-const MeatDailyInput = lazy(() =>
-  import("./pages/MeatDailyInput")
-);
-const MeatDailyView = lazy(() =>
-  import("./pages/MeatDailyView")
-);
-const BrowseMeatDaily = lazy(() =>
-  import("./pages/BrowseMeatDaily")
-);
+const MeatDailyInput = lazy(() => import("./pages/MeatDailyInput"));
+const MeatDailyView = lazy(() => import("./pages/MeatDailyView"));
+const BrowseMeatDaily = lazy(() => import("./pages/BrowseMeatDaily"));
 
 /* 🆕 Production */
 const ProductionHub = lazy(() =>
@@ -152,15 +132,9 @@ const PRDReportsView = lazy(() =>
 );
 
 /* 🆕 مرتجعات الزبائن */
-const CustomerReturns = lazy(() =>
-  import("./pages/CustomerReturns")
-);
-const CustomerReturnView = lazy(() =>
-  import("./pages/CustomerReturnView")
-);
-const BrowseCustomerReturns = lazy(() =>
-  import("./pages/BrowseCustomerReturns")
-);
+const CustomerReturns = lazy(() => import("./pages/CustomerReturns"));
+const CustomerReturnView = lazy(() => import("./pages/CustomerReturnView"));
+const BrowseCustomerReturns = lazy(() => import("./pages/BrowseCustomerReturns"));
 
 // 🆕 ✅ عرض تقارير POS 15 (التبويبات)
 const POS15ReportsView = lazy(() =>
@@ -186,9 +160,7 @@ const QCSReportsView = lazy(() =>
 );
 
 /* 🆕 🧾 Inventory Daily (Store) — إدخال + عرض */
-const InventoryDailyInput = lazy(() =>
-  import("./pages/store/InventoryDailyInput")
-);
+const InventoryDailyInput = lazy(() => import("./pages/store/InventoryDailyInput"));
 const InventoryDailyBrowse = lazy(() =>
   import("./pages/store/InventoryDailyBrowse")
 );
@@ -202,9 +174,7 @@ const TrainingCertificatesView = lazy(() =>
 );
 
 // 🆕 📘 ISO 22000 & HACCP Hub
-const HaccpIsoMenu = lazy(() =>
-  import("./pages/haccp and iso/HaccpIsoMenu")
-);
+const HaccpIsoMenu = lazy(() => import("./pages/haccp and iso/HaccpIsoMenu"));
 
 // 🆕 📦 Product Details Input
 const ProductDetailsInput = lazy(() =>
@@ -226,14 +196,20 @@ const LicensesContractsView = lazy(() =>
   import("./pages/haccp and iso/Licenses and Contracts/LicensesContractsView")
 );
 
+// ✅ 🆕 Municipality Inspection (Input + View)
+const MunicipalityInspectionInput = lazy(() =>
+  import("./pages/haccp and iso/MunicipalityInspectionInput")
+);
+const MunicipalityInspectionView = lazy(() =>
+  import("./pages/haccp and iso/MunicipalityInspectionView")
+);
+
 /** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
   let isAuthed = false;
   try {
     const raw =
-      typeof window !== "undefined"
-        ? localStorage.getItem("currentUser")
-        : null;
+      typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
     isAuthed = !!(raw && JSON.parse(raw));
   } catch {
     isAuthed = false;
@@ -759,7 +735,6 @@ export default function App() {
         </Route>
 
         {/* 🆕 📘 ISO 22000 & HACCP Hub */}
-        {/* ✅ alias جديد حتى كل /haccp-iso يشتغل */}
         <Route
           path="/haccp-iso"
           element={
@@ -768,10 +743,9 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        {/* ✅ مسارك القديم يبقى شغال */}
         <Route path="/iso-haccp" element={<Navigate to="/haccp-iso" replace />} />
 
-        {/* 🆕 Product Details & Specifications (per product) */}
+        {/* 🆕 Product Details */}
         <Route
           path="/haccp-iso/product-details"
           element={
@@ -780,8 +754,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* 🆕 Product Details View – saved products */}
         <Route
           path="/haccp-iso/product-details/view"
           element={
@@ -791,7 +763,7 @@ export default function App() {
           }
         />
 
-        {/* ✅ 🆕 Licenses & Contracts Input */}
+        {/* ✅ Licenses & Contracts */}
         <Route
           path="/haccp-iso/licenses-contracts"
           element={
@@ -800,8 +772,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* ✅ 🆕 Licenses & Contracts View */}
         <Route
           path="/haccp-iso/licenses-contracts/view"
           element={
@@ -809,6 +779,31 @@ export default function App() {
               <LicensesContractsView />
             </ProtectedRoute>
           }
+        />
+
+        {/* ✅✅ Municipality Inspection (FIXED AS YOU WANT) */}
+        {/* من القائمة يروح للإدخال */}
+        <Route
+          path="/haccp-iso/dm-inspection"
+          element={
+            <ProtectedRoute>
+              <MunicipalityInspectionInput />
+            </ProtectedRoute>
+          }
+        />
+        {/* صفحة العرض على مسار منفصل */}
+        <Route
+          path="/haccp-iso/dm-inspection/view"
+          element={
+            <ProtectedRoute>
+              <MunicipalityInspectionView />
+            </ProtectedRoute>
+          }
+        />
+        {/* alias قديم لو فيه */}
+        <Route
+          path="/haccp-iso/dm-inspection/input"
+          element={<Navigate to="/haccp-iso/dm-inspection" replace />}
         />
 
         {/* KPI */}
@@ -842,7 +837,6 @@ export default function App() {
           />
         </Route>
 
-        {/* ✅ Aliases للمسارات القديمة */}
         <Route
           path="/finished-product-reports"
           element={
@@ -896,7 +890,7 @@ export default function App() {
           }
         />
 
-        {/* 🆕 🎓 Training Certificates – BFS Card */}
+        {/* 🆕 🎓 Training Certificates */}
         <Route
           path="/training-certificates"
           element={
