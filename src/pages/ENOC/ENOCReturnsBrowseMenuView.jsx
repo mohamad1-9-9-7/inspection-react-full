@@ -46,6 +46,18 @@ function daysBetween(a, b) {
   return Math.floor((b.getTime() - a.getTime()) / ms);
 }
 
+/* ✅ number helpers */
+function toNumber(v) {
+  const n = Number(String(v ?? "").replace(/,/g, "").trim());
+  return Number.isNaN(n) ? 0 : n;
+}
+function fmtQty(n) {
+  const v = Number(n || 0);
+  if (Number.isNaN(v)) return "0";
+  const r = Math.round(v);
+  return Math.abs(v - r) < 1e-9 ? String(r) : v.toFixed(2);
+}
+
 /* ===== Parse productName like: "[97101] FATTOUSH..." ===== */
 function splitProduct(productName) {
   const s = norm(productName);
@@ -80,7 +92,9 @@ function extractRowsFromReport(report) {
     );
     const { itemCode, product } = splitProduct(rawProductName);
 
-    const boxCode = norm(r.boxCode || r.boxNo || r.box || r.boxNumber || r.box_id || "");
+    const boxCode = norm(
+      r.boxCode || r.boxNo || r.box || r.boxNumber || r.box_id || ""
+    );
     const boxName = norm(r.boxName || r.box_label || r.boxTitle || "");
     const boxQty = r.boxQty ?? r.boxQTY ?? r.box_quantity ?? "";
 
@@ -95,7 +109,8 @@ function extractRowsFromReport(report) {
         : norm(r.qtyType || r.unit || r.uom || r.quantityType || "");
 
     const action =
-      norm(r.action || r.disposition || r.status || r.result || "") === "Other..."
+      norm(r.action || r.disposition || r.status || r.result || "") ===
+      "Other..."
         ? norm(r.customAction || "")
         : norm(r.action || r.disposition || r.status || r.result || "");
 
@@ -125,7 +140,14 @@ function extractRowsFromReport(report) {
       productName: product || rawProductName,
       qty: r.quantity ?? r.qty ?? r.QTY ?? r.amount ?? "",
       qtyType,
-      expiry: norm(r.expiry || r.expiryDate || r.expDate || r.exp || r.expiry_date || ""),
+      expiry: norm(
+        r.expiry ||
+          r.expiryDate ||
+          r.expDate ||
+          r.exp ||
+          r.expiry_date ||
+          ""
+      ),
       remarks: norm(r.remarks || r.remark || r.comment || ""),
       action,
       imagesCount: images.length,
@@ -192,7 +214,9 @@ function computeBoxGroups(rows) {
   let i = 0;
 
   while (i < rows.length) {
-    const gid = String(rows?.[i]?._groupKey || rows?.[i]?.boxGroupId || "").trim();
+    const gid = String(
+      rows?.[i]?._groupKey || rows?.[i]?.boxGroupId || ""
+    ).trim();
 
     if (!gid) {
       groupNo += 1;
@@ -331,6 +355,22 @@ export default function ENOCReturnsBrowseMenuView() {
   const [action, setAction] = useState("ALL");
   const [quickDays, setQuickDays] = useState("ALL"); // ALL | 7 | 30
 
+  // ✅ collapse/expand per box group
+  const [openGroups, setOpenGroups] = useState(() => new Set());
+
+  const groupKeyOf = (m) =>
+    m?.gid ? `gid:${m.gid}` : `gn:${m?.groupNo || 0}`;
+
+  const toggleGroup = (m) => {
+    const key = groupKeyOf(m);
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   // images modal
   const [imgOpen, setImgOpen] = useState(false);
   const [imgTitle, setImgTitle] = useState("");
@@ -338,7 +378,8 @@ export default function ENOCReturnsBrowseMenuView() {
 
   const openImages = (row) => {
     const title =
-      (row?.itemCode ? `[${row.itemCode}] ` : "") + (row?.productName || "Item");
+      (row?.itemCode ? `[${row.itemCode}] ` : "") +
+      (row?.productName || "Item");
     setImgTitle(title);
     setImgList(Array.isArray(row?.images) ? row.images : []);
     setImgOpen(true);
@@ -375,7 +416,9 @@ export default function ENOCReturnsBrowseMenuView() {
       const d = (b.reportDate || "").localeCompare(a.reportDate || "");
       if (d) return d;
 
-      const rid = String(a.reportId || "").localeCompare(String(b.reportId || ""));
+      const rid = String(a.reportId || "").localeCompare(
+        String(b.reportId || "")
+      );
       if (rid) return rid;
 
       const g = String(a._groupKey || "").localeCompare(String(b._groupKey || ""));
@@ -400,16 +443,31 @@ export default function ENOCReturnsBrowseMenuView() {
     return ["ALL", ...Array.from(s).sort((a, b) => a.localeCompare(b))];
   }, [allRows]);
 
-  // date tree
+  // ✅ date tree (now includes BOX QTY sum per date without double-counting)
   const dateStats = useMemo(() => {
-    const map = new Map(); // date -> count
+    const map = new Map(); // date -> {date, count(items), boxQtySum, boxCount, _seen:Set}
+
     for (const r of allRows) {
       const d = r.reportDate;
       if (!d) continue;
-      map.set(d, (map.get(d) || 0) + 1);
+
+      if (!map.has(d)) {
+        map.set(d, { date: d, count: 0, boxQtySum: 0, boxCount: 0, _seen: new Set() });
+      }
+      const rec = map.get(d);
+
+      rec.count += 1;
+
+      const gid = String(r._groupKey || r.boxGroupId || "").trim();
+      if (gid && !rec._seen.has(gid)) {
+        rec._seen.add(gid);
+        rec.boxCount += 1;
+        rec.boxQtySum += toNumber(r.boxQty);
+      }
     }
-    const dates = Array.from(map.entries())
-      .map(([date, count]) => ({ date, count }))
+
+    const dates = Array.from(map.values())
+      .map(({ _seen, ...x }) => x)
       .sort((a, b) => b.date.localeCompare(a.date));
 
     if (quickDays === "7" || quickDays === "30") {
@@ -428,28 +486,46 @@ export default function ENOCReturnsBrowseMenuView() {
 
   const tree = useMemo(() => {
     const byYear = new Map();
-    for (const { date, count } of dateStats) {
+    for (const { date, count, boxQtySum, boxCount } of dateStats) {
       const [y, m] = date.split("-");
       if (!y || !m) continue;
       if (!byYear.has(y)) byYear.set(y, new Map());
       const byMonth = byYear.get(y);
       if (!byMonth.has(m)) byMonth.set(m, []);
-      byMonth.get(m).push({ date, count });
+      byMonth.get(m).push({ date, count, boxQtySum, boxCount });
     }
+
     const years = Array.from(byYear.keys()).sort((a, b) => b.localeCompare(a));
+
     return years.map((y) => {
       const monthsMap = byYear.get(y);
       const months = Array.from(monthsMap.keys()).sort((a, b) => b.localeCompare(a));
+
+      const monthsArr = months.map((m) => {
+        const days = monthsMap.get(m).sort((a, b) => b.date.localeCompare(a.date));
+        const countSum = days.reduce((s, x) => s + (x.count || 0), 0);
+        const boxQtySumSum = days.reduce((s, x) => s + (x.boxQtySum || 0), 0);
+        const boxCountSum = days.reduce((s, x) => s + (x.boxCount || 0), 0);
+
+        return {
+          m,
+          days,
+          count: countSum,
+          boxQtySum: boxQtySumSum,
+          boxCount: boxCountSum,
+        };
+      });
+
+      const yearCount = monthsArr.reduce((s, x) => s + (x.count || 0), 0);
+      const yearBoxQty = monthsArr.reduce((s, x) => s + (x.boxQtySum || 0), 0);
+      const yearBoxCount = monthsArr.reduce((s, x) => s + (x.boxCount || 0), 0);
+
       return {
         y,
-        months: months.map((m) => ({
-          m,
-          days: monthsMap.get(m).sort((a, b) => b.date.localeCompare(a.date)),
-          count: monthsMap.get(m).reduce((s, x) => s + x.count, 0),
-        })),
-        count: Array.from(monthsMap.values())
-          .flat()
-          .reduce((s, x) => s + x.count, 0),
+        months: monthsArr,
+        count: yearCount,
+        boxQtySum: yearBoxQty,
+        boxCount: yearBoxCount,
       };
     });
   }, [dateStats]);
@@ -479,6 +555,79 @@ export default function ENOCReturnsBrowseMenuView() {
 
   const groupMeta = useMemo(() => computeBoxGroups(filteredRows), [filteredRows]);
 
+  // ✅ Build groups [start, span, meta, rows] so we can collapse/expand by box
+  const groups = useMemo(() => {
+    const out = [];
+    let i = 0;
+
+    while (i < filteredRows.length) {
+      const m = groupMeta[i] || {
+        span: 1,
+        isStart: true,
+        isEnd: true,
+        groupNo: i + 1,
+        gid: "",
+      };
+
+      const span = m.span > 0 ? m.span : 1;
+      out.push({
+        start: i,
+        span,
+        meta: m,
+        rows: filteredRows.slice(i, i + span),
+      });
+
+      i += span;
+    }
+
+    return out;
+  }, [filteredRows, groupMeta]);
+
+  // ✅ expand/collapse all buttons support
+  const allGroupKeys = useMemo(() => {
+    const s = new Set();
+    for (const g of groups) {
+      const m0 = g.meta || { span: 1, groupNo: g.start + 1, gid: "" };
+      s.add(groupKeyOf(m0));
+    }
+    return Array.from(s);
+  }, [groups]);
+
+  const expandAllBoxes = () => setOpenGroups(new Set(allGroupKeys));
+  const collapseAllBoxes = () => setOpenGroups(new Set());
+
+  // ✅ Limit visible rows to avoid perf issues (same 800 as before)
+  const MAX_ROWS = 800;
+  const view = useMemo(() => {
+    const list = [];
+    let shown = 0;
+
+    for (const g of groups) {
+      const m0 = g.meta || { span: 1, groupNo: g.start + 1, gid: "" };
+      const key = groupKeyOf(m0);
+      const isOpen = openGroups.has(key);
+
+      const wantRows = isOpen ? g.rows : g.rows.slice(0, 1);
+      const remain = MAX_ROWS - shown;
+      if (remain <= 0) break;
+
+      const vis = wantRows.slice(0, remain);
+
+      list.push({
+        ...g,
+        _m0: m0,
+        _key: key,
+        _isOpen: isOpen,
+        _vis: vis,
+      });
+
+      shown += vis.length;
+      if (shown >= MAX_ROWS) break;
+    }
+
+    return { list, shown };
+  }, [groups, openGroups]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // KPIs (based on filtered set)
   const kpis = useMemo(() => {
     const rows = filteredRows;
@@ -488,8 +637,12 @@ export default function ENOCReturnsBrowseMenuView() {
     const near = rows.filter((r) => isNearExpiry(r.expiry, todayISO, 3)).length;
 
     const low = (s) => String(s || "").toLowerCase();
-    const condemnation = rows.filter((r) => low(r.action).includes("condemn")).length;
-    const production = rows.filter((r) => low(r.action).includes("production")).length;
+    const condemnation = rows.filter((r) =>
+      low(r.action).includes("condemn")
+    ).length;
+    const production = rows.filter((r) =>
+      low(r.action).includes("production")
+    ).length;
 
     const qtySum = sumQty(rows);
     const pct = (x) => (total ? Math.round((x / total) * 100) : 0);
@@ -508,11 +661,13 @@ export default function ENOCReturnsBrowseMenuView() {
     };
   }, [filteredRows, todayISO]);
 
+  const HARD_BORDER = "3px solid rgba(2,6,23,.70)";
+
   const rowBorderStyle = (idx) => {
     const m = groupMeta[idx] || { isStart: true, isEnd: true };
     return {
-      borderTop: m.isStart ? "3px solid rgba(2,6,23,.70)" : "1px solid rgba(2,6,23,.08)",
-      borderBottom: m.isEnd ? "3px solid rgba(2,6,23,.70)" : "1px solid rgba(2,6,23,.08)",
+      borderTop: m.isStart ? HARD_BORDER : "1px solid rgba(2,6,23,.08)",
+      borderBottom: m.isEnd ? HARD_BORDER : "1px solid rgba(2,6,23,.08)",
     };
   };
 
@@ -648,13 +803,15 @@ export default function ENOCReturnsBrowseMenuView() {
         .day:hover{ background: rgba(2,6,23,.04); }
         .day.active{ background: linear-gradient(90deg, rgba(34,197,94,.14), rgba(239,68,68,.14)); box-shadow: inset 0 0 0 1px rgba(2,6,23,.10); }
         .badge{font-size:10px; padding:2px 8px; border-radius:999px; background: rgba(2,6,23,.06); color:#0f172a;}
+        .badges{display:flex; gap:6px; align-items:center;}
+        .badgeBox{background: rgba(37,99,235,.10);}
 
         .tableWrap{padding:10px; width:100%; min-width:0; overflow-x:hidden;}
         .tableTitle{
           display:flex; align-items:center; justify-content:space-between;
           gap:10px; margin-bottom:8px;
           flex-wrap:wrap;
-          padding-right:16px;  /* ✅ prevents clipping on the right */
+          padding-right:16px;
           box-sizing:border-box;
         }
         .tableTitle h3{margin:0; font-size:12px; font-weight:900; color:#0f172a;}
@@ -662,9 +819,25 @@ export default function ENOCReturnsBrowseMenuView() {
           font-size:11px; font-weight:900; color:#475569;
           margin-left:auto;
           text-align:right;
-          margin-right:12px;   /* ✅ shift left a bit */
+          margin-right:12px;
           white-space:nowrap;
         }
+
+        /* ✅ expand/collapse all buttons */
+        .tableBtns{ display:flex; gap:8px; align-items:center; }
+        .tbBtn{
+          border:0;
+          cursor:pointer;
+          padding:6px 10px;
+          border-radius:999px;
+          font-weight:900;
+          font-size:11px;
+          background: rgba(2,6,23,.06);
+          color:#0f172a;
+          box-shadow: inset 0 0 0 1px rgba(2,6,23,.10);
+        }
+        .tbBtn:hover{ background: rgba(2,6,23,.10); }
+        .tbBtn:disabled{ opacity:.45; cursor:not-allowed; }
 
         table{
           width:100%;
@@ -700,7 +873,7 @@ export default function ENOCReturnsBrowseMenuView() {
         }
 
         td.wrap{ white-space: normal; word-break: break-word; line-height:1.25; }
-        td.dateCell{ overflow: visible; } /* ✅ keeps date pill fully visible */
+        td.dateCell{ overflow: visible; }
 
         .pill{
           display:inline-flex;
@@ -737,7 +910,26 @@ export default function ENOCReturnsBrowseMenuView() {
           font-weight:900;
         }
 
-        /* ✅ Image button */
+        /* Expand/Collapse button */
+        .expBtn{
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          border:0;
+          cursor:pointer;
+          padding:2px 8px;
+          border-radius:10px;
+          font-weight:900;
+          font-size:12px;
+          margin-right:6px;
+          background: rgba(2,6,23,.06);
+          color:#0f172a;
+          box-shadow: inset 0 0 0 1px rgba(2,6,23,.10);
+        }
+        .expBtn:hover{ background: rgba(2,6,23,.10); }
+        .moreHint{ display:block; margin-top:4px; font-size:10px; color:#64748b; font-weight:900; }
+
+        /* Image button */
         .imgBtn{
           width:100%;
           border:0;
@@ -752,7 +944,7 @@ export default function ENOCReturnsBrowseMenuView() {
         }
         .imgBtn:hover{ background: rgba(37,99,235,.14); }
 
-        /* ✅ Modal */
+        /* Modal */
         .imgBack{
           position:fixed;
           inset:0;
@@ -832,7 +1024,10 @@ export default function ENOCReturnsBrowseMenuView() {
         <div className="topbar">
           <div className="title">
             <h1>⛽ ENOC Returns — Browse (View Only)</h1>
-            <p>Search + filter + date tree. Items are grouped by box.</p>
+            <p>
+              Search + filter + date tree. Items are grouped by box (click ▸ to
+              expand).
+            </p>
           </div>
           <div className="brand">
             AL MAWASHI
@@ -933,14 +1128,20 @@ export default function ENOCReturnsBrowseMenuView() {
                 <div className="nodeY" key={y.y}>
                   <div className="nodeY__head">
                     <span>Year {y.y}</span>
-                    <span className="badge">{y.count}</span>
+                    <div className="badges">
+                      <span className="badge" title="Items">{y.count}</span>
+                      <span className="badge badgeBox" title="BOX QTY (sum)">BQ {fmtQty(y.boxQtySum)}</span>
+                    </div>
                   </div>
 
                   {y.months.map((m) => (
                     <div className="nodeM" key={`${y.y}-${m.m}`}>
                       <div className="nodeM__head">
                         <span>Month {m.m}</span>
-                        <span className="badge">{m.count}</span>
+                        <div className="badges">
+                          <span className="badge" title="Items">{m.count}</span>
+                          <span className="badge badgeBox" title="BOX QTY (sum)">BQ {fmtQty(m.boxQtySum)}</span>
+                        </div>
                       </div>
 
                       {m.days.map((d) => (
@@ -956,7 +1157,10 @@ export default function ENOCReturnsBrowseMenuView() {
                           title="Click to filter by this date"
                         >
                           <span>{d.date}</span>
-                          <span className="badge">{d.count}</span>
+                          <div className="badges">
+                            <span className="badge" title="Items">{d.count}</span>
+                            <span className="badge badgeBox" title="BOX QTY (sum)">BQ {fmtQty(d.boxQtySum)}</span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -970,6 +1174,28 @@ export default function ENOCReturnsBrowseMenuView() {
             <div className="tableWrap">
               <div className="tableTitle">
                 <h3>ENOC Returns Details</h3>
+
+                <div className="tableBtns">
+                  <button
+                    type="button"
+                    className="tbBtn"
+                    onClick={expandAllBoxes}
+                    disabled={!groups.length}
+                    title="Expand all boxes in current results"
+                  >
+                    Expand all boxes
+                  </button>
+                  <button
+                    type="button"
+                    className="tbBtn"
+                    onClick={collapseAllBoxes}
+                    disabled={!openGroups.size}
+                    title="Collapse all boxes"
+                  >
+                    Collapse all boxes
+                  </button>
+                </div>
+
                 <small>
                   Showing <b>{filteredRows.length}</b> items
                   {selectedDate ? (
@@ -982,21 +1208,20 @@ export default function ENOCReturnsBrowseMenuView() {
               </div>
 
               <table>
-                {/* ✅ FIXED: col widths sum = 100% (no cut) */}
                 <colgroup>
-                  <col style={{ width: "4%" }} />  {/* BOX SL */}
-                  <col style={{ width: "6%" }} />  {/* BOX CODE */}
-                  <col style={{ width: "14%" }} /> {/* BOX NAME */}
-                  <col style={{ width: "5%" }} />  {/* BOX QTY */}
-                  <col style={{ width: "13%" }} /> {/* LOCATION */}
-                  <col style={{ width: "6%" }} />  {/* ITEM CODE */}
-                  <col style={{ width: "15%" }} /> {/* PRODUCT */}
-                  <col style={{ width: "5%" }} />  {/* QTY */}
-                  <col style={{ width: "6%" }} />  {/* QTY TYPE */}
-                  <col style={{ width: "8%" }} />  {/* EXPIRY */}
-                  <col style={{ width: "7%" }} />  {/* REMARKS */}
-                  <col style={{ width: "6%" }} />  {/* ACTION */}
-                  <col style={{ width: "5%" }} />  {/* IMAGES */}
+                  <col style={{ width: "4%" }} />
+                  <col style={{ width: "6%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "5%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "6%" }} />
+                  <col style={{ width: "15%" }} />
+                  <col style={{ width: "5%" }} />
+                  <col style={{ width: "6%" }} />
+                  <col style={{ width: "8%" }} />
+                  <col style={{ width: "7%" }} />
+                  <col style={{ width: "6%" }} />
+                  <col style={{ width: "5%" }} />
                 </colgroup>
 
                 <thead>
@@ -1018,85 +1243,137 @@ export default function ENOCReturnsBrowseMenuView() {
                 </thead>
 
                 <tbody>
-                  {filteredRows.slice(0, 800).map((r, idx) => {
-                    const m = groupMeta[idx] || { span: 1, isStart: true, isEnd: true, groupNo: idx + 1 };
-                    const exp = r.expiry;
-                    const expired = isExpired(exp, todayISO);
-                    const near = !expired && isNearExpiry(exp, todayISO, 3);
+                  {view.list.flatMap((g) => {
+                    const m0 = g._m0 || { span: 1, groupNo: g.start + 1, gid: "" };
+                    const isOpen = !!g._isOpen;
 
-                    const borders = rowBorderStyle(idx);
+                    const vis = Array.isArray(g._vis) ? g._vis : [];
+                    if (!vis.length) return [];
 
-                    return (
-                      <tr key={r._id}>
-                        {/* merged group columns */}
-                        {m.span > 0 && (
-                          <td style={{ ...borders, fontWeight: 900 }} rowSpan={m.span}>
-                            {m.groupNo}
-                          </td>
-                        )}
+                    const rowSpan = vis.length;
 
-                        {m.span > 0 && (
-                          <td style={{ ...borders, fontWeight: 900 }} rowSpan={m.span}>
-                            {r.boxCode || "-"}
-                          </td>
-                        )}
+                    const startIdx = g.start;
+                    const displayedEndIdx = g.start + vis.length - 1;
 
-                        {m.span > 0 && (
-                          <td style={{ ...borders }} className="wrap" rowSpan={m.span} title={r.boxName || ""}>
-                            {r.boxName || "-"}
-                          </td>
-                        )}
+                    const startBorders = rowBorderStyle(startIdx);
+                    const endBorders = rowBorderStyle(displayedEndIdx);
 
-                        {m.span > 0 && (
-                          <td style={{ ...borders, fontWeight: 900 }} rowSpan={m.span}>
-                            {String(r.boxQty ?? "-")}
-                          </td>
-                        )}
+                    const truncatedInThisGroup = isOpen && vis.length < g.span;
+                    const mergedBorders = {
+                      borderTop: startBorders.borderTop,
+                      borderBottom: truncatedInThisGroup ? HARD_BORDER : endBorders.borderBottom,
+                    };
 
-                        {m.span > 0 && (
-                          <td style={{ ...borders }} className="wrap" rowSpan={m.span} title={r.location || ""}>
-                            {r.location || "-"}
-                          </td>
-                        )}
+                    return vis.map((r, ri) => {
+                      const globalIdx = g.start + ri;
 
-                        {/* item row columns */}
-                        <td style={{ ...borders, fontWeight: 900 }}>{r.itemCode || "-"}</td>
+                      const baseBorders = rowBorderStyle(globalIdx);
 
-                        <td style={{ ...borders }} className="wrap" title={r.productName || ""}>
-                          {r.productName || "-"}
-                        </td>
+                      const forceEnd =
+                        (!isOpen && g.span > 1 && ri === vis.length - 1) ||
+                        (truncatedInThisGroup && ri === vis.length - 1);
 
-                        <td style={{ ...borders, fontWeight: 900 }}>{String(r.qty ?? "-")}</td>
-                        <td style={{ ...borders }}>{r.qtyType || "-"}</td>
+                      const borders = forceEnd
+                        ? { ...baseBorders, borderBottom: HARD_BORDER }
+                        : baseBorders;
 
-                        <td style={{ ...borders }} className="dateCell">
-                          <span
-                            className={`pill ${expired ? "pill--red" : near ? "pill--amber" : "pill--green"}`}
-                            title={expired ? "Expired" : near ? "Near expiry" : "OK"}
-                          >
-                            {exp || "-"}
-                          </span>
-                        </td>
+                      const exp = r.expiry;
+                      const expired = isExpired(exp, todayISO);
+                      const near = !expired && isNearExpiry(exp, todayISO, 3);
 
-                        <td style={{ ...borders }} className="wrap" title={r.remarks || ""}>
-                          {r.remarks || "-"}
-                        </td>
-
-                        <td style={{ ...borders }} className="wrap" title={r.action || ""}>
-                          {r.action || "-"}
-                        </td>
-
-                        <td style={{ ...borders }}>
-                          {r.imagesCount > 0 ? (
-                            <button className="imgBtn" onClick={() => openImages(r)}>
-                              View ({r.imagesCount})
-                            </button>
-                          ) : (
-                            <span className="muted">0</span>
+                      return (
+                        <tr key={`${r._id}_${ri}`}>
+                          {ri === 0 && (
+                            <td style={{ ...mergedBorders, fontWeight: 900 }} rowSpan={rowSpan}>
+                              <button
+                                type="button"
+                                className="expBtn"
+                                onClick={() => toggleGroup(m0)}
+                                title={isOpen ? "Collapse box" : "Expand box"}
+                              >
+                                {isOpen ? "▾" : "▸"}
+                              </button>
+                              {m0.groupNo}
+                              {!isOpen && g.span > 1 ? (
+                                <span className="moreHint">+{g.span - 1} more</span>
+                              ) : null}
+                            </td>
                           )}
-                        </td>
-                      </tr>
-                    );
+
+                          {ri === 0 && (
+                            <td style={{ ...mergedBorders, fontWeight: 900 }} rowSpan={rowSpan}>
+                              {r.boxCode || "-"}
+                            </td>
+                          )}
+
+                          {ri === 0 && (
+                            <td
+                              style={{ ...mergedBorders }}
+                              className="wrap"
+                              rowSpan={rowSpan}
+                              title={r.boxName || ""}
+                            >
+                              {r.boxName || "-"}
+                            </td>
+                          )}
+
+                          {ri === 0 && (
+                            <td style={{ ...mergedBorders, fontWeight: 900 }} rowSpan={rowSpan}>
+                              {String(r.boxQty ?? "-")}
+                            </td>
+                          )}
+
+                          {ri === 0 && (
+                            <td
+                              style={{ ...mergedBorders }}
+                              className="wrap"
+                              rowSpan={rowSpan}
+                              title={r.location || ""}
+                            >
+                              {r.location || "-"}
+                            </td>
+                          )}
+
+                          <td style={{ ...borders, fontWeight: 900 }}>{r.itemCode || "-"}</td>
+
+                          <td style={{ ...borders }} className="wrap" title={r.productName || ""}>
+                            {r.productName || "-"}
+                          </td>
+
+                          <td style={{ ...borders, fontWeight: 900 }}>{String(r.qty ?? "-")}</td>
+                          <td style={{ ...borders }}>{r.qtyType || "-"}</td>
+
+                          <td style={{ ...borders }} className="dateCell">
+                            <span
+                              className={`pill ${
+                                expired ? "pill--red" : near ? "pill--amber" : "pill--green"
+                              }`}
+                              title={expired ? "Expired" : near ? "Near expiry" : "OK"}
+                            >
+                              {exp || "-"}
+                            </span>
+                          </td>
+
+                          <td style={{ ...borders }} className="wrap" title={r.remarks || ""}>
+                            {r.remarks || "-"}
+                          </td>
+
+                          <td style={{ ...borders }} className="wrap" title={r.action || ""}>
+                            {r.action || "-"}
+                          </td>
+
+                          <td style={{ ...borders }}>
+                            {r.imagesCount > 0 ? (
+                              <button className="imgBtn" onClick={() => openImages(r)}>
+                                View ({r.imagesCount})
+                              </button>
+                            ) : (
+                              <span className="muted">0</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    });
                   })}
 
                   {!filteredRows.length && (
@@ -1107,10 +1384,10 @@ export default function ENOCReturnsBrowseMenuView() {
                     </tr>
                   )}
 
-                  {filteredRows.length > 800 && (
+                  {filteredRows.length > MAX_ROWS && (
                     <tr>
                       <td colSpan={13} className="muted" style={{ textAlign: "center", padding: 12 }}>
-                        Showing first 800 rows only (performance safety).
+                        Showing first {MAX_ROWS} rows only (performance safety).
                       </td>
                     </tr>
                   )}
@@ -1118,7 +1395,7 @@ export default function ENOCReturnsBrowseMenuView() {
               </table>
 
               <div className="muted" style={{ marginTop: 8, fontSize: 11 }}>
-                * View only page — matches ENOCReturnsInput payload fields.
+                * Click the arrow (▸/▾) in the BOX column to expand/collapse the box items.
               </div>
             </div>
           </div>
