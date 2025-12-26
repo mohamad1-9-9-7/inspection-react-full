@@ -4,7 +4,11 @@ import { Link } from "react-router-dom";
 
 export default function ReturnsMenu() {
   return (
-    <div className="ret-page" dir="ltr" style={{ fontFamily: "Cairo, sans-serif" }}>
+    <div
+      className="ret-page"
+      dir="ltr"
+      style={{ fontFamily: "Cairo, sans-serif" }}
+    >
       <style>{`
         .ret-page{
           min-height:100vh; color:#fff;
@@ -49,21 +53,41 @@ export default function ReturnsMenu() {
       {/* Hero */}
       <section className="hero" aria-label="Returns menu">
         {/* Waves */}
-        <svg className="wave wave--top" viewBox="0 0 1440 320" preserveAspectRatio="none">
-          <path fill="#a78bfa" d="M0,96L40,85.3C80,75,160,53,240,80C320,107,400,181,480,202.7C560,224,640,192,720,165.3C800,139,880,117,960,122.7C1040,128,1120,160,1200,181.3C1280,203,1360,213,1400,218.7L1440,224L1440,0L1400,0C1360,0,1280,0,1200,0C1120,0,1040,0,960,0C880,0,800,0,720,0C640,0,560,0,480,0,400,0,320,0,240,0,160,0,80,0,40,0L0,0Z"/>
+        <svg
+          className="wave wave--top"
+          viewBox="0 0 1440 320"
+          preserveAspectRatio="none"
+        >
+          <path
+            fill="#a78bfa"
+            d="M0,96L40,85.3C80,75,160,53,240,80C320,107,400,181,480,202.7C560,224,640,192,720,165.3C800,139,880,117,960,122.7C1040,128,1120,160,1200,181.3C1280,203,1360,213,1400,218.7L1440,224L1440,0L1400,0C1360,0,1280,0,1200,0C1120,0,1040,0,960,0C880,0,800,0,720,0C640,0,560,0,480,0,400,0,320,0,240,0,160,0,80,0,40,0L0,0Z"
+          />
         </svg>
-        <svg className="wave wave--mid" viewBox="0 0 1440 320" preserveAspectRatio="none">
-          <path fill="#7dd3fc" d="M0,160L80,165.3C160,171,320,181,480,165.3C640,149,800,107,960,106.7C1120,107,1280,149,1360,170.7L1440,192L1440,0L1360,0C1280,0,1120,0,960,0C800,0,640,0,480,0C320,0,160,0,80,0L0,0Z"/>
+        <svg
+          className="wave wave--mid"
+          viewBox="0 0 1440 320"
+          preserveAspectRatio="none"
+        >
+          <path
+            fill="#7dd3fc"
+            d="M0,160L80,165.3C160,171,320,181,480,165.3C640,149,800,107,960,106.7C1120,107,1280,149,1360,170.7L1440,192L1440,0L1360,0C1280,0,1120,0,960,0C800,0,640,0,480,0C320,0,160,0,80,0L0,0Z"
+          />
         </svg>
-        <svg className="wave wave--bottom" viewBox="0 0 1440 320" preserveAspectRatio="none">
-          <path fill="#60a5fa" d="M0,288L60,272C120,256,240,224,360,213.3C480,203,600,213,720,197.3C840,181,960,139,1080,106.7C1200,75,1320,53,1380,42.7L1440,32L1440,320L1380,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z"/>
+        <svg
+          className="wave wave--bottom"
+          viewBox="0 0 1440 320"
+          preserveAspectRatio="none"
+        >
+          <path
+            fill="#60a5fa"
+            d="M0,288L60,272C120,256,240,224,360,213.3C480,203,600,213,720,197.3C840,181,960,139,1080,106.7C1200,75,1320,53,1380,42.7L1440,32L1440,320L1380,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z"
+          />
         </svg>
 
         {/* Content */}
         <div className="content">
           <h1 className="title">Returns & Daily Meat Status</h1>
 
-          {/* Actions: left = Browse, right = Create */}
           <div className="actions" role="group" aria-label="Actions">
             {/* LEFT: Browse */}
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -71,19 +95,26 @@ export default function ReturnsMenu() {
                 <span className="btn__icon">📂</span>
                 <span>Browse Returns Reports</span>
               </Link>
+
               <Link to="/meat-daily/browse" className="btn btn--ghost">
                 <span className="btn__icon">📊</span>
                 <span>Browse Meat Daily</span>
               </Link>
-              {/* Browse Customer Returns */}
+
               <Link to="/returns-customers/browse" className="btn btn--ghost">
                 <span className="btn__icon">👤</span>
                 <span>Browse Customer Returns</span>
               </Link>
-              {/* NEW: Browse Inventory Daily */}
+
               <Link to="/inventory-daily/browse" className="btn btn--ghost">
                 <span className="btn__icon">📦</span>
                 <span>Browse Inventory Daily</span>
+              </Link>
+
+              {/* ✅ صار مربوط بالصفحة الجديدة (View Only) */}
+              <Link to="/enoc-returns/browse-view" className="btn btn--ghost">
+                <span className="btn__icon">⛽</span>
+                <span>Browse ENOC Returns</span>
               </Link>
             </div>
 
@@ -93,19 +124,25 @@ export default function ReturnsMenu() {
                 <span className="btn__icon">📝</span>
                 <span>Create Returns Report</span>
               </Link>
+
               <Link to="/meat-daily/input" className="btn btn--primary" aria-label="Create meat daily report">
                 <span className="btn__icon">🧾</span>
                 <span>Create Meat Daily Report</span>
               </Link>
-              {/* Create Customer Returns */}
+
               <Link to="/returns-customers/new" className="btn btn--primary" aria-label="Create customer returns report">
                 <span className="btn__icon">✍️</span>
                 <span>Create Customer Returns</span>
               </Link>
-              {/* NEW: Create Inventory Daily */}
+
               <Link to="/inventory-daily/input" className="btn btn--primary" aria-label="Create inventory daily report">
                 <span className="btn__icon">🧮</span>
                 <span>Create Inventory Daily Report</span>
+              </Link>
+
+              <Link to="/enoc-returns/input" className="btn btn--primary" aria-label="Create ENOC returns report">
+                <span className="btn__icon">⛽</span>
+                <span>Create ENOC Returns Report</span>
               </Link>
             </div>
           </div>

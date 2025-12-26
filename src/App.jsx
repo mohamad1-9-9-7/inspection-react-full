@@ -84,6 +84,15 @@ const ReturnView = lazy(() => import("./pages/ReturnView"));
 const BrowseReturns = lazy(() => import("./pages/BrowseReturns"));
 const ReturnsMenu = lazy(() => import("./ReturnsMenu"));
 
+// ✅🆕 ENOC Returns (Input + Browse)
+const ENOCReturnsInput = lazy(() => import("./pages/ENOC/ENOCReturnsInput"));
+const ENOCReturnsBrowse = lazy(() => import("./pages/ENOC/ENOCReturnsBrowse"));
+
+// ✅🆕 ENOC Returns (NEW Browse View Only - Red/Green)
+const ENOCReturnsBrowseMenuView = lazy(() =>
+  import("./pages/ENOC/ENOCReturnsBrowseMenuView")
+);
+
 const LoginKPI = lazy(() => import("./pages/LoginKPI"));
 const KPIDashboard = lazy(() => import("./pages/KPIDashboard"));
 
@@ -653,6 +662,36 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <BrowseReturns />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        {/* ✅✅✅ ENOC Returns routes */}
+        <Route path="/enoc-returns">
+          <Route
+            path="input"
+            element={
+              <ProtectedRoute>
+                <ENOCReturnsInput />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="browse"
+            element={
+              <ProtectedRoute>
+                <ENOCReturnsBrowse />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ✅ NEW: Browse View Only (Red/Green) */}
+          <Route
+            path="browse-view"
+            element={
+              <ProtectedRoute>
+                <ENOCReturnsBrowseMenuView />
               </ProtectedRoute>
             }
           />
