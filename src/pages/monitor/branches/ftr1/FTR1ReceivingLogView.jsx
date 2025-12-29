@@ -10,14 +10,29 @@ import React, {
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+/* ========= API BASE (robust like your other pages) ========= */
+const API_BASE = String(
+  (typeof window !== "undefined" && window.__QCS_API__) ||
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+    (typeof process !== "undefined" &&
+      (process.env?.REACT_APP_API_URL ||
+        process.env?.VITE_API_URL ||
+        process.env?.RENDER_EXTERNAL_URL)) ||
+    "https://inspection-server-4nvj.onrender.com"
+).replace(/\/$/, "");
+
+const TYPE = "ftr1_receiving_log_butchery";
+const LIST_LIMIT = 180;
 
 /* ================== Columns (بدون عمود الصور) ================== */
 const COLS = [
   { key: "supplier", label: "Name of the Supplier", align: "left" },
   { key: "foodItem", label: "Food Item", align: "left" },
-  { key: "dmApprovalNo", label: "DM approval number of the delivery vehicle", align: "left" },
+  {
+    key: "dmApprovalNo",
+    label: "DM approval number of the delivery vehicle",
+    align: "left",
+  },
   { key: "vehicleTemp", label: "Vehicle Temp (°C)", align: "center" },
   { key: "foodTemp", label: "Food Temp (°C)", align: "center" },
   { key: "vehicleClean", label: "Vehicle clean", align: "center" },
@@ -26,7 +41,8 @@ const COLS = [
   { key: "smellOK", label: "Smell", align: "center" },
   {
     key: "packagingGood",
-    label: "Packaging of food is good and undamaged, clean and no signs of pest infestation",
+    label:
+      "Packaging of food is good and undamaged, clean and no signs of pest infestation",
     align: "left",
   },
   { key: "countryOfOrigin", label: "Country of origin", align: "center" },
@@ -43,9 +59,53 @@ const COL_WIDTHS_PX = [
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
 const MIN_SCALE = 0.75; // حد أدنى للتحجيم
 
+/* ===== Helper: nav buttons style ===== */
+function navBtnStyle(side) {
+  return {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    [side]: 10,
+    width: 44,
+    height: 44,
+    borderRadius: "9999px",
+    border: "none",
+    cursor: "pointer",
+    background: "rgba(255,255,255,0.95)",
+    color: "#0f172a",
+    fontSize: 28,
+    fontWeight: 900,
+    lineHeight: "44px",
+    textAlign: "center",
+    boxShadow: "0 6px 16px rgba(0,0,0,0.25)",
+  };
+}
+
+/* ===== Helpers ===== */
+const isObj = (x) => x && typeof x === "object" && !Array.isArray(x);
+const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
+
+function pickDateFromAny(r) {
+  const d1 = new Date(r?.reportDate || r?.payload?.reportDate);
+  if (!isNaN(d1)) return d1;
+  const d2 = new Date(r?.created_at || r?.createdAt);
+  if (!isNaN(d2)) return d2;
+  return new Date(0);
+}
+
+function normalizeOneReport(json) {
+  if (isObj(json?.report)) return json.report;
+  return json;
+}
+
 export default function FTR1ReceivingLogView() {
-  const [reports, setReports] = useState([]);
+  // ✅ Lightweight list for sidebar (no heavy payload)
+  const [reportList, setReportList] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+
+  // ✅ Full selected report only
   const [selectedReport, setSelectedReport] = useState(null);
+
   const [loading, setLoading] = useState(false);
 
   // ===== Auto-Scale (بدون تمرير أفقي) =====
@@ -63,6 +123,10 @@ export default function FTR1ReceivingLogView() {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(null);
 
+  // ✅ Keep tree open state (years + months) حتى ما تسكّر مع كل تحميل
+  const [openYears, setOpenYears] = useState({});     // { [year]: true/false }
+  const [openMonths, setOpenMonths] = useState({});   // { [`${year}-${month}`]: true/false }
+
   // ===== Preview للصور =====
   const [preview, setPreview] = useState({ open: false, images: [], index: 0 });
   const openPreview = useCallback((images, index = 0) => {
@@ -70,15 +134,27 @@ export default function FTR1ReceivingLogView() {
     if (!imgs.length) return;
     setPreview({ open: true, images: imgs, index });
   }, []);
-  const closePreview = useCallback(() => setPreview((p) => ({ ...p, open: false })), []);
+  const closePreview = useCallback(
+    () => setPreview((p) => ({ ...p, open: false })),
+    []
+  );
   const prevImage = useCallback(
-    () => setPreview((p) => ({ ...p, index: (p.index - 1 + p.images.length) % p.images.length })),
+    () =>
+      setPreview((p) => ({
+        ...p,
+        index: (p.index - 1 + p.images.length) % p.images.length,
+      })),
     []
   );
   const nextImage = useCallback(
-    () => setPreview((p) => ({ ...p, index: (p.index + 1) % p.images.length })),
+    () =>
+      setPreview((p) => ({
+        ...p,
+        index: (p.index + 1) % p.images.length,
+      })),
     []
   );
+
   useEffect(() => {
     const onKey = (e) => {
       if (!preview.open) return;
@@ -124,37 +200,81 @@ export default function FTR1ReceivingLogView() {
       cancelAnimationFrame(raf2);
       ro.disconnect();
     };
-  }, [selectedReport, isEditing]);
+  }, [selectedId, isEditing, selectedReport]);
 
-  // ===== Fetch =====
-  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-  const getReportDate = (r) => {
-    const d1 = new Date(r?.payload?.reportDate);
-    if (!isNaN(d1)) return d1;
-    const d2 = new Date(r?.created_at || r?.createdAt);
-    return isNaN(d2) ? new Date(0) : d2;
-  };
+  // ===== Fetch: list (lite) + one report by id =====
+  useEffect(() => {
+    fetchReportList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => { fetchReports(); }, []);
-
-  async function fetchReports() {
+  async function fetchReportList() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${API_BASE}/api/reports?type=ftr1_receiving_log_butchery`,
+        `${API_BASE}/api/reports?type=${encodeURIComponent(
+          TYPE
+        )}&lite=1&limit=${LIST_LIMIT}`,
         { cache: "no-store" }
       );
-      if (!res.ok) throw new Error("Failed to fetch data");
+
+      if (!res.ok) {
+        throw new Error(
+          `List endpoint failed (${res.status}). Ensure server supports lite=1.`
+        );
+      }
+
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a, b) => getReportDate(a) - getReportDate(b));
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
+
+      const sorted = [...arr].sort(
+        (a, b) => pickDateFromAny(b).getTime() - pickDateFromAny(a).getTime()
+      );
+
+      setReportList(sorted);
+
+      const firstId = getId(sorted[0]);
+      setSelectedId(firstId || null);
+
       setIsEditing(false);
       setDraft(null);
+
+      if (firstId) {
+        await fetchOneReport(firstId);
+      } else {
+        setSelectedReport(null);
+      }
     } catch (e) {
       console.error(e);
-      alert("⚠️ Failed to fetch data.");
+      alert(
+        "⚠️ Failed to load reports list.\n\nMake sure your server supports:\n- GET /api/reports?type=...&lite=1&limit=...\n- GET /api/reports/:id"
+      );
+      setReportList([]);
+      setSelectedId(null);
+      setSelectedReport(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function fetchOneReport(id) {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        throw new Error(
+          `Open report failed (${res.status}). Ensure server supports GET /api/reports/:id`
+        );
+      }
+      const json = await res.json();
+      setSelectedReport(normalizeOneReport(json));
+    } catch (e) {
+      console.error(e);
+      alert("⚠️ Failed to open report.");
+      setSelectedReport(null);
     } finally {
       setLoading(false);
     }
@@ -206,14 +326,18 @@ export default function FTR1ReceivingLogView() {
 
   // ===== Delete =====
   const handleDelete = async (report) => {
+    if (!report) return;
     if (!window.confirm("Are you sure you want to delete this report?")) return;
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
+
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+        method: "DELETE",
+      });
       if (!res.ok) throw new Error("Failed to delete");
       alert("✅ Report deleted successfully.");
-      fetchReports();
+      await fetchReportList();
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to delete report.");
@@ -229,34 +353,33 @@ export default function FTR1ReceivingLogView() {
     setIsEditing(false);
     setDraft(null);
   };
+
   const saveEdit = async () => {
     if (!draft) return;
     const rid = getId(selectedReport);
+    if (!rid) return alert("⚠️ Missing report ID.");
+
     try {
-      const body = { type: "ftr1_receiving_log_butchery", payload: draft };
-      let ok = false;
+      const body = { type: TYPE, payload: draft };
+
       const put = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      ok = put.ok;
-      if (!ok) {
-        const post = await fetch(`${API_BASE}/api/reports`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (post.ok) {
-          await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
-          ok = true;
-        }
+
+      if (!put.ok) {
+        const msg = await safeReadText(put);
+        throw new Error(msg || "Save failed");
       }
-      if (!ok) throw new Error("Save failed");
+
       alert("✅ Saved successfully.");
       setIsEditing(false);
       setDraft(null);
-      await fetchReports();
+
+      await fetchOneReport(rid);
+      await fetchReportList();
+      setSelectedId(rid);
     } catch (e) {
       console.error(e);
       alert("❌ Failed to save changes.");
@@ -276,19 +399,21 @@ export default function FTR1ReceivingLogView() {
   // ===== Export/Import JSON =====
   const handleExportJSON = () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      if (!selectedReport?.payload) return alert("⚠️ No report selected.");
       const bundle = {
-        type: "ftr1_receiving_log_butchery",
+        type: TYPE,
         exportedAt: new Date().toISOString(),
-        count: payloads.length,
-        items: payloads,
+        reportId: getId(selectedReport),
+        payload: selectedReport.payload,
       };
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
       a.href = url;
-      a.download = `FTR1_Receiving_Log_ALL_${ts}.json`;
+      a.download = `FTR1_Receiving_Log_${selectedReport?.payload?.reportDate || ts}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -303,30 +428,50 @@ export default function FTR1ReceivingLogView() {
   const handleImportJSON = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     try {
       setLoading(true);
       const text = await file.text();
       const json = JSON.parse(text);
-      const itemsRaw =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.data) ? json.data : [];
-      if (!itemsRaw.length) { alert("⚠️ JSON file has no importable items."); return; }
-      let ok = 0, fail = 0;
+
+      const itemsRaw = Array.isArray(json)
+        ? json
+        : Array.isArray(json?.items)
+        ? json.items
+        : Array.isArray(json?.data)
+        ? json.data
+        : json?.payload
+        ? [json.payload]
+        : [];
+
+      if (!itemsRaw.length) {
+        alert("⚠️ JSON file has no importable items.");
+        return;
+      }
+
+      let ok = 0,
+        fail = 0;
       for (const item of itemsRaw) {
         const payload = item?.payload ?? item;
-        if (!payload || typeof payload !== "object") { fail++; continue; }
+        if (!payload || typeof payload !== "object") {
+          fail++;
+          continue;
+        }
         try {
           const res = await fetch(`${API_BASE}/api/reports`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type: "ftr1_receiving_log_butchery", payload }),
+            body: JSON.stringify({ type: TYPE, payload }),
           });
-          if (res.ok) ok++; else fail++;
-        } catch { fail++; }
+          if (res.ok) ok++;
+          else fail++;
+        } catch {
+          fail++;
+        }
       }
+
       alert(`✅ Imported: ${ok}${fail ? ` | ❌ Failed: ${fail}` : ""}`);
-      await fetchReports();
+      await fetchReportList();
     } catch (err) {
       console.error(err);
       alert("❌ Invalid JSON file.");
@@ -336,10 +481,10 @@ export default function FTR1ReceivingLogView() {
     }
   };
 
-  // ===== Grouping =====
+  // ===== Grouping (from lite list) =====
   const groupedReports = useMemo(() => {
-    return reports.reduce((acc, r) => {
-      const date = getReportDate(r);
+    return reportList.reduce((acc, r) => {
+      const date = pickDateFromAny(r);
       if (isNaN(date)) return acc;
       const y = date.getFullYear();
       const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -349,7 +494,30 @@ export default function FTR1ReceivingLogView() {
       acc[y][m].push({ ...r, day: d, _dt: date.getTime() });
       return acc;
     }, {});
-  }, [reports]);
+  }, [reportList]);
+
+  // ✅ Initialize open state once (keeps tree from collapsing when selecting dates)
+  useEffect(() => {
+    const years = Object.keys(groupedReports);
+    if (!years.length) return;
+
+    setOpenYears((prev) => {
+      if (Object.keys(prev).length) return prev;
+      const next = {};
+      years.forEach((y) => (next[y] = true));
+      return next;
+    });
+
+    setOpenMonths((prev) => {
+      if (Object.keys(prev).length) return prev;
+      const next = {};
+      years.forEach((y) => {
+        const months = Object.keys(groupedReports[y] || {});
+        months.forEach((m) => (next[`${y}-${m}`] = true));
+      });
+      return next;
+    });
+  }, [groupedReports]);
 
   /* ================== Styles ================== */
   const shell = { display: "flex", gap: "1rem" };
@@ -402,12 +570,14 @@ export default function FTR1ReceivingLogView() {
   const renderValue = (val, key) => {
     if (!val && val !== 0) return "—";
     if (key === "productionDate" || key === "expiryDate") {
-      try { const d = new Date(val); if (!isNaN(d)) return d.toLocaleDateString("en-CA"); } catch {}
+      try {
+        const d = new Date(val);
+        if (!isNaN(d)) return d.toLocaleDateString("en-CA");
+      } catch {}
     }
     return String(val);
   };
 
-  // مصادر الصور من مفاتيح مختلفة
   const getRowImages = (row) => {
     const raw =
       row?.images ||
@@ -471,6 +641,7 @@ export default function FTR1ReceivingLogView() {
         <h4 style={{ marginBottom: "1rem", color: "#5b21b6", textAlign: "center" }}>
           🗓️ Saved Reports
         </h4>
+
         {loading ? (
           <p>⏳ Loading...</p>
         ) : Object.keys(groupedReports).length === 0 ? (
@@ -480,28 +651,54 @@ export default function FTR1ReceivingLogView() {
             {Object.entries(groupedReports)
               .sort(([a], [b]) => Number(a) - Number(b))
               .map(([year, months]) => (
-                <details key={year} open>
-                  <summary style={{ fontWeight: 700, marginBottom: 6 }}>
-                    📅 Year {year}
-                  </summary>
+                <details
+                  key={year}
+                  open={openYears[year] ?? true}
+                  onToggle={(e) => {
+                    const isOpen = e.currentTarget.open;
+                    setOpenYears((p) => ({ ...p, [year]: isOpen }));
+                  }}
+                >
+                  <summary style={{ fontWeight: 700, marginBottom: 6 }}>📅 Year {year}</summary>
+
                   {Object.entries(months)
                     .sort(([a], [b]) => Number(a) - Number(b))
                     .map(([month, days]) => {
+                      const key = `${year}-${month}`;
                       const ddays = [...days].sort((a, b) => a._dt - b._dt);
+
                       return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
+                        <details
+                          key={month}
+                          style={{ marginLeft: "1rem" }}
+                          open={openMonths[key] ?? true}
+                          onToggle={(e) => {
+                            const isOpen = e.currentTarget.open;
+                            setOpenMonths((p) => ({ ...p, [key]: isOpen }));
+                          }}
+                        >
                           <summary style={{ fontWeight: 600 }}>📅 Month {month}</summary>
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                             {ddays.map((r, i) => {
-                              const isActive = getId(selectedReport) && getId(selectedReport) === getId(r);
-                              const d = getReportDate(r);
+                              const rid = getId(r);
+                              const isActive = !!selectedId && rid === selectedId;
+
+                              const d = pickDateFromAny(r);
                               const label = `${String(d.getDate()).padStart(2, "0")}/${String(
                                 d.getMonth() + 1
                               ).padStart(2, "0")}/${d.getFullYear()}`;
+
                               return (
                                 <li
                                   key={i}
-                                  onClick={() => setSelectedReport(r)}
+                                  onClick={async (e) => {
+                                    e.stopPropagation(); // ✅ prevents any accidental toggle
+                                    if (!rid) return;
+                                    setSelectedId(rid);
+                                    setIsEditing(false);
+                                    setDraft(null);
+                                    await fetchOneReport(rid);
+                                  }}
                                   style={{
                                     padding: "6px 10px",
                                     marginBottom: 4,
@@ -545,32 +742,115 @@ export default function FTR1ReceivingLogView() {
             >
               {!isEditing ? (
                 <>
-                  <button onClick={startEdit} style={{ padding: "8px 14px", borderRadius: 8, background: "#2563eb", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>
+                  <button
+                    onClick={startEdit}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      background: "#2563eb",
+                      color: "#fff",
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
                     ✏ Edit
                   </button>
-                  <button onClick={handleExportPDF} style={{ padding: "8px 14px", borderRadius: 8, background: "#10b981", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>
+
+                  <button
+                    onClick={handleExportPDF}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      background: "#10b981",
+                      color: "#fff",
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
                     ⬇ Export PDF
                   </button>
-                  <button onClick={handleExportJSON} style={{ padding: "8px 14px", borderRadius: 8, background: "#059669", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>
+
+                  <button
+                    onClick={handleExportJSON}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      background: "#059669",
+                      color: "#fff",
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
                     ⬇ Export JSON
                   </button>
-                  <button onClick={triggerImport} style={{ padding: "8px 14px", borderRadius: 8, background: "#f59e0b", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>
+
+                  <button
+                    onClick={triggerImport}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      background: "#f59e0b",
+                      color: "#fff",
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
                     ⬆ Import JSON
                   </button>
-                  <button onClick={() => handleDelete(selectedReport)} style={{ padding: "8px 14px", borderRadius: 8, background: "#ef4444", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>
+
+                  <button
+                    onClick={() => handleDelete(selectedReport)}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      background: "#ef4444",
+                      color: "#fff",
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
                     🗑 Delete
                   </button>
                 </>
               ) : (
                 <>
-                  <button onClick={saveEdit} style={{ padding: "8px 14px", borderRadius: 8, background: "#16a34a", color: "#fff", fontWeight: 800, border: "none", cursor: "pointer" }}>
+                  <button
+                    onClick={saveEdit}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      background: "#16a34a",
+                      color: "#fff",
+                      fontWeight: 800,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
                     💾 Save
                   </button>
-                  <button onClick={cancelEdit} style={{ padding: "8px 14px", borderRadius: 8, background: "#6b7280", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>
+
+                  <button
+                    onClick={cancelEdit}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      background: "#6b7280",
+                      color: "#fff",
+                      fontWeight: 700,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
                     ↩ Cancel
                   </button>
                 </>
               )}
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -608,7 +888,13 @@ export default function FTR1ReceivingLogView() {
               >
                 <div ref={reportRef}>
                   {/* Header info */}
-                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "0.75rem" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      marginBottom: "0.75rem",
+                    }}
+                  >
                     <tbody>
                       <tr>
                         <td style={headerCell}>
@@ -619,16 +905,28 @@ export default function FTR1ReceivingLogView() {
                         </td>
                       </tr>
                       <tr>
-                        <td style={headerCell}><strong>Issue Date:</strong> 05/02/2020</td>
-                        <td style={headerCell}><strong>Revision No:</strong> 0</td>
+                        <td style={headerCell}>
+                          <strong>Issue Date:</strong> 05/02/2020
+                        </td>
+                        <td style={headerCell}>
+                          <strong>Revision No:</strong> 0
+                        </td>
                       </tr>
                       <tr>
-                        <td style={headerCell}><strong>Area:</strong> QA</td>
-                        <td style={headerCell}><strong>Issued By:</strong> MOHAMAD ABDULLAH QC</td>
+                        <td style={headerCell}>
+                          <strong>Area:</strong> QA
+                        </td>
+                        <td style={headerCell}>
+                          <strong>Issued By:</strong> MOHAMAD ABDULLAH QC
+                        </td>
                       </tr>
                       <tr>
-                        <td style={headerCell}><strong>Controlling Officer:</strong> Quality Controller</td>
-                        <td style={headerCell}><strong>Approved By:</strong> Hussam.O.Sarhan</td>
+                        <td style={headerCell}>
+                          <strong>Controlling Officer:</strong> Quality Controller
+                        </td>
+                        <td style={headerCell}>
+                          <strong>Approved By:</strong> Hussam.O.Sarhan
+                        </td>
                       </tr>
                     </tbody>
                   </table>
@@ -650,9 +948,24 @@ export default function FTR1ReceivingLogView() {
                   </h3>
 
                   {/* Date & Invoice */}
-                  <div style={{ marginBottom: 10, display: "flex", gap: 24, fontWeight: 700, color: "#263042", flexWrap: "wrap" }}>
-                    <div><strong>Date:</strong> {(!isEditing ? selectedReport?.payload : draft)?.reportDate || "—"}</div>
-                    <div><strong>Invoice No:</strong> {(!isEditing ? selectedReport?.payload : draft)?.invoiceNo || "—"}</div>
+                  <div
+                    style={{
+                      marginBottom: 10,
+                      display: "flex",
+                      gap: 24,
+                      fontWeight: 700,
+                      color: "#263042",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div>
+                      <strong>Date:</strong>{" "}
+                      {(!isEditing ? selectedReport?.payload : draft)?.reportDate || "—"}
+                    </div>
+                    <div>
+                      <strong>Invoice No:</strong>{" "}
+                      {(!isEditing ? selectedReport?.payload : draft)?.invoiceNo || "—"}
+                    </div>
                   </div>
 
                   {/* Legend */}
@@ -661,61 +974,83 @@ export default function FTR1ReceivingLogView() {
                   </div>
 
                   {/* Table */}
-                  <table ref={tableRef} style={{ borderCollapse: "collapse", tableLayout: "fixed", width: TABLE_BASE_WIDTH }}>
+                  <table
+                    ref={tableRef}
+                    style={{
+                      borderCollapse: "collapse",
+                      tableLayout: "fixed",
+                      width: TABLE_BASE_WIDTH,
+                    }}
+                  >
                     <colgroup>
-                      {COL_WIDTHS_PX.map((w, i) => (<col key={i} style={{ width: `${w}px` }} />))}
+                      {COL_WIDTHS_PX.map((w, i) => (
+                        <col key={i} style={{ width: `${w}px` }} />
+                      ))}
                     </colgroup>
                     <thead>
                       <tr>
                         <th style={thStyle}>S.No</th>
-                        {COLS.map((c, i) => (<th key={i} style={thStyle}>{c.label}</th>))}
+                        {COLS.map((c, i) => (
+                          <th key={i} style={thStyle}>
+                            {c.label}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {( (isEditing ? draft?.entries : selectedReport?.payload?.entries) || [] ).map((row, i) => (
-                        <tr key={i} style={{ background: i % 2 ? "#fafbff" : "#ffffff" }}>
-                          <td style={{ ...baseCell, textAlign: "center", fontWeight: 700 }}>{i + 1}</td>
-                          {COLS.map((c) => {
-                            const val = row?.[c.key];
-                            const type = c.key === "productionDate" || c.key === "expiryDate" ? "date" : "text";
-                            const imgs = getRowImages(row);
-                            const isFoodItem = c.key === "foodItem";
-                            return (
-                              <td key={c.key} style={{ ...baseCell, textAlign: c.align || "center" }}>
-                                {!isEditing ? (
-                                  <>
-                                    {renderValue(val, c.key)}
-                                    {isFoodItem && imgs.length > 0 && (
-                                      <button
-                                        type="button"
-                                        style={viewBtnStyle}
-                                        onClick={() => openPreview(imgs, 0)}
-                                        title="View photos"
-                                      >
-                                        View
-                                      </button>
-                                    )}
-                                  </>
-                                ) : (
-                                  <EditableCell
-                                    value={val}
-                                    type={type}
-                                    align={c.align || "center"}
-                                    onChange={(v) => updateDraftEntry(i, c.key, v)}
-                                  />
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
+                      {((isEditing ? draft?.entries : selectedReport?.payload?.entries) || []).map(
+                        (row, i) => (
+                          <tr key={i} style={{ background: i % 2 ? "#fafbff" : "#ffffff" }}>
+                            <td style={{ ...baseCell, textAlign: "center", fontWeight: 700 }}>
+                              {i + 1}
+                            </td>
+
+                            {COLS.map((c) => {
+                              const val = row?.[c.key];
+                              const type =
+                                c.key === "productionDate" || c.key === "expiryDate"
+                                  ? "date"
+                                  : "text";
+                              const imgs = getRowImages(row);
+                              const isFoodItem = c.key === "foodItem";
+
+                              return (
+                                <td key={c.key} style={{ ...baseCell, textAlign: c.align || "center" }}>
+                                  {!isEditing ? (
+                                    <>
+                                      {renderValue(val, c.key)}
+                                      {isFoodItem && imgs.length > 0 && (
+                                        <button
+                                          type="button"
+                                          style={viewBtnStyle}
+                                          onClick={() => openPreview(imgs, 0)}
+                                          title="View photos"
+                                        >
+                                          View
+                                        </button>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <EditableCell
+                                      value={val}
+                                      type={type}
+                                      align={c.align || "center"}
+                                      onChange={(v) => updateDraftEntry(i, c.key, v)}
+                                    />
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        )
+                      )}
                     </tbody>
                   </table>
 
-                  {/* Notes */}
                   <div style={{ marginTop: 8, fontSize: "0.9rem", color: "#374151" }}>
                     *(C – Compliant &nbsp;&nbsp;&nbsp; NC – Non-Compliant)
                   </div>
+
                   <div
                     style={{
                       display: "flex",
@@ -727,8 +1062,12 @@ export default function FTR1ReceivingLogView() {
                       gap: 8,
                     }}
                   >
-                    <div>Checked By: {(!isEditing ? selectedReport?.payload : draft)?.checkedBy || "—"}</div>
-                    <div>Verified By: {(!isEditing ? selectedReport?.payload : draft)?.verifiedBy || "—"}</div>
+                    <div>
+                      Checked By: {(!isEditing ? selectedReport?.payload : draft)?.checkedBy || "—"}
+                    </div>
+                    <div>
+                      Verified By: {(!isEditing ? selectedReport?.payload : draft)?.verifiedBy || "—"}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -740,19 +1079,33 @@ export default function FTR1ReceivingLogView() {
       {/* Preview Modal */}
       {preview.open && (
         <div
-          onClick={(e) => { if (e.target === e.currentTarget) closePreview(); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closePreview();
+          }}
           style={{
-            position: "fixed", inset: 0, background: "rgba(16,18,27,0.8)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: 24, zIndex: 9999,
+            position: "fixed",
+            inset: 0,
+            background: "rgba(16,18,27,0.8)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+            zIndex: 9999,
           }}
         >
           <div
             style={{
-              position: "relative", maxWidth: "92vw", maxHeight: "90vh",
-              background: "#0b1020", border: "1px solid #1f2a44", borderRadius: 12,
-              boxShadow: "0 12px 40px rgba(0,0,0,0.45)", padding: 12,
-              display: "flex", flexDirection: "column", gap: 8,
+              position: "relative",
+              maxWidth: "92vw",
+              maxHeight: "90vh",
+              background: "#0b1020",
+              border: "1px solid #1f2a44",
+              borderRadius: 12,
+              boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+              padding: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -763,13 +1116,28 @@ export default function FTR1ReceivingLogView() {
                 <a
                   href={preview.images[preview.index]}
                   download={`FTR1_Image_${preview.index + 1}.jpg`}
-                  style={{ textDecoration: "none", padding: "8px 12px", borderRadius: 8, background: "#10b981", color: "#fff", fontWeight: 800 }}
+                  style={{
+                    textDecoration: "none",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: "#10b981",
+                    color: "#fff",
+                    fontWeight: 800,
+                  }}
                 >
                   ⬇ Download
                 </a>
                 <button
                   onClick={closePreview}
-                  style={{ padding: "8px 12px", borderRadius: 8, background: "#ef4444", color: "#fff", fontWeight: 800, border: "none", cursor: "pointer" }}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: "#ef4444",
+                    color: "#fff",
+                    fontWeight: 800,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
                 >
                   ✕ Close
                 </button>
@@ -778,20 +1146,35 @@ export default function FTR1ReceivingLogView() {
 
             <div
               style={{
-                position: "relative", flex: 1, display: "flex",
-                alignItems: "center", justifyContent: "center",
-                overflow: "hidden", borderRadius: 10, background: "#0f172a",
+                position: "relative",
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                borderRadius: 10,
+                background: "#0f172a",
               }}
             >
               {/* eslint-disable-next-line jsx-a11y/alt-text */}
               <img
                 src={preview.images[preview.index]}
-                style={{ maxWidth: "100%", maxHeight: "84vh", objectFit: "contain", display: "block", userSelect: "none" }}
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "84vh",
+                  objectFit: "contain",
+                  display: "block",
+                  userSelect: "none",
+                }}
               />
               {preview.images.length > 1 && (
                 <>
-                  <button onClick={prevImage} title="Previous (←)" style={navBtnStyle("left")}>‹</button>
-                  <button onClick={nextImage} title="Next (→)" style={navBtnStyle("right")}>›</button>
+                  <button onClick={prevImage} title="Previous (←)" style={navBtnStyle("left")}>
+                    ‹
+                  </button>
+                  <button onClick={nextImage} title="Next (→)" style={navBtnStyle("right")}>
+                    ›
+                  </button>
                 </>
               )}
             </div>
@@ -802,24 +1185,12 @@ export default function FTR1ReceivingLogView() {
   );
 }
 
-/* ===== Helper: nav buttons style ===== */
-function navBtnStyle(side) {
-  return {
-    position: "absolute",
-    top: "50%",
-    transform: "translateY(-50%)",
-    [side]: 10,
-    width: 44,
-    height: 44,
-    borderRadius: "9999px",
-    border: "none",
-    cursor: "pointer",
-    background: "rgba(255,255,255,0.95)",
-    color: "#0f172a",
-    fontSize: 28,
-    fontWeight: 900,
-    lineHeight: "44px",
-    textAlign: "center",
-    boxShadow: "0 6px 16px rgba(0,0,0,0.25)",
-  };
+/* ===== safe read ===== */
+async function safeReadText(res) {
+  try {
+    const t = await res.text();
+    return t;
+  } catch {
+    return "";
+  }
 }
