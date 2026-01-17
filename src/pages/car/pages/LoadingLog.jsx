@@ -1,19 +1,31 @@
 // src/pages/car/pages/LoadingLog.jsx
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 /**
  * VISUAL INSPECTION (OUTBOUND CHECKLIST) - English-only
- * - Header kept as-is (Document Title/No/Issue/Revision + Area/Issued/Controlling/Approved)
+ * - Header kept as-is
  * - Multiple vehicles per single report date (rows you can add/remove)
- * - Saves to server: POST /api/reports  { reporter, type, payload }
+ * - Saves report to server: POST /api/reports  { reporter, type, payload }
+ *
+ * Updates:
+ * - INFORMED TO is optional (not required)
+ * - VEHICLE NO + DRIVER NAME are dropdowns (no duplicates)
+ * - Add buttons appear ONLY on first row
+ * - New values are saved permanently on server (as lookup types)
  */
 
-const API_BASE =
+const API_BASE_RAW =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL) ||
   (typeof process !== "undefined" && process.env && process.env.REACT_APP_API_URL) ||
   "https://inspection-server-4nvj.onrender.com";
 
+const API_BASE = String(API_BASE_RAW).replace(/\/$/, "");
+
 const TYPE = "cars_loading_inspection";
+
+// Lookup types (saved on server permanently)
+const LOOKUP_VEHICLES_TYPE = "cars_loading_lookup_vehicle_numbers";
+const LOOKUP_DRIVERS_TYPE = "cars_loading_lookup_driver_names";
 
 async function saveToServer(payload) {
   const res = await fetch(`${API_BASE}/api/reports`, {
@@ -25,6 +37,39 @@ async function saveToServer(payload) {
   return res.json();
 }
 
+async function fetchByType(type) {
+  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Failed to fetch ${type}: ${res.status}`);
+  const json = await res.json().catch(() => []);
+  return Array.isArray(json) ? json : json?.data ?? [];
+}
+
+async function saveLookupValue(type, value) {
+  const id =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : String(Date.now()) + "-" + Math.random().toString(16).slice(2);
+
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      reporter: "anonymous",
+      type,
+      payload: {
+        id,
+        value,
+        createdAt: Date.now(),
+      },
+    }),
+  });
+
+  if (!res.ok) throw new Error("Server " + res.status + ": " + (await res.text()));
+  return res.json().catch(() => ({ ok: true }));
+}
+
 const YESNO_FIELDS = [
   "floorSealingIntact",
   "floorCleaning",
@@ -34,6 +79,7 @@ const YESNO_FIELDS = [
   "ppeAvailable",
 ];
 
+// INFORMED TO is optional => removed from required validation
 const REQUIRED_FIELDS = {
   vehicleNo: "VEHICLE NO",
   driverName: "DRIVER NAME",
@@ -46,7 +92,6 @@ const REQUIRED_FIELDS = {
   plasticCurtain: "PLASTIC CURTAIN AVAILABLE/ CLEANING",
   badOdour: "BAD ODOUR",
   ppeAvailable: "PPE AVAILABLE",
-  informedTo: "INFORMED TO",
 };
 
 const HEAD_DEFAULT = {
@@ -60,7 +105,7 @@ const HEAD_DEFAULT = {
   approvedBy: "ALTAF KHAN",
 };
 
-// Default row matches your screenshot
+// Default row
 function newRow() {
   return {
     vehicleNo: "",
@@ -74,9 +119,30 @@ function newRow() {
     plasticCurtain: "yes",
     badOdour: "no",
     ppeAvailable: "yes",
-    informedTo: "",
+    informedTo: "", // optional
     remarks: "",
   };
+}
+
+function normKey(s) {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+function uniqueSorted(values) {
+  const seen = new Set();
+  const out = [];
+  values
+    .map((v) => String(v ?? "").trim())
+    .filter(Boolean)
+    .forEach((v) => {
+      const k = normKey(v);
+      if (!seen.has(k)) {
+        seen.add(k);
+        out.push(v);
+      }
+    });
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
 }
 
 export default function LoadingLog() {
@@ -89,6 +155,11 @@ export default function LoadingLog() {
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState({}); // { [rowIndex]: Set(fieldKeys) }
 
+  // Lookups
+  const [vehicleOptions, setVehicleOptions] = useState([]);
+  const [driverOptions, setDriverOptions] = useState([]);
+  const [lookupBusy, setLookupBusy] = useState(false);
+
   const setHead = (k, v) => setHeader((h) => ({ ...h, [k]: v }));
   const setRow = (i, k, v) =>
     setRows((rs) => {
@@ -96,7 +167,9 @@ export default function LoadingLog() {
       n[i] = { ...n[i], [k]: v };
       return n;
     });
+
   const addRow = () => setRows((rs) => [...rs, newRow()]);
+
   const removeRow = (i) => {
     setRows((rs) => rs.filter((_, idx) => idx !== i));
     setErrors((e) => {
@@ -115,8 +188,98 @@ export default function LoadingLog() {
 
   const isInvalid = (i, key) => Boolean(errors[i] && errors[i].has(key));
 
+  // Load lookups once
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        setLookupBusy(true);
+        const [vehArr, drvArr] = await Promise.all([
+          fetchByType(LOOKUP_VEHICLES_TYPE),
+          fetchByType(LOOKUP_DRIVERS_TYPE),
+        ]);
+
+        const vehValues = vehArr.map((x) => x?.payload?.value ?? x?.value ?? "").filter(Boolean);
+        const drvValues = drvArr.map((x) => x?.payload?.value ?? x?.value ?? "").filter(Boolean);
+
+        if (!alive) return;
+        setVehicleOptions(uniqueSorted(vehValues));
+        setDriverOptions(uniqueSorted(drvValues));
+      } catch (e) {
+        console.warn("Lookup load failed:", e);
+      } finally {
+        if (alive) setLookupBusy(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function addLookupAndSelect(kind, rowIndex) {
+    // Buttons exist only on first row, but keep it safe:
+    if (rowIndex !== 0) return;
+
+    const isVehicle = kind === "vehicle";
+    const currentList = isVehicle ? vehicleOptions : driverOptions;
+
+    const label = isVehicle ? "Vehicle No" : "Driver Name";
+    const raw = window.prompt(`Add new ${label}:`);
+    const value = String(raw ?? "").trim();
+
+    if (!value) return;
+
+    // prevent duplicates (case-insensitive)
+    const exists = currentList.some((x) => normKey(x) === normKey(value));
+    if (exists) {
+      setMsg(`${label} already exists.`);
+      setTimeout(() => setMsg(""), 2200);
+      const match = currentList.find((x) => normKey(x) === normKey(value));
+      if (match) setRow(rowIndex, isVehicle ? "vehicleNo" : "driverName", match);
+      return;
+    }
+
+    try {
+      setLookupBusy(true);
+      setMsg(`Saving new ${label}...`);
+      await saveLookupValue(isVehicle ? LOOKUP_VEHICLES_TYPE : LOOKUP_DRIVERS_TYPE, value);
+
+      // update global options => appears in ALL rows dropdowns automatically
+      const next = uniqueSorted([...currentList, value]);
+      if (isVehicle) setVehicleOptions(next);
+      else setDriverOptions(next);
+
+      // select it in first row (where you added)
+      setRow(rowIndex, isVehicle ? "vehicleNo" : "driverName", value);
+
+      setMsg(`${label} saved.`);
+      setTimeout(() => setMsg(""), 1800);
+    } catch (e) {
+      console.error(e);
+      setMsg(`Failed to save ${label}.`);
+      setTimeout(() => setMsg(""), 2500);
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+
   function validateRows(rawRows) {
-    const clean = rawRows.filter((r) => Object.values(r).some((v) => String(v || "").trim()));
+    const meaningfulKeys = [
+      "vehicleNo",
+      "driverName",
+      "timeStart",
+      "timeEnd",
+      "tempCheck",
+      "informedTo",
+      "remarks",
+    ];
+
+    const clean = rawRows.filter((r) =>
+      meaningfulKeys.some((k) => String(r?.[k] ?? "").trim())
+    );
+
     const errorMap = {};
     const messages = [];
 
@@ -124,7 +287,8 @@ export default function LoadingLog() {
       const missing = [];
       const setForRow = new Set();
 
-      ["vehicleNo", "driverName", "timeStart", "timeEnd", "tempCheck", "informedTo"].forEach((k) => {
+      // INFORMED TO removed from required
+      ["vehicleNo", "driverName", "timeStart", "timeEnd", "tempCheck"].forEach((k) => {
         const val = String(r[k] || "").trim();
         if (!val) {
           missing.push(REQUIRED_FIELDS[k]);
@@ -170,9 +334,8 @@ export default function LoadingLog() {
       setBusy(true);
       setMsg("Saving to server...");
       const id =
-        typeof crypto !== "undefined" && crypto.randomUUID
-          ? crypto.randomUUID()
-          : String(Date.now());
+        typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+
       await saveToServer({
         id,
         createdAt: Date.now(),
@@ -182,6 +345,7 @@ export default function LoadingLog() {
         verifiedBy,
         rows: validCleanRows,
       });
+
       setMsg("Saved successfully.");
       setRows([newRow()]);
       setErrors({});
@@ -195,7 +359,6 @@ export default function LoadingLog() {
   };
 
   /* ===== Styles ===== */
-  // NOTE: كل ألوان HEX داخل strings لتجنّب خطأ “Unexpected digit after hash token”.
   const wrapStyle = {
     padding: "32px",
     fontFamily: "Arial, sans-serif",
@@ -366,9 +529,19 @@ export default function LoadingLog() {
       ? grid2Style
       : { ...grid2Style, gridTemplateColumns: "repeat(2, 1fr)" };
 
-  // helper colors (strings) to use in JSX inline style safely
-  const COLOR_RED = "#ef4444";
-  const COLOR_BLUE = "#4a90e2";
+  const miniAddBtn = useMemo(
+    () => ({
+      ...buttonStyle,
+      padding: "8px 10px",
+      fontSize: "12px",
+      backgroundColor: lookupBusy ? "#cbd5e1" : "#edf2f7",
+      color: "#2d3748",
+      border: "1px solid #cbd5e1",
+      cursor: lookupBusy ? "not-allowed" : "pointer",
+      width: "100%",
+    }),
+    [lookupBusy]
+  );
 
   return (
     <form onSubmit={handleSave} style={wrapStyle}>
@@ -414,19 +587,11 @@ export default function LoadingLog() {
           <div style={{ ...responsiveGrid4, marginTop: "16px" }}>
             <div>
               <label style={labelStyle}>Area:</label>
-              <input
-                style={inputStyle}
-                value={header.area}
-                onChange={(e) => setHead("area", e.target.value)}
-              />
+              <input style={inputStyle} value={header.area} onChange={(e) => setHead("area", e.target.value)} />
             </div>
             <div>
               <label style={labelStyle}>Issued By:</label>
-              <input
-                style={inputStyle}
-                value={header.issuedBy}
-                onChange={(e) => setHead("issuedBy", e.target.value)}
-              />
+              <input style={inputStyle} value={header.issuedBy} onChange={(e) => setHead("issuedBy", e.target.value)} />
             </div>
             <div>
               <label style={labelStyle}>Controlling Officer:</label>
@@ -438,11 +603,7 @@ export default function LoadingLog() {
             </div>
             <div>
               <label style={labelStyle}>Approved By:</label>
-              <input
-                style={inputStyle}
-                value={header.approvedBy}
-                onChange={(e) => setHead("approvedBy", e.target.value)}
-              />
+              <input style={inputStyle} value={header.approvedBy} onChange={(e) => setHead("approvedBy", e.target.value)} />
             </div>
           </div>
         </div>
@@ -487,31 +648,80 @@ export default function LoadingLog() {
                   "PLASTIC CURTAIN AVAILABLE/ CLEANING",
                   "BAD ODOUR",
                   "PPE AVAILABLE",
-                  "INFORMED TO",
+                  "INFORMED TO (OPTIONAL)",
                   "REMARKS",
                 ].map((h) => (
-                  <th key={h} style={thStyle}>{h}</th>
+                  <th key={h} style={thStyle}>
+                    {h}
+                  </th>
                 ))}
                 <th style={thStyle}></th>
               </tr>
             </thead>
+
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i}>
+                  {/* VEHICLE NO (dropdown + add only on first row) */}
                   <td style={isInvalid(i, "vehicleNo") ? tdInvalid : tdStyle}>
-                    <input
-                      style={isInvalid(i, "vehicleNo") ? inputInvalid : inputStyle}
-                      value={r.vehicleNo}
-                      onChange={(e) => setRow(i, "vehicleNo", e.target.value)}
-                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <select
+                        style={isInvalid(i, "vehicleNo") ? inputInvalid : inputStyle}
+                        value={r.vehicleNo}
+                        onChange={(e) => setRow(i, "vehicleNo", e.target.value)}
+                      >
+                        <option value="">Select...</option>
+                        {vehicleOptions.map((v) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+
+                      {i === 0 && (
+                        <button
+                          type="button"
+                          style={miniAddBtn}
+                          disabled={lookupBusy}
+                          onClick={() => addLookupAndSelect("vehicle", 0)}
+                          title="Add new vehicle number"
+                        >
+                          + Add Vehicle No
+                        </button>
+                      )}
+                    </div>
                   </td>
+
+                  {/* DRIVER NAME (dropdown + add only on first row) */}
                   <td style={isInvalid(i, "driverName") ? tdInvalid : tdStyle}>
-                    <input
-                      style={isInvalid(i, "driverName") ? inputInvalid : inputStyle}
-                      value={r.driverName}
-                      onChange={(e) => setRow(i, "driverName", e.target.value)}
-                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <select
+                        style={isInvalid(i, "driverName") ? inputInvalid : inputStyle}
+                        value={r.driverName}
+                        onChange={(e) => setRow(i, "driverName", e.target.value)}
+                      >
+                        <option value="">Select...</option>
+                        {driverOptions.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                      </select>
+
+                      {i === 0 && (
+                        <button
+                          type="button"
+                          style={miniAddBtn}
+                          disabled={lookupBusy}
+                          onClick={() => addLookupAndSelect("driver", 0)}
+                          title="Add new driver name"
+                        >
+                          + Add Driver Name
+                        </button>
+                      )}
+                    </div>
                   </td>
+
                   <td style={isInvalid(i, "timeStart") ? tdInvalid : tdStyle}>
                     <input
                       type="time"
@@ -520,6 +730,7 @@ export default function LoadingLog() {
                       onChange={(e) => setRow(i, "timeStart", e.target.value)}
                     />
                   </td>
+
                   <td style={isInvalid(i, "timeEnd") ? tdInvalid : tdStyle}>
                     <input
                       type="time"
@@ -528,6 +739,7 @@ export default function LoadingLog() {
                       onChange={(e) => setRow(i, "timeEnd", e.target.value)}
                     />
                   </td>
+
                   <td style={isInvalid(i, "tempCheck") ? tdInvalid : tdStyle}>
                     <input
                       type="number"
@@ -565,13 +777,16 @@ export default function LoadingLog() {
                     </td>
                   ))}
 
-                  <td style={isInvalid(i, "informedTo") ? tdInvalid : tdStyle}>
+                  {/* INFORMED TO (optional) */}
+                  <td style={tdStyle}>
                     <input
-                      style={isInvalid(i, "informedTo") ? inputInvalid : inputStyle}
+                      style={inputStyle}
                       value={r.informedTo}
                       onChange={(e) => setRow(i, "informedTo", e.target.value)}
+                      placeholder="Optional"
                     />
                   </td>
+
                   <td style={tdStyle}>
                     <input
                       style={inputStyle}
@@ -579,6 +794,7 @@ export default function LoadingLog() {
                       onChange={(e) => setRow(i, "remarks", e.target.value)}
                     />
                   </td>
+
                   <td style={tdStyle}>
                     {rows.length > 1 && (
                       <button type="button" onClick={() => removeRow(i)} style={removeBtnStyle} title="Remove row">
@@ -597,19 +813,11 @@ export default function LoadingLog() {
           <div style={responsiveGrid2}>
             <div>
               <label style={labelStyle}>INSPECTED BY:</label>
-              <input
-                style={inputStyle}
-                value={inspectedBy}
-                onChange={(e) => setInspectedBy(e.target.value)}
-              />
+              <input style={inputStyle} value={inspectedBy} onChange={(e) => setInspectedBy(e.target.value)} />
             </div>
             <div>
               <label style={labelStyle}>VERIFIED BY:</label>
-              <input
-                style={inputStyle}
-                value={verifiedBy}
-                onChange={(e) => setVerifiedBy(e.target.value)}
-              />
+              <input style={inputStyle} value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} />
             </div>
           </div>
         </div>

@@ -65,6 +65,7 @@ const DEFAULT_TYPES = [
   "LAMB AUS","MUTTON AUS","LAMB S.A","MUTTON S.A","VACUUM","FROZEN",
   "PAK","KHZ","IND MUTTON","IND VEAL","FRESH LAMB","FRESH CHICKEN",
 ];
+
 const BRANCHES = [
   "QCS",
   "POS 6","POS 7","POS 10","POS 11","POS 14","POS 15","POS 16","POS 17",
@@ -72,9 +73,10 @@ const BRANCHES = [
   "POS 26","POS 31","POS 34","POS 35","POS 36",
   "POS 37","POS 38","POS 41","POS 43",
 ];
+
 const SAVE_COOLDOWN_MS = 1200;
 
-/* ===== Styles (تم رفع z-index وتوضيح المدخلات) ===== */
+/* ===== Styles ===== */
 const styles = {
   page: {
     minHeight: "100vh",
@@ -100,7 +102,7 @@ const styles = {
     boxShadow: "0 10px 24px rgba(60,30,230,.10), 0 1px 2px rgba(2,6,23,.04)",
     border: "1px solid #e5e7eb",
     position: "relative",
-    zIndex: 1, // الكرت فوق الـ hero
+    zIndex: 1,
   },
   titleWrap: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 },
   title: { color: "#1e293b", margin: 0, fontSize: "1.7rem", fontWeight: 900, letterSpacing: ".5px" },
@@ -108,7 +110,6 @@ const styles = {
   section: { marginBottom: 16 },
   label: { fontWeight: 800, color: "#334155", fontSize: "1rem" },
 
-  // مدخلات أوضح
   input: {
     width: "100%",
     padding: "11px 13px",
@@ -199,6 +200,8 @@ function docMetaReducer(state, action) {
 
 /* ===== Utils ===== */
 const uniq = (arr) => Array.from(new Set(arr.map((x) => normStr(x))));
+const normCI = (s) => String(normStr(s) ?? "").trim().toLowerCase();
+
 const getLocalTypes = () => {
   try {
     const raw = localStorage.getItem(TYPES_LS_KEY);
@@ -210,6 +213,26 @@ const saveLocalType = (name) => {
   try {
     const arr = uniq([...getLocalTypes(), name]);
     localStorage.setItem(TYPES_LS_KEY, JSON.stringify(arr));
+  } catch {}
+};
+
+// ✅ Suppliers (server + local fallback)
+const SUPPLIERS_LS_KEY = "qcs_suppliers_v1";
+const DEFAULT_SUPPLIERS = [];
+
+const getLocalSuppliers = () => {
+  try {
+    const raw = localStorage.getItem(SUPPLIERS_LS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+};
+const saveLocalSupplier = (name) => {
+  try {
+    const arr = uniq([...getLocalSuppliers(), name]);
+    localStorage.setItem(SUPPLIERS_LS_KEY, JSON.stringify(arr));
   } catch {}
 };
 
@@ -259,9 +282,18 @@ export default function QCSRawMaterialForm() {
   const [docMeta, dispatchDocMeta] = useReducer(docMetaReducer, initialDocMeta);
 
   const [samples, setSamples] = useState([makeNewSample()]);
+
+  // ✅ Shipment type + search + add with disable
   const [shipmentType, setShipmentType] = useState("");
   const [shipmentTypes, setShipmentTypes] = useState(DEFAULT_TYPES);
-  const [newType, setNewType] = useState("");
+  const [typeSearch, setTypeSearch] = useState("");     // ✅ Search
+  const [newType, setNewType] = useState("");           // Add input
+
+  // ✅ Suppliers dropdown + search + add with disable
+  const [supplierOptions, setSupplierOptions] = useState(DEFAULT_SUPPLIERS);
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [newSupplier, setNewSupplier] = useState("");
+
   const [shipmentStatus, setShipmentStatus] = useState("Acceptable");
   const [inspectedBy, setInspectedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
@@ -336,6 +368,7 @@ export default function QCSRawMaterialForm() {
     setAverageWeight(q > 0 && w > 0 ? (w / q).toFixed(3) : "");
   }, [totalQuantity, totalWeight]);
 
+  // Shipment Types (server + local)
   useEffect(() => {
     (async () => {
       try {
@@ -348,6 +381,53 @@ export default function QCSRawMaterialForm() {
       }
     })();
   }, []);
+
+  // ✅ Filter shipment types by search
+  const filteredShipmentTypes = useMemo(() => {
+    const q = normCI(typeSearch);
+    const arr = Array.isArray(shipmentTypes) ? shipmentTypes : [];
+    if (!q) return arr;
+    return arr.filter((t) => normCI(t).includes(q));
+  }, [shipmentTypes, typeSearch]);
+
+  // ✅ Disable Add Type if empty OR exists
+  const newTypeNorm = normStr(newType);
+  const typeExists = useMemo(() => {
+    if (!newTypeNorm) return false;
+    const k = normCI(newTypeNorm);
+    return shipmentTypes.some((t) => normCI(t) === k);
+  }, [shipmentTypes, newTypeNorm]);
+  const disableAddType = !newTypeNorm || typeExists;
+
+  // Suppliers
+  useEffect(() => {
+    (async () => {
+      try {
+        const serverList = (await listReportsByType("qcs_supplier"))
+          .map((r) => normStr(r?.payload?.name))
+          .filter(Boolean);
+
+        setSupplierOptions(uniq([...DEFAULT_SUPPLIERS, ...serverList, ...getLocalSuppliers()]));
+      } catch {
+        setSupplierOptions(uniq([...DEFAULT_SUPPLIERS, ...getLocalSuppliers()]));
+      }
+    })();
+  }, []);
+
+  const filteredSuppliers = useMemo(() => {
+    const q = normCI(supplierSearch);
+    const arr = Array.isArray(supplierOptions) ? supplierOptions : [];
+    if (!q) return arr;
+    return arr.filter((s) => normCI(s).includes(q));
+  }, [supplierOptions, supplierSearch]);
+
+  const newSupplierNorm = normStr(newSupplier);
+  const supplierExists = useMemo(() => {
+    if (!newSupplierNorm) return false;
+    const k = normCI(newSupplierNorm);
+    return supplierOptions.some((s) => normCI(s) === k);
+  }, [supplierOptions, newSupplierNorm]);
+  const disableAddSupplier = !newSupplierNorm || supplierExists;
 
   useEffect(() => {
     let stop = false;
@@ -427,7 +507,7 @@ export default function QCSRawMaterialForm() {
       showToast("error", "فشل رفع الشهادة.");
     }).finally(() => {
       setIsUploadingCert(false);
-      certInputRef.current.value = "";
+      if (certInputRef.current) certInputRef.current.value = "";
     });
   }
   function triggerCertSelect() { certInputRef.current?.click(); }
@@ -451,7 +531,7 @@ export default function QCSRawMaterialForm() {
         }
       }).finally(() => {
         setIsUploadingImages(false);
-        imagesInputRef.current.value = "";
+        if (imagesInputRef.current) imagesInputRef.current.value = "";
       });
   }
   function triggerImagesSelect() { imagesInputRef.current?.click(); }
@@ -517,10 +597,18 @@ export default function QCSRawMaterialForm() {
   function addLine() { setProductLines(prev => [...prev, makeEmptyLine()]); }
   function removeLine(id) { if (productLines.length > 1) setProductLines(prev => prev.filter(r => r.id !== id)); }
 
+  // ✅ Shipment Type: Add with disable + if exists just select
   function handleAddType() {
     const name = normStr(newType);
     if (!name) return;
-    if (shipmentTypes.includes(name)) { setShipmentType(name); setNewType(""); return; }
+
+    const existing = shipmentTypes.find((t) => normCI(t) === normCI(name));
+    if (existing) {
+      setShipmentType(existing);
+      setNewType("");
+      return;
+    }
+
     postMeta("qcs_shipment_type", { name }).then(() => {
       setShipmentTypes(prev => uniq([...prev, name]));
       setShipmentType(name);
@@ -536,12 +624,41 @@ export default function QCSRawMaterialForm() {
     });
   }
 
+  // ✅ Add Supplier
+  function handleAddSupplier() {
+    const name = normStr(newSupplier);
+    if (!name) return;
+
+    const existing = supplierOptions.find((s) => normCI(s) === normCI(name));
+    if (existing) {
+      handleGeneralChange("supplierName", existing);
+      setNewSupplier("");
+      return;
+    }
+
+    postMeta("qcs_supplier", { name })
+      .then(() => {
+        setSupplierOptions((prev) => uniq([...prev, name]));
+        handleGeneralChange("supplierName", name);
+        setNewSupplier("");
+        saveLocalSupplier(name);
+        showToast("success", "تم حفظ اسم المورد على السيرفر.");
+      })
+      .catch(() => {
+        saveLocalSupplier(name);
+        setSupplierOptions((prev) => uniq([...prev, name]));
+        handleGeneralChange("supplierName", name);
+        setNewSupplier("");
+        showToast("error", "تعذر الوصول للسيرفر، تم الحفظ محلياً.");
+      });
+  }
+
   function validateBeforeSave() {
     if (!shipmentType.trim() || !generalInfo.invoiceNo.trim() || !createdDate) {
       showToast("error", "يرجى إدخال نوع الشحنة + رقم الفاتورة + تاريخ الإدخال.");
       return false;
     }
-    // تحقق الحقول الإلزامية
+
     const missing = [];
     for (const f of REQUIRED_FIELDS) {
       if (f === "inspectedBy" && !inspectedBy.trim()) missing.push(REQUIRED_LABELS[f]);
@@ -625,6 +742,7 @@ export default function QCSRawMaterialForm() {
         onConfirm={confirmDialog.onOk}
         onCancel={closeConfirm}
       />
+
       <div style={styles.hero} />
       <div style={styles.containerWrap}>
         <div style={styles.container}>
@@ -694,22 +812,61 @@ export default function QCSRawMaterialForm() {
             </div>
           </div>
 
-          {/* Shipment Type */}
+          {/* ✅ Shipment Type (Search + Disable Add if empty/exists) */}
           <div style={styles.section}>
             <label style={styles.label}>Shipment Type:</label>
+
+            <input
+              value={typeSearch}
+              onChange={(e) => setTypeSearch(e.target.value)}
+              placeholder="Search shipment type..."
+              {...inputProps("typeSearch")}
+              style={{ ...inputProps("typeSearch").style, marginTop: 6, marginBottom: 8 }}
+            />
+
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 8 }}>
               <select value={shipmentType} onChange={(e) => setShipmentType(e.target.value)} {...selectProps("shipmentType")}>
                 <option value="">-- Select --</option>
-                {shipmentTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                {filteredShipmentTypes.length ? (
+                  filteredShipmentTypes.map((t) => <option key={t} value={t}>{t}</option>)
+                ) : (
+                  <option value="" disabled>No matches</option>
+                )}
               </select>
-              <input placeholder="Add new type…" value={newType} onChange={(e) => setNewType(e.target.value)} {...inputProps("newType")} />
-              <button onClick={handleAddType} style={styles.addButton}>➕ Add Type</button>
+
+              <input
+                placeholder="Add new type…"
+                value={newType}
+                onChange={(e) => setNewType(e.target.value)}
+                {...inputProps("newType")}
+              />
+
+              <button
+                type="button"
+                onClick={handleAddType}
+                style={{
+                  ...styles.addButton,
+                  opacity: disableAddType ? 0.55 : 1,
+                  cursor: disableAddType ? "not-allowed" : "pointer",
+                }}
+                disabled={disableAddType}
+                title={
+                  !newTypeNorm
+                    ? "Enter type name"
+                    : typeExists
+                      ? "Type already exists"
+                      : "Add type"
+                }
+              >
+                ➕ Add Type
+              </button>
             </div>
           </div>
 
           {/* General Information */}
           <fieldset style={styles.fieldset}>
             <legend style={styles.legend}>General Information</legend>
+
             <div style={styles.grid}>
               {[
                 ["Report On","reportOn","date"],
@@ -718,13 +875,10 @@ export default function QCSRawMaterialForm() {
                 ["Temperature","temperature","text"],
                 ["Brand","brand","text"],
                 ["Invoice No","invoiceNo","text"],
-                ["Supplier Name","supplierName","text"],
                 ["PH","ph","text"],
                 ["Origin","origin","text"],
                 ["Receiving Address (عنوان الاستلام)","receivingAddress","branch"],
                 ["Air Way Bill No","airwayBill","text"],
-                ["Local Logger","localLogger","select"],
-                ["International Logger","internationalLogger","select"],
               ].map(([label, field, type]) => {
                 const isReq = REQUIRED_FIELDS.has(field);
                 return (
@@ -732,18 +886,8 @@ export default function QCSRawMaterialForm() {
                     <label style={styles.label}>
                       {label}{isReq ? " *" : ""}
                     </label>
-                    {type === "select" ? (
-                      <select
-                        value={generalInfo[field]}
-                        onChange={(e) => handleGeneralChange(field, e.target.value)}
-                        {...selectProps(field)}
-                        required={isReq}
-                      >
-                        <option value="">-- Select --</option>
-                        <option value="YES">YES</option>
-                        <option value="NO">NO</option>
-                      </select>
-                    ) : type === "branch" ? (
+
+                    {type === "branch" ? (
                       <select
                         value={generalInfo[field]}
                         onChange={(e) => handleGeneralChange(field, e.target.value)}
@@ -766,8 +910,16 @@ export default function QCSRawMaterialForm() {
                     ) : (
                       (() => {
                         const isAvg = field === "temperature" || field === "ph";
-                        const value = field === "temperature" ? avgTemp : field === "ph" ? avgPh : generalInfo[field];
-                        const style = { ...inputProps(field).style, ...(isAvg ? { background: "#f8fafc", fontWeight: 700 } : {}) };
+                        const value =
+                          field === "temperature" ? avgTemp :
+                          field === "ph" ? avgPh :
+                          generalInfo[field];
+
+                        const style = {
+                          ...inputProps(field).style,
+                          ...(isAvg ? { background: "#f8fafc", fontWeight: 700 } : {})
+                        };
+
                         return (
                           <input
                             value={value}
@@ -783,6 +935,98 @@ export default function QCSRawMaterialForm() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Loggers + Supplier wide */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit,minmax(270px,1fr))",
+                gap: 12,
+                marginTop: 12,
+              }}
+            >
+              <div style={styles.row}>
+                <label style={styles.label}>Local Logger</label>
+                <select
+                  value={generalInfo.localLogger}
+                  onChange={(e) => handleGeneralChange("localLogger", e.target.value)}
+                  {...selectProps("localLogger")}
+                >
+                  <option value="">-- Select --</option>
+                  <option value="YES">YES</option>
+                  <option value="NO">NO</option>
+                </select>
+              </div>
+
+              <div style={styles.row}>
+                <label style={styles.label}>International Logger</label>
+                <select
+                  value={generalInfo.internationalLogger}
+                  onChange={(e) => handleGeneralChange("internationalLogger", e.target.value)}
+                  {...selectProps("internationalLogger")}
+                >
+                  <option value="">-- Select --</option>
+                  <option value="YES">YES</option>
+                  <option value="NO">NO</option>
+                </select>
+              </div>
+
+              <div style={{ ...styles.row, gridColumn: "1 / -1" }}>
+                <label style={styles.label}>Supplier Name</label>
+
+                <input
+                  value={supplierSearch}
+                  onChange={(e) => setSupplierSearch(e.target.value)}
+                  placeholder="Search supplier..."
+                  {...inputProps("supplierSearch")}
+                  style={{ ...inputProps("supplierSearch").style, marginBottom: 8 }}
+                />
+
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 8 }}>
+                  <select
+                    value={generalInfo.supplierName}
+                    onChange={(e) => handleGeneralChange("supplierName", e.target.value)}
+                    {...selectProps("supplierName")}
+                  >
+                    <option value="">-- Select Supplier --</option>
+                    {filteredSuppliers.length ? (
+                      filteredSuppliers.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))
+                    ) : (
+                      <option value="" disabled>No matches</option>
+                    )}
+                  </select>
+
+                  <input
+                    placeholder="Add new supplier…"
+                    value={newSupplier}
+                    onChange={(e) => setNewSupplier(e.target.value)}
+                    {...inputProps("newSupplier")}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleAddSupplier}
+                    style={{
+                      ...styles.addButton,
+                      opacity: disableAddSupplier ? 0.55 : 1,
+                      cursor: disableAddSupplier ? "not-allowed" : "pointer",
+                    }}
+                    disabled={disableAddSupplier}
+                    title={
+                      !newSupplierNorm
+                        ? "Enter supplier name"
+                        : supplierExists
+                          ? "Supplier already exists"
+                          : "Add supplier"
+                    }
+                  >
+                    ➕ Add
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Status */}
@@ -886,8 +1130,13 @@ export default function QCSRawMaterialForm() {
           {/* Notes */}
           <div style={{ marginTop: 10 }}>
             <label style={styles.label}>Notes:</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Write any additional notes here..."
-              style={{ ...styles.input, minHeight: 100, resize: "vertical", lineHeight: 1.5 }} />
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+              placeholder="Write any additional notes here..."
+              style={{ ...styles.input, minHeight: 100, resize: "vertical", lineHeight: 1.5 }}
+            />
           </div>
 
           {/* Uploads */}
@@ -904,7 +1153,6 @@ export default function QCSRawMaterialForm() {
               <input type="file" accept="image/*" multiple ref={imagesInputRef} onChange={handleImagesUpload} style={{ display: "none" }} />
             </div>
 
-            {/* شهادة */}
             {certificateName && <div>{certificateName}</div>}
             {certificateUrl && (
               <div style={{ marginTop: 6, fontSize: 13, display: "flex", gap: 8, alignItems: "center" }}>
@@ -920,7 +1168,6 @@ export default function QCSRawMaterialForm() {
               </div>
             )}
 
-            {/* صور */}
             {images.length > 0 && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginTop: 10 }}>
                 {images.map((src, i) => (
@@ -967,12 +1214,10 @@ export default function QCSRawMaterialForm() {
               {isSaving ? "⏳ Saving..." : "💾 Save Report"}
             </button>
 
-            {/* عرض التقارير التفصيلية */}
             <button onClick={() => navigate("/qcs-raw-material-view")} style={styles.viewButton}>
               📄 View Reports
             </button>
 
-            {/* 🔥 الزر الجديد: التقرير العام الموحّد */}
             <button onClick={() => navigate("/admin/all-reports-view")} style={styles.viewButton}>
               📊 All Reports (Summary)
             </button>
@@ -983,10 +1228,15 @@ export default function QCSRawMaterialForm() {
       {/* Toast */}
       {toast.type && (
         <div style={styles.toastWrap}>
-          <div role="alert" style={{
-            ...styles.toast,
-            background: toastColors(toast.type).bg, color: toastColors(toast.type).fg, borderColor: toastColors(toast.type).bd,
-          }}>
+          <div
+            role="alert"
+            style={{
+              ...styles.toast,
+              background: toastColors(toast.type).bg,
+              color: toastColors(toast.type).fg,
+              borderColor: toastColors(toast.type).bd,
+            }}
+          >
             {toast.msg}
           </div>
         </div>
