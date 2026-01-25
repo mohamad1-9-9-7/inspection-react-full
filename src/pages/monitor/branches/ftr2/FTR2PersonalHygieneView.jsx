@@ -1,5 +1,5 @@
 // src/pages/monitor/branches/ftr2/FTR2PersonalHygieneView.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
@@ -13,14 +13,8 @@ export default function FTR2PersonalHygieneView() {
   const reportRef = useRef();
   const fileInputRef = useRef(null);
 
-  // helper: ID موحّد للحذف والمقارنة
   const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 
-  useEffect(() => {
-    fetchReports();
-  }, []);
-
-  // helper: تاريخ آمن من reportDate ثم fallback على created_at
   const getReportDate = (r) => {
     const d1 = new Date(r?.payload?.reportDate);
     if (!isNaN(d1)) return d1;
@@ -37,12 +31,9 @@ export default function FTR2PersonalHygieneView() {
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
-
-      // ✅ تصاعدي: الأقدم أولًا
-      arr.sort((a, b) => getReportDate(a) - getReportDate(b));
-
+      arr.sort((a, b) => getReportDate(b) - getReportDate(a)); // ✅ أحدث أولاً
       setReports(arr);
-      setSelectedReport(arr[0] || null); // الأقدم
+      setSelectedReport(arr[0] || null); // ✅ افتح الأحدث
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
@@ -51,9 +42,18 @@ export default function FTR2PersonalHygieneView() {
     }
   };
 
-  // تصدير PDF مع اسم AL MAWASHI
+  useEffect(() => {
+    fetchReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
+
+    const toolbar = reportRef.current.querySelector(".action-toolbar");
+    const prev = toolbar?.style.display;
+    if (toolbar) toolbar.style.display = "none";
+
     const canvas = await html2canvas(reportRef.current, {
       scale: 2,
       windowWidth: reportRef.current.scrollWidth,
@@ -61,27 +61,34 @@ export default function FTR2PersonalHygieneView() {
     });
     const imgData = canvas.toDataURL("image/png");
 
-    const pdf = new jsPDF("l", "pt", "a4"); // Landscape
+    const pdf = new jsPDF("l", "pt", "a4");
     const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 20;
+    const imgWidth = pageWidth - margin * 2;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    // 🔹 عنوان الشركة أعلى التقرير
     pdf.setFontSize(18);
     pdf.setFont("helvetica", "bold");
     pdf.text("AL MAWASHI", pageWidth / 2, 30, { align: "center" });
+    pdf.addImage(imgData, "PNG", margin, 50, imgWidth, imgHeight);
+    pdf.save(
+      `FTR2_Personal_Hygiene_${selectedReport?.payload?.reportDate || "report"}.pdf`
+    );
 
-    const imgWidth = pageWidth - 40;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    const x = 20;
-    const y = 50;
-
-    pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
-    pdf.save(`FTR2_Personal_Hygiene_${selectedReport?.payload?.reportDate || "report"}.pdf`);
+    if (toolbar) toolbar.style.display = prev || "flex";
   };
 
-  // حذف التقرير
   const handleDelete = async (report) => {
+    if (!report) return;
+
+    const pwd = window.prompt("Enter password to delete this report:");
+    if (pwd === null) return;
+    if (pwd.trim() !== "9999") {
+      alert("❌ Wrong password.");
+      return;
+    }
     if (!window.confirm("Are you sure you want to delete this report?")) return;
+
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
     try {
@@ -97,7 +104,6 @@ export default function FTR2PersonalHygieneView() {
     }
   };
 
-  // ===== Export JSON (كل التقارير) =====
   const handleExportJSON = () => {
     try {
       const payloads = reports.map((r) => r?.payload ?? r);
@@ -125,7 +131,6 @@ export default function FTR2PersonalHygieneView() {
     }
   };
 
-  // ===== Import JSON (رفع وإنشاء سجلات على السيرفر) =====
   const triggerImport = () => fileInputRef.current?.click();
 
   const handleImportJSON = async (e) => {
@@ -149,18 +154,23 @@ export default function FTR2PersonalHygieneView() {
       let ok = 0, fail = 0;
       for (const item of itemsRaw) {
         const payload = item?.payload ?? item;
-        if (!payload || typeof payload !== "object") { fail++; continue; }
+        if (!payload || typeof payload !== "object") {
+          fail++;
+          continue;
+        }
 
         try {
           const res = await fetch(`${API_BASE}/api/reports`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              reporter: "ftr2",
               type: "ftr2_personal_hygiene",
               payload,
             }),
           });
-          if (res.ok) ok++; else fail++;
+          if (res.ok) ok++;
+          else fail++;
         } catch {
           fail++;
         }
@@ -173,26 +183,86 @@ export default function FTR2PersonalHygieneView() {
       alert("❌ Invalid JSON file.");
     } finally {
       setLoading(false);
-      if (e?.target) e.target.value = ""; // يسمح بإعادة اختيار نفس الملف لاحقًا
+      if (e?.target) e.target.value = "";
     }
   };
 
-  // Group reports by year → month → day
-  const groupedReports = reports.reduce((acc, r) => {
-    const date = getReportDate(r);
-    if (isNaN(date)) return acc;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    if (!acc[year]) acc[year] = {};
-    if (!acc[year][month]) acc[year][month] = [];
-    acc[year][month].push({ ...r, day, _dt: date.getTime() });
-    return acc;
-  }, {});
+  const groupedReports = useMemo(() => {
+    return reports.reduce((acc, r) => {
+      const date = getReportDate(r);
+      if (isNaN(date)) return acc;
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      acc[year] ??= {};
+      acc[year][month] ??= [];
+      acc[year][month].push({ ...r, day, _dt: date.getTime() });
+      return acc;
+    }, {});
+  }, [reports]);
+
+  const payload = selectedReport?.payload || {};
+  const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+
+  const pickYesNo = (v) => {
+    if (v === true) return "Yes";
+    if (v === false) return "No";
+    const s = String(v ?? "").trim();
+    if (!s) return "—";
+    const low = s.toLowerCase();
+    if (["y", "yes", "true", "1"].includes(low)) return "Yes";
+    if (["n", "no", "false", "0"].includes(low)) return "No";
+    return s;
+  };
+
+  const rowFit = (e) =>
+    pickYesNo(
+      e?.fitForFoodHandling ??
+        e?.fit ??
+        e?.unfit ??
+        e?.["Fit for Food Handling?"] ??
+        e?.["Fit for Food Handling"] ??
+        payload?.fitForFoodHandling
+    );
+
+  const rowReasonText = (e) => {
+    const comm = pickYesNo(
+      e?.reason?.communicableDisease ??
+        e?.communicableDisease ??
+        e?.["Communicable Disease"] ??
+        payload?.reason?.communicableDisease
+    );
+    const wound = pickYesNo(
+      e?.reason?.openWound ??
+        e?.openWound ??
+        e?.["Open wound"] ??
+        payload?.reason?.openWound
+    );
+    const other =
+      String(
+        e?.reason?.other ??
+          e?.otherReason ??
+          e?.reasonOther ??
+          e?.other ??
+          payload?.reason?.other ??
+          ""
+      ).trim() || "—";
+    return `Communicable disease: ${comm} | Open wound: ${wound} | Other: ${other}`;
+  };
+
+  const showReason = (e) => {
+    const fit = rowFit(e);
+    return String(fit).toLowerCase() === "no";
+  };
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* Sidebar dates */}
+    <div className="ftr2-ph-view" style={{ display: "flex", gap: "1rem" }}>
+      <style>{`
+        .ftr2-ph-view .action-toolbar { display: flex !important; }
+        .ftr2-ph-view .action-toolbar button { display: inline-flex !important; visibility: visible !important; opacity: 1 !important; }
+      `}</style>
+
+      {/* Sidebar */}
       <div
         style={{
           minWidth: "260px",
@@ -206,31 +276,32 @@ export default function FTR2PersonalHygieneView() {
         <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
           🗓️ Saved Reports
         </h4>
+
         {loading ? (
           <p>⏳ Loading...</p>
         ) : Object.keys(groupedReports).length === 0 ? (
           <p>❌ No reports</p>
         ) : (
           <div>
+            {/* ✅ مطوية دائماً */}
             {Object.entries(groupedReports)
-              .sort(([ya], [yb]) => Number(ya) - Number(yb)) // ✅ سنوات تصاعدي
+              .sort(([ya], [yb]) => Number(yb) - Number(ya))
               .map(([year, months]) => (
-                <details key={year} open>
+                <details key={year}>
                   <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
                     📅 Year {year}
                   </summary>
 
                   {Object.entries(months)
-                    .sort(([ma], [mb]) => Number(ma) - Number(mb)) // ✅ أشهر تصاعدي
+                    .sort(([ma], [mb]) => Number(mb) - Number(ma))
                     .map(([month, days]) => {
-                      const daysSorted = [...days].sort((a, b) => a._dt - b._dt); // ✅ أيام تصاعدي
+                      const daysSorted = [...days].sort((a, b) => b._dt - a._dt);
                       return (
                         <details key={month} style={{ marginLeft: "1rem" }}>
                           <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                             {daysSorted.map((r, i) => {
-                              const isActive =
-                                getId(selectedReport) && getId(selectedReport) === getId(r);
+                              const isActive = selectedReport && getId(selectedReport) === getId(r);
                               return (
                                 <li
                                   key={i}
@@ -273,77 +344,40 @@ export default function FTR2PersonalHygieneView() {
         {!selectedReport ? (
           <p>❌ No report selected.</p>
         ) : (
-          <>
-            {/* Actions */}
+          <div ref={reportRef}>
+            {/* Toolbar */}
             <div
+              className="action-toolbar"
               style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 5,
                 display: "flex",
                 justifyContent: "flex-end",
                 gap: "0.6rem",
                 marginBottom: "1rem",
+                paddingBottom: "8px",
+                background: "linear-gradient(to bottom, #f6f8fa, #f6f8facc)",
+                flexWrap: "wrap",
               }}
             >
-              <button
-                onClick={handleExportPDF}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background: "#27ae60",
-                  color: "#fff",
-                  fontWeight: "600",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
+              <button onClick={handleExportPDF} style={btn("#27ae60")}>
                 ⬇ Export PDF
               </button>
-
-              <button
-                onClick={handleExportJSON}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background: "#16a085",
-                  color: "#fff",
-                  fontWeight: "600",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
+              <button onClick={handleExportJSON} style={btn("#16a085")}>
                 ⬇ Export JSON
               </button>
-
-              <button
-                onClick={triggerImport}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background: "#f39c12",
-                  color: "#fff",
-                  fontWeight: "600",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
+              <button onClick={triggerImport} style={btn("#f39c12")}>
                 ⬆ Import JSON
               </button>
-
               <button
                 onClick={() => handleDelete(selectedReport)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background: "#c0392b",
-                  color: "#fff",
-                  fontWeight: "600",
-                  border: "none",
-                  cursor: "pointer",
-                }}
+                style={btn("#c0392b")}
+                title="Delete this report (password: 9999)"
               >
                 🗑 Delete
               </button>
 
-              {/* input مخفي لاستيراد JSON */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -353,139 +387,157 @@ export default function FTR2PersonalHygieneView() {
               />
             </div>
 
-            {/* Report content */}
-            <div ref={reportRef}>
-              {/* Header info */}
-              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
-                <tbody>
-                  <tr>
-                    <td style={tdHeader}>
-                      <strong>Document Title:</strong> Personal Hygiene Check List
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Document No:</strong> FS-QM /REC/PH
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <strong>Issue Date:</strong> 05/02/2020
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Revision No:</strong> 0
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <strong>Area:</strong> QA
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Issued By:</strong> MOHAMAD ABDULLAH QC
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <strong>Controlling Officer:</strong> Quality Controller
-                    </td>
-                    <td style={tdHeader}>
-                      <strong>Approved By:</strong> Hussam.O.Sarhan
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+            {/* Header info */}
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+              <tbody>
+                <tr>
+                  <td style={tdHeader}>
+                    <strong>Document Title:</strong> Personal Hygiene Check List
+                  </td>
+                  <td style={tdHeader}>
+                    <strong>Document No:</strong> FS-QM /REC/PH
+                  </td>
+                </tr>
+                <tr>
+                  <td style={tdHeader}>
+                    <strong>Issue Date:</strong> 05/02/2020
+                  </td>
+                  <td style={tdHeader}>
+                    <strong>Revision No:</strong> 0
+                  </td>
+                </tr>
+                <tr>
+                  <td style={tdHeader}>
+                    <strong>Area:</strong> {payload?.area || "QA"}
+                  </td>
+                  <td style={tdHeader}>
+                    <strong>Issued By:</strong> MOHAMAD ABDULLAH QC
+                  </td>
+                </tr>
+                <tr>
+                  <td style={tdHeader}>
+                    <strong>Controlling Officer:</strong> Quality Controller
+                  </td>
+                  <td style={tdHeader}>
+                    <strong>Approved By:</strong> Hussam.O.Sarhan
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-              {/* Title */}
-              <h3
-                style={{
-                  textAlign: "center",
-                  background: "#e5e7eb",
-                  padding: "6px",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                AL MAWASHI BRAAI MAMZAR
-                <br />
-                PERSONAL HYGIENE CHECKLIST FTR-2
-              </h3>
+            {/* Title */}
+            <h3
+              style={{
+                textAlign: "center",
+                background: "#e5e7eb",
+                padding: "6px",
+                marginBottom: "0.5rem",
+              }}
+            >
+              AL MAWASHI BRAAI MAMZAR
+              <br />
+              PERSONAL HYGIENE CHECKLIST FTR-2
+            </h3>
 
-              {/* Date */}
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong>Date:</strong> {selectedReport?.payload?.reportDate || "—"}
-              </div>
-
-              {/* Table */}
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  tableLayout: "fixed",
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#2980b9", color: "#fff" }}>
-                    <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-                    <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
-                    {columns.map((col, i) => (
-                      <th key={i} style={{ ...thStyle, width: "120px" }}>
-                        {col}
-                      </th>
-                    ))}
-                    <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedReport?.payload?.entries?.map((entry, i) => (
-                    <tr key={i}>
-                      <td style={tdStyle}>{i + 1}</td>
-                      <td style={tdStyle}>{entry.name || "—"}</td>
-                      {columns.map((col, cIndex) => (
-                        <td key={cIndex} style={tdStyle}>
-                          {entry[col] || "—"}
-                        </td>
-                      ))}
-                      <td style={tdStyle}>{entry.remarks || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Remarks footer */}
-              <div style={{ marginTop: "1rem", fontWeight: "600" }}>
-                REMARKS / CORRECTIVE ACTIONS:
-              </div>
-
-              {/* C / NC note */}
-              <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
-                *(C – Conform &nbsp;&nbsp;&nbsp; N/C – Non Conform)
-              </div>
-
-              {/* Checked / Verified */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginTop: "1rem",
-                  fontWeight: 600,
-                }}
-              >
-                <div>Checked By: {selectedReport?.payload?.checkedBy || "—"}</div>
-                <div>Verified By: {selectedReport?.payload?.verifiedBy || "—"}</div>
-              </div>
+            {/* Date */}
+            <div style={{ marginBottom: "0.5rem" }}>
+              <strong>Date:</strong> {payload?.reportDate || "—"}
             </div>
-          </>
+
+            {/* PIC note */}
+            {payload?.checkedByNote ? (
+              <div style={noteBox}>Note: {payload.checkedByNote}</div>
+            ) : null}
+
+            {/* Table */}
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                tableLayout: "fixed",
+              }}
+            >
+              <thead>
+                <tr style={{ background: "#2980b9", color: "#fff" }}>
+                  <th style={{ ...thStyle, width: "50px" }}>S.No</th>
+                  <th style={{ ...thStyle, width: "170px" }}>Employee Name</th>
+
+                  {BASE_CHECKS.map((col, i) => (
+                    <th key={i} style={{ ...thStyle, width: "140px" }}>
+                      {col}
+                    </th>
+                  ))}
+
+                  <th style={{ ...thStyle, width: "170px" }}>Fit for Food Handling?</th>
+                  <th style={{ ...thStyle, width: "360px" }}>If No: Reason</th>
+                  <th style={{ ...thStyle, width: "260px" }}>Remarks and Corrective Actions</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {entries.map((entry, i) => (
+                  <tr key={i}>
+                    <td style={tdStyle}>{i + 1}</td>
+                    <td style={tdStyle}>{entry?.name || "—"}</td>
+
+                    {BASE_CHECKS.map((col, idx) => (
+                      <td key={idx} style={tdStyle}>
+                        {entry?.[col] || "—"}
+                      </td>
+                    ))}
+
+                    <td style={tdStyle}>{rowFit(entry)}</td>
+
+                    <td style={{ ...tdStyle, textAlign: "left", fontSize: "0.85rem" }}>
+                      {showReason(entry) ? rowReasonText(entry) : "—"}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {entry?.remarks || entry?.correctiveAction || entry?.action || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Checked / Verified */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+                marginTop: "1rem",
+                fontWeight: 700,
+              }}
+            >
+              <div>Checked By: {payload?.checkedBy || "—"}</div>
+              <div>Verified by (QA): {payload?.verifiedByQA || payload?.verifiedBy || "—"}</div>
+            </div>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-const columns = [
+const BASE_CHECKS = [
   "Nails",
   "Hair",
   "Not wearing Jewelry",
   "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe",
-  "Communicable Disease",
-  "Open wounds/sores & cut",
 ];
+
+const noteBox = {
+  marginTop: "10px",
+  marginBottom: "10px",
+  padding: "10px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  background: "#f8fafc",
+  fontWeight: 700,
+  color: "#0f172a",
+};
 
 const thStyle = {
   padding: "6px",
@@ -498,6 +550,7 @@ const tdStyle = {
   padding: "6px",
   border: "1px solid #ccc",
   textAlign: "center",
+  verticalAlign: "top",
 };
 
 const tdHeader = {
@@ -505,3 +558,13 @@ const tdHeader = {
   padding: "4px 6px",
   fontSize: "0.85rem",
 };
+
+const btn = (bg) => ({
+  padding: "6px 12px",
+  borderRadius: "6px",
+  background: bg,
+  color: "#fff",
+  fontWeight: 600,
+  border: "none",
+  cursor: "pointer",
+});

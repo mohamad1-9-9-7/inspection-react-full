@@ -5,12 +5,12 @@ import * as XLSX from "xlsx-js-style";
 /* ============ API ============ */
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  (typeof process !== "undefined" &&
-    (process.env?.REACT_APP_API_URL ||
-      process.env?.VITE_API_URL ||
-      process.env?.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+    (typeof process !== "undefined" &&
+      (process.env?.REACT_APP_API_URL ||
+        process.env?.VITE_API_URL ||
+        process.env?.RENDER_EXTERNAL_URL)) ||
+    "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
 const TYPE = "finished_products_report";
@@ -97,18 +97,25 @@ function statusFromDates(reportDate, expiryDate) {
 /* ============ Server helpers ============ */
 async function fetchServerReports() {
   try {
-    const url = `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=500`;
+    const url = `${API_BASE}/api/reports?type=${encodeURIComponent(
+      TYPE
+    )}&limit=500`;
     const res = await fetch(url, { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data) return [];
 
     const arr =
-      Array.isArray(data) ? data :
-      Array.isArray(data.items) ? data.items :
-      Array.isArray(data.data) ? data.data :
-      Array.isArray(data.results) ? data.results :
-      Array.isArray(data.records) ? data.records :
-      [];
+      Array.isArray(data)
+        ? data
+        : Array.isArray(data.items)
+        ? data.items
+        : Array.isArray(data.data)
+        ? data.data
+        : Array.isArray(data.results)
+        ? data.results
+        : Array.isArray(data.records)
+        ? data.records
+        : [];
 
     const all = [];
     for (const it of arr) {
@@ -125,7 +132,6 @@ async function fetchServerReports() {
         reportTitle: payload.reportTitle || it.reportTitle || "",
         reportDate: payload.reportDate || it.reportDate || "",
         products: Array.isArray(payload.products) ? payload.products : [],
-        // ✅ signatures
         checkedBy: payload.checkedBy || "",
         verifiedBy: payload.verifiedBy || "",
       });
@@ -136,15 +142,6 @@ async function fetchServerReports() {
   }
 }
 
-async function fetchServerReportsByDate() {
-  const list = await fetchServerReports();
-  const map = new Map();
-  for (const r of list) {
-    const key = String(r.reportDate || "").trim();
-    if (key) map.set(key, r);
-  }
-  return map;
-}
 async function deleteServerReport(idOrDbId) {
   const id = String(idOrDbId);
   const res = await fetch(
@@ -155,6 +152,7 @@ async function deleteServerReport(idOrDbId) {
   if (!res.ok || data?.ok === false)
     throw new Error(data?.error || "Delete failed");
 }
+
 async function deleteServerRow(idOrDbId, productIndex) {
   const list = await fetchServerReports();
   const rep = list.find(
@@ -163,176 +161,31 @@ async function deleteServerRow(idOrDbId, productIndex) {
       String(r.id) === String(idOrDbId)
   );
   if (!rep) throw new Error("Report not found");
+
   const nextProducts = [...(rep.products || [])];
   if (productIndex < 0 || productIndex >= nextProducts.length)
     throw new Error("Row index invalid");
+
   nextProducts.splice(productIndex, 1);
   const id = rep._dbId || rep.id;
-  const res = await fetch(
-    `${API_BASE}/api/reports/${encodeURIComponent(id)}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        payload: {
-          reportTitle: rep.reportTitle,
-          reportDate: rep.reportDate,
-          products: nextProducts,
-          checkedBy: rep.checkedBy || "",
-          verifiedBy: rep.verifiedBy || "",
-        },
-      }),
-    }
-  );
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data?.ok === false)
-    throw new Error(data?.error || "Update failed");
-}
 
-async function postServerReportOne(rep, reporter = "SYSTEM") {
-  const payload = {
-    reportTitle: rep.reportTitle || rep.title || rep.name || "",
-    reportDate: rep.reportDate || rep.date || "",
-    products: Array.isArray(rep.products) ? rep.products : [],
-    checkedBy: rep.checkedBy || "",
-    verifiedBy: rep.verifiedBy || "",
-  };
-  if (!isYMD(payload.reportDate))
-    throw new Error(
-      `Invalid or missing reportDate for POST: "${payload.reportDate}" (expected YYYY-MM-DD).`
-    );
-  const body = { reporter, type: TYPE, payload };
-  const res = await fetch(`${API_BASE}/api/reports`, {
-    method: "POST",
+  const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      payload: {
+        reportTitle: rep.reportTitle,
+        reportDate: rep.reportDate,
+        products: nextProducts,
+        checkedBy: rep.checkedBy || "",
+        verifiedBy: rep.verifiedBy || "",
+      },
+    }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data?.ok === false)
-    throw new Error(data?.error || "POST failed");
-  return data;
-}
-async function putServerReportReplace(exists, incomingRep) {
-  const payload = {
-    reportTitle: incomingRep.reportTitle || exists.reportTitle || "",
-    reportDate: exists.reportDate,
-    products: Array.isArray(incomingRep.products)
-      ? incomingRep.products
-      : [],
-    checkedBy: incomingRep.checkedBy || exists.checkedBy || "",
-    verifiedBy: incomingRep.verifiedBy || exists.verifiedBy || "",
-  };
-  const id = exists._dbId || exists.id;
-  const res = await fetch(
-    `${API_BASE}/api/reports/${encodeURIComponent(id)}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payload }),
-    }
-  );
+
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data?.ok === false)
     throw new Error(data?.error || "Update failed");
-  return data;
-}
-async function runWithConcurrency(taskFns, limit = 4) {
-  const results = [];
-  const executing = new Set();
-  for (const fn of taskFns) {
-    const p = Promise.resolve().then(fn);
-    results.push(p);
-    executing.add(p);
-    const clean = () => executing.delete(p);
-    p.then(clean, clean);
-    if (executing.size >= limit) await Promise.race(executing);
-  }
-  return Promise.all(results);
-}
-async function serverImportReports(
-  incomingRaw,
-  mode = "replace",
-  reporter = "SYSTEM"
-) {
-  const incoming = Array.isArray(incomingRaw) ? incomingRaw : [incomingRaw];
-  const normalize = (raw) => {
-    if (!Array.isArray(raw)) return [];
-    return raw.map((rep, i) => ({
-      id:
-        rep.id ||
-        rep._id ||
-        rep.reportId ||
-        `srv-${rep.reportDate || "unknown"}-${i}`,
-      reportDate: rep.reportDate || "",
-      reportTitle: rep.reportTitle || "",
-      products: Array.isArray(rep.products) ? rep.products : [],
-      checkedBy: rep.checkedBy || "",
-      verifiedBy: rep.verifiedBy || "",
-    }));
-  };
-
-  if (mode === "replace") {
-    const existing = await fetchServerReports();
-    await runWithConcurrency(
-      existing.map((r) => () => deleteServerReport(r._dbId || r.id)),
-      4
-    );
-  }
-  const byDate = await fetchServerReportsByDate();
-
-  const tasks = normalize(incoming).map((rep) => async () => {
-    const reportDate = (rep && rep.reportDate) || "";
-    if (!isYMD(reportDate)) {
-      console.warn("Skipped record without valid reportDate:", rep);
-      return null;
-    }
-    const exists = byDate.get(reportDate);
-    if (exists) {
-      await putServerReportReplace(exists, rep);
-      byDate.set(reportDate, {
-        ...exists,
-        reportTitle: rep.reportTitle || exists.reportTitle || "",
-        reportDate,
-        products: Array.isArray(rep.products) ? rep.products : [],
-        checkedBy: rep.checkedBy || exists.checkedBy || "",
-        verifiedBy: rep.verifiedBy || exists.verifiedBy || "",
-      });
-    } else {
-      try {
-        const res = await postServerReportOne(
-          { ...rep, reportDate },
-          reporter
-        );
-        byDate.set(reportDate, {
-          id: res?.id || res?._id || `tmp-${reportDate}`,
-          _dbId: res?.id || res?._id || null,
-          reportTitle: rep.reportTitle || "",
-          reportDate,
-          products: Array.isArray(rep.products) ? rep.products : [],
-          checkedBy: rep.checkedBy || "",
-          verifiedBy: rep.verifiedBy || "",
-        });
-      } catch (e) {
-        if (String(e?.message || "").includes("duplicate key value")) {
-          const latest = await fetchServerReportsByDate();
-          const found = latest.get(reportDate);
-          if (found) {
-            await putServerReportReplace(found, rep);
-            byDate.set(reportDate, {
-              ...found,
-              reportTitle: rep.reportTitle || found.reportTitle || "",
-              reportDate,
-              products: Array.isArray(rep.products) ? rep.products : [],
-              checkedBy: rep.checkedBy || found.checkedBy || "",
-              verifiedBy: rep.verifiedBy || found.verifiedBy || "",
-            });
-          } else throw e;
-        } else throw e;
-      }
-    }
-    return true;
-  });
-  await runWithConcurrency(tasks, 4);
 }
 
 /* ===== Helper: flatten reports → rows ===== */
@@ -376,9 +229,6 @@ export default function FinishedProductReports() {
 
   const [sortBy, setSortBy] = useState("date_desc");
 
-  const jsonInputRef = useRef(null);
-  const [importMode, setImportMode] = useState("replace");
-
   const [confirmState, setConfirmState] = useState({
     open: false,
     target: null,
@@ -400,10 +250,8 @@ export default function FinishedProductReports() {
       if (saved.sortBy) setSortBy(saved.sortBy);
       if (saved.treeFilter && saved.treeFilter.year)
         setTreeFilter(saved.treeFilter);
-      if (saved.expandedYears)
-        setExpandedYears(new Set(saved.expandedYears));
-      if (saved.expandedMonths)
-        setExpandedMonths(new Set(saved.expandedMonths));
+      if (saved.expandedYears) setExpandedYears(new Set(saved.expandedYears));
+      if (saved.expandedMonths) setExpandedMonths(new Set(saved.expandedMonths));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -428,9 +276,7 @@ export default function FinishedProductReports() {
         setExpandedMonths(new Set([`${y}-${m}`]));
       }
 
-      setBanner(
-        `📡 Loaded from server: ${serverReports.length} report(s).`
-      );
+      setBanner(`📡 Loaded from server: ${serverReports.length} report(s).`);
       setTimeout(() => setBanner(""), 1200);
     } catch {
       setRows([]);
@@ -547,9 +393,7 @@ export default function FinishedProductReports() {
       );
     } else if (sortBy === "customer_az") {
       const firstCustomer = (rep) => rep.rows[0]?.customer || "";
-      arr = arr.sort((a, b) =>
-        firstCustomer(a).localeCompare(firstCustomer(b))
-      );
+      arr = arr.sort((a, b) => firstCustomer(a).localeCompare(firstCustomer(b)));
     } else if (sortBy === "qty_desc") {
       const sumQty = (rep) =>
         rep.rows.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
@@ -563,11 +407,6 @@ export default function FinishedProductReports() {
     [filtered]
   );
 
-  const scrollToReport = (id) => {
-    const el = sectionRefs.current[id];
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   /* Actions: delete row/report */
   const requestDeleteRow = (row) =>
     setConfirmState({ open: true, target: row, type: "row" });
@@ -579,10 +418,7 @@ export default function FinishedProductReports() {
     try {
       if (confirmState.type === "row") {
         const row = confirmState.target;
-        await deleteServerRow(
-          row.__dbId || row.__reportId,
-          row.__productIndex
-        );
+        await deleteServerRow(row.__dbId || row.__reportId, row.__productIndex);
         await loadFromServerOnly();
       } else if (confirmState.type === "report") {
         const id = confirmState.target;
@@ -690,52 +526,10 @@ export default function FinishedProductReports() {
     XLSX.utils.book_append_sheet(wb, ws, "Reports");
     XLSX.writeFile(wb, filename);
   }
+
   const exportXLSXFiltered = () => {
     if (filtered.length === 0) return alert("No data to export.");
     exportRowsToXLSX(filtered, "FinishedReports_Filtered.xlsx");
-  };
-
-  /* JSON Export/Import (Server) */
-  const exportJSON = async () => {
-    try {
-      const list = await fetchServerReports();
-      const plain = list.map(({ _dbId, ...rest }) => rest);
-      const blob = new Blob([JSON.stringify(plain, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "FinishedReports_Server.json";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      alert("Failed to export from server.");
-    }
-  };
-
-  const importJSONClick = () => jsonInputRef.current?.click();
-  const onImportJSON = async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setBusy(true);
-    try {
-      const text = await f.text();
-      const incoming = JSON.parse(text);
-      setBanner("⏫ Importing to server...");
-      await serverImportReports(incoming, importMode, "QA");
-      setBanner("✅ Imported to server successfully.");
-      await loadFromServerOnly();
-      setTimeout(() => setBanner(""), 1500);
-    } catch (err) {
-      console.error(err);
-      alert(err?.message || "Failed to import.");
-      setBanner("❌ Import failed.");
-      setTimeout(() => setBanner(""), 2000);
-    } finally {
-      setBusy(false);
-      e.target.value = "";
-    }
   };
 
   /* Label للفلترة */
@@ -751,13 +545,9 @@ export default function FinishedProductReports() {
   const isYearActive = (y) =>
     treeFilter.year === y && !treeFilter.month && !treeFilter.day;
   const isMonthActive = (y, m) =>
-    treeFilter.year === y &&
-    treeFilter.month === m &&
-    !treeFilter.day;
+    treeFilter.year === y && treeFilter.month === m && !treeFilter.day;
   const isDayActive = (y, m, d) =>
-    treeFilter.year === y &&
-    treeFilter.month === m &&
-    treeFilter.day === d;
+    treeFilter.year === y && treeFilter.month === m && treeFilter.day === d;
 
   /* ====== UI ====== */
   return (
@@ -782,7 +572,7 @@ export default function FinishedProductReports() {
           .top-bar { flex-direction: column; align-items: stretch; gap: 10px; }
           .search-box { width: 100% !important; }
           .table-wrap { border-radius: 12px; }
-          .data-table { min-width: 100% !important; }
+          .data-table { width: 100% !important; }
           .col-time, .col-slaughter { display: none; }
         }
         @media (max-width: 640px) {
@@ -807,11 +597,21 @@ export default function FinishedProductReports() {
         .pill.active { background:#e0f2fe; border-color:#bae6fd; color:#075985; }
         .chip-day{
           background:#f8fafc; border:1.5px solid #e2e8f0; color:#0f172a;
-          border-radius:999px; padding:6px 12px; font-weight:800; fontSize:14.5px;
+          border-radius:999px; padding:6px 12px; font-weight:800;
           width: fit-content;
         }
         .chip-day.active{ background:#dcfce7; border-color:#bbf7d0; color:#065f46; }
         .tree-actions button { border-radius:9px; }
+
+        /* ✅ FIX: الجدول يلبس عرض الصفحة ويتوزع بشكل ثابت */
+        .data-table { table-layout: fixed; width: 100%; }
+        .data-table th, .data-table td { overflow: hidden; text-overflow: ellipsis; }
+
+        /* ✅ Customer أصغر + wrap */
+        .td-customer { white-space: normal !important; word-break: break-word; line-height: 1.15; }
+
+        /* ✅ Product/Remarks wrap بدل ما يفرضوا عرض كبير */
+        .td-product, .td-remarks { white-space: normal !important; word-break: break-word; line-height: 1.15; }
       `}</style>
 
       {/* LEFT: Collapsible Y/M/D Tree + Controls */}
@@ -838,10 +638,7 @@ export default function FinishedProductReports() {
           >
             📅 Filter by Date
           </h3>
-          <div
-            className="tree-actions"
-            style={{ display: "flex", gap: 6 }}
-          >
+          <div className="tree-actions" style={{ display: "flex", gap: 6 }}>
             <button
               onClick={() => {
                 const all = new Set(yearsList);
@@ -854,11 +651,7 @@ export default function FinishedProductReports() {
                 );
                 setExpandedMonths(months);
               }}
-              style={{
-                ...btnGhost,
-                padding: "6px 10px",
-                fontSize: 13,
-              }}
+              style={{ ...btnGhost, padding: "6px 10px", fontSize: 13 }}
               disabled={busy}
             >
               Expand All
@@ -868,22 +661,14 @@ export default function FinishedProductReports() {
                 setExpandedYears(new Set());
                 setExpandedMonths(new Set());
               }}
-              style={{
-                ...btnGhost,
-                padding: "6px 10px",
-                fontSize: 13,
-              }}
+              style={{ ...btnGhost, padding: "6px 10px", fontSize: 13 }}
               disabled={busy}
             >
               Collapse All
             </button>
             <button
               onClick={refreshNow}
-              style={{
-                ...btnGhost,
-                padding: "6px 10px",
-                fontSize: 13,
-              }}
+              style={{ ...btnGhost, padding: "6px 10px", fontSize: 13 }}
               disabled={busy}
             >
               Refresh
@@ -909,9 +694,7 @@ export default function FinishedProductReports() {
 
         {/* شجرة سنة → شهر/سنة → أيام (كل يوم سطر) */}
         <div style={{ display: "grid", gap: 10 }}>
-          {yearsList.length === 0 && (
-            <div style={mutedText}>No years</div>
-          )}
+          {yearsList.length === 0 && <div style={mutedText}>No years</div>}
           {yearsList.map((y) => {
             const months = Object.keys(groupedByYMD[y] || {})
               .filter((m) => /^\d{2}$/.test(m))
@@ -921,8 +704,7 @@ export default function FinishedProductReports() {
               return (
                 acc +
                 days.reduce(
-                  (s, d) =>
-                    s + (groupedByYMD[y][m][d]?.length || 0),
+                  (s, d) => s + (groupedByYMD[y][m][d]?.length || 0),
                   0
                 )
               );
@@ -951,17 +733,9 @@ export default function FinishedProductReports() {
                   style={{ padding: "10px 12px" }}
                   title={`Year ${y}`}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span
-                      className={`caret ${
-                        isYExpanded ? "open" : ""
-                      }`}
+                      className={`caret ${isYExpanded ? "open" : ""}`}
                       style={{ fontSize: 16 }}
                     >
                       ▶
@@ -969,15 +743,9 @@ export default function FinishedProductReports() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setTreeFilter({
-                          year: y,
-                          month: "",
-                          day: "",
-                        });
+                        setTreeFilter({ year: y, month: "", day: "" });
                       }}
-                      className={`pill ${
-                        isYearActive(y) ? "active" : ""
-                      }`}
+                      className={`pill ${isYearActive(y) ? "active" : ""}`}
                       style={{
                         padding: "6px 12px",
                         fontWeight: 900,
@@ -986,55 +754,32 @@ export default function FinishedProductReports() {
                     >
                       {y}
                     </button>
-                    <span className="count-badge">
-                      {yearCount}
-                    </span>
+                    <span className="count-badge">{yearCount}</span>
                   </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setTreeFilter({
-                        year: y,
-                        month: "",
-                        day: "",
-                      });
+                      setTreeFilter({ year: y, month: "", day: "" });
                     }}
-                    style={{
-                      ...btnGhost,
-                      padding: "4px 10px",
-                      fontSize: 12.5,
-                    }}
+                    style={{ ...btnGhost, padding: "4px 10px", fontSize: 12.5 }}
                   >
                     Filter
                   </button>
                 </div>
 
                 {isYExpanded && (
-                  <div
-                    style={{
-                      padding: "6px 10px 12px",
-                      display: "grid",
-                      gap: 8,
-                    }}
-                  >
-                    {months.length === 0 && (
-                      <div style={mutedText}>No months</div>
-                    )}
+                  <div style={{ padding: "6px 10px 12px", display: "grid", gap: 8 }}>
+                    {months.length === 0 && <div style={mutedText}>No months</div>}
                     {months.map((m) => {
                       const keyM = `${y}-${m}`;
-                      const days = Object.keys(
-                        groupedByYMD[y][m] || {}
-                      )
+                      const days = Object.keys(groupedByYMD[y][m] || {})
                         .filter((d) => /^\d{2}$/.test(d))
                         .sort();
                       const monthCount = days.reduce(
-                        (s, d) =>
-                          s +
-                          (groupedByYMD[y][m][d]?.length || 0),
+                        (s, d) => s + (groupedByYMD[y][m][d]?.length || 0),
                         0
                       );
-                      const isMExpanded =
-                        expandedMonths.has(keyM);
+                      const isMExpanded = expandedMonths.has(keyM);
 
                       return (
                         <div
@@ -1048,28 +793,17 @@ export default function FinishedProductReports() {
                           <div
                             className="month-head"
                             onClick={() => {
-                              const next = new Set(
-                                expandedMonths
-                              );
-                              if (next.has(keyM))
-                                next.delete(keyM);
+                              const next = new Set(expandedMonths);
+                              if (next.has(keyM)) next.delete(keyM);
                               else next.add(keyM);
                               setExpandedMonths(next);
                             }}
                             style={{ padding: "8px 10px" }}
                             title={`${y}/${m}`}
                           >
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                              }}
-                            >
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                               <span
-                                className={`caret ${
-                                  isMExpanded ? "open" : ""
-                                }`}
+                                className={`caret ${isMExpanded ? "open" : ""}`}
                                 style={{ fontSize: 14 }}
                               >
                                 ▶
@@ -1077,17 +811,9 @@ export default function FinishedProductReports() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setTreeFilter({
-                                    year: y,
-                                    month: m,
-                                    day: "",
-                                  });
+                                  setTreeFilter({ year: y, month: m, day: "" });
                                 }}
-                                className={`pill ${
-                                  isMonthActive(y, m)
-                                    ? "active"
-                                    : ""
-                                }`}
+                                className={`pill ${isMonthActive(y, m) ? "active" : ""}`}
                                 style={{
                                   padding: "5px 10px",
                                   fontWeight: 900,
@@ -1097,74 +823,37 @@ export default function FinishedProductReports() {
                               >
                                 {m} / {y}
                               </button>
-                              <span className="count-badge">
-                                {monthCount}
-                              </span>
+                              <span className="count-badge">{monthCount}</span>
                             </div>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setTreeFilter({
-                                  year: y,
-                                  month: m,
-                                  day: "",
-                                });
+                                setTreeFilter({ year: y, month: m, day: "" });
                               }}
-                              style={{
-                                ...btnGhost,
-                                padding: "3px 8px",
-                                fontSize: 12,
-                              }}
+                              style={{ ...btnGhost, padding: "3px 8px", fontSize: 12 }}
                             >
                               Filter
                             </button>
                           </div>
 
                           {isMExpanded && (
-                            <div
-                              style={{
-                                padding: "6px 10px 10px",
-                                display: "grid",
-                                gap: 8,
-                              }}
-                            >
-                              {days.length === 0 && (
-                                <div style={mutedText}>
-                                  No days
-                                </div>
-                              )}
+                            <div style={{ padding: "6px 10px 10px", display: "grid", gap: 8 }}>
+                              {days.length === 0 && <div style={mutedText}>No days</div>}
                               {days.map((d) => {
-                                const dayCount =
-                                  groupedByYMD[y][m][d]
-                                    ?.length || 0;
-                                const active =
-                                  isDayActive(y, m, d);
+                                const dayCount = groupedByYMD[y][m][d]?.length || 0;
+                                const active = isDayActive(y, m, d);
                                 return (
                                   <button
                                     key={`${y}-${m}-${d}`}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setTreeFilter({
-                                        year: y,
-                                        month: m,
-                                        day: d,
-                                      });
+                                      setTreeFilter({ year: y, month: m, day: d });
                                     }}
-                                    className={`chip-day ${
-                                      active
-                                        ? "active"
-                                        : ""
-                                    }`}
+                                    className={`chip-day ${active ? "active" : ""}`}
                                     title={`${d}/${m}/${y} (${dayCount})`}
                                   >
                                     {d} / {m} / {y}&nbsp;
-                                    <span
-                                      style={{
-                                        color: active
-                                          ? "#065f46"
-                                          : "#64748b",
-                                      }}
-                                    >
+                                    <span style={{ color: active ? "#065f46" : "#64748b" }}>
                                       ({dayCount})
                                     </span>
                                   </button>
@@ -1192,17 +881,13 @@ export default function FinishedProductReports() {
           }}
         >
           <button
-            onClick={() =>
-              setTreeFilter({ year: "", month: "", day: "" })
-            }
+            onClick={() => setTreeFilter({ year: "", month: "", day: "" })}
             style={btnClear}
           >
             ✖ Clear Filter
           </button>
           {filterLabel && (
-            <div
-              style={{ fontSize: 14.5, color: "#334155" }}
-            >
+            <div style={{ fontSize: 14.5, color: "#334155" }}>
               Filter: <b>{filterLabel}</b>
             </div>
           )}
@@ -1231,33 +916,20 @@ export default function FinishedProductReports() {
               width: "100%",
             }}
           >
-            <div
-              style={{
-                color: "#475569",
-                fontSize: 15.5,
-                flex: 1,
-              }}
-            >
-              Rows:{" "}
-              <b style={{ color: "#2563eb" }}>
-                {filtered.length}
-              </b>{" "}
+            <div style={{ color: "#475569", fontSize: 15.5, flex: 1 }}>
+              Rows: <b style={{ color: "#2563eb" }}>{filtered.length}</b>
               &nbsp;|&nbsp; Total Qty:{" "}
               <b style={{ color: "#16a34a" }}>{totalQty}</b>
               {filterLabel && (
                 <>
-                  &nbsp;|&nbsp; Filter:{" "}
-                  <b>{filterLabel}</b>
+                  &nbsp;|&nbsp; Filter: <b>{filterLabel}</b>
                 </>
               )}
             </div>
             <div>
               <button
                 onClick={exportXLSXFiltered}
-                style={{
-                  ...btnSoftBlue,
-                  marginRight: 8,
-                }}
+                style={{ ...btnSoftBlue, marginRight: 8 }}
                 disabled={busy}
               >
                 ⬇️ Export XLSX (Filtered)
@@ -1268,18 +940,10 @@ export default function FinishedProductReports() {
                 style={selectStyle}
                 disabled={busy}
               >
-                <option value="date_desc">
-                  Sort: Date (newest)
-                </option>
-                <option value="title_az">
-                  Sort: Title A–Z
-                </option>
-                <option value="customer_az">
-                  Sort: Customer A–Z
-                </option>
-                <option value="qty_desc">
-                  Sort: Quantity (high→low)
-                </option>
+                <option value="date_desc">Sort: Date (newest)</option>
+                <option value="title_az">Sort: Title A–Z</option>
+                <option value="customer_az">Sort: Customer A–Z</option>
+                <option value="qty_desc">Sort: Quantity (high→low)</option>
               </select>
             </div>
           </div>
@@ -1287,9 +951,7 @@ export default function FinishedProductReports() {
 
         {/* Cards per report */}
         {reportsArr.length === 0 && (
-          <div style={emptyCard}>
-            No reports match the current search/filter.
-          </div>
+          <div style={emptyCard}>No reports match the current search/filter.</div>
         )}
 
         <div style={{ display: "grid", gap: 16 }}>
@@ -1301,15 +963,13 @@ export default function FinishedProductReports() {
             );
 
             const softBg = idx % 2 === 0 ? "#ffffff" : "#fcfdfd";
-            const leftAccent =
-              idx % 2 === 0 ? "#bfdbfe" : "#a7f3d0";
+            const leftAccent = idx % 2 === 0 ? "#bfdbfe" : "#a7f3d0";
 
             return (
               <section
                 key={rep.reportId || Math.random()}
                 ref={(el) => {
-                  if (rep.reportId)
-                    sectionRefs.current[rep.reportId] = el;
+                  if (rep.reportId) sectionRefs.current[rep.reportId] = el;
                 }}
                 style={{
                   ...card,
@@ -1320,29 +980,15 @@ export default function FinishedProductReports() {
                 {/* Header */}
                 <div style={cardHead}>
                   <div>
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        fontSize: 18,
-                        color: "#111827",
-                      }}
-                    >
+                    <div style={{ fontWeight: 800, fontSize: 18, color: "#111827" }}>
                       {highlightMatch(
                         rep.reportTitle || "Untitled Report",
                         debouncedSearch
                       )}
                     </div>
-                    <div
-                      style={{
-                        color: "#64748b",
-                        marginTop: 2,
-                        fontSize: 14.5,
-                      }}
-                    >
+                    <div style={{ color: "#64748b", marginTop: 2, fontSize: 14.5 }}>
                       {formatDMY(rep.reportDate)}{" "}
-                      <span
-                        style={{ color: "#94a3b8" }}
-                      >
+                      <span style={{ color: "#94a3b8" }}>
                         ({rep.reportDate || "-"})
                       </span>
                     </div>
@@ -1361,75 +1007,24 @@ export default function FinishedProductReports() {
                     >
                       <span>
                         Checked by:{" "}
-                        <span style={{ fontWeight: 800 }}>
-                          {rep.checkedBy || "-"}
-                        </span>
+                        <span style={{ fontWeight: 800 }}>{rep.checkedBy || "-"}</span>
                       </span>
                       <span>
                         Verified by:{" "}
-                        <span style={{ fontWeight: 800 }}>
-                          {rep.verifiedBy || "-"}
-                        </span>
+                        <span style={{ fontWeight: 800 }}>{rep.verifiedBy || "-"}</span>
                       </span>
                     </div>
                   </div>
 
-                  {/* الأزرار */}
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                    }}
-                  >
+                  {/* الأزرار (✅ تم حذف Export/Import JSON وكل ما يتعلق بهم) */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <button
-                      onClick={exportJSON}
-                      style={btnPrimary}
-                      disabled={busy}
-                    >
-                      ⬇️ Export JSON (Server)
-                    </button>
-                    <button
-                      onClick={importJSONClick}
-                      style={btnInfo}
-                      disabled={busy}
-                    >
-                      ⤴️ Import JSON → Server
-                    </button>
-                    <select
-                      value={importMode}
-                      onChange={(e) =>
-                        setImportMode(e.target.value)
-                      }
-                      style={selectStyle}
-                      disabled={busy}
-                    >
-                      <option value="replace">
-                        Import mode: Replace
-                      </option>
-                      <option value="merge">
-                        Import mode: Merge by date
-                      </option>
-                    </select>
-                    <button
-                      onClick={() =>
-                        requestDeleteReport(
-                          rep.dbId || rep.reportId
-                        )
-                      }
+                      onClick={() => requestDeleteReport(rep.dbId || rep.reportId)}
                       style={btnDanger}
                       disabled={busy}
                     >
                       Delete Report
                     </button>
-                    <input
-                      type="file"
-                      accept="application/json"
-                      ref={jsonInputRef}
-                      style={{ display: "none" }}
-                      onChange={onImportJSON}
-                    />
                   </div>
                 </div>
 
@@ -1446,242 +1041,121 @@ export default function FinishedProductReports() {
                     className="data-table"
                     style={{
                       width: "100%",
-                      minWidth: 1200,
                       borderCollapse: "collapse",
                       fontSize: "15.5px",
+                      tableLayout: "fixed",
                     }}
                   >
-                    <thead
-                      style={{
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 1,
-                      }}
-                    >
-                      <tr
-                        style={{
-                          background: "#f8fafc",
-                          color: "#1f2937",
-                        }}
-                      >
-                        <th
-                          style={{
-                            ...th,
-                            minWidth: 260,
-                            textAlign: "left",
-                          }}
-                        >
-                          Product
-                        </th>
-                        <th
-                          style={{
-                            ...th,
-                            minWidth: 170,
-                            textAlign: "left",
-                          }}
-                        >
-                          Customer
-                        </th>
-                        <th
-                          style={{ ...th, minWidth: 120 }}
-                        >
-                          Order No
-                        </th>
-                        <th
-                          className="col-time"
-                          style={{ ...th, minWidth: 100 }}
-                        >
+                    {/* ✅ توزيع أعمدة ثابت لتقليل اختفاء يمين الشاشة */}
+                    <colgroup>
+                      <col style={{ width: "22%" }} /> {/* Product */}
+                      <col style={{ width: "16%" }} /> {/* Customer (أصغر) */}
+                      <col style={{ width: "10%" }} /> {/* Order */}
+                      <col style={{ width: "7%" }} /> {/* Time */}
+                      <col style={{ width: "9%" }} /> {/* Slaughter */}
+                      <col style={{ width: "9%" }} /> {/* Expiry */}
+                      <col style={{ width: "5%" }} /> {/* Temp */}
+                      <col style={{ width: "8%" }} /> {/* Qty */}
+                      <col style={{ width: "4%" }} /> {/* Unit */}
+                      <col style={{ width: "8%" }} /> {/* Cond */}
+                      <col style={{ width: "8%" }} /> {/* Remarks */}
+                      <col style={{ width: "4%" }} /> {/* Days */}
+                      <col style={{ width: "8%" }} /> {/* Status */}
+                      <col style={{ width: "4%" }} /> {/* Delete */}
+                    </colgroup>
+
+                    <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
+                      <tr style={{ background: "#f8fafc", color: "#1f2937" }}>
+                        <th style={{ ...th, textAlign: "left" }}>Product</th>
+                        <th style={{ ...th, textAlign: "left" }}>Customer</th>
+                        <th style={{ ...th, minWidth: 0 }}>Order No</th>
+                        <th className="col-time" style={{ ...th, minWidth: 0 }}>
                           TIME
                         </th>
-                        <th
-                          className="col-slaughter"
-                          style={{ ...th, minWidth: 140 }}
-                        >
+                        <th className="col-slaughter" style={{ ...th, minWidth: 0 }}>
                           Slaughter Date
                         </th>
-                        <th
-                          style={{ ...th, minWidth: 120 }}
-                        >
-                          Expiry Date
-                        </th>
-                        <th
-                          className="col-temp"
-                          style={{ ...th, minWidth: 90 }}
-                        >
+                        <th style={{ ...th, minWidth: 0 }}>Expiry Date</th>
+                        <th className="col-temp" style={{ ...th, minWidth: 0 }}>
                           TEMP
                         </th>
-                        <th
-                          style={{ ...th, minWidth: 110 }}
-                        >
-                          Quantity
-                        </th>
-                        <th
-                          className="col-unit"
-                          style={{ ...th, minWidth: 90 }}
-                        >
+                        <th style={{ ...th, minWidth: 0 }}>Quantity</th>
+                        <th className="col-unit" style={{ ...th, minWidth: 0 }}>
                           Unit
                         </th>
-                        <th
-                          className="col-cond"
-                          style={{ ...th, minWidth: 170 }}
-                        >
+                        <th className="col-cond" style={{ ...th, minWidth: 0 }}>
                           Condition
                         </th>
-                        <th
-                          className="col-remarks"
-                          style={{
-                            ...th,
-                            minWidth: 260,
-                            textAlign: "left",
-                          }}
-                        >
+                        <th className="col-remarks" style={{ ...th, textAlign: "left", minWidth: 0 }}>
                           Remarks
                         </th>
-                        <th
-                          style={{ ...th, minWidth: 90 }}
-                        >
-                          Days
-                        </th>
-                        <th
-                          style={{ ...th, minWidth: 110 }}
-                        >
-                          Status
-                        </th>
-                        <th
-                          style={{ ...th, minWidth: 80 }}
-                        ></th>
+                        <th style={{ ...th, minWidth: 0 }}>Days</th>
+                        <th style={{ ...th, minWidth: 0 }}>Status</th>
+                        <th style={{ ...th, minWidth: 0 }}></th>
                       </tr>
                     </thead>
+
                     <tbody>
                       {rowsOfRep.map((row, i) => {
-                        const st = statusFromDates(
-                          row.reportDate,
-                          row.expiryDate
-                        );
+                        const st = statusFromDates(row.reportDate, row.expiryDate);
                         const hasImages =
-                          Array.isArray(row.images) &&
-                          row.images.filter(Boolean).length >
-                            0;
+                          Array.isArray(row.images) && row.images.filter(Boolean).length > 0;
+
                         return (
                           <tr
-                            key={`${
-                              row.__reportId || "rep"
-                            }-${row.__productIndex || i}`}
-                            style={{
-                              background:
-                                i % 2
-                                  ? "#ffffff"
-                                  : "#fbfdff",
-                            }}
+                            key={`${row.__reportId || "rep"}-${row.__productIndex || i}`}
+                            style={{ background: i % 2 ? "#ffffff" : "#fbfdff" }}
                           >
                             <td
-                              style={{
-                                ...td,
-                                textAlign: "left",
-                                wordBreak: "break-word",
-                              }}
+                              className="td-product"
+                              style={{ ...td, textAlign: "left", wordBreak: "break-word" }}
                             >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <span>
-                                  {highlightMatch(
-                                    row.product,
-                                    debouncedSearch
-                                  )}
-                                </span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <span>{highlightMatch(row.product, debouncedSearch)}</span>
                                 {hasImages && (
-                                  <span
-                                    style={{
-                                      fontSize: 12,
-                                      color: "#64748b",
-                                    }}
-                                  >
+                                  <span style={{ fontSize: 12, color: "#64748b" }}>
                                     ({row.images.length} pic)
                                   </span>
                                 )}
                               </div>
                             </td>
-                            <td
-                              style={{
-                                ...td,
-                                textAlign: "left",
-                                wordBreak: "break-word",
-                              }}
-                            >
-                              {highlightMatch(
-                                row.customer,
-                                debouncedSearch
-                              )}
+
+                            <td className="td-customer" style={{ ...td, textAlign: "left" }}>
+                              {highlightMatch(row.customer, debouncedSearch)}
                             </td>
-                            <td style={td}>
-                              {highlightMatch(
-                                row.orderNo,
-                                debouncedSearch
-                              )}
-                            </td>
-                            <td
-                              className="col-time"
-                              style={td}
-                            >
+
+                            <td style={td}>{highlightMatch(row.orderNo, debouncedSearch)}</td>
+
+                            <td className="col-time" style={td}>
                               {row.time}
                             </td>
-                            <td
-                              className="col-slaughter"
-                              style={td}
-                            >
+
+                            <td className="col-slaughter" style={td}>
                               {formatDMY(row.slaughterDate)}
                             </td>
-                            <td style={td}>
-                              {formatDMY(row.expiryDate)}
-                            </td>
-                            <td
-                              className="col-temp"
-                              style={td}
-                            >
+
+                            <td style={td}>{formatDMY(row.expiryDate)}</td>
+
+                            <td className="col-temp" style={td}>
                               {row.temp}
                             </td>
-                            <td style={td}>
-                              {row.quantity}
-                            </td>
-                            <td
-                              className="col-unit"
-                              style={td}
-                            >
+
+                            <td style={td}>{row.quantity}</td>
+
+                            <td className="col-unit" style={td}>
                               {row.unitOfMeasure || "KG"}
                             </td>
-                            <td
-                              className="col-cond"
-                              style={td}
-                            >
+
+                            <td className="col-cond" style={td}>
                               {row.overallCondition}
                             </td>
-                            <td
-                              className="col-remarks"
-                              style={{
-                                ...td,
-                                textAlign: "left",
-                                maxWidth: 300,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {highlightMatch(
-                                row.remarks,
-                                debouncedSearch
-                              )}
+
+                            <td className="td-remarks col-remarks" style={{ ...td, textAlign: "left" }}>
+                              {highlightMatch(row.remarks, debouncedSearch)}
                             </td>
-                            <td style={td}>
-                              {st.days === ""
-                                ? ""
-                                : st.days}
-                            </td>
+
+                            <td style={td}>{st.days === "" ? "" : st.days}</td>
+
                             <td style={td}>
                               <span
                                 style={{
@@ -1698,16 +1172,10 @@ export default function FinishedProductReports() {
                                 {st.label}
                               </span>
                             </td>
-                            <td
-                              style={{
-                                ...td,
-                                whiteSpace: "nowrap",
-                              }}
-                            >
+
+                            <td style={{ ...td, whiteSpace: "nowrap" }}>
                               <button
-                                onClick={() =>
-                                  requestDeleteRow(row)
-                                }
+                                onClick={() => requestDeleteRow(row)}
                                 style={btnDangerSm}
                                 title="Delete row"
                                 disabled={busy}
@@ -1719,16 +1187,11 @@ export default function FinishedProductReports() {
                         );
                       })}
                     </tbody>
+
                     <tfoot>
                       <tr style={{ background: "#f8fafc" }}>
                         <td colSpan={7} />
-                        <td
-                          style={{
-                            ...td,
-                            fontWeight: "bold",
-                            color: "#16a34a",
-                          }}
-                        >
+                        <td style={{ ...td, fontWeight: "bold", color: "#16a34a" }}>
                           {repTotalQty}
                         </td>
                         <td colSpan={5} />
@@ -1747,44 +1210,19 @@ export default function FinishedProductReports() {
       {confirmState.open && (
         <div style={modalBack}>
           <div style={modalCard}>
-            <div
-              style={{
-                fontWeight: 800,
-                fontSize: 18,
-                marginBottom: 8,
-              }}
-            >
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
               Confirm deletion
             </div>
-            <div
-              style={{
-                color: "#475569",
-                marginBottom: 16,
-              }}
-            >
+            <div style={{ color: "#475569", marginBottom: 16 }}>
               {confirmState.type === "report"
                 ? "This will delete the entire report and its rows."
                 : "This will delete the selected row."}
             </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                justifyContent: "flex-end",
-              }}
-            >
-              <button
-                onClick={closeConfirm}
-                style={btnGhost}
-                disabled={busy}
-              >
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={closeConfirm} style={btnGhost} disabled={busy}>
                 Cancel
               </button>
-              <button
-                onClick={confirmDeletion}
-                style={btnDanger}
-                disabled={busy}
-              >
+              <button onClick={confirmDeletion} style={btnDanger} disabled={busy}>
                 Delete
               </button>
             </div>
@@ -1969,7 +1407,6 @@ const modalCard = {
   boxShadow: "0 20px 50px rgba(2,6,23,.25)",
   border: "1px solid #e2e8f0",
 };
-
 const mutedText = { fontSize: 14, color: "#94a3b8" };
 const btnClear = {
   ...btnGhost,

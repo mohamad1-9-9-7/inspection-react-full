@@ -7,19 +7,22 @@ import React, { useMemo, useState } from "react";
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 
 const CRA_URL =
-  (typeof process !== "undefined" &&
-    process.env &&
-    process.env.REACT_APP_API_URL)
+  typeof process !== "undefined" && process.env && process.env.REACT_APP_API_URL
     ? process.env.REACT_APP_API_URL
     : undefined;
 
 let VITE_URL;
-try { VITE_URL = import.meta.env?.VITE_API_URL; } catch {}
+try {
+  VITE_URL = import.meta.env?.VITE_API_URL;
+} catch {}
 
 const API_BASE = (VITE_URL || CRA_URL || API_BASE_DEFAULT).replace(/\/$/, "");
 const IS_SAME_ORIGIN = (() => {
-  try { return new URL(API_BASE).origin === window.location.origin; }
-  catch { return false; }
+  try {
+    return new URL(API_BASE).origin === window.location.origin;
+  } catch {
+    return false;
+  }
 })();
 
 /* -------- Fallbacks / Defaults -------- */
@@ -35,7 +38,10 @@ const defaultDCHeader = {
   controllingOfficer: "Quality Controller",
   approvedBy: "Hussam O. Sarhan",
 };
-const defaultDCFooter = { checkedBy: "", verifiedBy: "" };
+
+// ✅ Auto-fill MOHAMAD ABDULLAH (editable)
+const DEFAULT_SIGN_NAME = "MOHAMAD ABDULLAH";
+const defaultDCFooter = { checkedBy: DEFAULT_SIGN_NAME, verifiedBy: DEFAULT_SIGN_NAME };
 
 /* --------- النوع المستقل لهذا التبويب --------- */
 const CLEAN_TYPE = "qcs-clean";
@@ -44,7 +50,14 @@ const CLEAN_TYPE = "qcs-clean";
 function RowKV({ label, value }) {
   return (
     <div style={{ display: "flex", borderBottom: "1px solid #000" }}>
-      <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 170, fontWeight: 700 }}>
+      <div
+        style={{
+          padding: "6px 8px",
+          borderInlineEnd: "1px solid #000",
+          minWidth: 170,
+          fontWeight: 700,
+        }}
+      >
         {label}
       </div>
       <div style={{ padding: "6px 8px", flex: 1 }}>{value}</div>
@@ -58,8 +71,20 @@ function DCEntryHeader({ header, date, logoUrl }) {
   return (
     <div style={{ border: "1px solid #000", marginBottom: 8 }}>
       <div style={{ display: "grid", gridTemplateColumns: "180px 1fr 1fr", alignItems: "stretch" }}>
-        <div style={{ borderInlineEnd: "1px solid #000", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}>
-          <img src={logoUrl || LOGO_FALLBACK} alt="Al Mawashi" style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }} />
+        <div
+          style={{
+            borderInlineEnd: "1px solid #000",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 8,
+          }}
+        >
+          <img
+            src={logoUrl || LOGO_FALLBACK}
+            alt="Al Mawashi"
+            style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }}
+          />
         </div>
         <div style={{ borderInlineEnd: "1px solid #000" }}>
           <RowKV label="Document Title:" value={h.documentTitle} />
@@ -76,10 +101,26 @@ function DCEntryHeader({ header, date, logoUrl }) {
       </div>
 
       <div style={{ borderTop: "1px solid #000" }}>
-        <div style={{ background: "#d9d9d9", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
+        <div
+          style={{
+            background: "#d9d9d9",
+            textAlign: "center",
+            fontWeight: 900,
+            padding: "6px 8px",
+            borderBottom: "1px solid #000",
+          }}
+        >
           TRANS EMIRATES LIVESTOCK MEAT TRADING LLC
         </div>
-        <div style={{ background: "#e5e5e5", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
+        <div
+          style={{
+            background: "#e5e5e5",
+            textAlign: "center",
+            fontWeight: 900,
+            padding: "6px 8px",
+            borderBottom: "1px solid #000",
+          }}
+        >
           CLEANING CHECKLIST - WAREHOUSE
         </div>
         {date ? (
@@ -103,13 +144,30 @@ function DCEntryFooter({ footer }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
         <div style={{ display: "flex", minHeight: 42 }}>
-          <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 180, fontWeight: 900, textDecoration: "underline" }}>
-            CHECKED BY: <span style={{ fontWeight: 400 }}>(QC-ASSIST)</span>
+          <div
+            style={{
+              padding: "6px 8px",
+              borderInlineEnd: "1px solid #000",
+              minWidth: 180,
+              fontWeight: 900,
+              textDecoration: "underline",
+            }}
+          >
+            {/* ✅ label only */}
+            CHECKED BY:
           </div>
           <div style={{ padding: "6px 8px", flex: 1 }}>{f.checkedBy || "\u00A0"}</div>
         </div>
         <div style={{ display: "flex", borderInlineStart: "1px solid #000", minHeight: 42 }}>
-          <div style={{ padding: "6px 8px", borderInlineEnd: "1px solid #000", minWidth: 180, fontWeight: 900, textDecoration: "underline" }}>
+          <div
+            style={{
+              padding: "6px 8px",
+              borderInlineEnd: "1px solid #000",
+              minWidth: 180,
+              fontWeight: 900,
+              textDecoration: "underline",
+            }}
+          >
             VERIFIED BY:
           </div>
           <div style={{ padding: "6px 8px", flex: 1 }}>{f.verifiedBy || "\u00A0"}</div>
@@ -138,21 +196,57 @@ function DCHeaderEditor({ header, setHeader, footer, setFooter }) {
       <summary style={{ cursor: "pointer", fontWeight: 800 }}>⚙️ Edit Header & Footer (Cleaning)</summary>
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div>
-          <label style={row}><span>Document Title</span><input style={input} value={h.documentTitle} onChange={e => updateHeader("documentTitle", e.target.value)} /></label>
-          <label style={row}><span>Issue Date</span><input style={input} value={h.issueDate} onChange={e => updateHeader("issueDate", e.target.value)} /></label>
-          <label style={row}><span>Area</span><input style={input} value={h.area} onChange={e => updateHeader("area", e.target.value)} /></label>
-          <label style={row}><span>Controlling Officer</span><input style={input} value={h.controllingOfficer} onChange={e => updateHeader("controllingOfficer", e.target.value)} /></label>
+          <label style={row}>
+            <span>Document Title</span>
+            <input style={input} value={h.documentTitle} onChange={(e) => updateHeader("documentTitle", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Issue Date</span>
+            <input style={input} value={h.issueDate} onChange={(e) => updateHeader("issueDate", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Area</span>
+            <input style={input} value={h.area} onChange={(e) => updateHeader("area", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Controlling Officer</span>
+            <input
+              style={input}
+              value={h.controllingOfficer}
+              onChange={(e) => updateHeader("controllingOfficer", e.target.value)}
+            />
+          </label>
         </div>
         <div>
-          <label style={row}><span>Document No</span><input style={input} value={h.documentNo} onChange={e => updateHeader("documentNo", e.target.value)} /></label>
-          <label style={row}><span>Revision No</span><input style={input} value={h.revisionNo} onChange={e => updateHeader("revisionNo", e.target.value)} /></label>
-          <label style={row}><span>Issued By</span><input style={input} value={h.issuedBy} onChange={e => updateHeader("issuedBy", e.target.value)} /></label>
-          <label style={row}><span>Approved By</span><input style={input} value={h.approvedBy} onChange={e => updateHeader("approvedBy", e.target.value)} /></label>
+          <label style={row}>
+            <span>Document No</span>
+            <input style={input} value={h.documentNo} onChange={(e) => updateHeader("documentNo", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Revision No</span>
+            <input style={input} value={h.revisionNo} onChange={(e) => updateHeader("revisionNo", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Issued By</span>
+            <input style={input} value={h.issuedBy} onChange={(e) => updateHeader("issuedBy", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Approved By</span>
+            <input style={input} value={h.approvedBy} onChange={(e) => updateHeader("approvedBy", e.target.value)} />
+          </label>
         </div>
       </div>
+
+      {/* ✅ auto-filled but editable */}
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <label style={row}><span>Checked By (QC-ASSIST)</span><input style={input} value={f.checkedBy} onChange={e => updateFooter("checkedBy", e.target.value)} /></label>
-        <label style={row}><span>Verified By</span><input style={input} value={f.verifiedBy} onChange={e => updateFooter("verifiedBy", e.target.value)} /></label>
+        <label style={row}>
+          <span>Checked By</span>
+          <input style={input} value={f.checkedBy} onChange={(e) => updateFooter("checkedBy", e.target.value)} />
+        </label>
+        <label style={row}>
+          <span>Verified By</span>
+          <input style={input} value={f.verifiedBy} onChange={(e) => updateFooter("verifiedBy", e.target.value)} />
+        </label>
       </div>
     </details>
   );
@@ -172,9 +266,10 @@ const TEMPLATE_SECTIONS = [
   { title: "Working Conditions & Cleanliness", items: ["Lights", "Fly Catchers", "Floor/wall", "Painting and Plastering", "Weighing Balance", "Tap Water"] },
 ];
 
+// ✅ Default observation = "C" for all NON-section rows (editable later)
 function buildDefaultRows() {
   const rows = [];
-  TEMPLATE_SECTIONS.forEach(sec => {
+  TEMPLATE_SECTIONS.forEach((sec) => {
     rows.push({ isSection: true, section: sec.title });
     sec.items.forEach((item, idx) => {
       const letter = String.fromCharCode(97 + idx) + ")"; // a), b), c)...
@@ -182,7 +277,7 @@ function buildDefaultRows() {
         isSection: false,
         letter,
         general: item,
-        observation: "",
+        observation: "C", // ✅ default
         informedTo: "",
         remarks: "",
         fromTemplate: true,
@@ -198,7 +293,7 @@ function DailyCleanlinessTable({ rows, setRows }) {
 
   const onCell = (i, key, val) => {
     if (typeof setRows !== "function") return;
-    setRows(prev => {
+    setRows((prev) => {
       const base = Array.isArray(prev) ? [...prev] : [];
       const r = { ...(base[i] || {}) };
       r[key] = val;
@@ -209,11 +304,11 @@ function DailyCleanlinessTable({ rows, setRows }) {
 
   const addRow = () => {
     if (typeof setRows !== "function") return;
-    setRows(prev => (Array.isArray(prev) ? [...prev, emptyRow()] : [emptyRow()]));
+    setRows((prev) => (Array.isArray(prev) ? [...prev, emptyRow()] : [emptyRow()]));
   };
   const removeRow = (i) => {
     if (typeof setRows !== "function") return;
-    setRows(prev => (Array.isArray(prev) ? prev.filter((_, idx) => idx !== i) : prev));
+    setRows((prev) => (Array.isArray(prev) ? prev.filter((_, idx) => idx !== i) : prev));
   };
   const loadTemplate = () => {
     if (typeof setRows !== "function") return;
@@ -257,6 +352,7 @@ function DailyCleanlinessTable({ rows, setRows }) {
                 </tr>
               );
             }
+
             const letter = r?.letter || `${i + 1}`;
             return (
               <tr key={i}>
@@ -267,14 +363,13 @@ function DailyCleanlinessTable({ rows, setRows }) {
                   <div style={textCell()} title={r?.general || ""}>{r?.general || ""}</div>
                 </td>
 
-                {/* Observation: C / N\C */}
+                {/* Observation: default "C" (editable) */}
                 <td style={tdCenter()}>
                   <select
-                    value={r?.observation || ""}
+                    value={r?.observation || "C"}
                     onChange={(e) => onCell(i, "observation", e.target.value)}
                     style={sel(64)}
                   >
-                    <option value=""></option>
                     <option value="C">C</option>
                     <option value={"N\\C"}>N\C</option>
                   </select>
@@ -296,6 +391,7 @@ function DailyCleanlinessTable({ rows, setRows }) {
               </tr>
             );
           })}
+
           {list.length === 0 && (
             <tr>
               <td colSpan={6} style={{ ...tdCenter(), color: "#6b7280" }}>
@@ -321,25 +417,31 @@ export default function DailyCleanlinessTab({
   logoUrl,
 }) {
   // تاريخ داخل التبويب
-  const [date, setDate] = useState(() =>
-    reportDate || new Date().toISOString().split("T")[0]
-  );
+  const [date, setDate] = useState(() => reportDate || new Date().toISOString().split("T")[0]);
 
   // لو ما وصل rows من الأب نبدأ بالتمبلت جاهزًا
   const [localRows, setLocalRows] = useState(() =>
     Array.isArray(cleanlinessRows) && cleanlinessRows.length > 0 ? cleanlinessRows : buildDefaultRows()
   );
-  const rows = useMemo(
-    () => (Array.isArray(cleanlinessRows) ? cleanlinessRows : localRows),
-    [cleanlinessRows, localRows]
-  );
+  const rows = useMemo(() => (Array.isArray(cleanlinessRows) ? cleanlinessRows : localRows), [cleanlinessRows, localRows]);
   const updateRows = typeof setCleanlinessRows === "function" ? setCleanlinessRows : setLocalRows;
 
   // headers/footers
   const [localHeader, setLocalHeader] = useState(dcHeader || defaultDCHeader);
-  const [localFooter, setLocalFooter] = useState(dcFooter || defaultDCFooter);
+
+  // ✅ ensure defaults on footer if empty/undefined
+  const initFooter = () => {
+    const incoming = dcFooter || defaultDCFooter;
+    const checkedBy = String(incoming?.checkedBy || "").trim() ? incoming.checkedBy : DEFAULT_SIGN_NAME;
+    const verifiedBy = String(incoming?.verifiedBy || "").trim() ? incoming.verifiedBy : DEFAULT_SIGN_NAME;
+    return { ...incoming, checkedBy, verifiedBy };
+  };
+
+  const [localFooter, setLocalFooter] = useState(initFooter);
+
   const header = dcHeader || localHeader;
   const footer = dcFooter || localFooter;
+
   const setHeader = typeof setDcHeader === "function" ? setDcHeader : setLocalHeader;
   const setFooter = typeof setDcFooter === "function" ? setDcFooter : setLocalFooter;
 
@@ -347,18 +449,19 @@ export default function DailyCleanlinessTab({
   const [saving, setSaving] = useState(false);
 
   async function listReportsByType(type) {
-    const res = await fetch(
-      `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`,
-      { method: "GET", cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" }
-    );
+    const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
+      method: "GET",
+      cache: "no-store",
+      credentials: IS_SAME_ORIGIN ? "include" : "omit",
+    });
     if (!res.ok) return [];
     const json = await res.json().catch(() => null);
     return Array.isArray(json) ? json : json?.data || [];
   }
 
   async function fetchExistingByDate(dateStr) {
-    const arr = await listReportsByType(CLEAN_TYPE);   // 👈 هنا
-    const found = arr.find(r => String(r?.payload?.reportDate || "") === String(dateStr));
+    const arr = await listReportsByType(CLEAN_TYPE); // 👈 هنا
+    const found = arr.find((r) => String(r?.payload?.reportDate || "") === String(dateStr));
     return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
   }
 
@@ -381,7 +484,7 @@ export default function DailyCleanlinessTab({
 
       const body = {
         reporter: "QCS",
-        type: CLEAN_TYPE,               // 👈 النوع الصحيح
+        type: CLEAN_TYPE, // 👈 النوع الصحيح
         payload: mergedPayload,
       };
 
@@ -411,7 +514,13 @@ export default function DailyCleanlinessTab({
     }
   }
 
-  const card = { background: "#fff", padding: "1rem", marginBottom: "1rem", borderRadius: 12, boxShadow: "0 0 8px rgba(0,0,0,.10)" };
+  const card = {
+    background: "#fff",
+    padding: "1rem",
+    marginBottom: "1rem",
+    borderRadius: 12,
+    boxShadow: "0 0 8px rgba(0,0,0,.10)",
+  };
 
   return (
     <div>
@@ -442,7 +551,15 @@ export default function DailyCleanlinessTab({
         <button
           onClick={saveDailyCleanliness}
           disabled={saving}
-          style={{ padding: "10px 16px", borderRadius: 10, background: "#059669", color: "#fff", fontWeight: 800, border: "none", cursor: "pointer" }}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: "#059669",
+            color: "#fff",
+            fontWeight: 800,
+            border: "none",
+            cursor: "pointer",
+          }}
         >
           {saving ? "⏳ Saving..." : "💾 Save Daily Cleanliness"}
         </button>
@@ -453,8 +570,8 @@ export default function DailyCleanlinessTab({
 
 /* -------- small styles/helpers -------- */
 function emptyRow() {
-  // صف حر (ليس من التمبلت)
-  return { isSection: false, letter: "", general: "", observation: "", informedTo: "", remarks: "" };
+  // ✅ new free row defaults to C
+  return { isSection: false, letter: "", general: "", observation: "C", informedTo: "", remarks: "" };
 }
 const th = (w) => ({ padding: "6px", border: "1px solid #000", textAlign: "center", fontSize: "0.85rem", width: w });
 const tdCenter = () => ({ padding: "6px", border: "1px solid #000", textAlign: "center" });
@@ -466,7 +583,7 @@ const inp = (w) => ({
   padding: "6px 8px",
   borderRadius: 8,
   border: "1px solid #cbd5e1",
-  boxSizing: "border-box",          // يمنع كسر الأعمدة
+  boxSizing: "border-box", // يمنع كسر الأعمدة
 });
 
 const sel = (w) => ({
@@ -488,4 +605,11 @@ const textCell = () => ({
   textOverflow: "ellipsis",
 });
 
-const btnDel = () => ({ padding: "6px 10px", borderRadius: 8, border: "1px solid #ef4444", color: "#ef4444", background: "#fff", cursor: "pointer" });
+const btnDel = () => ({
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid #ef4444",
+  color: "#ef4444",
+  background: "#fff",
+  cursor: "pointer",
+});

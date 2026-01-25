@@ -5,20 +5,29 @@ import * as XLSX from "xlsx-js-style";
 /* ========= API ========= */
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  (typeof process !== "undefined" &&
-    (process.env?.REACT_APP_API_URL || process.env?.VITE_API_URL || process.env?.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+    (typeof process !== "undefined" &&
+      (process.env?.REACT_APP_API_URL ||
+        process.env?.VITE_API_URL ||
+        process.env?.RENDER_EXTERNAL_URL)) ||
+    "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
 /* نوع التقرير على السيرفر */
 const TYPE = "finished_products_report";
 
+/* ✅ Default names */
+const DEFAULT_SIGN_NAME = "MOHAMAD ABDULLAH";
+
 /* ===== Helpers: common fetch wrappers ===== */
 async function jsonFetch(url, opts = {}) {
   const res = await fetch(url, opts);
   let data = null;
-  try { data = await res.json(); } catch { data = null; }
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
   return { ok: res.ok, status: res.status, data };
 }
 function extractReportsList(data) {
@@ -28,7 +37,8 @@ function extractReportsList(data) {
   return [];
 }
 function normalizeServerItem(item) {
-  const payload = item?.payload && typeof item.payload === "object" ? item.payload : item || {};
+  const payload =
+    item?.payload && typeof item.payload === "object" ? item.payload : item || {};
   return {
     id: item?.id || item?._id,
     reportDate: payload.reportDate || item?.reportDate || "",
@@ -39,10 +49,12 @@ function normalizeServerItem(item) {
 
 /** ابحث عن تقرير بنفس التاريخ (حسب النوع) وأرجع {id, ...} إن وجد */
 async function findReportByDate(reportDate) {
-  const { ok, data } = await jsonFetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`);
+  const { ok, data } = await jsonFetch(
+    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`
+  );
   if (!ok) return null;
   const list = extractReportsList(data).map(normalizeServerItem);
-  return list.find(r => String(r.reportDate) === String(reportDate)) || null;
+  return list.find((r) => String(r.reportDate) === String(reportDate)) || null;
 }
 
 /** إنشاء تقرير جديد (POST) */
@@ -62,11 +74,14 @@ async function createReportOnServer(doc) {
 
 /** استبدال تقرير موجود (PUT) */
 async function replaceReportOnServer(existingId, doc) {
-  const { ok, data, status } = await jsonFetch(`${API_BASE}/api/reports/${encodeURIComponent(existingId)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ payload: doc }),
-  });
+  const { ok, data, status } = await jsonFetch(
+    `${API_BASE}/api/reports/${encodeURIComponent(existingId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload: doc }),
+    }
+  );
   if (!ok) {
     const msg = data?.error || `Update failed (${status})`;
     throw new Error(msg);
@@ -162,7 +177,9 @@ function autoTempForProduct(product) {
 }
 
 /* ===== Date helpers (للتحقق فقط) ===== */
-function pad2(x) { return String(x).padStart(2, "0"); }
+function pad2(x) {
+  return String(x).padStart(2, "0");
+}
 function excelSerialToDMY(n) {
   const base = new Date(Date.UTC(1899, 11, 30));
   const ms = Number(n) * 86400000;
@@ -177,18 +194,23 @@ function toDMY(val) {
   const s = s0.replace(/[.\- ]/g, "/");
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (m) {
-    let a = Number(m[1]); let b = Number(m[2]); let yyyy = m[3];
+    let a = Number(m[1]);
+    let b = Number(m[2]);
+    let yyyy = m[3];
     if (yyyy.length === 2) yyyy = Number(yyyy) < 50 ? `20${yyyy}` : `19${yyyy}`;
     if (b > 12 && a <= 12) [a, b] = [b, a];
     if (a >= 1 && a <= 31 && b >= 1 && b <= 12) return `${pad2(a)}/${pad2(b)}/${yyyy}`;
   }
   m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
   if (m) {
-    const yyyy = m[1]; const mm = Number(m[2]); const dd = Number(m[3]);
+    const yyyy = m[1];
+    const mm = Number(m[2]);
+    const dd = Number(m[3]);
     if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) return `${pad2(dd)}/${pad2(mm)}/${yyyy}`;
   }
   const d = new Date(s0);
-  if (!isNaN(d)) return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+  if (!isNaN(d))
+    return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
   return "";
 }
 function maskDateTyped(input) {
@@ -202,12 +224,15 @@ function parseDMY(s) {
   const t = toAsciiDigits(String(s || ""));
   const m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (!m) return null;
-  const dd = Number(m[1]), mm = Number(m[2]), yyyy = Number(m[3]);
+  const dd = Number(m[1]),
+    mm = Number(m[2]),
+    yyyy = Number(m[3]);
   const d = new Date(yyyy, mm - 1, dd);
   return d && d.getMonth() + 1 === mm && d.getDate() === dd ? d : null;
 }
 function cmpDMY(a, b) {
-  const pa = parseDMY(a); const pb = parseDMY(b);
+  const pa = parseDMY(a);
+  const pb = parseDMY(b);
   if (!pa || !pb) return null;
   if (pa.getTime() < pb.getTime()) return -1;
   if (pa.getTime() > pb.getTime()) return 1;
@@ -221,20 +246,34 @@ function getExcelDisplayText(ws, r, c) {
     const cell = ws[addr];
     const raw = (cell?.w ?? "").toString().trim();
     return raw;
-  } catch { return ""; }
+  } catch {
+    return "";
+  }
 }
 function findPSE(ws) {
   const ref = ws["!ref"];
   if (!ref) return { p: 0, s: 1, e: 2, headerRow: 0 };
   const range = XLSX.utils.decode_range(ref);
-  let idxP = 0, idxS = 1, idxE = 2, headerRow = range.s.r;
+  let idxP = 0,
+    idxS = 1,
+    idxE = 2,
+    headerRow = range.s.r;
   for (let r = range.s.r; r <= Math.min(range.s.r + 5, range.e.r); r++) {
     for (let c = range.s.c; c <= range.e.c; c++) {
       const cell = ws[XLSX.utils.encode_cell({ r, c })];
       const t = (cell?.w || cell?.v || "").toString().toLowerCase();
-      if (t.includes("product")) { idxP = c; headerRow = r; }
-      if (t.includes("slaughter") || t.includes("production")) { idxS = c; headerRow = r; }
-      if (t.includes("expiry") || t.includes("expiration")) { idxE = c; headerRow = r; }
+      if (t.includes("product")) {
+        idxP = c;
+        headerRow = r;
+      }
+      if (t.includes("slaughter") || t.includes("production")) {
+        idxS = c;
+        headerRow = r;
+      }
+      if (t.includes("expiry") || t.includes("expiration")) {
+        idxE = c;
+        headerRow = r;
+      }
     }
   }
   return { p: idxP, s: idxS, e: idxE, headerRow };
@@ -272,35 +311,30 @@ function splitDateParts(v) {
   }
   return { date: "", time: "" };
 }
-
 function transformIncoming(record) {
   const out = { ...emptyRow };
 
-  const hasExact = CORE_HEADERS.every((h) =>
-    Object.prototype.hasOwnProperty.call(record, h)
-  );
+  const hasExact = CORE_HEADERS.every((h) => Object.prototype.hasOwnProperty.call(record, h));
   if (hasExact) {
-    out.product  = String(record["Product"] ?? "");
+    out.product = String(record["Product"] ?? "");
     out.customer = String(record["Customer"] ?? "");
-    out.orderNo  = toAsciiDigits(record["Order No"] ?? "");
-    out.time     = toAsciiDigits(record["TIME"] ?? "");
+    out.orderNo = toAsciiDigits(record["Order No"] ?? "");
+    out.time = toAsciiDigits(record["TIME"] ?? "");
     out.slaughterDate = String(record["Slaughter Date"] ?? "");
-    out.expiryDate    = String(record["Expiry Date"] ?? "");
+    out.expiryDate = String(record["Expiry Date"] ?? "");
     const q = toNumOrEmpty(record["Quantity"]);
-    out.quantity          = !q || q === 0 ? "" : String(q);
-    out.temp              = toNumStr(record["TEMP"]) || "";
-    out.unitOfMeasure     = String(record["Unit of Measure"] ?? "KG") || "KG";
-    out.overallCondition  = "OK";
-    out.remarks           = String(record["REMARKS"] ?? "");
+    out.quantity = !q || q === 0 ? "" : String(q);
+    out.temp = toNumStr(record["TEMP"]) || "";
+    out.unitOfMeasure = String(record["Unit of Measure"] ?? "KG") || "KG";
+    out.overallCondition = "OK";
+    out.remarks = String(record["REMARKS"] ?? "");
     if (out.temp === "") out.temp = autoTempForProduct(out.product);
     return out;
   }
 
   const hasStockLike =
     "Product" in record &&
-    ("Real Reserved Quantity" in record ||
-      "Real reserved quantity" in record ||
-      "Done" in record);
+    ("Real Reserved Quantity" in record || "Real reserved quantity" in record || "Done" in record);
   if (hasStockLike) {
     const { time } = splitDateParts(record["Date"]);
     out.product = String(record["Product"] ?? "");
@@ -311,8 +345,7 @@ function transformIncoming(record) {
     out.expiryDate = "";
     out.temp = "";
     out.quantity = chooseQtyFromStockLike(record);
-    out.unitOfMeasure =
-      String(record["Unit of Measure"] ?? record["Unit of measure"] ?? "KG") || "KG";
+    out.unitOfMeasure = String(record["Unit of Measure"] ?? record["Unit of measure"] ?? "KG") || "KG";
     out.overallCondition = "OK";
     out.remarks = "";
     if (out.temp === "") out.temp = autoTempForProduct(out.product);
@@ -328,6 +361,7 @@ export default function FinishedProductEntry() {
 
   const [reportTitle] = useState("FINISHED PRODUCTS");
   const [reportDate, setReportDate] = useState("");
+
   const [rows, setRows] = useState([{ ...emptyRow }]);
 
   const [savedMsg, setSavedMsg] = useState("");
@@ -340,9 +374,9 @@ export default function FinishedProductEntry() {
 
   const [savingStage, setSavingStage] = useState("");
 
-  // 🔹 New: footer fields
-  const [checkedBy, setCheckedBy] = useState("");
-  const [verifiedBy, setVerifiedBy] = useState("");
+  /* ✅ footer defaults */
+  const [checkedBy, setCheckedBy] = useState(DEFAULT_SIGN_NAME);
+  const [verifiedBy, setVerifiedBy] = useState(DEFAULT_SIGN_NAME);
 
   const customerOptions = useMemo(() => {
     const set = new Set(rows.map((r) => (r.customer || "").trim()).filter(Boolean));
@@ -362,9 +396,7 @@ export default function FinishedProductEntry() {
     if (!ed) errs.expiryDate = "Required (DD/MM/YYYY)";
     if (sd && ed) {
       const cmp = cmpDMY(sd, ed);
-      if (cmp !== null && cmp > 0) {
-        errs.dateOrder = "Expiry must be after or same day as Slaughter";
-      }
+      if (cmp !== null && cmp > 0) errs.dateOrder = "Expiry must be after or same day as Slaughter";
     }
     if (String(r.temp).trim() !== "") {
       const t = Number(toAsciiDigits(r.temp).replace(/,/g, "."));
@@ -392,7 +424,7 @@ export default function FinishedProductEntry() {
     dragIndex.current = i;
     e.dataTransfer.effectAllowed = "move";
   };
-  const onDragOver = (i) => (e) => {
+  const onDragOver = () => (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
   };
@@ -412,7 +444,6 @@ export default function FinishedProductEntry() {
 
   /* Change handlers */
   const handleChange = (idx, key, value) => {
-    const updated = [...rows];
     let v = value;
 
     if (key === "slaughterDate" || key === "expiryDate") {
@@ -424,16 +455,18 @@ export default function FinishedProductEntry() {
     }
     if (key === "overallCondition") v = "OK";
 
-    updated[idx][key] = v;
-    updated[idx]["overallCondition"] = "OK";
-    setRows(updated);
+    setRows((prev) => {
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], [key]: v, overallCondition: "OK" };
+      return updated;
+    });
   };
 
   const handleDateBlur = (idx, key) => {
     setRows((prev) => {
       const next = [...prev];
       const fixed = toDMY(next[idx][key]);
-      next[idx][key] = fixed || next[idx][key];
+      next[idx] = { ...next[idx], [key]: fixed || next[idx][key] };
       return next;
     });
   };
@@ -450,7 +483,7 @@ export default function FinishedProductEntry() {
   function normalizeRow(r) {
     const uom = ["KG", "BOX", "PLATE", "Piece"].includes(r.unitOfMeasure) ? r.unitOfMeasure : "KG";
     const temp = String(r.temp ?? "").trim();
-    const norm = {
+    return {
       product: String(r.product || "").trim(),
       customer: String(r.customer || "").trim(),
       orderNo: toAsciiDigits(r.orderNo || "").trim(),
@@ -463,12 +496,12 @@ export default function FinishedProductEntry() {
       overallCondition: "OK",
       remarks: String(r.remarks || "").trim(),
     };
-    return norm;
   }
 
   /* Save (server only) */
   const handleSave = async () => {
     setSavingStage("saving");
+
     if (!reportDate.trim()) {
       setSavingStage("");
       setErrorMsg("Please select the Report Date.");
@@ -493,11 +526,10 @@ export default function FinishedProductEntry() {
 
     const doc = {
       id: Date.now(),
-      reportTitle: "FINISHED PRODUCTS",
+      reportTitle: reportTitle || "FINISHED PRODUCTS",
       reportDate: ymd,
       reportSavedAt: new Date().toISOString(),
       products: cleanRows,
-      // 🔹 New footer fields saved with report
       checkedBy: checkedBy.trim(),
       verifiedBy: verifiedBy.trim(),
     };
@@ -505,10 +537,12 @@ export default function FinishedProductEntry() {
     try {
       const res = await saveReportToServerUpsert(doc);
       setSavingStage("done");
-      setSavedMsg(`✅ Saved on server (ID: ${res?.id || res?._id || "OK"}) — افتح التقارير من زر "Saved Reports" بالأعلى`);
+      setSavedMsg(
+        `✅ Saved on server (ID: ${res?.id || res?._id || "OK"}) — افتح التقارير من زر "Saved Reports" بالأعلى`
+      );
       setRows([{ ...emptyRow }]);
-      setCheckedBy("");
-      setVerifiedBy("");
+      setCheckedBy(DEFAULT_SIGN_NAME);
+      setVerifiedBy(DEFAULT_SIGN_NAME);
       setTimeout(() => setSavingStage(""), 400);
     } catch (err) {
       setSavingStage("");
@@ -528,7 +562,11 @@ export default function FinishedProductEntry() {
       const ws = wb.Sheets[sheetName];
       const json = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
 
-      if (!json.length) { setErrorMsg("No data rows found in the file."); setTimeout(() => setErrorMsg(""), 2600); return; }
+      if (!json.length) {
+        setErrorMsg("No data rows found in the file.");
+        setTimeout(() => setErrorMsg(""), 2600);
+        return;
+      }
 
       const transformed = json
         .map((rec) => {
@@ -539,7 +577,11 @@ export default function FinishedProductEntry() {
         })
         .filter((r) => Object.values(r).some((v) => String(v).trim() !== ""));
 
-      if (!transformed.length) { setErrorMsg("Read completed but headers did not match the core template."); setTimeout(() => setErrorMsg(""), 3200); return; }
+      if (!transformed.length) {
+        setErrorMsg("Read completed but headers did not match the core template.");
+        setTimeout(() => setErrorMsg(""), 3200);
+        return;
+      }
 
       setRows((prev) => (importMode === "replace" ? transformed : [...prev, ...transformed]));
       setImportSummary(`📥 Imported ${transformed.length} row(s) from "${sheetName}".`);
@@ -552,7 +594,7 @@ export default function FinishedProductEntry() {
     }
   };
 
-  /* 📥 Import Dates (2 cols) — as-is (نص الخلية كما يظهر في إكسل) */
+  /* 📥 Import Dates (2 cols) — as-is */
   const onPickDates = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -603,17 +645,21 @@ export default function FinishedProductEntry() {
         const m = String(r.product).match(/\[(\d+)\]/);
         const code = m ? m[1] : "";
         if (!code || !codeToDates.has(code)) return r;
+
         const { sd, ed } = codeToDates.get(code);
 
+        const sdFixed = sd ? toDMY(sd) : "";
+        const edFixed = ed ? toDMY(ed) : "";
+
         const hasChange =
-          (sd && sd !== String(r.slaughterDate || "")) ||
-          (ed && ed !== String(r.expiryDate || ""));
+          (sdFixed && sdFixed !== String(r.slaughterDate || "")) ||
+          (edFixed && edFixed !== String(r.expiryDate || ""));
         if (hasChange) updated++;
 
         return {
           ...r,
-          slaughterDate: sd || r.slaughterDate,
-          expiryDate: ed || r.expiryDate,
+          slaughterDate: sdFixed || r.slaughterDate,
+          expiryDate: edFixed || r.expiryDate,
           overallCondition: "OK",
         };
       });
@@ -632,25 +678,14 @@ export default function FinishedProductEntry() {
   const viewRows = useMemo(() => rows.map((r, i) => ({ r, idx: i })), [rows]);
 
   const addRow = () => setRows((r) => [...r, { ...emptyRow }]);
-  const removeRow = (idx) => { if (rows.length === 1) return; setRows(rows.filter((_, i) => i !== idx)); };
+  const removeRow = (idx) => {
+    if (rows.length === 1) return;
+    setRows(rows.filter((_, i) => i !== idx));
+  };
 
   return (
-    <div
-      style={{
-        width: "100%",
-        margin: 0,
-        background: "#fff",
-        borderRadius: 0,
-        boxShadow: "none",
-        padding: "24px 24px",
-        fontFamily: "Inter, Cairo, sans-serif",
-        direction: "ltr",
-      }}
-    >
-      <div style={{
-        position: "sticky", top: 0, zIndex: 20, background: "#fff",
-        paddingBottom: 10, marginBottom: 14, borderBottom: "1px solid #e5e7eb"
-      }}>
+    <div style={pageWrap}>
+      <div style={topBar}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
           <div style={{ display: "grid", gap: 6 }}>
             <label style={labelStyle}>Report Date</label>
@@ -671,13 +706,7 @@ export default function FinishedProductEntry() {
 
             <label style={btnPurple} title="Import Slaughter/Expiry dates only (as-is)">
               📥 Import Dates (2 cols)
-              <input
-                ref={datesFileRef}
-                type="file"
-                accept=".xlsx,.xls,.xlsm,.xlsb,.csv"
-                style={{ display: "none" }}
-                onChange={onPickDates}
-              />
+              <input ref={datesFileRef} type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.csv" style={{ display: "none" }} onChange={onPickDates} />
             </label>
 
             <select value={importMode} onChange={(e) => setImportMode(e.target.value)} style={selectStyle} title="Append or replace current rows">
@@ -685,7 +714,9 @@ export default function FinishedProductEntry() {
               <option value="replace">Replace</option>
             </select>
 
-            <button onClick={() => navigate("/finished-product-reports")} style={btnPurple}>📑 Saved Reports</button>
+            <button onClick={() => navigate("/finished-product-reports")} style={btnPurple}>
+              📑 Saved Reports
+            </button>
           </div>
         </div>
       </div>
@@ -694,29 +725,32 @@ export default function FinishedProductEntry() {
       {savedMsg && <div style={okBanner}>{savedMsg}</div>}
       {errorMsg && <div style={errBanner}>{errorMsg}</div>}
 
-      <div style={{ overflowX: "auto", width: "100%" }}>
-        <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontSize: "0.98em", background: "#f8fafc", border: "1px solid #000" }}>
+      <div style={tableWrap}>
+        <table style={tableStyle}>
+          {/* ✅ Flex columns داخل الشاشة */}
           <colgroup>
-            <col style={{ width: "2.2rem" }} />
-            <col style={{ width: "26rem" }} />
-            <col style={{ width: "14rem" }} />
-            <col style={{ width: "12rem" }} />
-            <col style={{ width: "9rem" }} />
-            <col style={{ width: "10rem" }} />
-            <col style={{ width: "10rem" }} />
-            <col style={{ width: "7rem" }} />
-            <col style={{ width: "9rem" }} />
-            <col style={{ width: "8rem" }} />
-            <col style={{ width: "14rem" }} />
-            <col style={{ width: "14rem" }} />
-            <col style={{ width: "6rem" }} />
+            <col style={{ width: "56px" }} />
+            <col style={{ width: "22%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "70px" }} />
           </colgroup>
 
           <thead>
             <tr style={{ background: "#eeeeee", color: "#273746" }}>
               <th style={th}>#</th>
               {CORE_HEADERS.map((h) => (
-                <th key={h} style={th}>{h}</th>
+                <th key={h} style={th}>
+                  {h}
+                </th>
               ))}
               <th style={th}>Remove</th>
             </tr>
@@ -730,12 +764,9 @@ export default function FinishedProductEntry() {
 
               const base = inputStyle;
               const errStyle = (field) =>
-                errs[field]
-                  ? { ...base, borderColor: "#ef4444", background: "#fef2f2" }
-                  : base;
+                errs[field] ? { ...base, borderColor: "#ef4444", background: "#fef2f2" } : base;
 
-              const dateOrderStyle =
-                errs.dateOrder ? { borderColor: "#ef4444", boxShadow: "0 0 0 2px #fee2e2 inset" } : {};
+              const dateOrderStyle = errs.dateOrder ? { borderColor: "#ef4444", boxShadow: "0 0 0 2px #fee2e2 inset" } : {};
 
               const qtyStyle = isZeroQty
                 ? { ...base, color: "#c0392b", fontWeight: "bold", background: "#fdecea", borderColor: "#e6a2a2" }
@@ -762,16 +793,20 @@ export default function FinishedProductEntry() {
                     <input
                       value={r.product}
                       onChange={(e) => {
-                        const updated = [...rows];
-                        updated[realIdx].product = e.target.value;
-                        if (!String(updated[realIdx].temp).trim()) {
-                          updated[realIdx].temp = autoTempForProduct(updated[realIdx].product);
-                        }
-                        updated[realIdx].overallCondition = "OK";
-                        setRows(updated);
+                        const val = e.target.value;
+                        setRows((prev) => {
+                          const updated = [...prev];
+                          const cur = { ...(updated[realIdx] || {}) };
+                          cur.product = val;
+                          if (!String(cur.temp).trim()) cur.temp = autoTempForProduct(cur.product);
+                          cur.overallCondition = "OK";
+                          updated[realIdx] = cur;
+                          return updated;
+                        });
                       }}
                       style={errStyle("product")}
                       placeholder="Product"
+                      title={r.product}
                     />
                     {errs.product && <div style={hintErr}>{errs.product}</div>}
                   </td>
@@ -780,26 +815,20 @@ export default function FinishedProductEntry() {
                     <input
                       list="customer-list"
                       value={r.customer}
-                      onChange={(e) => {
-                        const updated = [...rows];
-                        updated[realIdx].customer = e.target.value;
-                        setRows(updated);
-                      }}
+                      onChange={(e) => handleChange(realIdx, "customer", e.target.value)}
                       style={errStyle("customer")}
                       placeholder="Customer"
+                      title={r.customer}
                     />
                     {errs.customer && <div style={hintErr}>{errs.customer}</div>}
                   </td>
 
                   <td style={td}>
                     <input
-                      dir="ltr" lang="en"
+                      dir="ltr"
+                      lang="en"
                       value={r.orderNo}
-                      onChange={(e) => {
-                        const updated = [...rows];
-                        updated[realIdx].orderNo = toAsciiDigits(e.target.value);
-                        setRows(updated);
-                      }}
+                      onChange={(e) => handleChange(realIdx, "orderNo", e.target.value)}
                       style={errStyle("orderNo")}
                       placeholder="Order No"
                     />
@@ -807,17 +836,7 @@ export default function FinishedProductEntry() {
                   </td>
 
                   <td style={td}>
-                    <input
-                      dir="ltr" lang="en"
-                      value={r.time}
-                      onChange={(e) => {
-                        const updated = [...rows];
-                        updated[realIdx].time = toAsciiDigits(e.target.value);
-                        setRows(updated);
-                      }}
-                      style={base}
-                      placeholder="TIME (e.g., 08:45:14)"
-                    />
+                    <input dir="ltr" lang="en" value={r.time} onChange={(e) => handleChange(realIdx, "time", e.target.value)} style={base} placeholder="TIME" />
                   </td>
 
                   <td style={td}>
@@ -847,13 +866,12 @@ export default function FinishedProductEntry() {
 
                   <td style={td}>
                     <input
-                      type="text" dir="ltr" lang="en" inputMode="decimal"
+                      type="text"
+                      dir="ltr"
+                      lang="en"
+                      inputMode="decimal"
                       value={r.temp}
-                      onChange={(e) => {
-                        const updated = [...rows];
-                        updated[realIdx].temp = toAsciiDigits(e.target.value).replace(/,/g, ".");
-                        setRows(updated);
-                      }}
+                      onChange={(e) => handleChange(realIdx, "temp", e.target.value)}
                       style={errs.temp ? { ...base, borderColor: "#ef4444", background: "#fff7ed" } : base}
                       placeholder="TEMP"
                     />
@@ -862,13 +880,12 @@ export default function FinishedProductEntry() {
 
                   <td style={td}>
                     <input
-                      type="text" dir="ltr" lang="en" inputMode="decimal"
+                      type="text"
+                      dir="ltr"
+                      lang="en"
+                      inputMode="decimal"
                       value={r.quantity}
-                      onChange={(e) => {
-                        const updated = [...rows];
-                        updated[realIdx].quantity = toAsciiDigits(e.target.value).replace(/,/g, ".");
-                        setRows(updated);
-                      }}
+                      onChange={(e) => handleChange(realIdx, "quantity", e.target.value)}
                       style={errs.quantity ? { ...qtyStyle, borderColor: "#ef4444", background: "#fef2f2" } : qtyStyle}
                       placeholder="Quantity"
                     />
@@ -876,15 +893,7 @@ export default function FinishedProductEntry() {
                   </td>
 
                   <td style={td}>
-                    <select
-                      value={r.unitOfMeasure}
-                      onChange={(e) => {
-                        const updated = [...rows];
-                        updated[realIdx].unitOfMeasure = e.target.value;
-                        setRows(updated);
-                      }}
-                      style={base}
-                    >
+                    <select value={r.unitOfMeasure} onChange={(e) => handleChange(realIdx, "unitOfMeasure", e.target.value)} style={base}>
                       <option value="KG">KG</option>
                       <option value="BOX">BOX</option>
                       <option value="PLATE">PLATE</option>
@@ -893,20 +902,11 @@ export default function FinishedProductEntry() {
                   </td>
 
                   <td style={td}>
-                    <input value="OK" disabled style={{ ...base, background: "#eef9ee", fontWeight: "bold" }} placeholder="OVERALL CONDITION" readOnly />
+                    <input value="OK" disabled style={{ ...base, background: "#eef9ee", fontWeight: "bold" }} readOnly />
                   </td>
 
                   <td style={td}>
-                    <input
-                      value={r.remarks}
-                      onChange={(e) => {
-                        const updated = [...rows];
-                        updated[realIdx].remarks = e.target.value;
-                        setRows(updated);
-                      }}
-                      style={base}
-                      placeholder="REMARKS"
-                    />
+                    <input value={r.remarks} onChange={(e) => handleChange(realIdx, "remarks", e.target.value)} style={base} placeholder="REMARKS" />
                   </td>
 
                   <td style={td}>
@@ -919,8 +919,9 @@ export default function FinishedProductEntry() {
                         border: "none",
                         borderRadius: 8,
                         fontWeight: "bold",
-                        padding: "5px 11px",
+                        padding: "6px 10px",
                         cursor: rows.length === 1 ? "not-allowed" : "pointer",
+                        width: "100%",
                       }}
                     >
                       🗑️
@@ -939,40 +940,30 @@ export default function FinishedProductEntry() {
         </datalist>
       </div>
 
-      {/* 🔹 New footer fields under the table */}
+      {/* Footer fields */}
       <div style={{ display: "flex", gap: 16, marginTop: 18, flexWrap: "wrap" }}>
-        <div style={{ minWidth: 240 }}>
+        <div style={{ minWidth: 240, flex: 1 }}>
           <label style={labelStyle}>Checked By</label>
-          <input
-            type="text"
-            value={checkedBy}
-            onChange={(e) => setCheckedBy(e.target.value)}
-            style={metaInput}
-            placeholder="Checked By"
-          />
+          <input type="text" value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)} style={metaInput} placeholder="Checked By" />
         </div>
-        <div style={{ minWidth: 240 }}>
+        <div style={{ minWidth: 240, flex: 1 }}>
           <label style={labelStyle}>Verified By</label>
-          <input
-            type="text"
-            value={verifiedBy}
-            onChange={(e) => setVerifiedBy(e.target.value)}
-            style={metaInput}
-            placeholder="Verified By"
-          />
+          <input type="text" value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} style={metaInput} placeholder="Verified By" />
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
-        <button onClick={addRow} style={btnInfo}>➕ Add Row</button>
-        <button onClick={handleSave} style={btnSuccessWide}>💾 Save Report</button>
+        <button onClick={addRow} style={btnInfo}>
+          ➕ Add Row
+        </button>
+        <button onClick={handleSave} style={btnSuccessWide}>
+          💾 Save Report
+        </button>
       </div>
 
       {savingStage && (
         <div style={saveOverlayBack}>
-          <div style={saveOverlayCard}>
-            {savingStage === "saving" ? "Saving…" : "Saved ✅"}
-          </div>
+          <div style={saveOverlayCard}>{savingStage === "saving" ? "Saving…" : "Saved ✅"}</div>
         </div>
       )}
     </div>
@@ -980,25 +971,82 @@ export default function FinishedProductEntry() {
 }
 
 /* ====== Styles ====== */
+
+/* ✅ Full-screen layout (no horizontal blow-up) */
+const pageWrap = {
+  width: "100%",
+  maxWidth: "100vw",
+  margin: 0,
+  background: "#fff",
+  borderRadius: 0,
+  boxShadow: "none",
+  padding: "16px 16px",
+  fontFamily: "Inter, Cairo, sans-serif",
+  direction: "ltr",
+  boxSizing: "border-box",
+  overflowX: "hidden",
+};
+
+const topBar = {
+  position: "sticky",
+  top: 0,
+  zIndex: 20,
+  background: "#fff",
+  paddingBottom: 10,
+  marginBottom: 14,
+  borderBottom: "1px solid #e5e7eb",
+};
+
+const tableWrap = {
+  width: "100%",
+  overflowX: "auto",
+  border: "1px solid #000",
+  borderRadius: 10,
+  background: "#fff",
+};
+
+/* ✅ table stays inside screen */
+const tableStyle = {
+  width: "100%",
+  minWidth: 1100, // allows reasonable layout; will scroll only on very small screens
+  tableLayout: "fixed",
+  borderCollapse: "collapse",
+  fontSize: "0.95em",
+  background: "#f8fafc",
+};
+
 const th = {
   padding: "10px 8px",
   fontWeight: "bold",
-  fontSize: "0.98em",
+  fontSize: "0.95em",
   textAlign: "center",
   border: "1px solid #6c0addff",
   whiteSpace: "nowrap",
 };
-const td = { padding: "6px 6px", textAlign: "center", verticalAlign: "top", border: "1px solid #000", whiteSpace: "nowrap" };
+
+const td = {
+  padding: "6px 6px",
+  textAlign: "center",
+  verticalAlign: "top",
+  border: "1px solid #000",
+  whiteSpace: "nowrap",
+};
+
 const labelStyle = { fontSize: 12, fontWeight: 700, color: "#334155" };
+
 const inputStyle = {
   width: "100%",
   padding: "8px",
   borderRadius: "8px",
   border: "1.5px solid #d4e6f1",
-  fontSize: "0.98em",
+  fontSize: "0.95em",
   background: "#fff",
   boxSizing: "border-box",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
+
 const metaInput = { ...inputStyle, minWidth: 240 };
 
 const btnInfo = {
@@ -1026,6 +1074,7 @@ const btnSuccess = {
   border: "none",
   borderRadius: 10,
   padding: "9px 22px",
+  cursor: "pointer",
 };
 const btnSuccessWide = { ...btnSuccess, padding: "11px 44px", borderRadius: 12 };
 
@@ -1065,8 +1114,28 @@ const errBanner = {
   fontWeight: "bold",
   textAlign: "center",
 };
+
 const hintErr = { color: "#b91c1c", fontSize: 11, marginTop: 4, textAlign: "left" };
 const hintWarn = { color: "#b45309", fontSize: 11, marginTop: 4, textAlign: "left" };
 
-const saveOverlayBack = { position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 };
-const saveOverlayCard = { minWidth: 240, textAlign: "center", background: "#ffffff", color: "#0f172a", fontWeight: 800, fontSize: "1.05rem", borderRadius: 14, border: "1px solid #e5e7eb", padding: "16px 20px", boxShadow: "0 12px 30px rgba(0,0,0,.25)" };
+const saveOverlayBack = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,.35)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+};
+const saveOverlayCard = {
+  minWidth: 240,
+  textAlign: "center",
+  background: "#ffffff",
+  color: "#0f172a",
+  fontWeight: 800,
+  fontSize: "1.05rem",
+  borderRadius: 14,
+  border: "1px solid #e5e7eb",
+  padding: "16px 20px",
+  boxShadow: "0 12px 30px rgba(0,0,0,.25)",
+};

@@ -8,6 +8,14 @@
     "description": "AL RAWABI VEAL CARCASS - KG"
   },
   {
+    "item_code": "71016",
+    "description": "LAHMANGIYA MARSHMALOW  BOX - "
+  },
+  {
+    "item_code": "21406",
+    "description": "AUS HGT HIND SHANK - KG"
+  },
+  {
     "item_code": "27116",
     "description": "Fresh Whole Chicken 750gram"
   },
@@ -1398,6 +1406,10 @@
   {
     "item_code": "21407",
     "description": "aus hgt neck - kg"
+  },
+  {
+    "item_code": "21405",
+    "description": "aus hgt flab b-in - kg"
   },
   {
     "item_code": "96447",

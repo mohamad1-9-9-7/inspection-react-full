@@ -1,10 +1,18 @@
 // src/pages/monitor/branches/ftr1/FTR1PersonalHygieneView.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+
+/* ✅ نفس أعمدة الإدخال (النظافة العامة) */
+const HYGIENE_COLUMNS = [
+  "Nails",
+  "Hair",
+  "Not wearing Jewelry",
+  "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe",
+];
 
 export default function FTR1PersonalHygieneView() {
   const [reports, setReports] = useState([]);
@@ -17,6 +25,7 @@ export default function FTR1PersonalHygieneView() {
 
   useEffect(() => {
     fetchReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getReportDate = (r) => {
@@ -29,12 +38,17 @@ export default function FTR1PersonalHygieneView() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=ftr1_personal_hygiene`, { cache: "no-store" });
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=ftr1_personal_hygiene`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a, b) => getReportDate(b) - getReportDate(a)); // أحدث أولاً
+      arr.sort((a, b) => getReportDate(b) - getReportDate(a)); // ✅ أحدث أولاً
       setReports(arr);
+
+      // ✅ اعرض آخر/أحدث تقرير تلقائياً دائماً
       setSelectedReport(arr[0] || null);
     } catch (err) {
       console.error(err);
@@ -68,7 +82,11 @@ export default function FTR1PersonalHygieneView() {
     pdf.setFont("helvetica", "bold");
     pdf.text("AL MAWASHI", pageWidth / 2, 30, { align: "center" });
     pdf.addImage(imgData, "PNG", margin, 50, imgWidth, imgHeight);
-    pdf.save(`FTR1_Personal_Hygiene_${selectedReport?.payload?.reportDate || "report"}.pdf`);
+    pdf.save(
+      `FTR1_Personal_Hygiene_${
+        selectedReport?.payload?.reportDate || "report"
+      }.pdf`
+    );
 
     if (toolbar) toolbar.style.display = prev || "flex";
   };
@@ -76,15 +94,30 @@ export default function FTR1PersonalHygieneView() {
   // ===== XLS (CSV متوافق) =====
   const handleExportXLS = () => {
     if (!selectedReport) return;
-    const header = ["S.No", "Employee Name", ...columns, "Remarks and Corrective Actions"];
+
+    const header = [
+      "S.No",
+      "Employee Name",
+      ...HYGIENE_COLUMNS,
+      "Fit for Food Handling? (Yes/No)",
+      "If No: Communicable disease (Yes/No)",
+      "If No: Open wound (Yes/No)",
+      "If No: Other (text)",
+      "Remarks and Corrective Actions",
+    ];
+
     const rows = [
       header,
-      ...(selectedReport?.payload?.entries || []).map((entry, i) => ([
+      ...(selectedReport?.payload?.entries || []).map((entry, i) => [
         i + 1,
-        entry.name || "",
-        ...columns.map((c) => entry[c] || ""),
-        entry.remarks || "",
-      ])),
+        entry?.name || "",
+        ...HYGIENE_COLUMNS.map((c) => entry?.[c] || ""),
+        entry?.fitForFoodHandling || "",
+        entry?.reasonCommunicableDisease || "",
+        entry?.reasonOpenWound || "",
+        entry?.reasonOther || "",
+        entry?.remarks || "",
+      ]),
     ];
 
     const csv = rows
@@ -100,7 +133,9 @@ export default function FTR1PersonalHygieneView() {
       )
       .join("\n");
 
-    const blob = new Blob([csv], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const blob = new Blob([csv], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const nameDate = selectedReport?.payload?.reportDate || "report";
@@ -126,10 +161,12 @@ export default function FTR1PersonalHygieneView() {
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+        method: "DELETE",
+      });
       if (!res.ok) throw new Error("Failed to delete");
       alert("✅ Report deleted successfully.");
-      fetchReports();
+      fetchReports(); // ✅ سيعيد اختيار أحدث تقرير تلقائياً
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to delete report.");
@@ -146,7 +183,9 @@ export default function FTR1PersonalHygieneView() {
         count: payloads.length,
         items: payloads,
       };
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
@@ -172,35 +211,47 @@ export default function FTR1PersonalHygieneView() {
       const text = await file.text();
       const json = JSON.parse(text);
 
-      const itemsRaw =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.data) ? json.data : [];
+      const itemsRaw = Array.isArray(json)
+        ? json
+        : Array.isArray(json?.items)
+        ? json.items
+        : Array.isArray(json?.data)
+        ? json.data
+        : [];
 
       if (!itemsRaw.length) {
         alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
         return;
       }
 
-      let ok = 0, fail = 0;
+      let ok = 0,
+        fail = 0;
       for (const item of itemsRaw) {
         const payload = item?.payload ?? item;
-        if (!payload || typeof payload !== "object") { fail++; continue; }
+        if (!payload || typeof payload !== "object") {
+          fail++;
+          continue;
+        }
 
         try {
           const res = await fetch(`${API_BASE}/api/reports`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reporter: "ftr1", type: "ftr1_personal_hygiene", payload }),
+            body: JSON.stringify({
+              reporter: "ftr1",
+              type: "ftr1_personal_hygiene",
+              payload,
+            }),
           });
-          if (res.ok) ok++; else fail++;
+          if (res.ok) ok++;
+          else fail++;
         } catch {
           fail++;
         }
       }
 
       alert(`✅ Imported: ${ok} ${fail ? `| ❌ Failed: ${fail}` : ""}`);
-      await fetchReports();
+      await fetchReports(); // ✅ سيعرض أحدث تقرير تلقائياً
     } catch (err) {
       console.error(err);
       alert("❌ Invalid JSON file.");
@@ -211,17 +262,22 @@ export default function FTR1PersonalHygieneView() {
   };
 
   // Group by year → month → day
-  const groupedReports = reports.reduce((acc, r) => {
-    const date = getReportDate(r);
-    if (isNaN(date)) return acc;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    acc[year] ??= {};
-    acc[year][month] ??= [];
-    acc[year][month].push({ ...r, day, _dt: date.getTime() });
-    return acc;
-  }, {});
+  const groupedReports = useMemo(() => {
+    return reports.reduce((acc, r) => {
+      const date = getReportDate(r);
+      if (isNaN(date)) return acc;
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      acc[year] ??= {};
+      acc[year][month] ??= [];
+      acc[year][month].push({ ...r, day, _dt: date.getTime() });
+      return acc;
+    }, {});
+  }, [reports]);
+
+  const selectedPayload = selectedReport?.payload || {};
+  const entries = Array.isArray(selectedPayload?.entries) ? selectedPayload.entries : [];
 
   return (
     <div style={{ display: "flex", gap: "1rem" }}>
@@ -239,16 +295,18 @@ export default function FTR1PersonalHygieneView() {
         <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
           🗓️ Saved Reports
         </h4>
+
         {loading ? (
           <p>⏳ Loading...</p>
         ) : Object.keys(groupedReports).length === 0 ? (
           <p>❌ No reports</p>
         ) : (
           <div>
+            {/* ✅ الشجرة مطوية دائماً: حذف open من details */}
             {Object.entries(groupedReports)
               .sort(([ya], [yb]) => Number(yb) - Number(ya))
               .map(([year, months]) => (
-                <details key={year} open>
+                <details key={year}>
                   <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
                     📅 Year {year}
                   </summary>
@@ -258,7 +316,7 @@ export default function FTR1PersonalHygieneView() {
                     .map(([month, days]) => {
                       const daysSorted = [...days].sort((a, b) => b._dt - a._dt);
                       return (
-                        <details key={month} style={{ marginLeft: "1rem" }} open>
+                        <details key={month} style={{ marginLeft: "1rem" }}>
                           <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                             {daysSorted.map((r, i) => {
@@ -307,7 +365,6 @@ export default function FTR1PersonalHygieneView() {
           <p>❌ No report selected.</p>
         ) : (
           <div ref={reportRef}>
-            {/* حارس CSS لضمان ظهور الأزرار دائماً */}
             <style>{`
               .action-toolbar { display: flex !important; }
               .action-toolbar button { display: inline-flex !important; visibility: visible !important; opacity: 1 !important; }
@@ -328,7 +385,6 @@ export default function FTR1PersonalHygieneView() {
                 flexWrap: "wrap",
               }}
             >
-              {/* زر الحذف مرئي دائماً */}
               <button
                 onClick={() => handleDelete(selectedReport)}
                 style={btn("#c0392b")}
@@ -372,52 +428,71 @@ export default function FTR1PersonalHygieneView() {
               </tbody>
             </table>
 
-            {/* Title */}
-            <h3
-              style={{
-                textAlign: "center",
-                background: "#e5e7eb",
-                padding: "6px",
-                marginBottom: "0.5rem",
-              }}
-            >
-              AL MAWASHI BRAAI MAMZAR
+            {/* Title (✅ مشرف) */}
+            <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: "6px", marginBottom: "0.5rem" }}>
+              AL MAWASHI BRAAI MUSH RIF
               <br />
               PERSONAL HYGIENE CHECKLIST FTR-1
             </h3>
 
             {/* Date */}
-            <div style={{ marginBottom: "0.5rem" }}>
-              <strong>Date:</strong> {selectedReport?.payload?.reportDate || "—"}
+            <div style={{ marginBottom: "0.75rem" }}>
+              <strong>Date:</strong> {selectedPayload?.reportDate || "—"}
             </div>
 
+            {/* PIC note */}
+            {selectedPayload?.checkedByNote ? (
+              <div
+                style={{
+                  marginBottom: "10px",
+                  padding: "10px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#f8fafc",
+                  fontWeight: 600,
+                  color: "#0f172a",
+                }}
+              >
+                Note: {selectedPayload.checkedByNote}
+              </div>
+            ) : null}
+
             {/* Table */}
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                tableLayout: "fixed",
-              }}
-            >
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr style={{ background: "#2980b9", color: "#fff" }}>
                   <th style={{ ...thStyle, width: "50px" }}>S.No</th>
                   <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
-                  {columns.map((col, i) => (
+
+                  {HYGIENE_COLUMNS.map((col, i) => (
                     <th key={i} style={{ ...thStyle, width: "120px" }}>{col}</th>
                   ))}
+
+                  <th style={{ ...thStyle, width: "150px" }}>Fit for Food Handling?<br />(Yes/No)</th>
+                  <th style={{ ...thStyle, width: "140px" }}>If No: Communicable disease<br />(Yes/No)</th>
+                  <th style={{ ...thStyle, width: "140px" }}>If No: Open wound<br />(Yes/No)</th>
+                  <th style={{ ...thStyle, width: "170px" }}>If No: Other (text)</th>
+
                   <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
                 </tr>
               </thead>
+
               <tbody>
-                {(selectedReport?.payload?.entries || []).map((entry, i) => (
+                {entries.map((entry, i) => (
                   <tr key={i}>
                     <td style={tdStyle}>{i + 1}</td>
-                    <td style={tdStyle}>{entry.name || "—"}</td>
-                    {columns.map((col, cIndex) => (
-                      <td key={cIndex} style={tdStyle}>{entry[col] || "—"}</td>
+                    <td style={tdStyle}>{entry?.name || "—"}</td>
+
+                    {HYGIENE_COLUMNS.map((col, cIndex) => (
+                      <td key={cIndex} style={tdStyle}>{entry?.[col] || "—"}</td>
                     ))}
-                    <td style={tdStyle}>{entry.remarks || "—"}</td>
+
+                    <td style={tdStyle}>{entry?.fitForFoodHandling || "—"}</td>
+                    <td style={tdStyle}>{entry?.reasonCommunicableDisease || "—"}</td>
+                    <td style={tdStyle}>{entry?.reasonOpenWound || "—"}</td>
+                    <td style={tdStyle}>{entry?.reasonOther || "—"}</td>
+
+                    <td style={tdStyle}>{entry?.remarks || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -427,19 +502,10 @@ export default function FTR1PersonalHygieneView() {
             <div style={{ marginTop: "1rem", fontWeight: "600" }}>
               REMARKS / CORRECTIVE ACTIONS:
             </div>
-            <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
-              *(C – Conform &nbsp;&nbsp;&nbsp; N/C – Non Conform)
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginTop: "1rem",
-                fontWeight: 600,
-              }}
-            >
-              <div>Checked By: {selectedReport?.payload?.checkedBy || "—"}</div>
-              <div>Verified By: {selectedReport?.payload?.verifiedBy || "—"}</div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", marginTop: "1rem", fontWeight: 600 }}>
+              <div>Checked By: {selectedPayload?.checkedBy || "—"}</div>
+              <div>Verified by (QA): {selectedPayload?.verifiedByQA || "—"}</div>
             </div>
           </div>
         )}
@@ -448,26 +514,19 @@ export default function FTR1PersonalHygieneView() {
   );
 }
 
-const columns = [
-  "Nails",
-  "Hair",
-  "Not wearing Jewelry",
-  "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe",
-  "Communicable Disease",
-  "Open wounds/sores & cut",
-];
-
 const thStyle = {
   padding: "6px",
   border: "1px solid #ccc",
   textAlign: "center",
   fontSize: "0.85rem",
 };
+
 const tdStyle = {
   padding: "6px",
   border: "1px solid #ccc",
   textAlign: "center",
 };
+
 const tdHeader = {
   border: "1px solid #ccc",
   padding: "4px 6px",

@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/qcs/NonConformanceReportsView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx-js-style";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -45,6 +46,7 @@ function RowKV({ label, value }) {
     </div>
   );
 }
+
 function NCHeaderView({ header, date, logoUrl }) {
   const h = header || {};
   return (
@@ -68,6 +70,7 @@ function NCHeaderView({ header, date, logoUrl }) {
           <img
             src={logoUrl || LOGO_FALLBACK}
             alt="Al Mawashi"
+            crossOrigin="anonymous"
             style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }}
           />
         </div>
@@ -146,6 +149,13 @@ const cell = {
   verticalAlign: "middle",
 };
 
+const sectionTitle = {
+  marginTop: 8,
+  marginBottom: 4,
+  fontWeight: 900,
+  fontSize: 12,
+};
+
 /* ===== Server helpers ===== */
 async function listReports() {
   const res = await fetch(
@@ -159,6 +169,7 @@ async function listReports() {
     .map((r) => ({ id: r._id || r.id, _id: r._id, rawId: r.id, ...r }))
     .filter((r) => r?.payload);
 }
+
 async function deleteReport(anyId) {
   const id = encodeURIComponent(anyId);
   const res = await fetch(`${API_BASE}/api/reports/${id}`, {
@@ -189,8 +200,21 @@ function groupByMonth(reports) {
     ]);
 }
 
+/* ===== Edit route guesser (fix Page not found) ===== */
+function guessInputPathFromCurrentPath() {
+  const p = String(window.location.pathname || "/").replace(/\/$/, "");
+  // common endings we might have for viewer
+  const replaced = p.replace(/(reports|report|view|browse|archive)$/i, "input");
+  if (replaced !== p) return replaced;
+
+  // if your viewer is .../non-conformance, then input becomes .../non-conformance/input
+  return `${p}/input`;
+}
+
 /* ===== Component ===== */
 export default function NonConformanceReportsView() {
+  const navigate = useNavigate();
+
   const [data, setData] = useState([]);
   const [activeMonth, setActiveMonth] = useState("");
   const [activeId, setActiveId] = useState("");
@@ -216,52 +240,51 @@ export default function NonConformanceReportsView() {
     })();
   }, []);
 
-  /* ===== actions (view-only) ===== */
+  async function refresh() {
+    const rows = await listReports();
+    setData(rows);
+  }
+
+  /* ===== actions ===== */
   async function onDelete() {
     if (!safeRouteId) return;
     if (!window.confirm("حذف التقرير نهائيًا؟")) return;
     setBusy(true);
     const ok = await deleteReport(safeRouteId);
     if (!ok) alert("فشل الحذف");
-    const rows = await listReports();
-    setData(rows);
+    await refresh();
     setActiveId("");
     setBusy(false);
+  }
+
+  function onEdit() {
+    if (!view?.headRow?.reportDate) return alert("ما في تاريخ للتقرير.");
+    const date = String(view.headRow.reportDate);
+    const inputPath = guessInputPathFromCurrentPath();
+
+    // ✅ يفتح صفحة الإدخال مع التاريخ
+    navigate(`${inputPath}?date=${encodeURIComponent(date)}`);
   }
 
   function exportXlsx() {
     if (!view) return;
     const p = view;
+
+    const evidenceImgs =
+      p?.correctiveActionExtras?.evidence?.images || [];
+
     const aoa = [
       ["NON-CONFORMANCE REPORT"],
       [],
-      [
-        "Document Title",
-        p?.headerTop?.documentTitle || "",
-        "Document No",
-        p?.headerTop?.documentNo || "",
-      ],
-      [
-        "Issue Date",
-        p?.headerTop?.issueDate || "",
-        "Revision No",
-        p?.headerTop?.revisionNo || "",
-      ],
-      [
-        "Area",
-        p?.headerTop?.area || "",
-        "Controlling Officer",
-        p?.headerTop?.controllingOfficer || "",
-      ],
+      ["Document Title", p?.headerTop?.documentTitle || "", "Document No", p?.headerTop?.documentNo || ""],
+      ["Issue Date", p?.headerTop?.issueDate || "", "Revision No", p?.headerTop?.revisionNo || ""],
+      ["Area", p?.headerTop?.area || "", "Controlling Officer", p?.headerTop?.controllingOfficer || ""],
       ["Issued By", p?.headerTop?.issuedBy || "", "Approved By", p?.headerTop?.approvedBy || ""],
       [],
       ["Location", p?.location || ""],
       ["Date", p?.headRow?.reportDate || "", "NC No.", p?.headRow?.ncNo || ""],
       ["Issued to", p?.headRow?.issuedTo || "", "Issued by", p?.headRow?.issuedBy || ""],
-      [
-        "",
-        "",
-      ],
+      [],
       [
         "Reference",
         `${p?.reference?.inhouseQC ? "In-house QC; " : ""}${
@@ -274,16 +297,28 @@ export default function NonConformanceReportsView() {
       ["Nonconformance/Report Details", p?.detailsBlock || ""],
       ["Root Cause(s)", p?.rootCause || ""],
       ["Corrective Action", p?.correctiveAction || ""],
+      [],
+      ["Implementation Owner", p?.correctiveActionExtras?.implementationOwner || ""],
+      ["Target Completion Date", p?.correctiveActionExtras?.targetCompletionDateISO || ""],
+      ["Status", p?.correctiveActionExtras?.status || ""],
+      [],
+      ["Evidence Images (URLs)", evidenceImgs.join("\n")],
+      [],
       ["Performed by", p?.performedBy || "", "Department", p?.department || ""],
       ["Verification of Corrective Action", p?.verificationOfCorrectiveAction || ""],
+      [],
+      ["QA Verified By", p?.qaVerification?.verifiedByQA || "", "QA Date", p?.qaVerification?.dateISO || ""],
+      ["QA Result", p?.qaVerification?.result || "", "Closure Date", p?.qaVerification?.closureDateISO || ""],
+      ["Follow-up Actions Required", p?.qaVerification?.followupActionsRequired || ""],
+      ["Follow-up Responsible", p?.qaVerification?.followupResponsible || "", "Follow-up Target", p?.qaVerification?.followupTargetDateISO || ""],
+      [],
+      ["Final QA Name", p?.finalQaClosure?.name || "", "Final QA Date", p?.finalQaClosure?.dateISO || ""],
+      ["Final QA Approved", p?.finalQaClosure?.approved ? "YES" : "NO"],
+      [],
       ["Signature", p?.signature?.signature || "", "Date", p?.signature?.date || ""],
-      [
-        "Responsible Person",
-        p?.signature?.responsiblePerson || "",
-        "Signature",
-        p?.signature?.responsibleSignature || "",
-      ],
+      ["Responsible Person", p?.signature?.responsiblePerson || "", "Signature", p?.signature?.responsibleSignature || ""],
     ];
+
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["A1"].s = { font: { bold: true, sz: 14 } };
@@ -319,6 +354,8 @@ export default function NonConformanceReportsView() {
   }
 
   const grouped = useMemo(() => groupByMonth(data), [data]);
+
+  const evidenceImgs = view?.correctiveActionExtras?.evidence?.images || [];
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16 }}>
@@ -396,8 +433,23 @@ export default function NonConformanceReportsView() {
           <div style={{ color: "#64748b" }}>اختر تقريرًا من الشجرة.</div>
         ) : (
           <>
-            {/* toolbar — view-only */}
+            {/* toolbar */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <button
+                disabled={busy}
+                onClick={onEdit}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #0ea5e9",
+                  background: "#fff",
+                  fontWeight: 900,
+                  color: "#0ea5e9",
+                }}
+              >
+                ✏️ Edit
+              </button>
+
               <button
                 disabled={busy}
                 onClick={exportXlsx}
@@ -470,23 +522,15 @@ export default function NonConformanceReportsView() {
                 </colgroup>
                 <tbody>
                   <tr>
-                    <td style={cell}>
-                      <b>Date:</b>
-                    </td>
+                    <td style={cell}><b>Date:</b></td>
                     <td style={cell}>{view?.headRow?.reportDate || "\u00A0"}</td>
-                    <td style={cell}>
-                      <b>NC No.:</b>
-                    </td>
+                    <td style={cell}><b>NC No.:</b></td>
                     <td style={cell}>{view?.headRow?.ncNo || "\u00A0"}</td>
                   </tr>
                   <tr>
-                    <td style={cell}>
-                      <b>Issued to:</b>
-                    </td>
+                    <td style={cell}><b>Issued to:</b></td>
                     <td style={cell}>{view?.headRow?.issuedTo || "\u00A0"}</td>
-                    <td style={cell}>
-                      <b>Issued by:</b>
-                    </td>
+                    <td style={cell}><b>Issued by:</b></td>
                     <td style={cell}>{view?.headRow?.issuedBy || "\u00A0"}</td>
                   </tr>
                 </tbody>
@@ -496,22 +540,12 @@ export default function NonConformanceReportsView() {
               <table style={{ ...table, marginTop: 6 }}>
                 <tbody>
                   <tr>
-                    <td style={{ ...cell, width: "22mm" }}>
-                      <b>Reference</b>
-                    </td>
+                    <td style={{ ...cell, width: "22mm" }}><b>Reference</b></td>
                     <td style={cell}>
-                      {(view?.reference?.inhouseQC
-                        ? "☑ In-house QC  "
-                        : "□ In-house QC  ")}
-                      {(view?.reference?.customerComplaint
-                        ? "☑ Customer Complaint  "
-                        : "□ Customer Complaint  ")}
-                      {(view?.reference?.internalAudit
-                        ? "☑ Internal Audit  "
-                        : "□ Internal Audit  ")}
-                      {(view?.reference?.externalAudit
-                        ? "☑ External Audit"
-                        : "□ External Audit")}
+                      {(view?.reference?.inhouseQC ? "☑ In-house QC  " : "□ In-house QC  ")}
+                      {(view?.reference?.customerComplaint ? "☑ Customer Complaint  " : "□ Customer Complaint  ")}
+                      {(view?.reference?.internalAudit ? "☑ Internal Audit  " : "□ Internal Audit  ")}
+                      {(view?.reference?.externalAudit ? "☑ External Audit" : "□ External Audit")}
                     </td>
                   </tr>
                 </tbody>
@@ -521,9 +555,7 @@ export default function NonConformanceReportsView() {
               <table style={{ ...table, marginTop: 6 }}>
                 <tbody>
                   <tr>
-                    <td style={{ ...cell, width: "60mm" }}>
-                      <b>Nonconformance/Report Details</b>
-                    </td>
+                    <td style={{ ...cell, width: "60mm" }}><b>Nonconformance/Report Details</b></td>
                     <td style={cell}>{view?.detailsBlock || "\u00A0"}</td>
                   </tr>
                 </tbody>
@@ -533,9 +565,7 @@ export default function NonConformanceReportsView() {
               <table style={{ ...table, marginTop: 6 }}>
                 <tbody>
                   <tr>
-                    <td style={{ ...cell, width: "60mm" }}>
-                      <b>Root Cause(s) of Nonconformance</b>
-                    </td>
+                    <td style={{ ...cell, width: "60mm" }}><b>Root Cause(s) of Nonconformance</b></td>
                     <td style={cell}>{view?.rootCause || "\u00A0"}</td>
                   </tr>
                 </tbody>
@@ -545,10 +575,63 @@ export default function NonConformanceReportsView() {
               <table style={{ ...table, marginTop: 6 }}>
                 <tbody>
                   <tr>
-                    <td style={{ ...cell, width: "60mm" }}>
-                      <b>Corrective Action</b>
-                    </td>
+                    <td style={{ ...cell, width: "60mm" }}><b>Corrective Action</b></td>
                     <td style={cell}>{view?.correctiveAction || "\u00A0"}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* NEW: Owner/Target/Status */}
+              <div style={sectionTitle}>Corrective Action – Tracking</div>
+              <table style={table}>
+                <colgroup>
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "25%" }} />
+                </colgroup>
+                <tbody>
+                  <tr>
+                    <td style={cell}><b>Implementation Owner</b></td>
+                    <td style={cell}>{view?.correctiveActionExtras?.implementationOwner || "\u00A0"}</td>
+                    <td style={cell}><b>Target Completion Date</b></td>
+                    <td style={cell}>{view?.correctiveActionExtras?.targetCompletionDateISO || "\u00A0"}</td>
+                  </tr>
+                  <tr>
+                    <td style={cell}><b>Status</b></td>
+                    <td style={cell} colSpan={3}>{view?.correctiveActionExtras?.status || "\u00A0"}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* NEW: Evidence images */}
+              <div style={sectionTitle}>Evidence / Attachments (Images)</div>
+              <table style={table}>
+                <tbody>
+                  <tr>
+                    <td style={{ ...cell, width: "60mm" }}><b>Images</b></td>
+                    <td style={cell}>
+                      {evidenceImgs.length === 0 ? (
+                        <span>{"\u00A0"}</span>
+                      ) : (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {evidenceImgs.slice(0, 10).map((src, i) => (
+                            <img
+                              key={src + i}
+                              src={src}
+                              crossOrigin="anonymous"
+                              alt={`evidence-${i}`}
+                              style={{
+                                width: 90,
+                                height: 60,
+                                objectFit: "cover",
+                                border: "1px solid #000",
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -563,13 +646,9 @@ export default function NonConformanceReportsView() {
                 </colgroup>
                 <tbody>
                   <tr>
-                    <td style={cell}>
-                      <b>Performed by:</b>
-                    </td>
+                    <td style={cell}><b>Performed by:</b></td>
                     <td style={cell}>{view?.performedBy || "\u00A0"}</td>
-                    <td style={cell}>
-                      <b>Department:</b>
-                    </td>
+                    <td style={cell}><b>Department:</b></td>
                     <td style={cell}>{view?.department || "\u00A0"}</td>
                   </tr>
                 </tbody>
@@ -579,11 +658,67 @@ export default function NonConformanceReportsView() {
               <table style={{ ...table, marginTop: 6 }}>
                 <tbody>
                   <tr>
-                    <td style={{ ...cell, width: "60mm" }}>
-                      <b>Verification of Corrective Action:</b>
-                    </td>
-                    <td style={cell}>
-                      {view?.verificationOfCorrectiveAction || "\u00A0"}
+                    <td style={{ ...cell, width: "60mm" }}><b>Verification of Corrective Action:</b></td>
+                    <td style={cell}>{view?.verificationOfCorrectiveAction || "\u00A0"}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* NEW: QA Verification */}
+              <div style={sectionTitle}>QA Verification</div>
+              <table style={table}>
+                <colgroup>
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "25%" }} />
+                </colgroup>
+                <tbody>
+                  <tr>
+                    <td style={cell}><b>Verified by (QA)</b></td>
+                    <td style={cell}>{view?.qaVerification?.verifiedByQA || "\u00A0"}</td>
+                    <td style={cell}><b>Date</b></td>
+                    <td style={cell}>{view?.qaVerification?.dateISO || "\u00A0"}</td>
+                  </tr>
+                  <tr>
+                    <td style={cell}><b>Result</b></td>
+                    <td style={cell}>{view?.qaVerification?.result || "\u00A0"}</td>
+                    <td style={cell}><b>Closure Date</b></td>
+                    <td style={cell}>{view?.qaVerification?.closureDateISO || "\u00A0"}</td>
+                  </tr>
+                  <tr>
+                    <td style={cell}><b>Follow-up Actions Required</b></td>
+                    <td style={cell} colSpan={3}>{view?.qaVerification?.followupActionsRequired || "\u00A0"}</td>
+                  </tr>
+                  <tr>
+                    <td style={cell}><b>Follow-up Responsible</b></td>
+                    <td style={cell}>{view?.qaVerification?.followupResponsible || "\u00A0"}</td>
+                    <td style={cell}><b>Target Date</b></td>
+                    <td style={cell}>{view?.qaVerification?.followupTargetDateISO || "\u00A0"}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* NEW: Final QA Closure */}
+              <div style={sectionTitle}>Final QA Closure</div>
+              <table style={table}>
+                <colgroup>
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "25%" }} />
+                  <col style={{ width: "25%" }} />
+                </colgroup>
+                <tbody>
+                  <tr>
+                    <td style={cell}><b>Name</b></td>
+                    <td style={cell}>{view?.finalQaClosure?.name || "\u00A0"}</td>
+                    <td style={cell}><b>Date</b></td>
+                    <td style={cell}>{view?.finalQaClosure?.dateISO || "\u00A0"}</td>
+                  </tr>
+                  <tr>
+                    <td style={cell}><b>Approved</b></td>
+                    <td style={cell} colSpan={3}>
+                      {view?.finalQaClosure?.approved ? "YES" : "NO"}
                     </td>
                   </tr>
                 </tbody>
@@ -599,13 +734,9 @@ export default function NonConformanceReportsView() {
                 </colgroup>
                 <tbody>
                   <tr>
-                    <td style={cell}>
-                      <b>Signature:</b>
-                    </td>
+                    <td style={cell}><b>Signature:</b></td>
                     <td style={cell}>{view?.signature?.signature || "\u00A0"}</td>
-                    <td style={cell}>
-                      <b>Date:</b>
-                    </td>
+                    <td style={cell}><b>Date:</b></td>
                     <td style={cell}>{view?.signature?.date || "\u00A0"}</td>
                   </tr>
                 </tbody>
@@ -621,18 +752,10 @@ export default function NonConformanceReportsView() {
                 </colgroup>
                 <tbody>
                   <tr>
-                    <td style={cell}>
-                      <b>Responsible Person:</b>
-                    </td>
-                    <td style={cell}>
-                      {view?.signature?.responsiblePerson || "\u00A0"}
-                    </td>
-                    <td style={cell}>
-                      <b>Signature:</b>
-                    </td>
-                    <td style={cell}>
-                      {view?.signature?.responsibleSignature || "\u00A0"}
-                    </td>
+                    <td style={cell}><b>Responsible Person:</b></td>
+                    <td style={cell}>{view?.signature?.responsiblePerson || "\u00A0"}</td>
+                    <td style={cell}><b>Signature:</b></td>
+                    <td style={cell}>{view?.signature?.responsibleSignature || "\u00A0"}</td>
                   </tr>
                 </tbody>
               </table>

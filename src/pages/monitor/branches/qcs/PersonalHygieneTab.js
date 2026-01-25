@@ -7,29 +7,49 @@ import React, { useState } from "react";
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 
 const CRA_URL =
-  (typeof process !== "undefined" &&
-    process.env &&
-    process.env.REACT_APP_API_URL)
+  typeof process !== "undefined" &&
+  process.env &&
+  process.env.REACT_APP_API_URL
     ? process.env.REACT_APP_API_URL
     : undefined;
 
 let VITE_URL;
-try { VITE_URL = import.meta.env?.VITE_API_URL; } catch {}
+try {
+  VITE_URL = import.meta.env?.VITE_API_URL;
+} catch {}
 
 const API_BASE = (VITE_URL || CRA_URL || API_BASE_DEFAULT).replace(/\/$/, "");
 const IS_SAME_ORIGIN = (() => {
-  try { return new URL(API_BASE).origin === window.location.origin; }
-  catch { return false; }
+  try {
+    return new URL(API_BASE).origin === window.location.origin;
+  } catch {
+    return false;
+  }
 })();
 
 /* ---- Fallbacks ---- */
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 const MIN_ROWS_FALLBACK = 21;
+
+// ✅ Removed "KIDANY"
 const DEFAULT_NAMES = [
-  "WELSON","GHITH","ROTIC","RAJU","ABED","KIDANY","MARK","SOULEMAN",
-  "THEOPHIAUS","PRINCE","KWAKU ANTWI","KARTHICK","BHUVANESHWARAN",
-  "JAYABHARATHI","PURUSHOTH","NASIR"
+  "WELSON",
+  "GABREAL",
+  "ROTIC",
+  "RAJU",
+  "ABED",
+  "MARK",
+  "SOULEMAN",
+  "THEOPHIAUS",
+  "PRINCE",
+  "KWAKU ANTWI",
+  "KARTHICK",
+  "BHUVANESHWARAN",
+  "JAYABHARATHI",
+  "PURUSHOTH",
+  "NASIR",
 ];
+
 const defaultPHHeader = {
   documentTitle: "Personal Hygiene Checklist",
   documentNo: "FS-QM/REC/PH",
@@ -40,26 +60,57 @@ const defaultPHHeader = {
   controllingOfficer: "Quality Controller",
   approvedBy: "Hussam O. Sarhan",
 };
-const defaultPHFooter = { checkedBy: "", verifiedBy: "" };
+
+// ✅ Auto-fill with MOHAMAD ABDULLAH (editable)
+const DEFAULT_SIGN_NAME = "MOHAMAD ABDULLAH";
+const defaultPHFooter = { checkedBy: DEFAULT_SIGN_NAME, verifiedBy: DEFAULT_SIGN_NAME };
 
 /* ---- Small UI helpers ---- */
 function RowKV({ label, value }) {
   return (
-    <div style={{ display:"flex", borderBottom:"1px solid #000" }}>
-      <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:170, fontWeight:700 }}>{label}</div>
-      <div style={{ padding:"6px 8px", flex:1 }}>{value}</div>
+    <div style={{ display: "flex", borderBottom: "1px solid #000" }}>
+      <div
+        style={{
+          padding: "6px 8px",
+          borderInlineEnd: "1px solid #000",
+          minWidth: 170,
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ padding: "6px 8px", flex: 1 }}>{value}</div>
     </div>
   );
 }
+
 function PHEntryHeader({ header, date, logoUrl }) {
   const h = header || defaultPHHeader;
   return (
-    <div style={{ border:"1px solid #000", marginBottom:8 }}>
-      <div style={{ display:"grid", gridTemplateColumns:"180px 1fr 1fr", alignItems:"stretch" }}>
-        <div style={{ borderInlineEnd:"1px solid #000", display:"flex", alignItems:"center", justifyContent:"center", padding:8 }}>
-          <img src={logoUrl || LOGO_FALLBACK} alt="Al Mawashi" style={{ maxWidth:"100%", maxHeight:80, objectFit:"contain" }} />
+    <div style={{ border: "1px solid #000", marginBottom: 8 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "180px 1fr 1fr",
+          alignItems: "stretch",
+        }}
+      >
+        <div
+          style={{
+            borderInlineEnd: "1px solid #000",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 8,
+          }}
+        >
+          <img
+            src={logoUrl || LOGO_FALLBACK}
+            alt="Al Mawashi"
+            style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }}
+          />
         </div>
-        <div style={{ borderInlineEnd:"1px solid #000" }}>
+        <div style={{ borderInlineEnd: "1px solid #000" }}>
           <RowKV label="Document Title:" value={h.documentTitle} />
           <RowKV label="Issue Date:" value={h.issueDate} />
           <RowKV label="Area:" value={h.area} />
@@ -73,16 +124,32 @@ function PHEntryHeader({ header, date, logoUrl }) {
         </div>
       </div>
 
-      <div style={{ borderTop:"1px solid #000" }}>
-        <div style={{ background:"#c0c0c0", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+      <div style={{ borderTop: "1px solid #000" }}>
+        <div
+          style={{
+            background: "#c0c0c0",
+            textAlign: "center",
+            fontWeight: 900,
+            padding: "6px 8px",
+            borderBottom: "1px solid #000",
+          }}
+        >
           TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS
         </div>
-        <div style={{ background:"#d6d6d6", textAlign:"center", fontWeight:900, padding:"6px 8px", borderBottom:"1px solid #000" }}>
+        <div
+          style={{
+            background: "#d6d6d6",
+            textAlign: "center",
+            fontWeight: 900,
+            padding: "6px 8px",
+            borderBottom: "1px solid #000",
+          }}
+        >
           PERSONAL HYGIENE CHECKLIST
         </div>
         {date ? (
-          <div style={{ display:"flex", gap:8, alignItems:"center", padding:"6px 8px" }}>
-            <span style={{ fontWeight:900, textDecoration:"underline" }}>Date:</span>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px" }}>
+            <span style={{ fontWeight: 900, textDecoration: "underline" }}>Date:</span>
             <span>{date}</span>
           </div>
         ) : null}
@@ -90,62 +157,115 @@ function PHEntryHeader({ header, date, logoUrl }) {
     </div>
   );
 }
+
 function PHEntryFooter({ footer }) {
   const f = footer || defaultPHFooter;
   return (
-    <div style={{ border:"1px solid #000", marginTop:8 }}>
-      <div style={{ padding:"6px 8px", borderBottom:"1px solid #000", fontWeight:900 }}>
+    <div style={{ border: "1px solid #000", marginTop: 8 }}>
+      <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>
         REMARKS / CORRECTIVE ACTIONS:
       </div>
-      <div style={{ padding:"8px", borderBottom:"1px solid #000", minHeight:40 }}>
+      <div style={{ padding: "8px", borderBottom: "1px solid #000", minHeight: 40 }}>
         <em>*(C - Conform &nbsp;&nbsp; N/C - Non Conform)</em>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr" }}>
-        <div style={{ display:"flex" }}>
-          <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:120, fontWeight:700 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+        <div style={{ display: "flex" }}>
+          <div
+            style={{
+              padding: "6px 8px",
+              borderInlineEnd: "1px solid #000",
+              minWidth: 120,
+              fontWeight: 700,
+            }}
+          >
             Checked By:
           </div>
-          <div style={{ padding:"6px 8px", flex:1 }}>{f.checkedBy || "\u00A0"}</div>
+          <div style={{ padding: "6px 8px", flex: 1 }}>{f.checkedBy || "\u00A0"}</div>
         </div>
-        <div style={{ display:"flex", borderInlineStart:"1px solid #000" }}>
-          <div style={{ padding:"6px 8px", borderInlineEnd:"1px solid #000", minWidth:120, fontWeight:700 }}>
+        <div style={{ display: "flex", borderInlineStart: "1px solid #000" }}>
+          <div
+            style={{
+              padding: "6px 8px",
+              borderInlineEnd: "1px solid #000",
+              minWidth: 120,
+              fontWeight: 700,
+            }}
+          >
             Verified By:
           </div>
-          <div style={{ padding:"6px 8px", flex:1 }}>{f.verifiedBy || "\u00A0"}</div>
+          <div style={{ padding: "6px 8px", flex: 1 }}>{f.verifiedBy || "\u00A0"}</div>
         </div>
       </div>
     </div>
   );
 }
+
 function PHHeaderEditor({ header, setHeader, footer, setFooter }) {
   const h = header || defaultPHHeader;
   const f = footer || defaultPHFooter;
-  const updateHeader = (k, v) => (typeof setHeader === "function") && setHeader({ ...h, [k]: v });
-  const updateFooter = (k, v) => (typeof setFooter === "function") && setFooter({ ...f, [k]: v });
+  const updateHeader = (k, v) => typeof setHeader === "function" && setHeader({ ...h, [k]: v });
+  const updateFooter = (k, v) => typeof setFooter === "function" && setFooter({ ...f, [k]: v });
 
-  const row = { display:"grid", gridTemplateColumns:"160px 1fr", gap:8, alignItems:"center" };
-  const input = { padding:"8px 10px", border:"1px solid #cbd5e1", borderRadius:8 };
+  const row = { display: "grid", gridTemplateColumns: "160px 1fr", gap: 8, alignItems: "center" };
+  const input = { padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 8 };
 
   return (
-    <details style={{ border:"1px dashed #cbd5e1", borderRadius:8, padding:12, margin: "10px 0" }}>
-      <summary style={{ cursor:"pointer", fontWeight:800 }}>⚙️ Edit Header & Footer (Personal Hygiene)</summary>
-      <div style={{ marginTop:10, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+    <details style={{ border: "1px dashed #cbd5e1", borderRadius: 8, padding: 12, margin: "10px 0" }}>
+      <summary style={{ cursor: "pointer", fontWeight: 800 }}>⚙️ Edit Header & Footer (Personal Hygiene)</summary>
+
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div>
-          <label style={row}><span>Document Title</span><input style={input} value={h.documentTitle} onChange={e=>updateHeader("documentTitle", e.target.value)} /></label>
-          <label style={row}><span>Issue Date</span><input style={input} value={h.issueDate} onChange={e=>updateHeader("issueDate", e.target.value)} /></label>
-          <label style={row}><span>Area</span><input style={input} value={h.area} onChange={e=>updateHeader("area", e.target.value)} /></label>
-          <label style={row}><span>Controlling Officer</span><input style={input} value={h.controllingOfficer} onChange={e=>updateHeader("controllingOfficer", e.target.value)} /></label>
+          <label style={row}>
+            <span>Document Title</span>
+            <input style={input} value={h.documentTitle} onChange={(e) => updateHeader("documentTitle", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Issue Date</span>
+            <input style={input} value={h.issueDate} onChange={(e) => updateHeader("issueDate", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Area</span>
+            <input style={input} value={h.area} onChange={(e) => updateHeader("area", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Controlling Officer</span>
+            <input
+              style={input}
+              value={h.controllingOfficer}
+              onChange={(e) => updateHeader("controllingOfficer", e.target.value)}
+            />
+          </label>
         </div>
+
         <div>
-          <label style={row}><span>Document No</span><input style={input} value={h.documentNo} onChange={e=>updateHeader("documentNo", e.target.value)} /></label>
-          <label style={row}><span>Revision No</span><input style={input} value={h.revisionNo} onChange={e=>updateHeader("revisionNo", e.target.value)} /></label>
-          <label style={row}><span>Issued By</span><input style={input} value={h.issuedBy} onChange={e=>updateHeader("issuedBy", e.target.value)} /></label>
-          <label style={row}><span>Approved By</span><input style={input} value={h.approvedBy} onChange={e=>updateHeader("approvedBy", e.target.value)} /></label>
+          <label style={row}>
+            <span>Document No</span>
+            <input style={input} value={h.documentNo} onChange={(e) => updateHeader("documentNo", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Revision No</span>
+            <input style={input} value={h.revisionNo} onChange={(e) => updateHeader("revisionNo", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Issued By</span>
+            <input style={input} value={h.issuedBy} onChange={(e) => updateHeader("issuedBy", e.target.value)} />
+          </label>
+          <label style={row}>
+            <span>Approved By</span>
+            <input style={input} value={h.approvedBy} onChange={(e) => updateHeader("approvedBy", e.target.value)} />
+          </label>
         </div>
       </div>
-      <div style={{ marginTop:12, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-        <label style={row}><span>Checked By</span><input style={input} value={f.checkedBy} onChange={e=>updateFooter("checkedBy", e.target.value)} /></label>
-        <label style={row}><span>Verified By</span><input style={input} value={f.verifiedBy} onChange={e=>updateFooter("verifiedBy", e.target.value)} /></label>
+
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <label style={row}>
+          <span>Checked By</span>
+          <input style={input} value={f.checkedBy} onChange={(e) => updateFooter("checkedBy", e.target.value)} />
+        </label>
+        <label style={row}>
+          <span>Verified By</span>
+          <input style={input} value={f.verifiedBy} onChange={(e) => updateFooter("verifiedBy", e.target.value)} />
+        </label>
       </div>
     </details>
   );
@@ -162,30 +282,61 @@ const COLUMNS = [
 ];
 
 /* ---- Helpers ---- */
-function makeEmptyRow(name="") {
+const makeCDefaults = () => ({
+  nails: "C",
+  hair: "C",
+  notWearingJewelries: "C",
+  wearingCleanCloth: "C",
+  communicicableDisease: undefined, // (typo guard, not used)
+  communicableDisease: "C",
+  openWounds: "C",
+});
+
+function makeEmptyRow(name = "", active = false) {
+  const c = active ? makeCDefaults() : {};
   return {
     employName: name,
-    nails: "",
-    hair: "",
-    notWearingJewelries: "",
-    wearingCleanCloth: "",
-    communicableDisease: "",
-    openWounds: "",
+    nails: active ? c.nails : "",
+    hair: active ? c.hair : "",
+    notWearingJewelries: active ? c.notWearingJewelries : "",
+    wearingCleanCloth: active ? c.wearingCleanCloth : "",
+    communicableDisease: active ? c.communicableDisease : "",
+    openWounds: active ? c.openWounds : "",
     remarks: "",
   };
 }
+
+// ✅ Default named rows => auto C, blank rows remain empty
 function makeDefaultHygiene(min = MIN_ROWS_FALLBACK) {
-  const rows = DEFAULT_NAMES.map(n => makeEmptyRow(n));
-  while (rows.length < min) rows.push(makeEmptyRow(""));
+  const rows = DEFAULT_NAMES.map((n) => makeEmptyRow(n, true));
+  while (rows.length < min) rows.push(makeEmptyRow("", false));
   return rows;
 }
-const th = (w)=>({ padding:"6px", border:"1px solid #ccc", textAlign:"center", fontSize:"0.85rem", width:w });
-const td = ()=>({ padding:"6px", border:"1px solid #ccc", textAlign:"center" });
-const inp = (w)=>({
-  width: w, maxWidth: "100%", padding:"6px 8px", borderRadius:8, border:"1px solid #cbd5e1", boxSizing:"border-box"
+
+const th = (w) => ({
+  padding: "6px",
+  border: "1px solid #ccc",
+  textAlign: "center",
+  fontSize: "0.85rem",
+  width: w,
 });
-const sel = (w)=>({
-  width: w, maxWidth:"100%", padding:"6px 8px", borderRadius:8, border:"1px solid #cbd5e1", background:"#fff", boxSizing:"border-box"
+const td = () => ({ padding: "6px", border: "1px solid #ccc", textAlign: "center" });
+const inp = (w) => ({
+  width: w,
+  maxWidth: "100%",
+  padding: "6px 8px",
+  borderRadius: 8,
+  border: "1px solid #cbd5e1",
+  boxSizing: "border-box",
+});
+const sel = (w) => ({
+  width: w,
+  maxWidth: "100%",
+  padding: "6px 8px",
+  borderRadius: 8,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  boxSizing: "border-box",
 });
 
 /* =========================
@@ -194,17 +345,19 @@ const sel = (w)=>({
 const PH_TYPE = "qcs-ph";
 
 async function listReportsByType(type) {
-  const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`,
-    { method: "GET", cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" }
-  );
+  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
+    method: "GET",
+    cache: "no-store",
+    credentials: IS_SAME_ORIGIN ? "include" : "omit",
+  });
   if (!res.ok) return [];
   const json = await res.json().catch(() => null);
   return Array.isArray(json) ? json : json?.data || [];
 }
+
 async function fetchExistingPHByDate(dateStr) {
   const rows = await listReportsByType(PH_TYPE);
-  const found = rows.find(r => String(r?.payload?.reportDate || "") === String(dateStr));
+  const found = rows.find((r) => String(r?.payload?.reportDate || "") === String(dateStr));
   return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
 }
 
@@ -262,8 +415,8 @@ export default function PersonalHygieneTab(props) {
 
       const body = {
         reporter: "QCS/PH",
-        type: PH_TYPE,               // 👈 نوع مستقل
-        payload,                     // 👈 فقط حقول PH
+        type: PH_TYPE, // 👈 نوع مستقل
+        payload, // 👈 فقط حقول PH
       };
 
       if (existing?.id) {
@@ -292,44 +445,106 @@ export default function PersonalHygieneTab(props) {
     }
   }
 
-  const addRow = () => setRows(prev => ([...(Array.isArray(prev) ? prev : []), makeEmptyRow("")]));
-  const removeRow = (i) => setRows(prev => (Array.isArray(prev) ? prev.filter((_, idx) => idx !== i) : prev));
+  const addRow = () => setRows((prev) => ([...(Array.isArray(prev) ? prev : []), makeEmptyRow("", false)]));
+  const removeRow = (i) => setRows((prev) => (Array.isArray(prev) ? prev.filter((_, idx) => idx !== i) : prev));
+
+  // ✅ Fill default names + set default C for those rows
   const fillDefaultNames = () => {
-    setRows(prev => {
+    setRows((prev) => {
       const base = Array.isArray(prev) ? [...prev] : [];
       for (let i = 0; i < DEFAULT_NAMES.length; i++) {
-        if (!base[i]) base[i] = makeEmptyRow(DEFAULT_NAMES[i]);
-        else base[i] = { ...base[i], employName: DEFAULT_NAMES[i] };
+        const name = DEFAULT_NAMES[i];
+        const existing = base[i] || makeEmptyRow("", false);
+        base[i] = {
+          ...existing,
+          employName: name,
+          nails: "C",
+          hair: "C",
+          notWearingJewelries: "C",
+          wearingCleanCloth: "C",
+          communicableDisease: "C",
+          openWounds: "C",
+        };
       }
       return base;
     });
   };
+
   const ensureMin = () => {
-    setRows(prev => {
+    setRows((prev) => {
       const base = Array.isArray(prev) ? [...prev] : [];
-      while (base.length < (minRows || MIN_ROWS_FALLBACK)) base.push(makeEmptyRow(""));
+      while (base.length < (minRows || MIN_ROWS_FALLBACK)) base.push(makeEmptyRow("", false));
       return base;
     });
   };
 
+  // ✅ When employee name becomes non-empty (active row), auto-fill C (only if those fields are empty)
   const onCellChange = (rowIdx, key, value) => {
-    setRows(prev => {
+    setRows((prev) => {
       const base = Array.isArray(prev) ? [...prev] : [];
-      const r = base[rowIdx] || makeEmptyRow("");
+      const r = base[rowIdx] || makeEmptyRow("", false);
+
+      if (key === "employName") {
+        const nextName = String(value || "");
+        const wasEmpty = !String(r?.employName || "").trim();
+        const nowHasName = !!nextName.trim();
+
+        // If row becomes active now, set defaults to C (only if blanks)
+        if (wasEmpty && nowHasName) {
+          const next = { ...r, employName: nextName };
+          for (const c of COLUMNS) {
+            if (!String(next?.[c.key] || "").trim()) next[c.key] = "C";
+          }
+          base[rowIdx] = next;
+          return base;
+        }
+
+        base[rowIdx] = { ...r, employName: nextName };
+        return base;
+      }
+
       base[rowIdx] = { ...r, [key]: value };
       return base;
     });
   };
 
-  const toolbar = { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 };
-  const btnBase = { padding:"10px 14px", borderRadius: 10, cursor:"pointer", border:"1px solid #e5e7eb", background:"#fff", fontWeight:700 };
-  const btnPrimary = { ...btnBase, background:"#059669", color:"#fff", border:"1px solid transparent" };
-  const card = { background: "#fff", padding: "1rem", marginBottom: "1rem", borderRadius: 12, boxShadow: "0 0 8px rgba(0,0,0,.10)" };
+  const toolbar = {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    alignItems: "center",
+    marginBottom: 12,
+  };
+  const btnBase = {
+    padding: "10px 14px",
+    borderRadius: 10,
+    cursor: "pointer",
+    border: "1px solid #e5e7eb",
+    background: "#fff",
+    fontWeight: 700,
+  };
+  const btnPrimary = { ...btnBase, background: "#059669", color: "#fff", border: "1px solid transparent" };
+  const card = {
+    background: "#fff",
+    padding: "1rem",
+    marginBottom: "1rem",
+    borderRadius: 12,
+    boxShadow: "0 0 8px rgba(0,0,0,.10)",
+  };
 
   return (
     <div>
       {/* عنوان صغير + تاريخ إدخال داخل التبويب */}
-      <div style={{ ...card, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{
+          ...card,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <h3 style={{ margin: 0 }}>🧼 Personal Hygiene</h3>
         <label style={{ fontWeight: 700 }}>
           Date:{" "}
@@ -346,18 +561,28 @@ export default function PersonalHygieneTab(props) {
       <PHHeaderEditor header={header} setHeader={setHeader} footer={footer} setFooter={setFooter} />
 
       <div style={toolbar}>
-        <button onClick={fillDefaultNames} style={btnBase}>Reset Default Names</button>
-        <button onClick={ensureMin} style={btnBase}>Autofill to {minRows || MIN_ROWS_FALLBACK} rows</button>
-        <button onClick={addRow} style={btnBase}>➕ Add Row</button>
+        <button onClick={fillDefaultNames} style={btnBase}>
+          Reset Default Names
+        </button>
+        <button onClick={ensureMin} style={btnBase}>
+          Autofill to {minRows || MIN_ROWS_FALLBACK} rows
+        </button>
+        <button onClick={addRow} style={btnBase}>
+          ➕ Add Row
+        </button>
       </div>
 
       {/* جدول */}
-      <table style={{ width:"100%", borderCollapse:"collapse", tableLayout:"fixed" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
         <thead>
-          <tr style={{ background:"#2980b9", color:"#fff" }}>
+          <tr style={{ background: "#2980b9", color: "#fff" }}>
             <th style={th(60)}>S.No</th>
             <th style={th(180)}>Employee Name</th>
-            {COLUMNS.map((c, i) => <th key={i} style={th(150)}>{c.label}</th>)}
+            {COLUMNS.map((c, i) => (
+              <th key={i} style={th(150)}>
+                {c.label}
+              </th>
+            ))}
             <th style={th(240)}>Remarks and Corrective Actions</th>
             <th style={th(70)}>Actions</th>
           </tr>
@@ -369,21 +594,13 @@ export default function PersonalHygieneTab(props) {
 
               {/* Employee Name remains a free text input */}
               <td style={td()}>
-                <input
-                  value={r?.employName || ""}
-                  onChange={(e)=>onCellChange(i, "employName", e.target.value)}
-                  style={inp(180)}
-                />
+                <input value={r?.employName || ""} onChange={(e) => onCellChange(i, "employName", e.target.value)} style={inp(180)} />
               </td>
 
               {/* All other hygiene columns are dropdowns: C / N\C */}
               {COLUMNS.map((c, idx) => (
                 <td key={idx} style={td()}>
-                  <select
-                    value={r?.[c.key] || ""}
-                    onChange={(e)=>onCellChange(i, c.key, e.target.value)}
-                    style={sel(140)}
-                  >
+                  <select value={r?.[c.key] || ""} onChange={(e) => onCellChange(i, c.key, e.target.value)} style={sel(140)}>
                     <option value=""></option>
                     <option value="C">C</option>
                     <option value={"N\\C"}>N\C</option>
@@ -392,23 +609,29 @@ export default function PersonalHygieneTab(props) {
               ))}
 
               <td style={td()}>
-                <input
-                  value={r?.remarks || ""}
-                  onChange={(e)=>onCellChange(i, "remarks", e.target.value)}
-                  style={inp(240)}
-                />
+                <input value={r?.remarks || ""} onChange={(e) => onCellChange(i, "remarks", e.target.value)} style={inp(240)} />
               </td>
 
-              <td style={{ ...td(), textAlign:"center" }}>
-                <button onClick={()=>removeRow(i)} style={{ padding:"6px 10px", borderRadius:8, border:"1px solid #ef4444", color:"#ef4444", background:"#fff" }}>
+              <td style={{ ...td(), textAlign: "center" }}>
+                <button
+                  onClick={() => removeRow(i)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #ef4444",
+                    color: "#ef4444",
+                    background: "#fff",
+                  }}
+                >
                   ✖
                 </button>
               </td>
             </tr>
           ))}
+
           {rows.length === 0 && (
             <tr>
-              <td colSpan={COLUMNS.length + 3} style={{ ...td(), textAlign:"center", color:"#6b7280" }}>
+              <td colSpan={COLUMNS.length + 3} style={{ ...td(), textAlign: "center", color: "#6b7280" }}>
                 No rows yet. Use “Autofill” or “Add Row”.
               </td>
             </tr>
@@ -419,7 +642,7 @@ export default function PersonalHygieneTab(props) {
       <PHEntryFooter footer={footer} />
 
       {/* زر الحفظ — إذا الأب مرّر onSave سنستعمله، وإلا نستعمل الحفظ المحلي للسيرفر الخارجي */}
-      <div style={{ display:"flex", justifyContent:"center", marginTop:12 }}>
+      <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
         <button
           onClick={typeof onSave === "function" ? onSave : savePHToServer}
           disabled={saving || savingLocal}

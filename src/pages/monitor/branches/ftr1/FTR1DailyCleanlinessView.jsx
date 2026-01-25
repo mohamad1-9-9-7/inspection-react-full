@@ -1,5 +1,5 @@
 // src/pages/monitor/branches/ftr1/FTR1DailyCleanlinessView.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
@@ -13,23 +13,32 @@ export default function FTR1DailyCleanlinessView() {
   const reportRef = useRef();
   const fileInputRef = useRef(null);
 
-  const getId = (r) => r?.id || r?._id;
+  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
+
+  const getReportDate = (r) => {
+    const d1 = new Date(r?.payload?.reportDate);
+    if (!isNaN(d1)) return d1;
+    const d2 = new Date(r?.created_at);
+    return isNaN(d2) ? new Date(0) : d2;
+  };
 
   // Fetch reports (أحدث أولاً)
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=ftr1_daily_cleanliness`, { cache: "no-store" });
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=ftr1_daily_cleanliness`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort(
-        (a, b) =>
-          new Date(b.payload?.reportDate || 0) -
-          new Date(a.payload?.reportDate || 0)
-      );
+
+      // ✅ أحدث أولاً
+      arr.sort((a, b) => getReportDate(b) - getReportDate(a));
+
       setReports(arr);
-      setSelectedReport(arr[0] || null); // افتح الأحدث
+      setSelectedReport(arr[0] || null); // ✅ افتح الأحدث تلقائياً
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
@@ -40,6 +49,7 @@ export default function FTR1DailyCleanlinessView() {
 
   useEffect(() => {
     fetchReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ===== Export PDF =====
@@ -47,10 +57,11 @@ export default function FTR1DailyCleanlinessView() {
     if (!reportRef.current) return;
 
     const actions = reportRef.current.querySelector(".action-buttons");
+    const prev = actions?.style.display;
     if (actions) actions.style.display = "none";
 
     const canvas = await html2canvas(reportRef.current, {
-      scale: 4,
+      scale: 3,
       windowWidth: reportRef.current.scrollWidth,
       windowHeight: reportRef.current.scrollHeight,
     });
@@ -62,26 +73,30 @@ export default function FTR1DailyCleanlinessView() {
 
     let imgWidth = pageWidth;
     let imgHeight = (canvas.height * imgWidth) / canvas.width;
-    if (imgHeight > pageHeight) {
-      imgHeight = pageHeight;
+
+    // ضبط داخل صفحة واحدة قدر الإمكان
+    if (imgHeight > pageHeight - 40) {
+      imgHeight = pageHeight - 40;
       imgWidth = (canvas.width * imgHeight) / canvas.height;
     }
 
     const x = (pageWidth - imgWidth) / 2;
     const y = 20;
-    pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
-    pdf.save(`FTR1_Cleanliness_${selectedReport?.payload?.reportDate || "report"}.pdf`);
 
-    if (actions) actions.style.display = "flex";
+    pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
+    pdf.save(
+      `FTR1_Cleanliness_${selectedReport?.payload?.reportDate || "report"}.pdf`
+    );
+
+    if (actions) actions.style.display = prev || "flex";
   };
 
   // ===== Delete (بكلمة سر) =====
   const handleDelete = async (report) => {
     if (!report) return;
 
-    // كلمة السر البسيطة: 9999
     const pwd = window.prompt("Enter password to delete this report:");
-    if (pwd === null) return; // Cancel
+    if (pwd === null) return;
     if (pwd.trim() !== "9999") {
       alert("❌ Wrong password.");
       return;
@@ -89,11 +104,16 @@ export default function FTR1DailyCleanlinessView() {
 
     if (!window.confirm("⚠️ Delete this report? This action cannot be undone.")) return;
 
+    const rid = getId(report);
+    if (!rid) return alert("⚠️ Missing report ID.");
+
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${getId(report)}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+        method: "DELETE",
+      });
       if (!res.ok) throw new Error("Failed to delete");
       alert("✅ Report deleted.");
-      await fetchReports();
+      await fetchReports(); // ✅ يرجع يفتح الأحدث
     } catch (err) {
       console.error(err);
       alert("❌ Failed to delete.");
@@ -110,7 +130,9 @@ export default function FTR1DailyCleanlinessView() {
         count: payloads.length,
         items: payloads,
       };
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
@@ -180,17 +202,22 @@ export default function FTR1DailyCleanlinessView() {
   };
 
   // Group reports by year > month > day
-  const groupedReports = reports.reduce((acc, r) => {
-    const date = new Date(r.payload?.reportDate);
-    if (isNaN(date)) return acc;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    if (!acc[year]) acc[year] = {};
-    if (!acc[year][month]) acc[year][month] = [];
-    acc[year][month].push({ ...r, day, _dt: date.getTime() });
-    return acc;
-  }, {});
+  const groupedReports = useMemo(() => {
+    return reports.reduce((acc, r) => {
+      const date = getReportDate(r);
+      if (isNaN(date)) return acc;
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      acc[year] ??= {};
+      acc[year][month] ??= [];
+      acc[year][month].push({ ...r, day, _dt: date.getTime() });
+      return acc;
+    }, {});
+  }, [reports]);
+
+  const selectedPayload = selectedReport?.payload || {};
+  const entries = Array.isArray(selectedPayload?.entries) ? selectedPayload.entries : [];
 
   return (
     <div className="ftr1-clean" style={{ display: "flex", gap: "1rem" }}>
@@ -214,28 +241,31 @@ export default function FTR1DailyCleanlinessView() {
         <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
           🗓️ Saved Reports
         </h4>
+
         {loading ? (
           <p>⏳ Loading...</p>
         ) : Object.keys(groupedReports).length === 0 ? (
           <p>❌ No reports</p>
         ) : (
           <div>
+            {/* ✅ مطوية بشكل دائم: بدون open */}
             {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(b) - Number(a)) /* سنوات تنازلي */
+              .sort(([a], [b]) => Number(b) - Number(a))
               .map(([year, months]) => (
-                <details key={year} open>
+                <details key={year}>
                   <summary style={{ fontWeight: "bold" }}>📅 Year {year}</summary>
+
                   {Object.entries(months)
-                    .sort(([a], [b]) => Number(b) - Number(a)) /* أشهر تنازلي */
+                    .sort(([a], [b]) => Number(b) - Number(a))
                     .map(([month, days]) => {
-                      const daysSorted = [...days].sort((x, y) => y._dt - x._dt); // أيام تنازلي
+                      const daysSorted = [...days].sort((x, y) => y._dt - x._dt);
                       return (
-                        <details key={month} style={{ marginLeft: "1rem" }} open>
+                        <details key={month} style={{ marginLeft: "1rem" }}>
                           <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
+
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                             {daysSorted.map((r, i) => {
-                              const isActive =
-                                selectedReport && getId(selectedReport) === getId(r);
+                              const isActive = selectedReport && getId(selectedReport) === getId(r);
                               return (
                                 <li
                                   key={i}
@@ -260,7 +290,11 @@ export default function FTR1DailyCleanlinessView() {
                                   title={isActive ? "Currently open" : "Open report"}
                                 >
                                   <span>{`${r.day}/${month}/${year}`}</span>
-                                  {isActive ? <span>✔️</span> : <span style={{ opacity: 0.5 }}>•</span>}
+                                  {isActive ? (
+                                    <span>✔️</span>
+                                  ) : (
+                                    <span style={{ opacity: 0.5 }}>•</span>
+                                  )}
                                 </li>
                               );
                             })}
@@ -300,19 +334,29 @@ export default function FTR1DailyCleanlinessView() {
               }}
             >
               <h3 style={{ color: "#2980b9", margin: 0 }}>
-                🧹 Report: {selectedReport.payload?.reportDate}
+                🧹 Report: {selectedPayload?.reportDate || "—"}{" "}
+                {selectedPayload?.reportTime ? `• ${selectedPayload.reportTime}` : ""}
               </h3>
 
-              {/* كل الأزرار معًا */}
               <div
                 className="action-buttons"
-                style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}
+                style={{
+                  display: "flex",
+                  gap: "0.6rem",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
               >
-                <button onClick={handleExportPDF} style={btnExport} title="Export PDF">⬇ Export PDF</button>
-                <button onClick={handleExportJSON} style={btnJson} title="Export JSON">⬇ Export JSON</button>
-                <button onClick={triggerImport} style={btnImport} title="Import JSON">⬆ Import JSON</button>
+                <button onClick={handleExportPDF} style={btnExport} title="Export PDF">
+                  ⬇ Export PDF
+                </button>
+                <button onClick={handleExportJSON} style={btnJson} title="Export JSON">
+                  ⬇ Export JSON
+                </button>
+                <button onClick={triggerImport} style={btnImport} title="Import JSON">
+                  ⬆ Import JSON
+                </button>
 
-                {/* زر الحذف بجانب الأزرار */}
                 <button
                   onClick={() => handleDelete(selectedReport)}
                   style={{ ...btnDelete }}
@@ -322,7 +366,6 @@ export default function FTR1DailyCleanlinessView() {
                 </button>
               </div>
 
-              {/* input مخفي لاستيراد JSON */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -352,35 +395,53 @@ export default function FTR1DailyCleanlinessView() {
             >
               <tbody>
                 <tr>
-                  <td style={tdStyle}><b>Document Title:</b> Cleaning Checklist</td>
-                  <td style={tdStyle}><b>Document No:</b> FF-QM/REC/CC</td>
+                  <td style={tdStyleLeft}><b>Document Title:</b> Cleaning Checklist</td>
+                  <td style={tdStyleLeft}><b>Document No:</b> FF-QM/REC/CC</td>
                 </tr>
                 <tr>
-                  <td style={tdStyle}><b>Issue Date:</b> 05/02/2020</td>
-                  <td style={tdStyle}><b>Revision No:</b> 0</td>
+                  <td style={tdStyleLeft}><b>Issue Date:</b> 05/02/2020</td>
+                  <td style={tdStyleLeft}><b>Revision No:</b> 0</td>
                 </tr>
                 <tr>
-                  <td style={tdStyle}><b>Area:</b> QA</td>
-                  <td style={tdStyle}><b>Issued By:</b> MOHAMAD ABDULLAH QC</td>
+                  <td style={tdStyleLeft}><b>Area:</b> {selectedPayload?.area || "QA"}</td>
+                  <td style={tdStyleLeft}><b>Issued By:</b> MOHAMAD ABDULLAH QC</td>
                 </tr>
                 <tr>
-                  <td style={tdStyle}><b>Controlling Officer:</b> Quality Controller</td>
-                  <td style={tdStyle}><b>Approved By:</b> Hussam.O.Sarhan</td>
+                  <td style={tdStyleLeft}><b>Controlling Officer:</b> Quality Controller</td>
+                  <td style={tdStyleLeft}><b>Approved By:</b> Hussam.O.Sarhan</td>
                 </tr>
               </tbody>
             </table>
 
+            {/* ✅ عنوان مطابق لآخر تعديل */}
             <h3
               style={{
                 textAlign: "center",
                 background: "#e5e7eb",
                 padding: "6px",
-                marginBottom: "1rem",
+                marginBottom: "0.75rem",
               }}
             >
-              AL MAWASHI BRAAI MAMZAR <br />
+              AL MAWASHI BRAAI MUSH RIF <br />
               CLEANING CHECKLIST – FTR1
             </h3>
+
+            {/* ✅ PIC note (من الإدخال) */}
+            {selectedPayload?.checkedByNote ? (
+              <div
+                style={{
+                  marginBottom: "10px",
+                  padding: "10px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#f8fafc",
+                  fontWeight: 600,
+                  color: "#0f172a",
+                }}
+              >
+                Note: {selectedPayload.checkedByNote}
+              </div>
+            ) : null}
 
             {/* جدول النظافة */}
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -395,35 +456,37 @@ export default function FTR1DailyCleanlinessView() {
                 </tr>
               </thead>
               <tbody>
-                {selectedReport.payload?.entries?.map((entry, i) => (
+                {entries.map((entry, i) => (
                   <tr key={i}>
-                    <td style={tdStyle}>
+                    <td style={tdCell}>
                       {entry.isSection ? entry.secNo : entry.subLetter}
                     </td>
-                    <td style={{ ...tdStyle, fontWeight: entry.isSection ? 700 : 400 }}>
+                    <td style={{ ...tdCell, fontWeight: entry.isSection ? 700 : 400 }}>
                       {entry.section || entry.item}
                     </td>
-                    <td style={tdStyle}>{entry.isSection ? "—" : entry.status || ""}</td>
-                    <td style={tdStyle}>{entry.isSection ? "—" : entry.observation || ""}</td>
-                    <td style={tdStyle}>{entry.isSection ? "—" : entry.informed || ""}</td>
-                    <td style={tdStyle}>{entry.isSection ? "—" : entry.remarks || ""}</td>
+                    <td style={tdCell}>{entry.isSection ? "—" : entry.status || "—"}</td>
+                    <td style={tdCell}>{entry.isSection ? "—" : entry.observation || "—"}</td>
+                    <td style={tdCell}>{entry.isSection ? "—" : entry.informed || "—"}</td>
+                    <td style={tdCell}>{entry.isSection ? "—" : entry.remarks || "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            {/* Checked/Verified */}
+            {/* Checked/Verified ✅ مطابق آخر تعديل (PIC + QA) */}
             <div
               style={{
-                marginTop: "1.5rem",
+                marginTop: "1.25rem",
                 display: "flex",
                 justifyContent: "space-between",
-                fontWeight: 600,
-                padding: "0 1rem",
+                gap: "12px",
+                flexWrap: "wrap",
+                fontWeight: 700,
+                padding: "0 0.25rem",
               }}
             >
-              <span>Checked By: {selectedReport.payload?.checkedBy || "—"}</span>
-              <span>Verified By: {selectedReport.payload?.verifiedBy || "—"}</span>
+              <span>Checked By: {selectedPayload?.checkedBy || "—"}</span>
+              <span>Verified by (QA): {selectedPayload?.verifiedByQA || "—"}</span>
             </div>
           </div>
         )}
@@ -438,7 +501,18 @@ const thStyle = {
   textAlign: "center",
   fontSize: "0.9rem",
 };
-const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
+
+const tdStyleLeft = {
+  padding: "6px",
+  border: "1px solid #ccc",
+  textAlign: "left",
+};
+
+const tdCell = {
+  padding: "6px",
+  border: "1px solid #ccc",
+  textAlign: "center",
+};
 
 const btnBase = {
   padding: "8px 14px",
@@ -450,8 +524,8 @@ const btnBase = {
 };
 
 const btnExport = { ...btnBase, background: "#27ae60" };
-const btnJson   = { ...btnBase, background: "#16a085" }; // Export JSON
-const btnImport = { ...btnBase, background: "#f39c12" }; // Import JSON
+const btnJson = { ...btnBase, background: "#16a085" };
+const btnImport = { ...btnBase, background: "#f39c12" };
 const btnDelete = {
   ...btnBase,
   background: "#c0392b",

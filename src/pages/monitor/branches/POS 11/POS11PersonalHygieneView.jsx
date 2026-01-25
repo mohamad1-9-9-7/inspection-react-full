@@ -1,10 +1,20 @@
 // src/pages/monitor/branches/pos 11/POS11PersonalHygieneView.jsx
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+
+const TYPE = "pos11_personal_hygiene";
+
+/* ✅ أعمدة النظافة فقط (مثل الإدخال الجديد) */
+const HYGIENE_COLUMNS = [
+  "Nails",
+  "Hair",
+  "Not wearing Jewelry",
+  "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe",
+];
 
 export default function POS11PersonalHygieneView() {
   const [reports, setReports] = useState([]);
@@ -40,9 +50,10 @@ export default function POS11PersonalHygieneView() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=pos11_personal_hygiene`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       let arr =
@@ -54,11 +65,11 @@ export default function POS11PersonalHygieneView() {
       // ✅ نحصر النتائج بفرع POS 11 فقط
       arr = arr.filter(isPOS11);
 
-      // ✅ تصاعدي: الأقدم أولًا
-      arr.sort((a, b) => getReportDate(a) - getReportDate(b));
+      // ✅ الأحدث أولاً
+      arr.sort((a, b) => getReportDate(b) - getReportDate(a));
 
       setReports(arr);
-      setSelectedReport(arr[0] || null); // الأقدم
+      setSelectedReport(arr[0] || null); // الأحدث
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
@@ -67,9 +78,34 @@ export default function POS11PersonalHygieneView() {
     }
   };
 
-  // تصدير PDF مع اسم AL MAWASHI + POS 11
+  const payload = selectedReport?.payload || {};
+
+  // ✅ اظهار POS 11 ومعه الاسم (ملحمة العين) — يدعم القديم والجديد
+  const branchLabel = useMemo(() => {
+    const base =
+      (payload?.branchLabel && String(payload.branchLabel).trim()) ||
+      (payload?.branch && String(payload.branch).trim()) ||
+      "POS 11";
+
+    // لو كان فقط POS 11 بدون وصف، أضف ملحمة العين تلقائياً
+    if (/^pos\s*11$/i.test(base)) return "POS 11 — Al Ain Butchery";
+    return base;
+  }, [payload?.branchLabel, payload?.branch]);
+
+  const reportDate = payload?.reportDate || payload?.date || "—";
+
+  // ✅ لو التقارير القديمة كانت تستخدم checkedBy/verifiedBy
+  const checkedBySupervisor =
+    payload?.checkedBySupervisor || payload?.checkedBy || "—";
+  const verifiedByQA = payload?.verifiedByQA || payload?.verifiedBy || "—";
+
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
+
+    const actions = reportRef.current.querySelector(".action-bar");
+    const prev = actions?.style.display;
+    if (actions) actions.style.display = "none";
+
     const canvas = await html2canvas(reportRef.current, {
       scale: 2,
       windowWidth: reportRef.current.scrollWidth,
@@ -80,10 +116,9 @@ export default function POS11PersonalHygieneView() {
     const pdf = new jsPDF("l", "pt", "a4"); // Landscape
     const pageWidth = pdf.internal.pageSize.getWidth();
 
-    // 🔹 عنوان الشركة أعلى التقرير
     pdf.setFontSize(18);
     pdf.setFont("helvetica", "bold");
-    pdf.text("AL MAWASHI — POS 11", pageWidth / 2, 30, { align: "center" });
+    pdf.text(`AL MAWASHI — ${branchLabel}`, pageWidth / 2, 30, { align: "center" });
 
     const imgWidth = pageWidth - 40;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -91,14 +126,11 @@ export default function POS11PersonalHygieneView() {
     const y = 50;
 
     pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
-    const fileDate =
-      selectedReport?.payload?.reportDate ||
-      selectedReport?.payload?.date ||
-      "report";
-    pdf.save(`POS11_Personal_Hygiene_${fileDate}.pdf`);
+    pdf.save(`POS11_Personal_Hygiene_${reportDate}.pdf`);
+
+    if (actions) actions.style.display = prev || "flex";
   };
 
-  // 📌 حذف التقرير (يتطلب كلمة سر 9999 + تأكيد)
   const handleDelete = async (report) => {
     if (!askPass("Delete confirmation")) {
       alert("❌ Wrong password");
@@ -109,9 +141,10 @@ export default function POS11PersonalHygieneView() {
     const rid = getId(report);
     if (!rid) return alert("⚠️ Missing report ID.");
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `${API_BASE}/api/reports/${encodeURIComponent(rid)}`,
+        { method: "DELETE" }
+      );
       if (!res.ok) throw new Error("Failed to delete");
       alert("✅ Report deleted successfully.");
       fetchReports();
@@ -121,12 +154,11 @@ export default function POS11PersonalHygieneView() {
     }
   };
 
-  // ===== Export JSON (كل تقارير POS 11 فقط) =====
   const handleExportJSON = () => {
     try {
       const payloads = reports.map((r) => r?.payload ?? r);
       const bundle = {
-        type: "pos11_personal_hygiene",
+        type: TYPE,
         branch: "POS 11",
         exportedAt: new Date().toISOString(),
         count: payloads.length,
@@ -150,7 +182,6 @@ export default function POS11PersonalHygieneView() {
     }
   };
 
-  // ===== Import JSON (رفع وإنشاء سجلات على السيرفر) =====
   const triggerImport = () => fileInputRef.current?.click();
 
   const handleImportJSON = async (e) => {
@@ -181,7 +212,8 @@ export default function POS11PersonalHygieneView() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              type: "pos11_personal_hygiene",
+              reporter: "pos11",
+              type: TYPE,
               payload,
             }),
           });
@@ -202,18 +234,21 @@ export default function POS11PersonalHygieneView() {
     }
   };
 
-  // Group reports by year → month → day (تصاعدي)
-  const groupedReports = reports.reduce((acc, r) => {
-    const date = getReportDate(r);
-    if (isNaN(date)) return acc;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    if (!acc[year]) acc[year] = {};
-    if (!acc[year][month]) acc[year][month] = [];
-    acc[year][month].push({ ...r, day, _dt: date.getTime() });
-    return acc;
-  }, {});
+  const groupedReports = useMemo(() => {
+    return reports.reduce((acc, r) => {
+      const date = getReportDate(r);
+      if (isNaN(date)) return acc;
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      acc[year] ??= {};
+      acc[year][month] ??= [];
+      acc[year][month].push({ ...r, day, _dt: date.getTime() });
+      return acc;
+    }, {});
+  }, [reports]);
+
+  const entries = Array.isArray(payload?.entries) ? payload.entries : [];
 
   return (
     <div style={{ display: "flex", gap: "1rem" }}>
@@ -229,8 +264,9 @@ export default function POS11PersonalHygieneView() {
         }}
       >
         <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
-          🗓️ Saved Reports (POS 11)
+          🗓️ Saved Reports ({branchLabel})
         </h4>
+
         {loading ? (
           <p>⏳ Loading...</p>
         ) : Object.keys(groupedReports).length === 0 ? (
@@ -238,19 +274,19 @@ export default function POS11PersonalHygieneView() {
         ) : (
           <div>
             {Object.entries(groupedReports)
-              .sort(([ya], [yb]) => Number(ya) - Number(yb)) // ✅ سنوات تصاعدي
+              .sort(([ya], [yb]) => Number(yb) - Number(ya))
               .map(([year, months]) => (
-                <details key={year} open>
+                <details key={year} open={false}>
                   <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
                     📅 Year {year}
                   </summary>
 
                   {Object.entries(months)
-                    .sort(([ma], [mb]) => Number(ma) - Number(mb)) // ✅ أشهر تصاعدي
+                    .sort(([ma], [mb]) => Number(mb) - Number(ma))
                     .map(([month, days]) => {
-                      const daysSorted = [...days].sort((a, b) => a._dt - b._dt); // ✅ أيام تصاعدي
+                      const daysSorted = [...days].sort((a, b) => b._dt - a._dt);
                       return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
+                        <details key={month} style={{ marginLeft: "1rem" }} open={false}>
                           <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
                           <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                             {daysSorted.map((r, i) => {
@@ -301,11 +337,13 @@ export default function POS11PersonalHygieneView() {
           <>
             {/* Actions */}
             <div
+              className="action-bar"
               style={{
                 display: "flex",
                 justifyContent: "flex-end",
                 gap: "0.6rem",
                 marginBottom: "1rem",
+                flexWrap: "wrap",
               }}
             >
               <button onClick={handleExportPDF} style={btn("#27ae60")}>
@@ -324,7 +362,6 @@ export default function POS11PersonalHygieneView() {
                 🗑 Delete
               </button>
 
-              {/* input مخفي لاستيراد JSON */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -336,8 +373,7 @@ export default function POS11PersonalHygieneView() {
 
             {/* Report content */}
             <div ref={reportRef}>
-              {/* Header info */}
-              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "0.75rem" }}>
                 <tbody>
                   <tr>
                     <td style={tdHeader}>
@@ -357,10 +393,11 @@ export default function POS11PersonalHygieneView() {
                   </tr>
                   <tr>
                     <td style={tdHeader}>
-                      <strong>Area:</strong> POS 11
+                      <strong>Area:</strong> QA &nbsp;&nbsp;
+                      <span style={{ fontWeight: 800 }}>{branchLabel}</span>
                     </td>
                     <td style={tdHeader}>
-                      <strong>Issued By:</strong> MOHAMAD ABDULLAH QC
+                      <strong>Date:</strong> {reportDate}
                     </td>
                   </tr>
                   <tr>
@@ -374,7 +411,6 @@ export default function POS11PersonalHygieneView() {
                 </tbody>
               </table>
 
-              {/* Title */}
               <h3
                 style={{
                   textAlign: "center",
@@ -383,77 +419,115 @@ export default function POS11PersonalHygieneView() {
                   marginBottom: "0.5rem",
                 }}
               >
-                POS 11
+                {branchLabel}
                 <br />
                 PERSONAL HYGIENE CHECKLIST
               </h3>
 
-              {/* Date */}
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong>Date:</strong>{" "}
-                {selectedReport?.payload?.reportDate ||
-                 selectedReport?.payload?.date || "—"}
-              </div>
-
-              {/* Table */}
-              <table
+              {/* ✅ اعتماد إلكتروني */}
+              <div
                 style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  tableLayout: "fixed",
+                  marginBottom: "10px",
+                  padding: "10px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#f8fafc",
+                  fontWeight: 800,
+                  color: "#065f46",
+                  textAlign: "center",
                 }}
               >
+                ✅ This report is electronically approved; no signature is required.
+              </div>
+
+              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                 <thead>
                   <tr style={{ background: "#2980b9", color: "#fff" }}>
                     <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-                    <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
-                    {columns.map((col, i) => (
+                    <th style={{ ...thStyle, width: "160px" }}>Employee Name</th>
+
+                    {HYGIENE_COLUMNS.map((col, i) => (
                       <th key={i} style={{ ...thStyle, width: "120px" }}>
                         {col}
                       </th>
                     ))}
-                    <th style={{ ...thStyle, width: "250px" }}>
+
+                    <th style={{ ...thStyle, width: "150px" }}>
+                      Fit for Food Handling?
+                      <br />
+                      (Yes/No)
+                    </th>
+                    <th style={{ ...thStyle, width: "140px" }}>
+                      If No: Communicable disease
+                      <br />
+                      (Yes/No)
+                    </th>
+                    <th style={{ ...thStyle, width: "140px" }}>
+                      If No: Open wound
+                      <br />
+                      (Yes/No)
+                    </th>
+                    <th style={{ ...thStyle, width: "170px" }}>If No: Other</th>
+
+                    <th style={{ ...thStyle, width: "260px" }}>
                       Remarks and Corrective Actions
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedReport?.payload?.entries?.map((entry, i) => (
+                  {entries.map((entry, i) => (
                     <tr key={i}>
                       <td style={tdStyle}>{i + 1}</td>
-                      <td style={tdStyle}>{entry.name || "—"}</td>
-                      {columns.map((col, cIndex) => (
+                      <td style={tdStyle}>{entry?.name || "—"}</td>
+
+                      {HYGIENE_COLUMNS.map((col, cIndex) => (
                         <td key={cIndex} style={tdStyle}>
-                          {entry[col] || "—"}
+                          {entry?.[col] || "—"}
                         </td>
                       ))}
-                      <td style={tdStyle}>{entry.remarks || "—"}</td>
+
+                      <td style={tdStyle}>{entry?.fitForFoodHandling || "—"}</td>
+                      <td style={tdStyle}>{entry?.reasonCommunicableDisease || "—"}</td>
+                      <td style={tdStyle}>{entry?.reasonOpenWound || "—"}</td>
+                      <td style={tdStyle}>{entry?.reasonOther || "—"}</td>
+
+                      <td style={tdStyle}>{entry?.remarks || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
-              {/* Remarks footer */}
-              <div style={{ marginTop: "1rem", fontWeight: "600" }}>
-                REMARKS / CORRECTIVE ACTIONS:
-              </div>
-
-              {/* C / NC note */}
-              <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
-                *(C – Conform &nbsp;&nbsp;&nbsp; N/C – Non Conform)
-              </div>
-
-              {/* Checked / Verified */}
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   marginTop: "1rem",
-                  fontWeight: 600,
+                  fontWeight: 800,
+                  gap: "1rem",
+                  flexWrap: "wrap",
                 }}
               >
-                <div>Checked By: {selectedReport?.payload?.checkedBy || "—"}</div>
-                <div>Verified By: {selectedReport?.payload?.verifiedBy || "—"}</div>
+                <div>
+                  Checked By (Branch Supervisor - PIC):{" "}
+                  <span style={{ fontWeight: 900 }}>{checkedBySupervisor}</span>
+                </div>
+                <div>
+                  Verified by (QA):{" "}
+                  <span style={{ fontWeight: 900 }}>{verifiedByQA}</span>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: "10px",
+                  textAlign: "center",
+                  fontWeight: 900,
+                  color: "#065f46",
+                  borderTop: "1px dashed #94a3b8",
+                  paddingTop: "8px",
+                }}
+              >
+                ✅ This report is electronically approved; no signature is required.
               </div>
             </div>
           </>
@@ -462,15 +536,6 @@ export default function POS11PersonalHygieneView() {
     </div>
   );
 }
-
-const columns = [
-  "Nails",
-  "Hair",
-  "Not wearing Jewelry",
-  "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe",
-  "Communicable Disease",
-  "Open wounds/sores & cut",
-];
 
 const thStyle = {
   padding: "6px",

@@ -1,5 +1,5 @@
 // src/pages/monitor/branches/ftr1/FTR1DailyCleanliness.jsx
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -47,11 +47,16 @@ const sections = [
   },
 ];
 
+function norm(s) {
+  return String(s ?? "").trim();
+}
+
 export default function FTR1DailyCleanliness() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
+
   const [checkedBy, setCheckedBy] = useState("");
-  const [verifiedBy, setVerifiedBy] = useState("");
+  const [verifiedByQA, setVerifiedByQA] = useState("");
 
   // تجهيز البيانات
   const [entries, setEntries] = useState(() =>
@@ -77,20 +82,42 @@ export default function FTR1DailyCleanliness() {
     setEntries(updated);
   };
 
+  const validationErrors = useMemo(() => {
+    const errs = [];
+    if (!date) errs.push("Please select report date.");
+    if (!time) errs.push("Please enter Time.");
+    if (!norm(checkedBy)) errs.push("Checked By is mandatory.");
+    if (!norm(verifiedByQA)) errs.push("Verified by (QA) is mandatory.");
+
+    if (norm(checkedBy) && norm(verifiedByQA)) {
+      if (norm(checkedBy).toLowerCase() === norm(verifiedByQA).toLowerCase()) {
+        errs.push("Verified by (QA) must be independent (cannot be the same as Checked By).");
+      }
+    }
+    return errs;
+  }, [date, time, checkedBy, verifiedByQA]);
+
   const handleSave = async () => {
-    if (!date) return alert("⚠️ Please select report date.");
-    if (!time) return alert("⚠️ Please enter Time.");
-    if (!checkedBy || !verifiedBy)
-      return alert("⚠️ Checked By and Verified By are mandatory.");
+    if (validationErrors.length) {
+      alert("⚠️ Please fix:\n\n- " + validationErrors.join("\n- "));
+      return;
+    }
 
     try {
       setOpMsg("⏳ Saving...");
+
       const payload = {
-        branch: "FTR 1",
+        branch: "FTR 1 - Mushrif Park",
         reportDate: date,
         reportTime: time,
-        checkedBy,
-        verifiedBy,
+        area: "QA",
+
+        checkedBy: norm(checkedBy),
+        verifiedByQA: norm(verifiedByQA),
+
+        checkedByNote:
+          "Checked By was conducted by the branch supervisor who holds a valid PIC certificate.",
+
         entries,
         savedAt: Date.now(),
       };
@@ -121,27 +148,43 @@ export default function FTR1DailyCleanliness() {
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
         <tbody>
           <tr>
-            <td style={tdHeader}><strong>Document Title:</strong> Cleaning Checklist</td>
-            <td style={tdHeader}><strong>Document No:</strong> FF-QM/REC/CC</td>
+            <td style={tdHeader}>
+              <strong>Document Title:</strong> Cleaning Checklist
+            </td>
+            <td style={tdHeader}>
+              <strong>Document No:</strong> FF-QM/REC/CC
+            </td>
           </tr>
           <tr>
-            <td style={tdHeader}><strong>Issue Date:</strong> 05/02/2020</td>
-            <td style={tdHeader}><strong>Revision No:</strong> 0</td>
+            <td style={tdHeader}>
+              <strong>Issue Date:</strong> 05/02/2020
+            </td>
+            <td style={tdHeader}>
+              <strong>Revision No:</strong> 0
+            </td>
           </tr>
           <tr>
-            <td style={tdHeader}><strong>Area:</strong> QA</td>
-            <td style={tdHeader}><strong>Issued By:</strong> MOHAMAD ABDULLAH QC</td>
+            <td style={tdHeader}>
+              <strong>Area:</strong> QA
+            </td>
+            <td style={tdHeader}>
+              <strong>Issued By:</strong> MOHAMAD ABDULLAH QC
+            </td>
           </tr>
           <tr>
-            <td style={tdHeader}><strong>Controlling Officer:</strong> Quality Controller</td>
-            <td style={tdHeader}><strong>Approved By:</strong> Hussam O.Sarhan</td>
+            <td style={tdHeader}>
+              <strong>Controlling Officer:</strong> Quality Controller
+            </td>
+            <td style={tdHeader}>
+              <strong>Approved By:</strong> Hussam O.Sarhan
+            </td>
           </tr>
         </tbody>
       </table>
 
-      {/* Title */}
+      {/* Title ✅ مشرف */}
       <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: "6px", marginBottom: "1rem" }}>
-        AL MAWASHI BRAAI MAMZAR <br />
+        AL MAWASHI BRAAI MUSH RIF <br />
         CLEANING CHECKLIST – FTR1
       </h3>
 
@@ -149,15 +192,57 @@ export default function FTR1DailyCleanliness() {
       <div style={{ marginBottom: "1rem", display: "flex", gap: "2rem", justifyContent: "center" }}>
         <div>
           <label style={{ fontWeight: 600, marginRight: 8 }}>📅 Date:</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc" }}/>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc" }}
+          />
         </div>
         <div>
           <label style={{ fontWeight: 600, marginRight: 8 }}>⏰ Time:</label>
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc" }}/>
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc" }}
+          />
         </div>
       </div>
+
+      {/* PIC note */}
+      <div
+        style={{
+          marginBottom: "10px",
+          padding: "10px",
+          borderRadius: 10,
+          border: "1px solid #cbd5e1",
+          background: "#f8fafc",
+          fontWeight: 600,
+          color: "#0f172a",
+        }}
+      >
+        Note: Checked By was conducted by the branch supervisor who holds a valid PIC certificate.
+      </div>
+
+      {/* Validation banner */}
+      {validationErrors.length > 0 && (
+        <div
+          style={{
+            background: "#fff7ed",
+            border: "1px solid #fdba74",
+            padding: "10px",
+            borderRadius: 10,
+            marginBottom: "10px",
+            color: "#7c2d12",
+            fontWeight: 700,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          ⚠️ Please fix before saving:
+          {"\n"}- {validationErrors.join("\n- ")}
+        </div>
+      )}
 
       {/* Table */}
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -174,9 +259,7 @@ export default function FTR1DailyCleanliness() {
         <tbody>
           {entries.map((entry, i) => (
             <tr key={i}>
-              <td style={tdStyle}>
-                {entry.isSection ? entry.secNo : entry.subLetter}
-              </td>
+              <td style={tdStyle}>{entry.isSection ? entry.secNo : entry.subLetter}</td>
               <td style={{ ...tdStyle, fontWeight: entry.isSection ? 700 : 400 }}>
                 {entry.section || entry.item}
               </td>
@@ -191,27 +274,41 @@ export default function FTR1DailyCleanliness() {
                     <option value="C">C</option>
                     <option value="NC">NC</option>
                   </select>
-                ) : "—"}
+                ) : (
+                  "—"
+                )}
               </td>
               <td style={tdStyle}>
                 {!entry.isSection && (
-                  <input type="text" value={entry.observation}
+                  <input
+                    type="text"
+                    value={entry.observation}
                     onChange={(e) => handleChange(i, "observation", e.target.value)}
-                    style={inputStyle} placeholder="Observation"/>
+                    style={inputStyle}
+                    placeholder="Observation"
+                  />
                 )}
               </td>
               <td style={tdStyle}>
                 {!entry.isSection && (
-                  <input type="text" value={entry.informed}
+                  <input
+                    type="text"
+                    value={entry.informed}
                     onChange={(e) => handleChange(i, "informed", e.target.value)}
-                    style={inputStyle} placeholder="Informed To"/>
+                    style={inputStyle}
+                    placeholder="Informed To"
+                  />
                 )}
               </td>
               <td style={tdStyle}>
                 {!entry.isSection && (
-                  <input type="text" value={entry.remarks}
+                  <input
+                    type="text"
+                    value={entry.remarks}
                     onChange={(e) => handleChange(i, "remarks", e.target.value)}
-                    style={inputStyle} placeholder="Remarks & CA"/>
+                    style={inputStyle}
+                    placeholder="Remarks & CA"
+                  />
                 )}
               </td>
             </tr>
@@ -225,35 +322,67 @@ export default function FTR1DailyCleanliness() {
         *(C = Conform &nbsp;&nbsp;&nbsp; N/C = Non Conform)
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "1rem", fontWeight: 600 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", marginTop: "1rem", fontWeight: 600 }}>
         <div>
           Checked By:{" "}
-          <input type="text" value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)}
-            style={{ ...inputStyle, minWidth: "180px" }}/>
+          <input
+            type="text"
+            value={checkedBy}
+            onChange={(e) => setCheckedBy(e.target.value)}
+            style={{ ...inputStyle, minWidth: "180px" }}
+          />
         </div>
         <div>
-          Verified By:{" "}
-          <input type="text" value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)}
-            style={{ ...inputStyle, minWidth: "180px" }}/>
+          Verified by (QA):{" "}
+          <input
+            type="text"
+            value={verifiedByQA}
+            onChange={(e) => setVerifiedByQA(e.target.value)}
+            style={{
+              ...inputStyle,
+              minWidth: "180px",
+              borderColor:
+                norm(checkedBy) &&
+                norm(verifiedByQA) &&
+                norm(checkedBy).toLowerCase() === norm(verifiedByQA).toLowerCase()
+                  ? "#ef4444"
+                  : "#aaa",
+            }}
+          />
         </div>
       </div>
 
       {/* Save */}
       <div style={{ textAlign: "center", marginTop: 20 }}>
-        <button onClick={handleSave}
+        <button
+          onClick={handleSave}
           style={{
-            background: "linear-gradient(180deg,#10b981,#059669)",
-            color: "#fff", border: "none", padding: "12px 22px",
-            borderRadius: 12, cursor: "pointer", fontWeight: 800,
-            fontSize: "1rem", boxShadow: "0 6px 14px rgba(16,185,129,.3)",
-          }}>
+            background: validationErrors.length
+              ? "linear-gradient(180deg,#94a3b8,#64748b)"
+              : "linear-gradient(180deg,#10b981,#059669)",
+            color: "#fff",
+            border: "none",
+            padding: "12px 22px",
+            borderRadius: 12,
+            cursor: "pointer",
+            fontWeight: 800,
+            fontSize: "1rem",
+            boxShadow: "0 6px 14px rgba(16,185,129,.3)",
+            opacity: validationErrors.length ? 0.85 : 1,
+          }}
+          title={validationErrors.length ? "Fix validation errors first" : "Save"}
+        >
           💾 Save to Server
         </button>
+
         {opMsg && (
-          <div style={{
-            marginTop: 10, fontWeight: 700,
-            color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46",
-          }}>
+          <div
+            style={{
+              marginTop: 10,
+              fontWeight: 700,
+              color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46",
+            }}
+          >
             {opMsg}
           </div>
         )}

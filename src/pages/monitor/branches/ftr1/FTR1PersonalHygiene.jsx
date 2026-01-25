@@ -1,55 +1,135 @@
 // src/pages/monitor/branches/ftr1/FTR1PersonalHygiene.jsx
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
-const columns = [
+/**
+ * ✅ FTR 1 = MUSH RIF PARK
+ * ✅ Area = QA ثابت (موجود فقط في الهيدر + ضمن الـ payload)
+ * ✅ الأعمدة الحساسة:
+ *    Fit for Food Handling? (Yes/No)
+ *    If No: Reason (Communicable disease Yes/No + Open wound Yes/No + Other)
+ * ✅ منع الحفظ إذا Fit=No بدون Corrective Action
+ * ✅ Verified by (QA) لازم مستقل عن Checked By
+ * ✅ ملاحظة: Checked By من قبل مشرف الفرع الحاصل على شهادة PIC
+ * ✅ حذف Area badge اللي كانت طالعة لحالها على الطرف
+ */
+
+const HYGIENE_COLUMNS = [
   "Nails",
   "Hair",
   "Not wearing Jewelry",
   "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe",
-  "Communicable Disease",
-  "Open wounds/sores & cut",
 ];
+
+const YESNO = ["", "Yes", "No"];
+
+const makeEmptyRow = () => ({
+  name: "",
+  Nails: "",
+  Hair: "",
+  "Not wearing Jewelry": "",
+  "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe": "",
+
+  fitForFoodHandling: "", // Yes/No
+  reasonCommunicableDisease: "", // Yes/No (if No)
+  reasonOpenWound: "", // Yes/No (if No)
+  reasonOther: "", // text (if No)
+
+  remarks: "", // Remarks and Corrective Actions (Required if fit = No)
+});
+
+function norm(s) {
+  return String(s ?? "").trim();
+}
 
 export default function FTR1PersonalHygiene() {
   const [date, setDate] = useState("");
-  const [entries, setEntries] = useState(
-    Array.from({ length: 9 }, () => ({
-      name: "",
-      Nails: "",
-      Hair: "",
-      "Not wearing Jewelry": "",
-      "Wearing Clean Cloth/Hair Net/Hand Glove/Face masks/Shoe": "",
-      "Communicable Disease": "",
-      "Open wounds/sores & cut": "",
-      remarks: "",
-    }))
-  );
+  const [entries, setEntries] = useState(Array.from({ length: 9 }, makeEmptyRow));
   const [checkedBy, setCheckedBy] = useState("");
-  const [verifiedBy, setVerifiedBy] = useState("");
+  const [verifiedByQA, setVerifiedByQA] = useState("");
   const [opMsg, setOpMsg] = useState("");
 
   const handleChange = (rowIndex, field, value) => {
     const updated = [...entries];
-    updated[rowIndex][field] = value;
+    updated[rowIndex] = { ...updated[rowIndex], [field]: value };
+
+    // ✅ إذا Fit = Yes امسح أسباب الـ No
+    if (field === "fitForFoodHandling" && value === "Yes") {
+      updated[rowIndex].reasonCommunicableDisease = "";
+      updated[rowIndex].reasonOpenWound = "";
+      updated[rowIndex].reasonOther = "";
+    }
+
     setEntries(updated);
   };
 
+  const validationErrors = useMemo(() => {
+    const errs = [];
+
+    if (!date) errs.push("Please select a date.");
+    if (!norm(checkedBy)) errs.push("Checked By is required.");
+    if (!norm(verifiedByQA)) errs.push("Verified by (QA) is required.");
+
+    // ✅ لازم يكون QA مستقل (منع إذا نفس الشخص)
+    if (norm(checkedBy) && norm(verifiedByQA)) {
+      if (norm(checkedBy).toLowerCase() === norm(verifiedByQA).toLowerCase()) {
+        errs.push(
+          "Verified by (QA) must be independent (cannot be the same as Checked By)."
+        );
+      }
+    }
+
+    // ✅ تحقق على الصفوف اللي فيها اسم
+    entries.forEach((r, idx) => {
+      const hasName = !!norm(r.name);
+      if (!hasName) return;
+
+      if (!norm(r.fitForFoodHandling))
+        errs.push(`Row ${idx + 1}: Fit for Food Handling? is required.`);
+
+      if (norm(r.fitForFoodHandling) === "No") {
+        const cd = norm(r.reasonCommunicableDisease);
+        const ow = norm(r.reasonOpenWound);
+        const other = norm(r.reasonOther);
+
+        if (!(cd === "Yes" || ow === "Yes" || other))
+          errs.push(
+            `Row ${idx + 1}: If Fit is No, select a reason (Communicable disease / Open wound) or write Other.`
+          );
+
+        if (!norm(r.remarks))
+          errs.push(
+            `Row ${idx + 1}: Corrective Action is required when Fit is No (transfer/exclude/clinic).`
+          );
+      }
+    });
+
+    return errs;
+  }, [date, checkedBy, verifiedByQA, entries]);
+
   const handleSave = async () => {
-    if (!date) return alert("⚠️ Please select a date");
-    if (!checkedBy.trim() || !verifiedBy.trim())
-      return alert("⚠️ Checked By and Verified By are required");
+    if (validationErrors.length) {
+      alert("⚠️ Please fix:\n\n- " + validationErrors.join("\n- "));
+      return;
+    }
 
     try {
       setOpMsg("⏳ Saving...");
+
       const payload = {
         branch: "FTR 1",
         reportDate: date,
+        area: "QA",
         entries,
-        checkedBy,
-        verifiedBy,
+        checkedBy: norm(checkedBy),
+        verifiedByQA: norm(verifiedByQA),
+
+        // ✅ ملاحظة مطلوبة
+        checkedByNote:
+          "Checked By was conducted by the branch supervisor who holds a valid PIC certificate.",
+
         savedAt: Date.now(),
       };
 
@@ -76,7 +156,9 @@ export default function FTR1PersonalHygiene() {
   return (
     <div style={{ padding: "1rem", background: "#fff", borderRadius: 12 }}>
       {/* Header info */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+      <table
+        style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}
+      >
         <tbody>
           <tr>
             <td style={tdHeader}>
@@ -113,7 +195,7 @@ export default function FTR1PersonalHygiene() {
         </tbody>
       </table>
 
-      {/* Title */}
+      {/* Title (✅ مشرف) */}
       <h3
         style={{
           textAlign: "center",
@@ -122,13 +204,13 @@ export default function FTR1PersonalHygiene() {
           marginBottom: "0.5rem",
         }}
       >
-        AL MAWASHI BRAAI MAMZAR
+        AL MAWASHI BRAAI MUSH RIF
         <br />
         PERSONAL HYGIENE CHECKLIST FTR-1
       </h3>
 
-      {/* Date */}
-      <div style={{ marginBottom: "0.5rem" }}>
+      {/* Date فقط (بدون Area badge) */}
+      <div style={{ marginBottom: "0.75rem" }}>
         <strong>Date:</strong>{" "}
         <input
           type="date"
@@ -142,6 +224,41 @@ export default function FTR1PersonalHygiene() {
         />
       </div>
 
+      {/* ✅ PIC note */}
+      <div
+        style={{
+          marginBottom: "10px",
+          padding: "10px",
+          borderRadius: 10,
+          border: "1px solid #cbd5e1",
+          background: "#f8fafc",
+          fontWeight: 600,
+          color: "#0f172a",
+        }}
+      >
+        Note: Checked By was conducted by the branch supervisor who holds a valid PIC
+        certificate.
+      </div>
+
+      {/* Validation banner */}
+      {validationErrors.length > 0 && (
+        <div
+          style={{
+            background: "#fff7ed",
+            border: "1px solid #fdba74",
+            padding: "10px",
+            borderRadius: 10,
+            marginBottom: "10px",
+            color: "#7c2d12",
+            fontWeight: 600,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          ⚠️ Please fix before saving:
+          {"\n"}- {validationErrors.join("\n- ")}
+        </div>
+      )}
+
       {/* Table */}
       <table
         style={{
@@ -153,56 +270,174 @@ export default function FTR1PersonalHygiene() {
         <thead>
           <tr style={{ background: "#2980b9", color: "#fff" }}>
             <th style={{ ...thStyle, width: "50px" }}>S.No</th>
-            <th style={{ ...thStyle, width: "150px" }}>Employee Name</th>
-            {columns.map((col, i) => (
+            <th style={{ ...thStyle, width: "160px" }}>Employee Name</th>
+
+            {HYGIENE_COLUMNS.map((col, i) => (
               <th key={i} style={{ ...thStyle, width: "120px" }}>
                 {col}
               </th>
             ))}
-            <th style={{ ...thStyle, width: "250px" }}>Remarks and Corrective Actions</th>
+
+            <th style={{ ...thStyle, width: "150px" }}>
+              Fit for Food Handling?
+              <br />
+              (Yes/No)
+            </th>
+            <th style={{ ...thStyle, width: "140px" }}>
+              If No: Communicable disease
+              <br />
+              (Yes/No)
+            </th>
+            <th style={{ ...thStyle, width: "140px" }}>
+              If No: Open wound
+              <br />
+              (Yes/No)
+            </th>
+            <th style={{ ...thStyle, width: "170px" }}>If No: Other (text)</th>
+
+            <th style={{ ...thStyle, width: "260px" }}>
+              Remarks and Corrective Actions
+            </th>
           </tr>
         </thead>
+
         <tbody>
-          {entries.map((entry, i) => (
-            <tr key={i}>
-              <td style={tdStyle}>{i + 1}</td>
-              <td style={tdStyle}>
-                <input
-                  type="text"
-                  value={entry.name}
-                  onChange={(e) => handleChange(i, "name", e.target.value)}
-                  style={{
-                    ...inputStyle,
-                    width: "100%",
-                    maxWidth: "140px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                />
-              </td>
-              {columns.map((col, cIndex) => (
-                <td key={cIndex} style={tdStyle}>
+          {entries.map((entry, i) => {
+            const fit = norm(entry.fitForFoodHandling);
+            const isNo = fit === "No";
+
+            return (
+              <tr key={i}>
+                <td style={tdStyle}>{i + 1}</td>
+
+                <td style={tdStyle}>
+                  <input
+                    type="text"
+                    value={entry.name}
+                    onChange={(e) => handleChange(i, "name", e.target.value)}
+                    style={{
+                      ...inputStyle,
+                      width: "100%",
+                      maxWidth: "150px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  />
+                </td>
+
+                {/* ✅ نظافة عامة (C/NC) مثل ما هو */}
+                {HYGIENE_COLUMNS.map((col, cIndex) => (
+                  <td key={cIndex} style={tdStyle}>
+                    <select
+                      value={entry[col]}
+                      onChange={(e) => handleChange(i, col, e.target.value)}
+                      style={{ ...inputStyle, width: "100%" }}
+                    >
+                      <option value="">--</option>
+                      <option value="C">C</option>
+                      <option value="NC">NC</option>
+                    </select>
+                  </td>
+                ))}
+
+                {/* ✅ Fit Yes/No */}
+                <td style={tdStyle}>
                   <select
-                    value={entry[col]}
-                    onChange={(e) => handleChange(i, col, e.target.value)}
-                    style={{ ...inputStyle, width: "100%" }}
+                    value={entry.fitForFoodHandling}
+                    onChange={(e) =>
+                      handleChange(i, "fitForFoodHandling", e.target.value)
+                    }
+                    style={{
+                      ...inputStyle,
+                      width: "100%",
+                      borderColor: fit ? "#aaa" : "#ef4444",
+                    }}
                   >
-                    <option value="">--</option>
-                    <option value="C">C</option>
-                    <option value="NC">NC</option>
+                    {YESNO.map((v) => (
+                      <option key={v} value={v}>
+                        {v || "--"}
+                      </option>
+                    ))}
                   </select>
                 </td>
-              ))}
-              <td style={tdStyle}>
-                <input
-                  type="text"
-                  value={entry.remarks}
-                  onChange={(e) => handleChange(i, "remarks", e.target.value)}
-                  style={{ ...inputStyle, width: "100%" }}
-                />
-              </td>
-            </tr>
-          ))}
+
+                {/* ✅ If No reasons */}
+                <td style={tdStyle}>
+                  <select
+                    value={entry.reasonCommunicableDisease}
+                    onChange={(e) =>
+                      handleChange(i, "reasonCommunicableDisease", e.target.value)
+                    }
+                    disabled={!isNo}
+                    style={{
+                      ...inputStyle,
+                      width: "100%",
+                      background: !isNo ? "#f8fafc" : "#fff",
+                    }}
+                  >
+                    {YESNO.map((v) => (
+                      <option key={v} value={v}>
+                        {v || "--"}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+
+                <td style={tdStyle}>
+                  <select
+                    value={entry.reasonOpenWound}
+                    onChange={(e) =>
+                      handleChange(i, "reasonOpenWound", e.target.value)
+                    }
+                    disabled={!isNo}
+                    style={{
+                      ...inputStyle,
+                      width: "100%",
+                      background: !isNo ? "#f8fafc" : "#fff",
+                    }}
+                  >
+                    {YESNO.map((v) => (
+                      <option key={v} value={v}>
+                        {v || "--"}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+
+                <td style={tdStyle}>
+                  <input
+                    type="text"
+                    value={entry.reasonOther}
+                    onChange={(e) => handleChange(i, "reasonOther", e.target.value)}
+                    disabled={!isNo}
+                    placeholder={!isNo ? "" : "Other reason..."}
+                    style={{
+                      ...inputStyle,
+                      width: "100%",
+                      background: !isNo ? "#f8fafc" : "#fff",
+                    }}
+                  />
+                </td>
+
+                {/* ✅ Corrective action required if No */}
+                <td style={tdStyle}>
+                  <input
+                    type="text"
+                    value={entry.remarks}
+                    onChange={(e) => handleChange(i, "remarks", e.target.value)}
+                    placeholder={
+                      isNo ? "Required if Fit is No (transfer/exclude/clinic)" : ""
+                    }
+                    style={{
+                      ...inputStyle,
+                      width: "100%",
+                      borderColor: isNo && !norm(entry.remarks) ? "#ef4444" : "#aaa",
+                    }}
+                  />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
@@ -211,16 +446,13 @@ export default function FTR1PersonalHygiene() {
         REMARKS / CORRECTIVE ACTIONS:
       </div>
 
-      {/* C / NC note */}
-      <div style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>
-        *(C – Conform &nbsp;&nbsp;&nbsp; N/C – Non Conform)
-      </div>
-
       {/* Checked / Verified */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
           marginTop: "1rem",
           fontWeight: 600,
         }}
@@ -235,14 +467,23 @@ export default function FTR1PersonalHygiene() {
             style={footerInput}
           />
         </div>
+
         <div>
-          Verified By:{" "}
+          Verified by (QA):{" "}
           <input
             type="text"
             required
-            value={verifiedBy}
-            onChange={(e) => setVerifiedBy(e.target.value)}
-            style={footerInput}
+            value={verifiedByQA}
+            onChange={(e) => setVerifiedByQA(e.target.value)}
+            style={{
+              ...footerInput,
+              borderColor:
+                norm(checkedBy) &&
+                norm(verifiedByQA) &&
+                norm(checkedBy).toLowerCase() === norm(verifiedByQA).toLowerCase()
+                  ? "#ef4444"
+                  : "#aaa",
+            }}
           />
         </div>
       </div>
@@ -253,21 +494,23 @@ export default function FTR1PersonalHygiene() {
           onClick={handleSave}
           style={{
             padding: "10px 18px",
-            background: "linear-gradient(180deg,#10b981,#059669)",
+            background: validationErrors.length
+              ? "linear-gradient(180deg,#94a3b8,#64748b)"
+              : "linear-gradient(180deg,#10b981,#059669)",
             color: "#fff",
             border: "none",
             borderRadius: "8px",
             cursor: "pointer",
             fontWeight: 600,
+            opacity: validationErrors.length ? 0.85 : 1,
           }}
+          title={validationErrors.length ? "Fix validation errors first" : "Save"}
         >
           💾 Save Report
         </button>
       </div>
 
-      {opMsg && (
-        <div style={{ marginTop: "1rem", fontWeight: "600" }}>{opMsg}</div>
-      )}
+      {opMsg && <div style={{ marginTop: "1rem", fontWeight: "600" }}>{opMsg}</div>}
     </div>
   );
 }
@@ -302,5 +545,5 @@ const footerInput = {
   border: "1px solid #aaa",
   borderRadius: "6px",
   padding: "4px 6px",
-  minWidth: "160px",
+  minWidth: "180px",
 };
