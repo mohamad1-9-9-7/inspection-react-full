@@ -39,6 +39,31 @@ function makeToken(len = 22) {
   return out;
 }
 
+/* ===================== ✅ NEW: ensure quiz exists in report payload ===================== */
+function hasQuiz(payload) {
+  const q = payload?.quiz || payload?.quizData || payload?.trainingQuiz || null;
+  const qs =
+    Array.isArray(q?.questions) ? q.questions :
+    Array.isArray(payload?.questions) ? payload.questions :
+    [];
+  return Array.isArray(qs) && qs.length > 0;
+}
+
+function buildQuizFromBank(moduleName, questions, passMark) {
+  const safeQ = Array.isArray(questions) ? questions : [];
+  return {
+    module: String(moduleName || "").trim(),
+    passMark: Number(passMark) || 80,
+    questions: safeQ.map((qq) => ({
+      q_ar: qq?.q_ar || "",
+      q_en: qq?.q_en || "",
+      options_ar: Array.isArray(qq?.options_ar) ? qq.options_ar : [],
+      options_en: Array.isArray(qq?.options_en) ? qq.options_en : [],
+      correct: Number.isFinite(Number(qq?.correct)) ? Number(qq.correct) : 0,
+    })),
+  };
+}
+
 /* ===================== Component ===================== */
 export default function TrainingSessionsList() {
   const nav = useNavigate();
@@ -210,28 +235,44 @@ export default function TrainingSessionsList() {
     return `${origin}/t/${encodeURIComponent(token)}`;
   };
 
+  // ✅ NEW: Ensure token AND quiz are stored on server before giving link
   const ensureTokenAndGetLink = async () => {
     if (!selected) return "";
     const id = getId(selected);
     if (!id) return "";
 
-    const existing = getSessionToken();
-    if (existing) return buildSessionLink(existing);
-
-    // create + save on server
     setLinkBusy(true);
     try {
-      const newToken = makeToken(26);
-      const updated = {
-        ...selected,
-        payload: {
-          ...(selected.payload || {}),
-          quizToken: newToken,
-        },
-      };
-      await updateReportOnServer(id, updated);
-      await load(); // refresh selected
-      return buildSessionLink(newToken);
+      const existingToken = getSessionToken();
+      const payload0 = selected.payload || {};
+      const needQuiz = !hasQuiz(payload0);
+
+      const nextPayload = { ...payload0 };
+
+      if (!existingToken) {
+        nextPayload.quizToken = makeToken(26);
+      }
+
+      if (needQuiz) {
+        if (!moduleName || !questions.length) {
+          alert("No question bank for this module yet (cannot generate trainee link).");
+          return "";
+        }
+        nextPayload.quiz = buildQuizFromBank(moduleName, questions, PASS_MARK);
+      }
+
+      const finalToken = existingToken || nextPayload.quizToken;
+      if (!finalToken) return "";
+
+      const changed = (!existingToken && !!nextPayload.quizToken) || needQuiz;
+
+      if (changed) {
+        const updated = { ...selected, payload: nextPayload };
+        await updateReportOnServer(id, updated);
+        await load(); // refresh selected
+      }
+
+      return buildSessionLink(finalToken);
     } catch (e) {
       console.error(e);
       alert(`Failed to generate link: ${String(e?.message || e)}`);
