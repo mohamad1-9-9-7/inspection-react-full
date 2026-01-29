@@ -70,7 +70,16 @@ async function createReport(row) {
 }
 
 /* ===================== Visual Inspection Params (English only) ===================== */
+/* NEW safety controls + existing hygiene controls (same ids as input page) */
 const VI_PARAMS = [
+  // NEW safety controls
+  { id: "trafficControlSpotter",  en: "TRAFFIC CONTROL / SPOTTER USED" },
+  { id: "vehicleSecured",         en: "VEHICLE SECURED (HANDBRAKE + CHOCKS)" },
+  { id: "loadSecured",            en: "LOAD SECURED (STRAPS + INSPECTION)" },
+  { id: "areaSafe",               en: "AREA SAFE (LIGHTING/ANTI-SLIP/WALKWAY CLEAR)" },
+  { id: "manualHandlingControls", en: "MANUAL HANDLING CONTROLS APPLIED" },
+
+  // Existing hygiene controls
   { id: "floorSealingIntact", en: "FLOOR SEALING INTACT" },
   { id: "floorCleaning",      en: "FLOOR CLEANING" },
   { id: "pestActivites",      en: "PEST ACTIVITIES" }, // id as in input form
@@ -121,6 +130,19 @@ const relativeLabel = (iso) => {
   const y = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 1);
   const yISO = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
   return iso === yISO ? " (Yesterday)" : "";
+};
+
+/* ===================== YES/NO Normalizer (FIX) ===================== */
+const normYesNo = (v) => {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (s === "yes" || s === "y" || s === "true" || s === "1") return "yes";
+  if (s === "no" || s === "n" || s === "false" || s === "0") return "no";
+  return null;
+};
+
+const yesNoLabel = (v) => {
+  const n = normYesNo(v);
+  return n === "yes" ? "YES" : n === "no" ? "NO" : "—";
 };
 
 /* ===================== Theme Styles ===================== */
@@ -176,11 +198,10 @@ function ThemeStyles() {
         overflow: clip;
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
-        transition: box-shadow .18s ease; /* no transform transition */
+        transition: box-shadow .18s ease;
       }
-      /* hover lift disabled */
-      .panel:hover { 
-        transform: none; 
+      .panel:hover {
+        transform: none;
         box-shadow: var(--panel-shadow);
       }
       .panel::before {
@@ -232,7 +253,7 @@ function ThemeStyles() {
       .lr-app *::-webkit-scrollbar { height: 10px; width: 10px; }
       .lr-app *::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
       .lr-app *::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-      
+
       .toast-wrap {
         position: fixed; right: 16px; top: 16px;
         display: grid; gap: 8px; z-index: 9999;
@@ -354,11 +375,12 @@ function computeDayKPIs(vehicles) {
     .filter((n) => n != null);
   const avgDuration = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
 
+  // ✅ FIX: normalize yes/no values
   let totalChecks = 0;
   let yesChecks = 0;
   vehicles.forEach((v) => {
     VI_PARAMS.forEach((p) => {
-      const val = v[p.id];
+      const val = normYesNo(v[p.id]);
       if (val === "yes" || val === "no") {
         totalChecks += 1;
         if (val === "yes") yesChecks += 1;
@@ -439,18 +461,32 @@ export default function LoadingReports() {
   const records = useMemo(() => {
     return (docs || []).flatMap((row) => {
       const docId = row?._id || row?.id || String(Math.random());
-      const p = row?.payload || {};
+
+      // ✅ FIX: support nesting payload.payload (some servers/exports wrap)
+      const p = row?.payload?.payload ?? row?.payload ?? {};
+
       const dateISO = p?.reportDate || p?.date || "";
       const rowsArr = Array.isArray(p?.rows) ? p.rows : [];
-      return rowsArr.map((r, idx) => ({
-        __docId: docId,
-        __rowIndex: idx,
-        date: dateISO,
-        header: p.header || null,
-        inspectedBy: p.inspectedBy || "",
-        verifiedBy: p.verifiedBy || "",
-        ...r
-      }));
+
+      return rowsArr.map((r, idx) => {
+        const rr = { ...(r || {}) };
+
+        // ✅ FIX: normalize YES/NO for ALL VI fields (includes new safety controls)
+        VI_PARAMS.forEach((param) => {
+          const n = normYesNo(rr[param.id]);
+          if (n) rr[param.id] = n;
+        });
+
+        return {
+          __docId: docId,
+          __rowIndex: idx,
+          date: dateISO,
+          header: p.header || null,
+          inspectedBy: p.inspectedBy || "",
+          verifiedBy: p.verifiedBy || "",
+          ...rr,
+        };
+      });
     });
   }, [docs]);
 
@@ -505,12 +541,11 @@ export default function LoadingReports() {
       return { year: y, months: monthsArr };
     });
 
-    // ✅ fixed: clean comparator (no labels)
     const flatDays = [...flat].sort((a, b) => {
       const aIso = a.startsWith("iso:") ? a.slice(4) : "";
       const bIso = b.startsWith("iso:") ? b.slice(4) : "";
-      if (aIso && bIso) return bIso.localeCompare(aIso); // latest first
-      if (aIso) return -1;  // ISO dates before "raw"
+      if (aIso && bIso) return bIso.localeCompare(aIso);
+      if (aIso) return -1;
       if (bIso) return 1;
       return a.localeCompare(b);
     });
@@ -608,7 +643,7 @@ export default function LoadingReports() {
 
   const handleImportFile = async (ev) => {
     const file = ev.target.files?.[0];
-    ev.target.value = ""; // reset
+    ev.target.value = "";
     if (!file) return;
 
     setImporting(true);
@@ -657,7 +692,8 @@ export default function LoadingReports() {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
 
-    const yesNo = (v) => (v === "yes" ? "YES" : v === "no" ? "NO" : "—");
+    // ✅ FIX: use same label logic everywhere
+    const yesNo = (v) => yesNoLabel(v);
 
     const k = dayKPIs || {};
     const yesRatePct = k.yesRate != null ? Math.round(k.yesRate) + "%" : "—";
@@ -715,7 +751,7 @@ export default function LoadingReports() {
     .card .v { font-size: 20px; font-weight: 900; color: #0f172a; }
     table { width: 100%; border-collapse: collapse; }
     thead th { background: #e2e8f0; }
-    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: center; font-size: 11px; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: center; font-size: 10px; }
     thead { display: table-header-group; }
     tr, td, th { break-inside: avoid; }
   </style>
@@ -736,7 +772,7 @@ export default function LoadingReports() {
     <div class="card"><div class="t">Vehicles</div><div class="v">${count}</div></div>
     <div class="card"><div class="t">Avg Temperature (°C)</div><div class="v">${esc(avgTemp)}</div></div>
     <div class="card"><div class="t">Avg Loading Duration (min)</div><div class="v">${esc(avgDur)}</div></div>
-    <div class="card"><div class="t">Yes rate (visual checks)</div><div class="v">${esc(yesRatePct)}</div></div>
+    <div class="card"><div class="t">Yes rate (all checks)</div><div class="v">${esc(yesRatePct)}</div></div>
   </div>
 
   <table>
@@ -1140,7 +1176,7 @@ export default function LoadingReports() {
                     <div className="panel" style={{ padding: 12, display: "grid", placeItems: "center" }}>
                       <GaugeCircle
                         value={dayKPIs.yesRate != null ? dayKPIs.yesRate : 0}
-                        label="Yes rate (visual checks)"
+                        label="Yes rate (all checks)"
                         color="#5dade2"
                       />
                     </div>
@@ -1153,13 +1189,13 @@ export default function LoadingReports() {
                     </div>
                   </div>
 
-                  {/* Vehicles table (columns trimmed) */}
+                  {/* Vehicles table (now includes NEW columns) */}
                   <div className="panel" style={{ overflow: "hidden", marginBottom: 16 }}>
                     <div style={{ background: "#dbeafe", padding: "10px 12px", fontWeight: 700, color: "#0f172a", borderBottom: "1px solid #b6c8e3" }}>
                       Daily Vehicles List ({selectedVehicles.length} vehicles)
                     </div>
-                    <div className="panel-body" style={{ padding: 0 }}>
-                      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+                    <div className="panel-body" style={{ padding: 0, overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, minWidth: 1600 }}>
                         <thead>
                           <tr>
                             <th>Vehicle No</th>
@@ -1182,13 +1218,22 @@ export default function LoadingReports() {
                               <td>{v.timeEnd || "—"}</td>
                               <td>{v.tempCheck || "—"}</td>
                               <td>{formatMinutes((parseTimeToMinutes(v.timeEnd) ?? 0) - (parseTimeToMinutes(v.timeStart) ?? 0))}</td>
-                              {VI_PARAMS.map(p => (
-                                <td key={p.id}>
-                                  <span style={{ color: v[p.id] === "yes" ? "#16a34a" : "#dc2626", fontWeight: 700 }}>
-                                    {v[p.id] === "yes" ? "YES" : "NO"}
-                                  </span>
-                                </td>
-                              ))}
+
+                              {VI_PARAMS.map(p => {
+                                const n = normYesNo(v[p.id]);
+                                return (
+                                  <td key={p.id}>
+                                    <span
+                                      style={{
+                                        color: n === "yes" ? "#16a34a" : n === "no" ? "#dc2626" : "#6b7280",
+                                        fontWeight: 800
+                                      }}
+                                    >
+                                      {yesNoLabel(v[p.id])}
+                                    </span>
+                                  </td>
+                                );
+                              })}
                             </tr>
                           ))}
                           {selectedVehicles.length === 0 && (

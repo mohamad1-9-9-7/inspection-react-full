@@ -12,6 +12,13 @@ import React, { useEffect, useMemo, useState } from "react";
  * - VEHICLE NO + DRIVER NAME are dropdowns (no duplicates)
  * - Add buttons appear ONLY on first row
  * - New values are saved permanently on server (as lookup types)
+ *
+ * NEW (Loading/Unloading Safety Controls):
+ * - TRAFFIC CONTROL / SPOTTER USED (Yes/No)
+ * - VEHICLE SECURED (HANDBRAKE + CHOCKS) (Yes/No)
+ * - LOAD SECURED (STRAPS + INSPECTION) (Yes/No)
+ * - AREA SAFE (LIGHTING/ANTI-SLIP/WALKWAY CLEAR) (Yes/No)
+ * - MANUAL HANDLING CONTROLS APPLIED (Yes/No)
  */
 
 const API_BASE_RAW =
@@ -70,7 +77,18 @@ async function saveLookupValue(type, value) {
   return res.json().catch(() => ({ ok: true }));
 }
 
+/* =========================
+   YES/NO fields (table)
+========================= */
 const YESNO_FIELDS = [
+  // NEW safety controls
+  "trafficControlSpotter",     // Traffic control / spotter used
+  "vehicleSecured",            // Handbrake + chocks
+  "loadSecured",               // Straps + inspection
+  "areaSafe",                  // Lighting/anti-slip/walkway clear
+  "manualHandlingControls",    // Lifting aids/team lift/no overload
+
+  // Existing food/vehicle hygiene items (keep as-is)
   "floorSealingIntact",
   "floorCleaning",
   "pestActivites", // keep sheet spelling
@@ -86,6 +104,15 @@ const REQUIRED_FIELDS = {
   timeStart: "TIME START",
   timeEnd: "TIME END",
   tempCheck: "TRUCK TEMPERATURE",
+
+  // NEW labels
+  trafficControlSpotter: "TRAFFIC CONTROL / SPOTTER USED",
+  vehicleSecured: "VEHICLE SECURED (HANDBRAKE + CHOCKS)",
+  loadSecured: "LOAD SECURED (STRAPS + INSPECTION)",
+  areaSafe: "AREA SAFE (LIGHTING/ANTI-SLIP/WALKWAY CLEAR)",
+  manualHandlingControls: "MANUAL HANDLING CONTROLS APPLIED",
+
+  // Existing labels
   floorSealingIntact: "FLOOR SEALING INTACT",
   floorCleaning: "FLOOR CLEANING",
   pestActivites: "PEST ACTIVITES",
@@ -113,12 +140,22 @@ function newRow() {
     timeStart: "",
     timeEnd: "",
     tempCheck: "",
+
+    // NEW safety controls (defaults)
+    trafficControlSpotter: "yes",
+    vehicleSecured: "yes",
+    loadSecured: "yes",
+    areaSafe: "yes",
+    manualHandlingControls: "yes",
+
+    // Existing
     floorSealingIntact: "yes",
     floorCleaning: "yes",
     pestActivites: "no",
     plasticCurtain: "yes",
     badOdour: "no",
     ppeAvailable: "yes",
+
     informedTo: "", // optional
     remarks: "",
   };
@@ -296,10 +333,11 @@ export default function LoadingLog() {
         }
       });
 
+      // Validate YES/NO for all yes/no columns
       YESNO_FIELDS.forEach((k) => {
         const val = String(r[k] || "").trim().toLowerCase();
         if (val !== "yes" && val !== "no") {
-          missing.push(REQUIRED_FIELDS[k]);
+          missing.push(REQUIRED_FIELDS[k] || k);
           setForRow.add(k);
         }
       });
@@ -434,7 +472,8 @@ export default function LoadingLog() {
   const tableStyle = {
     width: "100%",
     borderCollapse: "collapse",
-    minWidth: "1200px",
+    // widened because we added 5 new Yes/No columns
+    minWidth: "1750px",
   };
 
   const thStyle = {
@@ -543,6 +582,26 @@ export default function LoadingLog() {
     [lookupBusy]
   );
 
+  // For headers: custom order (new fields first, then old YESNO_FIELDS)
+  const NEW_YESNO_ORDER = [
+    "trafficControlSpotter",
+    "vehicleSecured",
+    "loadSecured",
+    "areaSafe",
+    "manualHandlingControls",
+  ];
+
+  const OLD_YESNO_ORDER = [
+    "floorSealingIntact",
+    "floorCleaning",
+    "pestActivites",
+    "plasticCurtain",
+    "badOdour",
+    "ppeAvailable",
+  ];
+
+  const YESNO_RENDER_ORDER = [...NEW_YESNO_ORDER, ...OLD_YESNO_ORDER];
+
   return (
     <form onSubmit={handleSave} style={wrapStyle}>
       <div style={cardStyle}>
@@ -642,12 +701,22 @@ export default function LoadingLog() {
                   "TIME START",
                   "TIME END",
                   "TRUCK TEMPERATURE",
+
+                  // NEW columns
+                  "TRAFFIC CONTROL / SPOTTER USED",
+                  "VEHICLE SECURED (HANDBRAKE + CHOCKS)",
+                  "LOAD SECURED (STRAPS + INSPECTION)",
+                  "AREA SAFE (LIGHTING/ANTI-SLIP/WALKWAY CLEAR)",
+                  "MANUAL HANDLING CONTROLS APPLIED",
+
+                  // Existing
                   "FLOOR SEALING INTACT",
                   "FLOOR CLEANING",
                   "PEST ACTIVITES",
                   "PLASTIC CURTAIN AVAILABLE/ CLEANING",
                   "BAD ODOUR",
                   "PPE AVAILABLE",
+
                   "INFORMED TO (OPTIONAL)",
                   "REMARKS",
                 ].map((h) => (
@@ -750,7 +819,8 @@ export default function LoadingLog() {
                     />
                   </td>
 
-                  {YESNO_FIELDS.map((k) => (
+                  {/* Yes/No fields in chosen order */}
+                  {YESNO_RENDER_ORDER.map((k) => (
                     <td key={k} style={isInvalid(i, k) ? tdInvalid : tdStyle}>
                       <div style={radioGroupStyle}>
                         <label style={radioLabelStyle}>

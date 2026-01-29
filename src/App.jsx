@@ -57,13 +57,17 @@ const POS19DailyView = lazy(() =>
 );
 
 // ✅ إدخال + عرض FTR1
-const FTR1Report = lazy(() => import("./pages/monitor/branches/ftr1/FTR1Report"));
+const FTR1Report = lazy(() =>
+  import("./pages/monitor/branches/ftr1/FTR1Report")
+);
 const FTR1ReportView = lazy(() =>
   import("./pages/monitor/branches/ftr1/FTR1ReportView")
 );
 
 // ✅ إدخال + عرض FTR2
-const FTR2Report = lazy(() => import("./pages/monitor/branches/ftr2/FTR2Report"));
+const FTR2Report = lazy(() =>
+  import("./pages/monitor/branches/ftr2/FTR2Report")
+);
 const FTR2ReportView = lazy(() =>
   import("./pages/monitor/branches/ftr2/FTR2ReportView")
 );
@@ -169,7 +173,9 @@ const QCSReportsView = lazy(() =>
 );
 
 /* 🆕 🧾 Inventory Daily (Store) — إدخال + عرض */
-const InventoryDailyInput = lazy(() => import("./pages/store/InventoryDailyInput"));
+const InventoryDailyInput = lazy(() =>
+  import("./pages/store/InventoryDailyInput")
+);
 const InventoryDailyBrowse = lazy(() =>
   import("./pages/store/InventoryDailyBrowse")
 );
@@ -183,7 +189,9 @@ const TrainingCertificatesView = lazy(() =>
 );
 
 // 🆕 📘 ISO 22000 & HACCP Hub
-const HaccpIsoMenu = lazy(() => import("./pages/haccp and iso/HaccpIsoMenu"));
+const HaccpIsoMenu = lazy(() =>
+  import("./pages/haccp and iso/HaccpIsoMenu")
+);
 
 // 🆕 📦 Product Details Input
 const ProductDetailsInput = lazy(() =>
@@ -211,6 +219,20 @@ const MunicipalityInspectionInput = lazy(() =>
 );
 const MunicipalityInspectionView = lazy(() =>
   import("./pages/haccp and iso/MunicipalityInspectionView")
+);
+
+/* ✅🆕 التدريب الداخلي (جلسات تدريب + إنشاء + قائمة) */
+const TrainingHome = lazy(() => import("./pages/training/TrainingHome"));
+const TrainingSessionCreate = lazy(() =>
+  import("./pages/training/TrainingSessionCreate")
+);
+const TrainingSessionsList = lazy(() =>
+  import("./pages/training/TrainingSessionsList")
+);
+
+// ✅🆕 صفحة المتدرّب (رابط/QR)
+const TrainingQuizLink = lazy(() =>
+  import("./pages/training/TrainingQuizLink")
 );
 
 /** حماية المسارات الخاصة */
@@ -300,6 +322,38 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* ✅ التدريب الداخلي */}
+        <Route
+          path="/training"
+          element={
+            <ProtectedRoute>
+              <TrainingHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/training/create"
+          element={
+            <ProtectedRoute>
+              <TrainingSessionCreate />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/training/sessions"
+          element={
+            <ProtectedRoute>
+              <TrainingSessionsList />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅🆕 رابط المتدرّب (بدون تسجيل دخول) — (SESSION + SLNO) */}
+        <Route path="/training/quiz/:sessionId/:slNo" element={<TrainingQuizLink />} />
+
+        {/* ✅🆕 رابط المتدرّب (بدون تسجيل دخول) — (TOKEN) */}
+        <Route path="/t/:token" element={<TrainingQuizLink />} />
 
         {/* monitor/* */}
         <Route path="/monitor">
