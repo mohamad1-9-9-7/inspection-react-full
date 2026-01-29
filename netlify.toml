@@ -1,0 +1,5 @@
+[[redirects]]
+  from = "/api/*"
+  to = "https://inspection-server-4nvj.onrender.com/api/:splat"
+  status = 200
+  force = true
