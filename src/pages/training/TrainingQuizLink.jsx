@@ -15,15 +15,28 @@ async function fetchJson(url, options) {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     ...options,
   });
-  const txt = await res.text();
+  const txt = await res.text().catch(() => "");
   let data;
-  try { data = JSON.parse(txt); } catch { data = txt; }
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    data = txt;
+  }
   if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
   return data;
 }
 
+/* ✅ NEW endpoints (token is TEXT, not uuid) */
+function getInfoEndpoint(token) {
+  return `${API_BASE}/api/training-session/by-token/${encodeURIComponent(token)}`;
+}
+function getSubmitEndpoint(token) {
+  return `${API_BASE}/api/training-session/by-token/${encodeURIComponent(token)}/submit`;
+}
+
 export default function TrainingQuizLink() {
   const { token } = useParams();
+
   const [loading, setLoading] = useState(true);
   const [info, setInfo] = useState(null);
   const [lang, setLang] = useState("EN");
@@ -32,17 +45,56 @@ export default function TrainingQuizLink() {
   const [done, setDone] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const quiz = info?.quiz;
-  const questions = useMemo(() => quiz?.questions || [], [quiz]);
+  // ✅ make it tolerant to different server shapes
+  const quiz = useMemo(() => {
+    const q = info?.quiz || info?.data?.quiz || info?.payload?.quiz || info?.report?.quiz;
+    return q || {};
+  }, [info]);
+
+  const participantName = useMemo(() => {
+    return (
+      info?.participant?.name ||
+      info?.data?.participant?.name ||
+      info?.link?.participant?.name ||
+      "-"
+    );
+  }, [info]);
+
+  const alreadySubmitted = useMemo(() => {
+    return Boolean(
+      info?.alreadySubmitted ||
+        info?.data?.alreadySubmitted ||
+        info?.already_submitted ||
+        info?.data?.already_submitted
+    );
+  }, [info]);
+
+  const lastSubmittedAt = useMemo(() => {
+    return (
+      info?.lastSubmittedAt ||
+      info?.data?.lastSubmittedAt ||
+      info?.last_submitted_at ||
+      info?.data?.last_submitted_at ||
+      ""
+    );
+  }, [info]);
+
+  const questions = useMemo(() => {
+    const qs = quiz?.questions || info?.questions || [];
+    return Array.isArray(qs) ? qs : [];
+  }, [quiz, info]);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       setMsg("");
+      setInfo(null);
+      setDone(false);
+      setAnswers({});
       try {
-        const data = await fetchJson(`${API_BASE}/api/training-links/${encodeURIComponent(token)}`);
+        const data = await fetchJson(getInfoEndpoint(token));
         setInfo(data);
-        setDone(!!data?.alreadySubmitted);
+        setDone(Boolean(data?.alreadySubmitted || data?.data?.alreadySubmitted));
       } catch (e) {
         setMsg(String(e?.message || e));
       } finally {
@@ -66,13 +118,17 @@ export default function TrainingQuizLink() {
     setMsg("");
     try {
       const arr = questions.map((_, i) => answers[i]);
-      const out = await fetchJson(`${API_BASE}/api/training-links/${encodeURIComponent(token)}/submit`, {
+
+      const out = await fetchJson(getSubmitEndpoint(token), {
         method: "POST",
         body: JSON.stringify({ answers: arr }),
       });
 
+      const score = out?.score ?? out?.data?.score;
+      const result = out?.result ?? out?.data?.result;
+
       setDone(true);
-      setMsg(`✅ Submitted. Score: ${out.score}% — ${out.result}`);
+      setMsg(`✅ Submitted. Score: ${score}% — ${result}`);
     } catch (e) {
       setMsg(String(e?.message || e));
     } finally {
@@ -129,26 +185,51 @@ export default function TrainingQuizLink() {
   return (
     <div style={page}>
       <div style={card}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <div>
             <div style={{ fontWeight: 1100, fontSize: 18, color: "#0f172a" }}>
               🧪 {quiz?.module || "Training Quiz"}
             </div>
             <div style={{ marginTop: 6, color: "#64748b", fontWeight: 900 }}>
-              Participant: {info?.participant?.name || "-"}
+              Participant: {participantName}
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setLang("EN")} style={btn(lang === "EN")}>EN</button>
-            <button onClick={() => setLang("AR")} style={btn(lang === "AR")}>عربي</button>
+            <button onClick={() => setLang("EN")} style={btn(lang === "EN")}>
+              EN
+            </button>
+            <button onClick={() => setLang("AR")} style={btn(lang === "AR")}>
+              عربي
+            </button>
           </div>
         </div>
 
-        {done ? (
-          <div style={{ marginTop: 14, padding: 14, borderRadius: 14, background: "#ecfdf5", border: "1px solid #a7f3d0", fontWeight: 1000 }}>
+        {alreadySubmitted || done ? (
+          <div
+            style={{
+              marginTop: 14,
+              padding: 14,
+              borderRadius: 14,
+              background: "#ecfdf5",
+              border: "1px solid #a7f3d0",
+              fontWeight: 1000,
+            }}
+          >
             ✅ This quiz was already submitted.
-            {info?.lastSubmittedAt ? <div style={{ marginTop: 6, color: "#065f46" }}>Submitted at: {info.lastSubmittedAt}</div> : null}
+            {lastSubmittedAt ? (
+              <div style={{ marginTop: 6, color: "#065f46" }}>
+                Submitted at: {lastSubmittedAt}
+              </div>
+            ) : null}
             {msg ? <div style={{ marginTop: 8 }}>{msg}</div> : null}
           </div>
         ) : (
@@ -158,7 +239,16 @@ export default function TrainingQuizLink() {
             </div>
 
             {msg ? (
-              <div style={{ marginTop: 10, padding: 12, borderRadius: 14, background: "#fff7ed", border: "1px solid #fed7aa", fontWeight: 900 }}>
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 12,
+                  borderRadius: 14,
+                  background: "#fff7ed",
+                  border: "1px solid #fed7aa",
+                  fontWeight: 900,
+                }}
+              >
                 {msg}
               </div>
             ) : null}
@@ -168,26 +258,52 @@ export default function TrainingQuizLink() {
                 const qText = lang === "AR" ? q.q_ar : q.q_en;
                 const opts = lang === "AR" ? (q.options_ar || []) : (q.options_en || []);
                 return (
-                  <div key={i} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 14 }}>
-                    <div style={{ fontWeight: 1100, color: "#0f172a", marginBottom: 10, direction: lang === "AR" ? "rtl" : "ltr" }}>
+                  <div
+                    key={i}
+                    style={{
+                      background: "#fff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 16,
+                      padding: 14,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 1100,
+                        color: "#0f172a",
+                        marginBottom: 10,
+                        direction: lang === "AR" ? "rtl" : "ltr",
+                      }}
+                    >
                       {i + 1}) {qText}
                     </div>
 
-                    <div style={{ display: "grid", gap: 8, direction: lang === "AR" ? "rtl" : "ltr" }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                        direction: lang === "AR" ? "rtl" : "ltr",
+                      }}
+                    >
                       {opts.map((opt, oi) => {
                         const checked = answers[i] === oi;
                         return (
-                          <label key={oi} style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            padding: "10px 12px",
-                            borderRadius: 14,
-                            border: `1px solid ${checked ? "#c7d2fe" : "#e5e7eb"}`,
-                            background: checked ? "linear-gradient(135deg,#eef2ff,#ffffff)" : "#fff",
-                            cursor: "pointer",
-                            fontWeight: 900
-                          }}>
+                          <label
+                            key={oi}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "10px 12px",
+                              borderRadius: 14,
+                              border: `1px solid ${checked ? "#c7d2fe" : "#e5e7eb"}`,
+                              background: checked
+                                ? "linear-gradient(135deg,#eef2ff,#ffffff)"
+                                : "#fff",
+                              cursor: "pointer",
+                              fontWeight: 900,
+                            }}
+                          >
                             <input
                               type="radio"
                               name={`q_${i}`}
