@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 /* ===== API base (same pattern) ===== */
@@ -10,11 +10,25 @@ const API_BASE = String(
     API_ROOT_DEFAULT
 ).replace(/\/$/, "");
 
+/* ===== small helpers ===== */
+function norm(s) {
+  return String(s ?? "").trim();
+}
+function makeParticipantKey({ employeeId, name }) {
+  const eid = norm(employeeId);
+  const nm = norm(name).toLowerCase();
+  if (eid) return `emp:${eid}`; // align with backend key style
+  if (nm) return `name:${nm}`;
+  return "";
+}
+
+/* ===== fetch helpers ===== */
 async function fetchJson(url, options) {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     ...options,
   });
+
   const txt = await res.text().catch(() => "");
   let data;
   try {
@@ -22,11 +36,33 @@ async function fetchJson(url, options) {
   } catch {
     data = txt;
   }
-  if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+
+  if (!res.ok) {
+    const err = new Error(data?.error || data?.message || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 
-/* ✅ NEW endpoints (token is TEXT, not uuid) */
+async function fetchJsonNoThrow(url, options) {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    ...options,
+  });
+
+  const txt = await res.text().catch(() => "");
+  let data;
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    data = txt;
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+/* ✅ token is TEXT */
 function getInfoEndpoint(token) {
   return `${API_BASE}/api/training-session/by-token/${encodeURIComponent(token)}`;
 }
@@ -45,38 +81,53 @@ export default function TrainingQuizLink() {
   const [done, setDone] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // ✅ make it tolerant to different server shapes
+  // ✅ trainee identity fields
+  const [pName, setPName] = useState("");
+  const [pDesignation, setPDesignation] = useState("");
+  const [pEmployeeId, setPEmployeeId] = useState("");
+
+  // localStorage key
+  const LS_KEY = useMemo(() => `training_participant_${token}`, [token]);
+
+  // ✅ load participant info from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      setPName(norm(obj?.name));
+      setPDesignation(norm(obj?.designation));
+      setPEmployeeId(norm(obj?.employeeId));
+    } catch {
+      // ignore
+    }
+  }, [LS_KEY]);
+
+  // ✅ persist participant info
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        LS_KEY,
+        JSON.stringify({
+          name: norm(pName),
+          designation: norm(pDesignation),
+          employeeId: norm(pEmployeeId),
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }, [LS_KEY, pName, pDesignation, pEmployeeId]);
+
+  const participantKey = useMemo(
+    () => makeParticipantKey({ employeeId: pEmployeeId, name: pName }),
+    [pEmployeeId, pName]
+  );
+
+  // ✅ tolerate server shapes
   const quiz = useMemo(() => {
     const q = info?.quiz || info?.data?.quiz || info?.payload?.quiz || info?.report?.quiz;
     return q || {};
-  }, [info]);
-
-  const participantName = useMemo(() => {
-    return (
-      info?.participant?.name ||
-      info?.data?.participant?.name ||
-      info?.link?.participant?.name ||
-      "-"
-    );
-  }, [info]);
-
-  const alreadySubmitted = useMemo(() => {
-    return Boolean(
-      info?.alreadySubmitted ||
-        info?.data?.alreadySubmitted ||
-        info?.already_submitted ||
-        info?.data?.already_submitted
-    );
-  }, [info]);
-
-  const lastSubmittedAt = useMemo(() => {
-    return (
-      info?.lastSubmittedAt ||
-      info?.data?.lastSubmittedAt ||
-      info?.last_submitted_at ||
-      info?.data?.last_submitted_at ||
-      ""
-    );
   }, [info]);
 
   const questions = useMemo(() => {
@@ -84,27 +135,58 @@ export default function TrainingQuizLink() {
     return Array.isArray(qs) ? qs : [];
   }, [quiz, info]);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setMsg("");
+  const passMark = useMemo(() => {
+    const pm = Number(quiz?.passMark ?? 80);
+    return Number.isFinite(pm) ? pm : 80;
+  }, [quiz]);
+
+  // ========= load session info =========
+  const loadedTokenRef = useRef("");
+
+  const loadInfo = async () => {
+    setLoading(true);
+    setMsg("");
+    try {
+      const data = await fetchJson(getInfoEndpoint(token));
+      setInfo(data);
+      // ✅ backend GET no longer returns "alreadySubmitted" per person
+      setDone(false);
+    } catch (e) {
       setInfo(null);
       setDone(false);
-      setAnswers({});
-      try {
-        const data = await fetchJson(getInfoEndpoint(token));
-        setInfo(data);
-        setDone(Boolean(data?.alreadySubmitted || data?.data?.alreadySubmitted));
-      } catch (e) {
-        setMsg(String(e?.message || e));
-      } finally {
-        setLoading(false);
-      }
-    })();
+      setMsg(String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    if (loadedTokenRef.current === token) return;
+
+    loadedTokenRef.current = token;
+    setAnswers({});
+    setDone(false);
+    setMsg("");
+    loadInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const submit = async () => {
     if (!questions.length) return;
+
+    const name = norm(pName);
+    const designation = norm(pDesignation);
+    const employeeId = norm(pEmployeeId);
+
+    if (!name) {
+      alert("Please enter your name.");
+      return;
+    }
+    if (!employeeId) {
+      alert("Please enter your Employee ID.");
+      return;
+    }
 
     // validate all answered
     for (let i = 0; i < questions.length; i++) {
@@ -116,16 +198,42 @@ export default function TrainingQuizLink() {
 
     setSaving(true);
     setMsg("");
+
     try {
       const arr = questions.map((_, i) => answers[i]);
 
-      const out = await fetchJson(getSubmitEndpoint(token), {
+      // ✅ use no-throw fetch to handle 409 cleanly
+      const out = await fetchJsonNoThrow(getSubmitEndpoint(token), {
         method: "POST",
-        body: JSON.stringify({ answers: arr }),
+        body: JSON.stringify({
+          participant: { name, designation, employeeId },
+          answers: arr,
+        }),
       });
 
-      const score = out?.score ?? out?.data?.score;
-      const result = out?.result ?? out?.data?.result;
+      // ✅ ALREADY_SUBMITTED
+      if (!out.ok && out.status === 409 && out?.data?.error === "ALREADY_SUBMITTED") {
+        const score = out?.data?.score ?? "";
+        const result = out?.data?.result ?? "";
+        const submittedAt = out?.data?.submittedAt ?? "";
+
+        setDone(true);
+        setMsg(
+          `✅ Already submitted for this trainee.\nScore: ${score}% — ${result}${
+            submittedAt ? `\nSubmitted at: ${submittedAt}` : ""
+          }`
+        );
+        return;
+      }
+
+      if (!out.ok) {
+        // generic error
+        setMsg(String(out?.data?.error || out?.data?.message || `HTTP ${out.status}`));
+        return;
+      }
+
+      const score = out?.data?.score ?? "";
+      const result = out?.data?.result ?? "";
 
       setDone(true);
       setMsg(`✅ Submitted. Score: ${score}% — ${result}`);
@@ -163,6 +271,16 @@ export default function TrainingQuizLink() {
     fontWeight: 900,
   });
 
+  const inputStyle = {
+    width: "100%",
+    padding: 12,
+    borderRadius: 14,
+    border: "1px solid #e5e7eb",
+    outline: "none",
+    fontWeight: 900,
+    background: "linear-gradient(180deg,#ffffff,#f8fafc)",
+  };
+
   if (loading) {
     return (
       <div style={page}>
@@ -176,7 +294,7 @@ export default function TrainingQuizLink() {
       <div style={page}>
         <div style={card}>
           <div style={{ fontWeight: 1100, color: "#be123c" }}>Error</div>
-          <div style={{ marginTop: 8 }}>{msg}</div>
+          <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{msg}</div>
         </div>
       </div>
     );
@@ -199,7 +317,7 @@ export default function TrainingQuizLink() {
               🧪 {quiz?.module || "Training Quiz"}
             </div>
             <div style={{ marginTop: 6, color: "#64748b", fontWeight: 900 }}>
-              Participant: {participantName}
+              Pass Mark: {passMark}%
             </div>
           </div>
 
@@ -213,7 +331,65 @@ export default function TrainingQuizLink() {
           </div>
         </div>
 
-        {alreadySubmitted || done ? (
+        {/* ✅ trainee info fields */}
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            borderRadius: 16,
+            border: "1px solid #e5e7eb",
+            background: "linear-gradient(180deg,#ffffff,#f8fafc)",
+          }}
+        >
+          <div style={{ fontWeight: 1100, color: "#0f172a", marginBottom: 10 }}>
+            👤 Trainee Details
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
+                Name
+              </div>
+              <input
+                value={pName}
+                onChange={(e) => setPName(e.target.value)}
+                placeholder="Your name"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
+                Employee ID
+              </div>
+              <input
+                value={pEmployeeId}
+                onChange={(e) => setPEmployeeId(e.target.value)}
+                placeholder="Employee ID"
+                style={inputStyle}
+              />
+            </div>
+
+            <div style={{ gridColumn: "1 / -1" }}>
+              <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
+                Designation
+              </div>
+              <input
+                value={pDesignation}
+                onChange={(e) => setPDesignation(e.target.value)}
+                placeholder="Designation"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, color: "#64748b", fontWeight: 900, fontSize: 12 }}>
+            Submission key (for tracking):{" "}
+            <span style={{ userSelect: "all" }}>{participantKey || "-"}</span>
+          </div>
+        </div>
+
+        {done ? (
           <div
             style={{
               marginTop: 14,
@@ -222,20 +398,15 @@ export default function TrainingQuizLink() {
               background: "#ecfdf5",
               border: "1px solid #a7f3d0",
               fontWeight: 1000,
+              whiteSpace: "pre-wrap",
             }}
           >
-            ✅ This quiz was already submitted.
-            {lastSubmittedAt ? (
-              <div style={{ marginTop: 6, color: "#065f46" }}>
-                Submitted at: {lastSubmittedAt}
-              </div>
-            ) : null}
-            {msg ? <div style={{ marginTop: 8 }}>{msg}</div> : null}
+            {msg || "✅ Done"}
           </div>
         ) : (
           <>
             <div style={{ marginTop: 10, color: "#64748b", fontWeight: 900 }}>
-              Questions: {questions.length} — Pass Mark: {quiz?.passMark ?? 80}%
+              Questions: {questions.length}
             </div>
 
             {msg ? (
@@ -247,6 +418,7 @@ export default function TrainingQuizLink() {
                   background: "#fff7ed",
                   border: "1px solid #fed7aa",
                   fontWeight: 900,
+                  whiteSpace: "pre-wrap",
                 }}
               >
                 {msg}
@@ -256,7 +428,7 @@ export default function TrainingQuizLink() {
             <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
               {questions.map((q, i) => {
                 const qText = lang === "AR" ? q.q_ar : q.q_en;
-                const opts = lang === "AR" ? (q.options_ar || []) : (q.options_en || []);
+                const opts = lang === "AR" ? q.options_ar || [] : q.options_en || [];
                 return (
                   <div
                     key={i}

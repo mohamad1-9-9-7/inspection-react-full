@@ -350,10 +350,16 @@ export default function App() {
         />
 
         {/* ✅🆕 رابط المتدرّب (بدون تسجيل دخول) — (SESSION + SLNO) */}
-        <Route path="/training/quiz/:sessionId/:slNo" element={<TrainingQuizLink />} />
+        <Route
+          path="/training/quiz/:sessionId/:slNo"
+          element={<TrainingQuizLink />}
+        />
 
         {/* ✅🆕 رابط المتدرّب (بدون تسجيل دخول) — (TOKEN) */}
         <Route path="/t/:token" element={<TrainingQuizLink />} />
+
+        {/* ✅🆕 Alias إضافي للتوكن (بدون تسجيل دخول) */}
+        <Route path="/training/quiz/:token" element={<TrainingQuizLink />} />
 
         {/* monitor/* */}
         <Route path="/monitor">

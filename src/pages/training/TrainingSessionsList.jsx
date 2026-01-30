@@ -64,6 +64,72 @@ function buildQuizFromBank(moduleName, questions, passMark) {
   };
 }
 
+/* ===================== ✅ NEW: dedupe participants (EmployeeId first, then name) ===================== */
+function norm(s) {
+  return String(s ?? "").trim();
+}
+
+function participantKey(p) {
+  const eid = norm(p?.employeeId);
+  if (eid) return `eid:${eid}`;
+  const name = norm(p?.name).toLowerCase();
+  if (name) return `name:${name}`;
+  // fallback: keep row unique if both empty
+  return `row:${Math.random().toString(36).slice(2)}`;
+}
+
+function cleanParticipant(p) {
+  return {
+    slNo: norm(p?.slNo),
+    name: norm(p?.name),
+    designation: norm(p?.designation),
+    employeeId: norm(p?.employeeId),
+    result: norm(p?.result),
+    score: norm(p?.score),
+    lastQuizAt: norm(p?.lastQuizAt),
+    quizAttempt: p?.quizAttempt || null,
+  };
+}
+
+function dedupeParticipants(list) {
+  const arr = Array.isArray(list) ? list.map(cleanParticipant) : [];
+  const map = new Map();
+
+  // keep the "best" version (prefer having score/result/quizAttempt/lastQuizAt)
+  const scoreNum = (v) => {
+    const n = Number(String(v || "").replace("%", ""));
+    return Number.isFinite(n) ? n : -1;
+  };
+  const rank = (p) => {
+    let r = 0;
+    if (p?.quizAttempt?.answers?.length) r += 50;
+    if (norm(p?.result)) r += 10;
+    if (scoreNum(p?.score) >= 0) r += 10;
+    if (norm(p?.lastQuizAt)) r += 5;
+    if (norm(p?.designation)) r += 2;
+    return r;
+  };
+
+  for (const p of arr) {
+    const k = participantKey(p);
+    const prev = map.get(k);
+    if (!prev) {
+      map.set(k, p);
+      continue;
+    }
+    const prevR = rank(prev);
+    const curR = rank(p);
+    if (curR > prevR) map.set(k, { ...prev, ...p });
+    else map.set(k, { ...p, ...prev });
+  }
+
+  return Array.from(map.values()).filter((p) => {
+    // keep empty row only if it has something
+    const hasAny = p.name || p.designation || p.employeeId || p.result || p.score || p.lastQuizAt || (p.quizAttempt && p.quizAttempt.answers?.length);
+    return hasAny;
+  });
+}
+
 /* ===================== Component ===================== */
 export default function TrainingSessionsList() {
   const nav = useNavigate();
@@ -144,7 +210,9 @@ export default function TrainingSessionsList() {
         const fresh = arr.find((r) => getId(r) === sid);
         if (fresh) {
           setSelected(fresh);
-          setParticipants(renumberParticipants(fresh?.payload?.participants || []));
+          const raw = fresh?.payload?.participants || [];
+          const cleaned = dedupeParticipants(raw);
+          setParticipants(renumberParticipants(cleaned));
         }
       }
     } catch (e) {
@@ -188,7 +256,10 @@ export default function TrainingSessionsList() {
 
   const openSession = (r) => {
     setSelected(r);
-    setParticipants(renumberParticipants(r?.payload?.participants || []));
+    const raw = r?.payload?.participants || [];
+    const cleaned = dedupeParticipants(raw);
+    setParticipants(renumberParticipants(cleaned));
+
     setQuizOpen(false);
     setQuizIndex(-1);
     setQuizAnswers({});
@@ -206,7 +277,13 @@ export default function TrainingSessionsList() {
     setViewIndex(-1);
   };
 
-  const addRow = () => setParticipants((prev) => renumberParticipants([...(prev || []), makeBlankParticipant()]));
+  const addRow = () => {
+    setParticipants((prev) => {
+      const base = Array.isArray(prev) ? [...prev] : [];
+      base.push(makeBlankParticipant());
+      return renumberParticipants(base);
+    });
+  };
 
   const add5Rows = () => {
     setParticipants((prev) => {
@@ -216,7 +293,8 @@ export default function TrainingSessionsList() {
     });
   };
 
-  const removeRow = (idx) => setParticipants((prev) => renumberParticipants((prev || []).filter((_, i) => i !== idx)));
+  const removeRow = (idx) =>
+    setParticipants((prev) => renumberParticipants((prev || []).filter((_, i) => i !== idx)));
 
   const updateCell = (idx, key, value) => {
     setParticipants((prev) => {
@@ -230,12 +308,12 @@ export default function TrainingSessionsList() {
   const getSessionToken = () => String(selected?.payload?.quizToken || "").trim();
 
   const buildSessionLink = (token) => {
-    const origin = String(PUBLIC_ORIGIN || "").replace(/\/$/, ""); // ✅ use helpers value
+    const origin = String(PUBLIC_ORIGIN || "").replace(/\/$/, "");
     if (!origin || !token) return "";
     return `${origin}/t/${encodeURIComponent(token)}`;
   };
 
-  // ✅ NEW: Ensure token AND quiz are stored on server before giving link
+  // ✅ Ensure token AND quiz are stored on server before giving link
   const ensureTokenAndGetLink = async () => {
     if (!selected) return "";
     const id = getId(selected);
@@ -307,8 +385,8 @@ export default function TrainingSessionsList() {
   const saveParticipants = async () => {
     if (!selected) return;
 
-    // ✅ مهم: لا نحذف quizAttempt أثناء الحفظ
-    const clean = renumberParticipants(participants).map((p) => ({
+    // ✅ clean + dedupe + renumber
+    const clean = renumberParticipants(dedupeParticipants(participants)).map((p) => ({
       slNo: String(p.slNo || "").trim(),
       name: String(p.name || "").trim(),
       designation: String(p.designation || "").trim(),
@@ -433,16 +511,20 @@ export default function TrainingSessionsList() {
 
     setQuizSaving(true);
     try {
-      const updatedParticipants = renumberParticipants(participants).map((p, idx) => {
-        if (idx !== quizIndex) return p;
-        return {
-          ...p,
-          score: String(score),
-          result,
-          lastQuizAt: todayISO(),
-          quizAttempt: attemptSnapshot,
-        };
-      });
+      const updatedParticipants = renumberParticipants(
+        dedupeParticipants(
+          renumberParticipants(participants).map((p, idx) => {
+            if (idx !== quizIndex) return p;
+            return {
+              ...p,
+              score: String(score),
+              result,
+              lastQuizAt: todayISO(),
+              quizAttempt: attemptSnapshot,
+            };
+          })
+        )
+      );
 
       const id = getId(selected);
       if (!id) throw new Error("Missing report id");
