@@ -64,6 +64,34 @@ function uniqMergeKeepOrder(base = [], extra = []) {
   return out;
 }
 
+/* ===== Temperature helpers (allow . or , while typing) ===== */
+function filterTempText(v) {
+  let s = String(v ?? "");
+
+  // keep digits, minus, dot, comma only
+  s = s.replace(/[^\d\-.,]/g, "");
+
+  // keep minus only at start
+  s = s.replace(/(?!^)-/g, "");
+
+  // allow only ONE separator (first . or ,)
+  const sepPos = s.search(/[.,]/);
+  if (sepPos !== -1) {
+    const before = s.slice(0, sepPos);
+    const sep = s[sepPos];
+    let after = s.slice(sepPos + 1).replace(/[.,]/g, "");
+    // optional: limit decimals to 2 while typing (feel free to change)
+    after = after.slice(0, 2);
+    s = before + sep + after;
+  }
+
+  return s;
+}
+function parseTempNumber(s) {
+  const x = parseFloat(String(s ?? "").replace(",", "."));
+  return Number.isFinite(x) ? x : NaN;
+}
+
 /* Images API: POST /api/images, DELETE /api/images?url=... */
 async function uploadImageViaServer(file) {
   const fd = new FormData();
@@ -339,7 +367,6 @@ export default function FreshChickenInter() {
     if (productExists(v)) return;
     setProductCatalog((prev) => [...prev, v]);
     setNewProduct("");
-    // auto select it in header
     setHeader((p) => ({ ...p, productName: v }));
   };
 
@@ -376,8 +403,8 @@ export default function FreshChickenInter() {
   const setEntryDate = (variant, value) =>
     setEntryDates((p) => ({ ...p, [variant]: value }));
 
-  const [images, setImages] = useState([]); // [{ url, name }]
-  const [certs, setCerts] = useState([]); // [{ url, name }]
+  const [images, setImages] = useState([]);
+  const [certs, setCerts] = useState([]);
 
   /* ===== Break Up per-variant ===== */
   const [breakupByVariant, setBreakupByVariant] = useState({
@@ -408,7 +435,7 @@ export default function FreshChickenInter() {
   const [verifiedBy, setVerifiedBy] = useState("");
   const [saving, setSaving] = useState(false);
 
-  /* ====== Styles (EMBEDDED IN TAB) ====== */
+  /* ====== Styles ====== */
   const COLORS = {
     ink: "#0b132b",
     line: "#0b132b",
@@ -424,7 +451,6 @@ export default function FreshChickenInter() {
     bad: "#dc2626",
   };
 
-  // ⬇️ إصلاح: بدون position: fixed / inset: 0
   const page = {
     padding: 18,
     overflowY: "auto",
@@ -553,40 +579,42 @@ export default function FreshChickenInter() {
 
   /* ===== UI helpers ===== */
   const setH = (k, v) => setHeader((p) => ({ ...p, [k]: v }));
+
   const clampNonNegative = (val) => {
     const n = Number(val);
     if (!Number.isFinite(n)) return "";
     return n < 0 ? 0 : n;
   };
-  const clampTemperature = (val) => {
-    const n = Number(val);
-    if (!Number.isFinite(n)) return "";
-    return Math.min(15, Math.max(-5, n));
-  };
+
   const setCell = (colIdx, key, value, type) =>
     setCurrentSamples((prev) => {
       const next = [...prev];
       const curr = { ...next[colIdx] };
-      if (type === "number") {
-        const v = /temp/i.test(key) ? clampTemperature(value) : clampNonNegative(value);
+
+      // ✅ Temperature: keep as text while typing (supports . and ,)
+      if (key === "temperature") {
+        curr[key] = filterTempText(value);
+      } else if (type === "number") {
+        const v = clampNonNegative(value);
         curr[key] = v === "" ? "" : String(v);
       } else {
         curr[key] = value;
       }
+
       next[colIdx] = curr;
       return next;
     });
+
   const addSampleColumn = () =>
     setCurrentSamples((prev) => [...prev, makeSampleCol(reportVariant, prev.length)]);
   const removeLastSampleColumn = () =>
     setCurrentSamples((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
 
-  /* Attachments (Images & Certificates) */
+  /* Attachments */
   const doUploadList = async (fileList, dest = "images") => {
     const files = Array.from(fileList || []);
     if (!files.length) return;
 
-    // Enforce: Certificates max 2 files
     if (dest === "certs") {
       const remaining = Math.max(0, 2 - certs.length);
       if (remaining <= 0) {
@@ -607,7 +635,6 @@ export default function FreshChickenInter() {
       return;
     }
 
-    // Images (no strict limit)
     for (const file of files) {
       try {
         const { url } = await uploadImageViaServer(file);
@@ -617,10 +644,12 @@ export default function FreshChickenInter() {
       }
     }
   };
+
   const onPickImages = async (e, to = "images") => {
     await doUploadList(e.target.files, to);
     e.target.value = "";
   };
+
   const onDeleteImg = async (url, from = "images") => {
     try {
       await deleteImageUrl(url);
@@ -631,10 +660,12 @@ export default function FreshChickenInter() {
       setFn((p) => p.filter((x) => x.url !== url));
     }
   };
+
   const prevent = (e) => {
     e.preventDefault();
     e.stopPropagation();
   };
+
   const onDropZone = (dest) => async (e) => {
     prevent(e);
     const dt = e.dataTransfer;
@@ -642,7 +673,7 @@ export default function FreshChickenInter() {
   };
 
   const tempBadge = useMemo(() => {
-    const t = Number(header.truckTemperature);
+    const t = parseTempNumber(header.truckTemperature);
     if (!Number.isFinite(t)) return null;
     if (t >= 0 && t <= 4.9) return { text: "Acceptable (0–4.9°C)", color: COLORS.ok };
     if (t >= 5 && t <= 7.9) return { text: "Warning (5–7.9°C)", color: COLORS.warn };
@@ -662,11 +693,11 @@ export default function FreshChickenInter() {
     if (!isValidISO(header.sampleReceivedOn || "")) missing.push("Sample Received On (date)");
     if (!isValidISO(header.inspectionDate || "")) missing.push("Inspection Date (date)");
 
-    if (header.truckTemperature === "" || !Number.isFinite(Number(header.truckTemperature))) {
+    const ht = parseTempNumber(header.truckTemperature);
+    if (header.truckTemperature === "" || !Number.isFinite(ht)) {
       missing.push("Truck / Product Temperature (°C)");
     } else {
-      const t = Number(header.truckTemperature);
-      if (t < -5 || t > 15) invalid.push("Truck / Product Temperature must be between -5 and 15°C");
+      if (ht < -5 || ht > 15) invalid.push("Truck / Product Temperature must be between -5 and 15°C");
     }
 
     if (!(header.brand || "").trim()) missing.push("Brand");
@@ -738,13 +769,11 @@ export default function FreshChickenInter() {
 
   const rows = rowsFor(reportVariant);
   const saveDisabled = saving;
-
   const addBtnDisabled = !normProduct(newProduct) || productExists(newProduct);
 
   return (
     <div style={page} dir="ltr">
       <div style={container}>
-        {/* datalist used by Header + table cells */}
         <datalist id="fresh-chicken-product-list">
           {productCatalog.map((p) => (
             <option value={p} key={p} />
@@ -759,7 +788,6 @@ export default function FreshChickenInter() {
               <div style={{ fontWeight: 900, fontSize: 22, letterSpacing: 1 }}>AL MAWASHI</div>
             </div>
 
-            {/* Middle column: add Document No under Document Title */}
             <div style={{ borderRight: `2px solid ${COLORS.line}` }}>
               <BannerRow title="Document Title" value="Raw Material Inspection Report [Fresh Chicken]" />
               <BannerRow title="Document No" value={DOC_NO} />
@@ -768,7 +796,6 @@ export default function FreshChickenInter() {
               <BannerRow title="Controlling Officer" value="Online Quality Controller" />
             </div>
 
-            {/* Right column: without Document No (to avoid duplication) */}
             <div>
               <BannerRow title="Revision No" value="0" />
               <BannerRow title="Issued By" value="MOHAMAD ABDULLAH" />
@@ -829,17 +856,17 @@ export default function FreshChickenInter() {
               <label style={label}>Inspection Date</label>
               <input type="date" style={input} value={header.inspectionDate} onChange={(e) => setH("inspectionDate", e.target.value)} />
             </div>
+
+            {/* ✅ Header Temperature: manual text + accepts "." or "," */}
             <div>
               <label style={label}>Truck / Product Temperature (°C)</label>
               <input
-                type="number"
-                step="0.1"
-                min={-5}
-                max={15}
+                type="text"
+                inputMode="decimal"
                 style={input}
                 value={header.truckTemperature}
-                onChange={(e) => setH("truckTemperature", String(clampTemperature(e.target.value)))}
-                placeholder="e.g., 4.6"
+                onChange={(e) => setH("truckTemperature", filterTempText(e.target.value))}
+                placeholder="e.g., 4.6 or 4,6"
               />
               {tempBadge && (
                 <div
@@ -859,6 +886,7 @@ export default function FreshChickenInter() {
                 </div>
               )}
             </div>
+
             <div>
               <label style={label}>Brand</label>
               <input style={input} value={header.brand} onChange={(e) => setH("brand", e.target.value)} placeholder="e.g., AL AIN FARM (AL REEF)" />
@@ -881,7 +909,6 @@ export default function FreshChickenInter() {
               <label style={label}>Product Name</label>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 12, alignItems: "start" }}>
-                {/* dropdown-like input */}
                 <div>
                   <input
                     list="fresh-chicken-product-list"
@@ -895,7 +922,6 @@ export default function FreshChickenInter() {
                   </div>
                 </div>
 
-                {/* add new product */}
                 <div style={{ border: `2px dashed ${COLORS.line}`, borderRadius: 12, padding: 12, background: "#fff" }}>
                   <div style={{ fontWeight: 900, marginBottom: 8 }}>Add new product</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10 }}>
@@ -955,7 +981,7 @@ export default function FreshChickenInter() {
                   <th style={{ ...th, left: 0, position: "sticky", zIndex: 2, borderRight: `2px solid ${COLORS.line}` }}>
                     Attribute
                   </th>
-                  {currentSamples.map((s, i) => (
+                  {currentSamples.map((_, i) => (
                     <th key={i} style={th}>{`Sample ${i + 1}`}</th>
                   ))}
                 </tr>
@@ -973,6 +999,16 @@ export default function FreshChickenInter() {
                             value={s[row.key] ?? ""}
                             onChange={(e) => setCell(colIdx, row.key, e.target.value, "text")}
                             placeholder="Pick / type product…"
+                          />
+                        ) : row.key === "temperature" ? (
+                          // ✅ Samples Temperature: manual text + accepts "." or "," in ALL variants
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            style={input}
+                            value={s[row.key] ?? ""}
+                            onChange={(e) => setCell(colIdx, row.key, e.target.value, "text")}
+                            placeholder="e.g., 2.8 or 2,8"
                           />
                         ) : row.type === "number" ? (
                           <input
@@ -1040,7 +1076,6 @@ export default function FreshChickenInter() {
                 />
               </div>
 
-              {/* === Total Qty with KG suffix === */}
               <div>
                 <label style={label}>Total Qty (KG)</label>
                 <div style={{ position: "relative" }}>
@@ -1084,13 +1119,12 @@ export default function FreshChickenInter() {
           ))}
         </div>
 
-        {/* Attachments (Images & Certificates) */}
+        {/* Attachments */}
         <div style={sectionCard}>
           <div style={sectionBar(COLORS.blueBar)} />
           <h3 style={sectionTitle}>Attachments</h3>
 
           <div style={{ ...grid(2) }}>
-            {/* Images */}
             <div
               onDragEnter={prevent}
               onDragOver={prevent}
@@ -1115,7 +1149,6 @@ export default function FreshChickenInter() {
               <ThumbGrid items={images} onDelete={(url) => onDeleteImg(url, "images")} />
             </div>
 
-            {/* Certificates (max 2) */}
             <div
               onDragEnter={prevent}
               onDragOver={prevent}

@@ -239,6 +239,30 @@ function cmpDMY(a, b) {
   return 0;
 }
 
+/* ====== NEW: Expiry status helper (UI only) ====== */
+function startOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function daysBetween(a, b) {
+  const ms = startOfDay(b).getTime() - startOfDay(a).getTime();
+  return Math.round(ms / 86400000);
+}
+function getExpiryInfo(expiryDMY) {
+  const ed = parseDMY(toDMY(expiryDMY));
+  if (!ed) return { label: "—", bg: "#f1f5f9", color: "#334155" };
+
+  const today = new Date();
+  const dLeft = daysBetween(today, ed);
+
+  if (dLeft < 0) {
+    return { label: `❌ Expired (${Math.abs(dLeft)}d)`, bg: "#fee2e2", color: "#991b1b" };
+  }
+  if (dLeft <= 7) {
+    return { label: `⚠️ Near Expiry (${dLeft}d)`, bg: "#ffedd5", color: "#9a3412" };
+  }
+  return { label: `✅ OK (${dLeft}d)`, bg: "#dcfce7", color: "#166534" };
+}
+
 /* === Utilities لزر Import Dates فقط (as-is) === */
 function getExcelDisplayText(ws, r, c) {
   try {
@@ -345,7 +369,8 @@ function transformIncoming(record) {
     out.expiryDate = "";
     out.temp = "";
     out.quantity = chooseQtyFromStockLike(record);
-    out.unitOfMeasure = String(record["Unit of Measure"] ?? record["Unit of measure"] ?? "KG") || "KG";
+    out.unitOfMeasure =
+      String(record["Unit of Measure"] ?? record["Unit of measure"] ?? "KG") || "KG";
     out.overallCondition = "OK";
     out.remarks = "";
     if (out.temp === "") out.temp = autoTempForProduct(out.product);
@@ -408,7 +433,13 @@ export default function FinishedProductEntry() {
   function getRowStatus(r) {
     const e = getRowErrors(r);
     const hasMissing =
-      e.product || e.customer || e.orderNo || e.quantity || e.slaughterDate || e.expiryDate || e.dateOrder;
+      e.product ||
+      e.customer ||
+      e.orderNo ||
+      e.quantity ||
+      e.slaughterDate ||
+      e.expiryDate ||
+      e.dateOrder;
     if (hasMissing) {
       if (!e.slaughterDate && !e.expiryDate && (e.product || e.customer || e.orderNo || e.quantity))
         return { label: "⚠️ ناقص", color: "#b91c1c" };
@@ -736,6 +767,9 @@ export default function FinishedProductEntry() {
             <col style={{ width: "9%" }} />
             <col style={{ width: "10%" }} />
             <col style={{ width: "10%" }} />
+            {/* ✅ NEW column */}
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
             <col style={{ width: "7%" }} />
             <col style={{ width: "8%" }} />
             <col style={{ width: "9%" }} />
@@ -747,7 +781,13 @@ export default function FinishedProductEntry() {
           <thead>
             <tr style={{ background: "#eeeeee", color: "#273746" }}>
               <th style={th}>#</th>
-              {CORE_HEADERS.map((h) => (
+              {CORE_HEADERS.slice(0, 6).map((h) => (
+                <th key={h} style={th}>
+                  {h}
+                </th>
+              ))}
+              <th style={th}>EXPIRY STATUS</th>
+              {CORE_HEADERS.slice(6).map((h) => (
                 <th key={h} style={th}>
                   {h}
                 </th>
@@ -771,6 +811,8 @@ export default function FinishedProductEntry() {
               const qtyStyle = isZeroQty
                 ? { ...base, color: "#c0392b", fontWeight: "bold", background: "#fdecea", borderColor: "#e6a2a2" }
                 : base;
+
+              const expInfo = getExpiryInfo(r.expiryDate);
 
               return (
                 <tr
@@ -862,6 +904,27 @@ export default function FinishedProductEntry() {
                     />
                     {errs.expiryDate && <div style={hintErr}>{errs.expiryDate}</div>}
                     {errs.dateOrder && <div style={hintErr}>{errs.dateOrder}</div>}
+                  </td>
+
+                  {/* ✅ NEW: Expiry Status column */}
+                  <td style={td}>
+                    <div
+                      style={{
+                        width: "100%",
+                        padding: "8px",
+                        borderRadius: 8,
+                        border: "1.5px solid #d4e6f1",
+                        background: expInfo.bg,
+                        color: expInfo.color,
+                        fontWeight: 900,
+                        fontSize: 12,
+                        textAlign: "center",
+                        boxSizing: "border-box",
+                      }}
+                      title="Based on Expiry Date vs Today"
+                    >
+                      {expInfo.label}
+                    </div>
                   </td>
 
                   <td style={td}>
@@ -1008,7 +1071,7 @@ const tableWrap = {
 /* ✅ table stays inside screen */
 const tableStyle = {
   width: "100%",
-  minWidth: 1100, // allows reasonable layout; will scroll only on very small screens
+  minWidth: 1200, // كان 1100 — زدناه شوي بسبب العمود الجديد
   tableLayout: "fixed",
   borderCollapse: "collapse",
   fontSize: "0.95em",

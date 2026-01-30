@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import html2canvas from "html2canvas";
+import { QRCodeCanvas } from "qrcode.react";
 
 /* ===== API base (same pattern) ===== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -86,6 +88,82 @@ export default function TrainingQuizLink() {
   const [pDesignation, setPDesignation] = useState("");
   const [pEmployeeId, setPEmployeeId] = useState("");
 
+  // ✅ QR helpers
+  const qrWrapRef = useRef(null);
+
+  const shareUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const u = new URL(window.location.href);
+      // رابط نظيف بدون query/hash
+      return `${u.origin}${u.pathname}`;
+    } catch {
+      // fallback
+      return window.location.href;
+    }
+  }, [token]);
+
+  const copyLink = async () => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        setMsg("✅ Link copied");
+        return;
+      }
+    } catch {}
+    // fallback
+    try {
+      window.prompt("Copy link:", shareUrl);
+    } catch {}
+  };
+
+  const downloadQR = async () => {
+    if (!qrWrapRef.current) return;
+    try {
+      const canvas = await html2canvas(qrWrapRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      });
+      const png = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = png;
+      a.download = `training-quiz-qr-${token || "link"}.png`;
+      a.click();
+    } catch (e) {
+      setMsg(String(e?.message || e));
+    }
+  };
+
+  const printQR = async () => {
+    if (!qrWrapRef.current) return;
+    try {
+      const canvas = await html2canvas(qrWrapRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      });
+      const png = canvas.toDataURL("image/png");
+      const w = window.open("", "_blank");
+      if (!w) {
+        setMsg("Popup blocked. Please allow popups to print.");
+        return;
+      }
+      w.document.write(`
+        <html>
+          <head><title>Print QR</title></head>
+          <body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;">
+            <img src="${png}" style="max-width:90vw;max-height:90vh;" />
+            <script>
+              window.onload = function(){ window.focus(); window.print(); };
+            </script>
+          </body>
+        </html>
+      `);
+      w.document.close();
+    } catch (e) {
+      setMsg(String(e?.message || e));
+    }
+  };
+
   // localStorage key
   const LS_KEY = useMemo(() => `training_participant_${token}`, [token]);
 
@@ -126,7 +204,11 @@ export default function TrainingQuizLink() {
 
   // ✅ tolerate server shapes
   const quiz = useMemo(() => {
-    const q = info?.quiz || info?.data?.quiz || info?.payload?.quiz || info?.report?.quiz;
+    const q =
+      info?.quiz ||
+      info?.data?.quiz ||
+      info?.payload?.quiz ||
+      info?.report?.quiz;
     return q || {};
   }, [info]);
 
@@ -303,6 +385,77 @@ export default function TrainingQuizLink() {
   return (
     <div style={page}>
       <div style={card}>
+        {/* ✅ QR SECTION */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: 12,
+            borderRadius: 16,
+            border: "1px solid #e5e7eb",
+            background: "linear-gradient(180deg,#ffffff,#f8fafc)",
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div
+              ref={qrWrapRef}
+              style={{
+                padding: 10,
+                borderRadius: 14,
+                border: "1px solid #e5e7eb",
+                background: "#fff",
+                display: "inline-flex",
+                flexDirection: "column",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <div style={{ fontWeight: 1100, color: "#0f172a" }}>📌 Scan QR</div>
+              <QRCodeCanvas value={shareUrl || ""} size={140} includeMargin />
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
+                Training Quiz Link
+              </div>
+            </div>
+
+            <div style={{ minWidth: 260 }}>
+              <div style={{ fontWeight: 1100, color: "#0f172a" }}>🔗 Link</div>
+              <div
+                style={{
+                  marginTop: 6,
+                  padding: 10,
+                  borderRadius: 14,
+                  border: "1px solid #e5e7eb",
+                  background: "#fff",
+                  fontWeight: 900,
+                  color: "#0f172a",
+                  wordBreak: "break-all",
+                  userSelect: "all",
+                }}
+              >
+                {shareUrl}
+              </div>
+              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={copyLink} style={btn(false)}>Copy Link</button>
+                <button onClick={downloadQR} style={btn(false)}>Download QR</button>
+                <button onClick={printQR} style={btn(false)}>Print</button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setLang("EN")} style={btn(lang === "EN")}>
+              EN
+            </button>
+            <button onClick={() => setLang("AR")} style={btn(lang === "AR")}>
+              عربي
+            </button>
+          </div>
+        </div>
+
         <div
           style={{
             display: "flex",
@@ -319,15 +472,6 @@ export default function TrainingQuizLink() {
             <div style={{ marginTop: 6, color: "#64748b", fontWeight: 900 }}>
               Pass Mark: {passMark}%
             </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setLang("EN")} style={btn(lang === "EN")}>
-              EN
-            </button>
-            <button onClick={() => setLang("AR")} style={btn(lang === "AR")}>
-              عربي
-            </button>
           </div>
         </div>
 
