@@ -3,6 +3,7 @@ import LoadingLog from "./LoadingLog";
 import LoadingReports from "./LoadingReports";
 import Cleaning from "./Cleaning";                 // ✅ جديد: إدخال تنظيف
 import CleaningReports from "./CleaningReports";   // ✅ جديد: عرض تقارير تنظيف
+import Approvals from "./Approvals";               // ✅ NEW: Approvals Component
 
 /* يدعم نص ثنائي اللغة */
 const Bidi = ({ ar, en }) => (
@@ -203,7 +204,8 @@ export default function CarIcon() {
 
   const wrap = {
     direction: "rtl",
-    fontFamily: "Cairo, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, 'Apple Color Emoji','Segoe UI Emoji'",
+    fontFamily:
+      "Cairo, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, 'Apple Color Emoji','Segoe UI Emoji'",
     background: "transparent",
     minHeight: "100vh",
     width: "100%",
@@ -213,14 +215,13 @@ export default function CarIcon() {
 
   const row = { width: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" };
   const groupRight = { display: "flex", gap: 8, flexWrap: "wrap" };
-  const groupLeft  = { display: "flex", gap: 8, flexWrap: "wrap" };
+  const groupLeft = { display: "flex", gap: 8, flexWrap: "wrap" };
   const spacer = { flex: 1, minWidth: 8 };
 
   const content = { width: "100%", maxWidth: "100%" };
   const cardBox = { marginBottom: 16 };
 
-  const tabBtnClass = (on, disabled) =>
-    `tablike ${on ? "active" : ""}` + (disabled ? " disabled" : "");
+  const tabBtnClass = (on, disabled) => `tablike ${on ? "active" : ""}` + (disabled ? " disabled" : "");
 
   return (
     <div className="car-app" style={wrap}>
@@ -279,14 +280,13 @@ export default function CarIcon() {
                 🧾 <Bidi ar="تقارير التنظيف" en="Cleaning Reports" />
               </button>
 
-              {/* (اختياري لاحقًا) */}
+              {/* ✅ Approvals: صار شغّال */}
               <button
                 type="button"
-                className={tabBtnClass(activeTab === "approvals", true)}
-                onClick={() => {}}
-                disabled
-                title="قريباً / Coming soon"
-                aria-label="Approvals (coming soon)"
+                className={tabBtnClass(activeTab === "approvals", false)}
+                onClick={() => setActiveTab("approvals")}
+                title="الموافقات / المعايرة"
+                aria-label="Approvals"
               >
                 ✅ <Bidi ar="الموافقات/المعايرة" en="Approvals" />
               </button>
@@ -331,10 +331,11 @@ export default function CarIcon() {
           </div>
         )}
 
+        {/* ✅ Approvals page */}
         {activeTab === "approvals" && (
           <div className="panel" style={cardBox}>
             <div className="panel-body">
-              🚧 <Bidi ar="سيُضاف تبويب الموافقات/المعايرة قريباً" en="Approvals tab coming soon" />
+              <Approvals />
             </div>
           </div>
         )}

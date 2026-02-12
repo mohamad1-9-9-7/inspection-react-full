@@ -111,6 +111,10 @@ const FinishedProductReports = lazy(() =>
 // 🆕 سيارات
 const CarIconPage = lazy(() => import("./pages/car/pages/CarIcon"));
 
+// ✅✅✅ 🆕 موافقات السيارات (Input + View) — نفس المجلد اللي عطيتني ياه
+const CarApprovalsInput = lazy(() => import("./pages/car/pages/Approvals"));
+const CarApprovalsView = lazy(() => import("./pages/car/pages/ApprovalsView"));
+
 // 🆕 صيانة
 const MaintenanceRequests = lazy(() =>
   import("./pages/maintenance/MaintenanceRequests")
@@ -880,8 +884,7 @@ export default function App() {
           }
         />
 
-        {/* ✅✅ Municipality Inspection (FIXED AS YOU WANT) */}
-        {/* من القائمة يروح للإدخال */}
+        {/* ✅✅ Municipality Inspection */}
         <Route
           path="/haccp-iso/dm-inspection"
           element={
@@ -890,7 +893,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        {/* صفحة العرض على مسار منفصل */}
         <Route
           path="/haccp-iso/dm-inspection/view"
           element={
@@ -899,7 +901,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        {/* alias قديم لو فيه */}
         <Route
           path="/haccp-iso/dm-inspection/input"
           element={<Navigate to="/haccp-iso/dm-inspection" replace />}
@@ -959,6 +960,24 @@ export default function App() {
           element={
             <ProtectedRoute>
               <CarIconPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅✅✅ مسارات موافقات السيارات (عشان زر Link يشتغل) */}
+        <Route
+          path="/car/approvals"
+          element={
+            <ProtectedRoute>
+              <CarApprovalsInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/car/approvals-view"
+          element={
+            <ProtectedRoute>
+              <CarApprovalsView />
             </ProtectedRoute>
           }
         />
