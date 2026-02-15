@@ -18,9 +18,9 @@ const API_BASE = String(
 const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE = "supplier_self_assessment_form"; // ✅ مطابق للـPDF كاسم نوع منفصل
 
-/* ✅ NEW: public token endpoints (chosen) */
-const PUBLIC_GET_URL = `${API_BASE}/api/supplier-self-assessment/by-token`;
-const PUBLIC_SUBMIT_URL = `${API_BASE}/api/supplier-self-assessment/by-token`;
+/* ✅ FIXED: public token endpoints (match server index.cjs) */
+const PUBLIC_GET_URL = `${API_BASE}/api/reports/public`;
+const PUBLIC_SUBMIT_URL = `${API_BASE}/api/reports/public`;
 
 /* ===================== Helpers ===================== */
 function pad2(n) {
@@ -80,7 +80,7 @@ async function updateReport(id, body) {
   return await safeJson(res);
 }
 
-/* ✅ NEW: public load by token */
+/* ✅ FIXED: public load by token (GET /api/reports/public/:token) */
 async function getPublicByToken(token) {
   const t = String(token || "").trim();
   if (!t) throw new Error("token required");
@@ -90,10 +90,12 @@ async function getPublicByToken(token) {
   });
   const data = await safeJson(res);
   if (!res.ok) throw new Error(data?.message || data?.error || `Failed to load token (${res.status})`);
-  return data;
+  return data; // {ok:true, report:{...}}
 }
 
-/* ✅ NEW: public submit by token */
+/* ✅ FIXED: public submit by token (POST /api/reports/public/:token/submit)
+   Server expects: { fields, answers, attachments }
+*/
 async function submitPublicByToken(token, body) {
   const t = String(token || "").trim();
   if (!t) throw new Error("token required");
@@ -570,7 +572,7 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ✅ NEW: on publicMode → load by token from server and hydrate state */
+  /* ✅ FIXED: on publicMode → load by token from server (/api/reports/public/:token) and hydrate state */
   useEffect(() => {
     const t = String(publicToken || "").trim();
     if (!publicMode) return;
@@ -584,8 +586,8 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
       try {
         const data = await getPublicByToken(t);
 
-        // expected shape (server): {ok:true, reportId, type, payload}
-        const payload = data?.payload || data?.report?.payload || data?.report || data?.data?.payload || data?.data || {};
+        // ✅ server returns { ok:true, report:{ payload... } }
+        const payload = data?.report?.payload || {};
 
         // hydrate safe
         const loadedRecordDate = payload?.recordDate || payload?.reportDate || todayISO();
@@ -678,8 +680,13 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
       };
 
       if (publicMode) {
-        // ✅ submit strictly via token endpoint (no listReports / no uniqueKey lookup)
-        await submitPublicByToken(String(publicToken || ""), { payload });
+        // ✅ FIXED: submit strictly via server public submit endpoint
+        // Server expects { fields, answers, attachments }
+        await submitPublicByToken(String(publicToken || ""), {
+          fields: payload.fields,
+          answers: payload.answers,
+          attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
+        });
         alert("Submitted successfully ✅");
         if (typeof onPublicSubmitted === "function") onPublicSubmitted();
         return;
