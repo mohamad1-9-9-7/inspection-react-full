@@ -66,6 +66,19 @@ async function createReport(body) {
   return data;
 }
 
+/* ✅ NEW: verify public token exists on server */
+async function verifyPublicToken(token) {
+  const t = String(token || "").trim();
+  if (!t) throw new Error("token missing");
+  const res = await fetch(`${API_BASE}/api/reports/public/${encodeURIComponent(t)}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+  const data = await safeJson(res);
+  if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
+  return data;
+}
+
 /* ===================== UI helpers ===================== */
 function pad2(n) {
   return String(n ?? "").padStart(2, "0");
@@ -127,39 +140,54 @@ export default function SupplierEvaluationCreate() {
     try {
       const now = Date.now();
 
-      // ✅ هذا الشكل لازم ينسجم مع Public + Results اللي عندك
+      // ✅ reportDate مهم لتفادي أي فوضى مع unique index
+      // خلي reportDate يومي ثابت (YYYY-MM-DD) + نخزّن recordDate للعرض
+      const reportDate = new Date().toISOString().slice(0, 10);
+
+      // ✅ payload must include public.token EXACTLY
       const payload = {
-        recordDate: nowISO(), // ✅ تاريخ واضح
+        reportDate,
+        recordDate: nowISO(),
+
         fields: {
           company_name: name,
           supplier_email: mail,
         },
+
         answers: {}, // supplier fills later
         questions: DEFAULT_QUESTIONS,
         notes, // internal admin notes
         attachments: [],
+
         meta: {
           savedAt: now,
+          createdBy: "MANUAL_PUBLIC_LINK",
           submitted: false,
         },
+
         public: {
           mode: "PUBLIC",
-          token: publicToken,
+          token: publicToken, // ✅ أهم سطر
           url: publicUrl,
           createdAt: now,
           sentAt: now,
           submittedAt: null,
         },
+
+        uniqueKey: `${String(name).trim().toLowerCase()}__${reportDate}__${publicToken}`,
         _clientSavedAt: now,
       };
 
       await createReport({
-        reporter: "anonymous",
+        reporter: "public",
         type: TYPE,
         payload,
       });
 
-      setMsg("✅ Created & saved on server. Send the link to supplier.");
+      // ✅ Verify immediately (this is what prevents the 404 surprise)
+      await verifyPublicToken(publicToken);
+
+      setMsg("✅ Created & VERIFIED on server. Send the link to supplier.");
     } catch (e) {
       setMsg(`❌ ${e?.message || "Failed"}`);
     } finally {
@@ -314,7 +342,7 @@ export default function SupplierEvaluationCreate() {
           {/* Actions */}
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button style={btnPrimary} onClick={onCreate} disabled={saving}>
-              {saving ? "Saving..." : "✅ Save Evaluation (Server)"}
+              {saving ? "Saving..." : "✅ Save Evaluation (Server) + Verify"}
             </button>
             <button style={btn} onClick={() => nav("/haccp-iso/supplier-evaluation/results")}>
               📄 Go to Submitted Results
