@@ -1,4 +1,4 @@
-// App.jsx
+// src/App.jsx
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Suspense, lazy } from "react";
 
@@ -78,7 +78,9 @@ const OHCView = lazy(() => import("./pages/ohc/OHCView"));
 const QCSRawMaterialInspection = lazy(() =>
   import("./pages/monitor/branches/shipment_recc/QCSRawMaterialInspection")
 );
-const QCSRawMaterialView = lazy(() => import("./pages/admin/QCSRawMaterialView"));
+const QCSRawMaterialView = lazy(() =>
+  import("./pages/admin/QCSRawMaterialView")
+);
 
 // 🆕 ✅ تقرير عام موحّد (All Reports Summary)
 const AllReportsView = lazy(() => import("./pages/admin/AllReportsView"));
@@ -111,7 +113,7 @@ const FinishedProductReports = lazy(() =>
 // 🆕 سيارات
 const CarIconPage = lazy(() => import("./pages/car/pages/CarIcon"));
 
-// ✅✅✅ 🆕 موافقات السيارات (Input + View) — نفس المجلد اللي عطيتني ياه
+// ✅✅✅ 🆕 موافقات السيارات (Input + View)
 const CarApprovalsInput = lazy(() => import("./pages/car/pages/Approvals"));
 const CarApprovalsView = lazy(() => import("./pages/car/pages/ApprovalsView"));
 
@@ -119,7 +121,9 @@ const CarApprovalsView = lazy(() => import("./pages/car/pages/ApprovalsView"));
 const MaintenanceRequests = lazy(() =>
   import("./pages/maintenance/MaintenanceRequests")
 );
-const MaintenanceHome = lazy(() => import("./pages/maintenance/MaintenanceHome"));
+const MaintenanceHome = lazy(() =>
+  import("./pages/maintenance/MaintenanceHome")
+);
 const BrowseMaintenanceRequests = lazy(() =>
   import("./pages/maintenance/BrowseMaintenanceRequests")
 );
@@ -151,7 +155,9 @@ const PRDReportsView = lazy(() =>
 /* 🆕 مرتجعات الزبائن */
 const CustomerReturns = lazy(() => import("./pages/CustomerReturns"));
 const CustomerReturnView = lazy(() => import("./pages/CustomerReturnView"));
-const BrowseCustomerReturns = lazy(() => import("./pages/BrowseCustomerReturns"));
+const BrowseCustomerReturns = lazy(() =>
+  import("./pages/BrowseCustomerReturns")
+);
 
 // 🆕 ✅ عرض تقارير POS 15 (التبويبات)
 const POS15ReportsView = lazy(() =>
@@ -225,6 +231,31 @@ const MunicipalityInspectionView = lazy(() =>
   import("./pages/haccp and iso/MunicipalityInspectionView")
 );
 
+// ✅🆕 Supplier Approval / Evaluation (PDF Literal Form) (إذا لسا تستخدمه خليه)
+const SupplierApproval = lazy(() =>
+  import("./pages/haccp and iso/Supplier Approval/SupplierApproval")
+);
+
+// ✅🆕 Supplier Evaluation Hub (PARENT PAGE)
+const SupplierEvaluationHub = lazy(() =>
+  import("./pages/haccp and iso/Supplier Approval/SupplierEvaluationHub")
+);
+
+// ✅🆕 Supplier Evaluation Create (Generate link)
+const SupplierEvaluationCreate = lazy(() =>
+  import("./pages/haccp and iso/Supplier Approval/SupplierEvaluationCreate")
+);
+
+// ✅🆕 Supplier Evaluation Results (SUBMITTED)
+const SupplierEvaluationResults = lazy(() =>
+  import("./pages/haccp and iso/Supplier Approval/SupplierEvaluationResults")
+);
+
+// ✅🆕 Public Supplier Page (token)
+const SupplierEvaluationPublic = lazy(() =>
+  import("./pages/haccp and iso/Supplier Approval/SupplierEvaluationPublic")
+);
+
 /* ✅🆕 التدريب الداخلي (جلسات تدريب + إنشاء + قائمة) */
 const TrainingHome = lazy(() => import("./pages/training/TrainingHome"));
 const TrainingSessionCreate = lazy(() =>
@@ -235,9 +266,7 @@ const TrainingSessionsList = lazy(() =>
 );
 
 // ✅🆕 صفحة المتدرّب (رابط/QR)
-const TrainingQuizLink = lazy(() =>
-  import("./pages/training/TrainingQuizLink")
-);
+const TrainingQuizLink = lazy(() => import("./pages/training/TrainingQuizLink"));
 
 /** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
@@ -906,6 +935,64 @@ export default function App() {
           element={<Navigate to="/haccp-iso/dm-inspection" replace />}
         />
 
+        {/* ✅✅ Supplier Evaluation HUB (Parent) */}
+        <Route
+          path="/haccp-iso/supplier-evaluation"
+          element={
+            <ProtectedRoute>
+              <SupplierEvaluationHub />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ Supplier Evaluation: Create */}
+        <Route
+          path="/haccp-iso/supplier-evaluation/create"
+          element={
+            <ProtectedRoute>
+              <SupplierEvaluationCreate />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅✅✅ Supplier Evaluation: RESULTS (SUBMITTED) ✅✅✅ */}
+        <Route
+          path="/haccp-iso/supplier-evaluation/results"
+          element={
+            <ProtectedRoute>
+              <SupplierEvaluationResults />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅✅✅ PUBLIC SUPPLIER LINK (NO login) */}
+        <Route
+          path="/supplier-approval/t/:token"
+          element={<SupplierEvaluationPublic />}
+        />
+        <Route
+          path="/supplier-approval/:token"
+          element={<SupplierEvaluationPublic />}
+        />
+        <Route
+          path="/supplier-evaluation/t/:token"
+          element={<Navigate to="/supplier-approval/t/:token" replace />}
+        />
+        <Route
+          path="/supplier-evaluation/:token"
+          element={<Navigate to="/supplier-approval/:token" replace />}
+        />
+
+        {/* ✅✅ Supplier Self-Assessment Form (PDF Literal Form) */}
+        <Route
+          path="/haccp-iso/supplier-approval"
+          element={
+            <ProtectedRoute>
+              <SupplierApproval />
+            </ProtectedRoute>
+          }
+        />
+
         {/* KPI */}
         <Route path="/kpi-login" element={<LoginKPI />} />
         <Route
@@ -964,7 +1051,7 @@ export default function App() {
           }
         />
 
-        {/* ✅✅✅ مسارات موافقات السيارات (عشان زر Link يشتغل) */}
+        {/* ✅✅✅ مسارات موافقات السيارات */}
         <Route
           path="/car/approvals"
           element={

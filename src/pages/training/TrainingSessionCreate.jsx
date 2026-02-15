@@ -115,20 +115,23 @@ const MODULES = [
 /* ===================== Branch options ===================== */
 const BRANCHES = [
   "QCS",
-  "POS 6",
-  "POS 10",
-  "POS 11",
+  "PRODUCTION",
+  "POS 6 - Sharjah Butchery",
+  "POS 10 - Abu Dhabi Butchery",
+  "POS 11 - Al Ain Butchery", // ✅ normalized (optional but nicer)
   "POS 14",
-  "POS 15",
+  "POS 15 - Al Barsha Butchery",
   "POS 18",
-  "POS 19",
-  "POS 21",
-  "POS 24",
+  "POS 16",
+  "POS 38",
+  "POS 41",
   "POS 34",
   "POS 35",
   "POS 36",
-  "FTR 1",
-  "FTR 2",
+  "POS 37",
+  "POS 43",
+  "FTR 1 - MUSHRIF food truck",
+  "FTR 2 - Mamzar food truck",
 ];
 
 /* ===================== Bilingual (EN/AR) Training Details Templates ✅ ===================== */
@@ -569,11 +572,31 @@ function getDetailsTemplate(moduleName) {
 const QUESTION_BANK = {
   "Personnel Hygiene": {
     en: [
-      { q: "When must hands be washed?", options: ["Before & after handling food", "Once per day", "Only when visibly dirty"], correct: 0 },
-      { q: "Are jewelry and watches allowed while handling food?", options: ["Yes, always", "No", "Only a ring"], correct: 1 },
-      { q: "What should you do if you have a cut on your hand?", options: ["Continue normally", "Cover with waterproof dressing + glove", "Rinse with water only"], correct: 1 },
-      { q: "Best method to prevent cross contamination is:", options: ["Use the same tools for everything", "Separate tools/surfaces and sanitize", "Leave food uncovered"], correct: 1 },
-      { q: "PPE stands for:", options: ["Personal Protective Equipment", "Ready-to-eat product", "Storage procedure"], correct: 0 },
+      {
+        q: "When must hands be washed?",
+        options: ["Before & after handling food", "Once per day", "Only when visibly dirty"],
+        correct: 0,
+      },
+      {
+        q: "Are jewelry and watches allowed while handling food?",
+        options: ["Yes, always", "No", "Only a ring"],
+        correct: 1,
+      },
+      {
+        q: "What should you do if you have a cut on your hand?",
+        options: ["Continue normally", "Cover with waterproof dressing + glove", "Rinse with water only"],
+        correct: 1,
+      },
+      {
+        q: "Best method to prevent cross contamination is:",
+        options: ["Use the same tools for everything", "Separate tools/surfaces and sanitize", "Leave food uncovered"],
+        correct: 1,
+      },
+      {
+        q: "PPE stands for:",
+        options: ["Personal Protective Equipment", "Ready-to-eat product", "Storage procedure"],
+        correct: 0,
+      },
     ],
     ar: [
       { q: "متى يجب غسل اليدين؟", options: ["قبل وبعد التعامل مع الطعام", "مرة واحدة يوميًا", "فقط عند الاتساخ"], correct: 0 },
@@ -754,7 +777,10 @@ export default function TrainingSessionCreate() {
   const DEFAULT_MODULE = "Personnel Hygiene";
 
   const [date, setDate] = useState(todayISO());
-  const [branch, setBranch] = useState("POS 15");
+
+  // ✅ FIX: default branch must match an item in BRANCHES
+  const [branch, setBranch] = useState("POS 15 - Al Barsha Butchery");
+
   const [moduleName, setModuleName] = useState(DEFAULT_MODULE);
 
   // ✅ per-module template (EN/AR) + track manual edits
@@ -776,19 +802,14 @@ export default function TrainingSessionCreate() {
     [moduleName, branch, date]
   );
 
-  const questionsPack = useMemo(
-    () => pickQuestionsForModule(moduleName),
-    [moduleName]
-  );
+  const questionsPack = useMemo(() => pickQuestionsForModule(moduleName), [moduleName]);
 
   const validate = () => {
     if (!date) return "Please select a Date.";
     if (!branch) return "Please select a Branch.";
     if (!moduleName) return "Please select a Training Module.";
-    if (!details || String(details).trim().length < 10)
-      return "Training details are required.";
-    if (!objectives || String(objectives).trim().length < 10)
-      return "Training objectives are required.";
+    if (!details || String(details).trim().length < 10) return "Training details are required.";
+    if (!objectives || String(objectives).trim().length < 10) return "Training objectives are required.";
     return "";
   };
 
@@ -800,10 +821,7 @@ export default function TrainingSessionCreate() {
     try {
       const existing = await listReportsByType(TYPE);
       const found = Array.isArray(existing)
-        ? existing.find(
-            (r) =>
-              (r?.payload?.uniqueKey || "").toLowerCase() === uniqueKey
-          )
+        ? existing.find((r) => (r?.payload?.uniqueKey || "").toLowerCase() === uniqueKey)
         : null;
 
       if (found) {
@@ -849,8 +867,7 @@ export default function TrainingSessionCreate() {
     padding: "22px 22px 28px",
     boxSizing: "border-box",
     direction: "ltr",
-    fontFamily:
-      "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+    fontFamily: "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
     background: "linear-gradient(135deg, #0ea5e9 0%, #7c3aed 55%, #111827 100%)",
   };
 
@@ -956,8 +973,7 @@ export default function TrainingSessionCreate() {
   };
 
   const kpiCard = {
-    background:
-      "linear-gradient(135deg, rgba(238,242,255,1), rgba(255,255,255,1))",
+    background: "linear-gradient(135deg, rgba(238,242,255,1), rgba(255,255,255,1))",
     border: "1px solid #e5e7eb",
     borderRadius: 18,
     padding: 16,
@@ -965,12 +981,7 @@ export default function TrainingSessionCreate() {
   };
 
   const kpiLabel = { color: "#64748b", fontSize: 12, fontWeight: 1100 };
-  const kpiValue = {
-    color: "#0f172a",
-    fontSize: 22,
-    fontWeight: 1300,
-    marginTop: 6,
-  };
+  const kpiValue = { color: "#0f172a", fontSize: 22, fontWeight: 1300, marginTop: 6 };
 
   return (
     <div style={page}>
@@ -989,16 +1000,9 @@ export default function TrainingSessionCreate() {
             <div style={{ fontSize: 22, fontWeight: 1300, color: "#0f172a" }}>
               ➕ Create Training Session
             </div>
-            <div
-              style={{
-                marginTop: 6,
-                color: "#64748b",
-                fontSize: 13,
-                fontWeight: 1100,
-              }}
-            >
-              Select module → Save. Each module automatically attaches its own
-              Question Bank (AR/EN) to the session.
+            <div style={{ marginTop: 6, color: "#64748b", fontSize: 13, fontWeight: 1100 }}>
+              Select module → Save. Each module automatically attaches its own Question Bank (AR/EN)
+              to the session.
             </div>
           </div>
 
@@ -1021,8 +1025,7 @@ export default function TrainingSessionCreate() {
               style={{
                 ...kpiValue,
                 fontSize: 14,
-                fontFamily:
-                  "ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace",
+                fontFamily: "ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace",
               }}
             >
               {uniqueKey}
@@ -1042,24 +1045,13 @@ export default function TrainingSessionCreate() {
           <div style={pill}>
             <span style={{ opacity: 0.8 }}>Module Details Template:</span>
             <b>{moduleName}</b>
-            {detailsTouched ? (
-              <span style={{ opacity: 0.7 }}>• edited</span>
-            ) : (
-              <span style={{ opacity: 0.7 }}>• auto</span>
-            )}
+            {detailsTouched ? <span style={{ opacity: 0.7 }}>• edited</span> : <span style={{ opacity: 0.7 }}>• auto</span>}
           </div>
         </div>
       </div>
 
       {/* Body */}
-      <div
-        style={{
-          maxWidth: 1800,
-          margin: "14px auto 0",
-          display: "grid",
-          gap: 14,
-        }}
-      >
+      <div style={{ maxWidth: 1800, margin: "14px auto 0", display: "grid", gap: 14 }}>
         {/* Meta section */}
         <div style={section}>
           <div
@@ -1071,21 +1063,12 @@ export default function TrainingSessionCreate() {
           >
             <div style={{ display: "grid", gap: 8 }}>
               <div style={label}>Date</div>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                style={input}
-              />
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
             </div>
 
             <div style={{ display: "grid", gap: 8 }}>
               <div style={label}>Branch</div>
-              <select
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                style={input}
-              >
+              <select value={branch} onChange={(e) => setBranch(e.target.value)} style={input}>
                 {BRANCHES.map((b) => (
                   <option key={b} value={b}>
                     {b}
@@ -1103,9 +1086,7 @@ export default function TrainingSessionCreate() {
                   setModuleName(next);
 
                   // ✅ auto-change details only if user didn't edit
-                  if (!detailsTouched) {
-                    setDetails(getDetailsTemplate(next));
-                  }
+                  if (!detailsTouched) setDetails(getDetailsTemplate(next));
                 }}
                 style={input}
               >
@@ -1149,28 +1130,17 @@ export default function TrainingSessionCreate() {
             }}
           >
             <div style={{ display: "grid", gap: 6 }}>
-              <div style={{ color: "#64748b", fontWeight: 1100, fontSize: 12 }}>
-                Duplicate Prevention Key
-              </div>
+              <div style={{ color: "#64748b", fontWeight: 1100, fontSize: 12 }}>Duplicate Prevention Key</div>
               <div style={pill}>
                 <span style={{ opacity: 0.8 }}>uniqueKey:</span>
-                <span
-                  style={{
-                    fontFamily:
-                      "ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace",
-                  }}
-                >
+                <span style={{ fontFamily: "ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace" }}>
                   {uniqueKey}
                 </span>
               </div>
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={onSave}
-                disabled={saving}
-                style={btnPrimary(saving)}
-              >
+              <button onClick={onSave} disabled={saving} style={btnPrimary(saving)}>
                 {saving ? "Saving..." : "💾 Save Session"}
               </button>
               <button onClick={() => nav("/training")} style={btnGhost}>
@@ -1184,15 +1154,7 @@ export default function TrainingSessionCreate() {
         <div style={{ display: "grid", gap: 14 }}>
           {/* Details (FULL WIDTH) */}
           <div style={section}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div style={{ fontSize: 18, fontWeight: 1300, color: "#0f172a" }}>
                 DETAIL OF TRAINING (A–L) — EN / AR
               </div>
@@ -1228,13 +1190,7 @@ export default function TrainingSessionCreate() {
           </div>
 
           {/* Objectives + Metadata (two wide cards) */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
-              gap: 14,
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 14 }}>
             <div style={section}>
               <div style={{ fontSize: 18, fontWeight: 1300, color: "#0f172a" }}>
                 Objectives / Frequency / Evaluation

@@ -4,42 +4,38 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import './Login.css';
 import logo from '../assets/almawashi-logo.jpg';
 
-// الأدوار (ثنائي اللغة فقط دون تغيير أي من المسارات/المنطق)
+// Roles (English only — keep routes/logic unchanged)
 const roles = [
-  { id: 'admin',        label: 'مدير / Admin',                    route: '/admin',                  icon: '👑' },
-  { id: 'inspector',    label: 'مفتش / Inspector',               route: '/inspection',             icon: '🔍' },
-  { id: 'supervisor',   label: 'مشرف / Supervisor',              route: '/supervisor',             icon: '🛠️' },
-  { id: 'daily',        label: 'مراقبة يومية / Daily Monitor',    route: '/monitor',                icon: '📅' },
-  { id: 'ohc',          label: 'OHC',                             route: '/ohc',                    icon: '🩺' },
+  { id: 'admin',        label: 'Admin',                    route: '/admin',                  icon: '👑' },
+  { id: 'inspector',    label: 'Inspector',               route: '/inspection',             icon: '🔍' },
+  { id: 'supervisor',   label: 'Supervisor',              route: '/supervisor',             icon: '🛠️' },
+  { id: 'daily',        label: 'Daily Monitor',            route: '/monitor',                icon: '📅' },
+  { id: 'ohc',          label: 'OHC',                      route: '/ohc',                    icon: '🩺' },
 
-  { id: 'returns',      label: 'مرتجعات / Returns',               route: '/returns/menu',           icon: '♻️' }, // ✅ كما هو
-  { id: 'finalProduct', label: 'تقرير المنتج النهائي / Final Product Report', route: '/finished-product-entry', icon: '🏷️' },
-  { id: 'cars',         label: 'السيارات / Cars',                 route: '/cars',                   icon: '🚗' },
-  // صفحة الهب للصيانة
-  { id: 'maintenance',  label: 'طلبات الصيانة / Maintenance',     route: '/maintenance-home',       icon: '🔧' },
+  { id: 'returns',      label: 'Returns',                 route: '/returns/menu',           icon: '♻️' }, // ✅ keep as-is
+  { id: 'finalProduct', label: 'Final Product Report',     route: '/finished-product-entry', icon: '🏷️' },
+  { id: 'cars',         label: 'Cars',                    route: '/cars',                   icon: '🚗' },
+  { id: 'maintenance',  label: 'Maintenance Requests',     route: '/maintenance-home',       icon: '🔧' },
 
-  // عرض شحنات QCS مباشرة (عرض فقط)
-  { id: 'qcsView',      label: 'عرض شحنات QCS / QCS Shipments (View)', route: '/qcs-raw-material-view', icon: '📦' },
+  { id: 'qcsView',      label: 'QCS Shipments (View)',      route: '/qcs-raw-material-view',  icon: '📦' },
 
-  // 👇 الكروت الجديدة في النهاية
-
-  // شهادات التدريب Basic Food Safety / EFST / PIC
+  // Training Certificates (BFS / EFST / PIC)
   {
     id: 'training',
-    label: 'شهادات التدريب / Training (BFS / EFST OR PIC)',
-    route: '/training-certificates',   // ✅ نفس المسار الموجود في App.jsx // ✅ تم التعديل هنا
+    label: 'Training Certificates (BFS / EFST OR PIC)',
+    route: '/training-certificates',
     icon: '🎓'
   },
 
-  // ✅ التدريب الداخلي (جلسات تدريب + أسئلة + نتائج)
+  // Internal Training (sessions + questions + results)
   {
     id: 'internalTraining',
-    label: 'التدريب الداخلي / Internal Training',
-    route: '/training', // ✅ مسار صفحة التدريب الداخلي (سننشئها لاحقاً)
+    label: 'Internal Training',
+    route: '/training',
     icon: '🧑‍🏫'
   },
 
-  // كرت ISO 22000 & HACCP
+  // ISO 22000 & HACCP
   {
     id: 'iso',
     label: 'ISO 22000 & HACCP',
@@ -47,7 +43,7 @@ const roles = [
     icon: '📘'
   },
 
-  // كرت HALAL AUDIT
+  // HALAL AUDIT
   {
     id: 'halalAudit',
     label: 'HALAL AUDIT',
@@ -90,11 +86,11 @@ function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
             fontSize: 22, background: "transparent", border: "none", color: "#b91c1c",
             cursor: "pointer"
           }}
-          title="إغلاق / Close"
+          title="Close"
         >✖</button>
 
         <div style={{ fontWeight: "bold", fontSize: "1.1em", color: "#1f2937", marginBottom: 12 }}>
-          🔒 كلمة سر الدخول لقسم / Password to access:
+          🔒 Password required to access:
         </div>
         <div style={{ fontWeight: 800, color: "#7c3aed", marginBottom: 16 }}>{roleLabel}</div>
 
@@ -102,7 +98,7 @@ function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
           <input
             type="password"
             autoFocus
-            placeholder="ادخل كلمة السر / Enter password"
+            placeholder="Enter password"
             style={{
               width: "92%",
               padding: "12px",
@@ -133,13 +129,13 @@ function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
               boxShadow: "0 6px 18px rgba(124,58,237,0.35)"
             }}
           >
-            دخول / Sign in
+            Sign in
           </button>
           {error && <div style={{ color: "#b91c1c", fontWeight: "bold", marginTop: 6 }}>{error}</div>}
         </form>
 
         <div style={{ marginTop: 8, fontSize: "0.93em", color: "#374151", opacity: 0.9 }}>
-          يلزم كلمة المرور للدخول / Password required for access
+          Password is required for access.
         </div>
       </div>
     </div>
@@ -155,7 +151,7 @@ function Login() {
   const [selectedRole, setSelectedRole] = useState(null);
   const [modalError, setModalError] = useState("");
 
-  // 🔐 كلمات السر: الافتراضي 9999 لكل الأدوار، returns = 0000، qcsView = 0000، iso = 802410
+  // 🔐 Passwords: default 9999 for all roles, returns = 0000, qcsView = 0000, iso = 802410
   const PASSWORDS = {
     returns: "0000",
     qcsView: "0000",
@@ -164,7 +160,7 @@ function Login() {
   };
 
   const handleRoleClick = (role) => {
-    // ✅ KPI يدخل مباشرة بدون كلمة سر (في حال كان موجود كزر خارجي)
+    // ✅ KPI enters directly without password (if present as an external role)
     if (role.id === "kpi") {
       localStorage.setItem('currentUser', JSON.stringify({
         username: role.id,
@@ -191,7 +187,7 @@ function Login() {
       }));
       navigate(selectedRole.route);
     } else {
-      setModalError("❌ كلمة السر غير صحيحة! / Wrong password!");
+      setModalError("❌ Wrong password!");
     }
   };
 
@@ -231,7 +227,7 @@ function Login() {
     textShadow: "0 1px 6px rgba(0,0,0,0.25)"
   };
 
-  // ✅ نفس الكرت كما هو (ما غيّرنا المقاس/المكان)، فقط أضفنا class لزجاج+نيون
+  // Main card (keep same sizing/layout)
   const card = {
     width: "min(100%, 980px)",
     margin: "0 auto",
@@ -245,7 +241,7 @@ function Login() {
     zIndex: 2,
   };
 
-  // ✅ نفس شكل ومقاس الكروت
+  // Role tiles (keep same sizing/layout)
   const roleTile = (active) => ({
     width: 160,
     height: 160,
@@ -286,11 +282,10 @@ function Login() {
         color: '#0b1220',
         position: 'relative',
         overflow: 'hidden',
-        // خلفية متدرجة + طبقات
         background: 'linear-gradient(135deg, #0ea5e9 0%, #7c3aed 55%, #111827 100%)',
       }}
     >
-      {/* ✅ CSS مؤثرات فقط (بدون تغيير الـ layout) */}
+      {/* ✅ CSS effects only (no layout changes) */}
       <style>{`
         .mx-bg{ position:relative; }
         .mx-blob{
@@ -326,7 +321,7 @@ function Login() {
           100%{ transform: translate3d(0,0,0) scale(1); }
         }
 
-        /* Noise خفيف */
+        /* light noise */
         .mx-noise{
           position:absolute; inset:0;
           background-image:
@@ -337,7 +332,7 @@ function Login() {
           z-index: 0;
         }
 
-        /* Glass + Neon للكرت الرئيسي */
+        /* Glass + Neon for main card */
         .mx-card-glass{
           backdrop-filter: blur(14px);
           -webkit-backdrop-filter: blur(14px);
@@ -371,7 +366,7 @@ function Login() {
           pointer-events:none;
         }
 
-        /* Glass + Neon + Spotlight للكروت (بدون تغيير شكلها) */
+        /* Glass + Neon + Spotlight for role tiles */
         .mx-role-glass{
           border: 2px solid rgba(255,255,255,0.72) !important;
           backdrop-filter: blur(10px);
@@ -414,13 +409,13 @@ function Login() {
         .mx-role-glass:hover::after{ opacity: .9; }
       `}</style>
 
-      {/* ✅ Animated Blobs خلفية */}
+      {/* Animated background blobs */}
       <div className="mx-blob b1" />
       <div className="mx-blob b2" />
       <div className="mx-blob b3" />
       <div className="mx-noise" />
 
-      {/* زخرفة موجية علوية */}
+      {/* Top wave */}
       <svg
         viewBox="0 0 1440 320"
         style={{ position: "absolute", top: -60, left: 0, width: "140%", opacity: 0.15, zIndex: 0 }}
@@ -431,7 +426,7 @@ function Login() {
         />
       </svg>
 
-      {/* زخرفة موجية سفلية */}
+      {/* Bottom wave */}
       <svg
         viewBox="0 0 1440 320"
         style={{ position: "absolute", bottom: -90, right: -80, width: "150%", opacity: 0.12, zIndex: 0 }}
@@ -448,13 +443,13 @@ function Login() {
         <div style={brandSub}>Trans Emirates Livestock Trading L.L.C.</div>
       </div>
 
-      {/* بطاقة ترحيب + شبكة الأدوار */}
+      {/* Welcome card + roles grid */}
       <div style={card} className="mx-card-glass">
-        {/* شعار أعلى البطاقة */}
+        {/* Logo */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
           <img
             src={logo}
-            alt="شعار المواشي / Almawashi logo"
+            alt="Almawashi logo"
             style={{
               width: 160,
               borderRadius: 18,
@@ -473,11 +468,11 @@ function Login() {
           color: '#0b1220',
           letterSpacing: ".2px"
         }}>
-          مرحبًا بك — اختر دورك / Welcome — choose your role
+          Welcome — choose your role
         </h2>
 
         <div style={{ textAlign: "center", color: "#334155", marginBottom: 20, fontWeight: 600 }}>
-          تسجيل دخول سريع بالأدوار المتاحة / Quick role-based access
+          Quick role-based access
         </div>
 
         {errorMsg && (
@@ -514,7 +509,7 @@ function Login() {
               onMouseEnter={() => setHoveredRoleId(role.id)}
               onMouseLeave={() => setHoveredRoleId(null)}
               onMouseMove={(e) => {
-                // ✅ Hover Spotlight (بدون تغيير الشكل)
+                // Hover spotlight (no layout changes)
                 const rect = e.currentTarget.getBoundingClientRect();
                 const x = ((e.clientX - rect.left) / rect.width) * 100;
                 const y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -540,13 +535,13 @@ function Login() {
           ))}
         </div>
 
-        {/* زر خاص بلوحة KPI بدون كلمة سر */}
+        {/* KPI button (no password) */}
         <div style={{ display: "flex", justifyContent: "center", marginTop: 22 }}>
           <button
             onClick={() => {
               localStorage.setItem('currentUser', JSON.stringify({
                 username: 'kpi',
-                role: 'لوحة المؤشرات / KPI Dashboard',
+                role: 'KPI Dashboard',
               }));
               navigate('/kpi-login');
             }}
@@ -569,12 +564,12 @@ function Login() {
               letterSpacing: "0.3px"
             }}
           >
-            📊 دخول لوحة المؤشرات (KPI) / Open KPI Dashboard
+            📊 Open KPI Dashboard
           </button>
         </div>
       </div>
 
-      {/* تذييل بسيط */}
+      {/* Footer */}
       <div style={{
         position: "relative",
         zIndex: 1,
@@ -583,7 +578,7 @@ function Login() {
         marginTop: 8,
         color: "#e5e7eb"
       }}>
-        تم الإنشاء بواسطة م.محمد عبدالله / Built by Eng. Mohammed Abdullah
+        Built by Eng. Mohammed Abdullah
       </div>
 
       <PasswordModal

@@ -1,64 +1,53 @@
-// src/pages/haccp and iso/HaccpIsoMenu.jsx
+// D:\inspection-react-full\src\pages\haccp and iso\Supplier Approval\SupplierEvaluationHub.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import mawashiLogo from "../../assets/almawashi-logo.jpg";
+import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 
 /**
- * Main hub for ISO 22000 & HACCP
- * Parent file to connect all system pages later
+ * Supplier Evaluation — Parent / Hub Page
+ * المطلوب: كرتين فقط:
+ * 1) إنشاء التقييم + توليد الرابط
+ * 2) عرض التقييمات التي تم إرسالها من قبل المورد (Submitted Results)
  */
 
 const sections = [
   {
-    id: "product-details",
-    title: "Product Details & Specifications",
-    subtitle: "Product specs, labels, shelf life, allergens & claims",
-    route: "/haccp-iso/product-details",
+    id: "create-card",
+    title: "Create Evaluation + Generate Link",
+    subtitle: "Create a new supplier evaluation and generate a public link",
+    route: "/haccp-iso/supplier-evaluation/create",
+    badge: "NEW",
   },
-
   {
-    id: "licenses-contracts",
-    title: "Licenses & Contracts",
-    subtitle: "Company licenses, permits, contracts & expiry tracking",
-    route: "/haccp-iso/licenses-contracts",
-  },
-
-  {
-    id: "dm-inspection",
-    title: "Dubai Municipality Inspection",
-    subtitle: "DM inspection checklists, findings, photos & corrective actions",
-    route: "/haccp-iso/dm-inspection",
-  },
-
-  // ✅ Supplier Evaluation -> Parent Hub Page
-  {
-    id: "supplier-evaluation",
-    title: "Supplier Evaluation",
-    subtitle: "Approved suppliers, evaluation scores, renewals & performance tracking",
-    route: "/haccp-iso/supplier-evaluation", // ✅ هنا التعديل: يفتح الصفحة الأم
+    id: "results",
+    title: "Submitted Results",
+    subtitle: "View evaluations submitted by suppliers (answers + attachments)",
+    route: "/haccp-iso/supplier-evaluation/results",
+    badge: "VIEW",
   },
 ];
 
-// Simple icon
-function IconFolder() {
+/* ===== Simple Icon ===== */
+function IconDoc() {
   return (
     <svg aria-hidden="true" width="30" height="30" viewBox="0 0 24 24" style={{ display: "block" }}>
       <path
-        d="M3 6.75A1.75 1.75 0 0 1 4.75 5h4.086a1.75 1.75 0 0 1 1.237.513l1.414 1.414A1.75 1.75 0 0 0 12.724 7H19.25A1.75 1.75 0 0 1 21 8.75v8.5A1.75 1.75 0 0 1 19.25 19H4.75A1.75 1.75 0 0 1 3 17.25v-10.5Z"
+        d="M7 3h7l3 3v15a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"
         fill="currentColor"
         opacity="0.14"
       />
       <path
-        d="M4.75 5h4.086a1.75 1.75 0 0 1 1.237.513l1.414 1.414A1.75 1.75 0 0 0 12.724 7H19.25A1.75 1.75 0 0 1 21 8.75v8.5A1.75 1.75 0 0 1 19.25 19H4.75A1.75 1.75 0 0 1 3 17.25v-10.5A1.75 1.75 0 0 1 4.75 5Z"
+        d="M7 3h7l3 3v15a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"
         stroke="currentColor"
         strokeWidth="1.6"
         fill="none"
       />
+      <path d="M9 10h6M9 14h6M9 18h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
 
-/* ===== Styles (Green + Cyan/Blue bright) ===== */
+/* ===== Styles (match your menu vibe) ===== */
 const shellStyle = {
   minHeight: "100vh",
   padding: "28px 18px",
@@ -70,10 +59,7 @@ const shellStyle = {
   color: "#071b2d",
 };
 
-const layoutStyle = {
-  maxWidth: "1100px",
-  margin: "0 auto",
-};
+const layoutStyle = { maxWidth: "1100px", margin: "0 auto" };
 
 const topBarStyle = {
   display: "flex",
@@ -92,13 +78,7 @@ const topBarStyle = {
   overflow: "hidden",
 };
 
-const brandLeftStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  minWidth: 0,
-};
-
+const brandLeftStyle = { display: "flex", alignItems: "center", gap: "12px", minWidth: 0 };
 const logoStyle = {
   width: "46px",
   height: "46px",
@@ -109,20 +89,8 @@ const logoStyle = {
   background: "#fff",
 };
 
-const companyNameStyle = {
-  fontSize: "14px",
-  fontWeight: 950,
-  letterSpacing: "0.01em",
-  margin: 0,
-  lineHeight: 1.2,
-};
-
-const companySubStyle = {
-  fontSize: "12px",
-  fontWeight: 750,
-  opacity: 0.78,
-  marginTop: "4px",
-};
+const companyNameStyle = { fontSize: "14px", fontWeight: 950, letterSpacing: "0.01em", margin: 0, lineHeight: 1.2 };
+const companySubStyle = { fontSize: "12px", fontWeight: 750, opacity: 0.78, marginTop: "4px" };
 
 const badgeStyle = {
   display: "inline-flex",
@@ -148,32 +116,11 @@ const headerStyle = {
   flexWrap: "wrap",
 };
 
-const titleStyle = {
-  fontSize: "26px",
-  fontWeight: 980,
-  letterSpacing: "0.02em",
-};
+const titleStyle = { fontSize: "26px", fontWeight: 980, letterSpacing: "0.02em" };
+const subtitleStyle = { fontSize: "13px", fontWeight: 750, opacity: 0.82, marginTop: "6px" };
+const taglineStyle = { fontSize: "14px", fontWeight: 750, color: "#334155", maxWidth: "520px", margin: 0 };
 
-const subtitleStyle = {
-  fontSize: "13px",
-  fontWeight: 750,
-  opacity: 0.82,
-  marginTop: "6px",
-};
-
-const taglineStyle = {
-  fontSize: "14px",
-  fontWeight: 750,
-  color: "#334155",
-  maxWidth: "520px",
-  margin: 0,
-};
-
-const gridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: "14px",
-};
+const gridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" };
 
 const cardBaseStyle = {
   position: "relative",
@@ -204,32 +151,24 @@ const iconWrapStyle = {
   boxShadow: "0 10px 20px rgba(34,211,238,0.14)",
 };
 
-const cardBodyStyle = {
-  flex: 1,
-  minWidth: 0,
-};
+const cardBodyStyle = { flex: 1, minWidth: 0 };
+const cardTitleStyle = { fontSize: "15px", fontWeight: 950, marginBottom: "4px", color: "#071b2d" };
+const cardSubStyle = { fontSize: "13px", color: "#334155", lineHeight: 1.45 };
+const cardFooterStyle = { fontSize: "11px", fontWeight: 950, color: "#64748b", marginTop: "10px", letterSpacing: "0.10em" };
 
-const cardTitleStyle = {
-  fontSize: "15px",
+const smallTag = (tone) => ({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "6px 10px",
+  borderRadius: 999,
+  fontSize: 11,
   fontWeight: 950,
-  marginBottom: "4px",
-  color: "#071b2d",
-};
-
-const cardSubStyle = {
-  fontSize: "13px",
-  color: "#334155",
-  lineHeight: 1.45,
-};
-
-const cardFooterStyle = {
-  fontSize: "11px",
-  fontWeight: 950,
-  color: "#64748b",
-  marginTop: "10px",
-  textTransform: "uppercase",
-  letterSpacing: "0.10em",
-};
+  letterSpacing: "0.08em",
+  border: "1px solid rgba(15,23,42,0.14)",
+  background: tone === "NEW" ? "rgba(34,197,94,0.12)" : "rgba(148,163,184,0.14)",
+  color: tone === "NEW" ? "#14532d" : "#334155",
+});
 
 const arrowStyle = {
   position: "absolute",
@@ -239,7 +178,16 @@ const arrowStyle = {
   opacity: 0.6,
 };
 
-export default function HaccpIsoMenu() {
+const helpBox = {
+  marginTop: 14,
+  padding: "14px 16px",
+  borderRadius: 18,
+  border: "1px solid rgba(15,23,42,0.14)",
+  background: "rgba(255,255,255,0.78)",
+  boxShadow: "0 10px 24px rgba(2, 132, 199, 0.08)",
+};
+
+export default function SupplierEvaluationHub() {
   const navigate = useNavigate();
   const [hoverId, setHoverId] = useState(null);
 
@@ -247,25 +195,19 @@ export default function HaccpIsoMenu() {
     return (isHover) => ({
       ...cardBaseStyle,
       transform: isHover ? "translateY(-3px)" : "translateY(0)",
-      background: isHover
-        ? "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(236,254,255,0.72))"
-        : cardBaseStyle.background,
+      background: isHover ? "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(236,254,255,0.72))" : cardBaseStyle.background,
       boxShadow: isHover ? "0 18px 46px rgba(34,211,238,0.18)" : cardBaseStyle.boxShadow,
       borderColor: isHover ? "rgba(34,211,238,0.52)" : "rgba(15, 23, 42, 0.16)",
     });
   }, []);
 
-  const handleOpen = (item) => {
-    if (!item.route) return;
-    navigate(item.route);
-  };
+  const handleOpen = (item) => item?.route && navigate(item.route);
 
   return (
     <main style={shellStyle}>
       <div style={layoutStyle}>
         {/* Top bar */}
         <div style={topBarStyle}>
-          {/* Decorative glow line */}
           <div
             style={{
               position: "absolute",
@@ -277,31 +219,46 @@ export default function HaccpIsoMenu() {
               opacity: 0.9,
             }}
           />
-
           <div style={brandLeftStyle}>
             <img src={mawashiLogo} alt="Al Mawashi Logo" style={logoStyle} />
             <div style={{ minWidth: 0, position: "relative" }}>
               <div style={companyNameStyle}>TRANS EMIRATES LIVESTOCK TRADING L.L.C.</div>
-              <div style={companySubStyle}>AL MAWASHI — Food Safety System</div>
+              <div style={companySubStyle}>AL MAWASHI — Supplier Evaluation</div>
             </div>
           </div>
 
-          <div style={{ ...badgeStyle, position: "relative" }}>
-            ✅ ISO 22000 & HACCP <span style={{ opacity: 0.7, fontWeight: 950 }}>Hub</span>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={badgeStyle}>✅ Supplier Evaluation Hub</div>
+            <button
+              type="button"
+              onClick={() => navigate("/haccp-iso")}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 14,
+                border: "1px solid rgba(15,23,42,0.16)",
+                background: "rgba(255,255,255,0.92)",
+                cursor: "pointer",
+                fontWeight: 950,
+              }}
+            >
+              ↩ Back
+            </button>
           </div>
         </div>
 
         {/* Page header */}
         <header style={headerStyle}>
           <div>
-            <div style={titleStyle}>ISO 22000 & HACCP Hub</div>
-            <div style={subtitleStyle}>Central access to plans, forms, records and product documents.</div>
+            <div style={titleStyle}>Supplier Evaluation</div>
+            <div style={subtitleStyle}>Create link for supplier + review submitted results.</div>
           </div>
-          <p style={taglineStyle}>Bright green + cyan theme — same system behavior. Pick a section to open its page.</p>
+          <p style={taglineStyle}>
+            Flow: Create evaluation → send public link → supplier submits → review under Submitted Results.
+          </p>
         </header>
 
         {/* Cards */}
-        <section aria-label="ISO & HACCP sections">
+        <section aria-label="Supplier evaluation sections">
           <div style={gridStyle}>
             {sections.map((item) => {
               const isHover = hoverId === item.id;
@@ -315,7 +272,6 @@ export default function HaccpIsoMenu() {
                   onMouseLeave={() => setHoverId(null)}
                   title={item.title}
                 >
-                  {/* subtle corner glow */}
                   <div
                     aria-hidden="true"
                     style={{
@@ -331,13 +287,16 @@ export default function HaccpIsoMenu() {
                   />
 
                   <div style={{ ...iconWrapStyle, position: "relative" }}>
-                    <IconFolder />
+                    <IconDoc />
                   </div>
 
                   <div style={{ ...cardBodyStyle, position: "relative" }}>
-                    <div style={cardTitleStyle}>{item.title}</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={cardTitleStyle}>{item.title}</div>
+                      {!!item.badge && <span style={smallTag(item.badge)}>{item.badge}</span>}
+                    </div>
                     <div style={cardSubStyle}>{item.subtitle}</div>
-                    <div style={cardFooterStyle}>Open section</div>
+                    <div style={cardFooterStyle}>OPEN</div>
                   </div>
 
                   <svg
@@ -360,17 +319,18 @@ export default function HaccpIsoMenu() {
           </div>
         </section>
 
+        {/* Quick guidance box */}
+        <div style={helpBox}>
+          <div style={{ fontWeight: 980, fontSize: 14, color: "#071b2d" }}>How it works</div>
+          <div style={{ marginTop: 8, color: "#334155", fontWeight: 750, fontSize: 13, lineHeight: 1.6 }}>
+            1) Create evaluation and generate a public link. <br />
+            2) Supplier opens link, fills answers, uploads attachments, then submits. <br />
+            3) Review everything from <b>Submitted Results</b>.
+          </div>
+        </div>
+
         {/* Footer */}
-        <div
-          style={{
-            marginTop: 18,
-            fontSize: 12,
-            color: "#64748b",
-            fontWeight: 800,
-            textAlign: "center",
-            opacity: 0.95,
-          }}
-        >
+        <div style={{ marginTop: 18, fontSize: 12, color: "#64748b", fontWeight: 800, textAlign: "center", opacity: 0.95 }}>
           © Al Mawashi — Quality & Food Safety System
         </div>
       </div>
