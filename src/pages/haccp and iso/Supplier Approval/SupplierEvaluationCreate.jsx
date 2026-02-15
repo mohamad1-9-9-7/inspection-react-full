@@ -62,11 +62,18 @@ async function createReport(body) {
     body: JSON.stringify(body),
   });
   const data = await safeJson(res);
-  if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
+
+  if (!res.ok) {
+    const msg = data?.message || data?.error || `HTTP ${res.status}`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 
-/* ✅ NEW: verify public token exists on server */
+/* ✅ Verify token exists on server */
 async function verifyPublicToken(token) {
   const t = String(token || "").trim();
   if (!t) throw new Error("token missing");
@@ -75,7 +82,14 @@ async function verifyPublicToken(token) {
     headers: { Accept: "application/json" },
   });
   const data = await safeJson(res);
-  if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
+
+  if (!res.ok) {
+    const msg = data?.message || data?.error || `HTTP ${res.status}`;
+    const err = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 
@@ -86,6 +100,9 @@ function pad2(n) {
 function nowISO() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+function todayDateOnly() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 /* ===================== Minimal questions (optional) ===================== */
@@ -139,15 +156,15 @@ export default function SupplierEvaluationCreate() {
     setSaving(true);
     try {
       const now = Date.now();
+      const day = todayDateOnly();
 
-      // ✅ reportDate مهم لتفادي أي فوضى مع unique index
-      // خلي reportDate يومي ثابت (YYYY-MM-DD) + نخزّن recordDate للعرض
-      const reportDate = new Date().toISOString().slice(0, 10);
+      // ✅ أهم تعديل: reportDate لازم يكون UNIQUE (لأن عندك unique index type + reportDate)
+      // هيك بتقدر تعمل أكتر من رابط بنفس اليوم بدون ما يصير DUPLICATE
+      const reportDate = `${day}__${publicToken}`;
 
-      // ✅ payload must include public.token EXACTLY
       const payload = {
-        reportDate,
-        recordDate: nowISO(),
+        reportDate,              // ✅ UNIQUE FOR DB INDEX
+        recordDate: nowISO(),    // ✅ DISPLAY ONLY
 
         fields: {
           company_name: name,
@@ -160,21 +177,21 @@ export default function SupplierEvaluationCreate() {
         attachments: [],
 
         meta: {
-          savedAt: now,
+          savedAt: new Date().toISOString(),
           createdBy: "MANUAL_PUBLIC_LINK",
           submitted: false,
         },
 
         public: {
           mode: "PUBLIC",
-          token: publicToken, // ✅ أهم سطر
+          token: publicToken, // ✅ MUST MATCH LINK TOKEN
           url: publicUrl,
-          createdAt: now,
-          sentAt: now,
+          createdAt: new Date().toISOString(),
+          sentAt: new Date().toISOString(),
           submittedAt: null,
         },
 
-        uniqueKey: `${String(name).trim().toLowerCase()}__${reportDate}__${publicToken}`,
+        uniqueKey: `${String(name).trim().toLowerCase()}__${day}__${publicToken}`,
         _clientSavedAt: now,
       };
 
@@ -184,12 +201,17 @@ export default function SupplierEvaluationCreate() {
         payload,
       });
 
-      // ✅ Verify immediately (this is what prevents the 404 surprise)
+      // ✅ Verify immediately (this prevents “send link then 404”)
       await verifyPublicToken(publicToken);
 
       setMsg("✅ Created & VERIFIED on server. Send the link to supplier.");
     } catch (e) {
-      setMsg(`❌ ${e?.message || "Failed"}`);
+      const status = e?.status ? ` (HTTP ${e.status})` : "";
+      const extra =
+        e?.data && typeof e.data === "object"
+          ? ` | ${e.data?.error || ""} ${e.data?.message || ""}`.trim()
+          : "";
+      setMsg(`❌ ${String(e?.message || "Failed")}${status}${extra ? " — " + extra : ""}`);
     } finally {
       setSaving(false);
     }
