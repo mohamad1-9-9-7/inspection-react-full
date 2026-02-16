@@ -1,17 +1,27 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-/* ===================== API base (robust) ===================== */
+/* ===================== API base (robust + normalized) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const API_BASE = String(
+
+function normalizeApiRoot(raw) {
+  let s = String(raw || "").trim();
+  if (!s) return API_ROOT_DEFAULT;
+  s = s.replace(/\/+$/, "");
+  s = s.replace(/\/api\/reports.*$/i, "");
+  s = s.replace(/\/api\/?$/i, "");
+  return s || API_ROOT_DEFAULT;
+}
+
+const API_BASE = normalizeApiRoot(
   (typeof window !== "undefined" && window.__QCS_API__) ||
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
     (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
     API_ROOT_DEFAULT
-).replace(/\/$/, "");
+);
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
-const TYPE = "supplier_self_assessment_form"; // ✅ لازم يطابق صفحة النتائج/Public
+const TYPE = "supplier_self_assessment_form";
 
 /* ===================== PUBLIC ORIGIN ===================== */
 let VITE_PUBLIC_ORIGIN;
@@ -27,6 +37,13 @@ const PUBLIC_ORIGIN = String(
     (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
     (typeof window !== "undefined" && window.location ? window.location.origin : "")
 ).replace(/\/$/, "");
+
+/**
+ * ✅ FIX: مطابق لـ App.jsx
+ * App.jsx عندك:
+ *  path="/supplier-approval/t/:token" element={<SupplierEvaluationPublic />}
+ */
+const PUBLIC_ROUTE_PREFIX = ""; // ✅ لازم تكون فاضية عندك
 
 function buildPublicUrl(pathname = "") {
   const p = String(pathname || "");
@@ -73,7 +90,6 @@ async function createReport(body) {
   return data;
 }
 
-/* ✅ Verify token exists on server */
 async function verifyPublicToken(token) {
   const t = String(token || "").trim();
   if (!t) throw new Error("token missing");
@@ -124,7 +140,13 @@ export default function SupplierEvaluationCreate() {
 
   // ✅ token created once
   const publicToken = useMemo(() => makeToken(30), []);
-  const publicPath = useMemo(() => `/supplier-approval/t/${encodeURIComponent(publicToken)}`, [publicToken]);
+
+  // ✅ FIX: route matches App.jsx exactly
+  const publicPath = useMemo(
+    () => `${PUBLIC_ROUTE_PREFIX}/supplier-approval/t/${encodeURIComponent(publicToken)}`,
+    [publicToken]
+  );
+
   const publicUrl = useMemo(() => buildPublicUrl(publicPath), [publicPath]);
 
   const copyLink = async () => {
@@ -157,23 +179,20 @@ export default function SupplierEvaluationCreate() {
     try {
       const now = Date.now();
       const day = todayDateOnly();
-
-      // ✅ أهم تعديل: reportDate لازم يكون UNIQUE (لأن عندك unique index type + reportDate)
-      // هيك بتقدر تعمل أكتر من رابط بنفس اليوم بدون ما يصير DUPLICATE
-      const reportDate = `${day}__${publicToken}`;
+      const reportDate = `${day}__${publicToken}`; // unique
 
       const payload = {
-        reportDate,              // ✅ UNIQUE FOR DB INDEX
-        recordDate: nowISO(),    // ✅ DISPLAY ONLY
+        reportDate,
+        recordDate: nowISO(),
 
         fields: {
           company_name: name,
           supplier_email: mail,
         },
 
-        answers: {}, // supplier fills later
+        answers: {},
         questions: DEFAULT_QUESTIONS,
-        notes, // internal admin notes
+        notes,
         attachments: [],
 
         meta: {
@@ -184,7 +203,7 @@ export default function SupplierEvaluationCreate() {
 
         public: {
           mode: "PUBLIC",
-          token: publicToken, // ✅ MUST MATCH LINK TOKEN
+          token: publicToken,
           url: publicUrl,
           createdAt: new Date().toISOString(),
           sentAt: new Date().toISOString(),
@@ -201,7 +220,6 @@ export default function SupplierEvaluationCreate() {
         payload,
       });
 
-      // ✅ Verify immediately (this prevents “send link then 404”)
       await verifyPublicToken(publicToken);
 
       setMsg("✅ Created & VERIFIED on server. Send the link to supplier.");
@@ -217,171 +235,110 @@ export default function SupplierEvaluationCreate() {
     }
   };
 
-  /* ===================== Styles (match your hub) ===================== */
-  const shellStyle = {
+  /* ===================== Styles ===================== */
+  const page = {
     minHeight: "100vh",
-    padding: "28px 18px",
+    padding: 18,
     background:
       "radial-gradient(circle at 12% 10%, rgba(34,211,238,0.22) 0, rgba(255,255,255,1) 42%, rgba(255,255,255,1) 100%)," +
       "radial-gradient(circle at 88% 12%, rgba(34,197,94,0.16) 0, rgba(255,255,255,0) 55%)," +
       "radial-gradient(circle at 50% 100%, rgba(59,130,246,0.16) 0, rgba(255,255,255,0) 58%)",
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     color: "#071b2d",
-    direction: "rtl",
   };
 
-  const layoutStyle = { maxWidth: 1100, margin: "0 auto" };
+  const wrap = { maxWidth: 1100, margin: "0 auto" };
 
   const panel = {
     background: "rgba(255,255,255,0.92)",
-    border: "1px solid rgba(15, 23, 42, 0.14)",
+    border: "1px solid rgba(2,6,23,0.12)",
     borderRadius: 18,
-    boxShadow: "0 12px 30px rgba(2, 132, 199, 0.10)",
-    padding: 16,
-  };
-
-  const topBar = {
-    ...panel,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
+    padding: 14,
+    boxShadow: "0 14px 40px rgba(2, 132, 199, 0.10)",
   };
 
   const btn = {
-    padding: "10px 14px",
-    borderRadius: 14,
-    border: "1px solid rgba(15,23,42,0.16)",
-    background: "rgba(255,255,255,0.95)",
+    border: "1px solid rgba(2,6,23,0.12)",
+    background: "#fff",
+    borderRadius: 12,
+    padding: "10px 12px",
     cursor: "pointer",
-    fontWeight: 950,
+    fontWeight: 900,
   };
 
-  const btnPrimary = {
+  const primary = {
     ...btn,
-    background: "linear-gradient(135deg, #0ea5e9, #22c55e)",
-    color: "#fff",
-    border: "1px solid rgba(255,255,255,0.85)",
+    background: "linear-gradient(135deg, rgba(34,197,94,0.18), rgba(34,211,238,0.16))",
+    borderColor: "rgba(34,197,94,0.28)",
   };
 
   const input = {
     width: "100%",
-    padding: "11px 12px",
     borderRadius: 12,
-    border: "1px solid rgba(2,6,23,0.14)",
+    border: "1px solid rgba(2,6,23,0.12)",
+    padding: "10px 12px",
     outline: "none",
-    background: "rgba(255,255,255,0.98)",
-    fontWeight: 850,
+    background: "#fff",
   };
-
-  const label = { fontSize: 12, fontWeight: 950, color: "#64748b", marginBottom: 6 };
-
-  const linkBox = {
-    border: "1px solid rgba(15,23,42,0.12)",
-    borderRadius: 16,
-    padding: 14,
-    background: "rgba(255,255,255,0.92)",
-  };
-
-  const small = { fontSize: 12, fontWeight: 850, color: "#64748b" };
 
   return (
-    <main style={shellStyle}>
-      <div style={layoutStyle}>
-        {/* Header */}
-        <div style={topBar}>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 980 }}>Create Supplier Evaluation</div>
-            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 850, color: "#64748b" }}>
-              Create → generate link → send to supplier → supplier submits → you review in Results.
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button style={btn} onClick={() => nav("/haccp-iso/supplier-evaluation")}>
-              ↩ Back to Hub
-            </button>
+    <div style={page}>
+      <div style={wrap}>
+        <div style={{ ...panel, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <button style={btn} onClick={() => nav("/haccp-iso/supplier-evaluation")}>
+            Back to Hub ↩
+          </button>
+          <div style={{ fontWeight: 980 }}>Create Supplier Evaluation</div>
+          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 850 }}>
+            Create → generate link → send to supplier → supplier submits → you review in Results
           </div>
         </div>
 
-        {/* Form */}
         <div style={{ ...panel, marginTop: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <div style={label}>Supplier Name *</div>
-              <input
-                style={input}
-                value={supplierName}
-                onChange={(e) => setSupplierName(e.target.value)}
-                placeholder="مثال: ABC Meat Trading"
-              />
+              <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>Supplier Name *</div>
+              <input style={input} value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Supplier name" />
             </div>
-
             <div>
-              <div style={label}>Supplier Email (optional)</div>
-              <input
-                style={input}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="example@supplier.com"
-              />
+              <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>Supplier Email (optional)</div>
+              <input style={input} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" />
             </div>
           </div>
 
           <div style={{ marginTop: 12 }}>
-            <div style={label}>Internal Notes (Admin only)</div>
-            <textarea
-              style={{ ...input, minHeight: 90, resize: "vertical" }}
-              value={internalNotes}
-              onChange={(e) => setInternalNotes(e.target.value)}
-              placeholder="أي ملاحظات داخلية... (لن تظهر للمورد)"
-            />
+            <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>Internal Notes (Admin only)</div>
+            <textarea style={{ ...input, minHeight: 90 }} value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} />
           </div>
 
-          {/* Public Link */}
-          <div style={{ marginTop: 14, ...linkBox }}>
-            <div style={{ fontWeight: 980 }}>Public Supplier Link</div>
-            <div style={{ marginTop: 8, fontSize: 13, color: "#334155", fontWeight: 850, wordBreak: "break-word" }}>
+          <div style={{ ...panel, marginTop: 12, borderRadius: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 950, marginBottom: 8 }}>Public Supplier Link</div>
+            <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12, opacity: 0.85 }}>
               {publicUrl}
             </div>
-            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button style={btn} onClick={copyLink}>📋 Copy Link</button>
-              <a
-                href={publicUrl}
-                target="_blank"
-                rel="noreferrer"
-                style={{ ...btn, textDecoration: "none", color: "#071b2d", display: "inline-flex", alignItems: "center" }}
-              >
-                🔗 Open Public Page
-              </a>
+            <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <button style={btn} onClick={() => window.open(publicUrl, "_blank")}>Open Public Page</button>
+              <button style={btn} onClick={copyLink}>Copy Link</button>
+              <span style={{ fontSize: 12, opacity: 0.75 }}>Token: {publicToken}</span>
             </div>
-            <div style={{ marginTop: 8, ...small }}>
-              Token: <b style={{ color: "#0f172a" }}>{publicToken}</b>
-            </div>
-          </div>
 
-          {/* Actions */}
-          <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button style={btnPrimary} onClick={onCreate} disabled={saving}>
-              {saving ? "Saving..." : "✅ Save Evaluation (Server) + Verify"}
-            </button>
-            <button style={btn} onClick={() => nav("/haccp-iso/supplier-evaluation/results")}>
-              📄 Go to Submitted Results
-            </button>
-          </div>
-
-          {msg ? (
-            <div style={{ marginTop: 12, fontWeight: 950, color: msg.startsWith("✅") ? "#065f46" : "#991b1b" }}>
-              {msg}
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button style={btn} onClick={() => nav("/haccp-iso/supplier-evaluation/results")}>
+                Go to Submitted Results
+              </button>
+              <button style={primary} disabled={saving} onClick={onCreate}>
+                {saving ? "Saving..." : "Save Evaluation (Server) + Verify ✅"}
+              </button>
             </div>
-          ) : null}
+
+            {msg ? <div style={{ marginTop: 10, fontWeight: 900, fontSize: 13 }}>{msg}</div> : null}
+          </div>
         </div>
 
-        <div style={{ marginTop: 18, fontSize: 12, color: "#64748b", fontWeight: 800, textAlign: "center", opacity: 0.95 }}>
-          © Al Mawashi — Supplier Evaluation
+        <div style={{ textAlign: "center", marginTop: 12, fontSize: 12, opacity: 0.65, fontWeight: 850 }}>
+          Al Mawashi — Supplier Evaluation ©
         </div>
       </div>
-    </main>
+    </div>
   );
 }

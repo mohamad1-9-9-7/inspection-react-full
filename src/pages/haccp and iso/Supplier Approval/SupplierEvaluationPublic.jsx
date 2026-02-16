@@ -1,49 +1,57 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
-/* ===================== API base ===================== */
+/* ===================== API base (NORMALIZED) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const API_BASE = String(
+
+function normalizeApiRoot(raw) {
+  let s = String(raw || "").trim();
+  if (!s) return API_ROOT_DEFAULT;
+  s = s.replace(/\/+$/, "");
+  // لو حاطط /api أو /api/reports بالغلط… شيلهم
+  s = s.replace(/\/api\/reports.*$/i, "");
+  s = s.replace(/\/api\/?$/i, "");
+  return s || API_ROOT_DEFAULT;
+}
+
+const API_BASE = normalizeApiRoot(
   (typeof window !== "undefined" && window.__QCS_API__) ||
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
     (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
     API_ROOT_DEFAULT
-).replace(/\/$/, "");
+);
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
-const TYPE = "supplier_evaluation";
+const TYPE = "supplier_self_assessment_form";
 
-/* ===================== endpoints (same style as training) ===================== */
+/* ===================== ✅ public token endpoints (MATCH SERVER) ===================== */
 /**
- * الأفضل (مثل التدريب): تعمل endpoints خاصة بالتوكن:
- * GET  /api/supplier-evaluation/by-token/:token
- * POST /api/supplier-evaluation/by-token/:token/submit
- *
- * إذا ما عندك هدول بالسيرفر: لازم تضيفهم (أعطيك كودهم تحت).
+ * ✅ Server endpoints:
+ * GET  /api/reports/public/:token
+ * POST /api/reports/public/:token/submit
  */
 function getInfoEndpoint(token) {
-  return `${API_BASE}/api/supplier-evaluation/by-token/${encodeURIComponent(token)}`;
+  return `${API_BASE}/api/reports/public/${encodeURIComponent(token)}`;
 }
 function getSubmitEndpoint(token) {
-  return `${API_BASE}/api/supplier-evaluation/by-token/${encodeURIComponent(token)}/submit`;
+  return `${API_BASE}/api/reports/public/${encodeURIComponent(token)}/submit`;
 }
 
 /* ===================== helpers ===================== */
-function norm(s) {
-  return String(s ?? "").trim();
-}
 async function fetchJson(url, options) {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     ...options,
   });
+
   const txt = await res.text().catch(() => "");
   let data;
   try {
-    data = JSON.parse(txt);
+    data = txt ? JSON.parse(txt) : null;
   } catch {
     data = txt;
   }
+
   if (!res.ok) {
     const err = new Error(data?.error || data?.message || `HTTP ${res.status}`);
     err.status = res.status;
@@ -96,6 +104,7 @@ export default function SupplierEvaluationPublic() {
     } catch {
       return window.location.href;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const load = async () => {
@@ -103,13 +112,18 @@ export default function SupplierEvaluationPublic() {
     setMsg("");
     try {
       const data = await fetchJson(getInfoEndpoint(token), { method: "GET" });
-      // expected: { ok:true, item:{...} } OR item directly
-      const item = data?.item || data?.data || data;
 
-      setInfo(item);
+      // ✅ server returns { ok:true, report:{...} }
+      const report = data?.report || data?.item || data?.data || data;
+      setInfo(report);
 
-      // prefill fields if exist
-      const p = item?.payload || item?.payload_json || item?.data?.payload || item?.payload || item?.payload || {};
+      const p =
+        report?.payload ||
+        report?.payload_json ||
+        report?.data?.payload ||
+        report?.item?.payload ||
+        {};
+
       const preFields = p?.fields || {};
       const preEmail = p?.email || p?.supplierEmail || "";
 
@@ -119,7 +133,6 @@ export default function SupplierEvaluationPublic() {
         Email: preFields?.Email || preFields?.email || preEmail || prev.Email,
       }));
 
-      // questions answers prefill (if already submitted)
       setAnswers(p?.answers || {});
       setAttachments(Array.isArray(p?.attachments) ? p.attachments : []);
     } catch (e) {
@@ -136,7 +149,12 @@ export default function SupplierEvaluationPublic() {
   }, [token]);
 
   const questions = useMemo(() => {
-    const p = info?.payload || info?.item?.payload || info?.data?.payload || info?.payload_json || {};
+    const p =
+      info?.payload ||
+      info?.item?.payload ||
+      info?.data?.payload ||
+      info?.payload_json ||
+      {};
     const q = p?.questions || [];
     return Array.isArray(q) ? q : [];
   }, [info]);
@@ -170,16 +188,14 @@ export default function SupplierEvaluationPublic() {
     setMsg("");
     setSaving(true);
     try {
-      const payload = {
-        fields,
-        answers,
-        attachments,
-        submittedAt: Date.now(),
-      };
-
+      // ✅ Server expects { fields, answers, attachments }
       await fetchJson(getSubmitEndpoint(token), {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          fields,
+          answers,
+          attachments,
+        }),
       });
 
       setDone(true);
@@ -241,28 +257,54 @@ export default function SupplierEvaluationPublic() {
           Supplier Evaluation Form
         </div>
         <div style={{ marginTop: 6, color: "#64748b", fontSize: 12 }}>
-          Token: <b>{token}</b> • Link: <span style={{ wordBreak: "break-word" }}>{shareUrl}</span>
+          Token: <b>{token}</b> • Link:{" "}
+          <span style={{ wordBreak: "break-word" }}>{shareUrl}</span>
         </div>
 
         {msg ? (
-          <div style={{ marginTop: 10, fontWeight: 900, color: msg.startsWith("✅") ? "#065f46" : "#991b1b" }}>
+          <div
+            style={{
+              marginTop: 10,
+              fontWeight: 900,
+              color: msg.startsWith("✅") ? "#065f46" : "#991b1b",
+            }}
+          >
             {msg}
           </div>
         ) : null}
 
         {done ? (
-          <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: "1px solid rgba(16,185,129,0.35)", background: "rgba(16,185,129,0.08)", fontWeight: 1000 }}>
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 14,
+              border: "1px solid rgba(16,185,129,0.35)",
+              background: "rgba(16,185,129,0.08)",
+              fontWeight: 1000,
+            }}
+          >
             Thank you. Your submission has been received.
           </div>
         ) : null}
 
         {/* Company fields */}
-        <div style={{ marginTop: 14, borderTop: "1px solid rgba(2,6,23,0.12)", paddingTop: 12 }}>
-          <div style={{ fontWeight: 1000, color: "#0f172a", marginBottom: 8 }}>Company Details</div>
+        <div
+          style={{
+            marginTop: 14,
+            borderTop: "1px solid rgba(2,6,23,0.12)",
+            paddingTop: 12,
+          }}
+        >
+          <div style={{ fontWeight: 1000, color: "#0f172a", marginBottom: 8 }}>
+            Company Details
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {Object.keys(fields).map((k) => (
               <div key={k}>
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#334155", marginBottom: 6 }}>{k}</div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "#334155", marginBottom: 6 }}>
+                  {k}
+                </div>
                 <input
                   style={input}
                   value={fields[k]}
@@ -274,8 +316,16 @@ export default function SupplierEvaluationPublic() {
         </div>
 
         {/* Questions */}
-        <div style={{ marginTop: 14, borderTop: "1px solid rgba(2,6,23,0.12)", paddingTop: 12 }}>
-          <div style={{ fontWeight: 1000, color: "#0f172a", marginBottom: 8 }}>Questions</div>
+        <div
+          style={{
+            marginTop: 14,
+            borderTop: "1px solid rgba(2,6,23,0.12)",
+            paddingTop: 12,
+          }}
+        >
+          <div style={{ fontWeight: 1000, color: "#0f172a", marginBottom: 8 }}>
+            Questions
+          </div>
 
           {questions.length === 0 ? (
             <div style={{ color: "#475569", fontWeight: 800 }}>
@@ -291,7 +341,15 @@ export default function SupplierEvaluationPublic() {
                 const v = answers[key] ?? "";
 
                 return (
-                  <div key={key} style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(2,6,23,0.12)", background: "#fff" }}>
+                  <div
+                    key={key}
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid rgba(2,6,23,0.12)",
+                      background: "#fff",
+                    }}
+                  >
                     <div style={{ fontWeight: 900, color: "#0f172a" }}>{label}</div>
 
                     <div style={{ marginTop: 10 }}>
@@ -329,15 +387,18 @@ export default function SupplierEvaluationPublic() {
         </div>
 
         {/* Attachments */}
-        <div style={{ marginTop: 14, borderTop: "1px solid rgba(2,6,23,0.12)", paddingTop: 12 }}>
-          <div style={{ fontWeight: 1000, color: "#0f172a", marginBottom: 8 }}>Attachments</div>
+        <div
+          style={{
+            marginTop: 14,
+            borderTop: "1px solid rgba(2,6,23,0.12)",
+            paddingTop: 12,
+          }}
+        >
+          <div style={{ fontWeight: 1000, color: "#0f172a", marginBottom: 8 }}>
+            Attachments
+          </div>
 
-          <input
-            type="file"
-            multiple
-            onChange={(e) => pickFiles(e.target.files)}
-            disabled={saving}
-          />
+          <input type="file" multiple onChange={(e) => pickFiles(e.target.files)} disabled={saving} />
 
           <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
             {attachments.map((f, i) => (
@@ -354,10 +415,26 @@ export default function SupplierEvaluationPublic() {
                   alignItems: "center",
                 }}
               >
-                <a href={f.url} target="_blank" rel="noreferrer" style={{ fontWeight: 900, color: "#0f172a", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <a
+                  href={f.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    fontWeight: 900,
+                    color: "#0f172a",
+                    textDecoration: "none",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   📎 {f.name || `File ${i + 1}`}
                 </a>
-                <button type="button" style={{ ...btn, borderColor: "rgba(239,68,68,0.35)", color: "#991b1b" }} onClick={() => removeAttachment(i)}>
+                <button
+                  type="button"
+                  style={{ ...btn, borderColor: "rgba(239,68,68,0.35)", color: "#991b1b" }}
+                  onClick={() => removeAttachment(i)}
+                >
                   Remove
                 </button>
               </div>
