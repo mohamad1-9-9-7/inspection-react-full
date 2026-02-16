@@ -158,32 +158,25 @@ const QUESTIONS = {
 
 /* ✅ PDF order (important) */
 const QUESTION_ORDER = [
-  // PAGE 2
   "ph_01",
   "ph_02",
   "ph_03",
   "ph_04",
-
   "fbc_01",
   "fbc_02",
   "fbc_03",
   "fbc_04",
   "fbc_05",
-
   "cln_01",
   "cln_02",
   "cln_03",
   "cln_04",
   "cln_05",
-
   "pst_01",
   "pst_02",
   "pst_03",
-
-  // PAGE 3
   "pst_04",
   "pst_05",
-
   "fsq_01",
   "fsq_02",
   "fsq_02a",
@@ -197,8 +190,6 @@ const QUESTION_ORDER = [
   "fsq_04",
   "fsq_05",
   "fsq_06",
-
-  // PAGE 4
   "rm_01",
   "rm_02",
   "rm_03",
@@ -206,21 +197,16 @@ const QUESTION_ORDER = [
   "rm_05",
   "rm_06",
   "rm_07",
-
   "proc_01",
   "proc_02",
-
   "trn_01",
   "trn_02",
   "trn_03",
-
   "prd_01",
   "prd_02",
   "prd_03",
   "prd_04",
   "prd_05",
-
-  // PAGE 5
   "eqp_01",
 ];
 
@@ -228,6 +214,60 @@ function answerLabel(v) {
   if (v === true) return "YES";
   if (v === false) return "NO";
   return "N/A";
+}
+
+/* ✅ NEW: attachments getter (robust) */
+function getAttachmentsFromPayload(payload) {
+  const p = payload || {};
+  const candidates = [p.attachments, p?.payload?.attachments, p?.meta?.attachments, p?.public?.attachments, p?.fields?.attachments];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c;
+  }
+  return [];
+}
+
+/* ✅ NEW: attachment helpers */
+function normalizeUrl(u) {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  // if url already has query, keep it
+  return s;
+}
+function getFileExtFromUrl(url) {
+  try {
+    const u = new URL(url);
+    const path = u.pathname || "";
+    const seg = path.split("/").pop() || "";
+    const clean = seg.split("?")[0].split("#")[0];
+    const parts = clean.split(".");
+    if (parts.length >= 2) return parts.pop().toLowerCase();
+    return "";
+  } catch {
+    const clean = String(url || "").split("?")[0].split("#")[0];
+    const parts = clean.split(".");
+    if (parts.length >= 2) return parts.pop().toLowerCase();
+    return "";
+  }
+}
+function guessType(file) {
+  const ct = String(file?.contentType || file?.mimetype || file?.type || "").toLowerCase();
+  const url = normalizeUrl(file?.url || file?.optimized_url || file?.secure_url || "");
+  const ext = getFileExtFromUrl(url);
+
+  const isPdf = ct.includes("pdf") || ext === "pdf";
+  const isImage =
+    ct.startsWith("image/") ||
+    ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext);
+  const isText =
+    ct.startsWith("text/") || ["txt", "csv", "log"].includes(ext);
+  const isDoc =
+    ["doc", "docx", "xls", "xlsx", "ppt", "pptx"].includes(ext) ||
+    ct.includes("officedocument") ||
+    ct.includes("msword") ||
+    ct.includes("excel") ||
+    ct.includes("powerpoint");
+
+  return { isPdf, isImage, isText, isDoc, ext, ct, url };
 }
 
 /* ===================== Styles ===================== */
@@ -299,6 +339,135 @@ function FieldLine({ label, value }) {
   );
 }
 
+/* ✅ NEW: Attachment Preview Modal */
+function AttachmentModal({ file, onClose }) {
+  if (!file) return null;
+
+  const url = normalizeUrl(file?.url || file?.optimized_url || file?.secure_url || "");
+  const name = file?.name || file?.filename || "Attachment";
+  const info = guessType(file);
+
+  const headerBtn = {
+    ...btn,
+    padding: "8px 12px",
+    borderRadius: 12,
+    fontWeight: 950,
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(2,6,23,0.62)",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: 18,
+        overflowY: "auto",
+        zIndex: 10000,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "min(1100px, 100%)",
+          marginTop: 20,
+          background: "rgba(255,255,255,0.98)",
+          border: "1px solid rgba(15,23,42,0.18)",
+          borderRadius: 18,
+          boxShadow: "0 24px 70px rgba(2,6,23,0.35)",
+          padding: 14,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ minWidth: 200 }}>
+            <div style={{ fontSize: 16, fontWeight: 990, color: "#0f172a" }}>📎 {name}</div>
+            <div style={{ marginTop: 4, color: "#64748b", fontWeight: 850, fontSize: 12 }}>
+              {info.ct ? `Type: ${info.ct}` : info.ext ? `Ext: .${info.ext}` : "Type: —"}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {url ? (
+              <a
+                href={url}
+                download
+                style={{ textDecoration: "none" }}
+                onClick={(e) => {
+                  // stays same tab, triggers download if browser allows
+                  if (!url) e.preventDefault();
+                }}
+              >
+                <span style={headerBtn}>⬇ Download</span>
+              </a>
+            ) : null}
+            <button style={btn} onClick={onClose}>
+              ✖ Close
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
+          {!url ? (
+            <div style={{ color: "#64748b", fontWeight: 850, fontSize: 13 }}>No file URL found.</div>
+          ) : info.isImage ? (
+            <div style={{ display: "grid", placeItems: "center" }}>
+              <img
+                src={url}
+                alt={name}
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "75vh",
+                  borderRadius: 14,
+                  border: "1px solid rgba(15,23,42,0.12)",
+                  boxShadow: "0 12px 26px rgba(2, 132, 199, 0.10)",
+                }}
+              />
+            </div>
+          ) : info.isPdf ? (
+            <iframe
+              title={name}
+              src={url}
+              style={{
+                width: "100%",
+                height: "75vh",
+                border: "1px solid rgba(15,23,42,0.12)",
+                borderRadius: 14,
+                background: "#fff",
+              }}
+            />
+          ) : info.isText ? (
+            <iframe
+              title={name}
+              src={url}
+              style={{
+                width: "100%",
+                height: "75vh",
+                border: "1px solid rgba(15,23,42,0.12)",
+                borderRadius: 14,
+                background: "#fff",
+              }}
+            />
+          ) : (
+            <div style={{ color: "#64748b", fontWeight: 850, fontSize: 13, lineHeight: 1.7 }}>
+              Preview is not supported for this file type inside the app.
+              <div style={{ marginTop: 10 }}>
+                <a href={url} download style={{ textDecoration: "none" }}>
+                  <span style={btnPrimary}>⬇ Download File</span>
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SupplierEvaluationResults() {
   const nav = useNavigate();
 
@@ -307,6 +476,9 @@ export default function SupplierEvaluationResults() {
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState(null); // report.id opened details
   const [deletingId, setDeletingId] = useState(null);
+
+  /* ✅ NEW: attachment modal state */
+  const [openAttachment, setOpenAttachment] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -361,6 +533,11 @@ export default function SupplierEvaluationResults() {
   const openedFields = opened?.payload?.fields || {};
   const openedCounts = calcCounts(openedAnswers);
 
+  // ✅ NEW: read attachments
+  const openedAttachments = useMemo(() => {
+    return getAttachmentsFromPayload(opened?.payload);
+  }, [opened]);
+
   // ✅ sort answers by PDF order (fallback: unknown keys at end)
   const openedAnswerPairs = useMemo(() => {
     const ans = openedAnswers || {};
@@ -386,7 +563,6 @@ export default function SupplierEvaluationResults() {
   const buildPublicUrl = (token) => {
     if (!token) return "";
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    // matches your App routes:
     return `${origin}/supplier-approval/t/${encodeURIComponent(String(token))}`;
   };
 
@@ -394,13 +570,14 @@ export default function SupplierEvaluationResults() {
     const id = report?.id;
     const supplier = report?.payload?.fields?.company_name || "Supplier";
     const recDate = report?.payload?.recordDate || "";
-    const ok = window.confirm(`Delete this submitted result?\n\nSupplier: ${supplier}\nDate: ${recDate || "—"}\n\nThis cannot be undone.`);
+    const ok = window.confirm(
+      `Delete this submitted result?\n\nSupplier: ${supplier}\nDate: ${recDate || "—"}\n\nThis cannot be undone.`
+    );
     if (!ok) return;
 
     setDeletingId(String(id));
     try {
       await deleteReportById(id);
-      // close modal if it was opened
       setOpenId((prev) => (String(prev) === String(id) ? null : prev));
       await fetchData();
       alert("Deleted ✅");
@@ -572,11 +749,7 @@ export default function SupplierEvaluationResults() {
                     </>
                   ) : null}
 
-                  <button
-                    style={btnDanger}
-                    disabled={String(deletingId) === String(opened?.id)}
-                    onClick={() => handleDelete(opened)}
-                  >
+                  <button style={btnDanger} disabled={String(deletingId) === String(opened?.id)} onClick={() => handleDelete(opened)}>
                     {String(deletingId) === String(opened?.id) ? "Deleting..." : "Delete"}
                   </button>
 
@@ -605,6 +778,47 @@ export default function SupplierEvaluationResults() {
                 </div>
               </div>
 
+              {/* ✅ Attachments (NOW opens popup modal, not external tab) */}
+              <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
+                <div style={{ fontWeight: 980, marginBottom: 10 }}>Attachments</div>
+
+                {openedAttachments.length === 0 ? (
+                  <div style={{ color: "#64748b", fontWeight: 850, fontSize: 13 }}>No attachments found for this submission.</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {openedAttachments.map((f, i) => {
+                      const url = normalizeUrl(f?.url || f?.optimized_url || f?.secure_url || "");
+                      const name = f?.name || f?.filename || `File ${i + 1}`;
+                      return (
+                        <button
+                          key={`${url}-${i}`}
+                          type="button"
+                          onClick={() => setOpenAttachment({ ...f, url, name })}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                            textDecoration: "none",
+                            padding: 12,
+                            borderRadius: 14,
+                            border: "1px solid rgba(15,23,42,0.12)",
+                            background: "rgba(255,255,255,0.96)",
+                            color: "#0f172a",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {name}</span>
+                          <span style={{ color: "#64748b", fontWeight: 850, fontSize: 12 }}>Preview</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {/* YES/NO questions */}
               <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
                 <div style={{ fontWeight: 980, marginBottom: 10 }}>YES/NO Questions (PDF order)</div>
@@ -620,9 +834,7 @@ export default function SupplierEvaluationResults() {
                         background: "rgba(248,250,252,0.9)",
                       }}
                     >
-                      <div style={{ whiteSpace: "pre-wrap", fontWeight: 950, color: "#0f172a", lineHeight: 1.6 }}>
-                        {x.q}
-                      </div>
+                      <div style={{ whiteSpace: "pre-wrap", fontWeight: 950, color: "#0f172a", lineHeight: 1.6 }}>{x.q}</div>
                       <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{ fontWeight: 980 }}>Answer:</span>
                         <span
@@ -632,7 +844,11 @@ export default function SupplierEvaluationResults() {
                             fontWeight: 980,
                             border: "1px solid rgba(15,23,42,0.14)",
                             background:
-                              x.v === true ? "rgba(34,197,94,0.14)" : x.v === false ? "rgba(239,68,68,0.12)" : "rgba(148,163,184,0.16)",
+                              x.v === true
+                                ? "rgba(34,197,94,0.14)"
+                                : x.v === false
+                                ? "rgba(239,68,68,0.12)"
+                                : "rgba(148,163,184,0.16)",
                             color: x.v === true ? "#14532d" : x.v === false ? "#7f1d1d" : "#334155",
                           }}
                         >
@@ -667,6 +883,11 @@ export default function SupplierEvaluationResults() {
               </div>
             </div>
           </div>
+        ) : null}
+
+        {/* ✅ NEW: attachment popup (no external tab) */}
+        {openAttachment ? (
+          <AttachmentModal file={openAttachment} onClose={() => setOpenAttachment(null)} />
         ) : null}
 
         <div style={{ marginTop: 18, fontSize: 12, color: "#64748b", fontWeight: 800, textAlign: "center", opacity: 0.95 }}>
