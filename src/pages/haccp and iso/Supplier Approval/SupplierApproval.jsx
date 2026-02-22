@@ -2,6 +2,7 @@
 // ✅ UPDATED: public token mode now LOADS + SUBMITS via server token endpoints
 // ✅ NO changes to PDF literal content
 // ✅ Admin mode still uses /api/reports CRUD
+// ✅ UI: FULL WIDTH + Language Toggle (AR/EN) + Thank You screen after submit (no back to form)
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -51,7 +52,6 @@ async function listReportsByType(type) {
   if (Array.isArray(data?.data)) return data.data;
   if (Array.isArray(data?.data?.data)) return data.data.data;
   if (Array.isArray(data?.ok && data?.data)) return data.data;
-  // open-crud server usually returns {ok:true,data:[...]}
   if (Array.isArray(data?.data)) return data.data;
   return [];
 }
@@ -440,9 +440,7 @@ const FORM = [
       {
         title: "Production Area Controls (continued)",
         type: "yesno",
-        items: [
-          { key: "eqp_01", q: "Is the equipment used in production fit for\npurpose, easy to clean and in a good state of\nrepair?" },
-        ],
+        items: [{ key: "eqp_01", q: "Is the equipment used in production fit for\npurpose, easy to clean and in a good state of\nrepair?" }],
       },
 
       {
@@ -466,7 +464,7 @@ const FORM = [
   },
 ];
 
-/* ===================== UI Theme (soft borders / clear sections) ===================== */
+/* ===================== UI Theme ===================== */
 const THEME = {
   bg:
     "radial-gradient(circle at 18% 10%, rgba(34,197,94,0.20) 0, rgba(14,165,233,0.12) 35%, rgba(2,6,23,0.92) 100%)," +
@@ -478,25 +476,111 @@ const THEME = {
   border: "rgba(255,255,255,0.62)",
 };
 
+/* ===================== i18n (UI only) ===================== */
+const UI = {
+  en: {
+    headerTitle: "✅ Supplier Evaluation Form (PDF – Literal)",
+    headerSub: "Same questions as PDF page-by-page (no rewording).",
+    publicToken: "Public reference token:",
+    loading: "Loading...",
+    loaded: "Loaded ✅",
+    backHub: "↩ Back to Supplier Hub",
+    backMenu: "↩ HACCP/ISO Menu",
+    recordDate: "Record Date",
+    companyNameMeta: "Company Name (from PDF fields)",
+    summary: "Yes / No Summary",
+    totalQuestions: "Total questions:",
+    uniqueKey: "uniqueKey",
+    submit: "✅ Submit",
+    save: "💾 Save",
+    cancel: "Cancel",
+    notes: "Notes (internal)",
+    notesPh: "(optional) internal notes...",
+    refresh: "↻ Refresh",
+    refreshing: "Refreshing...",
+    recentSaved: "Recent Saved Forms",
+    noneSaved: "No saved forms yet.",
+    selected: "Selected:",
+    yes: "✅ YES",
+    no: "❌ NO",
+    na: "➖ N/A",
+    thankTitle: "Thank you for submitting ✅",
+    thankSub: "Your response has been received successfully.",
+    thankNote: "You can close this page now.",
+    lang: "Language",
+  },
+  ar: {
+    headerTitle: "✅ نموذج تقييم المورد (مطابق PDF حرفيًا)",
+    headerSub: "نفس أسئلة الـPDF صفحة بصفحة (بدون إعادة صياغة).",
+    publicToken: "رمز الرابط العام:",
+    loading: "جاري التحميل...",
+    loaded: "تم التحميل ✅",
+    backHub: "↩ الرجوع لصفحة الموردين",
+    backMenu: "↩ قائمة HACCP/ISO",
+    recordDate: "تاريخ السجل",
+    companyNameMeta: "اسم الشركة (من حقول الـPDF)",
+    summary: "ملخص نعم / لا",
+    totalQuestions: "عدد الأسئلة:",
+    uniqueKey: "المعرّف uniqueKey",
+    submit: "✅ إرسال",
+    save: "💾 حفظ",
+    cancel: "إلغاء",
+    notes: "ملاحظات (داخلية)",
+    notesPh: "(اختياري) اكتب ملاحظات داخلية...",
+    refresh: "↻ تحديث",
+    refreshing: "جاري التحديث...",
+    recentSaved: "آخر النماذج المحفوظة",
+    noneSaved: "لا يوجد نماذج محفوظة.",
+    selected: "المحدد:",
+    yes: "✅ نعم",
+    no: "❌ لا",
+    na: "➖ غير متاح",
+    thankTitle: "شكرًا لإرسالك ✅",
+    thankSub: "تم استلام إجابتك بنجاح.",
+    thankNote: "يمكنك إغلاق الصفحة الآن.",
+    lang: "اللغة",
+  },
+};
+
 /* ===================== Component ===================== */
 export default function SupplierApproval({ publicMode = false, publicToken = "", onPublicSubmitted }) {
   const nav = useNavigate();
 
-  // ✅ NEW: Parent hub route (change here if you choose different path)
   const PARENT_HUB_ROUTE = "/haccp-iso/supplier-evaluation";
+
+  // ✅ Language toggle (UI only)
+  const initialLang = useMemo(() => {
+    try {
+      const saved = localStorage.getItem("qcs_supplier_lang");
+      if (saved === "ar" || saved === "en") return saved;
+    } catch {}
+    const navLang = (typeof navigator !== "undefined" && navigator.language) || "en";
+    return String(navLang).toLowerCase().startsWith("ar") ? "ar" : "en";
+  }, []);
+  const [lang, setLang] = useState(initialLang);
+  const t = UI[lang] || UI.en;
+  const isRTL = lang === "ar";
+
+  // ✅ Thank you page after submit (public)
+  const submittedKey = useMemo(() => `supplier_public_submitted_${String(publicToken || "")}`, [publicToken]);
+  const [submitted, setSubmitted] = useState(() => {
+    if (!publicMode) return false;
+    try {
+      return localStorage.getItem(submittedKey) === "1";
+    } catch {
+      return false;
+    }
+  });
 
   const [saving, setSaving] = useState(false);
   const [loadingList, setLoadingList] = useState(false);
 
-  /* ✅ NEW: public loading state */
   const [publicLoading, setPublicLoading] = useState(false);
   const [publicLoaded, setPublicLoaded] = useState(false);
 
-  // ✅ حقول عامة (مش تغيير على نص الـPDF، بس لإدارة السجل)
   const [recordDate, setRecordDate] = useState(todayISO());
   const [notes, setNotes] = useState("");
 
-  // ✅ القيم الحرفية للـPDF (حقول + YES/NO)
   const [fields, setFields] = useState(() => {
     const init = {};
     FORM.forEach((p) =>
@@ -521,10 +605,9 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
 
   const uniqueKey = useMemo(() => {
     const company = (fields.company_name || "").trim();
-    // ✅ public link: key includes token to avoid overwrite between suppliers
-    const t = String(publicToken || "").trim();
+    const tkn = String(publicToken || "").trim();
     const base = `${company}__${recordDate}`.trim().toLowerCase();
-    return publicMode && t ? `${base}__${t}` : base;
+    return publicMode && tkn ? `${base}__${tkn}` : base;
   }, [fields.company_name, recordDate, publicMode, publicToken]);
 
   const title = useMemo(() => {
@@ -548,9 +631,7 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
   };
 
   const fetchExisting = async () => {
-    // في publicMode ما في داعي تعرض آخر السجلات
     if (publicMode) return;
-
     setLoadingList(true);
     try {
       const data = await listReportsByType(TYPE);
@@ -572,11 +653,34 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ✅ FIXED: on publicMode → load by token from server (/api/reports/public/:token) and hydrate state */
+  // ✅ persist lang
   useEffect(() => {
-    const t = String(publicToken || "").trim();
+    try {
+      localStorage.setItem("qcs_supplier_lang", lang);
+    } catch {}
+  }, [lang]);
+
+  // ✅ If already submitted in public mode → hard block back to form via history
+  useEffect(() => {
     if (!publicMode) return;
-    if (!t) return;
+    if (!submitted) return;
+    try {
+      window.history.replaceState(null, "", window.location.href);
+      const block = () => {
+        window.history.pushState(null, "", window.location.href);
+      };
+      window.history.pushState(null, "", window.location.href);
+      window.addEventListener("popstate", block);
+      return () => window.removeEventListener("popstate", block);
+    } catch {}
+  }, [publicMode, submitted]);
+
+  /* ✅ publicMode load by token from server and hydrate state (skip if already submitted) */
+  useEffect(() => {
+    const tkn = String(publicToken || "").trim();
+    if (!publicMode) return;
+    if (!tkn) return;
+    if (submitted) return;
 
     let alive = true;
 
@@ -584,12 +688,9 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
       setPublicLoading(true);
       setPublicLoaded(false);
       try {
-        const data = await getPublicByToken(t);
-
-        // ✅ server returns { ok:true, report:{ payload... } }
+        const data = await getPublicByToken(tkn);
         const payload = data?.report?.payload || {};
 
-        // hydrate safe
         const loadedRecordDate = payload?.recordDate || payload?.reportDate || todayISO();
         const loadedNotes = payload?.notes || "";
 
@@ -603,11 +704,9 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
 
         setFields((prev) => {
           const out = { ...prev };
-          // only fill known keys
           Object.keys(out).forEach((k) => {
             if (Object.prototype.hasOwnProperty.call(loadedFields, k)) out[k] = loadedFields[k];
           });
-          // if server has extra keys (keep them too)
           Object.keys(loadedFields || {}).forEach((k) => {
             if (!Object.prototype.hasOwnProperty.call(out, k)) out[k] = loadedFields[k];
           });
@@ -637,7 +736,7 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
     return () => {
       alive = false;
     };
-  }, [publicMode, publicToken]);
+  }, [publicMode, publicToken, submitted]);
 
   const onField = (key, value) => setFields((p) => ({ ...p, [key]: value }));
   const onToggle = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
@@ -650,18 +749,14 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
     try {
       const nowIso = new Date().toISOString();
 
-      // ✅ build payload common
       const payload = {
         recordDate,
         title,
         uniqueKey,
-
-        // ✅ هذا هو محتوى النموذج الحرفي
         fields,
         answers,
         notes,
 
-        // ✅ public meta (token)
         public: publicMode
           ? {
               token: String(publicToken || ""),
@@ -670,7 +765,6 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
             }
           : null,
 
-        // ✅ فقط لتسهيل التقارير
         meta: {
           counts,
           savedAt: nowIso,
@@ -680,19 +774,22 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
       };
 
       if (publicMode) {
-        // ✅ FIXED: submit strictly via server public submit endpoint
-        // Server expects { fields, answers, attachments }
         await submitPublicByToken(String(publicToken || ""), {
           fields: payload.fields,
           answers: payload.answers,
           attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
         });
-        alert("Submitted successfully ✅");
+
+        // ✅ mark submitted + lock form
+        try {
+          localStorage.setItem(submittedKey, "1");
+        } catch {}
+        setSubmitted(true);
+
         if (typeof onPublicSubmitted === "function") onPublicSubmitted();
         return;
       }
 
-      // ✅ admin mode uses normal CRUD
       const list = await listReportsByType(TYPE);
       const found = Array.isArray(list)
         ? list.find((r) => (r?.payload?.uniqueKey || "").toLowerCase() === uniqueKey)
@@ -702,8 +799,6 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
       else await createReport({ type: TYPE, title, payload });
 
       alert("Saved successfully ✅");
-
-      // ✅ go back to parent hub (instead of /haccp-iso)
       nav(PARENT_HUB_ROUTE);
     } catch (e) {
       console.error(e);
@@ -717,12 +812,18 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
   const page = {
     minHeight: "100vh",
     width: "100%",
-    padding: "22px 18px 28px",
+    padding: "18px 14px 28px",
     boxSizing: "border-box",
-    direction: "ltr",
+    direction: isRTL ? "rtl" : "ltr",
     fontFamily: "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
     background: THEME.bg,
     overflowX: "hidden",
+  };
+
+  const container = {
+    width: "100%",
+    maxWidth: "100%",
+    margin: "0 auto",
   };
 
   const glass = {
@@ -795,6 +896,19 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
     fontSize: 14,
   };
 
+  const chip = {
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(2,6,23,0.12)",
+    background: "rgba(255,255,255,0.92)",
+    fontWeight: 1200,
+    fontSize: 13,
+    color: THEME.text,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+  };
+
   const pageCard = {
     background: THEME.glassStrong,
     border: "1px solid rgba(2,6,23,0.12)",
@@ -860,215 +974,294 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
       return <textarea value={fields[it.key] || ""} onChange={(e) => onField(it.key, e.target.value)} style={textareaShort} />;
     }
 
-    if (it.kind === "text") {
-      return <input value={fields[it.key] || ""} onChange={(e) => onField(it.key, e.target.value)} style={input} />;
-    }
-
     return <input value={fields[it.key] || ""} onChange={(e) => onField(it.key, e.target.value)} style={input} />;
   };
 
-  return (
-    <div style={page}>
-      {/* Header */}
-      <div style={{ ...glass, padding: 18, maxWidth: 1900, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 26, fontWeight: 1600, color: THEME.text }}>
-              ✅ Supplier Evaluation Form (PDF – Literal)
-            </div>
-            <div style={{ marginTop: 8, color: THEME.muted, fontSize: 14, fontWeight: 1200 }}>
-              Same questions as PDF page-by-page (no rewording).
-            </div>
-            {publicMode ? (
-              <div style={{ marginTop: 8, color: THEME.muted, fontSize: 12, fontWeight: 1200 }}>
-                Public reference token: <b>{String(publicToken || "")}</b>
-                {publicLoading ? <span> &nbsp;•&nbsp; Loading...</span> : null}
-                {!publicLoading && publicLoaded ? <span> &nbsp;•&nbsp; Loaded ✅</span> : null}
+  // ✅ Thank You screen (public only)
+  if (publicMode && submitted) {
+    return (
+      <div style={page}>
+        <div style={container}>
+          <div style={{ ...glass, padding: 22 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ fontSize: 22, fontWeight: 1600, color: THEME.text }}>{t.thankTitle}</div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <span style={chip}>
+                  {t.lang}:
+                  <button
+                    onClick={() => setLang("en")}
+                    style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 1400, opacity: lang === "en" ? 1 : 0.55 }}
+                  >
+                    EN
+                  </button>
+                  <span style={{ opacity: 0.35 }}>•</span>
+                  <button
+                    onClick={() => setLang("ar")}
+                    style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 1400, opacity: lang === "ar" ? 1 : 0.55 }}
+                  >
+                    AR
+                  </button>
+                </span>
               </div>
-            ) : null}
-          </div>
-
-          {!publicMode ? (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={() => nav(PARENT_HUB_ROUTE)} style={btnGhost}>
-                ↩ Back to Supplier Hub
-              </button>
-              <button onClick={() => nav("/haccp-iso")} style={btnGhost}>
-                ↩ HACCP/ISO Menu
-              </button>
             </div>
-          ) : null}
-        </div>
 
-        {/* top meta */}
-        <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-          <div style={pageCard}>
-            <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13 }}>Record Date</div>
-            <div style={{ marginTop: 8 }}>
-              <input type="date" value={recordDate} onChange={(e) => setRecordDate(e.target.value)} style={input} />
+            <div style={{ marginTop: 12, color: THEME.muted, fontWeight: 1200, fontSize: 14 }}>{t.thankSub}</div>
+            <div style={{ marginTop: 6, color: THEME.muted, fontWeight: 1200, fontSize: 13 }}>{t.thankNote}</div>
+
+            <div style={{ marginTop: 16, ...pageCard }}>
+              <div style={{ fontWeight: 1500, color: THEME.text, fontSize: 16 }}>
+                {t.publicToken} <span style={{ fontFamily: "ui-monospace, Menlo, Monaco, Consolas, monospace" }}>{String(publicToken || "")}</span>
+              </div>
             </div>
           </div>
 
-          <div style={pageCard}>
-            <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13 }}>Company Name (from PDF fields)</div>
-            <div style={{ marginTop: 8 }}>
-              <input value={fields.company_name || ""} onChange={(e) => onField("company_name", e.target.value)} style={input} />
-            </div>
+          <div style={{ marginTop: 12, textAlign: isRTL ? "right" : "left", color: "rgba(255,255,255,0.92)", fontWeight: 1100, fontSize: 13 }}>
+            Built by Eng. Mohammed Abdullah
           </div>
-
-          <div style={pageCard}>
-            <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13 }}>Yes / No Summary</div>
-            <div style={{ marginTop: 10, fontSize: 18, fontWeight: 1500, color: THEME.text }}>
-              Yes: {counts.yesCount} &nbsp;•&nbsp; No: {counts.noCount} &nbsp;•&nbsp; N/A: {counts.naCount}
-            </div>
-            <div style={{ marginTop: 6, color: THEME.muted, fontWeight: 1100, fontSize: 13 }}>Total questions: {counts.total}</div>
-          </div>
-
-          <div style={pageCard}>
-            <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13 }}>uniqueKey</div>
-            <div
-              style={{
-                marginTop: 10,
-                fontFamily: "ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace",
-                fontWeight: 1200,
-                color: THEME.text,
-              }}
-            >
-              {uniqueKey || "—"}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button onClick={onSave} disabled={saving || (publicMode && publicLoading)} style={btnPrimary(saving || (publicMode && publicLoading))}>
-            {saving ? "Saving..." : publicMode ? "✅ Submit" : "💾 Save"}
-          </button>
-
-          {!publicMode ? (
-            <button onClick={() => nav(PARENT_HUB_ROUTE)} style={btnGhost}>
-              Cancel
-            </button>
-          ) : null}
         </div>
       </div>
+    );
+  }
 
-      {/* Body */}
-      <div style={{ maxWidth: 1900, margin: "14px auto 0", display: "grid", gap: 14 }}>
-        {/* Notes */}
-        <div style={section}>
-          <div style={label}>Notes (internal)</div>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={textarea} placeholder="(optional) internal notes..." />
+  return (
+    <div style={page}>
+      <div style={container}>
+        {/* Header */}
+        <div style={{ ...glass, padding: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 26, fontWeight: 1600, color: THEME.text }}>{t.headerTitle}</div>
+              <div style={{ marginTop: 8, color: THEME.muted, fontSize: 14, fontWeight: 1200 }}>{t.headerSub}</div>
+
+              {publicMode ? (
+                <div style={{ marginTop: 8, color: THEME.muted, fontSize: 12, fontWeight: 1200 }}>
+                  {t.publicToken} <b>{String(publicToken || "")}</b>
+                  {publicLoading ? <span> &nbsp;•&nbsp; {t.loading}</span> : null}
+                  {!publicLoading && publicLoaded ? <span> &nbsp;•&nbsp; {t.loaded}</span> : null}
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              {/* Language toggle */}
+              <span style={chip}>
+                {t.lang}:
+                <button
+                  onClick={() => setLang("en")}
+                  style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 1400, opacity: lang === "en" ? 1 : 0.55 }}
+                >
+                  EN
+                </button>
+                <span style={{ opacity: 0.35 }}>•</span>
+                <button
+                  onClick={() => setLang("ar")}
+                  style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 1400, opacity: lang === "ar" ? 1 : 0.55 }}
+                >
+                  AR
+                </button>
+              </span>
+
+              {!publicMode ? (
+                <>
+                  <button onClick={() => nav(PARENT_HUB_ROUTE)} style={btnGhost}>
+                    {t.backHub}
+                  </button>
+                  <button onClick={() => nav("/haccp-iso")} style={btnGhost}>
+                    {t.backMenu}
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          {/* top meta */}
+          <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+            <div style={pageCard}>
+              <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13 }}>{t.recordDate}</div>
+              <div style={{ marginTop: 8 }}>
+                <input type="date" value={recordDate} onChange={(e) => setRecordDate(e.target.value)} style={input} />
+              </div>
+            </div>
+
+            <div style={pageCard}>
+              <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13 }}>{t.companyNameMeta}</div>
+              <div style={{ marginTop: 8 }}>
+                <input value={fields.company_name || ""} onChange={(e) => onField("company_name", e.target.value)} style={input} />
+              </div>
+            </div>
+
+            <div style={pageCard}>
+              <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13 }}>{t.summary}</div>
+              <div style={{ marginTop: 10, fontSize: 18, fontWeight: 1500, color: THEME.text }}>
+                Yes: {counts.yesCount} &nbsp;•&nbsp; No: {counts.noCount} &nbsp;•&nbsp; N/A: {counts.naCount}
+              </div>
+              <div style={{ marginTop: 6, color: THEME.muted, fontWeight: 1100, fontSize: 13 }}>
+                {t.totalQuestions} {counts.total}
+              </div>
+            </div>
+
+            <div style={pageCard}>
+              <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13 }}>{t.uniqueKey}</div>
+              <div
+                style={{
+                  marginTop: 10,
+                  fontFamily: "ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace",
+                  fontWeight: 1200,
+                  color: THEME.text,
+                  wordBreak: "break-word",
+                }}
+              >
+                {uniqueKey || "—"}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={onSave} disabled={saving || (publicMode && publicLoading)} style={btnPrimary(saving || (publicMode && publicLoading))}>
+              {saving ? "Saving..." : publicMode ? t.submit : t.save}
+            </button>
+
+            {!publicMode ? (
+              <button onClick={() => nav(PARENT_HUB_ROUTE)} style={btnGhost}>
+                {t.cancel}
+              </button>
+            ) : null}
+          </div>
         </div>
 
-        {/* Pages */}
-        {FORM.map((p, pIdx) => (
-          <div key={pIdx} style={section}>
-            <div style={titleH}>{p.pageTitle}</div>
-            <div style={subH}>Below is the same structure as provided.</div>
+        {/* Body */}
+        <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
+          {/* Notes */}
+          <div style={section}>
+            <div style={label}>{t.notes}</div>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={textarea} placeholder={t.notesPh} />
+          </div>
 
-            <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
-              {p.blocks.map((b, bIdx) => (
-                <div key={bIdx} style={pageCard}>
-                  <div style={{ fontSize: 18, fontWeight: 1500, color: THEME.text }}>{b.title}</div>
+          {/* Pages */}
+          {FORM.map((p, pIdx) => (
+            <div key={pIdx} style={section}>
+              <div style={titleH}>{p.pageTitle}</div>
+              <div style={subH}>{t.headerSub}</div>
 
-                  {b.type === "info" && (
-                    <div style={{ marginTop: 10, whiteSpace: "pre-wrap", color: THEME.text, fontWeight: 1100, lineHeight: 1.6 }}>
-                      {(b.lines || []).join("\n")}
-                    </div>
-                  )}
+              <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
+                {p.blocks.map((b, bIdx) => (
+                  <div key={bIdx} style={pageCard}>
+                    <div style={{ fontSize: 18, fontWeight: 1500, color: THEME.text }}>{b.title}</div>
 
-                  {b.type === "fields" && (
-                    <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
-                      {(b.items || []).map((it) => (
-                        <div key={it.key} style={{ display: "grid", gap: 8 }}>
-                          <div style={{ fontWeight: 1200, color: THEME.text, fontSize: 15, whiteSpace: "pre-wrap" }}>{it.label}</div>
-                          {renderField(it)}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                    {b.type === "info" && (
+                      <div style={{ marginTop: 10, whiteSpace: "pre-wrap", color: THEME.text, fontWeight: 1100, lineHeight: 1.6 }}>
+                        {(b.lines || []).join("\n")}
+                      </div>
+                    )}
 
-                  {b.type === "yesno" && (
-                    <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-                      {(b.items || []).map((it) => (
-                        <div key={it.key} style={{ borderTop: "1px dashed rgba(2,6,23,0.22)", paddingTop: 12 }}>
-                          <div style={{ fontWeight: 1300, color: THEME.text, fontSize: 15, whiteSpace: "pre-wrap" }}>{it.q}</div>
+                    {b.type === "fields" && (
+                      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
+                        {(b.items || []).map((it) => (
+                          <div key={it.key} style={{ display: "grid", gap: 8 }}>
+                            <div style={{ fontWeight: 1200, color: THEME.text, fontSize: 15, whiteSpace: "pre-wrap" }}>{it.label}</div>
+                            {renderField(it)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
-                          <div style={toggleRow}>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              <button type="button" onClick={() => onToggle(it.key, true)} style={toggleBtn(answers[it.key] === true, "yes")}>
-                                ✅ YES
-                              </button>
-                              <button type="button" onClick={() => onToggle(it.key, false)} style={toggleBtn(answers[it.key] === false, "no")}>
-                                ❌ NO
-                              </button>
-                              <button type="button" onClick={() => onToggle(it.key, null)} style={toggleBtn(answers[it.key] === null, "na")}>
-                                ➖ N/A
-                              </button>
-                            </div>
+                    {b.type === "yesno" && (
+                      <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+                        {(b.items || []).map((it) => (
+                          <div key={it.key} style={{ borderTop: "1px dashed rgba(2,6,23,0.22)", paddingTop: 12 }}>
+                            <div style={{ fontWeight: 1300, color: THEME.text, fontSize: 15, whiteSpace: "pre-wrap" }}>{it.q}</div>
 
-                            <div style={{ fontSize: 13, fontWeight: 1200, color: THEME.muted }}>
-                              Selected:{" "}
-                              <b style={{ color: answers[it.key] === true ? "#16a34a" : answers[it.key] === false ? "#dc2626" : THEME.muted }}>
-                                {answers[it.key] === true ? "YES" : answers[it.key] === false ? "NO" : "N/A"}
-                              </b>
+                            <div style={toggleRow}>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <button type="button" onClick={() => onToggle(it.key, true)} style={toggleBtn(answers[it.key] === true, "yes")}>
+                                  {t.yes}
+                                </button>
+                                <button type="button" onClick={() => onToggle(it.key, false)} style={toggleBtn(answers[it.key] === false, "no")}>
+                                  {t.no}
+                                </button>
+                                <button type="button" onClick={() => onToggle(it.key, null)} style={toggleBtn(answers[it.key] === null, "na")}>
+                                  {t.na}
+                                </button>
+                              </div>
+
+                              <div style={{ fontSize: 13, fontWeight: 1200, color: THEME.muted }}>
+                                {t.selected}{" "}
+                                <b style={{ color: answers[it.key] === true ? "#16a34a" : answers[it.key] === false ? "#dc2626" : THEME.muted }}>
+                                  {answers[it.key] === true ? "YES" : answers[it.key] === false ? "NO" : "N/A"}
+                                </b>
+                              </div>
                             </div>
                           </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Existing quick view (admin only) */}
+          {!publicMode ? (
+            <div style={section}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ fontSize: 20, fontWeight: 1500, color: THEME.text }}>{t.recentSaved}</div>
+                <button onClick={fetchExisting} disabled={loadingList} style={btnGhost}>
+                  {loadingList ? t.refreshing : t.refresh}
+                </button>
+              </div>
+
+              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                {existing.length === 0 ? (
+                  <div style={{ color: THEME.muted, fontWeight: 1100, fontSize: 14 }}>{t.noneSaved}</div>
+                ) : (
+                  existing.map((r, idx) => (
+                    <div
+                      key={r?.id || idx}
+                      style={{
+                        border: "1px solid rgba(2,6,23,0.14)",
+                        borderRadius: 16,
+                        padding: 14,
+                        background: THEME.glassStrong,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 1400, color: THEME.text, fontSize: 15 }}>
+                          {r?.payload?.fields?.company_name || r?.title || "Supplier Evaluation Form"}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+                        <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13, marginTop: 6 }}>
+                          Date: {r?.payload?.recordDate || "—"} • YES: {r?.payload?.meta?.counts?.yesCount ?? "—"} • NO:{" "}
+                          {r?.payload?.meta?.counts?.noCount ?? "—"}
+                        </div>
+                      </div>
 
-        {/* Existing quick view (admin only) */}
-        {!publicMode ? (
-          <div style={section}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <div style={{ fontSize: 20, fontWeight: 1500, color: THEME.text }}>Recent Saved Forms</div>
-              <button onClick={fetchExisting} disabled={loadingList} style={btnGhost}>
-                {loadingList ? "Refreshing..." : "↻ Refresh"}
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-              {existing.length === 0 ? (
-                <div style={{ color: THEME.muted, fontWeight: 1100, fontSize: 14 }}>No saved forms yet.</div>
-              ) : (
-                existing.map((r, idx) => (
-                  <div
-                    key={r?.id || idx}
-                    style={{
-                      border: "1px solid rgba(2,6,23,0.14)",
-                      borderRadius: 16,
-                      padding: 14,
-                      background: THEME.glassStrong,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 1400, color: THEME.text, fontSize: 15 }}>{r?.payload?.fields?.company_name || r?.title || "Supplier Evaluation Form"}</div>
-                      <div style={{ color: THEME.muted, fontWeight: 1200, fontSize: 13, marginTop: 6 }}>
-                        Date: {r?.payload?.recordDate || "—"} • YES: {r?.payload?.meta?.counts?.yesCount ?? "—"} • NO: {r?.payload?.meta?.counts?.noCount ?? "—"}
+                      <div style={{ fontSize: 13, fontWeight: 1200, color: THEME.muted, maxWidth: "100%", wordBreak: "break-word" }}>
+                        {r?.payload?.uniqueKey || ""}
                       </div>
                     </div>
-
-                    <div style={{ fontSize: 13, fontWeight: 1200, color: THEME.muted }}>{r?.payload?.uniqueKey || ""}</div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        <div style={{ textAlign: "left", color: "rgba(255,255,255,0.92)", fontWeight: 1100, fontSize: 13 }}>Built by Eng. Mohammed Abdullah</div>
+          <div style={{ textAlign: isRTL ? "right" : "left", color: "rgba(255,255,255,0.92)", fontWeight: 1100, fontSize: 13 }}>
+            Built by Eng. Mohammed Abdullah
+          </div>
+        </div>
+
+        {/* Responsive helpers */}
+        <style>{`
+          @media (max-width: 820px) {
+            body { overflow-x: hidden; }
+          }
+        `}</style>
       </div>
     </div>
   );
