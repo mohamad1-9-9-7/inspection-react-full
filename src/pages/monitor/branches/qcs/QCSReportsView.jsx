@@ -4,26 +4,18 @@ import CoolersView from "./CoolersView";
 import DailyCleanlinessView from "./DailyCleanlinessView";
 import PersonalHygieneView from "./PersonalHygieneView";
 import FreshChickenReportsView from "./FreshChickenReportsView";
-
-// ما قبل التحميل
 import FTR1PreloadingViewer from "./FTR1PreloadingViewer";
 import FTR2PreloadingViewer from "./FTR2PreloadingViewer";
-
-// تقارير المواد الخام
 import RMInspectionReportIngredientsView from "./RMInspectionReportIngredientsView";
 import RMInspectionReportPackagingView from "./RMInspectionReportPackagingView";
-
-// عدم المطابقة
 import NonConformanceReportsView from "./NonConformanceReportsView";
-
-// Corrective Action
 import CorrectiveActionReportsView from "./CorrectiveActionReportsView";
+import InternalAuditView from "./InternalAuditView"; // ✅ جديد
 
 export default function QCSReportsView() {
   const [tab, setTab] = useState("coolers");
   const [q, setQ] = useState("");
 
-  // ✅ responsive صحيح (يتحدث عند تغيير حجم الشاشة)
   const [isNarrow, setIsNarrow] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth < 980 : false
   );
@@ -33,7 +25,6 @@ export default function QCSReportsView() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // قيم افتراضية آمنة (كما هي)
   const ccHeader = {
     documentTitle: "QCS — Daily Cleanliness",
     documentNo: "FS-QM/REC/CLN",
@@ -50,16 +41,17 @@ export default function QCSReportsView() {
 
   const TABS = useMemo(
     () => [
-      { id: "coolers", label: "Coolers", icon: "🧊", hint: "Temperature / Cooler checks" },
-      { id: "ph", label: "Personal Hygiene", icon: "🧼", hint: "Hygiene checklist reports" },
-      { id: "clean", label: "Daily Cleanliness", icon: "🧹", hint: "Daily cleaning verifications" },
-      { id: "fresh", label: "Fresh Chicken", icon: "🍗", hint: "Fresh chicken reports" },
-      { id: "ftr1_preload", label: "FTR 1 • Preloading", icon: "🚚", hint: "Mushrif preloading inspections" },
-      { id: "ftr2_preload", label: "FTR 2 • Preloading", icon: "🚚", hint: "Mamzar preloading inspections" },
-      { id: "rm_ing", label: "RM — Ingredients", icon: "🧪", hint: "Raw Material Inspection (Ingredients)" },
-      { id: "rm_pack", label: "RM — Packaging", icon: "📦", hint: "Raw Material Inspection (Packaging)" },
-      { id: "nc_reports", label: "Non-Conformance", icon: "🚫", hint: "NCR list & follow-up" },
-      { id: "car_reports", label: "Corrective Action", icon: "🛠️", hint: "Corrective action reports" },
+      { id: "coolers",       label: "Coolers",              icon: "🧊", hint: "Temperature / Cooler checks" },
+      { id: "ph",            label: "Personal Hygiene",     icon: "🧼", hint: "Hygiene checklist reports" },
+      { id: "clean",         label: "Daily Cleanliness",    icon: "🧹", hint: "Daily cleaning verifications" },
+      { id: "fresh",         label: "Fresh Chicken",        icon: "🍗", hint: "Fresh chicken reports" },
+      { id: "ftr1_preload",  label: "FTR 1 • Preloading",  icon: "🚚", hint: "Mushrif preloading inspections" },
+      { id: "ftr2_preload",  label: "FTR 2 • Preloading",  icon: "🚚", hint: "Mamzar preloading inspections" },
+      { id: "rm_ing",        label: "RM — Ingredients",    icon: "🧪", hint: "Raw Material Inspection (Ingredients)" },
+      { id: "rm_pack",       label: "RM — Packaging",      icon: "📦", hint: "Raw Material Inspection (Packaging)" },
+      { id: "nc_reports",    label: "Non-Conformance",      icon: "🚫", hint: "NCR list & follow-up" },
+      { id: "car_reports",   label: "Corrective Action",    icon: "🛠️", hint: "Corrective action reports" },
+      { id: "internal_audit",label: "Internal Audit",       icon: "📋", hint: "Internal audit records — FS-QA/INA-QCS-W/01" }, // ✅ جديد
     ],
     []
   );
@@ -80,14 +72,13 @@ export default function QCSReportsView() {
 
   /* =================== Styles =================== */
   const COLORS = {
-    ink: "#0b1f4d",
-    sub: "#64748b",
-    line: "rgba(30,41,59,0.22)",
+    ink:   "#0b1f4d",
+    sub:   "#64748b",
+    line:  "rgba(30,41,59,0.22)",
     glass: "rgba(255,255,255,0.72)",
-    glass2: "rgba(255,255,255,0.88)",
+    glass2:"rgba(255,255,255,0.88)",
   };
 
-  // ✅ Full width
   const shell = {
     minHeight: "100vh",
     padding: "0px",
@@ -100,7 +91,6 @@ export default function QCSReportsView() {
     color: COLORS.ink,
   };
 
-  // ✅ Full width container
   const layout = {
     width: "100%",
     maxWidth: "100%",
@@ -178,7 +168,6 @@ export default function QCSReportsView() {
     color: COLORS.ink,
   };
 
-  // ✅ tabs horizontal scroll
   const tabsWrap = {
     marginTop: 12,
     display: "flex",
@@ -243,6 +232,7 @@ export default function QCSReportsView() {
   return (
     <div style={shell}>
       <div style={layout}>
+
         {/* ===== Sticky Header ===== */}
         <div style={topGlass}>
           <div style={headerCard}>
@@ -252,22 +242,17 @@ export default function QCSReportsView() {
                   <div style={titleLeft}>
                     <div
                       style={{
-                        width: 46,
-                        height: 46,
-                        borderRadius: 16,
+                        width: 46, height: 46, borderRadius: 16,
                         background: "linear-gradient(135deg, rgba(99,102,241,.22), rgba(16,185,129,.18))",
                         border: `1px solid ${COLORS.line}`,
                         boxShadow: "0 10px 26px rgba(15,23,42,.10)",
-                        display: "grid",
-                        placeItems: "center",
-                        fontSize: 20,
-                        fontWeight: 900,
+                        display: "grid", placeItems: "center",
+                        fontSize: 20, fontWeight: 900,
                       }}
                       title="QCS"
                     >
                       📊
                     </div>
-
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 18, fontWeight: 1000, lineHeight: 1.1 }}>
                         QCS — Reports (View)
@@ -280,7 +265,6 @@ export default function QCSReportsView() {
                       </div>
                     </div>
                   </div>
-
                   <div style={badge} title="Available sections">
                     Sections: {TABS.length}
                   </div>
@@ -295,7 +279,7 @@ export default function QCSReportsView() {
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   style={searchInput}
-                  placeholder="Type: RM, preload, non, hygiene..."
+                  placeholder="Type: RM, preload, non, hygiene, audit..."
                 />
                 <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: COLORS.sub }}>
                   Showing: <b style={{ color: COLORS.ink }}>{filteredTabs.length}</b>
@@ -303,7 +287,7 @@ export default function QCSReportsView() {
               </div>
             </div>
 
-            {/* Pills (horizontal scroll) */}
+            {/* Pills */}
             <div style={tabsWrap}>
               {filteredTabs.map((t) => {
                 const active = tab === t.id;
@@ -331,7 +315,6 @@ export default function QCSReportsView() {
 
         {/* ===== Main Panel ===== */}
         <section style={mainPanel}>
-          {/* Top mini header inside content */}
           <div
             style={{
               display: "flex",
@@ -347,14 +330,10 @@ export default function QCSReportsView() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div
                 style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 16,
+                  width: 42, height: 42, borderRadius: 16,
                   background: "linear-gradient(135deg, rgba(59,130,246,.16), rgba(16,185,129,.12))",
                   border: `1px solid ${COLORS.line}`,
-                  display: "grid",
-                  placeItems: "center",
-                  fontSize: 18,
+                  display: "grid", placeItems: "center", fontSize: 18,
                 }}
               >
                 {activeTabMeta.icon}
@@ -368,14 +347,10 @@ export default function QCSReportsView() {
                 </div>
               </div>
             </div>
-
             <div
               style={{
-                fontSize: 12,
-                fontWeight: 950,
-                color: "#0b1f4d",
-                padding: "8px 10px",
-                borderRadius: 999,
+                fontSize: 12, fontWeight: 950, color: "#0b1f4d",
+                padding: "8px 10px", borderRadius: 999,
                 border: `1px solid ${COLORS.line}`,
                 background: "rgba(255,255,255,.75)",
               }}
@@ -384,10 +359,10 @@ export default function QCSReportsView() {
             </div>
           </div>
 
-          {/* Actual viewers */}
-          {tab === "coolers" && <CoolersView />}
-          {tab === "ph" && <PersonalHygieneView />}
-          {tab === "clean" && (
+          {/* ===== Viewers ===== */}
+          {tab === "coolers"        && <CoolersView />}
+          {tab === "ph"             && <PersonalHygieneView />}
+          {tab === "clean"          && (
             <DailyCleanlinessView
               ccHeader={ccHeader}
               selectedCleanDate={selectedCleanDate}
@@ -395,39 +370,45 @@ export default function QCSReportsView() {
               ccFooter={ccFooter}
             />
           )}
-          {tab === "fresh" && (
+          {tab === "fresh"          && (
             <div style={{ position: "relative", maxWidth: "100%", overflow: "visible" }}>
               <FreshChickenReportsView />
             </div>
           )}
-          {tab === "ftr1_preload" && (
+          {tab === "ftr1_preload"   && (
             <div style={{ position: "relative", overflow: "auto" }}>
               <FTR1PreloadingViewer />
             </div>
           )}
-          {tab === "ftr2_preload" && (
+          {tab === "ftr2_preload"   && (
             <div style={{ position: "relative", overflow: "auto" }}>
               <FTR2PreloadingViewer />
             </div>
           )}
-          {tab === "rm_ing" && (
+          {tab === "rm_ing"         && (
             <div style={{ position: "relative", overflow: "auto" }}>
               <RMInspectionReportIngredientsView />
             </div>
           )}
-          {tab === "rm_pack" && (
+          {tab === "rm_pack"        && (
             <div style={{ position: "relative", overflow: "auto" }}>
               <RMInspectionReportPackagingView />
             </div>
           )}
-          {tab === "nc_reports" && (
+          {tab === "nc_reports"     && (
             <div style={{ position: "relative", overflow: "auto" }}>
               <NonConformanceReportsView />
             </div>
           )}
-          {tab === "car_reports" && (
+          {tab === "car_reports"    && (
             <div style={{ position: "relative", overflow: "auto" }}>
               <CorrectiveActionReportsView />
+            </div>
+          )}
+          {/* ✅ Internal Audit — جديد */}
+          {tab === "internal_audit" && (
+            <div style={{ position: "relative", overflow: "auto" }}>
+              <InternalAuditView />
             </div>
           )}
         </section>
