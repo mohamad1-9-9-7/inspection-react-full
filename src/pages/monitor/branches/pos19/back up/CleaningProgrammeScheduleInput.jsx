@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/pos19/pos19_inputs/FoodTemperatureVerificationInput.jsx
+// src/pages/monitor/branches/pos19/pos19_inputs/CleaningProgrammeScheduleInput.jsx
 import React, { useMemo, useState } from "react";
 
 const API_BASE = String(
@@ -10,30 +10,26 @@ const API_BASE = String(
   "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
-const TYPE     = "pos19_food_temperature_verification";
+const TYPE     = "pos19_cleaning_programme_schedule";
 const BRANCH   = "POS 19";
-const FORM_REF = "FS-HACCP/POS19/FTV/13";
+const FORM_REF = "FS-HACCP/POS19/CPS/12";
 
-const PROCESS_TYPES = [
-  { value: "cooking",   label: "Cooking",   limit: "≥ 75°C" },
-  { value: "cooling",   label: "Cooling",   limit: "≤ 5°C in 4h" },
-  { value: "reheating", label: "Reheating", limit: "≥ 75°C" },
-  { value: "chilled",   label: "Chilled",   limit: "≤ 5°C" },
-  { value: "frozen",    label: "Frozen",    limit: "≤ -18°C" },
-];
+const FREQUENCIES = ["Daily", "Weekly", "Monthly", "As needed"];
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function emptyRow() {
-  return {
-    date: "",
-    time: "",
-    foodItem: "",
-    processType: "cooking",
-    targetTemp: "≥ 75°C",
-    actualTemp: "",
-    result: "",        // Pass / Fail
-    correctiveAction: "",
-    checkedBy: "",
+  const base = {
+    area: "",
+    equipment: "",
+    cleaningMethod: "",
+    cleaningAgent: "",
+    concentration: "",
+    frequency: "Daily",
+    responsiblePerson: "",
+    remarks: "",
   };
+  DAYS.forEach(d => (base[`day_${d}`] = ""));
+  return base;
 }
 
 function btnStyle(bg) {
@@ -44,23 +40,19 @@ function btnStyle(bg) {
   };
 }
 
-export default function FoodTemperatureVerificationInput() {
+export default function CleaningProgrammeScheduleInput() {
   const [reportDate, setReportDate] = useState(() => {
     try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
     catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
   });
   const [section, setSection]       = useState("");
-  const [rows, setRows]             = useState(() => Array.from({ length: 8 }, () => emptyRow()));
+  const [weekNo, setWeekNo]         = useState("");
+  const [rows, setRows]             = useState(() => Array.from({ length: 5 }, () => emptyRow()));
   const [verifiedBy, setVerifiedBy] = useState("");
   const [checkedBy, setCheckedBy]   = useState("");
   const [revDate, setRevDate]       = useState("");
   const [revNo, setRevNo]           = useState("");
   const [saving, setSaving]         = useState(false);
-
-  const monthText = useMemo(() => {
-    const m = String(reportDate || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
-    return m ? `${m[2]}/${m[1]}` : "";
-  }, [reportDate]);
 
   const thCell = {
     border: "1px solid #1f3b70", padding: "6px 4px",
@@ -80,12 +72,7 @@ export default function FoodTemperatureVerificationInput() {
   function updateRow(idx, key, val) {
     setRows(prev => {
       const next = [...prev];
-      if (key === "processType") {
-        const found = PROCESS_TYPES.find(p => p.value === val);
-        next[idx] = { ...next[idx], [key]: val, targetTemp: found ? found.limit : "" };
-      } else {
-        next[idx] = { ...next[idx], [key]: val };
-      }
+      next[idx] = { ...next[idx], [key]: val };
       return next;
     });
   }
@@ -93,16 +80,16 @@ export default function FoodTemperatureVerificationInput() {
   function removeRow(i){ setRows(prev => prev.filter((_, idx) => idx !== i)); }
 
   const colDefs = useMemo(() => ([
-    <col key="date"    style={{ width: 110 }} />,
-    <col key="time"    style={{ width: 90 }} />,
-    <col key="food"    style={{ width: 180 }} />,
-    <col key="process" style={{ width: 130 }} />,
-    <col key="target"  style={{ width: 120 }} />,
-    <col key="actual"  style={{ width: 110 }} />,
-    <col key="result"  style={{ width: 90 }} />,
-    <col key="ca"      style={{ width: 200 }} />,
-    <col key="chk"     style={{ width: 130 }} />,
-    <col key="del"     style={{ width: 70 }} />,
+    <col key="area"   style={{ width: 140 }} />,
+    <col key="equip"  style={{ width: 160 }} />,
+    <col key="method" style={{ width: 150 }} />,
+    <col key="agent"  style={{ width: 140 }} />,
+    <col key="conc"   style={{ width: 100 }} />,
+    <col key="freq"   style={{ width: 110 }} />,
+    ...DAYS.map(d => <col key={`d_${d}`} style={{ width: 60 }} />),
+    <col key="resp"   style={{ width: 140 }} />,
+    <col key="rem"    style={{ width: 140 }} />,
+    <col key="del"    style={{ width: 70 }} />,
   ]), []);
 
   async function handleSave() {
@@ -111,17 +98,10 @@ export default function FoodTemperatureVerificationInput() {
       Object.values(r).some(v => String(v || "").trim() !== "")
     );
     if (!entries.length) { alert("أضف على الأقل صفًا واحدًا"); return; }
-    for (const r of entries) {
-      if (r.result === "Fail" && !r.correctiveAction.trim()) {
-        alert("يوجد صف نتيجته Fail بدون Corrective Action. الرجاء التعبئة.");
-        return;
-      }
-    }
     setSaving(true);
     const payload = {
       branch: BRANCH, formRef: FORM_REF, classification: "Official",
-      section, reportDate, month: monthText,
-      entries, checkedBy, verifiedBy, revDate, revNo,
+      section, weekNo, reportDate, entries, checkedBy, verifiedBy, revDate, revNo,
       savedAt: Date.now(),
     };
     try {
@@ -143,21 +123,22 @@ export default function FoodTemperatureVerificationInput() {
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
         <div style={{ flex:1 }}>
-          <div style={{ fontWeight:800, fontSize:16 }}>Food Temperature Verification Log</div>
+          <div style={{ fontWeight:800, fontSize:16 }}>Cleaning Programme Schedule</div>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"auto 190px", gap:6, alignItems:"center", fontSize:12 }}>
           <div>Form Ref. No :</div><div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>{FORM_REF}</div>
           <div>Section :</div><input value={section} onChange={e=>setSection(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
+          <div>Week No. :</div><input value={weekNo} onChange={e=>setWeekNo(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} placeholder="e.g., W01" />
           <div>Classification :</div><div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>Official</div>
           <div>Date :</div><input type="date" value={reportDate} onChange={e=>setReportDate(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
           <div>Branch :</div><div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>{BRANCH}</div>
         </div>
       </div>
 
-      {/* Limits strip */}
+      {/* Legend strip */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>
-          Critical Limits: Cooking / Reheating ≥ 75°C &nbsp;|&nbsp; Chilled ≤ 5°C &nbsp;|&nbsp; Frozen ≤ -18°C &nbsp;|&nbsp; Cooling ≤ 5°C within 4 hrs
+          LEGEND: (√) – Completed & (✗) – Not Completed / Missed
         </div>
       </div>
 
@@ -167,44 +148,42 @@ export default function FoodTemperatureVerificationInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Date</th>
-              <th style={thCell}>Time</th>
-              <th style={thCell}>Food Item</th>
-              <th style={thCell}>Process{"\n"}Type</th>
-              <th style={thCell}>Target{"\n"}Temp</th>
-              <th style={thCell}>Actual{"\n"}Temp (°C)</th>
-              <th style={thCell}>Result{"\n"}(Pass/Fail)</th>
-              <th style={thCell}>Corrective{"\n"}Action</th>
-              <th style={thCell}>Checked{"\n"}by</th>
+              <th style={thCell}>Area</th>
+              <th style={thCell}>Equipment /{ "\n"}Surface</th>
+              <th style={thCell}>Cleaning{"\n"}Method</th>
+              <th style={thCell}>Cleaning{"\n"}Agent</th>
+              <th style={thCell}>Conc. /{ "\n"}Dilution</th>
+              <th style={thCell}>Frequency</th>
+              {DAYS.map(d => <th key={d} style={thCell}>{d}</th>)}
+              <th style={thCell}>Responsible{"\n"}Person</th>
+              <th style={thCell}>Remarks</th>
               <th style={thCell}>—</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
-                <td style={tdCell}><input type="date" value={r.date} onChange={e=>updateRow(i,"date",e.target.value)} style={inputStyle} /></td>
-                <td style={tdCell}><input type="time" value={r.time} onChange={e=>updateRow(i,"time",e.target.value)} style={inputStyle} /></td>
-                <td style={tdCell}><input type="text" value={r.foodItem} onChange={e=>updateRow(i,"foodItem",e.target.value)} style={inputStyle} placeholder="Food item" /></td>
+                <td style={tdCell}><input type="text" value={r.area} onChange={e=>updateRow(i,"area",e.target.value)} style={inputStyle} placeholder="e.g., Floor" /></td>
+                <td style={tdCell}><input type="text" value={r.equipment} onChange={e=>updateRow(i,"equipment",e.target.value)} style={inputStyle} placeholder="e.g., Slicer" /></td>
+                <td style={tdCell}><input type="text" value={r.cleaningMethod} onChange={e=>updateRow(i,"cleaningMethod",e.target.value)} style={inputStyle} placeholder="e.g., Scrub & rinse" /></td>
+                <td style={tdCell}><input type="text" value={r.cleaningAgent} onChange={e=>updateRow(i,"cleaningAgent",e.target.value)} style={inputStyle} placeholder="e.g., Sanitizer" /></td>
+                <td style={tdCell}><input type="text" value={r.concentration} onChange={e=>updateRow(i,"concentration",e.target.value)} style={inputStyle} placeholder="e.g., 200ppm" /></td>
                 <td style={tdCell}>
-                  <select value={r.processType} onChange={e=>updateRow(i,"processType",e.target.value)} style={inputStyle}>
-                    {PROCESS_TYPES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  <select value={r.frequency} onChange={e=>updateRow(i,"frequency",e.target.value)} style={inputStyle}>
+                    {FREQUENCIES.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </td>
-                <td style={tdCell}><input type="text" value={r.targetTemp} onChange={e=>updateRow(i,"targetTemp",e.target.value)} style={inputStyle} /></td>
-                <td style={{ ...tdCell, background: r.result==="Fail" ? "#fde8e8" : "" }}>
-                  <input type="number" step="0.1" value={r.actualTemp} onChange={e=>updateRow(i,"actualTemp",e.target.value)} style={{ ...inputStyle, background: r.result==="Fail" ? "#fde8e8" : "#fff" }} placeholder="°C" />
-                </td>
-                <td style={{ ...tdCell, background: r.result==="Pass" ? "#e7f7ec" : r.result==="Fail" ? "#fde8e8" : "" }}>
-                  <select value={r.result} onChange={e=>updateRow(i,"result",e.target.value)} style={inputStyle}>
-                    <option value=""></option>
-                    <option value="Pass">Pass</option>
-                    <option value="Fail">Fail</option>
-                  </select>
-                </td>
-                <td style={tdCell}>
-                  <input type="text" value={r.correctiveAction} onChange={e=>updateRow(i,"correctiveAction",e.target.value)} style={{ ...inputStyle, background: r.result==="Fail" ? "#fff7ed" : "#fff" }} placeholder={r.result==="Fail" ? "Required" : "If any"} />
-                </td>
-                <td style={tdCell}><input type="text" value={r.checkedBy} onChange={e=>updateRow(i,"checkedBy",e.target.value)} style={inputStyle} /></td>
+                {DAYS.map(d => (
+                  <td key={d} style={{ ...tdCell, background: r[`day_${d}`]==="√" ? "#e7f7ec" : r[`day_${d}`]==="✗" ? "#fde8e8" : "" }}>
+                    <select value={r[`day_${d}`]} onChange={e=>updateRow(i,`day_${d}`,e.target.value)} style={inputStyle}>
+                      <option value=""></option>
+                      <option value="√">√</option>
+                      <option value="✗">✗</option>
+                    </select>
+                  </td>
+                ))}
+                <td style={tdCell}><input type="text" value={r.responsiblePerson} onChange={e=>updateRow(i,"responsiblePerson",e.target.value)} style={inputStyle} /></td>
+                <td style={tdCell}><input type="text" value={r.remarks} onChange={e=>updateRow(i,"remarks",e.target.value)} style={inputStyle} /></td>
                 <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")}>Del</button></td>
               </tr>
             ))}
@@ -216,7 +195,7 @@ export default function FoodTemperatureVerificationInput() {
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button onClick={addRow}      style={btnStyle("#0ea5e9")}>+ Add Row</button>
         <button onClick={handleSave} disabled={saving} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : "Save Food Temp Verification"}
+          {saving ? "Saving…" : "Save Cleaning Schedule"}
         </button>
       </div>
 

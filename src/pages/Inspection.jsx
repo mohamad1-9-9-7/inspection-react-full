@@ -1,5 +1,5 @@
 // src/pages/Inspection.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 /* ===== Routing ===== */
@@ -20,22 +20,19 @@ catch { fromVite = undefined; }
 const API_BASE = String(fromWindow || fromProcess || fromVite || API_ROOT_DEFAULT).replace(/\/$/, "");
 const REPORTS_URL = `${API_BASE}/api/reports`;
 
-/* ===== Helpers: image -> Base64 (compressed) ===== */
-async function fileToCompressedDataURL(file, maxSide = 1280, quality = 0.8) {
-  const img = await new Promise((res, rej) => {
-    const i = new Image();
-    i.onload = () => res(i);
-    i.onerror = rej;
-    i.src = URL.createObjectURL(file);
+/* ✅ رفع صورة على Cloudinary عبر السيرفر */
+async function uploadImageToCloudinary(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/api/images`, {
+    method: "POST",
+    body: fd,
   });
-  const { width, height } = img;
-  const scale = Math.min(1, maxSide / Math.max(width, height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(width * scale);
-  canvas.height = Math.round(height * scale);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", quality); // Base64
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
+    throw new Error(data?.error || "Upload failed");
+  }
+  return data.optimized_url || data.url;
 }
 
 /* ===== Options ===== */
@@ -65,13 +62,16 @@ export default function Inspection() {
   /* ===== Table rows ===== */
   const [rows, setRows] = useState([ makeEmptyRow(), makeEmptyRow(), makeEmptyRow() ]);
 
+  /* ✅ حالة رفع الصور (loading per cell) */
+  const [uploadingCell, setUploadingCell] = useState(null); // "idx-field"
+
   /* Footer */
   const [commentNextAudit, setCommentNextAudit] = useState("");
   const [nextAudit, setNextAudit] = useState("nil");
   const [reviewedBy, setReviewedBy] = useState("");
 
   /* Modal state */
-  const [modal, setModal] = useState({ open: false, stage: "idle", message: "" }); // stage: 'saving' | 'success' | 'error'
+  const [modal, setModal] = useState({ open: false, stage: "idle", message: "" });
   const isSaving = modal.open && modal.stage === "saving";
 
   /* Calc helpers */
@@ -86,8 +86,8 @@ export default function Inspection() {
       nonConformance: "",
       rootCause: "",
       corrective: "",
-      evidenceImgs: [],       // Base64 array (max 5)
-      closedEvidenceImgs: [], // Base64 array (max 5)
+      evidenceImgs: [],       // Cloudinary URLs (max 5)
+      closedEvidenceImgs: [], // Cloudinary URLs (max 5)
       risk: "",
       status: ""
     };
@@ -101,37 +101,48 @@ export default function Inspection() {
   const addRow = () => setRows(prev => [...prev, makeEmptyRow()]);
   const removeRow = (idx) => setRows(prev => prev.filter((_,i)=> i!==idx));
 
+  /* ✅ رفع الصور على Cloudinary بدل base64 */
   const addImage = async (idx, field, files) => {
     if (!files || files.length === 0) return;
-    try {
-      const current = rows[idx][field] || [];
-      const capacity = Math.max(0, 5 - current.length);
-      const slice = Array.from(files).slice(0, capacity);
 
-      const dataURLs = [];
+    const current = rows[idx][field] || [];
+    const capacity = Math.max(0, 5 - current.length);
+    const slice = Array.from(files).slice(0, capacity);
+    if (!slice.length) return;
+
+    const cellKey = `${idx}-${field}`;
+    setUploadingCell(cellKey);
+
+    const uploadedUrls = [];
+    try {
       for (const f of slice) {
         // eslint-disable-next-line no-await-in-loop
-        const data = await fileToCompressedDataURL(f);
-        dataURLs.push(data);
+        const url = await uploadImageToCloudinary(f);
+        uploadedUrls.push(url);
       }
-      updateRow(idx, { [field]: [...current, ...dataURLs] });
-    } catch {
-      // نترك تنبيه فشل معالجة الصورة كما هو، لأنه قبل الحفظ
-      alert("Image processing failed");
+      updateRow(idx, { [field]: [...current, ...uploadedUrls] });
+    } catch (e) {
+      console.error("Image upload failed:", e);
+      alert("فشل رفع الصورة: " + (e?.message || ""));
+    } finally {
+      setUploadingCell(null);
     }
   };
 
   const removeImage = (idx, field, imgIdx) => {
     const list = rows[idx][field] || [];
-    const newList = list.filter((_,i)=> i!==imgIdx);
-    updateRow(idx, { [field]: newList });
+    updateRow(idx, { [field]: list.filter((_,i)=> i!==imgIdx) });
   };
 
-  /* ===== Save to server (type fixed) ===== */
+  /* ===== Save to server ===== */
   const confirmSave = async () => {
     if (!branch || !date) {
-      // بظل استخدام alert هنا للتحقق المسبق، لأننا لم نبدأ الحفظ بعد
       alert("Please select Branch and Date.");
+      return;
+    }
+
+    if (uploadingCell) {
+      alert("يرجى الانتظار حتى تنتهي رفع الصور.");
       return;
     }
 
@@ -161,7 +172,6 @@ export default function Inspection() {
 
     const body = { type: "internal_multi_audit", branch, payload };
 
-    // افتح النافذة: جاري الحفظ
     setModal({ open: true, stage: "saving", message: "جاري الحفظ..." });
 
     try {
@@ -172,21 +182,17 @@ export default function Inspection() {
       });
       if (!res.ok) throw new Error("HTTP " + res.status);
 
-      // نجاح
       setModal({ open: true, stage: "success", message: "تم الحفظ بنجاح ✅" });
 
-      // تفريغ الحقول
       setRows([makeEmptyRow(), makeEmptyRow(), makeEmptyRow()]);
       setCommentNextAudit("");
       setNextAudit("nil");
       setReviewedBy("");
 
-      // اغلاق تلقائي بعد لحظات
       setTimeout(() => {
         setModal({ open: false, stage: "idle", message: "" });
       }, 1600);
     } catch (e) {
-      // فشل
       setModal({ open: true, stage: "error", message: "فشل الحفظ ❌" });
     }
   };
@@ -236,7 +242,7 @@ export default function Inspection() {
         </div>
       </div>
 
-      {/* Table (Grid with fixed columns + horizontal scroll if needed) */}
+      {/* Table */}
       <div style={tableScroll}>
         <div style={tableWrap}>
           <div style={tableHeaderRow}>
@@ -262,25 +268,24 @@ export default function Inspection() {
                 <textarea value={r.corrective} onChange={e=>updateRow(idx,{corrective:e.target.value})} style={cellTextArea}/>
               </div>
 
-              {/* Evidence */}
               <div style={td}>
                 <ImageField
                   list={r.evidenceImgs}
+                  uploading={uploadingCell === `${idx}-evidenceImgs`}
                   onAdd={(files)=>addImage(idx,"evidenceImgs",files)}
                   onRemove={(i)=>removeImage(idx,"evidenceImgs",i)}
                 />
               </div>
 
-              {/* Closed Evidence */}
               <div style={td}>
                 <ImageField
                   list={r.closedEvidenceImgs}
+                  uploading={uploadingCell === `${idx}-closedEvidenceImgs`}
                   onAdd={(files)=>addImage(idx,"closedEvidenceImgs",files)}
                   onRemove={(i)=>removeImage(idx,"closedEvidenceImgs",i)}
                 />
               </div>
 
-              {/* Risk */}
               <div style={tdFixed(140)}>
                 <select value={r.risk} onChange={e=>updateRow(idx,{risk:e.target.value})} style={selectCell}>
                   <option value="">--</option>
@@ -288,7 +293,6 @@ export default function Inspection() {
                 </select>
               </div>
 
-              {/* Status */}
               <div style={tdFixed(120)}>
                 <select value={r.status} onChange={e=>updateRow(idx,{status:e.target.value})} style={selectCell}>
                   <option value="">--</option>
@@ -296,7 +300,6 @@ export default function Inspection() {
                 </select>
               </div>
 
-              {/* Actions */}
               <div style={tdFixed(60, {display:"flex", alignItems:"center", justifyContent:"center"})}>
                 <button onClick={()=>removeRow(idx)} style={iconBtn} title="Remove row">✕</button>
               </div>
@@ -318,7 +321,6 @@ export default function Inspection() {
           placeholder="Write your recommendation and observations..."
           style={{...cellTextArea, minHeight:120}}
         />
-
         <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12}}>
           <label style={metaCell}>
             <span>Next Audit</span>
@@ -336,13 +338,16 @@ export default function Inspection() {
         <div style={{opacity:0.8}}>Closed Items: <b>{percentageClosed}%</b></div>
         <div style={{display:"flex", gap:10}}>
           <button onClick={()=>navigate(REPORTS_ROUTE)} style={viewBtn}>📄 View Reports</button>
-          <button onClick={confirmSave} style={{...saveBtn, opacity: isSaving ? .7 : 1, pointerEvents: isSaving ? "none" : "auto"}}>
-            {isSaving ? "Saving…" : "💾 Save Report"}
+          <button
+            onClick={confirmSave}
+            style={{...saveBtn, opacity: (isSaving || uploadingCell) ? .7 : 1, pointerEvents: (isSaving || uploadingCell) ? "none" : "auto"}}
+          >
+            {isSaving ? "Saving…" : uploadingCell ? "جاري رفع الصور…" : "💾 Save Report"}
           </button>
         </div>
       </div>
 
-      {/* ===== Modal (Saving / Success / Error) ===== */}
+      {/* Modal */}
       {modal.open && (
         <div style={modalBackdrop} onClick={()=> modal.stage!=="saving" && setModal({open:false, stage:"idle", message:""})}>
           <div style={modalCard} onClick={(e)=>e.stopPropagation()}>
@@ -350,7 +355,6 @@ export default function Inspection() {
             <div style={{fontSize:16, fontWeight:800, marginTop: modal.stage==="saving" ? 10 : 0, textAlign:"center"}}>
               {modal.message || (modal.stage==="saving" ? "جاري الحفظ..." : "")}
             </div>
-
             {modal.stage === "error" && (
               <button onClick={()=>setModal({open:false,stage:"idle",message:""})} style={{...smallBtn, marginTop:12}}>
                 إغلاق
@@ -363,10 +367,10 @@ export default function Inspection() {
   );
 }
 
-/* ===== Reusable image field (multi up to 5) ===== */
-function ImageField({ list, onAdd, onRemove }) {
+/* ===== ImageField ===== */
+function ImageField({ list, uploading, onAdd, onRemove }) {
   const count = (list || []).length;
-  const canAdd = count < 5;
+  const canAdd = count < 5 && !uploading;
 
   return (
     <div>
@@ -377,11 +381,18 @@ function ImageField({ list, onAdd, onRemove }) {
             <button onClick={()=>onRemove(i)} title="Remove" style={thumbX}>×</button>
           </div>
         ))}
+
+        {/* ✅ مؤشر التحميل */}
+        {uploading && (
+          <div style={{width:72, height:72, border:"1px dashed #9aa3b8", borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"#64748b"}}>
+            ⏳
+          </div>
+        )}
       </div>
 
       <div style={{display:"flex", alignItems:"center", gap:8, marginTop:6}}>
         <label style={{...uploadBtn, opacity: canAdd ? 1 : 0.6, pointerEvents: canAdd ? "auto" : "none"}}>
-          Upload ({count}/5)
+          {uploading ? "جاري الرفع…" : `Upload (${count}/5)`}
           <input
             type="file"
             accept="image/*"
@@ -400,10 +411,8 @@ function ImageField({ list, onAdd, onRemove }) {
 }
 
 /* ===== Styles ===== */
-const BORDER        = "#9aa3b8";  // darker general border
-const BORDER_STRONG = "#64748b";  // darker header separator
-
-/* Grid columns: fixed distribution; min width ensures no wrap, use horizontal scroll when narrow */
+const BORDER        = "#9aa3b8";
+const BORDER_STRONG = "#64748b";
 const COLS = "1.2fr 1fr 1.2fr 1.1fr 1.1fr 140px 120px 60px";
 
 const pageWrap   = { padding:"18px", fontFamily:"Arial, sans-serif", background:"#5376bcff", minHeight:"100vh", direction:"ltr" };
@@ -411,61 +420,28 @@ const headerCard = { background:"#fff", border:`1px solid ${BORDER}`, borderRadi
 const metaGrid   = { display:"grid", gridTemplateColumns:"repeat(5, 1fr)", gap:10, marginTop:12 };
 const metaCell   = { display:"flex", flexDirection:"column", gap:6, fontSize:12 };
 const metaInput  = { padding:"10px 12px", border:`1px solid ${BORDER}`, borderRadius:8, background:"#fff" };
-
 const tableScroll = { overflowX:"auto" };
 const tableWrap   = { background:"#fff", border:`1px solid ${BORDER}`, borderRadius:12, overflow:"hidden", minWidth: 1200 };
 const tableGrid   = { display:"grid", gridTemplateColumns: COLS, alignItems:"stretch" };
-
 const tableHeaderRow = { ...tableGrid, background:"#f3f4f6", borderBottom:`1px solid ${BORDER_STRONG}`, fontWeight:700, fontSize:13 };
 const tr             = { ...tableGrid, borderBottom:`1px solid ${BORDER}` };
-
-const th = {
-  padding:10,
-  borderRight:`1px solid ${BORDER}`,
-  whiteSpace:"nowrap",
-  overflow:"hidden",
-  textOverflow:"ellipsis",
-  boxSizing:"border-box"
-};
-
+const th = { padding:10, borderRight:`1px solid ${BORDER}`, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", boxSizing:"border-box" };
 const td = { padding:8, borderRight:`1px solid ${BORDER}`, boxSizing:"border-box" };
 const tdFixed = (w, extra={}) => ({ padding:8, borderRight:`1px solid ${BORDER}`, width:w, boxSizing:"border-box", ...extra });
-
 const cellTextArea = { width:"100%", minHeight:84, resize:"vertical", padding:10, border:`1px solid ${BORDER}`, borderRadius:8, background:"#fff", boxSizing:"border-box" };
 const selectCell   = { width:"100%", padding:"10px 12px", border:`1px solid ${BORDER}`, borderRadius:8, background:"#fff", boxSizing:"border-box" };
-
 const iconBtn    = { width:28, height:28, border:`1px solid ${BORDER}`, background:"#fff", borderRadius:6, cursor:"pointer" };
 const addRowBtn  = { border:`1px dashed ${BORDER}`, background:"#fff", padding:"8px 12px", borderRadius:8, cursor:"pointer" };
 const footerCard = { background:"#fff", border:`1px solid ${BORDER}`, borderRadius:12, padding:16, marginTop:14 };
-
 const viewBtn    = { background:"#0ea5e9", color:"#fff", padding:"12px 18px", border:"none", borderRadius:10, cursor:"pointer", fontWeight:600 };
 const saveBtn    = { background:"#16a34a", color:"#fff", padding:"12px 18px", border:"none", borderRadius:10, cursor:"pointer", fontWeight:600 };
-
-/* ⬇️ هذا التعريف كان ناقص — تمت إضافته لإصلاح ESLint */
 const smallBtn   = { padding:"6px 10px", borderRadius:8, border:`1px solid ${BORDER}`, background:"#fff", cursor:"pointer", fontSize:13 };
+const uploadBtn  = { display:"inline-block", fontSize:12, border:`1px solid ${BORDER}`, borderRadius:8, padding:"6px 10px", cursor:"pointer", background:"#fff" };
+const thumbX     = { position:"absolute", top:2, right:2, width:20, height:20, borderRadius:"50%", border:"none", background:"rgba(239,68,68,.9)", color:"#fff", cursor:"pointer", lineHeight:"20px" };
+const modalBackdrop = { position:"fixed", inset:0, background:"rgba(0,0,0,.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex: 9999 };
+const modalCard = { width: 320, maxWidth: "90vw", background:"#fff", border:"1px solid #e5e7eb", borderRadius:12, boxShadow:"0 20px 50px rgba(0,0,0,.25)", padding:"16px 18px", textAlign:"center" };
+const spinner = { width: 36, height: 36, borderRadius:"50%", border: "4px solid #e5e7eb", borderTop: "4px solid #16a34a", margin: "0 auto", animation: "spin 1s linear infinite" };
 
-const uploadBtn = { display:"inline-block", fontSize:12, border:`1px solid ${BORDER}`, borderRadius:8, padding:"6px 10px", cursor:"pointer", background:"#fff" };
-const thumbX    = { position:"absolute", top:2, right:2, width:20, height:20, borderRadius:"50%", border:"none", background:"rgba(239,68,68,.9)", color:"#fff", cursor:"pointer", lineHeight:"20px" };
-
-/* ===== Modal styles ===== */
-const modalBackdrop = {
-  position:"fixed", inset:0, background:"rgba(0,0,0,.45)",
-  display:"flex", alignItems:"center", justifyContent:"center",
-  zIndex: 9999
-};
-const modalCard = {
-  width: 320, maxWidth: "90vw",
-  background:"#fff", border:"1px solid #e5e7eb", borderRadius:12,
-  boxShadow:"0 20px 50px rgba(0,0,0,.25)",
-  padding:"16px 18px", textAlign:"center"
-};
-const spinner = {
-  width: 36, height: 36, borderRadius:"50%",
-  border: "4px solid #e5e7eb", borderTop: "4px solid #16a34a",
-  margin: "0 auto",
-  animation: "spin 1s linear infinite"
-};
-// inject keyframes (once)
 if (typeof document !== "undefined" && !document.getElementById("spin-keyframes")) {
   const style = document.createElement("style");
   style.id = "spin-keyframes";
