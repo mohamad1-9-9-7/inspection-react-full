@@ -12,7 +12,7 @@ const API_BASE = String(
 
 const TYPE = "pos19_daily_cleaning";
 const BRANCH = "POS 19";
-const FORM_REF = "FS-HACCP/POS19/CLN/01";
+const FORM_REF = "FS-HACCP/KITC/CLN/01";
 
 const COLS = [
   { key: "floorWallsDrains",   label: "FLOOR/\nWALLS /\nDRAINS" },
@@ -43,11 +43,10 @@ export default function DailyCleaningChecklistInput() {
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     }
   });
-  const [row, setRow] = useState(() => emptyRow());
+  const [rows, setRows]             = useState([emptyRow()]);
   const [checkedBy, setCheckedBy]   = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
-  const [revDate, setRevDate]       = useState("");
-  const [revNo, setRevNo]           = useState("");
+
   const [saving, setSaving]         = useState(false);
   const [monthText, setMonthText]   = useState(() => {
     try { return new Date().toLocaleString("en-GB", { month: "long", timeZone: "Asia/Dubai" }); }
@@ -95,8 +94,16 @@ export default function DailyCleaningChecklistInput() {
     </div>
   );
 
-  function updateRow(key, val) {
-    setRow((prev) => ({ ...prev, [key]: val }));
+  function updateRow(index, key, val) {
+    setRows((prev) => prev.map((r, i) => i === index ? { ...r, [key]: val } : r));
+  }
+
+  function addRow() {
+    setRows((prev) => [...prev, emptyRow()]);
+  }
+
+  function removeRow(index) {
+    setRows((prev) => prev.length === 1 ? prev : prev.filter((_, i) => i !== index));
   }
 
   const colDefs = useMemo(() => {
@@ -106,13 +113,14 @@ export default function DailyCleaningChecklistInput() {
     ];
     COLS.forEach((_, i) => arr.push(<col key={`c${i}`} style={{ width: 110 }} />));
     arr.push(<col key="action" style={{ width: 210 }} />);
+    arr.push(<col key="del"    style={{ width: 40  }} />);
     return arr;
   }, []);
 
   async function handleSave() {
     if (!date) { alert("الرجاء تحديد التاريخ"); return; }
     setSaving(true);
-    const entry = {
+    const entries = rows.map((row) => ({
       cleanerName:        row.cleanerName        || "",
       time:               row.time               || "",
       floorWallsDrains:   row.floorWallsDrains   || "",
@@ -127,18 +135,16 @@ export default function DailyCleaningChecklistInput() {
       worktopTables:      row.worktopTables     || "",
       kitchenHoodFilters: row.kitchenHoodFilters || "",
       correctiveAction:   row.correctiveAction  || "",
-    };
+    }));
     const payload = {
       branch: BRANCH,
       formRef: FORM_REF,
       classification: "Official",
       reportDate: date,
       month: monthText || "",
-      entries: [entry],
+      entries,
       checkedBy,
       verifiedBy,
-      revDate,
-      revNo,
       savedAt: Date.now(),
     };
     try {
@@ -188,53 +194,96 @@ export default function DailyCleaningChecklistInput() {
               <th style={thCell}>Time</th>
               {COLS.map((c) => <th key={c.key} style={thCell}>{c.label}</th>)}
               <th style={thCell}>CORRECTIVE{"\n"}ACTION</th>
+              <th style={thCell}></th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td style={tdCell}>
-                <input
-                  type="text"
-                  placeholder="Name"
-                  value={row.cleanerName}
-                  onChange={(e)=>updateRow("cleanerName", e.target.value)}
-                  style={inputStyle}
-                />
-              </td>
-              <td style={tdCell}>
-                <input
-                  type="time"
-                  value={row.time}
-                  onChange={(e)=>updateRow("time", e.target.value)}
-                  style={inputStyle}
-                />
-              </td>
-              {COLS.map((c) => (
-                <td style={tdCell} key={c.key}>
-                  <select
-                    value={row[c.key]}
-                    onChange={(e)=>updateRow(c.key, e.target.value)}
+            {rows.map((row, index) => (
+              <tr key={index}>
+                <td style={tdCell}>
+                  <input
+                    type="text"
+                    placeholder="Name"
+                    value={row.cleanerName}
+                    onChange={(e) => updateRow(index, "cleanerName", e.target.value)}
                     style={inputStyle}
-                    title="√ = Satisfactory, ✗ = Needs Improvement"
-                  >
-                    <option value=""></option>
-                    <option value="√">√</option>
-                    <option value="✗">✗</option>
-                  </select>
+                  />
                 </td>
-              ))}
-              <td style={tdCell}>
-                <input
-                  type="text"
-                  placeholder="Action"
-                  value={row.correctiveAction}
-                  onChange={(e)=>updateRow("correctiveAction", e.target.value)}
-                  style={inputStyle}
-                />
-              </td>
-            </tr>
+                <td style={tdCell}>
+                  <input
+                    type="time"
+                    value={row.time}
+                    onChange={(e) => updateRow(index, "time", e.target.value)}
+                    style={inputStyle}
+                  />
+                </td>
+                {COLS.map((c) => (
+                  <td style={tdCell} key={c.key}>
+                    <select
+                      value={row[c.key]}
+                      onChange={(e) => updateRow(index, c.key, e.target.value)}
+                      style={inputStyle}
+                      title="√ = Satisfactory, ✗ = Needs Improvement"
+                    >
+                      <option value=""></option>
+                      <option value="√">√</option>
+                      <option value="✗">✗</option>
+                    </select>
+                  </td>
+                ))}
+                <td style={tdCell}>
+                  <input
+                    type="text"
+                    placeholder="Action"
+                    value={row.correctiveAction}
+                    onChange={(e) => updateRow(index, "correctiveAction", e.target.value)}
+                    style={inputStyle}
+                  />
+                </td>
+                <td style={{ ...tdCell, padding: 4 }}>
+                  <button
+                    onClick={() => removeRow(index)}
+                    disabled={rows.length === 1}
+                    title="حذف السطر"
+                    style={{
+                      background: rows.length === 1 ? "#e5e7eb" : "#fee2e2",
+                      color: rows.length === 1 ? "#9ca3af" : "#dc2626",
+                      border: "none",
+                      borderRadius: 6,
+                      width: 28,
+                      height: 28,
+                      cursor: rows.length === 1 ? "not-allowed" : "pointer",
+                      fontWeight: 700,
+                      fontSize: 16,
+                      lineHeight: 1,
+                    }}
+                  >
+                    ×
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Add Row */}
+      <div style={{ marginTop: 8 }}>
+        <button
+          onClick={addRow}
+          style={{
+            background: "#eff6ff",
+            color: "#2563eb",
+            border: "1px dashed #93c5fd",
+            borderRadius: 8,
+            padding: "7px 18px",
+            fontWeight: 700,
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          + إضافة سطر
+        </button>
       </div>
 
       {/* Controls */}
@@ -245,7 +294,7 @@ export default function DailyCleaningChecklistInput() {
       </div>
 
       {/* Footer */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:12, marginTop:16, alignItems:"center", fontSize:12 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:16, alignItems:"center", fontSize:12 }}>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Checked by:</span>
           <input value={checkedBy} onChange={(e)=>setCheckedBy(e.target.value)} style={inputStyle} />
@@ -253,14 +302,6 @@ export default function DailyCleaningChecklistInput() {
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span>Verified by:</span>
           <input value={verifiedBy} onChange={(e)=>setVerifiedBy(e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span>Rev.Date:</span>
-          <input value={revDate} onChange={(e)=>setRevDate(e.target.value)} style={inputStyle} placeholder="YYYY-MM-DD" />
-        </div>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span>Rev.No:</span>
-          <input value={revNo} onChange={(e)=>setRevNo(e.target.value)} style={inputStyle} />
         </div>
       </div>
     </div>
