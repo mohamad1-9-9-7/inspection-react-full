@@ -12,7 +12,7 @@ const API_BASE = String(
 
 const TYPE     = "pos19_receiving_log_butchery";
 const BRANCH   = "POS 19";
-const FORM_REF = "FS-HACCP/POS19/RCV/06";
+const FORM_REF = "FS-HACCP/Al Warqa Kitchen/RCV/06";
 
 const TICK_COLS = [
   { key: "vehicleClean",   label: "Vehicle clean" },
@@ -25,8 +25,8 @@ const TICK_COLS = [
 
 function emptyRow() {
   return {
-    date: "", time: "", supplier: "", foodItem: "",
-    dmApprovalNo: "", vehicleTemp: "", foodTemp: "",
+    supplier: "", foodItem: "",
+    vehicleTemp: "", foodTemp: "",
     vehicleClean: "", handlerHygiene: "", appearanceOK: "",
     firmnessOK: "", smellOK: "", packagingGood: "",
     countryOfOrigin: "", productionDate: "", expiryDate: "",
@@ -83,11 +83,8 @@ export default function ReceivingLogInput() {
   });
 
   const colDefs = useMemo(() => ([
-    <col key="date"        style={{ width: 100 }} />,
-    <col key="time"        style={{ width: 84 }} />,
     <col key="supplier"    style={{ width: 170 }} />,
     <col key="food"        style={{ width: 160 }} />,
-    <col key="dm"          style={{ width: 140 }} />,
     <col key="vehT"        style={{ width: 90 }} />,
     <col key="foodT"       style={{ width: 90 }} />,
     <col key="vehClean"    style={{ width: 120 }} />,
@@ -178,11 +175,8 @@ export default function ReceivingLogInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Date</th>
-              <th style={thCell}>Time</th>
               <th style={thCell}>Name of the Supplier</th>
               <th style={thCell}>Food Item</th>
-              <th style={thCell}>DM approval number of the delivery vehicle</th>
               <th style={thCell}>Vehicle Temp (°C)</th>
               <th style={thCell}>Food Temp (°C)</th>
               <th style={thCell}>Vehicle clean</th>
@@ -202,11 +196,8 @@ export default function ReceivingLogInput() {
           <tbody>
             {rows.map((r, idx) => (
               <tr key={idx}>
-                <td style={tdCell}><input type="date"   value={r.date}           onChange={(e)=>updateRow(idx,"date",e.target.value)}           style={inputStyle} /></td>
-                <td style={tdCell}><input type="time"   value={r.time}           onChange={(e)=>updateRow(idx,"time",e.target.value)}           style={inputStyle} /></td>
                 <td style={tdCell}><input type="text"   value={r.supplier}       onChange={(e)=>updateRow(idx,"supplier",e.target.value)}       style={inputStyle} /></td>
                 <td style={tdCell}><input type="text"   value={r.foodItem}       onChange={(e)=>updateRow(idx,"foodItem",e.target.value)}       style={inputStyle} /></td>
-                <td style={tdCell}><input type="text"   value={r.dmApprovalNo}   onChange={(e)=>updateRow(idx,"dmApprovalNo",e.target.value)}   style={inputStyle} /></td>
                 <td style={tdCell}><input type="number" step="0.1" value={r.vehicleTemp} onChange={(e)=>updateRow(idx,"vehicleTemp",e.target.value)} style={inputStyle} placeholder="°C" /></td>
                 <td style={tdCell}><input type="number" step="0.1" value={r.foodTemp}    onChange={(e)=>updateRow(idx,"foodTemp",e.target.value)}    style={inputStyle} placeholder="°C" /></td>
                 {TICK_COLS.map((c) => (

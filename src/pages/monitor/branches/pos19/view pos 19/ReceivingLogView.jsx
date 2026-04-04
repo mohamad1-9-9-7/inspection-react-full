@@ -13,7 +13,6 @@ const API_BASE = String(
   "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
-// مطابق لملف الإدخال
 const TYPE   = "pos19_receiving_log_butchery";
 const BRANCH = "POS 19";
 
@@ -67,11 +66,8 @@ async function loadImageDataURL(src) {
 
 function emptyRow() {
   return {
-    date: "",
-    time: "",
     supplier: "",
     foodItem: "",
-    dmApprovalNo: "",
     vehicleTemp: "",
     foodTemp: "",
     vehicleClean: "",
@@ -102,7 +98,6 @@ export default function ReceivingLogView() {
     }
   }, []);
 
-  // state
   const [date, setDate] = useState(todayDubai);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -111,24 +106,21 @@ export default function ReceivingLogView() {
   const [editRows, setEditRows] = useState(Array.from({ length: 15 }, () => emptyRow()));
   const [editing, setEditing] = useState(false);
 
-  // footer editable fields
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
   const [editRevDate, setEditRevDate] = useState("");
   const [editRevNo, setEditRevNo] = useState("");
 
   const [allDates, setAllDates] = useState([]);
-
-  // accordion states
   const [expandedYears, setExpandedYears] = useState({});
-  const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
+  const [expandedMonths, setExpandedMonths] = useState({});
 
-  // styles
   const gridStyle = useMemo(() => ({
     width: "max-content",
     borderCollapse: "collapse",
     tableLayout: "fixed",
     fontSize: 12,
   }), []);
+
   const thCell = {
     border: "1px solid #1f3b70",
     padding: "6px 4px",
@@ -145,27 +137,23 @@ export default function ReceivingLogView() {
     verticalAlign: "middle",
   };
 
-  // colgroup
   const colDefs = useMemo(() => ([
-    <col key="date" style={{ width: 100 }} />,
-    <col key="time" style={{ width: 84 }} />,
-    <col key="supplier" style={{ width: 170 }} />,
-    <col key="food" style={{ width: 160 }} />,
-    <col key="dm" style={{ width: 140 }} />,
-    <col key="vehT" style={{ width: 90 }} />,
-    <col key="foodT" style={{ width: 90 }} />,
-    <col key="vehClean" style={{ width: 120 }} />,
-    <col key="handler" style={{ width: 140 }} />,
+    <col key="supplier"     style={{ width: 170 }} />,
+    <col key="food"         style={{ width: 160 }} />,
+    <col key="vehT"         style={{ width: 90 }} />,
+    <col key="foodT"        style={{ width: 90 }} />,
+    <col key="vehClean"     style={{ width: 120 }} />,
+    <col key="handler"      style={{ width: 140 }} />,
     <col key="appearanceOK" style={{ width: 120 }} />,
-    <col key="firmnessOK" style={{ width: 110 }} />,
-    <col key="smellOK" style={{ width: 110 }} />,
-    <col key="pack" style={{ width: 220 }} />,
-    <col key="origin" style={{ width: 120 }} />,
-    <col key="prod" style={{ width: 120 }} />,
-    <col key="exp" style={{ width: 120 }} />,
-    <col key="inv" style={{ width: 120 }} />,
-    <col key="remarks" style={{ width: 180 }} />,
-    <col key="received" style={{ width: 120 }} />,
+    <col key="firmnessOK"   style={{ width: 110 }} />,
+    <col key="smellOK"      style={{ width: 110 }} />,
+    <col key="pack"         style={{ width: 220 }} />,
+    <col key="origin"       style={{ width: 120 }} />,
+    <col key="prod"         style={{ width: 120 }} />,
+    <col key="exp"          style={{ width: 120 }} />,
+    <col key="inv"          style={{ width: 120 }} />,
+    <col key="remarks"      style={{ width: 180 }} />,
+    <col key="received"     style={{ width: 120 }} />,
   ]), []);
 
   /* ====== Fetch ====== */
@@ -209,7 +197,6 @@ export default function ReceivingLogView() {
       const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
       setRecord(match);
 
-      // تهيئة وضع التعديل (حتى 15 سطر)
       const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
       setEditVerifiedBy(match?.payload?.verifiedBy || "");
@@ -227,12 +214,11 @@ export default function ReceivingLogView() {
   useEffect(() => { fetchAllDates(); }, []);
   useEffect(() => { if (date) fetchRecord(date); }, [date]);
 
-  /* ====== Edit / Save / Delete with password ====== */
+  /* ====== Edit / Save / Delete ====== */
   const askPass = (label="") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   function toggleEdit() {
     if (editing) {
-      // إلغاء: ارجع للبيانات الأصلية من السجل
       const rows = Array.from({ length: 15 }, (_, i) => record?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
       setEditVerifiedBy(record?.payload?.verifiedBy || "");
@@ -258,7 +244,7 @@ export default function ReceivingLogView() {
       ...(record?.payload || {}),
       branch: BRANCH,
       reportDate: record?.payload?.reportDate,
-      entries: cleaned,                 // حتى 15 سطر
+      entries: cleaned,
       verifiedBy: editVerifiedBy,
       revDate: editRevDate,
       revNo: editRevNo,
@@ -267,7 +253,6 @@ export default function ReceivingLogView() {
 
     try {
       setLoading(true);
-
       if (rid) {
         try {
           await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
@@ -275,14 +260,12 @@ export default function ReceivingLogView() {
           console.warn("DELETE (ignored error):", e);
         }
       }
-
       const postRes = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
       });
       if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
-
       alert("✅ Changes saved");
       setEditing(false);
       await fetchRecord(payload.reportDate);
@@ -332,7 +315,6 @@ export default function ReceivingLogView() {
     URL.revokeObjectURL(url);
   }
 
-  // exceljs loader (متوافق للمتصفح)
   async function loadExcelJS() {
     try {
       const m = await import(/* webpackChunkName: "exceljs-browser" */ "exceljs/dist/exceljs.min.js");
@@ -349,6 +331,7 @@ export default function ReceivingLogView() {
     if (ExcelJS3?.Workbook) return ExcelJS3;
     throw new Error("Failed to load ExcelJS");
   }
+
   async function resolveSaveAs() {
     const mod = await import("file-saver");
     return mod?.saveAs || mod?.default?.saveAs || mod?.default || mod;
@@ -356,16 +339,17 @@ export default function ReceivingLogView() {
 
   function fallbackCSV(p) {
     const headers = [
-      "Date","Time","Supplier","Food Item","DM approval no","Vehicle Temp (°C)","Food Temp (°C)",
+      "Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)",
       "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
       "Packaging good/undamaged/clean/no pests",
       "Country of origin","Production Date","Expiry Date","Invoice No","Remarks (if any)","Received by"
     ];
     const rows = (p.entries || []).map(e => ([
-      e?.date ?? "", e?.time ?? "", e?.supplier ?? "", e?.foodItem ?? "", e?.dmApprovalNo ?? "",
+      e?.supplier ?? "", e?.foodItem ?? "",
       e?.vehicleTemp ?? "", e?.foodTemp ?? "",
-      e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "", e?.firmnessOK ?? "", e?.smellOK ?? "",
-      e?.packagingGood ?? "", e?.countryOfOrigin ?? "", e?.productionDate ?? "", e?.expiryDate ?? "",
+      e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "",
+      e?.firmnessOK ?? "", e?.smellOK ?? "", e?.packagingGood ?? "",
+      e?.countryOfOrigin ?? "", e?.productionDate ?? "", e?.expiryDate ?? "",
       e?.invoiceNo ?? "", e?.remarks ?? "", e?.receivedBy ?? ""
     ]));
     const csv = [headers, ...rows]
@@ -380,153 +364,153 @@ export default function ReceivingLogView() {
   }
 
   async function exportXLSX() {
-  try {
-    const ExcelJS = await loadExcelJS();
-    const saveAs = await resolveSaveAs();
+    try {
+      const ExcelJS = await loadExcelJS();
+      const saveAs = await resolveSaveAs();
 
-    const p = record?.payload || {};
-    const rawRows = Array.isArray(p.entries) ? p.entries : [];
+      const p = record?.payload || {};
+      const rawRows = Array.isArray(p.entries) ? p.entries : [];
 
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet("ReceivingLog");
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("ReceivingLog");
 
-    const lightBlue = "D9E2F3";
-    const headerBlue = "BDD7EE";
-    const tableHeaderBlue = "DCE6F1";
-    const footerFill = "FCE4D6";
-    const borderThin = { style: "thin", color: { argb: "1F3B70" } };
+      const lightBlue    = "D9E2F3";
+      const headerBlue   = "BDD7EE";
+      const tableHeaderBlue = "DCE6F1";
+      const footerFill   = "FCE4D6";
+      const borderThin   = { style: "thin", color: { argb: "1F3B70" } };
 
-    // ---- logo (top-left)
-    const logoData = await loadImageDataURL(unionLogo);
-    if (logoData) {
-      const imgId = wb.addImage({ base64: logoData, extension: "png" });
-      // ضع الشعار في الزاوية العلوية اليسرى، قبل العناوين
-      ws.addImage(imgId, {
-        tl: { col: 0.15, row: 0.15 },   // إزاحة بسيطة داخل A1
-        ext: { width: 130, height: 50 } // حجم مناسب للشعار
-      });
-    }
+      const logoData = await loadImageDataURL(unionLogo);
+      if (logoData) {
+        const imgId = wb.addImage({ base64: logoData, extension: "png" });
+        ws.addImage(imgId, {
+          tl: { col: 0.15, row: 0.15 },
+          ext: { width: 130, height: 50 }
+        });
+      }
 
-    // Title (row 1)
-    ws.mergeCells(1,1,1,19);
-    const r1 = ws.getCell(1,1);
-    r1.value = "Union Coop — POS 19 | Receiving Log (Butchery)";
-    r1.alignment = { horizontal: "center", vertical: "middle" };
-    r1.font = { size: 14, bold: true };
-    r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
-    ws.getRow(1).height = 26;
+      // Title (row 1)
+      ws.mergeCells(1, 1, 1, 16);
+      const r1 = ws.getCell(1, 1);
+      r1.value = "Union Coop — Al Warqa Kitchen | Receiving Log (Butchery)";
+      r1.alignment = { horizontal: "center", vertical: "middle" };
+      r1.font = { size: 14, bold: true };
+      r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
+      ws.getRow(1).height = 26;
 
-    // Meta (rows 2-5) on the right
-    const meta = [
-      ["Classification:", p.classification || "Official"],
-      ["Form Ref:",      p.formRef       || "UC/HACCP/BR/F01A"],
-      ["Branch:",        p.branch        || "POS 19"],
-      ["Date:",          p.reportDate    || ""],
-    ];
-    for (let i = 0; i < meta.length; i++) {
-      const rowIdx = 2 + i;
-      ws.mergeCells(rowIdx, 9, rowIdx, 19);
-      const c = ws.getCell(rowIdx, 9);
-      c.value = `${meta[i][0]} ${meta[i][1]}`;
-      c.alignment = { horizontal: "right", vertical: "middle" };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headerBlue } };
-      ws.getRow(rowIdx).height = 18;
-    }
-
-    // Column widths only (no headers here)
-    ws.columns = [
-      { width: 12 }, { width: 10 }, { width: 24 }, { width: 20 }, { width: 22 },
-      { width: 14 }, { width: 14 }, { width: 16 }, { width: 18 }, { width: 14 },
-      { width: 12 }, { width: 12 }, { width: 36 }, { width: 16 }, { width: 15 },
-      { width: 15 }, { width: 14 }, { width: 22 }, { width: 16 },
-    ];
-
-    // Headers row (row 7)
-    const COL_HEADERS = [
-      "Date","Time","Name of the Supplier","Food Item","DM approval number of the delivery vehicle",
-      "Vehicle Temp (°C)","Food Temp (°C)",
-      "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
-      "Packaging of food is good and undamaged, clean and no signs of pest infestation",
-      "Country of origin","Production Date","Expiry Date","Invoice No:","Remarks (if any)","Received by"
-    ];
-    const hr = ws.getRow(7);
-    hr.values = COL_HEADERS;
-    hr.eachCell((cell) => {
-      cell.font = { bold: true };
-      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: tableHeaderBlue } };
-      cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
-    });
-    hr.height = 28;
-
-    // Data (only filled rows)
-    const isFilledRow = (r={}) => Object.values(r).some(v => String(v ?? "").trim() !== "");
-    const rows = rawRows.filter(isFilledRow);
-
-    let rowIdx = 8;
-    rows.forEach((e) => {
-      ws.getRow(rowIdx).values = [
-        e?.date || "", e?.time || "", e?.supplier || "", e?.foodItem || "", e?.dmApprovalNo || "",
-        e?.vehicleTemp || "", e?.foodTemp || "",
-        e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "", e?.firmnessOK || "", e?.smellOK || "",
-        e?.packagingGood || "", e?.countryOfOrigin || "", e?.productionDate || "", e?.expiryDate || "",
-        e?.invoiceNo || "", e?.remarks || "", e?.receivedBy || "",
+      // Meta (rows 2-5)
+      const meta = [
+        ["Classification:", p.classification || "Official"],
+        ["Form Ref:",        p.formRef       || "FS-HACCP/Al Warqa Kitchen/RCV/06"],
+        ["Branch:",          p.branch        || "POS 19"],
+        ["Date:",            p.reportDate    || ""],
       ];
-      ws.getRow(rowIdx).eachCell((cell) => {
+      for (let i = 0; i < meta.length; i++) {
+        const rowIdx = 2 + i;
+        ws.mergeCells(rowIdx, 9, rowIdx, 16);
+        const c = ws.getCell(rowIdx, 9);
+        c.value = `${meta[i][0]} ${meta[i][1]}`;
+        c.alignment = { horizontal: "right", vertical: "middle" };
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headerBlue } };
+        ws.getRow(rowIdx).height = 18;
+      }
+
+      // Column widths (16 columns now)
+      ws.columns = [
+        { width: 24 }, { width: 20 },
+        { width: 14 }, { width: 14 },
+        { width: 16 }, { width: 18 }, { width: 14 },
+        { width: 12 }, { width: 12 }, { width: 36 },
+        { width: 16 }, { width: 15 }, { width: 15 },
+        { width: 14 }, { width: 22 }, { width: 16 },
+      ];
+
+      // Headers row (row 7)
+      const COL_HEADERS = [
+        "Name of the Supplier","Food Item",
+        "Vehicle Temp (°C)","Food Temp (°C)",
+        "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
+        "Packaging of food is good and undamaged, clean and no signs of pest infestation",
+        "Country of origin","Production Date","Expiry Date","Invoice No:","Remarks (if any)","Received by"
+      ];
+      const hr = ws.getRow(7);
+      hr.values = COL_HEADERS;
+      hr.eachCell((cell) => {
+        cell.font = { bold: true };
         cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: tableHeaderBlue } };
         cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
       });
-      ws.getRow(rowIdx).height = 20;
-      rowIdx++;
-    });
+      hr.height = 28;
 
-    // Bottom legend
-    const legendRow = rowIdx + 1;
-    ws.mergeCells(legendRow, 1, legendRow, 10);
-    const legCell = ws.getCell(legendRow, 1);
-    legCell.value = "Legend: (√) – Satisfactory   (✗) – Needs Improvement";
-    legCell.font = { bold: true };
-    legCell.alignment = { horizontal: "left", vertical: "middle" };
-    legCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
-    ws.getRow(legendRow).height = 18;
+      // Data rows
+      const isFilledRow = (r={}) => Object.values(r).some(v => String(v ?? "").trim() !== "");
+      const rows = rawRows.filter(isFilledRow);
 
-    // Footer after legend
-    const footIdx = legendRow + 2;
-    const footPairs = [
-      ["Verified by:", p.verifiedBy || ""],
-      ["Rev.Date:",    p.revDate    || ""],
-      ["Rev.No:",      p.revNo      || ""],
-    ];
-    let colPtr = 1;
-    footPairs.forEach(([label, val]) => {
-      const labelCell = ws.getCell(footIdx, colPtr++);
-      const valueCell = ws.getCell(footIdx, colPtr++);
-      labelCell.value = label;
-      labelCell.font = { bold: true };
-      labelCell.alignment = { horizontal: "left", vertical: "middle" };
-      valueCell.value = val;
-      valueCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: footerFill } };
-      valueCell.alignment = { horizontal: "left", vertical: "middle" };
-      labelCell.border = valueCell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
-    });
+      let rowIdx = 8;
+      rows.forEach((e) => {
+        ws.getRow(rowIdx).values = [
+          e?.supplier || "", e?.foodItem || "",
+          e?.vehicleTemp || "", e?.foodTemp || "",
+          e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "",
+          e?.firmnessOK || "", e?.smellOK || "", e?.packagingGood || "",
+          e?.countryOfOrigin || "", e?.productionDate || "", e?.expiryDate || "",
+          e?.invoiceNo || "", e?.remarks || "", e?.receivedBy || "",
+        ];
+        ws.getRow(rowIdx).eachCell((cell) => {
+          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+          cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
+        });
+        ws.getRow(rowIdx).height = 20;
+        rowIdx++;
+      });
 
-    const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
-    saveAs(
-      new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-      `POS19_ReceivingLog_${p.reportDate || date}.xlsx`
-    );
-  } catch (err) {
-    console.error("[XLSX export error]", err);
-    try {
-      const p = record?.payload || {};
-      fallbackCSV(p);
-      alert("⚠️ تعذر تصدير XLSX، تم تصدير CSV بدلاً منه.\n" + (err?.message || err));
-    } catch (e2) {
-      alert("⚠️ فشل تصدير XLSX وCSV.\n" + (err?.message || err));
+      // Legend
+      const legendRow = rowIdx + 1;
+      ws.mergeCells(legendRow, 1, legendRow, 10);
+      const legCell = ws.getCell(legendRow, 1);
+      legCell.value = "Legend: (√) – Satisfactory   (✗) – Needs Improvement";
+      legCell.font = { bold: true };
+      legCell.alignment = { horizontal: "left", vertical: "middle" };
+      legCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
+      ws.getRow(legendRow).height = 18;
+
+      // Footer
+      const footIdx = legendRow + 2;
+      const footPairs = [
+        ["Verified by:", p.verifiedBy || ""],
+        ["Rev.Date:",    p.revDate    || ""],
+        ["Rev.No:",      p.revNo      || ""],
+      ];
+      let colPtr = 1;
+      footPairs.forEach(([label, val]) => {
+        const labelCell = ws.getCell(footIdx, colPtr++);
+        const valueCell = ws.getCell(footIdx, colPtr++);
+        labelCell.value = label;
+        labelCell.font = { bold: true };
+        labelCell.alignment = { horizontal: "left", vertical: "middle" };
+        valueCell.value = val;
+        valueCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: footerFill } };
+        valueCell.alignment = { horizontal: "left", vertical: "middle" };
+        labelCell.border = valueCell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
+      });
+
+      const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
+      saveAs(
+        new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+        `POS19_ReceivingLog_${p.reportDate || date}.xlsx`
+      );
+    } catch (err) {
+      console.error("[XLSX export error]", err);
+      try {
+        const p = record?.payload || {};
+        fallbackCSV(p);
+        alert("⚠️ تعذر تصدير XLSX، تم تصدير CSV بدلاً منه.\n" + (err?.message || err));
+      } catch (e2) {
+        alert("⚠️ فشل تصدير XLSX وCSV.\n" + (err?.message || err));
+      }
     }
   }
-}
-
 
   async function importJSON(file) {
     if (!file) return;
@@ -543,7 +527,6 @@ export default function ReceivingLogView() {
         body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
       alert("✅ Imported and saved");
       setDate(payload.reportDate);
       await fetchAllDates();
@@ -557,10 +540,9 @@ export default function ReceivingLogView() {
     }
   }
 
-  /* ====== PDF (التقرير فقط) ====== */
+  /* ====== PDF ====== */
   async function exportPDF() {
     if (!reportRef.current) return;
-
     const node = reportRef.current;
     const canvas = await html2canvas(node, {
       scale: 2,
@@ -575,7 +557,6 @@ export default function ReceivingLogView() {
     const margin = 20;
     const headerH = 60;
 
-    // header
     pdf.setFillColor(247, 249, 252);
     pdf.rect(0, 0, pageW, headerH, "F");
     if (logo) {
@@ -586,32 +567,27 @@ export default function ReceivingLogView() {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(16);
     pdf.text(
-      `Union Coop — POS 19 | Receiving Log (Butchery) (${record?.payload?.reportDate || date})`,
-      pageW / 2,
-      28,
+      `Union Coop — Al Warqa Kitchen | Receiving Log (Butchery) (${record?.payload?.reportDate || date})`,
+      pageW / 2, 28,
       { align: "center" }
     );
 
     const usableW = pageW - margin * 2;
     const availableH = pageH - (headerH + 10) - margin;
-
     const ratio = usableW / canvas.width;
     const totalHpx = canvas.height;
     let ypx = 0;
 
     while (ypx < totalHpx) {
       const sliceHpx = Math.min(totalHpx - ypx, availableH / ratio);
-
       const partCanvas = document.createElement("canvas");
       partCanvas.width = canvas.width;
       partCanvas.height = sliceHpx;
       const ctx = partCanvas.getContext("2d");
       ctx.drawImage(canvas, 0, ypx, canvas.width, sliceHpx, 0, 0, canvas.width, sliceHpx);
       const partData = partCanvas.toDataURL("image/png");
-
       const partHpt = sliceHpx * ratio;
       pdf.addImage(partData, "PNG", margin, headerH + 10, usableW, partHpt);
-
       ypx += sliceHpx;
       if (ypx < totalHpx) {
         pdf.addPage("a4", "l");
@@ -625,18 +601,16 @@ export default function ReceivingLogView() {
         pdf.setFont("helvetica", "bold");
         pdf.setFontSize(16);
         pdf.text(
-          `Union Coop — POS 19 | Receiving Log (Butchery) (${record?.payload?.reportDate || date})`,
-          pageW / 2,
-          28,
+          `Union Coop — Al Warqa Kitchen | Receiving Log (Butchery) (${record?.payload?.reportDate || date})`,
+          pageW / 2, 28,
           { align: "center" }
         );
       }
     }
-
     pdf.save(`POS19_ReceivingLog_${record?.payload?.reportDate || date}.pdf`);
   }
 
-  /* ====== Group dates (Year -> Month -> Dates) ====== */
+  /* ====== Group dates ====== */
   const grouped = useMemo(() => {
     const out = {};
     for (const d of allDates) {
@@ -656,19 +630,18 @@ export default function ReceivingLogView() {
   const toggleYear  = (y)    => setExpandedYears((p)  => ({ ...p, [y]: !p[y] }));
   const toggleMonth = (y, m) => setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
 
-  /* ====== UI ====== */
   const isFilledRow = (r={}) => Object.values(r).some(v => String(v ?? "").trim() !== "");
 
+  /* ====== UI ====== */
   return (
     <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d", direction:"ltr" }}>
       {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
         <img src={unionLogo} alt="Union Coop" style={{ width:56, height:56, objectFit:"contain" }} />
         <div style={{ fontWeight:800, fontSize:18 }}>
-          Receiving Log (Butchery) — View (POS 19)
+          Receiving Log (Butchery) — View (Al Warqa Kitchen)
         </div>
 
-        {/* Actions */}
         <div style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
             {editing ? "Cancel Edit" : "Edit (password)"}
@@ -677,17 +650,9 @@ export default function ReceivingLogView() {
             <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
           )}
           <button onClick={handleDelete} style={btn("#dc2626")}>Delete (password)</button>
-
-          {/* مفعّل طالما هناك سجل */}
-          <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>
-            Export XLSX
-          </button>
-          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>
-            Export JSON
-          </button>
-          <button onClick={exportPDF} style={btn("#374151")}>
-            Export PDF
-          </button>
+          <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>Export XLSX</button>
+          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
+          <button onClick={exportPDF} style={btn("#374151")}>Export PDF</button>
           <label style={{ ...btn("#059669"), display:"inline-block" }}>
             Import JSON
             <input
@@ -701,7 +666,7 @@ export default function ReceivingLogView() {
         </div>
       </div>
 
-      {/* Layout: Date tree + content */}
+      {/* Layout */}
       <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
         {/* Date tree */}
         <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
@@ -719,7 +684,6 @@ export default function ReceivingLogView() {
                         width:"100%", padding:"6px 10px", borderRadius:8,
                         border:"1px solid #d1d5db", background:"#fff", cursor:"pointer", fontWeight:800
                       }}
-                      title={yOpen ? "Collapse" : "Expand"}
                     >
                       <span>Year {year}</span>
                       <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
@@ -737,7 +701,6 @@ export default function ReceivingLogView() {
                               width:"100%", padding:"6px 10px", borderRadius:8,
                               border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", fontWeight:700
                             }}
-                            title={mOpen ? "Collapse" : "Expand"}
                           >
                             <span>Month {month}</span>
                             <span aria-hidden="true">{mOpen ? "▾" : "▸"}</span>
@@ -757,7 +720,6 @@ export default function ReceivingLogView() {
                                         color: d===date ? "#fff" : "#111827",
                                         fontWeight:700, cursor:"pointer"
                                       }}
-                                      title={formatDMY(d)}
                                     >
                                       {formatDMY(d)}
                                     </button>
@@ -796,7 +758,7 @@ export default function ReceivingLogView() {
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:8, marginBottom:8, fontSize:12, minWidth: 1000 }}>
                   <div><strong>Date:</strong> {safe(record.payload?.reportDate)}</div>
                   <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
-                  <div><strong>Form Ref:</strong> {safe(record.payload?.formRef || "UC/HACCP/BR/F01A")}</div>
+                  <div><strong>Form Ref:</strong> {safe(record.payload?.formRef || "FS-HACCP/Al Warqa Kitchen/RCV/06")}</div>
                   <div><strong>Classification:</strong> {safe(record.payload?.classification || "Official")}</div>
                 </div>
 
@@ -805,11 +767,8 @@ export default function ReceivingLogView() {
                   <colgroup>{colDefs}</colgroup>
                   <thead>
                     <tr>
-                      <th style={thCell}>Date</th>
-                      <th style={thCell}>Time</th>
                       <th style={thCell}>Name of the Supplier</th>
                       <th style={thCell}>Food Item</th>
-                      <th style={thCell}>DM approval number of the delivery vehicle</th>
                       <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
                       <th style={thCell}>Vehicle clean</th>
@@ -830,11 +789,8 @@ export default function ReceivingLogView() {
                     {!editing ? (
                       (record.payload?.entries || []).filter(isFilledRow).map((r, idx) => (
                         <tr key={idx}>
-                          <td style={tdCell}>{formatDMY(safe(r.date))}</td>
-                          <td style={tdCell}>{safe(r.time)}</td>
                           <td style={tdCell}>{safe(r.supplier)}</td>
                           <td style={tdCell}>{safe(r.foodItem)}</td>
-                          <td style={tdCell}>{safe(r.dmApprovalNo)}</td>
                           <td style={tdCell}>{safe(r.vehicleTemp)}</td>
                           <td style={tdCell}>{safe(r.foodTemp)}</td>
                           <td style={tdCell}>{safe(r.vehicleClean)}</td>
@@ -855,66 +811,32 @@ export default function ReceivingLogView() {
                       editRows.map((r, idx) => (
                         <tr key={idx}>
                           <td style={tdCell}>
-                            <input
-                              type="date"
-                              value={r.date || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], date:e.target.value}; return n; })}
-                              style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="time"
-                              value={r.time || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], time:e.target.value}; return n; })}
-                              style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.supplier || ""}
+                            <input type="text" value={r.supplier || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], supplier:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
                           <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.foodItem || ""}
+                            <input type="text" value={r.foodItem || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], foodItem:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
                           <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.dmApprovalNo || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], dmApprovalNo:e.target.value}; return n; })}
-                              style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
-                            />
-                          </td>
-                          <td style={tdCell}>
-                            <input
-                              type="number" step="0.1"
-                              value={r.vehicleTemp || ""}
+                            <input type="number" step="0.1" value={r.vehicleTemp || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], vehicleTemp:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
                           <td style={tdCell}>
-                            <input
-                              type="number" step="0.1"
-                              value={r.foodTemp || ""}
+                            <input type="number" step="0.1" value={r.foodTemp || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], foodTemp:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
-
                           {TICK_COLS.map((c) => (
                             <td key={c.key} style={tdCell}>
-                              <select
-                                value={r[c.key] || ""}
+                              <select value={r[c.key] || ""}
                                 onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], [c.key]:e.target.value}; return n; })}
                                 style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                                 title="√ = Satisfactory, ✗ = Needs Improvement"
@@ -925,51 +847,38 @@ export default function ReceivingLogView() {
                               </select>
                             </td>
                           ))}
-
                           <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.countryOfOrigin || ""}
+                            <input type="text" value={r.countryOfOrigin || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], countryOfOrigin:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
                           <td style={tdCell}>
-                            <input
-                              type="date"
-                              value={r.productionDate || ""}
+                            <input type="date" value={r.productionDate || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], productionDate:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
                           <td style={tdCell}>
-                            <input
-                              type="date"
-                              value={r.expiryDate || ""}
+                            <input type="date" value={r.expiryDate || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], expiryDate:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
                           <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.invoiceNo || ""}
+                            <input type="text" value={r.invoiceNo || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], invoiceNo:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
                           <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.remarks || ""}
+                            <input type="text" value={r.remarks || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], remarks:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>
                           <td style={tdCell}>
-                            <input
-                              type="text"
-                              value={r.receivedBy || ""}
+                            <input type="text" value={r.receivedBy || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], receivedBy:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
@@ -980,7 +889,7 @@ export default function ReceivingLogView() {
                   </tbody>
                 </table>
 
-                {/* Legend — أسفل الجدول مثل النموذج الأصلي */}
+                {/* Legend */}
                 <div style={{ marginTop:8, fontSize:12, fontWeight:700, width:"max-content" }}>
                   Legend: (√) – Satisfactory  &  (✗) – Needs Improvement
                 </div>
@@ -999,7 +908,7 @@ export default function ReceivingLogView() {
                   </div>
                 </div>
 
-                {/* Footer info */}
+                {/* Footer */}
                 <div style={{ marginTop:12, width:"max-content" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:12 }}>
                     <strong>Verified by:</strong>
@@ -1008,30 +917,16 @@ export default function ReceivingLogView() {
                         {safe(record.payload?.verifiedBy)}
                       </span>
                     ) : (
-                      <input
-                        value={editVerifiedBy}
-                        onChange={(e)=>setEditVerifiedBy(e.target.value)}
-                        style={{
-                          flex: "0 1 360px",
-                          border: "none",
-                          borderBottom: "2px solid #1f3b70",
-                          padding: "4px 6px",
-                          outline: "none",
-                          fontSize: 12,
-                          color: "#0b1f4d",
-                        }}
+                      <input value={editVerifiedBy} onChange={(e)=>setEditVerifiedBy(e.target.value)}
+                        style={{ flex:"0 1 360px", border:"none", borderBottom:"2px solid #1f3b70", padding:"4px 6px", outline:"none", fontSize:12, color:"#0b1f4d" }}
                       />
                     )}
                   </div>
-
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12, fontSize:12 }}>
                     <div>
                       <strong>Rev. Date:</strong>{" "}
                       {!editing ? safe(record.payload?.revDate) : (
-                        <input
-                          type="date"
-                          value={editRevDate}
-                          onChange={(e)=>setEditRevDate(e.target.value)}
+                        <input type="date" value={editRevDate} onChange={(e)=>setEditRevDate(e.target.value)}
                           style={{ border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                         />
                       )}
@@ -1039,9 +934,7 @@ export default function ReceivingLogView() {
                     <div>
                       <strong>Rev. No:</strong>{" "}
                       {!editing ? safe(record.payload?.revNo) : (
-                        <input
-                          value={editRevNo}
-                          onChange={(e)=>setEditRevNo(e.target.value)}
+                        <input value={editRevNo} onChange={(e)=>setEditRevNo(e.target.value)}
                           style={{ border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                         />
                       )}

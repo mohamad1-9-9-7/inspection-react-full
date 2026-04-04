@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-/* ===================== API base (Vite + CRA + window override) ===================== */
+/* ===================== API base ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -15,67 +15,81 @@ const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE = "training_session";
 
 /* ===================== Helpers ===================== */
-function pad2(n) {
-  return String(n ?? "").padStart(2, "0");
-}
+function pad2(n) { return String(n ?? "").padStart(2, "0"); }
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
-
 async function safeJson(res) {
   const text = await res.text();
-  try {
-    return text ? JSON.parse(text) : null;
-  } catch {
-    return text || null;
-  }
+  try { return text ? JSON.parse(text) : null; } catch { return text || null; }
 }
-
 async function listReportsByType(type) {
-  const url = `${REPORTS_URL}?type=${encodeURIComponent(type)}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Accept: "application/json" },
+  const res = await fetch(`${REPORTS_URL}?type=${encodeURIComponent(type)}`, {
+    method: "GET", headers: { Accept: "application/json" },
   });
-
-  if (!res.ok) {
-    const data = await safeJson(res);
-    throw new Error(
-      data?.message || data?.error || `Failed to list reports (${res.status})`
-    );
-  }
-
+  if (!res.ok) { const d = await safeJson(res); throw new Error(d?.message || d?.error || `Failed (${res.status})`); }
   const data = await safeJson(res);
-
-  // Some servers return {items: []} or [] directly
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
   if (Array.isArray(data?.data)) return data.data;
   return [];
 }
-
 async function createReport(body) {
   const res = await fetch(REPORTS_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
   });
-
-  if (!res.ok) {
-    const data = await safeJson(res);
-    throw new Error(
-      data?.message || data?.error || `Failed to create report (${res.status})`
-    );
-  }
-
+  if (!res.ok) { const d = await safeJson(res); throw new Error(d?.message || d?.error || `Failed (${res.status})`); }
   return await safeJson(res);
 }
 
-/* ===================== Defaults from your Excel ===================== */
+/* ===================== الخارق 1 Design Tokens ===================== */
+const C = {
+  navy:      "#1e3a5f",
+  navyLight: "#2d5a8e",
+  accent:    "#3b82f6",
+  accentBg:  "#eff6ff",
+  teal:      "#0d9488",
+  tealBg:    "#f0fdfa",
+  purple:    "#7c3aed",
+  purpleBg:  "#ede9fe",
+  red:       "#dc2626",
+  green:     "#16a34a",
+  gray50:    "#f9fafb",
+  gray100:   "#f3f4f6",
+  gray200:   "#e5e7eb",
+  gray400:   "#9ca3af",
+  gray700:   "#374151",
+  white:     "#ffffff",
+  border:    "#dbeafe",
+};
+
+const actionBtn = (bg, disabled = false) => ({
+  background: disabled ? C.gray200 : bg,
+  color: disabled ? C.gray400 : C.white,
+  border: "none", borderRadius: 8, padding: "8px 14px",
+  fontWeight: 700, fontSize: 13,
+  cursor: disabled ? "not-allowed" : "pointer",
+  whiteSpace: "nowrap", transition: "opacity .15s",
+});
+
+const inputSt = {
+  width: "100%", boxSizing: "border-box",
+  border: `1px solid ${C.border}`, borderRadius: 8,
+  padding: "10px 12px", fontSize: 14, color: C.gray700,
+  background: C.white, outline: "none",
+  fontFamily: "inherit",
+};
+
+const textareaSt = {
+  ...inputSt,
+  resize: "vertical", lineHeight: 1.6,
+  minHeight: 200,
+};
+
+/* ===================== Defaults ===================== */
 const DEFAULT_DOC = {
   documentTitle: "Training Record",
   documentNumber: "FS-QM/REC/TR/1",
@@ -92,7 +106,7 @@ Training frequency: Induction (new joiners) + Bi-monthly refresher (every 2 mont
 Evaluation: Quiz/Observation/Verbal Q&A • Passing: ≥80% or Satisfactory.
 Training records must be reviewed & approved by QA / Food Safety Team Leader.`;
 
-/* ===================== Training Modules ===================== */
+/* ===================== Modules & Branches ===================== */
 const MODULES = [
   "Personnel Hygiene",
   "GHP / Cleaning & Sanitation",
@@ -112,13 +126,13 @@ const MODULES = [
   "OHS: First Aid & Incident Reporting",
 ];
 
-/* ===================== Branch options ===================== */
 const BRANCHES = [
   "QCS",
   "PRODUCTION",
+  "WARQA KITCHEN",
   "POS 6 - Sharjah Butchery",
   "POS 10 - Abu Dhabi Butchery",
-  "POS 11 - Al Ain Butchery", // ✅ normalized (optional but nicer)
+  "POS 11 - Al Ain Butchery",
   "POS 14",
   "POS 15 - Al Barsha Butchery",
   "POS 18",
@@ -134,7 +148,7 @@ const BRANCHES = [
   "FTR 2 - Mamzar food truck",
 ];
 
-/* ===================== Bilingual (EN/AR) Training Details Templates ✅ ===================== */
+/* ===================== Training Details Templates ===================== */
 const DEFAULT_DETAILS_BI = `A) General food safety & hygiene requirements (site rules).
    أ) متطلبات السلامة الغذائية والنظافة العامة (قواعد الموقع).
 B) Time/Temperature control basics and monitoring.
@@ -568,35 +582,15 @@ function getDetailsTemplate(moduleName) {
   return MODULE_DETAILS_BI[moduleName] || MODULE_DETAILS_BI.__DEFAULT__;
 }
 
-/* ===================== Question Bank (AR/EN per module) ===================== */
+/* ===================== Question Bank ===================== */
 const QUESTION_BANK = {
   "Personnel Hygiene": {
     en: [
-      {
-        q: "When must hands be washed?",
-        options: ["Before & after handling food", "Once per day", "Only when visibly dirty"],
-        correct: 0,
-      },
-      {
-        q: "Are jewelry and watches allowed while handling food?",
-        options: ["Yes, always", "No", "Only a ring"],
-        correct: 1,
-      },
-      {
-        q: "What should you do if you have a cut on your hand?",
-        options: ["Continue normally", "Cover with waterproof dressing + glove", "Rinse with water only"],
-        correct: 1,
-      },
-      {
-        q: "Best method to prevent cross contamination is:",
-        options: ["Use the same tools for everything", "Separate tools/surfaces and sanitize", "Leave food uncovered"],
-        correct: 1,
-      },
-      {
-        q: "PPE stands for:",
-        options: ["Personal Protective Equipment", "Ready-to-eat product", "Storage procedure"],
-        correct: 0,
-      },
+      { q: "When must hands be washed?", options: ["Before & after handling food", "Once per day", "Only when visibly dirty"], correct: 0 },
+      { q: "Are jewelry and watches allowed while handling food?", options: ["Yes, always", "No", "Only a ring"], correct: 1 },
+      { q: "What should you do if you have a cut on your hand?", options: ["Continue normally", "Cover with waterproof dressing + glove", "Rinse with water only"], correct: 1 },
+      { q: "Best method to prevent cross contamination is:", options: ["Use the same tools for everything", "Separate tools/surfaces and sanitize", "Leave food uncovered"], correct: 1 },
+      { q: "PPE stands for:", options: ["Personal Protective Equipment", "Ready-to-eat product", "Storage procedure"], correct: 0 },
     ],
     ar: [
       { q: "متى يجب غسل اليدين؟", options: ["قبل وبعد التعامل مع الطعام", "مرة واحدة يوميًا", "فقط عند الاتساخ"], correct: 0 },
@@ -606,7 +600,6 @@ const QUESTION_BANK = {
       { q: "معنى PPE هو:", options: ["معدات الوقاية الشخصية", "منتج جاهز للأكل", "إجراء تخزين"], correct: 0 },
     ],
   },
-
   "GHP / Cleaning & Sanitation": {
     en: [
       { q: "What is the correct order for cleaning?", options: ["Rinse → detergent → scrub → rinse → sanitize", "Sanitize first", "Only rinse with water"], correct: 0 },
@@ -623,7 +616,6 @@ const QUESTION_BANK = {
       { q: "يجب حفظ الأدوات:", options: ["على الأرض", "نظيفة وجافة وبعيدة عن الأرض", "داخل خزانة المواد الكيميائية"], correct: 1 },
     ],
   },
-
   Receiving: {
     en: [
       { q: "Most important checks during receiving:", options: ["Color only", "Temperature + dates + condition", "Packaging only"], correct: 1 },
@@ -640,7 +632,6 @@ const QUESTION_BANK = {
       { q: "معنى FEFO:", options: ["الأقرب انتهاء يُستخدم أولاً", "الأقدم دخولًا يُستخدم أولاً", "جمّد كل شيء"], correct: 0 },
     ],
   },
-
   Storage: {
     en: [
       { q: "FEFO system means:", options: ["Nearest expiry used first", "Oldest production used last", "No order"], correct: 0 },
@@ -657,7 +648,6 @@ const QUESTION_BANK = {
       { q: "درجة حرارة التخزين البارد عادة:", options: ["0-5°C", "10-15°C", "25°C"], correct: 0 },
     ],
   },
-
   "Time & Temperature / CCP": {
     en: [
       { q: "Danger Zone is approximately:", options: ["5–60°C", "0–2°C", "70–90°C"], correct: 0 },
@@ -674,7 +664,6 @@ const QUESTION_BANK = {
       { q: "معايرة الترمومتر:", options: ["غير ضرورية", "ضرورية وموثقة", "اختيارية"], correct: 1 },
     ],
   },
-
   "HACCP Basics": {
     en: [
       { q: "HACCP is mainly about:", options: ["Reacting after incidents", "Preventing hazards proactively", "Only paperwork"], correct: 1 },
@@ -691,7 +680,6 @@ const QUESTION_BANK = {
       { q: "السجلات مهمة لأنها:", options: ["غير مهمة", "دليل على التحكم والالتزام", "لتعبئة الملفات"], correct: 1 },
     ],
   },
-
   "Allergen Control": {
     en: [
       { q: "Allergens must be:", options: ["Ignored", "Identified, labeled, and controlled", "Mixed with all foods"], correct: 1 },
@@ -708,7 +696,6 @@ const QUESTION_BANK = {
       { q: "تدريب الحساسية يمنع:", options: ["فقط الشكاوى", "تفاعلات خطيرة للمستهلك", "انحراف الحرارة"], correct: 1 },
     ],
   },
-
   "Chemical Safety (Food + OHS)": {
     en: [
       { q: "Chemical containers must be:", options: ["Unlabeled", "Labeled and stored in designated area", "Stored above food"], correct: 1 },
@@ -725,7 +712,6 @@ const QUESTION_BANK = {
       { q: "معدات الوقاية عند التعامل مع الكيميائيات:", options: ["غير ضروري", "قفازات/نظارات حسب SDS", "مريول فقط"], correct: 1 },
     ],
   },
-
   "OHS: PPE & Safe Work": {
     en: [
       { q: "PPE should be:", options: ["Optional", "Worn as required and kept clean", "Shared without cleaning"], correct: 1 },
@@ -742,7 +728,6 @@ const QUESTION_BANK = {
       { q: "مخارج الطوارئ يجب أن تكون:", options: ["مغلقة", "مفتوحة وخالية دائمًا", "تستخدم للتخزين"], correct: 1 },
     ],
   },
-
   "OHS: Manual Handling": {
     en: [
       { q: "Correct lifting technique includes:", options: ["Bend back", "Bend knees and keep load close", "Twist quickly"], correct: 1 },
@@ -770,45 +755,68 @@ function pickQuestionsForModule(moduleName) {
   };
 }
 
+/* ===================== Sub-components (defined OUTSIDE to preserve focus) ===================== */
+const InfoCard = ({ label, value, children }) => (
+  <div style={{ background:"#eff6ff", border:"1px solid #dbeafe", borderRadius:10, padding:"10px 14px" }}>
+    <div style={{ fontSize:10, color:"#3b82f6", fontWeight:700, letterSpacing:.5, textTransform:"uppercase", marginBottom:4 }}>{label}</div>
+    {children || <div style={{ fontSize:13, fontWeight:700, color:"#1e3a5f" }}>{value || "—"}</div>}
+  </div>
+);
+
+const Section = ({ children, style = {} }) => (
+  <div style={{ background:"#ffffff", border:"1px solid #dbeafe", borderRadius:10, padding:18, ...style }}>
+    {children}
+  </div>
+);
+
+const SectionTitle = ({ children }) => (
+  <div style={{ fontWeight:800, fontSize:15, color:"#1e3a5f", marginBottom:12, letterSpacing:.2 }}>{children}</div>
+);
+
+const FieldLabel = ({ children }) => (
+  <div style={{ fontSize:12, fontWeight:700, color:"#1e3a5f", marginBottom:5, letterSpacing:.3, textTransform:"uppercase" }}>{children}</div>
+);
+
+/* ===================== Component ===================== */
 export default function TrainingSessionCreate() {
   const nav = useNavigate();
   const [saving, setSaving] = useState(false);
 
   const DEFAULT_MODULE = "Personnel Hygiene";
 
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate]                       = useState(todayISO());
+  const [branch, setBranch]                   = useState("POS 15 - Al Barsha Butchery");
+  const [moduleName, setModuleName]           = useState(DEFAULT_MODULE);
+  const [customModule, setCustomModule]       = useState("");
+  const [useCustomModule, setUseCustomModule] = useState(false);
+  const [details, setDetails]                 = useState(getDetailsTemplate(DEFAULT_MODULE));
+  const [detailsTouched, setDetailsTouched]   = useState(false);
+  const [objectives, setObjectives]           = useState(DEFAULT_OBJECTIVES);
+  const [conductedBy, setConductedBy]         = useState("");
+  const [verifiedBy, setVerifiedBy]           = useState("");
 
-  // ✅ FIX: default branch must match an item in BRANCHES
-  const [branch, setBranch] = useState("POS 15 - Al Barsha Butchery");
-
-  const [moduleName, setModuleName] = useState(DEFAULT_MODULE);
-
-  // ✅ per-module template (EN/AR) + track manual edits
-  const [details, setDetails] = useState(getDetailsTemplate(DEFAULT_MODULE));
-  const [detailsTouched, setDetailsTouched] = useState(false);
-
-  const [objectives, setObjectives] = useState(DEFAULT_OBJECTIVES);
-
-  const [conductedBy, setConductedBy] = useState("");
-  const [verifiedBy, setVerifiedBy] = useState("");
+  const effectiveModule = useCustomModule && customModule.trim()
+    ? customModule.trim()
+    : moduleName;
 
   const uniqueKey = useMemo(
-    () => `${branch}__${date}__${moduleName}`.toLowerCase(),
-    [branch, date, moduleName]
+    () => `${branch}__${date}__${effectiveModule}`.toLowerCase(),
+    [branch, date, effectiveModule]
   );
-
   const title = useMemo(
-    () => `Training Record • ${moduleName} • ${branch} • ${date}`,
-    [moduleName, branch, date]
+    () => `Training Record • ${effectiveModule} • ${branch} • ${date}`,
+    [effectiveModule, branch, date]
   );
-
-  const questionsPack = useMemo(() => pickQuestionsForModule(moduleName), [moduleName]);
+  const questionsPack = useMemo(
+    () => pickQuestionsForModule(effectiveModule),
+    [effectiveModule]
+  );
 
   const validate = () => {
-    if (!date) return "Please select a Date.";
-    if (!branch) return "Please select a Branch.";
-    if (!moduleName) return "Please select a Training Module.";
-    if (!details || String(details).trim().length < 10) return "Training details are required.";
+    if (!date)            return "Please select a Date.";
+    if (!branch)          return "Please select a Branch.";
+    if (!effectiveModule) return "Please select or enter a Training Module.";
+    if (!details || String(details).trim().length < 10)    return "Training details are required.";
     if (!objectives || String(objectives).trim().length < 10) return "Training objectives are required.";
     return "";
   };
@@ -816,40 +824,28 @@ export default function TrainingSessionCreate() {
   const onSave = async () => {
     const err = validate();
     if (err) return alert(err);
-
     setSaving(true);
     try {
       const existing = await listReportsByType(TYPE);
       const found = Array.isArray(existing)
         ? existing.find((r) => (r?.payload?.uniqueKey || "").toLowerCase() === uniqueKey)
         : null;
-
       if (found) {
-        alert(
-          "Duplicate session found for the same Branch + Date + Module ✅\nPlease change date/branch/module."
-        );
+        alert("Duplicate session found for the same Branch + Date + Module ✅\nPlease change date/branch/module.");
         setSaving(false);
         return;
       }
-
       const payload = {
         ...DEFAULT_DOC,
-        date,
-        branch,
-        moduleName,
-        title,
-        uniqueKey,
-        details,
-        objectives,
-        conductedBy,
-        verifiedBy,
+        date, branch,
+        moduleName: effectiveModule,
+        title, uniqueKey, details, objectives,
+        conductedBy, verifiedBy,
         participants: [],
         approvals: { qaVerifiedAt: null, approvedAt: null },
-        questionsBank: questionsPack, // { en: [...], ar: [...] }
+        questionsBank: questionsPack,
       };
-
       await createReport({ type: TYPE, title, branch, payload });
-
       alert("Saved successfully ✅");
       nav("/training");
     } catch (e) {
@@ -860,397 +856,192 @@ export default function TrainingSessionCreate() {
     }
   };
 
-  /* ===================== UI (WIDER / BIGGER) ✅ ===================== */
-  const page = {
-    minHeight: "100vh",
-    width: "100%",
-    padding: "22px 22px 28px",
-    boxSizing: "border-box",
-    direction: "ltr",
-    fontFamily: "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
-    background: "linear-gradient(135deg, #0ea5e9 0%, #7c3aed 55%, #111827 100%)",
-  };
-
-  const glass = {
-    background: "rgba(255,255,255,0.92)",
-    border: "1px solid rgba(255,255,255,0.65)",
-    borderRadius: 22,
-    boxShadow: "0 20px 60px rgba(15,23,42,0.18)",
-    backdropFilter: "blur(12px)",
-  };
-
-  const section = { ...glass, padding: 18 };
-
-  const label = { fontWeight: 1100, color: "#0f172a", fontSize: 14 };
-
-  const input = {
-    width: "100%",
-    padding: "14px 14px",
-    borderRadius: 14,
-    border: "1px solid #e5e7eb",
-    outline: "none",
-    background: "rgba(255,255,255,0.95)",
-    fontWeight: 950,
-    fontSize: 14,
-    color: "#0f172a",
-    boxSizing: "border-box",
-  };
-
-  const textarea = {
-    width: "100%",
-    padding: 14,
-    borderRadius: 14,
-    border: "1px solid #e5e7eb",
-    outline: "none",
-    background: "rgba(255,255,255,0.95)",
-    fontWeight: 900,
-    fontSize: 14,
-    lineHeight: 1.55,
-    color: "#0f172a",
-    fontFamily: "inherit",
-    boxSizing: "border-box",
-    resize: "vertical",
-    minHeight: 220,
-  };
-
-  const btnPrimary = (disabled) => ({
-    padding: "12px 16px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.85)",
-    background: disabled
-      ? "linear-gradient(135deg, #94a3b8, #64748b)"
-      : "linear-gradient(135deg, #111827, #2563eb)",
-    color: "#fff",
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontWeight: 1200,
-    boxShadow: "0 12px 28px rgba(37,99,235,0.22)",
-    whiteSpace: "nowrap",
-    fontSize: 13,
-  });
-
-  const btnGhost = {
-    padding: "12px 16px",
-    borderRadius: 14,
-    border: "1px solid #e5e7eb",
-    background: "#fff",
-    cursor: "pointer",
-    fontWeight: 1200,
-    whiteSpace: "nowrap",
-    fontSize: 13,
-  };
-
-  const btnMini = (disabled) => ({
-    padding: "9px 12px",
-    borderRadius: 12,
-    border: "1px solid #e5e7eb",
-    background: disabled ? "#f1f5f9" : "#fff",
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontWeight: 1200,
-    fontSize: 12,
-    whiteSpace: "nowrap",
-  });
-
-  const pill = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "9px 12px",
-    borderRadius: 999,
-    background: "linear-gradient(135deg, #eef2ff, #ffffff)",
-    border: "1px solid #e5e7eb",
-    fontWeight: 1100,
-    color: "#0f172a",
-    fontSize: 12,
-    overflowX: "auto",
-    maxWidth: "100%",
-  };
-
-  const kpiWrap = {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-    gap: 12,
-    marginTop: 12,
-  };
-
-  const kpiCard = {
-    background: "linear-gradient(135deg, rgba(238,242,255,1), rgba(255,255,255,1))",
-    border: "1px solid #e5e7eb",
-    borderRadius: 18,
-    padding: 16,
-    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
-  };
-
-  const kpiLabel = { color: "#64748b", fontSize: 12, fontWeight: 1100 };
-  const kpiValue = { color: "#0f172a", fontSize: 22, fontWeight: 1300, marginTop: 6 };
-
   return (
-    <div style={page}>
-      {/* Header */}
-      <div style={{ ...glass, padding: 18, maxWidth: 1800, margin: "0 auto" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 1300, color: "#0f172a" }}>
-              ➕ Create Training Session
+    <div style={{ background:C.gray50, minHeight:"100vh", fontFamily:"'Segoe UI',system-ui,sans-serif", color:C.gray700, direction:"ltr" }}>
+
+      {/* ── Top bar ── */}
+      <div style={{ background:`linear-gradient(135deg,${C.navy} 0%,${C.navyLight} 100%)`, padding:"14px 20px", display:"flex", alignItems:"center", gap:12, borderRadius:"12px 12px 0 0", flexWrap:"wrap" }}>
+        <div>
+          <div style={{ color:C.white, fontWeight:800, fontSize:17, letterSpacing:.3 }}>➕ Create Training Session</div>
+          <div style={{ color:"#93c5fd", fontSize:12, marginTop:2 }}>
+            Select module → fill details → save. Question bank attached automatically.
+          </div>
+        </div>
+        <div style={{ marginLeft:"auto", display:"flex", gap:7, flexWrap:"wrap", alignItems:"center" }}>
+          <button onClick={() => nav("/training")} style={actionBtn(C.gray700)}>↩ Back</button>
+          <button onClick={onSave} disabled={saving} style={actionBtn(saving ? C.gray400 : "#10b981", saving)}>
+            {saving ? "Saving…" : "💾 Save Session"}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div style={{ border:`1px solid ${C.border}`, borderTop:"none", borderRadius:"0 0 12px 12px", background:C.white, padding:18, display:"grid", gap:16 }}>
+
+        {/* ── KPI cards ── */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:10 }}>
+          <InfoCard label="📋 Session Title"       value={title} />
+          <InfoCard label="🔑 Unique Key"          value={uniqueKey} />
+          <InfoCard label="❓ Questions EN"        value={`${questionsPack?.en?.length || 0} questions`} />
+          <InfoCard label="❓ Questions AR"        value={`${questionsPack?.ar?.length || 0} questions`} />
+        </div>
+
+        {/* ── Meta fields ── */}
+        <Section>
+          <SectionTitle>Session Details</SectionTitle>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))", gap:14 }}>
+
+            {/* Date */}
+            <div>
+              <FieldLabel>📅 Date</FieldLabel>
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt} />
             </div>
-            <div style={{ marginTop: 6, color: "#64748b", fontSize: 13, fontWeight: 1100 }}>
-              Select module → Save. Each module automatically attaches its own Question Bank (AR/EN)
-              to the session.
+
+            {/* Branch */}
+            <div>
+              <FieldLabel>🏢 Branch</FieldLabel>
+              <select value={branch} onChange={e=>setBranch(e.target.value)} style={inputSt}>
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+
+            {/* Module */}
+            <div>
+              <FieldLabel>📚 Module</FieldLabel>
+              {!useCustomModule ? (
+                <select
+                  value={moduleName}
+                  onChange={e => {
+                    const next = e.target.value;
+                    setModuleName(next);
+                    if (!detailsTouched) setDetails(getDetailsTemplate(next));
+                  }}
+                  style={inputSt}
+                >
+                  {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              ) : (
+                <input
+                  value={customModule}
+                  onChange={e => {
+                    setCustomModule(e.target.value);
+                    if (!detailsTouched) setDetails(getDetailsTemplate("__DEFAULT__"));
+                  }}
+                  placeholder="اكتب اسم التدريب الجديد…"
+                  style={{ ...inputSt, borderColor:C.purple, outline:`2px solid ${C.purpleBg}` }}
+                />
+              )}
+              <button
+                onClick={() => {
+                  setUseCustomModule(p => !p);
+                  setCustomModule("");
+                  if (!detailsTouched) setDetails(getDetailsTemplate(moduleName));
+                }}
+                style={{
+                  marginTop:8, padding:"7px 12px", borderRadius:8,
+                  border:`1px dashed ${C.purple}`,
+                  background: useCustomModule ? C.purpleBg : "#faf5ff",
+                  color:C.purple, fontWeight:700, fontSize:12,
+                  cursor:"pointer", width:"100%", textAlign:"left",
+                }}
+              >
+                {useCustomModule ? "← الرجوع للقائمة الأصلية" : "+ إضافة تدريب مخصص جديد"}
+              </button>
+            </div>
+
+            {/* Conducted By */}
+            <div>
+              <FieldLabel>👤 Conducted By</FieldLabel>
+              <input value={conductedBy} onChange={e=>setConductedBy(e.target.value)} placeholder="Trainer name" style={inputSt} />
+            </div>
+
+            {/* Verified By */}
+            <div>
+              <FieldLabel>✅ Verified By</FieldLabel>
+              <input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)} placeholder="QA / Food Safety Team Leader" style={inputSt} />
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => nav("/training")} style={btnGhost}>
-              ↩ Back
+          {/* Unique key pill */}
+          <div style={{ marginTop:14, padding:"10px 14px", background:C.accentBg, border:`1px solid ${C.border}`, borderRadius:8, fontSize:12 }}>
+            <span style={{ color:C.accent, fontWeight:700 }}>Duplicate Key: </span>
+            <span style={{ fontFamily:"ui-monospace,monospace", color:C.navy }}>{uniqueKey}</span>
+          </div>
+        </Section>
+
+        {/* ── Training Details ── */}
+        <Section>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexWrap:"wrap", gap:8 }}>
+            <SectionTitle>📝 Detail of Training (A–L) — EN / AR</SectionTitle>
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+              <span style={{ fontSize:11, color:C.gray400 }}>
+                {useCustomModule ? "• custom module" : detailsTouched ? "• edited" : "• auto-filled"}
+              </span>
+              <button
+                onClick={() => {
+                  setDetails(getDetailsTemplate(useCustomModule ? "__DEFAULT__" : moduleName));
+                  setDetailsTouched(false);
+                }}
+                style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.gray50, color:C.navy, fontWeight:700, fontSize:12, cursor:"pointer" }}
+              >
+                ♻ Reset to Template
+              </button>
+            </div>
+          </div>
+          <textarea
+            value={details}
+            onChange={e => { setDetailsTouched(true); setDetails(e.target.value); }}
+            style={{ ...textareaSt, minHeight:420 }}
+          />
+        </Section>
+
+        {/* ── Objectives + Metadata ── */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(380px,1fr))", gap:16 }}>
+
+          <Section>
+            <SectionTitle>🎯 Objectives / Frequency / Evaluation</SectionTitle>
+            <textarea
+              value={objectives}
+              onChange={e => setObjectives(e.target.value)}
+              style={{ ...textareaSt, minHeight:240 }}
+            />
+          </Section>
+
+          <Section>
+            <SectionTitle>📄 Document Metadata</SectionTitle>
+            <div style={{ display:"grid", gap:10 }}>
+              {[
+                ["Document Number", DEFAULT_DOC.documentNumber],
+                ["Issue Date",      DEFAULT_DOC.issueDate],
+                ["Revision No.",    DEFAULT_DOC.revisionNo],
+                ["Issued By",       DEFAULT_DOC.issuedBy],
+                ["Approved By",     DEFAULT_DOC.approvedBy],
+              ].map(([k, v]) => (
+                <div key={k} style={{ display:"flex", justifyContent:"space-between", gap:10, padding:"8px 0", borderBottom:`1px solid ${C.gray100}`, fontSize:13 }}>
+                  <span style={{ color:C.gray400, fontWeight:600 }}>{k}</span>
+                  <span style={{ color:C.navy, fontWeight:700 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop:14, padding:"10px 12px", background:C.tealBg, border:`1px solid #99f6e4`, borderRadius:8, fontSize:12, color:C.teal, fontWeight:600 }}>
+              ✅ Questions (AR/EN) attached automatically per module. Quiz page will use them.
+            </div>
+          </Section>
+        </div>
+
+        {/* ── Footer ── */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, paddingTop:4 }}>
+          <span style={{ fontSize:12, color:C.gray400 }}>Built by Eng. Mohammed Abdullah</span>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => nav("/training")} style={{ ...actionBtn(C.gray700), background:"transparent", color:C.gray700, border:`1px solid ${C.gray200}` }}>
+              Cancel
+            </button>
+            <button onClick={onSave} disabled={saving} style={actionBtn(saving ? C.gray400 : "#10b981", saving)}>
+              {saving ? "Saving…" : "💾 Save Session"}
             </button>
           </div>
         </div>
 
-        {/* KPI dashboard */}
-        <div style={kpiWrap}>
-          <div style={kpiCard}>
-            <div style={kpiLabel}>Session Title</div>
-            <div style={{ ...kpiValue, fontSize: 16 }}>{title}</div>
-          </div>
-          <div style={kpiCard}>
-            <div style={kpiLabel}>Duplicate Key</div>
-            <div
-              style={{
-                ...kpiValue,
-                fontSize: 14,
-                fontFamily: "ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace",
-              }}
-            >
-              {uniqueKey}
-            </div>
-          </div>
-          <div style={kpiCard}>
-            <div style={kpiLabel}>Questions (EN)</div>
-            <div style={kpiValue}>{questionsPack?.en?.length || 0}</div>
-          </div>
-          <div style={kpiCard}>
-            <div style={kpiLabel}>Questions (AR)</div>
-            <div style={kpiValue}>{questionsPack?.ar?.length || 0}</div>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 10 }}>
-          <div style={pill}>
-            <span style={{ opacity: 0.8 }}>Module Details Template:</span>
-            <b>{moduleName}</b>
-            {detailsTouched ? <span style={{ opacity: 0.7 }}>• edited</span> : <span style={{ opacity: 0.7 }}>• auto</span>}
-          </div>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div style={{ maxWidth: 1800, margin: "14px auto 0", display: "grid", gap: 14 }}>
-        {/* Meta section */}
-        <div style={section}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-              gap: 12,
-            }}
-          >
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={label}>Date</div>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={label}>Branch</div>
-              <select value={branch} onChange={(e) => setBranch(e.target.value)} style={input}>
-                {BRANCHES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={label}>Module</div>
-              <select
-                value={moduleName}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setModuleName(next);
-
-                  // ✅ auto-change details only if user didn't edit
-                  if (!detailsTouched) setDetails(getDetailsTemplate(next));
-                }}
-                style={input}
-              >
-                {MODULES.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={label}>Conducted By</div>
-              <input
-                value={conductedBy}
-                onChange={(e) => setConductedBy(e.target.value)}
-                placeholder="Trainer name"
-                style={input}
-              />
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={label}>Verified By</div>
-              <input
-                value={verifiedBy}
-                onChange={(e) => setVerifiedBy(e.target.value)}
-                placeholder="QA / Food Safety Team Leader"
-                style={input}
-              />
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginTop: 12,
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <div style={{ display: "grid", gap: 6 }}>
-              <div style={{ color: "#64748b", fontWeight: 1100, fontSize: 12 }}>Duplicate Prevention Key</div>
-              <div style={pill}>
-                <span style={{ opacity: 0.8 }}>uniqueKey:</span>
-                <span style={{ fontFamily: "ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace" }}>
-                  {uniqueKey}
-                </span>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={onSave} disabled={saving} style={btnPrimary(saving)}>
-                {saving ? "Saving..." : "💾 Save Session"}
-              </button>
-              <button onClick={() => nav("/training")} style={btnGhost}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ✅ WIDER PANELS: Details FULL-WIDTH + Right cards below */}
-        <div style={{ display: "grid", gap: 14 }}>
-          {/* Details (FULL WIDTH) */}
-          <div style={section}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ fontSize: 18, fontWeight: 1300, color: "#0f172a" }}>
-                DETAIL OF TRAINING (A–L) — EN / AR
-              </div>
-
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ color: "#64748b", fontWeight: 1100, fontSize: 12 }}>
-                  {detailsTouched ? "Edited (won't auto-change)" : "Auto-filled per module"}
-                </div>
-
-                <button
-                  style={btnMini(false)}
-                  onClick={() => {
-                    setDetails(getDetailsTemplate(moduleName));
-                    setDetailsTouched(false);
-                  }}
-                  title="Reset details to the selected module template"
-                >
-                  ♻ Reset to Template
-                </button>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <textarea
-                value={details}
-                onChange={(e) => {
-                  setDetailsTouched(true);
-                  setDetails(e.target.value);
-                }}
-                style={{ ...textarea, minHeight: 460 }}
-              />
-            </div>
-          </div>
-
-          {/* Objectives + Metadata (two wide cards) */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 14 }}>
-            <div style={section}>
-              <div style={{ fontSize: 18, fontWeight: 1300, color: "#0f172a" }}>
-                Objectives / Frequency / Evaluation
-              </div>
-              <div style={{ marginTop: 10 }}>
-                <textarea
-                  value={objectives}
-                  onChange={(e) => setObjectives(e.target.value)}
-                  style={{ ...textarea, minHeight: 260 }}
-                />
-              </div>
-            </div>
-
-            <div style={section}>
-              <div style={{ fontSize: 18, fontWeight: 1300, color: "#0f172a" }}>
-                Document Metadata
-              </div>
-
-              <div
-                style={{
-                  marginTop: 12,
-                  display: "grid",
-                  gap: 10,
-                  color: "#0f172a",
-                  fontWeight: 1100,
-                  fontSize: 14,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ color: "#64748b" }}>Document Number</span>
-                  <span>{DEFAULT_DOC.documentNumber}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ color: "#64748b" }}>Issue Date</span>
-                  <span>{DEFAULT_DOC.issueDate}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ color: "#64748b" }}>Revision</span>
-                  <span>{DEFAULT_DOC.revisionNo}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ color: "#64748b" }}>Issued By</span>
-                  <span>{DEFAULT_DOC.issuedBy}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ color: "#64748b" }}>Approved By</span>
-                  <span>{DEFAULT_DOC.approvedBy}</span>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 12, color: "#64748b", fontSize: 12, fontWeight: 1000 }}>
-                ✅ Questions are attached automatically per module (AR/EN). Quiz page will use them.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ textAlign: "left", color: "rgba(255,255,255,0.9)", fontWeight: 1000 }}>
-          Built by Eng. Mohammed Abdullah
-        </div>
       </div>
     </div>
   );
