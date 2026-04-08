@@ -202,14 +202,61 @@ body{
 .ad-tools-hint{font-size:11px;color:#a7f3d0;max-width:340px;line-height:1.5;}
 .ad-tools-hint b{color:#10b981;}
 
-/* ── content panel ── */
-.ad-panel{
+/* ── full-screen overlay ── */
+.ad-panel-overlay{
+  position:fixed;
+  top:0;left:0;right:0;bottom:0;
+  z-index:1000;
+  background:#f0f9ff;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
+.ad-panel-topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 24px;
   background:#fff;
-  border:1.5px solid #bae6fd;
-  border-radius:18px;
-  padding:20px 18px;
-  min-height:66vh;
-  box-shadow:0 8px 32px rgba(14,165,233,.08);
+  border-bottom:1.5px solid #bae6fd;
+  box-shadow:0 2px 12px rgba(14,165,233,.10);
+  flex-shrink:0;
+}
+
+.ad-panel-topbar-title{
+  font-size:17px;
+  font-weight:900;
+  color:#0c4a6e;
+  display:flex;
+  align-items:center;
+  gap:9px;
+  letter-spacing:-.2px;
+}
+
+.ad-panel-close{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:9px 20px;
+  border-radius:10px;
+  border:none;
+  background:linear-gradient(135deg,#f43f5e,#fb7185);
+  color:#fff;
+  font-size:13px;
+  font-weight:800;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  cursor:pointer;
+  transition:opacity .15s,transform .1s;
+  box-shadow:0 4px 14px rgba(244,63,94,.25);
+}
+.ad-panel-close:hover{opacity:.88;}
+.ad-panel-close:active{transform:scale(.96);}
+
+.ad-panel-body{
+  flex:1;
+  overflow-y:auto;
+  padding:24px;
 }
 
 /* ── footer ── */
@@ -223,6 +270,8 @@ body{
   .ad-stats{grid-template-columns:1fr;}
   .ad-header{flex-direction:column;align-items:flex-start;}
   .ad-header-right{width:100%;justify-content:flex-start;}
+  .ad-panel-topbar{padding:10px 14px;}
+  .ad-panel-body{padding:14px;}
 }
 `;
 
@@ -233,13 +282,17 @@ const TABS = [
   { key: "kpi",          label: "KPI",            icon: "📈" },
 ];
 
+// ── التبويب الافتراضي الذي يُفتح تلقائياً عند تحميل الصفحة ──
+const DEFAULT_TAB = { key: "dailyReports", label: "Daily Reports", icon: "🗓️" };
+
 export default function AdminDashboard() {
   const navigate     = useNavigate();
   const fileInputRef = useRef(null);
 
   const [reports, setReports]           = useState([]);
   const [dailyReports, setDailyReports] = useState([]);
-  const [activeView, setActiveView]     = useState("dailyReports");
+  const [activeView, setActiveView]     = useState(DEFAULT_TAB.key);
+  const [openTab, setOpenTab]           = useState(DEFAULT_TAB); // ← يفتح تلقائياً
   const [loading, setLoading]           = useState(false);
   const [opMsg, setOpMsg]               = useState("");
   const [lastSync, setLastSync]         = useState("");
@@ -309,7 +362,39 @@ export default function AdminDashboard() {
     finally{setLoading(false);setTimeout(()=>setOpMsg(""),4000);if(e?.target)e.target.value="";}
   }
 
+  function openTabView(tab) {
+    setActiveView(tab.key);
+    setOpenTab(tab);
+  }
+
+  function closeTabView() {
+    setOpenTab(null);
+  }
+
   const isErr = opMsg.startsWith("❌");
+
+  const tabContent = (
+    <>
+      {activeView === "reports"      && <ReportsTab reports={reports} setReports={setReports} language="en"/>}
+      {activeView === "dailyReports" && (
+        <DailyReportsTab
+          dailyReports={dailyReports} setDailyReports={setDailyReports}
+          onOpenQCSReport={()          => navigate("/admin/monitor/branches/qcs/reports")}
+          onOpenPOS19Report={()        => navigate("/admin/pos19")}
+          onOpenPOS10Report={()        => navigate("/admin/pos10")}
+          onOpenQCSShipmentReport={()  => openTabView({ key:"qcsShipment", label:"QCS Shipments", icon:"📦" })}
+          onOpenFTR1Report={()         => openTabView({ key:"ftr1", label:"FTR1 Report", icon:"🏭" })}
+          onOpenFTR2Report={()         => openTabView({ key:"ftr2", label:"FTR2 Report", icon:"🏭" })}
+          onOpenProductionReport={()   => navigate("/admin/production")}
+          language="en"
+        />
+      )}
+      {activeView === "qcsShipment"  && <HideDeleteScope><QCSRawMaterialView language="en"/></HideDeleteScope>}
+      {activeView === "kpi"          && <KPIDashboard/>}
+      {activeView === "ftr1"         && <FTR1ReportView/>}
+      {activeView === "ftr2"         && <FTR2ReportView language="en"/>}
+    </>
+  );
 
   return (
     <>
@@ -354,8 +439,12 @@ export default function AdminDashboard() {
 
         {/* Tabs */}
         <div className="ad-tabs">
-          {TABS.map(t=>(
-            <button key={t.key} className={`ad-tab ${activeView===t.key?"active":""}`} onClick={()=>setActiveView(t.key)}>
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              className={`ad-tab ${activeView === t.key ? "active" : ""}`}
+              onClick={() => openTabView(t)}
+            >
               <span>{t.icon}</span><span>{t.label}</span>
             </button>
           ))}
@@ -371,30 +460,26 @@ export default function AdminDashboard() {
           <div className="ad-tools-hint">Use <b>Export</b> for full backups and <b>Import</b> to restore or migrate data.</div>
         </div>
 
-        {/* Content */}
-        <div className="ad-panel">
-          {activeView==="reports"      && <ReportsTab reports={reports} setReports={setReports} language="en"/>}
-          {activeView==="dailyReports" && (
-            <DailyReportsTab
-              dailyReports={dailyReports} setDailyReports={setDailyReports}
-              onOpenQCSReport={()          => navigate("/admin/monitor/branches/qcs/reports")}
-              onOpenPOS19Report={()        => navigate("/admin/pos19")}
-              onOpenPOS10Report={()        => navigate("/admin/pos10")}
-              onOpenQCSShipmentReport={()  => setActiveView("qcsShipment")}
-              onOpenFTR1Report={()         => setActiveView("ftr1")}
-              onOpenFTR2Report={()         => setActiveView("ftr2")}
-              onOpenProductionReport={()   => navigate("/admin/production")}
-              language="en"
-            />
-          )}
-          {activeView==="qcsShipment" && <HideDeleteScope><QCSRawMaterialView language="en"/></HideDeleteScope>}
-          {activeView==="kpi"         && <KPIDashboard/>}
-          {activeView==="ftr1"        && <FTR1ReportView/>}
-          {activeView==="ftr2"        && <FTR2ReportView language="en"/>}
-        </div>
-
         <div className="ad-footer">All rights reserved © Quality Management System</div>
       </div>
+
+      {/* Full-Screen Tab Overlay */}
+      {openTab && (
+        <div className="ad-panel-overlay">
+          <div className="ad-panel-topbar">
+            <div className="ad-panel-topbar-title">
+              <span>{openTab.icon}</span>
+              <span>{openTab.label}</span>
+            </div>
+            <button className="ad-panel-close" onClick={closeTabView}>
+              ✕ Close
+            </button>
+          </div>
+          <div className="ad-panel-body">
+            {tabContent}
+          </div>
+        </div>
+      )}
     </>
   );
 }

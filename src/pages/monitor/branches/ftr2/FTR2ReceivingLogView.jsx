@@ -24,1037 +24,465 @@ function checkPin() {
 
 /* ================== Columns ================== */
 const COLS = [
-  { key: "supplier", label: "Name of the Supplier", align: "left" },
-  { key: "foodItem", label: "Food Item", align: "left" },
-  { key: "dmApprovalNo", label: "DM approval number of the delivery vehicle", align: "left" },
-  { key: "vehicleTemp", label: "Vehicle Temp (°C)", align: "center" },
-  { key: "foodTemp", label: "Food Temp (°C)", align: "center" },
-  { key: "vehicleClean", label: "Vehicle clean", align: "center" },
-  { key: "handlerHygiene", label: "Food handler hygiene", align: "center" },
-  { key: "appearanceOK", label: "Appearance", align: "center" },
-  { key: "smellOK", label: "Smell", align: "center" },
-  {
-    key: "packagingGood",
-    label:
-      "Packaging of food is good and undamaged, clean and no signs of pest infestation",
-    align: "left",
-  },
-  { key: "countryOfOrigin", label: "Country of origin", align: "center" },
-  { key: "productionDate", label: "Production Date", align: "center" },
-  { key: "expiryDate", label: "Expiry Date", align: "center" },
-  { key: "remarks", label: "Remarks (if any)", align: "left" },
-  { key: "receivedBy", label: "Received by", align: "center" },
+  { key: "supplier",         label: "Name of the Supplier",                                                           align: "left"   },
+  { key: "foodItem",         label: "Food Item",                                                                       align: "left"   },
+  { key: "dmApprovalNo",    label: "DM approval number of the delivery vehicle",                                      align: "left"   },
+  { key: "vehicleTemp",     label: "Vehicle Temp (°C)",                                                                align: "center" },
+  { key: "foodTemp",        label: "Food Temp (°C)",                                                                   align: "center" },
+  { key: "vehicleClean",    label: "Vehicle clean",                                                                    align: "center" },
+  { key: "handlerHygiene",  label: "Food handler hygiene",                                                             align: "center" },
+  { key: "appearanceOK",    label: "Appearance",                                                                       align: "center" },
+  { key: "smellOK",         label: "Smell",                                                                            align: "center" },
+  { key: "packagingGood",   label: "Packaging of food is good and undamaged, clean and no signs of pest infestation", align: "left"   },
+  { key: "countryOfOrigin", label: "Country of origin",                                                               align: "center" },
+  { key: "productionDate",  label: "Production Date",                                                                 align: "center" },
+  { key: "expiryDate",      label: "Expiry Date",                                                                     align: "center" },
+  { key: "remarks",         label: "Remarks (if any)",                                                                align: "left"   },
+  { key: "receivedBy",      label: "Received by",                                                                     align: "center" },
 ];
 
-/* أبعاد الأعمدة الأساسية (قبل التحجيم) — أول خانة لـ S.No */
-const COL_WIDTHS_PX = [
-  64, 160, 140, 240, 110, 110, 130, 160, 130, 110, 300, 140, 140, 140, 260, 160,
-];
+const COL_WIDTHS_PX    = [64,160,140,240,110,110,130,160,130,110,300,140,140,140,260,160];
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
-const MIN_SCALE = 0.75;
+const MIN_SCALE        = 0.75;
 
-/* ألوان/ثوابت نمط إكسل */
-const GRID_COLOR   = "#9aa3b2";   // حدود الشبكة
-const HEADER_BG    = "#eaf1fb";   // خلفية العناوين
-const HEADER_BORDER= "#7f93ad";   // حدود العناوين
-const CELL_BG_ODD  = "#ffffff";   // صف فردي
-const CELL_BG_EVEN = "#f9fbff";   // صف زوجي
+const GRID_COLOR    = "#9aa3b2";
+const HEADER_BG     = "#eaf1fb";
+const HEADER_BORDER = "#7f93ad";
+const CELL_BG_ODD   = "#ffffff";
+const CELL_BG_EVEN  = "#f9fbff";
 
 export default function FTR2ReceivingLogView() {
-  const [reports, setReports] = useState([]);
+  const [reportList,     setReportList]     = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
-  const [loading, setLoading] = useState(false);
 
-  // لمنع نقرات مزدوجة أثناء الحذف/الحفظ
-  const [busy, setBusy] = useState(false);
+  const [loadingList,   setLoadingList]   = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [busy,          setBusy]          = useState(false);
 
-  // ===== Auto-Scale (بدون تمرير أفقي) =====
-  const [scale, setScale] = useState(1);
-  const [contentH, setContentH] = useState(0);
+  const [scale,        setScale]        = useState(1);
+  const [contentH,     setContentH]     = useState(0);
   const [measureReady, setMeasureReady] = useState(false);
 
-  const viewportRef = useRef(null);
-  const scaleBoxRef = useRef(null);
-  const reportRef = useRef(null);
-  const tableRef = useRef(null);
+  const viewportRef  = useRef(null);
+  const scaleBoxRef  = useRef(null);
+  const reportRef    = useRef(null);
+  const tableRef     = useRef(null);
   const fileInputRef = useRef(null);
 
-  // ===== Edit mode =====
   const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(null);
+  const [draft,     setDraft]     = useState(null);
 
-  // ===== Preview للصور =====
   const [preview, setPreview] = useState({ open: false, images: [], index: 0 });
-  const openPreview = useCallback((images, index = 0) => {
-    const imgs = (images || []).filter(Boolean);
-    if (!imgs.length) return;
-    setPreview({ open: true, images: imgs, index });
-  }, []);
-  const closePreview = useCallback(
-    () => setPreview((p) => ({ ...p, open: false })),
-    []
-  );
-  const prevImage = useCallback(
-    () =>
-      setPreview((p) => ({
-        ...p,
-        index: (p.index - 1 + p.images.length) % p.images.length,
-      })),
-    []
-  );
-  const nextImage = useCallback(
-    () => setPreview((p) => ({ ...p, index: (p.index + 1) % p.images.length })),
-    []
-  );
+  const openPreview  = useCallback((imgs, idx = 0) => { const f = (imgs||[]).filter(Boolean); if (f.length) setPreview({ open: true, images: f, index: idx }); }, []);
+  const closePreview = useCallback(() => setPreview(p => ({ ...p, open: false })), []);
+  const prevImage    = useCallback(() => setPreview(p => ({ ...p, index: (p.index - 1 + p.images.length) % p.images.length })), []);
+  const nextImage    = useCallback(() => setPreview(p => ({ ...p, index: (p.index + 1) % p.images.length })), []);
+
   useEffect(() => {
-    const onKey = (e) => {
+    const h = (e) => {
       if (!preview.open) return;
-      if (e.key === "Escape") closePreview();
-      if (e.key === "ArrowLeft") prevImage();
+      if (e.key === "Escape")     closePreview();
+      if (e.key === "ArrowLeft")  prevImage();
       if (e.key === "ArrowRight") nextImage();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
   }, [preview.open, closePreview, prevImage, nextImage]);
 
-  // ===== قياس الارتفاع/العرض وتطبيق التحجيم =====
+  /* ===== Auto-Scale ===== */
   useLayoutEffect(() => {
-    let raf1, raf2;
-    const measureAndScale = () => {
-      const vp = viewportRef.current;
-      const box = scaleBoxRef.current;
+    let r1, r2;
+    const measure = () => {
+      const vp = viewportRef.current, box = scaleBoxRef.current;
       if (!vp || !box) return;
-
-      const inner = box.firstChild;
-      const naturalHeight = inner ? inner.scrollHeight : 0;
-      if (naturalHeight > 0) {
-        setContentH(naturalHeight);
-        setMeasureReady(true);
-      }
-
-      const available = Math.max(0, vp.clientWidth - 2);
-      const s = Math.min(1, Math.max(MIN_SCALE, available / TABLE_BASE_WIDTH));
+      const h = box.firstChild?.scrollHeight || 0;
+      if (h > 0) { setContentH(h); setMeasureReady(true); }
+      const s = Math.min(1, Math.max(MIN_SCALE, (vp.clientWidth - 2) / TABLE_BASE_WIDTH));
       setScale(Number.isFinite(s) && s > 0 ? s : 1);
     };
-
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(measureAndScale);
-    });
-
-    const ro = new ResizeObserver(measureAndScale);
+    r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(measure); });
+    const ro = new ResizeObserver(measure);
     ro.observe(document.body);
-    if (viewportRef.current) ro.observe(viewportRef.current);
+    if (viewportRef.current)             ro.observe(viewportRef.current);
     if (scaleBoxRef.current?.firstChild) ro.observe(scaleBoxRef.current.firstChild);
-
-    return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-      ro.disconnect();
-    };
+    return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); ro.disconnect(); };
   }, [selectedReport, isEditing]);
 
-  // ===== Fetch =====
-  const getId = (r) => {
-    const cand = r?._id || r?.payload?._id || r?.id || r?.payload?.id;
-    return cand === undefined || cand === null ? null : String(cand);
-  };
+  /* ===== Helpers ===== */
+  const getId = (r) => { const c = r?.id ?? r?._id ?? r?.payload?._id; return c == null ? null : String(c); };
 
   const getReportDate = (r) => {
-    const d1 = new Date(r?.payload?.reportDate);
-    if (!isNaN(d1)) return d1;
-    const d2 = new Date(r?.created_at || r?.createdAt);
-    return isNaN(d2) ? new Date(0) : d2;
+    const v = r?.reportDate || r?.payload?.reportDate || r?.created_at || r?.createdAt;
+    const d = new Date(v);
+    return isNaN(d) ? new Date(0) : d;
   };
 
-  useEffect(() => {
-    fetchReports();
-  }, []);
+  /* ===== 1) جلب القائمة الخفيفة + تحميل آخر تقرير تلقائياً ===== */
+  useEffect(() => { fetchList(); }, []);
 
-  async function fetchReports() {
-    setLoading(true);
+  async function fetchList() {
+    setLoadingList(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=ftr2_receiving_log_butchery`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
+      const res  = await fetch(`${API_BASE}/api/reports?type=ftr2_receiving_log_butchery&lite=1&limit=500`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-      // الأحدث أولاً
+      const arr  = Array.isArray(json) ? json : json?.data ?? [];
       arr.sort((a, b) => getReportDate(b) - getReportDate(a));
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
-      setIsEditing(false);
-      setDraft(null);
+      setReportList(arr);
+
+      // ✅ تحميل آخر تقرير تلقائياً
+      if (arr.length > 0) {
+        await fetchFullReport(arr[0]);
+      }
     } catch (e) {
       console.error(e);
-      alert("⚠️ Failed to fetch data.");
+      alert("⚠️ Failed to load report list.");
     } finally {
-      setLoading(false);
+      setLoadingList(false);
     }
   }
 
-  // ===== Export PDF (نوقف التحجيم مؤقتًا) =====
+  /* ===== 2) جلب تقرير واحد كامل بالضغط ===== */
+  async function fetchFullReport(liteRow) {
+    const id = getId(liteRow);
+    if (!id) return;
+    setLoadingReport(true);
+    setSelectedReport(null);
+    setIsEditing(false);
+    setDraft(null);
+    try {
+      const res  = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setSelectedReport(json?.report ?? json);
+    } catch (e) {
+      console.error(e);
+      alert("⚠️ Failed to load report.");
+    } finally {
+      setLoadingReport(false);
+    }
+  }
+
+  /* ===== Export PDF ===== */
   const handleExportPDF = async () => {
     if (!reportRef.current || !scaleBoxRef.current) return;
-    const box = scaleBoxRef.current;
-    const prev = {
-      transform: box.style.transform,
-      position: box.style.position,
-      left: box.style.left,
-      top: box.style.top,
-      width: box.style.width,
-      height: box.style.height,
-    };
-
-    box.style.transform = "none";
-    box.style.position = "static";
-    box.style.width = "auto";
-    box.style.height = "auto";
-
-    const canvas = await html2canvas(reportRef.current, {
-      scale: 2,
-      windowWidth: reportRef.current.scrollWidth,
-      windowHeight: reportRef.current.scrollHeight,
-    });
-
-    box.style.transform = prev.transform;
-    box.style.position = prev.position;
-    box.style.left = prev.left;
-    box.style.top = prev.top;
-    box.style.width = prev.width;
-    box.style.height = prev.height;
-
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF("l", "pt", "a4");
+    const box  = scaleBoxRef.current;
+    const prev = { transform: box.style.transform, position: box.style.position, width: box.style.width, height: box.style.height };
+    box.style.transform = "none"; box.style.position = "static"; box.style.width = "auto"; box.style.height = "auto";
+    const canvas = await html2canvas(reportRef.current, { scale: 2, windowWidth: reportRef.current.scrollWidth, windowHeight: reportRef.current.scrollHeight });
+    Object.assign(box.style, prev);
+    const pdf       = new jsPDF("l", "pt", "a4");
     const pageWidth = pdf.internal.pageSize.getWidth();
-    pdf.setFontSize(18);
-    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(18); pdf.setFont("helvetica", "bold");
     pdf.text("AL MAWASHI", pageWidth / 2, 30, { align: "center" });
-    const imgWidth = pageWidth - 40;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    pdf.addImage(imgData, "PNG", 20, 50, imgWidth, imgHeight);
-    const dt = selectedReport?.payload?.reportDate || "report";
-    pdf.save(`FTR2_Receiving_Log_${dt}.pdf`);
+    const iw = pageWidth - 40;
+    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 20, 50, iw, (canvas.height * iw) / canvas.width);
+    pdf.save(`FTR2_Receiving_Log_${selectedReport?.payload?.reportDate || "report"}.pdf`);
   };
 
-  // ===== Delete (محمي بالـ PIN) =====
+  /* ===== Delete ===== */
   const handleDelete = async (report) => {
-    if (busy) return;
-    if (!checkPin()) return;
+    if (busy || !checkPin()) return;
     if (!window.confirm("Are you sure you want to delete this report?")) return;
     const rid = getId(report);
-    if (!rid) return alert("⚠️ Missing report ID.");
+    if (!rid) return alert("⚠️ Missing ID.");
     try {
       setBusy(true);
-      const res = await fetch(
-        `${API_BASE}/api/reports/${encodeURIComponent(rid)}`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) throw new Error(await res.text().catch(() => "Failed to delete"));
-      alert("✅ Report deleted successfully.");
-      await fetchReports();
-    } catch (err) {
-      console.error(err);
-      alert("⚠️ Failed to delete report.");
-    } finally {
-      setBusy(false);
-    }
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text().catch(() => ""));
+      alert("✅ Deleted.");
+      setSelectedReport(null);
+      await fetchList();
+    } catch (err) { console.error(err); alert("⚠️ Delete failed."); }
+    finally { setBusy(false); }
   };
 
-  // ===== Edit / Save (Edit محمي بالـ PIN) =====
+  /* ===== Edit / Save ===== */
   const startEdit = () => {
     if (!checkPin()) return;
     const base = structuredClone(selectedReport?.payload || {});
-    if (!Array.isArray(base.entries)) {
-      base.entries = structuredClone(selectedReport?.payload?.entries || []);
-    }
-    // ضمان وجود الحقول الأساسية
-    if (!base.branch) base.branch = "FTR 2";
+    if (!Array.isArray(base.entries)) base.entries = [];
+    if (!base.branch)     base.branch     = "FTR 2";
     if (!base.reportDate) base.reportDate = new Date().toISOString().slice(0, 10);
-    setDraft(base);
-    setIsEditing(true);
+    setDraft(base); setIsEditing(true);
   };
-
-  const cancelEdit = () => {
-    setIsEditing(false);
-    setDraft(null);
-  };
+  const cancelEdit = () => { setIsEditing(false); setDraft(null); };
 
   const saveEdit = async () => {
-    if (busy) return;
-    if (!draft) return;
+    if (busy || !draft) return;
+    const norm = (v) => (v ? new Date(v).toISOString().slice(0, 10) : "");
+    draft.entries = (Array.isArray(draft.entries) ? draft.entries : [])
+      .map(r => (r && typeof r === "object" ? r : {}))
+      .filter(r => Object.values(r).some(v => v !== "" && v != null));
+    draft.reportDate = norm(draft.reportDate);
+    draft.entries    = draft.entries.map(r => ({ ...r, productionDate: norm(r.productionDate), expiryDate: norm(r.expiryDate) }));
 
-    // ترتيب الأسطر وحذف الفراغات لتحسين العرض
-    draft.entries = Array.isArray(draft.entries)
-      ? draft.entries
-          .map((r) => (r && typeof r === "object" ? r : {}))
-          .filter((r) => Object.values(r).some((v) => v !== "" && v != null))
-      : [];
-
-    // حفظ بصيغة موحّدة للتواريخ
-    const normDate = (v) => (v ? new Date(v).toISOString().slice(0, 10) : "");
-    draft.reportDate = normDate(draft.reportDate);
-    draft.entries = draft.entries.map((r) => ({
-      ...r,
-      productionDate: normDate(r.productionDate),
-      expiryDate: normDate(r.expiryDate),
-    }));
-
-    const body = { type: "ftr2_receiving_log_butchery", payload: draft };
-
-    const readTxt = async (res) => {
-      try {
-        return await res.text();
-      } catch {
-        return "";
-      }
-    };
-
-    const oldId = getId(selectedReport);
-    const oldPayload = structuredClone(selectedReport?.payload || null);
+    const readTxt = async (r) => { try { return await r.text(); } catch { return ""; } };
+    const oldId   = getId(selectedReport);
+    const oldPay  = structuredClone(selectedReport?.payload || null);
 
     try {
       setBusy(true);
-
-      // حذف القديم لتفادي قيود uniqueness المحتملة
       if (oldId) {
-        const del = await fetch(
-          `${API_BASE}/api/reports/${encodeURIComponent(oldId)}`,
-          { method: "DELETE" }
-        );
-        if (!del.ok) {
-          const msg = await readTxt(del);
-          throw new Error(msg || "Failed to delete old report before saving.");
-        }
+        const del = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(oldId)}`, { method: "DELETE" });
+        if (!del.ok) throw new Error(await readTxt(del) || "Delete failed.");
       }
-
-      // إنشاء الجديد
       const post = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ type: "ftr2_receiving_log_butchery", payload: draft }),
       });
-
       if (!post.ok) {
         const msg = await readTxt(post);
-        // محاولة تراجع: إعادة القديم إن وجد
-        if (oldPayload) {
-          try {
-            const rollback = await fetch(`${API_BASE}/api/reports`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ type: "ftr2_receiving_log_butchery", payload: oldPayload }),
-            });
-            if (!rollback.ok) {
-              const rbMsg = await readTxt(rollback);
-              throw new Error(`Save failed (${msg}). Rollback also failed: ${rbMsg}`);
-            }
-          } catch (rbErr) {
-            throw rbErr;
-          }
-        }
+        if (oldPay) await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "ftr2_receiving_log_butchery", payload: oldPay }) });
         throw new Error(msg || "Save failed");
       }
-
-      alert("✅ Saved successfully.");
-      setIsEditing(false);
-      setDraft(null);
-
-      // إعادة الجلب مع ضمان اختيار آخر تقرير (الأحدث)
-      await fetchReports();
-    } catch (e) {
-      console.error(e);
-      alert("❌ Failed to save changes.\n" + (e?.message || ""));
-    } finally {
-      setBusy(false);
-    }
+      const saved = await post.json();
+      alert("✅ Saved.");
+      setIsEditing(false); setDraft(null);
+      await fetchList();
+      const newId = saved?.report?.id;
+      if (newId) await fetchFullReport({ id: newId });
+    } catch (e) { console.error(e); alert("❌ Save failed.\n" + (e?.message || "")); }
+    finally { setBusy(false); }
   };
 
-  // تحديث صفوف الجدول أثناء التحرير
-  const updateDraftEntry = (rowIdx, key, value) => {
-    setDraft((d) => {
-      const entries = Array.isArray(d?.entries) ? [...d.entries] : [];
-      const row = { ...(entries[rowIdx] || {}) };
-      row[key] = value;
-      entries[rowIdx] = row;
-      return { ...d, entries };
-    });
-  };
+  const updateDraftEntry = (i, key, val) =>
+    setDraft(d => { const entries = [...(Array.isArray(d?.entries) ? d.entries : [])]; entries[i] = { ...(entries[i] || {}), [key]: val }; return { ...d, entries }; });
+  const updateDraftMeta  = (key, val) => setDraft(d => ({ ...(d || {}), [key]: val }));
 
-  // تحديث الحقول العلوية (التاريخ/الإنفويس/المحقَّق/المُدقَّق)
-  const updateDraftMeta = (key, value) =>
-    setDraft((d) => ({ ...(d || {}), [key]: value }));
-
-  // ===== Export/Import JSON =====
+  /* ===== Export / Import JSON ===== */
   const handleExportJSON = () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
-      const bundle = {
-        type: "ftr2_receiving_log_butchery",
-        exportedAt: new Date().toISOString(),
-        count: payloads.length,
-        items: payloads,
-      };
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      const ts = new Date().toISOString().replace(/[:.]/g, "-");
-      a.href = url;
-      a.download = `FTR2_Receiving_Log_ALL_${ts}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
-      alert("❌ Failed to export JSON.");
-    }
+      const blob = new Blob([JSON.stringify({ type: "ftr2_receiving_log_butchery", exportedAt: new Date().toISOString(), count: reportList.length, items: reportList.map(r => r?.payload ?? r) }, null, 2)], { type: "application/json" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a"); a.href = url; a.download = `FTR2_Receiving_Log_ALL_${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch (err) { console.error(err); alert("❌ Export failed."); }
   };
 
-  const triggerImport = () => fileInputRef.current?.click();
+  const triggerImport    = () => fileInputRef.current?.click();
   const handleImportJSON = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]; if (!file) return;
     try {
-      setLoading(true);
-      const text = await file.text();
-      const json = JSON.parse(text);
-      const itemsRaw =
-        Array.isArray(json)
-          ? json
-          : Array.isArray(json?.items)
-          ? json.items
-          : Array.isArray(json?.data)
-          ? json.data
-          : [];
-      if (!itemsRaw.length) {
-        alert("⚠️ JSON file has no importable items.");
-        return;
-      }
+      setLoadingList(true);
+      const json  = JSON.parse(await file.text());
+      const items = Array.isArray(json) ? json : Array.isArray(json?.items) ? json.items : Array.isArray(json?.data) ? json.data : [];
+      if (!items.length) { alert("⚠️ No items."); return; }
       let ok = 0, fail = 0;
-      for (const item of itemsRaw) {
+      for (const item of items) {
         const payload = item?.payload ?? item;
-        if (!payload || typeof payload !== "object") {
-          fail++;
-          continue;
-        }
-        try {
-          const res = await fetch(`${API_BASE}/api/reports`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "ftr2_receiving_log_butchery",
-              payload,
-            }),
-          });
-          if (res.ok) ok++;
-          else fail++;
-        } catch {
-          fail++;
-        }
+        if (!payload || typeof payload !== "object") { fail++; continue; }
+        try { const r = await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "ftr2_receiving_log_butchery", payload }) }); if (r.ok) ok++; else fail++; }
+        catch { fail++; }
       }
       alert(`✅ Imported: ${ok}${fail ? ` | ❌ Failed: ${fail}` : ""}`);
-      await fetchReports();
-    } catch (err) {
-      console.error(err);
-      alert("❌ Invalid JSON file.");
-    } finally {
-      setLoading(false);
-      if (e?.target) e.target.value = "";
-    }
+      await fetchList();
+    } catch (err) { console.error(err); alert("❌ Invalid JSON."); }
+    finally { setLoadingList(false); if (e?.target) e.target.value = ""; }
   };
 
-  // ===== Grouping (بعد ترتيب الأحدث أولًا) =====
-  const groupedReports = useMemo(() => {
-    return reports.reduce((acc, r) => {
-      const date = getReportDate(r);
-      if (isNaN(date)) return acc;
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, "0");
-      const d = String(date.getDate()).padStart(2, "0");
-      if (!acc[y]) acc[y] = {};
-      if (!acc[y][m]) acc[y][m] = [];
-      acc[y][m].push({ ...r, day: d, _dt: date.getTime() });
+  /* ===== Grouping ===== */
+  const groupedReports = useMemo(() =>
+    reportList.reduce((acc, r) => {
+      const d = getReportDate(r); if (isNaN(d)) return acc;
+      const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0");
+      if (!acc[y]) acc[y] = {}; if (!acc[y][m]) acc[y][m] = [];
+      acc[y][m].push({ ...r, _dt: d.getTime() });
       return acc;
-    }, {});
-  }, [reports]);
+    }, {}),
+  [reportList]);
 
-  /* ================== Styles ================== */
-  const shell = { display: "flex", gap: "1rem" };
-  const sidebar = {
-    minWidth: 260,
-    background: "#fbfbfc",
-    padding: "1rem",
-    borderRadius: 12,
-    boxShadow: "0 4px 14px rgba(0,0,0,0.06)",
-    border: "1px solid #eef0f4",
-    height: "fit-content",
-  };
-  const main = {
-    flex: 1,
-    background: "linear-gradient(120deg, #f7f9fc 60%, #efe7f9 100%)",
-    padding: "1.25rem",
-    borderRadius: 14,
-    boxShadow: "0 6px 22px rgba(95,61,196,0.12)",
-    border: "1px solid #ececf5",
-    overflowX: "hidden",
-    fontSize: 16, // خط أوضح
-  };
-  const headerCell = {
-    border: `1.4px solid ${GRID_COLOR}`,
-    padding: "10px 12px",
-    fontSize: 16,
-    background: HEADER_BG,
-    fontWeight: 700,
-    color: "#1e293b",
-  };
-  const baseCell = {
-    padding: "10px 12px",
-    border: `1.2px solid ${GRID_COLOR}`, // حدود مثل إكسل
-    verticalAlign: "middle",
-    fontSize: 16,
-    lineHeight: 1.55,
-    wordBreak: "break-word",
-    whiteSpace: "normal",
-    background: "#fff",
-  };
-  const thStyle = {
-    ...baseCell,
-    background: HEADER_BG,
-    color: "#0f172a",
-    fontWeight: 800,
-    border: `1.5px solid ${HEADER_BORDER}`,
-    position: "sticky",
-    top: 0,
-    zIndex: 1,
-    textAlign: "center",
-  };
+  /* ===== Styles ===== */
+  const shell    = { display: "flex", gap: "1rem" };
+  const sidebar  = { minWidth: 260, background: "#fbfbfc", padding: "1rem", borderRadius: 12, boxShadow: "0 4px 14px rgba(0,0,0,0.06)", border: "1px solid #eef0f4", height: "fit-content" };
+  const main     = { flex: 1, background: "linear-gradient(120deg,#f7f9fc 60%,#efe7f9 100%)", padding: "1.25rem", borderRadius: 14, boxShadow: "0 6px 22px rgba(95,61,196,0.12)", border: "1px solid #ececf5", overflowX: "hidden", fontSize: 16 };
+  const hCell    = { border: `1.4px solid ${GRID_COLOR}`, padding: "10px 12px", fontSize: 16, background: HEADER_BG, fontWeight: 700, color: "#1e293b" };
+  const baseCell = { padding: "10px 12px", border: `1.2px solid ${GRID_COLOR}`, verticalAlign: "middle", fontSize: 16, lineHeight: 1.55, wordBreak: "break-word", whiteSpace: "normal", background: "#fff" };
+  const thStyle  = { ...baseCell, background: HEADER_BG, color: "#0f172a", fontWeight: 800, border: `1.5px solid ${HEADER_BORDER}`, position: "sticky", top: 0, zIndex: 1, textAlign: "center" };
 
-  // ===== Render helpers =====
   const renderValue = (val, key) => {
     if (!val && val !== 0) return "—";
-    if (key === "productionDate" || key === "expiryDate") {
-      try {
-        const d = new Date(val);
-        if (!isNaN(d)) return d.toLocaleDateString("en-CA");
-      } catch {}
-    }
+    if (key === "productionDate" || key === "expiryDate") { try { const d = new Date(val); if (!isNaN(d)) return d.toLocaleDateString("en-CA"); } catch {} }
     return String(val);
   };
 
-  // مصادر الصور من مفاتيح مختلفة
   const getRowImages = (row) => {
-    const raw =
-      row?.images ||
-      row?.photos ||
-      row?.Photos ||
-      row?.photosBase64 ||
-      row?.imagesBase64 ||
-      [];
-    const arr = Array.isArray(raw) ? raw : raw ? [raw] : [];
-    return arr.filter(Boolean);
+    const raw = row?.images || row?.photos || row?.Photos || row?.photosBase64 || row?.imagesBase64 || [];
+    return (Array.isArray(raw) ? raw : raw ? [raw] : []).filter(Boolean);
   };
 
-  const viewBtnStyle = {
-    marginLeft: 8,
-    padding: "4px 8px",
-    borderRadius: 6,
-    border: "1px solid #94a3b8",
-    background: "#ffffff",
-    color: "#0f172a",
-    fontWeight: 700,
-    fontSize: "0.8rem",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  };
+  const viewBtnStyle = { marginLeft: 8, padding: "4px 8px", borderRadius: 6, border: "1px solid #94a3b8", background: "#fff", color: "#0f172a", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", whiteSpace: "nowrap" };
 
   const EditableCell = ({ value, onChange, type = "text", align = "center" }) => {
-    const base = {
-      width: "100%",
-      boxSizing: "border-box",
-      padding: "6px 8px",
-      borderRadius: 6,
-      border: "1px solid #cfd6e6",
-      fontSize: "0.92rem",
-      textAlign: align,
-      background: "#fff",
-    };
-    if (type === "date") {
-      return (
-        <input
-          type="date"
-          value={value ? new Date(value).toISOString().slice(0, 10) : ""}
-          onChange={(e) => onChange(e.target.value)}
-          style={base}
-        />
-      );
-    }
-    return (
-      <input
-        type="text"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        style={base}
-      />
-    );
+    const s = { width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem", textAlign: align, background: "#fff" };
+    if (type === "date") return <input type="date" value={value ? new Date(value).toISOString().slice(0,10) : ""} onChange={e => onChange(e.target.value)} style={s} />;
+    return <input type="text" value={value ?? ""} onChange={e => onChange(e.target.value)} style={s} />;
   };
 
-  const asDateValue = (v) => (v ? new Date(v).toISOString().slice(0, 10) : "");
+  const asDate = (v) => (v ? new Date(v).toISOString().slice(0, 10) : "");
+
+  const Btn = ({ label, onClick, color, disabled }) => (
+    <button onClick={onClick} disabled={disabled}
+      style={{ padding: "8px 14px", borderRadius: 8, background: disabled ? "#d1d5db" : color, color: "#fff", fontWeight: 700, border: "none", cursor: disabled ? "not-allowed" : "pointer" }}>
+      {label}
+    </button>
+  );
 
   return (
     <div style={shell}>
-      {/* Sidebar */}
+
+      {/* ===== Sidebar ===== */}
       <div style={sidebar}>
-        <h4 style={{ marginBottom: "1rem", color: "#5b21b6", textAlign: "center" }}>
-          🗓️ Saved Reports
-        </h4>
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(b) - Number(a))
+        <h4 style={{ marginBottom: "1rem", color: "#5b21b6", textAlign: "center" }}>🗓️ Saved Reports</h4>
+
+        {loadingList ? <p>⏳ Loading list...</p>
+          : Object.keys(groupedReports).length === 0 ? <p>❌ No reports</p>
+          : Object.entries(groupedReports)
+              .sort(([a],[b]) => Number(b)-Number(a))
               .map(([year, months]) => (
-                <details key={year} open>
-                  <summary style={{ fontWeight: 700, marginBottom: 6 }}>
-                    📅 Year {year}
-                  </summary>
+                // ✅ بدون open — الشجرة مغلقة افتراضياً
+                <details key={year}>
+                  <summary style={{ fontWeight: 700, marginBottom: 6, cursor: "pointer" }}>📅 {year}</summary>
                   {Object.entries(months)
-                    .sort(([a], [b]) => Number(b) - Number(a))
-                    .map(([month, days]) => {
-                      const ddays = [...days].sort((a, b) => b._dt - a._dt);
-                      return (
-                        <details key={month} style={{ marginLeft: "1rem" }} open>
-                          <summary style={{ fontWeight: 600 }}>📅 Month {month}</summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {ddays.map((r, i) => {
-                              const isActive =
-                                getId(selectedReport) &&
-                                getId(selectedReport) === getId(r);
-                              const d = getReportDate(r);
-                              const label = `${String(d.getDate()).padStart(2, "0")}/${String(
-                                d.getMonth() + 1
-                              ).padStart(2, "0")}/${d.getFullYear()}`;
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelectedReport(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: 4,
-                                    borderRadius: 8,
-                                    cursor: "pointer",
-                                    background: isActive ? "#5b21b6" : "#eef1f7",
-                                    color: isActive ? "#fff" : "#263042",
-                                    fontWeight: 700,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {label}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
+                    .sort(([a],[b]) => Number(b)-Number(a))
+                    .map(([month, days]) => (
+                      <details key={month} style={{ marginLeft: "1rem" }}>
+                        <summary style={{ fontWeight: 600, cursor: "pointer" }}>📅 {year}/{month}</summary>
+                        <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
+                          {[...days].sort((a,b) => b._dt-a._dt).map((r, i) => {
+                            const isActive = getId(selectedReport) && getId(selectedReport) === getId(r);
+                            const d = getReportDate(r);
+                            const label = `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+                            return (
+                              <li key={i} onClick={() => fetchFullReport(r)}
+                                style={{ padding: "6px 10px", marginBottom: 4, borderRadius: 8, cursor: loadingReport ? "wait" : "pointer", background: isActive ? "#5b21b6" : "#eef1f7", color: isActive ? "#fff" : "#263042", fontWeight: 700, textAlign: "center" }}>
+                                {label}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </details>
+                    ))}
                 </details>
-              ))}
-          </div>
-        )}
+              ))
+        }
       </div>
 
-      {/* Main / Report */}
+      {/* ===== Main ===== */}
       <div style={main}>
-        {!selectedReport ? (
-          <p>❌ No report selected.</p>
+        {loadingReport ? (
+          <div style={{ textAlign: "center", padding: "4rem", color: "#5b21b6", fontSize: 18, fontWeight: 700 }}>
+            ⏳ Loading report...
+          </div>
+        ) : !selectedReport ? (
+          <div style={{ textAlign: "center", padding: "4rem", color: "#94a3b8", fontSize: 16 }}>
+            👈 Select a date from the list to load the report
+          </div>
         ) : (
           <>
             {/* Actions */}
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                justifyContent: "flex-end",
-                gap: 8,
-                marginBottom: 12,
-              }}
-            >
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
               {!isEditing ? (
                 <>
-                  <button
-                    onClick={startEdit}
-                    disabled={busy}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      background: busy ? "#93c5fd" : "#2563eb",
-                      color: "#fff",
-                      fontWeight: 700,
-                      border: "none",
-                      cursor: busy ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    ✏ Edit
-                  </button>
-                  <button
-                    onClick={handleExportPDF}
-                    disabled={busy}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      background: busy ? "#a7f3d0" : "#10b981",
-                      color: "#fff",
-                      fontWeight: 700,
-                      border: "none",
-                      cursor: busy ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    ⬇ Export PDF
-                  </button>
-                  <button
-                    onClick={handleExportJSON}
-                    disabled={busy}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      background: busy ? "#6ee7b7" : "#059669",
-                      color: "#fff",
-                      fontWeight: 700,
-                      border: "none",
-                      cursor: busy ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    ⬇ Export JSON
-                  </button>
-                  <button
-                    onClick={triggerImport}
-                    disabled={busy}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      background: busy ? "#fde68a" : "#f59e0b",
-                      color: "#fff",
-                      fontWeight: 700,
-                      border: "none",
-                      cursor: busy ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    ⬆ Import JSON
-                  </button>
-                  <button
-                    onClick={() => handleDelete(selectedReport)}
-                    disabled={busy}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      background: busy ? "#fca5a5" : "#ef4444",
-                      color: "#fff",
-                      fontWeight: 700,
-                      border: "none",
-                      cursor: busy ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    🗑 Delete
-                  </button>
+                  <Btn label="✏ Edit"        onClick={startEdit}                          color="#2563eb" disabled={busy} />
+                  <Btn label="⬇ Export PDF"  onClick={handleExportPDF}                    color="#10b981" disabled={busy} />
+                  <Btn label="⬇ Export JSON" onClick={handleExportJSON}                   color="#059669" disabled={busy} />
+                  <Btn label="⬆ Import JSON" onClick={triggerImport}                      color="#f59e0b" disabled={busy} />
+                  <Btn label="🗑 Delete"      onClick={() => handleDelete(selectedReport)} color="#ef4444" disabled={busy} />
                 </>
               ) : (
                 <>
-                  <button
-                    onClick={saveEdit}
-                    disabled={busy}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      background: busy ? "#86efac" : "#16a34a",
-                      color: "#fff",
-                      fontWeight: 800,
-                      border: "none",
-                      cursor: busy ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    💾 Save
-                  </button>
-                  <button
-                    onClick={cancelEdit}
-                    disabled={busy}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      background: busy ? "#9ca3af" : "#6b7280",
-                      color: "#fff",
-                      fontWeight: 700,
-                      border: "none",
-                      cursor: busy ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    ↩ Cancel
-                  </button>
+                  <Btn label="💾 Save"   onClick={saveEdit}   color="#16a34a" disabled={busy} />
+                  <Btn label="↩ Cancel" onClick={cancelEdit} color="#6b7280" disabled={busy} />
                 </>
               )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={handleImportJSON}
-              />
+              <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportJSON} />
             </div>
 
-            {/* ====== Auto-Scale container ====== */}
-            <div
-              ref={viewportRef}
-              style={{
-                width: "100%",
-                position: "relative",
-                overflow: "hidden",
-                height: measureReady && contentH ? contentH * scale : "auto",
-                minHeight: 120,
-              }}
-            >
-              <div
-                ref={scaleBoxRef}
-                style={
-                  measureReady
-                    ? {
-                        position: "absolute",
-                        left: 0,
-                        top: 0,
-                        width: TABLE_BASE_WIDTH,
-                        transform: `scale(${scale})`,
-                        transformOrigin: "top left",
-                      }
-                    : { position: "static", width: "100%" }
-                }
-              >
+            {/* Auto-Scale */}
+            <div ref={viewportRef} style={{ width: "100%", position: "relative", overflow: "hidden", height: measureReady && contentH ? contentH * scale : "auto", minHeight: 120 }}>
+              <div ref={scaleBoxRef}
+                style={measureReady
+                  ? { position: "absolute", left: 0, top: 0, width: TABLE_BASE_WIDTH, transform: `scale(${scale})`, transformOrigin: "top left" }
+                  : { position: "static", width: "100%" }}>
                 <div ref={reportRef}>
-                  {/* Header info */}
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      marginBottom: "0.75rem",
-                    }}
-                  >
+
+                  {/* Header */}
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "0.75rem" }}>
                     <tbody>
                       <tr>
-                        <td style={headerCell}>
-                          <strong>Document Title:</strong> Receiving Log (Food
-                          Truck – FTR 2)
-                        </td>
-                        <td style={headerCell}>
-                          <strong>Document No:</strong> TELT/QC/RECLOG/01
-                        </td>
+                        <td style={hCell}><strong>Document Title:</strong> Receiving Log (Food Truck – FTR 2)</td>
+                        <td style={hCell}><strong>Document No:</strong> TELT/QC/RECLOG/01</td>
                       </tr>
                       <tr>
-                        <td style={headerCell}>
-                          <strong>Issue Date:</strong> 05/02/2020
-                        </td>
-                        <td style={headerCell}>
-                          <strong>Revision No:</strong> 0
-                        </td>
+                        <td style={hCell}><strong>Issue Date:</strong> 05/02/2020</td>
+                        <td style={hCell}><strong>Revision No:</strong> 0</td>
                       </tr>
                       <tr>
-                        <td style={headerCell}>
-                          <strong>Area:</strong> QA
-                        </td>
-                        <td style={headerCell}>
-                          <strong>Issued By:</strong> MOHAMAD ABDULLAH QC
-                        </td>
+                        <td style={hCell}><strong>Area:</strong> QA</td>
+                        <td style={hCell}><strong>Issued By:</strong> MOHAMAD ABDULLAH QC</td>
                       </tr>
                       <tr>
-                        <td style={headerCell}>
-                          <strong>Controlling Officer:</strong> Quality
-                          Controller
-                        </td>
-                        <td style={headerCell}>
-                          <strong>Approved By:</strong> Hussam.O.Sarhan
-                        </td>
+                        <td style={hCell}><strong>Controlling Officer:</strong> Quality Controller</td>
+                        <td style={hCell}><strong>Approved By:</strong> Hussam.O.Sarhan</td>
                       </tr>
                     </tbody>
                   </table>
 
-                  {/* Title */}
-                  <h3
-                    style={{
-                      textAlign: "center",
-                      background: "#eef1f7",
-                      padding: "8px 10px",
-                      margin: "0 0 8px",
-                      border: "1px solid #e1e5ee",
-                      borderRadius: 8,
-                    }}
-                  >
-                    AL MAWASHI BRAAI MAMZAR
-                    <br />
-                    RECEIVING LOG – FOOD TRUCK (FTR-2)
+                  <h3 style={{ textAlign: "center", background: "#eef1f7", padding: "8px 10px", margin: "0 0 8px", border: "1px solid #e1e5ee", borderRadius: 8 }}>
+                    AL MAWASHI BRAAI MAMZAR<br />RECEIVING LOG – FOOD TRUCK (FTR-2)
                   </h3>
 
-                  {/* Date & Invoice */}
-                  <div
-                    style={{
-                      marginBottom: 10,
-                      display: "flex",
-                      gap: 24,
-                      fontWeight: 700,
-                      color: "#263042",
-                      flexWrap: "wrap",
-                    }}
-                  >
+                  {/* Date / Invoice */}
+                  <div style={{ marginBottom: 10, display: "flex", gap: 24, fontWeight: 700, color: "#263042", flexWrap: "wrap" }}>
                     <div>
                       <strong>Date:</strong>{" "}
-                      {!isEditing ? (
-                        selectedReport?.payload?.reportDate || "—"
-                      ) : (
-                        <input
-                          type="date"
-                          value={asDateValue(draft?.reportDate)}
-                          onChange={(e) =>
-                            updateDraftMeta("reportDate", e.target.value)
-                          }
-                          style={{
-                            padding: "6px 8px",
-                            borderRadius: 6,
-                            border: "1px solid #cfd6e6",
-                            fontSize: "0.92rem",
-                          }}
-                        />
-                      )}
+                      {!isEditing ? selectedReport?.payload?.reportDate || "—"
+                        : <input type="date" value={asDate(draft?.reportDate)} onChange={e => updateDraftMeta("reportDate", e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem" }} />}
                     </div>
                     <div>
                       <strong>Invoice No:</strong>{" "}
-                      {!isEditing ? (
-                        selectedReport?.payload?.invoiceNo || "—"
-                      ) : (
-                        <input
-                          type="text"
-                          value={draft?.invoiceNo ?? ""}
-                          onChange={(e) =>
-                            updateDraftMeta("invoiceNo", e.target.value)
-                          }
-                          style={{
-                            padding: "6px 8px",
-                            borderRadius: 6,
-                            border: "1px solid #cfd6e6",
-                            fontSize: "0.92rem",
-                            minWidth: 160,
-                          }}
-                        />
-                      )}
+                      {!isEditing ? selectedReport?.payload?.invoiceNo || "—"
+                        : <input type="text" value={draft?.invoiceNo ?? ""} onChange={e => updateDraftMeta("invoiceNo", e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem", minWidth: 160 }} />}
                     </div>
                   </div>
 
-                  {/* Legend */}
-                  <div
-                    style={{
-                      margin: "6px 0 12px",
-                      fontSize: "0.92rem",
-                      color: "#374151",
-                    }}
-                  >
-                    LEGEND: <strong>C</strong> – Compliant / <strong>NC</strong>{" "}
-                    – Non-Compliant
+                  <div style={{ margin: "6px 0 12px", fontSize: "0.92rem", color: "#374151" }}>
+                    LEGEND: <strong>C</strong> – Compliant / <strong>NC</strong> – Non-Compliant
                   </div>
 
                   {/* Table */}
-                  <table
-                    ref={tableRef}
-                    style={{
-                      borderCollapse: "collapse",
-                      tableLayout: "fixed",
-                      width: TABLE_BASE_WIDTH,
-                      border: `1.6px solid ${GRID_COLOR}`,
-                      background: "#fff",
-                    }}
-                  >
-                    <colgroup>
-                      {COL_WIDTHS_PX.map((w, i) => (
-                        <col key={i} style={{ width: `${w}px` }} />
-                      ))}
-                    </colgroup>
+                  <table ref={tableRef} style={{ borderCollapse: "collapse", tableLayout: "fixed", width: TABLE_BASE_WIDTH, border: `1.6px solid ${GRID_COLOR}`, background: "#fff" }}>
+                    <colgroup>{COL_WIDTHS_PX.map((w,i) => <col key={i} style={{ width: `${w}px` }} />)}</colgroup>
                     <thead>
                       <tr>
                         <th style={thStyle}>S.No</th>
-                        {COLS.map((c, i) => (
-                          <th key={i} style={thStyle}>
-                            {c.label}
-                          </th>
-                        ))}
+                        {COLS.map((c,i) => <th key={i} style={thStyle}>{c.label}</th>)}
                       </tr>
                     </thead>
                     <tbody>
-                      {(
-                        (isEditing
-                          ? draft?.entries
-                          : selectedReport?.payload?.entries) || []
-                      ).map((row, i) => (
-                        <tr
-                          key={i}
-                          style={{
-                            background: i % 2 ? CELL_BG_EVEN : CELL_BG_ODD,
-                            transition: "background 120ms",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "#eef4ff")}
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.background = i % 2 ? CELL_BG_EVEN : CELL_BG_ODD)
-                          }
-                        >
-                          <td
-                            style={{
-                              ...baseCell,
-                              textAlign: "center",
-                              fontWeight: 700,
-                              position: "sticky",
-                              left: 0,
-                              background: "inherit",
-                            }}
-                          >
-                            {i + 1}
-                          </td>
-
-                          {COLS.map((c) => {
-                            const val = row?.[c.key];
-                            const type =
-                              c.key === "productionDate" || c.key === "expiryDate"
-                                ? "date"
-                                : "text";
+                      {((isEditing ? draft?.entries : selectedReport?.payload?.entries) || []).map((row, i) => (
+                        <tr key={i}
+                          style={{ background: i%2 ? CELL_BG_EVEN : CELL_BG_ODD, transition: "background 120ms" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "#eef4ff")}
+                          onMouseLeave={e => (e.currentTarget.style.background = i%2 ? CELL_BG_EVEN : CELL_BG_ODD)}>
+                          <td style={{ ...baseCell, textAlign: "center", fontWeight: 700, position: "sticky", left: 0, background: "inherit" }}>{i+1}</td>
+                          {COLS.map(c => {
+                            const val  = row?.[c.key];
+                            const type = c.key === "productionDate" || c.key === "expiryDate" ? "date" : "text";
                             const imgs = getRowImages(row);
-                            const isFoodItem = c.key === "foodItem";
-
                             return (
-                              <td
-                                key={c.key}
-                                style={{
-                                  ...baseCell,
-                                  textAlign: c.align || "center",
-                                }}
-                              >
+                              <td key={c.key} style={{ ...baseCell, textAlign: c.align||"center" }}>
                                 {!isEditing ? (
                                   <>
                                     {renderValue(val, c.key)}
-                                    {isFoodItem && imgs.length > 0 && (
-                                      <button
-                                        type="button"
-                                        style={viewBtnStyle}
-                                        onClick={() => openPreview(imgs, 0)}
-                                        title="View photos"
-                                      >
-                                        View
-                                      </button>
+                                    {c.key === "foodItem" && imgs.length > 0 && (
+                                      <button type="button" style={viewBtnStyle} onClick={() => openPreview(imgs, 0)}>View</button>
                                     )}
                                   </>
                                 ) : (
-                                  <EditableCell
-                                    value={val}
-                                    type={type}
-                                    align={c.align || "center"}
-                                    onChange={(v) => updateDraftEntry(i, c.key, v)}
-                                  />
+                                  <EditableCell value={val} type={type} align={c.align||"center"} onChange={v => updateDraftEntry(i, c.key, v)} />
                                 )}
                               </td>
                             );
@@ -1064,60 +492,21 @@ export default function FTR2ReceivingLogView() {
                     </tbody>
                   </table>
 
-                  {/* Notes */}
-                  <div style={{ marginTop: 8, fontSize: "0.9rem", color: "#374151" }}>
-                    *(C – Compliant &nbsp;&nbsp;&nbsp; NC – Non-Compliant)
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginTop: 12,
-                      fontWeight: 700,
-                      color: "#263042",
-                      flexWrap: "wrap",
-                      gap: 8,
-                    }}
-                  >
+                  <div style={{ marginTop: 8, fontSize: "0.9rem", color: "#374151" }}>*(C – Compliant &nbsp;&nbsp; NC – Non-Compliant)</div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontWeight: 700, color: "#263042", flexWrap: "wrap", gap: 8 }}>
                     <div>
                       Checked By:{" "}
-                      {!isEditing ? (
-                        selectedReport?.payload?.checkedBy || "—"
-                      ) : (
-                        <input
-                          type="text"
-                          value={draft?.checkedBy ?? ""}
-                          onChange={(e) => updateDraftMeta("checkedBy", e.target.value)}
-                          style={{
-                            padding: "6px 8px",
-                            borderRadius: 6,
-                            border: "1px solid #cfd6e6",
-                            fontSize: "0.92rem",
-                            minWidth: 180,
-                          }}
-                        />
-                      )}
+                      {!isEditing ? selectedReport?.payload?.checkedBy || "—"
+                        : <input type="text" value={draft?.checkedBy ?? ""} onChange={e => updateDraftMeta("checkedBy", e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem", minWidth: 180 }} />}
                     </div>
                     <div>
                       Verified By:{" "}
-                      {!isEditing ? (
-                        selectedReport?.payload?.verifiedBy || "—"
-                      ) : (
-                        <input
-                          type="text"
-                          value={draft?.verifiedBy ?? ""}
-                          onChange={(e) => updateDraftMeta("verifiedBy", e.target.value)}
-                          style={{
-                            padding: "6px 8px",
-                            borderRadius: 6,
-                            border: "1px solid #cfd6e6",
-                            fontSize: "0.92rem",
-                            minWidth: 180,
-                          }}
-                        />
-                      )}
+                      {!isEditing ? selectedReport?.payload?.verifiedBy || "—"
+                        : <input type="text" value={draft?.verifiedBy ?? ""} onChange={e => updateDraftMeta("verifiedBy", e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem", minWidth: 180 }} />}
                     </div>
                   </div>
+
                 </div>
               </div>
             </div>
@@ -1127,137 +516,34 @@ export default function FTR2ReceivingLogView() {
 
       {/* Preview Modal */}
       {preview.open && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closePreview();
-          }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(16,18,27,0.8)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-            zIndex: 9999,
-          }}
-        >
-          <div
-            style={{
-              position: "relative",
-              maxWidth: "92vw",
-              maxHeight: "90vh",
-              background: "#0b1020",
-              border: "1px solid #1f2a44",
-              borderRadius: 12,
-              boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
-              padding: 12,
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div style={{ color: "#d1d5db", fontWeight: 800 }}>
-                {preview.index + 1} / {preview.images.length}
-              </div>
+        <div onClick={e => { if (e.target === e.currentTarget) closePreview(); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(16,18,27,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 9999 }}>
+          <div style={{ position: "relative", maxWidth: "92vw", maxHeight: "90vh", background: "#0b1020", border: "1px solid #1f2a44", borderRadius: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.45)", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ color: "#d1d5db", fontWeight: 800 }}>{preview.index+1} / {preview.images.length}</div>
               <div style={{ display: "flex", gap: 8 }}>
-                <a
-                  href={preview.images[preview.index]}
-                  download={`FTR2_Image_${preview.index + 1}.jpg`}
-                  style={{
-                    textDecoration: "none",
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    background: "#10b981",
-                    color: "#fff",
-                    fontWeight: 800,
-                  }}
-                >
-                  ⬇ Download
-                </a>
-                <button
-                  onClick={closePreview}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    background: "#ef4444",
-                    color: "#fff",
-                    fontWeight: 800,
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  ✕ Close
-                </button>
+                <a href={preview.images[preview.index]} download={`FTR2_Image_${preview.index+1}.jpg`} style={{ textDecoration: "none", padding: "8px 12px", borderRadius: 8, background: "#10b981", color: "#fff", fontWeight: 800 }}>⬇ Download</a>
+                <button onClick={closePreview} style={{ padding: "8px 12px", borderRadius: 8, background: "#ef4444", color: "#fff", fontWeight: 800, border: "none", cursor: "pointer" }}>✕ Close</button>
               </div>
             </div>
-
-            <div
-              style={{
-                position: "relative",
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                borderRadius: 10,
-                background: "#0f172a",
-              }}
-            >
+            <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRadius: 10, background: "#0f172a" }}>
               {/* eslint-disable-next-line jsx-a11y/alt-text */}
-              <img
-                src={preview.images[preview.index]}
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "84vh",
-                  objectFit: "contain",
-                  display: "block",
-                  userSelect: "none",
-                }}
-              />
+              <img src={preview.images[preview.index]} style={{ maxWidth: "100%", maxHeight: "84vh", objectFit: "contain", display: "block", userSelect: "none" }} />
               {preview.images.length > 1 && (
                 <>
-                  <button onClick={prevImage} title="Previous (←)" style={navBtnStyle("left")}>
-                    ‹
-                  </button>
-                  <button onClick={nextImage} title="Next (→)" style={navBtnStyle("right")}>
-                    ›
-                  </button>
+                  <button onClick={prevImage} style={navBtn("left")}>‹</button>
+                  <button onClick={nextImage} style={navBtn("right")}>›</button>
                 </>
               )}
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
 
-/* ===== Helper: nav buttons style ===== */
-function navBtnStyle(side) {
-  return {
-    position: "absolute",
-    top: "50%",
-    transform: "translateY(-50%)",
-    [side]: 10,
-    width: 44,
-    height: 44,
-    borderRadius: "9999px",
-    border: "none",
-    cursor: "pointer",
-    background: "rgba(255,255,255,0.95)",
-    color: "#0f172a",
-    fontSize: 28,
-    fontWeight: 900,
-    lineHeight: "44px",
-    textAlign: "center",
-    boxShadow: "0 6px 16px rgba(0,0,0,0.25)",
-  };
+function navBtn(side) {
+  return { position: "absolute", top: "50%", transform: "translateY(-50%)", [side]: 10, width: 44, height: 44, borderRadius: "9999px", border: "none", cursor: "pointer", background: "rgba(255,255,255,0.95)", color: "#0f172a", fontSize: 28, fontWeight: 900, lineHeight: "44px", textAlign: "center", boxShadow: "0 6px 16px rgba(0,0,0,0.25)" };
 }

@@ -83,7 +83,7 @@ body {
 /* root */
 .d-root {
   position: relative; z-index: 1;
-  max-width: 1240px; margin: 0 auto;
+  max-width: 100%; margin: 0;
   padding: 24px 20px 60px;
 }
 

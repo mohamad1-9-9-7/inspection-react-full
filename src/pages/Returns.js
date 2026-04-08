@@ -1,6 +1,6 @@
 // src/pages/Returns.js
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 /* ========= API BASE ========= */
@@ -48,6 +48,7 @@ const BRANCHES = [
   "FTR 2",
   "KMC",
   "KPS",
+  "W K C",   // ✅ NEW
   "POS 43",
   "POS 44",
   "POS 45",
@@ -68,6 +69,10 @@ const ACTIONS = [
 const QTY_TYPES = ["KG", "PCS", "أخرى / Other"];
 const RETURNS_CREATE_PASSWORD = "9999";
 
+/* ========= Draft storage key ========= */
+const DRAFT_KEY = "returns_draft_v1";
+const DRAFT_DATE_KEY = "returns_draft_date_v1";
+
 /* ========= Helpers ========= */
 function getToday() {
   return new Date().toISOString().slice(0, 10);
@@ -77,6 +82,23 @@ function safeArr(v) {
 }
 function getId(r) {
   return r?.id || r?._id || r?.payload?.id || r?.payload?._id;
+}
+
+/** Returns true if a row has any meaningful data entered */
+function rowHasData(r) {
+  return !!(
+    r.itemCode ||
+    r.productName ||
+    r.origin ||
+    r.butchery ||
+    r.customButchery ||
+    r.expiry ||
+    r.remarks ||
+    r.action ||
+    r.customAction ||
+    (r.images?.length || 0) > 0 ||
+    r.quantity !== ""
+  );
 }
 
 /* ===== Helpers: Images API ===== */
@@ -107,11 +129,6 @@ async function tryFetchJSON(url) {
   return res.json();
 }
 
-/**
- * Try to find existing returns report for same reportDate.
- * Works if server supports GET /api/reports?type=returns (common in your project style).
- * Returns existing report id or null.
- */
 async function findExistingReturnsReportId(reportDate) {
   const candidates = [
     `${API_BASE}/api/reports?type=returns`,
@@ -121,8 +138,6 @@ async function findExistingReturnsReportId(reportDate) {
   for (const url of candidates) {
     try {
       const j = await tryFetchJSON(url);
-
-      // server may return array or {items:[]} or {reports:[]}
       const list = Array.isArray(j)
         ? j
         : Array.isArray(j?.items)
@@ -150,17 +165,11 @@ async function findExistingReturnsReportId(reportDate) {
   return null;
 }
 
-/**
- * Create or upsert:
- * - If existingId provided, include it so server can upsert/update.
- * - If server ignores id, it still creates new; but we already tried to prevent duplicates.
- */
 async function sendOneToServer({ reportDate, items, existingId }) {
   const body = {
     reporter: "anonymous",
     type: "returns",
     payload: { reportDate, items },
-    // extra hints for servers that support upsert
     id: existingId || undefined,
     upsert: true,
     meta: {
@@ -376,6 +385,58 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
   );
 }
 
+/* ===== Confirm Delete Modal ===== */
+function ConfirmDeleteModal({ show, rowNum, onConfirm, onCancel }) {
+  if (!show) return null;
+  return (
+    <div style={{ ...galleryBack, zIndex: 3000 }}>
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 16,
+          padding: "2rem 2.5rem",
+          minWidth: 300,
+          maxWidth: 400,
+          textAlign: "center",
+          boxShadow: "0 8px 32px rgba(0,0,0,.2)",
+          fontFamily: "Cairo, sans-serif",
+        }}
+      >
+        <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+        <div style={{ fontWeight: 900, fontSize: "1.1em", color: "#0f172a", marginBottom: 8 }}>
+          حذف الصف {rowNum}؟ / Delete row {rowNum}?
+        </div>
+        <div style={{ color: "#64748b", fontSize: 14, marginBottom: 20 }}>
+          هذا الصف يحتوي على بيانات. هل أنت متأكد من الحذف؟
+          <br />This row has data. Are you sure?
+        </div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <button
+            onClick={onCancel}
+            style={{ ...btnGhost, padding: "10px 24px" }}
+          >
+            إلغاء / Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              background: "#ef4444",
+              color: "#fff",
+              border: "none",
+              borderRadius: 12,
+              fontWeight: 900,
+              cursor: "pointer",
+              padding: "10px 24px",
+            }}
+          >
+            حذف / Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ===== Items Catalog Modal (Add new item code) ===== */
 function AddItemModal({ open, onClose, onAdd, error }) {
   const [code, setCode] = useState("");
@@ -463,7 +524,6 @@ export default function Returns() {
   const [compact, setCompact] = useState(true);
 
   /* ===== Data ===== */
-  const [reportDate, setReportDate] = useState(getToday());
   const makeEmptyRow = () => ({
     itemCode: "",
     productName: "",
@@ -480,12 +540,62 @@ export default function Returns() {
     images: [],
   });
 
-  const [rows, setRows] = useState([makeEmptyRow()]);
+  // ✅ Restore draft date from localStorage (fallback to today)
+  const [reportDate, setReportDate] = useState(() => {
+    try {
+      return localStorage.getItem(DRAFT_DATE_KEY) || getToday();
+    } catch {
+      return getToday();
+    }
+  });
+
+  // ✅ Restore draft rows from localStorage
+  const [rows, setRows] = useState(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch {
+      // ignore
+    }
+    return [makeEmptyRow()];
+  });
+
   const [saveMsg, setSaveMsg] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // ✅ Track whether there are unsaved changes
+  const [isDirty, setIsDirty] = useState(false);
+  const savedRowsRef = useRef(null); // snapshot of last-saved rows
+
+  // ✅ Auto-save draft to localStorage on every rows/date change
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(rows));
+      localStorage.setItem(DRAFT_DATE_KEY, reportDate);
+    } catch {
+      // ignore
+    }
+    // Mark dirty if rows differ from last saved snapshot
+    if (savedRowsRef.current !== null) {
+      setIsDirty(JSON.stringify(rows) !== JSON.stringify(savedRowsRef.current));
+    }
+  }, [rows, reportDate]);
+
+  // ✅ Warn before leaving page if unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
   /* ===== تحميل الأصناف من /public/data/items.json ===== */
-  const [itemsAll, setItemsAll] = useState([]); // [{item_code, description}]
+  const [itemsAll, setItemsAll] = useState([]);
   const [itemsLoadError, setItemsLoadError] = useState("");
 
   useEffect(() => {
@@ -523,7 +633,7 @@ export default function Returns() {
     tryLoad();
   }, []);
 
-  /* ===== Custom Items (Add new code) ===== */
+  /* ===== Custom Items ===== */
   const CUSTOM_ITEMS_KEY = "returns_custom_items_v1";
   const [customItems, setCustomItems] = useState([]);
   const [addItemOpen, setAddItemOpen] = useState(false);
@@ -555,7 +665,6 @@ export default function Returns() {
       .replace(/[-_()\/\\]/g, "");
 
   const allItems = useMemo(() => {
-    // Merge itemsAll + customItems unique by item_code normalized
     const map = new Map();
     const push = (it) => {
       const code = String(it?.item_code ?? it?.itemCode ?? "").trim();
@@ -571,8 +680,6 @@ export default function Returns() {
   }, [itemsAll, customItems]);
 
   async function trySaveCustomItemToServer(item) {
-    // Optional: if you have an endpoint, this will persist server-side.
-    // If not available, it will silently fail and localStorage is still used.
     const endpoints = [`${API_BASE}/api/items`, `${API_BASE}/api/catalog/items`];
     for (const url of endpoints) {
       try {
@@ -607,14 +714,12 @@ export default function Returns() {
     setSaveMsg("✅ Item added to catalog.");
     setTimeout(() => setSaveMsg(""), 1800);
 
-    // Try server persist (optional)
     try {
       await trySaveCustomItemToServer(newItem);
     } catch {
       // ignore
     }
 
-    // If user already typed this code in a row, auto-fill its name
     setRows((prev) =>
       prev.map((r) => {
         if (normalize(r.itemCode) === key && !String(r.productName || "").trim()) {
@@ -626,9 +731,12 @@ export default function Returns() {
   };
 
   /* ===== البحث المحلي + التطبيع ===== */
-  const [itemHints, setItemHints] = useState({}); // { idx: [...] }
-  const [hintSel, setHintSel] = useState({}); // { idx: selectedIndex }
-  const [activeCell, setActiveCell] = useState({ row: null, field: null }); // أي خلية نشطة
+  const [itemHints, setItemHints] = useState({});
+  const [hintSel, setHintSel] = useState({});
+  const [activeCell, setActiveCell] = useState({ row: null, field: null });
+
+  // ✅ Debounce ref for search
+  const searchTimers = useRef({});
 
   const localSearch = (q) => {
     const s = normalize(q);
@@ -642,11 +750,15 @@ export default function Returns() {
       .slice(0, 20);
   };
 
-  const showHintsFor = (idx, q) => {
-    const results = localSearch(q);
-    setItemHints((h) => ({ ...h, [idx]: results }));
-    setHintSel((h) => ({ ...h, [idx]: results.length ? 0 : -1 }));
-  };
+  // ✅ Debounced hint search (150ms)
+  const showHintsFor = useCallback((idx, q) => {
+    clearTimeout(searchTimers.current[idx]);
+    searchTimers.current[idx] = setTimeout(() => {
+      const results = localSearch(q);
+      setItemHints((h) => ({ ...h, [idx]: results }));
+      setHintSel((h) => ({ ...h, [idx]: results.length ? 0 : -1 }));
+    }, 150);
+  }, [allItems]); // eslint-disable-line
 
   const tryExactFill = (idx, field, value) => {
     const s = normalize(value);
@@ -658,11 +770,7 @@ export default function Returns() {
         setRows((prev) =>
           prev.map((r, i) =>
             i === idx
-              ? {
-                  ...r,
-                  itemCode: String(value ?? ""), // keep as typed
-                  productName: hit.description,
-                }
+              ? { ...r, itemCode: String(value ?? ""), productName: hit.description }
               : r
           )
         );
@@ -675,11 +783,7 @@ export default function Returns() {
         setRows((prev) =>
           prev.map((r, i) =>
             i === idx
-              ? {
-                  ...r,
-                  productName: String(value ?? ""),
-                  itemCode: hit.item_code,
-                }
+              ? { ...r, productName: String(value ?? ""), itemCode: hit.item_code }
               : r
           )
         );
@@ -699,35 +803,47 @@ export default function Returns() {
     );
     setItemHints((h) => ({ ...h, [idx]: [] }));
     setHintSel((h) => ({ ...h, [idx]: -1 }));
-    setActiveCell({ row: null, field: null }); // إغلاق القائمة
+    setActiveCell({ row: null, field: null });
   };
 
   const addRow = () => setRows((prev) => [...prev, makeEmptyRow()]);
-  const removeRow = (index) => setRows((prev) => prev.filter((_, idx) => idx !== index));
+
+  /* ===== ✅ Confirm Delete Modal ===== */
+  const [confirmDelete, setConfirmDelete] = useState({ show: false, idx: -1 });
+
+  const requestRemoveRow = (index) => {
+    const row = rows[index];
+    if (rowHasData(row)) {
+      // Show confirm modal
+      setConfirmDelete({ show: true, idx: index });
+    } else {
+      // Empty row — delete immediately
+      setRows((prev) => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const confirmRemoveRow = () => {
+    const { idx } = confirmDelete;
+    setConfirmDelete({ show: false, idx: -1 });
+    setRows((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const cancelRemoveRow = () => setConfirmDelete({ show: false, idx: -1 });
 
   /* ===== Validation ===== */
-  const [rowErrors, setRowErrors] = useState({}); // { idx: {field:true} }
+  const [rowErrors, setRowErrors] = useState({});
 
   const validateBeforeSave = (preparedRows) => {
-    // Validate rows that look "in use"
     const errors = {};
-    const used = preparedRows.map((r, idx) => ({ r, idx })).filter(({ r }) => {
-      const hasAnything =
-        (r.itemCode || r.productName || r.origin || r.butchery || r.customButchery || r.expiry || r.remarks || r.action || r.customAction || (r.images?.length || 0) > 0 || r.quantity !== "");
-      return hasAnything;
-    });
+    const used = preparedRows.map((r, idx) => ({ r, idx })).filter(({ r }) => rowHasData(r));
 
     used.forEach(({ r, idx }) => {
       const e = {};
-
       const hasKey = !!(r.itemCode || r.productName);
-      if (!hasKey) e.itemCode = true; // mark code cell as missing
-
-      // required for a valid return row (clear and practical):
+      if (!hasKey) e.itemCode = true;
       if (!String(r.butchery || "").trim()) e.butchery = true;
       if (!(Number.isFinite(Number(r.quantity)) && Number(r.quantity) > 0)) e.quantity = true;
       if (!String(r.action || "").trim()) e.action = true;
-
       if (Object.keys(e).length) errors[idx] = e;
     });
 
@@ -735,7 +851,6 @@ export default function Returns() {
   };
 
   const handleChange = (idx, field, value) => {
-    // clear error when editing
     setRowErrors((prev) => {
       if (!prev[idx]) return prev;
       const next = { ...prev };
@@ -749,11 +864,14 @@ export default function Returns() {
       const updated = [...prev];
       const current = { ...updated[idx] };
 
-      // keep itemCode as TEXT (avoid showing 0 / losing leading zeros)
       if (field === "itemCode") {
         current.itemCode = String(value ?? "");
-        // show hints + exact fill
         updated[idx] = current;
+
+        // ✅ Auto-add row when editing the last row
+        if (idx === updated.length - 1 && String(value ?? "").trim()) {
+          return [...updated, makeEmptyRow()];
+        }
         return updated;
       }
 
@@ -764,12 +882,17 @@ export default function Returns() {
       if (field === "qtyType" && value !== "أخرى / Other") current.customQtyType = "";
 
       updated[idx] = current;
+
+      // ✅ Auto-add row when editing a non-code field in the last row
+      if (idx === updated.length - 1 && rowHasData(current)) {
+        return [...updated, makeEmptyRow()];
+      }
+
       return updated;
     });
 
     if (field === "itemCode") {
       showHintsFor(idx, value);
-      // IMPORTANT: auto fill when exact match (no mouse needed)
       tryExactFill(idx, "itemCode", value);
     }
     if (field === "productName") {
@@ -824,11 +947,29 @@ export default function Returns() {
     }
   };
 
+  /* ===== ✅ Summary: row count + total quantities ===== */
+  const summary = useMemo(() => {
+    const filledRows = rows.filter(rowHasData);
+    let totalKG = 0;
+    let totalPCS = 0;
+    let totalOther = 0;
+
+    filledRows.forEach((r) => {
+      const qty = Number(r.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) return;
+      const type = r.qtyType === "أخرى / Other" ? (r.customQtyType || "Other") : r.qtyType;
+      if (type === "KG") totalKG += qty;
+      else if (type === "PCS") totalPCS += qty;
+      else totalOther += qty;
+    });
+
+    return { filledRows: filledRows.length, totalKG, totalPCS, totalOther };
+  }, [rows]);
+
   /* ===== الحفظ ===== */
   const handleSave = async () => {
     if (saving) return;
 
-    // 1) تجهيز القيم
     const prepared = rows.map((r) => {
       const qNum = Number(r.quantity);
       return {
@@ -849,21 +990,17 @@ export default function Returns() {
       };
     });
 
-    // 2) Validation واضح
     const errors = validateBeforeSave(prepared);
     if (Object.keys(errors).length) {
       setRowErrors(errors);
-
       const badRows = Object.keys(errors)
         .map((k) => Number(k) + 1)
         .sort((a, b) => a - b);
-
       setSaveMsg(`❌ Missing required fields in rows: ${badRows.join(", ")} (Code/Branch/Qty/Action).`);
       setTimeout(() => setSaveMsg(""), 4500);
       return;
     }
 
-    // 3) فلترة الصفوف للحفظ (مثل قبل ولكن بعد validation)
     const filtered = prepared.filter((r) => {
       const hasKey = !!(r.itemCode || r.productName);
       const hasMeaningful =
@@ -889,13 +1026,23 @@ export default function Returns() {
       setSaving(true);
       setSaveMsg("⏳ جاري الحفظ على السيرفر… / Saving to server…");
 
-      // 4) منع تكرار التقرير لنفس التاريخ: find existing id then upsert
       const existingId = await findExistingReturnsReportId(reportDate);
       if (existingId) {
         setSaveMsg("⏳ يوجد تقرير بنفس التاريخ — سيتم تحديثه (Update) بدل إنشاء جديد…");
       }
 
       const res = await sendOneToServer({ reportDate, items: filtered, existingId });
+
+      // ✅ Mark as saved → clear dirty flag
+      savedRowsRef.current = JSON.parse(JSON.stringify(rows));
+      setIsDirty(false);
+
+      // ✅ Clear draft from localStorage after successful server save
+      try {
+        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(DRAFT_DATE_KEY);
+      } catch { /* ignore */ }
+
       setSaveMsg(`✅ تم الحفظ بنجاح. رقم المرجع: ${res?.id || res?._id || existingId || "—"}`);
     } catch (err) {
       setSaveMsg("❌ فشل الحفظ على السيرفر. حاول مجددًا. / Save failed. Please try again.");
@@ -956,6 +1103,25 @@ export default function Returns() {
         🛒 سجل المرتجعات (Returns Register)
       </h2>
 
+      {/* ✅ Unsaved changes banner */}
+      {isDirty && (
+        <div
+          style={{
+            background: "#fef9c3",
+            border: "1.5px solid #fde047",
+            borderRadius: 10,
+            padding: "8px 16px",
+            marginBottom: 12,
+            textAlign: "center",
+            fontWeight: 800,
+            color: "#854d0e",
+            fontSize: 14,
+          }}
+        >
+          ⚠️ يوجد تغييرات غير محفوظة — المسودة محفوظة محلياً تلقائياً / Unsaved changes — draft auto-saved locally
+        </div>
+      )}
+
       {/* حالة تحميل الأصناف + زر إضافة صنف */}
       <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <span
@@ -1009,9 +1175,7 @@ export default function Returns() {
             flexWrap: "wrap",
           }}
         >
-          <span role="img" aria-label="calendar" style={{ fontSize: 22 }}>
-            📅
-          </span>
+          <span role="img" aria-label="calendar" style={{ fontSize: 22 }}>📅</span>
           تاريخ إعداد التقرير / Report Date:
           <input
             type="date"
@@ -1084,7 +1248,7 @@ export default function Returns() {
         )}
       </div>
 
-      {/* جدول (تقليل العرض الأفقي) */}
+      {/* جدول */}
       <div style={{ overflowX: "auto" }}>
         <table
           style={{
@@ -1116,8 +1280,18 @@ export default function Returns() {
           <tbody>
             {rows.map((row, idx) => {
               const err = rowErrors[idx] || {};
+              const hasData = rowHasData(row);
               return (
-                <tr key={idx} style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}>
+                <tr
+                  key={idx}
+                  style={{
+                    background: Object.keys(err).length
+                      ? "#fff1f2"                          // ✅ red tint for error rows
+                      : idx % 2
+                      ? "#fcf3ff"
+                      : "#fff",
+                  }}
+                >
                   <td style={td}>{idx + 1}</td>
 
                   {/* ITEM CODE */}
@@ -1144,22 +1318,15 @@ export default function Returns() {
                         const list = itemHints[idx] || [];
                         if (e.key === "Enter") {
                           e.preventDefault();
-                          // if exact match, already auto-filled, else pick highlighted hint
                           if (list.length) pickItem(idx, list[hintSel[idx] ?? 0]);
                         }
                         if (e.key === "ArrowDown" && list.length) {
                           e.preventDefault();
-                          setHintSel((h) => ({
-                            ...h,
-                            [idx]: Math.min((h[idx] ?? 0) + 1, list.length - 1),
-                          }));
+                          setHintSel((h) => ({ ...h, [idx]: Math.min((h[idx] ?? 0) + 1, list.length - 1) }));
                         }
                         if (e.key === "ArrowUp" && list.length) {
                           e.preventDefault();
-                          setHintSel((h) => ({
-                            ...h,
-                            [idx]: Math.max((h[idx] ?? 0) - 1, 0),
-                          }));
+                          setHintSel((h) => ({ ...h, [idx]: Math.max((h[idx] ?? 0) - 1, 0) }));
                         }
                       }}
                     />
@@ -1183,10 +1350,9 @@ export default function Returns() {
                       </div>
                     ) : null}
 
-                    {/* helper small text if code not found */}
                     {row.itemCode && !allItems.some((it) => normalize(it.item_code) === normalize(row.itemCode)) && (
                       <div style={{ marginTop: 6, fontSize: 11, color: "#b45309", fontWeight: 800 }}>
-                        Code not found — you can add it via “Add item”.
+                        Code not found — you can add it via "Add item".
                       </div>
                     )}
                   </td>
@@ -1217,17 +1383,11 @@ export default function Returns() {
                         }
                         if (e.key === "ArrowDown" && list.length) {
                           e.preventDefault();
-                          setHintSel((h) => ({
-                            ...h,
-                            [idx]: Math.min((h[idx] ?? 0) + 1, list.length - 1),
-                          }));
+                          setHintSel((h) => ({ ...h, [idx]: Math.min((h[idx] ?? 0) + 1, list.length - 1) }));
                         }
                         if (e.key === "ArrowUp" && list.length) {
                           e.preventDefault();
-                          setHintSel((h) => ({
-                            ...h,
-                            [idx]: Math.max((h[idx] ?? 0) - 1, 0),
-                          }));
+                          setHintSel((h) => ({ ...h, [idx]: Math.max((h[idx] ?? 0) - 1, 0) }));
                         }
                       }}
                     />
@@ -1265,11 +1425,9 @@ export default function Returns() {
                   {/* BUTCHERY */}
                   <td style={td}>
                     <select style={selectStyle(!!err.butchery)} value={row.butchery || ""} onChange={(e) => handleChange(idx, "butchery", e.target.value)}>
-                      <option value="">{`Select branch`}</option>
+                      <option value="">Select branch</option>
                       {BRANCHES.map((b) => (
-                        <option key={b} value={b}>
-                          {b}
-                        </option>
+                        <option key={b} value={b}>{b}</option>
                       ))}
                     </select>
                     {row.butchery === "فرع آخر... / Other branch" && (
@@ -1298,9 +1456,7 @@ export default function Returns() {
                   <td style={td}>
                     <select style={selectStyle(false)} value={row.qtyType} onChange={(e) => handleChange(idx, "qtyType", e.target.value)}>
                       {QTY_TYPES.map((q) => (
-                        <option key={q} value={q}>
-                          {q}
-                        </option>
+                        <option key={q} value={q}>{q}</option>
                       ))}
                     </select>
                     {row.qtyType === "أخرى / Other" && (
@@ -1336,11 +1492,9 @@ export default function Returns() {
                   {/* ACTION */}
                   <td style={td}>
                     <select style={selectStyle(!!err.action)} value={row.action} onChange={(e) => handleChange(idx, "action", e.target.value)}>
-                      <option value="">{`Select action`}</option>
+                      <option value="">Select action</option>
                       {ACTIONS.map((a) => (
-                        <option key={a} value={a}>
-                          {a}
-                        </option>
+                        <option key={a} value={a}>{a}</option>
                       ))}
                     </select>
                     {row.action === "Other..." && (
@@ -1360,11 +1514,11 @@ export default function Returns() {
                     </button>
                   </td>
 
-                  {/* حذف صف */}
+                  {/* ✅ حذف صف مع تأكيد */}
                   <td style={td}>
                     {rows.length > 1 && (
                       <button
-                        onClick={() => removeRow(idx)}
+                        onClick={() => requestRemoveRow(idx)}
                         style={{
                           background: "#c0392b",
                           color: "#fff",
@@ -1386,6 +1540,37 @@ export default function Returns() {
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* ✅ Summary bar */}
+      <div
+        style={{
+          marginTop: 16,
+          display: "flex",
+          justifyContent: "center",
+          gap: 16,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <div style={summaryChip("#512e5f", "#f5eeff")}>
+          📝 Filled rows: <strong>{summary.filledRows}</strong> / {rows.length}
+        </div>
+        {summary.totalKG > 0 && (
+          <div style={summaryChip("#155e75", "#ecfeff")}>
+            ⚖️ Total KG: <strong>{summary.totalKG.toFixed(2)}</strong>
+          </div>
+        )}
+        {summary.totalPCS > 0 && (
+          <div style={summaryChip("#065f46", "#ecfdf5")}>
+            📦 Total PCS: <strong>{summary.totalPCS}</strong>
+          </div>
+        )}
+        {summary.totalOther > 0 && (
+          <div style={summaryChip("#7c2d12", "#fff7ed")}>
+            🔢 Other: <strong>{summary.totalOther.toFixed(2)}</strong>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: "1.3rem", textAlign: "center" }}>
@@ -1420,6 +1605,14 @@ export default function Returns() {
         onClose={() => setAddItemOpen(false)}
         onAdd={handleAddNewItem}
         error={addItemError}
+      />
+
+      {/* ✅ Confirm Delete Modal */}
+      <ConfirmDeleteModal
+        show={confirmDelete.show}
+        rowNum={confirmDelete.idx + 1}
+        onConfirm={confirmRemoveRow}
+        onCancel={cancelRemoveRow}
       />
     </div>
   );
@@ -1482,7 +1675,6 @@ const hintBox = {
 
 const hintRow = { padding: "8px 10px", cursor: "pointer" };
 
-/* ====== Gallery modal styles ====== */
 const galleryBack = {
   position: "fixed",
   inset: 0,
@@ -1554,3 +1746,13 @@ const thumbRemove = {
   fontWeight: 800,
   cursor: "pointer",
 };
+
+const summaryChip = (color, bg) => ({
+  background: bg,
+  color,
+  border: `1.5px solid ${color}33`,
+  borderRadius: 10,
+  padding: "6px 14px",
+  fontWeight: 700,
+  fontSize: 14,
+});

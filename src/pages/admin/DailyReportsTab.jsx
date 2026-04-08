@@ -259,7 +259,10 @@ export default function DailyReportsTab({
 
   const submit = (e) => {
     e?.preventDefault(); if (!pendingBranch) return;
-    const expected = pendingBranch==="PRODUCTION" ? "PRD123" : `${pendingBranch}123`;
+    const expected =
+      pendingBranch === "PRODUCTION"      ? "PRD123"    :
+      pendingBranch === "Al Warqa Kitchen" ? "POS 19123" :
+      `${pendingBranch}123`;
     if (pwd===expected) { setShowPwd(false); openBranchAfterAuth(pendingBranch); }
     else setPwdError("كلمة المرور غير صحيحة");
   };
