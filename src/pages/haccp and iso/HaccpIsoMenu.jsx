@@ -30,12 +30,19 @@ const sections = [
     route: "/haccp-iso/dm-inspection",
   },
 
-  // ✅ Supplier Evaluation -> Parent Hub Page
   {
     id: "supplier-evaluation",
     title: "Supplier Evaluation",
     subtitle: "Approved suppliers, evaluation scores, renewals & performance tracking",
-    route: "/haccp-iso/supplier-evaluation", // ✅ هنا التعديل: يفتح الصفحة الأم
+    route: "/haccp-iso/supplier-evaluation",
+  },
+
+  // ✅ SOP & sSOP
+  {
+    id: "sop-ssop",
+    title: "SOP & sSOP",
+    subtitle: "Standard Operating Procedures & Sanitation SOPs — documents, versions & records",
+    route: "/haccp-iso/sop-ssop",
   },
 ];
 

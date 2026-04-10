@@ -231,7 +231,7 @@ const MunicipalityInspectionView = lazy(() =>
   import("./pages/haccp and iso/MunicipalityInspectionView")
 );
 
-// ✅🆕 Supplier Approval / Evaluation (PDF Literal Form) (إذا لسا تستخدمه خليه)
+// ✅🆕 Supplier Approval / Evaluation (PDF Literal Form)
 const SupplierApproval = lazy(() =>
   import("./pages/haccp and iso/Supplier Approval/SupplierApproval")
 );
@@ -267,6 +267,11 @@ const TrainingSessionsList = lazy(() =>
 
 // ✅🆕 صفحة المتدرّب (رابط/QR)
 const TrainingQuizLink = lazy(() => import("./pages/training/TrainingQuizLink"));
+
+// ✅ 🆕 SOP & sSOP Page
+const SopSsopPage = lazy(() =>
+  import("./pages/haccp and iso/SOP/SopSsopPage")
+);
 
 /** حماية المسارات الخاصة */
 function ProtectedRoute({ children }) {
@@ -955,7 +960,7 @@ export default function App() {
           }
         />
 
-        {/* ✅✅✅ Supplier Evaluation: RESULTS (SUBMITTED) ✅✅✅ */}
+        {/* ✅✅✅ Supplier Evaluation: RESULTS (SUBMITTED) */}
         <Route
           path="/haccp-iso/supplier-evaluation/results"
           element={
@@ -989,6 +994,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <SupplierApproval />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ 🆕 SOP & sSOP */}
+        <Route
+          path="/haccp-iso/sop-ssop"
+          element={
+            <ProtectedRoute>
+              <SopSsopPage />
             </ProtectedRoute>
           }
         />
