@@ -1,15 +1,16 @@
 // src/utils/kpi.js
+import { safeGetJSON } from "./storage";
 
 // =====================
 // ----- التفتيش -----
 // =====================
 export function getInspectionReportCount() {
-  const arr = JSON.parse(localStorage.getItem("reports") || "[]");
+  const arr = safeGetJSON("reports", []);
   return arr.length;
 }
 
 export function getInspectionAvgPercentage() {
-  const arr = JSON.parse(localStorage.getItem("reports") || "[]");
+  const arr = safeGetJSON("reports", []);
   if (arr.length === 0) return 0;
   return (
     arr.reduce((sum, rep) => sum + (parseFloat(rep.percentage) || 0), 0) / arr.length
@@ -20,12 +21,12 @@ export function getInspectionAvgPercentage() {
 // ----- تقارير QCS اليومية -----
 // ===============================
 export function getQcsDailyReportCount() {
-  const arr = JSON.parse(localStorage.getItem("qcs_reports") || "[]");
+  const arr = safeGetJSON("qcs_reports", []);
   return arr.length;
 }
 
 export function getQcsCoolersAvgTemp() {
-  const arr = JSON.parse(localStorage.getItem("qcs_reports") || "[]");
+  const arr = safeGetJSON("qcs_reports", []);
   let temps = [];
   arr.forEach(report => {
     report.coolers?.forEach(cooler => {
@@ -41,19 +42,19 @@ export function getQcsCoolersAvgTemp() {
 // ----- تقارير الشحنات QCS (Shipments)
 // =====================================
 export function getQcsShipmentsCount() {
-  const arr = JSON.parse(localStorage.getItem("qcs_raw_material_reports") || "[]");
+  const arr = safeGetJSON("qcs_raw_material_reports", []);
   return arr.length;
 }
 
 // عدد الشحنات حسب الحالة
 export function getQcsShipmentsByStatus(status) {
-  const arr = JSON.parse(localStorage.getItem("qcs_raw_material_reports") || "[]");
+  const arr = safeGetJSON("qcs_raw_material_reports", []);
   return arr.filter(r => r.status === status).length;
 }
 
 // جلب أنواع الشحنات المختلفة مع عدد كل نوع
 export function getQcsShipmentTypesCounts() {
-  const arr = JSON.parse(localStorage.getItem("qcs_raw_material_reports") || "[]");
+  const arr = safeGetJSON("qcs_raw_material_reports", []);
   return arr.reduce((acc, r) => {
     const type = r.shipmentType || "غير محدد";
     acc[type] = (acc[type] || 0) + 1;
@@ -67,19 +68,19 @@ export function getQcsShipmentTypesCounts() {
 
 // عدد تقارير المرتجعات
 export function getReturnsReportCount() {
-  const arr = JSON.parse(localStorage.getItem("returns_reports") || "[]");
+  const arr = safeGetJSON("returns_reports", []);
   return arr.length;
 }
 
 // إجمالي عدد العناصر في جميع تقارير المرتجعات
 export function getReturnsItemsCount() {
-  const arr = JSON.parse(localStorage.getItem("returns_reports") || "[]");
+  const arr = safeGetJSON("returns_reports", []);
   return arr.reduce((total, rep) => total + (rep.items?.length || 0), 0);
 }
 
 // إجمالي الكمية لجميع العناصر في المرتجعات
 export function getReturnsTotalQty() {
-  const arr = JSON.parse(localStorage.getItem("returns_reports") || "[]");
+  const arr = safeGetJSON("returns_reports", []);
   let totalQty = 0;
   arr.forEach(rep => {
     rep.items?.forEach(item => {
@@ -91,7 +92,7 @@ export function getReturnsTotalQty() {
 
 // أكثر الفروع تكراراً في المرتجعات
 export function getTopReturnBranches(topN = 3) {
-  const arr = JSON.parse(localStorage.getItem("returns_reports") || "[]");
+  const arr = safeGetJSON("returns_reports", []);
   const byBranch = {};
   arr.forEach(rep => {
     rep.items?.forEach(item => {
@@ -104,7 +105,7 @@ export function getTopReturnBranches(topN = 3) {
 
 // أكثر الإجراءات تكراراً في المرتجعات
 export function getTopReturnActions(topN = 3) {
-  const arr = JSON.parse(localStorage.getItem("returns_reports") || "[]");
+  const arr = safeGetJSON("returns_reports", []);
   const byAction = {};
   arr.forEach(rep => {
     rep.items?.forEach(item => {

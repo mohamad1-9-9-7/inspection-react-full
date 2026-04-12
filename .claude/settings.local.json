@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls D:/inspection-react-full/.env*)",
+      "Read(//d/inspection-server/**)"
+    ]
+  }
+}

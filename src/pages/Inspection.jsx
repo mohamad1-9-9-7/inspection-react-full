@@ -114,16 +114,24 @@ export default function Inspection() {
     setUploadingCell(cellKey);
 
     const uploadedUrls = [];
+    let failedCount = 0;
     try {
       for (const f of slice) {
-        // eslint-disable-next-line no-await-in-loop
-        const url = await uploadImageToCloudinary(f);
-        uploadedUrls.push(url);
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const url = await uploadImageToCloudinary(f);
+          uploadedUrls.push(url);
+        } catch (e) {
+          console.error("Image upload failed for file:", f.name, e);
+          failedCount++;
+        }
       }
-      updateRow(idx, { [field]: [...current, ...uploadedUrls] });
-    } catch (e) {
-      console.error("Image upload failed:", e);
-      alert("فشل رفع الصورة: " + (e?.message || ""));
+      if (uploadedUrls.length > 0) {
+        updateRow(idx, { [field]: [...current, ...uploadedUrls] });
+      }
+      if (failedCount > 0) {
+        alert(`فشل رفع ${failedCount} صورة. تم رفع ${uploadedUrls.length} بنجاح.`);
+      }
     } finally {
       setUploadingCell(null);
     }
@@ -136,6 +144,7 @@ export default function Inspection() {
 
   /* ===== Save to server ===== */
   const confirmSave = async () => {
+    if (isSaving) return; // منع double-submit
     if (!branch || !date) {
       alert("Please select Branch and Date.");
       return;

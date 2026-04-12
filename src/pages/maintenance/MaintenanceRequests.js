@@ -378,7 +378,7 @@ const sx = {
 
 /* شبكة + تحسينات + شبكة صور */
 const style = document.createElement("style");
-style.innerHTML = `
+style.textContent = `
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
 
   .mr-input, .mr-textarea { outline: none; }

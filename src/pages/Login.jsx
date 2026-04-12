@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './Login.css';
 import logo from '../assets/almawashi-logo.jpg';
+import API_BASE from '../config/api';
 
 // Roles (English only — keep routes/logic unchanged)
 const roles = [
@@ -52,7 +53,7 @@ const roles = [
   },
 ];
 
-function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
+function PasswordModal({ show, roleLabel, onSubmit, onClose, error, loading }) {
   const [password, setPassword] = useState("");
 
   React.useEffect(() => {
@@ -115,9 +116,12 @@ function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
           />
           <button
             type="submit"
+            disabled={loading}
             style={{
               width: "100%",
-              background: "linear-gradient(135deg, #7c3aed, #2563eb)",
+              background: loading
+                ? "#a5b4fc"
+                : "linear-gradient(135deg, #7c3aed, #2563eb)",
               color: "#fff",
               border: "none",
               padding: "12px 0",
@@ -125,11 +129,11 @@ function PasswordModal({ show, roleLabel, onSubmit, onClose, error }) {
               fontWeight: "bold",
               fontSize: "1.06rem",
               marginBottom: 8,
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
               boxShadow: "0 6px 18px rgba(124,58,237,0.35)"
             }}
           >
-            Sign in
+            {loading ? "Checking..." : "Sign in"}
           </button>
           {error && <div style={{ color: "#b91c1c", fontWeight: "bold", marginTop: 6 }}>{error}</div>}
         </form>
@@ -150,17 +154,9 @@ function Login() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
   const [modalError, setModalError] = useState("");
-
-  // 🔐 Passwords: default 9999 for all roles, returns = 0000, qcsView = 0000, iso = 802410
-  const PASSWORDS = {
-    returns: "0000",
-    qcsView: "0000",
-    iso: "802410",      // ✅ ISO 22000 & HACCP
-    default: "9999",
-  };
+  const [modalLoading, setModalLoading] = useState(false);
 
   const handleRoleClick = (role) => {
-    // ✅ KPI enters directly without password (if present as an external role)
     if (role.id === "kpi") {
       localStorage.setItem('currentUser', JSON.stringify({
         username: role.id,
@@ -174,11 +170,38 @@ function Login() {
     setModalError("");
   };
 
-  const handleModalSubmit = (password) => {
-    const expected =
-      (selectedRole && PASSWORDS[selectedRole.id]) || PASSWORDS.default;
+  const handleModalSubmit = async (password) => {
+    if (modalLoading) return;
+    setModalLoading(true);
+    setModalError("");
 
-    if (password === expected) {
+    // كلمات المرور المحلية — fallback دائم
+    const LOCAL_PASSWORDS = { returns:"0000", qcsView:"0000", iso:"802410", default:"9999" };
+    const localExpected = LOCAL_PASSWORDS[selectedRole.id] ?? LOCAL_PASSWORDS.default;
+    let success = password === localExpected;
+
+    // لو كلمة المرور المحلية صحيحة، جرب تتحقق من السيرفر أيضاً (اختياري)
+    // لو السيرفر ما رد أو فيه مشكلة — نكمل بالنتيجة المحلية
+    if (success) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        const res = await fetch(`${API_BASE}/api/auth/verify-role`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roleId: selectedRole.id, password }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        const data = await res.json().catch(() => ({}));
+        // لو السيرفر قال خطأ صريح → رفض (مش مجرد مشكلة اتصال)
+        if (res.ok && data.success === false) success = false;
+      } catch {
+        // السيرفر ما رد — نكمل بالنتيجة المحلية (success = true)
+      }
+    }
+
+    if (success) {
       setModalOpen(false);
       setErrorMsg("");
       localStorage.setItem('currentUser', JSON.stringify({
@@ -189,9 +212,12 @@ function Login() {
     } else {
       setModalError("❌ Wrong password!");
     }
+
+    setModalLoading(false);
   };
 
   const handleModalClose = () => {
+    if (modalLoading) return;
     setModalOpen(false);
     setModalError("");
     setSelectedRole(null);
@@ -587,6 +613,7 @@ function Login() {
         onSubmit={handleModalSubmit}
         onClose={handleModalClose}
         error={modalError}
+        loading={modalLoading}
       />
     </div>
   );

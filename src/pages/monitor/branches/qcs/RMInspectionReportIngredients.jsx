@@ -352,7 +352,16 @@ export default function RMInspectionReportIngredients() {
                     e.currentTarget.style.display = "none";
                     const parent = e.currentTarget.parentElement;
                     if (parent) {
-                      parent.innerHTML = `<div style="width:90px;height:90px;margin:0 auto;border:1px solid ${COLORS.lightLine};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;line-height:1.2;">AL MAWASHI<br/>Company Logo</div>`;
+                      const fallback = document.createElement("div");
+                      Object.assign(fallback.style, {
+                        width: "90px", height: "90px", margin: "0 auto",
+                        border: `1px solid ${COLORS.lightLine}`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontWeight: "800", fontSize: "12px", lineHeight: "1.2",
+                        textAlign: "center",
+                      });
+                      fallback.textContent = "AL MAWASHI Company Logo";
+                      parent.appendChild(fallback);
                     }
                   }}
                 />

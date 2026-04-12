@@ -28,7 +28,7 @@ export default function POS19Report() {
       notes,
     };
 
-    const existing = JSON.parse(localStorage.getItem("pos19_reports") || "[]");
+    let existing; try { existing = JSON.parse(localStorage.getItem("pos19_reports") || "[]"); } catch { existing = []; }
     const alreadyExists = existing.find((r) => r.date === today);
 
     if (alreadyExists) {

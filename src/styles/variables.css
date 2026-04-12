@@ -1,0 +1,99 @@
+/* ============================================================
+   Design System — المصدر الموحد لكل قيم التصميم
+   استخدم هذه المتغيرات في كل مكان بدل الأرقام المكتوبة يدوياً
+   ============================================================ */
+
+:root {
+
+  /* ── الألوان الأساسية ─────────────────────────── */
+  --color-primary:        #0ea5e9;   /* أزرق سماوي */
+  --color-primary-dark:   #0284c7;
+  --color-primary-light:  #38bdf8;
+
+  --color-purple:         #7c3aed;
+  --color-purple-dark:    #5b21b6;
+  --color-purple-light:   #a78bfa;
+
+  /* ── ألوان الحالات ───────────────────────────── */
+  --color-success:        #10b981;
+  --color-success-light:  #d1fae5;
+  --color-warning:        #f59e0b;
+  --color-warning-light:  #fef3c7;
+  --color-danger:         #ef4444;
+  --color-danger-light:   #fee2e2;
+  --color-info:           #3b82f6;
+  --color-info-light:     #dbeafe;
+
+  /* ── الخلفيات ────────────────────────────────── */
+  --bg-page:              #f0f2f5;
+  --bg-card:              #ffffff;
+  --bg-card-hover:        #f8fafc;
+  --bg-input:             #ffffff;
+  --bg-overlay:           rgba(17, 24, 39, 0.45);
+
+  /* ── الحدود ──────────────────────────────────── */
+  --border-color:         #e2e8f0;
+  --border-color-focus:   #0ea5e9;
+  --border-width:         1px;
+
+  /* ── النصوص ──────────────────────────────────── */
+  --text-primary:         #0f172a;
+  --text-secondary:       #475569;
+  --text-muted:           #94a3b8;
+  --text-inverse:         #ffffff;
+  --text-link:            #0ea5e9;
+
+  /* ── الخطوط ──────────────────────────────────── */
+  --font-arabic:          'Cairo', 'Tajawal', sans-serif;
+  --font-english:         'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono:            'IBM Plex Mono', monospace;
+
+  --font-size-xs:         11px;
+  --font-size-sm:         13px;
+  --font-size-base:       15px;
+  --font-size-md:         17px;
+  --font-size-lg:         20px;
+  --font-size-xl:         24px;
+  --font-size-2xl:        28px;
+
+  --font-weight-normal:   400;
+  --font-weight-medium:   600;
+  --font-weight-bold:     700;
+  --font-weight-black:    900;
+
+  /* ── المسافات ────────────────────────────────── */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+
+  /* ── الزوايا المدوّرة ─────────────────────────── */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   18px;
+  --radius-2xl:  24px;
+  --radius-full: 999px;
+
+  /* ── الظلال ──────────────────────────────────── */
+  --shadow-sm:   0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.10);
+  --shadow-lg:   0 8px 24px rgba(0, 0, 0, 0.14);
+  --shadow-xl:   0 16px 40px rgba(0, 0, 0, 0.18);
+  --shadow-focus: 0 0 0 3px rgba(14, 165, 233, 0.25);
+
+  /* ── الحركة ──────────────────────────────────── */
+  --transition-fast:   0.12s ease;
+  --transition-base:   0.20s ease;
+  --transition-slow:   0.35s ease;
+
+  /* ── الأبعاد ──────────────────────────────────── */
+  --navbar-height: 60px;
+  --sidebar-width: 240px;
+  --content-max-width: 1280px;
+}

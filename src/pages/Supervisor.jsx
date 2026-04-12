@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
+import { safeGetJSON } from "../utils/storage";
+import Button     from "../components/Button";
+import EmptyState from "../components/EmptyState";
 
 export default function Supervisor() {
-  const [reports, setReports] = useState([]);
-  const [branchOpen, setBranchOpen] = useState(null);
+  const [reports,        setReports]        = useState([]);
+  const [branchOpen,     setBranchOpen]     = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
-  const [actions, setActions] = useState({});
-  const [tempImages, setTempImages] = useState({});
-  const [language, setLanguage] = useState("ar"); // إضافة اللغة
+  const [actions,        setActions]        = useState({});
+  const [tempImages,     setTempImages]     = useState({});
+  const [language,       setLanguage]       = useState("ar");
+  const [savingKey,      setSavingKey]      = useState(null); // للزر loading
+
+  const t = (ar, en) => language === "ar" ? ar : en;
+  const isRtl = language === "ar";
 
   useEffect(() => {
-    const savedReports = JSON.parse(localStorage.getItem("reports") || "[]");
-    setReports(savedReports);
+    setReports(safeGetJSON("reports", []));
   }, []);
 
   useEffect(() => {
@@ -19,152 +25,110 @@ export default function Supervisor() {
       selectedReport.id ||
       selectedReport._id ||
       selectedReport.date + "_" + (selectedReport.branchName || "");
-    const stored = JSON.parse(localStorage.getItem("correctiveActions_" + reportId) || "{}");
-    setActions(stored);
+    setActions(safeGetJSON("correctiveActions_" + reportId, {}));
     setTempImages({});
   }, [selectedReport]);
 
-  // دالة الترجمة المختصرة
-  const t = (ar, en) => (language === "ar" ? ar : en);
-
-  // دالة تنسيق التاريخ حسب اللغة (AM/PM أو ص/م)
-  function formatDate(dateString, lang = "ar") {
+  function formatDate(dateString) {
     if (!dateString) return "-";
-    // إذا كان التاريخ محفوظ كنص جاهز، جرب تحويله إلى تاريخ صحيح
-    let dateObj;
-    // جرب تحويله لتاريخ
     try {
-      dateObj = new Date(dateString);
-      // إذا كان غير صالح، أعد النص نفسه
-      if (isNaN(dateObj.getTime())) return dateString;
-    } catch {
-      return dateString;
-    }
-    return dateObj.toLocaleString(lang === "ar" ? "ar-EG" : "en-US", {
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    });
+      const d = new Date(dateString);
+      if (isNaN(d.getTime())) return dateString;
+      return d.toLocaleString(isRtl ? "ar-EG" : "en-US", {
+        year: "numeric", month: "numeric", day: "numeric",
+        hour: "2-digit", minute: "2-digit", hour12: true,
+      });
+    } catch { return dateString; }
   }
 
-  // جلب كل الأسئلة المحفوظة (لو أردت دقة أكثر، استخدم نفس مصفوفة baseQuestions في نموذج التفتيش)
-  const allQuestions =
-    JSON.parse(localStorage.getItem("allQuestions") || "[]")
-    // الأسئلة الأساسية (لو وضعت لها نسخة بالإنكليزي)
-    .concat([
-      // (لو تريد إضافة كل baseQuestions هنا يمكنك، أو استخدمها من ملف مشترك)
-    ]);
-
-  // استخراج نص السؤال أو القسم حسب اللغة
-  function getQuestionText(qText, lang = "ar") {
+  const allQuestions = safeGetJSON("allQuestions", []);
+  function getQuestionText(qText) {
     const found = allQuestions.find(
-      (q) => q.textAr === qText || q.textEn === qText || q.text === qText
+      q => q.textAr === qText || q.textEn === qText || q.text === qText
     );
     if (!found) {
-      if (qText.includes("||")) {
-        return lang === "ar" ? qText.split("||")[0] : qText.split("||")[1];
-      }
+      if (qText.includes("||")) return isRtl ? qText.split("||")[0] : qText.split("||")[1];
       return qText;
     }
-    if (lang === "ar") return found.textAr || found.text || qText;
-    return found.textEn || found.text || qText;
+    return isRtl ? (found.textAr || found.text || qText) : (found.textEn || found.text || qText);
   }
 
-  // الفروع الفريدة
-  const branches = Array.from(
-    new Set(reports.map((r) => r.branchName || ""))
-  )
+  const branches = Array.from(new Set(reports.map(r => r.branchName || "")))
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b, "ar"));
 
-  // تقارير الفرع المفتوح
   const branchReports = branchOpen
-    ? reports
-        .filter((r) => r.branchName === branchOpen)
-        .sort((a, b) => new Date(b.date) - new Date(a.date))
+    ? reports.filter(r => r.branchName === branchOpen).sort((a, b) => new Date(b.date) - new Date(a.date))
     : [];
 
-  // دوال الإجراءات التصحيحية (كما في كودك)
-  const handleActionChange = (qText, val) => {
-    setActions((prev) => ({
-      ...prev,
-      [qText]: { ...prev[qText], action: val },
-    }));
-  };
-  const handleReplyChange = (qText, val) => {
-    setActions((prev) => ({
-      ...prev,
-      [qText]: { ...prev[qText], reply: val },
-    }));
-  };
+  const handleActionChange = (qText, val) =>
+    setActions(prev => ({ ...prev, [qText]: { ...prev[qText], action: val } }));
+
+  const handleReplyChange = (qText, val) =>
+    setActions(prev => ({ ...prev, [qText]: { ...prev[qText], reply: val } }));
+
   const handleActionImagesChange = (qText, files) => {
-    const readers = [];
     const imgs = [];
-    for (let i = 0; i < files.length; i++) {
-      readers[i] = new FileReader();
-      readers[i].onloadend = () => {
-        imgs.push(readers[i].result);
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        imgs.push(reader.result);
         if (imgs.length === files.length) {
-          setTempImages((prev) => ({
-            ...prev,
-            [qText]: [...(prev[qText] || []), ...imgs],
-          }));
+          setTempImages(prev => ({ ...prev, [qText]: [...(prev[qText] || []), ...imgs] }));
         }
       };
-      readers[i].readAsDataURL(files[i]);
-    }
+      reader.readAsDataURL(file);
+    });
   };
-  const handleRemoveActionImage = (qText, imgIdx) => {
-    setTempImages((prev) => ({
-      ...prev,
-      [qText]: prev[qText].filter((_, i) => i !== imgIdx),
-    }));
-  };
+
+  const handleRemoveActionImage = (qText, imgIdx) =>
+    setTempImages(prev => ({ ...prev, [qText]: prev[qText].filter((_, i) => i !== imgIdx) }));
+
   const handleSaveAction = (qText) => {
+    if (!selectedReport) return;
+    setSavingKey(qText);
     const reportId =
       selectedReport.id ||
       selectedReport._id ||
       selectedReport.date + "_" + (selectedReport.branchName || "");
-    const prevImgs = actions[qText]?.images || [];
-    const imgs = [...prevImgs, ...(tempImages[qText] || [])];
+    const imgs = [...(actions[qText]?.images || []), ...(tempImages[qText] || [])];
     const toSave = {
       ...actions,
-      [qText]: {
-        action: actions[qText]?.action || "",
-        reply: actions[qText]?.reply || "",
-        images: imgs,
-      },
+      [qText]: { action: actions[qText]?.action || "", reply: actions[qText]?.reply || "", images: imgs },
     };
-    localStorage.setItem("correctiveActions_" + reportId, JSON.stringify(toSave));
-    setActions(toSave);
-    setTempImages((prev) => ({ ...prev, [qText]: [] }));
-    alert(t("تم حفظ الإجراء التصحيحي", "Corrective action saved ✅"));
+    try {
+      localStorage.setItem("correctiveActions_" + reportId, JSON.stringify(toSave));
+      setActions(toSave);
+      setTempImages(prev => ({ ...prev, [qText]: [] }));
+    } catch (e) {
+      console.error("Failed to save:", e);
+    } finally {
+      setSavingKey(null);
+    }
   };
 
-  // حقول ثابتة
-  const label = (ar, en) => t(ar, en);
-
   return (
-    <div
-      style={{
-        padding: "2rem",
-        direction: language === "ar" ? "rtl" : "ltr",
-        fontFamily: language === "ar" ? "'Segoe UI', Cairo, sans-serif" : "Arial, sans-serif",
-        backgroundColor: "#f0f2f5",
-        minHeight: "100vh",
-      }}
-    >
-      <div style={{ marginBottom: "1rem", textAlign: language === "ar" ? "left" : "right" }}>
-        <label>
-          {t("اختر اللغة: ", "Select Language: ")}
+    <div style={{
+      padding: "var(--space-6)",
+      direction: isRtl ? "rtl" : "ltr",
+      fontFamily: isRtl ? "var(--font-arabic)" : "var(--font-english)",
+      background: "var(--bg-page)",
+      minHeight: "100vh",
+    }}>
+
+      {/* ── الهيدر ── */}
+      <div className="qms-card" style={{ marginBottom: "var(--space-5)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-3)" }}>
+        <h2 style={{ fontSize: "var(--font-size-xl)", fontWeight: "var(--font-weight-black)", color: "var(--text-primary)", margin: 0 }}>
+          👨‍🏫 {t("صفحة المشرف", "Supervisor Panel")}
+        </h2>
+
+        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", fontWeight: 600 }}>
+          {t("اللغة:", "Language:")}
           <select
             value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            style={{ padding: "4px 8px", fontSize: "1rem" }}
+            onChange={e => setLanguage(e.target.value)}
+            className="qms-input"
+            style={{ width: "auto", padding: "var(--space-1) var(--space-3)" }}
           >
             <option value="ar">العربية</option>
             <option value="en">English</option>
@@ -172,421 +136,277 @@ export default function Supervisor() {
         </label>
       </div>
 
-      <h2
-        style={{
-          marginBottom: "2rem",
-          color: "#2c3e50",
-          fontWeight: "700",
-          fontSize: "2rem",
-          textAlign: "center",
-          textShadow: "1px 1px 3px rgba(0,0,0,0.1)",
-        }}
-      >
-        {t("👨‍🏫 صفحة المشرف - تصفح تقارير الفروع", "👨‍🏫 Supervisor Reports - Branches")}
-      </h2>
-
+      {/* ── لا توجد تقارير ── */}
       {reports.length === 0 && (
-        <p
-          style={{
-            textAlign: "center",
-            fontSize: "1.1rem",
-            color: "#555",
-            marginTop: "3rem",
-          }}
-        >
-          {t("لا توجد تقارير متاحة حالياً", "No reports available yet.")}
-        </p>
+        <EmptyState
+          icon="📋"
+          message={t("لا توجد تقارير متاحة حالياً", "No reports available yet")}
+          sub={t("ستظهر التقارير هنا بعد حفظها من صفحة التفتيش", "Reports will appear here after being saved from the Inspection page")}
+        />
       )}
 
-      {/* الفروع */}
-      {!selectedReport && (
-        <div>
-          <h3 style={{ color: "#2980b9", marginBottom: "1.5rem" }}>
-            {t("🗂️ قائمة الفروع", "🗂️ Branches List")}
+      {/* ── قائمة الفروع ── */}
+      {reports.length > 0 && !selectedReport && !branchOpen && (
+        <div className="qms-card">
+          <h3 style={{ fontSize: "var(--font-size-md)", fontWeight: "var(--font-weight-bold)", color: "var(--color-primary)", marginBottom: "var(--space-5)" }}>
+            🗂️ {t("قائمة الفروع", "Branches List")}
           </h3>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-            {branches.length === 0 && (
-              <div style={{ color: "#aaa" }}>{t("لا توجد فروع", "No branches")}</div>
-            )}
-            {branches.map((branch) => (
-              <button
-                key={branch}
-                style={{
-                  minWidth: 150,
-                  background: branchOpen === branch ? "#2980b9" : "#fff",
-                  color: branchOpen === branch ? "#fff" : "#2980b9",
-                  border: "2px solid #2980b9",
-                  borderRadius: "10px",
-                  padding: "18px 32px",
-                  fontSize: "1.2rem",
-                  fontWeight: "bold",
-                  boxShadow: branchOpen === branch ? "0 2px 10px #2980b97a" : "none",
-                  cursor: "pointer",
-                  transition: "background 0.15s, color 0.15s, box-shadow 0.3s",
-                }}
-                onClick={() => setBranchOpen(branchOpen === branch ? null : branch)}
-              >
-                🏢 {branch}
-              </button>
-            ))}
-          </div>
+
+          {branches.length === 0 ? (
+            <EmptyState icon="🏢" message={t("لا توجد فروع", "No branches found")} />
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-3)" }}>
+              {branches.map(branch => (
+                <button
+                  key={branch}
+                  onClick={() => setBranchOpen(branch)}
+                  style={{
+                    minWidth: 140,
+                    padding: "var(--space-4) var(--space-6)",
+                    borderRadius: "var(--radius-lg)",
+                    border: "2px solid var(--color-primary)",
+                    background: "var(--bg-card)",
+                    color: "var(--color-primary)",
+                    fontSize: "var(--font-size-base)",
+                    fontWeight: "var(--font-weight-bold)",
+                    cursor: "pointer",
+                    transition: "background var(--transition-base), color var(--transition-base), box-shadow var(--transition-base)",
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = "var(--color-primary)";
+                    e.currentTarget.style.color = "#fff";
+                    e.currentTarget.style.boxShadow = "var(--shadow-md)";
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = "var(--bg-card)";
+                    e.currentTarget.style.color = "var(--color-primary)";
+                    e.currentTarget.style.boxShadow = "var(--shadow-sm)";
+                  }}
+                >
+                  🏢 {branch}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* تواريخ تقارير الفرع */}
+      {/* ── تقارير الفرع ── */}
       {branchOpen && !selectedReport && (
-        <div style={{ marginTop: "2rem" }}>
-          <h4 style={{ color: "#2c3e50", fontWeight: "bold", marginBottom: "1rem" }}>
-            {t("تقارير الفرع", "Branch Reports")}: {branchOpen}
-          </h4>
-          <button
-            onClick={() => setBranchOpen(null)}
-            style={{
-              background: "#eee",
-              color: "#2980b9",
-              border: "none",
-              borderRadius: "6px",
-              padding: "8px 20px",
-              fontWeight: "bold",
-              marginBottom: "1rem",
-              cursor: "pointer",
-            }}
-          >
-            ← {t("عودة للفروع", "Back to Branches")}
-          </button>
-          {branchReports.length === 0 && (
-            <p style={{ color: "#888", marginTop: "2rem" }}>
-              {t("لا توجد تقارير لهذا الفرع", "No reports for this branch.")}
-            </p>
-          )}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "1rem",
-              marginTop: "1rem",
-            }}
-          >
-            {branchReports.map((rep, idx) => (
-              <button
-                key={idx}
-                style={{
-                  background: "#f7f9fb",
-                  border: "1.5px solid #2980b9",
-                  color: "#34495e",
-                  borderRadius: "8px",
-                  padding: "14px 24px",
-                  fontWeight: "bold",
-                  fontSize: "1.06rem",
-                  textAlign: "right",
-                  cursor: "pointer",
-                  boxShadow: "0 1px 8px rgba(41,128,185,0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                }}
-                onClick={() => setSelectedReport(rep)}
-              >
-                <span style={{ fontSize: "1.2rem", color: "#2980b9" }}>📝</span>
-                {formatDate(rep.date, language)}
-                <span style={{ marginRight: "auto", color: "#27ae60" }}>
-                  {rep.percentage !== undefined ? `(${rep.percentage}%)` : ""}
-                </span>
-              </button>
-            ))}
+        <div className="qms-card">
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-5)", flexWrap: "wrap" }}>
+            <Button variant="ghost" size="sm" onClick={() => setBranchOpen(null)}>
+              ← {t("عودة للفروع", "Back to Branches")}
+            </Button>
+            <h4 style={{ fontSize: "var(--font-size-md)", fontWeight: "var(--font-weight-bold)", color: "var(--text-primary)", margin: 0 }}>
+              {t("تقارير الفرع", "Branch Reports")}: <span style={{ color: "var(--color-primary)" }}>{branchOpen}</span>
+            </h4>
           </div>
+
+          {branchReports.length === 0 ? (
+            <EmptyState icon="📄" message={t("لا توجد تقارير لهذا الفرع", "No reports for this branch")} />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              {branchReports.map((rep, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedReport(rep)}
+                  style={{
+                    background: "var(--bg-card-hover)",
+                    border: "1.5px solid var(--border-color)",
+                    borderRadius: "var(--radius-md)",
+                    padding: "var(--space-4) var(--space-5)",
+                    fontWeight: "var(--font-weight-medium)",
+                    fontSize: "var(--font-size-base)",
+                    textAlign: isRtl ? "right" : "left",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-3)",
+                    transition: "border-color var(--transition-base), box-shadow var(--transition-base)",
+                    color: "var(--text-primary)",
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = "var(--color-primary)";
+                    e.currentTarget.style.boxShadow = "var(--shadow-md)";
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = "var(--border-color)";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
+                >
+                  <span style={{ fontSize: 20, color: "var(--color-primary)" }}>📝</span>
+                  <span>{formatDate(rep.date)}</span>
+                  {rep.percentage !== undefined && (
+                    <span className="qms-badge qms-badge-success" style={{ marginInlineStart: "auto" }}>
+                      {rep.percentage}%
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* تفاصيل التقرير */}
+      {/* ── تفاصيل التقرير ── */}
       {selectedReport && (
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: "14px",
-            padding: "2rem 2.5rem",
-            marginTop: "2.5rem",
-            boxShadow: "0 6px 24px rgba(41,128,185,0.09)",
-            position: "relative",
-          }}
-        >
-          <button
-            onClick={() => setSelectedReport(null)}
-            style={{
-              position: "absolute",
-              top: 20,
-              left: 24,
-              background: "#eee",
-              color: "#2980b9",
-              border: "none",
-              borderRadius: "6px",
-              padding: "6px 18px",
-              fontWeight: "bold",
-              fontSize: "1.05rem",
-              cursor: "pointer",
-              zIndex: 2,
-            }}
-          >
-            ← {t("عودة للتواريخ", "Back to Dates")}
-          </button>
-          <h3
-            style={{
-              color: "#2980b9",
-              fontWeight: "700",
-              marginBottom: "1.6rem",
-              textAlign: "right",
-            }}
-          >
-            {t("تفاصيل التقرير", "Report Details")} {formatDate(selectedReport.date, language)}
-          </h3>
-          <div style={{ color: "#34495e", fontWeight: "400", fontSize: "1rem" }}>
-            <p>
-              <strong>{label("اسم الفرع", "Branch Name")}:</strong> {selectedReport.branchName || "-"}
-            </p>
-            <p>
-              <strong>{label("تاريخ الزيارة", "Visit Date")}:</strong> {formatDate(selectedReport.visitDate, language)}
-            </p>
-            <p>
-              <strong>{label("اسم المشرف", "Supervisor Name")}:</strong> {selectedReport.supervisorName || "-"}
-            </p>
-            <p>
-              <strong>{label("أنواع التفتيش", "Inspection Types")}:</strong>{" "}
-              {Array.isArray(selectedReport.types)
-                ? selectedReport.types.join(", ")
-                : selectedReport.type || "-"}
-            </p>
-            <p>
-              <strong>{label("النسبة المئوية", "Percentage")}:</strong> {selectedReport.percentage || "-"}%
-            </p>
-            <p>
-              <strong>{label("التقييم النهائي", "Final Rating")}:</strong> {selectedReport.finalRating || "-"}
-            </p>
-            <p>
-              <strong>{label("التعليق النهائي", "Final Comment")}:</strong> {selectedReport.finalComment || "-"}
-            </p>
-          </div>
-          <hr style={{ margin: "1.2rem 0", borderColor: "#ddd" }} />
-          <h4
-            style={{
-              marginBottom: "1rem",
-              color: "#2980b9",
-              fontWeight: "700",
-              fontSize: "1.15rem",
-              borderBottom: "2px solid #2980b9",
-              paddingBottom: "0.3rem",
-            }}
-          >
-            {t("إجابات وتفاصيل الأسئلة", "Questions & Answers")}
-          </h4>
-          {Object.entries(selectedReport.answers || {}).length === 0 && (
-            <p style={{ fontStyle: "italic", color: "#888" }}>
-              {t("لا توجد إجابات مسجلة", "No answers available.")}
-            </p>
-          )}
+        <div className="qms-card qms-fade-in">
 
-          {Object.entries(selectedReport.answers || {}).map(([qText, ans], i) => (
-            <article
-              key={i}
-              style={{
-                marginBottom: "2.5rem",
-                padding: "1rem",
-                backgroundColor: "#f9fbff",
-                borderRadius: "10px",
-                boxShadow: "inset 0 0 5px rgba(41, 128, 185, 0.1)",
-                position: "relative",
-              }}
-            >
-              <div style={{ fontWeight: "600", marginBottom: "0.5rem" }}>
-                {getQuestionText(qText, language)}
+          {/* شريط العودة */}
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-5)", flexWrap: "wrap" }}>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedReport(null)}>
+              ← {t("عودة للتواريخ", "Back to Dates")}
+            </Button>
+            <h3 style={{ fontSize: "var(--font-size-lg)", fontWeight: "var(--font-weight-bold)", color: "var(--color-primary)", margin: 0 }}>
+              {t("تفاصيل التقرير", "Report Details")} — {formatDate(selectedReport.date)}
+            </h3>
+          </div>
+
+          {/* معلومات الفرع */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "var(--space-3)",
+            background: "var(--bg-card-hover)",
+            borderRadius: "var(--radius-md)",
+            padding: "var(--space-4)",
+            marginBottom: "var(--space-5)",
+            border: "1px solid var(--border-color)",
+          }}>
+            {[
+              [t("اسم الفرع", "Branch"),           selectedReport.branchName],
+              [t("تاريخ الزيارة", "Visit Date"),    formatDate(selectedReport.visitDate)],
+              [t("اسم المشرف", "Supervisor"),       selectedReport.supervisorName],
+              [t("النسبة المئوية", "Percentage"),   selectedReport.percentage ? `${selectedReport.percentage}%` : "-"],
+              [t("التقييم النهائي", "Final Rating"), selectedReport.finalRating],
+              [t("التعليق النهائي", "Comment"),     selectedReport.finalComment],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <div style={{ fontSize: "var(--font-size-xs)", fontWeight: "var(--font-weight-bold)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>
+                  {label}
+                </div>
+                <div style={{ fontSize: "var(--font-size-base)", color: "var(--text-primary)", fontWeight: 600 }}>
+                  {value || "-"}
+                </div>
               </div>
-              <p
+            ))}
+          </div>
+
+          {/* الأسئلة والإجابات */}
+          <h4 style={{ fontSize: "var(--font-size-md)", fontWeight: "var(--font-weight-bold)", color: "var(--text-primary)", marginBottom: "var(--space-4)", paddingBottom: "var(--space-2)", borderBottom: "2px solid var(--color-primary)" }}>
+            {t("الأسئلة والإجابات", "Questions & Answers")}
+          </h4>
+
+          {Object.entries(selectedReport.answers || {}).length === 0 ? (
+            <EmptyState icon="💬" message={t("لا توجد إجابات مسجلة", "No answers recorded")} />
+          ) : (
+            Object.entries(selectedReport.answers || {}).map(([qText, ans], i) => (
+              <article
+                key={i}
                 style={{
-                  fontWeight: "600",
-                  marginBottom: "0.5rem",
-                  color: ans === "yes" ? "#27ae60" : "#c0392b",
+                  marginBottom: "var(--space-5)",
+                  padding: "var(--space-4)",
+                  background: "var(--bg-card-hover)",
+                  borderRadius: "var(--radius-md)",
+                  border: `1.5px solid ${ans === "no" ? "var(--color-danger-light)" : "var(--border-color)"}`,
+                  boxShadow: "var(--shadow-sm)",
                 }}
               >
-                {label("الإجابة", "Answer")}:{" "}
-                {ans === "yes"
-                  ? t("✔️ نعم", "✔️ Yes")
-                  : ans === "no"
-                  ? t("❌ لا", "❌ No")
-                  : "-"}
-              </p>
+                {/* السؤال والإجابة */}
+                <div style={{ fontWeight: "var(--font-weight-bold)", marginBottom: "var(--space-2)", color: "var(--text-primary)" }}>
+                  {i + 1}. {getQuestionText(qText)}
+                </div>
 
-              {selectedReport.comments?.[qText] && (
-                <p style={{ fontWeight: "600", marginBottom: "0.5rem" }}>
-                  {label("تعليق", "Comment")}:{" "}
-                  <span style={{ fontWeight: "400" }}>
-                    {selectedReport.comments[qText]}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
+                  <span className={`qms-badge ${ans === "yes" ? "qms-badge-success" : "qms-badge-danger"}`}>
+                    {ans === "yes" ? t("✔ نعم", "✔ Yes") : ans === "no" ? t("✘ لا", "✘ No") : "-"}
                   </span>
-                </p>
-              )}
+                  {selectedReport.risks?.[qText] && (
+                    <span className="qms-badge qms-badge-warning">
+                      {t("خطر:", "Risk:")} {selectedReport.risks[qText]}
+                    </span>
+                  )}
+                </div>
 
-              {selectedReport.risks?.[qText] && (
-                <p style={{ fontWeight: "600", marginBottom: "0.5rem" }}>
-                  {label("مستوى الخطورة", "Risk Level")}:{" "}
-                  <span style={{ fontWeight: "400" }}>
-                    {selectedReport.risks[qText]}
-                  </span>
-                </p>
-              )}
+                {selectedReport.comments?.[qText] && (
+                  <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-3)" }}>
+                    💬 {selectedReport.comments[qText]}
+                  </p>
+                )}
 
-              {selectedReport.images?.[qText] &&
-                Array.isArray(selectedReport.images[qText]) &&
-                selectedReport.images[qText].length > 0 && (
-                  <div
-                    style={{
-                      marginTop: "0.5rem",
-                      display: "flex",
-                      gap: "10px",
-                      flexWrap: "wrap",
-                    }}
-                  >
+                {/* صور التقرير */}
+                {selectedReport.images?.[qText]?.length > 0 && (
+                  <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
                     {selectedReport.images[qText].map((img, imgIdx) => (
-                      <img
-                        key={imgIdx}
-                        src={img}
-                        alt={t("صورة تقرير", "Report Image")}
-                        style={{
-                          width: "120px",
-                          borderRadius: "8px",
-                          boxShadow: "0 2px 6px rgba(41, 128, 185, 0.3)",
-                          cursor: "zoom-in",
-                          transition: "transform 0.2s ease",
-                        }}
-                        onMouseEnter={e =>
-                          (e.currentTarget.style.transform = "scale(1.07)")
-                        }
-                        onMouseLeave={e =>
-                          (e.currentTarget.style.transform = "scale(1)")
-                        }
-                      />
+                      <img key={imgIdx} src={img} alt="" style={{ width: 100, height: 100, borderRadius: "var(--radius-md)", objectFit: "cover", boxShadow: "var(--shadow-sm)", cursor: "zoom-in" }} />
                     ))}
                   </div>
                 )}
 
-              {/* إجراء تصحيحي */}
-              <div
-                style={{
-                  marginTop: "1.5rem",
-                  background: "#eaf6ff",
-                  borderRadius: 8,
-                  padding: "1.3rem 1rem",
-                }}
-              >
-                <h5 style={{ color: "#0d47a1", fontWeight: "bold", marginBottom: 8 }}>
-                  🛠️ {label("الإجراء التصحيحي", "Corrective Action")}
-                </h5>
-                <textarea
-                  value={actions[qText]?.action || ""}
-                  onChange={e => handleActionChange(qText, e.target.value)}
-                  placeholder={t("اكتب الإجراء التصحيحي هنا...", "Write the corrective action here...")}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    borderRadius: "7px",
-                    border: "1.5px solid #2980b9",
-                    marginBottom: "10px",
-                    fontSize: "1rem",
-                  }}
-                  rows={3}
-                />
-                {/* صور الإجراء التصحيحي */}
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={e => handleActionImagesChange(qText, e.target.files)}
-                  style={{ marginBottom: "10px" }}
-                />
-                <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-                  {(actions[qText]?.images || []).map((img, imgIdx) => (
-                    <img
-                      key={imgIdx}
-                      src={img}
-                      alt={t("صورة إجراء تصحيحي محفوظة", "Saved Corrective Action Image")}
-                      style={{
-                        width: 70,
-                        height: 70,
-                        borderRadius: 7,
-                        border: "2px solid #2196f3",
-                        objectFit: "cover",
-                        marginBottom: 2,
-                        marginLeft: 2,
-                        background: "#fff",
-                      }}
-                    />
-                  ))}
-                  {(tempImages[qText] || []).map((img, imgIdx) => (
-                    <div key={imgIdx} style={{ position: "relative" }}>
-                      <img
-                        src={img}
-                        alt={t("جاري الإضافة", "Adding")}
-                        style={{
-                          width: 70,
-                          height: 70,
-                          borderRadius: 7,
-                          border: "2px solid #2196f3",
-                          objectFit: "cover",
-                          background: "#fff",
-                        }}
-                      />
-                      <button
-                        title={t("حذف الصورة", "Remove image")}
-                        onClick={() => handleRemoveActionImage(qText, imgIdx)}
-                        style={{
-                          position: "absolute",
-                          top: 2,
-                          left: 2,
-                          background: "rgba(220,0,0,0.75)",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: "50%",
-                          width: 22,
-                          height: 22,
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        ×
-                      </button>
+                {/* الإجراء التصحيحي */}
+                <div style={{ marginTop: "var(--space-4)", background: "#eaf6ff", borderRadius: "var(--radius-md)", padding: "var(--space-4)", border: "1px solid #bfdbfe" }}>
+                  <h5 style={{ color: "var(--color-info)", fontWeight: "var(--font-weight-bold)", marginBottom: "var(--space-3)", fontSize: "var(--font-size-sm)" }}>
+                    🛠️ {t("الإجراء التصحيحي", "Corrective Action")}
+                  </h5>
+
+                  <textarea
+                    value={actions[qText]?.action || ""}
+                    onChange={e => handleActionChange(qText, e.target.value)}
+                    placeholder={t("اكتب الإجراء التصحيحي هنا...", "Write the corrective action here...")}
+                    rows={3}
+                    className="qms-input"
+                    style={{ marginBottom: "var(--space-3)", resize: "vertical" }}
+                  />
+
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={e => handleActionImagesChange(qText, e.target.files)}
+                    style={{ marginBottom: "var(--space-3)", fontSize: "var(--font-size-sm)" }}
+                  />
+
+                  {/* معاينة الصور */}
+                  {((actions[qText]?.images || []).length > 0 || (tempImages[qText] || []).length > 0) && (
+                    <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
+                      {(actions[qText]?.images || []).map((img, imgIdx) => (
+                        <img key={imgIdx} src={img} alt="" style={{ width: 68, height: 68, borderRadius: "var(--radius-md)", objectFit: "cover", border: "2px solid var(--color-info)" }} />
+                      ))}
+                      {(tempImages[qText] || []).map((img, imgIdx) => (
+                        <div key={imgIdx} style={{ position: "relative" }}>
+                          <img src={img} alt="" style={{ width: 68, height: 68, borderRadius: "var(--radius-md)", objectFit: "cover", border: "2px solid var(--color-primary)" }} />
+                          <button
+                            onClick={() => handleRemoveActionImage(qText, imgIdx)}
+                            style={{ position: "absolute", top: 2, insetInlineEnd: 2, width: 20, height: 20, borderRadius: "50%", background: "var(--color-danger)", border: "none", color: "#fff", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}
+                          >×</button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  <textarea
+                    value={actions[qText]?.reply || ""}
+                    onChange={e => handleReplyChange(qText, e.target.value)}
+                    placeholder={t("رد المشرف (اختياري)...", "Supervisor reply (optional)...")}
+                    rows={2}
+                    className="qms-input"
+                    style={{ marginBottom: "var(--space-3)", resize: "vertical" }}
+                  />
+
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={savingKey === qText}
+                    onClick={() => handleSaveAction(qText)}
+                  >
+                    💾 {t("حفظ الإجراء", "Save Action")}
+                  </Button>
                 </div>
-                {/* رد المشرف */}
-                <textarea
-                  value={actions[qText]?.reply || ""}
-                  onChange={e => handleReplyChange(qText, e.target.value)}
-                  placeholder={t("رد المشرف (اختياري)...", "Supervisor reply (optional)...")}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    borderRadius: "7px",
-                    border: "1.5px solid #90caf9",
-                    marginBottom: "10px",
-                    fontSize: "1rem",
-                  }}
-                  rows={2}
-                />
-                <button
-                  onClick={() => handleSaveAction(qText)}
-                  style={{
-                    background: "#2196f3",
-                    color: "#fff",
-                    padding: "8px 24px",
-                    border: "none",
-                    borderRadius: "7px",
-                    fontWeight: "bold",
-                    fontSize: "1.07rem",
-                    cursor: "pointer",
-                  }}
-                >
-                  💾 {label("حفظ الإجراء", "Save Action")}
-                </button>
-              </div>
-            </article>
-          ))}
+              </article>
+            ))
+          )}
         </div>
       )}
     </div>

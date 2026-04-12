@@ -557,7 +557,7 @@ export default function POS19DailyView() {
   }, []);
 
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem("pos19_reports") || "[]") || [];
+    let saved; try { saved = JSON.parse(localStorage.getItem("pos19_reports") || "[]") || []; } catch { saved = []; }
     saved.sort((a,b) => String(a?.date||"").localeCompare(String(b?.date||"")));
     setReports(saved);
     const todayRep = saved.find(r => r?.date === todayDubai);
