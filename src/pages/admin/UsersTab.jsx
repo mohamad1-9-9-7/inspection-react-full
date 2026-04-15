@@ -1,42 +1,32 @@
 import React, { useState, useEffect } from "react";
+import Button from "../../components/Button";
+import EmptyState from "../../components/EmptyState";
+
+const EMPTY_USER = { username: "", password: "", jobTitle: "", employeeId: "" };
 
 export default function UsersTab({ users = [], setUsers = () => {} }) {
-  const [newUser, setNewUser] = useState({ username: "", password: "", jobTitle: "", employeeId: "" });
-  const [showPasswords, setShowPasswords] = useState([]);
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [editUser, setEditUser] = useState({ username: "", password: "", jobTitle: "", employeeId: "" });
+  const [newUser,        setNewUser]        = useState(EMPTY_USER);
+  const [showPasswords,  setShowPasswords]  = useState([]);
+  const [editingIndex,   setEditingIndex]   = useState(null);
+  const [editUser,       setEditUser]       = useState(EMPTY_USER);
 
-  // تحديث عند تغيّر عدد المستخدمين
   useEffect(() => {
     setShowPasswords(Array(users.length).fill(false));
-  }, [users]);
+  }, [users.length]);
 
   const handleAddUser = () => {
     if (!newUser.username || !newUser.password || !newUser.jobTitle || !newUser.employeeId) {
       alert("⚠️ الرجاء إدخال جميع الحقول.");
       return;
     }
-    const exists = users.some((u) => u.username === newUser.username);
-    if (exists) {
+    if (users.some(u => u.username === newUser.username)) {
       alert("⚠️ هذا المستخدم موجود مسبقًا.");
       return;
     }
     const updated = [...users, newUser];
     localStorage.setItem("readonlyUsers", JSON.stringify(updated));
     setUsers(updated);
-    setNewUser({ username: "", password: "", jobTitle: "", employeeId: "" });
-    alert("✅ تم إضافة المستخدم بنجاح");
-  };
-
-  const handleTogglePassword = (index) => {
-    const updated = [...showPasswords];
-    updated[index] = !updated[index];
-    setShowPasswords(updated);
-  };
-
-  const handleEditUser = (index) => {
-    setEditingIndex(index);
-    setEditUser(users[index]);
+    setNewUser(EMPTY_USER);
   };
 
   const handleSaveEdit = () => {
@@ -48,125 +38,119 @@ export default function UsersTab({ users = [], setUsers = () => {} }) {
   };
 
   const handleDeleteUser = (index) => {
-    if (window.confirm("❗ هل أنت متأكد من حذف هذا المستخدم؟")) {
-      const updated = users.filter((_, i) => i !== index);
-      localStorage.setItem("readonlyUsers", JSON.stringify(updated));
-      setUsers(updated);
-    }
+    if (!window.confirm("❗ هل أنت متأكد من حذف هذا المستخدم؟")) return;
+    const updated = users.filter((_, i) => i !== index);
+    localStorage.setItem("readonlyUsers", JSON.stringify(updated));
+    setUsers(updated);
+  };
+
+  const togglePassword = (i) => {
+    const updated = [...showPasswords];
+    updated[i] = !updated[i];
+    setShowPasswords(updated);
   };
 
   return (
-    <div style={cardStyle}>
-      <h3>➕ إضافة مستخدم جديد</h3>
-      <div style={{ display: "flex", flexDirection: "column", maxWidth: "300px" }}>
-        <input
-          placeholder="اسم المستخدم"
-          value={newUser.username}
-          onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-          style={inputStyle}
-        />
-        <input
-          type="password"
-          placeholder="كلمة المرور"
-          value={newUser.password}
-          onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-          style={inputStyle}
-        />
-        <input
-          placeholder="الصفة الوظيفية"
-          value={newUser.jobTitle}
-          onChange={(e) => setNewUser({ ...newUser, jobTitle: e.target.value })}
-          style={inputStyle}
-        />
-        <input
-          placeholder="الرقم الوظيفي"
-          value={newUser.employeeId}
-          onChange={(e) => setNewUser({ ...newUser, employeeId: e.target.value })}
-          style={inputStyle}
-        />
-        <button onClick={handleAddUser} style={addButtonStyle}>✅ إضافة</button>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
+
+      {/* ── إضافة مستخدم ── */}
+      <div className="qms-card">
+        <h3 style={{ fontSize: "var(--font-size-md)", fontWeight: "var(--font-weight-bold)", color: "var(--text-primary)", marginBottom: "var(--space-4)" }}>
+          ➕ إضافة مستخدم جديد
+        </h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "var(--space-3)" }}>
+          {[
+            { placeholder: "اسم المستخدم",    key: "username",    type: "text" },
+            { placeholder: "كلمة المرور",      key: "password",    type: "password" },
+            { placeholder: "الصفة الوظيفية",   key: "jobTitle",    type: "text" },
+            { placeholder: "الرقم الوظيفي",    key: "employeeId",  type: "text" },
+          ].map(({ placeholder, key, type }) => (
+            <input
+              key={key}
+              type={type}
+              placeholder={placeholder}
+              className="qms-input"
+              value={newUser[key]}
+              onChange={e => setNewUser({ ...newUser, [key]: e.target.value })}
+            />
+          ))}
+        </div>
+        <div style={{ marginTop: "var(--space-4)" }}>
+          <Button variant="success" onClick={handleAddUser}>✅ إضافة المستخدم</Button>
+        </div>
       </div>
 
-      <hr style={{ margin: "2rem 0" }} />
-
-      <h4>👥 المستخدمون المضافون ({users.length})</h4>
-      {users.map((u, i) => (
-        <div key={i} style={userBoxStyle}>
-          {editingIndex === i ? (
-            <>
-              <input value={editUser.username} onChange={(e) => setEditUser({ ...editUser, username: e.target.value })} style={inputStyle} />
-              <input value={editUser.password} onChange={(e) => setEditUser({ ...editUser, password: e.target.value })} style={inputStyle} />
-              <input value={editUser.jobTitle} onChange={(e) => setEditUser({ ...editUser, jobTitle: e.target.value })} style={inputStyle} />
-              <input value={editUser.employeeId} onChange={(e) => setEditUser({ ...editUser, employeeId: e.target.value })} style={inputStyle} />
-              <button onClick={handleSaveEdit} style={addButtonStyle}>💾 حفظ</button>
-            </>
-          ) : (
-            <>
-              <p>👤 <strong>{u.username}</strong></p>
-              <p>📌 الصفة الوظيفية: {u.jobTitle}</p>
-              <p>🆔 الرقم الوظيفي: {u.employeeId}</p>
-              <p>🔐 كلمة المرور: {showPasswords[i] ? u.password : "••••••"}</p>
-              <button onClick={() => handleTogglePassword(i)} style={smallButtonStyle}>👁️ عرض/إخفاء</button>
-              <button onClick={() => handleEditUser(i)} style={smallButtonStyle}>✏️ تعديل</button>
-              <button onClick={() => handleDeleteUser(i)} style={deleteButtonStyle}>🗑️ حذف</button>
-            </>
-          )}
+      {/* ── قائمة المستخدمين ── */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-3)" }}>
+          <h4 style={{ fontSize: "var(--font-size-md)", fontWeight: "var(--font-weight-bold)", color: "var(--text-primary)", margin: 0 }}>
+            👥 المستخدمون
+          </h4>
+          <span className="qms-badge qms-badge-info">{users.length} مستخدم</span>
         </div>
-      ))}
+
+        {users.length === 0 ? (
+          <EmptyState icon="👤" message="لا يوجد مستخدمون" sub="أضف مستخدماً من النموذج أعلاه" />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            {users.map((u, i) => (
+              <div key={i} className="qms-card qms-card-sm">
+                {editingIndex === i ? (
+                  /* وضع التعديل */
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-3)", marginBottom: "var(--space-3)" }}>
+                      {[
+                        { placeholder: "اسم المستخدم",  key: "username",   type: "text" },
+                        { placeholder: "كلمة المرور",    key: "password",   type: "password" },
+                        { placeholder: "الصفة الوظيفية", key: "jobTitle",   type: "text" },
+                        { placeholder: "الرقم الوظيفي",  key: "employeeId", type: "text" },
+                      ].map(({ placeholder, key, type }) => (
+                        <input
+                          key={key}
+                          type={type}
+                          placeholder={placeholder}
+                          className="qms-input"
+                          value={editUser[key]}
+                          onChange={e => setEditUser({ ...editUser, [key]: e.target.value })}
+                        />
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: "var(--space-2)" }}>
+                      <Button variant="success" size="sm" onClick={handleSaveEdit}>💾 حفظ</Button>
+                      <Button variant="ghost"   size="sm" onClick={() => setEditingIndex(null)}>إلغاء</Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* وضع العرض */
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-3)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
+                      <div style={{ width: 42, height: 42, borderRadius: "50%", background: "linear-gradient(135deg, var(--color-primary), var(--color-purple))", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: 18, flexShrink: 0 }}>
+                        {u.username?.[0]?.toUpperCase() || "?"}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: "var(--font-weight-bold)", fontSize: "var(--font-size-base)", color: "var(--text-primary)" }}>
+                          {u.username}
+                        </div>
+                        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: 2 }}>
+                          {u.jobTitle} &nbsp;·&nbsp; #{u.employeeId}
+                        </div>
+                        <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)", marginTop: 2, fontFamily: "var(--font-mono)", letterSpacing: 2 }}>
+                          🔐 {showPasswords[i] ? u.password : "••••••••"}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "var(--space-2)" }}>
+                      <Button variant="ghost"   size="sm" onClick={() => togglePassword(i)}>👁️</Button>
+                      <Button variant="primary" size="sm" onClick={() => { setEditingIndex(i); setEditUser(u); }}>✏️</Button>
+                      <Button variant="danger"  size="sm" onClick={() => handleDeleteUser(i)}>🗑️</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
-// ✅ نفس التنسيقات
-
-const cardStyle = {
-  backgroundColor: "white",
-  padding: "2rem",
-  borderRadius: "12px",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-};
-
-const inputStyle = {
-  marginBottom: "1rem",
-  padding: "0.5rem",
-  borderRadius: "6px",
-  border: "1px solid #ccc",
-};
-
-const addButtonStyle = {
-  backgroundColor: "#2ecc71",
-  color: "white",
-  padding: "10px",
-  border: "none",
-  borderRadius: "6px",
-  cursor: "pointer",
-};
-
-const smallButtonStyle = {
-  marginTop: "0.5rem",
-  marginRight: "0.5rem",
-  padding: "6px 12px",
-  border: "none",
-  borderRadius: "6px",
-  cursor: "pointer",
-  backgroundColor: "#3498db",
-  color: "white",
-};
-
-const deleteButtonStyle = {
-  marginTop: "0.5rem",
-  padding: "6px 12px",
-  border: "none",
-  borderRadius: "6px",
-  cursor: "pointer",
-  backgroundColor: "#e74c3c",
-  color: "white",
-};
-
-const userBoxStyle = {
-  backgroundColor: "#f9f9f9",
-  padding: "1rem",
-  borderRadius: "8px",
-  marginBottom: "1rem",
-  border: "1px solid #ddd",
-};

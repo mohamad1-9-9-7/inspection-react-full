@@ -1,6 +1,7 @@
 // D:\inspection-react-full\src\pages\haccp and iso\Supplier Approval\SupplierEvaluationResults.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import "./SupplierApproval.css";
 
 /* ===================== API base (NORMALIZED) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -290,7 +291,7 @@ const QUESTIONS = {
   fbc_01: "Is there a policy for the control of glass and\nexclusion of glass from production areas?",
   fbc_02: "Is there a glass/brittle material breakage\nprocedure?",
   fbc_03: "Is there a policy for the control of wood and\nexclusion of wood from production areas?",
-  fbc_04: "Is there a policy for the control of metal and\nexclusion of potential metal contaminantsfrom\nproduction areas?",
+  fbc_04: "Is there a policy for the control of metal and\nexclusion of potential metal contaminants from\nproduction areas?",
   fbc_05: "Is there a policy for the control of knives and\nexclusion of unauthorized knives from the\nproduction area?",
 
   cln_01:
@@ -320,7 +321,7 @@ const QUESTIONS = {
   fsq_02g: "Product Recall?",
   fsq_03: "Are there maintenance programs for equipment\nand buildings?",
   fsq_04:
-    "Is there a system forstaff training such that all\nkey personnel are trained and have training\nrecords?",
+    "Is there a system for staff training such that all\nkey personnel are trained and have training\nrecords?",
   fsq_05:
     "Do you have facilities and systems for the\ntransportation that protects products and prevent\ncontamination?",
   fsq_06: "Do you have laboratory facilities on site and are\nthey accredited?",
@@ -333,14 +334,14 @@ const QUESTIONS = {
     "Do you have procedure for dealing with out of\nspecification/non-conforming raw materials and\nfinished products?",
   rm_05: "Do you have specifications for your finished\nproducts?",
   rm_06: "Do you test all finished product against your\nspecification?",
-  rm_07: "Do you have a procedure for dealing with non￾\nconforming raw materials and finished products?",
+  rm_07: "Do you have a procedure for dealing with non-conforming raw materials and finished products?",
 
   proc_01:
     "Have your critical control points (safety and\nquality) been identified for your production\nprocess?",
   proc_02:
     "Is there a temperature monitoring system in\nplace during chilled or frozen storage, heat\nprocessing, cold processing etc.?",
 
-  trn_01: "Is the vehicle temperature is monitored during\ntransportation?",
+  trn_01: "Is the vehicle temperature monitored during\ntransportation?",
   trn_02: "Is there a cleaning schedule for the vehicles &\nverification system available?",
   trn_03: "Are all the vehicles holding valid food control\nregulatory approval?",
 
@@ -1051,7 +1052,8 @@ export default function SupplierEvaluationResults() {
           {filtered.length === 0 ? (
             <div style={{ fontWeight: 900, color: "#64748b" }}>{loading ? t.loading : t.none}</div>
           ) : (
-            <table style={table}>
+            <div className="sa-table-wrap">
+            <table className="sa-table" style={table}>
               <thead>
                 <tr>
                   <th style={thAlign}>{t.supplier}</th>
@@ -1125,6 +1127,7 @@ export default function SupplierEvaluationResults() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 

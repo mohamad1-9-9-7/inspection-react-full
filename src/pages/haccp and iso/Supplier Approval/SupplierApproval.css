@@ -1,0 +1,235 @@
+/* ============================================================
+   Supplier Approval — Shared Styles
+   Used by: SupplierEvaluationHub, Create, Public, Results
+   ============================================================ */
+
+/* ── Reset ── */
+.sa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  background: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  color: #0f172a;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.12s;
+  white-space: nowrap;
+}
+.sa-btn:hover:not(:disabled) {
+  background: rgba(241, 245, 249, 0.98);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.12);
+  transform: translateY(-1px);
+}
+.sa-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sa-btn-primary {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(34, 197, 94, 0.16));
+  border-color: rgba(34, 197, 94, 0.30);
+  font-weight: 800;
+}
+.sa-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.28), rgba(34, 197, 94, 0.24));
+}
+
+.sa-btn-danger {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.28);
+  color: #7f1d1d;
+}
+.sa-btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+}
+
+/* ── Panel / Card ── */
+.sa-panel {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(15, 23, 42, 0.13);
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(2, 132, 199, 0.09);
+  padding: 18px 20px;
+}
+
+/* ── Section header ── */
+.sa-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+
+/* ── Input / Textarea ── */
+.sa-input,
+.sa-textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(2, 6, 23, 0.13);
+  padding: 11px 13px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.97);
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+}
+.sa-input:focus,
+.sa-textarea:focus {
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.16);
+}
+.sa-input::placeholder,
+.sa-textarea::placeholder {
+  color: rgba(7, 27, 45, 0.42);
+  font-weight: 600;
+}
+.sa-textarea {
+  min-height: 100px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+/* ── Results table ── */
+.sa-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.sa-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+  min-width: 640px;
+}
+.sa-table th {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  padding: 2px 12px 8px;
+  white-space: nowrap;
+}
+.sa-table td {
+  padding: 13px 12px;
+  vertical-align: top;
+  font-weight: 700;
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.97);
+}
+.sa-table td:first-child {
+  border-radius: 14px 0 0 14px;
+}
+.sa-table td:last-child {
+  border-radius: 0 14px 14px 0;
+}
+.sa-table tr td {
+  border-top: 1px solid rgba(15, 23, 42, 0.10);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.10);
+}
+.sa-table tr td:first-child {
+  border-left: 1px solid rgba(15, 23, 42, 0.10);
+}
+.sa-table tr td:last-child {
+  border-right: 1px solid rgba(15, 23, 42, 0.10);
+}
+.sa-table tr:hover td {
+  background: rgba(236, 254, 255, 0.55);
+}
+
+/* ── Badge / Pill ── */
+.sa-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid rgba(2, 6, 23, 0.12);
+  background: rgba(255, 255, 255, 0.85);
+  color: #334155;
+  white-space: nowrap;
+}
+.sa-badge-green {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.28);
+  color: #14532d;
+}
+.sa-badge-blue {
+  background: rgba(14, 165, 233, 0.10);
+  border-color: rgba(14, 165, 233, 0.25);
+  color: #0c4a6e;
+}
+
+/* ── Mono box (token/link display) ── */
+.sa-mono-box {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(2, 6, 23, 0.20);
+  background: rgba(2, 6, 23, 0.02);
+  overflow-x: auto;
+  line-height: 1.5;
+  word-break: break-all;
+  color: #0f172a;
+}
+
+/* ── Msg feedback ── */
+.sa-msg-ok  { color: #065f46; font-weight: 800; font-size: 13px; margin-top: 10px; }
+.sa-msg-err { color: #991b1b; font-weight: 800; font-size: 13px; margin-top: 10px; }
+
+/* ── Modal overlay ── */
+.sa-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.62);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 18px;
+  overflow-y: auto;
+  z-index: 9999;
+}
+.sa-modal-box {
+  width: min(1100px, 100%);
+  margin-top: 20px;
+  background: rgba(255, 255, 255, 0.99);
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgba(2, 6, 23, 0.32);
+  padding: 18px 20px;
+}
+
+/* ── Yes/No answer badge ── */
+.sa-answer-yes  { color: #065f46; font-weight: 800; }
+.sa-answer-no   { color: #991b1b; font-weight: 800; }
+.sa-answer-na   { color: #64748b; font-weight: 700; }
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .sa-panel {
+    padding: 14px 14px;
+    border-radius: 14px;
+  }
+  .sa-modal-box {
+    padding: 14px;
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sa-btn {
+    font-size: 12px;
+    padding: 9px 12px;
+  }
+}

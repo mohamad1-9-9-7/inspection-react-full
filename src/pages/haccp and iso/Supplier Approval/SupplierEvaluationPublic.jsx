@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import "./SupplierApproval.css";
 
 /* ===================== API base (NORMALIZED) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -185,7 +186,7 @@ const FORM = [
           { key: "fbc_01", q: "Is there a policy for the control of glass and\nexclusion of glass from production areas?" },
           { key: "fbc_02", q: "Is there a glass/brittle material breakage\nprocedure?" },
           { key: "fbc_03", q: "Is there a policy for the control of wood and\nexclusion of wood from production areas?" },
-          { key: "fbc_04", q: "Is there a policy for the control of metal and\nexclusion of potential metal contaminantsfrom\nproduction areas?" },
+          { key: "fbc_04", q: "Is there a policy for the control of metal and\nexclusion of potential metal contaminants from\nproduction areas?" },
           { key: "fbc_05", q: "Is there a policy for the control of knives and\nexclusion of unauthorized knives from the\nproduction area?" },
         ],
       },
@@ -266,7 +267,7 @@ const FORM = [
           { key: "fsq_03", q: "Are there maintenance programs for equipment\nand buildings?" },
           {
             key: "fsq_04",
-            q: "Is there a system forstaff training such that all\nkey personnel are trained and have training\nrecords?",
+            q: "Is there a system for staff training such that all\nkey personnel are trained and have training\nrecords?",
           },
           {
             key: "fsq_05",
@@ -325,7 +326,7 @@ const FORM = [
           },
           { key: "rm_05", q: "Do you have specifications for your finished\nproducts?" },
           { key: "rm_06", q: "Do you test all finished product against your\nspecification?" },
-          { key: "rm_07", q: "Do you have a procedure for dealing with non￾\nconforming raw materials and finished products?" },
+          { key: "rm_07", q: "Do you have a procedure for dealing with non-conforming raw materials and finished products?" },
         ],
       },
       {
@@ -352,7 +353,7 @@ const FORM = [
         title: "Transportation",
         type: "yesno",
         items: [
-          { key: "trn_01", q: "Is the vehicle temperature is monitored during\ntransportation?" },
+          { key: "trn_01", q: "Is the vehicle temperature monitored during\ntransportation?" },
           { key: "trn_02", q: "Is there a cleaning schedule for the vehicles &\nverification system available?" },
           { key: "trn_03", q: "Are all the vehicles holding valid food control\nregulatory approval?" },
         ],
@@ -560,7 +561,7 @@ const AR_TRANSLATIONS = {
   "Is there a glass/brittle material breakage\nprocedure?": "هل توجد إجراءات لكسر الزجاج/المواد الهشة؟",
   "Is there a policy for the control of wood and\nexclusion of wood from production areas?":
     "هل توجد سياسة للتحكم بالخشب واستبعاد الخشب من مناطق الإنتاج؟",
-  "Is there a policy for the control of metal and\nexclusion of potential metal contaminantsfrom\nproduction areas?":
+  "Is there a policy for the control of metal and\nexclusion of potential metal contaminants from\nproduction areas?":
     "هل توجد سياسة للتحكم بالمعادن واستبعاد الملوثات المعدنية المحتملة من مناطق الإنتاج؟",
   "Is there a policy for the control of knives and\nexclusion of unauthorized knives from the\nproduction area?":
     "هل توجد سياسة للتحكم بالسكاكين ومنع السكاكين غير المصرح بها في منطقة الإنتاج؟",
@@ -595,7 +596,7 @@ const AR_TRANSLATIONS = {
   "Corrective Action and Preventive Action?": "الإجراءات التصحيحية والوقائية؟",
   "Product Recall?": "استدعاء المنتج؟",
   "Are there maintenance programs for equipment\nand buildings?": "هل توجد برامج صيانة للمعدات والمباني؟",
-  "Is there a system forstaff training such that all\nkey personnel are trained and have training\nrecords?":
+  "Is there a system for staff training such that all\nkey personnel are trained and have training\nrecords?":
     "هل يوجد نظام تدريب للموظفين بحيث يتم تدريب جميع الأشخاص الرئيسيين وتتوفر سجلات تدريب؟",
   "Do you have facilities and systems for the\ntransportation that protects products and prevent\ncontamination?":
     "هل لديكم مرافق وأنظمة للنقل تحمي المنتجات وتمنع التلوث؟",
@@ -610,7 +611,7 @@ const AR_TRANSLATIONS = {
     "هل لديكم إجراءات للتعامل مع المواد الخام/المنتجات غير المطابقة للمواصفات؟",
   "Do you have specifications for your finished\nproducts?": "هل لديكم مواصفات للمنتجات النهائية؟",
   "Do you test all finished product against your\nspecification?": "هل تفحصون جميع المنتجات النهائية مقابل المواصفات؟",
-  "Do you have a procedure for dealing with non￾\nconforming raw materials and finished products?":
+  "Do you have a procedure for dealing with non-conforming raw materials and finished products?":
     "هل لديكم إجراءات للتعامل مع المواد الخام والمنتجات غير المطابقة؟",
 
   "Have your critical control points (safety and\nquality) been identified for your production\nprocess?":
@@ -618,7 +619,7 @@ const AR_TRANSLATIONS = {
   "Is there a temperature monitoring system in\nplace during chilled or frozen storage, heat\nprocessing, cold processing etc.?":
     "هل يوجد نظام مراقبة درجات الحرارة أثناء التخزين المبرد/المجمد أو المعالجة الحرارية/الباردة…؟",
 
-  "Is the vehicle temperature is monitored during\ntransportation?": "هل يتم مراقبة درجة حرارة المركبة أثناء النقل؟",
+  "Is the vehicle temperature monitored during\ntransportation?": "هل يتم مراقبة درجة حرارة المركبة أثناء النقل؟",
   "Is there a cleaning schedule for the vehicles &\nverification system available?":
     "هل توجد جداول تنظيف للمركبات ونظام تحقق متاح؟",
   "Are all the vehicles holding valid food control\nregulatory approval?": "هل جميع المركبات لديها موافقات رقابية سارية لنقل الغذاء؟",
@@ -993,7 +994,7 @@ export default function SupplierEvaluationPublic() {
     border: `1px solid ${THEME.border}`,
     background: "rgba(2,6,23,0.03)",
     color: THEME.muted,
-    fontWeight: 1000,
+    fontWeight: 900,
     fontSize: 12,
   });
 
@@ -1004,7 +1005,7 @@ export default function SupplierEvaluationPublic() {
 
   const labelStyle = {
     fontSize: 13,
-    fontWeight: 1000,
+    fontWeight: 900,
     color: "#334155",
     whiteSpace: "pre-wrap",
   };
@@ -1143,20 +1144,20 @@ export default function SupplierEvaluationPublic() {
       <div style={page}>
         <div style={card}>
           <div style={topbar}>
-            <div style={{ fontWeight: 1100, fontSize: 22 }}>{t.thankTitle}</div>
+            <div style={{ fontWeight: 900, fontSize: 22 }}>{t.thankTitle}</div>
 
             <span style={pill}>
               {t.lang}:
               <button
                 onClick={() => setLang("en")}
-                style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 1000, opacity: lang === "en" ? 1 : 0.55 }}
+                style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "en" ? 1 : 0.55 }}
               >
                 EN
               </button>
               <span style={{ opacity: 0.35 }}>•</span>
               <button
                 onClick={() => setLang("ar")}
-                style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 1000, opacity: lang === "ar" ? 1 : 0.55 }}
+                style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "ar" ? 1 : 0.55 }}
               >
                 AR
               </button>
@@ -1193,7 +1194,7 @@ export default function SupplierEvaluationPublic() {
       <div style={card}>
         <div style={topbar}>
           <div>
-            <div style={{ fontWeight: 1200, fontSize: 22, color: THEME.text }}>{t.title}</div>
+            <div style={{ fontWeight: 900, fontSize: 22, color: THEME.text }}>{t.title}</div>
             <div style={{ marginTop: 6, color: THEME.muted, fontSize: 12, fontWeight: 900 }}>
               {t.token}: <b>{token}</b> • {t.link}: <span style={{ wordBreak: "break-word" }}>{shareUrl}</span>
             </div>
@@ -1203,14 +1204,14 @@ export default function SupplierEvaluationPublic() {
             {t.lang}:
             <button
               onClick={() => setLang("en")}
-              style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 1000, opacity: lang === "en" ? 1 : 0.55 }}
+              style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "en" ? 1 : 0.55 }}
             >
               EN
             </button>
             <span style={{ opacity: 0.35 }}>•</span>
             <button
               onClick={() => setLang("ar")}
-              style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 1000, opacity: lang === "ar" ? 1 : 0.55 }}
+              style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "ar" ? 1 : 0.55 }}
             >
               AR
             </button>
@@ -1218,21 +1219,21 @@ export default function SupplierEvaluationPublic() {
         </div>
 
         {msg ? (
-          <div style={{ marginTop: 12, fontWeight: 1000, color: msg.startsWith("✅") ? "#065f46" : "#991b1b" }}>{msg}</div>
+          <div style={{ marginTop: 12, fontWeight: 900, color: msg.startsWith("✅") ? "#065f46" : "#991b1b" }}>{msg}</div>
         ) : null}
 
         <div style={section}>
           {FORM.map((p, pIdx) => (
             <div key={pIdx} style={{ marginTop: 14, ...box("#fff") }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <div style={{ fontWeight: 1200, color: THEME.text, fontSize: 14 }}>{tr(lang, p.pageTitle)}</div>
+                <div style={{ fontWeight: 900, color: THEME.text, fontSize: 14 }}>{tr(lang, p.pageTitle)}</div>
                 <div style={badge("Page")}>{String(pIdx + 1)}/5</div>
               </div>
 
               <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
                 {p.blocks.map((b, bIdx) => (
                   <div key={bIdx} style={panel(toneByTitle(b.title))}>
-                    <div style={{ fontWeight: 1200, color: THEME.text, fontSize: 15 }}>{tr(lang, b.title)}</div>
+                    <div style={{ fontWeight: 900, color: THEME.text, fontSize: 15 }}>{tr(lang, b.title)}</div>
 
                     {b.type === "info" ? (
                       <div style={{ marginTop: 10, whiteSpace: "pre-wrap", color: THEME.text, fontWeight: 900, lineHeight: 1.7, fontSize: 14 }}>
@@ -1267,7 +1268,7 @@ export default function SupplierEvaluationPublic() {
                                 borderTop: `1px dashed ${THEME.border}`,
                               }}
                             >
-                              <div style={{ fontWeight: 1000, color: THEME.text, whiteSpace: "pre-wrap", fontSize: 15 }}>{tr(lang, it.q)}</div>
+                              <div style={{ fontWeight: 900, color: THEME.text, whiteSpace: "pre-wrap", fontSize: 15 }}>{tr(lang, it.q)}</div>
 
                               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                                 <button type="button" style={toggleBtn(v === true, "yes")} onClick={() => onToggle(it.key, true)}>
@@ -1285,7 +1286,7 @@ export default function SupplierEvaluationPublic() {
                                     marginLeft: isRTL ? 0 : 6,
                                     marginRight: isRTL ? 6 : 0,
                                     fontSize: 12,
-                                    fontWeight: 1000,
+                                    fontWeight: 900,
                                     color: THEME.muted,
                                   }}
                                 >
@@ -1310,7 +1311,7 @@ export default function SupplierEvaluationPublic() {
         {/* Global Attachments (kept) */}
         <div style={section}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ fontWeight: 1200, color: THEME.text, marginBottom: 2 }}>{t.attach}</div>
+            <div style={{ fontWeight: 900, color: THEME.text, marginBottom: 2 }}>{t.attach}</div>
             <span style={badge("General")}>{isRTL ? "مرفقات عامة" : "General files"}</span>
           </div>
 

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import "./SupplierApproval.css";
 
 /* ===================== API base (robust + normalized) ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -139,10 +140,6 @@ export default function SupplierEvaluationCreate() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // ✅ focus styling control
-  const [focusKey, setFocusKey] = useState("");
-  const isFocused = (k) => focusKey === k;
-
   const publicToken = useMemo(() => makeToken(30), []);
 
   const publicPath = useMemo(
@@ -175,6 +172,11 @@ export default function SupplierEvaluationCreate() {
 
     if (!name) {
       setMsg("❌ Please enter supplier name");
+      return;
+    }
+
+    if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+      setMsg("❌ Please enter a valid email address");
       return;
     }
 
@@ -417,45 +419,36 @@ export default function SupplierEvaluationCreate() {
             <div style={S.field}>
               <div style={S.label}>Supplier Name *</div>
 
-              <div style={{ ...S.controlWrap, ...(isFocused("name") ? S.controlWrapFocused : {}) }}>
-                <input
-                  style={S.input}
-                  value={supplierName}
-                  onChange={(e) => setSupplierName(e.target.value)}
-                  placeholder="e.g. ABC Food Trading LLC"
-                  onFocus={() => setFocusKey("name")}
-                  onBlur={() => setFocusKey("")}
-                />
-              </div>
+              <input
+                className="sa-input"
+                value={supplierName}
+                onChange={(e) => setSupplierName(e.target.value)}
+                placeholder="e.g. ABC Food Trading LLC"
+              />
             </div>
 
             <div style={S.field}>
               <div style={S.label}>Supplier Email (optional)</div>
 
-              <div style={{ ...S.controlWrap, ...(isFocused("email") ? S.controlWrapFocused : {}) }}>
-                <input
-                  style={S.input}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="email@example.com"
-                  onFocus={() => setFocusKey("email")}
-                  onBlur={() => setFocusKey("")}
-                />
-              </div>
+              <input
+                className="sa-input"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email@example.com"
+              />
             </div>
           </div>
 
           <div style={{ marginTop: 12 }}>
             <div style={S.label}>Internal Notes (Admin only)</div>
 
-            <div style={{ ...S.controlWrap, ...(isFocused("notes") ? S.controlWrapFocused : {}) }}>
+            <div>
               <textarea
-                style={S.textarea}
+                className="sa-textarea"
                 value={internalNotes}
                 onChange={(e) => setInternalNotes(e.target.value)}
                 placeholder="Write notes for QA/Admin only…"
-                onFocus={() => setFocusKey("notes")}
-                onBlur={() => setFocusKey("")}
               />
             </div>
           </div>
@@ -465,37 +458,33 @@ export default function SupplierEvaluationCreate() {
         <div style={{ ...S.card, marginTop: 14 }}>
           <div style={S.sectionTitle}>Public Supplier Link</div>
 
-          <div style={S.monoBox}>{publicUrl}</div>
+          <div className="sa-mono-box">{publicUrl}</div>
 
           <div style={{ marginTop: 10, ...S.row }}>
-            <button style={S.btn} onClick={() => window.open(publicUrl, "_blank")}>
-              Open
+            <button className="sa-btn" onClick={() => window.open(publicUrl, "_blank")}>
+              Open ↗
             </button>
-            <button style={S.btn} onClick={copyLink}>
-              Copy
+            <button className="sa-btn" onClick={copyLink}>
+              📋 Copy Link
             </button>
-            <span style={{ ...S.pill, opacity: 0.9 }}>Token: {publicToken}</span>
+            <span className="sa-badge sa-badge-blue">Token: {publicToken}</span>
           </div>
 
           <div style={{ marginTop: 12, ...S.row }}>
-            <button style={S.btn} onClick={() => nav("/haccp-iso/supplier-evaluation/results")}>
-              Go to Submitted Results
+            <button className="sa-btn" onClick={() => nav("/haccp-iso/supplier-evaluation/results")}>
+              Go to Submitted Results →
             </button>
 
             <button
-              style={saving ? { ...S.btnPrimary, opacity: 0.65, cursor: "not-allowed" } : S.btnPrimary}
+              className={`sa-btn sa-btn-primary${saving ? " sa-btn-saving" : ""}`}
               disabled={saving}
               onClick={onCreate}
             >
               {saving ? "Saving..." : "Save Evaluation + Verify ✅"}
             </button>
-
-            <button style={S.btnDanger} onClick={copyLink}>
-              Copy Link to Send
-            </button>
           </div>
 
-          {msg ? <div style={isError ? S.msgBad : S.msgOk}>{msg}</div> : null}
+          {msg ? <div className={isError ? "sa-msg-err" : "sa-msg-ok"}>{msg}</div> : null}
         </div>
 
         <div style={S.footer}>Al Mawashi — Supplier Evaluation ©</div>

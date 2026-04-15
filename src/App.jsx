@@ -274,6 +274,12 @@ const SopSsopPage = lazy(() =>
 );
 
 /** حماية المسارات الخاصة */
+/** Redirects /old-path/t/:token → /new-path/:token preserving the real token value */
+function TokenRedirect({ to }) {
+  const { token } = useParams();
+  return <Navigate to={`${to}/${encodeURIComponent(token || "")}`} replace />;
+}
+
 function ProtectedRoute({ children }) {
   let isAuthed = false;
   try {
@@ -981,11 +987,11 @@ export default function App() {
         />
         <Route
           path="/supplier-evaluation/t/:token"
-          element={<Navigate to="/supplier-approval/t/:token" replace />}
+          element={<TokenRedirect to="/supplier-approval/t" />}
         />
         <Route
           path="/supplier-evaluation/:token"
-          element={<Navigate to="/supplier-approval/:token" replace />}
+          element={<TokenRedirect to="/supplier-approval" />}
         />
 
         {/* ✅✅ Supplier Self-Assessment Form (PDF Literal Form) */}

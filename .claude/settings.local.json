@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(ls D:/inspection-react-full/.env*)",
-      "Read(//d/inspection-server/**)"
+      "Read(//d/inspection-server/**)",
+      "Bash(find \"D:\\\\inspection-react-full/src/pages/haccp and iso/Supplier Approval\" -type f -exec ls -lh {} \\\\;)"
     ]
   }
 }

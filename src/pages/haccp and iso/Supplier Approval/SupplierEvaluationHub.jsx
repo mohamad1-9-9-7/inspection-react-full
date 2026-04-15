@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../../assets/almawashi-logo.jpg";
+import "./SupplierApproval.css";
 
 /**
  * Supplier Evaluation — Parent / Hub Page

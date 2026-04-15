@@ -51,8 +51,7 @@ async function listReportsByType(type) {
   if (Array.isArray(data?.items)) return data.items;
   if (Array.isArray(data?.data)) return data.data;
   if (Array.isArray(data?.data?.data)) return data.data.data;
-  if (Array.isArray(data?.ok && data?.data)) return data.data;
-  if (Array.isArray(data?.data)) return data.data;
+  if (data?.ok && Array.isArray(data?.data)) return data.data;
   return [];
 }
 async function createReport(body) {
@@ -222,7 +221,7 @@ const FORM = [
           { key: "fbc_01", q: "Is there a policy for the control of glass and\nexclusion of glass from production areas?" },
           { key: "fbc_02", q: "Is there a glass/brittle material breakage\nprocedure?" },
           { key: "fbc_03", q: "Is there a policy for the control of wood and\nexclusion of wood from production areas?" },
-          { key: "fbc_04", q: "Is there a policy for the control of metal and\nexclusion of potential metal contaminantsfrom\nproduction areas?" },
+          { key: "fbc_04", q: "Is there a policy for the control of metal and\nexclusion of potential metal contaminants from\nproduction areas?" },
           { key: "fbc_05", q: "Is there a policy for the control of knives and\nexclusion of unauthorized knives from the\nproduction area?" },
         ],
       },
@@ -309,7 +308,7 @@ const FORM = [
           { key: "fsq_03", q: "Are there maintenance programs for equipment\nand buildings?" },
           {
             key: "fsq_04",
-            q: "Is there a system forstaff training such that all\nkey personnel are trained and have training\nrecords?",
+            q: "Is there a system for staff training such that all\nkey personnel are trained and have training\nrecords?",
           },
           {
             key: "fsq_05",
@@ -370,7 +369,7 @@ const FORM = [
           },
           { key: "rm_05", q: "Do you have specifications for your finished\nproducts?" },
           { key: "rm_06", q: "Do you test all finished product against your\nspecification?" },
-          { key: "rm_07", q: "Do you have a procedure for dealing with non￾\nconforming raw materials and finished products?" },
+          { key: "rm_07", q: "Do you have a procedure for dealing with non-conforming raw materials and finished products?" },
         ],
       },
 
@@ -399,7 +398,7 @@ const FORM = [
         title: "Transportation",
         type: "yesno",
         items: [
-          { key: "trn_01", q: "Is the vehicle temperature is monitored during\ntransportation?" },
+          { key: "trn_01", q: "Is the vehicle temperature monitored during\ntransportation?" },
           { key: "trn_02", q: "Is there a cleaning schedule for the vehicles &\nverification system available?" },
           { key: "trn_03", q: "Are all the vehicles holding valid food control\nregulatory approval?" },
         ],

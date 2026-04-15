@@ -1,60 +1,51 @@
 import React from "react";
+import Button from "../../components/Button";
+import EmptyState from "../../components/EmptyState";
 
 export default function QuestionsTab({ questions, setQuestions }) {
   const handleDeleteQuestion = (index) => {
-    if (window.confirm("❗ هل أنت متأكد من حذف هذا السؤال؟")) {
-      const updated = questions.filter((_, i) => i !== index);
-      localStorage.setItem("allQuestions", JSON.stringify(updated));
-      setQuestions(updated);
-    }
+    if (!window.confirm("❗ هل أنت متأكد من حذف هذا السؤال؟")) return;
+    const updated = questions.filter((_, i) => i !== index);
+    localStorage.setItem("allQuestions", JSON.stringify(updated));
+    setQuestions(updated);
   };
 
   return (
-    <div style={cardStyle}>
-      <h3>📚 جميع الأسئلة ({questions.length})</h3>
+    <div>
+      {/* هيدر */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-4)" }}>
+        <h3 style={{ fontSize: "var(--font-size-md)", fontWeight: "var(--font-weight-bold)", color: "var(--text-primary)", margin: 0 }}>
+          📚 جميع الأسئلة
+        </h3>
+        <span className="qms-badge qms-badge-info">{questions.length} سؤال</span>
+      </div>
 
       {questions.length === 0 ? (
-        <p>❗ لا توجد أسئلة محفوظة.</p>
+        <EmptyState icon="❓" message="لا توجد أسئلة محفوظة" sub="أضف أسئلة من صفحة التفتيش" />
       ) : (
-        questions.map((q, idx) => (
-          <div key={idx} style={questionStyle}>
-            <strong>
-              📌 {q.type} - {q.section}
-            </strong>
-            <p style={{ margin: "0.5rem 0" }}>{q.text}</p>
-            <button
-              onClick={() => handleDeleteQuestion(idx)}
-              style={deleteButtonStyle}
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+          {questions.map((q, idx) => (
+            <div
+              key={idx}
+              className="qms-card qms-card-sm"
+              style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "var(--space-3)" }}
             >
-              🗑️ حذف
-            </button>
-          </div>
-        ))
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", gap: "var(--space-2)", marginBottom: "var(--space-2)", flexWrap: "wrap" }}>
+                  {q.type && <span className="qms-badge qms-badge-info">{q.type}</span>}
+                  {q.section && <span className="qms-badge qms-badge-info" style={{ background: "#ede9fe", color: "#5b21b6" }}>{q.section}</span>}
+                </div>
+                <p style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)", margin: 0, lineHeight: 1.6 }}>
+                  {q.text}
+                </p>
+              </div>
+              <Button variant="danger" size="sm" onClick={() => handleDeleteQuestion(idx)}>
+                🗑️
+              </Button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
 }
-
-const cardStyle = {
-  backgroundColor: "white",
-  padding: "2rem",
-  borderRadius: "12px",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-};
-
-const questionStyle = {
-  border: "1px solid #ddd",
-  borderRadius: "8px",
-  padding: "1rem",
-  marginBottom: "1rem",
-  backgroundColor: "#f9f9f9",
-};
-
-const deleteButtonStyle = {
-  backgroundColor: "#e74c3c",
-  color: "white",
-  padding: "6px 12px",
-  border: "none",
-  borderRadius: "6px",
-  cursor: "pointer",
-};
