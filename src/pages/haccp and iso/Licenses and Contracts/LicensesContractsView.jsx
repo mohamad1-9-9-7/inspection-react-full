@@ -3,21 +3,16 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 
-/* ===== API base (same style as the project) ===== */
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
     (typeof process !== "undefined" &&
-      (process.env?.REACT_APP_API_URL ||
-        process.env?.VITE_API_URL ||
-        process.env?.RENDER_EXTERNAL_URL)) ||
+      (process.env?.REACT_APP_API_URL || process.env?.VITE_API_URL)) ||
     "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
-/* Report type */
 const TYPE = "licenses_contracts";
 
-/* ✅ Branches (EN) — same as input */
 const BRANCHES = [
   "Al Qusais Warehouse",
   "Al Mamzar Food Truck",
@@ -27,315 +22,179 @@ const BRANCHES = [
   "Al Ain Butchery",
 ];
 
-/* ===== Helpers ===== */
-function safeArr(x) {
-  return Array.isArray(x) ? x : [];
-}
+// ── helpers ────────────────────────────────────────────────────────────────
+function safeArr(x) { return Array.isArray(x) ? x : []; }
+
 function getId(r) {
   return r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 }
+
 function parseDateAny(r) {
-  // used only for sorting (NOT displayed)
-  const d =
+  return (
     (r?.created_at && new Date(r.created_at)) ||
     (r?.createdAt && new Date(r.createdAt)) ||
     (r?.payload?.savedAt && new Date(r.payload.savedAt)) ||
-    (r?.payload?.reportDate && new Date(r.payload.reportDate)) || // legacy
-    new Date(NaN);
-  return d;
+    new Date(NaN)
+  );
 }
+
 function daysUntil(ymdStr) {
   const s = String(ymdStr || "").trim();
   if (!s) return null;
   const d = new Date(s + "T00:00:00");
   if (isNaN(d)) return null;
-  const now = new Date();
-  const diff = d.getTime() - now.getTime();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
-}
-function expiryBadge(expiryDate) {
-  const n = daysUntil(expiryDate);
-  if (n === null)
-    return {
-      text: "No Expiry",
-      bg: "rgba(100,116,139,0.10)",
-      bd: "rgba(100,116,139,0.28)",
-      color: "#334155",
-    };
-  if (n < 0)
-    return {
-      text: `Expired (${Math.abs(n)}d)`,
-      bg: "rgba(239,68,68,0.10)",
-      bd: "rgba(239,68,68,0.34)",
-      color: "#991b1b",
-    };
-  if (n <= 30)
-    return {
-      text: `Expiring (${n}d)`,
-      bg: "rgba(245,158,11,0.12)",
-      bd: "rgba(245,158,11,0.34)",
-      color: "#92400e",
-    };
-  return {
-    text: `Valid (${n}d)`,
-    bg: "rgba(16,185,129,0.10)",
-    bd: "rgba(16,185,129,0.30)",
-    color: "#065f46",
-  };
-}
-function shortId(r) {
-  const id = String(getId(r) || "").trim();
-  if (!id) return "—";
-  return id.length > 8 ? id.slice(-8) : id;
+  return Math.ceil((d.getTime() - Date.now()) / 86400000);
 }
 
-/* ===== Files / Images helpers ===== */
+function expiryBadge(expiryDate) {
+  const n = daysUntil(expiryDate);
+  if (n === null) return { text: "No Expiry", bg: "#f1f5f9", bd: "#cbd5e1", color: "#475569" };
+  if (n < 0)     return { text: `Expired (${Math.abs(n)}d ago)`, bg: "#fef2f2", bd: "#fca5a5", color: "#991b1b" };
+  if (n <= 30)   return { text: `Expiring in ${n}d`, bg: "#fffbeb", bd: "#fcd34d", color: "#92400e" };
+  return { text: `Valid (${n}d)`, bg: "#f0fdf4", bd: "#86efac", color: "#166534" };
+}
+
+function shortId(r) {
+  const id = String(getId(r) || "").trim();
+  return id.length > 8 ? "…" + id.slice(-8) : id || "—";
+}
+
 function toUrlArray(x) {
   if (!x) return [];
   if (Array.isArray(x)) return x.filter(Boolean).map(String);
-  if (typeof x === "string") return [x];
+  if (typeof x === "string" && x) return [x];
   return [];
 }
+
 function normalizeFiles(obj) {
-  // supports old + new shapes safely
   const o = obj || {};
-  const urls = [
-    ...toUrlArray(o.fileUrl),
-    ...toUrlArray(o.fileUrls),
-    ...toUrlArray(o.files),
-    ...toUrlArray(o.images),
-    ...toUrlArray(o.imageUrls),
-    ...toUrlArray(o.attachments),
-    ...toUrlArray(o.attachmentUrls),
-  ]
-    .map((u) => String(u || "").trim())
-    .filter(Boolean);
-
-  // remove duplicates
   const seen = new Set();
-  return urls.filter((u) => (seen.has(u) ? false : (seen.add(u), true)));
+  return [
+    ...toUrlArray(o.fileUrls), ...toUrlArray(o.fileUrl),
+    ...toUrlArray(o.files), ...toUrlArray(o.images),
+    ...toUrlArray(o.imageUrls), ...toUrlArray(o.attachments),
+  ]
+    .map((u) => String(u).trim())
+    .filter((u) => u && (seen.has(u) ? false : seen.add(u)));
 }
+
 function isImageUrl(url) {
-  const u = String(url || "").toLowerCase().trim();
-  if (!u) return false;
-  if (u.startsWith("data:image/")) return true;
-  if (u.includes("image/upload")) return true; // cloudinary common pattern
-  // basic extension check
+  const u = String(url || "").toLowerCase();
   return (
-    u.endsWith(".jpg") ||
-    u.endsWith(".jpeg") ||
-    u.endsWith(".png") ||
-    u.endsWith(".webp") ||
-    u.endsWith(".gif") ||
-    u.includes(".jpg?") ||
-    u.includes(".jpeg?") ||
-    u.includes(".png?") ||
-    u.includes(".webp?") ||
-    u.includes(".gif?")
+    u.startsWith("data:image/") ||
+    u.includes("image/upload") ||
+    /\.(jpg|jpeg|png|webp|gif)(\?|$)/.test(u)
   );
 }
+
 function isPdfUrl(url) {
-  const u = String(url || "").toLowerCase().trim();
-  return u.endsWith(".pdf") || u.includes(".pdf?");
+  return /\.pdf(\?|$)/.test(String(url || "").toLowerCase());
 }
-function niceFileLabel(url, idx) {
+
+function cloudinaryThumb(url, w) {
   const u = String(url || "");
-  const kind = isImageUrl(u) ? "Image" : isPdfUrl(u) ? "PDF" : "File";
-  return `${kind} #${idx + 1}`;
-}
-
-/* ===== ✅ Speed up Cloudinary images (thumb/preview) ===== */
-function cloudinaryResize(url, w) {
-  const u = String(url || "").trim();
-  if (!u) return u;
-  // only if it looks like Cloudinary image upload
   if (!u.includes("/image/upload/")) return u;
-
-  // avoid double inserting if already has transformations
-  // We'll safely insert "f_auto,q_auto,w_xxx,c_limit" right after /upload/
-  return u.replace(
-    "/image/upload/",
-    `/image/upload/f_auto,q_auto,w_${w},c_limit/`
-  );
-}
-function displayImageUrl(url, size = 1200) {
-  const u = String(url || "").trim();
-  if (!u) return u;
-  if (!isImageUrl(u)) return u;
-  // for cloudinary -> optimized
-  return cloudinaryResize(u, size);
+  return u.replace("/image/upload/", `/image/upload/f_auto,q_auto,w_${w},c_limit/`);
 }
 
-/* ===== UI styles ===== */
-const shellStyle = {
-  minHeight: "100vh",
-  padding: "28px 18px",
-  background:
-    "radial-gradient(circle at 12% 6%, rgba(99,102,241,0.15) 0, rgba(249,250,251,1) 38%, rgba(255,255,255,1) 100%)," +
-    "radial-gradient(circle at 88% 18%, rgba(16,185,129,0.10) 0, rgba(255,255,255,0) 52%)," +
-    "radial-gradient(circle at 50% 100%, rgba(59,130,246,0.10) 0, rgba(255,255,255,0) 55%)",
-  fontFamily:
-    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  color: "#0b1f4d",
+function displayUrl(url, size = 1200) {
+  return isImageUrl(url) ? cloudinaryThumb(url, size) : url;
+}
+
+// ── styles ─────────────────────────────────────────────────────────────────
+const S = {
+  shell: {
+    minHeight: "100vh",
+    padding: "20px 24px",
+    background: "linear-gradient(150deg,#eef2ff 0%,#f8fafc 55%,#ecfdf5 100%)",
+    fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif',
+    color: "#0f172a",
+  },
+  layout: { width: "100%" },
+  topBar: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    gap: 10, padding: "12px 16px", borderRadius: 16,
+    background: "#fff", border: "1.5px solid #e2e8f0",
+    boxShadow: "0 2px 14px rgba(0,0,0,0.06)", marginBottom: 16, flexWrap: "wrap",
+  },
+  brand: { display: "flex", alignItems: "center", gap: 10 },
+  logo: { width: 42, height: 42, borderRadius: 10, objectFit: "cover", border: "1px solid #e2e8f0" },
+  card: {
+    background: "#fff", border: "1.5px solid #e2e8f0",
+    borderRadius: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.04)", padding: 18,
+  },
+  label: { fontSize: 14, fontWeight: 700, color: "#475569", marginBottom: 6, display: "block" },
+  input: {
+    width: "100%", boxSizing: "border-box",
+    border: "1.5px solid #e2e8f0", borderRadius: 10,
+    padding: "11px 14px", fontSize: 15, fontWeight: 600,
+    outline: "none", background: "#f8fafc",
+  },
+  tblInput: {
+    width: "100%", boxSizing: "border-box",
+    border: "1.5px solid #e2e8f0", borderRadius: 8,
+    padding: "8px 10px", fontSize: 14, fontWeight: 600,
+    outline: "none", background: "#f8fafc",
+  },
 };
 
-/* ✅ أوسع بالعرض */
-const layoutStyle = { maxWidth: "1440px", margin: "0 auto" };
-
-const topBarStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "14px",
-  padding: "14px 16px",
-  borderRadius: "18px",
-  background: "rgba(255,255,255,0.82)",
-  border: "1px solid rgba(30, 41, 59, 0.28)",
-  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
-  backdropFilter: "blur(10px)",
-  marginBottom: "18px",
-  flexWrap: "wrap",
-};
-
-const brandLeftStyle = { display: "flex", alignItems: "center", gap: "12px" };
-
-const logoStyle = {
-  width: "46px",
-  height: "46px",
-  borderRadius: "12px",
-  objectFit: "cover",
-  border: "1px solid rgba(15, 23, 42, 0.18)",
-  boxShadow: "0 6px 18px rgba(15, 23, 42, 0.10)",
-  background: "#fff",
-};
-
-const btn = (bg) => ({
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 12,
-  padding: "10px 14px",
-  fontWeight: 900,
-  cursor: "pointer",
-  boxShadow: "0 6px 16px rgba(15, 23, 42, 0.12)",
+const btnSolid = (bg) => ({
+  background: bg, color: "#fff", border: "none", borderRadius: 10,
+  padding: "11px 20px", fontWeight: 700, cursor: "pointer", fontSize: 15, whiteSpace: "nowrap",
 });
-
 const btnGhost = {
-  background: "rgba(255,255,255,0.9)",
-  color: "#0b1f4d",
-  border: "1px solid rgba(30, 41, 59, 0.28)",
-  borderRadius: 12,
-  padding: "10px 14px",
-  fontWeight: 900,
-  cursor: "pointer",
+  background: "#fff", color: "#334155", border: "1.5px solid #e2e8f0",
+  borderRadius: 10, padding: "11px 18px", fontWeight: 700, cursor: "pointer", fontSize: 15,
 };
-
-const cardStyle = {
-  background: "rgba(255,255,255,0.92)",
-  border: "1px solid rgba(30, 41, 59, 0.26)",
-  borderRadius: 18,
-  boxShadow: "0 10px 26px rgba(15, 23, 42, 0.08)",
-  padding: 16,
-};
-
-const fieldLabel = {
-  fontSize: 12,
-  fontWeight: 900,
-  marginBottom: 6,
-  color: "#0b1f4d",
-};
-
-const inputStyle = {
-  width: "100%",
-  boxSizing: "border-box",
-  border: "1px solid rgba(30, 41, 59, 0.30)",
-  borderRadius: 12,
-  padding: "10px 12px",
-  fontSize: 13,
-  fontWeight: 700,
-  outline: "none",
-  background: "rgba(255,255,255,0.95)",
-};
-
-const tableInput = {
-  width: "100%",
-  boxSizing: "border-box",
-  border: "1px solid rgba(30, 41, 59, 0.28)",
-  borderRadius: 10,
-  padding: "8px 10px",
-  fontSize: 12,
-  fontWeight: 800,
-  outline: "none",
-  background: "rgba(255,255,255,0.95)",
-};
-
 const miniBtn = {
-  background: "rgba(99,102,241,0.10)",
-  border: "1px solid rgba(99,102,241,0.28)",
-  color: "#3730a3",
-  borderRadius: 10,
-  padding: "7px 10px",
-  fontWeight: 950,
-  cursor: "pointer",
+  background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)",
+  color: "#4338ca", borderRadius: 8, padding: "7px 14px", fontWeight: 700,
+  cursor: "pointer", fontSize: 13, whiteSpace: "nowrap",
+};
+const miniBtnRed = {
+  background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
+  color: "#991b1b", borderRadius: 8, padding: "7px 14px", fontWeight: 700,
+  cursor: "pointer", fontSize: 13, whiteSpace: "nowrap",
 };
 
-const miniBtnDanger = {
-  background: "rgba(239,68,68,0.10)",
-  border: "1px solid rgba(239,68,68,0.28)",
-  color: "#991b1b",
-  borderRadius: 10,
-  padding: "7px 10px",
-  fontWeight: 950,
-  cursor: "pointer",
-};
-
-const thumbWrap = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  marginTop: 10,
-};
-
-const thumbBtn = {
-  width: 74,
-  height: 56,
-  borderRadius: 12,
-  overflow: "hidden",
-  border: "1px solid rgba(30,41,59,0.22)",
-  boxShadow: "0 6px 14px rgba(15, 23, 42, 0.08)",
-  background: "#fff",
-  cursor: "pointer",
-  padding: 0,
-};
-
-const thumbImg = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-  display: "block",
-};
-
+// ── Badge ──────────────────────────────────────────────────────────────────
 function Badge({ expiryDate }) {
   const b = expiryBadge(expiryDate);
   return (
-    <span
-      style={{
-        fontSize: 12,
-        fontWeight: 900,
-        padding: "6px 10px",
-        borderRadius: 999,
-        background: b.bg,
-        border: `1px solid ${b.bd}`,
-        color: b.color,
-        whiteSpace: "nowrap",
-      }}
-    >
+    <span style={{
+      fontSize: 13, fontWeight: 700, padding: "6px 12px", borderRadius: 999,
+      background: b.bg, border: `1px solid ${b.bd}`, color: b.color, whiteSpace: "nowrap",
+    }}>
       {b.text}
     </span>
   );
 }
 
-/* ===== Modal ===== */
+// ── File chip (removable) ──────────────────────────────────────────────────
+function FileChip({ url, label, onRemove }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      background: "#eff6ff", border: "1px solid #bfdbfe",
+      borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 700,
+    }}>
+      <a href={url} target="_blank" rel="noreferrer" style={{ color: "#2563eb", textDecoration: "none" }}>
+        {label}
+      </a>
+      {onRemove && (
+        <button type="button" onClick={onRemove}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: "#ef4444", fontWeight: 900, fontSize: 14, padding: "0 2px",
+            display: "flex", alignItems: "center",
+          }}
+          title="Remove file">✕</button>
+      )}
+    </span>
+  );
+}
+
+// ── PreviewModal ───────────────────────────────────────────────────────────
 function PreviewModal({ open, title, urls, index, onClose, onPrev, onNext }) {
   const [loaded, setLoaded] = useState(false);
 
@@ -350,166 +209,86 @@ function PreviewModal({ open, title, urls, index, onClose, onPrev, onNext }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose, onPrev, onNext]);
 
-  // ✅ prefetch current + neighbors (improves perceived speed)
-  useEffect(() => {
-    if (!open) return;
-    const list = Array.isArray(urls) ? urls : [];
-    const cur = list[index];
-    const prev = list[(index - 1 + list.length) % (list.length || 1)];
-    const next = list[(index + 1) % (list.length || 1)];
-    [cur, prev, next]
-      .filter(Boolean)
-      .forEach((u) => {
-        if (isImageUrl(u)) {
-          const img = new Image();
-          img.decoding = "async";
-          img.src = displayImageUrl(u, 1400);
-        }
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, index]);
-
   useEffect(() => {
     if (!open) return;
     setLoaded(false);
-  }, [open, index]);
+    const list = Array.isArray(urls) ? urls : [];
+    [list[index], list[(index - 1 + list.length) % (list.length || 1)], list[(index + 1) % (list.length || 1)]]
+      .filter(Boolean).forEach((u) => {
+        if (isImageUrl(u)) {
+          const img = new Image();
+          img.decoding = "async";
+          img.src = displayUrl(u, 1400);
+        }
+      });
+  }, [open, index, urls]);
 
   if (!open) return null;
 
   const current = urls?.[index] || "";
-  const img = isImageUrl(current);
-  const previewSrc = img ? displayImageUrl(current, 1400) : current;
+  const isImg = isImageUrl(current);
 
   return (
     <div
       onClick={onClose}
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(2,6,23,0.65)",
-        zIndex: 9999,
-        display: "grid",
-        placeItems: "center",
-        padding: 16,
+        position: "fixed", inset: 0, background: "rgba(2,6,23,0.65)",
+        zIndex: 9999, display: "grid", placeItems: "center", padding: 16,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(960px, 96vw)",
-          maxHeight: "92vh",
-          borderRadius: 18,
-          background: "rgba(255,255,255,0.98)",
-          border: "1px solid rgba(255,255,255,0.25)",
-          boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
+          width: "min(960px, 96vw)", maxHeight: "92vh", borderRadius: 18,
+          background: "#fff", boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+          overflow: "hidden", display: "flex", flexDirection: "column",
         }}
       >
-        <div
-          style={{
-            padding: "12px 14px",
-            borderBottom: "1px solid rgba(30,41,59,0.18)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ fontWeight: 950 }}>
+        {/* Modal header */}
+        <div style={{
+          padding: "12px 14px", borderBottom: "1.5px solid #e2e8f0",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          gap: 10, flexWrap: "wrap",
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>
             {title || "Preview"}{" "}
-            <span style={{ color: "#64748b", fontWeight: 900 }}>
-              ({index + 1}/{urls.length})
+            <span style={{ color: "#94a3b8", fontWeight: 600 }}>
+              ({index + 1} / {urls?.length})
             </span>
           </div>
-
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <a
-              href={current}
-              target="_blank"
-              rel="noreferrer"
-              style={{ ...miniBtn, textDecoration: "none" }}
-            >
-              Open
-            </a>
-
-            <a
-              href={current}
-              download
-              style={{ ...miniBtn, textDecoration: "none" }}
-            >
-              Download
-            </a>
-
-            <button
-              type="button"
-              style={miniBtn}
-              onClick={onPrev}
-              disabled={urls.length <= 1}
-            >
-              ◀ Prev
-            </button>
-            <button
-              type="button"
-              style={miniBtn}
-              onClick={onNext}
-              disabled={urls.length <= 1}
-            >
-              Next ▶
-            </button>
-
-            <button type="button" style={miniBtnDanger} onClick={onClose}>
-              ✕ Close
-            </button>
+            <a href={current} target="_blank" rel="noreferrer"
+              style={{ ...miniBtn, textDecoration: "none" }}>Open</a>
+            <a href={current} download
+              style={{ ...miniBtn, textDecoration: "none" }}>Download</a>
+            <button type="button" style={miniBtn} onClick={onPrev} disabled={(urls?.length || 0) <= 1}>◀</button>
+            <button type="button" style={miniBtn} onClick={onNext} disabled={(urls?.length || 0) <= 1}>▶</button>
+            <button type="button" style={miniBtnRed} onClick={onClose}>✕ Close</button>
           </div>
         </div>
 
-        <div
-          style={{
-            padding: 12,
-            overflow: "auto",
-            background: "rgba(248,250,252,1)",
-            display: "grid",
-            placeItems: "center",
-          }}
-        >
-          {img ? (
-            <div style={{ width: "100%", display: "grid", placeItems: "center" }}>
-              {!loaded ? (
-                <div
-                  style={{
-                    padding: 14,
-                    borderRadius: 14,
-                    background: "rgba(99,102,241,0.08)",
-                    border: "1px solid rgba(99,102,241,0.18)",
-                    fontWeight: 950,
-                    color: "#3730a3",
-                    marginBottom: 10,
-                  }}
-                >
-                  Loading image...
-                </div>
-              ) : null}
-
+        {/* Modal body */}
+        <div style={{ flex: 1, overflow: "auto", background: "#f8fafc", display: "grid", placeItems: "center", padding: 16 }}>
+          {isImg ? (
+            <>
+              {!loaded && (
+                <div style={{ fontWeight: 700, color: "#6366f1", marginBottom: 10 }}>Loading...</div>
+              )}
               <img
-                src={previewSrc}
+                src={displayUrl(current, 1400)}
                 alt="preview"
                 onLoad={() => setLoaded(true)}
                 onError={() => setLoaded(true)}
                 style={{
-                  maxWidth: "100%",
-                  maxHeight: "76vh",
-                  borderRadius: 14,
-                  border: "1px solid rgba(30,41,59,0.18)",
-                  boxShadow: "0 10px 26px rgba(15, 23, 42, 0.10)",
+                  maxWidth: "100%", maxHeight: "76vh",
+                  borderRadius: 12, border: "1.5px solid #e2e8f0",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
                 }}
               />
-            </div>
+            </>
           ) : (
-            <div style={{ padding: 18, fontWeight: 900, color: "#475569" }}>
-              This file is not an image preview. Use <b>Open</b> to view it.
+            <div style={{ padding: 20, fontWeight: 700, color: "#64748b" }}>
+              This file cannot be previewed. Use <b>Open</b> to view it.
             </div>
           )}
         </div>
@@ -518,6 +297,23 @@ function PreviewModal({ open, title, urls, index, onClose, onPrev, onNext }) {
   );
 }
 
+// ── upload helper (shared with Input page) ─────────────────────────────────
+function isPdf(file) {
+  const t = String(file?.type || "").toLowerCase();
+  return t === "application/pdf" || String(file?.name || "").toLowerCase().endsWith(".pdf");
+}
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || `Upload failed (HTTP ${res.status})`);
+  const url = data?.url || data?.secure_url || data?.fileUrl || data?.file_url || data?.path || data?.result?.secure_url || "";
+  if (!url) throw new Error("No URL returned from server.");
+  return url;
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────
 export default function LicensesContractsView() {
   const navigate = useNavigate();
   const [reports, setReports] = useState([]);
@@ -525,77 +321,35 @@ export default function LicensesContractsView() {
   const [loading, setLoading] = useState(false);
 
   const [q, setQ] = useState("");
+  const [branchFilter, setBranchFilter] = useState("ALL");
   const [onlyExpiring, setOnlyExpiring] = useState(false);
 
-  // ✅ Branch filter
-  const [branchFilter, setBranchFilter] = useState("ALL");
-
-  // ✅ Preview modal state
-  const [preview, setPreview] = useState({
-    open: false,
-    title: "",
-    urls: [],
-    index: 0,
-  });
-
-  // ✅ Details collapse (default: collapsed)
+  const [preview, setPreview] = useState({ open: false, title: "", urls: [], index: 0 });
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  // ✅ Edit mode
+  // edit state
   const [editing, setEditing] = useState(false);
   const [editLicense, setEditLicense] = useState({});
   const [editContracts, setEditContracts] = useState([]);
 
+  // upload state (during edit)
+  const [uploadingKey, setUploadingKey] = useState("");
+  const [uploadProgress, setUploadProgress] = useState("");
+
   const firstLoad = useRef(true);
 
-  const askPass = (label = "") =>
-    (window.prompt(`${label}\nEnter password:`) || "") === "9999";
-
-  function openPreview(title, urls, startIndex = 0) {
-    const list = safeArr(urls).filter(Boolean);
-    if (list.length === 0) return;
-    setPreview({
-      open: true,
-      title: title || "Preview",
-      urls: list,
-      index: Math.max(0, Math.min(startIndex, list.length - 1)),
-    });
-  }
-  function closePreview() {
-    setPreview((p) => ({ ...p, open: false }));
-  }
-  function prevPreview() {
-    setPreview((p) => {
-      const n = p.urls.length || 1;
-      return { ...p, index: (p.index - 1 + n) % n };
-    });
-  }
-  function nextPreview() {
-    setPreview((p) => {
-      const n = p.urls.length || 1;
-      return { ...p, index: (p.index + 1) % n };
-    });
-  }
-
+  // ── fetch ──────────────────────────────────────────────────────────────
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error("Failed to fetch");
-
+      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("Fetch failed");
       const json = await res.json();
-      let arr = Array.isArray(json)
-        ? json
-        : json?.data || json?.items || json?.rows || [];
-
+      let arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
       arr = safeArr(arr)
         .filter((r) => !isNaN(parseDateAny(r)))
         .sort((a, b) => parseDateAny(b) - parseDateAny(a));
-
       setReports(arr);
-
       if (firstLoad.current) {
         setSelected(arr[0] || null);
         firstLoad.current = false;
@@ -606,156 +360,130 @@ export default function LicensesContractsView() {
       }
     } catch (e) {
       console.error(e);
-      alert("⚠️ Failed to fetch data.");
+      alert("Failed to fetch data.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    fetchReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { fetchReports(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── delete ─────────────────────────────────────────────────────────────
   async function handleDelete(r) {
-    if (!window.confirm("Are you sure you want to delete this report?")) return;
+    if (!window.confirm("Delete this report permanently?")) return;
     const rid = getId(r);
-    if (!rid) return alert("⚠️ Missing report ID.");
+    if (!rid) return alert("Missing report ID.");
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports/${encodeURIComponent(rid)}`,
-        { method: "DELETE" }
-      );
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
-      alert("✅ Report deleted.");
-      await fetchReports();
+      alert("Report deleted.");
       setEditing(false);
       setDetailsOpen(false);
+      await fetchReports();
     } catch (e) {
       console.error(e);
-      alert("❌ Failed to delete report.");
+      alert("Failed to delete.");
     }
   }
 
-  // ✅ filter by search + branch + expiring
+  // ── filter & group ─────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const needle = String(q || "").trim().toLowerCase();
-
+    const needle = q.trim().toLowerCase();
     return reports.filter((r) => {
       const p = r?.payload || {};
       const lic = p.license || {};
       const cons = safeArr(p.contracts);
-
-      const br = String(p.branch || "").trim();
-      const matchBranch = branchFilter === "ALL" ? true : br === branchFilter;
-
-      const text = [
-        p.branch,
-        lic.name,
-        lic.notes,
-        ...cons.map((c) => c.contractType),
-        ...cons.map((c) => c.companyName),
-        ...cons.map((c) => c.notes),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      const matchText = !needle || text.includes(needle);
-
-      if (!onlyExpiring) return matchBranch && matchText;
-
-      const licDays = daysUntil(lic.expiryDate);
-      const licHit = licDays !== null && licDays <= 30;
-
-      const conHit = cons.some((c) => {
-        const d = daysUntil(c.expiryDate);
-        return d !== null && d <= 30;
-      });
-
-      return matchBranch && matchText && (licHit || conHit);
+      if (branchFilter !== "ALL" && String(p.branch || "").trim() !== branchFilter) return false;
+      if (needle) {
+        const text = [p.branch, lic.name, lic.notes, ...cons.map((c) => c.contractType), ...cons.map((c) => c.companyName)]
+          .filter(Boolean).join(" ").toLowerCase();
+        if (!text.includes(needle)) return false;
+      }
+      if (onlyExpiring) {
+        const licDays = daysUntil(lic.expiryDate);
+        const licHit = licDays !== null && licDays <= 30;
+        const conHit = cons.some((c) => { const d = daysUntil(c.expiryDate); return d !== null && d <= 30; });
+        if (!licHit && !conHit) return false;
+      }
+      return true;
     });
-  }, [reports, q, onlyExpiring, branchFilter]);
+  }, [reports, q, branchFilter, onlyExpiring]);
 
-  // ✅ group by branch (no dates shown)
   const groupedByBranch = useMemo(() => {
     const acc = {};
     for (const r of filtered) {
-      const p = r?.payload || {};
-      const br = String(p.branch || "").trim() || "Unspecified Branch";
-      acc[br] ||= [];
+      const br = String(r?.payload?.branch || "").trim() || "Unspecified";
+      acc[br] = acc[br] || [];
       acc[br].push(r);
-    }
-    for (const br of Object.keys(acc)) {
-      acc[br].sort((a, b) => parseDateAny(b) - parseDateAny(a));
     }
     return acc;
   }, [filtered]);
 
+  // ── selected data ──────────────────────────────────────────────────────
   const payload = selected?.payload || {};
   const license = payload?.license || {};
   const contracts = safeArr(payload?.contracts);
   const selectedBranch = String(payload?.branch || "").trim() || "—";
 
   const licenseFiles = useMemo(() => normalizeFiles(license), [license]);
-  const licenseImages = useMemo(
-    () => licenseFiles.filter((u) => isImageUrl(u)),
-    [licenseFiles]
-  );
+  const licenseImages = useMemo(() => licenseFiles.filter(isImageUrl), [licenseFiles]);
 
-  // ✅ Prefetch thumbs when selected changes (reduces delay)
+  // prefetch thumbs
   useEffect(() => {
-    const list = licenseImages.slice(0, 8).map((u) => displayImageUrl(u, 320));
-    list.forEach((u) => {
+    licenseImages.slice(0, 8).forEach((u) => {
       const img = new Image();
       img.decoding = "async";
-      img.src = u;
+      img.src = displayUrl(u, 320);
     });
   }, [licenseImages]);
 
-  // Sidebar summary
-  function sidebarBadges(r) {
+  // ── preview helpers ────────────────────────────────────────────────────
+  function openPreview(title, urls, idx = 0) {
+    const list = safeArr(urls).filter(Boolean);
+    if (!list.length) return;
+    setPreview({ open: true, title, urls: list, index: Math.max(0, Math.min(idx, list.length - 1)) });
+  }
+  const closePreview = () => setPreview((p) => ({ ...p, open: false }));
+  const prevPreview = () => setPreview((p) => ({ ...p, index: (p.index - 1 + p.urls.length) % p.urls.length }));
+  const nextPreview = () => setPreview((p) => ({ ...p, index: (p.index + 1) % p.urls.length }));
+
+  // ── sidebar badge summary ──────────────────────────────────────────────
+  function sidebarMeta(r) {
     const p = r?.payload || {};
     const lic = p.license || {};
     const cons = safeArr(p.contracts);
-
-    const licUrls = normalizeFiles(lic);
-    const hasLic =
-      String(lic.name || "").trim() ||
-      String(lic.expiryDate || "").trim() ||
-      licUrls.length > 0;
-
+    const hasLic = !!(String(lic.name || "").trim() || String(lic.expiryDate || "").trim() || normalizeFiles(lic).length);
     let worst = null;
-    const pickWorst = (b) => {
-      const rank =
-        b.text.startsWith("Expired")
-          ? 0
-          : b.text.startsWith("Expiring")
-          ? 1
-          : b.text.startsWith("Valid")
-          ? 2
-          : 3;
+    const pick = (b) => {
+      const rank = b.text.startsWith("Expired") ? 0 : b.text.startsWith("Expiring") ? 1 : b.text.startsWith("Valid") ? 2 : 3;
       if (!worst || rank < worst.rank) worst = { ...b, rank };
     };
-
-    if (hasLic) pickWorst(expiryBadge(lic.expiryDate));
-    for (const c of cons) pickWorst(expiryBadge(c.expiryDate));
-
-    const countContracts = cons.filter((c) =>
-      Object.values(c || {}).some((v) => String(v || "").trim() !== "")
-    ).length;
-
+    if (hasLic) pick(expiryBadge(lic.expiryDate));
+    cons.forEach((c) => pick(expiryBadge(c.expiryDate)));
+    const countContracts = cons.filter((c) => Object.values(c || {}).some((v) => String(v || "").trim())).length;
     return { worst, countContracts, hasLic };
   }
 
-  // ===== Edit handlers =====
+  // ── edit ───────────────────────────────────────────────────────────────
   function startEdit() {
     if (!selected) return;
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
-    setEditLicense(JSON.parse(JSON.stringify(license || {})));
-    setEditContracts(JSON.parse(JSON.stringify(contracts || [])));
+    const pass = window.prompt("Enter password to edit:");
+    if ((pass || "") !== "9999") return alert("Wrong password.");
+
+    const licCopy = JSON.parse(JSON.stringify(license || {}));
+    licCopy.fileUrls = normalizeFiles(licCopy);
+    if (!Array.isArray(licCopy.fileNames)) licCopy.fileNames = [];
+
+    const consCopy = JSON.parse(JSON.stringify(contracts || [])).map((c) => ({
+      ...c,
+      fileUrls: normalizeFiles(c),
+      fileNames: Array.isArray(c.fileNames) ? c.fileNames : [],
+    }));
+
+    setEditLicense(licCopy);
+    setEditContracts(consCopy);
     setEditing(true);
-    setDetailsOpen(true); // open details automatically
+    setDetailsOpen(true);
   }
 
   function cancelEdit() {
@@ -764,970 +492,595 @@ export default function LicensesContractsView() {
     setEditContracts([]);
   }
 
+  function updateEditLicense(key, val) {
+    setEditLicense((p) => ({ ...p, [key]: val }));
+  }
+
+  function removeLicenseFile(i) {
+    setEditLicense((p) => ({
+      ...p,
+      fileUrls: (p.fileUrls || []).filter((_, j) => j !== i),
+      fileNames: (p.fileNames || []).filter((_, j) => j !== i),
+      fileUrl: ((p.fileUrls || []).filter((_, j) => j !== i))[0] || "",
+    }));
+  }
+
   function updateContract(i, field, value) {
     setEditContracts((prev) => {
-      const next = Array.isArray(prev) ? [...prev] : [];
+      const next = [...prev];
       next[i] = { ...(next[i] || {}), [field]: value };
       return next;
     });
   }
 
+  function removeContractFile(ci, fi) {
+    setEditContracts((prev) => {
+      const next = [...prev];
+      const c = { ...next[ci] };
+      c.fileUrls = (c.fileUrls || []).filter((_, j) => j !== fi);
+      c.fileNames = (c.fileNames || []).filter((_, j) => j !== fi);
+      c.fileUrl = c.fileUrls[0] || "";
+      next[ci] = c;
+      return next;
+    });
+  }
+
+  // ── shared upload logic (edit mode) ───────────────────────────────────────
+  async function handleFilePick(fileList, currentUrls, currentNames, onDone, uploadKey) {
+    const list = Array.from(fileList || []).slice(0, 20);
+    if (!list.length) return;
+    const pdfs = list.filter(isPdf);
+    const imgs = list.filter((f) => !isPdf(f));
+    if (pdfs.length && imgs.length) return alert("Please upload PDF alone OR images alone — not both.");
+    if (pdfs.length > 1) return alert("Only 1 PDF allowed.");
+    try {
+      setUploadingKey(uploadKey);
+      setUploadProgress("");
+      if (pdfs.length === 1) {
+        setUploadProgress("Uploading PDF...");
+        const url = await uploadFile(pdfs[0]);
+        onDone([...currentUrls, url], [...currentNames, pdfs[0].name]);
+        return;
+      }
+      const uploaded = [];
+      for (let i = 0; i < imgs.length; i++) {
+        setUploadProgress(`Uploading ${i + 1} / ${imgs.length}...`);
+        uploaded.push(await uploadFile(imgs[i]));
+      }
+      const merged = [...currentUrls, ...uploaded].slice(0, 20);
+      const mergedNames = [...currentNames, ...imgs.map((f) => f.name)].slice(0, 20);
+      onDone(merged, mergedNames);
+    } catch (e) {
+      console.error(e);
+      alert(`Upload failed: ${e.message}`);
+    } finally {
+      setUploadingKey("");
+      setUploadProgress("");
+    }
+  }
+
+  function pickLicenseFiles(fileList) {
+    handleFilePick(
+      fileList,
+      editLicense.fileUrls || [],
+      editLicense.fileNames || [],
+      (urls, names) => setEditLicense((p) => ({ ...p, fileUrls: urls, fileNames: names, fileUrl: urls[0] || "" })),
+      "license"
+    );
+  }
+
+  function pickContractFiles(ci, fileList) {
+    const cur = editContracts[ci] || {};
+    handleFilePick(
+      fileList,
+      cur.fileUrls || [],
+      cur.fileNames || [],
+      (urls, names) =>
+        setEditContracts((prev) => {
+          const next = [...prev];
+          next[ci] = { ...next[ci], fileUrls: urls, fileNames: names, fileUrl: urls[0] || "" };
+          return next;
+        }),
+      `contract:${ci}`
+    );
+  }
+
   function addContractRow() {
-    setEditContracts((prev) => [
-      ...(Array.isArray(prev) ? prev : []),
-      {
-        contractType: "",
-        companyName: "",
-        expiryDate: "",
-        notes: "",
-      },
-    ]);
+    setEditContracts((prev) => [...prev, { contractType: "", companyName: "", expiryDate: "", notes: "", fileUrls: [], fileNames: [] }]);
   }
 
   function deleteContractRow(i) {
-    setEditContracts((prev) =>
-      (Array.isArray(prev) ? prev : []).filter((_, idx) => idx !== i)
-    );
+    setEditContracts((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   async function saveEdit() {
     if (!selected) return;
-    if (!askPass("Save changes")) return alert("❌ Wrong password");
+    const pass = window.prompt("Confirm password to save:");
+    if ((pass || "") !== "9999") return alert("Wrong password.");
 
     const rid = getId(selected);
-    if (!rid) return alert("⚠️ Missing report ID.");
+    if (!rid) return alert("Missing report ID.");
 
-    // keep any other payload fields as-is
     const newPayload = {
-      ...(payload || {}),
+      ...payload,
       branch: selectedBranch,
-      license: editLicense || {},
-      contracts: Array.isArray(editContracts) ? editContracts : [],
+      license: { ...editLicense, fileUrl: (editLicense.fileUrls || [])[0] || "" },
+      contracts: safeArr(editContracts).map((c) => ({
+        ...c, fileUrl: (c.fileUrls || [])[0] || "",
+      })),
       savedAt: Date.now(),
     };
 
     try {
       setLoading(true);
-
-      // delete old record
-      try {
-        await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
-          method: "DELETE",
-        });
-      } catch (e) {
-        console.warn("DELETE (ignored)", e);
-      }
-
-      // post new record
-      const postRes = await fetch(`${API_BASE}/api/reports`, {
+      await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" }).catch(() => {});
+      const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          type: TYPE,
-          branch: newPayload.branch,
-          uniqueKey: selected?.uniqueKey || undefined,
-          payload: newPayload,
-        }),
+        body: JSON.stringify({ type: TYPE, branch: newPayload.branch, payload: newPayload }),
       });
-
-      if (!postRes.ok) {
-        const t = await postRes.text().catch(() => "");
-        throw new Error(`HTTP ${postRes.status} ${t}`);
-      }
-
-      alert("✅ Changes saved");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      alert("Changes saved successfully.");
       setEditing(false);
-      setEditLicense({});
-      setEditContracts([]);
       await fetchReports();
     } catch (e) {
       console.error(e);
-      alert("❌ Saving failed.\n" + String(e?.message || e));
+      alert("Save failed: " + String(e?.message || e));
     } finally {
       setLoading(false);
     }
   }
 
+  // ── thumbnail row ──────────────────────────────────────────────────────
+  function ThumbnailRow({ images, title }) {
+    if (!images.length) return null;
+    return (
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+        {images.slice(0, 8).map((u, i) => (
+          <button
+            key={u} type="button"
+            onClick={() => openPreview(title, images, i)}
+            style={{
+              width: 70, height: 52, borderRadius: 10, overflow: "hidden",
+              border: "1.5px solid #e2e8f0", background: "#f8fafc",
+              cursor: "pointer", padding: 0,
+            }}
+            title={`Preview image ${i + 1}`}
+          >
+            <img
+              src={displayUrl(u, 320)} alt={`thumb-${i + 1}`}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              loading="eager" decoding="async"
+            />
+          </button>
+        ))}
+        {images.length > 8 && (
+          <button
+            type="button"
+            onClick={() => openPreview(title, images, 0)}
+            style={{
+              width: 70, height: 52, borderRadius: 10,
+              border: "1.5px solid #e2e8f0", background: "#eff6ff",
+              cursor: "pointer", fontWeight: 700, color: "#3730a3", fontSize: 13,
+            }}
+          >+{images.length - 8}</button>
+        )}
+      </div>
+    );
+  }
+
+  // ── render ─────────────────────────────────────────────────────────────
   return (
-    <main style={shellStyle}>
-      <div style={layoutStyle}>
+    <main style={S.shell}>
+      <div style={S.layout}>
         <PreviewModal
-          open={preview.open}
-          title={preview.title}
-          urls={preview.urls}
-          index={preview.index}
-          onClose={closePreview}
-          onPrev={prevPreview}
-          onNext={nextPreview}
+          open={preview.open} title={preview.title}
+          urls={preview.urls} index={preview.index}
+          onClose={closePreview} onPrev={prevPreview} onNext={nextPreview}
         />
 
         {/* Top bar */}
-        <div style={topBarStyle}>
-          <div style={brandLeftStyle}>
-            <img src={mawashiLogo} alt="Al Mawashi Logo" style={logoStyle} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 950, lineHeight: 1.2 }}>
+        <div style={S.topBar}>
+          <div style={S.brand}>
+            <img src={mawashiLogo} alt="logo" style={S.logo} />
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800, lineHeight: 1.3 }}>
                 TRANS EMIRATES LIVESTOCK TRADING L.L.C.
               </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 800,
-                  opacity: 0.75,
-                  marginTop: 4,
-                }}
-              >
+              <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
                 AL MAWASHI — Licenses & Contracts (View)
               </div>
             </div>
           </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              style={btnGhost}
-              onClick={() => navigate("/haccp-iso")}
-            >
-              ← Hub
-            </button>
-            <button
-              type="button"
-              style={btn("#6366f1")}
-              onClick={() => navigate("/haccp-iso/licenses-contracts")}
-            >
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button style={btnGhost} onClick={() => navigate("/haccp-iso")}>← Hub</button>
+            <button style={btnSolid("#6366f1")} onClick={() => navigate("/haccp-iso/licenses-contracts")}>
               + New Entry
             </button>
-            <button
-              type="button"
-              style={btn("#10b981")}
-              onClick={fetchReports}
-              disabled={loading}
-            >
-              {loading ? "Refreshing..." : "Refresh"}
+            <button style={btnSolid("#10b981")} onClick={fetchReports} disabled={loading}>
+              {loading ? "Loading..." : "Refresh"}
             </button>
           </div>
         </div>
 
         {/* Filters */}
-        <div style={{ ...cardStyle, marginBottom: 14 }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 260px 240px",
-              gap: 12,
-              alignItems: "end",
-            }}
-          >
-            <div>
-              <div style={fieldLabel}>Search</div>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                style={inputStyle}
-                placeholder="Search by branch, license, contract type, company..."
-              />
-            </div>
-
-            <div>
-              <div style={fieldLabel}>Branch</div>
-              <select
-                value={branchFilter}
-                onChange={(e) => setBranchFilter(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="ALL">All Branches</option>
-                {BRANCHES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-              <div
-                style={{
-                  marginTop: 6,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  color: "#64748b",
-                }}
-              >
-                Showing: {filtered.length}
-              </div>
-            </div>
-
-            <div>
-              <label
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "center",
-                  fontWeight: 900,
-                  color: "#0b1f4d",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={onlyExpiring}
-                  onChange={(e) => setOnlyExpiring(e.target.checked)}
-                />
-                Expiring/Expired ≤ 30 days
-              </label>
-            </div>
+        <div style={{ ...S.card, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 240px 220px", gap: 12, alignItems: "end" }}>
+          <div>
+            <label style={S.label}>Search</label>
+            <input value={q} onChange={(e) => setQ(e.target.value)} style={S.input}
+              placeholder="Search branch, license name, contract type, company..." />
+          </div>
+          <div>
+            <label style={S.label}>Branch — Showing: {filtered.length}</label>
+            <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} style={S.input}>
+              <option value="ALL">All Branches</option>
+              {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          <div style={{ paddingBottom: 4 }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700, cursor: "pointer" }}>
+              <input type="checkbox" checked={onlyExpiring} onChange={(e) => setOnlyExpiring(e.target.checked)} />
+              Show Expiring / Expired only (≤30 days)
+            </label>
           </div>
         </div>
 
-        {/* Layout */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "280px 1fr", // ✅ أوسع للتفاصيل
-            gap: 14,
-            alignItems: "start",
-          }}
-        >
+        {/* Main layout: sidebar + details */}
+        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 14, alignItems: "start" }}>
+
           {/* Sidebar */}
-          <div style={{ ...cardStyle, height: "fit-content" }}>
-            <div style={{ fontSize: 14, fontWeight: 950, marginBottom: 10 }}>
-              Branches
-            </div>
+          <div style={{ ...S.card, maxHeight: "80vh", overflowY: "auto" }}>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 10 }}>Records</div>
 
-            {loading ? (
-              <div style={{ fontWeight: 900, color: "#64748b" }}>Loading...</div>
-            ) : Object.keys(groupedByBranch).length === 0 ? (
-              <div style={{ fontWeight: 900, color: "#64748b" }}>No reports</div>
-            ) : (
-              Object.keys(groupedByBranch)
-                .sort((a, b) => a.localeCompare(b))
-                .map((br) => (
-                  <details key={br} open style={{ marginBottom: 10 }}>
-                    <summary style={{ fontWeight: 950, cursor: "pointer" }}>
-                      {br}{" "}
-                      <span style={{ color: "#64748b", fontWeight: 900 }}>
-                        ({groupedByBranch[br].length})
-                      </span>
-                    </summary>
-
-                    <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-                      {groupedByBranch[br].map((r, i) => {
-                        const active =
-                          getId(selected) && getId(selected) === getId(r);
-                        const meta = sidebarBadges(r);
-
-                        return (
-                          <button
-                            key={`${getId(r) || i}-${i}`}
-                            type="button"
-                            onClick={() => {
-                              setSelected(r);
-                              setDetailsOpen(false); // ✅ كل ما تختار سجل: التفاصيل ترجع مطوية
-                              setEditing(false); // ✅ ونعطل edit mode عند تغيير السجل
-                              setEditLicense({});
-                              setEditContracts([]);
-                            }}
-                            style={{
-                              textAlign: "left",
-                              borderRadius: 14,
-                              padding: 10,
-                              cursor: "pointer",
-                              border: active
-                                ? "1px solid rgba(99,102,241,0.50)"
-                                : "1px solid rgba(30,41,59,0.26)",
-                              background: active
-                                ? "rgba(99,102,241,0.08)"
-                                : "rgba(255,255,255,0.9)",
-                            }}
-                            title="Open record"
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                gap: 10,
-                              }}
-                            >
-                              <div style={{ fontWeight: 950, color: "#0b1f4d" }}>
-                                Record #{i + 1} • ID {shortId(r)}
-                              </div>
-                              {meta?.worst ? (
-                                <span
-                                  style={{
-                                    fontSize: 11,
-                                    fontWeight: 900,
-                                    padding: "4px 8px",
-                                    borderRadius: 999,
-                                    background: meta.worst.bg,
-                                    border: `1px solid ${meta.worst.bd}`,
-                                    color: meta.worst.color,
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {meta.worst.text.replace("Valid", "OK")}
-                                </span>
-                              ) : null}
-                            </div>
-
-                            <div
-                              style={{
-                                marginTop: 6,
-                                fontSize: 12,
-                                fontWeight: 900,
-                                color: "#64748b",
-                              }}
-                            >
-                              {meta.hasLic ? "License" : "No License"} • Contracts:{" "}
-                              {meta.countContracts}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </details>
-                ))
+            {loading && <div style={{ color: "#94a3b8", fontWeight: 700 }}>Loading...</div>}
+            {!loading && Object.keys(groupedByBranch).length === 0 && (
+              <div style={{ color: "#94a3b8", fontWeight: 700 }}>No records found.</div>
             )}
+
+            {Object.keys(groupedByBranch)
+              .sort((a, b) => a.localeCompare(b))
+              .map((br) => (
+                <details key={br} open style={{ marginBottom: 12 }}>
+                  <summary style={{ fontWeight: 800, cursor: "pointer", padding: "4px 0" }}>
+                    {br}
+                    <span style={{ color: "#94a3b8", fontWeight: 600, marginLeft: 6 }}>
+                      ({groupedByBranch[br].length})
+                    </span>
+                  </summary>
+
+                  <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                    {groupedByBranch[br].map((r, i) => {
+                      const active = getId(selected) && getId(selected) === getId(r);
+                      const meta = sidebarMeta(r);
+                      return (
+                        <button
+                          key={`${getId(r)}-${i}`}
+                          type="button"
+                          onClick={() => {
+                            setSelected(r);
+                            setDetailsOpen(false);
+                            setEditing(false);
+                            setEditLicense({});
+                            setEditContracts([]);
+                          }}
+                          style={{
+                            textAlign: "left", borderRadius: 12, padding: 10, cursor: "pointer",
+                            border: active ? "1.5px solid #a5b4fc" : "1.5px solid #e2e8f0",
+                            background: active ? "#eef2ff" : "#fff",
+                            transition: "all 0.15s",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                            <span style={{ fontWeight: 700, fontSize: 15 }}>Record #{i + 1}</span>
+                            {meta.worst && (
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, padding: "3px 8px",
+                                borderRadius: 999, background: meta.worst.bg,
+                                border: `1px solid ${meta.worst.bd}`, color: meta.worst.color,
+                              }}>
+                                {meta.worst.text.replace("Valid", "OK")}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 13, color: "#94a3b8", fontWeight: 600, marginTop: 4 }}>
+                            ID: {shortId(r)} • {meta.hasLic ? "License ✓" : "No License"} • {meta.countContracts} Contract{meta.countContracts !== 1 ? "s" : ""}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </details>
+              ))}
           </div>
 
-          {/* Details */}
-          <div style={{ ...cardStyle, minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
+          {/* Details panel */}
+          <div style={{ ...S.card, minWidth: 0 }}>
+            {/* Panel header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 950 }}>Report Details</div>
-                <div
-                  style={{
-                    marginTop: 6,
-                    fontSize: 12,
-                    fontWeight: 900,
-                    color: "#64748b",
-                  }}
-                >
-                  Branch:{" "}
-                  <span style={{ color: "#0b1f4d" }}>{selectedBranch}</span>
-                </div>
+                <div style={{ fontSize: 19, fontWeight: 800 }}>Report Details</div>
+                {selected && (
+                  <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, marginTop: 3 }}>
+                    Branch: <span style={{ color: "#0f172a" }}>{selectedBranch}</span>
+                  </div>
+                )}
               </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {/* ✅ Toggle details */}
-                <button
-                  type="button"
-                  style={miniBtn}
-                  onClick={() => setDetailsOpen((v) => !v)}
-                  disabled={!selected}
-                  title="Show/Hide report details"
-                >
-                  {detailsOpen ? "▲ Hide Details" : "▼ Show Details"}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button style={miniBtn} onClick={() => setDetailsOpen((v) => !v)} disabled={!selected}>
+                  {detailsOpen ? "▲ Hide" : "▼ Show Details"}
                 </button>
 
-                {/* ✅ Edit controls */}
-                {selected && !editing ? (
-                  <button
-                    type="button"
-                    style={btn("#6366f1")}
-                    onClick={startEdit}
-                    title="Edit this report"
-                  >
-                    ✎ Edit
-                  </button>
-                ) : null}
+                {selected && !editing && (
+                  <button style={btnSolid("#6366f1")} onClick={startEdit}>✎ Edit</button>
+                )}
 
-                {selected && editing ? (
+                {editing && (
                   <>
-                    <button
-                      type="button"
-                      style={btn("#10b981")}
-                      onClick={saveEdit}
-                      disabled={loading}
-                      title="Save changes"
-                    >
-                      {loading ? "Saving..." : "✓ Save"}
+                    <button style={btnSolid("#10b981")} onClick={saveEdit} disabled={loading}>
+                      {loading ? "Saving..." : "✓ Save Changes"}
                     </button>
-                    <button
-                      type="button"
-                      style={btnGhost}
-                      onClick={cancelEdit}
-                      disabled={loading}
-                      title="Cancel changes"
-                    >
-                      Cancel
-                    </button>
+                    <button style={btnGhost} onClick={cancelEdit} disabled={loading}>Cancel</button>
                   </>
-                ) : null}
+                )}
 
-                {selected ? (
-                  <button
-                    type="button"
-                    style={btn("#ef4444")}
-                    onClick={() => handleDelete(selected)}
-                  >
-                    Delete Report
+                {selected && (
+                  <button style={btnSolid("#ef4444")} onClick={() => handleDelete(selected)}>
+                    Delete
                   </button>
-                ) : null}
+                )}
               </div>
             </div>
 
             {!selected ? (
-              <div style={{ marginTop: 14, fontWeight: 900, color: "#64748b" }}>
-                Select a record from the left.
+              <div style={{ padding: 20, textAlign: "center", color: "#94a3b8", fontWeight: 700 }}>
+                ← Select a record from the list
               </div>
             ) : !detailsOpen ? (
-              /* ✅ مطوي افتراضياً */
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: 14,
-                  borderRadius: 16,
-                  border: "1px dashed rgba(30,41,59,0.30)",
-                  background: "rgba(248,250,252,0.9)",
-                  fontWeight: 900,
-                  color: "#475569",
-                }}
-              >
-                Details are collapsed. Click <b>Show Details</b> to open the report.
+              <div style={{
+                padding: 16, borderRadius: 12, border: "1.5px dashed #e2e8f0",
+                background: "#f8fafc", color: "#64748b", fontWeight: 700, textAlign: "center",
+              }}>
+                Click <b>Show Details</b> to view this report.
               </div>
             ) : (
               <>
-                {/* License */}
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: 14,
-                    borderRadius: 16,
-                    border: "1px solid rgba(30,41,59,0.26)",
-                    background: "rgba(255,255,255,0.95)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ fontSize: 14, fontWeight: 950 }}>
-                      Company License
-                    </div>
+                {/* ── License ── */}
+                <div style={{ padding: 16, borderRadius: 14, border: "1.5px solid #e2e8f0", background: "#fafafa", marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ fontSize: 17, fontWeight: 800 }}>🪪 Company License</div>
                     <Badge expiryDate={(editing ? editLicense : license)?.expiryDate} />
                   </div>
 
-                  <div
-                    style={{
-                      marginTop: 10,
-                      display: "grid",
-                      gridTemplateColumns: "1fr 220px 220px",
-                      gap: 10,
-                    }}
-                  >
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 14, marginBottom: 14 }}>
                     <div>
-                      <div style={fieldLabel}>Name</div>
-                      {!editing ? (
-                        <div style={{ fontWeight: 900, color: "#0b1f4d" }}>
-                          {license?.name || "—"}
-                        </div>
+                      <label style={S.label}>License Name</label>
+                      {editing ? (
+                        <input style={S.input} value={editLicense?.name || ""}
+                          onChange={(e) => updateEditLicense("name", e.target.value)}
+                          placeholder="License name" />
                       ) : (
-                        <input
-                          style={inputStyle}
-                          value={editLicense?.name || ""}
-                          onChange={(e) =>
-                            setEditLicense((p) => ({ ...(p || {}), name: e.target.value }))
-                          }
-                          placeholder="License name"
-                        />
+                        <div style={{ fontWeight: 700 }}>{license?.name || "—"}</div>
                       )}
                     </div>
-
                     <div>
-                      <div style={fieldLabel}>Expiry</div>
-                      {!editing ? (
-                        <div style={{ fontWeight: 900, color: "#0b1f4d" }}>
-                          {license?.expiryDate || "—"}
-                        </div>
+                      <label style={S.label}>Expiry Date</label>
+                      {editing ? (
+                        <input type="date" style={S.input} value={editLicense?.expiryDate || ""}
+                          onChange={(e) => updateEditLicense("expiryDate", e.target.value)} />
                       ) : (
-                        <input
-                          type="date"
-                          style={inputStyle}
-                          value={editLicense?.expiryDate || ""}
-                          onChange={(e) =>
-                            setEditLicense((p) => ({
-                              ...(p || {}),
-                              expiryDate: e.target.value,
-                            }))
-                          }
-                        />
-                      )}
-                    </div>
-
-                    <div>
-                      <div style={fieldLabel}>Files</div>
-
-                      {licenseFiles.length === 0 ? (
-                        <div style={{ fontWeight: 900, color: "#64748b" }}>—</div>
-                      ) : (
-                        <div style={{ display: "grid", gap: 8 }}>
-                          <div
-                            style={{
-                              fontWeight: 950,
-                              color: "#0b1f4d",
-                              fontSize: 12,
-                            }}
-                          >
-                            {licenseImages.length > 0
-                              ? `Images: ${licenseImages.length}`
-                              : `Files: ${licenseFiles.length}`}
-                          </div>
-
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            {licenseImages.length > 0 ? (
-                              <button
-                                type="button"
-                                style={miniBtn}
-                                onClick={() =>
-                                  openPreview("License Images", licenseImages, 0)
-                                }
-                              >
-                                Preview
-                              </button>
-                            ) : null}
-
-                            <a
-                              href={licenseFiles[0]}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ ...miniBtn, textDecoration: "none" }}
-                            >
-                              Open
-                            </a>
-
-                            <a
-                              href={licenseFiles[0]}
-                              download
-                              style={{ ...miniBtn, textDecoration: "none" }}
-                            >
-                              Download
-                            </a>
-                          </div>
-                        </div>
+                        <div style={{ fontWeight: 700 }}>{license?.expiryDate || "—"}</div>
                       )}
                     </div>
                   </div>
 
-                  {/* Thumbnails */}
-                  {licenseImages.length > 0 ? (
-                    <div style={thumbWrap}>
-                      {licenseImages.slice(0, 8).map((u, idx) => {
-                        const thumbSrc = displayImageUrl(u, 320);
-                        const high = idx < 2 ? "high" : "auto";
-                        return (
-                          <button
-                            key={u}
-                            type="button"
-                            style={thumbBtn}
-                            title={`Open image #${idx + 1}`}
-                            onClick={() => openPreview("License Images", licenseImages, idx)}
-                          >
-                            <img
-                              src={thumbSrc}
-                              alt={`thumb-${idx + 1}`}
-                              style={thumbImg}
-                              loading="eager"
-                              decoding="async"
-                              fetchPriority={high}
-                            />
-                          </button>
-                        );
-                      })}
-                      {licenseImages.length > 8 ? (
-                        <button
-                          type="button"
-                          style={{
-                            ...thumbBtn,
-                            display: "grid",
-                            placeItems: "center",
-                            fontWeight: 950,
-                            color: "#0b1f4d",
-                            background: "rgba(99,102,241,0.08)",
-                          }}
-                          onClick={() => openPreview("License Images", licenseImages, 0)}
-                          title="Open all images"
-                        >
-                          +{licenseImages.length - 8}
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {!editing ? (
-                    license?.notes ? (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          fontSize: 12,
-                          fontWeight: 900,
-                          color: "#334155",
-                        }}
-                      >
-                        Notes:{" "}
-                        <span style={{ fontWeight: 800 }}>{license.notes}</span>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={S.label}>Notes</label>
+                    {editing ? (
+                      <input style={S.input} value={editLicense?.notes || ""}
+                        onChange={(e) => updateEditLicense("notes", e.target.value)}
+                        placeholder="Notes..." />
+                    ) : (
+                      <div style={{ fontWeight: 700, color: license?.notes ? "#0f172a" : "#94a3b8" }}>
+                        {license?.notes || "—"}
                       </div>
-                    ) : null
-                  ) : (
-                    <div style={{ marginTop: 10 }}>
-                      <div style={fieldLabel}>Notes</div>
-                      <input
-                        style={inputStyle}
-                        value={editLicense?.notes || ""}
-                        onChange={(e) =>
-                          setEditLicense((p) => ({ ...(p || {}), notes: e.target.value }))
-                        }
-                        placeholder="Notes..."
-                      />
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
 
-                {/* Contracts */}
-                <div style={{ marginTop: 14 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <div style={{ fontSize: 14, fontWeight: 950 }}>
-                      Contracts ({(editing ? editContracts : contracts).length})
-                    </div>
+                  {/* Files */}
+                  <div>
+                    <label style={S.label}>Files ({(editing ? (editLicense.fileUrls || []) : licenseFiles).length})</label>
 
                     {editing ? (
-                      <button
-                        type="button"
-                        style={miniBtn}
-                        onClick={addContractRow}
-                        title="Add contract row"
-                      >
-                        + Add Contract
-                      </button>
-                    ) : null}
+                      <div>
+                        {/* upload input */}
+                        <div style={{ marginBottom: 10 }}>
+                          <input
+                            type="file"
+                            accept="application/pdf,image/*"
+                            multiple
+                            onChange={(e) => pickLicenseFiles(e.target.files)}
+                            style={{ ...S.input, padding: "9px 12px" }}
+                            disabled={!!uploadingKey}
+                          />
+                          <div style={{ fontSize: 13, color: uploadingKey === "license" ? "#6366f1" : "#94a3b8", fontWeight: 600, marginTop: 5 }}>
+                            {uploadingKey === "license" ? uploadProgress || "Uploading..." : "PDF: 1 file • Images: up to 20"}
+                          </div>
+                        </div>
+                        {/* existing files as removable chips */}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {(editLicense.fileUrls || []).length === 0 && (
+                            <span style={{ color: "#94a3b8", fontWeight: 600, fontSize: 13 }}>No files attached yet</span>
+                          )}
+                          {(editLicense.fileUrls || []).map((u, i) => (
+                            <FileChip
+                              key={`${u}-${i}`}
+                              url={u}
+                              label={editLicense.fileNames?.[i] || (isImageUrl(u) ? `Image ${i + 1}` : isPdfUrl(u) ? `PDF ${i + 1}` : `File ${i + 1}`)}
+                              onRemove={() => removeLicenseFile(i)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {licenseFiles.length === 0 ? (
+                          <span style={{ color: "#94a3b8", fontWeight: 600, fontSize: 12 }}>No files</span>
+                        ) : (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {licenseImages.length > 0 && (
+                              <button type="button" style={miniBtn}
+                                onClick={() => openPreview("License Images", licenseImages, 0)}>
+                                Preview Images ({licenseImages.length})
+                              </button>
+                            )}
+                            <a href={licenseFiles[0]} target="_blank" rel="noreferrer"
+                              style={{ ...miniBtn, textDecoration: "none" }}>Open</a>
+                            <a href={licenseFiles[0]} download
+                              style={{ ...miniBtn, textDecoration: "none" }}>Download</a>
+                          </div>
+                        )}
+                        <ThumbnailRow images={licenseImages} title="License Images" />
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Contracts ── */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ fontSize: 17, fontWeight: 800 }}>
+                      📄 Contracts ({(editing ? editContracts : contracts).length})
+                    </div>
+                    {editing && (
+                      <button type="button" style={miniBtn} onClick={addContractRow}>+ Add Contract</button>
+                    )}
                   </div>
 
                   {(editing ? editContracts : contracts).length === 0 ? (
-                    <div style={{ fontWeight: 900, color: "#64748b" }}>
-                      No contracts
-                    </div>
+                    <div style={{ color: "#94a3b8", fontWeight: 700 }}>No contracts</div>
                   ) : (
                     <div style={{ overflowX: "auto" }}>
-                      <table
-                        style={{
-                          width: "100%",
-                          borderCollapse: "separate",
-                          borderSpacing: 0,
-                        }}
-                      >
+                      <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                         <thead>
                           <tr>
-                            {["Type", "Company", "Expiry", "Status", "Files", "Notes", editing ? "Actions" : ""]
-                              .filter(Boolean)
-                              .map((h) => (
-                                <th
-                                  key={h}
-                                  style={{
-                                    textAlign: "left",
-                                    padding: "10px 10px",
-                                    fontSize: 12,
-                                    fontWeight: 950,
-                                    color: "#0b1f4d",
-                                    borderBottom: "1px solid rgba(30,41,59,0.22)",
-                                    background: "rgba(99,102,241,0.08)",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {h}
-                                </th>
-                              ))}
+                            {["Type", "Company", "Expiry", "Status", "Files", "Notes", ...(editing ? ["Actions"] : [])].map((h) => (
+                              <th key={h} style={{
+                                textAlign: "left", padding: "12px 12px",
+                                fontSize: 14, fontWeight: 700, color: "#475569",
+                                borderBottom: "2px solid #e2e8f0",
+                                background: "#f8fafc", whiteSpace: "nowrap",
+                              }}>{h}</th>
+                            ))}
                           </tr>
                         </thead>
-
                         <tbody>
                           {(editing ? editContracts : contracts).map((c, i) => {
-                            const cFiles = normalizeFiles(c);
-                            const cImages = cFiles.filter((u) => isImageUrl(u));
-                            const hasAny = cFiles.length > 0;
+                            const cFiles = normalizeFiles(editing ? c : c);
+                            const cImages = cFiles.filter(isImageUrl);
 
                             return (
                               <tr key={i}>
-                                <td
-                                  style={{
-                                    padding: 10,
-                                    borderBottom: "1px solid rgba(30,41,59,0.16)",
-                                    fontWeight: 900,
-                                    minWidth: 170,
-                                  }}
-                                >
-                                  {!editing ? (
-                                    c.contractType || "—"
-                                  ) : (
-                                    <input
-                                      style={tableInput}
-                                      value={c.contractType || ""}
-                                      onChange={(e) =>
-                                        updateContract(i, "contractType", e.target.value)
-                                      }
-                                      placeholder="Contract type"
-                                    />
-                                  )}
+                                <td style={{ padding: "12px 12px", borderBottom: "1px solid #f1f5f9", minWidth: 160, fontWeight: 700 }}>
+                                  {editing ? (
+                                    <input style={S.tblInput} value={c.contractType || ""}
+                                      onChange={(e) => updateContract(i, "contractType", e.target.value)}
+                                      placeholder="Type" />
+                                  ) : c.contractType || "—"}
                                 </td>
 
-                                <td
-                                  style={{
-                                    padding: 10,
-                                    borderBottom: "1px solid rgba(30,41,59,0.16)",
-                                    fontWeight: 900,
-                                    minWidth: 220,
-                                  }}
-                                >
-                                  {!editing ? (
-                                    c.companyName || "—"
-                                  ) : (
-                                    <input
-                                      style={tableInput}
-                                      value={c.companyName || ""}
-                                      onChange={(e) =>
-                                        updateContract(i, "companyName", e.target.value)
-                                      }
-                                      placeholder="Company name"
-                                    />
-                                  )}
+                                <td style={{ padding: "12px 12px", borderBottom: "1px solid #f1f5f9", minWidth: 180, fontWeight: 700 }}>
+                                  {editing ? (
+                                    <input style={S.tblInput} value={c.companyName || ""}
+                                      onChange={(e) => updateContract(i, "companyName", e.target.value)}
+                                      placeholder="Company" />
+                                  ) : c.companyName || "—"}
                                 </td>
 
-                                <td
-                                  style={{
-                                    padding: 10,
-                                    borderBottom: "1px solid rgba(30,41,59,0.16)",
-                                    fontWeight: 900,
-                                    minWidth: 140,
-                                  }}
-                                >
-                                  {!editing ? (
-                                    c.expiryDate || "—"
-                                  ) : (
-                                    <input
-                                      type="date"
-                                      style={tableInput}
-                                      value={c.expiryDate || ""}
-                                      onChange={(e) =>
-                                        updateContract(i, "expiryDate", e.target.value)
-                                      }
-                                    />
-                                  )}
+                                <td style={{ padding: "12px 12px", borderBottom: "1px solid #f1f5f9", minWidth: 140, fontWeight: 700 }}>
+                                  {editing ? (
+                                    <input type="date" style={S.tblInput} value={c.expiryDate || ""}
+                                      onChange={(e) => updateContract(i, "expiryDate", e.target.value)} />
+                                  ) : c.expiryDate || "—"}
                                 </td>
 
-                                <td
-                                  style={{
-                                    padding: 10,
-                                    borderBottom: "1px solid rgba(30,41,59,0.16)",
-                                    minWidth: 150,
-                                  }}
-                                >
+                                <td style={{ padding: "12px 12px", borderBottom: "1px solid #f1f5f9", minWidth: 140 }}>
                                   <Badge expiryDate={c.expiryDate} />
                                 </td>
 
                                 {/* Files */}
-                                <td
-                                  style={{
-                                    padding: 10,
-                                    borderBottom: "1px solid rgba(30,41,59,0.16)",
-                                    minWidth: 220,
-                                  }}
-                                >
-                                  {!hasAny ? (
-                                    <span style={{ fontWeight: 900, color: "#64748b" }}>
-                                      —
-                                    </span>
-                                  ) : (
-                                    <div style={{ display: "grid", gap: 8 }}>
-                                      <div
-                                        style={{
-                                          fontSize: 12,
-                                          fontWeight: 950,
-                                          color: "#0b1f4d",
-                                        }}
-                                      >
-                                        {cImages.length > 0
-                                          ? `Images: ${cImages.length}`
-                                          : `Files: ${cFiles.length}`}
-                                      </div>
-
-                                      <div
-                                        style={{
-                                          display: "flex",
-                                          gap: 8,
-                                          flexWrap: "wrap",
-                                        }}
-                                      >
-                                        {cImages.length > 0 ? (
-                                          <button
-                                            type="button"
-                                            style={miniBtn}
-                                            onClick={() =>
-                                              openPreview(
-                                                `${c.contractType || "Contract"} Images`,
-                                                cImages,
-                                                0
-                                              )
-                                            }
-                                          >
-                                            Preview
-                                          </button>
-                                        ) : null}
-
-                                        <a
-                                          href={cFiles[0]}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          style={{ ...miniBtn, textDecoration: "none" }}
-                                        >
-                                          Open
-                                        </a>
-
-                                        <a
-                                          href={cFiles[0]}
-                                          download
-                                          style={{ ...miniBtn, textDecoration: "none" }}
-                                        >
-                                          Download
-                                        </a>
-                                      </div>
-
-                                      {/* optional: list all files */}
-                                      {cFiles.length > 1 ? (
-                                        <div style={{ display: "grid", gap: 6 }}>
-                                          {cFiles.slice(0, 4).map((u, idx) => (
-                                            <div
-                                              key={u}
-                                              style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "space-between",
-                                                gap: 8,
-                                                fontSize: 12,
-                                                fontWeight: 900,
-                                                color: "#334155",
-                                              }}
-                                            >
-                                              <span style={{ opacity: 0.85 }}>
-                                                {niceFileLabel(u, idx)}
-                                              </span>
-
-                                              <span style={{ display: "flex", gap: 8 }}>
-                                                {isImageUrl(u) ? (
-                                                  <button
-                                                    type="button"
-                                                    style={miniBtn}
-                                                    onClick={() =>
-                                                      openPreview(
-                                                        `${c.contractType || "Contract"} Images`,
-                                                        cImages,
-                                                        Math.max(0, cImages.indexOf(u))
-                                                      )
-                                                    }
-                                                  >
-                                                    View
-                                                  </button>
-                                                ) : (
-                                                  <a
-                                                    href={u}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    style={{
-                                                      ...miniBtn,
-                                                      textDecoration: "none",
-                                                    }}
-                                                  >
-                                                    Open
-                                                  </a>
-                                                )}
-
-                                                <a
-                                                  href={u}
-                                                  download
-                                                  style={{
-                                                    ...miniBtn,
-                                                    textDecoration: "none",
-                                                  }}
-                                                >
-                                                  DL
-                                                </a>
-                                              </span>
-                                            </div>
-                                          ))}
-                                          {cFiles.length > 4 ? (
-                                            <div
-                                              style={{
-                                                fontSize: 12,
-                                                fontWeight: 900,
-                                                color: "#64748b",
-                                              }}
-                                            >
-                                              + {cFiles.length - 4} more...
-                                            </div>
-                                          ) : null}
+                                <td style={{ padding: "12px 12px", borderBottom: "1px solid #f1f5f9", minWidth: 240 }}>
+                                  {editing ? (
+                                    <div>
+                                      {/* upload input */}
+                                      <input
+                                        type="file"
+                                        accept="application/pdf,image/*"
+                                        multiple
+                                        onChange={(e) => pickContractFiles(i, e.target.files)}
+                                        style={{ ...S.tblInput, marginBottom: 6 }}
+                                        disabled={!!uploadingKey}
+                                      />
+                                      {uploadingKey === `contract:${i}` && (
+                                        <div style={{ fontSize: 12, color: "#6366f1", fontWeight: 600, marginBottom: 6 }}>
+                                          {uploadProgress || "Uploading..."}
                                         </div>
-                                      ) : null}
+                                      )}
+                                      {/* existing files as chips */}
+                                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                        {(c.fileUrls || []).length === 0 && (
+                                          <span style={{ color: "#94a3b8", fontSize: 13, fontWeight: 600 }}>No files yet</span>
+                                        )}
+                                        {(c.fileUrls || []).map((u, fi) => (
+                                          <FileChip
+                                            key={`${u}-${fi}`}
+                                            url={u}
+                                            label={c.fileNames?.[fi] || (isImageUrl(u) ? `Img ${fi + 1}` : `File ${fi + 1}`)}
+                                            onRemove={() => removeContractFile(i, fi)}
+                                          />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : cFiles.length === 0 ? (
+                                    <span style={{ color: "#94a3b8", fontWeight: 700 }}>—</span>
+                                  ) : (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                        {cImages.length > 0 && (
+                                          <button type="button" style={miniBtn}
+                                            onClick={() => openPreview(`${c.contractType || "Contract"} Images`, cImages, 0)}>
+                                            Preview ({cImages.length})
+                                          </button>
+                                        )}
+                                        <a href={cFiles[0]} target="_blank" rel="noreferrer"
+                                          style={{ ...miniBtn, textDecoration: "none" }}>Open</a>
+                                        <a href={cFiles[0]} download
+                                          style={{ ...miniBtn, textDecoration: "none" }}>DL</a>
+                                      </div>
+                                      {cFiles.length > 1 && (
+                                        <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>
+                                          {cFiles.length} files total
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </td>
 
-                                <td
-                                  style={{
-                                    padding: 10,
-                                    borderBottom: "1px solid rgba(30,41,59,0.16)",
-                                    fontWeight: 900,
-                                    color: "#334155",
-                                    minWidth: 240,
-                                  }}
-                                >
-                                  {!editing ? (
-                                    c.notes || "—"
-                                  ) : (
-                                    <input
-                                      style={tableInput}
-                                      value={c.notes || ""}
-                                      onChange={(e) =>
-                                        updateContract(i, "notes", e.target.value)
-                                      }
-                                      placeholder="Notes..."
-                                    />
-                                  )}
+                                <td style={{ padding: "12px 12px", borderBottom: "1px solid #f1f5f9", minWidth: 200, fontWeight: 700 }}>
+                                  {editing ? (
+                                    <input style={S.tblInput} value={c.notes || ""}
+                                      onChange={(e) => updateContract(i, "notes", e.target.value)}
+                                      placeholder="Notes" />
+                                  ) : c.notes || "—"}
                                 </td>
 
-                                {editing ? (
-                                  <td
-                                    style={{
-                                      padding: 10,
-                                      borderBottom:
-                                        "1px solid rgba(30,41,59,0.16)",
-                                      minWidth: 120,
-                                    }}
-                                  >
-                                    <button
-                                      type="button"
-                                      style={miniBtnDanger}
-                                      onClick={() => deleteContractRow(i)}
-                                      title="Delete contract row"
-                                    >
+                                {editing && (
+                                  <td style={{ padding: "10px 10px", borderBottom: "1px solid #f1f5f9" }}>
+                                    <button type="button" style={miniBtnRed} onClick={() => deleteContractRow(i)}>
                                       Remove
                                     </button>
                                   </td>
-                                ) : null}
+                                )}
                               </tr>
                             );
                           })}
@@ -1741,16 +1094,7 @@ export default function LicensesContractsView() {
           </div>
         </div>
 
-        <div
-          style={{
-            marginTop: 16,
-            fontSize: 12,
-            color: "#6b7280",
-            fontWeight: 800,
-            textAlign: "center",
-            opacity: 0.9,
-          }}
-        >
+        <div style={{ textAlign: "center", marginTop: 20, fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>
           © Al Mawashi — Quality & Food Safety System
         </div>
       </div>

@@ -890,6 +890,35 @@ export default function SupplierEvaluationResults() {
   const openedFields = openedPayload?.fields || openedPayload?.public?.submission?.fields || openedPayload?.public?.fields || {};
   const openedCounts = calcCounts(openedAnswers);
 
+  // ✅ dynamic products list
+  const openedProductsList = useMemo(() => {
+    const raw =
+      openedPayload?.productsList ||
+      openedPayload?.public?.submission?.productsList ||
+      openedPayload?.public?.productsList ||
+      null;
+    if (Array.isArray(raw) && raw.length) return raw;
+    // fallback: old string field
+    const oldStr = openedFields?.products_to_be_supplied;
+    if (typeof oldStr === "string" && oldStr.trim()) {
+      return oldStr
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((name, i) => ({ id: `p${i}`, name, files: [] }));
+    }
+    return [];
+  }, [openedPayload, openedFields]);
+
+  // ✅ declaration
+  const openedDeclaration = useMemo(() => {
+    const d =
+      openedPayload?.declaration ||
+      openedPayload?.public?.submission?.declaration ||
+      null;
+    return d && typeof d === "object" ? d : null;
+  }, [openedPayload]);
+
   // ✅ general attachments
   const openedAttachments = useMemo(() => getAttachmentsFromReport(opened), [opened]);
 
@@ -1221,13 +1250,114 @@ export default function SupplierEvaluationResults() {
                   <FieldLine label={lang === "ar" ? "المنصب" : "Position Held"} value={openedFields.tqm_position_held} />
                   <FieldLine label={lang === "ar" ? "رقم الهاتف" : "Telephone No"} value={openedFields.tqm_telephone} />
                   <FieldLine label={lang === "ar" ? "عدد الموظفين" : "Total employees"} value={openedFields.total_employees} />
-                  <FieldLine label={lang === "ar" ? "المنتجات المراد توريدها" : "Products to be supplied"} value={openedFields.products_to_be_supplied} />
                   <FieldLine label={lang === "ar" ? "ملاحظات/نسخ الشهادات" : "Certificates copy / notes"} value={openedFields.certificates_copy} />
                   <FieldLine label={lang === "ar" ? "نسخ خطط الهاسب" : "HACCP plans copy note"} value={openedFields.haccp_copy_note} />
                   <FieldLine label={lang === "ar" ? "قائمة الفحوصات" : "Lab tests list"} value={openedFields.lab_tests_list} />
                   <FieldLine label={lang === "ar" ? "تفاصيل فحص خارجي" : "Outside testing details"} value={openedFields.outside_testing_details} />
                 </div>
               </div>
+
+              {/* Products List */}
+              {openedProductsList.length > 0 && (
+                <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
+                  <div style={{ fontWeight: 980, marginBottom: 10 }}>
+                    {lang === "ar" ? "المنتجات المراد توريدها" : "Products to be Supplied"}
+                  </div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {openedProductsList.map((prod, idx) => (
+                      <div
+                        key={prod.id || idx}
+                        style={{
+                          padding: "12px 14px",
+                          borderRadius: 12,
+                          border: "1px solid rgba(15,23,42,0.12)",
+                          background: "rgba(255,255,255,0.97)",
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", minWidth: 70 }}>
+                            {lang === "ar" ? `منتج ${idx + 1}` : `Product ${idx + 1}`}
+                          </span>
+                          <span style={{ fontWeight: 900, color: "#0f172a", fontSize: 14 }}>
+                            {prod.name || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>—</span>}
+                          </span>
+                        </div>
+                        {Array.isArray(prod.files) && prod.files.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 6, borderTop: "1px dashed rgba(15,23,42,0.10)" }}>
+                            {prod.files.map((f, fi) => {
+                              const url = normalizeUrl(f?.url || f?.optimized_url || "");
+                              const name = f?.name || `File ${fi + 1}`;
+                              return url ? (
+                                <div key={fi} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                  <a
+                                    href={url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{ fontSize: 12, fontWeight: 700, color: "#0369a1", textDecoration: "none" }}
+                                  >
+                                    📄 {name}
+                                  </a>
+                                  <button
+                                    style={{ ...btn, padding: "3px 8px", fontSize: 11 }}
+                                    onClick={() => setOpenAttachment({ name, url })}
+                                  >
+                                    {t.preview}
+                                  </button>
+                                </div>
+                              ) : null;
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Declaration */}
+              {openedDeclaration && (
+                <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
+                  <div style={{ fontWeight: 980, marginBottom: 10 }}>
+                    {lang === "ar" ? "الإقرار" : "Declaration"}
+                  </div>
+                  <div style={{
+                    padding: "14px 16px",
+                    borderRadius: 12,
+                    border: openedDeclaration.agreed
+                      ? "1px solid rgba(34,197,94,0.40)"
+                      : "1px solid rgba(239,68,68,0.30)",
+                    background: openedDeclaration.agreed
+                      ? "rgba(34,197,94,0.07)"
+                      : "rgba(239,68,68,0.04)",
+                    display: "grid",
+                    gap: 8,
+                  }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <span style={{ fontSize: 18 }}>{openedDeclaration.agreed ? "✅" : "❌"}</span>
+                      <span style={{ fontWeight: 800, fontSize: 14, color: openedDeclaration.agreed ? "#14532d" : "#991b1b" }}>
+                        {openedDeclaration.agreed
+                          ? (lang === "ar" ? "تم الإقرار والموافقة" : "Declaration confirmed")
+                          : (lang === "ar" ? "لم يتم تأكيد الإقرار" : "Declaration not confirmed")}
+                      </span>
+                    </div>
+                    {openedDeclaration.agreed && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 13, color: "#334155", fontWeight: 700 }}>
+                        {openedDeclaration.name && (
+                          <span>{lang === "ar" ? "الاسم: " : "Name: "}<b>{openedDeclaration.name}</b></span>
+                        )}
+                        {openedDeclaration.position && (
+                          <span>{lang === "ar" ? "المنصب: " : "Position: "}<b>{openedDeclaration.position}</b></span>
+                        )}
+                        {openedDeclaration.agreedAt && (
+                          <span>{lang === "ar" ? "وقت الإقرار: " : "Agreed at: "}<b>{fmtDateTime(openedDeclaration.agreedAt)}</b></span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Attachments */}
               <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>

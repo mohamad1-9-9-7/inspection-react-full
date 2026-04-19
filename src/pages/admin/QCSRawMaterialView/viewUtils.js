@@ -271,7 +271,8 @@ export const normalizeServerRecord = (rec) => {
 
 /* ========= Server I/O ========= */
 export async function fetchFromServer(signal) {
-  const res = await fetch(`${API_BASE}/api/reports?type=qcs_raw_material`, {
+  // ✅ limit كبير حتى نجلب كل التقارير القديمة (2025 وأقدم) ولا نقتصر على الافتراضي
+  const res = await fetch(`${API_BASE}/api/reports?type=qcs_raw_material&limit=5000`, {
     cache: "no-store",
     mode: "cors",
     credentials: IS_SAME_ORIGIN ? "include" : "omit",

@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import SidebarTree from "./SidebarTree";
 import ReportDetails from "./ReportDetails";
-import "./QCSRawMaterialView.css";
 import {
   fetchFromServer,
   mergeUniqueById,
@@ -403,13 +402,70 @@ export default function QCSRawMaterialView() {
     reader.readAsText(file);
   };
 
+  const styles = {
+    page: {
+      minHeight: "100vh",
+      background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
+      fontFamily:
+        "Inter, system-ui, -apple-system, Segoe UI, Roboto, Cairo, sans-serif",
+    },
+    hero: {
+      position: "relative",
+      height: 220,
+      background:
+        "linear-gradient(135deg, #4f46e5 0%, #7c3aed 35%, #0ea5e9 100%)",
+      overflow: "hidden",
+      zIndex: 0,
+    },
+    heroBlobA: {
+      position: "absolute",
+      width: 400,
+      height: 400,
+      left: -120,
+      top: -180,
+      borderRadius: "50%",
+      background:
+        "radial-gradient(closest-side, rgba(255,255,255,.25), rgba(255,255,255,0))",
+    },
+    heroBlobB: {
+      position: "absolute",
+      width: 500,
+      height: 300,
+      right: -140,
+      top: -120,
+      borderRadius: "50%",
+      background:
+        "radial-gradient(closest-side, rgba(255,255,255,.18), rgba(255,255,255,0))",
+      transform: "rotate(-15deg)",
+    },
+    heroWave: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: -1,
+      width: "100%",
+      height: 140,
+      display: "block",
+      pointerEvents: "none",
+      zIndex: 0,
+    },
+    contentWrap: {
+      display: "flex",
+      gap: "1rem",
+      padding: "0 16px 24px",
+      marginTop: -80,
+      position: "relative",
+      zIndex: 1,
+    },
+  };
+
   return (
-    <div className="qrm-page">
+    <div style={styles.page}>
       {/* Hero */}
-      <div className="qrm-hero" aria-hidden="true">
-        <div className="qrm-hero-blob-a" />
-        <div className="qrm-hero-blob-b" />
-        <svg viewBox="0 0 1440 140" preserveAspectRatio="none" className="qrm-hero-wave">
+      <div style={styles.hero} aria-hidden="true">
+        <div style={styles.heroBlobA} />
+        <div style={styles.heroBlobB} />
+        <svg viewBox="0 0 1440 140" preserveAspectRatio="none" style={styles.heroWave}>
           <path
             fill="#ffffff"
             d="M0,64 C240,128 480,0 720,32 C960,64 1200,160 1440,96 L1440,140 L0,140 Z"
@@ -417,7 +473,7 @@ export default function QCSRawMaterialView() {
         </svg>
       </div>
 
-      <div className="qrm-content-wrap">
+      <div style={styles.contentWrap}>
         <SidebarTree
           tree={tree}
           selectedReportId={selectedReportId}
@@ -435,7 +491,21 @@ export default function QCSRawMaterialView() {
         />
 
         {/* Main */}
-        <main ref={mainRef} className="qrm-main print-main">
+        <main
+          ref={mainRef}
+          className="print-main"
+          style={{
+            flex: 1,
+            maxHeight: "80vh",
+            overflowY: "auto",
+            background: "#fff",
+            borderRadius: 16,
+            padding: "1rem",
+            boxShadow:
+              "0 10px 20px rgba(2,6,23,0.06), 0 1px 2px rgba(2,6,23,0.04)",
+            border: "1px solid #e5e7eb",
+          }}
+        >
           <div className="print-area" ref={printAreaRef}>
             <ReportDetails
               selectedReport={selectedReport}

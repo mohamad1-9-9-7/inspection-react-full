@@ -3,21 +3,16 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 
-/* ===== API base (same style as the project) ===== */
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
     (typeof process !== "undefined" &&
-      (process.env?.REACT_APP_API_URL ||
-        process.env?.VITE_API_URL ||
-        process.env?.RENDER_EXTERNAL_URL)) ||
+      (process.env?.REACT_APP_API_URL || process.env?.VITE_API_URL)) ||
     "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
-/* Report type */
 const TYPE = "licenses_contracts";
 
-/* ===== Branches (EN) ===== */
 const BRANCHES = [
   "Al Qusais Warehouse",
   "Al Mamzar Food Truck",
@@ -27,559 +22,325 @@ const BRANCHES = [
   "Al Ain Butchery",
 ];
 
-/* ===== Helpers ===== */
+// ── helpers ────────────────────────────────────────────────────────────────
 function isEmptyObj(obj) {
-  return !Object.values(obj || {}).some((v) => String(v || "").trim() !== "");
+  return !Object.values(obj || {}).some((v) =>
+    Array.isArray(v) ? v.length > 0 : String(v || "").trim()
+  );
 }
-
-function niceName(file) {
-  try {
-    return file?.name || "";
-  } catch {
-    return "";
-  }
-}
-
 function isPdf(file) {
   const t = String(file?.type || "").toLowerCase();
   const n = String(file?.name || "").toLowerCase();
   return t === "application/pdf" || n.endsWith(".pdf");
 }
-
-async function uploadFileToServer(file) {
+async function uploadFile(file) {
   const fd = new FormData();
   fd.append("file", file);
-
-  const res = await fetch(`${API_BASE}/api/images`, {
-    method: "POST",
-    body: fd,
-  });
-
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg =
-      data?.error || data?.message || `Upload failed (HTTP ${res.status})`;
-    throw new Error(msg);
-  }
-
-  // Support multiple possible response shapes
+  if (!res.ok) throw new Error(data?.error || `Upload failed (HTTP ${res.status})`);
   const url =
-    data?.url ||
-    data?.secure_url ||
-    data?.fileUrl ||
-    data?.file_url ||
-    data?.path ||
-    data?.result?.secure_url ||
-    data?.result?.url ||
-    "";
-
-  if (!url) throw new Error("Upload succeeded but no URL returned from server.");
-  return { url, raw: data };
+    data?.url || data?.secure_url || data?.fileUrl ||
+    data?.file_url || data?.path || data?.result?.secure_url || "";
+  if (!url) throw new Error("No URL returned from server.");
+  return url;
 }
 
-async function uploadMany(files, onProgress) {
-  const urls = [];
-  for (let i = 0; i < files.length; i++) {
-    onProgress?.(i + 1, files.length);
-    const { url } = await uploadFileToServer(files[i]);
-    urls.push(url);
-  }
-  return urls;
-}
-
-/* ===== UI styles ===== */
-const shellStyle = {
-  minHeight: "100vh",
-  padding: "28px 18px",
-  background:
-    "radial-gradient(circle at 12% 6%, rgba(99,102,241,0.15) 0, rgba(249,250,251,1) 38%, rgba(255,255,255,1) 100%)," +
-    "radial-gradient(circle at 88% 18%, rgba(16,185,129,0.10) 0, rgba(255,255,255,0) 52%)," +
-    "radial-gradient(circle at 50% 100%, rgba(59,130,246,0.10) 0, rgba(255,255,255,0) 55%)",
-  fontFamily:
-    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  color: "#0b1f4d",
+// ── styles ─────────────────────────────────────────────────────────────────
+const S = {
+  shell: {
+    minHeight: "100vh",
+    padding: "20px 24px",
+    background: "linear-gradient(150deg,#eef2ff 0%,#f8fafc 55%,#ecfdf5 100%)",
+    fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif',
+    color: "#0f172a",
+  },
+  layout: { width: "100%" },
+  topBar: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    gap: 10, padding: "12px 16px", borderRadius: 16,
+    background: "#fff", border: "1.5px solid #e2e8f0",
+    boxShadow: "0 2px 14px rgba(0,0,0,0.06)", marginBottom: 16, flexWrap: "wrap",
+  },
+  brand: { display: "flex", alignItems: "center", gap: 10 },
+  logo: { width: 42, height: 42, borderRadius: 10, objectFit: "cover", border: "1px solid #e2e8f0" },
+  card: {
+    background: "#fff", border: "1.5px solid #e2e8f0",
+    borderRadius: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.04)", padding: 20,
+    marginBottom: 14,
+  },
+  label: { fontSize: 14, fontWeight: 700, color: "#475569", marginBottom: 6, display: "block" },
+  input: {
+    width: "100%", boxSizing: "border-box",
+    border: "1.5px solid #e2e8f0", borderRadius: 10,
+    padding: "11px 14px", fontSize: 15, fontWeight: 600,
+    outline: "none", background: "#f8fafc",
+  },
+  hint: { fontSize: 13, color: "#94a3b8", marginTop: 5, fontWeight: 600 },
+  row3: { display: "grid", gridTemplateColumns: "1.2fr 0.8fr 1.2fr", gap: 14, alignItems: "end" },
+  row2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "end" },
 };
 
-const layoutStyle = { maxWidth: "1100px", margin: "0 auto" };
-
-const topBarStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "14px",
-  padding: "14px 16px",
-  borderRadius: "18px",
-  background: "rgba(255,255,255,0.82)",
-  border: "1px solid rgba(15, 23, 42, 0.30)",
-  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
-  backdropFilter: "blur(10px)",
-  marginBottom: "18px",
-  flexWrap: "wrap",
-};
-
-const brandLeftStyle = { display: "flex", alignItems: "center", gap: "12px" };
-
-const logoStyle = {
-  width: "46px",
-  height: "46px",
-  borderRadius: "12px",
-  objectFit: "cover",
-  border: "1px solid rgba(15, 23, 42, 0.22)",
-  boxShadow: "0 6px 18px rgba(15, 23, 42, 0.10)",
-  background: "#fff",
-};
-
-const btn = (bg) => ({
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 12,
-  padding: "10px 14px",
-  fontWeight: 900,
-  cursor: "pointer",
-  boxShadow: "0 6px 16px rgba(15, 23, 42, 0.12)",
+const btnSolid = (bg) => ({
+  background: bg, color: "#fff", border: "none", borderRadius: 10,
+  padding: "11px 22px", fontWeight: 700, cursor: "pointer", fontSize: 15, whiteSpace: "nowrap",
 });
-
 const btnGhost = {
-  background: "rgba(255,255,255,0.9)",
-  color: "#0b1f4d",
-  border: "1px solid rgba(15, 23, 42, 0.30)",
-  borderRadius: 12,
-  padding: "10px 14px",
-  fontWeight: 900,
-  cursor: "pointer",
+  background: "#fff", color: "#334155", border: "1.5px solid #e2e8f0",
+  borderRadius: 10, padding: "11px 20px", fontWeight: 700, cursor: "pointer", fontSize: 15,
 };
 
-const cardStyle = {
-  background: "rgba(255,255,255,0.92)",
-  border: "1px solid rgba(15, 23, 42, 0.30)",
-  borderRadius: 18,
-  boxShadow: "0 10px 26px rgba(15, 23, 42, 0.08)",
-  padding: 16,
-};
-
-const sectionTitle = {
-  fontSize: 15,
-  fontWeight: 950,
-  margin: 0,
-  marginBottom: 10,
-  letterSpacing: "0.01em",
-};
-
-const hintStyle = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#64748b",
-  marginTop: 4,
-};
-
-const rowStyle = {
-  display: "grid",
-  gridTemplateColumns: "1.2fr 0.8fr 1.2fr",
-  gap: 12,
-  alignItems: "end",
-};
-
-const rowStyle2 = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 12,
-  alignItems: "end",
-};
-
-const fieldLabel = {
-  fontSize: 12,
-  fontWeight: 900,
-  marginBottom: 6,
-  color: "#0b1f4d",
-};
-
-const inputStyle = {
-  width: "100%",
-  boxSizing: "border-box",
-  border: "1px solid rgba(15, 23, 42, 0.34)",
-  borderRadius: 12,
-  padding: "10px 12px",
-  fontSize: 13,
-  fontWeight: 700,
-  outline: "none",
-  background: "rgba(255,255,255,0.95)",
-};
-
-const smallLink = {
-  fontSize: 12,
-  fontWeight: 900,
-  color: "#2563eb",
-  textDecoration: "none",
-};
-
-function FilesChips({ urls, names }) {
-  const arr = Array.isArray(urls) ? urls : [];
-  if (arr.length === 0) return null;
-
-  const nm = Array.isArray(names) ? names : [];
+// ── FilesChips (with remove button) ───────────────────────────────────────
+function FilesChips({ urls = [], names = [], onRemove }) {
+  if (!urls.length) return null;
   return (
-    <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-      {arr.map((u, i) => (
-        <div
+    <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {urls.map((u, i) => (
+        <span
           key={`${u}-${i}`}
-          style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            background: "#eff6ff", border: "1px solid #bfdbfe",
+            borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 700,
+          }}
         >
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 900,
-              color: "#0b1f4d",
-              background: "rgba(99,102,241,0.10)",
-              border: "1px solid rgba(99,102,241,0.36)",
-              padding: "6px 10px",
-              borderRadius: 999,
-            }}
-            title={nm[i] || u}
-          >
-            {nm[i] ? `Uploaded: ${nm[i]}` : `File ${i + 1}`}
-          </span>
-          <a href={u} target="_blank" rel="noreferrer" style={smallLink}>
-            Open file
+          <a href={u} target="_blank" rel="noreferrer"
+            style={{ color: "#2563eb", textDecoration: "none" }}>
+            {names[i] || `File ${i + 1}`}
           </a>
-        </div>
+          {onRemove && (
+            <button
+              type="button"
+              onClick={() => onRemove(i)}
+              title="Remove file"
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: "#ef4444", fontWeight: 900, padding: "0 2px",
+                fontSize: 14, lineHeight: 1, display: "flex", alignItems: "center",
+              }}
+            >✕</button>
+          )}
+        </span>
       ))}
     </div>
   );
 }
 
-function ContractRow({ idx, item, onChange, onRemove, uploading, onPickFiles }) {
+// ── ContractRow ────────────────────────────────────────────────────────────
+function ContractRow({ idx, item, onChange, onRemove, onRemoveFile, uploading, onPickFiles }) {
   return (
-    <div
-      style={{
-        border: "1px solid rgba(15, 23, 42, 0.28)",
-        borderRadius: 16,
-        padding: 14,
-        background: "rgba(255,255,255,0.95)",
-      }}
-    >
-      <div style={rowStyle}>
-        <div>
-          <div style={fieldLabel}>Contract Type</div>
-          <input
-            value={item.contractType}
-            onChange={(e) => onChange(idx, "contractType", e.target.value)}
-            style={inputStyle}
-            placeholder="e.g., Pest Control / Waste / Cleaning / Maintenance"
-          />
-        </div>
-
-        <div>
-          <div style={fieldLabel}>Expiry Date</div>
-          <input
-            type="date"
-            value={item.expiryDate}
-            onChange={(e) => onChange(idx, "expiryDate", e.target.value)}
-            style={inputStyle}
-          />
-        </div>
-
-        <div>
-          <div style={fieldLabel}>Company Name</div>
-          <input
-            value={item.companyName}
-            onChange={(e) => onChange(idx, "companyName", e.target.value)}
-            style={inputStyle}
-            placeholder="Company / Supplier name"
-          />
-        </div>
-      </div>
-
-      <div style={{ ...rowStyle2, marginTop: 12 }}>
-        <div>
-          <div style={fieldLabel}>Upload (PDF / Images up to 20)</div>
-          <input
-            type="file"
-            accept="application/pdf,image/*"
-            multiple
-            onChange={(e) => onPickFiles(idx, e.target.files)}
-            style={{ ...inputStyle, padding: "8px 10px" }}
-            disabled={uploading}
-          />
-          <div style={hintStyle}>
-            {uploading ? "Uploading..." : "Images: up to 20 files • PDF: 1 file"}
-          </div>
-
-          {/* ✅ keep old single fileUrl/fileName, but show list too */}
-          <FilesChips urls={item.fileUrls?.length ? item.fileUrls : (item.fileUrl ? [item.fileUrl] : [])}
-                      names={item.fileNames?.length ? item.fileNames : (item.fileName ? [item.fileName] : [])} />
-        </div>
-
-        <div>
-          <div style={fieldLabel}>Notes (optional)</div>
-          <input
-            value={item.notes}
-            onChange={(e) => onChange(idx, "notes", e.target.value)}
-            style={inputStyle}
-            placeholder="Short note"
-          />
-        </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
-          #{idx + 1}
-        </div>
-        {onRemove ? (
-          <button type="button" style={btn("#ef4444")} onClick={() => onRemove(idx)}>
+    <div style={{
+      border: "1.5px solid #e2e8f0", borderRadius: 14,
+      padding: 16, background: "#f8fafc",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: "#64748b" }}>Contract #{idx + 1}</span>
+        {onRemove && (
+          <button type="button" style={{ ...btnSolid("#ef4444"), padding: "5px 12px", fontSize: 12 }}
+            onClick={() => onRemove(idx)}>
             Remove
           </button>
-        ) : (
-          <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
-            (Default)
-          </span>
         )}
+      </div>
+
+      <div style={S.row3}>
+        <div>
+          <label style={S.label}>Contract Type</label>
+          <input value={item.contractType}
+            onChange={(e) => onChange(idx, "contractType", e.target.value)}
+            style={S.input} placeholder="e.g. Pest Control / Cleaning" />
+        </div>
+        <div>
+          <label style={S.label}>Expiry Date</label>
+          <input type="date" value={item.expiryDate}
+            onChange={(e) => onChange(idx, "expiryDate", e.target.value)}
+            style={S.input} />
+        </div>
+        <div>
+          <label style={S.label}>Company Name</label>
+          <input value={item.companyName}
+            onChange={(e) => onChange(idx, "companyName", e.target.value)}
+            style={S.input} placeholder="Company / Supplier name" />
+        </div>
+      </div>
+
+      <div style={{ ...S.row2, marginTop: 12 }}>
+        <div>
+          <label style={S.label}>Upload Files</label>
+          <input type="file" accept="application/pdf,image/*" multiple
+            onChange={(e) => onPickFiles(idx, e.target.files)}
+            style={{ ...S.input, padding: "7px 10px" }}
+            disabled={uploading} />
+          <div style={S.hint}>
+            {uploading ? "Uploading..." : "PDF: 1 file • Images: up to 20"}
+          </div>
+          <FilesChips
+            urls={item.fileUrls || []}
+            names={item.fileNames || []}
+            onRemove={(fi) => onRemoveFile(idx, fi)}
+          />
+        </div>
+        <div>
+          <label style={S.label}>Notes (optional)</label>
+          <input value={item.notes}
+            onChange={(e) => onChange(idx, "notes", e.target.value)}
+            style={S.input} placeholder="Short note" />
+        </div>
       </div>
     </div>
   );
 }
 
+// ── initial state factories ────────────────────────────────────────────────
+const mkLicense = () => ({ name: "", expiryDate: "", fileUrls: [], fileNames: [], notes: "" });
+const mkContract = (type = "") => ({
+  contractType: type, companyName: "", expiryDate: "",
+  fileUrls: [], fileNames: [], notes: "",
+});
+
+// ── Main ───────────────────────────────────────────────────────────────────
 export default function LicensesContractsInput() {
   const navigate = useNavigate();
-
-  // Branch
   const [branch, setBranch] = useState(BRANCHES[0]);
-
-  // License (single)
-  const [license, setLicense] = useState({
-    name: "",
-    expiryDate: "",
-    fileUrl: "",
-    fileName: "",
-    fileUrls: [],     // ✅ NEW
-    fileNames: [],    // ✅ NEW
-    notes: "",
-  });
-
-  // Contracts
-  const [contracts, setContracts] = useState(() => [
-    {
-      contractType: "Pest Control",
-      companyName: "",
-      expiryDate: "",
-      fileUrl: "",
-      fileName: "",
-      fileUrls: [],   // ✅ NEW
-      fileNames: [],  // ✅ NEW
-      notes: "",
-    },
-  ]);
-
+  const [license, setLicense] = useState(mkLicense);
+  const [contracts, setContracts] = useState(() => [mkContract("Pest Control")]);
   const [saving, setSaving] = useState(false);
-  const [uploadingKey, setUploadingKey] = useState(""); // "license" or `contract:${idx}`
-  const [uploadProgress, setUploadProgress] = useState(""); // text
+  const [uploadingKey, setUploadingKey] = useState("");
+  const [uploadProgress, setUploadProgress] = useState("");
 
   const canSave = useMemo(() => {
-    const anyLicense =
-      String(license.name || "").trim() ||
-      String(license.expiryDate || "").trim() ||
-      String(license.fileUrl || "").trim() ||
-      (Array.isArray(license.fileUrls) && license.fileUrls.length) ||
-      String(license.notes || "").trim();
-
-    const anyContract = contracts.some((c) => !isEmptyObj(c));
-    return Boolean(anyLicense || anyContract);
+    const hasLic = !isEmptyObj(license);
+    return hasLic || contracts.some((c) => !isEmptyObj(c));
   }, [license, contracts]);
 
-  function updateLicense(key, val) {
-    setLicense((p) => ({ ...p, [key]: val }));
+  // ── shared file picker logic ─────────────────────────────────────────────
+  async function handleFilePick(fileList, currentUrls, currentNames, onDone, uploadKey) {
+    const list = Array.from(fileList || []).slice(0, 20);
+    if (!list.length) return;
+
+    const pdfs = list.filter(isPdf);
+    const imgs = list.filter((f) => !isPdf(f));
+
+    if (pdfs.length && imgs.length) {
+      alert("Please upload PDF alone OR images alone — not both.");
+      return;
+    }
+    if (pdfs.length > 1) {
+      alert("Only 1 PDF allowed.");
+      return;
+    }
+
+    try {
+      setUploadingKey(uploadKey);
+      setUploadProgress("");
+
+      if (pdfs.length === 1) {
+        setUploadProgress("Uploading PDF...");
+        const url = await uploadFile(pdfs[0]);
+        onDone([...currentUrls, url], [...currentNames, pdfs[0].name]);
+        return;
+      }
+
+      const uploaded = [];
+      for (let i = 0; i < imgs.length; i++) {
+        setUploadProgress(`Uploading ${i + 1} / ${imgs.length}...`);
+        uploaded.push(await uploadFile(imgs[i]));
+      }
+      const merged = [...currentUrls, ...uploaded].slice(0, 20);
+      const mergedNames = [...currentNames, ...imgs.map((f) => f.name)].slice(0, 20);
+      onDone(merged, mergedNames);
+    } catch (e) {
+      console.error(e);
+      alert(`Upload failed: ${e.message}`);
+    } finally {
+      setUploadingKey("");
+      setUploadProgress("");
+    }
   }
 
+  // ── license file handlers ─────────────────────────────────────────────
+  function pickLicenseFiles(fileList) {
+    handleFilePick(
+      fileList,
+      license.fileUrls,
+      license.fileNames,
+      (urls, names) => setLicense((p) => ({ ...p, fileUrls: urls, fileNames: names })),
+      "license"
+    );
+  }
+
+  function removeLicenseFile(i) {
+    setLicense((p) => {
+      const urls = p.fileUrls.filter((_, j) => j !== i);
+      const names = p.fileNames.filter((_, j) => j !== i);
+      return { ...p, fileUrls: urls, fileNames: names };
+    });
+  }
+
+  // ── contract helpers ──────────────────────────────────────────────────
   function updateContract(idx, key, val) {
-    setContracts((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [key]: val };
-      return next;
+    setContracts((p) => {
+      const n = [...p];
+      n[idx] = { ...n[idx], [key]: val };
+      return n;
+    });
+  }
+
+  function pickContractFiles(idx, fileList) {
+    const cur = contracts[idx] || {};
+    handleFilePick(
+      fileList,
+      cur.fileUrls || [],
+      cur.fileNames || [],
+      (urls, names) =>
+        setContracts((p) => {
+          const n = [...p];
+          n[idx] = { ...n[idx], fileUrls: urls, fileNames: names };
+          return n;
+        }),
+      `contract:${idx}`
+    );
+  }
+
+  function removeContractFile(idx, fi) {
+    setContracts((p) => {
+      const n = [...p];
+      const c = n[idx];
+      n[idx] = {
+        ...c,
+        fileUrls: (c.fileUrls || []).filter((_, j) => j !== fi),
+        fileNames: (c.fileNames || []).filter((_, j) => j !== fi),
+      };
+      return n;
     });
   }
 
   function addContract() {
-    setContracts((prev) => [
-      ...prev,
-      {
-        contractType: "",
-        companyName: "",
-        expiryDate: "",
-        fileUrl: "",
-        fileName: "",
-        fileUrls: [],
-        fileNames: [],
-        notes: "",
-      },
-    ]);
+    setContracts((p) => [...p, mkContract()]);
   }
 
   function removeContract(idx) {
-    setContracts((prev) => prev.filter((_, i) => i !== idx));
+    setContracts((p) => p.filter((_, i) => i !== idx));
   }
 
-  // ✅ License: upload up to 20 images OR 1 PDF
-  async function pickLicenseFiles(fileList) {
-    const files = Array.from(fileList || []);
-    if (files.length === 0) return;
-
-    const slice = files.slice(0, 20);
-    const pdfs = slice.filter(isPdf);
-    const imgs = slice.filter((f) => !isPdf(f));
-
-    if (pdfs.length > 0 && imgs.length > 0) {
-      alert("❌ Please upload PDF alone OR images alone (do not mix).");
-      return;
-    }
-    if (pdfs.length > 1) {
-      alert("❌ Only 1 PDF is allowed.");
-      return;
-    }
-
-    try {
-      setUploadingKey("license");
-      setUploadProgress("");
-
-      if (pdfs.length === 1) {
-        const pdf = pdfs[0];
-        const { url } = await uploadFileToServer(pdf);
-
-        // keep backwards compatibility
-        updateLicense("fileUrl", url);
-        updateLicense("fileName", niceName(pdf));
-        updateLicense("fileUrls", [url]);
-        updateLicense("fileNames", [niceName(pdf)]);
-        return;
-      }
-
-      // images
-      setUploadProgress(`Uploading 1/${imgs.length}...`);
-      const urls = await uploadMany(imgs, (i, total) =>
-        setUploadProgress(`Uploading ${i}/${total}...`)
-      );
-      const names = imgs.map(niceName);
-
-      setLicense((p) => {
-        const prevUrls = Array.isArray(p.fileUrls) ? p.fileUrls : [];
-        const prevNames = Array.isArray(p.fileNames) ? p.fileNames : [];
-        const mergedUrls = [...prevUrls, ...urls].slice(0, 20);
-        const mergedNames = [...prevNames, ...names].slice(0, 20);
-
-        // set single fields if empty
-        const firstUrl = p.fileUrl || mergedUrls[0] || "";
-        const firstName = p.fileName || mergedNames[0] || "";
-
-        return {
-          ...p,
-          fileUrls: mergedUrls,
-          fileNames: mergedNames,
-          fileUrl: firstUrl,
-          fileName: firstName,
-        };
-      });
-    } catch (e) {
-      console.error(e);
-      alert(`❌ Upload failed: ${e.message || e}`);
-    } finally {
-      setUploadingKey("");
-      setUploadProgress("");
-    }
-  }
-
-  // ✅ Contract: upload up to 20 images OR 1 PDF
-  async function pickContractFiles(idx, fileList) {
-    const files = Array.from(fileList || []);
-    if (files.length === 0) return;
-
-    const slice = files.slice(0, 20);
-    const pdfs = slice.filter(isPdf);
-    const imgs = slice.filter((f) => !isPdf(f));
-
-    if (pdfs.length > 0 && imgs.length > 0) {
-      alert("❌ Please upload PDF alone OR images alone (do not mix).");
-      return;
-    }
-    if (pdfs.length > 1) {
-      alert("❌ Only 1 PDF is allowed.");
-      return;
-    }
-
-    try {
-      setUploadingKey(`contract:${idx}`);
-      setUploadProgress("");
-
-      if (pdfs.length === 1) {
-        const pdf = pdfs[0];
-        const { url } = await uploadFileToServer(pdf);
-
-        updateContract(idx, "fileUrl", url);
-        updateContract(idx, "fileName", niceName(pdf));
-        updateContract(idx, "fileUrls", [url]);
-        updateContract(idx, "fileNames", [niceName(pdf)]);
-        return;
-      }
-
-      setUploadProgress(`Uploading 1/${imgs.length}...`);
-      const urls = await uploadMany(imgs, (i, total) =>
-        setUploadProgress(`Uploading ${i}/${total}...`)
-      );
-      const names = imgs.map(niceName);
-
-      setContracts((prev) => {
-        const next = [...prev];
-        const cur = next[idx] || {};
-        const prevUrls = Array.isArray(cur.fileUrls) ? cur.fileUrls : [];
-        const prevNames = Array.isArray(cur.fileNames) ? cur.fileNames : [];
-        const mergedUrls = [...prevUrls, ...urls].slice(0, 20);
-        const mergedNames = [...prevNames, ...names].slice(0, 20);
-
-        next[idx] = {
-          ...cur,
-          fileUrls: mergedUrls,
-          fileNames: mergedNames,
-          fileUrl: cur.fileUrl || mergedUrls[0] || "",
-          fileName: cur.fileName || mergedNames[0] || "",
-        };
-        return next;
-      });
-    } catch (e) {
-      console.error(e);
-      alert(`❌ Upload failed: ${e.message || e}`);
-    } finally {
-      setUploadingKey("");
-      setUploadProgress("");
-    }
-  }
-
+  // ── save ────────────────────────────────────────────────────────────────
   async function handleSave() {
-    if (!canSave) {
-      alert("No data to save.");
-      return;
-    }
-
-    const cleanContracts = contracts.filter((c) => !isEmptyObj(c));
+    if (!canSave) return alert("No data to save.");
 
     const payload = {
       branch,
       license: {
-        name: license.name,
-        expiryDate: license.expiryDate,
-        fileUrl: license.fileUrl,
-        fileName: license.fileName,
-        fileUrls: Array.isArray(license.fileUrls) ? license.fileUrls : [],
-        fileNames: Array.isArray(license.fileNames) ? license.fileNames : [],
-        notes: license.notes,
+        ...license,
+        fileUrl: license.fileUrls[0] || "",
+        fileName: license.fileNames[0] || "",
       },
-      contracts: cleanContracts.map((c) => ({
-        contractType: c.contractType,
-        companyName: c.companyName,
-        expiryDate: c.expiryDate,
-        fileUrl: c.fileUrl,
-        fileName: c.fileName,
-        fileUrls: Array.isArray(c.fileUrls) ? c.fileUrls : [],
-        fileNames: Array.isArray(c.fileNames) ? c.fileNames : [],
-        notes: c.notes,
-      })),
+      contracts: contracts
+        .filter((c) => !isEmptyObj(c))
+        .map((c) => ({
+          ...c,
+          fileUrl: c.fileUrls[0] || "",
+          fileName: c.fileNames[0] || "",
+        })),
       savedAt: Date.now(),
     };
 
@@ -587,17 +348,14 @@ export default function LicensesContractsInput() {
       setSaving(true);
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ reporter: "haccp-iso", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("✅ Saved successfully!");
+      alert("Saved successfully!");
     } catch (e) {
       console.error(e);
-      alert("❌ Save failed. Check server/network.");
+      alert("Save failed. Check network / server.");
     } finally {
       setSaving(false);
     }
@@ -605,196 +363,140 @@ export default function LicensesContractsInput() {
 
   function handleReset() {
     setBranch(BRANCHES[0]);
-    setLicense({
-      name: "",
-      expiryDate: "",
-      fileUrl: "",
-      fileName: "",
-      fileUrls: [],
-      fileNames: [],
-      notes: "",
-    });
-    setContracts([
-      {
-        contractType: "Pest Control",
-        companyName: "",
-        expiryDate: "",
-        fileUrl: "",
-        fileName: "",
-        fileUrls: [],
-        fileNames: [],
-        notes: "",
-      },
-    ]);
+    setLicense(mkLicense());
+    setContracts([mkContract("Pest Control")]);
   }
 
+  const busy = saving || !!uploadingKey;
+
   return (
-    <main style={shellStyle}>
-      <div style={layoutStyle}>
+    <main style={S.shell}>
+      <div style={S.layout}>
+
         {/* Top bar */}
-        <div style={topBarStyle}>
-          <div style={brandLeftStyle}>
-            <img src={mawashiLogo} alt="Al Mawashi Logo" style={logoStyle} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 950, lineHeight: 1.2 }}>
+        <div style={S.topBar}>
+          <div style={S.brand}>
+            <img src={mawashiLogo} alt="logo" style={S.logo} />
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.3 }}>
                 TRANS EMIRATES LIVESTOCK TRADING L.L.C.
               </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 800,
-                  opacity: 0.75,
-                  marginTop: 4,
-                }}
-              >
+              <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
                 AL MAWASHI — Licenses & Contracts
               </div>
             </div>
           </div>
 
-          {/* Buttons */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button type="button" style={btnGhost} onClick={() => navigate("/haccp-iso")}>
-              ← Back
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button style={btnGhost} onClick={() => navigate("/haccp-iso")}>← Back</button>
+            <button style={btnSolid("#6366f1")} onClick={() => navigate("/haccp-iso/licenses-contracts/view")}>
+              View Records
             </button>
-
-            <button
-              type="button"
-              style={btn("#6366f1")}
-              onClick={() => navigate("/haccp-iso/licenses-contracts/view")}
-              title="View saved licenses & contracts"
-            >
-              View
-            </button>
-
-            <button
-              type="button"
-              style={btn("#10b981")}
-              onClick={handleSave}
-              disabled={saving || uploadingKey}
-              title={!canSave ? "No data" : "Save"}
-            >
+            <button style={btnSolid("#10b981")} onClick={handleSave} disabled={busy}>
               {saving ? "Saving..." : "Save"}
             </button>
           </div>
         </div>
 
-        {/* Header */}
-        <div style={{ ...cardStyle, marginBottom: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        {/* Header + branch */}
+        <div style={S.card}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 950 }}>
-                Licenses & Contracts
-              </h1>
-              <div style={hintStyle}>
-                Upload images (up to 20) or 1 PDF
-              </div>
-              {uploadProgress ? (
-                <div style={{ ...hintStyle, color: "#0b1f4d" }}>{uploadProgress}</div>
-              ) : null}
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Licenses & Contracts</h1>
+              {uploadProgress && (
+                <div style={{ fontSize: 12, color: "#4f46e5", fontWeight: 700, marginTop: 4 }}>
+                  {uploadProgress}
+                </div>
+              )}
             </div>
-
-            <div style={{ minWidth: 260 }}>
-              <div style={fieldLabel}>Branch</div>
-              <select value={branch} onChange={(e) => setBranch(e.target.value)} style={inputStyle}>
-                {BRANCHES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
+            <div style={{ minWidth: 240 }}>
+              <label style={S.label}>Branch</label>
+              <select value={branch} onChange={(e) => setBranch(e.target.value)} style={S.input}>
+                {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
-              <div style={hintStyle}>Select the branch for this entry</div>
             </div>
           </div>
         </div>
 
         {/* License section */}
-        <div style={{ ...cardStyle, marginBottom: 14 }}>
-          <h2 style={sectionTitle}>Company License</h2>
+        <div style={S.card}>
+          <h2 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 800 }}>
+            🪪 Company License
+          </h2>
 
-          <div style={rowStyle}>
+          <div style={S.row3}>
             <div>
-              <div style={fieldLabel}>License Name</div>
+              <label style={S.label}>License Name</label>
               <input
                 value={license.name}
-                onChange={(e) => updateLicense("name", e.target.value)}
-                style={inputStyle}
-                placeholder="e.g., Trade License / Municipality License"
+                onChange={(e) => setLicense((p) => ({ ...p, name: e.target.value }))}
+                style={S.input}
+                placeholder="e.g. Trade License / Municipality License"
               />
             </div>
-
             <div>
-              <div style={fieldLabel}>Expiry Date</div>
+              <label style={S.label}>Expiry Date</label>
               <input
                 type="date"
                 value={license.expiryDate}
-                onChange={(e) => updateLicense("expiryDate", e.target.value)}
-                style={inputStyle}
+                onChange={(e) => setLicense((p) => ({ ...p, expiryDate: e.target.value }))}
+                style={S.input}
               />
             </div>
-
             <div>
-              <div style={fieldLabel}>Upload (PDF / Images up to 20)</div>
+              <label style={S.label}>Upload (PDF or images)</label>
               <input
                 type="file"
                 accept="application/pdf,image/*"
                 multiple
                 onChange={(e) => pickLicenseFiles(e.target.files)}
-                style={{ ...inputStyle, padding: "8px 10px" }}
+                style={{ ...S.input, padding: "7px 10px" }}
                 disabled={uploadingKey === "license"}
               />
-              <div style={hintStyle}>
-                {uploadingKey === "license"
-                  ? "Uploading..."
-                  : "Images: up to 20 files • PDF: 1 file"}
+              <div style={S.hint}>
+                {uploadingKey === "license" ? "Uploading..." : "PDF: 1 file • Images: up to 20"}
               </div>
-
               <FilesChips
-                urls={license.fileUrls?.length ? license.fileUrls : (license.fileUrl ? [license.fileUrl] : [])}
-                names={license.fileNames?.length ? license.fileNames : (license.fileName ? [license.fileName] : [])}
+                urls={license.fileUrls}
+                names={license.fileNames}
+                onRemove={removeLicenseFile}
               />
             </div>
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <div style={fieldLabel}>Notes (optional)</div>
+          <div style={{ marginTop: 14 }}>
+            <label style={S.label}>Notes (optional)</label>
             <input
               value={license.notes}
-              onChange={(e) => updateLicense("notes", e.target.value)}
-              style={inputStyle}
+              onChange={(e) => setLicense((p) => ({ ...p, notes: e.target.value }))}
+              style={S.input}
               placeholder="Short note"
             />
           </div>
         </div>
 
         {/* Contracts section */}
-        <div style={cardStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={S.card}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
             <div>
-              <h2 style={{ ...sectionTitle, marginBottom: 4 }}>Contracts</h2>
-              <div style={hintStyle}>
-                Pest Control contract is pre-added + you can add more contracts
-              </div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>📄 Contracts</h2>
+              <div style={S.hint}>Pest Control pre-added • Add more as needed</div>
             </div>
-
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <button type="button" style={btn("#6366f1")} onClick={addContract}>
-                + Add Contract
-              </button>
-              <button type="button" style={btnGhost} onClick={handleReset} disabled={saving || uploadingKey}>
-                Reset
-              </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button style={btnSolid("#6366f1")} onClick={addContract}>+ Add Contract</button>
+              <button style={btnGhost} onClick={handleReset} disabled={busy}>Reset</button>
             </div>
           </div>
 
-          <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 12 }}>
             {contracts.map((c, idx) => (
               <ContractRow
-                key={`${idx}-${c.contractType || "contract"}`}
+                key={idx}
                 idx={idx}
                 item={c}
                 onChange={updateContract}
-                onRemove={idx === 0 ? null : removeContract}
+                onRemove={idx > 0 ? removeContract : null}
+                onRemoveFile={removeContractFile}
                 uploading={uploadingKey === `contract:${idx}`}
                 onPickFiles={pickContractFiles}
               />
@@ -802,16 +504,7 @@ export default function LicensesContractsInput() {
           </div>
         </div>
 
-        <div
-          style={{
-            marginTop: 16,
-            fontSize: 12,
-            color: "#6b7280",
-            fontWeight: 800,
-            textAlign: "center",
-            opacity: 0.9,
-          }}
-        >
+        <div style={{ textAlign: "center", fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>
           © Al Mawashi — Quality & Food Safety System
         </div>
       </div>

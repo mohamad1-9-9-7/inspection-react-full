@@ -117,16 +117,7 @@ const FORM = [
       },
       {
         title: "Products to be Supplied",
-        type: "fields",
-        items: [
-          { key: "products_to_be_supplied", label: "Product Name", kind: "textarea" },
-          {
-            key: "product_specs_note",
-            label: "Please provide a full product specification with each product supplied",
-            kind: "readonly",
-          },
-          { key: "att_product_specs", label: "Attach product specification / spec sheet (PDF, image, etc.)", kind: "attachment" },
-        ],
+        type: "products_list",
       },
       {
         title: "Certification",
@@ -394,21 +385,7 @@ const FORM = [
       },
       {
         title: "Declaration",
-        type: "fields",
-        items: [
-          {
-            key: "declaration_text",
-            label:
-              "All products supplied to Trans Emirates livestock Trading LLC comply with all relevant local and\ninternational legislation. The information supplied in this self-audit questionnaire is a true and\naccurate reflection of the production and control systems applied.",
-            kind: "readonly",
-          },
-          { key: "decl_name", label: "Name: .......................................................................", kind: "text" },
-          { key: "decl_position", label: "Position Held: ................. ........................................................", kind: "text" },
-          { key: "decl_signed", label: "Signed: ...........................................................................", kind: "text" },
-          { key: "decl_date", label: "Date: ................................................", kind: "date" },
-          { key: "decl_company_seal", label: "Company seal", kind: "text" },
-          { key: "att_declaration", label: "Attach signed declaration / company seal scan (optional)", kind: "attachment" },
-        ],
+        type: "declaration",
       },
     ],
   },
@@ -703,6 +680,60 @@ export default function SupplierEvaluationPublic() {
   // global attachments (kept)
   const [attachments, setAttachments] = useState([]); // [{name,url}]
 
+  // ✅ declaration
+  const [declaration, setDeclaration] = useState({ agreed: false, name: "", position: "", agreedAt: null });
+  const [showDeclModal, setShowDeclModal] = useState(false);
+
+  // ✅ dynamic products list: [{id, name, files:[{name,url}]}]
+  const [productsList, setProductsList] = useState([{ id: "p1", name: "", files: [] }]);
+
+  const addProduct = () => {
+    if (done) return;
+    const id = `p${Date.now()}`;
+    setProductsList((prev) => [...prev, { id, name: "", files: [] }]);
+  };
+
+  const removeProduct = (id) => {
+    if (done) return;
+    setProductsList((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const updateProductName = (id, name) => {
+    if (done) return;
+    setProductsList((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
+  };
+
+  const uploadProductFiles = async (id, fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length || done) return;
+    setMsg("");
+    setSaving(true);
+    try {
+      const uploaded = [];
+      for (const f of files) {
+        const url = await uploadViaServer(f);
+        uploaded.push({ name: f.name, url });
+      }
+      setProductsList((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, files: [...p.files, ...uploaded] } : p))
+      );
+      setMsg(t.uploadDone);
+    } catch (e) {
+      setMsg(`❌ ${e?.message || "Upload failed"}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeProductFile = (productId, fileIdx) => {
+    if (done) return;
+    setProductsList((prev) =>
+      prev.map((p) =>
+        p.id === productId ? { ...p, files: p.files.filter((_, i) => i !== fileIdx) } : p
+      )
+    );
+  };
+
   const shareUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
     try {
@@ -774,6 +805,38 @@ export default function SupplierEvaluationPublic() {
 
       setFieldAttachments(preFieldAttachments);
       setAttachments(preAttachments);
+
+      // ✅ restore declaration
+      if (p?.declaration && typeof p.declaration === "object") {
+        setDeclaration({
+          agreed: !!p.declaration.agreed,
+          name: p.declaration.name || "",
+          position: p.declaration.position || "",
+          agreedAt: p.declaration.agreedAt || null,
+        });
+      }
+
+      // ✅ restore productsList — fallback from old string format
+      if (Array.isArray(p?.productsList) && p.productsList.length) {
+        setProductsList(
+          p.productsList.map((item, i) => ({
+            id: item.id || `p${i}`,
+            name: item.name || "",
+            files: Array.isArray(item.files) ? item.files : [],
+          }))
+        );
+      } else if (typeof preFields?.products_to_be_supplied === "string" && preFields.products_to_be_supplied.trim()) {
+        // migrate old textarea value: split lines → each becomes a product row
+        const lines = preFields.products_to_be_supplied
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        setProductsList(
+          lines.length
+            ? lines.map((name, i) => ({ id: `p${i}`, name, files: [] }))
+            : [{ id: "p0", name: "", files: [] }]
+        );
+      }
     } catch (e) {
       setMsg(`❌ ${e?.message || "Failed to load"} (token: ${token})`);
       setInfo(null);
@@ -867,6 +930,8 @@ export default function SupplierEvaluationPublic() {
           answers,
           attachments,
           fieldAttachments,
+          productsList,
+          declaration,
         }),
       });
 
@@ -880,6 +945,82 @@ export default function SupplierEvaluationPublic() {
     } finally {
       setSaving(false);
     }
+  };
+
+  /* ===================== Declaration helpers ===================== */
+  const DECL_TEXT_EN =
+    "All products supplied to Trans Emirates Livestock Trading LLC comply with all relevant local and international legislation. The information supplied in this self-audit questionnaire is a true and accurate reflection of the production and control systems applied.";
+  const DECL_TEXT_AR =
+    "جميع المنتجات المورّدة إلى Trans Emirates Livestock Trading LLC مطابقة للتشريعات المحلية والدولية ذات الصلة. المعلومات الواردة في هذا الاستبيان هي انعكاس صحيح ودقيق لأنظمة الإنتاج والتحكم المطبقة.";
+  const declText = isRTL ? DECL_TEXT_AR : DECL_TEXT_EN;
+
+  const printDeclaration = () => {
+    const companyName = fields?.company_name || declaration.name || "";
+    const html = `<!DOCTYPE html><html dir="${isRTL ? "rtl" : "ltr"}">
+<head>
+  <meta charset="utf-8"/>
+  <title>${isRTL ? "الإقرار" : "Declaration"}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 14px; color: #000; padding: 40px; direction: ${isRTL ? "rtl" : "ltr"}; }
+    h2 { font-size: 18px; margin-bottom: 18px; text-align: center; }
+    .logo-line { text-align: center; font-size: 13px; color: #555; margin-bottom: 24px; }
+    .decl-box { border: 2px solid #000; padding: 18px; border-radius: 4px; font-size: 14px; line-height: 1.8; margin-bottom: 28px; }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 40px; margin-top: 18px; }
+    .field-row { display: flex; flex-direction: column; gap: 6px; }
+    .field-label { font-size: 12px; font-weight: bold; color: #444; }
+    .field-line { border-bottom: 1px solid #000; min-height: 28px; padding: 2px 0; font-size: 14px; }
+    .sign-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 28px; }
+    .sign-box { border-bottom: 1px solid #000; min-height: 44px; }
+    .sign-label { font-size: 11px; color: #666; margin-top: 4px; }
+    .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #888; }
+    @page { margin: 20mm; }
+  </style>
+</head>
+<body>
+  <h2>${isRTL ? "نموذج تقييم المورد — الإقرار" : "Supplier Evaluation Form — Declaration"}</h2>
+  <div class="logo-line">Trans Emirates Livestock Trading LLC — Al Mawashi</div>
+  <div class="decl-box">${isRTL ? DECL_TEXT_AR : DECL_TEXT_EN}</div>
+  <div class="fields">
+    <div class="field-row">
+      <span class="field-label">${isRTL ? "اسم الشركة" : "Company Name"}</span>
+      <div class="field-line">${companyName}</div>
+    </div>
+    <div class="field-row">
+      <span class="field-label">${isRTL ? "الاسم" : "Name"}</span>
+      <div class="field-line">${declaration.name}</div>
+    </div>
+    <div class="field-row">
+      <span class="field-label">${isRTL ? "المنصب" : "Position Held"}</span>
+      <div class="field-line">${declaration.position}</div>
+    </div>
+    <div class="field-row">
+      <span class="field-label">${isRTL ? "التاريخ" : "Date"}</span>
+      <div class="field-line">${new Date().toLocaleDateString()}</div>
+    </div>
+  </div>
+  <div class="sign-row">
+    <div>
+      <div class="sign-box"></div>
+      <div class="sign-label">${isRTL ? "التوقيع" : "Signature"}</div>
+    </div>
+    <div>
+      <div class="sign-box"></div>
+      <div class="sign-label">${isRTL ? "ختم الشركة" : "Company Seal"}</div>
+    </div>
+    <div>
+      <div class="sign-box"></div>
+      <div class="sign-label">${isRTL ? "التاريخ" : "Date"}</div>
+    </div>
+  </div>
+  <div class="footer">Al Mawashi — Quality &amp; Food Safety System</div>
+</body></html>`;
+    const win = window.open("", "_blank", "width=800,height=650");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 400);
   };
 
   /* ===================== styles (magic touch) ===================== */
@@ -1222,6 +1363,30 @@ export default function SupplierEvaluationPublic() {
           <div style={{ marginTop: 12, fontWeight: 900, color: msg.startsWith("✅") ? "#065f46" : "#991b1b" }}>{msg}</div>
         ) : null}
 
+        {/* ===== Document header — once only ===== */}
+        <div style={{
+          marginTop: 16,
+          padding: "12px 16px",
+          borderRadius: 14,
+          border: `1px solid ${THEME.border}`,
+          background: "rgba(248,250,252,1)",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "6px 24px",
+          alignItems: "center",
+        }}>
+          {[
+            isRTL ? "مرجع الوثيقة: نموذج التقييم الذاتي للمورد" : "Document Reference: Supplier Self-Assessment Form",
+            isRTL ? "الجهة المالكة: QA" : "Owned by: QA",
+            isRTL ? "المعتمد من: المدير" : "Authorised By: Director",
+          ].map((item, i) => (
+            <span key={i} style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+              {i > 0 && <span style={{ marginInlineEnd: 24, color: "#cbd5e1" }}>|</span>}
+              {item}
+            </span>
+          ))}
+        </div>
+
         <div style={section}>
           {FORM.map((p, pIdx) => (
             <div key={pIdx} style={{ marginTop: 14, ...box("#fff") }}>
@@ -1231,17 +1396,9 @@ export default function SupplierEvaluationPublic() {
               </div>
 
               <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-                {p.blocks.map((b, bIdx) => (
+                {p.blocks.filter((b) => b.type !== "info").map((b, bIdx) => (
                   <div key={bIdx} style={panel(toneByTitle(b.title))}>
                     <div style={{ fontWeight: 900, color: THEME.text, fontSize: 15 }}>{tr(lang, b.title)}</div>
-
-                    {b.type === "info" ? (
-                      <div style={{ marginTop: 10, whiteSpace: "pre-wrap", color: THEME.text, fontWeight: 900, lineHeight: 1.7, fontSize: 14 }}>
-                        {(b.lines || []).map((ln, i) => (
-                          <div key={i}>{tr(lang, ln)}</div>
-                        ))}
-                      </div>
-                    ) : null}
 
                     {b.type === "fields" ? (
                       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
@@ -1253,6 +1410,235 @@ export default function SupplierEvaluationPublic() {
                               {renderField(it)}
                             </div>
                           ))}
+                      </div>
+                    ) : null}
+
+                    {b.type === "products_list" ? (
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        <div style={{ fontSize: 12, color: THEME.muted, fontWeight: 700, lineHeight: 1.5 }}>
+                          {isRTL
+                            ? "أضف كل منتج في سطر مستقل مع إرفاق ورقة مواصفاته."
+                            : "Add each product on a separate row and attach its specification sheet."}
+                        </div>
+
+                        {productsList.map((prod, idx) => {
+                          const inputId = `prod_file_${prod.id}`;
+                          return (
+                            <div
+                              key={prod.id}
+                              style={{
+                                padding: 14,
+                                borderRadius: 14,
+                                border: `1px solid ${THEME.border}`,
+                                background: "#fff",
+                                display: "grid",
+                                gap: 10,
+                              }}
+                            >
+                              {/* Row header */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: THEME.muted }}>
+                                  {isRTL ? `منتج ${idx + 1}` : `Product ${idx + 1}`}
+                                </span>
+                                {productsList.length > 1 && (
+                                  <button
+                                    type="button"
+                                    style={{ ...btn, padding: "5px 10px", fontSize: 12, color: "#991b1b", borderColor: "rgba(239,68,68,0.3)" }}
+                                    onClick={() => removeProduct(prod.id)}
+                                    disabled={saving || done}
+                                  >
+                                    🗑 {isRTL ? "حذف" : "Remove"}
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Product name input */}
+                              <input
+                                value={prod.name}
+                                onChange={(e) => updateProductName(prod.id, e.target.value)}
+                                placeholder={isRTL ? "اسم المنتج..." : "Product name..."}
+                                disabled={saving || done}
+                                style={{ ...input, fontWeight: 800 }}
+                              />
+
+                              {/* Attachment for this product */}
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                <label
+                                  htmlFor={inputId}
+                                  style={{
+                                    ...btn,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    cursor: saving || done ? "not-allowed" : "pointer",
+                                    opacity: saving || done ? 0.55 : 1,
+                                  }}
+                                >
+                                  📎 {isRTL ? "إرفاق مواصفات" : "Attach specs"}
+                                </label>
+                                <input
+                                  id={inputId}
+                                  type="file"
+                                  multiple
+                                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
+                                  onChange={(e) => uploadProductFiles(prod.id, e.target.files)}
+                                  disabled={saving || done}
+                                  style={{ display: "none" }}
+                                />
+                                {prod.files.length > 0 && (
+                                  <span style={{ fontSize: 12, color: "#065f46", fontWeight: 700 }}>
+                                    ✅ {prod.files.length} {isRTL ? "ملف مرفق" : "file(s)"}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Uploaded files list */}
+                              {prod.files.length > 0 && (
+                                <div style={{ display: "grid", gap: 6 }}>
+                                  {prod.files.map((f, fi) => (
+                                    <div
+                                      key={`${f.url}-${fi}`}
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        gap: 8,
+                                        padding: "8px 10px",
+                                        borderRadius: 10,
+                                        border: `1px solid ${THEME.border}`,
+                                        background: "rgba(34,197,94,0.04)",
+                                      }}
+                                    >
+                                      <a
+                                        href={f.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        style={{
+                                          fontSize: 13,
+                                          fontWeight: 700,
+                                          color: THEME.text,
+                                          textDecoration: "none",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                          maxWidth: "75%",
+                                        }}
+                                      >
+                                        📄 {f.name || `File ${fi + 1}`}
+                                      </a>
+                                      <button
+                                        type="button"
+                                        style={{ ...btn, padding: "4px 8px", fontSize: 11, color: "#991b1b", borderColor: "rgba(239,68,68,0.3)" }}
+                                        onClick={() => removeProductFile(prod.id, fi)}
+                                        disabled={saving || done}
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {/* Add product button */}
+                        {!done && (
+                          <button
+                            type="button"
+                            style={{
+                              ...btn,
+                              width: "100%",
+                              justifyContent: "center",
+                              borderStyle: "dashed",
+                              background: "rgba(34,197,94,0.04)",
+                              borderColor: "rgba(34,197,94,0.35)",
+                              color: "#14532d",
+                              fontWeight: 800,
+                              fontSize: 14,
+                              padding: "12px",
+                            }}
+                            onClick={addProduct}
+                            disabled={saving}
+                          >
+                            + {isRTL ? "إضافة منتج" : "Add Product"}
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {b.type === "declaration" ? (
+                      <div style={{ marginTop: 14 }}>
+                        {/* Status banner when agreed */}
+                        {declaration.agreed ? (
+                          <div style={{
+                            padding: "14px 16px",
+                            borderRadius: 14,
+                            background: "rgba(34,197,94,0.10)",
+                            border: "1px solid rgba(34,197,94,0.35)",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: 10,
+                          }}>
+                            <div>
+                              <div style={{ fontWeight: 800, color: "#14532d", fontSize: 14 }}>
+                                ✅ {isRTL ? "تم الإقرار والموافقة" : "Declaration confirmed"}
+                              </div>
+                              <div style={{ fontSize: 12, color: "#166534", marginTop: 4 }}>
+                                {declaration.name && <span>{isRTL ? "الاسم: " : "Name: "}<b>{declaration.name}</b> &nbsp;•&nbsp; </span>}
+                                {declaration.position && <span>{isRTL ? "المنصب: " : "Position: "}<b>{declaration.position}</b> &nbsp;•&nbsp; </span>}
+                                {declaration.agreedAt && <span>{isRTL ? "وقت الإقرار: " : "Agreed at: "}<b>{new Date(declaration.agreedAt).toLocaleString()}</b></span>}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button type="button" style={{ ...btn, fontSize: 12 }} onClick={printDeclaration}>
+                                🖨 {isRTL ? "طباعة" : "Print"}
+                              </button>
+                              {!done && (
+                                <button
+                                  type="button"
+                                  style={{ ...btn, fontSize: 12, color: "#7c3aed", borderColor: "rgba(124,58,237,0.3)" }}
+                                  onClick={() => setShowDeclModal(true)}
+                                >
+                                  ✏️ {isRTL ? "تعديل" : "Edit"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{
+                            padding: "16px",
+                            borderRadius: 14,
+                            border: "1px dashed rgba(239,68,68,0.35)",
+                            background: "rgba(239,68,68,0.03)",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 12,
+                            flexWrap: "wrap",
+                          }}>
+                            <div style={{ fontSize: 13, color: "#7f1d1d", fontWeight: 700 }}>
+                              ⚠️ {isRTL ? "لم يتم تأكيد الإقرار بعد" : "Declaration not confirmed yet"}
+                            </div>
+                            <button
+                              type="button"
+                              style={{
+                                ...btn,
+                                background: "linear-gradient(135deg,rgba(14,165,233,0.16),rgba(34,197,94,0.14))",
+                                borderColor: "rgba(34,197,94,0.35)",
+                                fontWeight: 800,
+                                fontSize: 14,
+                                padding: "12px 20px",
+                              }}
+                              onClick={() => setShowDeclModal(true)}
+                              disabled={done}
+                            >
+                              📋 {isRTL ? "فتح الإقرار والموافقة" : "Open & Confirm Declaration"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ) : null}
 
@@ -1378,11 +1764,166 @@ export default function SupplierEvaluationPublic() {
         </div>
       </div>
 
+      {/* ===== Declaration Modal ===== */}
+      {showDeclModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed", inset: 0,
+            background: "rgba(2,6,23,0.65)",
+            display: "flex", alignItems: "flex-start", justifyContent: "center",
+            padding: "24px 16px", overflowY: "auto", zIndex: 11000,
+            direction: isRTL ? "rtl" : "ltr",
+          }}
+          onClick={() => setShowDeclModal(false)}
+        >
+          <div
+            style={{
+              width: "min(680px, 100%)", marginTop: 12,
+              background: "#fff",
+              border: "1px solid rgba(15,23,42,0.18)",
+              borderRadius: 20,
+              boxShadow: "0 28px 80px rgba(2,6,23,0.32)",
+              padding: "24px 22px",
+              display: "grid", gap: 18,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>
+                📋 {isRTL ? "الإقرار الرسمي" : "Official Declaration"}
+              </div>
+              <button
+                type="button"
+                style={{ ...btn, padding: "6px 12px", fontSize: 13 }}
+                onClick={() => setShowDeclModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Declaration text box */}
+            <div style={{
+              padding: "16px 18px",
+              borderRadius: 14,
+              border: "2px solid rgba(15,23,42,0.18)",
+              background: "rgba(248,250,252,1)",
+              fontSize: 14,
+              fontWeight: 700,
+              lineHeight: 1.9,
+              color: "#0f172a",
+              whiteSpace: "pre-wrap",
+            }}>
+              {declText}
+            </div>
+
+            {/* Name + Position fields */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div style={{ display: "grid", gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
+                  {isRTL ? "الاسم *" : "Name *"}
+                </label>
+                <input
+                  className="sa-input"
+                  value={declaration.name}
+                  onChange={(e) => setDeclaration((p) => ({ ...p, name: e.target.value }))}
+                  placeholder={isRTL ? "الاسم الكامل..." : "Full name..."}
+                />
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                <label style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
+                  {isRTL ? "المنصب *" : "Position Held *"}
+                </label>
+                <input
+                  className="sa-input"
+                  value={declaration.position}
+                  onChange={(e) => setDeclaration((p) => ({ ...p, position: e.target.value }))}
+                  placeholder={isRTL ? "المنصب الوظيفي..." : "Job position..."}
+                />
+              </div>
+            </div>
+
+            {/* Agree checkbox */}
+            <label style={{
+              display: "flex", alignItems: "flex-start", gap: 12,
+              padding: "14px 16px",
+              borderRadius: 12,
+              border: `2px solid ${declaration.agreed ? "rgba(34,197,94,0.45)" : "rgba(15,23,42,0.16)"}`,
+              background: declaration.agreed ? "rgba(34,197,94,0.07)" : "#fff",
+              cursor: "pointer",
+              transition: "all 0.15s",
+            }}>
+              <input
+                type="checkbox"
+                checked={declaration.agreed}
+                onChange={(e) => setDeclaration((p) => ({
+                  ...p,
+                  agreed: e.target.checked,
+                  agreedAt: e.target.checked ? new Date().toISOString() : null,
+                }))}
+                style={{ marginTop: 2, width: 18, height: 18, cursor: "pointer", accentColor: "#16a34a" }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 800, color: declaration.agreed ? "#14532d" : "#0f172a", lineHeight: 1.6 }}>
+                {isRTL
+                  ? "أقرّ بأن المعلومات الواردة أعلاه صحيحة ودقيقة، وأوافق على شروط هذا الإقرار."
+                  : "I confirm that the information provided above is true and accurate, and I agree to the terms of this declaration."}
+              </span>
+            </label>
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between", alignItems: "center" }}>
+              <button
+                type="button"
+                style={{ ...btn, fontSize: 13 }}
+                onClick={printDeclaration}
+              >
+                🖨 {isRTL ? "طباعة الإقرار" : "Print Declaration"}
+              </button>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  type="button"
+                  style={{ ...btn, fontSize: 13 }}
+                  onClick={() => setShowDeclModal(false)}
+                >
+                  {isRTL ? "إغلاق" : "Close"}
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...btn,
+                    fontSize: 14,
+                    fontWeight: 900,
+                    padding: "12px 22px",
+                    background: declaration.agreed && declaration.name.trim()
+                      ? "linear-gradient(135deg,#16a34a,#15803d)"
+                      : "#e2e8f0",
+                    color: declaration.agreed && declaration.name.trim() ? "#fff" : "#94a3b8",
+                    border: "none",
+                    cursor: declaration.agreed && declaration.name.trim() ? "pointer" : "not-allowed",
+                    borderRadius: 12,
+                  }}
+                  disabled={!declaration.agreed || !declaration.name.trim()}
+                  onClick={() => setShowDeclModal(false)}
+                >
+                  ✅ {isRTL ? "تأكيد الإقرار" : "Confirm Declaration"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @media (max-width: 980px){
           div[style*="gridTemplateColumns: repeat(auto-fit, minmax(360px, 1fr))"]{
             grid-template-columns: 1fr !important;
           }
+        }
+        @media (max-width: 560px) {
+          [data-decl-grid] { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
