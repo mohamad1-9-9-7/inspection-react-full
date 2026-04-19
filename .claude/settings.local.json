@@ -14,7 +14,25 @@
       "Bash(/c/Users/moham/AppData/Local/Programs/Python/Python313/python.exe -m pip install defusedxml lxml)",
       "Bash(/c/Users/moham/AppData/Local/Programs/Python/Python313/python.exe -c ':*)",
       "Bash(npx eslint *)",
-      "Read(//d//**)"
+      "Read(//d//**)",
+      "Bash(find src/pages -name \"*.jsx\" -exec grep -l \"type:\\\\s*['\\\\\"][a-z_]*['\\\\\"].*payload\\\\|payload.*type:\\\\s*['\\\\\"][a-z_]*['\\\\\"]\" {} \\\\;)",
+      "Bash(grep -oP \"type:\\\\s*['\\\\\"]\\\\\\\\K[a-z_]+\\(?=['\\\\\"]\\)\")",
+      "Bash(xargs grep *)",
+      "Bash(find /d/inspection-react-full/src -type f \\\\\\( -name \"*.js\" -o -name \"*.jsx\" -o -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec grep -l 'type:.*meat_daily\\\\|type:.*pos10\\\\|type:.*pos11\\\\|type:.*ftr' {} \\\\;)",
+      "Bash(grep -E '^[a-z0-9_-]+$')",
+      "Bash(grep -v '^[a-z]$')",
+      "Bash(grep -v '^\\(email|password|text|number|date|button|submit|checkbox|radio|hidden|file|search|tel|url|array|row|field|pattern|declaration|ok|info|error|yesno|report|products_list\\)$')",
+      "Bash(grep -v '^$')",
+      "Bash(cat)",
+      "Bash(bash /tmp/find_types.sh)",
+      "Bash(grep -v '^\\(array|declaration|error|fields|info|ok|password|pattern|number|row|text|yesno|report|products_list|_internal|_dbcs|auto|fetch|file|image|object|raw|video\\)$')",
+      "Bash(grep -v '^\\(p|q\\)$')",
+      "Bash(bash /tmp/verify_reports.sh)",
+      "Bash(bash /tmp/type_files.sh)",
+      "Bash(grep -v \"^//\")",
+      "Bash(bash /tmp/final_types.sh)",
+      "Bash(node -e \"require\\('@babel/core'\\).parseSync\\(require\\('fs'\\).readFileSync\\('src/pages/KPIDashboard.js','utf8'\\),{filename:'KPIDashboard.js',presets:['@babel/preset-env','@babel/preset-react']}\\); console.log\\('OK'\\)\")",
+      "Bash(node -c \"D:/inspection-server/index.cjs\")"
     ]
   }
 }
