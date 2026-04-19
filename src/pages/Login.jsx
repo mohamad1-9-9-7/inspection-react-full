@@ -1,9 +1,39 @@
 // Login.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './Login.css';
 import logo from '../assets/almawashi-logo.jpg';
 import API_BASE from '../config/api';
+import usePresence from '../hooks/usePresence';
+
+/* ─── Theme palettes (light / dark) ─── */
+const LIGHT_THEME = {
+  bgFrom: '#0ea5e9', bgMid: '#7c3aed', bgTo: '#111827',
+  cardBg1: 'rgba(255,255,255,0.86)', cardBg2: 'rgba(255,255,255,0.78)',
+  cardBorder: 'rgba(255,255,255,0.65)',
+  cardText: '#0b1220', subText: '#334155',
+  brand: '#fef2f2', brandSub: '#f1f5f9', footer: '#e5e7eb',
+  tileBorder: 'rgba(255,255,255,0.7)',
+  tileBg1: 'rgba(255,255,255,0.32)', tileBg2: 'rgba(255,255,255,0.18)',
+  tileBgActive1: 'rgba(255,255,255,0.45)', tileBgActive2: 'rgba(255,255,255,0.28)',
+  tileText: '#0b1220',
+  widgetBg: 'rgba(255,255,255,0.18)', widgetBorder: 'rgba(255,255,255,0.35)',
+  widgetText: '#f8fafc',
+};
+
+const DARK_THEME = {
+  bgFrom: '#020617', bgMid: '#1e1b4b', bgTo: '#000000',
+  cardBg1: 'rgba(17,24,39,0.82)', cardBg2: 'rgba(17,24,39,0.64)',
+  cardBorder: 'rgba(148,163,184,0.18)',
+  cardText: '#f1f5f9', subText: '#cbd5e1',
+  brand: '#f1f5f9', brandSub: '#94a3b8', footer: '#94a3b8',
+  tileBorder: 'rgba(148,163,184,0.35)',
+  tileBg1: 'rgba(30,41,59,0.75)', tileBg2: 'rgba(15,23,42,0.60)',
+  tileBgActive1: 'rgba(51,65,85,0.85)', tileBgActive2: 'rgba(30,41,59,0.70)',
+  tileText: '#f1f5f9',
+  widgetBg: 'rgba(17,24,39,0.55)', widgetBorder: 'rgba(148,163,184,0.25)',
+  widgetText: '#e2e8f0',
+};
 
 // Roles (English only — keep routes/logic unchanged)
 const roles = [
@@ -156,6 +186,20 @@ function Login() {
   const [modalError, setModalError] = useState("");
   const [modalLoading, setModalLoading] = useState(false);
 
+  // 🌓 Theme state (persisted)
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("theme") || "light"; } catch { return "light"; }
+  });
+  const isDark = theme === "dark";
+  const t = isDark ? DARK_THEME : LIGHT_THEME;
+  useEffect(() => {
+    try { localStorage.setItem("theme", theme); } catch {}
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  // 👥 Presence (online users + daily visits)
+  const presence = usePresence({ enabled: location.pathname === "/" });
+
   const handleRoleClick = (role) => {
     if (role.id === "kpi") {
       localStorage.setItem('currentUser', JSON.stringify({
@@ -241,14 +285,14 @@ function Login() {
     fontWeight: 900,
     letterSpacing: "1px",
     fontSize: 18,
-    color: "#fef2f2",
+    color: t.brand,
     textShadow: "0 1px 8px rgba(0,0,0,0.25)"
   };
   const brandSub = {
     fontFamily: "Cairo, sans-serif",
     fontWeight: 600,
     fontSize: 11,
-    color: "#f1f5f9",
+    color: t.brandSub,
     opacity: 0.9,
     textShadow: "0 1px 6px rgba(0,0,0,0.25)"
   };
@@ -259,9 +303,9 @@ function Login() {
     margin: "0 auto",
     padding: "28px 28px 30px",
     borderRadius: 22,
-    background: "linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.78))",
+    background: `linear-gradient(180deg, ${t.cardBg1}, ${t.cardBg2})`,
     boxShadow: "0 20px 60px rgba(30,58,138,0.25)",
-    border: "1px solid rgba(255,255,255,0.65)",
+    border: `1px solid ${t.cardBorder}`,
     backdropFilter: "blur(8px)",
     position: "relative",
     zIndex: 2,
@@ -273,16 +317,16 @@ function Login() {
     height: 160,
     borderRadius: 24,
     cursor: "pointer",
-    border: "2px solid rgba(255,255,255,0.7)",
+    border: `2px solid ${t.tileBorder}`,
     background: active
-      ? "linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0.28))"
-      : "linear-gradient(180deg, rgba(255,255,255,0.32), rgba(255,255,255,0.18))",
+      ? `linear-gradient(180deg, ${t.tileBgActive1}, ${t.tileBgActive2})`
+      : `linear-gradient(180deg, ${t.tileBg1}, ${t.tileBg2})`,
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
     gap: "0.55rem",
-    color: "#0b1220",
+    color: t.tileText,
     fontWeight: 800,
     boxShadow: active
       ? "0 14px 30px rgba(2,132,199,0.30)"
@@ -305,10 +349,10 @@ function Login() {
         gap: 24,
         padding: '4rem 1.2rem 3rem',
         fontFamily: 'Cairo, sans-serif',
-        color: '#0b1220',
+        color: t.cardText,
         position: 'relative',
         overflow: 'hidden',
-        background: 'linear-gradient(135deg, #0ea5e9 0%, #7c3aed 55%, #111827 100%)',
+        background: `linear-gradient(135deg, ${t.bgFrom} 0%, ${t.bgMid} 55%, ${t.bgTo} 100%)`,
       }}
     >
       {/* ✅ CSS effects only (no layout changes) */}
@@ -345,6 +389,12 @@ function Login() {
           0%{ transform: translate3d(0,0,0) scale(1); }
           50%{ transform: translate3d(46px, -22px, 0) scale(1.08); }
           100%{ transform: translate3d(0,0,0) scale(1); }
+        }
+
+        @keyframes mxPulse{
+          0%   { transform: scale(1);   opacity: .9; }
+          70%  { transform: scale(1.9); opacity: 0;  }
+          100% { transform: scale(1.9); opacity: 0;  }
         }
 
         /* light noise */
@@ -469,6 +519,94 @@ function Login() {
         <div style={brandSub}>Trans Emirates Livestock Trading L.L.C.</div>
       </div>
 
+      {/* 🌓 Theme toggle + 👥 Presence widget (top-left) */}
+      <div
+        style={{
+          position: "fixed",
+          top: 12,
+          left: 16,
+          zIndex: 3,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setTheme(isDark ? "light" : "dark")}
+          title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 999,
+            border: `1px solid ${t.widgetBorder}`,
+            background: t.widgetBg,
+            color: t.widgetText,
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            cursor: "pointer",
+            fontSize: 18,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 6px 16px rgba(0,0,0,0.18)",
+            transition: "transform .15s ease",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.08)")}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          aria-label="Toggle theme"
+        >
+          {isDark ? "☀️" : "🌙"}
+        </button>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 14px",
+            borderRadius: 999,
+            background: t.widgetBg,
+            border: `1px solid ${t.widgetBorder}`,
+            color: t.widgetText,
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            fontFamily: "Cairo, sans-serif",
+            fontWeight: 700,
+            fontSize: 12,
+            boxShadow: "0 6px 16px rgba(0,0,0,0.18)",
+            whiteSpace: "nowrap",
+          }}
+          title={presence.ok
+            ? `متصل الآن: ${presence.online} • زيارات اليوم: ${presence.todayVisits}`
+            : "لم يتم الاتصال بعدّاد الزوار"}
+        >
+          <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+            <span
+              style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: presence.ok ? "#22c55e" : "#94a3b8",
+                boxShadow: presence.ok ? "0 0 8px #22c55e" : "none",
+                display: "inline-block",
+              }}
+            />
+            {presence.ok && (
+              <span
+                style={{
+                  position: "absolute", inset: -3,
+                  borderRadius: "50%",
+                  border: "2px solid rgba(34,197,94,.55)",
+                  animation: "mxPulse 1.8s ease-out infinite",
+                }}
+              />
+            )}
+          </span>
+          <span>👥 {presence.online}</span>
+          <span style={{ opacity: 0.6 }}>·</span>
+          <span>📅 {presence.todayVisits}</span>
+        </div>
+      </div>
+
       {/* Welcome card + roles grid */}
       <div style={card} className="mx-card-glass">
         {/* Logo */}
@@ -491,13 +629,13 @@ function Login() {
           textAlign: 'center',
           fontWeight: '900',
           marginBottom: 8,
-          color: '#0b1220',
+          color: t.cardText,
           letterSpacing: ".2px"
         }}>
           Welcome — choose your role
         </h2>
 
-        <div style={{ textAlign: "center", color: "#334155", marginBottom: 20, fontWeight: 600 }}>
+        <div style={{ textAlign: "center", color: t.subText, marginBottom: 20, fontWeight: 600 }}>
           Quick role-based access
         </div>
 
@@ -551,7 +689,7 @@ function Login() {
                 fontSize: "0.95rem",
                 textAlign: "center",
                 marginTop: "0.2rem",
-                color: "#0b1220",
+                color: t.tileText,
                 position: "relative",
                 zIndex: 1
               }}>
@@ -602,7 +740,7 @@ function Login() {
         textAlign: "left",
         paddingInline: "1rem",
         marginTop: 8,
-        color: "#e5e7eb"
+        color: t.footer
       }}>
         Built by Eng. Mohammed Abdullah
       </div>

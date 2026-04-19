@@ -54,6 +54,7 @@ const STYLES = `
     font-family: 'Tajawal', sans-serif;
     direction: rtl;
     display: flex;
+    flex-direction: row-reverse;
     height: 100vh;
     min-height: 600px;
     background: var(--canvas);
@@ -67,7 +68,7 @@ const STYLES = `
     background: var(--ink);
     display: flex;
     flex-direction: column;
-    border-left: 3px solid var(--amber);
+    border-right: 3px solid var(--amber);
     overflow: hidden;
   }
 

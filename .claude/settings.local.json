@@ -13,7 +13,8 @@
       "Bash(/c/Users/moham/AppData/Local/Programs/Python/Python313/python.exe /c/Users/moham/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/a1c0622d-f338-4dce-b47d-c36bf042d8fa/bcf2a137-0a5d-4432-bc0b-437ce48be0c0/skills/docx/scripts/office/unpack.py /c/Users/moham/Downloads/TELT_FSMS_Manual_2026_Corrected.docx /c/Users/moham/Downloads/TELT_FSMS_unpacked/)",
       "Bash(/c/Users/moham/AppData/Local/Programs/Python/Python313/python.exe -m pip install defusedxml lxml)",
       "Bash(/c/Users/moham/AppData/Local/Programs/Python/Python313/python.exe -c ':*)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Read(//d//**)"
     ]
   }
 }
