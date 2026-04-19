@@ -10,8 +10,12 @@ const API_BASE =
 /* ============================================================
    Fetch helpers
 ============================================================ */
-async function fetchByType(type) {
-  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, { cache: "no-store" });
+async function fetchByType(type, limit = 5000) {
+  // Server caps `limit` (was 500, now 5000). Passing a large value returns as many as allowed.
+  const res = await fetch(
+    `${API_BASE}/api/reports?type=${encodeURIComponent(type)}&limit=${encodeURIComponent(limit)}`,
+    { cache: "no-store" }
+  );
   if (!res.ok) throw new Error(`${res.status} while fetching ${type}`);
   const json = await res.json().catch(() => []);
   return Array.isArray(json) ? json : json?.data ?? [];
@@ -667,8 +671,10 @@ export default function KPIDashboard() {
 
   /* --------- Shipments KPIs ---------
      Form saves status in English ("Acceptable" | "Average" | "Below Average").
-     Keep Arabic variants too in case legacy rows exist. */
-  const shipCount    = fShip.length;
+     Keep Arabic variants too in case legacy rows exist.
+     Top-level count comes from the summary endpoint (true COUNT(*) — not capped). */
+  const shipTotalAll = Number(summaryMap["qcs_raw_material"]?.count) || 0;
+  const shipCount    = dateFrom || dateTo ? fShip.length : shipTotalAll;
   const isAcceptable = (s) => ["Acceptable", "acceptable", "مرضي"].includes((s || "").trim());
   const isAverage    = (s) => ["Average", "average", "وسط"].includes((s || "").trim());
   const isBelow      = (s) => ["Below Average", "below average", "تحت الوسط", "غير مرضي"].includes((s || "").trim());
@@ -706,8 +712,9 @@ export default function KPIDashboard() {
   }, [fLoad]);
   const viCompliance = viTotal ? Math.round((viYes / viTotal) * 100) : 0;
 
-  /* --------- Returns KPIs --------- */
-  const retCount = fReturns.length;
+  /* --------- Returns KPIs (total count from summary, details from capped fetch) --------- */
+  const retTotalAll = Number(summaryMap["returns"]?.count) || 0;
+  const retCount = dateFrom || dateTo ? fReturns.length : retTotalAll;
   const retItems = fReturns.reduce((a, r) => a + (r.items?.length || 0), 0);
   const retQty   = fReturns.reduce((a, r) => a + (r.items?.reduce((s, it) => s + Number(it.quantity || 0), 0) || 0), 0);
   const byBranch = useMemo(() => {
