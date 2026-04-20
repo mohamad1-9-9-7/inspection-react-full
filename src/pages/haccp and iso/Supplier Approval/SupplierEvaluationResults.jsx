@@ -808,6 +808,12 @@ const FIELD_ATTACHMENT_LABELS = {
 
   /* Other */
   att_oth_specs: { en: "Product specifications / datasheets", ar: "مواصفات / بطاقات بيانات المنتج" },
+
+  /* Required Documents (shared) */
+  att_trade_license: { en: "Trade / Company License", ar: "رخصة الشركة / السجل التجاري" },
+  att_vehicle_dm_card: { en: "Vehicle DM Card (Dubai Municipality)", ar: "تسجيل المركبة / بطاقة بلدية دبي (DM)" },
+  att_msds: { en: "MSDS / Safety Data Sheets", ar: "بطاقات السلامة (MSDS / SDS)" },
+  att_coc_packaging: { en: "Certificate of Conformity (Packaging — food contact)", ar: "شهادة المطابقة — مواد التعبئة والتغليف (الملامسة للغذاء)" },
 };
 
 /* ✅ EXTRA: build fieldAttachments from fields if server stored attachments inside fields.att_* */

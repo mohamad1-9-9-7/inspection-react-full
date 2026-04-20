@@ -617,6 +617,45 @@ const FORM = [
     ],
   },
 
+  /* ─────────────── SHARED — Required Documents + QA Contact ─────────────── */
+  {
+    pageTitle: "Required Documents & Quality Officer Contact",
+    blocks: [
+      {
+        title: "Required Documents",
+        type: "fields",
+        items: [
+          {
+            key: "att_trade_license",
+            label: "Trade / Company License (Commercial Registration)",
+            kind: "attachment",
+          },
+          {
+            key: "att_vehicle_dm_card",
+            label: "Vehicle Registration / Dubai Municipality (DM) Card — if you deliver by your own vehicle",
+            kind: "attachment",
+          },
+          {
+            key: "att_msds",
+            label: "MSDS / Safety Data Sheets — if products contain any chemicals / hazardous substances",
+            kind: "attachment",
+          },
+          {
+            key: "att_coc_packaging",
+            label: "Certificate of Conformity — Packaging Materials (food-contact)",
+            kind: "attachment",
+          },
+        ],
+      },
+      {
+        title: "Quality Officer Contact",
+        type: "contact_info",
+        email: "m.abdullah@almawashi.ae",
+        phone: "0504733926",
+      },
+    ],
+  },
+
   /* ─────────────── SHARED — always last (Declaration) ─────────────── */
   {
     pageTitle: "Final — Declaration",
@@ -1048,6 +1087,20 @@ const AR_TRANSLATIONS = {
   "Outside Testing": "الفحص الخارجي",
   "HACCP Plans": "خطط HACCP",
   "Process Controls": "ضوابط العمليات",
+
+  /* ───── Required Documents + Contact ───── */
+  "Required Documents & Quality Officer Contact":
+    "المستندات المطلوبة وجهة الاتصال بضابط الجودة",
+  "Required Documents": "المستندات المطلوبة",
+  "Quality Officer Contact": "التواصل مع ضابط الجودة",
+  "Trade / Company License (Commercial Registration)":
+    "رخصة الشركة / السجل التجاري",
+  "Vehicle Registration / Dubai Municipality (DM) Card — if you deliver by your own vehicle":
+    "تسجيل المركبة / بطاقة بلدية دبي (DM Card) — في حال كنتم تسلّمون بمركبتكم",
+  "MSDS / Safety Data Sheets — if products contain any chemicals / hazardous substances":
+    "بطاقات السلامة (MSDS / SDS) — في حال احتواء المنتجات على أي مواد كيميائية أو خطرة",
+  "Certificate of Conformity — Packaging Materials (food-contact)":
+    "شهادة المطابقة — لمواد التعبئة والتغليف (الملامسة للغذاء)",
 };
 
 /* ===== translate helper ===== */
@@ -2277,6 +2330,102 @@ export default function SupplierEvaluationPublic() {
                             + {isRTL ? "إضافة منتج" : "Add Product"}
                           </button>
                         )}
+                      </div>
+                    ) : null}
+
+                    {b.type === "contact_info" ? (
+                      <div
+                        style={{
+                          marginTop: 14,
+                          padding: "18px 20px",
+                          borderRadius: 14,
+                          background: "linear-gradient(135deg, rgba(14,165,233,0.08), rgba(34,197,94,0.08))",
+                          border: "1px solid rgba(14,165,233,0.30)",
+                        }}
+                      >
+                        <div style={{ fontSize: 14, color: "#0c4a6e", fontWeight: 800, marginBottom: 12, lineHeight: 1.6 }}>
+                          {isRTL
+                            ? "في حال وجود أي ملاحظات أو استفسارات حول هذا النموذج، يرجى التواصل مع ضابط الجودة:"
+                            : "For any notes, questions or clarification about this form, please contact the Quality Officer:"}
+                        </div>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                            gap: 12,
+                          }}
+                        >
+                          {/* Email */}
+                          <a
+                            href={`mailto:${b.email}`}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "14px 16px",
+                              borderRadius: 12,
+                              border: "1px solid rgba(14,165,233,0.28)",
+                              background: "rgba(255,255,255,0.94)",
+                              textDecoration: "none",
+                              color: THEME.text,
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <span style={{ fontSize: 24 }}>📧</span>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800, marginBottom: 2 }}>
+                                {isRTL ? "البريد الإلكتروني" : "Email"}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 15,
+                                  fontWeight: 900,
+                                  color: "#0c4a6e",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  direction: "ltr",
+                                }}
+                              >
+                                {b.email}
+                              </div>
+                            </div>
+                          </a>
+
+                          {/* Phone */}
+                          <a
+                            href={`tel:${b.phone}`}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "14px 16px",
+                              borderRadius: 12,
+                              border: "1px solid rgba(34,197,94,0.28)",
+                              background: "rgba(255,255,255,0.94)",
+                              textDecoration: "none",
+                              color: THEME.text,
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <span style={{ fontSize: 24 }}>📞</span>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800, marginBottom: 2 }}>
+                                {isRTL ? "رقم الهاتف" : "Phone"}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 16,
+                                  fontWeight: 900,
+                                  color: "#14532d",
+                                  direction: "ltr",
+                                }}
+                              >
+                                {b.phone}
+                              </div>
+                            </div>
+                          </a>
+                        </div>
                       </div>
                     ) : null}
 
