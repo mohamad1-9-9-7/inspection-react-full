@@ -82,6 +82,11 @@ const UI = {
     modalDownloadFile: "⬇ Download File",
     type: "Type",
     ext: "Ext",
+    supplierType: "Supplier Type",
+    filterType: "Filter by Type",
+    allTypes: "All Types",
+    allergenDeclaration: "Allergens declared",
+    serviceScope: "Service Scope",
   },
   ar: {
     title: "نتائج تقييم الموردين (المرسلة)",
@@ -138,8 +143,58 @@ const UI = {
     modalDownloadFile: "⬇ تنزيل الملف",
     type: "النوع",
     ext: "الامتداد",
+    supplierType: "نوع المورد",
+    filterType: "تصفية حسب النوع",
+    allTypes: "جميع الأنواع",
+    allergenDeclaration: "مسببات الحساسية المصرَّح بها",
+    serviceScope: "نطاق الخدمة",
   },
 };
+
+/* ===================== Supplier Type Labels ===================== */
+const SUPPLIER_TYPE_LABELS = {
+  food: { en: "Food / Raw Materials", ar: "مواد غذائية / مواد خام" },
+  cleaning_chemicals: { en: "Cleaning Materials / Chemicals", ar: "مواد تنظيف / كيماويات" },
+  packaging: { en: "Packaging Materials", ar: "مواد تعبئة وتغليف" },
+  services: { en: "Services (Pest Control / Calibration / Transport / Waste)", ar: "خدمات (مكافحة آفات / معايرة / نقل / نفايات)" },
+  other: { en: "Other / Equipment / Uniforms", ar: "أخرى / معدات / ملابس" },
+};
+
+function getSupplierType(payload) {
+  const p = payload || {};
+  return String(
+    p?.public?.supplierType ||
+      p?.meta?.supplierType ||
+      p?.supplierType ||
+      p?.fields?.supplier_type ||
+      p?.public?.submission?.fields?.supplier_type ||
+      ""
+  ).toLowerCase();
+}
+
+function getSupplierTypeLabel(type, lang) {
+  const norm = String(type || "").toLowerCase();
+  const m = SUPPLIER_TYPE_LABELS[norm];
+  if (!m) return lang === "ar" ? "—" : "—";
+  return lang === "ar" ? m.ar : m.en;
+}
+
+function getSupplierTypeBadgeColor(type) {
+  switch (String(type || "").toLowerCase()) {
+    case "food":
+      return { bg: "rgba(34,197,94,0.12)", fg: "#14532d", border: "rgba(34,197,94,0.35)" };
+    case "cleaning_chemicals":
+      return { bg: "rgba(14,165,233,0.12)", fg: "#0c4a6e", border: "rgba(14,165,233,0.35)" };
+    case "packaging":
+      return { bg: "rgba(168,85,247,0.12)", fg: "#581c87", border: "rgba(168,85,247,0.35)" };
+    case "services":
+      return { bg: "rgba(249,115,22,0.12)", fg: "#7c2d12", border: "rgba(249,115,22,0.35)" };
+    case "other":
+      return { bg: "rgba(148,163,184,0.14)", fg: "#334155", border: "rgba(148,163,184,0.35)" };
+    default:
+      return { bg: "rgba(148,163,184,0.10)", fg: "#64748b", border: "rgba(148,163,184,0.25)" };
+  }
+}
 
 const AR_QUESTIONS = {
   ph_01: "هل لديكم معايير موثّقة للنظافة الشخصية وإجراءات متابعة/مراقبة؟",
@@ -201,6 +256,61 @@ const AR_QUESTIONS = {
   prd_05: "هل تطبقون برنامج صيانة مخطط؟",
 
   eqp_01: "هل معدات الإنتاج مناسبة للغرض وسهلة التنظيف وبحالة جيدة؟",
+
+  /* ─── Allergens ─── */
+  alg_01: "هل تحتفظون بسجل لمسببات الحساسية لجميع المواد الخام والمنتجات النهائية؟",
+  alg_02: "هل يتم الفصل المادي للمنتجات المحتوية على مسببات الحساسية أثناء التخزين والإنتاج؟",
+  alg_03: "هل لديكم إجراءات تنظيف مُتحقق منها لمنع التلوث المتبادل لمسببات الحساسية بين المنتجات؟",
+  alg_04: "هل يتم تصريح جميع مسببات الحساسية بوضوح على ملصقات المنتجات وفق لوائح الدولة المحلية/المستوردة؟",
+  alg_05: "هل لديكم سياسة موثّقة لإدارة التلامس المتبادل لمسببات الحساسية وتدريب الموظفين عليها؟",
+
+  /* ─── Chemicals ─── */
+  chem_01: "هل تقدمون بطاقات السلامة (SDS / MSDS) بالعربية/الإنجليزية لكل منتج يتم توريده؟",
+  chem_02: "هل ملصقات المنتجات متوافقة مع نظام GHS العالمي للتصنيف والوسم وتوصيل الأخطار؟",
+  chem_03: "هل رموز الخطر وكلمات الإنذار وبيانات H/P مطبوعة على العبوة الأساسية؟",
+  chem_04: "هل فترة الصلاحية / تاريخ الانتهاء مطبوعة بوضوح على كل عبوة؟",
+  chem_05: "هل تُصدرون شهادة تحليل (COA) لكل دُفعة عند الطلب؟",
+  chem_06: "هل تحتفظون بنظام تتبع للدُفعات من المادة الخام حتى المنتج النهائي المسلَّم؟",
+  chem_07: "هل تعملون وفق نظام إدارة جودة موثّق (مثل ISO 9001)؟",
+  chem_08: "هل لديكم إجراء لاستدعاء المنتج؟",
+  chem_09: "هل مواد التعقيم/التطهير لديكم معتمدة للأسطح الملامسة للغذاء (EPA / ECHA / FDA / ESMA)؟",
+  chem_10: "هل تقدمون نسب التخفيف ومدة التلامس ومتطلبات الشطف مكتوبة؟",
+  chem_11: "هل منتجاتكم متوافقة مع متطلبات الحلال عند الاستخدام في قطاع الأغذية؟",
+  chem_12: "هل يتم تخزين الكيماويات بمعزل عن المواد الغذائية والخام في المستودع؟",
+  chem_13: "هل سائقو النقل مدربون على التعامل مع المواد الخطرة (ADR) أثناء توصيل الكيماويات؟",
+  chem_14: "هل يوجد إجراء موثّق للاستجابة للطوارئ / الانسكابات؟",
+
+  /* ─── Packaging ─── */
+  pkg_01: "هل جميع المواد المورّدة مطابقة للوائح ملامسة الغذاء (EU 10/2011 / FDA 21 CFR / GSO / ESMA)؟",
+  pkg_02: "هل ترفقون بيان المطابقة (DOC) مع كل شحنة؟",
+  pkg_03: "هل تم إجراء اختبارات الهجرة (العامة والنوعية) وهل التقارير متاحة؟",
+  pkg_04: "هل الأحبار والمواد اللاصقة والطلاءات المستخدمة معتمدة للاستخدام الغذائي؟",
+  pkg_05: "هل منشأة الإنتاج معتمدة BRC Packaging / ISO 22000 / 15378 أو ما يعادلها؟",
+  pkg_06: "هل مناطق الإنتاج معزولة عن مصادر التلوث (خشب/زجاج/كيماويات)؟",
+  pkg_07: "هل تحتفظون بتتبع الدُفعات للمواد الخام والإنتاج والشحن؟",
+  pkg_08: "هل لديكم إجراءات موثّقة لمكافحة الآفات والنظافة العامة؟",
+  pkg_09: "هل لديكم إجراء لعدم المطابقة / الاستدعاء؟",
+  pkg_10: "هل يتم تخزين التعبئة النهائية بعيداً عن الأرض في بيئة نظيفة جافة خالية من الآفات؟",
+  pkg_11: "هل يتم حماية التعبئة بالتغليف الانكماشي / البليت أثناء النقل؟",
+
+  /* ─── Services ─── */
+  srv_01: "هل تمتلكون جميع التراخيص / التصاريح التنظيمية للعمل (البلدية / الدفاع المدني / PCO بلدية دبي)؟",
+  srv_02: "هل جميع الفنيين/المشغّلين مدربون ومعتمدون للخدمات التي يقدمونها؟",
+  srv_03: "هل لديكم تأمين مسؤولية عامة ساري لتغطية عمليات الخدمة؟",
+  srv_04: "هل الموظفون لائقون طبياً (بطاقات صحية سارية حيثما يتطلب الأمر)؟",
+  srv_05: "هل تُصدرون تقرير/شهادة خدمة بعد كل زيارة موقعة من الفني والعميل؟",
+  srv_06: "هل تحتفظون بسجلات الخدمة والتتبع ومعايرة المعدات لمدة سنتين على الأقل؟",
+  srv_07: "هل تتبعون نطاق عمل وبيان طريقة موثّق لكل خدمة؟",
+  srv_08: "هل جميع الكيماويات/المواد المستخدمة معتمدة للاستخدام الغذائي ومرفقة ببطاقات SDS؟",
+  srv_09: "هل المعدات والأدوات المستخدمة تخضع للصيانة والمعايرة وبحالة جيدة؟",
+
+  /* ─── Other ─── */
+  oth_01: "هل تعملون وفق نظام إدارة جودة موثّق (ISO 9001 أو ما يعادله)؟",
+  oth_02: "هل المنتجات مطابقة للوائح المحلية/الخليجية ذات الصلة (SASO / ESMA / هيئة الإمارات)؟",
+  oth_03: "هل تزوّدون بمواصفات/بطاقات بيانات المنتج مع كل شحنة؟",
+  oth_04: "هل تقدمون ضماناً/دعماً لما بعد البيع للمنتجات المورّدة؟",
+  oth_05: "هل تحتفظون بنظام تتبع للدُفعات؟",
+  oth_06: "هل لديكم إجراء موثّق لعدم المطابقة والإرجاع؟",
 };
 
 /* ===================== helpers ===================== */
@@ -354,6 +464,61 @@ const QUESTIONS = {
 
   eqp_01:
     "Is the equipment used in production fit for\npurpose, easy to clean and in a good state of\nrepair?",
+
+  /* ─── Allergens (food) ─── */
+  alg_01: "Do you maintain an allergen register for all raw\nmaterials and finished products?",
+  alg_02: "Are allergen-containing products physically\nsegregated during storage and production?",
+  alg_03: "Do you have validated cleaning procedures to\nprevent allergen cross-contamination between\nproducts?",
+  alg_04: "Are all allergens clearly declared on product\nlabels per local / destination country regulation?",
+  alg_05: "Do you have a documented policy to manage\nallergen cross-contact and staff training?",
+
+  /* ─── Chemicals ─── */
+  chem_01: "Do you provide Safety Data Sheets (SDS / MSDS)\nin English/Arabic for every product supplied?",
+  chem_02: "Are your product labels compliant with GHS\n(Globally Harmonized System) hazard\ncommunication?",
+  chem_03: "Are hazard pictograms, signal words, H- and\nP-statements shown on primary packaging?",
+  chem_04: "Is product shelf life / expiry date clearly printed\non every container?",
+  chem_05: "Do you issue a Certificate of Analysis (COA) per\nbatch upon request?",
+  chem_06: "Do you maintain batch traceability from raw\nchemical to finished product delivered?",
+  chem_07: "Do you operate under a documented Quality\nManagement System (e.g. ISO 9001)?",
+  chem_08: "Do you have a product recall procedure in place?",
+  chem_09: "Are your sanitizers / disinfectants approved for\nfood-contact surfaces (e.g. EPA / ECHA / FDA /\nESMA approval)?",
+  chem_10: "Do you provide recommended dilution rates,\ncontact time and rinse requirements in writing?",
+  chem_11: "Are your products halal-compliant where required\nfor food industry use?",
+  chem_12: "Are chemicals stored separately from food and\nraw materials in your warehouse?",
+  chem_13: "Are transport drivers trained on ADR / hazardous\nmaterial handling for chemical deliveries?",
+  chem_14: "Is there a documented emergency / spillage\nresponse procedure available?",
+
+  /* ─── Packaging ─── */
+  pkg_01: "Are all materials supplied compliant with\nfood-contact regulations (e.g. EU 10/2011, FDA\n21 CFR, GSO / ESMA)?",
+  pkg_02: "Do you provide a Declaration of Compliance (DOC)\nwith every consignment?",
+  pkg_03: "Have migration tests (overall & specific) been\nperformed and are reports available?",
+  pkg_04: "Are inks, adhesives and coatings used certified\nfor food-contact use?",
+  pkg_05: "Is your production facility certified to BRC\nPackaging, ISO 22000 / 15378 or equivalent?",
+  pkg_06: "Are production areas segregated from sources of\ncontamination (wood, glass, chemicals)?",
+  pkg_07: "Do you maintain batch traceability for raw\nmaterials, production and dispatch?",
+  pkg_08: "Do you have documented pest control and\nhousekeeping procedures?",
+  pkg_09: "Do you have a non-conformance / recall\nprocedure in place?",
+  pkg_10: "Is finished packaging stored off the floor in a\nclean, dry, pest-free environment?",
+  pkg_11: "Is packaging shrink-wrapped / pallet-protected\nduring transport?",
+
+  /* ─── Services ─── */
+  srv_01: "Do you hold all relevant regulatory licenses /\npermits to operate (e.g. municipality, civil\ndefense, Dubai Municipality PCO)?",
+  srv_02: "Are all technicians/operators trained and\ncertified for the services they deliver?",
+  srv_03: "Do you maintain valid public liability insurance\ncoverage for service operations?",
+  srv_04: "Are staff medically fit (valid health cards where\nrequired)?",
+  srv_05: "Do you issue a service report / certificate after\nevery visit, signed by the technician and client?",
+  srv_06: "Do you maintain service records, traceability and\nequipment calibration for at least 2 years?",
+  srv_07: "Do you follow a documented scope-of-work and\nmethod statement for each service?",
+  srv_08: "Are all chemicals / materials used approved for\nfood-industry use and accompanied by SDS?",
+  srv_09: "Are equipment and tools used maintained,\ncalibrated and in a good state of repair?",
+
+  /* ─── Other ─── */
+  oth_01: "Do you operate under a documented Quality\nManagement System (ISO 9001 or equivalent)?",
+  oth_02: "Do products comply with relevant local / GCC\nregulations (SASO, ESMA, Emirates Authority)?",
+  oth_03: "Do you provide product specifications / datasheets\nwith every shipment?",
+  oth_04: "Do you offer warranty / after-sales support on\nproducts supplied?",
+  oth_05: "Do you maintain batch / lot traceability?",
+  oth_06: "Do you have a documented non-conformance and\nreturn procedure?",
 };
 
 /* ✅ PDF order (important) */
@@ -408,6 +573,59 @@ const QUESTION_ORDER = [
   "prd_04",
   "prd_05",
   "eqp_01",
+  "alg_01",
+  "alg_02",
+  "alg_03",
+  "alg_04",
+  "alg_05",
+
+  /* Chemicals */
+  "chem_01",
+  "chem_02",
+  "chem_03",
+  "chem_04",
+  "chem_05",
+  "chem_06",
+  "chem_07",
+  "chem_08",
+  "chem_09",
+  "chem_10",
+  "chem_11",
+  "chem_12",
+  "chem_13",
+  "chem_14",
+
+  /* Packaging */
+  "pkg_01",
+  "pkg_02",
+  "pkg_03",
+  "pkg_04",
+  "pkg_05",
+  "pkg_06",
+  "pkg_07",
+  "pkg_08",
+  "pkg_09",
+  "pkg_10",
+  "pkg_11",
+
+  /* Services */
+  "srv_01",
+  "srv_02",
+  "srv_03",
+  "srv_04",
+  "srv_05",
+  "srv_06",
+  "srv_07",
+  "srv_08",
+  "srv_09",
+
+  /* Other */
+  "oth_01",
+  "oth_02",
+  "oth_03",
+  "oth_04",
+  "oth_05",
+  "oth_06",
 ];
 
 function answerLabel(v, lang) {
@@ -572,6 +790,24 @@ const FIELD_ATTACHMENT_LABELS = {
   att_lab_tests: { en: "Lab test reports", ar: "تقارير الفحوصات المخبرية" },
   att_haccp: { en: "HACCP plans", ar: "خطط HACCP" },
   att_declaration: { en: "Signed declaration / company seal", ar: "الإقرار الموقّع / ختم الشركة" },
+
+  /* Chemicals */
+  att_sds: { en: "Safety Data Sheets (SDS / MSDS)", ar: "بطاقات السلامة (SDS / MSDS)" },
+  att_labels: { en: "Sample product labels", ar: "عينة من ملصقات المنتجات" },
+  att_coa: { en: "Certificate of Analysis (COA) sample", ar: "عينة من شهادة التحليل (COA)" },
+
+  /* Packaging */
+  att_doc: { en: "Declaration of Compliance (DOC)", ar: "بيان المطابقة (DOC)" },
+  att_migration: { en: "Migration test reports", ar: "تقارير اختبارات الهجرة" },
+
+  /* Services */
+  att_srv_license: { en: "Trade license / municipal permit", ar: "الرخصة التجارية / تصريح البلدية" },
+  att_srv_insurance: { en: "Liability insurance certificate", ar: "شهادة تأمين المسؤولية" },
+  att_srv_report: { en: "Service report / certificate sample", ar: "عينة تقرير/شهادة خدمة" },
+  att_srv_sds: { en: "SDS for chemicals used in services", ar: "بطاقات SDS للكيماويات المستخدمة" },
+
+  /* Other */
+  att_oth_specs: { en: "Product specifications / datasheets", ar: "مواصفات / بطاقات بيانات المنتج" },
 };
 
 /* ✅ EXTRA: build fieldAttachments from fields if server stored attachments inside fields.att_* */
@@ -630,29 +866,31 @@ function buildFieldAttachmentsFallbackFromFields(fieldsObj) {
 /* ===================== Styles ===================== */
 const shell = {
   minHeight: "100vh",
-  padding: "26px 18px",
+  padding: "28px 24px",
   background:
     "radial-gradient(circle at 12% 10%, rgba(34,211,238,0.22) 0, rgba(255,255,255,1) 42%, rgba(255,255,255,1) 100%)," +
     "radial-gradient(circle at 88% 12%, rgba(34,197,94,0.16) 0, rgba(255,255,255,0) 55%)," +
     "radial-gradient(circle at 50% 100%, rgba(59,130,246,0.16) 0, rgba(255,255,255,0) 58%)",
   fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   color: "#071b2d",
+  boxSizing: "border-box",
 };
-const wrap = { maxWidth: 1200, margin: "0 auto" };
+const wrap = { maxWidth: "100%", width: "100%", margin: "0 auto" };
 const panel = {
   background: "rgba(255,255,255,0.92)",
   border: "1px solid rgba(15, 23, 42, 0.14)",
   borderRadius: 18,
   boxShadow: "0 12px 30px rgba(2, 132, 199, 0.10)",
-  padding: 16,
+  padding: 20,
 };
 const btn = {
-  padding: "10px 14px",
+  padding: "11px 16px",
   borderRadius: 14,
   border: "1px solid rgba(15,23,42,0.16)",
   background: "rgba(255,255,255,0.95)",
   cursor: "pointer",
   fontWeight: 950,
+  fontSize: 15,
 };
 const btnPrimary = {
   ...btn,
@@ -668,30 +906,31 @@ const btnDanger = {
 };
 const input = {
   width: "100%",
-  padding: "11px 12px",
+  padding: "13px 14px",
   borderRadius: 12,
   border: "1px solid rgba(2,6,23,0.14)",
   outline: "none",
   background: "rgba(255,255,255,0.98)",
   fontWeight: 900,
+  fontSize: 16,
 };
 const table = { width: "100%", borderCollapse: "separate", borderSpacing: "0 10px" };
-const th = { textAlign: "left", fontSize: 12, color: "#64748b", fontWeight: 950, padding: "0 10px 6px" };
+const th = { textAlign: "left", fontSize: 14, color: "#64748b", fontWeight: 950, padding: "0 12px 8px" };
 const rowCard = {
   background: "rgba(255,255,255,0.96)",
   border: "1px solid rgba(15, 23, 42, 0.14)",
   borderRadius: 16,
   boxShadow: "0 10px 22px rgba(2, 132, 199, 0.08)",
 };
-const td = { padding: "12px 10px", verticalAlign: "top", fontWeight: 850, color: "#0f172a" };
-const muted = { color: "#64748b", fontWeight: 850, fontSize: 12 };
+const td = { padding: "14px 12px", verticalAlign: "top", fontWeight: 850, color: "#0f172a", fontSize: 15 };
+const muted = { color: "#64748b", fontWeight: 850, fontSize: 14 };
 
 function FieldLine({ label, value }) {
   if (!value) return null;
   return (
     <div style={{ display: "grid", gap: 4 }}>
-      <div style={{ fontSize: 12, fontWeight: 950, color: "#64748b" }}>{label}</div>
-      <div style={{ fontWeight: 900, color: "#0f172a", whiteSpace: "pre-wrap" }}>{String(value)}</div>
+      <div style={{ fontSize: 14, fontWeight: 950, color: "#64748b" }}>{label}</div>
+      <div style={{ fontWeight: 900, color: "#0f172a", whiteSpace: "pre-wrap", fontSize: 16 }}>{String(value)}</div>
     </div>
   );
 }
@@ -730,13 +969,13 @@ function AttachmentModal({ file, onClose, t }) {
     >
       <div
         style={{
-          width: "min(1100px, 100%)",
+          width: "min(1400px, 100%)",
           marginTop: 20,
           background: "rgba(255,255,255,0.98)",
           border: "1px solid rgba(15,23,42,0.18)",
           borderRadius: 18,
           boxShadow: "0 24px 70px rgba(2,6,23,0.35)",
-          padding: 14,
+          padding: 16,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -829,6 +1068,7 @@ export default function SupplierEvaluationResults() {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [openId, setOpenId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [openAttachment, setOpenAttachment] = useState(null);
@@ -869,17 +1109,43 @@ export default function SupplierEvaluationResults() {
 
   const filtered = useMemo(() => {
     const q = String(query || "").trim().toLowerCase();
-    if (!q) return items;
+    const tf = String(typeFilter || "all").toLowerCase();
 
     return (items || []).filter((r) => {
       const p = getPayloadObj(r) || {};
-      const company = String(p?.fields?.company_name || "").toLowerCase();
-      const recDate = String(getRecordDate(r) || "").toLowerCase();
-      const token = String(p?.public?.token || "").toLowerCase();
-      const lastUpd = String(getLastUpdateIso(r) || "").toLowerCase();
-      return company.includes(q) || recDate.includes(q) || token.includes(q) || lastUpd.includes(q);
+
+      // Type filter
+      if (tf !== "all") {
+        const st = getSupplierType(p);
+        if (tf === "unspecified") {
+          if (st) return false;
+        } else if (st !== tf) {
+          return false;
+        }
+      }
+
+      // Text query
+      if (q) {
+        const company = String(p?.fields?.company_name || "").toLowerCase();
+        const recDate = String(getRecordDate(r) || "").toLowerCase();
+        const token = String(p?.public?.token || "").toLowerCase();
+        const lastUpd = String(getLastUpdateIso(r) || "").toLowerCase();
+        const st = getSupplierType(p);
+        const typeLabelEn = (SUPPLIER_TYPE_LABELS[st]?.en || "").toLowerCase();
+        const typeLabelAr = (SUPPLIER_TYPE_LABELS[st]?.ar || "").toLowerCase();
+        return (
+          company.includes(q) ||
+          recDate.includes(q) ||
+          token.includes(q) ||
+          lastUpd.includes(q) ||
+          typeLabelEn.includes(q) ||
+          typeLabelAr.includes(q)
+        );
+      }
+
+      return true;
     });
-  }, [items, query]);
+  }, [items, query, typeFilter]);
 
   const opened = useMemo(() => {
     return (items || []).find((x) => String(getReportObj(x)?.id ?? x?.id) === String(openId)) || null;
@@ -1024,15 +1290,15 @@ export default function SupplierEvaluationResults() {
         {/* Top header */}
         <div style={{ ...panel, display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 980 }}>{t.title}</div>
-            <div style={{ marginTop: 6, color: "#64748b", fontWeight: 850, fontSize: 13 }}>{t.sub}</div>
+            <div style={{ fontSize: 26, fontWeight: 980 }}>{t.title}</div>
+            <div style={{ marginTop: 6, color: "#64748b", fontWeight: 850, fontSize: 15 }}>{t.sub}</div>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             {/* Language toggle */}
             <span
               style={{
-                padding: "8px 12px",
+                padding: "9px 14px",
                 borderRadius: 999,
                 border: "1px solid rgba(15,23,42,0.14)",
                 background: "rgba(255,255,255,0.95)",
@@ -1040,6 +1306,7 @@ export default function SupplierEvaluationResults() {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 10,
+                fontSize: 15,
               }}
             >
               {t.lang}:
@@ -1067,10 +1334,50 @@ export default function SupplierEvaluationResults() {
           </div>
         </div>
 
-        {/* Search */}
+        {/* Search + Type filter */}
         <div style={{ ...panel, marginTop: 14, display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-          <div style={{ fontWeight: 950, color: "#0f172a" }}>{t.search}</div>
+          <div style={{ fontWeight: 950, color: "#0f172a", fontSize: 16 }}>{t.search}</div>
           <input value={query} onChange={(e) => setQuery(e.target.value)} style={input} placeholder={t.searchPh} />
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ ...muted, whiteSpace: "nowrap" }}>{t.filterType}:</span>
+            <button
+              type="button"
+              onClick={() => setTypeFilter("all")}
+              style={{
+                ...btn,
+                padding: "7px 11px",
+                fontSize: 12,
+                background: typeFilter === "all" ? "linear-gradient(135deg, #0ea5e9, #22c55e)" : "rgba(255,255,255,0.95)",
+                color: typeFilter === "all" ? "#fff" : "#0f172a",
+                borderColor: typeFilter === "all" ? "rgba(14,165,233,0.4)" : "rgba(15,23,42,0.16)",
+              }}
+            >
+              {t.allTypes}
+            </button>
+            {Object.entries(SUPPLIER_TYPE_LABELS).map(([key, v]) => {
+              const active = typeFilter === key;
+              const c = getSupplierTypeBadgeColor(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTypeFilter(key)}
+                  style={{
+                    ...btn,
+                    padding: "7px 11px",
+                    fontSize: 12,
+                    background: active ? c.bg : "rgba(255,255,255,0.95)",
+                    borderColor: active ? c.border : "rgba(15,23,42,0.16)",
+                    color: active ? c.fg : "#0f172a",
+                  }}
+                >
+                  {lang === "ar" ? v.ar : v.en}
+                </button>
+              );
+            })}
+          </div>
+
           <div style={muted}>
             {t.total}: {filtered.length}
           </div>
@@ -1086,6 +1393,7 @@ export default function SupplierEvaluationResults() {
               <thead>
                 <tr>
                   <th style={thAlign}>{t.supplier}</th>
+                  <th style={thAlign}>{t.supplierType}</th>
                   <th style={thAlign}>{t.recordDate}</th>
                   <th style={thAlign}>{t.submittedAt}</th>
                   <th style={thAlign}>{t.lastUpdate}</th>
@@ -1105,6 +1413,9 @@ export default function SupplierEvaluationResults() {
                   const c = p?.meta?.counts || calcCounts(answers);
                   const token = String(p?.public?.token || "");
                   const isDeleting = String(deletingId) === String(rep?.id ?? r?.id);
+                  const supType = getSupplierType(p);
+                  const supTypeLabel = supType ? getSupplierTypeLabel(supType, lang) : (lang === "ar" ? "غير محدَّد" : "Unspecified");
+                  const supTypeColor = getSupplierTypeBadgeColor(supType);
 
                   return (
                     <tr key={String(rep?.id ?? r?.id)} style={rowCard}>
@@ -1126,6 +1437,24 @@ export default function SupplierEvaluationResults() {
                             </button>
                           ) : null}
                         </div>
+                      </td>
+
+                      <td style={tdAlign}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "6px 10px",
+                            borderRadius: 999,
+                            fontSize: 12,
+                            fontWeight: 900,
+                            background: supTypeColor.bg,
+                            color: supTypeColor.fg,
+                            border: `1px solid ${supTypeColor.border}`,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {supTypeLabel}
+                        </span>
                       </td>
 
                       <td style={tdAlign}>{recDate}</td>
@@ -1181,27 +1510,50 @@ export default function SupplierEvaluationResults() {
           >
             <div
               style={{
-                width: "min(1100px, 100%)",
+                width: "min(1600px, 100%)",
                 marginTop: 20,
                 background: "rgba(255,255,255,0.98)",
                 border: "1px solid rgba(15,23,42,0.18)",
                 borderRadius: 18,
                 boxShadow: "0 24px 70px rgba(2,6,23,0.35)",
-                padding: 16,
+                padding: 20,
               }}
               onClick={(e) => e.stopPropagation()}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 990 }}>
+                  <div style={{ fontSize: 22, fontWeight: 990 }}>
                     {openedFields.company_name || (lang === "ar" ? "مورد" : "Supplier")} — {t.detailsTitle}
                   </div>
-                  <div style={{ marginTop: 6, color: "#64748b", fontWeight: 850, fontSize: 13 }}>
+                  {(() => {
+                    const st = getSupplierType(openedPayload);
+                    const color = getSupplierTypeBadgeColor(st);
+                    const label = st ? getSupplierTypeLabel(st, lang) : (lang === "ar" ? "غير محدَّد" : "Unspecified");
+                    return (
+                      <div style={{ marginTop: 6 }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "6px 12px",
+                            borderRadius: 999,
+                            fontSize: 12,
+                            fontWeight: 900,
+                            background: color.bg,
+                            color: color.fg,
+                            border: `1px solid ${color.border}`,
+                          }}
+                        >
+                          🏷 {t.supplierType}: {label}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  <div style={{ marginTop: 6, color: "#64748b", fontWeight: 850, fontSize: 15 }}>
                     {t.recordDate}: <b>{getRecordDate(opened) || "—"}</b> • {t.submittedAt}:{" "}
                     <b>{fmtDateTime(getSubmittedAtIso(opened) || openedPayload?.meta?.savedAt || openedPayload?.public?.submission?.savedAt)}</b> •{" "}
                     {t.lastUpdate}: <b>{fmtDateTime(getLastUpdateIso(opened))}</b>
                   </div>
-                  <div style={{ marginTop: 6, color: "#64748b", fontWeight: 850, fontSize: 13 }}>
+                  <div style={{ marginTop: 6, color: "#64748b", fontWeight: 850, fontSize: 15 }}>
                     {t.summary} — {t.yes}: <b>{openedCounts.yesCount}</b> • {t.no}: <b>{openedCounts.noCount}</b> • {t.na}:{" "}
                     <b>{openedCounts.naCount}</b>
                   </div>
@@ -1241,7 +1593,7 @@ export default function SupplierEvaluationResults() {
 
               {/* Supplier fields summary */}
               <div style={{ marginTop: 12, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                <div style={{ fontWeight: 980, marginBottom: 10 }}>{t.supplierDetails}</div>
+                <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>{t.supplierDetails}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
                   <FieldLine label={lang === "ar" ? "اسم الشركة" : "Company Name"} value={openedFields.company_name} />
                   <FieldLine label={lang === "ar" ? "العنوان" : "Address"} value={openedFields.company_address} />
@@ -1254,13 +1606,15 @@ export default function SupplierEvaluationResults() {
                   <FieldLine label={lang === "ar" ? "نسخ خطط الهاسب" : "HACCP plans copy note"} value={openedFields.haccp_copy_note} />
                   <FieldLine label={lang === "ar" ? "قائمة الفحوصات" : "Lab tests list"} value={openedFields.lab_tests_list} />
                   <FieldLine label={lang === "ar" ? "تفاصيل فحص خارجي" : "Outside testing details"} value={openedFields.outside_testing_details} />
+                  <FieldLine label={t.allergenDeclaration} value={openedFields.allergen_declaration} />
+                  <FieldLine label={t.serviceScope} value={openedFields.service_scope} />
                 </div>
               </div>
 
               {/* Products List */}
               {openedProductsList.length > 0 && (
                 <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                  <div style={{ fontWeight: 980, marginBottom: 10 }}>
+                  <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>
                     {lang === "ar" ? "المنتجات المراد توريدها" : "Products to be Supplied"}
                   </div>
                   <div style={{ display: "grid", gap: 10 }}>
@@ -1319,7 +1673,7 @@ export default function SupplierEvaluationResults() {
               {/* Declaration */}
               {openedDeclaration && (
                 <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                  <div style={{ fontWeight: 980, marginBottom: 10 }}>
+                  <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>
                     {lang === "ar" ? "الإقرار" : "Declaration"}
                   </div>
                   <div style={{
@@ -1361,7 +1715,7 @@ export default function SupplierEvaluationResults() {
 
               {/* Attachments */}
               <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                <div style={{ fontWeight: 980, marginBottom: 10 }}>{t.attachments}</div>
+                <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>{t.attachments}</div>
 
                 {!hasAnyAttachments ? (
                   <div style={{ color: "#64748b", fontWeight: 850, fontSize: 13 }}>{t.noAttachments}</div>
@@ -1462,7 +1816,7 @@ export default function SupplierEvaluationResults() {
 
               {/* YES/NO questions */}
               <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                <div style={{ fontWeight: 980, marginBottom: 10 }}>{t.qList}</div>
+                <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>{t.qList}</div>
 
                 <div style={{ display: "grid", gap: 10 }}>
                   {openedAnswerPairs.map((x) => (
@@ -1475,14 +1829,15 @@ export default function SupplierEvaluationResults() {
                         background: "rgba(248,250,252,0.9)",
                       }}
                     >
-                      <div style={{ whiteSpace: "pre-wrap", fontWeight: 950, color: "#0f172a", lineHeight: 1.6 }}>{x.q}</div>
-                      <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                        <span style={{ fontWeight: 980 }}>{t.answer}:</span>
+                      <div style={{ whiteSpace: "pre-wrap", fontWeight: 950, color: "#0f172a", lineHeight: 1.6, fontSize: 16 }}>{x.q}</div>
+                      <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 980, fontSize: 15 }}>{t.answer}:</span>
                         <span
                           style={{
-                            padding: "6px 10px",
+                            padding: "7px 12px",
                             borderRadius: 999,
                             fontWeight: 980,
+                            fontSize: 14,
                             border: "1px solid rgba(15,23,42,0.14)",
                             background: x.v === true ? "rgba(34,197,94,0.14)" : x.v === false ? "rgba(239,68,68,0.12)" : "rgba(148,163,184,0.16)",
                             color: x.v === true ? "#14532d" : x.v === false ? "#7f1d1d" : "#334155",

@@ -51,16 +51,17 @@ function IconDoc() {
 /* ===== Styles (match your menu vibe) ===== */
 const shellStyle = {
   minHeight: "100vh",
-  padding: "28px 18px",
+  padding: "30px 24px",
   background:
     "radial-gradient(circle at 12% 10%, rgba(34,211,238,0.22) 0, rgba(255,255,255,1) 42%, rgba(255,255,255,1) 100%)," +
     "radial-gradient(circle at 88% 12%, rgba(34,197,94,0.16) 0, rgba(255,255,255,0) 55%)," +
     "radial-gradient(circle at 50% 100%, rgba(59,130,246,0.16) 0, rgba(255,255,255,0) 58%)",
   fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   color: "#071b2d",
+  boxSizing: "border-box",
 };
 
-const layoutStyle = { maxWidth: "1100px", margin: "0 auto" };
+const layoutStyle = { maxWidth: "100%", width: "100%", margin: "0 auto" };
 
 const topBarStyle = {
   display: "flex",
@@ -90,16 +91,16 @@ const logoStyle = {
   background: "#fff",
 };
 
-const companyNameStyle = { fontSize: "14px", fontWeight: 950, letterSpacing: "0.01em", margin: 0, lineHeight: 1.2 };
-const companySubStyle = { fontSize: "12px", fontWeight: 750, opacity: 0.78, marginTop: "4px" };
+const companyNameStyle = { fontSize: "16px", fontWeight: 950, letterSpacing: "0.01em", margin: 0, lineHeight: 1.2 };
+const companySubStyle = { fontSize: "14px", fontWeight: 750, opacity: 0.78, marginTop: "4px" };
 
 const badgeStyle = {
   display: "inline-flex",
   alignItems: "center",
   gap: "8px",
-  padding: "9px 12px",
+  padding: "10px 14px",
   borderRadius: "999px",
-  fontSize: "12px",
+  fontSize: "14px",
   fontWeight: 900,
   color: "#052336",
   background: "linear-gradient(135deg, rgba(34,211,238,0.20), rgba(34,197,94,0.14))",
@@ -117,17 +118,17 @@ const headerStyle = {
   flexWrap: "wrap",
 };
 
-const titleStyle = { fontSize: "26px", fontWeight: 980, letterSpacing: "0.02em" };
-const subtitleStyle = { fontSize: "13px", fontWeight: 750, opacity: 0.82, marginTop: "6px" };
-const taglineStyle = { fontSize: "14px", fontWeight: 750, color: "#334155", maxWidth: "520px", margin: 0 };
+const titleStyle = { fontSize: "30px", fontWeight: 980, letterSpacing: "0.02em" };
+const subtitleStyle = { fontSize: "15px", fontWeight: 750, opacity: 0.82, marginTop: "6px" };
+const taglineStyle = { fontSize: "16px", fontWeight: 750, color: "#334155", maxWidth: "620px", margin: 0 };
 
-const gridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" };
+const gridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" };
 
 const cardBaseStyle = {
   position: "relative",
   display: "flex",
-  gap: "12px",
-  padding: "16px 18px",
+  gap: "14px",
+  padding: "20px 22px",
   borderRadius: "18px",
   background: "rgba(255,255,255,0.92)",
   border: "1px solid rgba(15, 23, 42, 0.16)",
@@ -139,8 +140,8 @@ const cardBaseStyle = {
 };
 
 const iconWrapStyle = {
-  width: "46px",
-  height: "46px",
+  width: "52px",
+  height: "52px",
   borderRadius: "999px",
   background: "linear-gradient(135deg, rgba(34,211,238,0.18), rgba(34,197,94,0.12))",
   color: "#0369a1",
@@ -153,17 +154,17 @@ const iconWrapStyle = {
 };
 
 const cardBodyStyle = { flex: 1, minWidth: 0 };
-const cardTitleStyle = { fontSize: "15px", fontWeight: 950, marginBottom: "4px", color: "#071b2d" };
-const cardSubStyle = { fontSize: "13px", color: "#334155", lineHeight: 1.45 };
-const cardFooterStyle = { fontSize: "11px", fontWeight: 950, color: "#64748b", marginTop: "10px", letterSpacing: "0.10em" };
+const cardTitleStyle = { fontSize: "18px", fontWeight: 950, marginBottom: "6px", color: "#071b2d" };
+const cardSubStyle = { fontSize: "15px", color: "#334155", lineHeight: 1.5 };
+const cardFooterStyle = { fontSize: "12px", fontWeight: 950, color: "#64748b", marginTop: "12px", letterSpacing: "0.10em" };
 
 const smallTag = (tone) => ({
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "6px 10px",
+  padding: "7px 12px",
   borderRadius: 999,
-  fontSize: 11,
+  fontSize: 12,
   fontWeight: 950,
   letterSpacing: "0.08em",
   border: "1px solid rgba(15,23,42,0.14)",
@@ -180,8 +181,8 @@ const arrowStyle = {
 };
 
 const helpBox = {
-  marginTop: 14,
-  padding: "14px 16px",
+  marginTop: 16,
+  padding: "18px 22px",
   borderRadius: 18,
   border: "1px solid rgba(15,23,42,0.14)",
   background: "rgba(255,255,255,0.78)",
@@ -234,12 +235,13 @@ export default function SupplierEvaluationHub() {
               type="button"
               onClick={() => navigate("/haccp-iso")}
               style={{
-                padding: "10px 14px",
+                padding: "11px 16px",
                 borderRadius: 14,
                 border: "1px solid rgba(15,23,42,0.16)",
                 background: "rgba(255,255,255,0.92)",
                 cursor: "pointer",
                 fontWeight: 950,
+                fontSize: 15,
               }}
             >
               ↩ Back
@@ -322,8 +324,8 @@ export default function SupplierEvaluationHub() {
 
         {/* Quick guidance box */}
         <div style={helpBox}>
-          <div style={{ fontWeight: 980, fontSize: 14, color: "#071b2d" }}>How it works</div>
-          <div style={{ marginTop: 8, color: "#334155", fontWeight: 750, fontSize: 13, lineHeight: 1.6 }}>
+          <div style={{ fontWeight: 980, fontSize: 17, color: "#071b2d" }}>How it works</div>
+          <div style={{ marginTop: 10, color: "#334155", fontWeight: 750, fontSize: 15, lineHeight: 1.7 }}>
             1) Create evaluation and generate a public link. <br />
             2) Supplier opens link, fills answers, uploads attachments, then submits. <br />
             3) Review everything from <b>Submitted Results</b>.
@@ -331,7 +333,7 @@ export default function SupplierEvaluationHub() {
         </div>
 
         {/* Footer */}
-        <div style={{ marginTop: 18, fontSize: 12, color: "#64748b", fontWeight: 800, textAlign: "center", opacity: 0.95 }}>
+        <div style={{ marginTop: 20, fontSize: 14, color: "#64748b", fontWeight: 800, textAlign: "center", opacity: 0.95 }}>
           © Al Mawashi — Quality & Food Safety System
         </div>
       </div>

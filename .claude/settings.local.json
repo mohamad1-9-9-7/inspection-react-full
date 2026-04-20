@@ -32,7 +32,9 @@
       "Bash(grep -v \"^//\")",
       "Bash(bash /tmp/final_types.sh)",
       "Bash(node -e \"require\\('@babel/core'\\).parseSync\\(require\\('fs'\\).readFileSync\\('src/pages/KPIDashboard.js','utf8'\\),{filename:'KPIDashboard.js',presets:['@babel/preset-env','@babel/preset-react']}\\); console.log\\('OK'\\)\")",
-      "Bash(node -c \"D:/inspection-server/index.cjs\")"
+      "Bash(node -c \"D:/inspection-server/index.cjs\")",
+      "Bash(npx --no-install eslint \"src/pages/haccp and iso/Supplier Approval/\" --ext .js,.jsx)",
+      "Bash(npx react-scripts *)"
     ]
   }
 }

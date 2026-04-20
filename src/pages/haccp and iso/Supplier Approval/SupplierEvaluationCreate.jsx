@@ -131,10 +131,45 @@ const DEFAULT_QUESTIONS = [
   { key: "notes", label: "Additional notes", type: "text" },
 ];
 
+/* ===================== Supplier Types ===================== */
+const SUPPLIER_TYPES = [
+  {
+    value: "food",
+    label: "Food / Raw Materials (Meat, Dairy, Produce, etc.)",
+    labelAr: "مواد غذائية / مواد خام (لحوم، ألبان، خضروات…)",
+    desc: "Food, ingredients, raw materials — full food safety questionnaire.",
+  },
+  {
+    value: "cleaning_chemicals",
+    label: "Cleaning Materials / Chemicals",
+    labelAr: "مواد تنظيف / كيماويات",
+    desc: "Detergents, sanitizers, disinfectants — SDS/GHS/COA questions.",
+  },
+  {
+    value: "packaging",
+    label: "Packaging Materials",
+    labelAr: "مواد تعبئة وتغليف",
+    desc: "Food-contact packaging — compliance & migration tests.",
+  },
+  {
+    value: "services",
+    label: "Services (Pest Control / Calibration / Transport / Waste)",
+    labelAr: "خدمات (مكافحة آفات / معايرة / نقل / نفايات)",
+    desc: "Service providers — licenses, training, service reports.",
+  },
+  {
+    value: "other",
+    label: "Other / Equipment / Uniforms",
+    labelAr: "أخرى / معدات / ملابس",
+    desc: "Miscellaneous suppliers — general questions only.",
+  },
+];
+
 export default function SupplierEvaluationCreate() {
   const nav = useNavigate();
 
   const [supplierName, setSupplierName] = useState("");
+  const [supplierType, setSupplierType] = useState("food");
   const [email, setEmail] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -169,9 +204,20 @@ export default function SupplierEvaluationCreate() {
     const name = String(supplierName || "").trim();
     const mail = String(email || "").trim();
     const notes = String(internalNotes || "").trim();
+    const type = String(supplierType || "").trim();
 
-    if (!name) {
-      setMsg("❌ Please enter supplier name");
+    if (!name || !/\S/.test(name)) {
+      setMsg("❌ Please enter a valid supplier name (not whitespace only)");
+      return;
+    }
+
+    if (name.length < 2) {
+      setMsg("❌ Supplier name is too short (min 2 characters)");
+      return;
+    }
+
+    if (!type || !SUPPLIER_TYPES.find((t) => t.value === type)) {
+      setMsg("❌ Please select a valid supplier type");
       return;
     }
 
@@ -193,6 +239,7 @@ export default function SupplierEvaluationCreate() {
         fields: {
           company_name: name,
           supplier_email: mail,
+          supplier_type: type,
         },
 
         answers: {},
@@ -204,6 +251,7 @@ export default function SupplierEvaluationCreate() {
           savedAt: new Date().toISOString(),
           createdBy: "MANUAL_PUBLIC_LINK",
           submitted: false,
+          supplierType: type,
         },
 
         public: {
@@ -213,6 +261,7 @@ export default function SupplierEvaluationCreate() {
           createdAt: new Date().toISOString(),
           sentAt: new Date().toISOString(),
           submittedAt: null,
+          supplierType: type,
         },
 
         uniqueKey: `${String(name).trim().toLowerCase()}__${day}__${publicToken}`,
@@ -244,7 +293,7 @@ export default function SupplierEvaluationCreate() {
   const S = {
     page: {
       minHeight: "100vh",
-      padding: 18,
+      padding: "20px 24px",
       background:
         "radial-gradient(circle at 12% 10%, rgba(34,211,238,0.18) 0, rgba(255,255,255,1) 46%, rgba(255,255,255,1) 100%)," +
         "radial-gradient(circle at 88% 10%, rgba(34,197,94,0.12) 0, rgba(255,255,255,0) 55%)," +
@@ -252,42 +301,43 @@ export default function SupplierEvaluationCreate() {
       fontFamily:
         'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
       color: "#071b2d",
+      boxSizing: "border-box",
     },
-    wrap: { maxWidth: 980, margin: "0 auto" },
+    wrap: { maxWidth: "100%", width: "100%", margin: "0 auto" },
 
     topbar: {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      gap: 12,
+      gap: 14,
       flexWrap: "wrap",
-      marginBottom: 14,
+      marginBottom: 16,
     },
 
-    title: { fontSize: 20, fontWeight: 980, letterSpacing: 0.2 },
-    subtitle: { fontSize: 13, opacity: 0.75, fontWeight: 750, marginTop: 3 },
+    title: { fontSize: 24, fontWeight: 980, letterSpacing: 0.2 },
+    subtitle: { fontSize: 15, opacity: 0.78, fontWeight: 750, marginTop: 4 },
 
     card: {
       background: "rgba(255,255,255,0.94)",
       border: "1px solid rgba(2,6,23,0.10)",
       borderRadius: 20,
-      padding: 18,
+      padding: 22,
       boxShadow: "0 18px 42px rgba(2, 132, 199, 0.08)",
       backdropFilter: "blur(10px)",
     },
 
-    sectionTitle: { fontSize: 12, fontWeight: 950, marginBottom: 10, opacity: 0.85 },
+    sectionTitle: { fontSize: 14, fontWeight: 950, marginBottom: 12, opacity: 0.85 },
 
     grid2: {
       display: "grid",
       gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-      gap: 14,
+      gap: 16,
     },
 
     field: { display: "flex", flexDirection: "column", gap: 8 },
 
     label: {
-      fontSize: 12,
+      fontSize: 14,
       fontWeight: 900,
       opacity: 0.9,
       letterSpacing: 0.2,
@@ -311,10 +361,10 @@ export default function SupplierEvaluationCreate() {
       width: "100%",
       borderRadius: 12,
       border: "1px solid transparent",
-      padding: "12px 12px",
+      padding: "13px 14px",
       outline: "none",
       background: "transparent",
-      fontSize: 14,
+      fontSize: 16,
       fontWeight: 700,
       color: "#071b2d",
     },
@@ -323,15 +373,15 @@ export default function SupplierEvaluationCreate() {
       width: "100%",
       borderRadius: 12,
       border: "1px solid transparent",
-      padding: "12px 12px",
+      padding: "13px 14px",
       outline: "none",
       background: "transparent",
-      fontSize: 14,
+      fontSize: 16,
       fontWeight: 700,
       color: "#071b2d",
-      minHeight: 110,
+      minHeight: 120,
       resize: "vertical",
-      lineHeight: 1.5,
+      lineHeight: 1.55,
     },
 
     row: { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
@@ -340,36 +390,36 @@ export default function SupplierEvaluationCreate() {
       border: "1px solid rgba(2,6,23,0.12)",
       background: "#fff",
       borderRadius: 12,
-      padding: "10px 12px",
+      padding: "11px 14px",
       cursor: "pointer",
       fontWeight: 900,
-      fontSize: 13,
+      fontSize: 15,
     },
 
     btnPrimary: {
       border: "1px solid rgba(34,197,94,0.30)",
       background: "linear-gradient(135deg, rgba(34,197,94,0.22), rgba(34,211,238,0.18))",
       borderRadius: 12,
-      padding: "10px 12px",
+      padding: "11px 14px",
       cursor: "pointer",
       fontWeight: 950,
-      fontSize: 13,
+      fontSize: 15,
     },
 
     btnDanger: {
       border: "1px solid rgba(239,68,68,0.20)",
       background: "linear-gradient(135deg, rgba(239,68,68,0.10), rgba(255,255,255,0.9))",
       borderRadius: 12,
-      padding: "10px 12px",
+      padding: "11px 14px",
       cursor: "pointer",
       fontWeight: 900,
-      fontSize: 13,
+      fontSize: 15,
     },
 
     monoBox: {
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-      fontSize: 12.5,
-      padding: 12,
+      fontSize: 14,
+      padding: 14,
       borderRadius: 14,
       border: "1px dashed rgba(2,6,23,0.20)",
       background: "rgba(2,6,23,0.02)",
@@ -378,18 +428,18 @@ export default function SupplierEvaluationCreate() {
     },
 
     pill: {
-      fontSize: 12,
+      fontSize: 14,
       fontWeight: 900,
-      padding: "6px 10px",
+      padding: "7px 12px",
       borderRadius: 999,
       border: "1px solid rgba(2,6,23,0.12)",
       background: "rgba(255,255,255,0.85)",
     },
 
-    msgOk: { marginTop: 10, fontWeight: 900, fontSize: 13, color: "#065f46" },
-    msgBad: { marginTop: 10, fontWeight: 900, fontSize: 13, color: "#991b1b" },
+    msgOk: { marginTop: 10, fontWeight: 900, fontSize: 15, color: "#065f46" },
+    msgBad: { marginTop: 10, fontWeight: 900, fontSize: 15, color: "#991b1b" },
 
-    footer: { textAlign: "center", marginTop: 12, fontSize: 12, opacity: 0.65, fontWeight: 850 },
+    footer: { textAlign: "center", marginTop: 14, fontSize: 13, opacity: 0.65, fontWeight: 850 },
   };
 
   const isError = msg && msg.startsWith("❌");
@@ -437,6 +487,69 @@ export default function SupplierEvaluationCreate() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="email@example.com"
               />
+            </div>
+          </div>
+
+          {/* Supplier Type Selector */}
+          <div style={{ marginTop: 14 }}>
+            <div style={S.label}>Supplier Type *</div>
+            <div
+              style={{
+                marginTop: 8,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: 10,
+              }}
+            >
+              {SUPPLIER_TYPES.map((st) => {
+                const active = supplierType === st.value;
+                return (
+                  <label
+                    key={st.value}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      padding: "12px 14px",
+                      borderRadius: 14,
+                      border: active
+                        ? "2px solid rgba(34,197,94,0.55)"
+                        : "1px solid rgba(2,6,23,0.12)",
+                      background: active ? "rgba(34,197,94,0.07)" : "rgba(255,255,255,0.96)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      boxShadow: active ? "0 4px 14px rgba(34,197,94,0.15)" : "none",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="supplier_type"
+                      value={st.value}
+                      checked={active}
+                      onChange={() => setSupplierType(st.value)}
+                      style={{
+                        marginTop: 3,
+                        width: 17,
+                        height: 17,
+                        cursor: "pointer",
+                        accentColor: "#16a34a",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: 13, color: "#071b2d", lineHeight: 1.35 }}>
+                        {st.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#475569", marginTop: 3, fontWeight: 600, lineHeight: 1.4 }}>
+                        {st.desc}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 11, color: "#64748b", fontWeight: 700 }}>
+              ⚠ This determines which questionnaire sections the supplier will see.
             </div>
           </div>
 

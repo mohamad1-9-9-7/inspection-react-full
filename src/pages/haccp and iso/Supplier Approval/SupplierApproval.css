@@ -9,13 +9,13 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 16px;
+  padding: 11px 18px;
   border-radius: 12px;
   border: 1px solid rgba(15, 23, 42, 0.16);
   background: rgba(255, 255, 255, 0.95);
   cursor: pointer;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 15px;
   color: #0f172a;
   transition: background 0.15s, box-shadow 0.15s, transform 0.12s;
   white-space: nowrap;
@@ -59,7 +59,7 @@
 
 /* ── Section header ── */
 .sa-section-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -73,10 +73,10 @@
   width: 100%;
   border-radius: 12px;
   border: 1px solid rgba(2, 6, 23, 0.13);
-  padding: 11px 13px;
+  padding: 13px 14px;
   outline: none;
   background: rgba(255, 255, 255, 0.97);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: #0f172a;
   box-sizing: border-box;
@@ -94,9 +94,9 @@
   font-weight: 600;
 }
 .sa-textarea {
-  min-height: 100px;
+  min-height: 120px;
   resize: vertical;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 /* ── Results table ── */
@@ -108,21 +108,22 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0 10px;
-  min-width: 640px;
+  min-width: 720px;
 }
 .sa-table th {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #64748b;
-  padding: 2px 12px 8px;
+  padding: 2px 14px 10px;
   white-space: nowrap;
 }
 .sa-table td {
-  padding: 13px 12px;
+  padding: 15px 14px;
   vertical-align: top;
   font-weight: 700;
+  font-size: 15px;
   color: #0f172a;
   background: rgba(255, 255, 255, 0.97);
 }
@@ -150,9 +151,9 @@
 .sa-badge {
   display: inline-flex;
   align-items: center;
-  padding: 5px 10px;
+  padding: 6px 11px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
   border: 1px solid rgba(2, 6, 23, 0.12);
   background: rgba(255, 255, 255, 0.85);
@@ -173,20 +174,20 @@
 /* ── Mono box (token/link display) ── */
 .sa-mono-box {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12.5px;
-  padding: 12px 14px;
+  font-size: 14.5px;
+  padding: 14px 16px;
   border-radius: 12px;
   border: 1px dashed rgba(2, 6, 23, 0.20);
   background: rgba(2, 6, 23, 0.02);
   overflow-x: auto;
-  line-height: 1.5;
+  line-height: 1.55;
   word-break: break-all;
   color: #0f172a;
 }
 
 /* ── Msg feedback ── */
-.sa-msg-ok  { color: #065f46; font-weight: 800; font-size: 13px; margin-top: 10px; }
-.sa-msg-err { color: #991b1b; font-weight: 800; font-size: 13px; margin-top: 10px; }
+.sa-msg-ok  { color: #065f46; font-weight: 800; font-size: 15px; margin-top: 10px; }
+.sa-msg-err { color: #991b1b; font-weight: 800; font-size: 15px; margin-top: 10px; }
 
 /* ── Modal overlay ── */
 .sa-modal-overlay {
@@ -201,13 +202,13 @@
   z-index: 9999;
 }
 .sa-modal-box {
-  width: min(1100px, 100%);
+  width: min(1400px, 100%);
   margin-top: 20px;
   background: rgba(255, 255, 255, 0.99);
   border: 1px solid rgba(15, 23, 42, 0.16);
   border-radius: 18px;
   box-shadow: 0 24px 70px rgba(2, 6, 23, 0.32);
-  padding: 18px 20px;
+  padding: 20px 22px;
 }
 
 /* ── Yes/No answer badge ── */

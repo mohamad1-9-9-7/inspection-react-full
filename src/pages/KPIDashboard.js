@@ -356,6 +356,97 @@ function BarChart({ data }) {
   );
 }
 
+/* ── Line chart (SVG, no deps). `data` = [{date:"YYYY-MM-DD", value:number}] ── */
+function LineChart({ data, color = "#6366f1", unit = "", height = 180, thresholds }) {
+  const sorted = [...(data || [])].filter((d) => d && d.date && Number.isFinite(d.value)).sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length < 2) {
+    return <div style={{ color: "#9ca3af", textAlign: "center", padding: 28, fontSize: 13 }}>لا توجد بيانات كافية لعرض الاتجاه</div>;
+  }
+  const W = 720, H = height, padL = 44, padR = 16, padT = 14, padB = 28;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const vals = sorted.map((d) => d.value);
+  const vMin = Math.min(...vals), vMax = Math.max(...vals);
+  const span = Math.max(1e-6, vMax - vMin);
+  const vPad = span * 0.15 || 1;
+  const yMin = vMin - vPad, yMax = vMax + vPad;
+  const xFor = (i) => padL + (sorted.length === 1 ? innerW / 2 : (i / (sorted.length - 1)) * innerW);
+  const yFor = (v) => padT + innerH - ((v - yMin) / (yMax - yMin)) * innerH;
+  const path = sorted.map((d, i) => `${i === 0 ? "M" : "L"}${xFor(i).toFixed(1)} ${yFor(d.value).toFixed(1)}`).join(" ");
+  const areaPath = `${path} L${xFor(sorted.length - 1).toFixed(1)} ${(padT + innerH).toFixed(1)} L${xFor(0).toFixed(1)} ${(padT + innerH).toFixed(1)} Z`;
+  const gridLines = 4;
+  const ticks = Array.from({ length: gridLines + 1 }, (_, i) => yMin + (i / gridLines) * (yMax - yMin));
+  const firstDate = sorted[0].date, lastDate = sorted[sorted.length - 1].date;
+  const midIdx = Math.floor(sorted.length / 2);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", overflow: "visible" }}>
+      <defs>
+        <linearGradient id={`ln-grad-${color.replace("#", "")}`} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {/* grid + y axis labels */}
+      {ticks.map((t, i) => (
+        <g key={i}>
+          <line x1={padL} y1={yFor(t)} x2={W - padR} y2={yFor(t)} stroke="#e2e8f0" strokeDasharray="3 3" />
+          <text x={padL - 6} y={yFor(t) + 3} fontSize="10" fill="#94a3b8" textAnchor="end" fontFamily="monospace">
+            {Number.isInteger(t) ? t.toFixed(0) : t.toFixed(1)}{unit}
+          </text>
+        </g>
+      ))}
+      {/* optional threshold bands */}
+      {thresholds?.map((th, i) => (
+        <line key={`th-${i}`} x1={padL} x2={W - padR} y1={yFor(th.value)} y2={yFor(th.value)} stroke={th.color || "#ef4444"} strokeDasharray="6 4" strokeWidth="1.5" opacity=".8" />
+      ))}
+      {/* area */}
+      <path d={areaPath} fill={`url(#ln-grad-${color.replace("#", "")})`} />
+      {/* line */}
+      <path d={path} stroke={color} strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {/* points */}
+      {sorted.map((d, i) => (
+        <g key={d.date}>
+          <circle cx={xFor(i)} cy={yFor(d.value)} r="3.5" fill="#fff" stroke={color} strokeWidth="2" />
+          <title>{`${d.date}\n${d.value}${unit}`}</title>
+        </g>
+      ))}
+      {/* x labels (first / mid / last) */}
+      <text x={xFor(0)} y={H - 8} fontSize="10" fill="#64748b" textAnchor="start" fontFamily="monospace">{firstDate}</text>
+      {sorted.length > 2 && (
+        <text x={xFor(midIdx)} y={H - 8} fontSize="10" fill="#64748b" textAnchor="middle" fontFamily="monospace">{sorted[midIdx].date}</text>
+      )}
+      <text x={xFor(sorted.length - 1)} y={H - 8} fontSize="10" fill="#64748b" textAnchor="end" fontFamily="monospace">{lastDate}</text>
+    </svg>
+  );
+}
+
+/* ── Horizontal ranking bar ── */
+function RankingBar({ rows, accent = "#6366f1", unit = "" }) {
+  if (!rows?.length) return <div style={{ color: "#9ca3af", textAlign: "center", padding: 20, fontSize: 13 }}>لا توجد بيانات</div>;
+  const max = Math.max(1, ...rows.map((r) => Number(r.value) || 0));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {rows.map((r, i) => {
+        const pct = Math.max(0, (Number(r.value) || 0) / max * 100);
+        const color = r.color || accent;
+        return (
+          <div key={r.label + i} style={{ display: "grid", gridTemplateColumns: "120px 1fr 64px", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.label}</div>
+            <div style={{ background: "#f1f5f9", borderRadius: 999, height: 14, overflow: "hidden" }}>
+              <div style={{
+                width: `${pct}%`, height: "100%", borderRadius: 999,
+                background: `linear-gradient(90deg, ${color}, ${color}aa)`,
+                transition: "width .5s ease",
+              }} />
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 900, color, fontFamily: "monospace", textAlign: "left" }}>{r.value}{unit}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Modal({ show, onClose, title, children }) {
   if (!show) return null;
   return (
@@ -734,6 +825,103 @@ export default function KPIDashboard() {
     return Object.entries(acc).sort((a, b) => b[1] - a[1]).slice(0, 3);
   }, [fReturns]);
 
+  /* ============================================================
+     📈 Trend series (date → value)
+  ============================================================ */
+  // Avg cooler temperature per day
+  const trendCoolerTemp = useMemo(() => {
+    const byDay = new Map();
+    fCoolers.forEach((rep) => {
+      const d = rep.date; if (!d) return;
+      (rep.coolers || []).forEach((c) => Object.values(c?.temps || {}).forEach((v) => {
+        const n = Number(v); if (isNaN(n) || v === "") return;
+        const cur = byDay.get(d) || { sum: 0, count: 0 };
+        cur.sum += n; cur.count += 1; byDay.set(d, cur);
+      }));
+    });
+    return Array.from(byDay.entries()).map(([date, s]) => ({ date, value: Number((s.sum / s.count).toFixed(2)) }));
+  }, [fCoolers]);
+
+  // Shipment compliance % per day (Acceptable / total * 100)
+  const trendShipCompliance = useMemo(() => {
+    const byDay = new Map();
+    fShip.forEach((r) => {
+      const d = r.date; if (!d) return;
+      const cur = byDay.get(d) || { ok: 0, total: 0 };
+      cur.total += 1; if (isAcceptable(r.status)) cur.ok += 1;
+      byDay.set(d, cur);
+    });
+    return Array.from(byDay.entries()).map(([date, s]) => ({ date, value: Math.round((s.ok / s.total) * 100) }));
+  }, [fShip]);
+
+  // Loading-visual compliance % per day
+  const trendLoadingCompliance = useMemo(() => {
+    const byDay = new Map();
+    fLoad.forEach((r) => {
+      const d = r.date; if (!d) return;
+      const cur = byDay.get(d) || { yes: 0, total: 0 };
+      VI_POSITIVE.forEach((k) => { if (r[k] === "yes" || r[k] === "no") { cur.total += 1; if (r[k] === "yes") cur.yes += 1; } });
+      VI_NEGATIVE.forEach((k) => { if (r[k] === "yes" || r[k] === "no") { cur.total += 1; if (r[k] === "no")  cur.yes += 1; } });
+      byDay.set(d, cur);
+    });
+    return Array.from(byDay.entries()).filter(([, s]) => s.total > 0).map(([date, s]) => ({ date, value: Math.round((s.yes / s.total) * 100) }));
+  }, [fLoad]);
+
+  // Total daily activity (reports/day across coolers + shipments + loading + returns)
+  const trendDailyActivity = useMemo(() => {
+    const byDay = new Map();
+    const bump = (d) => { if (!d) return; byDay.set(d, (byDay.get(d) || 0) + 1); };
+    fCoolers.forEach((r) => bump(r.date));
+    fShip.forEach((r) => bump(r.date));
+    fLoad.forEach((r) => bump(r.date));
+    fReturns.forEach((r) => bump(r.reportDate));
+    return Array.from(byDay.entries()).map(([date, value]) => ({ date, value }));
+  }, [fCoolers, fShip, fLoad, fReturns]);
+
+  /* ============================================================
+     🏆 Branch ranking
+  ============================================================ */
+  const branchRanking = useMemo(() => (
+    [...branchStats].sort((a, b) => b.count - a.count).map((b) => ({
+      label: b.branch.name,
+      value: b.count,
+      color: b.branch.accent,
+    }))
+  ), [branchStats]);
+
+  // "Activity score" = active forms / total forms (0..100%)
+  const branchActivityScore = useMemo(() => (
+    [...branchStats]
+      .filter((b) => b.totalForms > 0)
+      .sort((a, b) => (b.activeForms / b.totalForms) - (a.activeForms / a.totalForms))
+      .map((b) => ({
+        label: b.branch.name,
+        value: Math.round((b.activeForms / b.totalForms) * 100),
+        color: b.branch.accent,
+      }))
+  ), [branchStats]);
+
+  /* ============================================================
+     ⏰ Absent reports — any type with latest_date older than threshold
+  ============================================================ */
+  const [absentThreshold, setAbsentThreshold] = useState(3);   // days
+  const absentReports = useMemo(() => {
+    const cutoff = daysAgoISO(absentThreshold);
+    const out = [];
+    for (const b of BRANCHES) {
+      for (const { t, label } of b.types) {
+        const row = summaryMap[t];
+        const latest = row?.latest_date;
+        // We only flag types that HAVE data but are stale. Types that never had data are shown in "idle branches" elsewhere.
+        if (Number(row?.count) > 0 && latest && latest < cutoff) {
+          const daysAgo = Math.round((Date.parse(todayDubai()) - Date.parse(latest)) / 86_400_000);
+          out.push({ branch: b, type: t, label, latest, daysAgo });
+        }
+      }
+    }
+    return out.sort((a, b) => b.daysAgo - a.daysAgo);
+  }, [summaryMap, absentThreshold]);
+
   /* --------- Alerts --------- */
   const alerts = useMemo(() => {
     const out = [];
@@ -741,9 +929,10 @@ export default function KPIDashboard() {
     if (shipTahtArr.length > shipMardi) out.push("⚠️ عدد الشحنات تحت الوسط أعلى من المرضية");
     if (viTotal && viCompliance < 70) out.push("⚠️ توافق الفحص البصري للتحميل منخفض (< 70%)");
     const idleBranches = branchStats.filter((b) => b.count === 0).map((b) => b.branch.name);
-    if (idleBranches.length) out.push(`ℹ️ فروع بدون تقارير: ${idleBranches.join("، ")}`);
+    if (idleBranches.length) out.push(`ℹ️ فروع بدون أي تقارير: ${idleBranches.join("، ")}`);
+    if (absentReports.length) out.push(`🕒 ${absentReports.length} نموذج لم يُحدَّث خلال آخر ${absentThreshold} أيام — راجع قسم الغياب.`);
     return out;
-  }, [coolerAvg, shipTahtArr, shipMardi, viCompliance, viTotal, branchStats]);
+  }, [coolerAvg, shipTahtArr, shipMardi, viCompliance, viTotal, branchStats, absentReports, absentThreshold]);
 
   /* --------- Export / Import --------- */
   function handleExport() {
@@ -846,6 +1035,116 @@ export default function KPIDashboard() {
               onClick={() => setBranchModal(branch)}
             />
           ))}
+        </div>
+
+        {/* ================ 📈 Trends ================ */}
+        <div className="kpi-section">📈 الاتجاهات عبر الزمن</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 12 }}>
+          <div className="kpi-wide">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>🌡️ متوسط حرارة البرادات (QCS)</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", fontFamily: "monospace" }}>{trendCoolerTemp.length} يوم</div>
+            </div>
+            <LineChart data={trendCoolerTemp} color="#0891b2" unit="°C" thresholds={[{ value: 8, color: "#ef4444" }]} />
+          </div>
+          <div className="kpi-wide">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>✅ نسبة الشحنات المرضية</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", fontFamily: "monospace" }}>{trendShipCompliance.length} يوم</div>
+            </div>
+            <LineChart data={trendShipCompliance} color="#22c55e" unit="%" thresholds={[{ value: 80, color: "#22c55e" }, { value: 50, color: "#f59e0b" }]} />
+          </div>
+          <div className="kpi-wide">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>👁️ توافق الفحص البصري (تحميل)</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", fontFamily: "monospace" }}>{trendLoadingCompliance.length} يوم</div>
+            </div>
+            <LineChart data={trendLoadingCompliance} color="#a855f7" unit="%" thresholds={[{ value: 70, color: "#f59e0b" }]} />
+          </div>
+          <div className="kpi-wide">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>📚 نشاط التقارير اليومي</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", fontFamily: "monospace" }}>{trendDailyActivity.length} يوم</div>
+            </div>
+            <LineChart data={trendDailyActivity} color="#6366f1" unit="" />
+          </div>
+        </div>
+
+        {/* ================ 🏆 Branch Comparison ================ */}
+        <div className="kpi-section">🏆 مقارنة الفروع</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
+          <div className="kpi-wide">
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b", marginBottom: 12 }}>📊 الأعلى تقارير (ترتيب تنازلي)</div>
+            <RankingBar rows={branchRanking} />
+          </div>
+          <div className="kpi-wide">
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#1e293b", marginBottom: 12 }}>⚡ نسبة النماذج النشطة (من إجمالي نماذج الفرع)</div>
+            <RankingBar rows={branchActivityScore} unit="%" />
+          </div>
+        </div>
+
+        {/* ================ ⏰ Absent Reports ================ */}
+        <div className="kpi-section">⏰ نماذج غائبة عن التحديث</div>
+        <div className="kpi-wide">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#1e293b" }}>حد التنبيه:</span>
+            {[1, 3, 7, 14, 30].map((n) => (
+              <button
+                key={n}
+                onClick={() => setAbsentThreshold(n)}
+                className="kpi-btn"
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  background: absentThreshold === n ? "linear-gradient(135deg,#ef4444,#f87171)" : "#f1f5f9",
+                  color: absentThreshold === n ? "#fff" : "#475569",
+                  border: absentThreshold === n ? "1px solid #ef4444" : "1px solid #e2e8f0",
+                }}
+              >
+                {n} {n === 1 ? "يوم" : "أيام"}
+              </button>
+            ))}
+            <span style={{ marginRight: "auto", fontSize: 11, fontWeight: 700, color: "#64748b" }}>
+              {absentReports.length > 0 ? `${absentReports.length} نموذج يحتاج متابعة` : "لا يوجد غياب 🎉"}
+            </span>
+          </div>
+          {absentReports.length === 0 ? (
+            <div style={{ padding: 28, textAlign: "center", color: "#22c55e", fontSize: 13, fontWeight: 700 }}>
+              ✅ كل النماذج محدّثة خلال آخر {absentThreshold} أيام
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 340, overflowY: "auto" }}>
+              {absentReports.map((a) => {
+                const severity = a.daysAgo > absentThreshold * 3 ? "#dc2626" : a.daysAgo > absentThreshold * 2 ? "#f59e0b" : "#6366f1";
+                return (
+                  <div
+                    key={`${a.branch.key}-${a.type}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "22px 1fr 1fr 110px",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 14px",
+                      background: "#f8fafc",
+                      border: `1px solid ${severity}33`,
+                      borderRight: `3px solid ${severity}`,
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
+                  >
+                    <span style={{ fontSize: 14 }}>{a.branch.icon}</span>
+                    <span style={{ fontWeight: 800, color: "#1e293b" }}>{a.branch.name}</span>
+                    <span style={{ color: "#64748b", fontWeight: 600 }}>{a.label}</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: severity, textAlign: "left", fontFamily: "monospace" }}>
+                      {a.daysAgo} {a.daysAgo === 1 ? "يوم" : "يوم"} · {a.latest}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* ================ QCS Daily (coolers) ================ */}

@@ -53,7 +53,37 @@ async function fetchJson(url, options) {
 }
 
 /* ===== Upload via your server images endpoint (same as other pages) ===== */
+const MAX_FILE_BYTES = 15 * 1024 * 1024; // 15 MB per file
+const ALLOWED_EXTS = [
+  "pdf", "jpg", "jpeg", "png", "webp", "gif", "bmp",
+  "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv",
+];
+
+function getExtFromName(name) {
+  const s = String(name || "").toLowerCase();
+  const i = s.lastIndexOf(".");
+  if (i < 0 || i === s.length - 1) return "";
+  return s.slice(i + 1);
+}
+
+function validateFileForUpload(file) {
+  if (!file || typeof file.size !== "number") return "Invalid file";
+  if (file.size <= 0) return `File "${file.name}" is empty`;
+  if (file.size > MAX_FILE_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    return `File "${file.name}" is too large (${mb} MB). Max allowed is 15 MB.`;
+  }
+  const ext = getExtFromName(file.name);
+  if (!ALLOWED_EXTS.includes(ext)) {
+    return `File type ".${ext || "unknown"}" is not allowed. Allowed: ${ALLOWED_EXTS.join(", ")}.`;
+  }
+  return null;
+}
+
 async function uploadViaServer(file) {
+  const validationError = validateFileForUpload(file);
+  if (validationError) throw new Error(validationError);
+
   const fd = new FormData();
   fd.append("file", file);
 
@@ -74,24 +104,24 @@ function todayISO() {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-/* ===================== PDF-LITERAL CONTENT (Same as SupplierApproval.jsx) ===================== */
-/* ✅ Removed "-----------" readonly line from UI (we still keep keys safe by not needing it at all) */
+/* ===================== Supplier Types ===================== */
+const SUPPLIER_TYPE_OPTIONS = [
+  { value: "food", labelEn: "Food / Raw Materials", labelAr: "مواد غذائية / مواد خام" },
+  { value: "cleaning_chemicals", labelEn: "Cleaning Materials / Chemicals", labelAr: "مواد تنظيف / كيماويات" },
+  { value: "packaging", labelEn: "Packaging Materials", labelAr: "مواد تعبئة وتغليف" },
+  { value: "services", labelEn: "Services (Pest Control / Calibration / Transport / Waste)", labelAr: "خدمات (مكافحة آفات / معايرة / نقل / نفايات)" },
+  { value: "other", labelEn: "Other / Equipment / Uniforms", labelAr: "أخرى / معدات / ملابس" },
+];
+
+/* ===================== FORM (structured by supplier type) =====================
+ * Blocks without `types` = shared (shown for all).
+ * Blocks/pages with `types: [...]` = shown only for matching supplier types.
+ */
 const FORM = [
+  /* ─────────────── SHARED — always shown ─────────────── */
   {
-    pageTitle: "PAGE 1 / 5 (نص حرفي)",
+    pageTitle: "Page 1 — Company & Products",
     blocks: [
-      {
-        title: "Supplier Evaluation Form",
-        type: "info",
-        lines: [
-          "Document Reference Supplier Self-Assessment Form",
-          "Issue Date",
-          "Owned by:QA",
-          "Authorised By: DIRECTOR",
-          "",
-          "Please answer all questions and provide any additional information that you feel is pertinent.",
-        ],
-      },
       {
         title: "Company Details",
         type: "fields",
@@ -116,7 +146,7 @@ const FORM = [
         ],
       },
       {
-        title: "Products to be Supplied",
+        title: "Products / Services to be Supplied",
         type: "products_list",
       },
       {
@@ -125,41 +155,34 @@ const FORM = [
         items: [
           {
             key: "certified_question",
-            label: "Are your facilities and products certified to any\nrecognized food safety or quality schemes?",
+            label: "Are your facilities and products certified to any\nrecognized food safety / quality / regulatory schemes?",
             kind: "text",
           },
-          { key: "certified_if_yes", label: "If yes which?", kind: "text" },
+          { key: "certified_if_yes", label: "If yes which? (e.g. ISO 9001, HACCP, HALAL, BRC, FDA, ECAS)", kind: "text" },
           { key: "certificates_copy", label: "Please provide a copy of your certificates", kind: "textarea_short" },
           { key: "att_certificates", label: "Attach certificates copy", kind: "attachment" },
         ],
       },
       {
-        title: "Hygiene",
+        title: "Staff Training & Hygiene",
         type: "fields",
         items: [
           {
             key: "hygiene_training_question",
-            label: "Have your staffs received any Food Hygiene &\nSafety Training to date & certificate copies are\navailable?",
+            label: "Have your staff received any Hygiene / Safety / Job-specific Training and are certificate copies available?",
             kind: "text",
           },
           { key: "att_hygiene_training", label: "Attach training certificates (if available)", kind: "attachment" },
         ],
       },
-      {
-        title: "Supplier Evaluation Form",
-        type: "info",
-        lines: ["Document Reference Supplier Self-Assessment Form", "Issue Date", "Owned by: QA", "Authorised By: DIRECTOR"],
-      },
     ],
   },
+
+  /* ─────────────── FOOD ONLY — Pages 2–5 ─────────────── */
   {
-    pageTitle: "PAGE 2 / 5 (نص حرفي)",
+    pageTitle: "Page 2 — Personal Hygiene, Foreign Body, Cleaning, Pests",
+    pageTypes: ["food"],
     blocks: [
-      {
-        title: "Supplier Evaluation Form",
-        type: "info",
-        lines: ["Document Reference Supplier Self-Assessment Form", "Issue Date", "Owned by:QA", "Authorised By: DIRECTOR"],
-      },
       {
         title: "Personal Hygiene (YES/NO)",
         type: "yesno",
@@ -210,21 +233,12 @@ const FORM = [
           { key: "pst_03", q: "Are all buildings adequately proofed?" },
         ],
       },
-      {
-        title: "Supplier Evaluation Form",
-        type: "info",
-        lines: ["Document Reference Supplier Self-Assessment Form", "Issue Date", "Owned by: QA", "Authorised By: DIRECTOR"],
-      },
     ],
   },
   {
-    pageTitle: "PAGE 3 / 5 (نص حرفي)",
+    pageTitle: "Page 3 — Pest Control (cont.), Food Safety Systems, Lab",
+    pageTypes: ["food"],
     blocks: [
-      {
-        title: "Supplier Evaluation Form",
-        type: "info",
-        lines: ["Document Reference Supplier Self-Assessment Form", "Issue Date", "Owned by:QA", "Authorised By: DIRECTOR"],
-      },
       {
         title: "Pest Control (continued)",
         type: "yesno",
@@ -268,7 +282,7 @@ const FORM = [
         ],
       },
       {
-        title: "If yes, please list any tests carried out on the products supplied",
+        title: "Laboratory Tests",
         type: "fields",
         items: [
           { key: "lab_tests_list", label: "If yes, please list any tests carried out on the\nproducts supplied", kind: "textarea_short" },
@@ -276,7 +290,7 @@ const FORM = [
         ],
       },
       {
-        title: "Do you use outside/contract facilities for any product testing? If yes give details",
+        title: "Outside Testing",
         type: "fields",
         items: [
           {
@@ -286,21 +300,12 @@ const FORM = [
           },
         ],
       },
-      {
-        title: "Supplier Evaluation Form",
-        type: "info",
-        lines: ["Document Reference Supplier Self-Assessment Form", "Issue Date", "Owned by: QA", "Authorised By: DIRECTOR"],
-      },
     ],
   },
   {
-    pageTitle: "PAGE 4 / 5 (نص حرفي)",
+    pageTitle: "Page 4 — RM Specs, HACCP, Process, Transport, Production",
+    pageTypes: ["food"],
     blocks: [
-      {
-        title: "Supplier Evaluation Form",
-        type: "info",
-        lines: ["Document Reference Supplier Self-Assessment Form", "Issue Date", "Owned by:QA", "Authorised By: DIRECTOR"],
-      },
       {
         title: "Food Safety & Quality Controls (Raw materials / specs / non-conforming)",
         type: "yesno",
@@ -321,7 +326,7 @@ const FORM = [
         ],
       },
       {
-        title: "Food Safety & Quality Controls",
+        title: "HACCP Plans",
         type: "fields",
         items: [
           {
@@ -333,7 +338,7 @@ const FORM = [
         ],
       },
       {
-        title: "Food Safety & Quality Controls (process controls)",
+        title: "Process Controls",
         type: "yesno",
         items: [
           { key: "proc_01", q: "Have your critical control points (safety and\nquality) been identified for your production\nprocess?" },
@@ -363,26 +368,259 @@ const FORM = [
           { key: "prd_05", q: "Do you operate a planned maintenance\nprogramme?" },
         ],
       },
-      {
-        title: "Supplier Evaluation Form",
-        type: "info",
-        lines: ["Document Reference Supplier Self-Assessment Form", "Issue Date", "Owned by: QA", "Authorised By: DIRECTOR"],
-      },
     ],
   },
   {
-    pageTitle: "PAGE 5 / 5 (نص حرفي)",
+    pageTitle: "Page 5 — Equipment & Allergen Management",
+    pageTypes: ["food"],
     blocks: [
       {
-        title: "Supplier Evaluation Form",
-        type: "info",
-        lines: ["Document Reference Supplier Self-Assessment Form", "Issue Date", "Owned by:QA", "Authorised By: DIRECTOR"],
-      },
-      {
-        title: "Production Area Controls (continued)",
+        title: "Production Equipment",
         type: "yesno",
         items: [{ key: "eqp_01", q: "Is the equipment used in production fit for\npurpose, easy to clean and in a good state of\nrepair?" }],
       },
+      {
+        title: "Allergen Management",
+        type: "yesno",
+        items: [
+          { key: "alg_01", q: "Do you maintain an allergen register for all raw\nmaterials and finished products?" },
+          { key: "alg_02", q: "Are allergen-containing products physically\nsegregated during storage and production?" },
+          { key: "alg_03", q: "Do you have validated cleaning procedures to\nprevent allergen cross-contamination between\nproducts?" },
+          { key: "alg_04", q: "Are all allergens clearly declared on product\nlabels per local / destination country regulation?" },
+          { key: "alg_05", q: "Do you have a documented policy to manage\nallergen cross-contact and staff training?" },
+        ],
+      },
+      {
+        title: "Allergen Declaration (text)",
+        type: "fields",
+        items: [
+          {
+            key: "allergen_declaration",
+            label: "List all allergens present in products supplied (e.g. nuts, soy, gluten, dairy, eggs, fish, shellfish, sesame, etc.)",
+            kind: "textarea_short",
+          },
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────── CLEANING CHEMICALS ONLY ─────────────── */
+  {
+    pageTitle: "Page 2 — Chemical Product Safety (SDS / GHS / COA)",
+    pageTypes: ["cleaning_chemicals"],
+    blocks: [
+      {
+        title: "Safety Data Sheets & Labeling",
+        type: "yesno",
+        items: [
+          { key: "chem_01", q: "Do you provide Safety Data Sheets (SDS / MSDS)\nin English/Arabic for every product supplied?" },
+          { key: "chem_02", q: "Are your product labels compliant with GHS\n(Globally Harmonized System) hazard\ncommunication?" },
+          { key: "chem_03", q: "Are hazard pictograms, signal words, H- and\nP-statements shown on primary packaging?" },
+          { key: "chem_04", q: "Is product shelf life / expiry date clearly printed\non every container?" },
+        ],
+      },
+      {
+        title: "Attach Sample SDS / Labels",
+        type: "fields",
+        items: [
+          { key: "att_sds", label: "Attach Safety Data Sheets (SDS/MSDS) for all products supplied", kind: "attachment" },
+          { key: "att_labels", label: "Attach sample product labels (optional)", kind: "attachment" },
+        ],
+      },
+      {
+        title: "Quality, COA & Traceability",
+        type: "yesno",
+        items: [
+          { key: "chem_05", q: "Do you issue a Certificate of Analysis (COA) per\nbatch upon request?" },
+          { key: "chem_06", q: "Do you maintain batch traceability from raw\nchemical to finished product delivered?" },
+          { key: "chem_07", q: "Do you operate under a documented Quality\nManagement System (e.g. ISO 9001)?" },
+          { key: "chem_08", q: "Do you have a product recall procedure in place?" },
+        ],
+      },
+      {
+        title: "Attach COA Sample",
+        type: "fields",
+        items: [
+          { key: "att_coa", label: "Attach a sample Certificate of Analysis (COA)", kind: "attachment" },
+        ],
+      },
+      {
+        title: "Food-Contact Suitability",
+        type: "yesno",
+        items: [
+          {
+            key: "chem_09",
+            q: "Are your sanitizers / disinfectants approved for\nfood-contact surfaces (e.g. EPA / ECHA / FDA /\nESMA approval)?",
+          },
+          { key: "chem_10", q: "Do you provide recommended dilution rates,\ncontact time and rinse requirements in writing?" },
+          { key: "chem_11", q: "Are your products halal-compliant where required\nfor food industry use?" },
+        ],
+      },
+      {
+        title: "Storage & Transport",
+        type: "yesno",
+        items: [
+          { key: "chem_12", q: "Are chemicals stored separately from food and\nraw materials in your warehouse?" },
+          { key: "chem_13", q: "Are transport drivers trained on ADR / hazardous\nmaterial handling for chemical deliveries?" },
+          { key: "chem_14", q: "Is there a documented emergency / spillage\nresponse procedure available?" },
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────── PACKAGING ONLY ─────────────── */
+  {
+    pageTitle: "Page 2 — Packaging Compliance & Safety",
+    pageTypes: ["packaging"],
+    blocks: [
+      {
+        title: "Food-Contact Compliance",
+        type: "yesno",
+        items: [
+          {
+            key: "pkg_01",
+            q: "Are all materials supplied compliant with\nfood-contact regulations (e.g. EU 10/2011, FDA\n21 CFR, GSO / ESMA)?",
+          },
+          { key: "pkg_02", q: "Do you provide a Declaration of Compliance (DOC)\nwith every consignment?" },
+          { key: "pkg_03", q: "Have migration tests (overall & specific) been\nperformed and are reports available?" },
+          { key: "pkg_04", q: "Are inks, adhesives and coatings used certified\nfor food-contact use?" },
+        ],
+      },
+      {
+        title: "Attach Compliance Documents",
+        type: "fields",
+        items: [
+          { key: "att_doc", label: "Attach Declaration of Compliance (DOC)", kind: "attachment" },
+          { key: "att_migration", label: "Attach migration test reports (if available)", kind: "attachment" },
+        ],
+      },
+      {
+        title: "Production Hygiene & Traceability",
+        type: "yesno",
+        items: [
+          { key: "pkg_05", q: "Is your production facility certified to BRC\nPackaging, ISO 22000 / 15378 or equivalent?" },
+          { key: "pkg_06", q: "Are production areas segregated from sources of\ncontamination (wood, glass, chemicals)?" },
+          { key: "pkg_07", q: "Do you maintain batch traceability for raw\nmaterials, production and dispatch?" },
+          { key: "pkg_08", q: "Do you have documented pest control and\nhousekeeping procedures?" },
+          { key: "pkg_09", q: "Do you have a non-conformance / recall\nprocedure in place?" },
+        ],
+      },
+      {
+        title: "Storage & Delivery",
+        type: "yesno",
+        items: [
+          { key: "pkg_10", q: "Is finished packaging stored off the floor in a\nclean, dry, pest-free environment?" },
+          { key: "pkg_11", q: "Is packaging shrink-wrapped / pallet-protected\nduring transport?" },
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────── SERVICES ONLY ─────────────── */
+  {
+    pageTitle: "Page 2 — Service Provider Details",
+    pageTypes: ["services"],
+    blocks: [
+      {
+        title: "Scope of Service",
+        type: "fields",
+        items: [
+          {
+            key: "service_scope",
+            label: "Describe the scope of services you provide (e.g. pest control, calibration, transport, waste, cleaning, maintenance, etc.)",
+            kind: "textarea_short",
+          },
+        ],
+      },
+      {
+        title: "Licensing, Training & Insurance",
+        type: "yesno",
+        items: [
+          {
+            key: "srv_01",
+            q: "Do you hold all relevant regulatory licenses /\npermits to operate (e.g. municipality, civil\ndefense, Dubai Municipality PCO)?",
+          },
+          { key: "srv_02", q: "Are all technicians/operators trained and\ncertified for the services they deliver?" },
+          { key: "srv_03", q: "Do you maintain valid public liability insurance\ncoverage for service operations?" },
+          { key: "srv_04", q: "Are staff medically fit (valid health cards where\nrequired)?" },
+        ],
+      },
+      {
+        title: "Attach Licenses & Insurance",
+        type: "fields",
+        items: [
+          { key: "att_srv_license", label: "Attach trade license / municipal permit / professional registration", kind: "attachment" },
+          { key: "att_srv_insurance", label: "Attach liability insurance certificate (optional)", kind: "attachment" },
+        ],
+      },
+      {
+        title: "Service Delivery & Records",
+        type: "yesno",
+        items: [
+          {
+            key: "srv_05",
+            q: "Do you issue a service report / certificate after\nevery visit, signed by the technician and client?",
+          },
+          { key: "srv_06", q: "Do you maintain service records, traceability and\nequipment calibration for at least 2 years?" },
+          { key: "srv_07", q: "Do you follow a documented scope-of-work and\nmethod statement for each service?" },
+        ],
+      },
+      {
+        title: "Chemicals / Materials Used (if applicable)",
+        type: "yesno",
+        items: [
+          {
+            key: "srv_08",
+            q: "Are all chemicals / materials used approved for\nfood-industry use and accompanied by SDS?",
+          },
+          {
+            key: "srv_09",
+            q: "Are equipment and tools used maintained,\ncalibrated and in a good state of repair?",
+          },
+        ],
+      },
+      {
+        title: "Attach Sample Service Report / SDS",
+        type: "fields",
+        items: [
+          { key: "att_srv_report", label: "Attach a sample service report / certificate (optional)", kind: "attachment" },
+          { key: "att_srv_sds", label: "Attach SDS for chemicals used (if applicable)", kind: "attachment" },
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────── OTHER (Equipment / Uniforms / Misc) ─────────────── */
+  {
+    pageTitle: "Page 2 — Product Quality & Documentation",
+    pageTypes: ["other"],
+    blocks: [
+      {
+        title: "General Quality & Compliance",
+        type: "yesno",
+        items: [
+          { key: "oth_01", q: "Do you operate under a documented Quality\nManagement System (ISO 9001 or equivalent)?" },
+          { key: "oth_02", q: "Do products comply with relevant local / GCC\nregulations (SASO, ESMA, Emirates Authority)?" },
+          { key: "oth_03", q: "Do you provide product specifications / datasheets\nwith every shipment?" },
+          { key: "oth_04", q: "Do you offer warranty / after-sales support on\nproducts supplied?" },
+          { key: "oth_05", q: "Do you maintain batch / lot traceability?" },
+          { key: "oth_06", q: "Do you have a documented non-conformance and\nreturn procedure?" },
+        ],
+      },
+      {
+        title: "Attach Specifications",
+        type: "fields",
+        items: [
+          { key: "att_oth_specs", label: "Attach product specifications / datasheets", kind: "attachment" },
+        ],
+      },
+    ],
+  },
+
+  /* ─────────────── SHARED — always last (Declaration) ─────────────── */
+  {
+    pageTitle: "Final — Declaration",
+    blocks: [
       {
         title: "Declaration",
         type: "declaration",
@@ -390,6 +628,32 @@ const FORM = [
     ],
   },
 ];
+
+/* ===================== FORM helpers (filter by type) ===================== */
+function filterFormByType(supplierType) {
+  const type = String(supplierType || "other").toLowerCase();
+  return FORM
+    .filter((page) => !page.pageTypes || page.pageTypes.includes(type))
+    .map((page) => ({
+      ...page,
+      blocks: (page.blocks || []).filter((b) => !b.types || b.types.includes(type)),
+    }))
+    .filter((page) => page.blocks.length > 0);
+}
+
+/* Collect ALL field keys / answer keys for a given type (used to init state) */
+function collectKeysForType(supplierType) {
+  const pages = filterFormByType(supplierType);
+  const fields = [];
+  const answers = [];
+  pages.forEach((p) =>
+    p.blocks.forEach((b) => {
+      if (b.type === "fields") (b.items || []).forEach((it) => fields.push(it.key));
+      if (b.type === "yesno") (b.items || []).forEach((it) => answers.push(it.key));
+    })
+  );
+  return { fields, answers };
+}
 
 /* ===================== UI helpers ===================== */
 const THEME = {
@@ -457,17 +721,32 @@ const UI = {
 
 /* ===================== AR translations for labels/questions/titles ===================== */
 const AR_TRANSLATIONS = {
-  "PAGE 1 / 5 (نص حرفي)": "الصفحة 1 / 5",
-  "PAGE 2 / 5 (نص حرفي)": "الصفحة 2 / 5",
-  "PAGE 3 / 5 (نص حرفي)": "الصفحة 3 / 5",
-  "PAGE 4 / 5 (نص حرفي)": "الصفحة 4 / 5",
-  "PAGE 5 / 5 (نص حرفي)": "الصفحة 5 / 5",
+  "Page 1 — Company & Products": "الصفحة 1 — بيانات الشركة والمنتجات",
+  "Page 2 — Personal Hygiene, Foreign Body, Cleaning, Pests":
+    "الصفحة 2 — النظافة الشخصية / الأجسام الغريبة / التنظيف / الآفات",
+  "Page 3 — Pest Control (cont.), Food Safety Systems, Lab":
+    "الصفحة 3 — مكافحة الآفات (تكملة) / أنظمة سلامة الغذاء / المختبر",
+  "Page 4 — RM Specs, HACCP, Process, Transport, Production":
+    "الصفحة 4 — مواصفات المواد الخام / HACCP / العمليات / النقل / الإنتاج",
+  "Page 5 — Equipment & Allergen Management":
+    "الصفحة 5 — المعدات وإدارة مسببات الحساسية",
+  "Page 2 — Chemical Product Safety (SDS / GHS / COA)":
+    "الصفحة 2 — سلامة المنتجات الكيميائية (SDS / GHS / COA)",
+  "Page 2 — Packaging Compliance & Safety":
+    "الصفحة 2 — مطابقة وسلامة مواد التعبئة والتغليف",
+  "Page 2 — Service Provider Details":
+    "الصفحة 2 — بيانات مقدم الخدمة",
+  "Page 2 — Product Quality & Documentation":
+    "الصفحة 2 — جودة المنتج والتوثيق",
+  "Final — Declaration": "الخاتمة — الإقرار",
 
   "Supplier Evaluation Form": "نموذج تقييم المورد",
   "Company Details": "بيانات الشركة",
   "Technical or Quality Manager Contact Details": "بيانات مسؤول الجودة/الفني",
+  "Products / Services to be Supplied": "المنتجات / الخدمات المراد توريدها",
   "Products to be Supplied": "المنتجات المراد توريدها",
   "Certification": "الشهادات",
+  "Staff Training & Hygiene": "تدريب ونظافة الموظفين",
   "Hygiene": "النظافة",
   "Personal Hygiene (YES/NO)": "النظافة الشخصية (نعم/لا)",
   "Foreign Body Control": "التحكم بالأجسام الغريبة",
@@ -497,11 +776,17 @@ const AR_TRANSLATIONS = {
   "Product Name": "اسم المنتج",
   "Please provide a full product specification with each product supplied": "يرجى توفير المواصفات الكاملة للمنتج مع كل منتج يتم توريده",
   "Attach product specification / spec sheet (PDF, image, etc.)": "إرفاق مواصفات المنتج/ورقة المواصفات (PDF/صورة…)",
+  "Are your facilities and products certified to any\nrecognized food safety / quality / regulatory schemes?":
+    "هل مرافقكم ومنتجاتكم معتمدة ضمن أنظمة معترف بها لسلامة الغذاء/الجودة/التنظيمية؟",
   "Are your facilities and products certified to any\nrecognized food safety or quality schemes?":
     "هل مرافقكم ومنتجاتكم معتمدة ضمن أي أنظمة معترف بها لسلامة الغذاء أو الجودة؟",
+  "If yes which? (e.g. ISO 9001, HACCP, HALAL, BRC, FDA, ECAS)":
+    "إذا نعم، ما هي؟ (مثل ISO 9001 / HACCP / HALAL / BRC / FDA / ECAS)",
   "If yes which?": "إذا نعم، ما هي؟",
   "Please provide a copy of your certificates": "يرجى إرفاق/ذكر نسخة من الشهادات",
   "Attach certificates copy": "إرفاق نسخة الشهادات",
+  "Have your staff received any Hygiene / Safety / Job-specific Training and are certificate copies available?":
+    "هل تلقى موظفوكم أي تدريب على النظافة / السلامة / الخاص بالمهمة، وهل تتوفر نسخ من الشهادات؟",
   "Have your staffs received any Food Hygiene &\nSafety Training to date & certificate copies are\navailable?":
     "هل تلقى الموظفون تدريباً على نظافة وسلامة الغذاء وهل تتوفر نسخ من الشهادات؟",
   "Attach training certificates (if available)": "إرفاق شهادات التدريب (إن وجدت)",
@@ -615,6 +900,154 @@ const AR_TRANSLATIONS = {
 
   "All products supplied to Trans Emirates livestock Trading LLC comply with all relevant local and\ninternational legislation. The information supplied in this self-audit questionnaire is a true and\naccurate reflection of the production and control systems applied.":
     "جميع المنتجات المورّدة إلى Trans Emirates livestock Trading LLC مطابقة للتشريعات المحلية والدولية ذات الصلة. المعلومات الواردة في هذا الاستبيان هي انعكاس صحيح ودقيق لأنظمة الإنتاج والتحكم المطبقة.",
+
+  /* ───── Allergen Management (food) ───── */
+  "Allergen Management": "إدارة مسببات الحساسية",
+  "Allergen Declaration (text)": "بيان مسببات الحساسية (نص)",
+  "Production Equipment": "معدات الإنتاج",
+  "Do you maintain an allergen register for all raw\nmaterials and finished products?":
+    "هل تحتفظون بسجل لمسببات الحساسية لجميع المواد الخام والمنتجات النهائية؟",
+  "Are allergen-containing products physically\nsegregated during storage and production?":
+    "هل يتم الفصل المادي للمنتجات المحتوية على مسببات الحساسية أثناء التخزين والإنتاج؟",
+  "Do you have validated cleaning procedures to\nprevent allergen cross-contamination between\nproducts?":
+    "هل لديكم إجراءات تنظيف مُتحقق منها لمنع التلوث المتبادل لمسببات الحساسية بين المنتجات؟",
+  "Are all allergens clearly declared on product\nlabels per local / destination country regulation?":
+    "هل يتم تصريح جميع مسببات الحساسية بوضوح على ملصقات المنتجات وفق لوائح الدولة المحلية/المستوردة؟",
+  "Do you have a documented policy to manage\nallergen cross-contact and staff training?":
+    "هل لديكم سياسة موثّقة لإدارة التلامس المتبادل لمسببات الحساسية وتدريب الموظفين عليها؟",
+  "List all allergens present in products supplied (e.g. nuts, soy, gluten, dairy, eggs, fish, shellfish, sesame, etc.)":
+    "اذكر جميع مسببات الحساسية الموجودة في المنتجات المورّدة (مثل: المكسرات، الصويا، الغلوتين، الألبان، البيض، الأسماك، المحار، السمسم…)",
+
+  /* ───── Chemicals ───── */
+  "Safety Data Sheets & Labeling": "بطاقات السلامة والوسم (SDS/GHS)",
+  "Attach Sample SDS / Labels": "إرفاق عينة من SDS / الملصقات",
+  "Quality, COA & Traceability": "الجودة وشهادة التحليل والتتبع",
+  "Attach COA Sample": "إرفاق عينة من شهادة التحليل",
+  "Food-Contact Suitability": "ملاءمة ملامسة الغذاء",
+  "Storage & Transport": "التخزين والنقل",
+  "Do you provide Safety Data Sheets (SDS / MSDS)\nin English/Arabic for every product supplied?":
+    "هل تقدمون بطاقات السلامة (SDS / MSDS) بالعربية/الإنجليزية لكل منتج يتم توريده؟",
+  "Are your product labels compliant with GHS\n(Globally Harmonized System) hazard\ncommunication?":
+    "هل ملصقات المنتجات متوافقة مع نظام GHS العالمي للتصنيف والوسم وتوصيل الأخطار؟",
+  "Are hazard pictograms, signal words, H- and\nP-statements shown on primary packaging?":
+    "هل رموز الخطر وكلمات الإنذار وبيانات H/P مطبوعة على العبوة الأساسية؟",
+  "Is product shelf life / expiry date clearly printed\non every container?":
+    "هل فترة الصلاحية / تاريخ الانتهاء مطبوعة بوضوح على كل عبوة؟",
+  "Attach Safety Data Sheets (SDS/MSDS) for all products supplied":
+    "إرفاق بطاقات السلامة (SDS/MSDS) لجميع المنتجات المورّدة",
+  "Attach sample product labels (optional)": "إرفاق عينة من ملصقات المنتجات (اختياري)",
+  "Do you issue a Certificate of Analysis (COA) per\nbatch upon request?":
+    "هل تُصدرون شهادة تحليل (COA) لكل دُفعة عند الطلب؟",
+  "Do you maintain batch traceability from raw\nchemical to finished product delivered?":
+    "هل تحتفظون بنظام تتبع للدُفعات من المادة الخام حتى المنتج النهائي المسلَّم؟",
+  "Do you operate under a documented Quality\nManagement System (e.g. ISO 9001)?":
+    "هل تعملون وفق نظام إدارة جودة موثّق (مثل ISO 9001)؟",
+  "Do you have a product recall procedure in place?":
+    "هل لديكم إجراء لاستدعاء المنتج؟",
+  "Attach a sample Certificate of Analysis (COA)":
+    "إرفاق عينة من شهادة التحليل (COA)",
+  "Are your sanitizers / disinfectants approved for\nfood-contact surfaces (e.g. EPA / ECHA / FDA /\nESMA approval)?":
+    "هل مواد التعقيم/التطهير لديكم معتمدة للأسطح الملامسة للغذاء (EPA / ECHA / FDA / ESMA)؟",
+  "Do you provide recommended dilution rates,\ncontact time and rinse requirements in writing?":
+    "هل تقدمون نسب التخفيف ومدة التلامس ومتطلبات الشطف مكتوبة؟",
+  "Are your products halal-compliant where required\nfor food industry use?":
+    "هل منتجاتكم متوافقة مع متطلبات الحلال عند الاستخدام في قطاع الأغذية؟",
+  "Are chemicals stored separately from food and\nraw materials in your warehouse?":
+    "هل يتم تخزين الكيماويات بمعزل عن المواد الغذائية والخام في المستودع؟",
+  "Are transport drivers trained on ADR / hazardous\nmaterial handling for chemical deliveries?":
+    "هل سائقو النقل مدربون على التعامل مع المواد الخطرة (ADR) أثناء توصيل الكيماويات؟",
+  "Is there a documented emergency / spillage\nresponse procedure available?":
+    "هل يوجد إجراء موثّق للاستجابة للطوارئ / الانسكابات؟",
+
+  /* ───── Packaging ───── */
+  "Food-Contact Compliance": "مطابقة ملامسة الغذاء",
+  "Attach Compliance Documents": "إرفاق وثائق المطابقة",
+  "Production Hygiene & Traceability": "نظافة الإنتاج والتتبع",
+  "Storage & Delivery": "التخزين والتسليم",
+  "Are all materials supplied compliant with\nfood-contact regulations (e.g. EU 10/2011, FDA\n21 CFR, GSO / ESMA)?":
+    "هل جميع المواد المورّدة مطابقة للوائح ملامسة الغذاء (EU 10/2011 / FDA 21 CFR / GSO / ESMA)؟",
+  "Do you provide a Declaration of Compliance (DOC)\nwith every consignment?":
+    "هل ترفقون بيان المطابقة (DOC) مع كل شحنة؟",
+  "Have migration tests (overall & specific) been\nperformed and are reports available?":
+    "هل تم إجراء اختبارات الهجرة (العامة والنوعية) وهل التقارير متاحة؟",
+  "Are inks, adhesives and coatings used certified\nfor food-contact use?":
+    "هل الأحبار والمواد اللاصقة والطلاءات المستخدمة معتمدة للاستخدام الغذائي؟",
+  "Attach Declaration of Compliance (DOC)": "إرفاق بيان المطابقة (DOC)",
+  "Attach migration test reports (if available)": "إرفاق تقارير اختبارات الهجرة (إن وجدت)",
+  "Is your production facility certified to BRC\nPackaging, ISO 22000 / 15378 or equivalent?":
+    "هل منشأة الإنتاج معتمدة BRC Packaging / ISO 22000 / 15378 أو ما يعادلها؟",
+  "Are production areas segregated from sources of\ncontamination (wood, glass, chemicals)?":
+    "هل مناطق الإنتاج معزولة عن مصادر التلوث (خشب/زجاج/كيماويات)؟",
+  "Do you maintain batch traceability for raw\nmaterials, production and dispatch?":
+    "هل تحتفظون بتتبع الدُفعات للمواد الخام والإنتاج والشحن؟",
+  "Do you have documented pest control and\nhousekeeping procedures?":
+    "هل لديكم إجراءات موثّقة لمكافحة الآفات والنظافة العامة؟",
+  "Do you have a non-conformance / recall\nprocedure in place?":
+    "هل لديكم إجراء لعدم المطابقة / الاستدعاء؟",
+  "Is finished packaging stored off the floor in a\nclean, dry, pest-free environment?":
+    "هل يتم تخزين التعبئة النهائية بعيداً عن الأرض في بيئة نظيفة جافة خالية من الآفات؟",
+  "Is packaging shrink-wrapped / pallet-protected\nduring transport?":
+    "هل يتم حماية التعبئة بالتغليف الانكماشي / البليت أثناء النقل؟",
+
+  /* ───── Services ───── */
+  "Scope of Service": "نطاق الخدمة",
+  "Licensing, Training & Insurance": "التراخيص والتدريب والتأمين",
+  "Attach Licenses & Insurance": "إرفاق التراخيص والتأمين",
+  "Service Delivery & Records": "تقديم الخدمة والسجلات",
+  "Chemicals / Materials Used (if applicable)": "الكيماويات / المواد المستخدمة (إن وجدت)",
+  "Attach Sample Service Report / SDS": "إرفاق عينة تقرير خدمة / SDS",
+  "Describe the scope of services you provide (e.g. pest control, calibration, transport, waste, cleaning, maintenance, etc.)":
+    "اذكر نطاق الخدمات التي تقدمونها (مكافحة آفات / معايرة / نقل / نفايات / تنظيف / صيانة…)",
+  "Do you hold all relevant regulatory licenses /\npermits to operate (e.g. municipality, civil\ndefense, Dubai Municipality PCO)?":
+    "هل تمتلكون جميع التراخيص / التصاريح التنظيمية للعمل (البلدية / الدفاع المدني / PCO بلدية دبي)؟",
+  "Are all technicians/operators trained and\ncertified for the services they deliver?":
+    "هل جميع الفنيين/المشغّلين مدربون ومعتمدون للخدمات التي يقدمونها؟",
+  "Do you maintain valid public liability insurance\ncoverage for service operations?":
+    "هل لديكم تأمين مسؤولية عامة ساري لتغطية عمليات الخدمة؟",
+  "Are staff medically fit (valid health cards where\nrequired)?":
+    "هل الموظفون لائقون طبياً (بطاقات صحية سارية حيثما يتطلب الأمر)؟",
+  "Attach trade license / municipal permit / professional registration":
+    "إرفاق الرخصة التجارية / تصريح البلدية / التسجيل المهني",
+  "Attach liability insurance certificate (optional)":
+    "إرفاق شهادة تأمين المسؤولية (اختياري)",
+  "Do you issue a service report / certificate after\nevery visit, signed by the technician and client?":
+    "هل تُصدرون تقرير/شهادة خدمة بعد كل زيارة موقعة من الفني والعميل؟",
+  "Do you maintain service records, traceability and\nequipment calibration for at least 2 years?":
+    "هل تحتفظون بسجلات الخدمة والتتبع ومعايرة المعدات لمدة سنتين على الأقل؟",
+  "Do you follow a documented scope-of-work and\nmethod statement for each service?":
+    "هل تتبعون نطاق عمل وبيان طريقة موثّق لكل خدمة؟",
+  "Are all chemicals / materials used approved for\nfood-industry use and accompanied by SDS?":
+    "هل جميع الكيماويات/المواد المستخدمة معتمدة للاستخدام الغذائي ومرفقة ببطاقات SDS؟",
+  "Are equipment and tools used maintained,\ncalibrated and in a good state of repair?":
+    "هل المعدات والأدوات المستخدمة تخضع للصيانة والمعايرة وبحالة جيدة؟",
+  "Attach a sample service report / certificate (optional)":
+    "إرفاق عينة تقرير/شهادة خدمة (اختياري)",
+  "Attach SDS for chemicals used (if applicable)":
+    "إرفاق بطاقات SDS للكيماويات المستخدمة (إن وجدت)",
+
+  /* ───── Other (misc) ───── */
+  "General Quality & Compliance": "الجودة العامة والمطابقة",
+  "Attach Specifications": "إرفاق المواصفات",
+  "Do you operate under a documented Quality\nManagement System (ISO 9001 or equivalent)?":
+    "هل تعملون وفق نظام إدارة جودة موثّق (ISO 9001 أو ما يعادله)؟",
+  "Do products comply with relevant local / GCC\nregulations (SASO, ESMA, Emirates Authority)?":
+    "هل المنتجات مطابقة للوائح المحلية/الخليجية ذات الصلة (SASO / ESMA / هيئة الإمارات)؟",
+  "Do you provide product specifications / datasheets\nwith every shipment?":
+    "هل تزوّدون بمواصفات/بطاقات بيانات المنتج مع كل شحنة؟",
+  "Do you offer warranty / after-sales support on\nproducts supplied?":
+    "هل تقدمون ضماناً/دعماً لما بعد البيع للمنتجات المورّدة؟",
+  "Do you maintain batch / lot traceability?":
+    "هل تحتفظون بنظام تتبع للدُفعات؟",
+  "Do you have a documented non-conformance and\nreturn procedure?":
+    "هل لديكم إجراء موثّق لعدم المطابقة والإرجاع؟",
+  "Attach product specifications / datasheets":
+    "إرفاق مواصفات / بطاقات بيانات المنتج",
+
+  /* ───── Updated / new section titles ───── */
+  "Laboratory Tests": "الفحوصات المخبرية",
+  "Outside Testing": "الفحص الخارجي",
+  "HACCP Plans": "خطط HACCP",
+  "Process Controls": "ضوابط العمليات",
 };
 
 /* ===== translate helper ===== */
@@ -650,10 +1083,21 @@ export default function SupplierEvaluationPublic() {
   });
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [info, setInfo] = useState(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [validationErrors, setValidationErrors] = useState([]);
 
+  // ✅ supplier type — set by admin in Create, or selected by supplier here if missing.
+  // Determines which pages/blocks are rendered.
+  const [supplierType, setSupplierType] = useState("");
+  const [typeLocked, setTypeLocked] = useState(false); // true when admin set the type
+
+  const activeType = String(supplierType || "other").toLowerCase();
+  const visiblePages = useMemo(() => filterFormByType(activeType), [activeType]);
+
+  // Build a full init for ALL possible keys across all types (so state is stable when user switches type).
   const [fields, setFields] = useState(() => {
     const init = {};
     FORM.forEach((p) =>
@@ -707,17 +1151,29 @@ export default function SupplierEvaluationPublic() {
     const files = Array.from(fileList || []);
     if (!files.length || done) return;
     setMsg("");
+
+    // ✅ pre-validate all files
+    const valid = [];
+    const rejected = [];
+    for (const f of files) {
+      const err = validateFileForUpload(f);
+      if (err) rejected.push(err);
+      else valid.push(f);
+    }
+    if (rejected.length) setMsg(`❌ ${rejected.join(" | ")}`);
+    if (!valid.length) return;
+
     setSaving(true);
     try {
       const uploaded = [];
-      for (const f of files) {
+      for (const f of valid) {
         const url = await uploadViaServer(f);
         uploaded.push({ name: f.name, url });
       }
       setProductsList((prev) =>
         prev.map((p) => (p.id === id ? { ...p, files: [...p.files, ...uploaded] } : p))
       );
-      setMsg(t.uploadDone);
+      setMsg(rejected.length ? `⚠ ${uploaded.length} uploaded, ${rejected.length} rejected` : t.uploadDone);
     } catch (e) {
       setMsg(`❌ ${e?.message || "Upload failed"}`);
     } finally {
@@ -765,6 +1221,7 @@ export default function SupplierEvaluationPublic() {
   const load = async () => {
     setLoading(true);
     setMsg("");
+    setLoadError("");
     try {
       const data = await fetchJson(getInfoEndpoint(token), { method: "GET" });
 
@@ -773,6 +1230,18 @@ export default function SupplierEvaluationPublic() {
 
       const p = report?.payload || report?.payload_json || report?.data?.payload || report?.item?.payload || {};
 
+      // ✅ Server-side already-submitted check. Block re-submission even if localStorage
+      //    was cleared or a different browser/device is used.
+      const serverSubmitted =
+        !!p?.public?.submittedAt ||
+        !!p?.meta?.submitted ||
+        !!p?.public?.submission?.submittedAt;
+      if (serverSubmitted) {
+        try { localStorage.setItem(submittedKey, "1"); } catch {}
+        setDone(true);
+        return;
+      }
+
       const preFields = p?.fields && typeof p.fields === "object" ? p.fields : {};
       const preAnswers = p?.answers && typeof p.answers === "object" ? p.answers : {};
       const preAttachments = Array.isArray(p?.attachments) ? p.attachments : [];
@@ -780,6 +1249,20 @@ export default function SupplierEvaluationPublic() {
       // ✅ restore per-field attachments if present
       const preFieldAttachments =
         p?.fieldAttachments && typeof p.fieldAttachments === "object" && !Array.isArray(p.fieldAttachments) ? p.fieldAttachments : {};
+
+      // ✅ resolve supplier type (admin-set > legacy fields fallback)
+      //   Type is ALWAYS locked — only the admin decides at creation time.
+      //   Legacy tokens (created before this feature) default to "food".
+      const adminType =
+        p?.public?.supplierType ||
+        p?.meta?.supplierType ||
+        preFields?.supplier_type ||
+        "";
+      const normalizedType = String(adminType || "").toLowerCase().trim();
+      const validTypes = SUPPLIER_TYPE_OPTIONS.map((o) => o.value);
+      const resolvedType = validTypes.includes(normalizedType) ? normalizedType : "food";
+      setSupplierType(resolvedType);
+      setTypeLocked(true);
 
       setFields((prev) => {
         const out = { ...prev };
@@ -838,7 +1321,9 @@ export default function SupplierEvaluationPublic() {
         );
       }
     } catch (e) {
-      setMsg(`❌ ${e?.message || "Failed to load"} (token: ${token})`);
+      const errMsg = `${e?.message || "Failed to load"} (token: ${token})`;
+      setMsg(`❌ ${errMsg}`);
+      setLoadError(errMsg);
       setInfo(null);
     } finally {
       setLoading(false);
@@ -858,15 +1343,27 @@ export default function SupplierEvaluationPublic() {
     if (!files.length || done) return;
 
     setMsg("");
+
+    // ✅ pre-validate all files
+    const valid = [];
+    const rejected = [];
+    for (const f of files) {
+      const err = validateFileForUpload(f);
+      if (err) rejected.push(err);
+      else valid.push(f);
+    }
+    if (rejected.length) setMsg(`❌ ${rejected.join(" | ")}`);
+    if (!valid.length) return;
+
     setSaving(true);
     try {
       const uploaded = [];
-      for (const f of files) {
+      for (const f of valid) {
         const url = await uploadViaServer(f);
         uploaded.push({ name: f.name, url });
       }
       setAttachments((prev) => [...prev, ...uploaded]);
-      setMsg(t.uploadDone);
+      setMsg(rejected.length ? `⚠ ${uploaded.length} uploaded, ${rejected.length} rejected` : t.uploadDone);
     } catch (e) {
       setMsg(`❌ ${e?.message || "Upload failed"}`);
     } finally {
@@ -884,10 +1381,22 @@ export default function SupplierEvaluationPublic() {
     if (!files.length || done) return;
 
     setMsg("");
+
+    // ✅ pre-validate all files
+    const valid = [];
+    const rejected = [];
+    for (const f of files) {
+      const err = validateFileForUpload(f);
+      if (err) rejected.push(err);
+      else valid.push(f);
+    }
+    if (rejected.length) setMsg(`❌ ${rejected.join(" | ")}`);
+    if (!valid.length) return;
+
     setSaving(true);
     try {
       const uploaded = [];
-      for (const f of files) {
+      for (const f of valid) {
         const url = await uploadViaServer(f);
         uploaded.push({ name: f.name, url });
       }
@@ -895,7 +1404,7 @@ export default function SupplierEvaluationPublic() {
         const cur = Array.isArray(prev?.[fieldKey]) ? prev[fieldKey] : [];
         return { ...prev, [fieldKey]: [...cur, ...uploaded] };
       });
-      setMsg(t.uploadDone);
+      setMsg(rejected.length ? `⚠ ${uploaded.length} uploaded, ${rejected.length} rejected` : t.uploadDone);
     } catch (e) {
       setMsg(`❌ ${e?.message || "Upload failed"}`);
     } finally {
@@ -916,20 +1425,116 @@ export default function SupplierEvaluationPublic() {
     setFieldAttachments((prev) => ({ ...prev, [fieldKey]: [] }));
   };
 
+  /* ===== Required-field validation ===== */
+  const validateBeforeSubmit = () => {
+    const errs = [];
+    const L = isRTL;
+
+    const companyName = String(fields.company_name || "").trim();
+    if (!companyName || !/\S/.test(companyName) || companyName.length < 2) {
+      errs.push(L ? "اسم الشركة مطلوب (حرفان على الأقل)" : "Company name is required (at least 2 characters)");
+    }
+
+    const contactName = String(fields.tqm_contact_name || "").trim();
+    if (!contactName) {
+      errs.push(L ? "اسم جهة الاتصال (مسؤول الجودة/الفني) مطلوب" : "Contact person (Technical / Quality Manager) name is required");
+    }
+
+    const tel = String(fields.tqm_telephone || "").trim();
+    if (!tel) {
+      errs.push(L ? "رقم هاتف جهة الاتصال مطلوب" : "Contact telephone number is required");
+    }
+
+    // At least one product/service with a name
+    const hasProduct = Array.isArray(productsList) && productsList.some((p) => String(p?.name || "").trim().length > 0);
+    if (!hasProduct) {
+      errs.push(L ? "يجب إضافة منتج/خدمة واحدة على الأقل (الاسم)" : "At least one product/service must be added (with a name)");
+    }
+
+    // Declaration must be signed
+    if (!declaration?.agreed) {
+      errs.push(L ? "يجب تأكيد الإقرار قبل الإرسال" : "Declaration must be confirmed before submission");
+    }
+    if (declaration?.agreed && !String(declaration?.name || "").trim()) {
+      errs.push(L ? "اسم الموقِّع على الإقرار مطلوب" : "Declaration signer name is required");
+    }
+
+    return errs;
+  };
+
   const submit = async () => {
     if (done) return;
     setMsg("");
+    setValidationErrors([]);
+
+    // ✅ required-field validation
+    const errs = validateBeforeSubmit();
+    if (errs.length) {
+      setValidationErrors(errs);
+      setMsg(`❌ ${isRTL ? "يوجد " + errs.length + " خطأ في النموذج" : `${errs.length} validation error(s)`}`);
+      // scroll to top so user sees errors banner
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+      return;
+    }
+
     setSaving(true);
     try {
+      // ✅ re-check server-side if already submitted to avoid double-submit races
+      try {
+        const check = await fetchJson(getInfoEndpoint(token), { method: "GET" });
+        const rep = check?.report || check?.item || check?.data || check;
+        const cp = rep?.payload || rep?.payload_json || {};
+        const alreadySubmitted =
+          !!cp?.public?.submittedAt ||
+          !!cp?.meta?.submitted ||
+          !!cp?.public?.submission?.submittedAt;
+        if (alreadySubmitted) {
+          try { localStorage.setItem(submittedKey, "1"); } catch {}
+          setDone(true);
+          setMsg(isRTL ? "✅ تم استلام النموذج مسبقاً" : "✅ This form was already submitted");
+          return;
+        }
+      } catch {
+        // if the check fails, proceed (not a hard block)
+      }
+
+      // ✅ Only send data for keys visible in the chosen supplier type.
+      // Prevents inflated N/A counts and stale values from other types polluting the submission.
+      const { fields: visibleFieldKeys, answers: visibleAnswerKeys } = collectKeysForType(activeType);
+      const filteredFields = {};
+      visibleFieldKeys.forEach((k) => {
+        if (Object.prototype.hasOwnProperty.call(fields, k)) filteredFields[k] = fields[k];
+      });
+      // Preserve identity fields that exist on all types
+      ["company_name", "company_address", "company_head_office_address",
+       "tqm_contact_name", "tqm_position_held", "tqm_telephone", "total_employees"
+      ].forEach((k) => {
+        if (Object.prototype.hasOwnProperty.call(fields, k)) filteredFields[k] = fields[k];
+      });
+
+      const filteredAnswers = {};
+      visibleAnswerKeys.forEach((k) => {
+        if (Object.prototype.hasOwnProperty.call(answers, k)) filteredAnswers[k] = answers[k];
+      });
+
+      const filteredFieldAttachments = {};
+      const visibleFieldKeySet = new Set(visibleFieldKeys);
+      Object.keys(fieldAttachments || {}).forEach((k) => {
+        if (visibleFieldKeySet.has(k)) filteredFieldAttachments[k] = fieldAttachments[k];
+      });
+
       await fetchJson(getSubmitEndpoint(token), {
         method: "POST",
         body: JSON.stringify({
-          // ✅ FIX: add recordDate so Results page can show it reliably
           recordDate: todayISO(),
-          fields,
-          answers,
+          fields: {
+            ...filteredFields,
+            supplier_type: activeType,
+          },
+          supplierType: activeType,
+          answers: filteredAnswers,
           attachments,
-          fieldAttachments,
+          fieldAttachments: filteredFieldAttachments,
           productsList,
           declaration,
         }),
@@ -939,7 +1544,7 @@ export default function SupplierEvaluationPublic() {
         localStorage.setItem(submittedKey, "1");
       } catch {}
       setDone(true);
-      setMsg("✅ Submitted successfully");
+      setMsg(isRTL ? "✅ تم الإرسال بنجاح" : "✅ Submitted successfully");
     } catch (e) {
       setMsg(`❌ ${e?.message || "Submit failed"}`);
     } finally {
@@ -1026,7 +1631,7 @@ export default function SupplierEvaluationPublic() {
   /* ===================== styles (magic touch) ===================== */
   const page = {
     minHeight: "100vh",
-    padding: 18,
+    padding: "20px 24px",
     direction: isRTL ? "rtl" : "ltr",
     fontFamily: "Cairo, system-ui, -apple-system, Segoe UI, Arial",
     background: THEME.bg,
@@ -1036,12 +1641,12 @@ export default function SupplierEvaluationPublic() {
 
   const card = {
     width: "100%",
-    maxWidth: 980,
+    maxWidth: "100%",
     margin: "0 auto",
     background: THEME.cardBg,
     border: `1px solid ${THEME.border}`,
     borderRadius: 18,
-    padding: 18,
+    padding: 22,
     boxShadow: "0 16px 38px rgba(2,6,23,0.10)",
     backdropFilter: "blur(10px)",
     boxSizing: "border-box",
@@ -1056,32 +1661,32 @@ export default function SupplierEvaluationPublic() {
   };
 
   const pill = {
-    padding: "8px 12px",
+    padding: "9px 14px",
     borderRadius: 999,
     border: `1px solid ${THEME.border}`,
     background: "rgba(255,255,255,0.92)",
     fontWeight: 900,
-    fontSize: 13,
+    fontSize: 15,
     display: "inline-flex",
     alignItems: "center",
     gap: 10,
   };
 
   const section = {
-    marginTop: 16,
+    marginTop: 18,
     borderTop: `1px solid ${THEME.border}`,
-    paddingTop: 14,
+    paddingTop: 16,
   };
 
   const input = {
     width: "100%",
     borderRadius: 14,
     border: `1px solid ${THEME.border}`,
-    padding: "12px 14px",
+    padding: "14px 16px",
     outline: "none",
     background: "#fff",
     fontFamily: "inherit",
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: 800,
     boxSizing: "border-box",
     boxShadow: "0 1px 0 rgba(2,6,23,0.04) inset",
@@ -1089,19 +1694,19 @@ export default function SupplierEvaluationPublic() {
 
   const textarea = {
     ...input,
-    minHeight: 96,
+    minHeight: 110,
     resize: "vertical",
-    lineHeight: 1.5,
+    lineHeight: 1.55,
   };
 
   const btn = {
     border: `1px solid ${THEME.border}`,
     background: "#fff",
     borderRadius: 12,
-    padding: "10px 12px",
+    padding: "11px 14px",
     cursor: "pointer",
     fontWeight: 900,
-    fontSize: 14,
+    fontSize: 16,
   };
 
   const btnSoft = {
@@ -1111,15 +1716,15 @@ export default function SupplierEvaluationPublic() {
 
   const btnPrimary = (disabled) => ({
     ...btn,
-    padding: "12px 14px",
-    fontSize: 15,
+    padding: "14px 18px",
+    fontSize: 17,
     background: disabled ? "#f1f5f9" : "linear-gradient(135deg, rgba(14,165,233,0.18), rgba(34,197,94,0.16))",
     border: disabled ? `1px solid ${THEME.border}` : "1px solid rgba(34,197,94,0.28)",
     cursor: disabled ? "not-allowed" : "pointer",
   });
 
   const toggleBtn = (active, kind) => {
-    const base = { ...btn, minWidth: 96, padding: "10px 14px" };
+    const base = { ...btn, minWidth: 108, padding: "12px 16px", fontSize: 16 };
     if (!active) return base;
     if (kind === "yes") return { ...base, background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.30)" };
     if (kind === "no") return { ...base, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.28)" };
@@ -1130,22 +1735,22 @@ export default function SupplierEvaluationPublic() {
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
-    padding: "6px 10px",
+    padding: "7px 12px",
     borderRadius: 999,
     border: `1px solid ${THEME.border}`,
     background: "rgba(2,6,23,0.03)",
     color: THEME.muted,
     fontWeight: 900,
-    fontSize: 12,
+    fontSize: 14,
   });
 
   const fieldWrap = {
     display: "grid",
-    gap: 8,
+    gap: 10,
   };
 
   const labelStyle = {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: 900,
     color: "#334155",
     whiteSpace: "pre-wrap",
@@ -1275,7 +1880,68 @@ export default function SupplierEvaluationPublic() {
   if (loading) {
     return (
       <div style={page}>
-        <div style={card}>{t.loading}</div>
+        <div style={card}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                border: "3px solid rgba(14,165,233,0.25)",
+                borderTopColor: "rgba(14,165,233,1)",
+                animation: "qcs-spin 0.8s linear infinite",
+              }}
+            />
+            <div style={{ fontWeight: 900, fontSize: 15 }}>{t.loading}</div>
+          </div>
+          <style>{`@keyframes qcs-spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ Load error → show Retry button (not stuck)
+  if (!loading && loadError && !info) {
+    return (
+      <div style={page}>
+        <div style={card}>
+          <div style={{ fontWeight: 900, fontSize: 18, color: "#991b1b", marginBottom: 8 }}>
+            {isRTL ? "⚠ تعذّر تحميل النموذج" : "⚠ Failed to load the form"}
+          </div>
+          <div style={{ color: THEME.muted, fontSize: 13, fontWeight: 800, lineHeight: 1.6, marginBottom: 12 }}>
+            {loadError}
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={load}
+              style={{
+                ...btn,
+                background: "linear-gradient(135deg, rgba(14,165,233,0.18), rgba(34,197,94,0.16))",
+                border: "1px solid rgba(34,197,94,0.28)",
+                padding: "12px 18px",
+              }}
+            >
+              {isRTL ? "🔄 إعادة المحاولة" : "🔄 Retry"}
+            </button>
+            <span style={pill}>
+              {t.lang}:
+              <button
+                onClick={() => setLang("en")}
+                style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "en" ? 1 : 0.55 }}
+              >
+                EN
+              </button>
+              <span style={{ opacity: 0.35 }}>•</span>
+              <button
+                onClick={() => setLang("ar")}
+                style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900, opacity: lang === "ar" ? 1 : 0.55 }}
+              >
+                AR
+              </button>
+            </span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1285,7 +1951,7 @@ export default function SupplierEvaluationPublic() {
       <div style={page}>
         <div style={card}>
           <div style={topbar}>
-            <div style={{ fontWeight: 900, fontSize: 22 }}>{t.thankTitle}</div>
+            <div style={{ fontWeight: 900, fontSize: 28 }}>{t.thankTitle}</div>
 
             <span style={pill}>
               {t.lang}:
@@ -1305,8 +1971,8 @@ export default function SupplierEvaluationPublic() {
             </span>
           </div>
 
-          <div style={{ marginTop: 10, color: THEME.muted, fontWeight: 900 }}>{t.thankSub}</div>
-          <div style={{ marginTop: 6, color: THEME.muted, fontWeight: 900, fontSize: 13 }}>{t.closeNote}</div>
+          <div style={{ marginTop: 12, color: THEME.muted, fontWeight: 900, fontSize: 17 }}>{t.thankSub}</div>
+          <div style={{ marginTop: 6, color: THEME.muted, fontWeight: 900, fontSize: 15 }}>{t.closeNote}</div>
 
           <div style={{ marginTop: 14, padding: 12, borderRadius: 14, border: `1px solid ${THEME.border}`, background: "#fff" }}>
             <div style={{ fontSize: 12, color: THEME.muted, fontWeight: 900 }}>
@@ -1335,8 +2001,8 @@ export default function SupplierEvaluationPublic() {
       <div style={card}>
         <div style={topbar}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 22, color: THEME.text }}>{t.title}</div>
-            <div style={{ marginTop: 6, color: THEME.muted, fontSize: 12, fontWeight: 900 }}>
+            <div style={{ fontWeight: 900, fontSize: 26, color: THEME.text }}>{t.title}</div>
+            <div style={{ marginTop: 6, color: THEME.muted, fontSize: 14, fontWeight: 900 }}>
               {t.token}: <b>{token}</b> • {t.link}: <span style={{ wordBreak: "break-word" }}>{shareUrl}</span>
             </div>
           </div>
@@ -1363,6 +2029,28 @@ export default function SupplierEvaluationPublic() {
           <div style={{ marginTop: 12, fontWeight: 900, color: msg.startsWith("✅") ? "#065f46" : "#991b1b" }}>{msg}</div>
         ) : null}
 
+        {/* ===== Validation errors banner ===== */}
+        {validationErrors.length > 0 ? (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid rgba(239,68,68,0.35)",
+              background: "rgba(239,68,68,0.05)",
+            }}
+          >
+            <div style={{ fontWeight: 900, color: "#991b1b", marginBottom: 6 }}>
+              {isRTL ? "يرجى تصحيح الأخطاء التالية قبل الإرسال:" : "Please fix the following before submission:"}
+            </div>
+            <ul style={{ margin: 0, paddingInlineStart: 20, color: "#7f1d1d", fontWeight: 700, fontSize: 13, lineHeight: 1.7 }}>
+              {validationErrors.map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {/* ===== Document header — once only ===== */}
         <div style={{
           marginTop: 16,
@@ -1380,25 +2068,50 @@ export default function SupplierEvaluationPublic() {
             isRTL ? "الجهة المالكة: QA" : "Owned by: QA",
             isRTL ? "المعتمد من: المدير" : "Authorised By: Director",
           ].map((item, i) => (
-            <span key={i} style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+            <span key={i} style={{ fontSize: 14, fontWeight: 700, color: "#475569" }}>
               {i > 0 && <span style={{ marginInlineEnd: 24, color: "#cbd5e1" }}>|</span>}
               {item}
             </span>
           ))}
         </div>
 
+        {/* ===== Supplier Type (READ-ONLY — set by admin only) ===== */}
+        <div
+          style={{
+            marginTop: 14,
+            padding: 14,
+            borderRadius: 14,
+            border: "1px solid rgba(34,197,94,0.30)",
+            background: "rgba(34,197,94,0.05)",
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 17, color: THEME.text, marginBottom: 8 }}>
+            {isRTL ? "نوع المورد" : "Supplier Type"}
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#14532d" }}>
+            ✅ {SUPPLIER_TYPE_OPTIONS.find((o) => o.value === activeType)
+              ? (isRTL
+                  ? SUPPLIER_TYPE_OPTIONS.find((o) => o.value === activeType).labelAr
+                  : SUPPLIER_TYPE_OPTIONS.find((o) => o.value === activeType).labelEn)
+              : activeType}
+            <span style={{ marginInlineStart: 8, fontSize: 13, color: "#64748b", fontWeight: 700 }}>
+              ({isRTL ? "محدَّد من قِبل الجهة المُصدِرة — غير قابل للتعديل" : "set by issuer — not editable"})
+            </span>
+          </div>
+        </div>
+
         <div style={section}>
-          {FORM.map((p, pIdx) => (
-            <div key={pIdx} style={{ marginTop: 14, ...box("#fff") }}>
+          {visiblePages.map((p, pIdx) => (
+            <div key={pIdx} style={{ marginTop: 16, ...box("#fff") }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <div style={{ fontWeight: 900, color: THEME.text, fontSize: 14 }}>{tr(lang, p.pageTitle)}</div>
-                <div style={badge("Page")}>{String(pIdx + 1)}/5</div>
+                <div style={{ fontWeight: 900, color: THEME.text, fontSize: 17 }}>{tr(lang, p.pageTitle)}</div>
+                <div style={badge("Page")}>{String(pIdx + 1)}/{visiblePages.length}</div>
               </div>
 
-              <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+              <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
                 {p.blocks.filter((b) => b.type !== "info").map((b, bIdx) => (
                   <div key={bIdx} style={panel(toneByTitle(b.title))}>
-                    <div style={{ fontWeight: 900, color: THEME.text, fontSize: 15 }}>{tr(lang, b.title)}</div>
+                    <div style={{ fontWeight: 900, color: THEME.text, fontSize: 17 }}>{tr(lang, b.title)}</div>
 
                     {b.type === "fields" ? (
                       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
@@ -1654,7 +2367,7 @@ export default function SupplierEvaluationPublic() {
                                 borderTop: `1px dashed ${THEME.border}`,
                               }}
                             >
-                              <div style={{ fontWeight: 900, color: THEME.text, whiteSpace: "pre-wrap", fontSize: 15 }}>{tr(lang, it.q)}</div>
+                              <div style={{ fontWeight: 900, color: THEME.text, whiteSpace: "pre-wrap", fontSize: 17, lineHeight: 1.55 }}>{tr(lang, it.q)}</div>
 
                               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                                 <button type="button" style={toggleBtn(v === true, "yes")} onClick={() => onToggle(it.key, true)}>
@@ -1671,7 +2384,7 @@ export default function SupplierEvaluationPublic() {
                                   style={{
                                     marginLeft: isRTL ? 0 : 6,
                                     marginRight: isRTL ? 6 : 0,
-                                    fontSize: 12,
+                                    fontSize: 14,
                                     fontWeight: 900,
                                     color: THEME.muted,
                                   }}
@@ -1756,11 +2469,41 @@ export default function SupplierEvaluationPublic() {
 
         {/* Submit */}
         <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ color: THEME.muted, fontWeight: 900, fontSize: 12 }}>{info?.created_at ? `${isRTL ? "تم الإنشاء:" : "Created:"} ${String(info.created_at)}` : ""}</div>
+          <div style={{ color: THEME.muted, fontWeight: 900, fontSize: 12 }}>
+            {info?.created_at ? `${isRTL ? "تم الإنشاء:" : "Created:"} ${String(info.created_at)}` : ""}
+          </div>
 
-          <button style={btnPrimary(saving)} onClick={submit} disabled={saving || done}>
-            {saving ? t.submitting : t.submit}
+          <button
+            style={{
+              ...btnPrimary(saving),
+              opacity: saving ? 0.55 : 1,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+            onClick={submit}
+            disabled={saving || done}
+          >
+            {saving ? (
+              <>
+                <span
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: "50%",
+                    border: "2px solid rgba(15,23,42,0.25)",
+                    borderTopColor: "rgba(15,23,42,0.75)",
+                    display: "inline-block",
+                    animation: "qcs-spin-btn 0.8s linear infinite",
+                  }}
+                />
+                {t.submitting}
+              </>
+            ) : (
+              t.submit
+            )}
           </button>
+          <style>{`@keyframes qcs-spin-btn { to { transform: rotate(360deg); } }`}</style>
         </div>
       </div>
 
