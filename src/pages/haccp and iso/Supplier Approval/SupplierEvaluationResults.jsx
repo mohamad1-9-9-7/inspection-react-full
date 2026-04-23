@@ -87,6 +87,19 @@ const UI = {
     allTypes: "All Types",
     allergenDeclaration: "Allergens declared",
     serviceScope: "Service Scope",
+    downloadPdf: "⬇ Download PDF",
+    allFields: "All Submitted Fields",
+    noDeclaration: "Declaration not signed / not received from supplier",
+    notProvided: "— not provided",
+    editNotes: "✏ Edit Notes",
+    addNotes: "➕ Add Notes",
+    saveNotes: "💾 Save",
+    cancelEdit: "✖ Cancel",
+    savingNotes: "Saving...",
+    notesSaved: "Notes saved ✅",
+    notesPlaceholder: "Internal notes for QA / Admin (not visible to supplier)...",
+    noNotes: "No internal notes yet.",
+    lastEdited: "Last edited",
   },
   ar: {
     title: "نتائج تقييم الموردين (المرسلة)",
@@ -148,6 +161,19 @@ const UI = {
     allTypes: "جميع الأنواع",
     allergenDeclaration: "مسببات الحساسية المصرَّح بها",
     serviceScope: "نطاق الخدمة",
+    downloadPdf: "⬇ تنزيل PDF",
+    allFields: "جميع الحقول المُرسَلة",
+    noDeclaration: "الإقرار غير موقَّع / لم يصل من المورد",
+    notProvided: "— غير متوفر",
+    editNotes: "✏ تعديل الملاحظات",
+    addNotes: "➕ إضافة ملاحظة",
+    saveNotes: "💾 حفظ",
+    cancelEdit: "✖ إلغاء",
+    savingNotes: "جاري الحفظ...",
+    notesSaved: "تم حفظ الملاحظات ✅",
+    notesPlaceholder: "ملاحظات داخلية لقسم الجودة / الإدارة (لا تظهر للمورد)...",
+    noNotes: "لا توجد ملاحظات داخلية بعد.",
+    lastEdited: "آخر تعديل",
   },
 };
 
@@ -335,6 +361,21 @@ async function listReportsByType(type) {
   if (Array.isArray(data?.items)) return data.items;
   if (Array.isArray(data?.data)) return data.data;
   return [];
+}
+
+/* ✅ UPDATE report (PUT full payload) */
+async function updateReportPayload(id, payload) {
+  if (!id) throw new Error("Missing report id");
+  const res = await fetch(`${REPORTS_URL}/${encodeURIComponent(String(id))}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ payload }),
+  });
+  const data = await safeJson(res);
+  if (!res.ok || data?.ok === false) {
+    throw new Error(data?.message || data?.error || `Failed to update report (${res.status})`);
+  }
+  return data;
 }
 
 /* ✅ DELETE report */
@@ -782,6 +823,47 @@ function guessType(file) {
   return { isPdf, isImage, isText, isDoc, ext, ct, url };
 }
 
+/* ===================== Full Text-Field Labels (for ALL fields in the payload) ===================== */
+const TEXT_FIELD_LABELS = {
+  /* Company / Contact */
+  company_name: { en: "Company Name", ar: "اسم الشركة" },
+  company_address: { en: "Address", ar: "العنوان" },
+  company_head_office_address: { en: "Head Office Address (if different)", ar: "عنوان المكتب الرئيسي (إن اختلف)" },
+  tqm_contact_name: { en: "Technical / Quality Manager — Name", ar: "اسم مسؤول الجودة / الفني" },
+  tqm_position_held: { en: "Position Held", ar: "المنصب الوظيفي" },
+  tqm_telephone: { en: "Telephone No", ar: "رقم الهاتف" },
+  total_employees: { en: "Total Number of Employees", ar: "إجمالي عدد الموظفين" },
+  supplier_email: { en: "Supplier Email", ar: "بريد المورد الإلكتروني" },
+
+  /* Certification & Hygiene */
+  certified_question: { en: "Facilities/products certified?", ar: "هل المرافق/المنتجات معتمدة؟" },
+  certified_if_yes: { en: "If yes, which scheme(s)?", ar: "إن نعم، أي نظام/شهادة؟" },
+  certificates_copy: { en: "Certificates Copy / Notes", ar: "نسخة الشهادات / ملاحظات" },
+  hygiene_training_question: { en: "Hygiene / Safety training received?", ar: "هل تم تدريب الموظفين على النظافة / السلامة؟" },
+
+  /* Food-specific */
+  haccp_copy_note: { en: "HACCP Plans Copy / Note", ar: "نسخة خطط HACCP / ملاحظة" },
+  lab_tests_list: { en: "Lab Tests List", ar: "قائمة الفحوصات المخبرية" },
+  outside_testing_details: { en: "Outside/Contract Testing Details", ar: "تفاصيل الفحص الخارجي/المتعاقد" },
+  allergen_declaration: { en: "Allergens Declared", ar: "مسببات الحساسية المصرَّح بها" },
+
+  /* Services */
+  service_scope: { en: "Service Scope", ar: "نطاق الخدمة" },
+
+  /* Supplier type (technical) */
+  supplier_type: { en: "Supplier Type (tech)", ar: "نوع المورد (تقني)" },
+};
+
+function getTextFieldLabel(key, lang) {
+  const m = TEXT_FIELD_LABELS[key];
+  if (m) return lang === "ar" ? m.ar : m.en;
+  // fallback — humanize the key
+  return String(key || "")
+    .replace(/^att_/i, "Attachment: ")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /* ✅ Field attachment labels (keys used in SupplierEvaluationPublic) */
 const FIELD_ATTACHMENT_LABELS = {
   att_product_specs: { en: "Product specification / spec sheet", ar: "مواصفات المنتج / ورقة المواصفات" },
@@ -1079,6 +1161,12 @@ export default function SupplierEvaluationResults() {
   const [deletingId, setDeletingId] = useState(null);
   const [openAttachment, setOpenAttachment] = useState(null);
 
+  /* ===== Notes editing state ===== */
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesFlash, setNotesFlash] = useState("");
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -1184,12 +1272,23 @@ export default function SupplierEvaluationResults() {
 
   // ✅ declaration
   const openedDeclaration = useMemo(() => {
+    const rep = getReportObj(opened) || {};
+    // Try many server nesting variants — supplier-app sometimes wraps submission differently
     const d =
       openedPayload?.declaration ||
       openedPayload?.public?.submission?.declaration ||
+      openedPayload?.public?.declaration ||
+      openedPayload?.submission?.declaration ||
+      openedPayload?.meta?.declaration ||
+      rep?.declaration ||
+      rep?.data?.declaration ||
       null;
-    return d && typeof d === "object" ? d : null;
-  }, [openedPayload]);
+    const obj = asObject(d) || (d && typeof d === "object" && !Array.isArray(d) ? d : null);
+    return obj;
+  }, [openedPayload, opened]);
+
+  // Resolve supplier type for the opened report (used in PDF + section)
+  const openedSupplierType = useMemo(() => getSupplierType(openedPayload), [openedPayload]);
 
   // ✅ general attachments
   const openedAttachments = useMemo(() => getAttachmentsFromReport(opened), [opened]);
@@ -1239,6 +1338,330 @@ export default function SupplierEvaluationResults() {
     if (!token) return "";
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     return `${origin}/supplier-approval/t/${encodeURIComponent(String(token))}`;
+  };
+
+  /* ===================== PDF Print (opens a new window with a clean printable layout) ===================== */
+  const downloadPdf = () => {
+    if (!opened) return;
+    const p = getPayloadObj(opened) || {};
+    const rep = getReportObj(opened) || {};
+    const f = openedFields || {};
+    const ans = openedAnswers || {};
+    const decl = openedDeclaration || null;
+    const prodList = openedProductsList || [];
+    const fa = openedFieldAttachments || {};
+    const generalAtts = openedAttachments || [];
+    const supType = openedSupplierType || "";
+    const supTypeLabel = supType ? getSupplierTypeLabel(supType, lang) : (lang === "ar" ? "غير محدَّد" : "Unspecified");
+    const submittedAt = getSubmittedAtIso(opened) || p?.meta?.savedAt || "";
+    const recDate = getRecordDate(opened) || "—";
+    const counts = calcCounts(ans);
+    const dir = isRTL ? "rtl" : "ltr";
+
+    const esc = (s) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+    /* Build text fields (only non-empty) */
+    const textFieldKeys = Object.keys(f || {}).filter((k) => {
+      if (/^att_/i.test(k)) return false;
+      const v = f[k];
+      if (v === null || v === undefined) return false;
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === "object") return false;
+      return String(v).trim().length > 0;
+    });
+    const fieldsHtml = textFieldKeys
+      .map((k) => {
+        const label = esc(getTextFieldLabel(k, lang));
+        const value = esc(f[k]);
+        return `
+          <div class="kv">
+            <div class="k">${label}</div>
+            <div class="v">${value.replace(/\n/g, "<br/>")}</div>
+          </div>`;
+      })
+      .join("");
+
+    /* Products */
+    const productsHtml = prodList.length
+      ? `<div class="section prods">
+           <div class="section-title">🛒 ${esc(lang === "ar" ? "المنتجات / الخدمات المراد توريدها" : "Products / Services to be Supplied")}</div>
+           <table class="tbl">
+             <thead><tr><th style="width:60px">#</th><th>${esc(lang === "ar" ? "الاسم" : "Name")}</th><th>${esc(lang === "ar" ? "مرفقات" : "Attachments")}</th></tr></thead>
+             <tbody>
+               ${prodList
+                 .map(
+                   (pr, i) => `
+                 <tr>
+                   <td>${i + 1}</td>
+                   <td>${esc(pr?.name || "—")}</td>
+                   <td>${
+                     Array.isArray(pr?.files) && pr.files.length
+                       ? pr.files.map((ff) => `<div>📎 ${esc(ff?.name || "File")}</div>`).join("")
+                       : `<span class="muted">—</span>`
+                   }</td>
+                 </tr>`
+                 )
+                 .join("")}
+             </tbody>
+           </table>
+         </div>`
+      : "";
+
+    /* Attachments (general + by field) */
+    const attachmentsHtml = (() => {
+      const parts = [];
+      if (generalAtts.length) {
+        parts.push(`
+          <div>
+            <div class="sub-title">${esc(lang === "ar" ? "مرفقات عامة" : "General Attachments")}</div>
+            <ul>${generalAtts.map((a) => `<li>📎 ${esc(a?.name || a?.filename || "File")}</li>`).join("")}</ul>
+          </div>`);
+      }
+      Object.keys(fa || {}).forEach((k) => {
+        const files = Array.isArray(fa[k]) ? fa[k] : [];
+        if (!files.length) return;
+        const lbl = (FIELD_ATTACHMENT_LABELS[k] && (lang === "ar" ? FIELD_ATTACHMENT_LABELS[k].ar : FIELD_ATTACHMENT_LABELS[k].en)) || k;
+        parts.push(`
+          <div>
+            <div class="sub-title">${esc(lbl)}</div>
+            <ul>${files.map((ff) => `<li>📎 ${esc(ff?.name || ff?.filename || "File")}</li>`).join("")}</ul>
+          </div>`);
+      });
+      if (!parts.length) return "";
+      return `<div class="section atts">
+        <div class="section-title">📎 ${esc(lang === "ar" ? "المرفقات" : "Attachments")}</div>
+        ${parts.join("")}
+      </div>`;
+    })();
+
+    /* YES/NO answers (only those that exist) */
+    const answerRows = QUESTION_ORDER.filter((k) => Object.prototype.hasOwnProperty.call(ans, k));
+    const unknownAns = Object.keys(ans).filter((k) => !QUESTION_ORDER.includes(k));
+    const allAnsKeys = [...answerRows, ...unknownAns];
+    const answersHtml = allAnsKeys.length
+      ? `<div class="section qs">
+           <div class="section-title">❓ ${esc(lang === "ar" ? "الأسئلة (نعم / لا / غير متاح)" : "Questions (YES / NO / N/A)")}</div>
+           <div class="summary">
+             ✅ ${t.yes}: <b>${counts.yesCount}</b> &nbsp;•&nbsp;
+             ❌ ${t.no}: <b>${counts.noCount}</b> &nbsp;•&nbsp;
+             ➖ ${t.na}: <b>${counts.naCount}</b> &nbsp;•&nbsp;
+             ${t.totalQ}: <b>${counts.total}</b>
+           </div>
+           <table class="tbl">
+             <thead><tr><th style="width:70px">#</th><th>${esc(lang === "ar" ? "السؤال" : "Question")}</th><th style="width:110px">${esc(t.answer)}</th></tr></thead>
+             <tbody>
+               ${allAnsKeys
+                 .map((k, i) => {
+                   const qEn = QUESTIONS[k] || k;
+                   const qAr = AR_QUESTIONS[k] || qEn;
+                   const question = lang === "ar" ? qAr : qEn;
+                   const v = ans[k];
+                   const cls = v === true ? "a-yes" : v === false ? "a-no" : "a-na";
+                   const label = answerLabel(v, lang);
+                   return `<tr>
+                     <td>${i + 1}</td>
+                     <td class="q">${esc(question).replace(/\n/g, "<br/>")} <span class="tag">(${esc(k)})</span></td>
+                     <td><span class="ans ${cls}">${esc(label)}</span></td>
+                   </tr>`;
+                 })
+                 .join("")}
+             </tbody>
+           </table>
+         </div>`
+      : "";
+
+    /* Declaration */
+    const declHtml = decl
+      ? `<div class="section decl ${decl.agreed ? "ok" : "bad"}">
+           <div class="section-title">${decl.agreed ? "✅" : "⚠"} ${esc(lang === "ar" ? "الإقرار" : "Declaration")}</div>
+           <div>${esc(decl.agreed ? (lang === "ar" ? "تم الإقرار والموافقة" : "Declaration confirmed") : (lang === "ar" ? "لم يتم تأكيد الإقرار" : "Not confirmed"))}</div>
+           <div class="kvs">
+             ${decl.name ? `<div class="kv"><div class="k">${esc(lang === "ar" ? "الاسم" : "Name")}</div><div class="v">${esc(decl.name)}</div></div>` : ""}
+             ${decl.position ? `<div class="kv"><div class="k">${esc(lang === "ar" ? "المنصب" : "Position")}</div><div class="v">${esc(decl.position)}</div></div>` : ""}
+             ${decl.agreedAt ? `<div class="kv"><div class="k">${esc(lang === "ar" ? "وقت الإقرار" : "Agreed at")}</div><div class="v">${esc(fmtDateTime(decl.agreedAt))}</div></div>` : ""}
+           </div>
+         </div>`
+      : `<div class="section decl bad">
+           <div class="section-title">⚠ ${esc(lang === "ar" ? "الإقرار" : "Declaration")}</div>
+           <div>${esc(t.noDeclaration)}</div>
+         </div>`;
+
+    const html = `<!DOCTYPE html>
+<html dir="${dir}" lang="${lang}">
+<head>
+  <meta charset="utf-8"/>
+  <title>${esc(f.company_name || "Supplier Evaluation")} — ${esc(lang === "ar" ? "نموذج التقييم" : "Evaluation Report")}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Cairo", "Segoe UI", Arial, sans-serif; font-size: 13px; color: #0f172a; padding: 28px; direction: ${dir}; background: #fff; line-height: 1.5; }
+    h1 { font-size: 22px; margin-bottom: 6px; color: #071b2d; }
+    .sub { font-size: 12px; color: #64748b; margin-bottom: 14px; }
+    .topbar { display: flex; justify-content: space-between; gap: 14px; padding: 12px 16px; border-radius: 10px; background: #f1f5f9; margin-bottom: 16px; flex-wrap: wrap; }
+    .topbar .pill { padding: 4px 12px; border-radius: 999px; font-weight: 800; font-size: 12px; background: #fff; border: 1px solid rgba(15,23,42,0.14); }
+    .section { margin-top: 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid rgba(15,23,42,0.10); page-break-inside: avoid; }
+    .section.company { background: #eff6ff; }
+    .section.prods   { background: #ecfccb; }
+    .section.atts    { background: #fef3c7; }
+    .section.qs      { background: #f5f3ff; }
+    .section.decl.ok { background: #dcfce7; }
+    .section.decl.bad{ background: #fee2e2; }
+    .section-title { font-size: 14px; font-weight: 900; color: #071b2d; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px dashed rgba(15,23,42,0.18); }
+    .sub-title { font-size: 12px; font-weight: 800; color: #475569; margin: 8px 0 4px; }
+    .kvs, .kv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 18px; }
+    .kv { background: rgba(255,255,255,0.85); border-radius: 8px; padding: 8px 10px; }
+    .kv .k { font-size: 11px; color: #64748b; font-weight: 800; margin-bottom: 2px; }
+    .kv .v { font-size: 13px; color: #0f172a; font-weight: 700; white-space: pre-wrap; }
+    .tbl { width: 100%; border-collapse: collapse; margin-top: 6px; background: #fff; border-radius: 8px; overflow: hidden; }
+    .tbl th, .tbl td { padding: 8px 10px; text-align: ${isRTL ? "right" : "left"}; vertical-align: top; border-bottom: 1px solid rgba(15,23,42,0.08); font-size: 12px; }
+    .tbl th { background: rgba(15,23,42,0.04); font-weight: 800; color: #334155; }
+    .tbl tr:last-child td { border-bottom: none; }
+    .tbl .tag { font-size: 10px; color: #94a3b8; font-weight: 600; }
+    .tbl .q { line-height: 1.4; }
+    .summary { font-size: 12px; color: #334155; font-weight: 700; margin-bottom: 10px; padding: 8px 10px; background: rgba(255,255,255,0.8); border-radius: 6px; }
+    .ans { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 800; font-size: 11px; }
+    .a-yes { background: #86efac; color: #14532d; }
+    .a-no { background: #fca5a5; color: #7f1d1d; }
+    .a-na { background: #e2e8f0; color: #334155; }
+    ul { margin: 4px 0 4px 22px; }
+    ul li { font-size: 12px; padding: 2px 0; }
+    .muted { color: #94a3b8; font-style: italic; }
+    .footer { margin-top: 18px; text-align: center; font-size: 11px; color: #94a3b8; }
+    @page { margin: 14mm; size: A4; }
+    @media print {
+      body { padding: 0; }
+      .section { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <h1>${esc(lang === "ar" ? "نموذج التقييم الذاتي للمورد" : "Supplier Self-Assessment — Evaluation Report")}</h1>
+  <div class="sub">Trans Emirates Livestock Trading L.L.C. — Al Mawashi</div>
+
+  <div class="topbar">
+    <div>
+      <div style="font-size:16px;font-weight:900">${esc(f.company_name || "—")}</div>
+      <div style="font-size:12px;color:#64748b;margin-top:4px">
+        ${esc(lang === "ar" ? "نوع المورد" : "Supplier Type")}: <b>${esc(supTypeLabel)}</b>
+      </div>
+    </div>
+    <div style="text-align:${isRTL ? "left" : "right"}">
+      <div class="pill">${esc(lang === "ar" ? "تاريخ السجل" : "Record Date")}: ${esc(recDate)}</div>
+      <div class="pill" style="margin-top:4px">${esc(lang === "ar" ? "تاريخ الإرسال" : "Submitted At")}: ${esc(fmtDateTime(submittedAt))}</div>
+    </div>
+  </div>
+
+  <div class="section company">
+    <div class="section-title">🏢 ${esc(lang === "ar" ? "بيانات الشركة والاتصال" : "Company & Contact Details")}</div>
+    <div class="kvs">${fieldsHtml || `<div class="muted">${esc(t.notProvided)}</div>`}</div>
+  </div>
+
+  ${productsHtml}
+  ${attachmentsHtml}
+  ${declHtml}
+  ${answersHtml}
+
+  <div class="footer">© Al Mawashi — Quality &amp; Food Safety System</div>
+
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() { window.print(); }, 300);
+    });
+  </script>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank", "width=900,height=800");
+    if (!win) {
+      alert(lang === "ar" ? "فشل فتح النافذة — يرجى السماح بالنوافذ المنبثقة" : "Could not open print window — please allow pop-ups.");
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+  };
+
+  // Reset notes-editing state when the opened report changes (or modal closes)
+  useEffect(() => {
+    setEditingNotes(false);
+    setNotesDraft("");
+    setNotesFlash("");
+  }, [openId]);
+
+  /* ===== Notes edit handlers ===== */
+  const startEditNotes = () => {
+    setNotesDraft(String(openedPayload?.notes || ""));
+    setEditingNotes(true);
+    setNotesFlash("");
+  };
+
+  const cancelEditNotes = () => {
+    setEditingNotes(false);
+    setNotesDraft("");
+    setNotesFlash("");
+  };
+
+  const saveNotes = async () => {
+    if (!opened) return;
+    const rep = getReportObj(opened);
+    const id = rep?.id ?? opened?.id;
+    if (!id) {
+      alert(lang === "ar" ? "معرّف التقرير مفقود" : "Report id is missing");
+      return;
+    }
+
+    setSavingNotes(true);
+    setNotesFlash("");
+    try {
+      const currentPayload = getPayloadObj(opened) || {};
+      // Build updated payload preserving all existing data
+      const nowIso = new Date().toISOString();
+      const updatedPayload = {
+        ...currentPayload,
+        notes: notesDraft,
+        meta: {
+          ...(currentPayload.meta || {}),
+          notesUpdatedAt: nowIso,
+          updatedAt: nowIso,
+        },
+      };
+
+      await updateReportPayload(id, updatedPayload);
+
+      // Update local items state so UI reflects changes without re-fetch
+      setItems((prev) =>
+        (prev || []).map((r) => {
+          const rid = getReportObj(r)?.id ?? r?.id;
+          if (String(rid) !== String(id)) return r;
+          const r2 = { ...r };
+          // Merge new payload into the item — several server variants:
+          if (r2.payload) r2.payload = updatedPayload;
+          if (r2.payload_json) r2.payload_json = updatedPayload;
+          if (r2.report) r2.report = { ...r2.report, payload: updatedPayload };
+          if (r2.item) r2.item = { ...r2.item, payload: updatedPayload };
+          if (r2.data) r2.data = { ...r2.data, payload: updatedPayload };
+          // Root-level (if server returns flat)
+          if (!r2.payload && !r2.payload_json && !r2.report && !r2.item && !r2.data) {
+            Object.assign(r2, { payload: updatedPayload });
+          }
+          return r2;
+        })
+      );
+
+      setEditingNotes(false);
+      setNotesFlash(t.notesSaved);
+      setTimeout(() => setNotesFlash(""), 2500);
+    } catch (e) {
+      console.error(e);
+      alert(String(e?.message || e));
+    } finally {
+      setSavingNotes(false);
+    }
   };
 
   const handleDelete = async (report) => {
@@ -1505,9 +1928,9 @@ export default function SupplierEvaluationResults() {
               inset: 0,
               background: "rgba(2,6,23,0.62)",
               display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              padding: 18,
+              alignItems: "stretch",
+              justifyContent: "stretch",
+              padding: 0,
               overflowY: "auto",
               zIndex: 9999,
               direction: isRTL ? "rtl" : "ltr",
@@ -1516,19 +1939,33 @@ export default function SupplierEvaluationResults() {
           >
             <div
               style={{
-                width: "min(1600px, 100%)",
-                marginTop: 20,
-                background: "rgba(255,255,255,0.98)",
-                border: "1px solid rgba(15,23,42,0.18)",
-                borderRadius: 18,
+                width: "100%",
+                minHeight: "100vh",
+                background: "linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)",
+                border: "none",
+                borderRadius: 0,
                 boxShadow: "0 24px 70px rgba(2,6,23,0.35)",
-                padding: 20,
+                padding: "28px 32px 48px",
+                boxSizing: "border-box",
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 14,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  padding: "18px 22px",
+                  borderRadius: 14,
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.85), rgba(248,250,252,0.65))",
+                  border: "1px solid rgba(15,23,42,0.10)",
+                  boxShadow: "0 4px 12px rgba(2,132,199,0.08)",
+                }}
+              >
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 990 }}>
+                  <div style={{ fontSize: 24, fontWeight: 990, color: "#071b2d" }}>
                     {openedFields.company_name || (lang === "ar" ? "مورد" : "Supplier")} — {t.detailsTitle}
                   </div>
                   {(() => {
@@ -1566,6 +2003,20 @@ export default function SupplierEvaluationResults() {
                 </div>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    style={{
+                      ...btn,
+                      background: "linear-gradient(135deg, #0ea5e9, #8b5cf6)",
+                      color: "#fff",
+                      border: "1px solid rgba(255,255,255,0.85)",
+                      fontWeight: 900,
+                    }}
+                    onClick={downloadPdf}
+                    title={t.downloadPdf}
+                  >
+                    {t.downloadPdf}
+                  </button>
+
                   {openedPayload?.public?.token ? (
                     <>
                       <button style={btn} onClick={() => copyText(buildPublicUrl(openedPayload.public.token))}>
@@ -1597,31 +2048,79 @@ export default function SupplierEvaluationResults() {
                 </div>
               </div>
 
-              {/* Supplier fields summary */}
-              <div style={{ marginTop: 12, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>{t.supplierDetails}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-                  <FieldLine label={lang === "ar" ? "اسم الشركة" : "Company Name"} value={openedFields.company_name} />
-                  <FieldLine label={lang === "ar" ? "العنوان" : "Address"} value={openedFields.company_address} />
-                  <FieldLine label={lang === "ar" ? "عنوان المكتب الرئيسي (إن وُجد)" : "Head Office (if different)"} value={openedFields.company_head_office_address} />
-                  <FieldLine label={lang === "ar" ? "اسم مسؤول الجودة/الفني" : "Technical/Quality Manager - Name"} value={openedFields.tqm_contact_name} />
-                  <FieldLine label={lang === "ar" ? "المنصب" : "Position Held"} value={openedFields.tqm_position_held} />
-                  <FieldLine label={lang === "ar" ? "رقم الهاتف" : "Telephone No"} value={openedFields.tqm_telephone} />
-                  <FieldLine label={lang === "ar" ? "عدد الموظفين" : "Total employees"} value={openedFields.total_employees} />
-                  <FieldLine label={lang === "ar" ? "ملاحظات/نسخ الشهادات" : "Certificates copy / notes"} value={openedFields.certificates_copy} />
-                  <FieldLine label={lang === "ar" ? "نسخ خطط الهاسب" : "HACCP plans copy note"} value={openedFields.haccp_copy_note} />
-                  <FieldLine label={lang === "ar" ? "قائمة الفحوصات" : "Lab tests list"} value={openedFields.lab_tests_list} />
-                  <FieldLine label={lang === "ar" ? "تفاصيل فحص خارجي" : "Outside testing details"} value={openedFields.outside_testing_details} />
-                  <FieldLine label={t.allergenDeclaration} value={openedFields.allergen_declaration} />
-                  <FieldLine label={t.serviceScope} value={openedFields.service_scope} />
+              {/* ✅ ALL submitted fields — dynamic list, nothing gets missed */}
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: "18px 20px",
+                  borderRadius: 14,
+                  background: "linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%)",
+                  border: "1px solid rgba(14,165,233,0.25)",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 980,
+                    marginBottom: 14,
+                    fontSize: 18,
+                    color: "#0c4a6e",
+                    paddingBottom: 8,
+                    borderBottom: "2px dashed rgba(14,165,233,0.30)",
+                  }}
+                >
+                  🏢 {t.supplierDetails}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
+                  {(() => {
+                    // Iterate over every text field in the payload so nothing is missed.
+                    const allKeys = Object.keys(openedFields || {}).filter((k) => {
+                      if (/^att_/i.test(k)) return false; // attachments shown separately
+                      const v = openedFields[k];
+                      if (v === null || v === undefined) return false;
+                      if (Array.isArray(v)) return false;
+                      if (typeof v === "object") return false;
+                      return String(v).trim().length > 0;
+                    });
+                    if (!allKeys.length) {
+                      return (
+                        <div style={{ color: "#94a3b8", fontWeight: 700, fontStyle: "italic" }}>
+                          {t.notProvided}
+                        </div>
+                      );
+                    }
+                    return allKeys.map((k) => (
+                      <FieldLine
+                        key={k}
+                        label={getTextFieldLabel(k, lang)}
+                        value={openedFields[k]}
+                      />
+                    ));
+                  })()}
                 </div>
               </div>
 
               {/* Products List */}
               {openedProductsList.length > 0 && (
-                <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                  <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>
-                    {lang === "ar" ? "المنتجات المراد توريدها" : "Products to be Supplied"}
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: "18px 20px",
+                    borderRadius: 14,
+                    background: "linear-gradient(135deg, #ecfccb 0%, #f7fee7 100%)",
+                    border: "1px solid rgba(132,204,22,0.30)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 980,
+                      marginBottom: 14,
+                      fontSize: 18,
+                      color: "#3f6212",
+                      paddingBottom: 8,
+                      borderBottom: "2px dashed rgba(132,204,22,0.35)",
+                    }}
+                  >
+                    🛒 {lang === "ar" ? "المنتجات / الخدمات المراد توريدها" : "Products / Services to be Supplied"}
                   </div>
                   <div style={{ display: "grid", gap: 10 }}>
                     {openedProductsList.map((prod, idx) => (
@@ -1676,55 +2175,83 @@ export default function SupplierEvaluationResults() {
                 </div>
               )}
 
-              {/* Declaration */}
-              {openedDeclaration && (
-                <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                  <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>
-                    {lang === "ar" ? "الإقرار" : "Declaration"}
-                  </div>
-                  <div style={{
-                    padding: "14px 16px",
-                    borderRadius: 12,
-                    border: openedDeclaration.agreed
-                      ? "1px solid rgba(34,197,94,0.40)"
-                      : "1px solid rgba(239,68,68,0.30)",
-                    background: openedDeclaration.agreed
-                      ? "rgba(34,197,94,0.07)"
-                      : "rgba(239,68,68,0.04)",
-                    display: "grid",
-                    gap: 8,
-                  }}>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      <span style={{ fontSize: 18 }}>{openedDeclaration.agreed ? "✅" : "❌"}</span>
-                      <span style={{ fontWeight: 800, fontSize: 14, color: openedDeclaration.agreed ? "#14532d" : "#991b1b" }}>
-                        {openedDeclaration.agreed
-                          ? (lang === "ar" ? "تم الإقرار والموافقة" : "Declaration confirmed")
-                          : (lang === "ar" ? "لم يتم تأكيد الإقرار" : "Declaration not confirmed")}
-                      </span>
-                    </div>
-                    {openedDeclaration.agreed && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 13, color: "#334155", fontWeight: 700 }}>
-                        {openedDeclaration.name && (
-                          <span>{lang === "ar" ? "الاسم: " : "Name: "}<b>{openedDeclaration.name}</b></span>
-                        )}
-                        {openedDeclaration.position && (
-                          <span>{lang === "ar" ? "المنصب: " : "Position: "}<b>{openedDeclaration.position}</b></span>
-                        )}
-                        {openedDeclaration.agreedAt && (
-                          <span>{lang === "ar" ? "وقت الإقرار: " : "Agreed at: "}<b>{fmtDateTime(openedDeclaration.agreedAt)}</b></span>
-                        )}
-                      </div>
-                    )}
-                  </div>
+              {/* Declaration — always shown, even if missing */}
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: "18px 20px",
+                  borderRadius: 14,
+                  background: openedDeclaration?.agreed
+                    ? "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)"
+                    : "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                  border: openedDeclaration?.agreed
+                    ? "1px solid rgba(34,197,94,0.35)"
+                    : "1px solid rgba(239,68,68,0.35)",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 980,
+                    marginBottom: 14,
+                    fontSize: 18,
+                    color: openedDeclaration?.agreed ? "#14532d" : "#991b1b",
+                    paddingBottom: 8,
+                    borderBottom: openedDeclaration?.agreed
+                      ? "2px dashed rgba(34,197,94,0.35)"
+                      : "2px dashed rgba(239,68,68,0.35)",
+                  }}
+                >
+                  {openedDeclaration?.agreed ? "✅" : "⚠"} {lang === "ar" ? "الإقرار" : "Declaration"}
                 </div>
-              )}
+
+                {openedDeclaration ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: openedDeclaration.agreed ? "#14532d" : "#991b1b" }}>
+                      {openedDeclaration.agreed
+                        ? (lang === "ar" ? "تم الإقرار والموافقة" : "Declaration confirmed")
+                        : (lang === "ar" ? "لم يتم تأكيد الإقرار" : "Declaration not confirmed")}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                      <FieldLine label={lang === "ar" ? "اسم الموقِّع" : "Signer Name"} value={openedDeclaration.name} />
+                      <FieldLine label={lang === "ar" ? "المنصب" : "Position Held"} value={openedDeclaration.position} />
+                      <FieldLine
+                        label={lang === "ar" ? "وقت الإقرار" : "Agreed at"}
+                        value={openedDeclaration.agreedAt ? fmtDateTime(openedDeclaration.agreedAt) : ""}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#991b1b" }}>
+                    ❌ {t.noDeclaration}
+                  </div>
+                )}
+              </div>
 
               {/* Attachments */}
-              <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>{t.attachments}</div>
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: "18px 20px",
+                  borderRadius: 14,
+                  background: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                  border: "1px solid rgba(245,158,11,0.30)",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 980,
+                    marginBottom: 14,
+                    fontSize: 18,
+                    color: "#78350f",
+                    paddingBottom: 8,
+                    borderBottom: "2px dashed rgba(245,158,11,0.35)",
+                  }}
+                >
+                  📎 {t.attachments}
+                </div>
 
                 {!hasAnyAttachments ? (
-                  <div style={{ color: "#64748b", fontWeight: 850, fontSize: 13 }}>{t.noAttachments}</div>
+                  <div style={{ color: "#78350f", fontWeight: 800, fontSize: 14 }}>{t.noAttachments}</div>
                 ) : (
                   <div style={{ display: "grid", gap: 14 }}>
                     {/* General attachments */}
@@ -1821,18 +2348,37 @@ export default function SupplierEvaluationResults() {
               </div>
 
               {/* YES/NO questions */}
-              <div style={{ marginTop: 14, borderTop: "1px solid rgba(15,23,42,0.12)", paddingTop: 12 }}>
-                <div style={{ fontWeight: 980, marginBottom: 10, fontSize: 17 }}>{t.qList}</div>
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: "18px 20px",
+                  borderRadius: 14,
+                  background: "linear-gradient(135deg, #f5f3ff 0%, #faf5ff 100%)",
+                  border: "1px solid rgba(139,92,246,0.25)",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 980,
+                    marginBottom: 14,
+                    fontSize: 18,
+                    color: "#581c87",
+                    paddingBottom: 8,
+                    borderBottom: "2px dashed rgba(139,92,246,0.30)",
+                  }}
+                >
+                  ❓ {t.qList}
+                </div>
 
                 <div style={{ display: "grid", gap: 10 }}>
                   {openedAnswerPairs.map((x) => (
                     <div
                       key={x.key}
                       style={{
-                        border: "1px solid rgba(15,23,42,0.12)",
-                        borderRadius: 14,
-                        padding: 12,
-                        background: "rgba(248,250,252,0.9)",
+                        border: "1px solid rgba(139,92,246,0.18)",
+                        borderRadius: 12,
+                        padding: 14,
+                        background: "rgba(255,255,255,0.85)",
                       }}
                     >
                       <div style={{ whiteSpace: "pre-wrap", fontWeight: 950, color: "#0f172a", lineHeight: 1.6, fontSize: 16 }}>{x.q}</div>
@@ -1857,26 +2403,161 @@ export default function SupplierEvaluationResults() {
                   ))}
                 </div>
 
-                {/* Optional notes */}
-                {openedPayload?.notes ? (
-                  <div style={{ marginTop: 14 }}>
-                    <div style={{ fontWeight: 980, marginBottom: 8 }}>{t.internalNotes}</div>
+                {/* ✏ Internal Notes — always visible, with inline Edit/Save */}
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: "16px 18px",
+                    borderRadius: 14,
+                    background: "linear-gradient(135deg, #f1f5f9 0%, #f8fafc 100%)",
+                    border: "1px solid rgba(100,116,139,0.25)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      marginBottom: 12,
+                      paddingBottom: 8,
+                      borderBottom: "2px dashed rgba(100,116,139,0.25)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 980, fontSize: 17, color: "#334155" }}>
+                      📝 {t.internalNotes}
+                      {openedPayload?.meta?.notesUpdatedAt ? (
+                        <span style={{ marginInlineStart: 10, fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                          ({t.lastEdited}: {fmtDateTime(openedPayload.meta.notesUpdatedAt)})
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {!editingNotes ? (
+                      <button
+                        type="button"
+                        style={{
+                          ...btn,
+                          padding: "8px 14px",
+                          fontSize: 13,
+                          background: "linear-gradient(135deg, rgba(14,165,233,0.15), rgba(139,92,246,0.12))",
+                          border: "1px solid rgba(14,165,233,0.35)",
+                          color: "#0c4a6e",
+                        }}
+                        onClick={startEditNotes}
+                      >
+                        {openedPayload?.notes ? t.editNotes : t.addNotes}
+                      </button>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          disabled={savingNotes}
+                          onClick={saveNotes}
+                          style={{
+                            ...btn,
+                            padding: "8px 14px",
+                            fontSize: 13,
+                            background: savingNotes
+                              ? "#e2e8f0"
+                              : "linear-gradient(135deg, #22c55e, #16a34a)",
+                            color: savingNotes ? "#94a3b8" : "#fff",
+                            border: savingNotes
+                              ? "1px solid rgba(15,23,42,0.16)"
+                              : "1px solid rgba(34,197,94,0.45)",
+                            cursor: savingNotes ? "not-allowed" : "pointer",
+                            opacity: savingNotes ? 0.7 : 1,
+                          }}
+                        >
+                          {savingNotes ? t.savingNotes : t.saveNotes}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingNotes}
+                          onClick={cancelEditNotes}
+                          style={{ ...btn, padding: "8px 14px", fontSize: 13 }}
+                        >
+                          {t.cancelEdit}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {notesFlash ? (
+                    <div
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 10,
+                        background: "rgba(34,197,94,0.10)",
+                        border: "1px solid rgba(34,197,94,0.30)",
+                        color: "#065f46",
+                        fontWeight: 900,
+                        fontSize: 14,
+                        marginBottom: 10,
+                      }}
+                    >
+                      {notesFlash}
+                    </div>
+                  ) : null}
+
+                  {editingNotes ? (
+                    <textarea
+                      value={notesDraft}
+                      onChange={(e) => setNotesDraft(e.target.value)}
+                      placeholder={t.notesPlaceholder}
+                      disabled={savingNotes}
+                      style={{
+                        width: "100%",
+                        minHeight: 140,
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(14,165,233,0.45)",
+                        background: "#fff",
+                        fontFamily: "inherit",
+                        fontSize: 15,
+                        fontWeight: 700,
+                        lineHeight: 1.7,
+                        color: "#0f172a",
+                        outline: "none",
+                        resize: "vertical",
+                        boxSizing: "border-box",
+                        boxShadow: "0 0 0 4px rgba(14,165,233,0.10)",
+                      }}
+                    />
+                  ) : openedPayload?.notes ? (
                     <div
                       style={{
                         whiteSpace: "pre-wrap",
-                        border: "1px solid rgba(15,23,42,0.12)",
-                        borderRadius: 14,
+                        borderRadius: 10,
                         padding: 12,
-                        background: "rgba(255,255,255,0.92)",
-                        fontWeight: 850,
+                        background: "rgba(255,255,255,0.85)",
+                        fontWeight: 800,
                         color: "#0f172a",
                         lineHeight: 1.7,
+                        fontSize: 15,
                       }}
                     >
                       {openedPayload.notes}
                     </div>
-                  </div>
-                ) : null}
+                  ) : (
+                    <div
+                      style={{
+                        padding: "14px",
+                        borderRadius: 10,
+                        background: "rgba(255,255,255,0.5)",
+                        border: "1px dashed rgba(100,116,139,0.30)",
+                        color: "#94a3b8",
+                        fontWeight: 700,
+                        fontStyle: "italic",
+                        textAlign: "center",
+                        fontSize: 14,
+                      }}
+                    >
+                      {t.noNotes}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

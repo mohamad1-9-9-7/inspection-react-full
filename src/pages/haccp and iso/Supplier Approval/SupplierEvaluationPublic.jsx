@@ -126,8 +126,8 @@ const FORM = [
         title: "Company Details",
         type: "fields",
         items: [
-          { key: "company_name", label: "Company Name:", kind: "text" },
-          { key: "company_address", label: "Address:", kind: "textarea_short" },
+          { key: "company_name", label: "Company Name:", kind: "text", required: true },
+          { key: "company_address", label: "Address:", kind: "textarea_short", required: true },
           {
             key: "company_head_office_address",
             label: "Please provide Head Office address if different\nfrom above:",
@@ -139,15 +139,16 @@ const FORM = [
         title: "Technical or Quality Manager Contact Details",
         type: "fields",
         items: [
-          { key: "tqm_contact_name", label: "Name of Contact:", kind: "text" },
-          { key: "tqm_position_held", label: "Position Held:", kind: "text" },
-          { key: "tqm_telephone", label: "Telephone No:", kind: "text" },
+          { key: "tqm_contact_name", label: "Name of Contact:", kind: "text", required: true },
+          { key: "tqm_position_held", label: "Position Held:", kind: "text", required: true },
+          { key: "tqm_telephone", label: "Telephone No:", kind: "text", required: true },
           { key: "total_employees", label: "What is the total number of employees in your\ncompany?", kind: "text" },
         ],
       },
       {
         title: "Products / Services to be Supplied",
         type: "products_list",
+        required: true,
       },
       {
         title: "Certification",
@@ -634,6 +635,7 @@ const FORM = [
             key: "att_vehicle_dm_card",
             label: "Vehicle Registration / Dubai Municipality (DM) Card — if you deliver by your own vehicle",
             kind: "attachment",
+            required: true,
           },
           {
             key: "att_msds",
@@ -651,7 +653,8 @@ const FORM = [
         title: "Quality Officer Contact",
         type: "contact_info",
         email: "m.abdullah@almawashi.ae",
-        phone: "0504733926",
+        phone: "+971585446473",
+        whatsapp: "971585446473",
       },
     ],
   },
@@ -1488,9 +1491,19 @@ export default function SupplierEvaluationPublic() {
       errs.push(L ? "اسم الشركة مطلوب (حرفان على الأقل)" : "Company name is required (at least 2 characters)");
     }
 
+    const address = String(fields.company_address || "").trim();
+    if (!address) {
+      errs.push(L ? "عنوان الشركة مطلوب" : "Company address is required");
+    }
+
     const contactName = String(fields.tqm_contact_name || "").trim();
     if (!contactName) {
       errs.push(L ? "اسم جهة الاتصال (مسؤول الجودة/الفني) مطلوب" : "Contact person (Technical / Quality Manager) name is required");
+    }
+
+    const position = String(fields.tqm_position_held || "").trim();
+    if (!position) {
+      errs.push(L ? "المنصب الوظيفي لجهة الاتصال مطلوب" : "Position Held is required");
     }
 
     const tel = String(fields.tqm_telephone || "").trim();
@@ -1502,6 +1515,16 @@ export default function SupplierEvaluationPublic() {
     const hasProduct = Array.isArray(productsList) && productsList.some((p) => String(p?.name || "").trim().length > 0);
     if (!hasProduct) {
       errs.push(L ? "يجب إضافة منتج/خدمة واحدة على الأقل (الاسم)" : "At least one product/service must be added (with a name)");
+    }
+
+    // Vehicle DM Card — required attachment
+    const dmFiles = Array.isArray(fieldAttachments?.att_vehicle_dm_card) ? fieldAttachments.att_vehicle_dm_card : [];
+    if (dmFiles.length === 0) {
+      errs.push(
+        L
+          ? "إرفاق تسجيل المركبة / بطاقة بلدية دبي (DM Card) مطلوب"
+          : "Vehicle Registration / Dubai Municipality (DM) Card attachment is required"
+      );
     }
 
     // Declaration must be signed
@@ -2164,7 +2187,12 @@ export default function SupplierEvaluationPublic() {
               <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
                 {p.blocks.filter((b) => b.type !== "info").map((b, bIdx) => (
                   <div key={bIdx} style={panel(toneByTitle(b.title))}>
-                    <div style={{ fontWeight: 900, color: THEME.text, fontSize: 17 }}>{tr(lang, b.title)}</div>
+                    <div style={{ fontWeight: 900, color: THEME.text, fontSize: 17 }}>
+                      {tr(lang, b.title)}
+                      {b.required ? (
+                        <span style={{ color: "#dc2626", marginInlineStart: 6, fontSize: 18 }}>*</span>
+                      ) : null}
+                    </div>
 
                     {b.type === "fields" ? (
                       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
@@ -2172,7 +2200,12 @@ export default function SupplierEvaluationPublic() {
                           .filter((it) => it.kind !== "readonly" || String(it.label || "").trim() !== "-----------")
                           .map((it) => (
                             <div key={it.key} style={fieldWrap}>
-                              <div style={labelStyle}>{tr(lang, it.label)}</div>
+                              <div style={labelStyle}>
+                                {tr(lang, it.label)}
+                                {it.required ? (
+                                  <span style={{ color: "#dc2626", marginInlineStart: 6, fontSize: 16 }}>*</span>
+                                ) : null}
+                              </div>
                               {renderField(it)}
                             </div>
                           ))}
@@ -2351,7 +2384,7 @@ export default function SupplierEvaluationPublic() {
                         <div
                           style={{
                             display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
                             gap: 12,
                           }}
                         >
@@ -2392,7 +2425,7 @@ export default function SupplierEvaluationPublic() {
                             </div>
                           </a>
 
-                          {/* Phone */}
+                          {/* Phone (Call) */}
                           <a
                             href={`tel:${b.phone}`}
                             style={{
@@ -2411,13 +2444,49 @@ export default function SupplierEvaluationPublic() {
                             <span style={{ fontSize: 24 }}>📞</span>
                             <div style={{ minWidth: 0, flex: 1 }}>
                               <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800, marginBottom: 2 }}>
-                                {isRTL ? "رقم الهاتف" : "Phone"}
+                                {isRTL ? "اتصال" : "Call"}
                               </div>
                               <div
                                 style={{
                                   fontSize: 16,
                                   fontWeight: 900,
                                   color: "#14532d",
+                                  direction: "ltr",
+                                }}
+                              >
+                                {b.phone}
+                              </div>
+                            </div>
+                          </a>
+
+                          {/* WhatsApp */}
+                          <a
+                            href={`https://wa.me/${b.whatsapp}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 12,
+                              padding: "14px 16px",
+                              borderRadius: 12,
+                              border: "1px solid rgba(37,211,102,0.35)",
+                              background: "rgba(37,211,102,0.06)",
+                              textDecoration: "none",
+                              color: THEME.text,
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <span style={{ fontSize: 24 }}>💬</span>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800, marginBottom: 2 }}>
+                                {isRTL ? "واتساب" : "WhatsApp"}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 16,
+                                  fontWeight: 900,
+                                  color: "#065f46",
                                   direction: "ltr",
                                 }}
                               >
