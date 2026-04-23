@@ -100,6 +100,28 @@ const UI = {
     notesPlaceholder: "Internal notes for QA / Admin (not visible to supplier)...",
     noNotes: "No internal notes yet.",
     lastEdited: "Last edited",
+    editEvaluation: "✏ Edit Evaluation",
+    saveEvaluation: "💾 Save All Changes",
+    savingEvaluation: "Saving...",
+    editSaved: "Changes saved ✅",
+    editConfirmCancel: "Discard your changes?",
+    editingBanner: "✏ Editing mode — change fields and answers then press Save.",
+    ansYes: "YES",
+    ansNo: "NO",
+    ansNa: "N/A",
+    editedByAdminBadge: "Edited by admin",
+    declAgreedToggle: "Declaration confirmed",
+    declSignerName: "Signer Name",
+    declSignerPosition: "Position Held",
+    declAgreedAt: "Agreed at",
+    declAttachment: "Signed declaration file",
+    declUpload: "⬆ Upload signed declaration",
+    declReplace: "🔁 Replace file",
+    declRemove: "🗑 Remove file",
+    declNoFile: "No signed declaration file uploaded yet.",
+    declUploading: "Uploading...",
+    declView: "👁 View",
+    declDownload: "⬇ Download",
   },
   ar: {
     title: "نتائج تقييم الموردين (المرسلة)",
@@ -174,6 +196,28 @@ const UI = {
     notesPlaceholder: "ملاحظات داخلية لقسم الجودة / الإدارة (لا تظهر للمورد)...",
     noNotes: "لا توجد ملاحظات داخلية بعد.",
     lastEdited: "آخر تعديل",
+    editEvaluation: "✏ تعديل التقييم",
+    saveEvaluation: "💾 حفظ جميع التغييرات",
+    savingEvaluation: "جاري الحفظ...",
+    editSaved: "تم حفظ التغييرات ✅",
+    editConfirmCancel: "هل تريد تجاهل التغييرات؟",
+    editingBanner: "✏ وضع التعديل — عدّل الحقول والإجابات ثم اضغط حفظ.",
+    ansYes: "نعم",
+    ansNo: "لا",
+    ansNa: "غير متاح",
+    editedByAdminBadge: "تم التعديل بواسطة الإدارة",
+    declAgreedToggle: "تم تأكيد الإقرار",
+    declSignerName: "اسم الموقِّع",
+    declSignerPosition: "المنصب",
+    declAgreedAt: "وقت الإقرار",
+    declAttachment: "ملف الإقرار الموقَّع",
+    declUpload: "⬆ رفع الإقرار الموقَّع",
+    declReplace: "🔁 استبدال الملف",
+    declRemove: "🗑 حذف الملف",
+    declNoFile: "لم يتم رفع ملف إقرار موقَّع بعد.",
+    declUploading: "جاري الرفع...",
+    declView: "👁 عرض",
+    declDownload: "⬇ تنزيل",
   },
 };
 
@@ -376,6 +420,29 @@ async function updateReportPayload(id, payload) {
     throw new Error(data?.message || data?.error || `Failed to update report (${res.status})`);
   }
   return data;
+}
+
+/* ✅ Upload a file via server /api/images (returns URL) */
+const MAX_DECL_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
+async function uploadViaServer(file) {
+  if (!file || typeof file.size !== "number") throw new Error("Invalid file");
+  if (file.size <= 0) throw new Error(`File "${file.name}" is empty`);
+  if (file.size > MAX_DECL_FILE_BYTES) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    throw new Error(`File "${file.name}" is too large (${mb} MB). Max allowed is 15 MB.`);
+  }
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
+    throw new Error(data?.error || "Upload failed");
+  }
+  return {
+    url: data.optimized_url || data.url,
+    name: file.name,
+    contentType: file.type || "",
+  };
 }
 
 /* ✅ DELETE report */
@@ -1167,6 +1234,15 @@ export default function SupplierEvaluationResults() {
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesFlash, setNotesFlash] = useState("");
 
+  /* ===== Full evaluation editing state (fields + answers + declaration) ===== */
+  const [editMode, setEditMode] = useState(false);
+  const [fieldsDraft, setFieldsDraft] = useState({});
+  const [answersDraft, setAnswersDraft] = useState({});
+  const [declarationDraft, setDeclarationDraft] = useState(null);
+  const [uploadingDecl, setUploadingDecl] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editFlash, setEditFlash] = useState("");
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -1591,7 +1667,169 @@ export default function SupplierEvaluationResults() {
     setEditingNotes(false);
     setNotesDraft("");
     setNotesFlash("");
+    setEditMode(false);
+    setFieldsDraft({});
+    setAnswersDraft({});
+    setDeclarationDraft(null);
+    setEditFlash("");
   }, [openId]);
+
+  /* ===== Full evaluation edit handlers ===== */
+  const startEditMode = () => {
+    const cleanFields = {};
+    Object.keys(openedFields || {}).forEach((k) => {
+      if (/^att_/i.test(k)) return;
+      const v = openedFields[k];
+      if (v === null || v === undefined) return;
+      if (Array.isArray(v)) return;
+      if (typeof v === "object") return;
+      cleanFields[k] = String(v);
+    });
+    setFieldsDraft(cleanFields);
+    setAnswersDraft({ ...(openedAnswers || {}) });
+
+    // Seed declaration draft from current declaration (or a blank shell)
+    const d = openedDeclaration || {};
+    setDeclarationDraft({
+      agreed: !!d.agreed,
+      name: d.name || "",
+      position: d.position || "",
+      agreedAt: d.agreedAt || "",
+      file: d.file && typeof d.file === "object" && d.file.url ? { ...d.file } : null,
+    });
+
+    setEditingNotes(false);
+    setEditMode(true);
+    setEditFlash("");
+  };
+
+  const cancelEditMode = () => {
+    if (!window.confirm(t.editConfirmCancel)) return;
+    setEditMode(false);
+    setFieldsDraft({});
+    setAnswersDraft({});
+    setDeclarationDraft(null);
+    setEditFlash("");
+  };
+
+  const handleUploadDeclarationFile = async (file) => {
+    if (!file) return;
+    setUploadingDecl(true);
+    try {
+      const uploaded = await uploadViaServer(file);
+      setDeclarationDraft((prev) => ({
+        ...(prev || {}),
+        file: uploaded,
+      }));
+    } catch (e) {
+      console.error(e);
+      alert(String(e?.message || e));
+    } finally {
+      setUploadingDecl(false);
+    }
+  };
+
+  const handleRemoveDeclarationFile = () => {
+    setDeclarationDraft((prev) => ({ ...(prev || {}), file: null }));
+  };
+
+  const saveEditMode = async () => {
+    if (!opened) return;
+    const rep = getReportObj(opened);
+    const id = rep?.id ?? opened?.id;
+    if (!id) {
+      alert(lang === "ar" ? "معرّف التقرير مفقود" : "Report id is missing");
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      const currentPayload = getPayloadObj(opened) || {};
+      const nowIso = new Date().toISOString();
+
+      // Merge drafts into existing data — preserves fields we don't edit (attachments, etc.)
+      const newFields = { ...(currentPayload.fields || {}), ...fieldsDraft };
+      const newAnswers = { ...(currentPayload.answers || {}), ...answersDraft };
+      const newCounts = calcCounts(newAnswers);
+
+      // Build updated declaration (merged with existing)
+      let newDeclaration = currentPayload.declaration ?? openedDeclaration ?? null;
+      if (declarationDraft) {
+        const prevAgreed = !!newDeclaration?.agreed;
+        const nowAgreed = !!declarationDraft.agreed;
+        newDeclaration = {
+          ...(newDeclaration || {}),
+          agreed: nowAgreed,
+          name: declarationDraft.name || "",
+          position: declarationDraft.position || "",
+          // Stamp agreedAt the moment admin flips it ON (preserve otherwise)
+          agreedAt: nowAgreed
+            ? (prevAgreed && newDeclaration?.agreedAt ? newDeclaration.agreedAt : (declarationDraft.agreedAt || nowIso))
+            : "",
+          file: declarationDraft.file && declarationDraft.file.url ? declarationDraft.file : null,
+        };
+      }
+
+      const updatedPayload = {
+        ...currentPayload,
+        fields: newFields,
+        answers: newAnswers,
+        declaration: newDeclaration,
+        meta: {
+          ...(currentPayload.meta || {}),
+          counts: newCounts,
+          updatedAt: nowIso,
+          editedByAdmin: true,
+          adminEditedAt: nowIso,
+        },
+      };
+
+      // Mirror into public.submission if present (supplier-side nesting variant)
+      if (currentPayload?.public?.submission) {
+        updatedPayload.public = {
+          ...currentPayload.public,
+          submission: {
+            ...currentPayload.public.submission,
+            fields: { ...(currentPayload.public.submission.fields || {}), ...fieldsDraft },
+            answers: { ...(currentPayload.public.submission.answers || {}), ...answersDraft },
+            declaration: newDeclaration,
+          },
+        };
+      }
+
+      await updateReportPayload(id, updatedPayload);
+
+      // Update local items state so UI reflects changes without re-fetch
+      setItems((prev) =>
+        (prev || []).map((r) => {
+          const rid = getReportObj(r)?.id ?? r?.id;
+          if (String(rid) !== String(id)) return r;
+          const r2 = { ...r };
+          if (r2.payload) r2.payload = updatedPayload;
+          if (r2.payload_json) r2.payload_json = updatedPayload;
+          if (r2.report) r2.report = { ...r2.report, payload: updatedPayload };
+          if (r2.item) r2.item = { ...r2.item, payload: updatedPayload };
+          if (r2.data) r2.data = { ...r2.data, payload: updatedPayload };
+          if (!r2.payload && !r2.payload_json && !r2.report && !r2.item && !r2.data) {
+            Object.assign(r2, { payload: updatedPayload });
+          }
+          return r2;
+        })
+      );
+
+      setEditMode(false);
+      setFieldsDraft({});
+      setAnswersDraft({});
+      setDeclarationDraft(null);
+      setEditFlash(t.editSaved);
+      setTimeout(() => setEditFlash(""), 2500);
+    } catch (e) {
+      console.error(e);
+      alert(String(e?.message || e));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   /* ===== Notes edit handlers ===== */
   const startEditNotes = () => {
@@ -2003,6 +2241,51 @@ export default function SupplierEvaluationResults() {
                 </div>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {!editMode ? (
+                    <button
+                      style={{
+                        ...btn,
+                        background: "linear-gradient(135deg, #f59e0b, #ef4444)",
+                        color: "#fff",
+                        border: "1px solid rgba(255,255,255,0.85)",
+                        fontWeight: 900,
+                      }}
+                      onClick={startEditMode}
+                      title={t.editEvaluation}
+                    >
+                      {t.editEvaluation}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        style={{
+                          ...btn,
+                          background: savingEdit
+                            ? "#e2e8f0"
+                            : "linear-gradient(135deg, #22c55e, #16a34a)",
+                          color: savingEdit ? "#94a3b8" : "#fff",
+                          border: savingEdit
+                            ? "1px solid rgba(15,23,42,0.16)"
+                            : "1px solid rgba(34,197,94,0.45)",
+                          cursor: savingEdit ? "not-allowed" : "pointer",
+                          opacity: savingEdit ? 0.7 : 1,
+                          fontWeight: 900,
+                        }}
+                        disabled={savingEdit}
+                        onClick={saveEditMode}
+                      >
+                        {savingEdit ? t.savingEvaluation : t.saveEvaluation}
+                      </button>
+                      <button
+                        style={btn}
+                        disabled={savingEdit}
+                        onClick={cancelEditMode}
+                      >
+                        {t.cancelEdit}
+                      </button>
+                    </>
+                  )}
+
                   <button
                     style={{
                       ...btn,
@@ -2010,16 +2293,19 @@ export default function SupplierEvaluationResults() {
                       color: "#fff",
                       border: "1px solid rgba(255,255,255,0.85)",
                       fontWeight: 900,
+                      opacity: editMode ? 0.55 : 1,
+                      pointerEvents: editMode ? "none" : "auto",
                     }}
                     onClick={downloadPdf}
                     title={t.downloadPdf}
+                    disabled={editMode}
                   >
                     {t.downloadPdf}
                   </button>
 
                   {openedPayload?.public?.token ? (
                     <>
-                      <button style={btn} onClick={() => copyText(buildPublicUrl(openedPayload.public.token))}>
+                      <button style={btn} onClick={() => copyText(buildPublicUrl(openedPayload.public.token))} disabled={editMode}>
                         {t.copyLink}
                       </button>
                       <button
@@ -2028,6 +2314,7 @@ export default function SupplierEvaluationResults() {
                           const u = buildPublicUrl(openedPayload.public.token);
                           if (u) window.open(u, "_blank", "noopener,noreferrer");
                         }}
+                        disabled={editMode}
                       >
                         {t.openLink}
                       </button>
@@ -2036,17 +2323,69 @@ export default function SupplierEvaluationResults() {
 
                   <button
                     style={btnDanger}
-                    disabled={String(deletingId) === String(getReportObj(opened)?.id ?? opened?.id)}
+                    disabled={editMode || String(deletingId) === String(getReportObj(opened)?.id ?? opened?.id)}
                     onClick={() => handleDelete(opened)}
                   >
                     {String(deletingId) === String(getReportObj(opened)?.id ?? opened?.id) ? t.deleting : t.del}
                   </button>
 
-                  <button style={btn} onClick={() => setOpenId(null)}>
+                  <button style={btn} onClick={() => setOpenId(null)} disabled={savingEdit}>
                     {t.close}
                   </button>
                 </div>
               </div>
+
+              {/* ✏ Edit-mode banner + flash */}
+              {editFlash ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    background: "rgba(34,197,94,0.12)",
+                    border: "1px solid rgba(34,197,94,0.34)",
+                    color: "#065f46",
+                    fontWeight: 900,
+                    fontSize: 15,
+                  }}
+                >
+                  {editFlash}
+                </div>
+              ) : null}
+
+              {editMode ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    background: "linear-gradient(135deg, rgba(245,158,11,0.14), rgba(239,68,68,0.10))",
+                    border: "1px solid rgba(245,158,11,0.38)",
+                    color: "#7c2d12",
+                    fontWeight: 900,
+                    fontSize: 15,
+                  }}
+                >
+                  {t.editingBanner}
+                </div>
+              ) : openedPayload?.meta?.editedByAdmin ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: "8px 14px",
+                    borderRadius: 999,
+                    background: "rgba(245,158,11,0.12)",
+                    border: "1px solid rgba(245,158,11,0.38)",
+                    color: "#7c2d12",
+                    fontWeight: 900,
+                    fontSize: 13,
+                    display: "inline-block",
+                  }}
+                >
+                  ✏ {t.editedByAdminBadge}
+                  {openedPayload?.meta?.adminEditedAt ? `: ${fmtDateTime(openedPayload.meta.adminEditedAt)}` : ""}
+                </div>
+              ) : null}
 
               {/* ✅ ALL submitted fields — dynamic list, nothing gets missed */}
               <div
@@ -2072,13 +2411,16 @@ export default function SupplierEvaluationResults() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
                   {(() => {
-                    // Iterate over every text field in the payload so nothing is missed.
-                    const allKeys = Object.keys(openedFields || {}).filter((k) => {
+                    // When editing, iterate over draft keys so user can clear text (and still see the input).
+                    // When viewing, iterate over fields with non-empty values only.
+                    const source = editMode ? fieldsDraft : openedFields || {};
+                    const allKeys = Object.keys(source).filter((k) => {
                       if (/^att_/i.test(k)) return false; // attachments shown separately
-                      const v = openedFields[k];
+                      const v = source[k];
                       if (v === null || v === undefined) return false;
                       if (Array.isArray(v)) return false;
                       if (typeof v === "object") return false;
+                      if (editMode) return true; // keep all editable keys even if empty
                       return String(v).trim().length > 0;
                     });
                     if (!allKeys.length) {
@@ -2088,13 +2430,41 @@ export default function SupplierEvaluationResults() {
                         </div>
                       );
                     }
-                    return allKeys.map((k) => (
-                      <FieldLine
-                        key={k}
-                        label={getTextFieldLabel(k, lang)}
-                        value={openedFields[k]}
-                      />
-                    ));
+                    return allKeys.map((k) => {
+                      const label = getTextFieldLabel(k, lang);
+                      if (editMode) {
+                        const val = fieldsDraft[k] ?? "";
+                        const isLong = String(val).length > 80 || /address|note|scope|list|details|declaration|copy/i.test(k);
+                        return (
+                          <div key={k} style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 14, fontWeight: 950, color: "#64748b" }}>{label}</div>
+                            {isLong ? (
+                              <textarea
+                                value={val}
+                                onChange={(e) => setFieldsDraft((prev) => ({ ...prev, [k]: e.target.value }))}
+                                disabled={savingEdit}
+                                style={{
+                                  ...input,
+                                  minHeight: 70,
+                                  fontWeight: 700,
+                                  fontSize: 15,
+                                  resize: "vertical",
+                                  fontFamily: "inherit",
+                                }}
+                              />
+                            ) : (
+                              <input
+                                value={val}
+                                onChange={(e) => setFieldsDraft((prev) => ({ ...prev, [k]: e.target.value }))}
+                                disabled={savingEdit}
+                                style={{ ...input, fontWeight: 700, fontSize: 15 }}
+                              />
+                            )}
+                          </div>
+                        );
+                      }
+                      return <FieldLine key={k} label={label} value={openedFields[k]} />;
+                    });
                   })()}
                 </div>
               </div>
@@ -2175,57 +2545,275 @@ export default function SupplierEvaluationResults() {
                 </div>
               )}
 
-              {/* Declaration — always shown, even if missing */}
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: "18px 20px",
-                  borderRadius: 14,
-                  background: openedDeclaration?.agreed
-                    ? "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)"
-                    : "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
-                  border: openedDeclaration?.agreed
-                    ? "1px solid rgba(34,197,94,0.35)"
-                    : "1px solid rgba(239,68,68,0.35)",
-                }}
-              >
-                <div
-                  style={{
-                    fontWeight: 980,
-                    marginBottom: 14,
-                    fontSize: 18,
-                    color: openedDeclaration?.agreed ? "#14532d" : "#991b1b",
-                    paddingBottom: 8,
-                    borderBottom: openedDeclaration?.agreed
-                      ? "2px dashed rgba(34,197,94,0.35)"
-                      : "2px dashed rgba(239,68,68,0.35)",
-                  }}
-                >
-                  {openedDeclaration?.agreed ? "✅" : "⚠"} {lang === "ar" ? "الإقرار" : "Declaration"}
-                </div>
+              {/* Declaration — always shown, editable in edit mode */}
+              {(() => {
+                const displayDecl = editMode ? (declarationDraft || {}) : (openedDeclaration || {});
+                const isAgreed = !!displayDecl.agreed;
+                const hasFile = !!(displayDecl.file && displayDecl.file.url);
+                return (
+                  <div
+                    style={{
+                      marginTop: 16,
+                      padding: "18px 20px",
+                      borderRadius: 14,
+                      background: isAgreed
+                        ? "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)"
+                        : "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                      border: isAgreed
+                        ? "1px solid rgba(34,197,94,0.35)"
+                        : "1px solid rgba(239,68,68,0.35)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 980,
+                        marginBottom: 14,
+                        fontSize: 18,
+                        color: isAgreed ? "#14532d" : "#991b1b",
+                        paddingBottom: 8,
+                        borderBottom: isAgreed
+                          ? "2px dashed rgba(34,197,94,0.35)"
+                          : "2px dashed rgba(239,68,68,0.35)",
+                      }}
+                    >
+                      {isAgreed ? "✅" : "⚠"} {lang === "ar" ? "الإقرار" : "Declaration"}
+                    </div>
 
-                {openedDeclaration ? (
-                  <div style={{ display: "grid", gap: 10 }}>
-                    <div style={{ fontSize: 16, fontWeight: 900, color: openedDeclaration.agreed ? "#14532d" : "#991b1b" }}>
-                      {openedDeclaration.agreed
-                        ? (lang === "ar" ? "تم الإقرار والموافقة" : "Declaration confirmed")
-                        : (lang === "ar" ? "لم يتم تأكيد الإقرار" : "Declaration not confirmed")}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-                      <FieldLine label={lang === "ar" ? "اسم الموقِّع" : "Signer Name"} value={openedDeclaration.name} />
-                      <FieldLine label={lang === "ar" ? "المنصب" : "Position Held"} value={openedDeclaration.position} />
-                      <FieldLine
-                        label={lang === "ar" ? "وقت الإقرار" : "Agreed at"}
-                        value={openedDeclaration.agreedAt ? fmtDateTime(openedDeclaration.agreedAt) : ""}
-                      />
-                    </div>
+                    {editMode ? (
+                      <div style={{ display: "grid", gap: 12 }}>
+                        {/* Agreed toggle */}
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            background: "rgba(255,255,255,0.85)",
+                            border: "1px solid rgba(15,23,42,0.14)",
+                            cursor: savingEdit ? "not-allowed" : "pointer",
+                            fontWeight: 900,
+                            color: "#0f172a",
+                            fontSize: 15,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isAgreed}
+                            disabled={savingEdit}
+                            onChange={(e) =>
+                              setDeclarationDraft((prev) => ({
+                                ...(prev || {}),
+                                agreed: e.target.checked,
+                              }))
+                            }
+                            style={{ width: 18, height: 18, cursor: savingEdit ? "not-allowed" : "pointer" }}
+                          />
+                          ✅ {t.declAgreedToggle}
+                        </label>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 14, fontWeight: 950, color: "#64748b" }}>{t.declSignerName}</div>
+                            <input
+                              value={declarationDraft?.name ?? ""}
+                              disabled={savingEdit}
+                              onChange={(e) =>
+                                setDeclarationDraft((prev) => ({ ...(prev || {}), name: e.target.value }))
+                              }
+                              style={{ ...input, fontWeight: 700, fontSize: 15 }}
+                            />
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 14, fontWeight: 950, color: "#64748b" }}>{t.declSignerPosition}</div>
+                            <input
+                              value={declarationDraft?.position ?? ""}
+                              disabled={savingEdit}
+                              onChange={(e) =>
+                                setDeclarationDraft((prev) => ({ ...(prev || {}), position: e.target.value }))
+                              }
+                              style={{ ...input, fontWeight: 700, fontSize: 15 }}
+                            />
+                          </div>
+                          <FieldLine
+                            label={t.declAgreedAt}
+                            value={displayDecl.agreedAt ? fmtDateTime(displayDecl.agreedAt) : ""}
+                          />
+                        </div>
+
+                        {/* File upload */}
+                        <div
+                          style={{
+                            padding: 12,
+                            borderRadius: 12,
+                            background: "rgba(255,255,255,0.85)",
+                            border: "1px dashed rgba(15,23,42,0.22)",
+                            display: "grid",
+                            gap: 10,
+                          }}
+                        >
+                          <div style={{ fontWeight: 980, color: "#0f172a", fontSize: 15 }}>📎 {t.declAttachment}</div>
+
+                          {hasFile ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 10,
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                background: "rgba(14,165,233,0.10)",
+                                border: "1px solid rgba(14,165,233,0.35)",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setOpenAttachment(displayDecl.file)}
+                                style={{
+                                  ...btn,
+                                  padding: "6px 10px",
+                                  fontSize: 13,
+                                  background: "rgba(255,255,255,0.95)",
+                                }}
+                              >
+                                📎 {displayDecl.file.name || "declaration"}
+                              </button>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <label
+                                  style={{
+                                    ...btn,
+                                    padding: "6px 10px",
+                                    fontSize: 13,
+                                    cursor: uploadingDecl || savingEdit ? "not-allowed" : "pointer",
+                                    opacity: uploadingDecl || savingEdit ? 0.6 : 1,
+                                    background: "linear-gradient(135deg, #0ea5e9, #22c55e)",
+                                    color: "#fff",
+                                    border: "1px solid rgba(255,255,255,0.85)",
+                                  }}
+                                >
+                                  {uploadingDecl ? t.declUploading : t.declReplace}
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                                    style={{ display: "none" }}
+                                    disabled={uploadingDecl || savingEdit}
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0];
+                                      e.target.value = "";
+                                      if (f) handleUploadDeclarationFile(f);
+                                    }}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  disabled={uploadingDecl || savingEdit}
+                                  onClick={handleRemoveDeclarationFile}
+                                  style={{ ...btnDanger, padding: "6px 10px", fontSize: 13 }}
+                                >
+                                  {t.declRemove}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <label
+                              style={{
+                                ...btn,
+                                padding: "10px 14px",
+                                fontSize: 14,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 8,
+                                cursor: uploadingDecl || savingEdit ? "not-allowed" : "pointer",
+                                opacity: uploadingDecl || savingEdit ? 0.6 : 1,
+                                background: "linear-gradient(135deg, #0ea5e9, #22c55e)",
+                                color: "#fff",
+                                border: "1px solid rgba(255,255,255,0.85)",
+                                width: "fit-content",
+                              }}
+                            >
+                              {uploadingDecl ? t.declUploading : t.declUpload}
+                              <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                                style={{ display: "none" }}
+                                disabled={uploadingDecl || savingEdit}
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  e.target.value = "";
+                                  if (f) handleUploadDeclarationFile(f);
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      </div>
+                    ) : openedDeclaration || hasFile ? (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: isAgreed ? "#14532d" : "#991b1b" }}>
+                          {isAgreed
+                            ? (lang === "ar" ? "تم الإقرار والموافقة" : "Declaration confirmed")
+                            : (lang === "ar" ? "لم يتم تأكيد الإقرار" : "Declaration not confirmed")}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                          <FieldLine label={t.declSignerName} value={openedDeclaration?.name} />
+                          <FieldLine label={t.declSignerPosition} value={openedDeclaration?.position} />
+                          <FieldLine
+                            label={t.declAgreedAt}
+                            value={openedDeclaration?.agreedAt ? fmtDateTime(openedDeclaration.agreedAt) : ""}
+                          />
+                        </div>
+
+                        {/* Attached signed declaration file */}
+                        {openedDeclaration?.file && openedDeclaration.file.url ? (
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              background: "rgba(255,255,255,0.90)",
+                              border: "1px solid rgba(15,23,42,0.14)",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <div style={{ fontWeight: 900, color: "#0f172a", fontSize: 14 }}>
+                              📎 {t.declAttachment}: {openedDeclaration.file.name || "declaration"}
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <button
+                                style={{ ...btn, padding: "6px 10px", fontSize: 13 }}
+                                onClick={() => setOpenAttachment(openedDeclaration.file)}
+                              >
+                                {t.declView}
+                              </button>
+                              <a
+                                href={normalizeUrl(openedDeclaration.file.url)}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ textDecoration: "none" }}
+                              >
+                                <span style={{ ...btn, padding: "6px 10px", fontSize: 13 }}>{t.declDownload}</span>
+                              </a>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ color: "#78350f", fontStyle: "italic", fontWeight: 800, fontSize: 14 }}>
+                            {t.declNoFile}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#991b1b" }}>
+                        ❌ {t.noDeclaration}
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div style={{ fontSize: 15, fontWeight: 800, color: "#991b1b" }}>
-                    ❌ {t.noDeclaration}
-                  </div>
-                )}
-              </div>
+                );
+              })()}
 
               {/* Attachments */}
               <div
@@ -2371,36 +2959,83 @@ export default function SupplierEvaluationResults() {
                 </div>
 
                 <div style={{ display: "grid", gap: 10 }}>
-                  {openedAnswerPairs.map((x) => (
-                    <div
-                      key={x.key}
-                      style={{
-                        border: "1px solid rgba(139,92,246,0.18)",
-                        borderRadius: 12,
-                        padding: 14,
-                        background: "rgba(255,255,255,0.85)",
-                      }}
-                    >
-                      <div style={{ whiteSpace: "pre-wrap", fontWeight: 950, color: "#0f172a", lineHeight: 1.6, fontSize: 16 }}>{x.q}</div>
-                      <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                        <span style={{ fontWeight: 980, fontSize: 15 }}>{t.answer}:</span>
-                        <span
-                          style={{
-                            padding: "7px 12px",
-                            borderRadius: 999,
-                            fontWeight: 980,
-                            fontSize: 14,
-                            border: "1px solid rgba(15,23,42,0.14)",
-                            background: x.v === true ? "rgba(34,197,94,0.14)" : x.v === false ? "rgba(239,68,68,0.12)" : "rgba(148,163,184,0.16)",
-                            color: x.v === true ? "#14532d" : x.v === false ? "#7f1d1d" : "#334155",
-                          }}
-                        >
-                          {answerLabel(x.v, lang)}
-                        </span>
-                        <span style={muted}>({x.key})</span>
+                  {openedAnswerPairs.map((x) => {
+                    const currentV = editMode
+                      ? (Object.prototype.hasOwnProperty.call(answersDraft, x.key)
+                          ? answersDraft[x.key]
+                          : x.v)
+                      : x.v;
+
+                    const pickAns = (v) =>
+                      setAnswersDraft((prev) => ({ ...prev, [x.key]: v }));
+
+                    const ansOptStyle = (v) => {
+                      const selected = currentV === v
+                        || (v === null && (currentV === null || typeof currentV === "undefined"));
+                      const palette =
+                        v === true
+                          ? { bgOn: "rgba(34,197,94,0.20)", fgOn: "#14532d", brOn: "rgba(34,197,94,0.50)" }
+                          : v === false
+                          ? { bgOn: "rgba(239,68,68,0.18)", fgOn: "#7f1d1d", brOn: "rgba(239,68,68,0.50)" }
+                          : { bgOn: "rgba(148,163,184,0.25)", fgOn: "#334155", brOn: "rgba(148,163,184,0.55)" };
+                      return {
+                        ...btn,
+                        padding: "7px 14px",
+                        fontSize: 13,
+                        fontWeight: 950,
+                        background: selected ? palette.bgOn : "rgba(255,255,255,0.95)",
+                        color: selected ? palette.fgOn : "#64748b",
+                        borderColor: selected ? palette.brOn : "rgba(15,23,42,0.14)",
+                      };
+                    };
+
+                    return (
+                      <div
+                        key={x.key}
+                        style={{
+                          border: "1px solid rgba(139,92,246,0.18)",
+                          borderRadius: 12,
+                          padding: 14,
+                          background: "rgba(255,255,255,0.85)",
+                        }}
+                      >
+                        <div style={{ whiteSpace: "pre-wrap", fontWeight: 950, color: "#0f172a", lineHeight: 1.6, fontSize: 16 }}>{x.q}</div>
+                        <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 980, fontSize: 15 }}>{t.answer}:</span>
+
+                          {editMode ? (
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" disabled={savingEdit} onClick={() => pickAns(true)} style={ansOptStyle(true)}>
+                                ✔ {t.ansYes}
+                              </button>
+                              <button type="button" disabled={savingEdit} onClick={() => pickAns(false)} style={ansOptStyle(false)}>
+                                ✖ {t.ansNo}
+                              </button>
+                              <button type="button" disabled={savingEdit} onClick={() => pickAns(null)} style={ansOptStyle(null)}>
+                                — {t.ansNa}
+                              </button>
+                            </div>
+                          ) : (
+                            <span
+                              style={{
+                                padding: "7px 12px",
+                                borderRadius: 999,
+                                fontWeight: 980,
+                                fontSize: 14,
+                                border: "1px solid rgba(15,23,42,0.14)",
+                                background: x.v === true ? "rgba(34,197,94,0.14)" : x.v === false ? "rgba(239,68,68,0.12)" : "rgba(148,163,184,0.16)",
+                                color: x.v === true ? "#14532d" : x.v === false ? "#7f1d1d" : "#334155",
+                              }}
+                            >
+                              {answerLabel(x.v, lang)}
+                            </span>
+                          )}
+
+                          <span style={muted}>({x.key})</span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* ✏ Internal Notes — always visible, with inline Edit/Save */}
@@ -2444,8 +3079,12 @@ export default function SupplierEvaluationResults() {
                           background: "linear-gradient(135deg, rgba(14,165,233,0.15), rgba(139,92,246,0.12))",
                           border: "1px solid rgba(14,165,233,0.35)",
                           color: "#0c4a6e",
+                          opacity: editMode ? 0.5 : 1,
+                          cursor: editMode ? "not-allowed" : "pointer",
                         }}
                         onClick={startEditNotes}
+                        disabled={editMode}
+                        title={editMode ? t.editingBanner : ""}
                       >
                         {openedPayload?.notes ? t.editNotes : t.addNotes}
                       </button>

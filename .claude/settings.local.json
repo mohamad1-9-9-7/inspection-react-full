@@ -34,7 +34,8 @@
       "Bash(node -e \"require\\('@babel/core'\\).parseSync\\(require\\('fs'\\).readFileSync\\('src/pages/KPIDashboard.js','utf8'\\),{filename:'KPIDashboard.js',presets:['@babel/preset-env','@babel/preset-react']}\\); console.log\\('OK'\\)\")",
       "Bash(node -c \"D:/inspection-server/index.cjs\")",
       "Bash(npx --no-install eslint \"src/pages/haccp and iso/Supplier Approval/\" --ext .js,.jsx)",
-      "Bash(npx react-scripts *)"
+      "Bash(npx react-scripts *)",
+      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('src/pages/haccp and iso/Supplier Approval/SupplierEvaluationResults.jsx','utf8'\\),{sourceType:'module',plugins:['jsx']}\\)\")"
     ]
   }
 }
