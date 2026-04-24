@@ -295,7 +295,6 @@ export default function NonConformanceReportsView() {
       ],
       [],
       ["Nonconformance/Report Details", p?.detailsBlock || ""],
-      ["Root Cause(s)", p?.rootCause || ""],
       ["Corrective Action", p?.correctiveAction || ""],
       [],
       ["Implementation Owner", p?.correctiveActionExtras?.implementationOwner || ""],
@@ -557,16 +556,6 @@ export default function NonConformanceReportsView() {
                   <tr>
                     <td style={{ ...cell, width: "60mm" }}><b>Nonconformance/Report Details</b></td>
                     <td style={cell}>{view?.detailsBlock || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* Root Cause */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "60mm" }}><b>Root Cause(s) of Nonconformance</b></td>
-                    <td style={cell}>{view?.rootCause || "\u00A0"}</td>
                   </tr>
                 </tbody>
               </table>

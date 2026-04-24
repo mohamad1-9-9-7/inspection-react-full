@@ -21,6 +21,7 @@ export default function CorrectiveActionReportInput() {
     originOfNC: "",
     carCompletedDate: "",
     ncDetails: "",
+    rootCause: "",
     correctiveAction: "",
     preventiveAction: "",
     signedQA: "",
@@ -69,6 +70,7 @@ export default function CorrectiveActionReportInput() {
       },
       body: {
         detailsOfNC: form.ncDetails,
+        rootCause: form.rootCause,
         correctiveAction: form.correctiveAction,
         preventiveAction: form.preventiveAction,
       },
@@ -157,6 +159,15 @@ export default function CorrectiveActionReportInput() {
       <textarea style={{ ...textarea, borderTop:"none" }}
         placeholder="Describe the non-conformity…"
         value={form.ncDetails} onChange={e=>setVal("ncDetails", e.target.value)}
+      />
+
+      {/* Root Cause(s) of Nonconformance */}
+      <div style={{ fontWeight:800, background:"#f1f5f9", padding:"6px 8px", border:"1px solid #cbd5e1", marginTop:12 }}>
+        Root Cause(s) of Nonconformance
+      </div>
+      <textarea style={{ ...textarea, borderTop:"none" }}
+        placeholder="Root cause..."
+        value={form.rootCause} onChange={e=>setVal("rootCause", e.target.value)}
       />
 
       {/* Corrective Action */}

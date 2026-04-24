@@ -178,6 +178,7 @@ export default function CorrectiveActionReportsView() {
       ["CAR Completed date", h?.carCompletedDate || ""],
       [],
       ["Details of Non-Conformity", b?.detailsOfNC || ""],
+      ["Root Cause(s) of Nonconformance", b?.rootCause || ""],
       ["Corrective Action", b?.correctiveAction || ""],
       ["Action taken to prevent recurrence", b?.preventiveAction || ""],
       [],
@@ -314,6 +315,16 @@ export default function CorrectiveActionReportsView() {
                   <tr>
                     <td style={{ ...cell, width: "60mm" }}><b>Details of Non-Conformity</b></td>
                     <td style={cell}>{b?.detailsOfNC || "\u00A0"}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Root Cause */}
+              <table style={{ ...table, marginTop: 6 }}>
+                <tbody>
+                  <tr>
+                    <td style={{ ...cell, width: "60mm" }}><b>Root Cause(s) of Nonconformance</b></td>
+                    <td style={cell}>{b?.rootCause || "\u00A0"}</td>
                   </tr>
                 </tbody>
               </table>

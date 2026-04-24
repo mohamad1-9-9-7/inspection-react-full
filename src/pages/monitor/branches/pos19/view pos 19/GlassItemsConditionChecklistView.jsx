@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import unionLogo from "../../../../../assets/unioncoop-logo.png";
+import ReportHeader from "../_shared/ReportHeader";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -768,13 +769,16 @@ export default function GlassItemsConditionChecklistView() {
           {record && (
             <div ref={reportRef}>
               {/* Info band */}
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(5, 1fr)", gap:8, marginBottom:8, fontSize:12 }}>
-                <div><strong>Date:</strong> {safe(record.payload?.reportDate)}</div>
-                <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
-                <div><strong>Form Ref:</strong> {safe(record.payload?.formRef || "UC/HACCP/BR/F29")}</div>
-                <div><strong>Classification:</strong> {safe(record.payload?.classification || "Official")}</div>
-                <div><strong>Section:</strong> {safe(record.payload?.section)}</div>
-              </div>
+              <ReportHeader
+                title="Glass Items Condition Monitoring Checklist"
+                fields={[
+                  { label: "Report Date",    value: safe(record.payload?.reportDate) },
+                  { label: "Branch",         value: safe(record.payload?.branch) },
+                  { label: "Form Ref",       value: safe(record.payload?.formRef || "UC/HACCP/BR/F29") },
+                  { label: "Classification", value: safe(record.payload?.classification || "Official") },
+                  { label: "Section",        value: safe(record.payload?.section) },
+                ]}
+              />
 
               {/* Legend */}
               <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>

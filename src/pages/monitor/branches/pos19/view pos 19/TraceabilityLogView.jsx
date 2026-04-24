@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import ReportHeader from "../_shared/ReportHeader";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -149,12 +150,15 @@ export default function TraceabilityLogView() {
           {loading&&<p>Loading…</p>}{err&&<p style={{color:"#b91c1c"}}>{err}</p>}
           {!loading&&!err&&!record&&<div style={{padding:12,border:"1px dashed #9ca3af",borderRadius:8,textAlign:"center"}}>No report for this date.</div>}
           {record&&(<div ref={reportRef}>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:8,fontSize:12}}>
-              <div><strong>Date:</strong> {safe(record.payload?.reportDate)}</div>
-              <div><strong>Form Ref:</strong> {FORM_REF}</div>
-              <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
-              <div><strong>Section:</strong> {safe(record.payload?.section)}</div>
-            </div>
+            <ReportHeader
+              title="Traceability Log"
+              fields={[
+                { label: "Report Date", value: safe(record.payload?.reportDate) },
+                { label: "Branch",      value: safe(record.payload?.branch) },
+                { label: "Form Ref",    value: FORM_REF },
+                { label: "Section",     value: safe(record.payload?.section) },
+              ]}
+            />
             <div style={{border:"1px solid #1f3b70",borderBottom:"none"}}><div style={{...thCell,background:"#e9f0ff"}}>PRODUCT TRACEABILITY RECORD</div></div>
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontSize:12}}>

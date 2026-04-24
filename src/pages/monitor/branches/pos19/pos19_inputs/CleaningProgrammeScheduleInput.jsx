@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/CleaningProgrammeScheduleInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import ReportHeader from "../_shared/ReportHeader";
 
 /* ===== API base (aligned) ===== */
 const API_BASE = String(
@@ -712,54 +713,20 @@ export default function CleaningProgrammeScheduleInput() {
         </div>
       </div>
 
-      {/* Header block */}
-      <div style={{
-        display:"grid",
-        gridTemplateColumns:"repeat(6, minmax(0,1fr))",
-        gap:8,
-        marginBottom:10,
-        alignItems:"center",
-        fontSize:12,
-      }}>
-        <div style={{ gridColumn:"span 6 / span 6", fontWeight:900, fontSize:16, textAlign:"center" }}>
-          CLEANING PROGRAMME SCHEDULE
-        </div>
-
-        <HeaderLine label="Union Coop Form Ref. No:">UC/HACCP/BR/F13A-1</HeaderLine>
-        <HeaderLine label="Cleaning Program Schedule (Butchery)">Classification :
-          <input
-            value={classification}
-            onChange={(e)=>setClassification(e.target.value)}
-            style={{ ...inputStyle, borderColor:"#1f3b70", display:"inline-block", width:"auto", marginLeft:8 }}
-          />
-        </HeaderLine>
-        <HeaderLine label="Month:">
-          <input
-            type="month"
-            value={monthText}
-            onChange={(e)=>setMonthText(e.target.value)}
-            style={{ ...inputStyle, borderColor:"#1f3b70" }}
-          />
-        </HeaderLine>
-        <HeaderLine label="Page">1 of 11</HeaderLine>
-        <HeaderLine label="Rev. Date:">
-          <input
-            placeholder="(optional)"
-            value={revDate}
-            onChange={(e)=>setRevDate(e.target.value)}
-            style={{ ...inputStyle, borderColor:"#1f3b70" }}
-          />
-        </HeaderLine>
-        <HeaderLine label="Rev. No:">
-          <input
-            placeholder="(optional)"
-            value={revNo}
-            onChange={(e)=>setRevNo(e.target.value)}
-            style={{ ...inputStyle, borderColor:"#1f3b70" }}
-          />
-        </HeaderLine>
-        <HeaderLine label="Location">{location}</HeaderLine>
-      </div>
+      <ReportHeader
+        title="Cleaning Programme Schedule"
+        subtitle="Butchery — Monthly"
+        fields={[
+          { label: "Form Ref", value: "UC/HACCP/BR/F13A-1" },
+          { label: "Branch", value: BRANCH },
+          { label: "Location", value: location },
+          { label: "Classification", value: classification, onChange: setClassification },
+          { label: "Month", value: monthText, onChange: setMonthText },
+          { label: "Page", value: "1 of 11" },
+          { label: "Rev Date", value: revDate, onChange: setRevDate, placeholder: "(optional)" },
+          { label: "Rev No", value: revNo, onChange: setRevNo, placeholder: "(optional)" },
+        ]}
+      />
 
       {/* Standard line */}
       <div style={{

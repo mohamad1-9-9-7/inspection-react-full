@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos19/pos19_views/CleaningProgrammeScheduleView.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import unionLogo from "../../../../../assets/unioncoop-logo.png";
+import ReportHeader from "../_shared/ReportHeader";
 
 /* ===== API base (aligned with inputs) ===== */
 const API_BASE = String(
@@ -628,46 +629,20 @@ export default function CleaningProgrammeScheduleView() {
       {payload && (
         <>
           {/* Header */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(6, minmax(0,1fr))",
-              gap: 8,
-              marginBottom: 10,
-              alignItems: "center",
-              fontSize: 12,
-            }}
-          >
-            <div
-              style={{
-                gridColumn: "span 6 / span 6",
-                fontWeight: 900,
-                fontSize: 16,
-                textAlign: "center",
-              }}
-            >
-              CLEANING PROGRAMME SCHEDULE
-            </div>
-
-            <HeaderLine label="Union Coop Form Ref. No:">
-              {payload.formRef || "UC/HACCP/BR/F13A-1"}
-            </HeaderLine>
-            <HeaderLine label="Cleaning Program Schedule (Butchery)">
-              Classification :{" "}
-              <strong style={{ marginLeft: 6 }}>
-                {payload.classification || "Official"}
-              </strong>
-            </HeaderLine>
-            <HeaderLine label="Month:">
-              {normalizeMonth(payload.month) || "-"}
-            </HeaderLine>
-            <HeaderLine label="Page">1 of 11</HeaderLine>
-            <HeaderLine label="Rev. Date:">{payload.revDate || ""}</HeaderLine>
-            <HeaderLine label="Rev. No:">{payload.revNo || ""}</HeaderLine>
-            <HeaderLine label="Location">
-              {payload.location || "BUTCHERY"}
-            </HeaderLine>
-          </div>
+          <ReportHeader
+            title="CLEANING PROGRAMME SCHEDULE"
+            subtitle="Cleaning Program Schedule (Butchery)"
+            fields={[
+              { label: "Form Ref",       value: payload.formRef || "UC/HACCP/BR/F13A-1" },
+              { label: "Branch",         value: payload.branch || BRANCH },
+              { label: "Classification", value: payload.classification || "Official" },
+              { label: "Month",          value: normalizeMonth(payload.month) || "-" },
+              { label: "Page",           value: "1 of 11" },
+              { label: "Rev. Date",      value: payload.revDate || "" },
+              { label: "Rev. No",        value: payload.revNo || "" },
+              { label: "Location",       value: payload.location || "BUTCHERY" },
+            ]}
+          />
 
           {/* Standard */}
           <div

@@ -320,7 +320,6 @@ export default function NonConformanceReportInput(props) {
   const [refExternalAudit, setRefExternalAudit] = useState(false);
 
   const [details, setDetails] = useState("");
-  const [rootCause, setRootCause] = useState("");
   const [correctiveAction, setCorrectiveAction] = useState("");
   const [performedBy, setPerformedBy] = useState("");
   const [department, setDepartment] = useState("");
@@ -439,7 +438,6 @@ export default function NonConformanceReportInput(props) {
         externalAudit: refExternalAudit,
       },
       detailsBlock: details,
-      rootCause,
       correctiveAction,
       correctiveActionExtras: {
         implementationOwner,
@@ -646,20 +644,6 @@ export default function NonConformanceReportInput(props) {
                 <td style={{ ...labelCell, width: 260 }}>Nonconformance / Report Details</td>
                 <td style={cell}>
                   <textarea style={area} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Write details here..." />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style={divider} />
-
-          {/* Root Cause */}
-          <table style={table}>
-            <tbody>
-              <tr>
-                <td style={{ ...labelCell, width: 260 }}>Root Cause(s) of Nonconformance</td>
-                <td style={cell}>
-                  <textarea style={smallArea} value={rootCause} onChange={(e) => setRootCause(e.target.value)} placeholder="Root cause..." />
                 </td>
               </tr>
             </tbody>

@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/TraceabilityLogInput.jsx
 import React, { useMemo, useState } from "react";
+import ReportHeader from "../_shared/ReportHeader";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -126,19 +127,16 @@ export default function TraceabilityLogInput() {
 
   return (
     <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d" }}>
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-        <div style={{ flex:1 }}>
-          <div style={{ fontWeight:800, fontSize:16 }}>Traceability Log</div>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"auto 190px", gap:6, alignItems:"center", fontSize:12 }}>
-          <div>Form Ref. No :</div><div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>{FORM_REF}</div>
-          <div>Section :</div><input value={section} onChange={e=>setSection(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
-          <div>Classification :</div><div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>Official</div>
-          <div>Date :</div><input type="date" value={reportDate} onChange={e=>setReportDate(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
-          <div>Branch :</div><div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>{BRANCH}</div>
-        </div>
-      </div>
+      <ReportHeader
+        title="Traceability Log"
+        fields={[
+          { label: "Form Ref", value: FORM_REF },
+          { label: "Branch", value: BRANCH },
+          { label: "Classification", value: "Official" },
+          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate },
+          { label: "Section", value: section, onChange: setSection, placeholder: "e.g. Butchery" },
+        ]}
+      />
 
       {/* Title strip */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>

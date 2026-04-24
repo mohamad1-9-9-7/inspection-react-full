@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import unionLogo from "../../../../../assets/unioncoop-logo.png";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import ReportHeader from "../_shared/ReportHeader";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -800,20 +801,15 @@ async function exportXLSX() {
           {record && (
             <div ref={reportRef}>
               {/* Info band */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr 1fr",
-                  gap: 8,
-                  marginBottom: 8,
-                  fontSize: 12,
-                }}
-              >
-                <div><strong>Date:</strong> {safe(record.payload?.reportDate)}</div>
-                <div><strong>Section:</strong> {safe(record.payload?.section)}</div>
-                <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
-                <div><strong>Ref:</strong> UC/HACCP/BR/F06</div>
-              </div>
+              <ReportHeader
+                title="Personal Hygiene Checklist"
+                fields={[
+                  { label: "Report Date", value: safe(record.payload?.reportDate) },
+                  { label: "Section",     value: safe(record.payload?.section) },
+                  { label: "Branch",      value: safe(record.payload?.branch) },
+                  { label: "Form Ref",    value: "UC/HACCP/BR/F06" },
+                ]}
+              />
 
               <div style={{ border: "1px solid #1f3b70", borderBottom: "none" }}>
                 <div style={{ ...thCell, background: "#e9f0ff" }}>Good Hygiene Practices</div>

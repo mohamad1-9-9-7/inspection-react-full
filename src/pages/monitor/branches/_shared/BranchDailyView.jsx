@@ -1,7 +1,7 @@
 // src/pages/monitor/branches/_shared/BranchDailyView.jsx
 // Unified Daily View Hub — shared design adopted from POS19DailyView.
 // كل الأفرع بتستخدم هالـ component حتى يكون التصميم موحّد.
-import React, { Suspense, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 
 /* ─── Global Styles (scoped by root class + CSS variables) ─── */
 const STYLES = `
@@ -394,6 +394,18 @@ export default function BranchDailyView({
   defaultTabKey,
 }) {
   const [activeKey, setActiveKey] = useState(defaultTabKey || tabs[0]?.key);
+
+  // ✅ Allow external components (e.g. Dashboard) to switch tabs via CustomEvent
+  useEffect(() => {
+    const handler = (e) => {
+      const key = e?.detail;
+      if (key && tabs.some((t) => t.key === key)) {
+        setActiveKey(key);
+      }
+    };
+    window.addEventListener("prd:switch-tab", handler);
+    return () => window.removeEventListener("prd:switch-tab", handler);
+  }, [tabs]);
 
   const activeTab = useMemo(
     () => tabs.find((t) => t.key === activeKey) || tabs[0],

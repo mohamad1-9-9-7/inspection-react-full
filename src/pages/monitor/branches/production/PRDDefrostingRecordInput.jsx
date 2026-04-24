@@ -1,5 +1,7 @@
 // src/pages/monitor/branches/production/PRDDefrostingRecordInput.jsx
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import PRDReportHeader from "./_shared/PRDReportHeader";
+import { useLang } from "./_shared/i18n";
 
 const API_BASE =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
@@ -39,38 +41,10 @@ const EMPTY_ROW = () => ({
   remarks: "",
 });
 
-/* ─── Row Component ───────────────────────────────────────────────────────── */
-function Row({ idx, row, onChange, onRemove, canRemove }) {
-  const set = (k, v) => onChange(idx, { ...row, [k]: v });
-  return (
-    <div className="t-row">
-      <input className="cell in" value={row.rawMaterial || ""} onChange={(e) => set("rawMaterial", e.target.value)} />
-      <input className="cell in" value={row.quantity || ""} onChange={(e) => set("quantity", e.target.value)} />
-      <input className="cell in" value={row.brand || ""} onChange={(e) => set("brand", e.target.value)} />
-      <input className="cell in" type="date" value={row.rmProdDate || ""} onChange={(e) => set("rmProdDate", e.target.value)} />
-      <input className="cell in" type="date" value={row.rmExpDate || ""} onChange={(e) => set("rmExpDate", e.target.value)} />
-      <input className="cell in" type="date" value={row.defStartDate || ""} onChange={(e) => set("defStartDate", e.target.value)} />
-      <input className="cell in" type="time" value={row.defStartTime || ""} onChange={(e) => set("defStartTime", e.target.value)} />
-      <input className="cell in" value={row.startTemp || ""} onChange={(e) => set("startTemp", e.target.value)} />
-      <input className="cell in" type="date" value={row.defEndDate || ""} onChange={(e) => set("defEndDate", e.target.value)} />
-      <input className="cell in" type="time" value={row.defEndTime || ""} onChange={(e) => set("defEndTime", e.target.value)} />
-      <input className="cell in" value={row.endTemp || ""} onChange={(e) => set("endTemp", e.target.value)} />
-      <input className="cell in" value={row.defrostTemp || ""} onChange={(e) => set("defrostTemp", e.target.value)} />
-      <input className="cell in" value={row.remarks || ""} onChange={(e) => set("remarks", e.target.value)} />
-      <button
-        className="cell btn danger no-print"
-        title="Remove row"
-        disabled={!canRemove}
-        onClick={() => onRemove(idx)}
-      >
-        −
-      </button>
-    </div>
-  );
-}
-
 /* ─── Main ────────────────────────────────────────────────────────────────── */
 export default function PRDDefrostingRecordInput() {
+  const { t, dir } = useLang();
+
   // ✅ قيم الترويسة ثابتة وغير قابلة للتعديل
   const ISSUE_DATE_TEXT = "05/05/2022";
   const docNo = "TELT /PROD/ DR";
@@ -88,9 +62,90 @@ export default function PRDDefrostingRecordInput() {
   const [entries, setEntries] = useState([EMPTY_ROW(), EMPTY_ROW(), EMPTY_ROW()]);
   const [saving, setSaving] = useState(false);
 
+  // ✅ حالة التعديل: إذا يوجد تقرير سابق لنفس التاريخ نحمّله تلقائيًا
+  const [loadingExisting, setLoadingExisting] = useState(false);
+  const [existingReport, setExistingReport]   = useState(null); // { id, savedAt }
+  const [loadMsg, setLoadMsg]                 = useState("");
+  const reqIdRef                               = useRef(0);
+
   const chRow = (i, v) => setEntries(entries.map((r, ix) => (ix === i ? v : r)));
   const addRow = () => setEntries((prev) => [...prev, EMPTY_ROW()]);
   const rmRow = (i) => setEntries(entries.filter((_, ix) => ix !== i));
+
+  function resetToBlank() {
+    setEntries([EMPTY_ROW(), EMPTY_ROW(), EMPTY_ROW()]);
+    setCheckedBy("");
+    setVerifiedBy("");
+    setExistingReport(null);
+  }
+
+  // ✅ عند تغيير التاريخ، نفحص السيرفر ونحمّل التقرير إن وُجد
+  useEffect(() => {
+    const iso = toIsoYMD(recordDate);
+    if (!iso) return;
+
+    // كل fetch له id فريد — الأحدث فقط يطبّق نتيجته
+    const myReq = ++reqIdRef.current;
+
+    (async () => {
+      setLoadingExisting(true);
+      setLoadMsg("");
+      try {
+        const base = String(API_BASE).replace(/\/$/, "");
+        const res = await fetch(`${base}/api/reports?type=${TYPE}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const arr = Array.isArray(data) ? data : data?.data ?? [];
+
+        // كل التقارير اللي تاريخها == iso
+        const matches = arr.filter((r) => {
+          const h = r?.payload?.header || {};
+          const d = toIsoYMD(h.reportDate || h.issueDate || h.month || r.createdAt || "");
+          return d === iso;
+        });
+
+        // إذا صار fetch أحدث، نتجاهل هذا الرد
+        if (myReq !== reqIdRef.current) return;
+
+        if (matches.length > 0) {
+          matches.sort(
+            (a, b) => (b?.payload?.savedAt || 0) - (a?.payload?.savedAt || 0)
+          );
+          const latest = matches[0];
+          const p = latest?.payload || {};
+          const loadedEntries = Array.isArray(p.entries) && p.entries.length
+            ? p.entries.map((r) => ({ ...EMPTY_ROW(), ...r }))
+            : [EMPTY_ROW(), EMPTY_ROW(), EMPTY_ROW()];
+          setEntries(loadedEntries);
+          setCheckedBy(p?.signatures?.checkedBy || "");
+          setVerifiedBy(p?.signatures?.verifiedBy || "");
+          setExistingReport({
+            id: latest?._id || latest?.id || null,
+            savedAt: p?.savedAt || 0,
+          });
+          setLoadMsg(`📝 ${t("status_loaded_edit")}`);
+        } else {
+          resetToBlank();
+          const newMsg = `✏️ ${t("status_new_report")}`;
+          setLoadMsg(newMsg);
+          setTimeout(() => {
+            setLoadMsg((m) => (m === newMsg ? "" : m));
+          }, 2500);
+        }
+      } catch (e) {
+        console.warn("Failed to load existing defrosting report:", e);
+        if (myReq === reqIdRef.current) {
+          setLoadMsg(`⚠️ ${t("status_fail")}`);
+          setTimeout(() => setLoadMsg(""), 3500);
+        }
+      } finally {
+        // نرجع loading=false دائمًا للـ request الأحدث
+        if (myReq === reqIdRef.current) {
+          setLoadingExisting(false);
+        }
+      }
+    })();
+  }, [recordDate]);
 
   const rowHasData = (r) =>
     [
@@ -142,6 +197,26 @@ export default function PRDDefrostingRecordInput() {
       };
 
       const base = String(API_BASE).replace(/\/$/, "");
+
+      // ✅ إذا كنا نعدّل تقرير موجود، نحذفه أولًا ثم نحفظ
+      if (existingReport?.id) {
+        try {
+          await fetch(
+            `${base}/api/reports/${encodeURIComponent(existingReport.id)}`,
+            { method: "DELETE" }
+          );
+        } catch (e) {
+          console.warn("Delete old failed, trying fallbacks…", e);
+          // fallback: endpoint يعتمد على type + reportDate
+          try {
+            await fetch(
+              `${base}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(reportDate)}`,
+              { method: "DELETE" }
+            );
+          } catch {}
+        }
+      }
+
       const res = await fetch(`${base}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -150,7 +225,14 @@ export default function PRDDefrostingRecordInput() {
 
       if (!res.ok) throw new Error(`HTTP ${res.status} ${await res.text().catch(() => "")}`);
 
-      alert("Saved ✓ Defrosting Record (PRODUCTION)");
+      // تحديث الحالة لتعكس أن التقرير الآن "موجود" تحت هذا التاريخ
+      const savedJson = await res.json().catch(() => null);
+      setExistingReport({
+        id: savedJson?._id || savedJson?.id || existingReport?.id || null,
+        savedAt: payload.savedAt,
+      });
+      setLoadMsg(`✅ ${existingReport?.id ? t("status_updated") : t("status_saved")}`);
+      setTimeout(() => setLoadMsg(""), 2500);
     } catch (e) {
       alert("Error saving: " + (e?.message || String(e)));
     } finally {
@@ -159,173 +241,449 @@ export default function PRDDefrostingRecordInput() {
   }
 
   return (
-    <div className="wrap">
-      <style>{`
-        @media print { .no-print{ display:none !important; } body{ background:#fff; } }
-        .wrap{ padding:16px; color:#111827; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-        .sheet{ width:100%; background:#fff; margin:0 auto; border:1px solid #111; border-radius:4px; box-shadow:0 10px 24px rgba(0,0,0,.06); }
+    <div className="df-wrap" dir={dir}>
+      <style>{DEFROST_STYLES}</style>
 
-        .hdrTable, .brandTable, .noteTable{ width:100%; border-collapse:collapse; table-layout:fixed; }
-        .hdrTable td, .brandTable td, .noteTable td{ border:1px solid #111; padding:6px 8px; font-size:12px; vertical-align:middle; }
-        .logoCell{ width:220px; text-align:center; }
-        .logoBlock{ display:flex; flex-direction:column; align-items:center; justify-content:center; height:70px; }
-        .logoAR{ font-family: "Cairo", Tahoma, Arial, sans-serif; font-weight:900; font-size:26px; color:#c81e1e; line-height:1; }
-        .logoEN{ font-weight:900; font-size:13px; letter-spacing:.6px; color:#111; margin-top:4px; }
+      <PRDReportHeader
+        title="Defrosting Record"
+        titleAr="سجل إذابة التجميد"
+        subtitle={t("df_subtitle")}
+        accent="#3b82f6"
+        fields={[
+          { labelKey: "hdr_document_no",  value: docNo },
+          { labelKey: "hdr_issue_date",   value: ISSUE_DATE_TEXT },
+          { labelKey: "hdr_revision_no",  value: revisionNo },
+          { labelKey: "hdr_area",         value: area },
+          { labelKey: "hdr_issued_by",    value: issuedBy },
+          { labelKey: "hdr_controlling",  value: coveringOfficer },
+          { labelKey: "hdr_approved_by",  value: approvedBy },
+          { labelKey: "hdr_report_date",  type: "date", value: recordDate, onChange: setRecordDate },
+        ]}
+      />
 
-        .lbl{ text-decoration:underline; font-weight:800; }
-        .brandCellLeft{ width:220px; font-size:18px; font-weight:900; text-decoration:underline; }
-        .brandCellRight{ text-align:center; font-weight:900; font-size:20px; }
+      {/* Edit-mode status + actions */}
+      <div className="df-actions no-print">
+        <button className="df-btn df-btn-ghost" onClick={addRow}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14"/></svg>
+          {t("btn_add_row")}
+        </button>
 
-        .tableWrap{ width:100%; overflow-x:auto; border-top:1px solid #111; }
-        .table{ min-width: 1600px; border-left:1px solid #111; }
-        .t-head, .t-row{ display:grid; grid-template-columns: 1.4fr .9fr 1.1fr 1.1fr 1.1fr 1.2fr 1fr .9fr 1.2fr 1fr .9fr 1.2fr 1.3fr 40px; align-items:stretch; }
-        .t-head{ background:#e5e7eb; border-bottom:1px solid #111; font-size:12px; font-weight:900; text-align:center; }
-        .t-head > div{ border-right:1px solid #111; padding:8px 6px; }
-        .t-row{ border-bottom:1px solid #111; }
-        .cell{ border-right:1px solid #111; padding:2px; display:flex; align-items:center; justify-content:center; }
-        .in{ width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:2px; font-weight:700; font-size:12px; background:#fff; }
+        {existingReport?.id && (
+          <button
+            className="df-btn df-btn-ghost"
+            onClick={() => {
+              if (window.confirm(t("status_new_report") + "?")) {
+                resetToBlank();
+                setLoadMsg(t("status_new_report"));
+              }
+            }}
+            title={t("btn_new")}
+          >
+            🆕 {t("btn_new")}
+          </button>
+        )}
 
-        .sigRow{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; padding:10px; border-top:1px solid #111; }
-        .sig{ border:1px solid #111; padding:10px; min-height:48px; display:flex; align-items:flex-end; gap:10px; }
-        .sig label{ font-weight:800; }
-        .sig input{ flex:1; border:none; border-bottom:1px solid #111; outline:none; font-weight:800; }
-
-        .topActions.no-print{ display:flex; gap:8px; padding:10px; }
-        .btn{ padding:8px 12px; border-radius:6px; border:1px solid #e5e7eb; background:#fff; font-weight:900; cursor:pointer; }
-        .btn.primary{ background:#2563eb; color:#fff; border-color:#2563eb; }
-        .btn.danger{ background:#fee2e2; color:#991b1b; border-color:#fecaca; }
-      `}</style>
-
-      {/* أزرار التحكم (لا تُطبع) */}
-      <div className="topActions no-print">
-        <button className="btn" onClick={addRow}>+ Add Row</button>
         <div style={{ flex: 1 }} />
-        <button className="btn primary" disabled={saving} onClick={save}>
-          {saving ? "Saving..." : "Save"}
+
+        {loadingExisting && (
+          <div className="df-status df-status-loading">
+            <div className="df-mini-spinner" />
+            {t("status_loading")}
+          </div>
+        )}
+        {!loadingExisting && loadMsg && (
+          <div className={`df-status ${existingReport?.id ? "df-status-edit" : "df-status-new"}`}>
+            {loadMsg}
+          </div>
+        )}
+
+        <button
+          className="df-btn df-btn-primary"
+          disabled={saving || loadingExisting}
+          onClick={save}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          {saving ? t("btn_saving") : existingReport?.id ? t("btn_update") : t("btn_save")}
         </button>
       </div>
 
-      {/* الورقة */}
-      <div className="sheet">
-        {/* Header (ثابت) */}
-        <table className="hdrTable">
-          <tbody>
-            <tr>
-              <td className="logoCell" rowSpan={4}>
-                <div className="logoBlock">
-                  <div className="logoAR">المواشي</div>
-                  <div className="logoEN">AL MAWASHI</div>
-                </div>
-              </td>
-              <td>
-                <span className="lbl">Document Title:</span> Defrosting Report
-              </td>
-              <td>
-                <span className="lbl">Document No:</span> {docNo}
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <span className="lbl">Issue  Date:</span> {ISSUE_DATE_TEXT}
-              </td>
-              <td>
-                <span className="lbl">Revision  No:</span> {revisionNo}
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <span className="lbl">Area:</span> {area}
-              </td>
-              <td>
-                <span className="lbl">Issued  By:</span> {issuedBy}
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <span className="lbl">Controlling Officer:</span> {coveringOfficer}
-              </td>
-              <td>
-                <span className="lbl">Approved  By :</span> {approvedBy}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* Date + Company */}
-        <table className="brandTable" style={{ marginTop: -1 }}>
-          <tbody>
-            <tr>
-              <td className="brandCellLeft">
-                <span className="lbl">Date :</span>
-                <input
-                  className="monthInput"
-                  type="date"
-                  value={recordDate}
-                  onChange={(e) => setRecordDate(e.target.value)}
-                />
-              </td>
-              <td className="brandCellRight">TRANS EMIRATES LIVESTOCK TRADING LLC</td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* Note */}
-        <table className="noteTable" style={{ marginTop: -1 }}>
-          <tbody>
-            <tr>
-              <td style={{ fontSize: 11 }}>
-                Should be defrosted under refrigerated condition, product temp should not exceed 5ºC.
-                foods should be cooked within 72 hours from the time of the start thawing.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* Table */}
-        <div className="tableWrap">
-          <div className="table">
-            <div className="t-head">
-              <div>RAW MATERIAL</div>
-              <div>QUANTITY</div>
-              <div>BRAND</div>
-              <div>RM PRODN DATE</div>
-              <div>RM EXP DATE</div>
-              <div>DEFROST START DATE</div>
-              <div>START TIME</div>
-              <div>DFRST START TEMP</div>
-              <div>DEFROST END DATE</div>
-              <div>END TIME</div>
-              <div>END TEMP</div>
-              <div>DEFROST TEMP (&gt; 5ºC)</div>
-              <div>REMARKS</div>
-              <div className="no-print"></div>
-            </div>
-
-            {entries.map((row, idx) => (
-              <Row
-                key={idx}
-                idx={idx}
-                row={row}
-                onChange={chRow}
-                onRemove={rmRow}
-                canRemove={entries.length > 1}
-              />
-            ))}
-          </div>
+      {/* Critical info banner */}
+      <div className="df-notice">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 8v4M12 16h.01"/>
+        </svg>
+        <div>
+          <strong>{t("df_critical")}:</strong> {t("df_critical_text")}
         </div>
+      </div>
 
-        {/* Signatures */}
-        <div className="sigRow">
-          <div className="sig">
-            <label>Checked By</label>
-            <input value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)} />
+      {/* Table */}
+      <div className="df-table-wrap">
+        <div className="df-table">
+          <div className="df-head">
+            <div className="df-head-group df-group-material">
+              <div className="df-group-title">{t("df_grp_material")}</div>
+              <div className="df-sub-cols df-sub-cols-material">
+                <div>{t("df_col_item")}</div>
+                <div>{t("df_col_qty")}</div>
+                <div>{t("df_col_brand")}</div>
+                <div>{t("df_col_prod_date")}</div>
+                <div>{t("df_col_exp_date")}</div>
+              </div>
+            </div>
+            <div className="df-head-group df-group-start">
+              <div className="df-group-title">{t("df_grp_start")}</div>
+              <div className="df-sub-cols df-sub-cols-3">
+                <div>{t("df_col_date")}</div>
+                <div>{t("df_col_time")}</div>
+                <div>{t("df_col_temp")}</div>
+              </div>
+            </div>
+            <div className="df-head-group df-group-end">
+              <div className="df-group-title">{t("df_grp_end")}</div>
+              <div className="df-sub-cols df-sub-cols-3">
+                <div>{t("df_col_date")}</div>
+                <div>{t("df_col_time")}</div>
+                <div>{t("df_col_temp")}</div>
+              </div>
+            </div>
+            <div className="df-head-group df-group-rest">
+              <div className="df-group-title">{t("df_grp_result")}</div>
+              <div className="df-sub-cols df-sub-cols-rest">
+                <div>{t("df_col_defrost_t")}</div>
+                <div>{t("df_col_remarks")}</div>
+                <div className="no-print">—</div>
+              </div>
+            </div>
           </div>
-          <div className="sig">
-            <label>Verified By</label>
-            <input value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} />
-          </div>
+
+          {entries.map((row, idx) => (
+            <DefrostRow
+              key={idx}
+              idx={idx}
+              row={row}
+              onChange={chRow}
+              onRemove={rmRow}
+              canRemove={entries.length > 1}
+              t={t}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Signatures */}
+      <div className="df-footer">
+        <div className="df-sig">
+          <label>{t("sig_checked_by")}</label>
+          <input
+            value={checkedBy}
+            onChange={(e) => setCheckedBy(e.target.value)}
+            placeholder={t("sig_name_sig")}
+          />
+        </div>
+        <div className="df-sig">
+          <label>{t("sig_verified_by")}</label>
+          <input
+            value={verifiedBy}
+            onChange={(e) => setVerifiedBy(e.target.value)}
+            placeholder={t("sig_name_sig")}
+          />
         </div>
       </div>
     </div>
   );
 }
+
+/* ─── Redesigned Row component ─── */
+function DefrostRow({ idx, row, onChange, onRemove, canRemove, t }) {
+  const set = (k, v) => onChange(idx, { ...row, [k]: v });
+  const isTempHigh = (val) => val && parseFloat(val) > 5;
+  const tt = t || ((k) => k);
+  return (
+    <div className="df-row">
+      <div className="df-sub-cols df-sub-cols-material">
+        <input className="df-in" value={row.rawMaterial || ""} onChange={(e) => set("rawMaterial", e.target.value)} placeholder={tt("df_col_item")} />
+        <input className="df-in" value={row.quantity || ""} onChange={(e) => set("quantity", e.target.value)} placeholder={tt("df_col_qty")} />
+        <input className="df-in" value={row.brand || ""} onChange={(e) => set("brand", e.target.value)} placeholder={tt("df_col_brand")} />
+        <input className="df-in" type="date" value={row.rmProdDate || ""} onChange={(e) => set("rmProdDate", e.target.value)} />
+        <input className="df-in" type="date" value={row.rmExpDate || ""} onChange={(e) => set("rmExpDate", e.target.value)} />
+      </div>
+      <div className="df-sub-cols df-sub-cols-3">
+        <input className="df-in" type="date" value={row.defStartDate || ""} onChange={(e) => set("defStartDate", e.target.value)} />
+        <input className="df-in" type="time" value={row.defStartTime || ""} onChange={(e) => set("defStartTime", e.target.value)} />
+        <input className={`df-in ${isTempHigh(row.startTemp) ? "df-in-warn" : ""}`} value={row.startTemp || ""} onChange={(e) => set("startTemp", e.target.value)} placeholder="°C" />
+      </div>
+      <div className="df-sub-cols df-sub-cols-3">
+        <input className="df-in" type="date" value={row.defEndDate || ""} onChange={(e) => set("defEndDate", e.target.value)} />
+        <input className="df-in" type="time" value={row.defEndTime || ""} onChange={(e) => set("defEndTime", e.target.value)} />
+        <input className={`df-in ${isTempHigh(row.endTemp) ? "df-in-warn" : ""}`} value={row.endTemp || ""} onChange={(e) => set("endTemp", e.target.value)} placeholder="°C" />
+      </div>
+      <div className="df-sub-cols df-sub-cols-rest">
+        <input className={`df-in ${isTempHigh(row.defrostTemp) ? "df-in-warn" : ""}`} value={row.defrostTemp || ""} onChange={(e) => set("defrostTemp", e.target.value)} placeholder="°C" />
+        <input className="df-in" value={row.remarks || ""} onChange={(e) => set("remarks", e.target.value)} placeholder={tt("df_col_remarks")} />
+        <button
+          className="df-btn-icon df-btn-danger no-print"
+          title={tt("btn_remove")}
+          disabled={!canRemove}
+          onClick={() => onRemove(idx)}
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const DEFROST_STYLES = `
+  @media print { .no-print{ display:none !important; } }
+
+  .df-wrap {
+    padding: 22px;
+    background: #f8fafc;
+    min-height: 100%;
+  }
+
+  .df-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .df-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .15s ease;
+  }
+  .df-btn-ghost {
+    background: #fff;
+    color: #334155;
+    border-color: #e2e8f0;
+  }
+  .df-btn-ghost:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+  }
+  .df-btn-primary {
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(59,130,246,.3);
+    padding: 11px 20px;
+    font-size: 14px;
+  }
+  .df-btn-primary:hover:not(:disabled) {
+    box-shadow: 0 6px 16px rgba(59,130,246,.4);
+    transform: translateY(-1px);
+  }
+  .df-btn-primary:disabled {
+    opacity: .6; cursor: not-allowed;
+  }
+
+  .df-btn-icon {
+    width: 32px; height: 32px;
+    border: none;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .df-btn-danger {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+  }
+  .df-btn-danger:hover:not(:disabled) { background: #fee2e2; }
+  .df-btn-danger:disabled { opacity: .3; cursor: not-allowed; }
+
+  .df-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 700;
+  }
+  .df-status-loading {
+    background: #f1f5f9; color: #475569;
+    border: 1px solid #e2e8f0;
+  }
+  .df-status-edit {
+    background: #fef3c7; color: #92400e;
+    border: 1px solid #fde68a;
+  }
+  .df-status-new {
+    background: #e0f2fe; color: #075985;
+    border: 1px solid #bae6fd;
+  }
+  .df-mini-spinner {
+    width: 14px; height: 14px;
+    border: 2px solid #cbd5e1;
+    border-top-color: #475569;
+    border-radius: 50%;
+    animation: df-spin .8s linear infinite;
+  }
+  @keyframes df-spin { to { transform: rotate(360deg); } }
+
+  .df-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    color: #78350f;
+    font-size: 12.5px;
+    line-height: 1.55;
+    margin-bottom: 14px;
+  }
+  .df-notice svg { flex-shrink: 0; color: #f59e0b; margin-top: 1px; }
+
+  /* ── Table ── */
+  .df-table-wrap {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow-x: auto;
+    box-shadow: 0 1px 3px rgba(15,23,42,.04);
+  }
+  .df-table {
+    min-width: 1400px;
+    display: flex;
+    flex-direction: column;
+  }
+  .df-head {
+    display: grid;
+    grid-template-columns: 2.8fr 1.8fr 1.8fr 1.8fr;
+    background: #0f172a;
+    color: #fff;
+  }
+  .df-head-group {
+    border-right: 1px solid rgba(255,255,255,.1);
+  }
+  .df-head-group:last-child { border-right: none; }
+  .df-group-title {
+    padding: 10px 12px;
+    font-size: 11.5px;
+    font-weight: 800;
+    text-align: center;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+  .df-group-material { background: rgba(14,165,233,.15); }
+  .df-group-start    { background: rgba(59,130,246,.15); }
+  .df-group-end      { background: rgba(168,85,247,.15); }
+  .df-group-rest     { background: rgba(34,197,94,.12); }
+
+  .df-sub-cols {
+    display: grid;
+    padding: 2px;
+    gap: 2px;
+  }
+  .df-sub-cols-material { grid-template-columns: 1.6fr 0.9fr 1.1fr 1.1fr 1.1fr; }
+  .df-sub-cols-3        { grid-template-columns: 1.2fr 1fr 0.9fr; }
+  .df-sub-cols-rest     { grid-template-columns: 1.2fr 1.4fr 44px; }
+
+  .df-head .df-sub-cols > div {
+    padding: 8px 6px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-align: center;
+    color: #e2e8f0;
+    letter-spacing: .03em;
+  }
+
+  .df-row {
+    display: grid;
+    grid-template-columns: 2.8fr 1.8fr 1.8fr 1.8fr;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .df-row:hover { background: #f8fafc; }
+  .df-row:last-child { border-bottom: none; }
+  .df-row .df-sub-cols {
+    border-right: 1px solid #f1f5f9;
+  }
+  .df-row .df-sub-cols:last-child { border-right: none; }
+
+  .df-in {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12.5px;
+    color: #0f172a;
+    background: #fff;
+    outline: none;
+    transition: border .15s, box-shadow .15s;
+  }
+  .df-in:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+  }
+  .df-in::placeholder { color: #cbd5e1; }
+  .df-in-warn {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #dc2626;
+    font-weight: 700;
+  }
+
+  /* ── Footer signatures ── */
+  .df-footer {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .df-sig {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .df-sig label {
+    display: block;
+    font-size: 11px;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 6px;
+  }
+  .df-sig input {
+    width: 100%; box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    color: #0f172a;
+    outline: none;
+    transition: border .15s, box-shadow .15s;
+  }
+  .df-sig input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+  }
+  .df-sig input::placeholder { color: #cbd5e1; }
+
+  @media (max-width: 900px) {
+    .df-wrap { padding: 14px; }
+    .df-footer { grid-template-columns: 1fr; }
+  }
+`;

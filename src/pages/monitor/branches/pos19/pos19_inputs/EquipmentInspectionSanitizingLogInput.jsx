@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/EquipmentInspectionSanitizingLogInput.jsx
 import React, { useMemo, useState } from "react";
+import ReportHeader from "../_shared/ReportHeader";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -156,57 +157,36 @@ export default function EquipmentInspectionSanitizingLogInput() {
   }
 
   return (
-    <div style={{ background:C.gray50, fontFamily:"'Segoe UI',system-ui,sans-serif", color:C.gray700, direction:"ltr", borderRadius:12, overflow:"hidden" }}>
+    <div style={{ background:C.gray50, fontFamily:"'Segoe UI',system-ui,sans-serif", color:C.gray700, direction:"ltr", borderRadius:12, overflow:"hidden", padding:"14px 16px 0" }}>
 
-      {/* ── Top bar ── */}
-      <div style={{ background:`linear-gradient(135deg,${C.navy} 0%,${C.navyLight} 100%)`, padding:"14px 20px", display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
-        <div>
-          <div style={{ color:C.white, fontWeight:800, fontSize:17, letterSpacing:.3 }}>Equipment Inspection &amp; Sanitizing Log</div>
-          <div style={{ color:"#93c5fd", fontSize:12, marginTop:2 }}>{BRANCH} — Input Mode</div>
-        </div>
-        <div style={{ marginLeft:"auto", display:"flex", gap:7, flexWrap:"wrap", alignItems:"center" }}>
-          <button onClick={addRow} style={actionBtn("#0ea5e9")}>+ Add Row</button>
-          <button onClick={handleSave} disabled={saving} style={actionBtn(saving ? "#6b7280" : "#10b981", saving)}>
-            {saving ? "Saving…" : "💾 Save"}
-          </button>
-        </div>
-      </div>
+      <ReportHeader
+        title="Equipment Inspection & Sanitizing Log"
+        subtitle={BRANCH}
+        fields={[
+          { label: "Form Ref", value: FORM_REF },
+          { label: "Branch", value: BRANCH },
+          { label: "Classification", value: classification },
+          { label: "Report Date", type: "date", value: date, onChange: setDate },
+          { label: "Section", value: section, onChange: setSection, placeholder: "e.g. Butchery" },
+        ]}
+      />
 
-      {/* ── Info cards ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, padding:"14px 16px 0" }}>
-        {[
-          ["📋 Form Ref.",      FORM_REF],
-          ["🏢 Branch",         BRANCH],
-          ["🏷 Classification", classification],
-          ["📅 Date",           null],
-        ].map(([label, val]) => (
-          <div key={label} style={{ background:C.accentBg, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 14px" }}>
-            <div style={{ fontSize:10, color:C.accent, fontWeight:700, letterSpacing:.5, textTransform:"uppercase", marginBottom:4 }}>{label}</div>
-            {val !== null
-              ? <div style={{ fontSize:14, fontWeight:700, color:C.navy }}>{val}</div>
-              : <input type="date" value={date} onChange={e=>setDate(e.target.value)}
-                  style={{ border:"none", background:"transparent", fontWeight:700, fontSize:14, color:C.navy, padding:0, width:"100%" }} />
-            }
-          </div>
-        ))}
-      </div>
-
-      {/* ── Section ── */}
-      <div style={{ padding:"10px 16px 0", display:"flex", alignItems:"center", gap:10 }}>
-        <div style={{ fontSize:13, color:C.navy, fontWeight:700 }}>Section:</div>
-        <input value={section} onChange={e=>setSection(e.target.value)}
-          style={{ ...inputSt, maxWidth:260, borderColor:C.border }}
-          placeholder="e.g. Butchery, Kitchen…" />
+      {/* ── Action buttons ── */}
+      <div style={{ display:"flex", gap:8, padding:"0 0 10px", justifyContent:"flex-end" }}>
+        <button onClick={addRow} style={actionBtn("#0ea5e9")}>+ Add Row</button>
+        <button onClick={handleSave} disabled={saving} style={actionBtn(saving ? "#6b7280" : "#10b981", saving)}>
+          {saving ? "Saving…" : "💾 Save"}
+        </button>
       </div>
 
       {/* ── Legend band ── */}
-      <div style={{ margin:"12px 16px 0", background:`linear-gradient(90deg,${C.navy},${C.navyLight})`, borderRadius:"8px 8px 0 0", padding:"9px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:6 }}>
+      <div style={{ background:`linear-gradient(90deg,${C.navy},${C.navyLight})`, borderRadius:"8px 8px 0 0", padding:"9px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:6 }}>
         <span style={{ color:C.white, fontWeight:800, fontSize:13 }}>Sanitize every 4 hours</span>
         <span style={{ color:"#93c5fd", fontSize:11 }}>✔ Satisfactory &nbsp;|&nbsp; ✗ Needs Improvement</span>
       </div>
 
       {/* ── Table ── */}
-      <div style={{ overflowX:"auto", margin:"0 16px", border:`1px solid ${C.border}`, borderTop:"none", borderRadius:"0 0 8px 8px" }}>
+      <div style={{ overflowX:"auto", border:`1px solid ${C.border}`, borderTop:"none", borderRadius:"0 0 8px 8px" }}>
         <table style={{ width:"100%", borderCollapse:"collapse", tableLayout:"fixed", fontSize:13 }}>
           <colgroup>{colDefs}</colgroup>
           <thead>
@@ -292,7 +272,7 @@ export default function EquipmentInspectionSanitizingLogInput() {
       </div>
 
       {/* ── Add row button ── */}
-      <div style={{ padding:"10px 16px 0" }}>
+      <div style={{ padding:"10px 0 0" }}>
         <button onClick={addRow}
           style={{ background:C.accentBg, color:C.accent, border:`1px dashed ${C.accent}`,
             borderRadius:8, padding:"7px 18px", fontWeight:700, cursor:"pointer", fontSize:13 }}>
@@ -301,7 +281,7 @@ export default function EquipmentInspectionSanitizingLogInput() {
       </div>
 
       {/* ── Footer card ── */}
-      <div style={{ padding:"14px 16px 16px" }}>
+      <div style={{ padding:"14px 0 16px" }}>
         <div style={{ background:C.tealBg, border:`1px solid #99f6e4`, borderRadius:8, padding:"10px 14px", maxWidth:300 }}>
           <div style={{ fontSize:10, color:C.teal, fontWeight:700, letterSpacing:.5, textTransform:"uppercase", marginBottom:4 }}>✅ Verified by</div>
           <input value={verifiedBy} onChange={e=>setVerifiedBy(e.target.value)}

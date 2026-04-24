@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import ReportHeader from "../_shared/ReportHeader";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -457,19 +458,15 @@ export default function EquipmentInspectionSanitizingLogView() {
             <div ref={reportRef}>
 
               {/* ── Info cards ── */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
-                {[
-                  ["📅 Date",           safe(record.payload?.reportDate)],
-                  ["🏢 Branch",          safe(record.payload?.branch)],
-                  ["📋 Form Ref.",       FORM_REF],
-                  ["🏷 Classification",  safe(record.payload?.classification||"Official")],
-                ].map(([label,val])=>(
-                  <div key={label} style={{background:C.accentBg,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px"}}>
-                    <div style={{fontSize:10,color:C.accent,fontWeight:700,letterSpacing:.5,textTransform:"uppercase",marginBottom:3}}>{label}</div>
-                    <div style={{fontSize:13,fontWeight:700,color:C.navy,wordBreak:"break-all"}}>{val||"—"}</div>
-                  </div>
-                ))}
-              </div>
+              <ReportHeader
+                title="Equipment Inspection & Sanitizing Log"
+                fields={[
+                  { label: "Report Date",    value: safe(record.payload?.reportDate) },
+                  { label: "Branch",         value: safe(record.payload?.branch) },
+                  { label: "Form Ref",       value: FORM_REF },
+                  { label: "Classification", value: safe(record.payload?.classification||"Official") },
+                ]}
+              />
 
               {/* ── Section ── */}
               {record.payload?.section && (

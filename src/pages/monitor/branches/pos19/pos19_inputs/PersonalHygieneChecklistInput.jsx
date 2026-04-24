@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/PersonalHygieneChecklistInput.jsx
 import React, { useMemo, useState } from "react";
+import ReportHeader from "../_shared/ReportHeader";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -141,18 +142,16 @@ export default function PersonalHygieneChecklistInput() {
 
   return (
     <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d" }}>
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-        <div style={{ flex:1 }}>
-          <div style={{ fontWeight:800, fontSize:16 }}>Personal Hygiene Checklist</div>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"auto 160px", gap:6, alignItems:"center", fontSize:12 }}>
-          <div>Form Ref. No :</div><div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>{FORM_REF}</div>
-          <div>Section :</div><input value={section} onChange={(e)=>setSection(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
-          <div>Classification :</div><div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>Official</div>
-          <div>Date :</div><input type="date" value={date} onChange={(e)=>setDate(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
-        </div>
-      </div>
+      <ReportHeader
+        title="Personal Hygiene Checklist"
+        fields={[
+          { label: "Form Ref", value: FORM_REF },
+          { label: "Branch", value: BRANCH },
+          { label: "Classification", value: "Official" },
+          { label: "Report Date", type: "date", value: date, onChange: setDate },
+          { label: "Section", value: section, onChange: setSection, placeholder: "e.g. Butchery" },
+        ]}
+      />
 
       {/* Title band */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>

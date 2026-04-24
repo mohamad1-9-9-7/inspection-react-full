@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState, Suspense, lazy } from "react";
 
 /* ─────────────────────────────────────────────
    POS19DailyView — Viewer Hub  (Re-Designed)
-   13 ملفات مربوطة / 0 placeholders ✅
+   14 ملفات مربوطة / 0 placeholders ✅
 ───────────────────────────────────────────── */
 
 // ✅ Personal Hygiene View
@@ -32,6 +32,8 @@ const TMLView  = lazy(() => import("./view pos 19/TemperatureMonitoringLogView")
 const TRLView  = lazy(() => import("./view pos 19/TraceabilityLogView"));
 // ✅ Wooden Items Condition Checklist View
 const WICView  = lazy(() => import("./view pos 19/WoodenItemsConditionChecklistView"));
+// ✅ Cooking Temperature Monitoring Record View
+const CTMView  = lazy(() => import("./view pos 19/CookingTemperatureMonitoringView"));
 
 /* ─── Global Styles injected once ─── */
 const STYLES = `
@@ -505,9 +507,10 @@ const TABS = [
   { key: "temperatureMonitoring",  icon: "🌡️", label: "Temperature Monitoring Log",             live: true  },
   { key: "traceability",           icon: "🔗", label: "Traceability Log",                       live: true  },
   { key: "woodenItemsCondition",   icon: "🪵", label: "Wooden Items Condition Monitoring",      live: true  },
+  { key: "cookingTemperature",     icon: "🍳", label: "Cooking Temperature Record",             live: true  },
 ];
 
-const LIVE_COUNT = TABS.filter(t => t.live && t.key !== "overview").length; // 13
+const LIVE_COUNT = TABS.filter(t => t.live && t.key !== "overview").length; // 14
 
 /* ─── Sub-components ─── */
 const Loader = ({ label }) => (
@@ -670,6 +673,7 @@ export default function POS19DailyView() {
       case "temperatureMonitoring": return wrap(<TMLView />,    "Temperature Monitoring");
       case "traceability":          return wrap(<TRLView />,    "Traceability Log");
       case "woodenItemsCondition":  return wrap(<WICView />,    "Wooden Items Condition");
+      case "cookingTemperature":    return wrap(<CTMView />,    "Cooking Temperature Record");
       default:
         return <div className="pos19-panel" />;
     }

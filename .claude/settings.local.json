@@ -35,7 +35,12 @@
       "Bash(node -c \"D:/inspection-server/index.cjs\")",
       "Bash(npx --no-install eslint \"src/pages/haccp and iso/Supplier Approval/\" --ext .js,.jsx)",
       "Bash(npx react-scripts *)",
-      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('src/pages/haccp and iso/Supplier Approval/SupplierEvaluationResults.jsx','utf8'\\),{sourceType:'module',plugins:['jsx']}\\)\")"
+      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('src/pages/haccp and iso/Supplier Approval/SupplierEvaluationResults.jsx','utf8'\\),{sourceType:'module',plugins:['jsx']}\\)\")",
+      "Bash(node -e ' *)",
+      "Read(//mnt/user-data/**)",
+      "Read(//c/Users/moham/Downloads/**)",
+      "PowerShell(python --version 2>&1)",
+      "PowerShell(pip --version 2>&1)"
     ]
   }
 }

@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/pos19/pos19_views/HotHoldingTemperatureLogView.jsx
+// src/pages/monitor/branches/pos19/view pos 19/CookingTemperatureMonitoringView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -10,30 +10,29 @@ const API_BASE = String(
   "https://inspection-server-4nvj.onrender.com"
 ).replace(/\/$/, "");
 
-const TYPE     = "pos19_hot_holding_temperature";
+const TYPE     = "pos19_cooking_temperature";
 const BRANCH   = "POS 19";
-const FORM_REF = "FS-HACCP/POS19/HHT/07";
+const FORM_REF = "FSM-QM/REC/CR";
 
-const TIME_SLOTS = [
-  { key:"t1", label:"Reading 1" },
-  { key:"t2", label:"Reading 2" },
-  { key:"t3", label:"Reading 3" },
-  { key:"t4", label:"Reading 4" },
+const PRODUCT_SLOTS = [
+  { key:"p1", label:"Product 1" },
+  { key:"p2", label:"Product 2" },
+  { key:"p3", label:"Product 3" },
 ];
 
 const safe = (v) => v ?? "";
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 const btn = (bg) => ({ background:bg,color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer" });
 const formatDMY = (iso) => { if(!iso)return iso; const[y,m,d]=iso.split("-"); return `${d}/${m}/${y}`; };
-const isFilledRow = (r={}) => Object.values(r).some(v=>String(v??"").trim()!=="");
+const isFilledRow = (r={}) => PRODUCT_SLOTS.some(s => String(r[`${s.key}_name`]||"").trim()!=="") || String(r.comment||"").trim()!=="" || String(r.monitoredBy||"").trim()!=="" || String(r.date||"").trim()!=="";
 
 function emptyRow(){
-  const base={foodItem:"",targetTemp:"≥ 60°C",correctiveAction:"",checkedBy:""};
-  TIME_SLOTS.forEach(s=>{base[`${s.key}_time`]="";base[`${s.key}_temp`]="";});
+  const base={date:"",comment:"",monitoredBy:""};
+  PRODUCT_SLOTS.forEach(s=>{base[`${s.key}_name`]="";base[`${s.key}_time`]="";base[`${s.key}_temp`]="";});
   return base;
 }
 
-export default function HotHoldingTemperatureLogView() {
+export default function CookingTemperatureMonitoringView() {
   const reportRef    = useRef(null);
   const fileInputRef = useRef(null);
   const todayDubai   = useMemo(()=>{ try{return new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Dubai"});}catch{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;} },[]);
@@ -96,36 +95,36 @@ export default function HotHoldingTemperatureLogView() {
     catch(e){alert("❌ Delete failed.");}finally{setLoading(false);}
   }
 
-  function exportJSON(){if(!record)return;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({type:TYPE,payload:record.payload},null,2)],{type:"application/json"}));a.download=`POS19_HotHolding_${record?.payload?.reportDate||date}.json`;a.click();URL.revokeObjectURL(a.href);}
+  function exportJSON(){if(!record)return;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({type:TYPE,payload:record.payload},null,2)],{type:"application/json"}));a.download=`POS19_CookingRecord_${record?.payload?.reportDate||date}.json`;a.click();URL.revokeObjectURL(a.href);}
 
   async function exportXLSX(){
     try{
       const ExcelJS=(await import("exceljs")).default||(await import("exceljs"));
       const p=record?.payload||{};const rows=(p.entries||[]).filter(isFilledRow);
-      const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet("HotHolding");
+      const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet("CookingRecord");
       const border={top:{style:"thin",color:{argb:"1F3B70"}},left:{style:"thin",color:{argb:"1F3B70"}},bottom:{style:"thin",color:{argb:"1F3B70"}},right:{style:"thin",color:{argb:"1F3B70"}}};
-      const COL_HEADERS=["Food Item","Target Temp",...TIME_SLOTS.flatMap(s=>[`${s.label} Time`,`${s.label} Temp (°C)`]),"Corrective Action","Checked by"];
-      ws.columns=[{width:24},{width:12},...TIME_SLOTS.flatMap(()=>[{width:10},{width:12}]),{width:28},{width:16}];
-      ws.mergeCells(1,1,1,COL_HEADERS.length);const r1=ws.getCell(1,1);r1.value=`POS 19 | Hot Holding Temperature Monitoring Log — ${FORM_REF}`;r1.alignment={horizontal:"center",vertical:"middle"};r1.font={size:13,bold:true};r1.fill={type:"pattern",pattern:"solid",fgColor:{argb:"E9F0FF"}};ws.getRow(1).height=22;
-      ws.mergeCells(2,1,2,COL_HEADERS.length);ws.getCell(2,1).value=`Branch: ${BRANCH} | Section: ${safe(p.section)} | Date: ${safe(p.reportDate)} | Critical Limit: Hot held food ≥ 60°C at all times`;ws.getCell(2,1).alignment={horizontal:"center"};ws.getRow(2).height=18;
+      const COL_HEADERS=["Date",...PRODUCT_SLOTS.flatMap(s=>[`${s.label} Name`,`${s.label} Time`,`${s.label} Temp (°C)`]),"Comment","Monitored By"];
+      ws.columns=[{width:14},...PRODUCT_SLOTS.flatMap(()=>[{width:22},{width:10},{width:12}]),{width:22},{width:18}];
+      ws.mergeCells(1,1,1,COL_HEADERS.length);const r1=ws.getCell(1,1);r1.value=`POS 19 | Cooking Temperature Monitoring Record — ${FORM_REF}`;r1.alignment={horizontal:"center",vertical:"middle"};r1.font={size:13,bold:true};r1.fill={type:"pattern",pattern:"solid",fgColor:{argb:"E9F0FF"}};ws.getRow(1).height=22;
+      ws.mergeCells(2,1,2,COL_HEADERS.length);ws.getCell(2,1).value=`Branch: ${BRANCH} | Area: ${safe(p.area)} | Date: ${safe(p.reportDate)} | Restaurant: Al Mawashi – Braai Restaurant LLC`;ws.getCell(2,1).alignment={horizontal:"center"};ws.getRow(2).height=18;
       const hr=ws.getRow(4);hr.values=COL_HEADERS;hr.eachCell(cell=>{cell.font={bold:true};cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"DCE6F1"}};cell.border=border;});hr.height=28;
       let rIdx=5;rows.forEach(e=>{
-        ws.getRow(rIdx).values=[safe(e.foodItem),safe(e.targetTemp),...TIME_SLOTS.flatMap(s=>[safe(e[`${s.key}_time`]),safe(e[`${s.key}_temp`])]),safe(e.correctiveAction),safe(e.checkedBy)];
+        ws.getRow(rIdx).values=[safe(e.date),...PRODUCT_SLOTS.flatMap(s=>[safe(e[`${s.key}_name`]),safe(e[`${s.key}_time`]),safe(e[`${s.key}_temp`])]),safe(e.comment),safe(e.monitoredBy)];
         ws.getRow(rIdx).eachCell((cell,col)=>{cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.border=border;
-          const tempCols=TIME_SLOTS.map((_,i)=>4+i*2);if(tempCols.includes(col)){const v=parseFloat(ws.getRow(rIdx).getCell(col).value);if(!isNaN(v)&&v<60)cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FDE8E8"}};}
+          const tempCols=PRODUCT_SLOTS.map((_,i)=>4+i*3);if(tempCols.includes(col)){const v=parseFloat(ws.getRow(rIdx).getCell(col).value);if(!isNaN(v)&&v<75)cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FDE8E8"}};}
         });ws.getRow(rIdx).height=20;rIdx++;
       });
-      const buf=await wb.xlsx.writeBuffer({useStyles:true,useSharedStrings:true});const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));a.download=`POS19_HotHolding_${p.reportDate||date}.xlsx`;a.click();URL.revokeObjectURL(a.href);
+      const buf=await wb.xlsx.writeBuffer({useStyles:true,useSharedStrings:true});const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));a.download=`POS19_CookingRecord_${p.reportDate||date}.xlsx`;a.click();URL.revokeObjectURL(a.href);
     }catch(e){console.error(e);alert("⚠️ XLSX export failed.");}
   }
 
   async function exportPDF(){
     if(!reportRef.current)return;const node=reportRef.current;const canvas=await html2canvas(node,{scale:2,windowWidth:node.scrollWidth,windowHeight:node.scrollHeight});
     const pdf=new jsPDF("l","pt","a4");const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),margin=20,headerH=50;
-    const drawH=()=>{pdf.setFillColor(233,240,255);pdf.rect(0,0,pageW,headerH,"F");pdf.setFont("helvetica","bold");pdf.setFontSize(13);pdf.text(`POS 19 | Hot Holding Temperature Log — ${record?.payload?.reportDate||date}`,pageW/2,28,{align:"center"});};
+    const drawH=()=>{pdf.setFillColor(233,240,255);pdf.rect(0,0,pageW,headerH,"F");pdf.setFont("helvetica","bold");pdf.setFontSize(13);pdf.text(`POS 19 | Cooking Temperature Record — ${record?.payload?.reportDate||date}`,pageW/2,28,{align:"center"});};
     drawH();const usableW=pageW-margin*2,ratio=usableW/canvas.width,availH=pageH-(headerH+10)-margin;let ypx=0;
     while(ypx<canvas.height){const sliceH=Math.min(canvas.height-ypx,availH/ratio);const pc=document.createElement("canvas");pc.width=canvas.width;pc.height=sliceH;pc.getContext("2d").drawImage(canvas,0,ypx,canvas.width,sliceH,0,0,canvas.width,sliceH);pdf.addImage(pc.toDataURL("image/png"),"PNG",margin,headerH+10,usableW,sliceH*ratio);ypx+=sliceH;if(ypx<canvas.height){pdf.addPage("a4","l");drawH();}}
-    pdf.save(`POS19_HotHolding_${record?.payload?.reportDate||date}.pdf`);
+    pdf.save(`POS19_CookingRecord_${record?.payload?.reportDate||date}.pdf`);
   }
 
   async function importJSON(file){if(!file)return;try{const payload=JSON.parse(await file.text())?.payload||JSON.parse(await file.text());if(!payload?.reportDate)throw new Error();setLoading(true);const res=await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})});if(!res.ok)throw new Error();alert("✅ Imported");setDate(payload.reportDate);await fetchAllDates();await fetchRecord(payload.reportDate);}catch(e){console.error(e);alert("❌ Invalid JSON or save failed");}finally{if(fileInputRef.current)fileInputRef.current.value="";setLoading(false);}}
@@ -136,8 +135,8 @@ export default function HotHoldingTemperatureLogView() {
 
   return (
     <div style={{background:"#fff",border:"1px solid #dbe3f4",borderRadius:12,padding:16,color:"#0b1f4d",direction:"ltr"}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-        <div style={{fontWeight:800,fontSize:18}}>Hot Holding Temperature Log — View (POS 19)</div>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
+        <div style={{fontWeight:800,fontSize:18}}>Cooking Temperature Monitoring Record — View (POS 19)</div>
         <div style={{marginInlineStart:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
           <button onClick={toggleEdit} style={btn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"Edit (password)"}</button>
           {editing&&<><button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button><button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button></>}
@@ -166,69 +165,93 @@ export default function HotHoldingTemperatureLogView() {
           {!loading&&!err&&!record&&<div style={{padding:12,border:"1px dashed #9ca3af",borderRadius:8,textAlign:"center"}}>No report for this date.</div>}
           {record&&(<div ref={reportRef}>
             <ReportHeader
-              title="Hot Holding Temperature Log"
+              title="Cooking Temperature Monitoring Record"
+              subtitle="Restaurant: Al Mawashi – Braai Restaurant LLC"
+              titleAr="سجل مراقبة درجة حرارة الطبخ"
               fields={[
-                { label: "Report Date", value: safe(record.payload?.reportDate) },
-                { label: "Branch",      value: safe(record.payload?.branch) },
-                { label: "Form Ref",    value: FORM_REF },
-                { label: "Section",     value: safe(record.payload?.section) },
+                { label: "Report Date",         value: safe(record.payload?.reportDate) },
+                { label: "Branch",              value: safe(record.payload?.branch) },
+                { label: "Form Ref",            value: FORM_REF },
+                { label: "Area",                value: safe(record.payload?.area) },
+                { label: "Issued By",           value: safe(record.payload?.issuedBy) },
+                { label: "Controlling Officer", value: safe(record.payload?.controllingOfficer) },
+                { label: "Approved By",         value: safe(record.payload?.approvedBy) },
+                { label: "Revision No",         value: safe(record.payload?.revisionNo) },
               ]}
             />
-            <div style={{border:"1px solid #1f3b70",borderBottom:"none"}}><div style={{...thCell,background:"#e9f0ff"}}>Critical Limit: Hot held food must be maintained at ≥ 60°C at all times</div></div>
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontSize:12}}>
                 <colgroup>
-                  <col style={{width:200}}/><col style={{width:100}}/>
-                  {TIME_SLOTS.flatMap((_,i)=>[<col key={`t${i}a`} style={{width:90}}/>,<col key={`t${i}b`} style={{width:90}}/>])}
-                  <col style={{width:200}}/><col style={{width:130}}/>
+                  <col style={{width:110}}/>
+                  {PRODUCT_SLOTS.flatMap((_,i)=>[
+                    <col key={`p${i}n`} style={{width:150}}/>,
+                    <col key={`p${i}t`} style={{width:80}}/>,
+                    <col key={`p${i}d`} style={{width:80}}/>,
+                  ])}
+                  <col style={{width:160}}/><col style={{width:130}}/>
                   {editing&&<col style={{width:70}}/>}
                 </colgroup>
                 <thead>
                   <tr>
-                    <th style={thCell} rowSpan={2}>Food Item</th>
-                    <th style={thCell} rowSpan={2}>Target{"\n"}Temp</th>
-                    {TIME_SLOTS.map(s=><th key={s.key} style={thCell} colSpan={2}>{s.label}</th>)}
-                    <th style={thCell} rowSpan={2}>Corrective{"\n"}Action</th>
-                    <th style={thCell} rowSpan={2}>Checked{"\n"}by</th>
+                    <th style={thCell} rowSpan={2}>Date{"\n"}تاريخ</th>
+                    {PRODUCT_SLOTS.map(s=><th key={s.key} style={thCell} colSpan={3}>{s.label}</th>)}
+                    <th style={thCell} rowSpan={2}>Comment{"\n"}تعليق</th>
+                    <th style={thCell} rowSpan={2}>Monitored By{"\n"}مراقب بواسطة</th>
                     {editing&&<th style={thCell} rowSpan={2}>—</th>}
                   </tr>
                   <tr>
-                    {TIME_SLOTS.flatMap(s=>[<th key={`${s.key}t`} style={thCell}>Time</th>,<th key={`${s.key}d`} style={thCell}>°C</th>])}
+                    {PRODUCT_SLOTS.flatMap(s=>[
+                      <th key={`${s.key}n`} style={thCell}>Product Name{"\n"}اسم الطعام</th>,
+                      <th key={`${s.key}t`} style={thCell}>Time{"\n"}وقت</th>,
+                      <th key={`${s.key}d`} style={thCell}>Temp °C{"\n"}درجة حرارة</th>,
+                    ])}
                   </tr>
                 </thead>
                 <tbody>
                   {!editing?(rows.filter(isFilledRow).map((r,idx)=>(<tr key={idx}>
-                    <td style={tdCell}>{safe(r.foodItem)}</td>
-                    <td style={tdCell}>{safe(r.targetTemp)}</td>
-                    {TIME_SLOTS.flatMap(s=>[
-                      <td key={`${s.key}t`} style={tdCell}>{safe(r[`${s.key}_time`])}</td>,
-                      <td key={`${s.key}d`} style={{...tdCell,background:r[`${s.key}_temp`]&&parseFloat(r[`${s.key}_temp`])<60?"#fde8e8":""}}>{safe(r[`${s.key}_temp`])}</td>
-                    ])}
-                    <td style={tdCell}>{safe(r.correctiveAction)}</td>
-                    <td style={tdCell}>{safe(r.checkedBy)}</td>
+                    <td style={tdCell}>{safe(r.date)}</td>
+                    {PRODUCT_SLOTS.flatMap(s=>{
+                      const tempVal=r[`${s.key}_temp`];const isLow=tempVal&&parseFloat(tempVal)<75;
+                      return [
+                        <td key={`${s.key}n`} style={tdCell}>{safe(r[`${s.key}_name`])}</td>,
+                        <td key={`${s.key}t`} style={tdCell}>{safe(r[`${s.key}_time`])}</td>,
+                        <td key={`${s.key}d`} style={{...tdCell,background:isLow?"#fde8e8":""}}>{safe(tempVal)}</td>,
+                      ];
+                    })}
+                    <td style={tdCell}>{safe(r.comment)}</td>
+                    <td style={tdCell}>{safe(r.monitoredBy)}</td>
                   </tr>))):(
                     editRows.map((r,i)=>(<tr key={i}>
-                      <td style={tdCell}><input value={r.foodItem||""} onChange={e=>upd(i,"foodItem",e.target.value)} style={inputStyle} placeholder="Food item"/></td>
-                      <td style={tdCell}><input value={r.targetTemp||""} onChange={e=>upd(i,"targetTemp",e.target.value)} style={inputStyle}/></td>
-                      {TIME_SLOTS.flatMap(s=>[
-                        <td key={`${s.key}t`} style={tdCell}><input type="time" value={r[`${s.key}_time`]||""} onChange={e=>upd(i,`${s.key}_time`,e.target.value)} style={inputStyle}/></td>,
-                        <td key={`${s.key}d`} style={{...tdCell,background:r[`${s.key}_temp`]&&parseFloat(r[`${s.key}_temp`])<60?"#fde8e8":""}}>
-                          <input type="number" step="0.1" value={r[`${s.key}_temp`]||""} onChange={e=>upd(i,`${s.key}_temp`,e.target.value)} style={{...inputStyle,background:r[`${s.key}_temp`]&&parseFloat(r[`${s.key}_temp`])<60?"#fde8e8":"#fff"}} placeholder="°C"/>
-                        </td>
-                      ])}
-                      <td style={tdCell}><input value={r.correctiveAction||""} onChange={e=>upd(i,"correctiveAction",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input value={r.checkedBy||""} onChange={e=>upd(i,"checkedBy",e.target.value)} style={inputStyle}/></td>
+                      <td style={tdCell}><input type="date" value={r.date||""} onChange={e=>upd(i,"date",e.target.value)} style={inputStyle}/></td>
+                      {PRODUCT_SLOTS.flatMap(s=>{
+                        const tempVal=r[`${s.key}_temp`];const isLow=tempVal&&parseFloat(tempVal)<75;
+                        return [
+                          <td key={`${s.key}n`} style={tdCell}><input value={r[`${s.key}_name`]||""} onChange={e=>upd(i,`${s.key}_name`,e.target.value)} style={inputStyle} placeholder="Product"/></td>,
+                          <td key={`${s.key}t`} style={tdCell}><input type="time" value={r[`${s.key}_time`]||""} onChange={e=>upd(i,`${s.key}_time`,e.target.value)} style={inputStyle}/></td>,
+                          <td key={`${s.key}d`} style={{...tdCell,background:isLow?"#fde8e8":""}}>
+                            <input type="number" step="0.1" value={tempVal||""} onChange={e=>upd(i,`${s.key}_temp`,e.target.value)} style={{...inputStyle,background:isLow?"#fde8e8":"#fff"}} placeholder="°C"/>
+                          </td>,
+                        ];
+                      })}
+                      <td style={tdCell}><input value={r.comment||""} onChange={e=>upd(i,"comment",e.target.value)} style={inputStyle}/></td>
+                      <td style={tdCell}><input value={r.monitoredBy||""} onChange={e=>upd(i,"monitoredBy",e.target.value)} style={inputStyle}/></td>
                       <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")}>Del</button></td>
                     </tr>))
                   )}
                 </tbody>
               </table>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginTop:12,fontSize:12}}>
-              <div><strong>Checked by:</strong> {safe(record.payload?.checkedBy)}</div>
-              <div><strong>Verified by:</strong> {safe(record.payload?.verifiedBy)}</div>
-              <div><strong>Rev.Date:</strong> {safe(record.payload?.revDate)}</div>
-              <div><strong>Rev.No:</strong> {safe(record.payload?.revNo)}</div>
+            <div style={{marginTop:12,border:"1px solid #1f3b70",borderRadius:8,padding:"10px 14px",background:"#f8fafc",fontSize:12}}>
+              <div style={{fontWeight:800,marginBottom:6}}>NOTES:</div>
+              <ol style={{margin:0,paddingInlineStart:20,lineHeight:1.7}}>
+                <li>Food Must be first cooked until core temp reached &lt; 75°C or reheated core temp above 75°C</li>
+                <li>Transfer to hot holding equipment immediately after cooking or reheating</li>
+                <li>Maintain product at 60 Deg C (140 Deg F) or hotter at all times</li>
+                <li>Take temperature of food at least once per shift</li>
+              </ol>
+            </div>
+            <div style={{marginTop:12,fontSize:12}}>
+              <strong>Verified By:</strong> {safe(record.payload?.verifiedBy)}
             </div>
           </div>)}
         </div>

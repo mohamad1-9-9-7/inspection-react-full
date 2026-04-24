@@ -1,6 +1,8 @@
 // src/pages/monitor/branches/production/PRDTraceabilityLogInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { REPORTS_URL } from "../shipment_recc/qcsRawApi";
+import PRDReportHeader from "./_shared/PRDReportHeader";
+import { useLang } from "./_shared/i18n";
 
 /* ===== API base ===== */
 const API_BASE = String(
@@ -252,6 +254,8 @@ const miniBtn = {
 };
 
 export default function PRDTraceabilityLogInput() {
+  const { t, dir } = useLang();
+
   /* ===== ترويسة ===== */
   const [section, setSection] = useState("");
   const [date, setDate] = useState(() => {
@@ -345,25 +349,7 @@ export default function PRDTraceabilityLogInput() {
     minWidth: 0,
   };
 
-  /* ===== ترويسة + عنوان ===== */
-  const topTable = {
-    width: "100%",
-    borderCollapse: "collapse",
-    marginBottom: 10,
-    fontSize: "0.9rem",
-    border: "1px solid #9aa4ae",
-    background: "#f8fbff",
-  };
-  const tdHeader = { border: "1px solid #9aa4ae", padding: "6px 8px", verticalAlign: "middle" };
-  const bandTitle = {
-    textAlign: "center",
-    background: "#dde3e9",
-    fontWeight: 700,
-    padding: "6px 4px",
-    border: "1px solid #9aa4ae",
-    borderTop: "none",
-    marginBottom: 10,
-  };
+  /* ===== الترويسة الآن عبر PRDReportHeader ===== */
 
   /* ===== colgroup ===== */
   const colDefs = useMemo(() => ([
@@ -531,39 +517,21 @@ export default function PRDTraceabilityLogInput() {
   }
 
   return (
-    <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d" }}>
-      {/* === ترويسة + جدول المستند === */}
-      <table style={topTable}>
-        <tbody>
-          <tr>
-            <td rowSpan={3} style={{ ...tdHeader, width:120, textAlign:"center" }}>
-              <div style={{ fontWeight: 900, color: "#a00", lineHeight: 1.1 }}>
-                AL<br/>MAWASHI
-              </div>
-            </td>
-            <td style={tdHeader}><b>Document Title:</b> Traceability Log</td>
-            <td style={tdHeader}><b>Document No:</b> FS-QM/REC/TL</td>
-          </tr>
-          <tr>
-            <td style={tdHeader}><b>Issue Date:</b> 05/02/2020</td>
-            <td style={tdHeader}><b>Revision No:</b> 0</td>
-          </tr>
-          <tr>
-            <td style={tdHeader}><b>Area:</b> {BRANCH}</td>
-            <td style={tdHeader}><b>Date:</b> {date || "—"}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div style={bandTitle}>TRACEABILITY LOG — {BRANCH}</div>
-
-      {/* Header (Section + Date) */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, gap:12 }}>
-        <div style={{ fontWeight:800, fontSize:18 }}>Traceability Log – {BRANCH}</div>
-        <div style={{ display:"grid", gridTemplateColumns:"auto 180px", gap:6, alignItems:"center", fontSize:12 }}>
-          <div>Section :</div><input value={section} onChange={(e)=>setSection(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
-          <div>Date :</div><input type="date" value={date} onChange={(e)=>setDate(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
-        </div>
-      </div>
+    <div style={{ background:"#f8fafc", padding:22, color:"#0b1f4d" }} dir={dir}>
+      <PRDReportHeader
+        title="Traceability Log"
+        titleAr="سجل التتبع"
+        subtitle={`${BRANCH} — ${t("tr_subtitle")}`}
+        accent="#a855f7"
+        fields={[
+          { labelKey: "hdr_document_no",  value: "FS-QM/REC/TL" },
+          { labelKey: "hdr_issue_date",   value: "05/02/2020" },
+          { labelKey: "hdr_revision_no",  value: "0" },
+          { labelKey: "hdr_area",         value: BRANCH },
+          { labelKey: "hdr_section",      value: section, onChange: setSection, placeholder: "e.g. Butchery" },
+          { labelKey: "hdr_report_date",  type: "date", value: date, onChange: setDate },
+        ]}
+      />
 
       {/* Table */}
       <div style={{ overflowX:"auto" }}>

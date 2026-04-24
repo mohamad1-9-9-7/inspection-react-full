@@ -62,6 +62,9 @@ const TraceabilityLogInput = lazy(() =>
 const WoodenItemsConditionChecklistInput = lazy(() =>
   import("./pos19_inputs/WoodenItemsConditionChecklistInput")
 );
+const CookingTemperatureMonitoringInput = lazy(() =>
+  import("./pos19_inputs/CookingTemperatureMonitoringInput")
+);
 
 export default function POS19Layout() {
   const [activeTab, setActiveTab] = useState("shipments");
@@ -81,6 +84,7 @@ export default function POS19Layout() {
     { key: "temperatureMonitoring", label: "🌡️ Temperature Monitoring Log" },
     { key: "traceability", label: "🔗 Traceability Log" },
     { key: "woodenItemsCondition", label: "🪵 Wooden items Condition Monitoring Checklist" },
+    { key: "cookingTemperature", label: "🍳 Cooking Temperature Monitoring Record" },
   ];
 
   const panelStyle = {
@@ -208,6 +212,14 @@ export default function POS19Layout() {
           <div style={panelStyle}>
             <Suspense fallback={<Loading />}>
               <WoodenItemsConditionChecklistInput />
+            </Suspense>
+          </div>
+        );
+      case "cookingTemperature":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading />}>
+              <CookingTemperatureMonitoringInput />
             </Suspense>
           </div>
         );
