@@ -2,6 +2,8 @@
 // Unified Daily View Hub — shared design adopted from POS19DailyView.
 // كل الأفرع بتستخدم هالـ component حتى يكون التصميم موحّد.
 import React, { Suspense, useEffect, useMemo, useState } from "react";
+import PrintStyles from "./PrintStyles";
+import PrintButton from "./PrintButton";
 
 /* ─── Global Styles (scoped by root class + CSS variables) ─── */
 const STYLES = `
@@ -440,6 +442,7 @@ export default function BranchDailyView({
   return (
     <>
       <style>{STYLES}</style>
+      <PrintStyles />
       <div className="bdv-root" style={rootStyle}>
 
         {/* ── Sidebar ── */}
@@ -481,7 +484,17 @@ export default function BranchDailyView({
             <div className="bdv-topbar-title">
               {activeTab?.icon} {activeTab?.label}
             </div>
-            <div className="bdv-topbar-date">{todayLabel}</div>
+            <div className="bdv-topbar-actions no-print" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {activeTab?.key !== "overview" && (
+                <PrintButton
+                  title={activeTab?.label || branchCode}
+                  documentNo=""
+                  reportDate={new Date().toLocaleDateString("en-CA")}
+                  lang={typeof document !== "undefined" && document.dir === "rtl" ? "ar" : "en"}
+                />
+              )}
+              <div className="bdv-topbar-date">{todayLabel}</div>
+            </div>
           </div>
 
           <div className="bdv-content">

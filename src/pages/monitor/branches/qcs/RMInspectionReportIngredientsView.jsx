@@ -372,14 +372,14 @@ export default function RMInspectionReportIngredientsView() {
           "❌ No reports"
         ) : (
           Object.entries(grouped)
-            .sort(([a], [b]) => Number(a) - Number(b))
+            .sort(([a], [b]) => Number(b) - Number(a))
             .map(([y, months]) => (
-              <details key={y} open>
+              <details key={y}>
                 <summary style={{ fontWeight: 800 }}>📅 Year {y}</summary>
                 {Object.entries(months)
-                  .sort(([a], [b]) => Number(a) - Number(b))
+                  .sort(([a], [b]) => Number(b) - Number(a))
                   .map(([m, arr]) => {
-                    const days = [...arr].sort((a, b) => a._dt - b._dt);
+                    const days = [...arr].sort((a, b) => b._dt - a._dt);
                     return (
                       <details key={m} style={{ marginLeft: 12 }}>
                         <summary style={{ fontWeight: 600 }}>📅 Month {m}</summary>

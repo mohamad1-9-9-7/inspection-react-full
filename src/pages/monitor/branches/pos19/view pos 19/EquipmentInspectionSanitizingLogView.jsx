@@ -151,12 +151,8 @@ export default function EquipmentInspectionSanitizingLogView() {
         list.map(r => r?.payload).filter(p => p?.branch === BRANCH && p?.reportDate).map(p => p.reportDate)
       )).sort((a, b) => b.localeCompare(a));
       setAllDates(uniq);
-      if (uniq.length) {
-        const [y, m] = uniq[0].split("-");
-        setExpandedYears(p => ({ ...p, [y]: true }));
-        setExpandedMonths(p => ({ ...p, [`${y}-${m}`]: true }));
-        if (!uniq.includes(date)) setDate(uniq[0]);
-      }
+      // Tree stays collapsed by default.
+      if (uniq.length && !uniq.includes(date)) setDate(uniq[0]);
     } catch (e) { console.warn("fetchAllDates:", e); }
   }
 
@@ -363,8 +359,8 @@ export default function EquipmentInspectionSanitizingLogView() {
   const grouped = useMemo(() => {
     const out={};
     for(const d of allDates){const[y,m]=d.split("-");(out[y]||={}); (out[y][m]||=[]).push(d);}
-    for(const y of Object.keys(out)) out[y]=Object.fromEntries(Object.entries(out[y]).sort(([a],[b])=>Number(a)-Number(b)).map(([m,arr])=>[m,arr.sort()]));
-    return Object.fromEntries(Object.entries(out).sort(([a],[b])=>Number(a)-Number(b)));
+    for(const y of Object.keys(out)) out[y]=Object.fromEntries(Object.entries(out[y]).sort(([a],[b])=>Number(b)-Number(a)).map(([m,arr])=>[m,arr.sort().reverse()]));
+    return Object.fromEntries(Object.entries(out).sort(([a],[b])=>Number(b)-Number(a)));
   }, [allDates]);
 
   const toggleYear  = y    => setExpandedYears(p  => ({...p,[y]:!p[y]}));

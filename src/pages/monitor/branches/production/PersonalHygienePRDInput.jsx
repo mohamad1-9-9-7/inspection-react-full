@@ -27,19 +27,16 @@ const COL_KEYS = [
 const DEFAULT_NAMES = [
   "El Arbi Azar",
   "Mamdouh Salah Ali Rezk",
-  "Mohammed Mahmoud Aletr",
   "Imran Khan",
   "Sherif Eid Mohamed Mahmoud",
-  "Yousef Lmbarki",
   "MOHSEN HASAN HAIDAR",
   "Mohammed Asif",
   "MOHAMED NASR MOHAMED HASSAN",
-  "Aimen Gharib",
   "Bakr Bakr Shaban Mohamed Elsayed",
-  "Abdalla Shaaban Kamal Abdou",
   "Mohammed Khalid alahmad",
   "Aallaa AlDin Mohammed Ali Almaad",
   "Mohammad Salman",
+  "LEMEUIL",
 ];
 
 const makeRow = (name = "") => ({

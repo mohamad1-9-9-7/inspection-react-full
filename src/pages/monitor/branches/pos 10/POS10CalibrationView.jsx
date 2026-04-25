@@ -269,7 +269,7 @@ export default function POS10CalibrationView() {
             {Object.keys(grouped)
               .sort((a, b) => Number(b) - Number(a)) // years desc
               .map((y) => (
-                <details key={y} open>
+                <details key={y}>
                   <summary style={{ fontWeight: "bold", marginBottom: 6 }}>
                     📅 Year {y}
                   </summary>

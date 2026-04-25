@@ -40,7 +40,11 @@
       "Read(//mnt/user-data/**)",
       "Read(//c/Users/moham/Downloads/**)",
       "PowerShell(python --version 2>&1)",
-      "PowerShell(pip --version 2>&1)"
+      "PowerShell(pip --version 2>&1)",
+      "Bash(curl -sS -o /dev/null -w \"HTTP %{http_code} in %{time_total}s\\\\n\" \"https://inspection-server-4nvj.onrender.com/api/reports?type=__ping__&limit=1\" --max-time 60)",
+      "Bash(curl -sS -k -o /dev/null -w \"HTTP %{http_code} in %{time_total}s\\\\n\" \"https://inspection-server-4nvj.onrender.com/api/reports?type=__ping__&limit=1\" --max-time 60)",
+      "Bash(curl -sS -k -o /dev/null -w \"ftr1 → HTTP %{http_code} in %{time_total}s, size_download=%{size_download}\\\\n\" \"https://inspection-server-4nvj.onrender.com/api/reports?type=ftr1_receiving_log_butchery\" --max-time 90)",
+      "Bash(curl -sS -k -o /dev/null -w \"ftr2 → HTTP %{http_code} in %{time_total}s, size_download=%{size_download}\\\\n\" \"https://inspection-server-4nvj.onrender.com/api/reports?type=ftr2_receiving_log_butchery\" --max-time 90)"
     ]
   }
 }

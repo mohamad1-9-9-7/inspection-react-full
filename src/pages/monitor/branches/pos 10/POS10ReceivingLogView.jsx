@@ -243,10 +243,7 @@ export default function POS10ReceivingLogView() {
       );
       setAllDates(uniq);
 
-      if (uniq.length) {
-        openInTree(uniq[0]);
-      }
-
+      // Tree stays collapsed by default.
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) {
       console.warn("Failed to fetch dates", e);
@@ -312,7 +309,7 @@ export default function POS10ReceivingLogView() {
 
   useEffect(() => {
     if (date) {
-      openInTree(date);
+      // Tree stays collapsed by default (no auto-open on date change).
       fetchRecord(date);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -755,16 +752,16 @@ export default function POS10ReceivingLogView() {
       out[y][m].push(d);
     }
 
-    const years = Object.keys(out).sort((a, b) => Number(a) - Number(b));
+    const years = Object.keys(out).sort((a, b) => Number(b) - Number(a));
     const finalOut = {};
     for (let yi = 0; yi < years.length; yi++) {
       const y = years[yi];
       const monthsObj = out[y];
-      const months = Object.keys(monthsObj).sort((a, b) => Number(a) - Number(b));
+      const months = Object.keys(monthsObj).sort((a, b) => Number(b) - Number(a));
       const mOut = {};
       for (let mi = 0; mi < months.length; mi++) {
         const m = months[mi];
-        mOut[m] = (monthsObj[m] || []).slice().sort((a, b) => String(a).localeCompare(String(b)));
+        mOut[m] = (monthsObj[m] || []).slice().sort((a, b) => String(b).localeCompare(String(a)));
       }
       finalOut[y] = mOut;
     }

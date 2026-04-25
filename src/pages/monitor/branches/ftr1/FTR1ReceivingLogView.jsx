@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 
 /* ========= API BASE (robust like your other pages) ========= */
 const API_BASE = String(
@@ -57,7 +58,7 @@ const COL_WIDTHS_PX = [
   64, 160, 140, 240, 110, 110, 130, 160, 130, 110, 300, 140, 140, 140, 260, 160,
 ];
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
-const MIN_SCALE = 0.75; // حد أدنى للتحجيم
+const MIN_SCALE = 0.5; // حد أدنى للتحجيم
 
 /* ===== Helper: nav buttons style ===== */
 function navBtnStyle(side) {
@@ -107,6 +108,10 @@ export default function FTR1ReceivingLogView() {
   const [selectedReport, setSelectedReport] = useState(null);
 
   const [loading, setLoading] = useState(false);
+
+  // ✅ Non-blocking error state (replaces alerts)
+  const [fetchError, setFetchError] = useState(null);
+  const [retryMsg,   setRetryMsg]   = useState("");
 
   // ===== Auto-Scale (بدون تمرير أفقي) =====
   const [scale, setScale] = useState(1);
@@ -210,18 +215,32 @@ export default function FTR1ReceivingLogView() {
 
   async function fetchReportList() {
     setLoading(true);
+    setFetchError(null);
+    setRetryMsg("");
+
+    const primaryUrl  = `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&lite=1&limit=${LIST_LIMIT}`;
+    const fallbackUrl = `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`;
+
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(
-          TYPE
-        )}&lite=1&limit=${LIST_LIMIT}`,
-        { cache: "no-store" }
+      const res = await resilientFetch(
+        primaryUrl,
+        { cache: "no-store" },
+        {
+          retries: 3,
+          initialDelay: 1500,
+          maxDelay: 8000,
+          timeout: 35000,
+          fallbackUrl,
+          onAttempt: (attempt, err) => {
+            if (err) setRetryMsg(`⏳ Attempt ${attempt} failed, retrying…`);
+            else if (attempt > 1) setRetryMsg(`⏳ Retrying (${attempt})…`);
+            else setRetryMsg("");
+          },
+        }
       );
 
       if (!res.ok) {
-        throw new Error(
-          `List endpoint failed (${res.status}). Ensure server supports lite=1.`
-        );
+        throw new Error(`HTTP ${res.status}`);
       }
 
       const json = await res.json();
@@ -232,6 +251,7 @@ export default function FTR1ReceivingLogView() {
       );
 
       setReportList(sorted);
+      setRetryMsg("");
 
       const firstId = getId(sorted[0]);
       setSelectedId(firstId || null);
@@ -245,15 +265,15 @@ export default function FTR1ReceivingLogView() {
         setSelectedReport(null);
       }
     } catch (e) {
-      console.error(e);
-      alert(
-        "⚠️ Failed to load reports list.\n\nMake sure your server supports:\n- GET /api/reports?type=...&lite=1&limit=...\n- GET /api/reports/:id"
-      );
+      console.error("[FTR1 Receiving] fetchReportList failed:", e);
+      const info = classifyError(e);
+      setFetchError({ type: info.type, message: info.label, messageAr: info.labelAr });
       setReportList([]);
       setSelectedId(null);
       setSelectedReport(null);
     } finally {
       setLoading(false);
+      setRetryMsg("");
     }
   }
 
@@ -261,19 +281,20 @@ export default function FTR1ReceivingLogView() {
     if (!id) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, {
-        cache: "no-store",
-      });
+      const res = await resilientFetch(
+        `${API_BASE}/api/reports/${encodeURIComponent(id)}`,
+        { cache: "no-store" },
+        { retries: 3, initialDelay: 1000, timeout: 25000 }
+      );
       if (!res.ok) {
-        throw new Error(
-          `Open report failed (${res.status}). Ensure server supports GET /api/reports/:id`
-        );
+        throw new Error(`HTTP ${res.status}`);
       }
       const json = await res.json();
       setSelectedReport(normalizeOneReport(json));
     } catch (e) {
-      console.error(e);
-      alert("⚠️ Failed to open report.");
+      console.error("[FTR1 Receiving] fetchOneReport failed:", e);
+      const info = classifyError(e);
+      setFetchError({ type: info.type, message: info.label, messageAr: info.labelAr });
       setSelectedReport(null);
     } finally {
       setLoading(false);
@@ -496,28 +517,7 @@ export default function FTR1ReceivingLogView() {
     }, {});
   }, [reportList]);
 
-  // ✅ Initialize open state once (keeps tree from collapsing when selecting dates)
-  useEffect(() => {
-    const years = Object.keys(groupedReports);
-    if (!years.length) return;
-
-    setOpenYears((prev) => {
-      if (Object.keys(prev).length) return prev;
-      const next = {};
-      years.forEach((y) => (next[y] = true));
-      return next;
-    });
-
-    setOpenMonths((prev) => {
-      if (Object.keys(prev).length) return prev;
-      const next = {};
-      years.forEach((y) => {
-        const months = Object.keys(groupedReports[y] || {});
-        months.forEach((m) => (next[`${y}-${m}`] = true));
-      });
-      return next;
-    });
-  }, [groupedReports]);
+  // Tree stays collapsed by default; user expands manually.
 
   /* ================== Styles ================== */
   const shell = { display: "flex", gap: "1rem" };
@@ -532,12 +532,13 @@ export default function FTR1ReceivingLogView() {
   };
   const main = {
     flex: 1,
+    minWidth: 0,
     background: "linear-gradient(120deg, #f7f9fc 60%, #efe7f9 100%)",
     padding: "1.25rem",
     borderRadius: 14,
     boxShadow: "0 6px 22px rgba(95,61,196,0.12)",
     border: "1px solid #ececf5",
-    overflowX: "hidden",
+    overflowX: "auto",
   };
   const headerCell = {
     border: "1px solid #d7dbe7",
@@ -642,18 +643,73 @@ export default function FTR1ReceivingLogView() {
           🗓️ Saved Reports
         </h4>
 
+        {/* ── Non-blocking error banner ── */}
+        {fetchError && (
+          <div style={{
+            padding: "10px 12px",
+            marginBottom: 12,
+            borderRadius: 10,
+            background: fetchError.type === "network" ? "#fffbeb" : "#fef2f2",
+            border: `1px solid ${fetchError.type === "network" ? "#fde68a" : "#fecaca"}`,
+            color: fetchError.type === "network" ? "#92400e" : "#991b1b",
+            fontSize: 12,
+            lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>
+              {fetchError.type === "network" ? "⚠️ اتصال متقطع" : "⚠️ خطأ في السيرفر"}
+            </div>
+            <div style={{ marginBottom: 8 }}>{fetchError.messageAr || fetchError.message}</div>
+            <button
+              onClick={fetchReportList}
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: "none",
+                background: "#5b21b6",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              🔄 إعادة المحاولة
+            </button>
+            <div style={{ marginTop: 6, fontSize: 10, color: "#64748b", fontStyle: "italic" }}>
+              السيرفر المجاني قد يحتاج ~30 ثانية ليستيقظ
+            </div>
+          </div>
+        )}
+
+        {/* ── Retry progress indicator ── */}
+        {retryMsg && (
+          <div style={{
+            padding: "8px 12px",
+            marginBottom: 10,
+            borderRadius: 8,
+            background: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            color: "#1e40af",
+            fontSize: 12,
+            fontWeight: 700,
+            textAlign: "center",
+          }}>
+            {retryMsg}
+          </div>
+        )}
+
         {loading ? (
           <p>⏳ Loading...</p>
         ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
+          fetchError ? null : <p>❌ No reports</p>
         ) : (
           <div>
             {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(a) - Number(b))
+              .sort(([a], [b]) => Number(b) - Number(a))
               .map(([year, months]) => (
                 <details
                   key={year}
-                  open={openYears[year] ?? true}
+                  open={openYears[year] ?? false}
                   onToggle={(e) => {
                     const isOpen = e.currentTarget.open;
                     setOpenYears((p) => ({ ...p, [year]: isOpen }));
@@ -662,16 +718,16 @@ export default function FTR1ReceivingLogView() {
                   <summary style={{ fontWeight: 700, marginBottom: 6 }}>📅 Year {year}</summary>
 
                   {Object.entries(months)
-                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .sort(([a], [b]) => Number(b) - Number(a))
                     .map(([month, days]) => {
                       const key = `${year}-${month}`;
-                      const ddays = [...days].sort((a, b) => a._dt - b._dt);
+                      const ddays = [...days].sort((a, b) => b._dt - a._dt);
 
                       return (
                         <details
                           key={month}
                           style={{ marginLeft: "1rem" }}
-                          open={openMonths[key] ?? true}
+                          open={openMonths[key] ?? false}
                           onToggle={(e) => {
                             const isOpen = e.currentTarget.open;
                             setOpenMonths((p) => ({ ...p, [key]: isOpen }));
@@ -866,7 +922,8 @@ export default function FTR1ReceivingLogView() {
               style={{
                 width: "100%",
                 position: "relative",
-                overflow: "hidden",
+                overflowX: "auto",
+                overflowY: "hidden",
                 height: measureReady && contentH ? contentH * scale : "auto",
                 minHeight: 120,
               }}

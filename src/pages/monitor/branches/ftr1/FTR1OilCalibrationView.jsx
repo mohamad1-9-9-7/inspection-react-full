@@ -332,7 +332,7 @@ export default function FTR1OilCalibrationView() {
             {Object.entries(grouped)
               .sort(([a], [b]) => Number(b) - Number(a))
               .map(([year, months]) => (
-                <details key={year} open>
+                <details key={year}>
                   <summary style={{ fontWeight: "bold", margin: "8px 0" }}>
                     📅 Year {year}
                   </summary>

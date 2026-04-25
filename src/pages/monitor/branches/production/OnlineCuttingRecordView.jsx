@@ -64,13 +64,7 @@ export default function OnlineCuttingRecordView() {
         list.map((r) => r?.payload?.reportDate).filter(Boolean)
       )).sort((a, b) => b.localeCompare(a));
       setAllDates(uniq);
-      if (uniq.length) {
-        const n = normYMD(uniq[0]);
-        if (n) {
-          setExpandedYears((p) => ({ ...p, [n.y]: true }));
-          setExpandedMonths((p) => ({ ...p, [`${n.y}-${n.m}`]: true }));
-        }
-      }
+      // Tree stays collapsed by default.
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) { console.warn(e); }
   }
@@ -185,9 +179,8 @@ export default function OnlineCuttingRecordView() {
 
         r++;
         ws.getCell(r, 1).value = "Sample #";
-        ws.getCell(r, 2).value = "Time";
-        ws.getCell(r, 3).value = "Pdt Temp";
-        [1,2,3].forEach((c) => {
+        ws.getCell(r, 2).value = "Pdt Temp";
+        [1,2].forEach((c) => {
           ws.getCell(r, c).font = { bold: true };
           ws.getCell(r, c).fill = { type:"pattern", pattern:"solid", fgColor:{argb:"F1F5F9"} };
           ws.getCell(r, c).border = border;
@@ -195,9 +188,8 @@ export default function OnlineCuttingRecordView() {
         r++;
         (prod.samples || []).forEach((s, si) => {
           ws.getCell(r, 1).value = si + 1;
-          ws.getCell(r, 2).value = safe(s.time);
-          ws.getCell(r, 3).value = safe(s.pdtTemp);
-          [1,2,3].forEach(c => ws.getCell(r, c).border = border);
+          ws.getCell(r, 2).value = safe(s.pdtTemp);
+          [1,2].forEach(c => ws.getCell(r, c).border = border);
           r++;
         });
 
@@ -260,12 +252,12 @@ export default function OnlineCuttingRecordView() {
     for (const y of Object.keys(out)) {
       out[y] = Object.fromEntries(
         Object.entries(out[y])
-          .sort(([a], [b]) => Number(a) - Number(b))
-          .map(([m, arr]) => [m, arr.sort((a, b) => a.localeCompare(b))])
+          .sort(([a], [b]) => Number(b) - Number(a))
+          .map(([m, arr]) => [m, arr.sort((a, b) => b.localeCompare(a))])
       );
     }
     return Object.fromEntries(
-      Object.entries(out).sort(([a], [b]) => Number(a) - Number(b))
+      Object.entries(out).sort(([a], [b]) => Number(b) - Number(a))
     );
   }, [allDates]);
 
@@ -476,7 +468,6 @@ export default function OnlineCuttingRecordView() {
                         <thead>
                           <tr>
                             <th>#</th>
-                            <th>{t("oc_time")}</th>
                             <th>{t("oc_pdt_temp")}</th>
                           </tr>
                         </thead>
@@ -484,7 +475,6 @@ export default function OnlineCuttingRecordView() {
                           {(prod.samples || []).map((s, si) => (
                             <tr key={si}>
                               <td>{si + 1}</td>
-                              <td>{safe(s.time) || "—"}</td>
                               <td className={s.pdtTemp && parseFloat(s.pdtTemp) >= 10 ? "ocv-warn" : ""}>
                                 {safe(s.pdtTemp) || "—"}
                               </td>

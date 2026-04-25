@@ -173,7 +173,7 @@ export default function POS15TemperatureView() {
             {Object.keys(grouped)
               .sort((a, b) => Number(b) - Number(a))
               .map((y) => (
-                <details key={y} open>
+                <details key={y}>
                   <summary style={{ fontWeight: "bold", marginBottom: 6 }}>📅 Year {y}</summary>
 
                   {/** شهور: أحدث → أقدم */}

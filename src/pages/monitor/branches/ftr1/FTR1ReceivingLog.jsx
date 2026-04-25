@@ -231,10 +231,10 @@ export default function FTR1ReceivingLog() {
   const [classification] = useState("Official");
   const [invoiceNo, setInvoiceNo] = useState("");
 
-  // rows (default 4) — row0 has 2 images, others 1 image
+  // rows (default 4) — row0 has 4 images, others 0
   const INITIAL_ROWS = 4;
   const [rows, setRows] = useState(() =>
-    Array.from({ length: INITIAL_ROWS }, (_v, i) => emptyRow(i === 0 ? 2 : 1))
+    Array.from({ length: INITIAL_ROWS }, (_v, i) => emptyRow(i === 0 ? 4 : 0))
   );
 
   // footer
@@ -363,7 +363,7 @@ export default function FTR1ReceivingLog() {
     (r.images?.some(Boolean) ?? false);
 
   function addRow() {
-    setRows((prev) => [...prev, emptyRow(1)]); // new rows -> 1 image only
+    setRows((prev) => [...prev, emptyRow(0)]); // new rows -> no images
   }
 
   function removeRow(idx) {
@@ -374,17 +374,22 @@ export default function FTR1ReceivingLog() {
       const next = [...prev];
       next.splice(idx, 1);
 
-      // ensure first row keeps 2 images
+      // ensure first row keeps 4 images
       if (next.length > 0) {
         const imgs = Array.isArray(next[0].images) ? next[0].images : [];
-        if (imgs.length !== 2) next[0] = { ...next[0], images: [imgs[0] || "", imgs[1] || ""] };
+        if (imgs.length !== 4) {
+          next[0] = {
+            ...next[0],
+            images: [imgs[0] || "", imgs[1] || "", imgs[2] || "", imgs[3] || ""],
+          };
+        }
       }
       return next;
     });
   }
 
-  // ===== Photos: row0 has 2, others 1 =====
-  const slotsForRow = (rowIdx) => (rowIdx === 0 ? 2 : 1);
+  // ===== Photos: row0 has 4, others 0 =====
+  const slotsForRow = (rowIdx) => (rowIdx === 0 ? 4 : 0);
 
   async function handleImageChange(rowIdx, slotIdx, file) {
     if (!file) return;
@@ -735,7 +740,7 @@ export default function FTR1ReceivingLog() {
                   </div>
 
                   <div style={{ marginTop: 4, fontSize: 10, color: "#64748b" }}>
-                    {idx === 0 ? "Row 1: 2 photos" : "Other rows: 1 photo"} — max compression, same dimensions
+                    {idx === 0 ? "Row 1: up to 4 photos — max compression" : "—"}
                   </div>
                 </td>
 

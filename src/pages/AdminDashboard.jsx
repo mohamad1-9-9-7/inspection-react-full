@@ -9,14 +9,61 @@ import QCSRawMaterialView from "./admin/QCSRawMaterialView";
 import KPIDashboard       from "./KPIDashboard";
 import FTR1ReportView     from "./monitor/branches/ftr1/FTR1ReportView";
 import FTR2ReportView     from "./monitor/branches/ftr2/FTR2ReportView";
+import { resilientFetch } from "./monitor/branches/_shared/resilientFetch";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
+/**
+ * Wake up the server before making bulk requests.
+ * This avoids cascading 502s when Render free-tier is sleeping.
+ */
+let __serverWokenUp = false;
+async function ensureServerAwake(onStatus) {
+  if (__serverWokenUp) return true;
+  try {
+    if (onStatus) onStatus("⏳ Waking up server… (may take ~30 sec)");
+    await resilientFetch(
+      `${API_BASE}/api/reports?type=__ping__&limit=1`,
+      { cache: "no-store" },
+      {
+        retries: 4,
+        initialDelay: 2000,
+        maxDelay: 10000,
+        timeout: 45000,
+        onAttempt: (attempt, err) => {
+          if (err && onStatus) {
+            onStatus(`⏳ Server starting up… attempt ${attempt}`);
+          }
+        },
+      }
+    );
+    __serverWokenUp = true;
+    if (onStatus) onStatus("");
+    return true;
+  } catch (e) {
+    console.warn("[AdminDashboard] Server wake-up failed:", e);
+    if (onStatus) onStatus("⚠️ Server unreachable — showing cached data");
+    return false;
+  }
+}
+
 async function fetchByType(type) {
-  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to fetch ${type}: ${res.status}`);
-  const json = await res.json().catch(() => []);
-  return Array.isArray(json) ? json : json?.data ?? [];
+  try {
+    const res = await resilientFetch(
+      `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`,
+      { cache: "no-store" },
+      { retries: 2, initialDelay: 1500, timeout: 25000 }
+    );
+    if (!res.ok) {
+      console.warn(`[AdminDashboard] fetch ${type}: HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json().catch(() => []);
+    return Array.isArray(json) ? json : json?.data ?? [];
+  } catch (e) {
+    console.warn(`[AdminDashboard] fetch ${type} failed:`, e?.message || e);
+    return []; // graceful empty instead of throwing
+  }
 }
 
 async function upsertOne(type, payload) {
@@ -54,13 +101,22 @@ const TYPES_BY_GROUP = {
 
 async function fetchAllTypes() {
   const data={}, counts={}, groups={};
+
+  // Kick off all fetches in parallel — fetchByType now returns [] on error,
+  // so we never throw and never spam 18 sequential failures.
+  const allPromises = [];
   for (const [group, typeList] of Object.entries(TYPES_BY_GROUP)) {
-    groups[group]=[...typeList];
+    groups[group] = [...typeList];
     for (const type of typeList) {
-      try { const arr=await fetchByType(type); data[type]=arr; counts[type]=arr.length; }
-      catch(e) { console.warn(e); data[type]=[]; counts[type]=0; }
+      allPromises.push(
+        fetchByType(type).then((arr) => {
+          data[type]   = arr;
+          counts[type] = arr.length;
+        })
+      );
     }
   }
+  await Promise.all(allPromises);
   return { data, counts, groups };
 }
 
@@ -100,6 +156,7 @@ export default function AdminDashboard() {
   const [lastSync, setLastSync]         = useState("");
   const [stats, setStats]               = useState({ daily:0, master:0, total:0 });
   const [dateStr, setDateStr]           = useState("");
+  const [serverStatus, setServerStatus] = useState(""); // wakeup progress banner
 
   useEffect(() => {
     const fmt = () => setDateStr(new Date().toLocaleString("en-AE",{timeZone:"Asia/Dubai",weekday:"long",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"}));
@@ -108,17 +165,41 @@ export default function AdminDashboard() {
 
   async function reloadFromServer() {
     setLoading(true); setOpMsg("");
+
+    // 1) Wake up the server first (free-tier cold start) — prevents cascading 502s
+    await ensureServerAwake(setServerStatus);
+
     try {
-      const [r,d,allTypes] = await Promise.all([fetchByType("reports"),fetchByType("dailyReports"),fetchAllTypes()]);
-      setReports(r); setDailyReports(d);
+      // 2) All fetches return [] on failure (no throws), so Promise.all never rejects here
+      const [r, d, allTypes] = await Promise.all([
+        fetchByType("reports"),
+        fetchByType("dailyReports"),
+        fetchAllTypes(),
+      ]);
+      setReports(r);
+      setDailyReports(d);
       setLastSync(new Date().toISOString());
-      const {counts,groups}=allTypes||{};
-      let dailyFromGroups=0;
-      Object.values(groups||{}).forEach(list=>list.forEach(t=>{dailyFromGroups+=counts[t]||0;}));
-      const masterReports=Array.isArray(r)?r.length:0, metaDaily=Array.isArray(d)?d.length:0, dailyTotal=dailyFromGroups+metaDaily;
-      setStats({daily:dailyTotal,master:masterReports,total:dailyTotal+masterReports});
-    } catch(e) { console.error(e); setOpMsg("❌ Failed to load data from server."); }
-    finally { setLoading(false); setTimeout(()=>setOpMsg(""),3500); }
+      const { counts, groups } = allTypes || {};
+      let dailyFromGroups = 0;
+      Object.values(groups || {}).forEach((list) =>
+        list.forEach((t) => { dailyFromGroups += counts[t] || 0; })
+      );
+      const masterReports = Array.isArray(r) ? r.length : 0;
+      const metaDaily     = Array.isArray(d) ? d.length : 0;
+      const dailyTotal    = dailyFromGroups + metaDaily;
+      setStats({ daily: dailyTotal, master: masterReports, total: dailyTotal + masterReports });
+
+      if (dailyTotal === 0 && masterReports === 0) {
+        setOpMsg("⚠️ No data loaded — server may be unreachable. Try Refresh.");
+      }
+    } catch (e) {
+      console.error("[AdminDashboard] reloadFromServer error:", e);
+      setOpMsg("⚠️ Partial load. Some reports may be missing.");
+    } finally {
+      setLoading(false);
+      setServerStatus("");
+      setTimeout(() => setOpMsg(""), 4500);
+    }
   }
 
   useEffect(()=>{reloadFromServer();},[]);
@@ -212,6 +293,20 @@ export default function AdminDashboard() {
             <div className="ad-sync-info">
               <div className="ad-sync-text">Last sync: {formatDateTime(lastSync)}</div>
               {loading && <div className="ad-sync-loading">⏳ Loading…</div>}
+              {serverStatus && (
+                <div style={{
+                  background: "#fffbeb",
+                  color: "#92400e",
+                  border: "1px solid #fde68a",
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  marginTop: 4,
+                }}>
+                  {serverStatus}
+                </div>
+              )}
               {opMsg   && <div className={`ad-sync-msg ${isErr?"err":"ok"}`}>{opMsg}</div>}
             </div>
             <button className="ad-hbtn ad-hbtn-refresh" onClick={reloadFromServer}>🔄 Refresh</button>

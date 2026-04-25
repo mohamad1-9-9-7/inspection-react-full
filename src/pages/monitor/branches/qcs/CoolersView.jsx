@@ -468,14 +468,14 @@ export default function CoolersView() {
           <p>❌ No reports</p>
         ) : (
           Object.entries(grouped)
-            .sort(([a],[b]) => Number(a) - Number(b))
+            .sort(([a],[b]) => Number(b) - Number(a))
             .map(([Y, months]) => (
               <details key={Y}>{/* ✨ افتراضيًا مغلق */}
                 <summary style={{ fontWeight: 700 }}>📅 Year {Y}</summary>
                 {Object.entries(months)
-                  .sort(([a],[b]) => Number(a) - Number(b))
+                  .sort(([a],[b]) => Number(b) - Number(a))
                   .map(([M, days]) => {
-                    const sorted = [...days].sort((x,y) => x._dt - y._dt);
+                    const sorted = [...days].sort((x,y) => y._dt - x._dt);
                     return (
                       <details key={M} style={{ marginLeft: "1rem" }}>
                         {/* ✨ افتراضيًا مغلق */}

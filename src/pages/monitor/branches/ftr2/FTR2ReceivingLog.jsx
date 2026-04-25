@@ -639,121 +639,130 @@ export default function FTR2ReceivingLog() {
                   />
                 </td>
 
-                {/* Photos */}
+                {/* Photos — only first row uploads (up to 4) */}
                 <td style={{ ...tdCell, padding: 6 }}>
-                  <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
-                    {[0, 1, 2, 3].map((i) => {
-                      const inputId = `file-${idx}-${i}`;
-                      const hasImg = Boolean(r.images?.[i]);
-                      return (
-                        <div
-                          key={i}
-                          style={{
-                            position: "relative",
-                            width: 60,
-                            minWidth: 60,
-                            height: 60,
-                            borderRadius: 6,
-                            overflow: "hidden",
-                            border: hasImg
-                              ? "1px solid #cbd5e1"
-                              : "1px dashed #cbd5e1",
-                            background: "#f8fafc",
-                          }}
-                        >
-                          {hasImg ? (
-                            <>
-                              <label
-                                htmlFor={inputId}
-                                title="Replace"
-                                style={{
-                                  cursor: "pointer",
-                                  display: "block",
-                                  width: "100%",
-                                  height: "100%",
-                                }}
-                              >
-                                <img
-                                  src={r.images[i]}
-                                  alt={`row-${idx}-img-${i}`}
-                                  style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover",
-                                  }}
-                                />
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => removeImage(idx, i)}
-                                title="Remove"
-                                style={{
-                                  position: "absolute",
-                                  top: 2,
-                                  right: 2,
-                                  width: 18,
-                                  height: 18,
-                                  border: "none",
-                                  borderRadius: "50%",
-                                  background: "#ef4444",
-                                  color: "#fff",
-                                  lineHeight: "18px",
-                                  fontSize: 12,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                ×
-                              </button>
-                              <input
-                                id={inputId}
-                                type="file"
-                                accept="image/*"
-                                style={{ display: "none" }}
-                                onChange={(e) =>
-                                  handleImageChange(
-                                    idx,
-                                    i,
-                                    e.target.files?.[0]
-                                  )
-                                }
-                              />
-                            </>
-                          ) : (
-                            <>
-                              <label
-                                htmlFor={inputId}
-                                style={{
-                                  cursor: "pointer",
-                                  width: "100%",
-                                  height: "100%",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  color: "#6b7280",
-                                  fontSize: 12,
-                                }}
-                              >
-                                + Upload
-                              </label>
-                              <input
-                                id={inputId}
-                                type="file"
-                                accept="image/*"
-                                style={{ display: "none" }}
-                                onChange={(e) =>
-                                  handleImageChange(
-                                    idx,
-                                    i,
-                                    e.target.files?.[0]
-                                  )
-                                }
-                              />
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {idx === 0 ? (
+                    <>
+                      <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+                        {[0, 1, 2, 3].map((i) => {
+                          const inputId = `file-${idx}-${i}`;
+                          const hasImg = Boolean(r.images?.[i]);
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                position: "relative",
+                                width: 60,
+                                minWidth: 60,
+                                height: 60,
+                                borderRadius: 6,
+                                overflow: "hidden",
+                                border: hasImg
+                                  ? "1px solid #cbd5e1"
+                                  : "1px dashed #cbd5e1",
+                                background: "#f8fafc",
+                              }}
+                            >
+                              {hasImg ? (
+                                <>
+                                  <label
+                                    htmlFor={inputId}
+                                    title="Replace"
+                                    style={{
+                                      cursor: "pointer",
+                                      display: "block",
+                                      width: "100%",
+                                      height: "100%",
+                                    }}
+                                  >
+                                    <img
+                                      src={r.images[i]}
+                                      alt={`row-${idx}-img-${i}`}
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        objectFit: "cover",
+                                      }}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeImage(idx, i)}
+                                    title="Remove"
+                                    style={{
+                                      position: "absolute",
+                                      top: 2,
+                                      right: 2,
+                                      width: 18,
+                                      height: 18,
+                                      border: "none",
+                                      borderRadius: "50%",
+                                      background: "#ef4444",
+                                      color: "#fff",
+                                      lineHeight: "18px",
+                                      fontSize: 12,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                  <input
+                                    id={inputId}
+                                    type="file"
+                                    accept="image/*"
+                                    style={{ display: "none" }}
+                                    onChange={(e) =>
+                                      handleImageChange(
+                                        idx,
+                                        i,
+                                        e.target.files?.[0]
+                                      )
+                                    }
+                                  />
+                                </>
+                              ) : (
+                                <>
+                                  <label
+                                    htmlFor={inputId}
+                                    style={{
+                                      cursor: "pointer",
+                                      width: "100%",
+                                      height: "100%",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      color: "#6b7280",
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    + Upload
+                                  </label>
+                                  <input
+                                    id={inputId}
+                                    type="file"
+                                    accept="image/*"
+                                    style={{ display: "none" }}
+                                    onChange={(e) =>
+                                      handleImageChange(
+                                        idx,
+                                        i,
+                                        e.target.files?.[0]
+                                      )
+                                    }
+                                  />
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 10, color: "#64748b" }}>
+                        Row 1: up to 4 photos
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: "#9ca3af", fontSize: 12 }}>—</div>
+                  )}
                 </td>
 
                 {/* Actions */}

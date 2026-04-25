@@ -217,17 +217,17 @@ export default function POS15PersonalHygieneView() {
         ) : (
           <div>
             {Object.entries(groupedReports)
-              .sort(([ya], [yb]) => Number(ya) - Number(yb)) // ✅ سنوات تصاعدي
+              .sort(([ya], [yb]) => Number(yb) - Number(ya)) // ✅ سنوات تنازلي
               .map(([year, months]) => (
-                <details key={year} open>
+                <details key={year}>
                   <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
                     📅 Year {year}
                   </summary>
 
                   {Object.entries(months)
-                    .sort(([ma], [mb]) => Number(ma) - Number(mb)) // ✅ أشهر تصاعدي
+                    .sort(([ma], [mb]) => Number(mb) - Number(ma)) // ✅ أشهر تنازلي
                     .map(([month, days]) => {
-                      const daysSorted = [...days].sort((a, b) => a._dt - b._dt); // ✅ أيام تصاعدي
+                      const daysSorted = [...days].sort((a, b) => b._dt - a._dt); // ✅ أيام تنازلي
                       return (
                         <details key={month} style={{ marginLeft: "1rem" }}>
                           <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>

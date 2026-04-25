@@ -528,7 +528,6 @@ function ProductCard({ idx, product, t, onUpdate, onUpdateSample, onUpdateQualit
           <thead>
             <tr>
               <th style={{ width: 44 }}>#</th>
-              <th>{t("oc_time")}</th>
               <th>{t("oc_pdt_temp")}</th>
             </tr>
           </thead>
@@ -536,14 +535,6 @@ function ProductCard({ idx, product, t, onUpdate, onUpdateSample, onUpdateQualit
             {product.samples.map((s, sIdx) => (
               <tr key={sIdx}>
                 <td className="oc-sample-no">{sIdx + 1}</td>
-                <td>
-                  <input
-                    type="time"
-                    value={s.time}
-                    onChange={(e) => onUpdateSample(sIdx, "time", e.target.value)}
-                    className="oc-input oc-input-sm"
-                  />
-                </td>
                 <td>
                   <input
                     type="number"

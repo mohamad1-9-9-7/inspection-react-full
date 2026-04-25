@@ -238,16 +238,16 @@ export default function POS11DailyCleaningView() {
         ) : (
           <div>
             {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(a) - Number(b))
+              .sort(([a], [b]) => Number(b) - Number(a))
               .map(([year, months]) => (
-                <details key={year} open>
+                <details key={year}>
                   <summary style={{ fontWeight: "bold" }}>📅 Year {year}</summary>
                   {Object.entries(months)
-                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .sort(([a], [b]) => Number(b) - Number(a))
                     .map(([month, days]) => {
-                      const daysSorted = [...days].sort((x, y) => x._dt - y._dt);
+                      const daysSorted = [...days].sort((x, y) => y._dt - x._dt);
                       return (
-                        <details key={month} style={{ marginLeft: "1rem" }} open>
+                        <details key={month} style={{ marginLeft: "1rem" }}>
                           <summary style={{ fontWeight: "500" }}>
                             📅 Month {month}
                           </summary>

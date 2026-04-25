@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -43,7 +44,7 @@ const COLS = [
 
 const COL_WIDTHS_PX    = [64,160,140,240,110,110,130,160,130,110,300,140,140,140,260,160];
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
-const MIN_SCALE        = 0.75;
+const MIN_SCALE        = 0.5;
 
 const GRID_COLOR    = "#9aa3b2";
 const HEADER_BG     = "#eaf1fb";
@@ -58,6 +59,10 @@ export default function FTR2ReceivingLogView() {
   const [loadingList,   setLoadingList]   = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
   const [busy,          setBusy]          = useState(false);
+
+  // ✅ Non-blocking error state (replaces alerts)
+  const [fetchError, setFetchError] = useState(null); // { message, retry }
+  const [retryMsg,   setRetryMsg]   = useState("");
 
   const [scale,        setScale]        = useState(1);
   const [contentH,     setContentH]     = useState(0);
@@ -122,23 +127,56 @@ export default function FTR2ReceivingLogView() {
 
   async function fetchList() {
     setLoadingList(true);
+    setFetchError(null);
+    setRetryMsg("");
+
+    const primaryUrl  = `${API_BASE}/api/reports?type=ftr2_receiving_log_butchery&lite=1&limit=500`;
+    const fallbackUrl = `${API_BASE}/api/reports?type=ftr2_receiving_log_butchery`;
+
     try {
-      const res  = await fetch(`${API_BASE}/api/reports?type=ftr2_receiving_log_butchery&lite=1&limit=500`, { cache: "no-store" });
+      const res = await resilientFetch(
+        primaryUrl,
+        { cache: "no-store" },
+        {
+          retries: 3,
+          initialDelay: 1500,
+          maxDelay: 8000,
+          timeout: 35000,
+          fallbackUrl,
+          onAttempt: (attempt, err) => {
+            if (err) {
+              setRetryMsg(`⏳ Attempt ${attempt} failed, retrying…`);
+            } else if (attempt > 1) {
+              setRetryMsg(`⏳ Retrying (${attempt})…`);
+            } else {
+              setRetryMsg("");
+            }
+          },
+        }
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       const json = await res.json();
       const arr  = Array.isArray(json) ? json : json?.data ?? [];
       arr.sort((a, b) => getReportDate(b) - getReportDate(a));
       setReportList(arr);
+      setRetryMsg("");
 
       // ✅ تحميل آخر تقرير تلقائياً
       if (arr.length > 0) {
         await fetchFullReport(arr[0]);
       }
     } catch (e) {
-      console.error(e);
-      alert("⚠️ Failed to load report list.");
+      console.error("[FTR2 Receiving] fetchList failed:", e);
+      const info = classifyError(e);
+      setFetchError({
+        type: info.type,
+        message: info.label,
+        messageAr: info.labelAr,
+      });
     } finally {
       setLoadingList(false);
+      setRetryMsg("");
     }
   }
 
@@ -151,13 +189,18 @@ export default function FTR2ReceivingLogView() {
     setIsEditing(false);
     setDraft(null);
     try {
-      const res  = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { cache: "no-store" });
+      const res = await resilientFetch(
+        `${API_BASE}/api/reports/${encodeURIComponent(id)}`,
+        { cache: "no-store" },
+        { retries: 3, initialDelay: 1000, timeout: 25000 }
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setSelectedReport(json?.report ?? json);
     } catch (e) {
-      console.error(e);
-      alert("⚠️ Failed to load report.");
+      console.error("[FTR2 Receiving] fetchFullReport failed:", e);
+      const info = classifyError(e);
+      setFetchError({ type: info.type, message: info.label, messageAr: info.labelAr });
     } finally {
       setLoadingReport(false);
     }
@@ -296,7 +339,7 @@ export default function FTR2ReceivingLogView() {
   /* ===== Styles ===== */
   const shell    = { display: "flex", gap: "1rem" };
   const sidebar  = { minWidth: 260, background: "#fbfbfc", padding: "1rem", borderRadius: 12, boxShadow: "0 4px 14px rgba(0,0,0,0.06)", border: "1px solid #eef0f4", height: "fit-content" };
-  const main     = { flex: 1, background: "linear-gradient(120deg,#f7f9fc 60%,#efe7f9 100%)", padding: "1.25rem", borderRadius: 14, boxShadow: "0 6px 22px rgba(95,61,196,0.12)", border: "1px solid #ececf5", overflowX: "hidden", fontSize: 16 };
+  const main     = { flex: 1, minWidth: 0, background: "linear-gradient(120deg,#f7f9fc 60%,#efe7f9 100%)", padding: "1.25rem", borderRadius: 14, boxShadow: "0 6px 22px rgba(95,61,196,0.12)", border: "1px solid #ececf5", overflowX: "auto", fontSize: 16 };
   const hCell    = { border: `1.4px solid ${GRID_COLOR}`, padding: "10px 12px", fontSize: 16, background: HEADER_BG, fontWeight: 700, color: "#1e293b" };
   const baseCell = { padding: "10px 12px", border: `1.2px solid ${GRID_COLOR}`, verticalAlign: "middle", fontSize: 16, lineHeight: 1.55, wordBreak: "break-word", whiteSpace: "normal", background: "#fff" };
   const thStyle  = { ...baseCell, background: HEADER_BG, color: "#0f172a", fontWeight: 800, border: `1.5px solid ${HEADER_BORDER}`, position: "sticky", top: 0, zIndex: 1, textAlign: "center" };
@@ -336,8 +379,65 @@ export default function FTR2ReceivingLogView() {
       <div style={sidebar}>
         <h4 style={{ marginBottom: "1rem", color: "#5b21b6", textAlign: "center" }}>🗓️ Saved Reports</h4>
 
-        {loadingList ? <p>⏳ Loading list...</p>
-          : Object.keys(groupedReports).length === 0 ? <p>❌ No reports</p>
+        {/* ── Non-blocking error banner ── */}
+        {fetchError && (
+          <div style={{
+            padding: "10px 12px",
+            marginBottom: 12,
+            borderRadius: 10,
+            background: fetchError.type === "network" ? "#fffbeb" : "#fef2f2",
+            border: `1px solid ${fetchError.type === "network" ? "#fde68a" : "#fecaca"}`,
+            color: fetchError.type === "network" ? "#92400e" : "#991b1b",
+            fontSize: 12,
+            lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>
+              {fetchError.type === "network" ? "⚠️ اتصال متقطع" : "⚠️ خطأ في السيرفر"}
+            </div>
+            <div style={{ marginBottom: 8 }}>{fetchError.messageAr || fetchError.message}</div>
+            <button
+              onClick={fetchList}
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: "none",
+                background: "#5b21b6",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              🔄 إعادة المحاولة
+            </button>
+            <div style={{ marginTop: 6, fontSize: 10, color: "#64748b", fontStyle: "italic" }}>
+              السيرفر المجاني قد يحتاج ~30 ثانية ليستيقظ
+            </div>
+          </div>
+        )}
+
+        {/* ── Retry progress indicator ── */}
+        {retryMsg && (
+          <div style={{
+            padding: "8px 12px",
+            marginBottom: 10,
+            borderRadius: 8,
+            background: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            color: "#1e40af",
+            fontSize: 12,
+            fontWeight: 700,
+            textAlign: "center",
+          }}>
+            {retryMsg}
+          </div>
+        )}
+
+        {loadingList ? <p>⏳ Loading list…</p>
+          : Object.keys(groupedReports).length === 0 ? (
+            fetchError ? null : <p>❌ No reports</p>
+          )
           : Object.entries(groupedReports)
               .sort(([a],[b]) => Number(b)-Number(a))
               .map(([year, months]) => (
@@ -401,7 +501,7 @@ export default function FTR2ReceivingLogView() {
             </div>
 
             {/* Auto-Scale */}
-            <div ref={viewportRef} style={{ width: "100%", position: "relative", overflow: "hidden", height: measureReady && contentH ? contentH * scale : "auto", minHeight: 120 }}>
+            <div ref={viewportRef} style={{ width: "100%", position: "relative", overflowX: "auto", overflowY: "hidden", height: measureReady && contentH ? contentH * scale : "auto", minHeight: 120 }}>
               <div ref={scaleBoxRef}
                 style={measureReady
                   ? { position: "absolute", left: 0, top: 0, width: TABLE_BASE_WIDTH, transform: `scale(${scale})`, transformOrigin: "top left" }

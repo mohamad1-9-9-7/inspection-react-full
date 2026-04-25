@@ -145,13 +145,7 @@ export default function PersonalHygieneChecklistView() {
       );
       setAllDates(uniq);
 
-      // expand latest year/month by default
-      if (uniq.length) {
-        const [y, m] = uniq[0].split("-");
-        setExpandedYears((prev) => ({ ...prev, [y]: true }));
-        setExpandedMonths((prev) => ({ ...prev, [`${y}-${m}`]: true }));
-      }
-
+      // Tree stays collapsed by default.
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) {
       console.warn("Failed to fetch dates", e);
@@ -624,10 +618,10 @@ async function exportXLSX() {
     for (const y of Object.keys(out))
       out[y] = Object.fromEntries(
         Object.entries(out[y])
-          .sort(([a], [b]) => Number(a) - Number(b))
-          .map(([m, arr]) => [m, arr.sort((a, b) => a.localeCompare(b))])
+          .sort(([a], [b]) => Number(b) - Number(a))
+          .map(([m, arr]) => [m, arr.sort((a, b) => b.localeCompare(a))])
       );
-    return Object.fromEntries(Object.entries(out).sort(([a], [b]) => Number(a) - Number(b)));
+    return Object.fromEntries(Object.entries(out).sort(([a], [b]) => Number(b) - Number(a)));
   }, [allDates]);
 
   const toggleYear = (y) => setExpandedYears((p) => ({ ...p, [y]: !p[y] }));

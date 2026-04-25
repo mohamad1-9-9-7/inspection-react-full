@@ -49,7 +49,8 @@ export default function OilQualityMonitoringView() {
     try{
       const res=await fetch(`${API_BASE}/api/reports?type=${TYPE}`,{cache:"no-store"});const data=await res.json();const list=Array.isArray(data)?data:data?.data??[];
       const uniq=Array.from(new Set(list.map(r=>r?.payload).filter(p=>p&&p.branch===BRANCH&&p.reportDate).map(p=>p.reportDate))).sort((a,b)=>b.localeCompare(a));
-      setAllDates(uniq);if(uniq.length){const[y,m]=uniq[0].split("-");setExpandedYears(p=>({...p,[y]:true}));setExpandedMonths(p=>({...p,[`${y}-${m}`]:true}));}
+      setAllDates(uniq);
+      // Tree stays collapsed by default.
       if(!uniq.includes(date)&&uniq.length)setDate(uniq[0]);
     }catch(e){console.warn(e);}
   }
@@ -123,7 +124,7 @@ export default function OilQualityMonitoringView() {
     catch(e){console.error(e);alert("❌ Invalid JSON or save failed");}finally{if(fileInputRef.current)fileInputRef.current.value="";setLoading(false);}
   }
 
-  const grouped=useMemo(()=>{const out={};for(const d of allDates){const[y,m]=d.split("-");(out[y]||={}); (out[y][m]||=[]).push(d);}for(const y of Object.keys(out))out[y]=Object.fromEntries(Object.entries(out[y]).sort(([a],[b])=>Number(a)-Number(b)).map(([m,arr])=>[m,arr.sort((a,b)=>a.localeCompare(b))]));return Object.fromEntries(Object.entries(out).sort(([a],[b])=>Number(a)-Number(b)));}, [allDates]);
+  const grouped=useMemo(()=>{const out={};for(const d of allDates){const[y,m]=d.split("-");(out[y]||={}); (out[y][m]||=[]).push(d);}for(const y of Object.keys(out))out[y]=Object.fromEntries(Object.entries(out[y]).sort(([a],[b])=>Number(b)-Number(a)).map(([m,arr])=>[m,arr.sort((a,b)=>b.localeCompare(a))]));return Object.fromEntries(Object.entries(out).sort(([a],[b])=>Number(b)-Number(a)));}, [allDates]);
   const toggleYear=(y)=>setExpandedYears(p=>({...p,[y]:!p[y]}));const toggleMonth=(y,m)=>setExpandedMonths(p=>({...p,[`${y}-${m}`]:!p[`${y}-${m}`]}));
   const rowsToShow=(record?.payload?.entries||[]).filter(hasVal);
 

@@ -233,16 +233,16 @@ export default function DailyCleanlinessView() {
           <p>❌ No reports</p>
         ) : (
           Object.entries(grouped)
-            .sort(([a],[b]) => Number(a) - Number(b))
+            .sort(([a],[b]) => Number(b) - Number(a))
             .map(([Y, months]) => (
-              <details key={Y} open>
+              <details key={Y}>
                 <summary style={{ fontWeight: 700 }}>📅 Year {Y}</summary>
                 {Object.entries(months)
-                  .sort(([a],[b]) => Number(a) - Number(b))
+                  .sort(([a],[b]) => Number(b) - Number(a))
                   .map(([M, days]) => {
-                    const sorted = [...days].sort((x,y) => x._dt - y._dt);
+                    const sorted = [...days].sort((x,y) => y._dt - x._dt);
                     return (
-                      <details key={M} style={{ marginLeft: "1rem" }} open>
+                      <details key={M} style={{ marginLeft: "1rem" }}>
                         <summary style={{ fontWeight: 500 }}>📅 Month {M}</summary>
                         <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
                           {sorted.map((r,i) => {

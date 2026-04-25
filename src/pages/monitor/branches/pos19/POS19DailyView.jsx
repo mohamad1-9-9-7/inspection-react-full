@@ -1,5 +1,7 @@
 // src/pages/monitor/branches/pos19/POS19DailyView.jsx
 import React, { useEffect, useMemo, useState, Suspense, lazy } from "react";
+import PrintStyles from "../_shared/PrintStyles";
+import PrintButton from "../_shared/PrintButton";
 
 /* ─────────────────────────────────────────────
    POS19DailyView — Viewer Hub  (Re-Designed)
@@ -684,6 +686,7 @@ export default function POS19DailyView() {
   return (
     <>
       <style>{STYLES}</style>
+      <PrintStyles />
       <div className="pos19-root">
 
         {/* ── Sidebar ── */}
@@ -725,8 +728,18 @@ export default function POS19DailyView() {
             <div className="pos19-topbar-title">
               {activeTabObj?.icon} {activeTabObj?.label}
             </div>
-            <div className="pos19-topbar-date">
-              {new Date().toLocaleDateString("ar-AE", { timeZone:"Asia/Dubai", weekday:"long", year:"numeric", month:"long", day:"numeric" })}
+            <div className="no-print" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {activeTab !== "overview" && (
+                <PrintButton
+                  title={activeTabObj?.label || "POS 19 Report"}
+                  reportDate={selectedDate || new Date().toLocaleDateString("en-CA")}
+                  lang="ar"
+                  variant="compact"
+                />
+              )}
+              <div className="pos19-topbar-date">
+                {new Date().toLocaleDateString("ar-AE", { timeZone:"Asia/Dubai", weekday:"long", year:"numeric", month:"long", day:"numeric" })}
+              </div>
             </div>
           </div>
 

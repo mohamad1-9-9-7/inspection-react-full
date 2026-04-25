@@ -272,7 +272,7 @@ export default function PRDDefrostingRecordView() {
           {loading && <div style={muted}>Loading…</div>}
 
           {Object.keys(groups.years)
-            .sort((a, b) => Number(a) - Number(b)) // قديم → جديد
+            .sort((a, b) => Number(b) - Number(a)) // أحدث → أقدم
             .map((yy) => (
               <YearBlock
                 key={yy}
@@ -336,7 +336,7 @@ export default function PRDDefrostingRecordView() {
 
 /* ===================== Sidebar Blocks ===================== */
 function YearBlock({ year, months, onPick, selectedKey }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const daysCount = Object.values(months).reduce((acc, days) => acc + Object.keys(days).length, 0);
   return (
     <div style={sb.year}>
@@ -347,7 +347,7 @@ function YearBlock({ year, months, onPick, selectedKey }) {
       </div>
       {open &&
         Object.keys(months)
-          .sort((a, b) => Number(a) - Number(b))
+          .sort((a, b) => Number(b) - Number(a))
           .map((mm) => (
             <MonthBlock
               key={mm}
@@ -363,7 +363,7 @@ function YearBlock({ year, months, onPick, selectedKey }) {
 }
 
 function MonthBlock({ year, month, days, onPick, selectedKey }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const totalItems = Object.values(days).reduce((acc, v) => acc + (v.items || 0), 0);
   return (
     <div style={sb.month}>
@@ -375,7 +375,7 @@ function MonthBlock({ year, month, days, onPick, selectedKey }) {
       </div>
       {open &&
         Object.keys(days)
-          .sort((a, b) => Number(a) - Number(b))
+          .sort((a, b) => Number(b) - Number(a))
           .map((dd) => (
             <DateChip
               key={dd}

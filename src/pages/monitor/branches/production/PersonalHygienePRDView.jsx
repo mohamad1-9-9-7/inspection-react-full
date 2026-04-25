@@ -261,7 +261,7 @@ export default function PersonalHygienePRDView() {
 
           {loading && <div style={muted}>Loading…</div>}
           {Object.keys(groups.years)
-            .sort((a, b) => Number(a) - Number(b)) // قديم → جديد
+            .sort((a, b) => Number(b) - Number(a)) // أحدث → أقدم
             .map((yy) => (
               <YearBlock
                 key={yy}
@@ -344,7 +344,7 @@ function YearBlock({
 
       {open &&
         Object.keys(months)
-          .sort((a, b) => Number(a) - Number(b))
+          .sort((a, b) => Number(b) - Number(a))
           .map((mm) => (
             <MonthBlock
               key={mm}
@@ -385,7 +385,7 @@ function MonthBlock({ year, month, days, onPick, selectedKey, expandedMonths, to
 
       {open &&
         Object.keys(days)
-          .sort((a, b) => Number(a) - Number(b))
+          .sort((a, b) => Number(b) - Number(a))
           .map((dd) => (
             <DateChip
               key={dd}

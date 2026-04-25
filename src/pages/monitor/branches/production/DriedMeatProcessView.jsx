@@ -279,12 +279,12 @@ export default function DriedMeatProcessView() {
     for (const y of Object.keys(out)) {
       out[y] = Object.fromEntries(
         Object.entries(out[y])
-          .sort(([a], [b]) => Number(a) - Number(b))
-          .map(([m, arr]) => [m, arr.sort((a, b) => a.localeCompare(b))])
+          .sort(([a], [b]) => Number(b) - Number(a))
+          .map(([m, arr]) => [m, arr.sort((a, b) => b.localeCompare(a))])
       );
     }
     return Object.fromEntries(
-      Object.entries(out).sort(([a], [b]) => Number(a) - Number(b))
+      Object.entries(out).sort(([a], [b]) => Number(b) - Number(a))
     );
   }, [allDates]);
 

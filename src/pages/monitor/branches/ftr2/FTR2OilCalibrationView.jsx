@@ -286,15 +286,15 @@ export default function FTR2OilCalibrationView() {
         ) : (
           <div>
             {Object.entries(grouped)
-              .sort(([a], [b]) => Number(a) - Number(b)) // السنوات تصاعدي
+              .sort(([a], [b]) => Number(b) - Number(a)) // السنوات تنازلي
               .map(([year, months]) => (
-                <details key={year} open>
+                <details key={year}>
                   <summary style={{ fontWeight: "bold", margin: "8px 0" }}>
                     📅 Year {year}
                   </summary>
 
                   {Object.entries(months)
-                    .sort(([a], [b]) => Number(a) - Number(b)) // الأشهر تصاعدي
+                    .sort(([a], [b]) => Number(b) - Number(a)) // الأشهر تنازلي
                     .map(([month, reportsInMonth]) => (
                       <div
                         key={month}

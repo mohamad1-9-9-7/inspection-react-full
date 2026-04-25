@@ -1,7 +1,8 @@
 // src/pages/monitor/branches/qcs/QCSReportsView.jsx
-// QCS — Daily Viewer Hub (unified design, same as POS 19).
+// QCS — Daily Viewer Hub (unified design).
 import React, { lazy } from "react";
 import BranchDailyView from "../_shared/BranchDailyView";
+import BranchDashboard from "../_shared/BranchDashboard";
 
 const CoolersView                       = lazy(() => import("./CoolersView"));
 const PersonalHygieneView               = lazy(() => import("./PersonalHygieneView"));
@@ -26,7 +27,24 @@ const CC_HEADER = {
   controllingOfficer: "",
 };
 
+/* Report type list for the Dashboard (overview tab) */
+const DASH_TYPES = [
+  { type: "qcs_coolers",            key: "coolers",        icon: "🧊",  titleEn: "Coolers",            titleAr: "البرادات",            accent: "#06b6d4" },
+  { type: "qcs-ph",                 key: "ph",             icon: "🧼",  titleEn: "Personal Hygiene",   titleAr: "النظافة الشخصية",     accent: "#0ea5e9" },
+  { type: "qcs-clean",              key: "clean",          icon: "🧹",  titleEn: "Daily Cleanliness",  titleAr: "النظافة اليومية",     accent: "#22c55e" },
+  { type: "ftr1_preloading_inspection", key: "ftr1_preload", icon: "🚚", titleEn: "FTR 1 Preloading",  titleAr: "تحميل FTR 1",        accent: "#f59e0b" },
+  { type: "ftr2_preloading_inspection", key: "ftr2_preload", icon: "🚚", titleEn: "FTR 2 Preloading",  titleAr: "تحميل FTR 2",        accent: "#f97316" },
+  { type: "qcs_rm_ingredients",     key: "rm_ing",         icon: "🧪",  titleEn: "RM — Ingredients",   titleAr: "المكونات",            accent: "#8b5cf6" },
+  { type: "qcs_rm_packaging",       key: "rm_pack",        icon: "📦",  titleEn: "RM — Packaging",     titleAr: "التعبئة",             accent: "#a855f7" },
+  { type: "qcs_non_conformance",    key: "nc_reports",     icon: "🚫",  titleEn: "Non-Conformance",    titleAr: "عدم المطابقة",        accent: "#dc2626" },
+  { type: "qcs_corrective_action",  key: "car_reports",    icon: "🛠️", titleEn: "Corrective Action",  titleAr: "الإجراء التصحيحي",    accent: "#16a34a" },
+  { type: "qcs_internal_audit",     key: "internal_audit", icon: "📋",  titleEn: "Internal Audit",     titleAr: "التدقيق الداخلي",     accent: "#0f766e" },
+];
+
 const TABS = [
+  { key: "overview", icon: "📊", label: "Overview",
+    element: <BranchDashboard branchName="QCS" branchNameAr="مراقبة الجودة" reportTypes={DASH_TYPES} accent="#0f766e" />
+  },
   { key: "coolers",        icon: "🧊",  label: "Coolers",                element: <CoolersView /> },
   { key: "ph",             icon: "🧼",  label: "Personal Hygiene",       element: <PersonalHygieneView /> },
   {
@@ -59,6 +77,7 @@ export default function QCSReportsView() {
       title="عرض تقارير<br/>الجودة"
       subtitle="Daily Viewer Hub"
       tabs={TABS}
+      defaultTabKey="overview"
     />
   );
 }

@@ -80,11 +80,7 @@ export default function DailyCleaningChecklistView() {
       const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
       const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
       setAllDates(uniq);
-      if (uniq.length) {
-        const [y, m] = uniq[0].split("-");
-        setExpandedYears((prev) => ({ ...prev, [y]: true }));
-        setExpandedMonths((prev) => ({ ...prev, [`${y}-${m}`]: true }));
-      }
+      // Tree stays collapsed by default.
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) { console.warn(e); }
   }
@@ -257,8 +253,8 @@ export default function DailyCleaningChecklistView() {
   const grouped = useMemo(() => {
     const out = {};
     for (const d of allDates) { const [y, m] = d.split("-"); (out[y] ||= {}); (out[y][m] ||= []).push(d); }
-    for (const y of Object.keys(out)) out[y] = Object.fromEntries(Object.entries(out[y]).sort(([a],[b]) => Number(a)-Number(b)).map(([m, arr]) => [m, arr.sort((a,b)=>a.localeCompare(b))]));
-    return Object.fromEntries(Object.entries(out).sort(([a],[b]) => Number(a)-Number(b)));
+    for (const y of Object.keys(out)) out[y] = Object.fromEntries(Object.entries(out[y]).sort(([a],[b]) => Number(b)-Number(a)).map(([m, arr]) => [m, arr.sort((a,b)=>b.localeCompare(a))]));
+    return Object.fromEntries(Object.entries(out).sort(([a],[b]) => Number(b)-Number(a)));
   }, [allDates]);
 
   const toggleYear = (y) => setExpandedYears((p) => ({ ...p, [y]: !p[y] }));
