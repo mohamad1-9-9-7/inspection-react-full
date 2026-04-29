@@ -1,5 +1,16 @@
 // src/pages/monitor/branches/qcs/CoolersTab.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+
+/* ===== Draft (localStorage) ===== */
+const DRAFT_KEY = "qcs_coolers_draft_v1";
+const loadDraft = () => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
 
 /* =========================
    API base (CRA + Vite safe)
@@ -314,18 +325,27 @@ export default function CoolersTab(props) {
     logoUrl,
   } = props || {};
 
-  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(() => {
+    const d = loadDraft();
+    return d.date || new Date().toISOString().split("T")[0];
+  });
 
   /* ✅ اسم/توقيع للتحقق (أسفل الصفحة) */
-  const [verifiedByManager, setVerifiedByManager] = useState("");
+  const [verifiedByManager, setVerifiedByManager] = useState(() => loadDraft().verifiedByManager || "");
 
   const useExternalCoolers = Array.isArray(coolers) && typeof setCoolers === "function";
   const useExternalHeader = tmpHeader && typeof setTmpHeader === "function";
 
-  const [localCoolers, setLocalCoolers] = useState(makeDefaultCoolers());
+  const [localCoolers, setLocalCoolers] = useState(() => {
+    const d = loadDraft();
+    return Array.isArray(d.localCoolers) && d.localCoolers.length ? d.localCoolers : makeDefaultCoolers();
+  });
   const [localHeader, setLocalHeader] = useState(defaultTMPHeader);
 
-  const [loadingArea, setLoadingArea] = useState(makeDefaultLoadingArea());
+  const [loadingArea, setLoadingArea] = useState(() => {
+    const d = loadDraft();
+    return d.loadingArea && typeof d.loadingArea === "object" ? d.loadingArea : makeDefaultLoadingArea();
+  });
 
   const dataCoolers = useExternalCoolers ? coolers : localCoolers;
   const updateCoolers = useExternalCoolers ? setCoolers : setLocalCoolers;
@@ -335,6 +355,22 @@ export default function CoolersTab(props) {
 
   const computedKpi = useMemo(() => calcCoolersKPI(dataCoolers), [dataCoolers]);
   const safeKPI = kpi || computedKpi || { avg: "—", min: "—", max: "—", outOfRange: 0 };
+
+  /* ✅ Auto-save draft to localStorage */
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          date,
+          verifiedByManager,
+          localCoolers: useExternalCoolers ? dataCoolers : localCoolers,
+          loadingArea,
+          ts: Date.now(),
+        })
+      );
+    } catch {}
+  }, [date, verifiedByManager, localCoolers, loadingArea, dataCoolers, useExternalCoolers]);
 
   const handleCoolerChange = (index, time, value) => {
     updateCoolers((prev) => {
@@ -397,6 +433,7 @@ export default function CoolersTab(props) {
         if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create coolers report");
       }
 
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
       alert(`✅ Coolers saved for ${date}. (type: ${COOLERS_TYPE})`);
     } catch (e) {
       alert(`❌ Failed to save: ${e.message || e}`);

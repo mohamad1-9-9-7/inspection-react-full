@@ -63,15 +63,18 @@ function highlightMatch(text, query) {
   );
 }
 
-/* === تاريخ: دعم ISO و DD/MM/YYYY === */
+/* === تاريخ: دعم ISO و DD/MM/YYYY (بناء صريح بالـ local time) === */
 function parseAnyDate(s) {
   if (!s) return null;
   const t = String(s).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
-    const d = new Date(t + "T00:00:00");
+  // ISO YYYY-MM-DD
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
     return isNaN(d) ? null : d;
   }
-  const m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  // DMY DD/MM/YYYY
+  m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (m) {
     const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
     return isNaN(d) ? null : d;
@@ -83,15 +86,18 @@ function daysBetween(from, to) {
   const a = parseAnyDate(from);
   const b = parseAnyDate(to);
   if (!a || !b) return "";
-  const one = 1000 * 60 * 60 * 24;
-  return Math.ceil((b - a) / one);
+  // start-of-day مقارنة لتفادي فروقات DST/التوقيت
+  const aMid = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+  const bMid = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  return Math.round((bMid - aMid) / 86400000);
 }
 function statusFromDates(reportDate, expiryDate) {
   const d = daysBetween(reportDate, expiryDate);
   if (d === "") return { days: "", label: "—", tone: "muted" };
-  if (d <= 0) return { days: d, label: "EXP", tone: "danger" };
+  if (d < 0) return { days: d, label: "EXPIRED", tone: "danger" };
+  if (d === 0) return { days: d, label: "EXP TODAY", tone: "danger" };
   if (d <= 6) return { days: d, label: "NEAR EXPIRED", tone: "warn" };
-  return { days: d, label: "—", tone: "ok" };
+  return { days: d, label: "OK", tone: "ok" };
 }
 
 /* ============ Server helpers ============ */
@@ -229,6 +235,13 @@ export default function FinishedProductReports() {
 
   const [sortBy, setSortBy] = useState("date_desc");
 
+  // فلاتر إضافية
+  const [statusFilter, setStatusFilter] = useState("all"); // all|expired|near|ok
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [unitFilter, setUnitFilter] = useState("");
+  const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
+
   const [confirmState, setConfirmState] = useState({
     open: false,
     target: null,
@@ -329,15 +342,64 @@ export default function FinishedProductReports() {
       .sort((a, b) => b.localeCompare(a));
   }, [groupedByYMD]);
 
-  /* Apply search + date filter */
+  /* تجهيز الصفوف بالحالة (status) */
+  const enriched = useMemo(() => {
+    return rows.map((r) => ({
+      ...r,
+      __status: statusFromDates(r.reportDate, r.expiryDate),
+    }));
+  }, [rows]);
+
+  /* قوائم Customer & Unit للفلاتر */
+  const customerList = useMemo(() => {
+    const s = new Set();
+    enriched.forEach((r) => {
+      const c = String(r.customer || "").trim();
+      if (c) s.add(c);
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [enriched]);
+
+  const unitList = useMemo(() => {
+    const s = new Set();
+    enriched.forEach((r) => {
+      const u = String(r.unitOfMeasure || "").trim();
+      if (u) s.add(u);
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [enriched]);
+
+  /* Apply search + date filter + status + customer + unit + flagged */
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase().trim();
-    return rows.filter((r) => {
+    return enriched.filter((r) => {
       if (treeFilter.year) {
         const { y, m, d } = parseYMD(r.reportDate || "");
         if (y !== treeFilter.year) return false;
         if (treeFilter.month && m !== treeFilter.month) return false;
         if (treeFilter.day && d !== treeFilter.day) return false;
+      }
+      // status filter
+      if (statusFilter !== "all") {
+        const t = r.__status?.tone;
+        if (statusFilter === "expired" && t !== "danger") return false;
+        if (statusFilter === "near" && t !== "warn") return false;
+        if (statusFilter === "ok" && t !== "ok") return false;
+      }
+      if (showFlaggedOnly && !["danger", "warn"].includes(r.__status?.tone)) {
+        return false;
+      }
+      if (
+        customerFilter &&
+        String(r.customer || "").trim() !== customerFilter
+      ) {
+        return false;
+      }
+      if (
+        unitFilter &&
+        String(r.unitOfMeasure || "").trim() !== unitFilter
+      ) {
+        return false;
       }
       if (!q) return true;
       const hay = [
@@ -360,7 +422,124 @@ export default function FinishedProductReports() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, debouncedSearch, treeFilter]);
+  }, [
+    enriched,
+    debouncedSearch,
+    treeFilter,
+    statusFilter,
+    customerFilter,
+    unitFilter,
+    showFlaggedOnly,
+  ]);
+
+  /* إحصاءات على كل البيانات (لا تتأثر بالفلاتر — تعطي صورة كاملة) */
+  const stats = useMemo(() => {
+    const out = {
+      reports: 0,
+      rows: enriched.length,
+      qty: 0,
+      expired: 0,
+      near: 0,
+      ok: 0,
+      muted: 0,
+      expiredQty: 0,
+      nearQty: 0,
+    };
+    const reportSet = new Set();
+    enriched.forEach((r) => {
+      const id = r.__dbId || r.__reportId;
+      if (id) reportSet.add(id);
+      const q = Number(r.quantity) || 0;
+      out.qty += q;
+      const t = r.__status?.tone || "muted";
+      out[t] = (out[t] || 0) + 1;
+      if (t === "danger") out.expiredQty += q;
+      if (t === "warn") out.nearQty += q;
+    });
+    out.reports = reportSet.size;
+    return out;
+  }, [enriched]);
+
+  /* Smart insights — top customers/products + anomalies */
+  const insights = useMemo(() => {
+    const custMap = new Map();
+    const prodMap = new Map();
+    const issuesByReport = new Map();
+    const anomalies = [];
+
+    enriched.forEach((r) => {
+      const c = String(r.customer || "").trim();
+      const p = String(r.product || "").trim();
+      const q = Number(r.quantity) || 0;
+      if (c) {
+        const cur = custMap.get(c) || { customer: c, qty: 0, rows: 0 };
+        cur.qty += q;
+        cur.rows += 1;
+        custMap.set(c, cur);
+      }
+      if (p) {
+        const cur = prodMap.get(p) || { product: p, qty: 0, rows: 0 };
+        cur.qty += q;
+        cur.rows += 1;
+        prodMap.set(p, cur);
+      }
+      const tone = r.__status?.tone;
+      if (tone === "danger" || tone === "warn") {
+        const id = r.__dbId || r.__reportId;
+        const cur = issuesByReport.get(id) || {
+          reportId: id,
+          reportDate: r.reportDate || "",
+          reportTitle: r.reportTitle || "",
+          expired: 0,
+          near: 0,
+        };
+        if (tone === "danger") cur.expired += 1;
+        else cur.near += 1;
+        issuesByReport.set(id, cur);
+      }
+      // anomaly: quantity = 0
+      if (r.quantity !== "" && r.quantity != null && Number(r.quantity) === 0) {
+        anomalies.push({
+          type: "zero_qty",
+          label: "Zero quantity",
+          row: r,
+        });
+      }
+      // anomaly: TEMP suspicious (numeric and > 5 for non-frozen, > -10 for frozen)
+      const tempNum = Number(r.temp);
+      if (Number.isFinite(tempNum)) {
+        const isFrozen = /(frozen|frz|frzn|freez|مجمد)/i.test(p) &&
+          !/(defrost|thaw|مذوب|مفكوك|defrosted)/i.test(p);
+        if (isFrozen && tempNum > -10) {
+          anomalies.push({
+            type: "temp_high_frozen",
+            label: `Frozen at ${tempNum}°C (>-10)`,
+            row: r,
+          });
+        } else if (!isFrozen && tempNum > 5) {
+          anomalies.push({
+            type: "temp_high",
+            label: `TEMP ${tempNum}°C (>5)`,
+            row: r,
+          });
+        }
+      }
+    });
+
+    return {
+      topCustomers: Array.from(custMap.values())
+        .sort((a, b) => b.qty - a.qty)
+        .slice(0, 5),
+      topProducts: Array.from(prodMap.values())
+        .sort((a, b) => b.qty - a.qty)
+        .slice(0, 5),
+      problemReports: Array.from(issuesByReport.values())
+        .sort((a, b) => b.expired - a.expired || b.near - a.near)
+        .slice(0, 5),
+      anomalies: anomalies.slice(0, 20),
+      anomaliesCount: anomalies.length,
+    };
+  }, [enriched]);
 
   /* Group filtered rows by report */
   const reportsArr = useMemo(() => {
@@ -381,23 +560,72 @@ export default function FinishedProductReports() {
       m.get(id).rows.push(r);
     }
     let arr = Array.from(m.values());
-    if (sortBy === "date_desc") {
-      arr = arr.sort(
-        (a, b) =>
-          (b.reportDate || "").localeCompare(a.reportDate || "") ||
+
+    // pre-compute helpers
+    const sumQty = (rep) =>
+      rep.rows.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
+    const issueCount = (rep) =>
+      rep.rows.reduce(
+        (s, r) =>
+          s +
+          (r.__status?.tone === "danger"
+            ? 2
+            : r.__status?.tone === "warn"
+            ? 1
+            : 0),
+        0
+      );
+    const firstCustomer = (rep) => rep.rows[0]?.customer || "";
+
+    switch (sortBy) {
+      case "date_desc":
+        arr.sort(
+          (a, b) =>
+            (b.reportDate || "").localeCompare(a.reportDate || "") ||
+            (a.reportTitle || "").localeCompare(b.reportTitle || "")
+        );
+        break;
+      case "date_asc":
+        arr.sort(
+          (a, b) =>
+            (a.reportDate || "").localeCompare(b.reportDate || "") ||
+            (a.reportTitle || "").localeCompare(b.reportTitle || "")
+        );
+        break;
+      case "title_az":
+        arr.sort((a, b) =>
           (a.reportTitle || "").localeCompare(b.reportTitle || "")
-      );
-    } else if (sortBy === "title_az") {
-      arr = arr.sort((a, b) =>
-        (a.reportTitle || "").localeCompare(b.reportTitle || "")
-      );
-    } else if (sortBy === "customer_az") {
-      const firstCustomer = (rep) => rep.rows[0]?.customer || "";
-      arr = arr.sort((a, b) => firstCustomer(a).localeCompare(firstCustomer(b)));
-    } else if (sortBy === "qty_desc") {
-      const sumQty = (rep) =>
-        rep.rows.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
-      arr = arr.sort((a, b) => sumQty(b) - sumQty(a));
+        );
+        break;
+      case "title_za":
+        arr.sort((a, b) =>
+          (b.reportTitle || "").localeCompare(a.reportTitle || "")
+        );
+        break;
+      case "customer_az":
+        arr.sort((a, b) => firstCustomer(a).localeCompare(firstCustomer(b)));
+        break;
+      case "customer_za":
+        arr.sort((a, b) => firstCustomer(b).localeCompare(firstCustomer(a)));
+        break;
+      case "qty_desc":
+        arr.sort((a, b) => sumQty(b) - sumQty(a));
+        break;
+      case "qty_asc":
+        arr.sort((a, b) => sumQty(a) - sumQty(b));
+        break;
+      case "rows_desc":
+        arr.sort((a, b) => b.rows.length - a.rows.length);
+        break;
+      case "issues_desc":
+        arr.sort(
+          (a, b) =>
+            issueCount(b) - issueCount(a) ||
+            (b.reportDate || "").localeCompare(a.reportDate || "")
+        );
+        break;
+      default:
+        break;
     }
     return arr;
   }, [filtered, sortBy]);
@@ -531,6 +759,114 @@ export default function FinishedProductReports() {
     if (filtered.length === 0) return alert("No data to export.");
     exportRowsToXLSX(filtered, "FinishedReports_Filtered.xlsx");
   };
+
+  /* Clear all filters */
+  function clearAllFilters() {
+    setSearch("");
+    setStatusFilter("all");
+    setCustomerFilter("");
+    setUnitFilter("");
+    setShowFlaggedOnly(false);
+    setTreeFilter({ year: "", month: "", day: "" });
+    setSortBy("date_desc");
+  }
+
+  /* Print individual report */
+  function printReport(rep) {
+    if (!rep || !rep.rows?.length) {
+      alert("Nothing to print.");
+      return;
+    }
+    const w = window.open("", "_blank");
+    if (!w) {
+      alert("Please allow pop-ups to print.");
+      return;
+    }
+    const esc = (v) =>
+      String(v ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    const trs = rep.rows
+      .map((r, i) => {
+        const st = r.__status || statusFromDates(r.reportDate, r.expiryDate);
+        const tone =
+          st.tone === "danger"
+            ? "color:#b91c1c;font-weight:700"
+            : st.tone === "warn"
+            ? "color:#b45309;font-weight:700"
+            : st.tone === "ok"
+            ? "color:#166534"
+            : "color:#64748b";
+        return `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${esc(r.product)}</td>
+            <td>${esc(r.customer)}</td>
+            <td>${esc(r.orderNo)}</td>
+            <td>${esc(r.time)}</td>
+            <td>${esc(formatDMY(r.slaughterDate))}</td>
+            <td>${esc(formatDMY(r.expiryDate))}</td>
+            <td>${esc(r.temp)}</td>
+            <td>${esc(r.quantity)}</td>
+            <td>${esc(r.unitOfMeasure || "KG")}</td>
+            <td>${esc(r.overallCondition)}</td>
+            <td>${esc(r.remarks)}</td>
+            <td>${st.days === "" ? "—" : st.days}</td>
+            <td style="${tone}">${esc(st.label)}</td>
+          </tr>`;
+      })
+      .join("");
+    const total = rep.rows.reduce(
+      (s, r) => s + (Number(r.quantity) || 0),
+      0
+    );
+    w.document.write(`
+      <html>
+        <head>
+          <title>${esc(rep.reportTitle || "Report")} — ${esc(formatDMY(rep.reportDate))}</title>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: Tahoma, Arial, sans-serif; padding: 16px; color:#0f172a; }
+            h1 { font-size: 20px; margin: 0 0 4px; }
+            .meta { font-size: 12px; color: #475569; margin-bottom: 14px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #94a3b8; padding: 6px 8px; text-align: left; }
+            thead { background: #0f172a; color: #fff; }
+            tr:nth-child(even) td { background: #f8fafc; }
+            tfoot td { background: #fef9c3; font-weight: 700; }
+          </style>
+        </head>
+        <body>
+          <h1>${esc(rep.reportTitle || "Final Product Report")}</h1>
+          <div class="meta">
+            Date: <b>${esc(formatDMY(rep.reportDate))}</b> &nbsp;|&nbsp;
+            Rows: <b>${rep.rows.length}</b> &nbsp;|&nbsp;
+            Total Qty: <b>${total}</b> &nbsp;|&nbsp;
+            Checked by: <b>${esc(rep.checkedBy || "-")}</b> &nbsp;|&nbsp;
+            Verified by: <b>${esc(rep.verifiedBy || "-")}</b>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Product</th><th>Customer</th><th>Order</th>
+                <th>Time</th><th>Slaughter</th><th>Expiry</th><th>Temp</th>
+                <th>Qty</th><th>Unit</th><th>Cond</th><th>Remarks</th>
+                <th>Days</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody>${trs}</tbody>
+            <tfoot>
+              <tr><td colspan="8" style="text-align:right">Total Quantity:</td>
+              <td>${total}</td><td colspan="5"></td></tr>
+            </tfoot>
+          </table>
+          <script>window.onload = () => { window.print(); };</script>
+        </body>
+      </html>
+    `);
+    w.document.close();
+  }
 
   /* Label للفلترة */
   const filterLabel = useMemo(() => {
@@ -896,12 +1232,277 @@ export default function FinishedProductReports() {
 
       {/* RIGHT: Reports list */}
       <main>
+        {/* ===== Stat cards (clickable to filter) ===== */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+            gap: 10,
+            marginBottom: 12,
+          }}
+        >
+          <StatCard
+            label="Reports"
+            value={stats.reports}
+            color="#1d4ed8"
+            icon="📑"
+            sub={`${stats.rows} rows`}
+          />
+          <StatCard
+            label="Total Qty"
+            value={stats.qty.toLocaleString()}
+            color="#0f766e"
+            icon="⚖️"
+          />
+          <StatCard
+            label="Expired"
+            value={stats.expired}
+            color="#b91c1c"
+            icon="⛔"
+            sub={`${stats.expiredQty} qty`}
+            active={statusFilter === "expired"}
+            onClick={() =>
+              setStatusFilter(statusFilter === "expired" ? "all" : "expired")
+            }
+          />
+          <StatCard
+            label="Near Expiry"
+            value={stats.near}
+            color="#c2410c"
+            icon="⚠️"
+            sub={`${stats.nearQty} qty`}
+            active={statusFilter === "near"}
+            onClick={() =>
+              setStatusFilter(statusFilter === "near" ? "all" : "near")
+            }
+          />
+          <StatCard
+            label="Valid (OK)"
+            value={stats.ok}
+            color="#15803d"
+            icon="✅"
+            active={statusFilter === "ok"}
+            onClick={() =>
+              setStatusFilter(statusFilter === "ok" ? "all" : "ok")
+            }
+          />
+          <StatCard
+            label="Anomalies"
+            value={insights.anomaliesCount}
+            color="#7c3aed"
+            icon="🧠"
+            sub="zero qty / temp"
+            active={showInsights}
+            onClick={() => setShowInsights((v) => !v)}
+          />
+        </div>
+
+        {/* ===== Status chips ===== */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            marginBottom: 10,
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              color: "#374151",
+              marginRight: 4,
+              letterSpacing: 0.4,
+            }}
+          >
+            STATUS:
+          </span>
+          {[
+            { value: "all", label: "All", color: "#1d4ed8" },
+            { value: "expired", label: "Expired", color: "#b91c1c" },
+            { value: "near", label: "Near Expiry", color: "#c2410c" },
+            { value: "ok", label: "OK", color: "#15803d" },
+          ].map((s) => {
+            const active = statusFilter === s.value;
+            return (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => setStatusFilter(s.value)}
+                style={{
+                  padding: "5px 12px",
+                  borderRadius: 999,
+                  border: `1.5px solid ${s.color}`,
+                  background: active ? s.color : "transparent",
+                  color: active ? "#fff" : s.color,
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+
+          <label
+            style={{
+              display: "inline-flex",
+              gap: 6,
+              alignItems: "center",
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#374151",
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: showFlaggedOnly
+                ? "linear-gradient(135deg,#fef2f2,#fee2e2)"
+                : "transparent",
+              border: `1.5px solid ${
+                showFlaggedOnly ? "#ef4444" : "#cbd5e1"
+              }`,
+              cursor: "pointer",
+              marginLeft: 8,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showFlaggedOnly}
+              onChange={(e) => setShowFlaggedOnly(e.target.checked)}
+              style={{ margin: 0 }}
+            />
+            🚩 Flagged only
+          </label>
+        </div>
+
+        {/* ===== Filter row 2: dropdowns + sort + actions ===== */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            marginBottom: 12,
+            alignItems: "center",
+            background:
+              "linear-gradient(135deg,#f8fafc,#f1f5f9)",
+            padding: 10,
+            borderRadius: 12,
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          <select
+            value={customerFilter}
+            onChange={(e) => setCustomerFilter(e.target.value)}
+            style={filterSelectStyle}
+            disabled={busy}
+            title="Filter by Customer"
+          >
+            <option value="">👤 All Customers ({customerList.length})</option>
+            {customerList.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={unitFilter}
+            onChange={(e) => setUnitFilter(e.target.value)}
+            style={filterSelectStyle}
+            disabled={busy}
+            title="Filter by Unit"
+          >
+            <option value="">📦 All Units</option>
+            {unitList.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            style={filterSelectStyle}
+            disabled={busy}
+            title="Sort By"
+          >
+            <option value="date_desc">↕ Date (Newest → Oldest)</option>
+            <option value="date_asc">↕ Date (Oldest → Newest)</option>
+            <option value="title_az">↕ Title (A → Z)</option>
+            <option value="title_za">↕ Title (Z → A)</option>
+            <option value="customer_az">↕ Customer (A → Z)</option>
+            <option value="customer_za">↕ Customer (Z → A)</option>
+            <option value="qty_desc">↕ Quantity (High → Low)</option>
+            <option value="qty_asc">↕ Quantity (Low → High)</option>
+            <option value="rows_desc">↕ Most Products First</option>
+            <option value="issues_desc">⚠ Most Issues First (Smart)</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            style={{
+              ...btnGhost,
+              padding: "7px 14px",
+              borderRadius: 999,
+            }}
+          >
+            ✕ Clear Filters
+          </button>
+
+          <div style={{ flex: 1 }} />
+
+          <button
+            type="button"
+            onClick={() => setShowInsights((v) => !v)}
+            style={{
+              padding: "7px 14px",
+              borderRadius: 999,
+              border: "none",
+              background: showInsights
+                ? "linear-gradient(135deg,#7c3aed,#5b21b6)"
+                : "linear-gradient(135deg,#a78bfa,#7c3aed)",
+              color: "#fff",
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: "pointer",
+              boxShadow: "0 4px 10px rgba(124,58,237,0.35)",
+            }}
+          >
+            🧠 {showInsights ? "Hide" : "Show"} Insights
+          </button>
+
+          <button
+            onClick={exportXLSXFiltered}
+            style={{
+              ...btnSoftBlue,
+              padding: "7px 14px",
+              borderRadius: 999,
+            }}
+            disabled={busy}
+          >
+            ⬇️ Export XLSX
+          </button>
+        </div>
+
+        {/* ===== Smart Insights panel ===== */}
+        {showInsights && (
+          <SmartInsights
+            insights={insights}
+            stats={stats}
+            onPickCustomer={(c) => setCustomerFilter(c)}
+          />
+        )}
+
         {/* Top search/sort bar */}
         <div className="top-bar" style={topBar}>
           <input
             className="search-box"
             type="search"
-            placeholder="🔍 Search product, customer, order..."
+            placeholder="🔍 Search product, customer, order, remarks..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={searchBox}
@@ -913,38 +1514,34 @@ export default function FinishedProductReports() {
               alignItems: "center",
               gap: 10,
               flexWrap: "wrap",
-              width: "100%",
             }}
           >
-            <div style={{ color: "#475569", fontSize: 15.5, flex: 1 }}>
+            <div
+              style={{
+                color: "#475569",
+                fontSize: 14,
+                padding: "8px 14px",
+                borderRadius: 999,
+                background: "#fff",
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 2px 6px rgba(2,6,23,.04)",
+              }}
+            >
               Rows: <b style={{ color: "#2563eb" }}>{filtered.length}</b>
+              &nbsp;/&nbsp;
+              <span style={{ color: "#94a3b8" }}>{stats.rows}</span>
               &nbsp;|&nbsp; Total Qty:{" "}
-              <b style={{ color: "#16a34a" }}>{totalQty}</b>
+              <b style={{ color: "#16a34a" }}>
+                {totalQty.toLocaleString()}
+              </b>
               {filterLabel && (
                 <>
-                  &nbsp;|&nbsp; Filter: <b>{filterLabel}</b>
+                  &nbsp;|&nbsp;
+                  <span style={{ color: "#7c3aed", fontWeight: 700 }}>
+                    📅 {filterLabel}
+                  </span>
                 </>
               )}
-            </div>
-            <div>
-              <button
-                onClick={exportXLSXFiltered}
-                style={{ ...btnSoftBlue, marginRight: 8 }}
-                disabled={busy}
-              >
-                ⬇️ Export XLSX (Filtered)
-              </button>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                style={selectStyle}
-                disabled={busy}
-              >
-                <option value="date_desc">Sort: Date (newest)</option>
-                <option value="title_az">Sort: Title A–Z</option>
-                <option value="customer_az">Sort: Customer A–Z</option>
-                <option value="qty_desc">Sort: Quantity (high→low)</option>
-              </select>
             </div>
           </div>
         </div>
@@ -962,21 +1559,78 @@ export default function FinishedProductReports() {
               0
             );
 
-            const softBg = idx % 2 === 0 ? "#ffffff" : "#fcfdfd";
-            const leftAccent = idx % 2 === 0 ? "#bfdbfe" : "#a7f3d0";
+            // ملخّص الحالة لكل تقرير
+            const repCounts = rowsOfRep.reduce(
+              (acc, r) => {
+                const t = r.__status?.tone || "muted";
+                acc[t] = (acc[t] || 0) + 1;
+                return acc;
+              },
+              { danger: 0, warn: 0, ok: 0, muted: 0 }
+            );
+            const worstTone =
+              repCounts.danger > 0
+                ? "danger"
+                : repCounts.warn > 0
+                ? "warn"
+                : repCounts.ok > 0
+                ? "ok"
+                : "muted";
+            const stripColor =
+              worstTone === "danger"
+                ? "linear-gradient(180deg,#ef4444,#b91c1c)"
+                : worstTone === "warn"
+                ? "linear-gradient(180deg,#f59e0b,#c2410c)"
+                : worstTone === "ok"
+                ? "linear-gradient(180deg,#22c55e,#15803d)"
+                : "linear-gradient(180deg,#94a3b8,#64748b)";
+            const cardBg =
+              worstTone === "danger"
+                ? "linear-gradient(135deg,#fffbfa 0%,#ffffff 60%)"
+                : worstTone === "warn"
+                ? "linear-gradient(135deg,#fff8f0 0%,#ffffff 60%)"
+                : "#ffffff";
 
             return (
               <section
-                key={rep.reportId || Math.random()}
+                key={rep.reportId || `rep-${idx}`}
                 ref={(el) => {
                   if (rep.reportId) sectionRefs.current[rep.reportId] = el;
                 }}
                 style={{
                   ...card,
-                  background: softBg,
-                  borderLeft: `6px solid ${leftAccent}`,
+                  background: cardBg,
+                  borderLeft: `0`,
+                  position: "relative",
+                  paddingLeft: 18,
+                  transition:
+                    "transform 0.15s ease, box-shadow 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow =
+                    "0 14px 36px rgba(2,6,23,.10)";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow =
+                    "0 8px 24px rgba(2,6,23,.06)";
+                  e.currentTarget.style.transform = "translateY(0)";
                 }}
               >
+                {/* Status strip on the left */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    width: 8,
+                    borderTopLeftRadius: 16,
+                    borderBottomLeftRadius: 16,
+                    background: stripColor,
+                  }}
+                />
+
                 {/* Header */}
                 <div style={cardHead}>
                   <div>
@@ -1014,10 +1668,60 @@ export default function FinishedProductReports() {
                         <span style={{ fontWeight: 800 }}>{rep.verifiedBy || "-"}</span>
                       </span>
                     </div>
+
+                    {/* Mini status summary for this report */}
+                    <div
+                      style={{
+                        marginTop: 8,
+                        display: "flex",
+                        gap: 6,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <MiniBadge
+                        color="#1d4ed8"
+                        label="Rows"
+                        value={rowsOfRep.length}
+                      />
+                      <MiniBadge
+                        color="#16a34a"
+                        label="Qty"
+                        value={repTotalQty.toLocaleString()}
+                      />
+                      {repCounts.danger > 0 && (
+                        <MiniBadge
+                          color="#b91c1c"
+                          label="⛔ Expired"
+                          value={repCounts.danger}
+                        />
+                      )}
+                      {repCounts.warn > 0 && (
+                        <MiniBadge
+                          color="#c2410c"
+                          label="⚠ Near"
+                          value={repCounts.warn}
+                        />
+                      )}
+                      {repCounts.ok > 0 && (
+                        <MiniBadge
+                          color="#15803d"
+                          label="✓ OK"
+                          value={repCounts.ok}
+                        />
+                      )}
+                    </div>
                   </div>
 
-                  {/* الأزرار (✅ تم حذف Export/Import JSON وكل ما يتعلق بهم) */}
+                  {/* الأزرار */}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <button
+                      onClick={() => printReport(rep)}
+                      style={btnSoftIndigo}
+                      disabled={busy}
+                      title="Print this report"
+                    >
+                      🖨 Print
+                    </button>
                     <button
                       onClick={() => requestDeleteReport(rep.dbId || rep.reportId)}
                       style={btnDanger}
@@ -1103,7 +1807,7 @@ export default function FinishedProductReports() {
 
                         return (
                           <tr
-                            key={`${row.__reportId || "rep"}-${row.__productIndex || i}`}
+                            key={`${row.__reportId || "rep"}-${row.__productIndex ?? i}`}
                             style={{ background: i % 2 ? "#ffffff" : "#fbfdff" }}
                           >
                             <td
@@ -1415,3 +2119,297 @@ const btnClear = {
   fontSize: 14,
   background: "#fff",
 };
+
+const btnSoftIndigo = {
+  background: "#eef2ff",
+  color: "#3730a3",
+  border: "1px solid #c7d2fe",
+  borderRadius: 10,
+  padding: "8px 12px",
+  cursor: "pointer",
+  fontWeight: 800,
+};
+
+const filterSelectStyle = {
+  padding: "8px 12px",
+  borderRadius: 999,
+  border: "1.5px solid #cbd5e1",
+  background: "linear-gradient(135deg,#ffffff,#f8fafc)",
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#0f172a",
+  cursor: "pointer",
+  outline: "none",
+  minWidth: 180,
+  maxWidth: 260,
+};
+
+/* === Reusable mini components === */
+function StatCard({ label, value, color, icon, sub, active, onClick }) {
+  const clickable = typeof onClick === "function";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!clickable && !onClick}
+      style={{
+        textAlign: "left",
+        padding: "10px 12px",
+        borderRadius: 14,
+        border: active
+          ? `2px solid ${color}`
+          : "1px solid rgba(148,163,184,0.5)",
+        background: active
+          ? `linear-gradient(135deg, ${color}15, ${color}30)`
+          : "linear-gradient(135deg,#ffffff,#f8fafc)",
+        cursor: clickable ? "pointer" : "default",
+        boxShadow: active
+          ? `0 6px 18px ${color}55`
+          : "0 2px 6px rgba(15,23,42,0.06)",
+        transition: "all 0.15s ease",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: "#6b7280",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <span>{icon}</span>
+        <span>{label}</span>
+      </div>
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: 800,
+          color,
+          marginTop: 2,
+        }}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div
+          style={{
+            fontSize: 10,
+            color: "#64748b",
+            fontWeight: 600,
+            marginTop: 2,
+          }}
+        >
+          {sub}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function MiniBadge({ color, label, value }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 800,
+        color,
+        background: `${color}14`,
+        border: `1px solid ${color}55`,
+      }}
+    >
+      <span style={{ opacity: 0.85 }}>{label}:</span>
+      <span>{value}</span>
+    </span>
+  );
+}
+
+function SmartInsights({ insights, stats, onPickCustomer }) {
+  const Section = ({ title, children, color = "#1d4ed8" }) => (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #e2e8f0",
+        borderRadius: 12,
+        padding: 12,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+          color,
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+          marginBottom: 8,
+        }}
+      >
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+
+  const RowLine = ({ left, right, color }) => (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "5px 0",
+        borderBottom: "1px dashed #e5e7eb",
+        fontSize: 13,
+      }}
+    >
+      <span
+        style={{
+          color: "#0f172a",
+          fontWeight: 600,
+          maxWidth: "65%",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={left}
+      >
+        {left}
+      </span>
+      <span style={{ color, fontWeight: 800 }}>{right}</span>
+    </div>
+  );
+
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        padding: 14,
+        borderRadius: 16,
+        background:
+          "linear-gradient(135deg,#faf5ff 0%,#f5f3ff 50%,#ede9fe 100%)",
+        border: "1px solid #ddd6fe",
+        boxShadow: "0 6px 18px rgba(124,58,237,0.08)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 900,
+          color: "#5b21b6",
+          marginBottom: 10,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        🧠 Smart Insights
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: "#7c3aed",
+            background: "#ede9fe",
+            padding: "2px 10px",
+            borderRadius: 999,
+          }}
+        >
+          {stats.rows} rows analyzed
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: 10,
+        }}
+      >
+        <Section title="🏆 Top Customers (by Quantity)" color="#0f766e">
+          {insights.topCustomers.length === 0 && (
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>No data.</div>
+          )}
+          {insights.topCustomers.map((c) => (
+            <div
+              key={c.customer}
+              onClick={() => onPickCustomer && onPickCustomer(c.customer)}
+              style={{ cursor: "pointer" }}
+              title="Click to filter"
+            >
+              <RowLine
+                left={c.customer}
+                right={`${c.qty.toLocaleString()} (${c.rows})`}
+                color="#0f766e"
+              />
+            </div>
+          ))}
+        </Section>
+
+        <Section title="📦 Top Products (by Quantity)" color="#1d4ed8">
+          {insights.topProducts.length === 0 && (
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>No data.</div>
+          )}
+          {insights.topProducts.map((p) => (
+            <RowLine
+              key={p.product}
+              left={p.product}
+              right={`${p.qty.toLocaleString()} (${p.rows})`}
+              color="#1d4ed8"
+            />
+          ))}
+        </Section>
+
+        <Section title="⚠️ Reports With Most Issues" color="#b91c1c">
+          {insights.problemReports.length === 0 && (
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>
+              All clean! 🎉
+            </div>
+          )}
+          {insights.problemReports.map((r) => (
+            <RowLine
+              key={r.reportId}
+              left={`${formatDMY(r.reportDate)} — ${r.reportTitle || "Report"}`}
+              right={`⛔ ${r.expired} / ⚠ ${r.near}`}
+              color="#b91c1c"
+            />
+          ))}
+        </Section>
+
+        <Section title="🚨 Anomalies Detected" color="#7c3aed">
+          {insights.anomalies.length === 0 && (
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>
+              No anomalies.
+            </div>
+          )}
+          {insights.anomalies.slice(0, 8).map((a, i) => (
+            <RowLine
+              key={i}
+              left={`${a.row.product || "—"} (${a.row.customer || "—"})`}
+              right={a.label}
+              color="#7c3aed"
+            />
+          ))}
+          {insights.anomaliesCount > 8 && (
+            <div
+              style={{
+                fontSize: 11,
+                color: "#7c3aed",
+                marginTop: 6,
+                textAlign: "center",
+                fontWeight: 700,
+              }}
+            >
+              +{insights.anomaliesCount - 8} more anomalies
+            </div>
+          )}
+        </Section>
+      </div>
+    </div>
+  );
+}

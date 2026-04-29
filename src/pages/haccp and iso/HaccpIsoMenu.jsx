@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
+import FloatingSettingsButton from "../../components/FloatingSettingsButton";
 
 /**
  * Main hub for ISO 22000 & HACCP
@@ -269,6 +270,7 @@ export default function HaccpIsoMenu() {
 
   return (
     <main style={shellStyle}>
+      <FloatingSettingsButton />
       <div style={layoutStyle}>
         {/* Top bar */}
         <div style={topBarStyle}>

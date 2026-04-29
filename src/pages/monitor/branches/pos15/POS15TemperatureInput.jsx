@@ -4,6 +4,17 @@ import React, { useMemo, useState, useEffect } from "react";
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
+/* ===== Draft (localStorage) ===== */
+const DRAFT_KEY = "pos15_temperature_draft_v1";
+const loadDraft = () => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
 // الأوقات (نرسل "Corrective Action" في الـpayload للعرض، لكن لا نعرضه كعمود)
 const times = [
   "8:00 AM",
@@ -67,16 +78,19 @@ const toISODate = (s) => {
 const sameDay = (a, b) => toISODate(a) === toISODate(b);
 
 export default function POS15TemperatureInput() {
-  const [coolers, setCoolers] = useState(
-    Array.from({ length: defaultRows.length }, (_, i) => ({
-      name: defaultRows[i],
-      temps: {},
-      remarks: "",
-    }))
-  );
-  const [reportDate, setReportDate] = useState("");
-  const [checkedBy, setCheckedBy] = useState("");
-  const [verifiedBy, setVerifiedBy] = useState("");
+  const [coolers, setCoolers] = useState(() => {
+    const d = loadDraft();
+    return Array.isArray(d.coolers) && d.coolers.length
+      ? d.coolers
+      : Array.from({ length: defaultRows.length }, (_, i) => ({
+          name: defaultRows[i],
+          temps: {},
+          remarks: "",
+        }));
+  });
+  const [reportDate, setReportDate] = useState(() => loadDraft().reportDate || "");
+  const [checkedBy, setCheckedBy] = useState(() => loadDraft().checkedBy || "");
+  const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
   const [opMsg, setOpMsg] = useState("");
 
   // حالة فحص التكرار
@@ -85,6 +99,16 @@ export default function POS15TemperatureInput() {
   const [dateError, setDateError] = useState("");       // رسالة خطأ
 
   const kpi = useMemo(() => calculateKPI(coolers), [coolers]);
+
+  /* ✅ Auto-save draft */
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ coolers, reportDate, checkedBy, verifiedBy, ts: Date.now() })
+      );
+    } catch {}
+  }, [coolers, reportDate, checkedBy, verifiedBy]);
 
   const baseInput = {
     width: "63px",
@@ -216,6 +240,7 @@ export default function POS15TemperatureInput() {
         }
         throw new Error(`HTTP ${res.status}`);
       }
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
       setOpMsg("✅ Saved successfully!");
     } catch (e) {
       console.error(e);

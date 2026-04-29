@@ -421,31 +421,35 @@ export default function FinishedProductEntry() {
     if (!ed) errs.expiryDate = "Required (DD/MM/YYYY)";
     if (sd && ed) {
       const cmp = cmpDMY(sd, ed);
-      if (cmp !== null && cmp > 0) errs.dateOrder = "Expiry must be after or same day as Slaughter";
+      if (cmp !== null && cmp > 0) errs.dateOrder = "Expiry must be on/after Slaughter date";
     }
     if (String(r.temp).trim() !== "") {
       const t = Number(toAsciiDigits(r.temp).replace(/,/g, "."));
-      if (!Number.isFinite(t)) errs.temp = "Not a number";
-      else if (t > 5) errs.temp = "TEMP > 5°C";
+      if (!Number.isFinite(t)) {
+        errs.temp = "Not a number";
+      } else {
+        const frozen = isFrozenProduct(r.product);
+        if (frozen && t > -10) {
+          errs.temp = "Frozen product: TEMP > -10°C";
+        } else if (!frozen && t > 5) {
+          errs.temp = "TEMP > 5°C";
+        }
+      }
     }
     return errs;
   }
   function getRowStatus(r) {
     const e = getRowErrors(r);
-    const hasMissing =
-      e.product ||
-      e.customer ||
-      e.orderNo ||
-      e.quantity ||
-      e.slaughterDate ||
-      e.expiryDate ||
-      e.dateOrder;
-    if (hasMissing) {
-      if (!e.slaughterDate && !e.expiryDate && (e.product || e.customer || e.orderNo || e.quantity))
-        return { label: "⚠️ ناقص", color: "#b91c1c" };
-      if (e.slaughterDate || e.expiryDate || e.dateOrder) return { label: "⏳ تاريخ ناقص", color: "#b45309" };
+    const hasRequiredMissing =
+      e.product || e.customer || e.orderNo || e.quantity || e.slaughterDate || e.expiryDate;
+
+    if (hasRequiredMissing) {
+      if (e.slaughterDate || e.expiryDate)
+        return { label: "⏳ تاريخ ناقص", color: "#b45309" };
       return { label: "⚠️ ناقص", color: "#b91c1c" };
     }
+    if (e.dateOrder) return { label: "❌ ترتيب التاريخ خطأ", color: "#b91c1c" };
+    if (e.temp) return { label: "🌡️ تحذير TEMP", color: "#b45309" };
     return { label: "✅ مكتمل", color: "#065f46" };
   }
 
@@ -540,14 +544,35 @@ export default function FinishedProductEntry() {
       return;
     }
 
+    let hasTempWarning = false;
     for (const r of rows) {
       const e = getRowErrors(r);
-      const missing =
-        e.product || e.customer || e.orderNo || e.quantity || e.slaughterDate || e.expiryDate || e.dateOrder;
-      if (missing) {
+      const blocking =
+        e.product ||
+        e.customer ||
+        e.orderNo ||
+        e.quantity ||
+        e.slaughterDate ||
+        e.expiryDate ||
+        e.dateOrder ||
+        e.temp === "Not a number";
+      if (blocking) {
         setSavingStage("");
-        setErrorMsg("Fix highlighted errors before saving (required fields & dates order).");
+        setErrorMsg(
+          "Fix highlighted errors before saving (required fields, dates order, valid TEMP)."
+        );
         setTimeout(() => setErrorMsg(""), 3500);
+        return;
+      }
+      if (e.temp) hasTempWarning = true;
+    }
+
+    if (hasTempWarning) {
+      const proceed = window.confirm(
+        "⚠️ Some rows have a TEMP warning (out of expected range).\nSave anyway?"
+      );
+      if (!proceed) {
+        setSavingStage("");
         return;
       }
     }
@@ -574,7 +599,8 @@ export default function FinishedProductEntry() {
       setRows([{ ...emptyRow }]);
       setCheckedBy(DEFAULT_SIGN_NAME);
       setVerifiedBy(DEFAULT_SIGN_NAME);
-      setTimeout(() => setSavingStage(""), 400);
+      setTimeout(() => setSavingStage(""), 1500);
+      setTimeout(() => setSavedMsg(""), 4500);
     } catch (err) {
       setSavingStage("");
       setErrorMsg(`Failed to save on server: ${err?.message || "Unknown error"}`);
@@ -758,24 +784,22 @@ export default function FinishedProductEntry() {
 
       <div style={tableWrap}>
         <table style={tableStyle}>
-          {/* ✅ Flex columns داخل الشاشة */}
+          {/* ✅ 14 columns (matches thead): #, Product, Customer, Order No, TIME, Slaughter, Expiry, EXPIRY STATUS, TEMP, Quantity, Unit, OVERALL, REMARKS, Remove */}
           <colgroup>
-            <col style={{ width: "56px" }} />
-            <col style={{ width: "22%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "9%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "10%" }} />
-            {/* ✅ NEW column */}
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "9%" }} />
-            <col style={{ width: "9%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "70px" }} />
+            <col style={{ width: "56px" }} />   {/* # */}
+            <col style={{ width: "18%" }} />    {/* Product */}
+            <col style={{ width: "12%" }} />    {/* Customer */}
+            <col style={{ width: "9%" }} />     {/* Order No */}
+            <col style={{ width: "7%" }} />     {/* TIME */}
+            <col style={{ width: "9%" }} />     {/* Slaughter Date */}
+            <col style={{ width: "9%" }} />     {/* Expiry Date */}
+            <col style={{ width: "9%" }} />     {/* EXPIRY STATUS (NEW) */}
+            <col style={{ width: "6%" }} />     {/* TEMP */}
+            <col style={{ width: "7%" }} />     {/* Quantity */}
+            <col style={{ width: "5%" }} />     {/* Unit of Measure */}
+            <col style={{ width: "5%" }} />     {/* OVERALL CONDITION */}
+            <col style={{ width: "9%" }} />     {/* REMARKS */}
+            <col style={{ width: "70px" }} />   {/* Remove */}
           </colgroup>
 
           <thead>

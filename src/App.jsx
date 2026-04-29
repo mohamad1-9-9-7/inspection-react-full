@@ -1,6 +1,7 @@
 // src/App.jsx
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Suspense, lazy } from "react";
+import NotificationManager from "./components/NotificationManager";
 
 // Lazy imports
 const Login = lazy(() => import("./pages/Login"));
@@ -273,6 +274,9 @@ const SopSsopPage = lazy(() =>
   import("./pages/haccp and iso/SOP/SopSsopPage")
 );
 
+// ⚙️ Settings (Backup / Restore)
+const SettingsPage = lazy(() => import("./pages/settings/SettingsPage"));
+
 /** حماية المسارات الخاصة */
 /** Redirects /old-path/t/:token → /new-path/:token preserving the real token value */
 function TokenRedirect({ to }) {
@@ -339,6 +343,7 @@ export default function App() {
         </div>
       }
     >
+      <NotificationManager />
       <Routes>
         {/* الجذر */}
         <Route path="/" element={<Login />} />
@@ -1130,6 +1135,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <TrainingCertificatesView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ⚙️ Settings */}
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <SettingsPage />
             </ProtectedRoute>
           }
         />

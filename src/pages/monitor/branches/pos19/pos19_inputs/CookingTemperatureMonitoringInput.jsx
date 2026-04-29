@@ -1,6 +1,17 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/CookingTemperatureMonitoringInput.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+
+/* ===== Draft (localStorage) ===== */
+const DRAFT_KEY = "pos19_cooking_temp_draft_v1";
+const loadDraft = () => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -46,18 +57,36 @@ function btnStyle(bg) {
 
 export default function CookingTemperatureMonitoringInput() {
   const [reportDate, setReportDate] = useState(() => {
+    const dft = loadDraft();
+    if (dft.reportDate) return dft.reportDate;
     try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
     catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
   });
-  const [area, setArea]             = useState("Central Kitchen");
-  const [issuedBy, setIssuedBy]     = useState("MOHAMAD ABDULLAH");
-  const [controllingOfficer, setControllingOfficer] = useState("Chef");
-  const [approvedBy, setApprovedBy] = useState("Hussam O Sarhan");
-  const [issueDate, setIssueDate]   = useState("08/11/2023");
-  const [revisionNo, setRevisionNo] = useState("01");
-  const [rows, setRows]             = useState(() => Array.from({ length: 5 }, () => emptyRow()));
-  const [verifiedBy, setVerifiedBy] = useState("");
+  const [area, setArea]             = useState(() => loadDraft().area || "Central Kitchen");
+  const [issuedBy, setIssuedBy]     = useState(() => loadDraft().issuedBy || "MOHAMAD ABDULLAH");
+  const [controllingOfficer, setControllingOfficer] = useState(() => loadDraft().controllingOfficer || "Chef");
+  const [approvedBy, setApprovedBy] = useState(() => loadDraft().approvedBy || "Hussam O Sarhan");
+  const [issueDate, setIssueDate]   = useState(() => loadDraft().issueDate || "08/11/2023");
+  const [revisionNo, setRevisionNo] = useState(() => loadDraft().revisionNo || "01");
+  const [rows, setRows]             = useState(() => {
+    const d = loadDraft();
+    return Array.isArray(d.rows) && d.rows.length ? d.rows : Array.from({ length: 5 }, () => emptyRow());
+  });
+  const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
   const [saving, setSaving]         = useState(false);
+
+  /* ✅ Auto-save draft */
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          reportDate, area, issuedBy, controllingOfficer, approvedBy,
+          issueDate, revisionNo, rows, verifiedBy, ts: Date.now(),
+        })
+      );
+    } catch {}
+  }, [reportDate, area, issuedBy, controllingOfficer, approvedBy, issueDate, revisionNo, rows, verifiedBy]);
 
   const thCell = {
     border: "1px solid #1f3b70", padding: "6px 4px",
@@ -119,6 +148,7 @@ export default function CookingTemperatureMonitoringInput() {
         body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
       alert("✅ تم الحفظ بنجاح!");
     } catch (e) {
       console.error(e);

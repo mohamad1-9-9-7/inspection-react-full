@@ -66,15 +66,136 @@ function toIsoYMD(v) {
   if (yMdSlashes) return `${yMdSlashes[1]}-${yMdSlashes[2]}-${yMdSlashes[3]}`;
   return "";
 }
-function daysUntil(dateStr) {
-  const iso = toIsoYMD(dateStr);
+
+// تحويل آمن لتاريخ منتصف اليوم
+function parseDateOnly(s) {
+  const iso = toIsoYMD(s);
   if (!iso) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return null;
+  return new Date(
+    parseInt(m[1], 10),
+    parseInt(m[2], 10) - 1,
+    parseInt(m[3], 10),
+    12,
+    0,
+    0,
+    0
+  );
+}
+
+// عدد الأيام حتى تاريخ الانتهاء (سالب = منتهي بالفعل، 0 = اليوم، موجب = صالح)
+function daysUntil(dateStr) {
+  const d = parseDateOnly(dateStr);
+  if (!d) return null;
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const exp = new Date(iso);
-  if (isNaN(exp)) return null;
-  const diff = Math.ceil((exp.getTime() - today.getTime()) / 86400000);
-  return diff >= 0 ? diff : 0;
+  today.setHours(12, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
+
+/* ========= Status helpers (smart sort by expiry) ========= */
+const EXPIRING_SOON_DAYS = 30;
+const EXPIRING_DAYS = 90;
+
+function getCertStatus(expiryDate) {
+  const days = daysUntil(expiryDate);
+  if (days === null) {
+    return {
+      key: "no_expiry",
+      label: "No Expiry",
+      days: null,
+      bg: "linear-gradient(135deg,#9ca3af,#6b7280)",
+      rowBg: "transparent",
+    };
+  }
+  if (days < 0) {
+    return {
+      key: "expired",
+      label: "Expired",
+      days,
+      bg: "linear-gradient(135deg,#ef4444,#b91c1c)",
+      rowBg: "rgba(239,68,68,0.10)",
+    };
+  }
+  if (days <= EXPIRING_SOON_DAYS) {
+    return {
+      key: "expiring_soon",
+      label: "Expiring Soon",
+      days,
+      bg: "linear-gradient(135deg,#f97316,#c2410c)",
+      rowBg: "rgba(249,115,22,0.10)",
+    };
+  }
+  if (days <= EXPIRING_DAYS) {
+    return {
+      key: "expiring",
+      label: "Expiring",
+      days,
+      bg: "linear-gradient(135deg,#facc15,#a16207)",
+      rowBg: "rgba(250,204,21,0.10)",
+    };
+  }
+  return {
+    key: "valid",
+    label: "Valid",
+    days,
+    bg: "linear-gradient(135deg,#22c55e,#15803d)",
+    rowBg: "transparent",
+  };
+}
+
+const SORT_OPTIONS = [
+  { value: "expiry_asc",  label: "Expiry: Soonest → Latest (Smart)" },
+  { value: "expiry_desc", label: "Expiry: Latest → Soonest" },
+  { value: "name_asc",    label: "Name (A → Z)" },
+  { value: "name_desc",   label: "Name (Z → A)" },
+  { value: "branch_asc",  label: "Branch (A → Z)" },
+  { value: "appno_asc",   label: "Employee No (Asc)" },
+  { value: "appno_desc",  label: "Employee No (Desc)" },
+];
+
+const STATUS_FILTERS = [
+  { value: "all",           label: "All",            color: "#1d4ed8" },
+  { value: "expired",       label: "Expired",        color: "#b91c1c" },
+  { value: "expiring_soon", label: "≤ 30 Days",      color: "#c2410c" },
+  { value: "expiring",      label: "≤ 90 Days",      color: "#a16207" },
+  { value: "valid",         label: "Valid",          color: "#15803d" },
+  { value: "no_expiry",     label: "No Expiry",      color: "#6b7280" },
+  { value: "outside_dubai", label: "📍 Outside Dubai", color: "#0369a1" },
+  { value: "left_company",  label: "🚪 Left Company",  color: "#7c2d12" },
+];
+
+// HTML escape (للطباعة)
+function escapeHTML(v) {
+  if (v === null || v === undefined) return "";
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// CSV helpers
+function csvEscape(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+function downloadCSV(filename, rowsArr) {
+  const csv = rowsArr.map((r) => r.map(csvEscape).join(",")).join("\r\n");
+  const blob = new Blob(["﻿" + csv], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 const getId = (r) =>
   r?.id ||
@@ -113,6 +234,10 @@ function extractReportsList(data) {
       expiryDate: toIsoYMD(p.expiryDate) || "",
       result: p.result || "",
       branch: p.branch || "",
+      // علامة "خارج دبي - معفى من OHC". موظف ممكن ينتقل للداخل لاحقاً.
+      outsideDubai: p.outsideDubai === true,
+      // علامة "ترك الشركة" - السجل محفوظ ومخفي من العرض الافتراضي
+      leftCompany: p.leftCompany === true,
       image,
     };
   });
@@ -124,9 +249,13 @@ export default function OHCView() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState({ type: "", text: "" });
 
-  const [filter, setFilter] = useState("all"); // all | soon | expired
+  // فلاتر وفرز ذكي
+  const [statusFilter, setStatusFilter] = useState("all"); // all|expired|expiring_soon|expiring|valid|no_expiry
   const [branchFilter, setBranchFilter] = useState("all");
   const [resultFilter, setResultFilter] = useState("all"); // all | FIT | UNFIT
+  const [nationalityFilter, setNationalityFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("expiry_asc");
+  const [groupByBranch, setGroupByBranch] = useState(false);
   const [search, setSearch] = useState(""); // search by employeeNo/name/nationality/job/branch
 
   // editing (بدون تغيير رقم الموظف أو الصورة، وبدون Issue Date)
@@ -138,6 +267,8 @@ export default function OHCView() {
     expiryDate: "",
     result: "",
     branch: "",
+    outsideDubai: false,
+    leftCompany: false,
   });
 
   // صورة جديدة للتعديل
@@ -182,25 +313,432 @@ export default function OHCView() {
     load();
   }, []);
 
-  // Filters + search + result filter
+  // كل السجلات بعد إضافة الـ status
+  const enriched = useMemo(() => {
+    return rows.map((r) => ({
+      ...r,
+      status: getCertStatus(r.expiryDate),
+    }));
+  }, [rows]);
+
+  // قوائم الفلاتر من البيانات
+  const branchList = useMemo(() => {
+    const s = new Set();
+    enriched.forEach((r) => {
+      if (r.branch) s.add(r.branch);
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [enriched]);
+
+  const nationalityList = useMemo(() => {
+    const s = new Set();
+    enriched.forEach((r) => {
+      if (r.nationality) s.add(r.nationality);
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [enriched]);
+
+  // إحصاءات على الموظفين النشطين داخل دبي فقط
+  const stats = useMemo(() => {
+    const out = {
+      total: 0,
+      expired: 0,
+      expiring_soon: 0,
+      expiring: 0,
+      valid: 0,
+      no_expiry: 0,
+      outside_dubai: 0,
+      left_company: 0,
+      fit: 0,
+      unfit: 0,
+    };
+    enriched.forEach((r) => {
+      if (r.leftCompany) {
+        out.left_company += 1;
+        return; // الموظف ترك الشركة - لا يدخل في إحصاءات الانتهاء
+      }
+      if (r.outsideDubai) {
+        out.outside_dubai += 1;
+        return; // خارج دبي - لا يدخل في إحصاءات الانتهاء
+      }
+      out.total += 1;
+      out[r.status.key] = (out[r.status.key] || 0) + 1;
+      if (r.result === "FIT") out.fit += 1;
+      else if (r.result === "UNFIT") out.unfit += 1;
+    });
+    return out;
+  }, [enriched]);
+
+  // إحصاءات لكل فرع (نتجاهل خارج دبي ومن ترك الشركة)
+  const branchStats = useMemo(() => {
+    const map = new Map();
+    enriched.forEach((r) => {
+      if (r.outsideDubai || r.leftCompany) return;
+      const b = r.branch || "—";
+      const cur = map.get(b) || {
+        branch: b,
+        total: 0,
+        expired: 0,
+        expiring_soon: 0,
+        expiring: 0,
+        valid: 0,
+        no_expiry: 0,
+      };
+      cur.total += 1;
+      cur[r.status.key] = (cur[r.status.key] || 0) + 1;
+      map.set(b, cur);
+    });
+    return Array.from(map.values()).sort((a, b) =>
+      a.branch.localeCompare(b.branch)
+    );
+  }, [enriched]);
+
+  // الصفوف بعد كل الفلاتر والفرز
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      const d = daysUntil(r.expiryDate);
+    let out = enriched.slice();
 
-      if (filter === "soon" && !(d > 0 && d <= 30)) return false;
-      if (filter === "expired" && d !== 0) return false;
-      if (branchFilter !== "all" && r.branch !== branchFilter) return false;
-      if (resultFilter !== "all" && r.result !== resultFilter) return false;
-
-      if (term) {
-        const haystack = `${r.appNo} ${r.name} ${r.nationality} ${r.job} ${r.branch}`.toLowerCase();
-        if (!haystack.includes(term)) return false;
+    // Outside Dubai / Left Company: نخفيها افتراضياً، نظهرها فقط عند اختيار الفلتر المقابل
+    if (statusFilter === "outside_dubai") {
+      out = out.filter((r) => r.outsideDubai && !r.leftCompany);
+    } else if (statusFilter === "left_company") {
+      out = out.filter((r) => r.leftCompany);
+    } else {
+      out = out.filter((r) => !r.outsideDubai && !r.leftCompany);
+      if (statusFilter !== "all") {
+        out = out.filter((r) => r.status.key === statusFilter);
       }
+    }
 
-      return true;
+    if (branchFilter !== "all") {
+      out = out.filter((r) => r.branch === branchFilter);
+    }
+    if (resultFilter !== "all") {
+      out = out.filter((r) => r.result === resultFilter);
+    }
+    if (nationalityFilter !== "all") {
+      out = out.filter((r) => r.nationality === nationalityFilter);
+    }
+    if (term) {
+      out = out.filter((r) => {
+        const haystack = `${r.appNo} ${r.name} ${r.nationality} ${r.job} ${r.branch}`.toLowerCase();
+        return haystack.includes(term);
+      });
+    }
+
+    // الفرز الذكي
+    const cmpStr = (a, b) =>
+      String(a || "").localeCompare(String(b || ""));
+    const expiryRank = (r) => {
+      if (r.status.key === "no_expiry") return Number.POSITIVE_INFINITY;
+      const d = r.status.days;
+      return d === null ? Number.POSITIVE_INFINITY : d;
+    };
+    const numAppNo = (r) => {
+      const n = parseInt(String(r.appNo || "").replace(/\D/g, ""), 10);
+      return isNaN(n) ? Number.POSITIVE_INFINITY : n;
+    };
+
+    out.sort((a, b) => {
+      switch (sortBy) {
+        case "expiry_asc":
+          return expiryRank(a) - expiryRank(b);
+        case "expiry_desc":
+          return expiryRank(b) - expiryRank(a);
+        case "name_asc":
+          return cmpStr(a.name, b.name);
+        case "name_desc":
+          return cmpStr(b.name, a.name);
+        case "branch_asc":
+          return (
+            cmpStr(a.branch, b.branch) || expiryRank(a) - expiryRank(b)
+          );
+        case "appno_asc":
+          return numAppNo(a) - numAppNo(b);
+        case "appno_desc":
+          return numAppNo(b) - numAppNo(a);
+        default:
+          return 0;
+      }
     });
-  }, [rows, filter, branchFilter, resultFilter, search]);
+
+    return out;
+  }, [
+    enriched,
+    statusFilter,
+    branchFilter,
+    resultFilter,
+    nationalityFilter,
+    search,
+    sortBy,
+  ]);
+
+  // مسح كل الفلاتر
+  function clearAllFilters() {
+    setSearch("");
+    setStatusFilter("all");
+    setBranchFilter("all");
+    setResultFilter("all");
+    setNationalityFilter("all");
+    setSortBy("expiry_asc");
+  }
+
+  // تصدير CSV للسجلات الظاهرة
+  function exportCSV() {
+    if (!filtered.length) {
+      alert("No certificates to export.");
+      return;
+    }
+    const header = [
+      "#",
+      "Employee Number",
+      "Name",
+      "Nationality",
+      "Occupation",
+      "Branch",
+      "Issue Date",
+      "Expiry Date",
+      "Days Left",
+      "Status",
+      "Result",
+      "Outside Dubai",
+      "Left Company",
+    ];
+    const overallStatus = (r) =>
+      r.leftCompany
+        ? "Left Company"
+        : r.outsideDubai
+        ? "Outside Dubai (Exempt)"
+        : r.status.label;
+    const body = filtered.map((r, i) => [
+      i + 1,
+      r.appNo,
+      r.name,
+      r.nationality,
+      r.job,
+      r.branch,
+      r.issueDate,
+      r.expiryDate,
+      r.status.days === null ? "" : r.status.days,
+      overallStatus(r),
+      r.result,
+      r.outsideDubai ? "Yes" : "No",
+      r.leftCompany ? "Yes" : "No",
+    ]);
+    const ts = new Date().toISOString().slice(0, 10);
+    downloadCSV(`ohc_certificates_${ts}.csv`, [header, ...body]);
+  }
+
+  // طباعة
+  function printList() {
+    if (!filtered.length) {
+      alert("No certificates to print.");
+      return;
+    }
+    const w = window.open("", "_blank");
+    if (!w) {
+      alert("Please allow pop-ups to print.");
+      return;
+    }
+    const styleColor = (key) =>
+      key === "expired"
+        ? "#b91c1c"
+        : key === "expiring_soon"
+        ? "#c2410c"
+        : key === "expiring"
+        ? "#a16207"
+        : key === "valid"
+        ? "#15803d"
+        : "#6b7280";
+
+    const trs = filtered
+      .map(
+        (r, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${escapeHTML(r.appNo)}</td>
+          <td>${escapeHTML(r.name)}</td>
+          <td>${escapeHTML(r.branch)}</td>
+          <td>${escapeHTML(r.job)}</td>
+          <td>${escapeHTML(r.expiryDate || "—")}</td>
+          <td>${r.status.days === null ? "—" : r.status.days}</td>
+          <td style="color:${styleColor(r.status.key)};font-weight:700">${
+          r.status.label
+        }</td>
+          <td>${escapeHTML(r.result)}</td>
+        </tr>`
+      )
+      .join("");
+
+    w.document.write(`
+      <html>
+        <head>
+          <title>OHC Certificates Report</title>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: Tahoma, Arial, sans-serif; padding: 16px; }
+            h1 { font-size: 18px; margin: 0 0 6px; }
+            .meta { font-size: 12px; color: #555; margin-bottom: 12px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+            thead { background: #0f172a; color: #fff; }
+            tr:nth-child(even) td { background: #f8fafc; }
+          </style>
+        </head>
+        <body>
+          <h1>OHC Certificates</h1>
+          <div class="meta">
+            Records: ${filtered.length} &nbsp;|&nbsp;
+            Status: ${statusFilter} &nbsp;|&nbsp;
+            Branch: ${branchFilter} &nbsp;|&nbsp;
+            Result: ${resultFilter} &nbsp;|&nbsp;
+            Generated: ${new Date().toLocaleString()}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Employee No</th>
+                <th>Name</th>
+                <th>Branch</th>
+                <th>Occupation</th>
+                <th>Expiry</th>
+                <th>Days Left</th>
+                <th>Status</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody>${trs}</tbody>
+          </table>
+          <script>window.onload = () => { window.print(); };</script>
+        </body>
+      </html>
+    `);
+    w.document.close();
+  }
+
+  // قلب حالة Outside Dubai بسرعة (POST سجل جديد + DELETE القديم)
+  async function toggleOutsideDubai(idx) {
+    const row = filtered[idx];
+    if (!row?._server?.id) return;
+
+    const newVal = !row.outsideDubai;
+    const action = newVal ? "Mark as Outside Dubai" : "Move back to Dubai";
+    const note = newVal
+      ? "This will hide the record from the main view and exempt it from expiry alerts."
+      : "This will return the record to the active Dubai view.";
+
+    if (!window.confirm(`${action}?\n\n${note}`)) return;
+
+    setMsg({ type: "", text: "" });
+
+    const base = row._server.rawPayload || {};
+    const payload = {
+      ...base,
+      outsideDubai: newVal,
+      // عند الانتقال خارج دبي نمسح حقول الشهادة (سترجع عند العودة)
+      ...(newVal
+        ? { expiryDate: "", result: "" }
+        : {}),
+      savedAt: new Date().toISOString(),
+    };
+
+    try {
+      const createRes = await jsonFetch(`${API_BASE}/api/reports`, {
+        method: "POST",
+        body: JSON.stringify({
+          reporter: "MOHAMAD ABDULLAH",
+          type: TYPE,
+          payload,
+        }),
+      });
+      if (!createRes.ok) {
+        setMsg({
+          type: "error",
+          text: `Update failed (HTTP ${createRes.status}). ${
+            createRes.data?.message || ""
+          }`,
+        });
+        return;
+      }
+      await jsonFetch(`${API_BASE}/api/reports/${row._server.id}`, {
+        method: "DELETE",
+      });
+      setMsg({
+        type: "ok",
+        text: newVal
+          ? "Marked as Outside Dubai (hidden from main view)."
+          : "Moved back to Dubai (visible in main view).",
+      });
+      await load();
+    } catch (err) {
+      console.error("toggleOutsideDubai error:", err);
+      setMsg({
+        type: "error",
+        text: "Network error while updating. Please try again.",
+      });
+    }
+  }
+
+  // قلب حالة Left Company بسرعة
+  async function toggleLeftCompany(idx) {
+    const row = filtered[idx];
+    if (!row?._server?.id) return;
+
+    const newVal = !row.leftCompany;
+    const action = newVal ? "Mark as Left Company" : "Restore (Active Employee)";
+    const note = newVal
+      ? "This will hide the record from the main view & exempt it from expiry alerts. The record stays in the database."
+      : "This will return the record to the active list.";
+
+    if (!window.confirm(`${action}?\n\n${note}`)) return;
+
+    setMsg({ type: "", text: "" });
+
+    const base = row._server.rawPayload || {};
+    const payload = {
+      ...base,
+      leftCompany: newVal,
+      ...(newVal ? { expiryDate: "", result: "" } : {}),
+      savedAt: new Date().toISOString(),
+    };
+
+    try {
+      const createRes = await jsonFetch(`${API_BASE}/api/reports`, {
+        method: "POST",
+        body: JSON.stringify({
+          reporter: "MOHAMAD ABDULLAH",
+          type: TYPE,
+          payload,
+        }),
+      });
+      if (!createRes.ok) {
+        setMsg({
+          type: "error",
+          text: `Update failed (HTTP ${createRes.status}). ${
+            createRes.data?.message || ""
+          }`,
+        });
+        return;
+      }
+      await jsonFetch(`${API_BASE}/api/reports/${row._server.id}`, {
+        method: "DELETE",
+      });
+      setMsg({
+        type: "ok",
+        text: newVal
+          ? "Marked as Left Company (hidden from main view)."
+          : "Restored as active employee.",
+      });
+      await load();
+    } catch (err) {
+      console.error("toggleLeftCompany error:", err);
+      setMsg({
+        type: "error",
+        text: "Network error while updating. Please try again.",
+      });
+    }
+  }
 
   // Delete record
   async function handleDelete(idx) {
@@ -243,6 +781,8 @@ export default function OHCView() {
       expiryDate: row.expiryDate || "",
       result: row.result || "",
       branch: row.branch || "",
+      outsideDubai: !!row.outsideDubai,
+      leftCompany: !!row.leftCompany,
     });
     setEditImage(null);
     setMsg({ type: "", text: "" });
@@ -327,14 +867,11 @@ export default function OHCView() {
     const row = filtered[editingIndex];
     if (!row?._server?.id) return;
 
-    const required = [
-      "name",
-      "nationality",
-      "job",
-      "expiryDate",
-      "result",
-      "branch",
-    ];
+    // لو الموظف خارج دبي أو ترك الشركة: ما لازم expiryDate ولا result
+    const exempt = edit.outsideDubai || edit.leftCompany;
+    const required = exempt
+      ? ["name", "nationality", "job", "branch"]
+      : ["name", "nationality", "job", "expiryDate", "result", "branch"];
     for (const k of required) {
       if (!String(edit[k] || "").trim()) {
         setMsg({
@@ -345,22 +882,23 @@ export default function OHCView() {
       }
     }
 
-    const expiryIso = toIsoYMD(edit.expiryDate);
-
-    if (!expiryIso) {
-      setMsg({
-        type: "error",
-        text: "Invalid expiry date format. Please re-select the date.",
-      });
-      return;
-    }
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    if (expiryIso < todayStr) {
-      const cont = window.confirm(
-        "This OHC certificate appears to be expired already.\nDo you still want to save these changes?"
-      );
-      if (!cont) return;
+    let expiryIso = "";
+    if (!exempt) {
+      expiryIso = toIsoYMD(edit.expiryDate);
+      if (!expiryIso) {
+        setMsg({
+          type: "error",
+          text: "Invalid expiry date format. Please re-select the date.",
+        });
+        return;
+      }
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (expiryIso < todayStr) {
+        const cont = window.confirm(
+          "This OHC certificate appears to be expired already.\nDo you still want to save these changes?"
+        );
+        if (!cont) return;
+      }
     }
 
     // نحافظ على الـ payload الأصلي (يشمل الصورة الحالية) ونحدّث الحقول فقط
@@ -371,9 +909,11 @@ export default function OHCView() {
       name: edit.name,
       nationality: edit.nationality,
       job: edit.job,
-      expiryDate: expiryIso,
-      result: edit.result,
+      expiryDate: exempt ? "" : expiryIso,
+      result: exempt ? "" : edit.result,
       branch: edit.branch,
+      outsideDubai: !!edit.outsideDubai,
+      leftCompany: !!edit.leftCompany,
       savedAt: new Date().toISOString(),
     };
 
@@ -607,26 +1147,42 @@ export default function OHCView() {
                   style={{
                     padding: "3px 10px",
                     borderRadius: 999,
-                    background: "rgba(22,163,74,0.08)",
-                    color: "#166534",
-                    fontWeight: 700,
-                    border: "1px solid rgba(74,222,128,0.6)",
-                  }}
-                >
-                  Total: {total}
-                </span>
-                <span
-                  style={{
-                    padding: "3px 10px",
-                    borderRadius: 999,
                     background: "rgba(37,99,235,0.06)",
                     color: "#1d4ed8",
                     fontWeight: 700,
                     border: "1px solid rgba(129,140,248,0.6)",
                   }}
                 >
-                  Showing: {showing}
+                  Showing: {showing} / {total}
                 </span>
+                {stats.fit > 0 && (
+                  <span
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: 999,
+                      background: "rgba(22,163,74,0.08)",
+                      color: "#166534",
+                      fontWeight: 700,
+                      border: "1px solid rgba(74,222,128,0.6)",
+                    }}
+                  >
+                    FIT: {stats.fit}
+                  </span>
+                )}
+                {stats.unfit > 0 && (
+                  <span
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: 999,
+                      background: "rgba(239,68,68,0.08)",
+                      color: "#b91c1c",
+                      fontWeight: 700,
+                      border: "1px solid rgba(248,113,113,0.6)",
+                    }}
+                  >
+                    UNFIT: {stats.unfit}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -717,103 +1273,282 @@ export default function OHCView() {
             </div>
           )}
 
+          {/* Stat cards (clickable to filter) */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 10,
+              marginBottom: 12,
+            }}
+          >
+            <StatCard
+              label="Total"
+              value={stats.total}
+              color="#1d4ed8"
+              icon="📋"
+              active={statusFilter === "all"}
+              onClick={() => setStatusFilter("all")}
+            />
+            <StatCard
+              label="Expired"
+              value={stats.expired}
+              color="#b91c1c"
+              icon="⛔"
+              active={statusFilter === "expired"}
+              onClick={() => setStatusFilter("expired")}
+            />
+            <StatCard
+              label="Expiring ≤ 30d"
+              value={stats.expiring_soon}
+              color="#c2410c"
+              icon="⚠️"
+              active={statusFilter === "expiring_soon"}
+              onClick={() => setStatusFilter("expiring_soon")}
+            />
+            <StatCard
+              label="Expiring ≤ 90d"
+              value={stats.expiring}
+              color="#a16207"
+              icon="⏳"
+              active={statusFilter === "expiring"}
+              onClick={() => setStatusFilter("expiring")}
+            />
+            <StatCard
+              label="Valid"
+              value={stats.valid}
+              color="#15803d"
+              icon="✅"
+              active={statusFilter === "valid"}
+              onClick={() => setStatusFilter("valid")}
+            />
+            <StatCard
+              label="No Expiry"
+              value={stats.no_expiry}
+              color="#6b7280"
+              icon="∞"
+              active={statusFilter === "no_expiry"}
+              onClick={() => setStatusFilter("no_expiry")}
+            />
+            <StatCard
+              label="Outside Dubai"
+              value={stats.outside_dubai}
+              color="#0369a1"
+              icon="📍"
+              active={statusFilter === "outside_dubai"}
+              onClick={() => setStatusFilter("outside_dubai")}
+            />
+            <StatCard
+              label="Left Company"
+              value={stats.left_company}
+              color="#7c2d12"
+              icon="🚪"
+              active={statusFilter === "left_company"}
+              onClick={() => setStatusFilter("left_company")}
+            />
+          </div>
+
+          {/* Status chips */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 6,
+              marginBottom: 10,
+              alignItems: "center",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#374151",
+                marginRight: 4,
+              }}
+            >
+              STATUS:
+            </span>
+            {STATUS_FILTERS.map((s) => {
+              const isActive = statusFilter === s.value;
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setStatusFilter(s.value)}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${s.color}`,
+                    background: isActive ? s.color : "transparent",
+                    color: isActive ? "#fff" : s.color,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Filters row */}
           <div
             style={{
-              marginBottom: 18,
+              marginBottom: 12,
               display: "flex",
-              gap: 12,
+              gap: 8,
               alignItems: "center",
               flexWrap: "wrap",
               background:
                 "linear-gradient(135deg,rgba(15,23,42,0.02),rgba(8,47,73,0.03))",
-              padding: 12,
+              padding: 10,
               borderRadius: 16,
               border: "1px solid rgba(148,163,184,0.5)",
             }}
           >
-            <div
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              style={selectStyle}
+              title="Filter by Branch"
+            >
+              <option value="all">🏢 All Branches</option>
+              {(branchList.length
+                ? branchList
+                : BRANCHES
+              ).map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={resultFilter}
+              onChange={(e) => setResultFilter(e.target.value)}
+              style={selectStyle}
+              title="Filter by Result"
+            >
+              <option value="all">🩺 All Results</option>
+              <option value="FIT">FIT</option>
+              <option value="UNFIT">UNFIT</option>
+            </select>
+
+            <select
+              value={nationalityFilter}
+              onChange={(e) => setNationalityFilter(e.target.value)}
+              style={selectStyle}
+              title="Filter by Nationality"
+            >
+              <option value="all">🌍 All Nationalities</option>
+              {nationalityList.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={selectStyle}
+              title="Sort By"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  ↕ {o.label}
+                </option>
+              ))}
+            </select>
+
+            <label
               style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: 0.6,
+                display: "inline-flex",
+                gap: 6,
+                alignItems: "center",
+                fontSize: 12,
                 fontWeight: 700,
-                color: "#0f172a",
-                marginRight: 6,
+                color: "#374151",
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: groupByBranch
+                  ? "linear-gradient(135deg,#dbeafe,#bfdbfe)"
+                  : "transparent",
+                border: "1px solid rgba(148,163,184,0.7)",
+                cursor: "pointer",
               }}
             >
-              Filters
-            </div>
+              <input
+                type="checkbox"
+                checked={groupByBranch}
+                onChange={(e) => setGroupByBranch(e.target.checked)}
+                style={{ margin: 0 }}
+              />
+              Group by Branch
+            </label>
 
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>Expiry:</span>
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: "1px solid #cbd5e1",
-                  fontSize: 13,
-                  background:
-                    "linear-gradient(135deg,#ffffff,#f9fafb,#e5e7eb)",
-                }}
-              >
-                <option value="all">All</option>
-                <option value="soon">Expiring soon (≤30d)</option>
-                <option value="expired">Expired</option>
-              </select>
-            </div>
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1px solid rgba(107,114,128,0.7)",
+                background: "linear-gradient(135deg,#f3f4f6,#e5e7eb)",
+                color: "#111827",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              ✕ Clear Filters
+            </button>
 
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>Branch:</span>
-              <select
-                value={branchFilter}
-                onChange={(e) => setBranchFilter(e.target.value)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: "1px solid #cbd5e1",
-                  fontSize: 13,
-                  background:
-                    "linear-gradient(135deg,#ffffff,#f9fafb,#e5e7eb)",
-                }}
-              >
-                <option value="all">All branches</option>
-                {BRANCHES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <div style={{ flex: 1 }} />
 
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontWeight: 700, fontSize: 13 }}>Result:</span>
-              <select
-                value={resultFilter}
-                onChange={(e) => setResultFilter(e.target.value)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: "1px solid #cbd5e1",
-                  fontSize: 13,
-                  background:
-                    "linear-gradient(135deg,#ffffff,#f9fafb,#e5e7eb)",
-                }}
-              >
-                <option value="all">All</option>
-                <option value="FIT">FIT</option>
-                <option value="UNFIT">UNFIT</option>
-              </select>
-            </div>
+            <button
+              type="button"
+              onClick={exportCSV}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "none",
+                background: "linear-gradient(135deg,#10b981,#047857)",
+                color: "#fff",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 10px rgba(16,185,129,0.35)",
+              }}
+            >
+              ⬇ Export CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={printList}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "none",
+                background: "linear-gradient(135deg,#6366f1,#4338ca)",
+                color: "#fff",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 10px rgba(99,102,241,0.35)",
+              }}
+            >
+              🖨 Print
+            </button>
 
             <button
               onClick={load}
               disabled={loading}
               style={{
-                marginLeft: "auto",
-                padding: "8px 16px",
+                padding: "6px 14px",
                 background: loading
                   ? "linear-gradient(135deg,#38bdf8,#0ea5e9)"
                   : "linear-gradient(135deg,#38bdf8,#0ea5e9,#0369a1)",
@@ -821,18 +1556,112 @@ export default function OHCView() {
                 border: 0,
                 borderRadius: 999,
                 fontWeight: 700,
-                fontSize: 13,
+                fontSize: 11,
                 cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                boxShadow: "0 10px 25px rgba(14,165,233,0.55)",
+                boxShadow: "0 4px 10px rgba(14,165,233,0.45)",
                 opacity: loading ? 0.9 : 1,
               }}
             >
               {loading ? "Refreshing..." : "↻ Refresh"}
             </button>
           </div>
+
+          {/* Group by Branch summary (when active) */}
+          {groupByBranch && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: 8,
+                borderRadius: 12,
+                border: "1px solid rgba(148,163,184,0.6)",
+                background:
+                  "linear-gradient(135deg,#f8fafc,#eef2ff,#e0e7ff)",
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#374151",
+                  width: "100%",
+                }}
+              >
+                BRANCH BREAKDOWN ({branchStats.length} branches)
+              </div>
+              {branchStats.map((b) => (
+                <button
+                  key={b.branch}
+                  type="button"
+                  onClick={() =>
+                    setBranchFilter(
+                      branchFilter === b.branch ? "all" : b.branch
+                    )
+                  }
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 10,
+                    border:
+                      branchFilter === b.branch
+                        ? "2px solid #1d4ed8"
+                        : "1px solid rgba(148,163,184,0.7)",
+                    background:
+                      branchFilter === b.branch
+                        ? "linear-gradient(135deg,#dbeafe,#bfdbfe)"
+                        : "#ffffff",
+                    cursor: "pointer",
+                    fontSize: 11,
+                    textAlign: "left",
+                    minWidth: 180,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color: "#0f172a",
+                      marginBottom: 2,
+                    }}
+                  >
+                    {b.branch}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      flexWrap: "wrap",
+                      fontSize: 10,
+                    }}
+                  >
+                    <span style={{ color: "#1d4ed8", fontWeight: 700 }}>
+                      Total: {b.total}
+                    </span>
+                    {b.expired > 0 && (
+                      <span style={{ color: "#b91c1c", fontWeight: 700 }}>
+                        ⛔ {b.expired}
+                      </span>
+                    )}
+                    {b.expiring_soon > 0 && (
+                      <span style={{ color: "#c2410c", fontWeight: 700 }}>
+                        ⚠ {b.expiring_soon}
+                      </span>
+                    )}
+                    {b.expiring > 0 && (
+                      <span style={{ color: "#a16207", fontWeight: 700 }}>
+                        ⏳ {b.expiring}
+                      </span>
+                    )}
+                    {b.valid > 0 && (
+                      <span style={{ color: "#15803d", fontWeight: 700 }}>
+                        ✓ {b.valid}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Edit Panel */}
           {editingIndex !== null && (
@@ -867,11 +1696,120 @@ export default function OHCView() {
                   })`}
                 </span>
               </h3>
+
+              {/* Status flags row (Outside Dubai + Left Company) */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                  gap: 10,
+                  marginBottom: 12,
+                }}
+              >
+                {/* Outside Dubai toggle */}
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    background: edit.outsideDubai
+                      ? "linear-gradient(135deg,#e0f2fe,#bae6fd)"
+                      : "linear-gradient(135deg,#ffffff,#f1f5f9)",
+                    border: `1px solid ${
+                      edit.outsideDubai ? "#0369a1" : "rgba(148,163,184,0.7)"
+                    }`,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!edit.outsideDubai}
+                    onChange={(e) =>
+                      setEditField("outsideDubai", e.target.checked)
+                    }
+                    style={{ width: 18, height: 18, margin: 0 }}
+                  />
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 800,
+                        color: "#0f172a",
+                      }}
+                    >
+                      📍 Outside Dubai (Exempt from OHC)
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#475569",
+                        marginTop: 2,
+                      }}
+                    >
+                      Hidden from main view & expiry alerts. Useful when an
+                      employee may transfer to Dubai later.
+                    </div>
+                  </div>
+                </label>
+
+                {/* Left Company toggle */}
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    background: edit.leftCompany
+                      ? "linear-gradient(135deg,#fef2f2,#fecaca)"
+                      : "linear-gradient(135deg,#ffffff,#f1f5f9)",
+                    border: `1px solid ${
+                      edit.leftCompany ? "#7c2d12" : "rgba(148,163,184,0.7)"
+                    }`,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!edit.leftCompany}
+                    onChange={(e) =>
+                      setEditField("leftCompany", e.target.checked)
+                    }
+                    style={{ width: 18, height: 18, margin: 0 }}
+                  />
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 800,
+                        color: "#0f172a",
+                      }}
+                    >
+                      🚪 Left Company (Former Employee)
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#475569",
+                        marginTop: 2,
+                      }}
+                    >
+                      Record is kept but hidden from main view & expiry
+                      alerts. Restore anytime if the employee returns.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                   gap: 12,
+                  opacity:
+                    edit.outsideDubai || edit.leftCompany ? 0.6 : 1,
                 }}
               >
                 <Field
@@ -1131,13 +2069,22 @@ export default function OHCView() {
                   </tr>
                 ) : (
                   filtered.map((r, i) => {
-                    const d = daysUntil(r.expiryDate);
-                    const soon = d > 0 && d <= 30;
-                    const expired = d === 0;
-
-                    let rowBg = i % 2 === 0 ? "#ffffff" : "#f9fafb";
-                    if (soon) rowBg = "#fff7ed";
-                    if (expired) rowBg = "#fee2e2";
+                    const st = r.status;
+                    const stripeBg = i % 2 === 0 ? "#ffffff" : "#f9fafb";
+                    const rowBg =
+                      st.rowBg && st.rowBg !== "transparent"
+                        ? st.rowBg
+                        : stripeBg;
+                    const showLeftBar =
+                      st.key === "expired" ||
+                      st.key === "expiring_soon" ||
+                      st.key === "expiring";
+                    const leftBarColor =
+                      st.key === "expired"
+                        ? "#b91c1c"
+                        : st.key === "expiring_soon"
+                        ? "#c2410c"
+                        : "#a16207";
 
                     const resultBadgeStyle =
                       r.result === "FIT"
@@ -1158,23 +2105,15 @@ export default function OHCView() {
                             borderColor: "#d1d5db",
                           };
 
-                    const statusText = expired
-                      ? "Expired"
-                      : soon
-                      ? "Expiring soon"
-                      : "OK";
-                    const statusColor = expired
-                      ? "#b91c1c"
-                      : soon
-                      ? "#b45309"
-                      : "#065f46";
-
                     return (
                       <tr
                         key={i}
                         style={{
                           textAlign: "center",
                           background: rowBg,
+                          borderLeft: showLeftBar
+                            ? `4px solid ${leftBarColor}`
+                            : "4px solid transparent",
                         }}
                       >
                         <td
@@ -1229,11 +2168,19 @@ export default function OHCView() {
                         >
                           <span
                             style={{
-                              color: soon || expired ? "#b91c1c" : "#111827",
-                              fontWeight: soon || expired ? 700 : 500,
+                              color:
+                                st.key === "expired" ||
+                                st.key === "expiring_soon"
+                                  ? "#b91c1c"
+                                  : "#111827",
+                              fontWeight:
+                                st.key === "expired" ||
+                                st.key === "expiring_soon"
+                                  ? 700
+                                  : 500,
                             }}
                           >
-                            {toIsoYMD(r.expiryDate)}
+                            {toIsoYMD(r.expiryDate) || "—"}
                           </span>
                         </td>
                         <td
@@ -1267,7 +2214,36 @@ export default function OHCView() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {d ?? "-"}
+                          {st.days === null ? (
+                            <span style={{ color: "#9ca3af" }}>—</span>
+                          ) : st.days < 0 ? (
+                            <span
+                              style={{
+                                fontWeight: 700,
+                                color: "#b91c1c",
+                              }}
+                              title={`Expired ${Math.abs(
+                                st.days
+                              )} day(s) ago`}
+                            >
+                              -{Math.abs(st.days)}
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                fontWeight: 700,
+                                color:
+                                  st.key === "expiring_soon"
+                                    ? "#c2410c"
+                                    : st.key === "expiring"
+                                    ? "#a16207"
+                                    : "#15803d",
+                              }}
+                              title={`${st.days} day(s) remaining`}
+                            >
+                              {st.days}
+                            </span>
+                          )}
                         </td>
                         <td
                           style={{
@@ -1277,11 +2253,18 @@ export default function OHCView() {
                         >
                           <span
                             style={{
-                              fontWeight: 700,
-                              color: statusColor,
+                              display: "inline-block",
+                              padding: "2px 10px",
+                              borderRadius: 999,
+                              fontSize: 10,
+                              fontWeight: 800,
+                              color: "#fff",
+                              background: st.bg,
+                              letterSpacing: 0.3,
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            {statusText}
+                            {st.label}
                           </span>
                         </td>
                         <td
@@ -1290,7 +2273,50 @@ export default function OHCView() {
                             borderTop: "1px solid #e5e7eb",
                           }}
                         >
-                          {r.branch || "-"}
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 4,
+                              alignItems: "center",
+                            }}
+                          >
+                            <span>{r.branch || "-"}</span>
+                            {r.outsideDubai && (
+                              <span
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 800,
+                                  color: "#fff",
+                                  background:
+                                    "linear-gradient(135deg,#0ea5e9,#0369a1)",
+                                  padding: "1px 6px",
+                                  borderRadius: 999,
+                                  letterSpacing: 0.3,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                📍 OUTSIDE DUBAI
+                              </span>
+                            )}
+                            {r.leftCompany && (
+                              <span
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 800,
+                                  color: "#fff",
+                                  background:
+                                    "linear-gradient(135deg,#dc2626,#7c2d12)",
+                                  padding: "1px 6px",
+                                  borderRadius: 999,
+                                  letterSpacing: 0.3,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                🚪 LEFT COMPANY
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td
                           style={{
@@ -1349,6 +2375,58 @@ export default function OHCView() {
                             whiteSpace: "nowrap",
                           }}
                         >
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 6,
+                              justifyContent: "center",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                          <button
+                            onClick={() => toggleOutsideDubai(i)}
+                            title={
+                              r.outsideDubai
+                                ? "Move back to Dubai"
+                                : "Mark as Outside Dubai (hide from main view)"
+                            }
+                            style={{
+                              padding: "6px 10px",
+                              background: r.outsideDubai
+                                ? "linear-gradient(135deg,#10b981,#047857)"
+                                : "linear-gradient(135deg,#0ea5e9,#0369a1)",
+                              color: "#fff",
+                              border: 0,
+                              borderRadius: 999,
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {r.outsideDubai ? "🏙️ To Dubai" : "📍 Outside"}
+                          </button>
+                          <button
+                            onClick={() => toggleLeftCompany(i)}
+                            title={
+                              r.leftCompany
+                                ? "Restore as active employee"
+                                : "Mark as Left Company (hide from main view)"
+                            }
+                            style={{
+                              padding: "6px 10px",
+                              background: r.leftCompany
+                                ? "linear-gradient(135deg,#10b981,#047857)"
+                                : "linear-gradient(135deg,#dc2626,#7c2d12)",
+                              color: "#fff",
+                              border: 0,
+                              borderRadius: 999,
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {r.leftCompany ? "↩ Restore" : "🚪 Left"}
+                          </button>
                           <button
                             onClick={() => startEdit(i)}
                             style={{
@@ -1365,6 +2443,7 @@ export default function OHCView() {
                           >
                             Edit
                           </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1629,5 +2708,71 @@ function Select({ label, value, onChange, options }) {
         ))}
       </select>
     </label>
+  );
+}
+
+const selectStyle = {
+  padding: "6px 12px",
+  borderRadius: 999,
+  border: "1px solid rgba(148,163,184,0.9)",
+  background: "linear-gradient(135deg,#ffffff,#f1f5f9)",
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#0f172a",
+  cursor: "pointer",
+  outline: "none",
+  minWidth: 200,
+  maxWidth: 360,
+  textOverflow: "ellipsis",
+};
+
+function StatCard({ label, value, color, icon, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        textAlign: "left",
+        padding: "10px 12px",
+        borderRadius: 14,
+        border: active
+          ? `2px solid ${color}`
+          : "1px solid rgba(148,163,184,0.6)",
+        background: active
+          ? `linear-gradient(135deg, ${color}15, ${color}30)`
+          : "linear-gradient(135deg,#ffffff,#f8fafc)",
+        cursor: "pointer",
+        boxShadow: active
+          ? `0 6px 18px ${color}55`
+          : "0 2px 6px rgba(15,23,42,0.08)",
+        transition: "all 0.15s ease",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          color: "#6b7280",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <span>{icon}</span>
+        <span>{label}</span>
+      </div>
+      <div
+        style={{
+          fontSize: 24,
+          fontWeight: 800,
+          color,
+          marginTop: 2,
+        }}
+      >
+        {value}
+      </div>
+    </button>
   );
 }

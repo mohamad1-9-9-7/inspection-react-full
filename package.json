@@ -2,6 +2,10 @@
   "name": "inspection-app",
   "version": "1.0.0",
   "private": true,
+  "description": "Al Mawashi Inspection — Quality Control & Monitoring System",
+  "author": "Al Mawashi",
+  "main": "public/electron.js",
+  "homepage": "./",
   "dependencies": {
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
@@ -33,7 +37,11 @@
   "scripts": {
     "start": "react-scripts start --host 0.0.0.0",
     "build": "react-scripts build",
-    "electron": "electron ."
+    "electron": "electron .",
+    "electron:dev": "electron .",
+    "electron:build": "react-scripts build && electron-builder --win --x64",
+    "electron:build:portable": "react-scripts build && electron-builder --win portable --x64",
+    "dist": "react-scripts build && electron-builder"
   },
   "eslintConfig": {
     "extends": [
@@ -63,10 +71,47 @@
   "devDependencies": {
     "baseline-browser-mapping": "^2.9.7",
     "electron": "^37.2.5",
+    "electron-builder": "^25.1.8",
     "eslint": "8.57.0",
     "eslint-config-react-app": "7.0.1",
     "eslint-plugin-react": "7.37.1",
     "eslint-plugin-react-hooks": "4.6.0"
+  },
+  "build": {
+    "appId": "com.almawashi.inspection",
+    "productName": "Al Mawashi Inspection",
+    "copyright": "Copyright © 2026 Al Mawashi",
+    "files": [
+      "build/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "electron",
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/icon.png",
+      "artifactName": "AlMawashiInspection-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Al Mawashi Inspection"
+    },
+    "portable": {
+      "artifactName": "AlMawashiInspection-Portable-${version}.${ext}"
+    }
   },
   "packageManager": "pnpm@10.15.0+sha512.486ebc259d3e999a4e8691ce03b5cac4a71cbeca39372a9b762cb500cfdf0873e2cb16abe3d951b1ee2cf012503f027b98b6584e4df22524e0c7450d9ec7aa7b"
 }

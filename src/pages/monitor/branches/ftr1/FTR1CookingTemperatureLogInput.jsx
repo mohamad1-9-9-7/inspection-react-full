@@ -1,5 +1,16 @@
 // src/pages/monitor/branches/ftr1/FTR1CookingTemperatureLogInput.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+
+/* ===== Draft (localStorage) ===== */
+const DRAFT_KEY = "ftr1_cooking_temp_log_draft_v1";
+const loadDraft = () => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
 
 /* ===== API base ===== */
 const API_BASE = String(
@@ -31,6 +42,8 @@ const emptyRow = () => ({
 export default function FTR1CookingTemperatureLogInput() {
   // تاريخ عام للتقرير (اختياري للحفظ كميتا)
   const [reportDate, setReportDate] = useState(() => {
+    const dft = loadDraft();
+    if (dft.reportDate) return dft.reportDate;
     try {
       return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
     } catch {
@@ -40,11 +53,24 @@ export default function FTR1CookingTemperatureLogInput() {
   });
 
   // فوتر
-  const [verifiedBy, setVerifiedBy] = useState("");
+  const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
 
   // الصفوف (3 افتراضيًا)
-  const [rows, setRows] = useState(() => Array.from({ length: 3 }, () => emptyRow()));
+  const [rows, setRows] = useState(() => {
+    const d = loadDraft();
+    return Array.isArray(d.rows) && d.rows.length ? d.rows : Array.from({ length: 3 }, () => emptyRow());
+  });
   const [saving, setSaving] = useState(false);
+
+  /* ✅ Auto-save draft */
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ reportDate, verifiedBy, rows, ts: Date.now() })
+      );
+    } catch {}
+  }, [reportDate, verifiedBy, rows]);
 
   /* ===== ستايلات ===== */
   const gridStyle = useMemo(() => ({
@@ -147,6 +173,7 @@ export default function FTR1CookingTemperatureLogInput() {
         body: JSON.stringify({ reporter: "ftr1", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
       alert("✅ تم الحفظ بنجاح!");
     } catch (e) {
       console.error(e);

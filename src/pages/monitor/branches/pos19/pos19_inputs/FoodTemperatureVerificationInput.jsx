@@ -1,6 +1,17 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/FoodTemperatureVerificationInput.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+
+/* ===== Draft (localStorage) ===== */
+const DRAFT_KEY = "pos19_food_temp_verification_draft_v1";
+const loadDraft = () => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -74,14 +85,29 @@ const actionBtn = (bg) => ({
 
 export default function FoodTemperatureVerificationInput() {
   const [reportDate, setReportDate] = useState(() => {
+    const dft = loadDraft();
+    if (dft.reportDate) return dft.reportDate;
     try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
     catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
   });
-  const [section, setSection]       = useState("");
-  const [rows, setRows]             = useState(() => Array.from({ length: 2 }, () => emptyRow()));
-  const [verifiedBy, setVerifiedBy] = useState("");
-  const [checkedBy, setCheckedBy]   = useState("");
+  const [section, setSection]       = useState(() => loadDraft().section || "");
+  const [rows, setRows]             = useState(() => {
+    const d = loadDraft();
+    return Array.isArray(d.rows) && d.rows.length ? d.rows : Array.from({ length: 2 }, () => emptyRow());
+  });
+  const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
+  const [checkedBy, setCheckedBy]   = useState(() => loadDraft().checkedBy || "");
   const [saving, setSaving]         = useState(false);
+
+  /* ✅ Auto-save draft */
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ reportDate, section, rows, verifiedBy, checkedBy, ts: Date.now() })
+      );
+    } catch {}
+  }, [reportDate, section, rows, verifiedBy, checkedBy]);
 
   const monthText = useMemo(() => {
     const m = String(reportDate || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
@@ -140,6 +166,7 @@ export default function FoodTemperatureVerificationInput() {
         body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
       alert("✅ تم الحفظ بنجاح!");
     } catch (e) {
       console.error(e);
