@@ -10,8 +10,28 @@ const API_BASE = String(
 
 const TYPE = "car_approvals";
 const FIXED_DATE = "2000-01-01";
+const MAX_IMAGES = 5;
 
 const Txt = ({ children }) => <span>{children}</span>;
+
+/* Upload a file → returns URL */
+async function uploadViaServer(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url))
+    throw new Error(data?.error || "Upload failed");
+  return data.optimized_url || data.url;
+}
+
+/* Delete image from server (best-effort) */
+async function deleteImage(url) {
+  if (!url) return;
+  try {
+    await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, { method: "DELETE" });
+  } catch {}
+}
 
 async function saveApprovalsToServer(items) {
   const _clientSavedAt = Date.now();
@@ -168,6 +188,8 @@ export default function ApprovalsView() {
   const [msg, setMsg] = useState("");
   const [q, setQ] = useState("");
   const [imgModal, setImgModal] = useState({ open: false, url: "", title: "" });
+  const [expiryFilter, setExpiryFilter] = useState("all"); // "all" | "expired" | "7d" | "30d" | "90d"
+  const [bellOpen, setBellOpen] = useState(false);
 
   const openImage = (url, title = "") => { if (url) setImgModal({ open: true, url, title }); };
   const closeImage = () => setImgModal({ open: false, url: "", title: "" });
@@ -194,10 +216,16 @@ export default function ApprovalsView() {
 
   useEffect(() => { refresh(); }, []);
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") closeImage(); };
+    const onKey = (e) => { if (e.key === "Escape") { closeImage(); setBellOpen(false); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  useEffect(() => {
+    if (!bellOpen) return;
+    const onClick = () => setBellOpen(false);
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [bellOpen]);
 
   const cols = useMemo(() => [
     { k: "company",      t: <Txt>Company</Txt>,       ico: "🏢" },
@@ -216,6 +244,103 @@ export default function ApprovalsView() {
 
   const setDraftVal = (i, key, value) =>
     setDraftRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [key]: value } : r)));
+
+  /* ✅ Add image during edit — uploads + persists immediately */
+  const addImage = async (idx, file) => {
+    if (!file) return;
+    const currentUrls = rows[idx]?.imageUrls || [];
+    if (currentUrls.length >= MAX_IMAGES) {
+      setMsg(`❌ Max ${MAX_IMAGES} images per row.`);
+      setTimeout(() => setMsg(""), 2500);
+      return;
+    }
+    try {
+      setSaving(true);
+      setMsg("⏳ Uploading image…");
+      const url = await uploadViaServer(file);
+      const nextRows = rows.map((r, i) =>
+        i === idx ? { ...r, imageUrls: [...(r.imageUrls || []), url] } : r
+      );
+      await saveApprovalsToServer(nextRows);
+      setRows(nextRows);
+      setDraftRows((p) =>
+        p.map((r, i) => (i === idx ? { ...r, imageUrls: [...(r.imageUrls || []), url] } : r))
+      );
+      setMsg("✅ Image added.");
+    } catch (e) {
+      console.error(e);
+      setMsg("❌ Upload failed.");
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMsg(""), 2000);
+    }
+  };
+
+  /* ✅ Remove image during edit — deletes from server + persists */
+  const removeImage = async (idx, imgIdx) => {
+    const url = rows?.[idx]?.imageUrls?.[imgIdx];
+    if (!url) return;
+    const ok = window.confirm("Remove this image?");
+    if (!ok) return;
+    try {
+      setSaving(true);
+      setMsg("⏳ Removing image…");
+      await deleteImage(url);
+      const nextRows = rows.map((r, i) =>
+        i === idx ? { ...r, imageUrls: (r.imageUrls || []).filter((_, ii) => ii !== imgIdx) } : r
+      );
+      await saveApprovalsToServer(nextRows);
+      setRows(nextRows);
+      setDraftRows((p) =>
+        p.map((r, i) =>
+          i === idx ? { ...r, imageUrls: (r.imageUrls || []).filter((_, ii) => ii !== imgIdx) } : r
+        )
+      );
+      setMsg("✅ Image removed.");
+    } catch (e) {
+      console.error(e);
+      setMsg("❌ Failed to remove.");
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMsg(""), 2000);
+    }
+  };
+
+  /* ✅ Replace image (delete old + upload new) */
+  const replaceImage = async (idx, imgIdx, file) => {
+    if (!file) return;
+    const oldUrl = rows?.[idx]?.imageUrls?.[imgIdx];
+    if (!oldUrl) return;
+    try {
+      setSaving(true);
+      setMsg("⏳ Replacing image…");
+      const newUrl = await uploadViaServer(file);
+      await deleteImage(oldUrl);
+      const nextRows = rows.map((r, i) =>
+        i === idx ? {
+          ...r,
+          imageUrls: (r.imageUrls || []).map((u, ii) => (ii === imgIdx ? newUrl : u)),
+        } : r
+      );
+      await saveApprovalsToServer(nextRows);
+      setRows(nextRows);
+      setDraftRows((p) =>
+        p.map((r, i) =>
+          i === idx ? {
+            ...r,
+            imageUrls: (r.imageUrls || []).map((u, ii) => (ii === imgIdx ? newUrl : u)),
+          } : r
+        )
+      );
+      setMsg("✅ Image replaced.");
+    } catch (e) {
+      console.error(e);
+      setMsg("❌ Replace failed.");
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMsg(""), 2000);
+    }
+  };
 
   const startEdit = (i) => { setDraftRows(rows.map((r) => ({ ...r }))); setEditingIndex(i); };
   const cancelEdit = () => { setDraftRows(rows.map((r) => ({ ...r }))); setEditingIndex(null); };
@@ -261,17 +386,54 @@ export default function ApprovalsView() {
     }
   };
 
+  /* ✅ Expiry stats — counts per category */
+  const expiryStats = useMemo(() => {
+    const expired = [], days7 = [], days30 = [], days90 = [];
+    for (const r of rows) {
+      const d = daysRemaining(r.expiryDate);
+      if (d == null) continue;
+      if (d < 0) expired.push({ r, d });
+      else if (d <= 7) days7.push({ r, d });
+      else if (d <= 30) days30.push({ r, d });
+      else if (d <= 90) days90.push({ r, d });
+    }
+    return { expired, days7, days30, days90, urgent: expired.length + days7.length };
+  }, [rows]);
+
+  /* ✅ Update document title with urgent count */
+  useEffect(() => {
+    const original = "Vehicle Approvals";
+    const u = expiryStats.urgent;
+    document.title = u > 0 ? `(${u} ⚠) ${original}` : original;
+    return () => { document.title = original; };
+  }, [expiryStats.urgent]);
+
   const filteredRows = useMemo(() => {
     const clean = rows.map(normalizeRow);
+    const passesExpiry = (r) => {
+      if (expiryFilter === "all") return true;
+      const d = daysRemaining(r.expiryDate);
+      if (d == null) return false;
+      if (expiryFilter === "expired") return d < 0;
+      if (expiryFilter === "7d") return d >= 0 && d <= 7;
+      if (expiryFilter === "30d") return d >= 0 && d <= 30;
+      if (expiryFilter === "90d") return d >= 0 && d <= 90;
+      return true;
+    };
     const qq = String(q || "").trim();
-    if (!qq) return clean;
-    return clean.filter((r) => rowMatchesQuery(r, qq));
-  }, [rows, q]);
+    return clean.filter((r) => passesExpiry(r) && (qq ? rowMatchesQuery(r, qq) : true));
+  }, [rows, q, expiryFilter]);
 
   const s = styles;
 
   return (
     <div style={s.page}>
+      <style>{`
+        @keyframes av-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); }
+          50% { box-shadow: 0 0 0 6px rgba(220,38,38,0); }
+        }
+      `}</style>
 
       {/* ✅ Modal */}
       {imgModal.open && (
@@ -366,7 +528,137 @@ export default function ApprovalsView() {
         </div>
         <button type="button" onClick={() => window.history.back()} style={s.btn} disabled={saving}>⬅ Back</button>
         <button type="button" onClick={refresh} style={s.btn} disabled={saving}>↻ Refresh</button>
+
+        {/* ✅ Bell with badge */}
+        <div style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => setBellOpen((b) => !b)}
+            style={{
+              ...s.btn,
+              padding: "10px 12px",
+              ...(expiryStats.urgent > 0 ? { background: "linear-gradient(180deg,#fee2e2,#fecaca)", borderColor: "#dc2626" } : {}),
+            }}
+            title={expiryStats.urgent > 0 ? `${expiryStats.urgent} urgent` : "No urgent expiries"}
+          >
+            🔔 {expiryStats.urgent > 0 && (
+              <span style={{
+                background: "#dc2626", color: "#fff", borderRadius: 999,
+                padding: "1px 7px", fontSize: 11, fontWeight: 1000, marginLeft: 4,
+                animation: "av-pulse 1.5s infinite",
+              }}>{expiryStats.urgent}</span>
+            )}
+          </button>
+          {bellOpen && (
+            <div style={s.bellPanel} onClick={(e) => e.stopPropagation()}>
+              <div style={{ fontWeight: 1000, fontSize: 13, color: "#0f172a", marginBottom: 10 }}>
+                Upcoming expiries
+              </div>
+              {[
+                { key: "expired", label: "Expired", arr: expiryStats.expired, color: "#dc2626", bg: "#fee2e2" },
+                { key: "days7", label: "Within 7 days", arr: expiryStats.days7, color: "#9a3412", bg: "#ffedd5" },
+                { key: "days30", label: "Within 30 days", arr: expiryStats.days30, color: "#92400e", bg: "#fef3c7" },
+                { key: "days90", label: "Within 90 days", arr: expiryStats.days90, color: "#1e40af", bg: "#dbeafe" },
+              ].map((g) => (
+                <div key={g.key} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <span style={{ fontWeight: 900, color: g.color, fontSize: 12 }}>{g.label}</span>
+                    <span style={{ background: g.bg, color: g.color, padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 900 }}>
+                      {g.arr.length}
+                    </span>
+                  </div>
+                  {g.arr.length > 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 130, overflow: "auto" }}>
+                      {g.arr.slice(0, 8).map((it, i) => (
+                        <div key={i} style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "6px 8px", background: "#f8fafc", borderRadius: 6, fontSize: 11,
+                        }}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>
+                            <strong>{it.r.vehicleNo || "—"}</strong>
+                            {it.r.tradeLicense ? ` · ${it.r.tradeLicense}` : ""}
+                          </span>
+                          <span style={{ color: g.color, fontWeight: 900 }}>
+                            {it.d < 0 ? `${Math.abs(it.d)}d ago` : `${it.d}d`}
+                          </span>
+                        </div>
+                      ))}
+                      {g.arr.length > 8 && (
+                        <div style={{ fontSize: 10, color: "#64748b", textAlign: "center", padding: 4 }}>
+                          + {g.arr.length - 8} more
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: "#94a3b8", padding: "4px 8px" }}>None</div>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => { setBellOpen(false); }}
+                style={{ ...s.pill, width: "100%", marginTop: 4 }}
+              >Close</button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* ✅ Expiry alert banner */}
+      {(expiryStats.expired.length + expiryStats.days7.length + expiryStats.days30.length) > 0 && (
+        <div style={s.banner}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 1000, color: "#0f172a", fontSize: 13 }}>⚠ Expiry alerts:</span>
+
+            {expiryStats.expired.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setExpiryFilter(expiryFilter === "expired" ? "all" : "expired")}
+                style={s.bChip("#dc2626", "#fee2e2", expiryFilter === "expired")}
+              >
+                🚨 {expiryStats.expired.length} EXPIRED
+              </button>
+            )}
+            {expiryStats.days7.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setExpiryFilter(expiryFilter === "7d" ? "all" : "7d")}
+                style={s.bChip("#9a3412", "#ffedd5", expiryFilter === "7d")}
+              >
+                ⏰ {expiryStats.days7.length} within 7 days
+              </button>
+            )}
+            {expiryStats.days30.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setExpiryFilter(expiryFilter === "30d" ? "all" : "30d")}
+                style={s.bChip("#92400e", "#fef3c7", expiryFilter === "30d")}
+              >
+                📅 {expiryStats.days30.length} within 30 days
+              </button>
+            )}
+            {expiryStats.days90.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setExpiryFilter(expiryFilter === "90d" ? "all" : "90d")}
+                style={s.bChip("#1e40af", "#dbeafe", expiryFilter === "90d")}
+              >
+                📆 {expiryStats.days90.length} within 90 days
+              </button>
+            )}
+
+            {expiryFilter !== "all" && (
+              <button
+                type="button"
+                onClick={() => setExpiryFilter("all")}
+                style={{ ...s.pill, marginLeft: 4 }}
+              >
+                ✕ Clear filter
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div style={s.loading}>⏳ Loading…</div>
@@ -435,8 +727,67 @@ export default function ApprovalsView() {
                           <span style={s.badge(left)}>{left == null ? "-" : left}</span>
                         </td>
 
-                        <td style={{ ...s.td, minWidth: 120 }}>
-                          {imgUrls.length > 0 ? (
+                        <td style={{ ...s.td, minWidth: isEditing ? 220 : 140 }}>
+                          {isEditing ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch" }}>
+                              {imgUrls.length > 0 ? imgUrls.map((url, ii) => (
+                                <div key={ii} style={s.imgRow}>
+                                  <button
+                                    type="button"
+                                    onClick={() => openImage(url, `Image ${ii + 1}`)}
+                                    style={s.imgViewMini}
+                                    title="View"
+                                  >🖼️ {ii + 1}</button>
+                                  <label style={s.imgReplaceBtn} title="Replace">
+                                    🔄
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      style={{ display: "none" }}
+                                      onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        e.target.value = "";
+                                        if (f) replaceImage(idx, ii, f);
+                                      }}
+                                      disabled={saving}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeImage(idx, ii)}
+                                    style={s.imgDelBtn}
+                                    title="Remove"
+                                    disabled={saving}
+                                  >✕</button>
+                                </div>
+                              )) : (
+                                <span style={s.muted}>No images yet</span>
+                              )}
+                              {imgUrls.length < MAX_IMAGES ? (
+                                <label style={s.imgAddBtn}>
+                                  ➕ Add image
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    style={{ display: "none" }}
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0];
+                                      e.target.value = "";
+                                      if (f) addImage(idx, f);
+                                    }}
+                                    disabled={saving}
+                                  />
+                                </label>
+                              ) : (
+                                <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 800, textAlign: "center" }}>
+                                  Max {MAX_IMAGES} reached
+                                </div>
+                              )}
+                              <div style={{ fontSize: 10, color: "#64748b", textAlign: "center" }}>
+                                {imgUrls.length}/{MAX_IMAGES} images
+                              </div>
+                            </div>
+                          ) : imgUrls.length > 0 ? (
                             <div style={{ display: "flex", flexDirection: "column", gap: 5, alignItems: "center" }}>
                               {imgUrls.map((url, ii) => (
                                 <button
@@ -499,7 +850,7 @@ const styles = {
     direction: "ltr", padding: 16, minHeight: "100vh",
     background: "radial-gradient(1200px 700px at 12% 0%, rgba(59,130,246,.18), transparent 60%), radial-gradient(900px 520px at 88% 10%, rgba(168,85,247,.18), transparent 55%), radial-gradient(900px 600px at 50% 110%, rgba(16,185,129,.12), transparent 55%), linear-gradient(180deg,#0b1220 0%, #0b1220 140px, #f6f7fb 140px)",
   },
-  topBar: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12, padding: 12, borderRadius: 18, background: "rgba(255,255,255,.92)", border: "1px solid rgba(226,232,240,.95)", boxShadow: "0 18px 50px rgba(2,6,23,.14)", backdropFilter: "blur(10px)" },
+  topBar: { position: "relative", zIndex: 1000, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12, padding: 12, borderRadius: 18, background: "rgba(255,255,255,.92)", border: "1px solid rgba(226,232,240,.95)", boxShadow: "0 18px 50px rgba(2,6,23,.14)", backdropFilter: "blur(10px)" },
   brand: { display: "flex", alignItems: "center", gap: 10, minWidth: 320 },
   brandDivider: { width: 1, height: 34, background: "rgba(148,163,184,.45)" },
   textLogo: { display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 14, background: "linear-gradient(180deg,#ffffff,#f8fafc)", border: "1px solid rgba(226,232,240,.95)", boxShadow: "0 10px 24px rgba(15,23,42,.08)" },
@@ -568,4 +919,58 @@ const styles = {
 
   btnDangerMini: { border: "1px solid rgba(220,38,38,.25)", background: "linear-gradient(180deg, rgba(239,68,68,1), rgba(220,38,38,1))", color: "#fff", borderRadius: 14, padding: "8px 10px", cursor: "pointer", fontWeight: 1000 },
   empty: { padding: 14, color: "#64748b", textAlign: "center", fontWeight: 900 },
+
+  /* ✅ Banner + chips */
+  banner: {
+    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+    marginBottom: 10, padding: "10px 14px", borderRadius: 16,
+    background: "linear-gradient(180deg,#fffbeb,#fef3c7)",
+    border: "1px solid #fde68a",
+    boxShadow: "0 8px 20px rgba(146, 64, 14, .12)",
+  },
+  bChip: (color, bg, active) => ({
+    border: `1px solid ${active ? color : "rgba(148,163,184,.4)"}`,
+    background: active ? color : bg,
+    color: active ? "#fff" : color,
+    borderRadius: 999,
+    padding: "6px 12px",
+    fontWeight: 1000,
+    cursor: "pointer",
+    fontSize: 12,
+    boxShadow: active ? `0 6px 14px ${color}40` : "none",
+    display: "inline-flex", alignItems: "center", gap: 4,
+  }),
+
+  /* ✅ Bell panel */
+  bellPanel: {
+    position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 9000,
+    width: 320, maxHeight: 480, overflow: "auto",
+    background: "#fff", border: "1px solid rgba(226,232,240,.95)", borderRadius: 14,
+    boxShadow: "0 18px 48px rgba(2,6,23,.22)", padding: 14,
+  },
+
+  /* ✅ Image edit controls */
+  imgRow: {
+    display: "flex", alignItems: "center", gap: 4, justifyContent: "space-between",
+    background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "4px 6px",
+  },
+  imgViewMini: {
+    flex: 1, border: "1px solid rgba(148,163,184,.55)", background: "#fff",
+    borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontWeight: 900, fontSize: 11,
+    display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+  },
+  imgReplaceBtn: {
+    border: "1px solid rgba(59,130,246,.4)", background: "#eff6ff", color: "#1d4ed8",
+    borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontWeight: 900, fontSize: 12,
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+  },
+  imgDelBtn: {
+    border: "1px solid rgba(220,38,38,.3)", background: "#fee2e2", color: "#991b1b",
+    borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontWeight: 1000, fontSize: 12,
+  },
+  imgAddBtn: {
+    border: "1px dashed #94a3b8", background: "linear-gradient(180deg,#f0f9ff,#e0f2fe)", color: "#0369a1",
+    borderRadius: 10, padding: "8px 10px", cursor: "pointer", fontWeight: 900, fontSize: 12,
+    textAlign: "center", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+  },
 };
