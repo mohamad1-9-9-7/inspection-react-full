@@ -533,7 +533,8 @@ function MultiSelect({ label, options = [], selected = [], onChange, placeholder
 }
 
 /* Inline SVG sparkline */
-function Sparkline({ data = [], width = 280, height = 70, color = T.primary, fill = T.primaryS, showDots = true }) {
+function Sparkline({ data = [], width = 280, height = 70, color = T.primary, fill = T.primaryS, showDots = true, interactive = false, renderTooltip }) {
+  const [hover, setHover] = useState(null);
   if (!data.length) return <div style={{ ...sx.mutedS, textAlign: "center", padding: 20 }}>No data.</div>;
   const max = Math.max(...data.map((d) => d.value), 1);
   const min = 0;
@@ -547,16 +548,73 @@ function Sparkline({ data = [], width = 280, height = 70, color = T.primary, fil
   });
   const path = points.map(([x, y], i) => (i === 0 ? `M${x},${y}` : `L${x},${y}`)).join(" ");
   const areaPath = `${path} L${points[points.length - 1][0]},${padY + H} L${padX},${padY + H} Z`;
+
+  const onMove = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    let bestI = 0, bestDist = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const d = Math.abs(points[i][0] - x);
+      if (d < bestDist) { bestDist = d; bestI = i; }
+    }
+    setHover(bestI);
+  };
+
+  const tipW = 220;
+  const hp = hover != null ? points[hover] : null;
+  const tipLeft = hp ? Math.max(4, Math.min(width - tipW - 4, hp[0] - tipW / 2)) : 0;
+  const placeAbove = hp ? hp[1] > 70 : true;
+
   return (
-    <svg width={width} height={height} style={{ display: "block" }}>
-      <path d={areaPath} fill={fill} />
-      <path d={path} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      {showDots && points.map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r={2.5} fill={color}>
-          <title>{`${data[i].label}: ${data[i].value}`}</title>
-        </circle>
-      ))}
-    </svg>
+    <div style={{ position: "relative", width, height, display: "inline-block" }}>
+      <svg
+        width={width}
+        height={height}
+        style={{ display: "block", cursor: interactive ? "crosshair" : "default" }}
+        onMouseMove={interactive ? onMove : undefined}
+        onMouseLeave={interactive ? () => setHover(null) : undefined}
+      >
+        <path d={areaPath} fill={fill} />
+        <path d={path} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        {showDots && points.map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r={2.5} fill={color}>
+            {!interactive && <title>{`${data[i].label}: ${data[i].value}`}</title>}
+          </circle>
+        ))}
+        {hover != null && interactive && hp && (
+          <>
+            <line x1={hp[0]} x2={hp[0]} y1={padY} y2={height - padY}
+              stroke={T.textS} strokeDasharray="3 3" strokeWidth={1} opacity={0.7} />
+            <circle cx={hp[0]} cy={hp[1]} r={5} fill={color} stroke="#fff" strokeWidth={2} />
+          </>
+        )}
+      </svg>
+      {hover != null && interactive && hp && (
+        <div style={{
+          position: "absolute",
+          left: tipLeft,
+          top: placeAbove ? Math.max(4, hp[1] - 90) : Math.min(height - 80, hp[1] + 12),
+          width: tipW,
+          background: T.text,
+          color: "#fff",
+          borderRadius: 10,
+          padding: "10px 12px",
+          fontSize: 12,
+          lineHeight: 1.5,
+          boxShadow: "0 8px 24px rgba(15,23,42,.35)",
+          pointerEvents: "none",
+          zIndex: 100,
+          border: `1px solid ${T.text}`,
+        }}>
+          {renderTooltip ? renderTooltip(data[hover]) : (
+            <>
+              <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>{data[hover].label}</div>
+              <div style={{ opacity: 0.9 }}>{data[hover].value}</div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -607,6 +665,252 @@ function MiniDonut({ percent = 0, label = "", color = T.primary, size = 80, coun
         <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{label}</div>
         {count != null && <div style={sx.mutedS}>{count}</div>}
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Product DNA fingerprint — radial spider chart
+   axes: condemn%, useProd%, posSpread, originSpread, volume, recency
+   Each axis 0-100. Optional second product overlay for comparison.
+   ============================================================ */
+function ProductDNA({ primary, secondary, size = 280 }) {
+  const axes = [
+    { key: "condemn",  label: "Condemn%" },
+    { key: "useProd",  label: "Use Prod%" },
+    { key: "posSpread", label: "POS spread" },
+    { key: "originSpread", label: "Origin spread" },
+    { key: "volume",   label: "Volume" },
+    { key: "recency",  label: "Recency" },
+  ];
+  const cx = size / 2, cy = size / 2;
+  const r = (size / 2) - 40;
+  const N = axes.length;
+  const angleFor = (i) => (-Math.PI / 2) + (2 * Math.PI * i / N);
+
+  const polyPoints = (data, fillR = r) => axes.map((a, i) => {
+    const v = Math.max(0, Math.min(100, data?.[a.key] || 0));
+    const ang = angleFor(i);
+    const dist = (v / 100) * fillR;
+    return [cx + Math.cos(ang) * dist, cy + Math.sin(ang) * dist];
+  });
+
+  const toPath = (pts) => pts.map(([x, y], i) => (i === 0 ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1)).join(" ") + " Z";
+
+  const pPts = primary ? polyPoints(primary) : null;
+  const sPts = secondary ? polyPoints(secondary) : null;
+
+  return (
+    <div style={{ display: "flex", justifyContent: "center" }}>
+      <svg width={size} height={size} style={{ display: "block" }}>
+        {/* concentric circles */}
+        {[20, 40, 60, 80, 100].map((p) => (
+          <circle key={p} cx={cx} cy={cy} r={(p / 100) * r}
+            fill="none" stroke={T.borderS} strokeWidth={p === 100 ? 1.5 : 1} strokeDasharray={p === 100 ? "" : "2 3"} />
+        ))}
+        {/* axes lines */}
+        {axes.map((a, i) => {
+          const ang = angleFor(i);
+          const ex = cx + Math.cos(ang) * r;
+          const ey = cy + Math.sin(ang) * r;
+          return <line key={a.key} x1={cx} y1={cy} x2={ex} y2={ey} stroke={T.border} strokeWidth={1} />;
+        })}
+        {/* secondary polygon (if compare mode) */}
+        {sPts && (
+          <>
+            <path d={toPath(sPts)} fill={T.success} fillOpacity={0.18} stroke={T.success} strokeWidth={2} />
+            {sPts.map(([x, y], i) => <circle key={`s${i}`} cx={x} cy={y} r={3} fill={T.success} />)}
+          </>
+        )}
+        {/* primary polygon */}
+        {pPts && (
+          <>
+            <path d={toPath(pPts)} fill={T.primary} fillOpacity={0.22} stroke={T.primary} strokeWidth={2} />
+            {pPts.map(([x, y], i) => <circle key={`p${i}`} cx={x} cy={y} r={3.5} fill={T.primary} />)}
+          </>
+        )}
+        {/* axis labels */}
+        {axes.map((a, i) => {
+          const ang = angleFor(i);
+          const lx = cx + Math.cos(ang) * (r + 18);
+          const ly = cy + Math.sin(ang) * (r + 18);
+          const v = primary?.[a.key] || 0;
+          return (
+            <g key={a.key}>
+              <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle"
+                style={{ fontSize: 11, fill: T.textM, fontWeight: 700 }}>
+                {a.label}
+              </text>
+              <text x={lx} y={ly + 12} textAnchor="middle" dominantBaseline="middle"
+                style={{ fontSize: 10, fill: T.text, fontWeight: 800 }}>
+                {Math.round(v)}{secondary ? ` / ${Math.round(secondary?.[a.key] || 0)}` : ""}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/* ============================================================
+   Sankey diagram — 3 columns (Origin → POS → Action) with curved links
+   Width = flow count. Hover highlights connected paths.
+   ============================================================ */
+function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
+  const [hoverNode, setHoverNode] = useState(null); // {col, key}
+  if (!flows || flows.length === 0) {
+    return <div style={{ ...sx.muted, textAlign: "center", padding: 30 }}>No flows to display.</div>;
+  }
+
+  // Aggregate flows: each flow {origin, pos, action, count}
+  // Build column nodes
+  const buildNodes = (col) => {
+    const m = new Map();
+    for (const f of flows) {
+      const k = col === 0 ? f.origin : col === 1 ? f.pos : f.action;
+      m.set(k, (m.get(k) || 0) + f.count);
+    }
+    const all = Array.from(m.entries()).map(([key, value]) => ({ key, value }));
+    all.sort((a, b) => b.value - a.value);
+    if (all.length > topN) {
+      const top = all.slice(0, topN);
+      const restSum = all.slice(topN).reduce((s, x) => s + x.value, 0);
+      if (restSum > 0) top.push({ key: "Other", value: restSum, isOther: true });
+      return top;
+    }
+    return all;
+  };
+  const cols = [buildNodes(0), buildNodes(1), buildNodes(2)];
+  const colLabels = ["Origin", "POS", "Action"];
+  const colColors = [T.success, T.primary, T.danger];
+
+  // Group "Other" entries
+  const remap = (col, key) => {
+    const nodes = cols[col];
+    const found = nodes.find((n) => n.key === key);
+    if (found) return key;
+    return "Other";
+  };
+  const aggregated = new Map(); // "src||mid||dst" -> count
+  for (const f of flows) {
+    const o = remap(0, f.origin);
+    const p = remap(1, f.pos);
+    const a = remap(2, f.action);
+    const key1 = `0|${o}|1|${p}`;
+    aggregated.set(key1, (aggregated.get(key1) || 0) + f.count);
+    const key2 = `1|${p}|2|${a}`;
+    aggregated.set(key2, (aggregated.get(key2) || 0) + f.count);
+  }
+
+  // Layout
+  const padX = 140, padY = 20;
+  const colW = 18, gap = (width - padX * 2 - colW * 3) / 2;
+  const colXs = [padX, padX + colW + gap, padX + colW * 2 + gap * 2];
+
+  // Compute Y positions per node
+  const nodePositions = cols.map((nodes, ci) => {
+    const total = nodes.reduce((s, n) => s + n.value, 0) || 1;
+    const innerH = height - padY * 2;
+    let y = padY;
+    return nodes.map((n) => {
+      const h = (n.value / total) * (innerH - (nodes.length - 1) * 4);
+      const node = { ...n, x: colXs[ci], y, h, col: ci };
+      y += h + 4;
+      return node;
+    });
+  });
+
+  // Build links
+  const links = [];
+  for (const [key, value] of aggregated.entries()) {
+    const [c1, k1, c2, k2] = key.split("|");
+    const src = nodePositions[parseInt(c1)].find((n) => n.key === k1);
+    const dst = nodePositions[parseInt(c2)].find((n) => n.key === k2);
+    if (!src || !dst) continue;
+    links.push({ src, dst, value });
+  }
+  // Sort links per src so widths stack consistently
+  for (const node of nodePositions.flat()) {
+    const out = links.filter((l) => l.src === node).sort((a, b) => b.value - a.value);
+    let yOff = 0;
+    for (const l of out) {
+      const total = node.value || 1;
+      const w = (l.value / total) * node.h;
+      l.srcY = node.y + yOff + w / 2;
+      l.srcW = w;
+      yOff += w;
+    }
+    const incoming = links.filter((l) => l.dst === node).sort((a, b) => b.value - a.value);
+    let yOffIn = 0;
+    for (const l of incoming) {
+      const total = node.value || 1;
+      const w = (l.value / total) * node.h;
+      l.dstY = node.y + yOffIn + w / 2;
+      l.dstW = w;
+      yOffIn += w;
+    }
+  }
+
+  const isLinkHighlighted = (l) => {
+    if (!hoverNode) return false;
+    return (l.src.col === hoverNode.col && l.src.key === hoverNode.key)
+      || (l.dst.col === hoverNode.col && l.dst.key === hoverNode.key);
+  };
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <svg width={width} height={height} style={{ display: "block" }}>
+        {/* Column labels */}
+        {colLabels.map((lbl, i) => (
+          <text key={lbl} x={colXs[i] + colW / 2} y={12} textAnchor="middle"
+            style={{ fontSize: 11, fontWeight: 800, fill: T.textM, textTransform: "uppercase", letterSpacing: ".05em" }}>
+            {lbl}
+          </text>
+        ))}
+        {/* Links (drawn first so nodes appear on top) */}
+        {links.map((l, i) => {
+          const x1 = l.src.x + colW;
+          const x2 = l.dst.x;
+          const xm = (x1 + x2) / 2;
+          const w = Math.max(1, Math.min(l.srcW, l.dstW));
+          const path = `M${x1},${l.srcY} C${xm},${l.srcY} ${xm},${l.dstY} ${x2},${l.dstY}`;
+          const high = isLinkHighlighted(l);
+          return (
+            <path key={i} d={path}
+              fill="none"
+              stroke={l.src.col === 0 ? T.success : T.primary}
+              strokeWidth={w}
+              strokeOpacity={hoverNode ? (high ? 0.5 : 0.08) : 0.22}
+              style={{ transition: "stroke-opacity .15s" }}
+            >
+              <title>{`${l.src.key} → ${l.dst.key}: ${l.value}`}</title>
+            </path>
+          );
+        })}
+        {/* Nodes */}
+        {nodePositions.map((nodes, ci) =>
+          nodes.map((n, i) => (
+            <g key={`${ci}-${i}`}
+              onMouseEnter={() => setHoverNode({ col: ci, key: n.key })}
+              onMouseLeave={() => setHoverNode(null)}
+              style={{ cursor: "pointer" }}>
+              <rect x={n.x} y={n.y} width={colW} height={Math.max(2, n.h)}
+                fill={colColors[ci]} rx={3} opacity={hoverNode && hoverNode.col === ci && hoverNode.key !== n.key ? 0.4 : 1}>
+                <title>{`${n.key}: ${n.value}`}</title>
+              </rect>
+              <text
+                x={ci === 0 ? n.x - 6 : n.x + colW + 6}
+                y={n.y + n.h / 2 + 3}
+                textAnchor={ci === 0 ? "end" : "start"}
+                style={{ fontSize: 11, fill: T.text, fontWeight: 600, pointerEvents: "none" }}>
+                {(n.key || "—").length > 18 ? (n.key || "—").slice(0, 18) + "…" : (n.key || "—")}
+                <tspan dx={6} style={{ fill: T.textS, fontWeight: 800 }}>{n.value}</tspan>
+              </text>
+            </g>
+          ))
+        )}
+      </svg>
     </div>
   );
 }
@@ -931,6 +1235,8 @@ function AuditTrailModalInner({ open, onClose, item, trail }) {
 function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate, auditTrailByKey, initialCode, initialName }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
+  const [compareWith, setCompareWith] = useState(null);
+  const [compareQuery, setCompareQuery] = useState("");
   const [pFrom, setPFrom] = useState("");
   const [pTo, setPTo] = useState("");
   const inputRef = useRef(null);
@@ -946,11 +1252,12 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
         setTimeout(() => inputRef.current?.focus(), 100);
       }
       setPFrom(""); setPTo("");
+      setCompareWith(null); setCompareQuery("");
     }
   }, [open, initialCode, initialName]);
 
-  // Reset date range when changing product
-  useEffect(() => { setPFrom(""); setPTo(""); }, [selected?.code, selected?.name]);
+  // Reset date range + compare when changing product
+  useEffect(() => { setPFrom(""); setPTo(""); setCompareWith(null); setCompareQuery(""); }, [selected?.code, selected?.name]);
 
   function setQuickRange(days) {
     const today = new Date();
@@ -997,8 +1304,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
     let condCount = 0, condKg = 0;
     let useProd = 0, market = 0, marketKg = 0, disposed = 0, disposedKg = 0, sepExp = 0;
     const posMap = {}, originMap = {}, actionMap = {}, expiryMap = {};
-    const dailyMap = new Map();
-    const dailyKgMap = new Map();
+    const dailyData = new Map();
     let totalAcrossAllTime = 0;
     for (const rep of returnsData) {
       const date = rep.reportDate;
@@ -1036,8 +1342,16 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
         posMap[pos] = (posMap[pos] || 0) + 1;
         originMap[origin] = (originMap[origin] || 0) + 1;
         if (it.expiry) expiryMap[it.expiry] = (expiryMap[it.expiry] || 0) + 1;
-        dailyMap.set(date, (dailyMap.get(date) || 0) + 1);
-        if (isKgType(it.qtyType)) dailyKgMap.set(date, (dailyKgMap.get(date) || 0) + q);
+        const cur = dailyData.get(date) || { items: 0, kg: 0, pcs: 0, condCount: 0, condKg: 0, posSet: new Set() };
+        cur.items += 1;
+        if (isKgType(it.qtyType)) cur.kg += q;
+        else if (isPcsType(it.qtyType)) cur.pcs += q;
+        if (isCondemnation(act)) {
+          cur.condCount += 1;
+          if (isKgType(it.qtyType)) cur.condKg += q;
+        }
+        cur.posSet.add(pos);
+        dailyData.set(date, cur);
         occurrences.push({ ...it, date, currentAction: act, hasChange: !!ch && ch.to === actionText(it) });
       }
     }
@@ -1053,7 +1367,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
       }
     }
     audit.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-    const dates = Array.from(dailyMap.keys()).sort();
+    const dates = Array.from(dailyData.keys()).sort();
     return {
       returnsCount,
       totalAcrossAllTime,
@@ -1068,8 +1382,19 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
       originTop: Object.entries(originMap).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
       actionTop: Object.entries(actionMap).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
       expiryTop: Object.entries(expiryMap).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, value]) => ({ label, value })),
-      daily: dates.map((d) => ({ label: d, value: dailyMap.get(d) })),
-      dailyKg: dates.map((d) => ({ label: d, value: Math.round((dailyKgMap.get(d) || 0) * 100) / 100 })),
+      daily: dates.map((d) => {
+        const x = dailyData.get(d);
+        return {
+          label: d,
+          value: x.items,
+          kg: Math.round(x.kg * 100) / 100,
+          pcs: x.pcs,
+          condCount: x.condCount,
+          condKg: Math.round(x.condKg * 100) / 100,
+          posList: Array.from(x.posSet),
+        };
+      }),
+      dailyKg: dates.map((d) => ({ label: d, value: Math.round((dailyData.get(d)?.kg || 0) * 100) / 100 })),
       occurrences: occurrences.sort((a, b) => (b.date || "").localeCompare(a.date || "")),
       audit,
       firstSeen: dates[0],
@@ -1077,6 +1402,95 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
       uniqueDates: dates.length,
     };
   }, [selected, returnsData, changeMapByDate, auditTrailByKey, open, pFrom, pTo]);
+
+  /* Global maxes for DNA normalization */
+  const productMaxes = useMemo(() => {
+    if (!open) return { vol: 1, pos: 1, origin: 1 };
+    const stats = new Map();
+    for (const rep of returnsData) {
+      for (const it of (rep.items || [])) {
+        const c = (it.itemCode || "").trim().toLowerCase();
+        const n = (it.productName || "").trim().toLowerCase();
+        if (!c && !n) continue;
+        const k = `${c}||${n}`;
+        const e = stats.get(k) || { vol: 0, pos: new Set(), origin: new Set() };
+        e.vol += 1;
+        e.pos.add(safeButchery(it) || "—");
+        e.origin.add(it.origin || "—");
+        stats.set(k, e);
+      }
+    }
+    let mv = 1, mp = 1, mo = 1;
+    for (const e of stats.values()) {
+      if (e.vol > mv) mv = e.vol;
+      if (e.pos.size > mp) mp = e.pos.size;
+      if (e.origin.size > mo) mo = e.origin.size;
+    }
+    return { vol: mv, pos: mp, origin: mo };
+  }, [returnsData, open]);
+
+  function dnaFor(insightsObj) {
+    if (!insightsObj || insightsObj.returnsCount === 0) return null;
+    const total = insightsObj.returnsCount || 1;
+    const lastDate = insightsObj.lastSeen ? new Date(insightsObj.lastSeen) : null;
+    const today = new Date();
+    const daysSince = lastDate ? Math.max(0, Math.round((today - lastDate) / (24 * 60 * 60 * 1000))) : 999;
+    return {
+      condemn: (insightsObj.condCount / total) * 100,
+      useProd: (insightsObj.useProd / total) * 100,
+      posSpread: (insightsObj.posTop.length / productMaxes.pos) * 100,
+      originSpread: (insightsObj.originTop.length / productMaxes.origin) * 100,
+      volume: (insightsObj.returnsCount / productMaxes.vol) * 100,
+      recency: Math.max(0, 100 - (daysSince / 365) * 100),
+    };
+  }
+
+  const dnaPrimary = useMemo(() => dnaFor(insights), [insights, productMaxes]);
+
+  /* Compute secondary insights for compareWith */
+  const compareInsights = useMemo(() => {
+    if (!compareWith || !open) return null;
+    const codeN = (compareWith.code || "").trim().toLowerCase();
+    const nameN = (compareWith.name || "").trim().toLowerCase();
+    let returnsCount = 0;
+    let condCount = 0, useProd = 0;
+    const posSet = new Set(), originSet = new Set();
+    let lastSeen = "";
+    for (const rep of returnsData) {
+      const date = rep.reportDate;
+      const inner = changeMapByDate.get(date) || new Map();
+      for (const it of (rep.items || [])) {
+        const c = (it.itemCode || "").trim().toLowerCase();
+        const n = (it.productName || "").trim().toLowerCase();
+        if (c !== codeN || n !== nameN) continue;
+        returnsCount += 1;
+        const ch = inner.get(itemKey(it));
+        const act = ch?.to ?? actionText(it);
+        if (isCondemnation(act)) condCount += 1;
+        if ((act || "").toLowerCase() === "use in production") useProd += 1;
+        posSet.add(safeButchery(it) || "—");
+        originSet.add(it.origin || "—");
+        if (!lastSeen || date > lastSeen) lastSeen = date;
+      }
+    }
+    return {
+      returnsCount, condCount, useProd, lastSeen,
+      posTop: Array.from(posSet).map((label) => ({ label, value: 0 })),
+      originTop: Array.from(originSet).map((label) => ({ label, value: 0 })),
+    };
+  }, [compareWith, returnsData, changeMapByDate, open]);
+
+  const dnaSecondary = useMemo(() => dnaFor(compareInsights), [compareInsights, productMaxes]);
+
+  /* Compare autocomplete matches */
+  const compareMatches = useMemo(() => {
+    const q = compareQuery.trim().toLowerCase();
+    if (!q || compareWith) return [];
+    return productList.filter((p) => {
+      if (selected && p.code === selected.code && p.name === selected.name) return false;
+      return p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
+    }).slice(0, 8);
+  }, [compareQuery, productList, compareWith, selected]);
 
   function exportProductCSV() {
     if (!insights || !selected) return;
@@ -1277,13 +1691,118 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
               sub={`${insights.disposedKg} kg`} color={T.warning} bg={T.warningS} />
           </div>
 
+          {/* Product DNA fingerprint */}
+          <div style={{ ...sx.card, padding: 16, marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <FiTarget size={16} color={T.primary} />
+                <h2 style={sx.h2}>Product DNA</h2>
+                <span style={{ ...sx.mutedS }}>radar of behavior across 6 dimensions</span>
+              </div>
+              <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
+                {compareWith ? (
+                  <>
+                    <span style={{ ...sx.pill, background: T.successS, color: T.success, borderColor: "#a7f3d0" }}>
+                      vs {compareWith.name?.slice(0, 20) || compareWith.code}
+                    </span>
+                    <button onClick={() => { setCompareWith(null); setCompareQuery(""); }} style={{
+                      ...sx.btn, padding: "4px 8px", fontSize: 11,
+                    }}><FiX size={11} /> Remove</button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={compareQuery}
+                      onChange={(e) => setCompareQuery(e.target.value)}
+                      placeholder="Compare with…"
+                      style={{ ...sx.input, padding: "6px 10px", fontSize: 12, width: 200 }}
+                    />
+                    {compareMatches.length > 0 && (
+                      <div style={{
+                        position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 50,
+                        ...sx.card, padding: 6, width: 280, maxHeight: 240, overflow: "auto",
+                        boxShadow: "0 12px 28px rgba(15,23,42,.18)",
+                      }}>
+                        {compareMatches.map((m, i) => (
+                          <button key={i} onClick={() => { setCompareWith({ code: m.code, name: m.name }); setCompareQuery(""); }} style={{
+                            width: "100%", textAlign: "left", padding: "6px 8px", borderRadius: 6,
+                            background: "transparent", border: "none", cursor: "pointer",
+                            display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", fontSize: 12,
+                          }} onMouseOver={(e) => e.currentTarget.style.background = T.bgAlt}
+                             onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
+                              {m.name || m.code || "—"}
+                            </span>
+                            <span style={{ ...sx.mutedS, flexShrink: 0 }}>{m.count}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+            <ProductDNA primary={dnaPrimary} secondary={dnaSecondary} size={300} />
+            <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 8, fontSize: 12 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: T.primary }} />
+                <strong>{selected.name?.slice(0, 24) || selected.code}</strong>
+              </span>
+              {compareWith && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: T.success }} />
+                  <strong>{compareWith.name?.slice(0, 24) || compareWith.code}</strong>
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* Charts row 1 */}
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 12, marginBottom: 12 }}>
             <div style={{ ...sx.card, padding: 14 }}>
               <div style={{ ...sx.h3, marginBottom: 10 }}>Returns over time</div>
               {insights.daily.length > 0 ? (
                 <div style={{ overflowX: "auto" }}>
-                  <Sparkline data={insights.daily} width={Math.max(500, insights.daily.length * 22)} height={120} color={T.primary} fill={T.primaryS} />
+                  <Sparkline
+                    data={insights.daily}
+                    width={Math.max(500, insights.daily.length * 22)}
+                    height={120}
+                    color={T.primary}
+                    fill={T.primaryS}
+                    interactive
+                    renderTooltip={(d) => (
+                      <>
+                        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                          <FiCalendar size={11} /> {d.label}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 10px", fontSize: 12 }}>
+                          <span style={{ opacity: 0.7 }}>Returns</span>
+                          <span style={{ fontWeight: 700, textAlign: "right" }}>{d.value}</span>
+                          {d.kg > 0 && <>
+                            <span style={{ opacity: 0.7 }}>Weight</span>
+                            <span style={{ fontWeight: 700, textAlign: "right" }}>{fmtNum(d.kg)} kg</span>
+                          </>}
+                          {d.pcs > 0 && <>
+                            <span style={{ opacity: 0.7 }}>Pieces</span>
+                            <span style={{ fontWeight: 700, textAlign: "right" }}>{fmtNum(d.pcs, 0)}</span>
+                          </>}
+                          {d.condCount > 0 && <>
+                            <span style={{ color: "#fca5a5" }}>Condemned</span>
+                            <span style={{ fontWeight: 700, textAlign: "right", color: "#fca5a5" }}>
+                              {d.condCount}{d.condKg > 0 ? ` · ${fmtNum(d.condKg)} kg` : ""}
+                            </span>
+                          </>}
+                          {d.posList && d.posList.length > 0 && <>
+                            <span style={{ opacity: 0.7 }}>POS</span>
+                            <span style={{ fontWeight: 700, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.posList.join(", ")}>
+                              {d.posList.length === 1 ? d.posList[0] : `${d.posList.length} locations`}
+                            </span>
+                          </>}
+                        </div>
+                      </>
+                    )}
+                  />
                 </div>
               ) : <div style={{ ...sx.muted, textAlign: "center", padding: 20 }}>No data.</div>}
             </div>
@@ -1648,6 +2167,46 @@ export default function BrowseReturns() {
   /* --- Heatmap mode --- */
   const [heatmapMode, setHeatmapMode] = useState("items"); // "items" | "condemn"
 
+  /* --- Time machine: asOfDate filters everything to as-of that date --- */
+  const [asOfDate, setAsOfDate] = useState(""); // "" = today / no filter
+  const [tmPlaying, setTmPlaying] = useState(false);
+
+  /* --- Reviews queue (persisted in localStorage) --- */
+  const [reviews, setReviews] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("br:reviews:v1") || "{}"); } catch { return {}; }
+  });
+  function persistReviews(next) {
+    try { localStorage.setItem("br:reviews:v1", JSON.stringify(next)); } catch {}
+  }
+  function reviewKey(date, row) { return `${date}__${itemKey(row)}`; }
+  function addReview(date, row) {
+    const k = reviewKey(date, row);
+    if (reviews[k]) return;
+    const snapshot = {
+      date, key: k,
+      itemCode: row.itemCode || "", productName: row.productName || "",
+      origin: row.origin || "", pos: safeButchery(row) || "",
+      quantity: row.quantity, qtyType: row.qtyType,
+      expiry: row.expiry || "", remarks: row.remarks || "",
+      action: actionText(row) || "",
+      status: "pending", notes: "", createdAt: Date.now(),
+    };
+    const next = { ...reviews, [k]: snapshot };
+    setReviews(next); persistReviews(next);
+    toast(`Marked for review`, "ok");
+  }
+  function updateReview(k, patch) {
+    if (!reviews[k]) return;
+    const next = { ...reviews, [k]: { ...reviews[k], ...patch } };
+    setReviews(next); persistReviews(next);
+  }
+  function removeReview(k) {
+    const { [k]: _drop, ...rest } = reviews;
+    setReviews(rest); persistReviews(rest);
+  }
+  const reviewsArr = Object.values(reviews).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const reviewsPending = reviewsArr.filter((r) => r.status === "pending").length;
+
   /* --- Bulk selection (per-day) --- */
   const [selectedRows, setSelectedRows] = useState(() => new Set());
   const lastClickedRef = useRef(null);
@@ -1962,11 +2521,33 @@ export default function BrowseReturns() {
       const d = r.reportDate || "";
       if (filterFrom && d < filterFrom) return false;
       if (filterTo && d > filterTo) return false;
+      if (asOfDate && d > asOfDate) return false;
       return true;
     });
     arr.sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || ""));
     return arr;
-  }, [returnsData, filterFrom, filterTo]);
+  }, [returnsData, filterFrom, filterTo, asOfDate]);
+
+  /* Min/max report dates for time machine slider */
+  const dateBounds = useMemo(() => {
+    if (returnsData.length === 0) return { min: "", max: "" };
+    const dates = returnsData.map((r) => r.reportDate).filter(Boolean).sort();
+    return { min: dates[0], max: dates[dates.length - 1] };
+  }, [returnsData]);
+
+  /* Time machine playback */
+  useEffect(() => {
+    if (!tmPlaying) return;
+    if (!asOfDate || asOfDate >= dateBounds.max) { setTmPlaying(false); return; }
+    const dates = returnsData.map((r) => r.reportDate).filter(Boolean).sort();
+    const i = dates.indexOf(asOfDate);
+    const next = i >= 0 ? dates[Math.min(i + 1, dates.length - 1)] : dates[0];
+    const id = setTimeout(() => {
+      if (next === asOfDate) setTmPlaying(false);
+      else setAsOfDate(next);
+    }, 400);
+    return () => clearTimeout(id);
+  }, [tmPlaying, asOfDate, dateBounds.max, returnsData]);
 
   useEffect(() => {
     if (!filteredReportsAsc.length) { setSelectedDate(""); return; }
@@ -2167,7 +2748,11 @@ export default function BrowseReturns() {
   }, [filteredReportsAsc, changeMapByDate, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   const timeSeries = useMemo(() => {
-    return dailyMetrics.map((d) => ({ label: d.date, value: d.items }));
+    return dailyMetrics.map((d) => ({
+      label: d.date, value: d.items,
+      condCount: d.condCount, condKg: d.condKg,
+      kg: d.kg, pcs: d.pcs,
+    }));
   }, [dailyMetrics]);
 
   /* ============================================================
@@ -2191,6 +2776,70 @@ export default function BrowseReturns() {
     return { byProduct: toSorted(productMap), byPos: toSorted(posMap) };
     // eslint-disable-next-line
   }, [filteredReportsAsc, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+
+  /* ============================================================
+     Sankey flows — Origin → POS → Action triplets
+     ============================================================ */
+  const sankeyFlows = useMemo(() => {
+    const m = new Map();
+    filteredReportsAsc.forEach((rep) => {
+      const date = rep.reportDate;
+      const inner = changeMapByDate.get(date) || new Map();
+      (rep.items || []).forEach((it) => {
+        if (!rowPassesAdvanced(it)) return;
+        const origin = it.origin || "—";
+        const pos = safeButchery(it) || "—";
+        const ch = inner.get(itemKey(it));
+        const action = ch?.to ?? actionText(it) ?? "—";
+        const key = `${origin}|||${pos}|||${action}`;
+        m.set(key, (m.get(key) || 0) + 1);
+      });
+    });
+    return Array.from(m.entries()).map(([k, count]) => {
+      const [origin, pos, action] = k.split("|||");
+      return { origin, pos, action: action || "—", count };
+    });
+    // eslint-disable-next-line
+  }, [filteredReportsAsc, changeMapByDate, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+
+  /* ============================================================
+     Auto data-quality issues — detects suspicious rows
+     ============================================================ */
+  const dataQualityIssues = useMemo(() => {
+    const issues = {
+      missingExpiry: [],
+      missingProduct: [],
+      qtyOutlier: [],
+      qtyZero: [],
+      duplicates: [],
+      condemnNoQty: [],
+      otherActionEmpty: [],
+    };
+    const dupKeyMap = new Map(); // date|key -> count
+    filteredReportsAsc.forEach((rep) => {
+      const date = rep.reportDate;
+      const seenInDay = new Map();
+      (rep.items || []).forEach((it, i) => {
+        const ref = { date, idx: i, row: it };
+        const q = Number(it.quantity || 0);
+        if (!it.expiry || !it.expiry.trim()) issues.missingExpiry.push(ref);
+        if (!it.productName || !it.productName.trim()) issues.missingProduct.push(ref);
+        if (q <= 0) issues.qtyZero.push(ref);
+        else if (isKgType(it.qtyType) && q > 500) issues.qtyOutlier.push({ ...ref, reason: `${q} kg` });
+        else if (isPcsType(it.qtyType) && q > 1000) issues.qtyOutlier.push({ ...ref, reason: `${q} pcs` });
+        const k = itemKey(it);
+        const seen = seenInDay.get(k);
+        if (seen) issues.duplicates.push({ ...ref, original: seen });
+        else seenInDay.set(k, ref);
+        const act = actionText(it);
+        if (isCondemnation(act) && q === 0) issues.condemnNoQty.push(ref);
+        if ((it.action === "إجراء آخر..." || it.action === "Other...") && (!it.customAction || !it.customAction.trim()))
+          issues.otherActionEmpty.push(ref);
+      });
+    });
+    const total = Object.values(issues).reduce((s, a) => s + a.length, 0);
+    return { ...issues, total };
+  }, [filteredReportsAsc]);
 
   /* ============================================================
      Anomaly detection — flag days where items or condemnation > μ + 2σ
@@ -2915,6 +3564,7 @@ export default function BrowseReturns() {
               { value: "overview", label: "Overview", icon: FiBarChart2 },
               { value: "browse", label: "Browse", icon: FiList, badge: filteredReportsAsc.length },
               { value: "compare", label: "Compare", icon: FiActivity },
+              { value: "reviews", label: "Reviews", icon: FiBookmark, badge: reviewsPending > 0 ? reviewsPending : undefined },
             ]}
           />
           <div style={{ ...sx.muted, display: "flex", alignItems: "center", gap: 6 }}>
@@ -2924,6 +3574,61 @@ export default function BrowseReturns() {
             }}>/</kbd> to focus search
           </div>
         </div>
+
+        {/* Time machine slider */}
+        {dateBounds.min && dateBounds.max && dateBounds.min !== dateBounds.max && (
+          <div className="br-noprint" style={{
+            ...sx.card, padding: "10px 14px", marginBottom: 12,
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+            background: asOfDate ? T.warningS : T.card,
+            borderColor: asOfDate ? "#fde68a" : T.border,
+          }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: T.textM, fontWeight: 700, fontSize: 12 }}>
+              <FiClock size={13} /> Time machine:
+            </div>
+            <span style={{ ...sx.mutedS, fontWeight: 700 }}>{dateBounds.min}</span>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, returnsData.length - 1)}
+              value={(() => {
+                if (!asOfDate) return Math.max(0, returnsData.length - 1);
+                const dates = returnsData.map((r) => r.reportDate).filter(Boolean).sort();
+                const i = dates.indexOf(asOfDate);
+                return i < 0 ? dates.length - 1 : i;
+              })()}
+              onChange={(e) => {
+                const dates = returnsData.map((r) => r.reportDate).filter(Boolean).sort();
+                const i = parseInt(e.target.value);
+                const d = dates[i];
+                if (d) setAsOfDate(d === dateBounds.max ? "" : d);
+              }}
+              style={{ flex: 1, minWidth: 200, accentColor: T.warning, cursor: "pointer" }}
+            />
+            <span style={{ ...sx.mutedS, fontWeight: 700 }}>{dateBounds.max}</span>
+            <span style={{
+              ...sx.pill, fontWeight: 800,
+              background: asOfDate ? T.warning : T.bgAlt,
+              color: asOfDate ? "#fff" : T.textM,
+              borderColor: asOfDate ? T.warning : T.border,
+            }}>
+              {asOfDate ? `As of ${asOfDate}` : "Today"}
+            </span>
+            {asOfDate && (
+              <button
+                onClick={() => setTmPlaying((p) => !p)}
+                title={tmPlaying ? "Pause" : "Play forward"}
+                style={{ ...sx.btn, padding: "6px 10px", fontSize: 12 }}
+              >{tmPlaying ? "⏸ Pause" : "▶ Play"}</button>
+            )}
+            {asOfDate && (
+              <button
+                onClick={() => { setAsOfDate(""); setTmPlaying(false); }}
+                style={{ ...sx.btn, padding: "6px 10px", fontSize: 12, background: T.dangerS, color: T.danger, borderColor: "#fecaca" }}
+              ><FiX size={11} /> Reset</button>
+            )}
+          </div>
+        )}
 
         {/* Loading skeleton */}
         {loadingServer && returnsData.length === 0 && (
@@ -3032,6 +3737,62 @@ export default function BrowseReturns() {
               </div>
             </div>
 
+            {/* Data quality flags */}
+            {dataQualityIssues.total > 0 && (
+              <div style={{ ...sx.card, padding: 16, marginBottom: 12, borderLeft: `4px solid ${T.warning}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <FiAlertTriangle size={16} color={T.warning} />
+                  <h2 style={sx.h2}>Needs attention</h2>
+                  <span style={{ ...sx.pill, background: T.warningS, color: T.warning, borderColor: "#fde68a" }}>
+                    {dataQualityIssues.total} issue{dataQualityIssues.total !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                  {[
+                    { key: "missingExpiry", label: "Missing expiry", color: T.warning, bg: T.warningS, arr: dataQualityIssues.missingExpiry },
+                    { key: "missingProduct", label: "Missing product name", color: T.danger, bg: T.dangerS, arr: dataQualityIssues.missingProduct },
+                    { key: "qtyOutlier", label: "Quantity outliers", color: T.danger, bg: T.dangerS, arr: dataQualityIssues.qtyOutlier },
+                    { key: "qtyZero", label: "Quantity is zero", color: T.warning, bg: T.warningS, arr: dataQualityIssues.qtyZero },
+                    { key: "duplicates", label: "Duplicate rows", color: T.purple, bg: T.purpleS, arr: dataQualityIssues.duplicates },
+                    { key: "condemnNoQty", label: "Condemnation w/ qty 0", color: T.danger, bg: T.dangerS, arr: dataQualityIssues.condemnNoQty },
+                    { key: "otherActionEmpty", label: "Action 'Other' empty", color: T.warning, bg: T.warningS, arr: dataQualityIssues.otherActionEmpty },
+                  ].filter((g) => g.arr.length > 0).map((g) => (
+                    <div key={g.key} style={{
+                      border: `1px solid ${T.border}`, borderRadius: 10, padding: 10, background: T.cardAlt,
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{g.label}</span>
+                        <span style={{ ...sx.badge, background: g.bg, color: g.color }}>{g.arr.length}</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 130, overflow: "auto" }}>
+                        {g.arr.slice(0, 5).map((it, i) => (
+                          <button key={i} onClick={() => {
+                            setSelectedDate(it.date); setTab("browse");
+                            const y = it.date.slice(0, 4), m = it.date.slice(5, 7);
+                            setOpenYears((p) => ({ ...p, [y]: true }));
+                            setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
+                          }} style={{
+                            ...sx.btnGhost, textAlign: "left", padding: "4px 6px", fontSize: 11,
+                            color: T.text, cursor: "pointer", borderRadius: 4,
+                            display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center",
+                          }}>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              <strong>{it.row.itemCode || it.row.productName || "—"}</strong>
+                              {it.reason ? ` · ${it.reason}` : ""}
+                            </span>
+                            <span style={sx.mutedS}>{it.date}</span>
+                          </button>
+                        ))}
+                        {g.arr.length > 5 && (
+                          <span style={{ ...sx.mutedS, textAlign: "center" }}>+ {g.arr.length - 5} more</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Charts row */}
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 12, marginBottom: 12 }}>
               {/* Time series */}
@@ -3050,6 +3811,43 @@ export default function BrowseReturns() {
                       height={140}
                       color={T.primary}
                       fill={T.primaryS}
+                      interactive
+                      renderTooltip={(d) => {
+                        const isAnom = anomalies.dates.has(d.label);
+                        return (
+                          <>
+                            <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                              <FiCalendar size={11} /> {d.label}
+                              {isAnom && (
+                                <span style={{ background: T.danger, color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 800 }}>
+                                  ⚠ anomaly
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 10px", fontSize: 12 }}>
+                              <span style={{ opacity: 0.7 }}>Items</span>
+                              <span style={{ fontWeight: 700, textAlign: "right" }}>{d.value}</span>
+                              {d.kg > 0 && <>
+                                <span style={{ opacity: 0.7 }}>Weight</span>
+                                <span style={{ fontWeight: 700, textAlign: "right" }}>{fmtNum(d.kg)} kg</span>
+                              </>}
+                              {d.pcs > 0 && <>
+                                <span style={{ opacity: 0.7 }}>Pieces</span>
+                                <span style={{ fontWeight: 700, textAlign: "right" }}>{fmtNum(d.pcs, 0)}</span>
+                              </>}
+                              {d.condCount > 0 && <>
+                                <span style={{ color: "#fca5a5" }}>Condemned</span>
+                                <span style={{ fontWeight: 700, textAlign: "right", color: "#fca5a5" }}>
+                                  {d.condCount}{d.condKg > 0 ? ` · ${fmtNum(d.condKg)} kg` : ""}
+                                </span>
+                              </>}
+                            </div>
+                            <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.15)", fontSize: 10, opacity: 0.7 }}>
+                              Click on the heatmap or anomaly list to open this day
+                            </div>
+                          </>
+                        );
+                      }}
                     />
                     <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, ...sx.mutedS }}>
                       <span>{timeSeries[0]?.label}</span>
@@ -3095,6 +3893,20 @@ export default function BrowseReturns() {
                 <h2 style={{ ...sx.h2, marginBottom: 12 }}>Top Origins</h2>
                 <HBarList items={kpi.topOrigins} color={T.success} />
               </div>
+            </div>
+
+            {/* Sankey flow */}
+            <div style={{ ...sx.card, padding: 16, marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <FiActivity size={16} color={T.primary} />
+                <h2 style={sx.h2}>Flow: Origin → POS → Action</h2>
+                <span style={sx.mutedS}>Hover any node to highlight its paths</span>
+              </div>
+              {sankeyFlows.length === 0 ? (
+                <div style={{ ...sx.muted, textAlign: "center", padding: 30 }}>No data.</div>
+              ) : (
+                <SankeyChart flows={sankeyFlows} width={Math.max(900, 1100)} height={420} />
+              )}
             </div>
 
             {/* Pareto */}
@@ -3504,6 +4316,9 @@ export default function BrowseReturns() {
                               onToggleAll={toggleAllVisible}
                               onRangeSelect={rangeSelect}
                               onOpenProduct={(code, name) => { setProductInit({ code, name }); setProductOpen(true); }}
+                              onMarkReview={(row) => addReview(selectedReport.reportDate, row)}
+                              reviewedSet={new Set(Object.keys(reviews))}
+                              currentDate={selectedReport?.reportDate}
                             />
                           </div>
                         ))
@@ -3526,6 +4341,9 @@ export default function BrowseReturns() {
                           onToggleAll={toggleAllVisible}
                           onRangeSelect={rangeSelect}
                           onOpenProduct={(code, name) => { setProductInit({ code, name }); setProductOpen(true); }}
+                          onMarkReview={(row) => addReview(selectedReport.reportDate, row)}
+                          reviewedSet={new Set(Object.keys(reviews))}
+                          currentDate={selectedReport?.reportDate}
                         />
                       )}
                       {sortedRows.length === 0 && (
@@ -3633,6 +4451,120 @@ export default function BrowseReturns() {
           </div>
         )}
 
+        {/* ====== REVIEWS TAB ====== */}
+        {tab === "reviews" && (
+          <div>
+            <div style={{ ...sx.card, padding: 14, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <h2 style={{ ...sx.h2 }}>Review queue</h2>
+                <div style={{ ...sx.mutedS, marginTop: 4 }}>
+                  Items flagged by QC for follow-up · {reviewsArr.length} total · {reviewsPending} pending
+                </div>
+              </div>
+              {reviewsArr.length > 0 && (
+                <button onClick={() => {
+                  if (window.confirm("Clear all reviews?")) { setReviews({}); persistReviews({}); }
+                }} style={{ ...sx.btn, color: T.danger, borderColor: "#fecaca", background: T.dangerS }}>
+                  <FiTrash2 size={13} /> Clear all
+                </button>
+              )}
+            </div>
+
+            {reviewsArr.length === 0 ? (
+              <div style={{ ...sx.card, padding: 60, textAlign: "center" }}>
+                <FiBookmark size={36} style={{ opacity: 0.25, color: T.textM }} />
+                <div style={{ marginTop: 10, fontWeight: 700, color: T.text }}>No reviews yet</div>
+                <div style={{ ...sx.mutedS, marginTop: 4 }}>
+                  Click "Flag" on any row in Browse to add it here.
+                </div>
+              </div>
+            ) : (
+              <div style={{ ...sx.card, padding: 0, overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: T.bgAlt }}>
+                      {["Status", "Date", "Item", "POS · Origin", "Qty", "Action", "Notes", ""].map((h) => (
+                        <th key={h} style={{
+                          padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 700,
+                          color: T.textM, textTransform: "uppercase", letterSpacing: ".04em",
+                          borderBottom: `1px solid ${T.border}`,
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reviewsArr.map((r) => {
+                      const qtyType = (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? "" : (r.qtyType || "");
+                      return (
+                        <tr key={r.key} style={{ background: r.status === "done" ? T.successS : "transparent", opacity: r.status === "done" ? 0.7 : 1 }}>
+                          <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top" }}>
+                            <button onClick={() => updateReview(r.key, { status: r.status === "pending" ? "done" : "pending" })} style={{
+                              ...sx.pill, cursor: "pointer", padding: "4px 10px", fontSize: 11,
+                              background: r.status === "done" ? T.success : T.warningS,
+                              color: r.status === "done" ? "#fff" : T.warning,
+                              borderColor: r.status === "done" ? T.success : "#fde68a",
+                            }}>
+                              {r.status === "done" ? <><FiCheck size={11} /> Done</> : <>⏳ Pending</>}
+                            </button>
+                          </td>
+                          <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", fontWeight: 700, fontSize: 12 }}>
+                            <button onClick={() => {
+                              setSelectedDate(r.date); setTab("browse");
+                              const y = r.date.slice(0, 4), m = r.date.slice(5, 7);
+                              setOpenYears((p) => ({ ...p, [y]: true }));
+                              setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
+                            }} style={{
+                              ...sx.btnGhost, padding: 0, color: T.primary, cursor: "pointer",
+                              textDecoration: "underline", textUnderlineOffset: 2,
+                              fontWeight: 700, fontSize: 12,
+                            }}>{r.date}</button>
+                          </td>
+                          <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top" }}>
+                            <button onClick={() => { setProductInit({ code: r.itemCode, name: r.productName }); setProductOpen(true); }} style={{
+                              ...sx.btnGhost, padding: 0, color: T.text, cursor: "pointer", textAlign: "left",
+                              fontWeight: 700, textDecoration: "underline", textDecorationStyle: "dotted",
+                              textUnderlineOffset: 2, textDecorationColor: T.textS,
+                            }}>{r.productName || "—"}</button>
+                            {r.itemCode && <div style={{ ...sx.mutedS, fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{r.itemCode}</div>}
+                          </td>
+                          <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", fontSize: 12, color: T.textM }}>
+                            {r.pos || "—"}
+                            <div style={{ ...sx.mutedS }}>{r.origin || "—"}</div>
+                          </td>
+                          <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", textAlign: "right", fontWeight: 700 }}>
+                            {r.quantity ?? "—"} <span style={{ ...sx.mutedS }}>{qtyType}</span>
+                          </td>
+                          <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", fontSize: 12 }}>
+                            {r.action || "—"}
+                          </td>
+                          <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", minWidth: 220 }}>
+                            <textarea
+                              value={r.notes || ""}
+                              onChange={(e) => updateReview(r.key, { notes: e.target.value })}
+                              placeholder="Add notes…"
+                              rows={2}
+                              style={{
+                                ...sx.input, width: "100%", fontSize: 12, padding: "6px 8px",
+                                resize: "vertical", fontFamily: "inherit",
+                              }}
+                            />
+                          </td>
+                          <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top" }}>
+                            <button onClick={() => removeReview(r.key)} title="Remove" style={{
+                              ...sx.btn, padding: "4px 8px", fontSize: 11,
+                              color: T.danger, background: T.dangerS, borderColor: "#fecaca",
+                            }}><FiX size={12} /></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Modals */}
         <ImageViewerModal open={viewerOpen} images={viewerData.images} title={viewerData.title} onClose={() => setViewerOpen(false)} />
         <PasswordModal show={pwModal} title="Password required" onSubmit={handlePasswordSubmit} onCancel={() => setPwModal(false)} />
@@ -3712,7 +4644,7 @@ export default function BrowseReturns() {
 /* ============================================================
    DataTable — used by Browse tab
    ============================================================ */
-function DataTable({ rows, columns, changeMap, search, highlight, openViewer, rowPad, sort, toggleSort, showHeader, auditTrailByKey, onOpenAudit, selectedRows, onToggleSelect, onToggleAll, onRangeSelect, onOpenProduct }) {
+function DataTable({ rows, columns, changeMap, search, highlight, openViewer, rowPad, sort, toggleSort, showHeader, auditTrailByKey, onOpenAudit, selectedRows, onToggleSelect, onToggleAll, onRangeSelect, onOpenProduct, onMarkReview, reviewedSet, currentDate }) {
   const allChecked = showHeader && rows.length > 0 && rows.every((r) => selectedRows?.has(r.__i));
   const someChecked = showHeader && !allChecked && rows.some((r) => selectedRows?.has(r.__i));
   return (
@@ -3827,7 +4759,19 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                 </td>;
                 if (c.key === "expiry") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: T.textM }}>{row.expiry}</td>;
                 if (c.key === "remarks") return <td key={c.key} style={{ ...tdStyle, color: T.textM, fontSize: 12 }}>{search ? highlight(row.remarks || "", search) : row.remarks}</td>;
-                if (c.key === "action") return (
+                if (c.key === "action") {
+                  const reviewed = reviewedSet?.has(`${currentDate}__${k}`);
+                  const ReviewBtn = onMarkReview ? (
+                    <button onClick={() => onMarkReview(row)} title={reviewed ? "Already in review queue" : "Mark for review"} style={{
+                      ...sx.btn, padding: "1px 6px", fontSize: 10,
+                      background: reviewed ? T.warningS : T.cardAlt,
+                      color: reviewed ? T.warning : T.textM,
+                      borderColor: reviewed ? "#fde68a" : T.border,
+                    }}>
+                      <FiBookmark size={10} /> {reviewed ? "Review" : "Flag"}
+                    </button>
+                  ) : null;
+                  return (
                   <td key={c.key} style={{ ...tdStyle, background: showChange ? T.successS : "transparent" }}>
                     {showChange ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -3845,6 +4789,7 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                               background: T.primaryS, color: T.primary, borderColor: "#c7d2fe",
                             }}><FiClock size={10} /> {trail.length}</button>
                           )}
+                          {ReviewBtn}
                         </div>
                       </div>
                     ) : (
@@ -3856,10 +4801,12 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                             background: T.primaryS, color: T.primary, borderColor: "#c7d2fe",
                           }}><FiClock size={10} /> {trail.length}</button>
                         )}
+                        {ReviewBtn}
                       </div>
                     )}
                   </td>
-                );
+                  );
+                }
                 return <td key={c.key} style={tdStyle}></td>;
               })}
             </tr>
