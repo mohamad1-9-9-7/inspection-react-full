@@ -1,5 +1,7 @@
 // src/pages/monitor/branches/qcs/FTR1PreloadingViewer.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import PreloadingKPIBar from "../_shared/PreloadingKPIBar";
+import CollapsibleDateTree from "../_shared/CollapsibleDateTree";
 
 /* ===== API base ===== */
 const API_BASE = String(
@@ -575,54 +577,15 @@ export default function FTR1PreloadingViewer() {
 
       {/* ===== بقية الصفحة ===== */}
       <div style={pageWrap}>
-        {/* الشريط الجانبي: شجرة سنة/شهر/يوم */}
-        <aside style={side}>
-          <h4 style={sideTitle}>🗓️ All Reports (Year ▸ Month ▸ Day)</h4>
-          <button onClick={buildDaysTree} style={sideBtn}>⟳ Refresh</button>
-          {groupedNav.length === 0 && (
-            <div style={{ fontSize: 12, color: COLORS.sub }}>لا توجد تقارير.</div>
-          )}
-
-          {groupedNav.map((y) => (
-            <div key={y.year}>
-              <div style={ymHeader}>📅 {y.year}</div>
-              {y.months.map((m) => (
-                <div key={m.ym} style={{ marginTop: 6 }}>
-                  <div style={{ ...ymHeader, background:"#f9fafb" }}>🗂️ {monthName(m.ym)}</div>
-                  {m.days.map((d) => {
-                    const isActiveDay = d.date === (pickEntryDate(report?.payload || {}) || date);
-                    return (
-                      <div key={d.date} style={dayBox(isActiveDay)}>
-                        <div style={{ display:"flex", justifyContent:"space-between", fontWeight:800 }}>
-                          <span>{d.date}</span>
-                          <span style={{ opacity:.7 }}>×{d.items.length}</span>
-                        </div>
-                        {d.items.map((it) => {
-                          const tm = (it?.createdAt || "").slice(11, 16);
-                          const isActiveItem = (it.id || it._id) === (report?.id || report?._id);
-                          return (
-                            <button
-                              key={it.id || it._id}
-                              style={{
-                                ...timeBtn,
-                                border: isActiveItem ? `1px solid ${COLORS.primary}` : timeBtn.border,
-                                background: isActiveItem ? "#eef2ff" : "#ffffff",
-                              }}
-                              onClick={() => openItem(it)}
-                              title={`Open ${d.date} ${tm || ""}`}
-                            >
-                              {tm || "—"}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          ))}
-        </aside>
+        {/* الشريط الجانبي: شجرة قابلة للطيّ */}
+        <CollapsibleDateTree
+          groupedNav={groupedNav}
+          activeId={report?.id || report?._id}
+          activeDate={pickEntryDate(report?.payload || {}) || date}
+          onSelectItem={openItem}
+          onRefresh={buildDaysTree}
+          storageKey="ftr1_preloading_tree_collapsed_v1"
+        />
 
         {/* مساحة العرض الرئيسية */}
         <div style={card}>
@@ -630,6 +593,9 @@ export default function FTR1PreloadingViewer() {
           <p style={sub}>
             {caption} | Branch: <strong>{norm.branchCode}</strong> | Site: <strong>{norm.header.site}</strong>
           </p>
+
+          {/* 📊 شريط KPI */}
+          <PreloadingKPIBar columns={columns} />
 
           <div style={toolbar}>
             <button onClick={exportXLS} style={btn("#ecfdf5", "#065f46", "#a7f3d0")}>⬇️ Export XLS</button>

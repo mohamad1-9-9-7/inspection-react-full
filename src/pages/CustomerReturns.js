@@ -20,8 +20,22 @@ const QTY_TYPES = ["KG", "PCS", "أخرى / Other"];
 // Password required (always)
 const RETURNS_CREATE_PASSWORD = "9999";
 
+// Draft (local autosave) keys
+const DRAFT_KEY = "customer_returns_draft_v1";
+const DRAFT_DATE_KEY = "customer_returns_draft_date_v1";
+
 function getToday() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function makeEmptyRow() {
+  return {
+    productName: "", origin: "", customerName: "",
+    carNumber: "", driverName: "",
+    quantity: "",
+    qtyType: "KG", customQtyType: "", expiry: "", remarks: "",
+    action: "", customAction: "", images: []
+  };
 }
 
 /* ===== Images API helpers ===== */
@@ -217,24 +231,87 @@ export default function CustomerReturns() {
   };
 
   // ========= Page content (after password) =========
-  const [reportDate, setReportDate] = useState(getToday());
-  const [rows, setRows] = useState([{
-    productName: "", origin: "", customerName: "", quantity: "",
-    qtyType: "KG", customQtyType: "", expiry: "", remarks: "",
-    action: "", customAction: "", images: []
-  }]);
+
+  // ✅ Restore draft date from localStorage (fallback to today)
+  const [reportDate, setReportDate] = useState(() => {
+    try {
+      return localStorage.getItem(DRAFT_DATE_KEY) || getToday();
+    } catch {
+      return getToday();
+    }
+  });
+
+  // ✅ Restore draft rows from localStorage
+  const [rows, setRows] = useState(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch {
+      // ignore
+    }
+    return [makeEmptyRow()];
+  });
+
   const [saveMsg, setSaveMsg] = useState("");
+
+  // ✅ Track whether there are unsaved changes
+  const [isDirty, setIsDirty] = useState(false);
+  const savedRowsRef = useRef(null); // snapshot of last-saved rows
+
+  // ✅ Auto-save draft to localStorage on every rows/date change
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(rows));
+      localStorage.setItem(DRAFT_DATE_KEY, reportDate);
+    } catch {
+      // ignore
+    }
+    if (savedRowsRef.current !== null) {
+      setIsDirty(JSON.stringify(rows) !== JSON.stringify(savedRowsRef.current));
+    } else {
+      // If we restored a draft on first mount, mark as dirty so user knows
+      const hasContent = rows.some((r) =>
+        r.productName || r.origin || r.customerName || r.carNumber || r.driverName ||
+        r.quantity || r.expiry || r.remarks || r.action || r.customAction || (r.images && r.images.length)
+      );
+      if (hasContent) setIsDirty(true);
+    }
+  }, [rows, reportDate]);
+
+  // ✅ Warn before leaving page if unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
 
   // Images state
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageRowIndex, setImageRowIndex] = useState(-1);
 
   const addRow = () => {
-    setRows((prev) => [...prev, {
-      productName: "", origin: "", customerName: "", quantity: "",
-      qtyType: "KG", customQtyType: "", expiry: "", remarks: "",
-      action: "", customAction: "", images: []
-    }]);
+    setRows((prev) => [...prev, makeEmptyRow()]);
+  };
+
+  // Manual: clear the local draft
+  const clearDraft = () => {
+    if (!window.confirm("هل تريد مسح المسودة المحفوظة محلياً؟ / Clear the locally-saved draft?")) return;
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+      localStorage.removeItem(DRAFT_DATE_KEY);
+    } catch { /* ignore */ }
+    setRows([makeEmptyRow()]);
+    setReportDate(getToday());
+    savedRowsRef.current = null;
+    setIsDirty(false);
+    setSaveMsg("✅ تم مسح المسودة. / Draft cleared.");
+    setTimeout(() => setSaveMsg(""), 2000);
   };
   const removeRow = (index) => setRows(rows.filter((_, idx) => idx !== index));
 
@@ -284,6 +361,8 @@ export default function CustomerReturns() {
         productName: (r.productName || "").trim(),
         origin: (r.origin || "").trim(),
         customerName: (r.customerName || "").trim(),
+        carNumber: (r.carNumber || "").trim(),
+        driverName: (r.driverName || "").trim(),
         quantity: (r.quantity || "").toString().trim(),
         qtyType: (r.qtyType || "").trim(),
         customQtyType: (r.customQtyType || "").trim(),
@@ -295,7 +374,7 @@ export default function CustomerReturns() {
       }))
       .filter(
         r =>
-          r.productName || r.origin || r.customerName || r.quantity ||
+          r.productName || r.origin || r.customerName || r.carNumber || r.driverName || r.quantity ||
           r.expiry || r.remarks || r.action || r.customAction || (r.images && r.images.length)
       );
 
@@ -308,9 +387,20 @@ export default function CustomerReturns() {
     try {
       setSaveMsg("⏳ جاري الحفظ على السيرفر… / Saving to server…");
       await sendOneToServer({ reportDate, items: filtered });
+
+      // ✅ Mark as saved → clear dirty flag
+      savedRowsRef.current = JSON.parse(JSON.stringify(rows));
+      setIsDirty(false);
+
+      // ✅ Clear draft from localStorage after successful server save
+      try {
+        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(DRAFT_DATE_KEY);
+      } catch { /* ignore */ }
+
       setSaveMsg("✅ تم الحفظ على السيرفر بنجاح! / Saved successfully.");
     } catch (err) {
-      setSaveMsg("❌ فشل الحفظ على السيرفر. حاول مجددًا. / Save failed. Please try again.");
+      setSaveMsg("❌ فشل الحفظ على السيرفر. المسودة محفوظة محلياً. / Save failed. Draft is kept locally.");
       console.error(err);
     } finally {
       setTimeout(() => setSaveMsg(""), 3500);
@@ -332,20 +422,100 @@ export default function CustomerReturns() {
     <div
       style={{
         fontFamily: "Cairo, sans-serif",
-        padding: "2.5rem",
-        background: "#f4f6fa",
+        padding: "2.2rem",
+        background:
+          "radial-gradient(1200px 600px at 100% -10%, #f5d0fe 0%, transparent 60%), linear-gradient(135deg, #f8f5ff 0%, #f0f4ff 50%, #fdf4ff 100%)",
         minHeight: "100vh",
         direction: "rtl"
       }}
     >
-      <h2 style={{
-        textAlign: "center",
-        color: "#512e5f",
-        marginBottom: "2.3rem",
-        fontWeight: "bold"
+      {/* Hero header */}
+      <div style={{
+        background: "linear-gradient(180deg, rgba(255,255,255,.85), rgba(255,255,255,.65))",
+        border: "1px solid rgba(255,255,255,.7)",
+        borderRadius: 20,
+        padding: "18px 24px",
+        marginBottom: 18,
+        boxShadow: "0 12px 28px rgba(81, 46, 95, 0.15)",
+        backdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 16,
+        flexWrap: "wrap",
       }}>
-        👤 سجل مرتجعات الزبائن (Customer Returns)
-      </h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 14,
+            background: "linear-gradient(135deg, #884ea0, #c084fc)",
+            display: "grid", placeItems: "center",
+            boxShadow: "0 6px 18px rgba(136, 78, 160, .35)",
+            fontSize: 24,
+          }}>👤</div>
+          <div>
+            <div style={{
+              fontWeight: 900, fontSize: "1.35rem",
+              background: "linear-gradient(90deg, #512e5f, #884ea0)",
+              WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
+            }}>
+              سجل مرتجعات الزبائن
+            </div>
+            <div style={{ fontSize: 13, color: "#64748b", fontWeight: 600, marginTop: 2 }}>
+              Customer Returns — record returned items per customer & delivery
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#b91c1c", letterSpacing: ".5px" }}>AL MAWASHI</div>
+          <div style={{ fontSize: 10, color: "#64748b" }}>Trans Emirates Livestock Trading L.L.C.</div>
+        </div>
+      </div>
+
+      {/* ✅ Unsaved-changes banner */}
+      {isDirty && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            background: "linear-gradient(180deg, #fef9c3, #fef08a)",
+            border: "1.5px solid #fde047",
+            borderRadius: 12,
+            padding: "10px 16px",
+            marginBottom: 14,
+            color: "#854d0e",
+            fontWeight: 700,
+            fontSize: 14,
+            boxShadow: "0 4px 14px rgba(250, 204, 21, .25)",
+            flexWrap: "wrap",
+          }}
+        >
+          <span>
+            ⚠️ يوجد تغييرات غير محفوظة — المسودة محفوظة محلياً تلقائياً
+            <span style={{ marginInlineStart: 10, opacity: 0.85, fontSize: 12, fontWeight: 600 }}>
+              (Unsaved changes — draft auto-saved locally)
+            </span>
+          </span>
+          <button
+            onClick={clearDraft}
+            style={{
+              background: "#fff",
+              color: "#854d0e",
+              border: "1.5px solid #facc15",
+              borderRadius: 10,
+              padding: "5px 12px",
+              fontWeight: 800,
+              cursor: "pointer",
+              fontSize: 12,
+              boxShadow: "0 2px 6px rgba(250,204,21,.25)",
+            }}
+            title="مسح المسودة المحفوظة محلياً"
+          >
+            🧹 مسح المسودة / Clear draft
+          </button>
+        </div>
+      )}
 
       {/* ====== Report date ====== */}
       <div style={{
@@ -353,15 +523,15 @@ export default function CustomerReturns() {
         alignItems: "center",
         justifyContent: "center",
         gap: 14,
-        marginBottom: 24,
-        fontSize: "1.17em"
+        marginBottom: 18,
+        fontSize: "1.05em"
       }}>
         <span style={{
-          background: "#884ea0",
+          background: "linear-gradient(135deg, #884ea0, #a855f7)",
           color: "#fff",
-          padding: "9px 17px",
+          padding: "10px 18px",
           borderRadius: 14,
-          boxShadow: "0 2px 10px #e8daef44",
+          boxShadow: "0 6px 18px rgba(136, 78, 160, .35)",
           display: "flex",
           alignItems: "center",
           gap: 9,
@@ -375,14 +545,14 @@ export default function CustomerReturns() {
             onChange={e => setReportDate(e.target.value)}
             style={{
               marginRight: 10,
-              background: "#fcf6ff",
+              background: "rgba(255,255,255,.95)",
               border: "none",
-              borderRadius: 7,
-              padding: "7px 14px",
+              borderRadius: 9,
+              padding: "8px 14px",
               fontWeight: "bold",
               fontSize: "1em",
               color: "#512e5f",
-              boxShadow: "0 1px 4px #e8daef44"
+              boxShadow: "0 1px 4px rgba(0,0,0,.08)"
             }}
           />
         </span>
@@ -391,57 +561,78 @@ export default function CustomerReturns() {
       {/* Action buttons */}
       <div style={{
         display: "flex", justifyContent: "center", alignItems: "center",
-        gap: "1.2rem", marginBottom: 20
+        gap: "1rem", marginBottom: 18, flexWrap: "wrap"
       }}>
         <button onClick={handleSave}
           style={{
-            background: "#229954",
+            background: "linear-gradient(135deg, #16a34a, #22c55e)",
             color: "#fff",
             border: "none",
             borderRadius: "14px",
             fontWeight: "bold",
-            fontSize: "1.08em",
-            padding: "10px 32px",
+            fontSize: "1.05em",
+            padding: "10px 28px",
             cursor: "pointer",
-            boxShadow: "0 2px 8px #d4efdf"
-          }}>💾 حفظ / Save</button>
+            boxShadow: "0 6px 18px rgba(34,197,94,.35)",
+            transition: "transform .15s, box-shadow .15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
+        >💾 حفظ / Save</button>
         <button onClick={() => navigate("/returns-customers/view")}
           style={{
-            background: "#884ea0",
+            background: "linear-gradient(135deg, #884ea0, #a855f7)",
             color: "#fff",
             border: "none",
             borderRadius: "14px",
             fontWeight: "bold",
-            fontSize: "1.08em",
-            padding: "10px 32px",
+            fontSize: "1.05em",
+            padding: "10px 28px",
             cursor: "pointer",
-            boxShadow: "0 2px 8px #d2b4de"
-          }}>📋 عرض التقارير / View Reports</button>
+            boxShadow: "0 6px 18px rgba(136,78,160,.35)",
+            transition: "transform .15s, box-shadow .15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
+        >📋 عرض التقارير / View Reports</button>
         {saveMsg && (
           <span style={{
-            marginRight: 18, fontWeight: "bold",
-            color: saveMsg.startsWith("✅") ? "#229954" : (saveMsg.startsWith("⏳") ? "#512e5f" : "#c0392b"),
-            fontSize: "1.05em"
+            marginRight: 12, fontWeight: "bold",
+            padding: "8px 14px", borderRadius: 12,
+            background: saveMsg.startsWith("✅") ? "#dcfce7" : (saveMsg.startsWith("⏳") ? "#ede9fe" : "#fee2e2"),
+            color: saveMsg.startsWith("✅") ? "#166534" : (saveMsg.startsWith("⏳") ? "#5b21b6" : "#991b1b"),
+            fontSize: "0.95em",
+            border: `1px solid ${saveMsg.startsWith("✅") ? "#86efac" : (saveMsg.startsWith("⏳") ? "#c4b5fd" : "#fecaca")}`,
           }}>{saveMsg}</span>
         )}
       </div>
 
       {/* Table */}
-      <div style={{ overflowX: "auto" }}>
+      <div style={{
+        background: "rgba(255,255,255,.85)",
+        borderRadius: 18,
+        boxShadow: "0 12px 28px rgba(81, 46, 95, 0.10)",
+        border: "1px solid rgba(255,255,255,.7)",
+        backdropFilter: "blur(6px)",
+        padding: 12,
+        overflowX: "auto"
+      }}>
         <table style={{
           width: "100%",
           background: "#fff",
-          borderRadius: 16,
-          boxShadow: "0 2px 16px #dcdcdc70",
+          borderRadius: 14,
+          overflow: "hidden",
           borderCollapse: "collapse",
-          minWidth: 1400
+          minWidth: 1600
         }}>
           <thead>
-            <tr style={{ background: "#e8daef", color: "#512e5f" }}>
+            <tr style={{ background: "linear-gradient(180deg, #f3e8ff, #e9d5ff)", color: "#512e5f" }}>
               <th style={th}>التسلسل / SL.NO</th>
               <th style={th}>اسم المنتج / PRODUCT NAME</th>
               <th style={th}>المنشأ / ORIGIN</th>
               <th style={th}>الزبون / CUSTOMER</th>
+              <th style={th}>🚚 رقم السيارة / CAR NUMBER</th>
+              <th style={th}>👨‍✈️ اسم السائق / DRIVER NAME</th>
               <th style={th}>الكمية / QUANTITY</th>
               <th style={th}>نوع الكمية / QTY TYPE</th>
               <th style={th}>تاريخ الانتهاء / EXPIRY DATE</th>
@@ -453,7 +644,7 @@ export default function CustomerReturns() {
           </thead>
           <tbody>
             {rows.map((row, idx) => (
-              <tr key={idx} style={{ background: idx % 2 ? "#fcf3ff" : "#fff" }}>
+              <tr key={idx} style={{ background: idx % 2 ? "#faf5ff" : "#fff", transition: "background .15s" }}>
                 <td style={td}>{idx + 1}</td>
                 <td style={td}>
                   <input style={input}
@@ -472,6 +663,18 @@ export default function CustomerReturns() {
                     placeholder="اسم الزبون / Customer name"
                     value={row.customerName}
                     onChange={e => handleChange(idx, "customerName", e.target.value)} />
+                </td>
+                <td style={td}>
+                  <input style={input}
+                    placeholder="رقم السيارة / Car number"
+                    value={row.carNumber || ""}
+                    onChange={e => handleChange(idx, "carNumber", e.target.value)} />
+                </td>
+                <td style={td}>
+                  <input style={input}
+                    placeholder="اسم السائق / Driver name"
+                    value={row.driverName || ""}
+                    onChange={e => handleChange(idx, "driverName", e.target.value)} />
                 </td>
                 <td style={td}>
                   <input style={input}
@@ -560,32 +763,51 @@ export default function CustomerReturns() {
 }
 
 /* ====== Styles ====== */
-const th = { padding: "10px", border: "1px solid #eee", fontSize: 13, whiteSpace: "nowrap" };
-const td = { padding: "8px", border: "1px solid #f1f1f1" };
+const th = {
+  padding: "12px 10px",
+  borderBottom: "2px solid #d8b4fe",
+  fontSize: 12,
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+  textAlign: "center",
+  letterSpacing: ".3px",
+};
+const td = {
+  padding: "8px 9px",
+  borderBottom: "1px solid #f3e8ff",
+};
 const input = {
   width: "100%",
-  padding: "8px 10px",
+  padding: "9px 11px",
   borderRadius: 10,
-  border: "1.6px solid #c9cddd",
+  border: "1.5px solid #d8b4fe",
   outline: "none",
-  background: "#fbfbff",
-  fontSize: 13
+  background: "#fdfaff",
+  fontSize: 13,
+  transition: "border-color .15s, box-shadow .15s, background .15s",
 };
-const rowActions = { display: "flex", justifyContent: "center", marginTop: 14 };
+const rowActions = { display: "flex", justifyContent: "center", marginTop: 16 };
 const btnAdd = {
-  background: "#2563eb", color: "#fff", border: "none",
-  padding: "10px 22px", borderRadius: 14, fontWeight: "bold",
-  boxShadow: "0 2px 10px rgba(37,99,235,.25)", cursor: "pointer"
+  background: "linear-gradient(135deg, #2563eb, #3b82f6)",
+  color: "#fff", border: "none",
+  padding: "11px 26px", borderRadius: 14, fontWeight: "bold",
+  boxShadow: "0 6px 18px rgba(37,99,235,.30)", cursor: "pointer",
+  fontSize: "1.02em",
+  transition: "transform .15s, box-shadow .15s",
 };
 const btnDel = {
-  background: "#ef4444", color: "#fff", border: "none",
-  padding: "6px 10px", borderRadius: 10, fontWeight: 800,
-  cursor: "pointer"
+  background: "linear-gradient(135deg, #ef4444, #f87171)",
+  color: "#fff", border: "none",
+  padding: "7px 12px", borderRadius: 10, fontWeight: 800,
+  cursor: "pointer",
+  boxShadow: "0 4px 10px rgba(239,68,68,.25)",
 };
 const btnImg = {
-  background: "#2563eb", color: "#fff", border: "none",
-  padding: "6px 12px", borderRadius: 10, fontWeight: 800,
-  cursor: "pointer", boxShadow: "0 1px 6px #bfdbfe",
+  background: "linear-gradient(135deg, #2563eb, #60a5fa)",
+  color: "#fff", border: "none",
+  padding: "7px 13px", borderRadius: 10, fontWeight: 800,
+  cursor: "pointer",
+  boxShadow: "0 4px 10px rgba(37,99,235,.25)",
 };
 
 /* ====== Gallery modal styles ====== */

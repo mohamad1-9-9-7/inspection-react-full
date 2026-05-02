@@ -1,5 +1,7 @@
 // src/pages/monitor/branches/qcs/FTR2PreloadingViewer.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import PreloadingKPIBar from "../_shared/PreloadingKPIBar";
+import CollapsibleDateTree from "../_shared/CollapsibleDateTree";
 
 /* ===== API base ===== */
 const API_BASE = String(
@@ -473,6 +475,17 @@ export default function FTR2PreloadingViewer() {
   // 🆕 sign-off values
   const sign = getSignoff(ensureObject(report?.payload) || {});
 
+  // 🆕 تحويل ymdTree إلى البنية التي يتوقعها CollapsibleDateTree (year > months[ym] > days)
+  const normalizedTree = useMemo(() => {
+    return (ymdTree || []).map((y) => ({
+      year: y.year,
+      months: (y.months || []).map((m) => ({
+        ym: `${y.year}-${m.month}`,
+        days: m.days || [],
+      })),
+    }));
+  }, [ymdTree]);
+
   return (
     <div>
       {/* === ترويسة بنمط الصورة === */}
@@ -523,61 +536,15 @@ export default function FTR2PreloadingViewer() {
 
       {/* ===== بقية الصفحة ===== */}
       <div style={pageWrap}>
-        {/* الشريط الجانبي (سنة ← شهر ← يوم) */}
-        <aside style={side}>
-          <div style={sideTop}>
-            <h4 style={sideTitle}>🗓️ All Available Reports</h4>
-            <button style={refreshBtn} onClick={buildDaysTree}>↻ Refresh</button>
-          </div>
-          {!ymdTree.length && (
-            <div style={{ fontSize: 12, color: COLORS.sub }}>
-              {loading ? "Loading…" : (error || "لا توجد تقارير.")}
-            </div>
-          )}
-
-          <div>
-            {ymdTree.map((y) => (
-              <div key={y.year}>
-                <div style={yearHdr}>📅 {y.year}</div>
-                {y.months.map((m) => (
-                  <div key={`${y.year}-${m.month}`} style={{ marginLeft: 8 }}>
-                    <div style={monthHdr}>🗓️ {y.year}-{m.month}</div>
-                    {m.days.map((dObj) => {
-                      const activeDay = dObj.date === (pickEntryDate(ensureObject(report?.payload) || {}) || date);
-                      return (
-                        <div key={dObj.date} style={dayBox(activeDay)}>
-                          <div style={dateHeader}>
-                            <span>{dObj.date}</span>
-                            <span style={{ opacity:.7, fontWeight:700 }}>×{dObj.items.length}</span>
-                          </div>
-                          {dObj.items.map((it) => {
-                            const tm = (it?.createdAt || "").slice(11,16);
-                            const isActive = (it.id||it._id) === (report?.id||report?._id);
-                            const label = tm || `ID…${String(it?.id||it?._id||"").slice(-4)}`;
-                            return (
-                              <button
-                                key={it.id||it._id}
-                                style={{
-                                  ...timeBtn,
-                                  border: isActive ? `1px solid ${COLORS.primary}` : timeBtn.border,
-                                  background: isActive ? "#eef2ff" : "#fff"
-                                }}
-                                onClick={() => openItem(it)}
-                                title={`Open ${dObj.date} ${tm || ""}`}
-                              >
-                                {label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </aside>
+        {/* الشريط الجانبي: شجرة قابلة للطيّ */}
+        <CollapsibleDateTree
+          groupedNav={normalizedTree}
+          activeId={report?.id || report?._id}
+          activeDate={pickEntryDate(ensureObject(report?.payload) || {}) || date}
+          onSelectItem={openItem}
+          onRefresh={buildDaysTree}
+          storageKey="ftr2_preloading_tree_collapsed_v1"
+        />
 
         {/* مساحة العرض الرئيسية */}
         <div style={card}>
@@ -585,6 +552,9 @@ export default function FTR2PreloadingViewer() {
           <p style={sub}>
             {caption} | Branch: <strong>{norm.branchCode}</strong> | Site: <strong>{norm.header.site}</strong>
           </p>
+
+          {/* 📊 شريط KPI */}
+          <PreloadingKPIBar columns={columns} />
 
           <div style={toolbar}>
             <button onClick={exportXLS} style={btn("#ecfdf5", "#065f46", "#a7f3d0")}>⬇️ Export XLS</button>

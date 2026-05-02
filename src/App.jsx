@@ -277,6 +277,14 @@ const SopSsopPage = lazy(() =>
 // ⚙️ Settings (Backup / Restore)
 const SettingsPage = lazy(() => import("./pages/settings/SettingsPage"));
 
+// ⏰ Expiry Center — لوحة موحّدة لكل تواريخ الانتهاء
+const ExpiryCenter = lazy(() => import("./pages/admin/ExpiryCenter"));
+
+// 🔄 Mock Recall — تمرين السحب الوهمي (HACCP/ISO 22000)
+const MockRecallInput    = lazy(() => import("./pages/haccp and iso/MockRecall/MockRecallInput"));
+const MockRecallView     = lazy(() => import("./pages/haccp and iso/MockRecall/MockRecallView"));
+const MockRecallSettings = lazy(() => import("./pages/haccp and iso/MockRecall/MockRecallSettings"));
+
 /** حماية المسارات الخاصة */
 /** Redirects /old-path/t/:token → /new-path/:token preserving the real token value */
 function TokenRedirect({ to }) {
@@ -360,6 +368,15 @@ export default function App() {
           element={
             <ProtectedRoute>
               <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        {/* ⏰ Expiry Center — مركز تواريخ الانتهاء */}
+        <Route
+          path="/admin/expiry-center"
+          element={
+            <ProtectedRoute>
+              <ExpiryCenter />
             </ProtectedRoute>
           }
         />
@@ -925,6 +942,32 @@ export default function App() {
           element={
             <ProtectedRoute>
               <LicensesContractsView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🔄 Mock Recall — Traceability Drill */}
+        <Route
+          path="/haccp-iso/mock-recall"
+          element={
+            <ProtectedRoute>
+              <MockRecallInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/mock-recall/view"
+          element={
+            <ProtectedRoute>
+              <MockRecallView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/mock-recall/settings"
+          element={
+            <ProtectedRoute>
+              <MockRecallSettings />
             </ProtectedRoute>
           }
         />

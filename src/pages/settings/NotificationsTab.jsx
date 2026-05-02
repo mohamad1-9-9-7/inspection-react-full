@@ -11,6 +11,7 @@ import {
   saveGlobalSettings,
   getEffectiveSettings,
 } from "../../utils/notifications";
+import { ENTITY_REGISTRY, scanExpiry, summarize, clearScanCache } from "../../utils/expiryTracker";
 
 export default function NotificationsTab() {
   const [admin] = useState(isAdminUser());
@@ -21,7 +22,13 @@ export default function NotificationsTab() {
     dailyReminderTime: "09:00",
     dailyReminderMessage: "ما تنسى تعبّي تقارير اليوم 📋",
     outOfRangeAlerts: false,
+    expiryAlertsEnabled: false,
+    expiryAlertTime: "08:00",
+    expiryThresholdDays: 30,
+    expiryEntities: {},
   });
+  const [expiryPreview, setExpiryPreview] = useState(null); // {expired, expiringSoon, expiring, ...}
+  const [expiryLoading, setExpiryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState({ kind: "", text: "" });
@@ -47,6 +54,37 @@ export default function NotificationsTab() {
 
   function update(partial) {
     setGlobal((prev) => ({ ...prev, ...partial }));
+  }
+
+  function toggleEntity(type, on) {
+    setGlobal((prev) => ({
+      ...prev,
+      expiryEntities: { ...(prev.expiryEntities || {}), [type]: on },
+    }));
+  }
+
+  async function handlePreviewExpiry() {
+    setExpiryLoading(true);
+    try {
+      clearScanCache();
+      const enabledTypes = Object.entries(global.expiryEntities || {})
+        .filter(([, on]) => on)
+        .map(([t]) => t);
+      const items = await scanExpiry({
+        thresholds: {
+          expired: 0,
+          expiringSoon: Number(global.expiryThresholdDays) || 30,
+          expiring: Math.max(90, (Number(global.expiryThresholdDays) || 30) * 3),
+        },
+        enabledTypes: enabledTypes.length ? enabledTypes : null,
+        useCache: false,
+      });
+      setExpiryPreview(summarize(items));
+    } catch (e) {
+      setExpiryPreview({ error: e?.message || String(e) });
+    } finally {
+      setExpiryLoading(false);
+    }
   }
 
   async function handleSaveGlobal() {
@@ -362,6 +400,150 @@ export default function NotificationsTab() {
               {busy ? "⏳ جارٍ الحفظ..." : "💾 حفظ على السيرفر (يطبَّق على الجميع)"}
             </button>
           </div>
+        )}
+      </div>
+
+      {/* ============ قسم: تنبيهات انتهاء الصلاحية ============ */}
+      <div style={{ ...card, background: "linear-gradient(135deg,#fef9c3,#fffbeb)", borderColor: "#fde68a" }}>
+        <div style={{ fontWeight: 800, fontSize: "1.05rem", marginBottom: 4, color: "#92400e" }}>
+          ⏰ تنبيهات انتهاء الصلاحية {admin ? "(قابلة للتعديل)" : "(للعرض فقط)"}
+        </div>
+        <div style={{ color: "#78350f", lineHeight: 1.7, fontSize: "0.9rem", marginBottom: 12 }}>
+          فحص يومي تلقائي للشهادات/الرخص/المعايرات يُطلِق إشعاراً للأدمن عند اقتراب الانتهاء.
+        </div>
+
+        <SettingRow
+          title="🔔 تفعيل تنبيهات الانتهاء"
+          description="تشغيل/إيقاف الفحص اليومي بشكل عام"
+          control={
+            <Toggle
+              checked={!!global.expiryAlertsEnabled}
+              onChange={(v) => update({ expiryAlertsEnabled: v })}
+              disabled={!admin || !global.enabled}
+            />
+          }
+        />
+
+        {global.expiryAlertsEnabled && (
+          <>
+            <SettingRow
+              title="⏰ وقت الفحص اليومي"
+              description="بصيغة 24 ساعة (الافتراضي 08:00)"
+              control={
+                <input
+                  type="time"
+                  value={global.expiryAlertTime || "08:00"}
+                  onChange={(e) => update({ expiryAlertTime: e.target.value })}
+                  disabled={!admin || !global.enabled}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: "1rem",
+                    fontWeight: 700,
+                    minWidth: 130,
+                    background: !admin ? "#f3f4f6" : "#fff",
+                  }}
+                />
+              }
+            />
+            <SettingRow
+              title="📅 حد الإنذار (بالأيام)"
+              description="ينبّه إذا الأيام المتبقية أقل من أو تساوي هذا الرقم"
+              control={
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={global.expiryThresholdDays || 30}
+                  onChange={(e) => update({ expiryThresholdDays: Number(e.target.value) || 30 })}
+                  disabled={!admin || !global.enabled}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: "1rem",
+                    fontWeight: 700,
+                    width: 100,
+                    background: !admin ? "#f3f4f6" : "#fff",
+                  }}
+                />
+              }
+            />
+
+            {/* اختيار الكيانات */}
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 700, color: "#0b1f4d", marginBottom: 8 }}>
+                📋 الكيانات المتتبَّعة:
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 8 }}>
+                {ENTITY_REGISTRY.map((def) => {
+                  const isOn = global.expiryEntities?.[def.type] !== false; // افتراضي: مفعّل
+                  return (
+                    <label
+                      key={def.type}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        background: "#fff",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        cursor: admin ? "pointer" : "default",
+                        opacity: admin ? 1 : 0.7,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isOn}
+                        disabled={!admin || !global.enabled}
+                        onChange={(e) => toggleEntity(def.type, e.target.checked)}
+                        style={{ width: 16, height: 16, accentColor: "#f59e0b" }}
+                      />
+                      <span style={{ fontSize: "0.92rem" }}>
+                        <span style={{ marginInlineEnd: 4 }}>{def.icon}</span>
+                        {def.label}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* معاينة */}
+            <div style={{ marginTop: 14, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={handlePreviewExpiry}
+                disabled={expiryLoading}
+                style={{
+                  background: "linear-gradient(180deg,#f59e0b,#b45309)",
+                  color: "#fff",
+                  border: "none",
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  cursor: expiryLoading ? "not-allowed" : "pointer",
+                  fontWeight: 800,
+                  fontSize: "0.92rem",
+                  opacity: expiryLoading ? 0.6 : 1,
+                }}
+              >
+                {expiryLoading ? "⏳ جارٍ الفحص..." : "🔎 فحص الآن (معاينة)"}
+              </button>
+              {expiryPreview && !expiryPreview.error && (
+                <div style={{ fontSize: "0.92rem", color: "#374151", fontWeight: 700 }}>
+                  المجموع: <b>{expiryPreview.total}</b> &nbsp;·&nbsp;
+                  <span style={{ color: "#b91c1c" }}>منتهية: {expiryPreview.expired}</span> &nbsp;·&nbsp;
+                  <span style={{ color: "#c2410c" }}>قريبة: {expiryPreview.expiringSoon}</span> &nbsp;·&nbsp;
+                  <span style={{ color: "#a16207" }}>تحذير: {expiryPreview.expiring}</span>
+                </div>
+              )}
+              {expiryPreview?.error && (
+                <div style={{ color: "#b91c1c" }}>❌ {expiryPreview.error}</div>
+              )}
+            </div>
+          </>
         )}
       </div>
 

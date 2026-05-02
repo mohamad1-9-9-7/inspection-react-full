@@ -67,7 +67,16 @@
       "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('src/pages/ohc/OHCView.jsx','utf8'\\),{sourceType:'module',plugins:['jsx']}\\); console.log\\('OHC OK'\\)\")",
       "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('src/pages/finished/FinishedProductEntry.js','utf8'\\),{sourceType:'module',plugins:['jsx']}\\); console.log\\('Entry OK'\\)\")",
       "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('src/pages/finished/FinishedProductReports.js','utf8'\\),{sourceType:'module',plugins:['jsx']}\\); console.log\\('Reports OK'\\)\")",
-      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('src/pages/finished/FinishedProductReports.js','utf8'\\),{sourceType:'module',plugins:['jsx']}\\); console.log\\('OK'\\)\")"
+      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('src/pages/finished/FinishedProductReports.js','utf8'\\),{sourceType:'module',plugins:['jsx']}\\); console.log\\('OK'\\)\")",
+      "Bash(node -e \"const fs=require\\('fs'\\);const c=fs.readFileSync\\('src/pages/BrowseMeatDaily.jsx','utf8'\\);let depth=0,line=1,inStr=null,inComment=false,inJSX=0;for\\(let i=0;i<c.length;i++\\){const ch=c[i];if\\(ch==='\\\\n'\\)line++;}console.log\\('Lines:',line\\);console.log\\('Length:',c.length\\);\")",
+      "Bash(npx --yes @babel/parser --version)",
+      "Bash(npm ls *)",
+      "Bash(node rename_bcr.cjs)",
+      "Bash(node rename_bcr2.cjs)",
+      "Bash(grep -E \"\\\\.\\(jsx|js\\)$\")",
+      "Bash(pnpm run *)",
+      "Bash(wc -l src/pages/monitor/branches/ftr*/FTR*OilCalibration*.jsx src/pages/monitor/branches/ftr*/FTR*Calibration*.jsx)",
+      "Bash(wc -l src/pages/monitor/branches/pos15/POS15Calibration*.jsx)"
     ]
   }
 }

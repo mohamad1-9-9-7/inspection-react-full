@@ -1,250 +1,40 @@
-// src/pages/monitor/branches/pos 11/POS11Layout.jsx
-// POS 11 — Input Tabs (FTR1-style).
-// "Shipments" renders the real form inline; other tabs load from their own files (same folder).
+// src/pages/monitor/branches/POS 11/POS11Layout.jsx
+// POS 11 — Input Tabs (FTR1-style). يستخدم المكوّن المشترك BranchInputLayout.
+import React, { lazy } from "react";
+import BranchInputLayout from "../_shared/BranchInputLayout";
 
-import React, { useState, useEffect, Suspense, lazy } from "react";
-import { useSearchParams } from "react-router-dom";
-
-/* ================== Shared Shipments Form (inline) ================== */
 const QCSRawMaterialInspection = lazy(() =>
   import("../shipment_recc/QCSRawMaterialInspection").then((m) => ({
     default: m.default || m.QCSRawMaterialInspection,
   }))
 );
+const POS11PersonalHygiene      = lazy(() => import("./POS11PersonalHygiene"));
+const POS11DailyCleaning        = lazy(() => import("./POS11DailyCleaning"));
+const POS11TemperatureInput     = lazy(() => import("./POS11TemperatureInput"));
+const POS11TraceabilityLogInput = lazy(() => import("./TraceabilityLogInput"));
+const POS11ReceivingLogInput    = lazy(() => import("./POS11ReceivingLogInput"));
+const POS11PestControlInput     = lazy(() => import("./POS11PestControlInput"));
+const POS11CalibrationInput     = lazy(() => import("./POS11CalibrationInput"));
 
-/* ================== Local Tabs (same folder) ================== */
-// 🧑‍🔬 Personal Hygiene (Input)
-const POS11PersonalHygiene = lazy(() =>
-  import("./POS11PersonalHygiene").then((m) => ({
-    default: m.default || m.POS11PersonalHygiene,
-  }))
-);
-
-// 🧹 Daily Cleaning (Input)
-const POS11DailyCleaning = lazy(() =>
-  import("./POS11DailyCleaning").then((m) => ({
-    default: m.default || m.POS11DailyCleaning,
-  }))
-);
-
-// 🌡️ Temperature (Input)
-const POS11TemperatureInput = lazy(() =>
-  import("./POS11TemperatureInput").then((m) => ({
-    default: m.default || m.POS11TemperatureInput,
-  }))
-);
-
-// 📥 Receiving Log (Input)
-const POS11ReceivingLogInput = lazy(() =>
-  import("./POS11ReceivingLogInput").then((m) => ({
-    default: m.default || m.POS11ReceivingLogInput,
-  }))
-);
-
-// 🧬 Traceability Log (NEW)
-const POS11TraceabilityLogInput = lazy(() =>
-  import("./TraceabilityLogInput").then((m) => ({
-    default: m.default || m.POS11TraceabilityLogInput || m.TraceabilityLogInput,
-  }))
-);
-
-// 🪲 Pest Control (NEW INPUT)
-const POS11PestControlInput = lazy(() =>
-  import("./POS11PestControlInput").then((m) => ({
-    default: m.default || m.POS11PestControlInput,
-  }))
-);
-
-// 🧰 Calibration (NEW INPUT)
-const POS11CalibrationInput = lazy(() =>
-  import("./POS11CalibrationInput").then((m) => ({
-    default: m.default || m.POS11CalibrationInput,
-  }))
-);
+const config = {
+  branch: "POS 11",
+  source: "pos11-tabs",
+  title: "📋 POS 11 — Operations Inputs (Al Ain Butchery)",
+  description:
+    "All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, Pest Control, and Calibration) in one place.",
+  defaultTab: "shipments",
+  tabs: [
+    { key: "shipments",    label: "📦 Shipments",          Component: QCSRawMaterialInspection,    loadingText: "Loading Shipments form…" },
+    { key: "personal",     label: "🧑‍🔬 Personal Hygiene", Component: POS11PersonalHygiene,        loadingText: "Loading Personal Hygiene…" },
+    { key: "daily",        label: "🧹 Daily Cleaning",     Component: POS11DailyCleaning,          loadingText: "Loading Daily Cleaning…" },
+    { key: "temperature",  label: "🌡️ Temperature",        Component: POS11TemperatureInput,       loadingText: "Loading Temperature…" },
+    { key: "traceability", label: "🧬 Traceability Log",   Component: POS11TraceabilityLogInput,   loadingText: "Loading Traceability Log…" },
+    { key: "receiving",    label: "📥 Receiving Log",      Component: POS11ReceivingLogInput,      loadingText: "Loading Receiving Log…" },
+    { key: "pest",         label: "🪲 Pest Control",       Component: POS11PestControlInput,       loadingText: "Loading Pest Control…" },
+    { key: "calibration",  label: "🧰 Calibration",        Component: POS11CalibrationInput,       loadingText: "Loading Calibration…" },
+  ],
+};
 
 export default function POS11Layout() {
-  const [activeTab, setActiveTab] = useState("shipments");
-
-  // Ensure URL params match the expected flow (branch/source used by forms)
-  const [searchParams, setSearchParams] = useSearchParams();
-  useEffect(() => {
-    const qs = new URLSearchParams(searchParams);
-    let changed = false;
-    if (!qs.get("branch")) { qs.set("branch", "POS 11"); changed = true; }
-    if (!qs.get("source")) { qs.set("source", "pos11-tabs"); changed = true; }
-    if (changed) setSearchParams(qs, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const tabs = [
-    { key: "shipments",    label: "📦 Shipments" },
-    { key: "personal",     label: "🧑‍🔬 Personal Hygiene" },
-    { key: "daily",        label: "🧹 Daily Cleaning" },
-    { key: "temperature",  label: "🌡️ Temperature" },
-    { key: "traceability", label: "🧬 Traceability Log" },
-    { key: "receiving",    label: "📥 Receiving Log" },
-    // NEW:
-    { key: "pest",         label: "🪲 Pest Control" },
-    { key: "calibration",  label: "🧰 Calibration" },
-  ];
-
-  const Card = ({ children }) => (
-    <div
-      style={{
-        background: "#fafafa",
-        border: "1.5px solid #e5e7eb",
-        borderRadius: "12px",
-        padding: "1.25rem",
-        boxShadow: "inset 0 0 6px rgba(0,0,0,0.05)",
-        minHeight: 280,
-      }}
-    >
-      {children}
-    </div>
-  );
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case "shipments":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Shipments form…</div>}>
-              <QCSRawMaterialInspection />
-            </Suspense>
-          </Card>
-        );
-      case "personal":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Personal Hygiene…</div>}>
-              <POS11PersonalHygiene />
-            </Suspense>
-          </Card>
-        );
-      case "daily":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Daily Cleaning…</div>}>
-              <POS11DailyCleaning />
-            </Suspense>
-          </Card>
-        );
-      case "temperature":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Temperature…</div>}>
-              <POS11TemperatureInput />
-            </Suspense>
-          </Card>
-        );
-      case "traceability":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Traceability Log…</div>}>
-              <POS11TraceabilityLogInput />
-            </Suspense>
-          </Card>
-        );
-      case "receiving":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Receiving Log…</div>}>
-              <POS11ReceivingLogInput />
-            </Suspense>
-          </Card>
-        );
-      case "pest":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Pest Control…</div>}>
-              <POS11PestControlInput />
-            </Suspense>
-          </Card>
-        );
-      case "calibration":
-        return (
-          <Card>
-            <Suspense fallback={<div style={{ fontWeight: 800, color: "#6b7280" }}>Loading Calibration…</div>}>
-              <POS11CalibrationInput />
-            </Suspense>
-          </Card>
-        );
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        padding: "2rem",
-        background: "linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)",
-        direction: "ltr",
-        fontFamily:
-          "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: "16px",
-          padding: "2rem",
-          boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
-          maxWidth: "95%",
-          margin: "0 auto",
-        }}
-      >
-        {/* Header */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h2 style={{ fontSize: "1.9rem", marginBottom: "0.5rem", color: "#1f2937" }}>
-            📋 POS 11 — Operations Inputs (Al Ain Butchery)
-          </h2>
-          <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            All input tabs (Shipments, Personal Hygiene, Daily Cleaning, Temperature, Traceability Log, Receiving Log, Pest Control, and Calibration) in one place.
-          </p>
-        </div>
-
-        {/* Tabs (FTR1-style) */}
-        <div
-          style={{
-            display: "flex",
-            gap: "1rem",
-            marginBottom: "1.5rem",
-            flexWrap: "wrap",
-          }}
-        >
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                flex: "1",
-                minWidth: "200px",
-                padding: "12px 20px",
-                borderRadius: "10px",
-                fontWeight: "600",
-                cursor: "pointer",
-                border: "1.5px solid #d1d5db",
-                background: activeTab === tab.key ? "#2563eb" : "#f3f4f6",
-                color: activeTab === tab.key ? "#fff" : "#111827",
-                boxShadow:
-                  activeTab === tab.key
-                    ? "0 4px 12px rgba(37,99,235,0.25)"
-                    : "none",
-                transition: "all 0.2s",
-                textAlign: "center",
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
-        {renderContent()}
-      </div>
-    </div>
-  );
+  return <BranchInputLayout config={config} />;
 }

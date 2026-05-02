@@ -45,6 +45,22 @@ const sections = [
     subtitle: "Standard Operating Procedures & Sanitation SOPs — documents, versions & records",
     route: "/haccp-iso/sop-ssop",
   },
+
+  // 🔄 Mock Recall / Traceability Drill
+  {
+    id: "mock-recall",
+    title: "Mock Recall / Traceability Drill",
+    subtitle: "Quarterly traceability drills — backward + forward trace, KPI & audit-ready logs",
+    route: "/haccp-iso/mock-recall/view",
+  },
+
+  // ⚙️ Mock Recall Settings
+  {
+    id: "mock-recall-settings",
+    title: "⚙️ Mock Recall Settings",
+    subtitle: "Pass thresholds for traceability drills (recovery % and time limit)",
+    route: "/haccp-iso/mock-recall/settings",
+  },
 ];
 
 // Simple icon

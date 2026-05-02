@@ -386,10 +386,28 @@ export default function PersonalHygieneVIEW() {
               </tbody>
             </table>
 
-            {/* التذييل */}
-            <div style={{ marginTop:"1.5rem", display:"flex", justifyContent:"space-between", fontWeight:600, padding:"0 1rem" }}>
-              <span>Checked By: {ftr?.checkedBy || "—"}</span>
-              <span>Verified By: {ftr?.verifiedBy || "—"}</span>
+            {/* التذييل + التوقيعات الرقمية */}
+            <div style={{ marginTop:"1.5rem", display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, padding:"0 1rem" }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                <span style={{ fontWeight:700 }}>Checked By: {ftr?.checkedBy || "—"}</span>
+                {ftr?.checkedBySignature && (
+                  <img
+                    src={ftr.checkedBySignature}
+                    alt="Checked By signature"
+                    style={{ maxWidth:260, maxHeight:80, objectFit:"contain", border:"1px solid #e5e7eb", borderRadius:6, background:"#fff", padding:4 }}
+                  />
+                )}
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"flex-end" }}>
+                <span style={{ fontWeight:700 }}>Verified By: {ftr?.verifiedBy || "—"}</span>
+                {ftr?.verifiedBySignature && (
+                  <img
+                    src={ftr.verifiedBySignature}
+                    alt="Verified By signature"
+                    style={{ maxWidth:260, maxHeight:80, objectFit:"contain", border:"1px solid #e5e7eb", borderRadius:6, background:"#fff", padding:4 }}
+                  />
+                )}
+              </div>
             </div>
           </div>
         )}

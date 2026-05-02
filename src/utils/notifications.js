@@ -20,7 +20,26 @@ const DEFAULTS = {
   dailyReminderTime: "09:00", // HH:MM (24h)
   dailyReminderMessage: "ما تنسى تعبّي تقارير اليوم 📋",
   outOfRangeAlerts: false,
-  lastReminderAt: 0, // محلي فقط (لمنع التكرار باليوم)
+  // ===== تنبيهات انتهاء الصلاحية =====
+  expiryAlertsEnabled: false,
+  expiryAlertTime: "08:00",      // وقت الفحص اليومي
+  expiryThresholdDays: 30,       // ينبّه إذا الأيام المتبقية ≤ هذا الرقم
+  expiryEntities: {              // الكيانات المراد تتبّعها (true/false لكل نوع)
+    training_certificate: true,
+    ohc_certificate: true,
+    licenses_contracts: true,
+    municipality_inspection: true,
+    pos10_calibration_log: true,
+    pos11_calibration_log: true,
+    pos15_calibration_log: true,
+    ftr1_calibration_log: true,
+    ftr2_calibration_log: true,
+    ftr1_oil_calibration: true,
+    ftr2_oil_calibration: true,
+    mock_recall_drill: true,
+  },
+  lastReminderAt: 0,             // محلي فقط (لمنع التكرار باليوم)
+  lastExpiryAlertAt: 0,          // محلي فقط (لمنع التكرار باليوم)
 };
 
 /* ================== Local (شخصي) ================== */
@@ -110,8 +129,9 @@ export async function saveGlobalSettings(partial) {
     ...partial,
     savedAt: Date.now(),
   };
-  // حذف lastReminderAt من العام (هو محلي فقط)
+  // حذف الحقول المحليّة فقط
   delete payload.lastReminderAt;
+  delete payload.lastExpiryAlertAt;
 
   const res = await fetch(`${API_BASE}/api/reports`, {
     method: "POST",
@@ -140,6 +160,7 @@ export function getEffectiveSettings() {
       ...DEFAULTS,
       ...global,
       lastReminderAt: local.lastReminderAt || 0,
+      lastExpiryAlertAt: local.lastExpiryAlertAt || 0,
     };
   }
   return local;
@@ -226,4 +247,21 @@ export function shouldFireDailyReminderNow() {
 export function markReminderFired() {
   // دائمًا محليًا — منع التكرار لكل جهاز
   saveLocalSettings({ lastReminderAt: Date.now() });
+}
+
+/* ================== تنبيه انتهاء الصلاحية ================== */
+export function shouldFireExpiryAlertNow() {
+  const settings = getEffectiveSettings();
+  if (!settings.enabled || !settings.expiryAlertsEnabled) return false;
+  const target = todayAt(settings.expiryAlertTime || "08:00").getTime();
+  const now = Date.now();
+  if (now < target || now > target + 60_000) return false;
+  const last = settings.lastExpiryAlertAt || 0;
+  const sameDay =
+    new Date(last).toDateString() === new Date(now).toDateString();
+  return !sameDay;
+}
+
+export function markExpiryAlertFired() {
+  saveLocalSettings({ lastExpiryAlertAt: Date.now() });
 }

@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/qcs/PersonalHygieneTab.jsx
 import React, { useState } from "react";
+import SignaturePad from "../../../../components/SignaturePad";
 
 /* =========================
    API base (CRA + Vite safe)
@@ -63,7 +64,12 @@ const defaultPHHeader = {
 
 // ✅ Auto-fill with MOHAMAD ABDULLAH (editable)
 const DEFAULT_SIGN_NAME = "MOHAMAD ABDULLAH";
-const defaultPHFooter = { checkedBy: DEFAULT_SIGN_NAME, verifiedBy: DEFAULT_SIGN_NAME };
+const defaultPHFooter = {
+  checkedBy: DEFAULT_SIGN_NAME,
+  verifiedBy: DEFAULT_SIGN_NAME,
+  checkedBySignature: "",   // ✍️ توقيع رقمي (Base64 PNG)
+  verifiedBySignature: "",  // ✍️ توقيع رقمي (Base64 PNG)
+};
 
 /* ---- Small UI helpers ---- */
 function RowKV({ label, value }) {
@@ -160,6 +166,22 @@ function PHEntryHeader({ header, date, logoUrl }) {
 
 function PHEntryFooter({ footer }) {
   const f = footer || defaultPHFooter;
+
+  const sigCellStyle = {
+    padding: "6px 8px",
+    flex: 1,
+    minHeight: 70,
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  };
+  const sigImgStyle = {
+    maxWidth: "100%",
+    maxHeight: 60,
+    objectFit: "contain",
+    alignSelf: "flex-start",
+  };
+
   return (
     <div style={{ border: "1px solid #000", marginTop: 8 }}>
       <div style={{ padding: "6px 8px", borderBottom: "1px solid #000", fontWeight: 900 }}>
@@ -180,7 +202,16 @@ function PHEntryFooter({ footer }) {
           >
             Checked By:
           </div>
-          <div style={{ padding: "6px 8px", flex: 1 }}>{f.checkedBy || "\u00A0"}</div>
+          <div style={sigCellStyle}>
+            <span>{f.checkedBy || "\u00A0"}</span>
+            {f.checkedBySignature ? (
+              <img src={f.checkedBySignature} alt="Checked By signature" style={sigImgStyle} />
+            ) : (
+              <span style={{ color: "#9ca3af", fontSize: "0.78rem", fontStyle: "italic" }}>
+                \u2014 \u0644\u0627 \u064A\u0648\u062C\u062F \u062A\u0648\u0642\u064A\u0639 \u2014
+              </span>
+            )}
+          </div>
         </div>
         <div style={{ display: "flex", borderInlineStart: "1px solid #000" }}>
           <div
@@ -193,7 +224,16 @@ function PHEntryFooter({ footer }) {
           >
             Verified By:
           </div>
-          <div style={{ padding: "6px 8px", flex: 1 }}>{f.verifiedBy || "\u00A0"}</div>
+          <div style={sigCellStyle}>
+            <span>{f.verifiedBy || "\u00A0"}</span>
+            {f.verifiedBySignature ? (
+              <img src={f.verifiedBySignature} alt="Verified By signature" style={sigImgStyle} />
+            ) : (
+              <span style={{ color: "#9ca3af", fontSize: "0.78rem", fontStyle: "italic" }}>
+                \u2014 \u0644\u0627 \u064A\u0648\u062C\u062F \u062A\u0648\u0642\u064A\u0639 \u2014
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -266,6 +306,33 @@ function PHHeaderEditor({ header, setHeader, footer, setFooter }) {
           <span>Verified By</span>
           <input style={input} value={f.verifiedBy} onChange={(e) => updateFooter("verifiedBy", e.target.value)} />
         </label>
+      </div>
+
+      {/* ✍️ التوقيع الرقمي */}
+      <div
+        style={{
+          marginTop: 16,
+          paddingTop: 12,
+          borderTop: "1px dashed #cbd5e1",
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
+        }}
+      >
+        <SignaturePad
+          label={`✍️ Checked By Signature${f.checkedBy ? ` (${f.checkedBy})` : ""}`}
+          value={f.checkedBySignature || ""}
+          onChange={(v) => updateFooter("checkedBySignature", v)}
+          width={380}
+          height={130}
+        />
+        <SignaturePad
+          label={`✍️ Verified By Signature${f.verifiedBy ? ` (${f.verifiedBy})` : ""}`}
+          value={f.verifiedBySignature || ""}
+          onChange={(v) => updateFooter("verifiedBySignature", v)}
+          width={380}
+          height={130}
+        />
       </div>
     </details>
   );

@@ -406,6 +406,8 @@ export default function CustomerReturnView() {
     productName: "",
     origin: "",
     customerName: "",
+    carNumber: "",
+    driverName: "",
     quantity: "",
     qtyType: "",
     customQtyType: "",
@@ -441,6 +443,8 @@ export default function CustomerReturnView() {
       productName: row.productName || "",
       origin: row.origin || "",
       customerName: row.customerName || "",
+      carNumber: row.carNumber || "",
+      driverName: row.driverName || "",
       quantity: row.quantity ?? "",
       qtyType: row.qtyType || "",
       customQtyType: row.customQtyType || "",
@@ -464,6 +468,8 @@ export default function CustomerReturnView() {
       productName: (row.productName || "").trim(),
       origin: (row.origin || "").trim(),
       customerName: (row.customerName || "").trim(),
+      carNumber: (row.carNumber || "").trim(),
+      driverName: (row.driverName || "").trim(),
       quantity: Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 0,
       qtyType: (row.customQtyType || "").trim() ? "Other" : (row.qtyType || "").trim(),
       customQtyType: (row.customQtyType || "").trim(),
@@ -673,13 +679,15 @@ export default function CustomerReturnView() {
         "PRODUCT",
         "ORIGIN",
         "CUSTOMER",
+        "CAR NO.",
+        "DRIVER",
         "QTY",
         "QTY TYPE",
         "EXPIRY",
         "REMARKS",
         "ACTION",
       ];
-      const colWidths = [28, 120, 70, 120, 45, 65, 65, 120, 95];
+      const colWidths = [22, 95, 55, 95, 60, 80, 38, 55, 55, 95, 78];
       const tableX = marginX;
       const rowH = 18;
 
@@ -708,6 +716,8 @@ export default function CustomerReturnView() {
           row.productName || "",
           row.origin || "",
           row.customerName || "",
+          row.carNumber || "",
+          row.driverName || "",
           String(row.quantity ?? ""),
           row.qtyType === "Other" ? row.customQtyType || "" : row.qtyType || "",
           row.expiry || "",
@@ -806,11 +816,13 @@ export default function CustomerReturnView() {
     sl: { width: 56, minWidth: 56, textAlign: "center" },
     product: { width: 180, minWidth: 180 },
     origin: { width: 110, minWidth: 110 },
-    customer: { width: 180, minWidth: 180 },
+    customer: { width: 160, minWidth: 160 },
+    car: { width: 110, minWidth: 110, textAlign: "center" },
+    driver: { width: 140, minWidth: 140 },
     qty: { width: 80, minWidth: 80, textAlign: "center" },
     qtyType: { width: 110, minWidth: 110 },
     expiry: { width: 110, minWidth: 110, textAlign: "center" },
-    remarks: { width: 220, minWidth: 220 },
+    remarks: { width: 200, minWidth: 200 },
     action: { width: 150, minWidth: 150 },
     images: { width: 110, minWidth: 110, textAlign: "center" },
     ops: { width: 86, minWidth: 86, textAlign: "center" },
@@ -907,6 +919,8 @@ export default function CustomerReturnView() {
                       <th style={{...th2, ...col.product}}>PRODUCT</th>
                       <th style={{...th2, ...col.origin}}>ORIGIN</th>
                       <th style={{...th2, ...col.customer}}>CUSTOMER</th>
+                      <th style={{...th2, ...col.car}}>🚚 CAR NO.</th>
+                      <th style={{...th2, ...col.driver}}>👨‍✈️ DRIVER</th>
                       <th style={{...th2, ...col.qty}}>QTY</th>
                       <th style={{...th2, ...col.qtyType}}>QTY TYPE</th>
                       <th style={{...th2, ...col.expiry}}>EXPIRY</th>
@@ -925,6 +939,21 @@ export default function CustomerReturnView() {
                           <td style={{...td2, ...col.product}} title={row.productName}>{row.productName}</td>
                           <td style={{...td2, ...col.origin}}>{row.origin}</td>
                           <td style={{...td2, ...col.customer}}>{row.customerName}</td>
+                          <td style={{...tdNum, ...col.car}} title={row.carNumber || ""}>
+                            {row.carNumber ? <span style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+                              background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a",
+                              fontFamily: "ui-monospace, monospace",
+                            }}>🚚 {row.carNumber}</span> : <span style={{color: "#94a3b8"}}>—</span>}
+                          </td>
+                          <td style={{...td2, ...col.driver}} title={row.driverName || ""}>
+                            {row.driverName ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                👨‍✈️ <span style={{ fontWeight: 600 }}>{row.driverName}</span>
+                              </span>
+                            ) : <span style={{color: "#94a3b8"}}>—</span>}
+                          </td>
                           <td style={{...tdNum, ...col.qty}} title={String(row.quantity)}>{row.quantity}</td>
                           <td style={{...td2, ...col.qtyType}}>
                             {row.qtyType === "Other" ? (row.customQtyType || "") : (row.qtyType || "")}
@@ -960,6 +989,8 @@ export default function CustomerReturnView() {
                     <input style={inp} placeholder="PRODUCT NAME" value={editRowData.productName} onChange={e=>setEditRowData(d=>({...d, productName:e.target.value}))}/>
                     <input style={inp} placeholder="ORIGIN" value={editRowData.origin} onChange={e=>setEditRowData(d=>({...d, origin:e.target.value}))}/>
                     <input style={inp} placeholder="CUSTOMER" value={editRowData.customerName} onChange={e=>setEditRowData(d=>({...d, customerName:e.target.value}))}/>
+                    <input style={inp} placeholder="🚚 CAR NUMBER" value={editRowData.carNumber || ""} onChange={e=>setEditRowData(d=>({...d, carNumber:e.target.value}))}/>
+                    <input style={inp} placeholder="👨‍✈️ DRIVER NAME" value={editRowData.driverName || ""} onChange={e=>setEditRowData(d=>({...d, driverName:e.target.value}))}/>
                     <input style={inp} placeholder="QUANTITY" inputMode="decimal" value={editRowData.quantity} onChange={e=>setEditRowData(d=>({...d, quantity:e.target.value.replace(/[^0-9.]/g,"")}))}/>
                     <input style={inp} placeholder="QTY TYPE (e.g., KG/PCS)" value={editRowData.qtyType} onChange={e=>setEditRowData(d=>({...d, qtyType:e.target.value}))}/>
                     <input style={inp} type="date" placeholder="EXPIRY" value={editRowData.expiry} onChange={e=>setEditRowData(d=>({...d, expiry:e.target.value}))}/>
