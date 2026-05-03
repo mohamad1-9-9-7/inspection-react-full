@@ -10,6 +10,23 @@ import FloatingSettingsButton from "../../components/FloatingSettingsButton";
  */
 
 const sections = [
+  // 📕 HACCP Manual — Master Reference Document (always first)
+  {
+    id: "haccp-manual",
+    title: "📕 HACCP Manual (Master Document)",
+    subtitle: "Hazard analysis, CCPs, HACCP plan, product descriptions & full FSMS clauses",
+    route: "/haccp-iso/haccp-manual",
+    highlight: true,
+  },
+
+  // 📊 HACCP / FSMS Linkage Dashboard
+  {
+    id: "haccp-dashboard",
+    title: "📊 HACCP Linkage Dashboard",
+    subtitle: "Live KPIs: CCP records, mock recalls, suppliers, audits, calibration & MRM status",
+    route: "/haccp-iso/haccp-dashboard",
+  },
+
   {
     id: "product-details",
     title: "Product Details & Specifications",
@@ -54,12 +71,36 @@ const sections = [
     route: "/haccp-iso/mock-recall/view",
   },
 
-  // ⚙️ Mock Recall Settings
+  // 🎯 CCP Monitoring
   {
-    id: "mock-recall-settings",
-    title: "⚙️ Mock Recall Settings",
-    subtitle: "Pass thresholds for traceability drills (recovery % and time limit)",
-    route: "/haccp-iso/mock-recall/settings",
+    id: "ccp-monitoring",
+    title: "🎯 CCP Monitoring Log",
+    subtitle: "Critical Control Points monitoring — readings, deviations, corrective actions",
+    route: "/haccp-iso/ccp-monitoring/view",
+  },
+
+  // 📋 Management Review Meeting
+  {
+    id: "mrm",
+    title: "📋 Management Review Meeting (MRM)",
+    subtitle: "MRM sessions — inputs, decisions, outputs, action items & sign-off",
+    route: "/haccp-iso/mrm/view",
+  },
+
+  // 🔍 Internal Audit
+  {
+    id: "internal-audit",
+    title: "🔍 Internal Audit",
+    subtitle: "Audit plans, checklists, findings, NCs, CARs & verification",
+    route: "/haccp-iso/internal-audit/view",
+  },
+
+  // 🌡️ Calibration Log
+  {
+    id: "calibration",
+    title: "🌡️ Calibration Log",
+    subtitle: "Equipment calibration records, due dates, alerts & traceability",
+    route: "/haccp-iso/calibration/view",
   },
 ];
 
@@ -268,14 +309,23 @@ export default function HaccpIsoMenu() {
   const [hoverId, setHoverId] = useState(null);
 
   const cardStyle = useMemo(() => {
-    return (isHover) => ({
+    return (isHover, highlight) => ({
       ...cardBaseStyle,
       transform: isHover ? "translateY(-3px)" : "translateY(0)",
-      background: isHover
-        ? "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(236,254,255,0.72))"
-        : cardBaseStyle.background,
-      boxShadow: isHover ? "0 18px 46px rgba(34,211,238,0.18)" : cardBaseStyle.boxShadow,
-      borderColor: isHover ? "rgba(34,211,238,0.52)" : "rgba(15, 23, 42, 0.16)",
+      background: highlight
+        ? (isHover
+            ? "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,247,237,0.85))"
+            : "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,251,235,0.7))")
+        : (isHover
+            ? "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(236,254,255,0.72))"
+            : cardBaseStyle.background),
+      boxShadow: highlight
+        ? (isHover ? "0 22px 54px rgba(245,158,11,0.28)" : "0 14px 32px rgba(245,158,11,0.18)")
+        : (isHover ? "0 18px 46px rgba(34,211,238,0.18)" : cardBaseStyle.boxShadow),
+      borderColor: highlight
+        ? "rgba(245,158,11,0.55)"
+        : (isHover ? "rgba(34,211,238,0.52)" : "rgba(15, 23, 42, 0.16)"),
+      borderWidth: highlight ? 2 : 1,
     });
   }, []);
 
@@ -334,7 +384,7 @@ export default function HaccpIsoMenu() {
                 <button
                   key={item.id}
                   type="button"
-                  style={cardStyle(isHover)}
+                  style={cardStyle(isHover, item.highlight)}
                   onClick={() => handleOpen(item)}
                   onMouseEnter={() => setHoverId(item.id)}
                   onMouseLeave={() => setHoverId(null)}
@@ -355,14 +405,32 @@ export default function HaccpIsoMenu() {
                     }}
                   />
 
-                  <div style={{ ...iconWrapStyle, position: "relative" }}>
+                  <div
+                    style={{
+                      ...iconWrapStyle,
+                      position: "relative",
+                      ...(item.highlight && {
+                        background: "linear-gradient(135deg, rgba(245,158,11,0.22), rgba(217,119,6,0.16))",
+                        color: "#9a3412",
+                        border: "1px solid rgba(245,158,11,0.45)",
+                        boxShadow: "0 10px 22px rgba(245,158,11,0.18)",
+                      }),
+                    }}
+                  >
                     <IconFolder />
                   </div>
 
                   <div style={{ ...cardBodyStyle, position: "relative" }}>
                     <div style={cardTitleStyle}>{item.title}</div>
                     <div style={cardSubStyle}>{item.subtitle}</div>
-                    <div style={cardFooterStyle}>Open section</div>
+                    <div
+                      style={{
+                        ...cardFooterStyle,
+                        ...(item.highlight && { color: "#b45309" }),
+                      }}
+                    >
+                      {item.highlight ? "🏆 Master Document" : "Open section"}
+                    </div>
                   </div>
 
                   <svg

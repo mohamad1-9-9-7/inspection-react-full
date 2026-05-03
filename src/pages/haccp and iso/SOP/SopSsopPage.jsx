@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 import { sopsData, ssopsData, policiesData } from "./sopData";
+import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 
 // ─── Category colours ─────────────────────────────────────────────────────────
 const categoryColors = {
@@ -495,6 +496,7 @@ export default function SopSsopPage() {
           <div>
             <div style={{ fontSize: "26px", fontWeight: 980, letterSpacing: "0.02em" }}>{t.pageTitle}</div>
             <div style={{ fontSize: "13px", fontWeight: 750, opacity: 0.82, marginTop: "6px" }}>{t.pageSubtitle}</div>
+            <HaccpLinkBadge clauses={["7.5", "8.2"]} label="Documented Information + PRPs" />
           </div>
           <p style={{ fontSize: "13px", fontWeight: 750, color: "#334155", maxWidth: "400px", margin: 0 }}>{t.tagline}</p>
         </header>

@@ -5,8 +5,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import LinkedReportPopup from "./LinkedReportPopup";
-import { useLang, LangToggle } from "./i18n";
+import { useLang, LangToggle, getDrillShortLabel } from "./i18n";
 import AttachmentsSection from "./AttachmentsSection";
+import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 
 const TYPE = "mock_recall_drill";
 
@@ -172,6 +173,7 @@ export default function MockRecallView() {
           <div style={{ opacity: 0.85, marginTop: 4, fontSize: "0.92rem" }}>
             {t("viewSubtitle")}
           </div>
+          <HaccpLinkBadge clauses={["8.3", "8.9"]} label="Traceability + Withdrawal/Recall" />
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <LangToggle lang={lang} toggle={toggle} />
@@ -317,6 +319,17 @@ export default function MockRecallView() {
                       </div>
                       <div style={{ fontSize: "0.85rem", color: "#64748b", fontWeight: 600 }}>
                         📅 {p.drillDate || "—"} · {quarterOf(p.drillDate)} · 🏭 {p.product?.branch || "—"}
+                        <span style={{
+                          marginInlineStart: 8,
+                          background: p.drillName === "traceability" ? "#ede9fe" : "#dbeafe",
+                          color: p.drillName === "traceability" ? "#5b21b6" : "#1e40af",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: "0.75rem",
+                          fontWeight: 800,
+                        }}>
+                          {p.drillName === "traceability" ? "🧬" : "🔄"} {getDrillShortLabel(p.drillName, lang)}
+                        </span>
                       </div>
                     </div>
                   </div>

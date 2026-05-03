@@ -204,6 +204,28 @@ const HaccpIsoMenu = lazy(() =>
   import("./pages/haccp and iso/HaccpIsoMenu")
 );
 
+// 📕 HACCP Manual — Master Reference Document
+const FSMSManualView = lazy(() =>
+  import("./pages/haccp and iso/FSMSManual/FSMSManualView")
+);
+
+// 📊 HACCP Linkage Dashboard
+const HaccpDashboard = lazy(() =>
+  import("./pages/haccp and iso/HaccpDashboard/HaccpDashboard")
+);
+
+// 📋 Management Review Meeting (MRM)
+const MRMInput = lazy(() => import("./pages/haccp and iso/MRM/MRMInput"));
+const MRMView  = lazy(() => import("./pages/haccp and iso/MRM/MRMView"));
+
+// 🔍 Internal Audit
+const InternalAuditInput = lazy(() => import("./pages/haccp and iso/InternalAudit/InternalAuditInput"));
+const InternalAuditView  = lazy(() => import("./pages/haccp and iso/InternalAudit/InternalAuditView"));
+
+// 🌡️ Calibration Log
+const CalibrationInput = lazy(() => import("./pages/haccp and iso/Calibration/CalibrationInput"));
+const CalibrationView  = lazy(() => import("./pages/haccp and iso/Calibration/CalibrationView"));
+
 // 🆕 📦 Product Details Input
 const ProductDetailsInput = lazy(() =>
   import("./pages/haccp and iso/ProductDetailsInput")
@@ -265,6 +287,10 @@ const TrainingSessionCreate = lazy(() =>
 const TrainingSessionsList = lazy(() =>
   import("./pages/training/TrainingSessionsList")
 );
+// ✅🆕 خطة التدريب السنوية (مصفوفة فروع × أشهر)
+const TrainingAnnualPlan = lazy(() =>
+  import("./pages/training/TrainingAnnualPlan")
+);
 
 // ✅🆕 صفحة المتدرّب (رابط/QR)
 const TrainingQuizLink = lazy(() => import("./pages/training/TrainingQuizLink"));
@@ -284,6 +310,42 @@ const ExpiryCenter = lazy(() => import("./pages/admin/ExpiryCenter"));
 const MockRecallInput    = lazy(() => import("./pages/haccp and iso/MockRecall/MockRecallInput"));
 const MockRecallView     = lazy(() => import("./pages/haccp and iso/MockRecall/MockRecallView"));
 const MockRecallSettings = lazy(() => import("./pages/haccp and iso/MockRecall/MockRecallSettings"));
+
+// 🎯 CCP Monitoring — مراقبة نقاط التحكم الحرجة
+const CCPInput    = lazy(() => import("./pages/haccp and iso/CCPMonitoring/CCPInput"));
+const CCPView     = lazy(() => import("./pages/haccp and iso/CCPMonitoring/CCPView"));
+const CCPSettings = lazy(() => import("./pages/haccp and iso/CCPMonitoring/CCPSettings"));
+
+// 🦺 HSE — Health, Safety & Environment
+const HSEMenu                  = lazy(() => import("./pages/hse/HSEMenu"));
+const HSEVisionMission         = lazy(() => import("./pages/hse/HSEVisionMission"));
+const HSELegalFramework        = lazy(() => import("./pages/hse/HSELegalFramework"));
+const HSEOrgStructure          = lazy(() => import("./pages/hse/HSEOrgStructure"));
+const HSEPolicies              = lazy(() => import("./pages/hse/HSEPolicies"));
+const HSERiskRegister          = lazy(() => import("./pages/hse/HSERiskRegister"));
+const HSESOPs                  = lazy(() => import("./pages/hse/HSESOPs"));
+const HSEIncidentReport        = lazy(() => import("./pages/hse/HSEIncidentReport"));
+const HSENearMiss              = lazy(() => import("./pages/hse/HSENearMiss"));
+const HSEDailyInspection       = lazy(() => import("./pages/hse/HSEDailyInspection"));
+const HSEWorkPermit            = lazy(() => import("./pages/hse/HSEWorkPermit"));
+const HSETemperatureLog        = lazy(() => import("./pages/hse/HSETemperatureLog"));
+const HSEShipmentReceiving     = lazy(() => import("./pages/hse/HSEShipmentReceiving"));
+const HSECleaningLog           = lazy(() => import("./pages/hse/HSECleaningLog"));
+const HSESwabsLog              = lazy(() => import("./pages/hse/HSESwabsLog"));
+const HSEPestControl           = lazy(() => import("./pages/hse/HSEPestControl"));
+const HSEEquipmentMaintenance  = lazy(() => import("./pages/hse/HSEEquipmentMaintenance"));
+const HSEMedicalChecks         = lazy(() => import("./pages/hse/HSEMedicalChecks"));
+const HSEEvacuationDrills      = lazy(() => import("./pages/hse/HSEEvacuationDrills"));
+const HSEPPELog                = lazy(() => import("./pages/hse/HSEPPELog"));
+const HSEContractorsVisitors   = lazy(() => import("./pages/hse/HSEContractorsVisitors"));
+const HSEWasteLog              = lazy(() => import("./pages/hse/HSEWasteLog"));
+const HSECAPATracker           = lazy(() => import("./pages/hse/HSECAPATracker"));
+const HSETrainingMatrix        = lazy(() => import("./pages/hse/HSETrainingMatrix"));
+const HSELicenses              = lazy(() => import("./pages/hse/HSELicenses"));
+const HSEKPIs                  = lazy(() => import("./pages/hse/HSEKPIs"));
+const HSEBudget                = lazy(() => import("./pages/hse/HSEBudget"));
+const HSEImplementationPlan    = lazy(() => import("./pages/hse/HSEImplementationPlan"));
+const HSESuccessFactors        = lazy(() => import("./pages/hse/HSESuccessFactors"));
 
 /** حماية المسارات الخاصة */
 /** Redirects /old-path/t/:token → /new-path/:token preserving the real token value */
@@ -411,6 +473,15 @@ export default function App() {
           element={
             <ProtectedRoute>
               <TrainingSessionsList />
+            </ProtectedRoute>
+          }
+        />
+        {/* ✅🆕 خطة التدريب السنوية */}
+        <Route
+          path="/training/annual-plan"
+          element={
+            <ProtectedRoute>
+              <TrainingAnnualPlan />
             </ProtectedRoute>
           }
         />
@@ -910,6 +981,85 @@ export default function App() {
         />
         <Route path="/iso-haccp" element={<Navigate to="/haccp-iso" replace />} />
 
+        {/* 📕 HACCP Manual (Master Document) */}
+        <Route
+          path="/haccp-iso/haccp-manual"
+          element={
+            <ProtectedRoute>
+              <FSMSManualView />
+            </ProtectedRoute>
+          }
+        />
+        {/* Backward-compat redirect */}
+        <Route
+          path="/haccp-iso/fsms-manual"
+          element={<Navigate to="/haccp-iso/haccp-manual" replace />}
+        />
+
+        {/* 📊 HACCP Linkage Dashboard */}
+        <Route
+          path="/haccp-iso/haccp-dashboard"
+          element={
+            <ProtectedRoute>
+              <HaccpDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 📋 Management Review Meeting (MRM) */}
+        <Route
+          path="/haccp-iso/mrm"
+          element={
+            <ProtectedRoute>
+              <MRMInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/mrm/view"
+          element={
+            <ProtectedRoute>
+              <MRMView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🔍 Internal Audit */}
+        <Route
+          path="/haccp-iso/internal-audit"
+          element={
+            <ProtectedRoute>
+              <InternalAuditInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/internal-audit/view"
+          element={
+            <ProtectedRoute>
+              <InternalAuditView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🌡️ Calibration Log */}
+        <Route
+          path="/haccp-iso/calibration"
+          element={
+            <ProtectedRoute>
+              <CalibrationInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/calibration/view"
+          element={
+            <ProtectedRoute>
+              <CalibrationView />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 🆕 Product Details */}
         <Route
           path="/haccp-iso/product-details"
@@ -968,6 +1118,32 @@ export default function App() {
           element={
             <ProtectedRoute>
               <MockRecallSettings />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🎯 CCP Monitoring */}
+        <Route
+          path="/haccp-iso/ccp-monitoring"
+          element={
+            <ProtectedRoute>
+              <CCPInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/ccp-monitoring/view"
+          element={
+            <ProtectedRoute>
+              <CCPView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/ccp-monitoring/settings"
+          element={
+            <ProtectedRoute>
+              <CCPSettings />
             </ProtectedRoute>
           }
         />
@@ -1181,6 +1357,37 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* 🦺 HSE — Health, Safety & Environment */}
+        <Route path="/hse" element={<ProtectedRoute><HSEMenu /></ProtectedRoute>} />
+        <Route path="/hse/vision-mission" element={<ProtectedRoute><HSEVisionMission /></ProtectedRoute>} />
+        <Route path="/hse/legal-framework" element={<ProtectedRoute><HSELegalFramework /></ProtectedRoute>} />
+        <Route path="/hse/org-structure" element={<ProtectedRoute><HSEOrgStructure /></ProtectedRoute>} />
+        <Route path="/hse/policies" element={<ProtectedRoute><HSEPolicies /></ProtectedRoute>} />
+        <Route path="/hse/risk-register" element={<ProtectedRoute><HSERiskRegister /></ProtectedRoute>} />
+        <Route path="/hse/sops" element={<ProtectedRoute><HSESOPs /></ProtectedRoute>} />
+        <Route path="/hse/incident-report" element={<ProtectedRoute><HSEIncidentReport /></ProtectedRoute>} />
+        <Route path="/hse/near-miss" element={<ProtectedRoute><HSENearMiss /></ProtectedRoute>} />
+        <Route path="/hse/daily-inspection" element={<ProtectedRoute><HSEDailyInspection /></ProtectedRoute>} />
+        <Route path="/hse/work-permit" element={<ProtectedRoute><HSEWorkPermit /></ProtectedRoute>} />
+        <Route path="/hse/temperature-log" element={<ProtectedRoute><HSETemperatureLog /></ProtectedRoute>} />
+        <Route path="/hse/shipment-receiving" element={<ProtectedRoute><HSEShipmentReceiving /></ProtectedRoute>} />
+        <Route path="/hse/cleaning-log" element={<ProtectedRoute><HSECleaningLog /></ProtectedRoute>} />
+        <Route path="/hse/swabs-log" element={<ProtectedRoute><HSESwabsLog /></ProtectedRoute>} />
+        <Route path="/hse/pest-control" element={<ProtectedRoute><HSEPestControl /></ProtectedRoute>} />
+        <Route path="/hse/equipment-maintenance" element={<ProtectedRoute><HSEEquipmentMaintenance /></ProtectedRoute>} />
+        <Route path="/hse/medical-checks" element={<ProtectedRoute><HSEMedicalChecks /></ProtectedRoute>} />
+        <Route path="/hse/evacuation-drills" element={<ProtectedRoute><HSEEvacuationDrills /></ProtectedRoute>} />
+        <Route path="/hse/ppe-log" element={<ProtectedRoute><HSEPPELog /></ProtectedRoute>} />
+        <Route path="/hse/contractors-visitors" element={<ProtectedRoute><HSEContractorsVisitors /></ProtectedRoute>} />
+        <Route path="/hse/waste-log" element={<ProtectedRoute><HSEWasteLog /></ProtectedRoute>} />
+        <Route path="/hse/capa-tracker" element={<ProtectedRoute><HSECAPATracker /></ProtectedRoute>} />
+        <Route path="/hse/training-matrix" element={<ProtectedRoute><HSETrainingMatrix /></ProtectedRoute>} />
+        <Route path="/hse/licenses" element={<ProtectedRoute><HSELicenses /></ProtectedRoute>} />
+        <Route path="/hse/kpis" element={<ProtectedRoute><HSEKPIs /></ProtectedRoute>} />
+        <Route path="/hse/budget" element={<ProtectedRoute><HSEBudget /></ProtectedRoute>} />
+        <Route path="/hse/implementation-plan" element={<ProtectedRoute><HSEImplementationPlan /></ProtectedRoute>} />
+        <Route path="/hse/success-factors" element={<ProtectedRoute><HSESuccessFactors /></ProtectedRoute>} />
 
         {/* ⚙️ Settings */}
         <Route

@@ -7,9 +7,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import SignaturePad from "../../../components/SignaturePad";
 import API_BASE from "../../../config/api";
 import ReportLookupModal from "../../monitor/branches/_shared/ReportLookupModal";
-import { useLang, LangToggle, branchTempTypeFor, pickRowsArray } from "./i18n";
+import { useLang, LangToggle, branchTempTypeFor, pickRowsArray, getDrillFullTitle, BRANCH_ONLY_TEMP_TYPES, branchLabelForType } from "./i18n";
 import { useMockRecallConfig } from "./useMockRecallConfig";
 import AttachmentsSection from "./AttachmentsSection";
+import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 
 const TYPE = "mock_recall_drill";
 
@@ -20,7 +21,7 @@ const BRANCHES = [
   "POS 10 — Abu Dhabi Butchery",
   "POS 11 — Al Ain Butchery",
   "POS 15 — Al Barsha Butchery",
-  "POS 19 — Motor City",
+  "POS 19 — Al Warqa Kitchen (مطبخ الورقاء)",
   "POS 24 — Silicon Oasis",
   "POS 26 — Al Barsha South",
   "Production",
@@ -116,6 +117,7 @@ export default function MockRecallInput() {
 
   const [form, setForm] = useState({
     drillDate: todayISO(),
+    drillName: "mock_recall",     // 🆕 تسمية التمرين: mock_recall | traceability
     drillType: "scheduled",
     drillRef: "", // اختياري — رقم تمرين
     triggeredBy: "", // اسم المُحفِّز / الـ auditor
@@ -348,14 +350,15 @@ export default function MockRecallInput() {
     setForm((s) => ({ ...s, linked: { ...s.linked, coolers: info } }));
   }
 
-  /* 🆕 Branch Temperature picker */
+  /* 🆕 Branch Temperature picker — يأخذ النوع من المصدر الفعلي للتقرير */
   function pickBranchTemp(item) {
     const p = item?.payload || {};
+    const sourceType = p?.__sourceType || item?._sourceType || branchTempType;
     const info = {
       id: item?.id || item?._id || null,
-      type: branchTempType,
+      type: sourceType,
       date: p.reportDate || p.date || "",
-      branch: form.product.branch,
+      branch: p.branch || branchLabelForType(sourceType) || form.product.branch,
       rowsCount: pickRowsArray(p).length,
     };
     setForm((s) => ({ ...s, linked: { ...s.linked, branchTemp: info } }));
@@ -526,7 +529,7 @@ export default function MockRecallInput() {
                   </div>
                 </td>
                 <td style={S.headerCell}>
-                  <b>{t("docTitle")}:</b> Mock Recall / Traceability Drill
+                  <b>{t("docTitle")}:</b> {getDrillFullTitle(form.drillName, lang)}
                 </td>
                 <td style={S.headerCell}>
                   <b>{t("docNo")}:</b> FS-QM/REC/MR
@@ -569,7 +572,10 @@ export default function MockRecallInput() {
             </tbody>
           </table>
           <div style={S.brandStrip}>
-            {t("brandStrip")}
+            {getDrillFullTitle(form.drillName, lang)}
+          </div>
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "center" }}>
+            <HaccpLinkBadge clauses={["8.3", "8.9"]} label={lang === "ar" ? "التتبع + السحب/الاسترجاع" : "Traceability + Withdrawal/Recall"} />
           </div>
         </div>
 
@@ -699,24 +705,18 @@ export default function MockRecallInput() {
               )}
             />
 
-            {/* 🆕 Branch Temperature */}
+            {/* 🆕 Branch Temperature — يفتح كل أنواع تقارير الحرارة */}
             <LinkCard
               icon="🌡️"
               title={t("branchTempTitle")}
-              subtitle={branchTempType
-                ? `${t("branchTempHint")} (${form.product.branch})`
-                : t("branchTempUnsupported")}
-              pickHere={branchTempType ? t("pickHere") : t("branchTempUnsupported")}
+              subtitle={lang === "ar"
+                ? "اختر سجل حرارة من أي فرع — كل الأنواع متاحة"
+                : "Pick a temperature log from any branch — all types available"}
+              pickHere={t("pickHere")}
               linkedLabel={t("linked")}
               unlinkLabel={t("unlink")}
               picked={form.linked.branchTemp}
-              onPick={() => {
-                if (!branchTempType) {
-                  alert(t("branchTempUnsupported"));
-                  return;
-                }
-                setLookupKind("branchTemp");
-              }}
+              onPick={() => setLookupKind("branchTemp")}
               onUnlink={() => unlink("branchTemp")}
               renderPicked={(d) => (
                 <>
@@ -752,7 +752,45 @@ export default function MockRecallInput() {
 
         {/* ===== Section: Drill Info ===== */}
         <Section title={t("drillInfo")}>
-          <div style={S.grid3}>
+          {/* 🆕 اختيار تسمية التمرين (segmented buttons) */}
+          <Field label={t("drillName")}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[
+                { value: "mock_recall",  tk: "drillNameMockRecall" },
+                { value: "traceability", tk: "drillNameTraceability" },
+              ].map((opt) => {
+                const active = form.drillName === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setRoot("drillName", opt.value)}
+                    style={{
+                      flex: "1 1 220px",
+                      padding: "12px 16px",
+                      border: active ? "2px solid #059669" : "2px solid #e5e7eb",
+                      borderRadius: 12,
+                      background: active
+                        ? "linear-gradient(135deg,#ecfdf5,#d1fae5)"
+                        : "#fff",
+                      color: active ? "#065f46" : "#0b1f4d",
+                      fontWeight: 800,
+                      fontSize: "1rem",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      boxShadow: active ? "0 4px 12px rgba(5,150,105,0.15)" : "none",
+                      transition: "all .15s ease",
+                    }}
+                  >
+                    {t(opt.tk)}
+                    {active && <span style={{ marginInlineStart: 8 }}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          <div style={{ ...S.grid3, marginTop: 14 }}>
             <Field label={t("drillDate")}>
               <input type="date" style={S.input}
                 value={form.drillDate}
@@ -1073,27 +1111,35 @@ export default function MockRecallInput() {
           onClose={closeLookup}
           onPick={pickShipment}
           type="qcs_raw_material"
-          title="🔍 ابحث في تقارير استلام الشحنات"
-          searchPlaceholder="رقم الفاتورة / المورّد / النوع"
+          title={lang === "ar" ? "🔍 ابحث في تقارير استلام الشحنات" : "🔍 Search Shipment Receiving Reports"}
+          searchPlaceholder={lang === "ar" ? "رقم الفاتورة / المورّد / النوع" : "Invoice No / Supplier / Type"}
+          treeMode={true}
+          getDate={(p) => p?.generalInfo?.receivedOn || p?.createdDate || p?.generalInfo?.inspectionDate || ""}
           searchFields={(p) => [
             p?.generalInfo?.invoiceNo,
             p?.generalInfo?.airwayBill,
             p?.generalInfo?.supplierName,
             p?.shipmentType,
             p?.createdDate,
+            p?.generalInfo?.receivedOn,
+            p?.generalInfo?.brand,
+            p?.generalInfo?.origin,
           ]}
           displayItem={(p) => {
             const gi = p?.generalInfo || {};
             return {
-              primary: `🧾 ${gi.invoiceNo || gi.airwayBill || "(بدون رقم)"} — ${p?.shipmentType || "Raw Material"}`,
-              secondary: `${gi.supplierName || "—"} · ${gi.receivedOn || p?.createdDate || ""}`,
+              primary: `🧾 ${gi.invoiceNo || gi.airwayBill || (lang === "ar" ? "(بدون رقم)" : "(no number)")} — ${p?.shipmentType || "Raw Material"}`,
+              secondary: `${gi.supplierName || "—"} · ${String(gi.receivedOn || p?.createdDate || "").slice(0, 10)}`,
               chips: [
-                gi.temperature !== "" && gi.temperature !== undefined ? `Temp: ${gi.temperature}°C` : null,
-                gi.origin ? `Origin: ${gi.origin}` : null,
+                gi.temperature !== "" && gi.temperature !== undefined ? `🌡️ ${gi.temperature}°C` : null,
+                gi.origin ? `📍 ${gi.origin}` : null,
+                gi.brand ? `🏷️ ${gi.brand}` : null,
               ].filter(Boolean),
             };
           }}
-          emptyText="لا توجد شحنات مستلمة محفوظة."
+          emptyText={lang === "ar"
+            ? "لا توجد شحنات مستلمة محفوظة."
+            : "No saved shipment receiving reports."}
         />
 
         <ReportLookupModal
@@ -1203,30 +1249,38 @@ export default function MockRecallInput() {
 
         {/* 🆕 Branch Temperature Lookup */}
         <ReportLookupModal
-          open={lookupKind === "branchTemp" && !!branchTempType}
+          open={lookupKind === "branchTemp"}
           onClose={closeLookup}
           onPick={pickBranchTemp}
-          type={branchTempType || "x_none_x"}
-          title={`${t("popupBranchTemp")} — ${form.product.branch || ""}`}
-          searchPlaceholder={t("drillDate")}
+          type={BRANCH_ONLY_TEMP_TYPES}
+          title={lang === "ar"
+            ? "🌡️ ابحث في سجلات حرارة الفروع (POS / FTR)"
+            : "🌡️ Branch Temperature Logs (POS / FTR)"}
+          searchPlaceholder={lang === "ar"
+            ? "فرع / تاريخ / مُدقّق"
+            : "Branch / Date / Inspector"}
           treeMode={true}
-          getDate={({ payload }) => payload?.reportDate || payload?.date || ""}
-          searchFields={(p) => [p?.reportDate, p?.date, p?.branch, p?.checkedBy]}
+          getDate={(p) => p?.reportDate || p?.date || ""}
+          searchFields={(p) => [
+            p?.reportDate, p?.date, p?.branch, p?.checkedBy, p?.verifiedByManager,
+            branchLabelForType(p?.__sourceType),
+          ]}
           displayItem={(p) => {
             const arr = pickRowsArray(p);
+            const branchLabel = p?.branch || branchLabelForType(p?.__sourceType);
             return {
-              primary: `🌡️ ${String(p?.reportDate || p?.date || "—").slice(0, 10)}`,
+              primary: `🌡️ ${String(p?.reportDate || p?.date || "—").slice(0, 10)} — ${branchLabel}`,
               secondary: `${arr.length} ${lang === "ar" ? "قراءة/برّاد" : "records"}`,
               chips: [
-                p?.branch ? p.branch : null,
+                p?.__sourceType ? `📊 ${p.__sourceType}` : null,
                 p?.checkedBy ? `✍ ${p.checkedBy}` : null,
                 p?.verifiedByManager ? `👔 ${p.verifiedByManager}` : null,
               ].filter(Boolean),
             };
           }}
           emptyText={lang === "ar"
-            ? `لا توجد تقارير من نوع "${branchTempType}". تأكد من حفظ تقرير حرارة لهذا الفرع.`
-            : `No reports of type "${branchTempType}". Make sure a temperature log exists for this branch.`}
+            ? "لا توجد سجلات حرارة محفوظة في أي فرع POS أو FTR."
+            : "No POS/FTR branch temperature logs saved."}
         />
 
         {/* 🆕 Truck Cleaning Lookup (flatten by truck row) */}

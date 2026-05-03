@@ -81,6 +81,14 @@ const roles = [
     route: '/halal-audit',
     icon: '📋'
   },
+
+  // 🦺 HSE — Health, Safety & Environment
+  {
+    id: 'hse',
+    label: 'HSE',
+    route: '/hse',
+    icon: '🦺'
+  },
 ];
 
 function PasswordModal({ show, roleLabel, onSubmit, onClose, error, loading }) {
@@ -220,7 +228,7 @@ function Login() {
     setModalError("");
 
     // كلمات المرور المحلية — fallback دائم
-    const LOCAL_PASSWORDS = { returns:"0000", qcsView:"0000", iso:"802410", default:"9999" };
+    const LOCAL_PASSWORDS = { returns:"0000", qcsView:"0000", iso:"802410", hse:"802410", default:"9999" };
     const localExpected = LOCAL_PASSWORDS[selectedRole.id] ?? LOCAL_PASSWORDS.default;
     let success = password === localExpected;
 

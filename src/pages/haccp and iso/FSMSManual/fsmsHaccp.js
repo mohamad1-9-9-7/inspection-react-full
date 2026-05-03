@@ -1,0 +1,1063 @@
+// src/pages/haccp and iso/FSMSManual/fsmsHaccp.js
+// FSMS Manual — HACCP-related content (Products, Flow, Hazards, CCP, HACCP Plan)
+
+/* ============================================================
+   PRODUCT DESCRIPTIONS
+   ============================================================ */
+export const FSMS_PRODUCTS = [
+  {
+    id: "prod-frozen-chicken",
+    chapter: "products",
+    title: "Frozen Chicken",
+    titleAr: "دجاج مجمد",
+    type: "product",
+    images: [
+      { src: "/haccp-manual-images/image15.png", caption: "Frozen Chicken — Process Flow", captionAr: "الدجاج المجمد — مخطط تدفق العملية" },
+    ],
+    table: {
+      headers: ["Parameter", "Description"],
+      rows: [
+        ["Product Name", "Frozen Chicken"],
+        ["Product Range", "Whole chicken, portions, wings, drumsticks, breast fillet — frozen"],
+        ["Key Production Stage", "Raw materials received and stored below -18°C, distributed frozen using reefer vehicles."],
+        ["Key Hazard for Consideration", "Raw material receiving & storage; temperature control; cross-contamination prevention."],
+        ["Key Control Measures", "Temperature monitoring (-18°C), microbial test, calibration of thermometers."],
+        ["Packaging (INNER)", "Poly bags / shrink wrap / SOAK PAD"],
+        ["Packaging (OUTER)", "Corrugated cartons / plastic crates"],
+        ["Intended User", "General Public"],
+        ["Distribution", "Frozen reefer containers or vehicles"],
+        ["Shelf Life", "12 months under frozen condition (-18°C or below). If thawed for further processing, shelf life shall not exceed 3 days under chilled condition (0–5°C)."],
+        ["Storage Method", "Frozen condition (-18°C or below)"],
+        ["Labelling Requirement", "Product name, production & expiry date, storage instruction \"Keep Frozen (-18°C or below)\" (as per DM regulation and consumer requirements)"],
+        ["Customer Preparation", "Defrost under refrigeration (0–4°C) before cooking; cook thoroughly before consumption."],
+      ],
+    },
+    tableAr: {
+      headers: ["البيان", "الوصف"],
+      rows: [
+        ["اسم المنتج", "دجاج مجمّد"],
+        ["نطاق المنتج", "دجاج كامل، قطع، أجنحة، أفخاذ، فيليه صدر — مجمّد"],
+        ["مرحلة الإنتاج الرئيسية", "تستلم المواد الخام وتُخزَّن دون -18°م، تُوزَّع مجمدة باستخدام شاحنات تبريد."],
+        ["المخاطر الرئيسية المعتبرة", "استلام المواد الخام والتخزين؛ التحكم في درجة الحرارة؛ منع التلوث المتبادل."],
+        ["تدابير التحكم الرئيسية", "مراقبة درجة الحرارة (-18°م)، فحص ميكروبي، معايرة موازين الحرارة."],
+        ["التعبئة (الداخلية)", "أكياس بولي / شرنك / SOAK PAD"],
+        ["التعبئة (الخارجية)", "كراتين مموّجة / صناديق بلاستيكية"],
+        ["المستخدم المستهدف", "عامة الناس"],
+        ["التوزيع", "حاويات أو مركبات تبريد للمجمّد"],
+        ["مدة الصلاحية", "12 شهراً في حالة التجميد (-18°م أو أقل). إذا تم تذويبه للمعالجة الإضافية، لا تتجاوز مدة الصلاحية 3 أيام في حالة التبريد (0-5°م)."],
+        ["طريقة التخزين", "حالة التجميد (-18°م أو أقل)"],
+        ["متطلبات الملصق", "اسم المنتج، تاريخ الإنتاج والانتهاء، تعليمات التخزين \"حافظ مجمّداً (-18°م أو أقل)\" (وفق لوائح بلدية دبي ومتطلبات المستهلك)"],
+        ["تحضير العميل", "إذابة تحت التبريد (0-4°م) قبل الطهي؛ طهي كامل قبل الاستهلاك."],
+      ],
+    },
+  },
+  {
+    id: "prod-chilled-meat",
+    chapter: "products",
+    title: "Chilled Meat",
+    titleAr: "لحم مبرد",
+    type: "product",
+    images: [
+      { src: "/haccp-manual-images/image12.png", caption: "Chilled Lamb Carcass — Process Flow", captionAr: "ذبيحة الضأن المبردة — مخطط تدفق العملية" },
+      { src: "/haccp-manual-images/image13.png", caption: "Chilled Meat (For Production) — Process Flow", captionAr: "اللحم المبرد للإنتاج — مخطط تدفق العملية" },
+    ],
+    table: {
+      headers: ["Parameter", "Description"],
+      rows: [
+        ["Product Name", "Chilled Meat"],
+        ["Product Range", "Chilled beef and lamb carcass, cuts, offal, marinated and non-marinated."],
+        ["Key Production Stage", "Received from approved suppliers, stored below 5°C, distributed in refrigerated vehicles."],
+        ["Key Hazard for Consideration", "Raw material handling; personal hygiene; core temperature control."],
+        ["Key Control Measures", "Temperature monitoring (≤5°C), microbial test, calibration."],
+        ["Packaging (INNER)", "Food-grade poly bags / trays with soaker pads / shrink wrap."],
+        ["Packaging (OUTER)", "Corrugated cartons / plastic crates."],
+        ["Intended User", "General Public"],
+        ["Distribution", "Chilled vehicles (0–5°C)"],
+        ["Shelf Life", "14 days under chilled condition (0–5°C). Tray packs: 3 days. Cut portions & offal: 7 days. Minced: 1 day. Marinated and non-marinated: 3 days. (All under chilled condition)"],
+        ["Storage Method", "Chilled condition (0–5°C)"],
+        ["Labelling Requirement", "Product name, production & expiry dates, storage instruction \"Keep Chilled (0–5°C)\""],
+        ["Customer Preparation", "Keep refrigerated until use; cook thoroughly before consumption."],
+      ],
+    },
+    tableAr: {
+      headers: ["البيان", "الوصف"],
+      rows: [
+        ["اسم المنتج", "لحم مبرّد"],
+        ["نطاق المنتج", "ذبائح وقطع لحم بقر وضأن مبردة، أحشاء، متبّلة وغير متبّلة."],
+        ["مرحلة الإنتاج الرئيسية", "تستلم من موردين معتمدين، تُخزَّن دون 5°م، تُوزَّع في مركبات مبردة."],
+        ["المخاطر الرئيسية المعتبرة", "تداول المواد الخام؛ النظافة الشخصية؛ التحكم في درجة الحرارة الداخلية."],
+        ["تدابير التحكم الرئيسية", "مراقبة درجة الحرارة (≤5°م)، فحص ميكروبي، معايرة."],
+        ["التعبئة (الداخلية)", "أكياس بولي بدرجة غذائية / صواني بلصاقات ماصة / شرنك."],
+        ["التعبئة (الخارجية)", "كراتين مموّجة / صناديق بلاستيكية."],
+        ["المستخدم المستهدف", "عامة الناس"],
+        ["التوزيع", "مركبات مبردة (0-5°م)"],
+        ["مدة الصلاحية", "14 يوماً في حالة التبريد (0-5°م). صواني مغلّفة: 3 أيام. القطع والأحشاء: 7 أيام. مفروم: يوم واحد. متبّل وغير متبّل: 3 أيام. (الكل في حالة التبريد)"],
+        ["طريقة التخزين", "حالة التبريد (0-5°م)"],
+        ["متطلبات الملصق", "اسم المنتج، تاريخ الإنتاج والانتهاء، تعليمات التخزين \"حافظ مبرّداً (0-5°م)\""],
+        ["تحضير العميل", "حافظ مبرداً حتى الاستخدام؛ طهي كامل قبل الاستهلاك."],
+      ],
+    },
+  },
+  {
+    id: "prod-chilled-sausage",
+    chapter: "products",
+    title: "Chilled Sausage (Merguez / Naknek / Sijouk)",
+    titleAr: "نقانق مبردة",
+    type: "product",
+    images: [
+      { src: "/haccp-manual-images/image16.png", caption: "Processed Product / Sausage — Process Flow", captionAr: "منتج مُعالَج / نقانق — مخطط تدفق العملية" },
+    ],
+    table: {
+      headers: ["Parameter", "Description"],
+      rows: [
+        ["Product Name", "Chilled Sausage (Merguez – Naknek – Sijouk)"],
+        ["Product Range", "Lamb or beef sausages, seasoned."],
+        ["Key Production Stage", "Raw materials received, minced, mixed, packed and stored chilled (≤5°C)."],
+        ["Key Hazard for Consideration", "Time/temperature abuse; contamination; improper cooling."],
+        ["Key Control Measures", "Cleaning & sanitation, temperature monitoring. All tools & machines, utensils, and working surfaces shall be cleaned and sanitized every 30 minutes during production."],
+        ["Packaging (INNER)", "Vacuum sealed / MAP packs / poly bags / cling film."],
+        ["Packaging (OUTER)", "Plastic crates."],
+        ["Intended User", "General Public"],
+        ["Distribution", "Chilled vehicles (0–5°C)"],
+        ["Shelf Life", "1–3 days under chilled condition."],
+        ["Storage Method", "Chilled condition (0–5°C)"],
+        ["Labelling Requirement", "Product name, production & expiry date, storage instruction \"Keep Chilled (0–5°C)\"."],
+        ["Customer Preparation", "Cook to internal temperature ≥75°C before serving."],
+      ],
+    },
+    tableAr: {
+      headers: ["البيان", "الوصف"],
+      rows: [
+        ["اسم المنتج", "نقانق مبرّدة (مرقاز - نقنق - سجق)"],
+        ["نطاق المنتج", "نقانق ضأن أو بقر، متبّلة."],
+        ["مرحلة الإنتاج الرئيسية", "تستلم المواد الخام، تُفرَم، تُخلَط، تُعبَّأ وتُخزَّن مبرّدة (≤5°م)."],
+        ["المخاطر الرئيسية المعتبرة", "إساءة استخدام الوقت/الحرارة؛ التلوث؛ التبريد غير الصحيح."],
+        ["تدابير التحكم الرئيسية", "تنظيف وصرف صحي، مراقبة الحرارة. تُنظَّف وتُعقَّم جميع الأدوات والآلات والأواني وأسطح العمل كل 30 دقيقة خلال الإنتاج."],
+        ["التعبئة (الداخلية)", "تغليف فراغي / MAP / أكياس بولي / فيلم لاصق."],
+        ["التعبئة (الخارجية)", "صناديق بلاستيكية."],
+        ["المستخدم المستهدف", "عامة الناس"],
+        ["التوزيع", "مركبات مبردة (0-5°م)"],
+        ["مدة الصلاحية", "1-3 أيام في حالة التبريد."],
+        ["طريقة التخزين", "حالة التبريد (0-5°م)"],
+        ["متطلبات الملصق", "اسم المنتج، تاريخ الإنتاج والانتهاء، تعليمات التخزين \"حافظ مبرّداً (0-5°م)\"."],
+        ["تحضير العميل", "طهي حتى تصل درجة الحرارة الداخلية ≥75°م قبل التقديم."],
+      ],
+    },
+  },
+  {
+    id: "prod-marinated-chicken",
+    chapter: "products",
+    title: "Marinated Chicken (Shish / Shawarma / Whole Chicken)",
+    titleAr: "دجاج متبّل",
+    type: "product",
+    images: [
+      { src: "/haccp-manual-images/image15.png", caption: "Frozen Chicken — Source Process Flow (raw material)", captionAr: "الدجاج المجمد — مخطط تدفق المادة الخام" },
+    ],
+    table: {
+      headers: ["Parameter", "Description"],
+      rows: [
+        ["Product Name", "Marinated Chicken (Red Shish / White Shish / Shawarma / Whole Chicken)"],
+        ["Product Range", "Chicken cubes or fillets marinated with spices, oil, and additives."],
+        ["Key Production Stage", "Frozen chicken thawed at 0–4°C, marinated, packed, stored chilled (≤5°C)."],
+        ["Key Hazard for Consideration", "Cross-contamination; temperature control; allergen management."],
+        ["Key Control Measures", "Controlled thawing (0–4°C), sanitation, temperature monitoring, allergen labeling."],
+        ["Packaging (INNER)", "Poly trays with cling film / vacuum pouches."],
+        ["Packaging (OUTER)", "Corrugated cartons / plastic crates."],
+        ["Intended User", "General Public"],
+        ["Distribution", "Chilled vehicles (0–5°C)"],
+        ["Shelf Life", "3–5 days under chilled condition."],
+        ["Storage Method", "Chilled condition (0–5°C)"],
+        ["Labelling Requirement", "Product name, production & expiry dates, storage instruction \"Keep Chilled (0–5°C)\", allergen."],
+        ["Customer Preparation", "Cook thoroughly until internal temperature ≥75°C before serving."],
+      ],
+    },
+    tableAr: {
+      headers: ["البيان", "الوصف"],
+      rows: [
+        ["اسم المنتج", "دجاج متبّل (شيش أحمر / شيش أبيض / شاورما / دجاج كامل)"],
+        ["نطاق المنتج", "مكعّبات أو فيليه دجاج متبّلة بالبهارات والزيت والمضافات."],
+        ["مرحلة الإنتاج الرئيسية", "يُذاب الدجاج المجمّد عند 0-4°م، يُتبَّل، يُعبَّأ، ويُخزَّن مبرّداً (≤5°م)."],
+        ["المخاطر الرئيسية المعتبرة", "التلوث المتبادل؛ التحكم في الحرارة؛ إدارة مسببات الحساسية."],
+        ["تدابير التحكم الرئيسية", "إذابة مضبوطة (0-4°م)، صرف صحي، مراقبة الحرارة، وضع ملصقات الحساسية."],
+        ["التعبئة (الداخلية)", "صواني بولي مع فيلم لاصق / أكياس فراغية."],
+        ["التعبئة (الخارجية)", "كراتين مموّجة / صناديق بلاستيكية."],
+        ["المستخدم المستهدف", "عامة الناس"],
+        ["التوزيع", "مركبات مبردة (0-5°م)"],
+        ["مدة الصلاحية", "3-5 أيام في حالة التبريد."],
+        ["طريقة التخزين", "حالة التبريد (0-5°م)"],
+        ["متطلبات الملصق", "اسم المنتج، تاريخ الإنتاج والانتهاء، تعليمات التخزين \"حافظ مبرّداً (0-5°م)\"، مسببات الحساسية."],
+        ["تحضير العميل", "طهي كامل حتى تصل درجة الحرارة الداخلية ≥75°م قبل التقديم."],
+      ],
+    },
+  },
+  {
+    id: "prod-chilled-offals",
+    chapter: "products",
+    title: "Chilled / Fresh Offals",
+    titleAr: "أحشاء مبردة / طازجة",
+    type: "product",
+    images: [
+      { src: "/haccp-manual-images/image14.png", caption: "Frozen Lamb — Process Flow (similar handling)", captionAr: "الضأن المجمد — مخطط تدفق العملية (تداول مماثل)" },
+    ],
+    table: {
+      headers: ["Parameter", "Description"],
+      rows: [
+        ["Product Name", "Chilled / Fresh Offals"],
+        ["Product Range", "Edible internal organs such as liver, heart, kidney, tongue, spleen and similar parts from beef, lamb."],
+        ["Key Production Stage", "Received from approved suppliers, stored below 5°C, distributed in refrigerated vehicles."],
+        ["Key Hazard for Consideration", "Raw material handling; personal hygiene; core temperature control."],
+        ["Key Control Measures", "Temperature monitoring (≤5°C), microbial test, calibration."],
+        ["Packaging (INNER)", "Food-grade poly bags / trays with soaker pads / shrink wrap."],
+        ["Packaging (OUTER)", "Corrugated cartons / plastic crates."],
+        ["Intended User", "General Public"],
+        ["Distribution", "Chilled vehicles (0–5°C)"],
+        ["Shelf Life", "Maximum 7 days under chilled condition (0–5°C) due to high perishability."],
+        ["Storage Method", "Chilled condition (0–5°C)"],
+        ["Labelling Requirement", "Product name, production and expiry dates, storage instruction \"Keep Chilled (0–5°C)\", country of origin."],
+        ["Customer Preparation", "Keep refrigerated until use; cook thoroughly before consumption."],
+      ],
+    },
+    tableAr: {
+      headers: ["البيان", "الوصف"],
+      rows: [
+        ["اسم المنتج", "أحشاء مبرّدة / طازجة"],
+        ["نطاق المنتج", "أعضاء داخلية صالحة للأكل مثل الكبد، القلب، الكلية، اللسان، الطحال وأجزاء مماثلة من البقر والضأن."],
+        ["مرحلة الإنتاج الرئيسية", "تستلم من موردين معتمدين، تُخزَّن دون 5°م، تُوزَّع في مركبات مبردة."],
+        ["المخاطر الرئيسية المعتبرة", "تداول المواد الخام؛ النظافة الشخصية؛ التحكم في درجة الحرارة الداخلية."],
+        ["تدابير التحكم الرئيسية", "مراقبة درجة الحرارة (≤5°م)، فحص ميكروبي، معايرة."],
+        ["التعبئة (الداخلية)", "أكياس بولي بدرجة غذائية / صواني بلصاقات ماصة / شرنك."],
+        ["التعبئة (الخارجية)", "كراتين مموّجة / صناديق بلاستيكية."],
+        ["المستخدم المستهدف", "عامة الناس"],
+        ["التوزيع", "مركبات مبردة (0-5°م)"],
+        ["مدة الصلاحية", "حد أقصى 7 أيام في حالة التبريد (0-5°م) بسبب القابلية العالية للتلف."],
+        ["طريقة التخزين", "حالة التبريد (0-5°م)"],
+        ["متطلبات الملصق", "اسم المنتج، تاريخ الإنتاج والانتهاء، تعليمات التخزين \"حافظ مبرّداً (0-5°م)\"، بلد المنشأ."],
+        ["تحضير العميل", "حافظ مبرداً حتى الاستخدام؛ طهي كامل قبل الاستهلاك."],
+      ],
+    },
+  },
+];
+
+/* ============================================================
+   PROCESS FLOW DIAGRAMS — Verification log
+   ============================================================ */
+export const FSMS_FLOW = [
+  {
+    id: "flow-list",
+    chapter: "flow",
+    title: "Process Flow Diagrams",
+    titleAr: "مخططات تدفق العمليات",
+    type: "text",
+    images: [
+      { src: "/haccp-manual-images/image12.png", caption: "Chilled Lamb Carcass — Process Flow",                              captionAr: "ذبيحة الضأن المبردة — مخطط تدفق العملية" },
+      { src: "/haccp-manual-images/image13.png", caption: "Chilled Meat (For Production) — Process Flow",                     captionAr: "اللحم المبرد (للإنتاج) — مخطط تدفق العملية" },
+      { src: "/haccp-manual-images/image14.png", caption: "Frozen Lamb — Process Flow",                                       captionAr: "الضأن المجمد — مخطط تدفق العملية" },
+      { src: "/haccp-manual-images/image15.png", caption: "Frozen Chicken — Process Flow",                                    captionAr: "الدجاج المجمد — مخطط تدفق العملية" },
+      { src: "/haccp-manual-images/image16.png", caption: "Processed Product / Sausage — Process Flow",                       captionAr: "منتج مُعالَج / نقانق — مخطط تدفق العملية" },
+      { src: "/haccp-manual-images/image17.png", caption: "Al Barsha Butchery — Chilled / Frozen / Sausages / Dry Meat Flow", captionAr: "ملحمة البرشاء — مبرد/مجمد/نقانق/لحم مجفف" },
+      { src: "/haccp-manual-images/image18.png", caption: "Abu Dhabi Butchery — Chilled / Frozen / Sausages / Dry Meat Flow", captionAr: "ملحمة أبوظبي — مبرد/مجمد/نقانق/لحم مجفف" },
+      { src: "/haccp-manual-images/image19.png", caption: "Al Ain Butchery — Chilled / Frozen / Sausages / Dry Meat Flow",    captionAr: "ملحمة العين — مبرد/مجمد/نقانق/لحم مجفف" },
+    ],
+    body:
+      "Process flow diagrams are maintained for the following product categories:\n• Chilled Lamb Carcass\n• Chilled Meat (for Production)\n• Frozen Lamb\n• Frozen Chicken\n• Processed Product / Sausage\n• Chilled / Frozen / Sausages / Dry Meat — AlBarsha Butchery\n• Chilled / Frozen / Sausages / Dry Meat — Abu Dhabi Butchery\n• Chilled / Frozen / Sausages / Dry Meat — Al Ain Butchery\n\nOnsite Verification of Flow Diagrams:\nUpon completion of the process flow diagrams, the TELT food safety team members visited the cold room and feedlot area to compare the procedure versus the actual practical process online. The same has been validated by an external person to verify that the process flow diagram is correct.\n\nA step-by-step practical checking has been carried out starting from receiving of raw material to dispatch of finished goods. The accuracy of flow diagrams has been established and risks of safety in the production line have been addressed.\n\nThe verification of the process flow diagram is repeated annually along with the food safety manual review, internal audits and verification. Any changes in flow diagram or in the layout during verification are documented as per FSMS requirement.",
+    bodyAr:
+      "يتم الاحتفاظ بمخططات تدفق العمليات لفئات المنتجات التالية:\n• ذبائح الضأن المبردة\n• اللحم المبرد (للإنتاج)\n• الضأن المجمد\n• الدجاج المجمد\n• المنتج المُعالَج / النقانق\n• مبرد / مجمد / نقانق / لحم مجفف — ملحمة البرشاء\n• مبرد / مجمد / نقانق / لحم مجفف — ملحمة أبوظبي\n• مبرد / مجمد / نقانق / لحم مجفف — ملحمة العين\n\nالتحقق الميداني من مخططات التدفق:\nعند إكمال مخططات تدفق العمليات، قام أعضاء فريق سلامة الغذاء في TELT بزيارة الغرفة الباردة ومنطقة التسمين لمقارنة الإجراء مع العملية العملية الفعلية. تم التحقق منها أيضاً من قِبل شخص خارجي للتأكد من صحة مخطط تدفق العملية.\n\nتم إجراء فحص عملي خطوة بخطوة بدءاً من استلام المواد الخام حتى إرسال البضائع المنتهية. تم التأكد من دقة مخططات التدفق وتم معالجة مخاطر السلامة في خط الإنتاج.\n\nيتم تكرار التحقق من مخطط تدفق العملية سنوياً مع مراجعة دليل سلامة الغذاء والتدقيقات الداخلية والتحقق. أي تغييرات في مخطط التدفق أو في التخطيط أثناء التحقق يتم توثيقها وفق متطلبات FSMS.",
+  },
+  {
+    id: "flow-verification",
+    chapter: "flow",
+    title: "Onsite Verification by Food Safety Team — 04/04/2026",
+    titleAr: "التحقق الميداني من قبل فريق سلامة الغذاء — 04/04/2026",
+    type: "table",
+    body: "From receiving of raw material to dispatch of finished goods:",
+    table: {
+      headers: ["#", "Process Flow Diagram", "Verified By Food Safety Team"],
+      rows: [
+        ["1", "Chilled Meat",     "Mr. Mohamed, Mr. Jaseem P, Mr. Said, Mr. Ossama, Mr. Ali Farha"],
+        ["2", "Fresh Meat",       "Mr. Mohamed, Mr. Jaseem P, Mr. Said, Mr. Ossama, Mr. Ali Farha"],
+        ["3", "Fresh Offals",     "Mr. Mohamed, Mr. Jaseem P, Mr. Said, Mr. Ossama, Mr. Ali Farha"],
+        ["4", "Frozen Items",     "Mr. Mohamed, Mr. Jaseem P, Mr. Said, Mr. Ossama, Mr. Ali Farha"],
+        ["5", "Sausage Items (Processed Items)", "Mr. Mohamed, Mr. Jaseem P, Mr. Said, Mr. Ossama, Mr. Ali Farha"],
+        ["6", "Marinated Items",  "Mr. Mohamed, Mr. Jaseem P, Mr. Said, Mr. Ossama, Mr. Ali Farha"],
+      ],
+    },
+    tableAr: {
+      headers: ["#", "مخطط تدفق العملية", "تم التحقق بواسطة فريق سلامة الغذاء"],
+      rows: [
+        ["1", "اللحم المبرّد",                      "السيد محمد، السيد جاسم ب، السيد سعيد، السيد أسامة، السيد علي فرحة"],
+        ["2", "اللحم الطازج",                       "السيد محمد، السيد جاسم ب، السيد سعيد، السيد أسامة، السيد علي فرحة"],
+        ["3", "الأحشاء الطازجة",                    "السيد محمد، السيد جاسم ب، السيد سعيد، السيد أسامة، السيد علي فرحة"],
+        ["4", "الأصناف المجمّدة",                   "السيد محمد، السيد جاسم ب، السيد سعيد، السيد أسامة، السيد علي فرحة"],
+        ["5", "أصناف النقانق (المُعالَجة)",         "السيد محمد، السيد جاسم ب، السيد سعيد، السيد أسامة، السيد علي فرحة"],
+        ["6", "الأصناف المتبّلة",                    "السيد محمد، السيد جاسم ب، السيد سعيد، السيد أسامة، السيد علي فرحة"],
+      ],
+    },
+  },
+];
+
+/* ============================================================
+   HAZARD ANALYSIS — Risk Matrix + per-step analysis
+   ============================================================ */
+export const FSMS_HAZARDS = [
+  {
+    id: "hazard-intro",
+    chapter: "hazard",
+    title: "Hazard Analysis — Overview",
+    titleAr: "نظرة عامة على تحليل المخاطر",
+    type: "text",
+    images: [
+      { src: "/haccp-manual-images/image20.png", caption: "Codex Decision Tree — used to determine CCP", captionAr: "شجرة قرار الكودكس — تُستخدم لتحديد نقاط التحكم الحرجة" },
+    ],
+    body:
+      "Hazard analysis is conducted for each step in the process flow to identify biological, chemical, and physical hazards. Each identified hazard is evaluated based on severity and likelihood to determine its significance. Appropriate control measures are established and categorized as PRP, OPRP, or CCP.\n\nDecision Tree is applied to determine whether a control measure is a CCP.",
+    bodyAr:
+      "يُجرى تحليل المخاطر لكل خطوة في تدفق العملية لتحديد المخاطر البيولوجية والكيميائية والفيزيائية. يتم تقييم كل خطر محدد بناءً على الشدة والاحتمال لتحديد أهميته. يتم وضع تدابير التحكم المناسبة وتصنيفها كبرنامج مسبق (PRP) أو برنامج مسبق تشغيلي (OPRP) أو نقطة تحكم حرجة (CCP).\n\nيتم تطبيق شجرة القرار لتحديد ما إذا كانت تدبير التحكم هو CCP.",
+  },
+  {
+    id: "hazard-matrix",
+    chapter: "hazard",
+    title: "Risk Level Matrix",
+    titleAr: "مصفوفة مستوى المخاطر",
+    type: "table",
+    body:
+      "The matrix below is used to determine the level of risk.\nRisk Level = Likelihood × Severity\nPRP = Pre-Requisite Programs   |   CCP = Critical Control Points",
+    bodyAr:
+      "تُستخدم المصفوفة أدناه لتحديد مستوى المخاطر.\nمستوى المخاطر = الاحتمال × الشدة\nPRP = البرامج المسبقة   |   CCP = نقاط التحكم الحرجة",
+    table: {
+      headers: ["Severity ↓ / Likelihood →", "Low (1)", "Medium (2)", "High (3)"],
+      rows: [
+        ["High (3)",   "PRP (3)", "CCP (6)", "CCP (9)"],
+        ["Medium (2)", "PRP (2)", "PRP (4)", "CCP (6)"],
+        ["Low (1)",    "PRP (1)", "PRP (2)", "PRP (3)"],
+      ],
+    },
+    tableAr: {
+      headers: ["الشدّة ↓ / الاحتمال →", "منخفض (1)", "متوسط (2)", "عالٍ (3)"],
+      rows: [
+        ["عالية (3)",   "PRP (3)", "CCP (6)", "CCP (9)"],
+        ["متوسطة (2)",  "PRP (2)", "PRP (4)", "CCP (6)"],
+        ["منخفضة (1)",  "PRP (1)", "PRP (2)", "PRP (3)"],
+      ],
+    },
+  },
+  {
+    id: "hazard-scoring",
+    chapter: "hazard",
+    title: "Risk Score Levels",
+    titleAr: "مستويات نقاط المخاطر",
+    type: "table",
+    body: "",
+    table: {
+      headers: ["Score", "Level", "Control"],
+      rows: [
+        ["1–3", "Low",    "General Control"],
+        ["4–6", "Medium", "General Control"],
+        ["7–9", "High",   "Specific Control"],
+      ],
+    },
+    tableAr: {
+      headers: ["النقاط", "المستوى", "الضبط"],
+      rows: [
+        ["1-3", "منخفض",  "ضبط عام"],
+        ["4-6", "متوسط",  "ضبط عام"],
+        ["7-9", "عالٍ",    "ضبط محدد"],
+      ],
+    },
+  },
+  {
+    id: "hazard-receiving-chilled",
+    chapter: "hazard",
+    title: "Hazard Analysis — Receiving Chilled Items",
+    titleAr: "تحليل المخاطر — استلام الأصناف المبردة",
+    type: "table",
+    body: "Step: Receiving Chilled Items",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Presence of microbes in incoming foods", "2", "3", "6", "Raw materials received from approved suppliers (assures quality)", "CCP", "No further control measure"],
+        ["Chemical — Additives", "1", "2", "2", "Raw materials received from approved suppliers", "PRP", "Quality parameters monitored at receiving"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Raw materials received from approved suppliers", "PRP", "Quality parameters monitored at receiving"],
+        ["Allergens", "1", "1", "1", "No allergenic materials handled or stored in facility; controlled through PRP", "PRP", "Facility does not use or store allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — وجود ميكروبات في الأطعمة الواردة", "2", "3", "6", "تستلم المواد الخام من موردين معتمدين (يضمن الجودة)", "CCP", "لا توجد تدابير ضبط إضافية"],
+        ["كيميائي — مضافات", "1", "2", "2", "تستلم المواد الخام من موردين معتمدين", "PRP", "تتم مراقبة معايير الجودة عند الاستلام"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "تستلم المواد الخام من موردين معتمدين", "PRP", "تتم مراقبة معايير الجودة عند الاستلام"],
+        ["مسببات الحساسية", "1", "1", "1", "لا تُتداول أو تُخزَّن مواد مسببة للحساسية في المنشأة؛ يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم أو تُخزّن مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-receiving-frozen",
+    chapter: "hazard",
+    title: "Hazard Analysis — Receiving Frozen Items",
+    titleAr: "تحليل المخاطر — استلام الأصناف المجمدة",
+    type: "table",
+    body: "Step: Receiving Frozen Items",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Presence of microbes in incoming foods", "2", "3", "6", "Raw materials received from approved suppliers", "CCP", "No further control measure"],
+        ["Chemical — Additives", "1", "2", "2", "Raw materials received from approved suppliers", "PRP", "Monitored at receiving"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Raw materials received from approved suppliers", "PRP", "Monitored at receiving"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — وجود ميكروبات في الأطعمة الواردة", "2", "3", "6", "تستلم المواد الخام من موردين معتمدين", "CCP", "لا توجد تدابير ضبط إضافية"],
+        ["كيميائي — مضافات", "1", "2", "2", "تستلم المواد الخام من موردين معتمدين", "PRP", "مُراقَب عند الاستلام"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "تستلم المواد الخام من موردين معتمدين", "PRP", "مُراقَب عند الاستلام"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-receiving-dry",
+    chapter: "hazard",
+    title: "Hazard Analysis — Receiving Dry Foods",
+    titleAr: "تحليل المخاطر — استلام الأطعمة الجافة",
+    type: "table",
+    body: "Step: Receiving Dry Foods",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Pathogenic micro-organisms", "1", "2", "2", "Raw materials from approved suppliers", "PRP", "Quality parameters checked at purchase"],
+        ["Chemical — Heavy metals", "1", "2", "2", "Raw materials from approved suppliers", "PRP", "Quality parameters checked at purchase"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Raw materials from approved suppliers", "PRP", "Quality parameters checked at purchase"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — كائنات مُمرضة", "1", "2", "2", "مواد خام من موردين معتمدين", "PRP", "تُفحص معايير الجودة عند الشراء"],
+        ["كيميائي — معادن ثقيلة", "1", "2", "2", "مواد خام من موردين معتمدين", "PRP", "تُفحص معايير الجودة عند الشراء"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "مواد خام من موردين معتمدين", "PRP", "تُفحص معايير الجودة عند الشراء"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-storage-chilled-frozen",
+    chapter: "hazard",
+    title: "Hazard Analysis — Storage of Chilled & Frozen Items",
+    titleAr: "تحليل المخاطر — تخزين الأصناف المبردة والمجمدة",
+    type: "table",
+    body: "Step: Storage of Chilled & Frozen Items",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Presence of microbes", "3", "3", "9", "Storage maintained at required temperature (≤4°C chilled, ≤-18°C frozen); temp monitored & recorded", "CCP", "No further control measure"],
+        ["Chemical — Additives", "1", "2", "2", "Chemicals stored separately; food-grade packaging; cleaning per SOP", "PRP", "Monitored at receiving"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Regular inspection of packaging and storage condition; proper housekeeping", "PRP", "Monitored at receiving"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — وجود ميكروبات", "3", "3", "9", "التخزين على درجة الحرارة المطلوبة (≤4°م مبرّد، ≤-18°م مجمّد)؛ تتم مراقبة الحرارة وتسجيلها", "CCP", "لا توجد تدابير ضبط إضافية"],
+        ["كيميائي — مضافات", "1", "2", "2", "تخزين الكيماويات منفصلة؛ تعبئة بدرجة غذائية؛ تنظيف وفق SOP", "PRP", "مُراقَب عند الاستلام"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "تفتيش منتظم للتعبئة وحالة التخزين؛ نظافة سليمة", "PRP", "مُراقَب عند الاستلام"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-storage-dry",
+    chapter: "hazard",
+    title: "Hazard Analysis — Storage of Dry Foods",
+    titleAr: "تحليل المخاطر — تخزين الأطعمة الجافة",
+    type: "table",
+    body: "Step: Storage of Dry Foods",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological", "1", "1", "1", "Segregation", "PRP", "—"],
+        ["Chemical — Contamination with chemicals", "1", "2", "2", "Storage of chemicals in separate locked cabins away from food", "Not a CCP", "Chemicals stored in separate locked cabins"],
+        ["Physical — Foreign bodies", "1", "3", "3", "Maintenance of proper packing/covering", "PRP", "Proper storage procedures avoid physical contaminants"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي", "1", "1", "1", "الفصل", "PRP", "—"],
+        ["كيميائي — تلوث بالكيماويات", "1", "2", "2", "تخزين الكيماويات في خزانات مقفلة منفصلة بعيداً عن الغذاء", "ليس CCP", "تُخزَّن الكيماويات في خزانات مقفلة منفصلة"],
+        ["فيزيائي — أجسام غريبة", "1", "3", "3", "صيانة التعبئة/التغطية السليمة", "PRP", "إجراءات التخزين السليمة تجنّب التلوث الفيزيائي"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-thawing",
+    chapter: "hazard",
+    title: "Hazard Analysis — Thawing of Foods",
+    titleAr: "تحليل المخاطر — إذابة الأطعمة",
+    type: "table",
+    body: "Step: Thawing of Foods",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Multiplication of pathogenic micro-organisms", "2", "2", "4", "Thawing usually done below 5°C to prevent multiplication", "PRP", "Hazard reduced further during cooking"],
+        ["Chemical", "1", "1", "1", "—", "—", "—"],
+        ["Physical — Foreign bodies", "1", "1", "1", "Proper housekeeping; effective personal hygiene", "Not a CCP", "Staff well trained; GHP followed"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — تكاثر الكائنات المُمرضة", "2", "2", "4", "الإذابة تتم عادة دون 5°م لمنع التكاثر", "PRP", "يتم تقليل الخطر أكثر خلال الطهي"],
+        ["كيميائي", "1", "1", "1", "—", "—", "—"],
+        ["فيزيائي — أجسام غريبة", "1", "1", "1", "نظافة سليمة؛ نظافة شخصية فعّالة", "ليس CCP", "الموظفون مدربون جيداً؛ تُتبع ممارسات GHP"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-cutting",
+    chapter: "hazard",
+    title: "Hazard Analysis — Processing (Cutting / Deboning)",
+    titleAr: "تحليل المخاطر — المعالجة (التقطيع / إزالة العظم)",
+    type: "table",
+    body: "Step: Cutting / Deboning",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Contamination of pathogenic micro-organisms", "2", "2", "4", "Separate prep areas; color-coded boards; preparation area ≤15°C", "PRP", "Separate utensils & high-risk areas"],
+        ["Chemical — From cleaning solutions", "1", "2", "2", "Preparation away from cleaning area; rinsing with water", "PRP", "Proper GHP in place"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Properly sanitized surfaces; good housekeeping; personal hygiene training", "PRP", "Proper GHP in place"],
+        ["Allergens", "1", "1", "1", "No allergenic materials", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — تلوث بكائنات مُمرضة", "2", "2", "4", "مناطق تحضير منفصلة؛ ألواح بألوان مُرمَّزة؛ منطقة التحضير ≤15°م", "PRP", "أدوات منفصلة ومناطق عالية الخطورة"],
+        ["كيميائي — من محاليل التنظيف", "1", "2", "2", "التحضير بعيداً عن منطقة التنظيف؛ الشطف بالماء", "PRP", "ممارسات GHP السليمة موجودة"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "أسطح مُعقَّمة بشكل سليم؛ نظافة سليمة؛ تدريب على النظافة الشخصية", "PRP", "ممارسات GHP السليمة موجودة"],
+        ["مسببات الحساسية", "1", "1", "1", "لا توجد مواد مسببة للحساسية", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-mincing",
+    chapter: "hazard",
+    title: "Hazard Analysis — Mincing",
+    titleAr: "تحليل المخاطر — الفرم",
+    type: "table",
+    body: "Step: Mincing",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Contamination of pathogens", "2", "2", "4", "Keep ≤5°C; limit batch time; sanitize equipment; dedicated tools", "PRP", "Temp/time PRPs; later cold storage CCP provides further control"],
+        ["Chemical — From cleaning solutions", "1", "2", "2", "SSOP; rinse & verify before use", "PRP", "Proper GHP/SSOP in place"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Pre-use blade check; magnets/filters where applicable; maintenance", "PRP", "Routine checks mitigate risk"],
+        ["Allergens", "1", "1", "1", "No allergenic materials", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — تلوث بالكائنات المُمرضة", "2", "2", "4", "حافظ ≤5°م؛ قيِّد وقت الدفعة؛ عقّم المعدات؛ أدوات مخصصة", "PRP", "PRPs للحرارة/الوقت؛ التخزين البارد لاحقاً (CCP) يوفر ضبطاً إضافياً"],
+        ["كيميائي — من محاليل التنظيف", "1", "2", "2", "SSOP؛ شطف وتحقق قبل الاستخدام", "PRP", "ممارسات GHP/SSOP السليمة موجودة"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "فحص الشفرة قبل الاستخدام؛ مغناطيسات/مُرشِّحات حيث ينطبق؛ صيانة", "PRP", "الفحوص الروتينية تُخفِّف الخطر"],
+        ["مسببات الحساسية", "1", "1", "1", "لا توجد مواد مسببة للحساسية", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-vegetable-washing",
+    chapter: "hazard",
+    title: "Hazard Analysis — Vegetable Washing",
+    titleAr: "تحليل المخاطر — غسيل الخضار",
+    type: "table",
+    body: "Step: Vegetable Washing",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Ineffective sanitizing", "2", "2", "4", "Maintain sanitizer 60–80 ppm and validated contact time", "PRP", "Microbial control via concentration & contact time"],
+        ["Chemical — Excess sanitizer residues (Peracetic acid / Hydrogen peroxide)", "1", "2", "2", "Use approved sanitizer (Partech) at 60–80 ppm; validated contact time (min 60 sec)", "PRP", "Measurable critical limit (60–80 ppm)"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Visual sorting; clean baskets; proper washing & water change", "PRP", "Controlled via good hygiene & handling"],
+        ["Allergens", "1", "1", "1", "No allergenic materials", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — تعقيم غير فعّال", "2", "2", "4", "حافظ على المُعقِّم 60-80 جزء بالمليون ووقت تماس مُتحقَّق منه", "PRP", "الضبط الميكروبي عبر التركيز ووقت التماس"],
+        ["كيميائي — بقايا مُعقِّم زائدة (حمض البيراسيتيك / بيروكسيد الهيدروجين)", "1", "2", "2", "استخدم مُعقِّم معتمد (Partech) عند 60-80 جزء بالمليون؛ وقت تماس مُتحقَّق منه (60 ثانية كحد أدنى)", "PRP", "حد حرج قابل للقياس (60-80 جزء بالمليون)"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "فرز بصري؛ سلال نظيفة؛ غسيل سليم وتغيير الماء", "PRP", "مُضبَط عبر النظافة الجيدة والتداول السليم"],
+        ["مسببات الحساسية", "1", "1", "1", "لا توجد مواد مسببة للحساسية", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-marination",
+    chapter: "hazard",
+    title: "Hazard Analysis — Marination",
+    titleAr: "تحليل المخاطر — التتبيل",
+    type: "table",
+    body: "Step: Marination",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Contamination of pathogens", "2", "2", "4", "Approved suppliers; marination ≤4°C; sanitation; preparation area ≤15°C", "PRP", "Controlled through temperature, hygiene, time PRPs"],
+        ["Chemical — From cleaning solutions", "1", "2", "2", "Approved food additives; verified formulations; supplier approval", "PRP", "Controlled through supplier and formulation PRPs"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Incoming inspection of spices; sieving; equipment maintenance", "PRP", "Controlled through raw material inspection"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — تلوث بالكائنات المُمرضة", "2", "2", "4", "موردون معتمدون؛ تتبيل ≤4°م؛ صرف صحي؛ منطقة التحضير ≤15°م", "PRP", "مُضبَط عبر PRPs الحرارة والنظافة والوقت"],
+        ["كيميائي — من محاليل التنظيف", "1", "2", "2", "مضافات غذائية معتمدة؛ تركيبات مُتحقَّق منها؛ اعتماد المورد", "PRP", "مُضبَط عبر PRPs المورد والتركيبة"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "فحص البهارات الواردة؛ تنخيل؛ صيانة المعدات", "PRP", "مُضبَط عبر فحص المواد الخام"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-mixing",
+    chapter: "hazard",
+    title: "Hazard Analysis — Mixing",
+    titleAr: "تحليل المخاطر — الخلط",
+    type: "table",
+    body: "Step: Mixing",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Pathogens", "2", "2", "4", "Keep mix ≤5°C; short mixing time; sanitize between batches", "PRP", "Controlled by temperature/time PRPs"],
+        ["Chemical — From cleaning solutions", "1", "2", "2", "SSOP; dry after cleaning", "PRP", "SSOPs adequate"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Lids/screens; utensil control; housekeeping", "PRP", "GHP sufficient"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — كائنات مُمرضة", "2", "2", "4", "حافظ على الخلطة ≤5°م؛ وقت خلط قصير؛ تعقيم بين الدفعات", "PRP", "مُضبَط عبر PRPs الحرارة/الوقت"],
+        ["كيميائي — من محاليل التنظيف", "1", "2", "2", "SSOP؛ تجفيف بعد التنظيف", "PRP", "SSOPs كافية"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "أغطية/شاشات؛ ضبط الأدوات؛ نظافة", "PRP", "GHP كافية"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-sausage",
+    chapter: "hazard",
+    title: "Hazard Analysis — Sausage Filling / Casing",
+    titleAr: "تحليل المخاطر — حشو/تغليف النقانق",
+    type: "table",
+    body: "Step: Sausage Filling / Casing",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Pathogens", "2", "2", "4", "Keep ≤5°C; minimize exposure; sanitize nozzles/clippers", "PRP", "Temp/time PRPs; later cold storage CCP"],
+        ["Chemical — From cleaning", "1", "2", "2", "Food-grade casings/packaging; COA/spec check", "PRP", "Supplier/spec controls sufficient"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Visual checks; clip control; intact seal", "PRP", "Standard packaging controls sufficient"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — كائنات مُمرضة", "2", "2", "4", "حافظ ≤5°م؛ قلِّل التعرّض؛ عقّم الفوهات/الكليبسات", "PRP", "PRPs الحرارة/الوقت؛ التخزين البارد لاحقاً (CCP)"],
+        ["كيميائي — من التنظيف", "1", "2", "2", "أغلفة/تعبئة بدرجة غذائية؛ فحص COA/المواصفات", "PRP", "ضوابط المورد/المواصفات كافية"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "فحوص بصرية؛ ضبط الكليبسات؛ ختم سليم", "PRP", "ضوابط التعبئة القياسية كافية"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-vacuum",
+    chapter: "hazard",
+    title: "Hazard Analysis — Vacuum Packing",
+    titleAr: "تحليل المخاطر — التغليف الفراغي",
+    type: "table",
+    body: "Step: Vacuum Packing",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Pathogens", "2", "2", "4", "Good seals; immediate chilling 0–5°C; minimize time", "PRP", "Packaging under PRPs; storage CCP controls growth"],
+        ["Chemical — From cleaning", "1", "2", "2", "Approved food-contact pouches; spec verification", "PRP", "Spec/MSDS controls adequate"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Double-seal; visual checks; periodic burst/leak tests", "PRP", "PRPs sufficient"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — كائنات مُمرضة", "2", "2", "4", "أختام جيدة؛ تبريد فوري 0-5°م؛ تقليل الوقت", "PRP", "التعبئة تحت PRPs؛ التخزين CCP يضبط النمو"],
+        ["كيميائي — من التنظيف", "1", "2", "2", "أكياس ملامسة غذاء معتمدة؛ التحقق من المواصفات", "PRP", "ضوابط المواصفات/MSDS كافية"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "ختم مزدوج؛ فحوص بصرية؛ اختبارات تسرّب/انفجار دورية", "PRP", "PRPs كافية"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-packaging",
+    chapter: "hazard",
+    title: "Hazard Analysis — Packaging",
+    titleAr: "تحليل المخاطر — التعبئة",
+    type: "table",
+    body: "Step: Packaging",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Pathogens", "2", "2", "4", "Pack under chilled conditions ≤5°C; pre-op sanitation; sanitize tools every 30 min", "PRP", "Controlled through temperature/time and sanitation"],
+        ["Chemical — From cleaning", "1", "2", "2", "Food-grade approved packaging; COA/spec check; SSOPs", "PRP", "Managed by supplier approval & SSOPs"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Visual inspection; clip/label control; intact packaging; housekeeping", "PRP", "Standard packaging controls adequate"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — كائنات مُمرضة", "2", "2", "4", "تعبئة في ظروف مبردة ≤5°م؛ صرف صحي ما قبل التشغيل؛ تعقيم الأدوات كل 30 دقيقة", "PRP", "مُضبَط عبر الحرارة/الوقت والصرف الصحي"],
+        ["كيميائي — من التنظيف", "1", "2", "2", "تعبئة معتمدة بدرجة غذائية؛ فحص COA/المواصفات؛ SSOPs", "PRP", "تُدار بواسطة اعتماد المورد وSSOPs"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "تفتيش بصري؛ ضبط الكليبسات/الملصقات؛ تعبئة سليمة؛ نظافة", "PRP", "ضوابط التعبئة القياسية كافية"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-labeling",
+    chapter: "hazard",
+    title: "Hazard Analysis — Labeling",
+    titleAr: "تحليل المخاطر — وضع الملصقات",
+    type: "table",
+    body: "Step: Labeling",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Pathogens", "2", "2", "4", "Verify Use-by/Production/Thaw dates; correct storage statement (Keep Chilled 0–5°C / Keep Frozen ≤-18°C)", "PRP", "Correct label is essential for safe handling"],
+        ["Chemical", "1", "2", "2", "Allergen review vs recipe; label check by 2nd person; batch label control", "PRP", "Correct label essential"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Secure labels; check no loose label parts enter packs", "PRP", "Good labelling practice prevents physical hazards"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — كائنات مُمرضة", "2", "2", "4", "تحقق من تواريخ الاستخدام/الإنتاج/الإذابة؛ بيان تخزين صحيح (\"حافظ مبرّداً 0-5°م\" / \"حافظ مجمّداً ≤-18°م\")", "PRP", "الملصق الصحيح ضروري للتداول الآمن"],
+        ["كيميائي", "1", "2", "2", "مراجعة مسببات الحساسية مقابل الوصفة؛ فحص الملصق من شخص ثانٍ؛ ضبط ملصق الدفعة", "PRP", "الملصق الصحيح ضروري"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "ملصقات مُحكَمة؛ التحقق من عدم دخول أجزاء ملصق إلى العبوات", "PRP", "ممارسة وضع الملصقات الجيدة تمنع المخاطر الفيزيائية"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-transportation",
+    chapter: "hazard",
+    title: "Hazard Analysis — Transportation",
+    titleAr: "تحليل المخاطر — النقل",
+    type: "table",
+    body: "Step: Transportation",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Pathogens", "2", "3", "6", "Refrigerated vehicles; ≤5°C chilled / ≤-18°C frozen; check & record temp at loading & delivery; doors closed", "CCP", "No further step after delivery can reduce hazard if cold chain fails"],
+        ["Chemical — From cleaning", "1", "2", "2", "Vehicle SSOP; dry after cleaning; no chemicals stored with food", "PRP", "Controlled via sanitation PRPs"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Clean vehicle; intact crates/cartons; segregation from non-food items", "PRP", "PRPs sufficient"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — كائنات مُمرضة", "2", "3", "6", "مركبات مبردة؛ ≤5°م مبرّد / ≤-18°م مجمّد؛ فحص وتسجيل الحرارة عند التحميل والتسليم؛ الأبواب مغلقة", "CCP", "لا توجد خطوة بعد التسليم يمكن أن تقلّل الخطر إذا فشلت سلسلة التبريد"],
+        ["كيميائي — من التنظيف", "1", "2", "2", "SSOP للمركبة؛ تجفيف بعد التنظيف؛ لا تُخزَّن كيماويات مع الطعام", "PRP", "مُضبَط عبر PRPs الصرف الصحي"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "مركبة نظيفة؛ صناديق/كراتين سليمة؛ فصل عن المواد غير الغذائية", "PRP", "PRPs كافية"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+  {
+    id: "hazard-display",
+    chapter: "hazard",
+    title: "Hazard Analysis — Display Storage",
+    titleAr: "تحليل المخاطر — عرض المنتج",
+    type: "table",
+    body: "Step: Display Storage",
+    table: {
+      headers: ["Hazard", "Likelihood", "Severity", "Risk", "Preventive Measure", "Decision", "Justification"],
+      rows: [
+        ["Microbiological — Pathogens", "2", "3", "6", "Chilled display ≤5°C; Frozen ≤-18°C; 2-hourly check; alarms; FIFO; covers", "CCP", "No further step can reduce hazard before customer if display fails"],
+        ["Chemical — From cleaning", "1", "2", "2", "SSOP; dry after cleaning; no chemicals near food", "PRP", "Sanitation PRPs adequate"],
+        ["Physical — Foreign bodies", "1", "2", "2", "Separate raw/marinated; guards; utensils by product", "PRP", "GHP/segregation controls sufficient"],
+        ["Allergens", "1", "1", "1", "Controlled through PRP", "PRP", "Facility does not use allergenic materials"],
+      ],
+    },
+    tableAr: {
+      headers: ["الخطر", "الاحتمال", "الشدّة", "المخاطر", "تدابير الوقاية", "القرار", "المبرّر"],
+      rows: [
+        ["ميكروبيولوجي — كائنات مُمرضة", "2", "3", "6", "عرض مبرّد ≤5°م؛ مجمّد ≤-18°م؛ فحص كل ساعتين؛ إنذارات؛ FIFO؛ أغطية", "CCP", "لا توجد خطوة قبل العميل يمكن أن تقلّل الخطر إذا فشل العرض"],
+        ["كيميائي — من التنظيف", "1", "2", "2", "SSOP؛ تجفيف بعد التنظيف؛ لا كيماويات قرب الطعام", "PRP", "PRPs الصرف الصحي كافية"],
+        ["فيزيائي — أجسام غريبة", "1", "2", "2", "فصل النيء/المتبّل؛ حواجز؛ أدوات حسب المنتج", "PRP", "ضوابط GHP/الفصل كافية"],
+        ["مسببات الحساسية", "1", "1", "1", "يتم ضبطها عبر PRP", "PRP", "المنشأة لا تستخدم مواد مسببة للحساسية"],
+      ],
+    },
+  },
+];
+
+/* ============================================================
+   CCP SUMMARY
+   ============================================================ */
+export const FSMS_CCP = [
+  {
+    id: "ccp-monitoring-table",
+    chapter: "ccp",
+    title: "CCP Monitoring & Corrective Actions",
+    titleAr: "مراقبة نقاط التحكم الحرجة والإجراءات التصحيحية",
+    type: "table",
+    body: "",
+    table: {
+      headers: ["CCP", "Hazard", "Critical Limits", "What Monitored", "How / Who / Frequency", "Corrective Action", "Verification", "Records"],
+      rows: [
+        ["CCP-1 Receiving Chilled & Frozen", "Multiplication of pathogens at incorrect temperature", "≤5°C chilled / ≤-18°C frozen", "Vehicle chiller & product temperature", "Thermometer • Receiving staff • On receipt", "Reject if chilled >5°C or frozen >-10°C", "Calibration of thermometers", "Temperature, calibration & receiving logs"],
+        ["CCP-2 Storage (Chilled & Frozen)", "Pathogen growth during storage", "Chilled ≤5°C; Frozen ≤-18°C (continuous)", "Unit & product temp", "Logger/gauge + probe • Store staff/QC • Chilled ≥2×/day; Frozen daily", "Move stock; rapid re-chill/freeze; assess exposure; discard if unsafe", "Record review; calibration weekly; internal audit", "Chiller/Freezer logs; Product temp checks; CA records; Calibration"],
+        ["CCP-3 Transportation", "Cold chain failure during distribution", "Chilled ≤5°C; Frozen ≤-18°C", "Product temp", "Calibrated probe + vehicle gauge • Driver/Receiver/QC • At loading and delivery", "If out of limit beyond brief tolerance: discard; service vehicle; investigate; document", "Weekly probe calibration; monthly micro; internal audit", "Delivery temp log; Trip sheet; Calibration & maintenance records"],
+        ["CCP-4 Display (Butchery shops)", "Loss of control at point of sale", "Chilled display ≤5°C; Frozen display ≤-18°C; If in danger zone apply 2h/4h rule (discard >4h)", "Continuous gauge (where available) + hourly manual probe", "Display logger + probe • Branch supervisor • Every 4 hours", "Move stock; rapid re-chill/freeze; assess exposure; discard if unsafe; service unit", "Record review; calibration weekly; internal audit", "Display logs; Product temp checks; CA records; Calibration"],
+      ],
+    },
+    tableAr: {
+      headers: ["CCP", "الخطر", "الحدود الحرجة", "ما تتم مراقبته", "الكيفية / مَن / التكرار", "الإجراء التصحيحي", "التحقق", "السجلات"],
+      rows: [
+        ["CCP-1 استلام مبرّد ومجمّد",      "تكاثر الكائنات المُمرضة عند درجة حرارة غير صحيحة",       "≤5°م مبرّد / ≤-18°م مجمّد",                                                                "حرارة ثلاجة المركبة وحرارة المنتج", "ميزان حرارة • طاقم الاستلام • عند الاستلام",                  "رفض إذا كان المبرّد >5°م أو المجمّد >-10°م",                                              "معايرة موازين الحرارة",                                "سجلات الحرارة، المعايرة، والاستلام"],
+        ["CCP-2 التخزين (مبرّد ومجمّد)",   "نمو الكائنات المُمرضة أثناء التخزين",                     "مبرّد ≤5°م؛ مجمّد ≤-18°م (مستمر)",                                                       "حرارة الوحدة والمنتج",            "مُسجِّل/مقياس + مسبار • طاقم المستودع/QC • المبرّد ≥مرتين/يوم؛ المجمّد يومياً",      "نقل المخزون؛ إعادة تبريد/تجميد سريعة؛ تقييم التعرّض؛ إتلاف إذا غير آمن",                "مراجعة السجلات؛ معايرة أسبوعية؛ تدقيق داخلي",         "سجلات الثلاجة/الفريزر؛ فحوص حرارة المنتج؛ سجلات الإجراءات التصحيحية؛ المعايرة"],
+        ["CCP-3 النقل",                      "فشل سلسلة التبريد أثناء التوزيع",                          "مبرّد ≤5°م؛ مجمّد ≤-18°م",                                                                "حرارة المنتج",                    "مسبار مُعاير + مقياس المركبة • السائق/المُستلم/QC • عند التحميل والتسليم",         "إذا كان خارج الحد بعد تسامح قصير: إتلاف؛ صيانة المركبة؛ تحقيق؛ توثيق",                  "معايرة المسبار أسبوعياً؛ فحص ميكروبي شهري؛ تدقيق داخلي",  "سجل حرارة التسليم؛ ورقة الرحلة؛ سجلات المعايرة والصيانة"],
+        ["CCP-4 العرض (محلات الملاحم)",     "فقدان الضبط عند نقطة البيع",                                "عرض مبرّد ≤5°م؛ عرض مجمّد ≤-18°م؛ في منطقة الخطر طبّق قاعدة 2س/4س (إتلاف >4س)",         "مقياس مستمر (حيث متاح) + مسبار يدوي بالساعة", "مُسجِّل العرض + مسبار • مشرف الفرع • كل 4 ساعات",        "نقل المخزون؛ إعادة تبريد/تجميد سريعة؛ تقييم التعرّض؛ إتلاف إذا غير آمن؛ صيانة الوحدة", "مراجعة السجلات؛ معايرة أسبوعية؛ تدقيق داخلي",         "سجلات العرض؛ فحوص حرارة المنتج؛ سجلات الإجراءات التصحيحية؛ المعايرة"],
+      ],
+    },
+  },
+  {
+    id: "ccp-references",
+    chapter: "ccp",
+    title: "CCP — Critical Limits & References",
+    titleAr: "نقاط التحكم الحرجة — الحدود الحرجة والمراجع",
+    type: "table",
+    body: "",
+    table: {
+      headers: ["CCP", "Step", "Critical Limit", "Reference"],
+      rows: [
+        ["CCP 1", "Receiving chilled & frozen foods", "≤5°C & ≤-18°C", "DM Food Code clause 3.6.2 (Temperature control during storage and transfer)"],
+        ["CCP 2", "Storage — Chilled & Frozen foods", "Chilled ≤5°C; Frozen ≤-18°C (continuous)", "DM Food Code clause 3.6.2"],
+        ["CCP 3", "Transportation", "Chilled ≤5°C; Frozen ≤-18°C", "DM Food Code clause 3.4.2 (Temperature control during transportation)"],
+        ["CCP 4", "Display Storage", "Chilled ≤5°C; Frozen ≤-18°C (continuous)", "DM Food Code clause 3.6.2"],
+      ],
+    },
+    tableAr: {
+      headers: ["CCP", "الخطوة", "الحد الحرج", "المرجع"],
+      rows: [
+        ["CCP 1", "استلام الأطعمة المبرّدة والمجمّدة", "≤5°م و ≤-18°م",                          "كود غذاء بلدية دبي البند 3.6.2 (التحكم في الحرارة أثناء التخزين والنقل)"],
+        ["CCP 2", "التخزين — مبرّد ومجمّد",            "مبرّد ≤5°م؛ مجمّد ≤-18°م (مستمر)",      "كود غذاء بلدية دبي البند 3.6.2"],
+        ["CCP 3", "النقل",                              "مبرّد ≤5°م؛ مجمّد ≤-18°م",               "كود غذاء بلدية دبي البند 3.4.2 (التحكم في الحرارة أثناء النقل)"],
+        ["CCP 4", "تخزين العرض",                       "مبرّد ≤5°م؛ مجمّد ≤-18°م (مستمر)",      "كود غذاء بلدية دبي البند 3.6.2"],
+      ],
+    },
+  },
+  {
+    id: "ccp-validation",
+    chapter: "ccp",
+    title: "FSMS Validation / Review Checklist",
+    titleAr: "قائمة التحقق من صلاحية نظام FSMS",
+    type: "text",
+    body:
+      "Validation Type:\n• Initial validation (within 12 months of implementation)\n• Validation (Re-assessment) due to change made in raw materials, source of raw materials, product formulation, process methods, packaging, distribution systems, or intended use/consumers, or rate/type of consumer complaints.\n• Annual validation (Re-assessment) of the FSMS plan including Hazard Analysis\n\nDate Conducted: 04/04/2026\nConducted by: Mohamed\n\n1) FSMS Review & Verification — Evaluate Product and Process:\n• Product description changed (intended use, consumer)? — Nil\n• Ingredients / packaging changed? — Nil\n• Any new product consumption or storage methods? — Nil\n• Any new suppliers? — New supplier added\n• Process flow changed? — Nil\n• Equipment/computer software changed? — Nil\n• Finished product distribution changed? — Nil\n• Other (e.g., production volume increased) — Nil\n\n2) Evaluate Product/Process History:\n• Any recent industry recalls of similar product since the last annual validation\n• New or emerging hazards / health scares\n• Regulatory agency recommendations / guidance documents\n• Any confirmed food safety consumer complaints\n\n3) Evaluate Adequacy of CCPs, Critical Limits, Monitoring, Corrective Action, CCP Verification & Record Keeping:\n• Do the CCPs control the hazards?\n• Are the CCP critical limits adequate?\n• Do monitoring methods and frequency demonstrate control?\n• Do corrective actions properly address affected product and correct deviation?\n• Does the validation review include consumer complaints?\n\nConducted By: Mohamed",
+    bodyAr:
+      "نوع التحقق:\n• التحقق الأولي (خلال 12 شهراً من التنفيذ)\n• التحقق (إعادة التقييم) بسبب تغيير في المواد الخام أو مصدرها أو تركيبة المنتج أو طرق العملية أو التعبئة أو أنظمة التوزيع أو الاستخدام/المستهلكين المقصودين أو معدل/نوع شكاوى المستهلكين.\n• التحقق السنوي (إعادة التقييم) لخطة FSMS بما في ذلك تحليل المخاطر\n\nتاريخ الإجراء: 04/04/2026\nأجراه: محمد\n\n1) مراجعة وتحقق FSMS — تقييم المنتج والعملية:\n• تغيير وصف المنتج (الاستخدام المقصود، المستهلك)؟ — لا شيء\n• تغيير المكونات / التعبئة؟ — لا شيء\n• أي طرق جديدة لاستهلاك أو تخزين المنتج؟ — لا شيء\n• أي موردين جدد؟ — تمت إضافة مورد جديد\n• تغيير تدفق العملية؟ — لا شيء\n• تغيير المعدات/برامج الحاسوب؟ — لا شيء\n• تغيير توزيع المنتج النهائي؟ — لا شيء\n• أخرى (مثلاً، زيادة حجم الإنتاج) — لا شيء\n\n2) تقييم تاريخ المنتج/العملية:\n• أي عمليات سحب صناعية حديثة لمنتج مماثل منذ التحقق السنوي الأخير\n• مخاطر جديدة أو ناشئة / مخاوف صحية\n• توصيات الجهات التنظيمية / وثائق إرشادية\n• أي شكاوى مؤكدة للمستهلكين بشأن سلامة الغذاء\n\n3) تقييم كفاية CCPs، الحدود الحرجة، المراقبة، الإجراءات التصحيحية، التحقق من CCP وحفظ السجلات:\n• هل تتحكم CCPs في المخاطر؟\n• هل الحدود الحرجة لـ CCP كافية؟\n• هل طرق وتكرار المراقبة تُثبت التحكم؟\n• هل الإجراءات التصحيحية تعالج المنتج المتأثر وتصحّح الانحراف بشكل صحيح؟\n• هل تتضمن مراجعة التحقق شكاوى المستهلكين؟\n\nأجراه: محمد",
+  },
+];
+
+/* ============================================================
+   HACCP PLAN
+   ============================================================ */
+export const FSMS_HACCP_PLAN = [
+  {
+    id: "haccp-plan-receiving",
+    chapter: "haccp-plan",
+    title: "HACCP Plan — Receiving (Chilled / Frozen Meat) — CCP1",
+    titleAr: "خطة HACCP — استلام (لحم مبرد/مجمد) — CCP1",
+    type: "table",
+    body: "",
+    table: {
+      headers: ["Field", "Detail"],
+      rows: [
+        ["Process Step / Control Measure", "Receiving (Chilled / Frozen Meat)"],
+        ["Significant Hazard(s)", "Pathogen growth; cross-contamination; non-Halal source; foreign matter"],
+        ["CCP/OPRP", "CCP1"],
+        ["Critical Limit(s)", "Chilled ≤5°C; Frozen ≤-18°C; packs intact; labels match PO; valid Halal/COA"],
+        ["What is Monitored", "Product temperature; packaging & labels; documents"],
+        ["How", "Calibrated probe; visual check; checklist vs PO/COA/Halal"],
+        ["Frequency", "Each receipt, per lot"],
+        ["Who", "Receiver or QA"],
+        ["Corrective Actions", "Reject/segregate; rapid chill if safe; hold for QA; notify supplier"],
+        ["Records", "Receiving log; temperature log; COA/Halal checklist; NCR"],
+        ["Verification", "Thermometer calibration; supplier review; internal audits; trend of receipt temps"],
+        ["Validation", "Micro vs shelf-life; historical data"],
+      ],
+    },
+    tableAr: {
+      headers: ["البيان", "التفصيل"],
+      rows: [
+        ["خطوة العملية / تدبير الضبط", "الاستلام (لحم مبرّد / مجمّد)"],
+        ["الخطر/المخاطر الكبيرة",       "نمو الكائنات المُمرضة؛ التلوث المتبادل؛ مصدر غير حلال؛ مادة غريبة"],
+        ["CCP/OPRP",                     "CCP1"],
+        ["الحدود الحرجة",                "مبرّد ≤5°م؛ مجمّد ≤-18°م؛ العبوات سليمة؛ الملصقات تطابق أمر الشراء؛ شهادة حلال/COA سارية"],
+        ["ما تتم مراقبته",                "حرارة المنتج؛ التعبئة والملصقات؛ الوثائق"],
+        ["الكيفية",                      "مسبار مُعاير؛ فحص بصري؛ قائمة فحص مقابل PO/COA/الحلال"],
+        ["التكرار",                       "كل استلام، لكل دفعة"],
+        ["مَن",                          "المُستلم أو QA"],
+        ["الإجراءات التصحيحية",          "رفض/فصل؛ تبريد سريع إذا آمن؛ احتجاز للـ QA؛ إبلاغ المورد"],
+        ["السجلات",                      "سجل الاستلام؛ سجل الحرارة؛ قائمة فحص COA/الحلال؛ تقرير عدم مطابقة"],
+        ["التحقق",                       "معايرة موازين الحرارة؛ مراجعة الموردين؛ تدقيقات داخلية؛ اتجاه حرارة الاستلام"],
+        ["التحقق من الصلاحية",            "ميكروبي مقابل مدة الصلاحية؛ بيانات تاريخية"],
+      ],
+    },
+  },
+  {
+    id: "haccp-plan-storage",
+    chapter: "haccp-plan",
+    title: "HACCP Plan — Cold Storage (Chilled / Frozen) — CCP2",
+    titleAr: "خطة HACCP — تخزين بارد (مبرد/مجمد) — CCP2",
+    type: "table",
+    body: "",
+    table: {
+      headers: ["Field", "Detail"],
+      rows: [
+        ["Process Step / Control Measure", "Cold Storage (Chilled / Frozen)"],
+        ["Significant Hazard(s)", "Pathogen growth; temperature abuse; cross-contamination"],
+        ["CCP/OPRP", "CCP2"],
+        ["Critical Limit(s)", "Chilled 0–5°C; Frozen ≤-18°C; segregation; FIFO/FEFO"],
+        ["What is Monitored", "Room/product temperature"],
+        ["How", "Display reading + manual probe; door discipline check"],
+        ["Frequency", "At least twice daily"],
+        ["Who", "Storekeeper or QA"],
+        ["Corrective Actions", "Restore setpoint; move to backup room; assess exposure; hold or dispose if unsafe"],
+        ["Records", "Chiller/freezer temperature log; stock rotation; maintenance log"],
+        ["Verification", "Calibration; alarm tests; weekly trend review; internal audit"],
+        ["Validation", "Stability data for limits"],
+      ],
+    },
+    tableAr: {
+      headers: ["البيان", "التفصيل"],
+      rows: [
+        ["خطوة العملية / تدبير الضبط", "التخزين البارد (مبرّد / مجمّد)"],
+        ["الخطر/المخاطر الكبيرة",       "نمو الكائنات المُمرضة؛ إساءة استخدام الحرارة؛ التلوث المتبادل"],
+        ["CCP/OPRP",                     "CCP2"],
+        ["الحدود الحرجة",                "مبرّد 0-5°م؛ مجمّد ≤-18°م؛ فصل؛ FIFO/FEFO"],
+        ["ما تتم مراقبته",                "حرارة الغرفة/المنتج"],
+        ["الكيفية",                      "قراءة العرض + مسبار يدوي؛ فحص الانضباط بالباب"],
+        ["التكرار",                       "مرتين على الأقل يومياً"],
+        ["مَن",                          "أمين المستودع أو QA"],
+        ["الإجراءات التصحيحية",          "إعادة تعيين الإعداد؛ نقل إلى غرفة احتياطية؛ تقييم التعرّض؛ احتجاز أو إتلاف إذا غير آمن"],
+        ["السجلات",                      "سجل حرارة الثلاجة/الفريزر؛ تدوير المخزون؛ سجل الصيانة"],
+        ["التحقق",                       "معايرة؛ اختبار الإنذارات؛ مراجعة اتجاه أسبوعية؛ تدقيق داخلي"],
+        ["التحقق من الصلاحية",            "بيانات الاستقرار للحدود"],
+      ],
+    },
+  },
+  {
+    id: "haccp-plan-display",
+    chapter: "haccp-plan",
+    title: "HACCP Plan — Display Chiller (Retail/Service Counter) — CCP3",
+    titleAr: "خطة HACCP — ثلاجة العرض (التجزئة/منفذ الخدمة) — CCP3",
+    type: "table",
+    body: "",
+    table: {
+      headers: ["Field", "Detail"],
+      rows: [
+        ["Process Step / Control Measure", "Display Chiller (Retail/Service Counter)"],
+        ["Significant Hazard(s)", "Temperature abuse; cross-contamination; expired items; wrong price/label"],
+        ["CCP/OPRP", "CCP3"],
+        ["Critical Limit(s)", "Display air ≤5°C; product ≤7°C; covers in place; no raw-cooked contact; FEFO; correct price/label"],
+        ["What is Monitored", "Air and product temperature; cover/utensils; expiry/rotation; label/price tag"],
+        ["How", "Display thermometer + spot probe; visual checks; rotation sheet"],
+        ["Frequency", "Hourly temps; rotation per shift"],
+        ["Who", "Counter staff / QA"],
+        ["Corrective Actions", "Adjust/repair unit; move product to backup chiller; discard out-of-temp beyond safe time; correct label/price; clean and sanitize"],
+        ["Records", "Display temperature log; rotation sheet; corrective action log"],
+        ["Verification", "Trend review; equipment maintenance records; internal audits"],
+        ["Validation", "Validation of unit capacity and load plan to maintain temps"],
+      ],
+    },
+    tableAr: {
+      headers: ["البيان", "التفصيل"],
+      rows: [
+        ["خطوة العملية / تدبير الضبط", "ثلاجة العرض (التجزئة/منفذ الخدمة)"],
+        ["الخطر/المخاطر الكبيرة",       "إساءة استخدام الحرارة؛ التلوث المتبادل؛ أصناف منتهية؛ سعر/ملصق خاطئ"],
+        ["CCP/OPRP",                     "CCP3"],
+        ["الحدود الحرجة",                "هواء العرض ≤5°م؛ المنتج ≤7°م؛ الأغطية في مكانها؛ لا تماس نيء-مطهي؛ FEFO؛ سعر/ملصق صحيح"],
+        ["ما تتم مراقبته",                "حرارة الهواء والمنتج؛ الأغطية/الأدوات؛ الانتهاء/التدوير؛ بطاقة السعر/الملصق"],
+        ["الكيفية",                      "ميزان حرارة العرض + مسبار فحص؛ فحوص بصرية؛ ورقة التدوير"],
+        ["التكرار",                       "حرارة كل ساعة؛ تدوير لكل وردية"],
+        ["مَن",                          "طاقم المنفذ / QA"],
+        ["الإجراءات التصحيحية",          "ضبط/إصلاح الوحدة؛ نقل المنتج إلى ثلاجة احتياطية؛ إتلاف ما خرج عن الحرارة بعد الوقت الآمن؛ تصحيح الملصق/السعر؛ تنظيف وتعقيم"],
+        ["السجلات",                      "سجل حرارة العرض؛ ورقة التدوير؛ سجل الإجراءات التصحيحية"],
+        ["التحقق",                       "مراجعة الاتجاه؛ سجلات صيانة المعدات؛ تدقيقات داخلية"],
+        ["التحقق من الصلاحية",            "التحقق من سعة الوحدة وخطة التحميل للحفاظ على الحرارة"],
+      ],
+    },
+  },
+  {
+    id: "haccp-plan-transport",
+    chapter: "haccp-plan",
+    title: "HACCP Plan — Delivery / Transport — CCP4",
+    titleAr: "خطة HACCP — التوصيل / النقل — CCP4",
+    type: "table",
+    body: "",
+    table: {
+      headers: ["Field", "Detail"],
+      rows: [
+        ["Process Step / Control Measure", "Delivery / Transport"],
+        ["Significant Hazard(s)", "Temperature abuse; contamination from vehicle; tampering; Halal integrity loss"],
+        ["CCP/OPRP", "CCP4"],
+        ["Critical Limit(s)", "During transport: chilled products ≤5°C; frozen ≤-18°C; vehicle clean and closed; route/time within plan; seals/tamper-evidence intact"],
+        ["What is Monitored", "Product/air temperature; vehicle sanitation; seal integrity; delivery time"],
+        ["How", "Data logger or display reading + spot probe; visual check of cleanliness and seals; POD"],
+        ["Frequency", "Each delivery drop"],
+        ["Who", "Driver & Dispatcher / QA"],
+        ["Corrective Actions", "Return or quarantine affected goods; add ice/cold packs; replace vehicle; report incident; CAPA for route/time"],
+        ["Records", "Trip log; data logger report; POD with temperature; cleaning log"],
+        ["Verification", "Review logger data; route KPI trending; vehicle audit; calibration"],
+        ["Validation", "Validation of insulation/capacity to maintain set temperatures"],
+      ],
+    },
+    tableAr: {
+      headers: ["البيان", "التفصيل"],
+      rows: [
+        ["خطوة العملية / تدبير الضبط", "التسليم / النقل"],
+        ["الخطر/المخاطر الكبيرة",       "إساءة استخدام الحرارة؛ التلوث من المركبة؛ العبث؛ فقدان سلامة الحلال"],
+        ["CCP/OPRP",                     "CCP4"],
+        ["الحدود الحرجة",                "أثناء النقل: المنتجات المبرّدة ≤5°م؛ المجمّدة ≤-18°م؛ المركبة نظيفة ومغلقة؛ المسار/الوقت ضمن الخطة؛ الأختام/أدلة عدم العبث سليمة"],
+        ["ما تتم مراقبته",                "حرارة المنتج/الهواء؛ نظافة المركبة؛ سلامة الأختام؛ وقت التسليم"],
+        ["الكيفية",                      "مُسجِّل بيانات أو قراءة العرض + مسبار فحص؛ فحص بصري للنظافة والأختام؛ إثبات تسليم"],
+        ["التكرار",                       "كل نقطة تسليم"],
+        ["مَن",                          "السائق والمُوزِّع / QA"],
+        ["الإجراءات التصحيحية",          "إعادة أو حجز السلع المتأثرة؛ إضافة ثلج/أكياس باردة؛ استبدال المركبة؛ الإبلاغ عن الحادث؛ CAPA للمسار/الوقت"],
+        ["السجلات",                      "سجل الرحلة؛ تقرير مُسجِّل البيانات؛ إثبات التسليم مع الحرارة؛ سجل التنظيف"],
+        ["التحقق",                       "مراجعة بيانات المُسجِّل؛ تتبع مؤشرات أداء المسار؛ تدقيق المركبة؛ معايرة"],
+        ["التحقق من الصلاحية",            "التحقق من العزل/السعة للحفاظ على الحرارة المُعيَّنة"],
+      ],
+    },
+  },
+];
+
+/* ============================================================
+   COMBINED EXPORT
+   ============================================================ */
+export const FSMS_HACCP_SECTIONS = [
+  ...FSMS_PRODUCTS,
+  ...FSMS_FLOW,
+  ...FSMS_HAZARDS,
+  ...FSMS_CCP,
+  ...FSMS_HACCP_PLAN,
+];

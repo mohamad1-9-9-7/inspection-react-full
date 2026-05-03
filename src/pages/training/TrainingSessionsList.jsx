@@ -674,93 +674,91 @@ export default function TrainingSessionsList() {
   const activeParticipant = quizIndex >= 0 ? participants[quizIndex] : null;
   const viewParticipant = viewIndex >= 0 ? participants[viewIndex] : null;
 
-  /* ===================== ✅ THEME (NO WHITE) ===================== */
+  /* ===================== ✅ THEME (Mock Recall View Style) ===================== */
   const THEME = {
-    text: "#e5e7eb",
-    textStrong: "#f1f5f9",
-    muted: "#94a3b8",
-    muted2: "#a1a1aa",
-    line: "rgba(148,163,184,0.22)",
-    lineStrong: "rgba(148,163,184,0.30)",
-    glassBg: "rgba(15,23,42,0.72)",
-    glassBd: "rgba(148,163,184,0.22)",
-    glassShadow: "0 20px 60px rgba(0,0,0,0.45)",
-    surfaceBg: "rgba(2,6,23,0.36)",
-    surfaceBd: "rgba(148,163,184,0.20)",
-    surfaceShadow: "0 12px 32px rgba(0,0,0,0.35)",
-    inputBg: "rgba(2,6,23,0.55)",
-    inputBd: "rgba(148,163,184,0.22)",
-    inputPh: "rgba(148,163,184,0.75)",
-    headerBg: "linear-gradient(180deg, rgba(2,6,23,0.55), rgba(2,6,23,0.30))",
+    text: "#1f2937",
+    textStrong: "#0b1f4d",
+    muted: "#64748b",
+    muted2: "#94a3b8",
+    line: "#e5e7eb",
+    lineStrong: "#cbd5e1",
+    glassBg: "#ffffff",
+    glassBd: "#e5e7eb",
+    glassShadow: "0 1px 3px rgba(0,0,0,0.04)",
+    surfaceBg: "#ffffff",
+    surfaceBd: "#e5e7eb",
+    surfaceShadow: "0 1px 3px rgba(0,0,0,0.04)",
+    inputBg: "#f8fafc",
+    inputBd: "#e2e8f0",
+    inputPh: "#94a3b8",
+    headerBg: "linear-gradient(135deg,#1e3a5f,#2d5a8e)",
   };
 
   const pageStyle = {
     minHeight: "100vh",
     width: "100%",
-    background:
-      "radial-gradient(1200px 700px at 10% 10%, rgba(14,165,233,0.35), transparent 60%)," +
-      "radial-gradient(900px 600px at 90% 0%, rgba(124,58,237,0.35), transparent 55%)," +
-      "radial-gradient(900px 700px at 70% 100%, rgba(16,185,129,0.20), transparent 55%)," +
-      "linear-gradient(135deg, #0b1220 0%, #111827 45%, #030712 100%)",
-    padding: "18px 14px",
+    padding: "20px 18px",
+    background: "linear-gradient(150deg,#eef2ff,#f8fafc 55%,#ecfdf5)",
     boxSizing: "border-box",
     direction: "ltr",
-    fontFamily:
-      "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
     color: THEME.text,
   };
 
   const glass = {
     background: THEME.glassBg,
     border: `1px solid ${THEME.glassBd}`,
-    borderRadius: 18,
+    borderRadius: 12,
     boxShadow: THEME.glassShadow,
-    backdropFilter: "blur(14px)",
   };
 
   const surface = {
     background: THEME.surfaceBg,
     border: `1px solid ${THEME.surfaceBd}`,
-    borderRadius: 16,
+    borderRadius: 12,
     boxShadow: THEME.surfaceShadow,
   };
 
   const btn = (kind = "light") => {
     const m = {
-      dark: { bg: "linear-gradient(135deg,#0b1220,#111827)", fg: THEME.textStrong, bd: "rgba(148,163,184,0.25)" },
-      light: { bg: "rgba(2,6,23,0.35)", fg: THEME.text, bd: "rgba(148,163,184,0.22)" },
-      blue: { bg: "linear-gradient(135deg, rgba(6,182,212,0.85), rgba(37,99,235,0.85))", fg: "#081018", bd: "rgba(147,197,253,0.35)" },
-      red: { bg: "linear-gradient(135deg, rgba(239,68,68,0.85), rgba(190,18,60,0.85))", fg: "#120207", bd: "rgba(254,205,211,0.35)" },
-      violet: { bg: "linear-gradient(135deg, rgba(124,58,237,0.85), rgba(79,70,229,0.85))", fg: "#0c0617", bd: "rgba(199,210,254,0.35)" },
-      green: { bg: "linear-gradient(135deg, rgba(16,185,129,0.85), rgba(5,150,105,0.85))", fg: "#03110b", bd: "rgba(167,243,208,0.35)" },
-      gray: { bg: "linear-gradient(135deg, rgba(100,116,139,0.75), rgba(71,85,105,0.75))", fg: "#05070b", bd: "rgba(203,213,225,0.28)" },
+      dark:    { bg: "rgba(255,255,255,0.18)", fg: "#fff",    bd: "rgba(255,255,255,0.4)" },
+      light:   { bg: "rgba(255,255,255,0.12)", fg: "#fff",    bd: "rgba(255,255,255,0.3)" },
+      blue:    { bg: "#1e40af",                fg: "#fff",    bd: "transparent" },
+      red:     { bg: "#fef2f2",                fg: "#991b1b", bd: "#fca5a5" },
+      violet:  { bg: "#ede9fe",                fg: "#5b21b6", bd: "#ddd6fe" },
+      green:   { bg: "#15803d",                fg: "#fff",    bd: "transparent" },
+      gray:    { bg: "#f1f5f9",                fg: "#334155", bd: "#e2e8f0" },
+      warning: { bg: "#fff7ed",                fg: "#9a3412", bd: "#fdba74" },
     };
     const c = m[kind] || m.light;
     return {
-      padding: "10px 12px",
-      borderRadius: 12,
+      padding: "9px 14px",
+      borderRadius: 10,
       border: `1px solid ${c.bd}`,
       background: c.bg,
       color: c.fg,
       cursor: "pointer",
-      fontWeight: 1000,
-      boxShadow: kind === "blue" ? "0 12px 26px rgba(37,99,235,0.25)" : "none",
+      fontWeight: 800,
+      fontSize: "0.88rem",
       whiteSpace: "nowrap",
+      transition: "filter .12s ease",
     };
   };
 
   const inputStyle = {
     width: "100%",
-    padding: 12,
-    borderRadius: 14,
-    border: `1px solid ${THEME.inputBd}`,
+    padding: "9px 12px",
+    borderRadius: 8,
+    border: `1.5px solid ${THEME.inputBd}`,
     outline: "none",
-    fontWeight: 900,
+    fontWeight: 700,
+    fontSize: "0.92rem",
     color: THEME.textStrong,
     background: THEME.inputBg,
+    fontFamily: "inherit",
   };
 
-  const TOP_EST = 170;
+  const TOP_EST = 320; // navy header + KPI row + filters bar + margins
   const rightPanelHeight = `calc(100vh - ${TOP_EST}px)`;
 
   const token = selected ? getSessionToken() : "";
@@ -788,70 +786,118 @@ export default function TrainingSessionsList() {
     setDetailOpen(next);
   };
 
+  /* ====== KPI calculations (matches Mock Recall View style) ====== */
+  const kpis = (() => {
+    const total = filtered.length;
+    const branches = new Set();
+    const modules = new Set();
+    let withQuiz = 0;
+    let lastDate = null;
+    for (const r of filtered) {
+      const b = safeBranch(r); if (b) branches.add(b);
+      const m = safeModule(r); if (m) modules.add(m);
+      if (hasQuiz(r?.payload)) withQuiz += 1;
+      const d = safeDate(r);
+      if (d && (!lastDate || d > lastDate)) lastDate = d;
+    }
+    const days = (() => {
+      if (!lastDate) return null;
+      const dt = new Date(lastDate);
+      if (isNaN(dt.getTime())) return null;
+      return Math.floor((Date.now() - dt.getTime()) / 86400000);
+    })();
+    return {
+      total,
+      branches: branches.size,
+      modules: modules.size,
+      withQuiz,
+      lastDate,
+      daysSinceLast: days,
+    };
+  })();
+
   return (
     <div style={pageStyle}>
-      <div style={{ ...glass, padding: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 1100, color: THEME.textStrong }}>
-              🎓 Training Sessions
-            </div>
-            <div style={{ marginTop: 6, color: THEME.muted, fontSize: 13, fontWeight: 800 }}>
-              {info || `Loaded: ${rows.length}`} {loading ? " — Loading..." : ""}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => nav("/training/create")} style={btn("dark")}>
-              ➕ New Training
-            </button>
-            <button
-              onClick={load}
-              disabled={loading}
-              style={{
-                ...btn("light"),
-                opacity: loading ? 0.6 : 1,
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
-              🔄 Refresh
-            </button>
-            <button onClick={() => nav("/training")} style={btn("light")}>
-              ↩ Back
-            </button>
+      {/* ========= TOP HEADER (navy gradient, like Mock Recall) ========= */}
+      <div
+        style={{
+          background: "linear-gradient(135deg,#1e3a5f,#2d5a8e)",
+          color: "#fff",
+          padding: "18px 22px",
+          borderRadius: 14,
+          boxShadow: "0 6px 18px rgba(30,58,95,0.20)",
+          marginBottom: 14,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 900 }}>
+            🎓 Training Sessions
+          </h1>
+          <div style={{ opacity: 0.85, marginTop: 4, fontSize: "0.92rem" }}>
+            {loading ? "Loading…" : (info || `Browse, view participants, run quizzes, and track KPIs.`)}
           </div>
         </div>
-
-        <div
-          style={{
-            marginTop: 12,
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search... (Branch / Module / Title / Date)"
-            style={{
-              flex: 1,
-              minWidth: 280,
-              ...inputStyle,
-            }}
-          />
-          <Badge text={`Total: ${rows.length}`} tone="violet" />
-          <Badge text={`Filtered: ${filtered.length}`} tone="blue" />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={load} disabled={loading} style={btn("light")}>
+            {loading ? "Refreshing…" : "🔄 Refresh"}
+          </button>
+          <button onClick={() => nav("/training/create")} style={btn("dark")}>
+            ➕ New Training
+          </button>
+          <button onClick={() => nav("/training")} style={btn("light")}>
+            ↩ Back
+          </button>
         </div>
+      </div>
+
+      {/* ========= KPI ROW ========= */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <KPICardLocal icon="📋" label="Total Sessions" value={kpis.total} sub={q ? `Filtered from ${rows.length}` : "All sessions"} accent="#1e40af" />
+        <KPICardLocal icon="🏢" label="Branches Covered" value={kpis.branches} sub="distinct branches" accent="#0891b2" />
+        <KPICardLocal icon="📚" label="Modules Covered" value={kpis.modules} sub="distinct modules" accent="#7c3aed" />
+        <KPICardLocal icon="📝" label="With Quiz" value={`${kpis.withQuiz}/${kpis.total || 0}`} sub={kpis.total ? `${Math.round((kpis.withQuiz / kpis.total) * 100)}% have quiz` : "—"} accent="#15803d" />
+        <KPICardLocal
+          icon={kpis.daysSinceLast !== null && kpis.daysSinceLast > 60 ? "⏳" : "📅"}
+          label="Since Last Training"
+          value={kpis.daysSinceLast !== null ? `${kpis.daysSinceLast} days` : "—"}
+          sub={kpis.lastDate || "—"}
+          accent="#a16207"
+          bad={kpis.daysSinceLast !== null && kpis.daysSinceLast > 90}
+        />
+      </div>
+
+      {/* ========= FILTER BAR ========= */}
+      <div
+        style={{
+          background: "#fff",
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 14,
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        }}
+      >
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="🔎 Search by Branch / Module / Title / Date…"
+          style={{ ...inputStyle, flex: 1, minWidth: 280 }}
+        />
+        {q && (
+          <button onClick={() => setQ("")} style={btn("gray")}>✕ Clear</button>
+        )}
+        <span style={{ color: "#64748b", fontSize: "0.88rem", fontWeight: 700 }}>
+          {filtered.length} session(s)
+        </span>
       </div>
 
       <div
@@ -874,26 +920,43 @@ export default function TrainingSessionsList() {
             height: rightPanelHeight,
             overflow: "hidden",
             ...glass,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
           <div
             style={{
-              padding: 12,
+              padding: "12px 14px",
               borderBottom: `1px solid ${THEME.line}`,
               display: "flex",
               justifyContent: "space-between",
               gap: 10,
               alignItems: "center",
               background: THEME.headerBg,
+              color: "#fff",
             }}
           >
-            <div style={{ fontWeight: 1100, color: THEME.textStrong }}>📚 Library</div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ fontWeight: 1000, fontSize: 14, letterSpacing: 0.3 }}>📚 Library</div>
+            <div style={{
+              display: "flex",
+              background: "rgba(255,255,255,0.10)",
+              borderRadius: 10,
+              padding: 3,
+              gap: 2,
+            }}>
               <button
                 onClick={() => setRightTab("SESSIONS")}
                 style={{
-                  ...btn(rightTab === "SESSIONS" ? "dark" : "light"),
-                  padding: "8px 10px",
+                  border: "none",
+                  background: rightTab === "SESSIONS" ? "#fff" : "transparent",
+                  color: rightTab === "SESSIONS" ? "#0f172a" : "#cbd5e1",
+                  fontWeight: 1000,
+                  fontSize: 11,
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  letterSpacing: 0.3,
+                  transition: "all .12s",
                 }}
               >
                 Sessions
@@ -901,8 +964,16 @@ export default function TrainingSessionsList() {
               <button
                 onClick={() => setRightTab("TREE")}
                 style={{
-                  ...btn(rightTab === "TREE" ? "dark" : "light"),
-                  padding: "8px 10px",
+                  border: "none",
+                  background: rightTab === "TREE" ? "#fff" : "transparent",
+                  color: rightTab === "TREE" ? "#0f172a" : "#cbd5e1",
+                  fontWeight: 1000,
+                  fontSize: 11,
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  letterSpacing: 0.3,
+                  transition: "all .12s",
                 }}
               >
                 Date Tree
@@ -913,19 +984,35 @@ export default function TrainingSessionsList() {
           <div
             style={{
               padding: 12,
-              height: "calc(100% - 56px)",
+              flex: 1,
+              minHeight: 0,
               overflow: "auto",
+              background: "#f8fafc",
             }}
           >
             {rightTab === "SESSIONS" ? (
-              <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gap: 8 }}>
                 {loading ? (
-                  <div style={{ padding: 12, color: THEME.muted, fontWeight: 900 }}>
-                    Loading…
+                  <div style={{
+                    padding: 24, textAlign: "center",
+                    color: THEME.muted, fontWeight: 800, fontSize: 13,
+                  }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: "50%",
+                      border: "3px solid #e2e8f0", borderTopColor: "#3b82f6",
+                      margin: "0 auto 10px",
+                      animation: "tspin 0.7s linear infinite",
+                    }} />
+                    <style>{`@keyframes tspin { to { transform: rotate(360deg); } }`}</style>
+                    Loading sessions…
                   </div>
                 ) : filtered.length === 0 ? (
-                  <div style={{ padding: 12, color: THEME.muted, fontWeight: 900 }}>
-                    No sessions found.
+                  <div style={{
+                    padding: "40px 16px", textAlign: "center",
+                    color: THEME.muted, fontWeight: 700, fontSize: 13,
+                  }}>
+                    <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.5 }}>📭</div>
+                    {q ? "No sessions match your search." : "No sessions found yet."}
                   </div>
                 ) : (
                   filtered.map((r, idx) => {
@@ -937,19 +1024,21 @@ export default function TrainingSessionsList() {
                         style={{
                           width: "100%",
                           textAlign: "left",
-                          borderRadius: 16,
+                          borderRadius: 12,
                           border: active
-                            ? "1px solid rgba(99,102,241,0.70)"
+                            ? "2px solid #6366f1"
                             : `1px solid ${THEME.line}`,
-                          background: active
-                            ? "linear-gradient(135deg, rgba(99,102,241,0.18), rgba(2,6,23,0.18))"
-                            : "linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.18))",
-                          padding: 12,
+                          background: active ? "#eef2ff" : "#ffffff",
+                          padding: "10px 12px",
                           cursor: "pointer",
                           boxShadow: active
-                            ? "0 18px 45px rgba(99,102,241,0.18)"
-                            : "0 10px 28px rgba(0,0,0,0.22)",
+                            ? "0 8px 20px rgba(99,102,241,0.18)"
+                            : "0 1px 3px rgba(15,23,42,0.05)",
                           color: THEME.text,
+                          transition: "all .12s",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
                         }}
                         title="Open"
                       >
@@ -957,26 +1046,61 @@ export default function TrainingSessionsList() {
                           style={{
                             display: "flex",
                             justifyContent: "space-between",
-                            gap: 10,
-                            alignItems: "center",
+                            gap: 8,
+                            alignItems: "flex-start",
                           }}
                         >
-                          <div style={{ fontWeight: 1000, color: THEME.textStrong }}>
+                          <div style={{
+                            fontWeight: 900, color: THEME.textStrong,
+                            fontSize: 13, lineHeight: 1.35,
+                            overflow: "hidden",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            flex: 1,
+                          }}>
                             {safeTitle(r) || "Training Session"}
                           </div>
-                          <Badge text={safeDate(r) || "-"} tone="blue" />
+                          <span style={{
+                            fontSize: 10, fontWeight: 1000,
+                            color: "#1e40af",
+                            background: "#dbeafe",
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            whiteSpace: "nowrap",
+                            border: "1px solid #bfdbfe",
+                          }}>
+                            📅 {safeDate(r) || "-"}
+                          </span>
                         </div>
                         <div
                           style={{
-                            marginTop: 8,
                             display: "flex",
-                            gap: 8,
+                            gap: 6,
                             flexWrap: "wrap",
                             alignItems: "center",
                           }}
                         >
-                          <Badge text={safeModule(r) || "Module -"} tone="violet" />
-                          <Badge text={safeBranch(r) || "Branch -"} tone="gray" />
+                          <span style={{
+                            fontSize: 10, fontWeight: 800,
+                            color: "#5b21b6",
+                            background: "#ede9fe",
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            border: "1px solid #ddd6fe",
+                          }}>
+                            📚 {safeModule(r) || "—"}
+                          </span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 800,
+                            color: "#334155",
+                            background: "#f1f5f9",
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            border: "1px solid #e2e8f0",
+                          }}>
+                            🏢 {safeBranch(r) || "—"}
+                          </span>
                         </div>
                       </button>
                     );
@@ -984,9 +1108,13 @@ export default function TrainingSessionsList() {
                 )}
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gap: 8 }}>
                 {Object.keys(dateTree).length === 0 ? (
-                  <div style={{ padding: 12, color: THEME.muted, fontWeight: 900 }}>
+                  <div style={{
+                    padding: "40px 16px", textAlign: "center",
+                    color: THEME.muted, fontWeight: 700, fontSize: 13,
+                  }}>
+                    <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.5 }}>🗂</div>
                     No data.
                   </div>
                 ) : (
@@ -1004,9 +1132,10 @@ export default function TrainingSessionsList() {
                           key={year}
                           style={{
                             border: `1px solid ${THEME.line}`,
-                            borderRadius: 16,
-                            background: "rgba(2,6,23,0.22)",
+                            borderRadius: 12,
+                            background: "#ffffff",
                             overflow: "hidden",
+                            boxShadow: "0 1px 3px rgba(15,23,42,0.05)",
                           }}
                         >
                           <button
@@ -1016,19 +1145,21 @@ export default function TrainingSessionsList() {
                             style={{
                               width: "100%",
                               textAlign: "left",
-                              padding: 12,
+                              padding: "10px 12px",
                               cursor: "pointer",
                               border: "none",
-                              background: THEME.headerBg,
-                              fontWeight: 1100,
+                              background: isYearOpen ? "linear-gradient(135deg,#0f172a,#1e293b)" : "#f1f5f9",
+                              fontWeight: 1000,
+                              fontSize: 13,
                               display: "flex",
                               justifyContent: "space-between",
                               alignItems: "center",
-                              color: THEME.textStrong,
+                              color: isYearOpen ? "#fff" : THEME.textStrong,
+                              transition: "all .15s",
                             }}
                           >
                             <span>📁 {year}</span>
-                            <span style={{ color: THEME.muted }}>
+                            <span style={{ color: isYearOpen ? "#cbd5e1" : THEME.muted }}>
                               {isYearOpen ? "▾" : "▸"}
                             </span>
                           </button>
@@ -1048,9 +1179,9 @@ export default function TrainingSessionsList() {
                                     key={mKey}
                                     style={{
                                       border: `1px solid ${THEME.line}`,
-                                      borderRadius: 14,
+                                      borderRadius: 10,
                                       overflow: "hidden",
-                                      background: "rgba(2,6,23,0.16)",
+                                      background: "#fff",
                                     }}
                                   >
                                     <button
@@ -1063,19 +1194,21 @@ export default function TrainingSessionsList() {
                                       style={{
                                         width: "100%",
                                         textAlign: "left",
-                                        padding: 10,
+                                        padding: "8px 10px",
                                         cursor: "pointer",
                                         border: "none",
-                                        background: "rgba(2,6,23,0.18)",
-                                        fontWeight: 1000,
+                                        background: isMonthOpen ? "#dbeafe" : "#f8fafc",
+                                        fontWeight: 900,
+                                        fontSize: 12,
                                         display: "flex",
                                         justifyContent: "space-between",
                                         alignItems: "center",
-                                        color: THEME.textStrong,
+                                        color: isMonthOpen ? "#1e40af" : THEME.textStrong,
+                                        transition: "all .12s",
                                       }}
                                     >
                                       <span>📂 {month}</span>
-                                      <span style={{ color: THEME.muted }}>
+                                      <span style={{ color: isMonthOpen ? "#3b82f6" : THEME.muted }}>
                                         {isMonthOpen ? "▾" : "▸"}
                                       </span>
                                     </button>
@@ -1083,10 +1216,10 @@ export default function TrainingSessionsList() {
                                     {isMonthOpen && (
                                       <div
                                         style={{
-                                          padding: 10,
+                                          padding: 8,
                                           display: "grid",
-                                          gap: 8,
-                                          background: "rgba(2,6,23,0.12)",
+                                          gap: 6,
+                                          background: "#f8fafc",
                                         }}
                                       >
                                         {days.map((day) => {
@@ -1098,9 +1231,9 @@ export default function TrainingSessionsList() {
                                               key={dKey}
                                               style={{
                                                 border: `1px solid ${THEME.line}`,
-                                                borderRadius: 12,
+                                                borderRadius: 8,
                                                 overflow: "hidden",
-                                                background: "rgba(2,6,23,0.18)",
+                                                background: "#fff",
                                               }}
                                             >
                                               <button
@@ -1113,30 +1246,43 @@ export default function TrainingSessionsList() {
                                                 style={{
                                                   width: "100%",
                                                   textAlign: "left",
-                                                  padding: 10,
+                                                  padding: "8px 10px",
                                                   cursor: "pointer",
                                                   border: "none",
-                                                  background: "rgba(2,6,23,0.18)",
-                                                  fontWeight: 1000,
+                                                  background: isDayOpen ? "#ede9fe" : "#fff",
+                                                  fontWeight: 900,
+                                                  fontSize: 12,
                                                   display: "flex",
                                                   justifyContent: "space-between",
                                                   alignItems: "center",
-                                                  color: THEME.textStrong,
+                                                  color: isDayOpen ? "#5b21b6" : THEME.textStrong,
+                                                  transition: "all .12s",
                                                 }}
                                               >
                                                 <span>📅 {day}</span>
-                                                <span style={{ color: THEME.muted }}>
-                                                  {list.length} {isDayOpen ? "▾" : "▸"}
+                                                <span style={{
+                                                  display: "flex", gap: 6, alignItems: "center",
+                                                  color: isDayOpen ? "#7c3aed" : THEME.muted,
+                                                }}>
+                                                  <span style={{
+                                                    background: "#fbcfe8",
+                                                    color: "#9f1239",
+                                                    padding: "1px 7px",
+                                                    borderRadius: 999,
+                                                    fontSize: 10,
+                                                    fontWeight: 1000,
+                                                  }}>{list.length}</span>
+                                                  {isDayOpen ? "▾" : "▸"}
                                                 </span>
                                               </button>
 
                                               {isDayOpen && (
                                                 <div
                                                   style={{
-                                                    padding: 10,
+                                                    padding: 8,
                                                     display: "grid",
-                                                    gap: 8,
-                                                    background: "rgba(2,6,23,0.10)",
+                                                    gap: 6,
+                                                    background: "#f8fafc",
                                                   }}
                                                 >
                                                   {list.map((r, i) => {
@@ -1149,32 +1295,56 @@ export default function TrainingSessionsList() {
                                                         style={{
                                                           width: "100%",
                                                           textAlign: "left",
-                                                          borderRadius: 12,
+                                                          borderRadius: 8,
                                                           border: active
-                                                            ? "1px solid rgba(99,102,241,0.70)"
+                                                            ? "2px solid #6366f1"
                                                             : `1px solid ${THEME.line}`,
-                                                          background: active
-                                                            ? "linear-gradient(135deg, rgba(99,102,241,0.18), rgba(2,6,23,0.18))"
-                                                            : "rgba(2,6,23,0.18)",
-                                                          padding: 10,
+                                                          background: active ? "#eef2ff" : "#fff",
+                                                          padding: "8px 10px",
                                                           cursor: "pointer",
-                                                          boxShadow: "0 10px 24px rgba(0,0,0,0.20)",
+                                                          boxShadow: active
+                                                            ? "0 4px 10px rgba(99,102,241,0.15)"
+                                                            : "0 1px 2px rgba(15,23,42,0.04)",
                                                           color: THEME.text,
+                                                          transition: "all .12s",
                                                         }}
                                                       >
-                                                        <div style={{ fontWeight: 1000, color: THEME.textStrong }}>
+                                                        <div style={{
+                                                          fontWeight: 900, color: THEME.textStrong,
+                                                          fontSize: 12, lineHeight: 1.3,
+                                                          overflow: "hidden",
+                                                          display: "-webkit-box",
+                                                          WebkitLineClamp: 2,
+                                                          WebkitBoxOrient: "vertical",
+                                                        }}>
                                                           {safeTitle(r) || "Training Session"}
                                                         </div>
                                                         <div
                                                           style={{
-                                                            marginTop: 6,
+                                                            marginTop: 4,
                                                             display: "flex",
-                                                            gap: 8,
+                                                            gap: 4,
                                                             flexWrap: "wrap",
                                                           }}
                                                         >
-                                                          <Badge text={safeModule(r) || "Module -"} tone="violet" />
-                                                          <Badge text={safeBranch(r) || "Branch -"} tone="gray" />
+                                                          <span style={{
+                                                            fontSize: 9, fontWeight: 800,
+                                                            color: "#5b21b6",
+                                                            background: "#ede9fe",
+                                                            padding: "2px 6px",
+                                                            borderRadius: 999,
+                                                          }}>
+                                                            📚 {safeModule(r) || "—"}
+                                                          </span>
+                                                          <span style={{
+                                                            fontSize: 9, fontWeight: 800,
+                                                            color: "#334155",
+                                                            background: "#f1f5f9",
+                                                            padding: "2px 6px",
+                                                            borderRadius: 999,
+                                                          }}>
+                                                            🏢 {safeBranch(r) || "—"}
+                                                          </span>
                                                         </div>
                                                       </button>
                                                     );
@@ -1959,9 +2129,50 @@ export default function TrainingSessionsList() {
         )}
       </Modal>
 
-      <div style={{ marginTop: 14, textAlign: "left", color: "rgba(226,232,240,0.85)", fontWeight: 900 }}>
+      <div style={{ marginTop: 14, textAlign: "center", color: "#64748b", fontWeight: 700, fontSize: "0.85rem" }}>
         Built by Eng. Mohammed Abdullah
       </div>
+    </div>
+  );
+}
+
+/* ============== KPI Card (matches Mock Recall View style) ============== */
+function KPICardLocal({ icon, label, value, sub, accent = "#1e40af", bad }) {
+  return (
+    <div
+      style={{
+        flex: "1 1 180px",
+        minWidth: 180,
+        background: "#fff",
+        border: "1px solid #e5e7eb",
+        borderInlineStart: `4px solid ${bad ? "#ef4444" : accent}`,
+        borderRadius: 12,
+        padding: "12px 14px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 18 }}>{icon}</span>
+        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+          {label}
+        </span>
+      </div>
+      <div
+        style={{
+          fontSize: "1.6rem",
+          fontWeight: 900,
+          color: bad ? "#b91c1c" : accent,
+          lineHeight: 1.1,
+          marginTop: 4,
+        }}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>
+          {sub}
+        </div>
+      )}
     </div>
   );
 }

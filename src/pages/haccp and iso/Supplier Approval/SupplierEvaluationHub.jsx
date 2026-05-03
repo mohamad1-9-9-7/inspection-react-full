@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 import "./SupplierApproval.css";
+import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 
 /**
  * Supplier Evaluation — Parent / Hub Page
@@ -254,6 +255,7 @@ export default function SupplierEvaluationHub() {
           <div>
             <div style={titleStyle}>Supplier Evaluation</div>
             <div style={subtitleStyle}>Create link for supplier + review submitted results.</div>
+            <HaccpLinkBadge clauses={["4.2", "8.2"]} label="Interested Parties + PRPs" />
           </div>
           <p style={taglineStyle}>
             Flow: Create evaluation → send public link → supplier submits → review under Submitted Results.

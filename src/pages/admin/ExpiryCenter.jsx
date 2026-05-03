@@ -10,6 +10,7 @@ import {
   clearScanCache,
   DEFAULT_THRESHOLDS,
 } from "../../utils/expiryTracker";
+import CCPKPIWidget from "../haccp and iso/CCPMonitoring/CCPKPIWidget";
 
 /* ============ Excel export helper (نفس التعامل في كل الصفحات) ============ */
 function downloadCSV(filename, rows) {
@@ -271,6 +272,9 @@ export default function ExpiryCenter() {
           <button style={styles.btn} onClick={() => navigate(-1)}>← رجوع</button>
         </div>
       </div>
+
+      {/* 🆕 CCP KPI Widget */}
+      <CCPKPIWidget />
 
       {/* Stats */}
       <div style={styles.statsRow}>

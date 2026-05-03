@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
+import HaccpLinkBadge from "./FSMSManual/HaccpLinkBadge";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -347,6 +348,7 @@ export default function MunicipalityInspectionView() {
             <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
               AL MAWASHI — Municipality Inspection Reports
             </div>
+            <HaccpLinkBadge clauses={["4.2"]} label="Regulatory Authority (Interested Party)" />
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

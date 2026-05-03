@@ -1,6 +1,7 @@
 // src/pages/haccp and iso/ProductDetailsInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import HaccpLinkBadge from "./FSMSManual/HaccpLinkBadge";
 
 /* ===== API base (aligned with the rest of the project) ===== */
 const API_BASE = String(
@@ -876,6 +877,7 @@ export default function ProductDetailsInput() {
             <div style={{ fontSize: 14, fontWeight: 600, color: "#4b5563" }}>
               One product per record – assessment, registration, images & tests
             </div>
+            <HaccpLinkBadge clauses={["8.5", "products"]} label="Hazard Control + Product Description" />
           </div>
 
           <div

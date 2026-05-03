@@ -46,40 +46,61 @@ export default function ReportLookupModal({
     if (open) setQ(initialSearch || "");
   }, [open, initialSearch]);
 
+  // دعم type واحد أو مصفوفة types[] لجلب من أنواع متعدّدة
+  const typeKey = Array.isArray(type) ? type.join("|") : (type || "");
+
   useEffect(() => {
-    if (!open || !type) return;
+    if (!open || !typeKey) return;
     let cancelled = false;
     setLoading(true);
     setErr("");
-    fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
-      cache: "no-store",
-    })
-      .then((r) => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
-      .then((json) => {
+    const types = Array.isArray(type) ? type : [type];
+    Promise.all(
+      types.map((t) =>
+        fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(t)}`, {
+          cache: "no-store",
+        })
+          .then((r) => (r.ok ? r.json() : []))
+          .then((json) => {
+            const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+            // وسم كل عنصر بنوعه (مفيد عند الجلب من أنواع متعدّدة)
+            return arr.map((it) => ({ ...it, _sourceType: t }));
+          })
+          .catch(() => [])
+      )
+    )
+      .then((results) => {
         if (cancelled) return;
-        const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
-        // ترتيب حسب createdAt ثم تاريخ الـ payload (الأحدث أولاً)
-        arr.sort((a, b) => {
+        const merged = results.flat();
+        merged.sort((a, b) => {
           const da = a?.createdAt || a?.payload?.savedAt || "";
           const db = b?.createdAt || b?.payload?.savedAt || "";
           return da < db ? 1 : -1;
         });
-        setItems(arr);
+        setItems(merged);
       })
       .catch((e) => !cancelled && setErr(String(e?.message || e)))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [open, type]);
+  }, [open, typeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // إذا كان flatten موجود، نوسّع كل تقرير إلى صفوف داخلية متعدّدة
   const expanded = useMemo(() => {
     if (typeof flatten !== "function") {
       // وضع افتراضي: كل تقرير صف واحد، الـ context = payload
-      return items.map((it) => ({
-        key: it?.id || it?._id || Math.random(),
-        ctx: it?.payload || {},
-        report: it,
-      }));
+      // نُضيف _sourceType إلى ctx ليعرف العارض من أين جاء التقرير
+      return items.map((it) => {
+        const payload = it?.payload || {};
+        // نُمرّر payload كما هو، لكن نضيف خاصية مخفية للنوع
+        const enrichedPayload = it?._sourceType
+          ? Object.assign({}, payload, { __sourceType: it._sourceType })
+          : payload;
+        return {
+          key: it?.id || it?._id || Math.random(),
+          ctx: enrichedPayload,
+          report: it,
+        };
+      });
     }
     const out = [];
     for (const it of items) {
@@ -89,14 +110,14 @@ export default function ReportLookupModal({
           // تقرير بدون صفوف داخلية — أعرضه كما هو
           out.push({
             key: it?.id || it?._id || Math.random(),
-            ctx: { report: it, payload: it?.payload || {}, sub: null, subIdx: -1 },
+            ctx: { report: it, payload: it?.payload || {}, sub: null, subIdx: -1, sourceType: it?._sourceType },
             report: it,
           });
         } else {
           subs.forEach((s, i) => {
             out.push({
               key: `${it?.id || it?._id || "r"}-${s?.subIdx ?? i}`,
-              ctx: { report: it, payload: it?.payload || {}, sub: s?.sub, subIdx: s?.subIdx ?? i, ...s },
+              ctx: { report: it, payload: it?.payload || {}, sub: s?.sub, subIdx: s?.subIdx ?? i, sourceType: it?._sourceType, ...s },
               report: it,
             });
           });

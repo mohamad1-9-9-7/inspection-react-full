@@ -76,7 +76,29 @@
       "Bash(grep -E \"\\\\.\\(jsx|js\\)$\")",
       "Bash(pnpm run *)",
       "Bash(wc -l src/pages/monitor/branches/ftr*/FTR*OilCalibration*.jsx src/pages/monitor/branches/ftr*/FTR*Calibration*.jsx)",
-      "Bash(wc -l src/pages/monitor/branches/pos15/POS15Calibration*.jsx)"
+      "Bash(wc -l src/pages/monitor/branches/pos15/POS15Calibration*.jsx)",
+      "Bash(python -c ' *)",
+      "Bash(npx --no-install eslint src/pages/hse/ src/App.jsx src/pages/Login.jsx)",
+      "Bash(npx --no-install eslint src/pages/hse/HSEMenu.jsx src/pages/hse/HSEPolicies.jsx src/pages/hse/HSERiskRegister.jsx src/pages/hse/HSESOPs.jsx)",
+      "Bash(npx --no-install eslint src/pages/hse/ src/App.jsx src/pages/Login.jsx --quiet)",
+      "Bash(CI=true npx --no-install react-scripts build)",
+      "Bash(pandoc --track-changes=all \"D:/Mohamed-Quality/Telt/ISO and HACCP/New/For audtior/FSMS Manual 03-05-2026.docx\" -o /tmp/fsms_manual.md)",
+      "Bash(python \"C:/Users/moham/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/a1c0622d-f338-4dce-b47d-c36bf042d8fa/bcf2a137-0a5d-4432-bc0b-437ce48be0c0/skills/docx/scripts/office/unpack.py\" \"D:/Mohamed-Quality/Telt/ISO and HACCP/New/For audtior/FSMS Manual 03-05-2026.docx\" /tmp/fsms_unpacked/)",
+      "Bash(where python *)",
+      "Bash(where pwsh *)",
+      "Bash(\"C:/Users/moham/AppData/Local/Programs/Python/Python313/python.exe\" \"C:/Users/moham/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/a1c0622d-f338-4dce-b47d-c36bf042d8fa/bcf2a137-0a5d-4432-bc0b-437ce48be0c0/skills/docx/scripts/office/unpack.py\" \"D:/Mohamed-Quality/Telt/ISO and HACCP/New/For audtior/FSMS Manual 03-05-2026.docx\" /tmp/fsms_unpacked/)",
+      "Bash(cygpath -w /tmp/fsms_unpacked/word/document.xml)",
+      "Bash(C:/Users/moham/AppData/Local/Programs/Python/Python313/python.exe -c ' *)",
+      "Bash(node --check \"src/pages/haccp and iso/FSMSManual/fsmsContent.js\")",
+      "Bash(node --check \"src/pages/haccp and iso/FSMSManual/fsmsHaccp.js\")",
+      "Bash(node --check \"src/pages/haccp and iso/FSMSManual/i18n.js\")",
+      "Bash(npx esbuild *)",
+      "Bash(git mv *)",
+      "Bash(cp /tmp/fsms_unpacked/word/media/image1.jpeg \"D:/inspection-react-full/public/haccp-manual-images/\")",
+      "Bash(cp /tmp/fsms_unpacked/word/media/image2.jpeg \"D:/inspection-react-full/public/haccp-manual-images/\")",
+      "Bash(cp /tmp/fsms_unpacked/word/media/image3.jpeg \"D:/inspection-react-full/public/haccp-manual-images/\")",
+      "Bash(cp /tmp/fsms_unpacked/word/media/image3.png \"D:/inspection-react-full/public/haccp-manual-images/\")",
+      "Bash(cp /tmp/fsms_unpacked/word/media/image4.jpeg \"D:/inspection-react-full/public/haccp-manual-images/\")"
     ]
   }
 }

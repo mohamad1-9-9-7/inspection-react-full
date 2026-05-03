@@ -13,8 +13,14 @@ import {
   markExpiryAlertFired,
   fetchGlobalSettings,
   isAdminUser,
+  shouldRunCCPCheck,
+  markCCPCheckRan,
+  notifyCCPDeviation,
+  markCCPDeviationNotified,
+  isCCPDeviationNotified,
 } from "../utils/notifications";
 import { scanExpiry, summarize, pickAlertable } from "../utils/expiryTracker";
+import API_BASE from "../config/api";
 
 const REMINDER_CHECK_MS = 60_000;       // كل دقيقة
 const GLOBAL_REFRESH_MS = 5 * 60_000;   // كل 5 دقائق
@@ -42,6 +48,43 @@ export default function NotificationManager() {
             tag: "daily-reminder",
           });
           if (ok) markReminderFired();
+        }
+      } catch {}
+
+      /* ===== 🆕 فحص دوري لانحرافات CCP ===== */
+      try {
+        if (shouldRunCCPCheck()) {
+          markCCPCheckRan();
+          fetch(`${API_BASE}/api/reports?type=ccp_monitoring_record`, { cache: "no-store" })
+            .then((r) => r.ok ? r.json() : [])
+            .then((json) => {
+              if (cancelled) return;
+              const arr = Array.isArray(json) ? json : json?.data || [];
+              // فقط آخر 50 سجل (نحتاج التحقق من الانحرافات الحديثة فقط)
+              arr.sort((a, b) => {
+                const da = a?.createdAt || a?.payload?.savedAt || "";
+                const db = b?.createdAt || b?.payload?.savedAt || "";
+                return da < db ? 1 : -1;
+              });
+              for (const it of arr.slice(0, 50)) {
+                const p = it?.payload || {};
+                if (p?.autoEval?.withinLimit !== false) continue; // ليس انحرافاً
+                const id = it.id || it._id;
+                if (!id || isCCPDeviationNotified(id)) continue;
+                // أبلغ
+                notifyCCPDeviation({
+                  ccpName: p?.ccpSnapshot?.nameAr || p?.ccpSnapshot?.nameEn || p.ccpId,
+                  reading: p?.reading?.value,
+                  unit: p?.ccpSnapshot?.criticalLimit?.unit || "",
+                  limit: p?.ccpSnapshot?.criticalLimit?.descAr || p?.ccpSnapshot?.criticalLimit?.descEn,
+                  product: p?.product?.name,
+                  batch: p?.product?.batch,
+                  onClickUrl: "/haccp-iso/ccp-monitoring/view",
+                });
+                markCCPDeviationNotified(id);
+              }
+            })
+            .catch(() => {});
         }
       } catch {}
 

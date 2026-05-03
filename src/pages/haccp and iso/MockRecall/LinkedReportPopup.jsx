@@ -206,51 +206,171 @@ function CoolersView({ payload, accent, t, lang }) {
   );
 }
 
-/* ====== 🆕 Branch Temperature Renderer ====== */
+/* ====== 🆕 Branch Temperature Renderer (مع KPI لكل صف) ====== */
+
+// تحويل وقت "4:00 AM" / "12:00 PM" إلى دقائق منذ منتصف الليل
+function parseTime12h(s) {
+  const m = String(s).match(/^\s*(\d{1,2}):(\d{2})\s*(AM|PM)?\s*$/i);
+  if (!m) return -1;
+  let h = Number(m[1]);
+  const min = Number(m[2]);
+  const ampm = (m[3] || "").toUpperCase();
+  if (ampm === "PM" && h !== 12) h += 12;
+  if (ampm === "AM" && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+// كشف نوع الوحدة (فريزر أم برّاد)
+function isFreezerName(name = "") {
+  return /freezer|فريزر|frozen|مجمد/i.test(String(name));
+}
+
+// النطاق المسموح حسب النوع
+function rangeFor(name) {
+  if (isFreezerName(name)) return { min: -22, max: -16, kind: "freezer" };
+  return { min: 0, max: 5, kind: "cooler" }; // برّاد عادي 0-5°C
+}
+
+// لون الخلية حسب القراءة
+function tempCellStyle(value, range) {
+  const n = Number(value);
+  if (value === "" || value === null || value === undefined || isNaN(n)) {
+    return { color: "#94a3b8" };
+  }
+  const out = n < range.min || n > range.max;
+  return out
+    ? { background: "#fee2e2", color: "#991b1b", fontWeight: 800 }
+    : { color: "#0f172a" };
+}
+
+// إحصائيات لكل صف
+function rowStats(temps, times) {
+  const vals = times.map(tm => Number(temps?.[tm])).filter(n => !isNaN(n));
+  if (!vals.length) return { avg: null, min: null, max: null };
+  const sum = vals.reduce((a, b) => a + b, 0);
+  return {
+    avg: sum / vals.length,
+    min: Math.min(...vals),
+    max: Math.max(...vals),
+  };
+}
+
 function BranchTempView({ payload, accent, t, lang }) {
   const rows = pickRowsArray(payload);
-  const times = Array.isArray(payload?.times) ? payload.times.filter(x => x !== "Corrective Action") : [];
-  // كشف وجود temps object (POS Temperature يستخدم coolers[].temps)
   const hasTempsObj = rows.length > 0 && rows[0] && typeof rows[0].temps === "object" && rows[0].temps !== null;
+
+  // استخراج قائمة الأوقات: من payload.times، أو من مفاتيح أول صف
+  let times = Array.isArray(payload?.times) ? payload.times.slice() : [];
+  if (!times.length && hasTempsObj) {
+    times = Object.keys(rows[0].temps || {});
+  }
+  // استبعاد "Corrective Action"
+  times = times.filter(x => x !== "Corrective Action");
+  // ترتيب منطقي حسب الوقت
+  times.sort((a, b) => parseTime12h(a) - parseTime12h(b));
+
   const L = lang === "ar"
-    ? { date:"التاريخ", branch:"الفرع", checkedBy:"دقّقه", verifiedBy:"اعتمده", name:"الاسم", remarks:"ملاحظات", correctiveAction:"إجراء تصحيحي" }
-    : { date:"Date", branch:"Branch", checkedBy:"Checked By", verifiedBy:"Verified By", name:"Name", remarks:"Remarks", correctiveAction:"Corrective Action" };
+    ? { date:"التاريخ", branch:"الفرع", checkedBy:"دقّقه", verifiedBy:"اعتمده",
+        name:"الاسم/البرّاد", remarks:"ملاحظات", correctiveAction:"إجراء تصحيحي",
+        avg:"المتوسط", min:"الأدنى", max:"الأعلى", status:"الحالة",
+        statusOK:"✅ ضمن النطاق", statusOut:"🔴 خارج النطاق",
+        rangeCooler:"النطاق: 0 إلى 5°C", rangeFreezer:"النطاق: -22 إلى -16°C",
+        legend:"📌 دليل: الخلايا الحمراء = قراءة خارج النطاق المسموح" }
+    : { date:"Date", branch:"Branch", checkedBy:"Checked By", verifiedBy:"Verified By",
+        name:"Cooler/Name", remarks:"Remarks", correctiveAction:"Corrective Action",
+        avg:"Avg", min:"Min", max:"Max", status:"Status",
+        statusOK:"✅ in range", statusOut:"🔴 out of range",
+        rangeCooler:"Range: 0 to 5°C", rangeFreezer:"Range: -22 to -16°C",
+        legend:"📌 Legend: red cells = reading out of allowed range" };
+
   return (
     <div>
       <SectionHeader text={t("dayInfo")} accent={accent} />
       <KV label={L.date} value={String(payload?.reportDate || payload?.date || "").slice(0, 10)} highlight />
       <KV label={L.branch} value={payload?.branch} />
       <KV label={L.checkedBy} value={payload?.checkedBy} />
-      <KV label={L.verifiedBy} value={payload?.verifiedBy} />
+      <KV label={L.verifiedBy} value={payload?.verifiedBy || payload?.verifiedByManager} />
 
       <SectionHeader text={`🌡️ ${rows.length} ${lang === "ar" ? "صف/قراءة" : "rows"}`} accent={accent} />
+
+      {/* دليل النطاق */}
+      <div style={{
+        background: "#fffbeb",
+        border: "1px solid #fde68a",
+        color: "#78350f",
+        padding: "8px 12px",
+        borderRadius: 8,
+        fontSize: "0.82rem",
+        fontWeight: 600,
+        marginBottom: 10,
+      }}>
+        {L.legend} · {L.rangeCooler} · {L.rangeFreezer}
+      </div>
+
       {rows.length === 0 ? (
         <div style={S.empty}>—</div>
       ) : hasTempsObj && times.length > 0 ? (
-        // POS Temperature format: rows = [{ name, temps:{time:value}, remarks }]
+        // الصيغة الذكية: rows = [{ name, temps:{time:value}, remarks }]
         <div style={{ overflowX: "auto" }}>
           <table style={S.table}>
             <thead>
               <tr>
                 <th style={S.th}>#</th>
-                <th style={S.th}>{L.name}</th>
-                {times.map((tm) => <th key={tm} style={S.th}>{tm}</th>)}
-                <th style={S.th}>{L.correctiveAction}</th>
-                <th style={S.th}>{L.remarks}</th>
+                <th style={{ ...S.th, minWidth: 110, position: "sticky", left: 0, background: "#f1f5f9", zIndex: 1 }}>{L.name}</th>
+                {times.map((tm) => <th key={tm} style={{ ...S.th, fontSize: "0.8rem" }}>{tm}</th>)}
+                <th style={{ ...S.th, background: "#dbeafe" }}>{L.avg}</th>
+                <th style={{ ...S.th, background: "#dbeafe" }}>{L.min}</th>
+                <th style={{ ...S.th, background: "#dbeafe" }}>{L.max}</th>
+                <th style={{ ...S.th, background: "#dbeafe" }}>{L.status}</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>
-                  <td style={S.tdC}>{i + 1}</td>
-                  <td style={S.td}><b>{r?.name || "—"}</b></td>
-                  {times.map((tm) => (
-                    <td key={tm} style={S.td}>{String((r?.temps || {})[tm] ?? "")}</td>
-                  ))}
-                  <td style={S.td}>{(r?.temps || {})["Corrective Action"] || "—"}</td>
-                  <td style={S.td}>{r?.remarks || ""}</td>
-                </tr>
-              ))}
+              {rows.map((r, i) => {
+                const range = rangeFor(r?.name || "");
+                const stats = rowStats(r?.temps || {}, times);
+                const anyOut = times.some(tm => {
+                  const n = Number((r?.temps || {})[tm]);
+                  return !isNaN(n) && (n < range.min || n > range.max);
+                });
+                return (
+                  <tr key={i}>
+                    <td style={S.tdC}>{i + 1}</td>
+                    <td style={{ ...S.td, position: "sticky", left: 0, background: "#f8fafc", fontWeight: 800 }}>
+                      {r?.name || "—"}
+                      <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 600 }}>
+                        {range.kind === "freezer" ? "❄️ Freezer" : "🧊 Cooler"}
+                      </div>
+                    </td>
+                    {times.map((tm) => {
+                      const v = (r?.temps || {})[tm];
+                      return (
+                        <td key={tm} style={{ ...S.td, ...tempCellStyle(v, range), textAlign: "center", padding: "4px 6px" }}>
+                          {v ?? ""}
+                        </td>
+                      );
+                    })}
+                    <td style={{ ...S.td, textAlign: "center", fontWeight: 800, color: "#0b1f4d", background: "#eff6ff" }}>
+                      {stats.avg !== null ? stats.avg.toFixed(1) : "—"}
+                    </td>
+                    <td style={{ ...S.td, textAlign: "center", background: "#eff6ff" }}>
+                      {stats.min !== null ? stats.min : "—"}
+                    </td>
+                    <td style={{ ...S.td, textAlign: "center", background: "#eff6ff" }}>
+                      {stats.max !== null ? stats.max : "—"}
+                    </td>
+                    <td style={{
+                      ...S.td,
+                      textAlign: "center",
+                      fontWeight: 800,
+                      background: anyOut ? "#fee2e2" : "#dcfce7",
+                      color: anyOut ? "#991b1b" : "#166534",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {anyOut ? L.statusOut : L.statusOK}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

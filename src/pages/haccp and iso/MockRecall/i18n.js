@@ -49,7 +49,7 @@ export const STRINGS = {
     signoff: "✍️ التوقيع",
 
     /* ===== Drill Info Fields ===== */
-    drillType: "نوع التمرين",
+    drillType: "سبب التمرين",
     drillRef: "المرجع (اختياري)",
     triggeredBy: "المُحفِّز (اختياري)",
     drillTypeScheduled: "مجدول (ربعي)",
@@ -57,6 +57,11 @@ export const STRINGS = {
     drillTypeComplaint: "بسبب شكوى",
     drillTypeRegulatory: "بطلب من جهة رقابية",
     triggeredByPlaceholder: "مُدقِّق / زبون / مجدول",
+    drillName: "تسمية التمرين",
+    drillNameMockRecall: "🔄 سحب وهمي (Mock Recall)",
+    drillNameTraceability: "🧬 تمرين تتبّع (Traceability Drill)",
+    drillNameMockRecallShort: "سحب وهمي",
+    drillNameTraceabilityShort: "تمرين تتبّع",
 
     /* ===== Product Fields ===== */
     productName: "اسم المنتج *",
@@ -290,7 +295,7 @@ export const STRINGS = {
     timingResults: "⏱️ Timing & Results",
     signoff: "✍️ Sign-off",
 
-    drillType: "Drill Type",
+    drillType: "Trigger Type",
     drillRef: "Reference (optional)",
     triggeredBy: "Triggered By (optional)",
     drillTypeScheduled: "Scheduled (Quarterly)",
@@ -298,6 +303,11 @@ export const STRINGS = {
     drillTypeComplaint: "Complaint-Triggered",
     drillTypeRegulatory: "Regulatory Request",
     triggeredByPlaceholder: "auditor / customer / scheduled",
+    drillName: "Drill Name",
+    drillNameMockRecall: "🔄 Mock Recall",
+    drillNameTraceability: "🧬 Traceability Drill",
+    drillNameMockRecallShort: "Mock Recall",
+    drillNameTraceabilityShort: "Traceability Drill",
 
     productName: "Product Name *",
     batchNo: "Batch / Lot No. *",
@@ -479,18 +489,72 @@ export const STRINGS = {
 
 /* ===== خريطة الفرع → نوع تقرير الحرارة ===== */
 // ملاحظة: Al Qusais و Production يستخدمان qcs-coolers لأن البرّادات هي سجل حرارتهم
+// ملاحظة: POS 19 يستخدم pos19_temperature_monitoring (تسمية مختلفة عن POS 10/11/15)
 export const BRANCH_TEMP_TYPE_MAP = {
   "Al Qusais (QCS)": "qcs-coolers",
   "Production": "qcs-coolers",
   "POS 10 — Abu Dhabi Butchery": "pos10_temperature",
   "POS 11 — Al Ain Butchery": "pos11_temperature",
   "POS 15 — Al Barsha Butchery": "pos15_temperature",
+  "POS 19 — Al Warqa Kitchen (مطبخ الورقاء)": "pos19_temperature_monitoring",
   "FTR 1 — Mushrif Park": "ftr1_temperature",
   "FTR 2 — Mamzar Park": "ftr2_temperature",
 };
 
+// قائمة كل أنواع تقارير الحرارة في النظام (تشمل QCS Coolers)
+export const ALL_TEMP_TYPES = [
+  "qcs-coolers",
+  "pos10_temperature",
+  "pos11_temperature",
+  "pos15_temperature",
+  "pos19_temperature_monitoring",
+  "ftr1_temperature",
+  "ftr2_temperature",
+];
+
+// 🆕 أنواع تقارير حرارة الفروع فقط — بدون QCS Coolers
+// تُستخدم في Branch Temperature lookup (لأن Coolers Temp له بطاقة مستقلة)
+export const BRANCH_ONLY_TEMP_TYPES = [
+  "pos10_temperature",
+  "pos11_temperature",
+  "pos15_temperature",
+  "pos19_temperature_monitoring",
+  "ftr1_temperature",
+  "ftr2_temperature",
+];
+
+// خريطة عكسية: type → اسم الفرع للعرض
+export const TYPE_TO_BRANCH_LABEL = {
+  "qcs-coolers": "QCS / Production",
+  "pos10_temperature": "POS 10",
+  "pos11_temperature": "POS 11",
+  "pos15_temperature": "POS 15",
+  "pos19_temperature_monitoring": "POS 19 (Al Warqa)",
+  "ftr1_temperature": "FTR 1",
+  "ftr2_temperature": "FTR 2",
+};
+
 export function branchTempTypeFor(branch) {
   return BRANCH_TEMP_TYPE_MAP[branch] || null;
+}
+
+export function branchLabelForType(type) {
+  return TYPE_TO_BRANCH_LABEL[type] || type;
+}
+
+/* ===== مساعد: عنوان التمرين الكامل حسب التسمية المختارة ===== */
+export function getDrillFullTitle(drillName, lang) {
+  if (drillName === "traceability") {
+    return lang === "ar" ? "🧬 تمرين تتبّع" : "🧬 Traceability Drill";
+  }
+  return lang === "ar" ? "🔄 سحب وهمي" : "🔄 Mock Recall";
+}
+
+export function getDrillShortLabel(drillName, lang) {
+  if (drillName === "traceability") {
+    return lang === "ar" ? "تمرين تتبّع" : "Traceability Drill";
+  }
+  return lang === "ar" ? "سحب وهمي" : "Mock Recall";
 }
 
 /* ===== مساعدة: استخراج مصفوفة الصفوف بغض النظر عن اسم الحقل ===== */

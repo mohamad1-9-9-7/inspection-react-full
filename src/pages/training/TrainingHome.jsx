@@ -43,6 +43,7 @@ export default function TrainingHome() {
     const map = {
       blue: { bg: "linear-gradient(135deg,#06b6d4,#2563eb)", sh: "rgba(37,99,235,0.28)" },
       violet: { bg: "linear-gradient(135deg,#a78bfa,#7c3aed)", sh: "rgba(124,58,237,0.28)" },
+      green: { bg: "linear-gradient(135deg,#34d399,#059669)", sh: "rgba(5,150,105,0.28)" },
       gray: { bg: "linear-gradient(135deg,#111827,#334155)", sh: "rgba(2,6,23,0.25)" },
     };
     const c = map[tone] || map.blue;
@@ -150,6 +151,24 @@ export default function TrainingHome() {
               </div>
             </div>
 
+            {/* Annual Plan */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate("/training/annual-plan")}
+              onKeyDown={(e) => e.key === "Enter" && navigate("/training/annual-plan")}
+              style={card(false)}
+              onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0px)")}
+              title="View / edit the annual training plan per branch & month"
+            >
+              <div style={iconBox("green")}>📅</div>
+              <div style={title}>Annual Training Plan</div>
+              <div style={sub}>
+                Yearly schedule — which training is required for each branch in each month.
+              </div>
+            </div>
+
             {/* Back */}
             <div
               role="button"
@@ -170,7 +189,7 @@ export default function TrainingHome() {
           </div>
 
           <div style={{ marginTop: 12, color: "#64748b", fontSize: 13, fontWeight: 900 }}>
-            ✅ Ready: Create Training + Online Save + Sessions Viewer (Participants, Quiz, KPIs).
+            ✅ Ready: Create Training + Online Save + Sessions Viewer (Participants, Quiz, KPIs) + Annual Plan.
           </div>
         </div>
 

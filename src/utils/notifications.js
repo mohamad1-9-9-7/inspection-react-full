@@ -38,8 +38,13 @@ const DEFAULTS = {
     ftr2_oil_calibration: true,
     mock_recall_drill: true,
   },
+  // 🆕 تنبيهات انحراف CCP (مراقبة فورية)
+  ccpDeviationAlertsEnabled: true,
+  ccpPollIntervalMinutes: 5,     // كل كم دقيقة تفحص الانحرافات الجديدة
   lastReminderAt: 0,             // محلي فقط (لمنع التكرار باليوم)
   lastExpiryAlertAt: 0,          // محلي فقط (لمنع التكرار باليوم)
+  lastCCPDeviationCheckAt: 0,    // 🆕 محلي فقط (لتتبّع الانحرافات الجديدة)
+  notifiedCCPDeviationIds: [],   // 🆕 IDs الانحرافات التي تم التنبيه بها
 };
 
 /* ================== Local (شخصي) ================== */
@@ -132,6 +137,8 @@ export async function saveGlobalSettings(partial) {
   // حذف الحقول المحليّة فقط
   delete payload.lastReminderAt;
   delete payload.lastExpiryAlertAt;
+  delete payload.lastCCPDeviationCheckAt;
+  delete payload.notifiedCCPDeviationIds;
 
   const res = await fetch(`${API_BASE}/api/reports`, {
     method: "POST",
@@ -161,6 +168,8 @@ export function getEffectiveSettings() {
       ...global,
       lastReminderAt: local.lastReminderAt || 0,
       lastExpiryAlertAt: local.lastExpiryAlertAt || 0,
+      lastCCPDeviationCheckAt: local.lastCCPDeviationCheckAt || 0,
+      notifiedCCPDeviationIds: local.notifiedCCPDeviationIds || [],
     };
   }
   return local;
@@ -264,4 +273,51 @@ export function shouldFireExpiryAlertNow() {
 
 export function markExpiryAlertFired() {
   saveLocalSettings({ lastExpiryAlertAt: Date.now() });
+}
+
+/* ================== تنبيه انحراف CCP (فوري) ================== */
+// يُستدعى مباشرة بعد حفظ سجل CCP فيه انحراف
+export function notifyCCPDeviation({ ccpName, reading, unit, limit, product, batch, onClickUrl }) {
+  const settings = getEffectiveSettings();
+  if (!settings.enabled || !settings.ccpDeviationAlertsEnabled) return false;
+  const body =
+    `🔴 ${ccpName}\n` +
+    `${reading}${unit || ""} (Limit: ${limit || "—"})\n` +
+    (product ? `${product}${batch ? ` · Lot ${batch}` : ""}` : "");
+  return sendNotification("⚠️ CCP Deviation Detected", {
+    body,
+    tag: `ccp-deviation-${Date.now()}`,
+    onClickUrl: onClickUrl || "/haccp-iso/ccp-monitoring/view",
+  });
+}
+
+// تتبّع الانحرافات لمنع التكرار
+export function markCCPDeviationNotified(id) {
+  if (!id) return;
+  const local = getLocalSettings();
+  const ids = Array.isArray(local.notifiedCCPDeviationIds) ? local.notifiedCCPDeviationIds : [];
+  if (ids.includes(String(id))) return;
+  // احتفظ بآخر 200 ID لتجنّب نمو localStorage
+  const next = [...ids, String(id)].slice(-200);
+  saveLocalSettings({ notifiedCCPDeviationIds: next });
+}
+
+export function isCCPDeviationNotified(id) {
+  if (!id) return false;
+  const local = getLocalSettings();
+  const ids = Array.isArray(local.notifiedCCPDeviationIds) ? local.notifiedCCPDeviationIds : [];
+  return ids.includes(String(id));
+}
+
+export function markCCPCheckRan() {
+  saveLocalSettings({ lastCCPDeviationCheckAt: Date.now() });
+}
+
+export function shouldRunCCPCheck() {
+  const settings = getEffectiveSettings();
+  if (!settings.enabled || !settings.ccpDeviationAlertsEnabled) return false;
+  if (!isAdminUser()) return false; // فقط الأدمن
+  const interval = (settings.ccpPollIntervalMinutes || 5) * 60_000;
+  const last = settings.lastCCPDeviationCheckAt || 0;
+  return Date.now() - last >= interval;
 }

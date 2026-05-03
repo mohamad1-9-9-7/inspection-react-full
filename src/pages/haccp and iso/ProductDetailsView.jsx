@@ -1,6 +1,7 @@
 // src/pages/haccp and iso/ProductDetailsView.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import HaccpLinkBadge from "./FSMSManual/HaccpLinkBadge";
 
 /* ===== API base (same style as other pages) ===== */
 const API_BASE = String(
@@ -1187,6 +1188,7 @@ export default function ProductDetailsView() {
             <div style={{ fontSize: 14, fontWeight: 750, color: UI.muted, marginTop: 6 }}>
               All records saved under <span style={{ fontWeight: 950 }}>"{TYPE}"</span>
             </div>
+            <HaccpLinkBadge clauses={["8.5", "prod-frozen-chicken"]} label="Hazard Control + Product Description" />
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
