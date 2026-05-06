@@ -11,6 +11,43 @@
   padding: 0;
 }
 
+/* ── Global Fix: Wide reports/tables fit viewport ──────── */
+/* All branch report forms use tables with tableLayout: fixed and
+   col widths summing 1100-1500px which overflow narrow viewports.
+   This forces them to use auto layout so columns size to content
+   and the table fits its parent. No horizontal scroll needed. */
+html, body, #root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+table[style*="table-layout: fixed"],
+table[style*="tableLayout"] {
+  table-layout: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Allow table cells to wrap text instead of overflowing */
+table td, table th {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Prevent fixed-width <col> elements from forcing table wider than viewport */
+colgroup col {
+  width: auto !important;
+  min-width: 0 !important;
+}
+
+/* Make inputs inside table cells respect cell width */
+table td input,
+table td select,
+table td textarea {
+  max-width: 100%;
+  min-width: 0;
+}
+
 html {
   font-size: 15px;
   -webkit-text-size-adjust: 100%;

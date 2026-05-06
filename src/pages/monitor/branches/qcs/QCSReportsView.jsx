@@ -16,6 +16,16 @@ const NonConformanceReportsView         = lazy(() => import("./NonConformanceRep
 const CorrectiveActionReportsView       = lazy(() => import("./CorrectiveActionReportsView"));
 const InternalAuditView                 = lazy(() => import("./InternalAuditView"));
 
+// 🆕 Disposal views
+const GarbageDisposalView               = lazy(() => import("./GarbageDisposalView"));
+const MeatWasteDisposalView             = lazy(() => import("./MeatWasteDisposalView"));
+
+// 🆕 Pest Control view
+const PestControlView                   = lazy(() => import("./PestControlView"));
+
+// 🆕 Stock Rotation (FIFO/FEFO) view
+const StockRotationView                 = lazy(() => import("./StockRotationView"));
+
 const CC_HEADER = {
   documentTitle: "QCS — Daily Cleanliness",
   documentNo: "FS-QM/REC/CLN",
@@ -39,6 +49,10 @@ const DASH_TYPES = [
   { type: "qcs_non_conformance",    key: "nc_reports",     icon: "🚫",  titleEn: "Non-Conformance",    titleAr: "عدم المطابقة",        accent: "#dc2626" },
   { type: "qcs_corrective_action",  key: "car_reports",    icon: "🛠️", titleEn: "Corrective Action",  titleAr: "الإجراء التصحيحي",    accent: "#16a34a" },
   { type: "qcs_internal_audit",     key: "internal_audit", icon: "📋",  titleEn: "Internal Audit",     titleAr: "التدقيق الداخلي",     accent: "#0f766e" },
+  { type: "qcs_garbage_disposal",   key: "garbage",        icon: "🗑️", titleEn: "Garbage Disposal",   titleAr: "التخلص من النفايات",   accent: "#16a34a" },
+  { type: "qcs_meat_waste_disposal",key: "meat_waste",     icon: "🥩",  titleEn: "Meat Waste",         titleAr: "هدر اللحوم",          accent: "#dc2626" },
+  { type: "qcs_pest_control",       key: "pest_control",   icon: "🐀",  titleEn: "Pest Control",       titleAr: "مكافحة الحشرات",      accent: "#7c3aed" },
+  { type: "qcs_stock_rotation",     key: "stock_rotation", icon: "📦",  titleEn: "Stock Rotation",     titleAr: "دوران المخزون",       accent: "#0ea5e9" },
 ];
 
 const TABS = [
@@ -68,6 +82,10 @@ const TABS = [
   { key: "nc_reports",     icon: "🚫",  label: "Non-Conformance",        element: <NonConformanceReportsView /> },
   { key: "car_reports",    icon: "🛠️", label: "Corrective Action",      element: <CorrectiveActionReportsView /> },
   { key: "internal_audit", icon: "📋",  label: "Internal Audit",         element: <InternalAuditView /> },
+  { key: "garbage",        icon: "🗑️", label: "Garbage Disposal",       element: <GarbageDisposalView /> },
+  { key: "meat_waste",     icon: "🥩",  label: "Meat Waste",             element: <MeatWasteDisposalView /> },
+  { key: "pest_control",   icon: "🐀",  label: "Pest Control",           element: <PestControlView /> },
+  { key: "stock_rotation", icon: "📦",  label: "Stock Rotation",         element: <StockRotationView /> },
 ];
 
 export default function QCSReportsView() {

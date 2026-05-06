@@ -25,6 +25,16 @@ import CorrectiveActionReportInput from "./qcs/CorrectiveActionReportInput";
 // ✅ NEW: Internal Audit (Input) — سيتم إنشاء الملف لاحقًا
 import InternalAuditInput from "./qcs/InternalAuditInput";
 
+// 🆕 Garbage / Meat Waste Disposal — Inputs
+import GarbageDisposalInput from "./qcs/GarbageDisposalInput";
+import MeatWasteDisposalInput from "./qcs/MeatWasteDisposalInput";
+
+// 🆕 Pest Control — Input
+import PestControlInput from "./qcs/PestControlInput";
+
+// 🆕 Stock Rotation (FIFO/FEFO) — Input
+import StockRotationInput from "./qcs/StockRotationInput";
+
 export default function QCSReport() {
   const [activeTab, setActiveTab] = useState("shipment");
 
@@ -136,6 +146,16 @@ export default function QCSReport() {
 
     // 📝 Internal Audit
     { id: "internalAudit", label: "📝 INTERNAL AUDIT" },
+
+    // 🆕 Disposal logs
+    { id: "garbageDisposal",  label: "🗑️ Garbage Disposal" },
+    { id: "meatWasteDisposal", label: "🥩 Meat Waste Disposal" },
+
+    // 🆕 Pest Control
+    { id: "pestControl", label: "🐀 Pest Control Log" },
+
+    // 🆕 Stock Rotation
+    { id: "stockRotation", label: "📦 Stock Rotation (FIFO/FEFO)" },
   ];
 
   return (
@@ -239,6 +259,34 @@ export default function QCSReport() {
         {activeTab === "internalAudit" && (
           <div style={card}>
             <InternalAuditInput />
+          </div>
+        )}
+
+        {/* 🗑️ Garbage Disposal */}
+        {activeTab === "garbageDisposal" && (
+          <div style={card}>
+            <GarbageDisposalInput />
+          </div>
+        )}
+
+        {/* 🥩 Meat Waste Disposal */}
+        {activeTab === "meatWasteDisposal" && (
+          <div style={card}>
+            <MeatWasteDisposalInput />
+          </div>
+        )}
+
+        {/* 🐀 Pest Control */}
+        {activeTab === "pestControl" && (
+          <div style={card}>
+            <PestControlInput />
+          </div>
+        )}
+
+        {/* 📦 Stock Rotation (FIFO/FEFO) */}
+        {activeTab === "stockRotation" && (
+          <div style={card}>
+            <StockRotationInput />
           </div>
         )}
       </div>
