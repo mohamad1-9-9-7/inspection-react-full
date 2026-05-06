@@ -6,3 +6,6 @@ release
 *.zip
 *.log
 .env
+
+# Claude Code worktrees (used internally — never tracked)
+.claude/worktrees/
