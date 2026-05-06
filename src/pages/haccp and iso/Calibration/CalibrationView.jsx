@@ -8,12 +8,23 @@ import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
 
 const TYPE = "calibration_record";
 
+const BRANCHES = [
+  "Al Qusais Warehouse",
+  "Al Mamzar Food Truck",
+  "Supervisor Food Truck",
+  "Al Barsha Butchery",
+  "Abu Dhabi Butchery",
+  "Al Ain Butchery",
+];
+
 const S = {
   shell: { minHeight: "100vh", padding: "20px 16px", fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', background: "#ecfeff" },
   layout: { width: "100%", margin: "0 auto", padding: "0 4px" },
   topbar: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 },
   title: { fontSize: 22, fontWeight: 950, color: "#155e75" },
   card: { background: "#fff", borderRadius: 14, padding: 14, marginBottom: 10, border: "1px solid #cffafe", boxShadow: "0 6px 16px rgba(8,145,178,0.06)" },
+  label: { display: "block", fontSize: 12, fontWeight: 900, color: "#155e75", marginBottom: 4 },
+  input: { padding: "8px 10px", border: "1.5px solid #cbd5e1", borderRadius: 8, fontSize: 13, fontWeight: 700, fontFamily: "inherit", minWidth: 220 },
   btn: (kind) => {
     const map = {
       primary: { bg: "linear-gradient(180deg, #06b6d4, #0891b2)", color: "#fff", border: "#0e7490" },
@@ -30,6 +41,7 @@ const S = {
   th: { padding: "10px 12px", background: "#06b6d4", color: "#fff", textAlign: "start", fontWeight: 900, fontSize: 12.5 },
   td: { padding: "9px 12px", borderTop: "1px solid #e2e8f0", fontWeight: 700 },
   pill: (color) => ({ display: "inline-block", padding: "2px 9px", borderRadius: 999, fontSize: 11, fontWeight: 950, color: "#fff", background: color }),
+  fileLink: { display: "inline-block", padding: "2px 8px", margin: "1px 2px", borderRadius: 6, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#2563eb", textDecoration: "none", fontSize: 11, fontWeight: 700 },
 };
 
 function statusOfRec(record, t) {
@@ -49,6 +61,7 @@ export default function CalibrationView() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [branchFilter, setBranchFilter] = useState("all");
 
   async function load() {
     setLoading(true);
@@ -64,25 +77,31 @@ export default function CalibrationView() {
 
   useEffect(() => { load(); }, []);
 
+  // Apply branch filter first for KPIs and table
+  const branchFiltered = useMemo(() => {
+    if (branchFilter === "all") return items;
+    return items.filter((r) => (r?.payload?.branch || "") === branchFilter);
+  }, [items, branchFilter]);
+
   const kpis = useMemo(() => {
     const today = Date.now();
     let overdue = 0, due30 = 0, ok = 0;
-    items.forEach((r) => {
+    branchFiltered.forEach((r) => {
       const next = r?.payload?.nextDueDate;
       if (!next) return;
-      const t = new Date(next).getTime();
-      const days = Math.ceil((t - today) / 86400000);
+      const tm = new Date(next).getTime();
+      const days = Math.ceil((tm - today) / 86400000);
       if (days < 0) overdue++;
       else if (days < 30) due30++;
       else ok++;
     });
-    return { total: items.length, overdue, due30, ok };
-  }, [items]);
+    return { total: branchFiltered.length, overdue, due30, ok };
+  }, [branchFiltered]);
 
   const filtered = useMemo(() => {
-    if (filter === "all") return items;
+    if (filter === "all") return branchFiltered;
     const today = Date.now();
-    return items.filter((r) => {
+    return branchFiltered.filter((r) => {
       const next = r?.payload?.nextDueDate;
       if (!next) return false;
       const days = Math.ceil((new Date(next).getTime() - today) / 86400000);
@@ -91,7 +110,7 @@ export default function CalibrationView() {
       if (filter === "ok")      return days >= 30;
       return true;
     });
-  }, [items, filter]);
+  }, [branchFiltered, filter]);
 
   async function del(id) {
     if (!window.confirm(t("confirmDelete"))) return;
@@ -117,6 +136,15 @@ export default function CalibrationView() {
           </div>
         </div>
 
+        {/* Branch filter dropdown */}
+        <div style={S.card}>
+          <label style={S.label}>{t("calibBranch")}</label>
+          <select style={S.input} value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+            <option value="all">{t("calibBranchAll")}</option>
+            {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+
         <div style={S.kpi}>
           <div style={S.kpiCard}>
             <div style={{ fontSize: 26, fontWeight: 950, color: "#0369a1" }}>{kpis.total}</div>
@@ -137,7 +165,7 @@ export default function CalibrationView() {
         </div>
 
         {loading && <div style={S.empty}>{t("loading")}</div>}
-        {!loading && items.length === 0 && <div style={S.empty}>{t("noRecords")}</div>}
+        {!loading && branchFiltered.length === 0 && <div style={S.empty}>{t("noRecords")}</div>}
 
         {filtered.length > 0 && (
           <div style={{ overflowX: "auto" }}>
@@ -145,6 +173,7 @@ export default function CalibrationView() {
               <thead>
                 <tr>
                   <th style={S.th}>{t("colId")}</th>
+                  <th style={S.th}>{t("calibBranch")}</th>
                   <th style={S.th}>{t("colEquipment")}</th>
                   <th style={S.th}>{t("colType")}</th>
                   <th style={S.th}>{t("colLocation")}</th>
@@ -152,6 +181,7 @@ export default function CalibrationView() {
                   <th style={S.th}>{t("colNextDue")}</th>
                   <th style={S.th}>{t("colResult")}</th>
                   <th style={S.th}>{t("colStatus")}</th>
+                  <th style={S.th}>{t("calibAttachmentsCol")}</th>
                   <th style={S.th}>{t("colActions")}</th>
                 </tr>
               </thead>
@@ -160,9 +190,12 @@ export default function CalibrationView() {
                   const p = rec?.payload || {};
                   const st = statusOfRec(rec, t);
                   const resultColor = p.result === "PASS" ? "#16a34a" : p.result === "ADJUSTED" ? "#d97706" : "#dc2626";
+                  const urls = p.fileUrls || [];
+                  const names = p.fileNames || [];
                   return (
                     <tr key={rec.id} style={{ background: i % 2 ? "#f8fafc" : "#fff" }}>
                       <td style={S.td}>{p.equipmentId || "—"}</td>
+                      <td style={S.td}>{p.branch || "—"}</td>
                       <td style={S.td}><b>{p.equipmentName || "—"}</b></td>
                       <td style={S.td}>{p.equipmentType || "—"}</td>
                       <td style={S.td}>{p.location || "—"}</td>
@@ -170,6 +203,13 @@ export default function CalibrationView() {
                       <td style={{ ...S.td, fontWeight: 950 }}>{p.nextDueDate || "—"}</td>
                       <td style={S.td}><span style={S.pill(resultColor)}>{p.result || "—"}</span></td>
                       <td style={S.td}><span style={S.pill(st.color)}>{st.label}</span></td>
+                      <td style={S.td}>
+                        {urls.length === 0 ? "—" : urls.map((u, fi) => (
+                          <a key={`${u}-${fi}`} href={u} target="_blank" rel="noreferrer" style={S.fileLink}>
+                            📎 {names[fi] || `${t("calibFile")} ${fi + 1}`}
+                          </a>
+                        ))}
+                      </td>
                       <td style={S.td}>
                         <div style={{ display: "flex", gap: 4 }}>
                           <button style={S.btn("secondary")} onClick={() => navigate(`/haccp-iso/calibration?edit=${rec.id}`)}>{t("edit")}</button>

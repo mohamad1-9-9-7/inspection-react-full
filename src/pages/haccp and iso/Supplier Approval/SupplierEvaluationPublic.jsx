@@ -1298,6 +1298,39 @@ export default function SupplierEvaluationPublic() {
         return;
       }
 
+      // ✅ Expiry check
+      const expiresAt = p?.public?.expiresAt;
+      if (expiresAt && new Date(expiresAt).getTime() < Date.now()) {
+        setLoadError(
+          isRTL
+            ? "⏰ انتهت صلاحية هذا الرابط. يرجى التواصل مع الجهة التي أرسلت الرابط لطلب رابط جديد."
+            : "⏰ This link has expired. Please contact the sender to request a new link."
+        );
+        return;
+      }
+
+      // ✅ Best-effort: log first-open timestamp (no-op if it fails)
+      if (!p?.public?.openedAt) {
+        try {
+          const reportId = report?.id || report?._id;
+          if (reportId) {
+            const newPayload = {
+              ...p,
+              public: { ...(p.public || {}), openedAt: new Date().toISOString() },
+            };
+            fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportId)}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                reporter: report?.reporter || "public",
+                type: "supplier_self_assessment_form",
+                payload: newPayload,
+              }),
+            }).catch(() => {});
+          }
+        } catch {}
+      }
+
       const preFields = p?.fields && typeof p.fields === "object" ? p.fields : {};
       const preAnswers = p?.answers && typeof p.answers === "object" ? p.answers : {};
       const preAttachments = Array.isArray(p?.attachments) ? p.attachments : [];

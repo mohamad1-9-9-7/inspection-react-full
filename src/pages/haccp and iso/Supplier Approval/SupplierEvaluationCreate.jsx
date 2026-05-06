@@ -172,8 +172,15 @@ export default function SupplierEvaluationCreate() {
   const [supplierType, setSupplierType] = useState("food");
   const [email, setEmail] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
+  const [expiryDays, setExpiryDays] = useState(30); // 0 = no expiry
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+
+  function computeExpiresAt(days) {
+    const n = Number(days);
+    if (!n || n <= 0) return null;
+    return new Date(Date.now() + n * 86400000).toISOString();
+  }
 
   const publicToken = useMemo(() => makeToken(30), []);
 
@@ -262,6 +269,8 @@ export default function SupplierEvaluationCreate() {
           sentAt: new Date().toISOString(),
           submittedAt: null,
           supplierType: type,
+          expiresAt: computeExpiresAt(expiryDays),
+          expiryDays: Number(expiryDays) || 0,
         },
 
         uniqueKey: `${String(name).trim().toLowerCase()}__${day}__${publicToken}`,
@@ -551,6 +560,53 @@ export default function SupplierEvaluationCreate() {
             <div style={{ marginTop: 6, fontSize: 11, color: "#64748b", fontWeight: 700 }}>
               ⚠ This determines which questionnaire sections the supplier will see.
             </div>
+          </div>
+
+          {/* Link Expiry */}
+          <div style={{ marginTop: 14 }}>
+            <div style={S.label}>Link Expiry / تاريخ انتهاء الرابط</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 6 }}>
+              {[7, 14, 30, 60, 90, 0].map((d) => (
+                <button
+                  type="button"
+                  key={d}
+                  onClick={() => setExpiryDays(d)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 10,
+                    border: Number(expiryDays) === d ? "2px solid #0891b2" : "1px solid rgba(2,6,23,0.14)",
+                    background: Number(expiryDays) === d ? "#e0f2fe" : "#fff",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                    fontSize: 13,
+                    color: "#0c4a6e",
+                  }}
+                >
+                  {d === 0 ? "♾️ بدون انتهاء" : `${d} يوم`}
+                </button>
+              ))}
+              <input
+                type="number"
+                min="0"
+                max="365"
+                value={expiryDays}
+                onChange={(e) => setExpiryDays(e.target.value)}
+                style={{
+                  width: 90,
+                  padding: "8px 10px",
+                  border: "1.5px solid #cbd5e1",
+                  borderRadius: 10,
+                  fontWeight: 800,
+                  fontSize: 13,
+                }}
+                placeholder="أيام"
+              />
+            </div>
+            {Number(expiryDays) > 0 && (
+              <div style={{ marginTop: 6, fontSize: 12, color: "#0369a1", fontWeight: 700 }}>
+                🗓️ ينتهي في: {new Date(Date.now() + Number(expiryDays) * 86400000).toLocaleDateString()}
+              </div>
+            )}
           </div>
 
           <div style={{ marginTop: 12 }}>

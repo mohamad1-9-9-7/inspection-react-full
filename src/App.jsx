@@ -274,6 +274,11 @@ const SupplierEvaluationResults = lazy(() =>
   import("./pages/haccp and iso/Supplier Approval/SupplierEvaluationResults")
 );
 
+// ✅🆕 Supplier Sent Links Tracker (sent / submitted / pending)
+const SupplierSentLinks = lazy(() =>
+  import("./pages/haccp and iso/Supplier Approval/SupplierSentLinks")
+);
+
 // ✅🆕 Public Supplier Page (token)
 const SupplierEvaluationPublic = lazy(() =>
   import("./pages/haccp and iso/Supplier Approval/SupplierEvaluationPublic")
@@ -1196,6 +1201,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <SupplierEvaluationResults />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅🆕 Supplier Evaluation: SENT LINKS TRACKER */}
+        <Route
+          path="/haccp-iso/supplier-evaluation/sent-links"
+          element={
+            <ProtectedRoute>
+              <SupplierSentLinks />
             </ProtectedRoute>
           }
         />

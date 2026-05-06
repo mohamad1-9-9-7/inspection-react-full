@@ -9,6 +9,15 @@ import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
 
 const TYPE = "calibration_record";
 
+const BRANCHES = [
+  "Al Qusais Warehouse",
+  "Al Mamzar Food Truck",
+  "Supervisor Food Truck",
+  "Al Barsha Butchery",
+  "Abu Dhabi Butchery",
+  "Al Ain Butchery",
+];
+
 function addMonths(dateStr, months) {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -17,7 +26,27 @@ function addMonths(dateStr, months) {
   return d.toISOString().slice(0, 10);
 }
 
+function isPdf(file) {
+  const t = String(file?.type || "").toLowerCase();
+  const n = String(file?.name || "").toLowerCase();
+  return t === "application/pdf" || n.endsWith(".pdf");
+}
+
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  const url =
+    data?.url || data?.secure_url || data?.fileUrl ||
+    data?.file_url || data?.path || data?.result?.secure_url || "";
+  if (!url) throw new Error("No URL returned");
+  return url;
+}
+
 const empty = {
+  branch: BRANCHES[0],
   equipmentId: "",
   equipmentName: "",
   equipmentType: "Thermometer",
@@ -34,6 +63,8 @@ const empty = {
   calibrationCertNo: "",
   result: "PASS",
   notes: "",
+  fileUrls: [],
+  fileNames: [],
 };
 
 const EQUIPMENT_TYPES = [
@@ -53,6 +84,13 @@ const S = {
   textarea: { width: "100%", padding: "9px 11px", border: "1.5px solid #cbd5e1", borderRadius: 8, fontSize: 13, lineHeight: 1.55, fontFamily: "inherit", minHeight: 60, resize: "vertical" },
   row: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   row3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 },
+  hint: { fontSize: 11, color: "#64748b", fontWeight: 700, marginTop: 4 },
+  chip: {
+    display: "inline-flex", alignItems: "center", gap: 4,
+    background: "#eff6ff", border: "1px solid #bfdbfe",
+    borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 700,
+    margin: "4px 4px 0 0",
+  },
   btn: (kind) => {
     const map = {
       primary:   { bg: "linear-gradient(180deg, #06b6d4, #0891b2)", color: "#fff", border: "#0e7490" },
@@ -72,6 +110,8 @@ export default function CalibrationInput() {
   const { t, lang, toggle, dir } = useHaccpLang();
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
 
   useEffect(() => {
     if (!editId) return;
@@ -79,7 +119,7 @@ export default function CalibrationInput() {
       .then((r) => r.json())
       .then((j) => {
         const p = j?.payload || j?.data?.payload || {};
-        setForm({ ...empty, ...p });
+        setForm({ ...empty, ...p, fileUrls: p.fileUrls || [], fileNames: p.fileNames || [] });
       })
       .catch(() => {});
   }, [editId]);
@@ -96,6 +136,65 @@ export default function CalibrationInput() {
       }
       return next;
     });
+  }
+
+  async function pickFiles(fileList) {
+    const list = Array.from(fileList || []).slice(0, 20);
+    if (!list.length) return;
+
+    const pdfs = list.filter(isPdf);
+    const imgs = list.filter((f) => !isPdf(f));
+
+    if (pdfs.length && imgs.length) {
+      alert(t("calibPdfOrImagesOnly"));
+      return;
+    }
+    if (pdfs.length > 1) {
+      alert(t("calibOnlyOnePdf"));
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setUploadProgress("");
+
+      if (pdfs.length === 1) {
+        setUploadProgress(t("calibUploading"));
+        const url = await uploadFile(pdfs[0]);
+        setForm((f) => ({
+          ...f,
+          fileUrls: [...(f.fileUrls || []), url],
+          fileNames: [...(f.fileNames || []), pdfs[0].name],
+        }));
+        return;
+      }
+
+      const uploaded = [];
+      const names = [];
+      for (let i = 0; i < imgs.length; i++) {
+        setUploadProgress(`${t("calibUploading")} (${i + 1}/${imgs.length})`);
+        uploaded.push(await uploadFile(imgs[i]));
+        names.push(imgs[i].name);
+      }
+      setForm((f) => ({
+        ...f,
+        fileUrls: [...(f.fileUrls || []), ...uploaded].slice(0, 20),
+        fileNames: [...(f.fileNames || []), ...names].slice(0, 20),
+      }));
+    } catch (e) {
+      alert(`${t("calibUploadFailed")}: ${e?.message || e}`);
+    } finally {
+      setUploading(false);
+      setUploadProgress("");
+    }
+  }
+
+  function removeFile(i) {
+    setForm((f) => ({
+      ...f,
+      fileUrls: (f.fileUrls || []).filter((_, j) => j !== i),
+      fileNames: (f.fileNames || []).filter((_, j) => j !== i),
+    }));
   }
 
   async function save() {
@@ -119,6 +218,8 @@ export default function CalibrationInput() {
     }
   }
 
+  const busy = saving || uploading;
+
   return (
     <main style={{ ...S.shell, direction: dir }}>
       <div style={S.layout}>
@@ -136,6 +237,12 @@ export default function CalibrationInput() {
 
         <div style={S.card}>
           <div style={S.sectionTitle}>{t("calibIdent")}</div>
+
+          <label style={S.label}>{t("calibBranch")} *</label>
+          <select style={S.input} value={form.branch} onChange={(e) => setField("branch", e.target.value)}>
+            {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+
           <div style={S.row3}>
             <div>
               <label style={S.label}>{t("calibId")}</label>
@@ -210,13 +317,47 @@ export default function CalibrationInput() {
             <option value="ADJUSTED">{t("calibResultAdjusted")}</option>
             <option value="FAIL">{t("calibResultFail")}</option>
           </select>
+
+          <label style={S.label}>{t("calibAttachments")}</label>
+          <input
+            type="file"
+            accept="application/pdf,image/*"
+            multiple
+            onChange={(e) => pickFiles(e.target.files)}
+            style={{ ...S.input, padding: "7px 10px" }}
+            disabled={uploading}
+          />
+          <div style={S.hint}>
+            {uploading ? (uploadProgress || t("calibUploading")) : t("calibAttachmentsHint")}
+          </div>
+          {(form.fileUrls || []).length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              {(form.fileUrls || []).map((u, i) => (
+                <span key={`${u}-${i}`} style={S.chip}>
+                  <a href={u} target="_blank" rel="noreferrer" style={{ color: "#2563eb", textDecoration: "none" }}>
+                    {(form.fileNames || [])[i] || `${t("calibFile")} ${i + 1}`}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    style={{
+                      background: "none", border: "none", cursor: "pointer",
+                      color: "#ef4444", fontWeight: 900, padding: "0 2px",
+                      fontSize: 14, lineHeight: 1,
+                    }}
+                  >✕</button>
+                </span>
+              ))}
+            </div>
+          )}
+
           <label style={S.label}>{t("calibNotes")}</label>
           <textarea style={S.textarea} value={form.notes} onChange={(e) => setField("notes", e.target.value)} />
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button style={S.btn("secondary")} onClick={() => navigate(-1)}>{t("cancel")}</button>
-          <button style={S.btn("success")} onClick={save} disabled={saving}>
+          <button style={S.btn("success")} onClick={save} disabled={busy}>
             {saving ? t("saving") : t("calibSaveBtn")}
           </button>
         </div>

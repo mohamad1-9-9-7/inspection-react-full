@@ -1,5 +1,5 @@
 // D:\inspection-react-full\src\pages\haccp and iso\Supplier Approval\SupplierEvaluationHub.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 import "./SupplierApproval.css";
@@ -7,10 +7,40 @@ import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 
 /**
  * Supplier Evaluation — Parent / Hub Page
- * المطلوب: كرتين فقط:
  * 1) إنشاء التقييم + توليد الرابط
- * 2) عرض التقييمات التي تم إرسالها من قبل المورد (Submitted Results)
+ * 2) تتبّع الروابط المُرسلة (Sent / Submitted / Pending)
+ * 3) عرض التقييمات التي تم إرسالها من قبل المورد (Submitted Results)
  */
+
+const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
+
+function normalizeApiRoot(raw) {
+  let s = String(raw || "").trim();
+  if (!s) return API_ROOT_DEFAULT;
+  s = s.replace(/\/+$/, "");
+  s = s.replace(/\/api\/reports.*$/i, "");
+  s = s.replace(/\/api\/?$/i, "");
+  return s || API_ROOT_DEFAULT;
+}
+
+const API_BASE = normalizeApiRoot(
+  (typeof window !== "undefined" && window.__QCS_API__) ||
+    (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
+    API_ROOT_DEFAULT
+);
+
+const TYPE = "supplier_self_assessment_form";
+
+function isSubmittedRec(rec) {
+  const p = rec?.payload || {};
+  if (p?.meta?.submitted === true) return true;
+  if (p?.public?.submittedAt) return true;
+  const ans = p?.answers || {};
+  if (typeof ans === "object" && Object.keys(ans).length > 0) {
+    return Object.values(ans).some((v) => String(v || "").trim() !== "");
+  }
+  return false;
+}
 
 const sections = [
   {
@@ -19,6 +49,13 @@ const sections = [
     subtitle: "Create a new supplier evaluation and generate a public link",
     route: "/haccp-iso/supplier-evaluation/create",
     badge: "NEW",
+  },
+  {
+    id: "sent-links",
+    title: "Sent Links Tracker",
+    subtitle: "Track sent links — pending vs. submitted, copy/open links, search & filter",
+    route: "/haccp-iso/supplier-evaluation/sent-links",
+    badge: "TRACK",
   },
   {
     id: "results",
@@ -159,19 +196,56 @@ const cardTitleStyle = { fontSize: "18px", fontWeight: 950, marginBottom: "6px",
 const cardSubStyle = { fontSize: "15px", color: "#334155", lineHeight: 1.5 };
 const cardFooterStyle = { fontSize: "12px", fontWeight: 950, color: "#64748b", marginTop: "12px", letterSpacing: "0.10em" };
 
-const smallTag = (tone) => ({
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "7px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 950,
-  letterSpacing: "0.08em",
+const smallTag = (tone) => {
+  const map = {
+    NEW: { bg: "rgba(34,197,94,0.12)", color: "#14532d" },
+    TRACK: { bg: "rgba(99,102,241,0.14)", color: "#3730a3" },
+    VIEW: { bg: "rgba(148,163,184,0.14)", color: "#334155" },
+  };
+  const c = map[tone] || map.VIEW;
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "7px 12px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 950,
+    letterSpacing: "0.08em",
+    border: "1px solid rgba(15,23,42,0.14)",
+    background: c.bg,
+    color: c.color,
+  };
+};
+
+const kpiRowStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 12,
+  marginBottom: 14,
+};
+
+const kpiCardStyle = (color) => ({
+  background: "rgba(255,255,255,0.92)",
+  borderRadius: 14,
+  padding: "14px 16px",
   border: "1px solid rgba(15,23,42,0.14)",
-  background: tone === "NEW" ? "rgba(34,197,94,0.12)" : "rgba(148,163,184,0.14)",
-  color: tone === "NEW" ? "#14532d" : "#334155",
+  boxShadow: "0 8px 22px rgba(2,132,199,0.08)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  borderTop: `4px solid ${color}`,
 });
+
+const kpiLabelStyle = {
+  fontSize: 11,
+  fontWeight: 950,
+  color: "#64748b",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+};
+
+const kpiValueStyle = (color) => ({ fontSize: 28, fontWeight: 980, color });
 
 const arrowStyle = {
   position: "absolute",
@@ -193,6 +267,25 @@ const helpBox = {
 export default function SupplierEvaluationHub() {
   const navigate = useNavigate();
   const [hoverId, setHoverId] = useState(null);
+  const [kpis, setKpis] = useState({ total: 0, submitted: 0, pending: 0, loading: true });
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+        const sent = arr.filter((r) => r?.payload?.public?.token);
+        let submitted = 0;
+        sent.forEach((r) => { if (isSubmittedRec(r)) submitted++; });
+        if (alive) setKpis({ total: sent.length, submitted, pending: sent.length - submitted, loading: false });
+      } catch {
+        if (alive) setKpis((k) => ({ ...k, loading: false }));
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const cardStyle = useMemo(() => {
     return (isHover) => ({
@@ -261,6 +354,34 @@ export default function SupplierEvaluationHub() {
             Flow: Create evaluation → send public link → supplier submits → review under Submitted Results.
           </p>
         </header>
+
+        {/* KPI Bar — Sent / Submitted / Pending */}
+        <div style={kpiRowStyle}>
+          <div
+            style={{ ...kpiCardStyle("#0891b2"), cursor: "pointer" }}
+            onClick={() => navigate("/haccp-iso/supplier-evaluation/sent-links")}
+            title="عرض كل الروابط المُرسلة"
+          >
+            <div style={kpiLabelStyle}>📨 Total Sent</div>
+            <div style={kpiValueStyle("#0369a1")}>{kpis.loading ? "…" : kpis.total}</div>
+          </div>
+          <div
+            style={{ ...kpiCardStyle("#16a34a"), cursor: "pointer" }}
+            onClick={() => navigate("/haccp-iso/supplier-evaluation/results")}
+            title="عرض الردود المُستلمة"
+          >
+            <div style={kpiLabelStyle}>✅ Submitted</div>
+            <div style={kpiValueStyle("#15803d")}>{kpis.loading ? "…" : kpis.submitted}</div>
+          </div>
+          <div
+            style={{ ...kpiCardStyle("#d97706"), cursor: "pointer" }}
+            onClick={() => navigate("/haccp-iso/supplier-evaluation/sent-links")}
+            title="عرض الروابط المعلّقة (لم يتم الرد عليها)"
+          >
+            <div style={kpiLabelStyle}>⏳ Pending</div>
+            <div style={kpiValueStyle("#a16207")}>{kpis.loading ? "…" : kpis.pending}</div>
+          </div>
+        </div>
 
         {/* Cards */}
         <section aria-label="Supplier evaluation sections">
