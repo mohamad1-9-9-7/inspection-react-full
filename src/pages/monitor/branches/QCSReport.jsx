@@ -35,6 +35,15 @@ import PestControlInput from "./qcs/PestControlInput";
 // 🆕 Stock Rotation (FIFO/FEFO) — Input
 import StockRotationInput from "./qcs/StockRotationInput";
 
+// 🆕 Visitor Checklist — Input
+import VisitorChecklistInput from "./qcs/VisitorChecklistInput";
+
+// 🆕 Staff Sickness / Occupational Injury — Input
+import StaffSicknessInput from "./qcs/StaffSicknessInput";
+
+// 🆕 Employee Return to Work — Input
+import EmployeeReturnToWorkInput from "./qcs/EmployeeReturnToWorkInput";
+
 export default function QCSReport() {
   const [activeTab, setActiveTab] = useState("shipment");
 
@@ -156,6 +165,15 @@ export default function QCSReport() {
 
     // 🆕 Stock Rotation
     { id: "stockRotation", label: "📦 Stock Rotation (FIFO/FEFO)" },
+
+    // 🆕 Visitor Checklist
+    { id: "visitorChecklist", label: "🧍 Visitor Checklist" },
+
+    // 🆕 Staff Sickness / Occupational Injury
+    { id: "staffSickness", label: "🩺 Staff Sickness / Occupational Injury" },
+
+    // 🆕 Employee Return to Work
+    { id: "returnToWork", label: "🏥 Employee Return to Work" },
   ];
 
   return (
@@ -287,6 +305,27 @@ export default function QCSReport() {
         {activeTab === "stockRotation" && (
           <div style={card}>
             <StockRotationInput />
+          </div>
+        )}
+
+        {/* 🧍 Visitor Checklist */}
+        {activeTab === "visitorChecklist" && (
+          <div style={card}>
+            <VisitorChecklistInput />
+          </div>
+        )}
+
+        {/* 🩺 Staff Sickness / Occupational Injury */}
+        {activeTab === "staffSickness" && (
+          <div style={card}>
+            <StaffSicknessInput />
+          </div>
+        )}
+
+        {/* 🏥 Employee Return to Work */}
+        {activeTab === "returnToWork" && (
+          <div style={card}>
+            <EmployeeReturnToWorkInput />
           </div>
         )}
       </div>

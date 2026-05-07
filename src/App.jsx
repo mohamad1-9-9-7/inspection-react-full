@@ -333,6 +333,23 @@ const HSEIncidentReport        = lazy(() => import("./pages/hse/HSEIncidentRepor
 const HSENearMiss              = lazy(() => import("./pages/hse/HSENearMiss"));
 const HSEDailyInspection       = lazy(() => import("./pages/hse/HSEDailyInspection"));
 const HSEWorkPermit            = lazy(() => import("./pages/hse/HSEWorkPermit"));
+const HSEConfinedSpacePermit   = lazy(() => import("./pages/hse/HSEConfinedSpacePermit"));
+const HSEExcavationPermit      = lazy(() => import("./pages/hse/HSEExcavationPermit"));
+const HSEMonthlySafetyReport   = lazy(() => import("./pages/hse/HSEMonthlySafetyReport"));
+const HSEInjurySummary         = lazy(() => import("./pages/hse/HSEInjurySummary"));
+const HSEPreliminaryAccident   = lazy(() => import("./pages/hse/HSEPreliminaryAccident"));
+const HSEFatalAccident         = lazy(() => import("./pages/hse/HSEFatalAccident"));
+const HSEFinalAccident         = lazy(() => import("./pages/hse/HSEFinalAccident"));
+const HSENCR                   = lazy(() => import("./pages/hse/HSENCR"));
+const HSEDailyReport           = lazy(() => import("./pages/hse/HSEDailyReport"));
+const HSEFireEquipment         = lazy(() => import("./pages/hse/HSEFireEquipment"));
+const HSEToolboxMeeting        = lazy(() => import("./pages/hse/HSEToolboxMeeting"));
+const HSEFireExtinguisherLocations = lazy(() => import("./pages/hse/HSEFireExtinguisherLocations"));
+const HSEEmergencyContacts     = lazy(() => import("./pages/hse/HSEEmergencyContacts"));
+const HSEHandPowerTools        = lazy(() => import("./pages/hse/HSEHandPowerTools"));
+const HSELadderSafety          = lazy(() => import("./pages/hse/HSELadderSafety"));
+const HSEWelfare               = lazy(() => import("./pages/hse/HSEWelfare"));
+const HSEForkliftInspection    = lazy(() => import("./pages/hse/HSEForkliftInspection"));
 const HSETemperatureLog        = lazy(() => import("./pages/hse/HSETemperatureLog"));
 const HSEShipmentReceiving     = lazy(() => import("./pages/hse/HSEShipmentReceiving"));
 const HSECleaningLog           = lazy(() => import("./pages/hse/HSECleaningLog"));
@@ -1385,6 +1402,23 @@ export default function App() {
         <Route path="/hse/near-miss" element={<ProtectedRoute><HSENearMiss /></ProtectedRoute>} />
         <Route path="/hse/daily-inspection" element={<ProtectedRoute><HSEDailyInspection /></ProtectedRoute>} />
         <Route path="/hse/work-permit" element={<ProtectedRoute><HSEWorkPermit /></ProtectedRoute>} />
+        <Route path="/hse/confined-space-permit" element={<ProtectedRoute><HSEConfinedSpacePermit /></ProtectedRoute>} />
+        <Route path="/hse/excavation-permit" element={<ProtectedRoute><HSEExcavationPermit /></ProtectedRoute>} />
+        <Route path="/hse/monthly-safety-report" element={<ProtectedRoute><HSEMonthlySafetyReport /></ProtectedRoute>} />
+        <Route path="/hse/injury-summary" element={<ProtectedRoute><HSEInjurySummary /></ProtectedRoute>} />
+        <Route path="/hse/preliminary-accident" element={<ProtectedRoute><HSEPreliminaryAccident /></ProtectedRoute>} />
+        <Route path="/hse/fatal-accident" element={<ProtectedRoute><HSEFatalAccident /></ProtectedRoute>} />
+        <Route path="/hse/final-accident" element={<ProtectedRoute><HSEFinalAccident /></ProtectedRoute>} />
+        <Route path="/hse/ncr" element={<ProtectedRoute><HSENCR /></ProtectedRoute>} />
+        <Route path="/hse/daily-report" element={<ProtectedRoute><HSEDailyReport /></ProtectedRoute>} />
+        <Route path="/hse/fire-equipment" element={<ProtectedRoute><HSEFireEquipment /></ProtectedRoute>} />
+        <Route path="/hse/toolbox-meeting" element={<ProtectedRoute><HSEToolboxMeeting /></ProtectedRoute>} />
+        <Route path="/hse/fire-extinguisher-locations" element={<ProtectedRoute><HSEFireExtinguisherLocations /></ProtectedRoute>} />
+        <Route path="/hse/emergency-contacts" element={<ProtectedRoute><HSEEmergencyContacts /></ProtectedRoute>} />
+        <Route path="/hse/hand-power-tools" element={<ProtectedRoute><HSEHandPowerTools /></ProtectedRoute>} />
+        <Route path="/hse/ladder-safety" element={<ProtectedRoute><HSELadderSafety /></ProtectedRoute>} />
+        <Route path="/hse/welfare" element={<ProtectedRoute><HSEWelfare /></ProtectedRoute>} />
+        <Route path="/hse/forklift-inspection" element={<ProtectedRoute><HSEForkliftInspection /></ProtectedRoute>} />
         <Route path="/hse/temperature-log" element={<ProtectedRoute><HSETemperatureLog /></ProtectedRoute>} />
         <Route path="/hse/shipment-receiving" element={<ProtectedRoute><HSEShipmentReceiving /></ProtectedRoute>} />
         <Route path="/hse/cleaning-log" element={<ProtectedRoute><HSECleaningLog /></ProtectedRoute>} />

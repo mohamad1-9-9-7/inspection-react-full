@@ -26,6 +26,15 @@ const PestControlView                   = lazy(() => import("./PestControlView")
 // 🆕 Stock Rotation (FIFO/FEFO) view
 const StockRotationView                 = lazy(() => import("./StockRotationView"));
 
+// 🆕 Visitor Checklist view
+const VisitorChecklistView              = lazy(() => import("./VisitorChecklistView"));
+
+// 🆕 Staff Sickness view
+const StaffSicknessView                 = lazy(() => import("./StaffSicknessView"));
+
+// 🆕 Employee Return to Work view
+const EmployeeReturnToWorkView          = lazy(() => import("./EmployeeReturnToWorkView"));
+
 const CC_HEADER = {
   documentTitle: "QCS — Daily Cleanliness",
   documentNo: "FS-QM/REC/CLN",
@@ -53,6 +62,9 @@ const DASH_TYPES = [
   { type: "qcs_meat_waste_disposal",key: "meat_waste",     icon: "🥩",  titleEn: "Meat Waste",         titleAr: "هدر اللحوم",          accent: "#dc2626" },
   { type: "qcs_pest_control",       key: "pest_control",   icon: "🐀",  titleEn: "Pest Control",       titleAr: "مكافحة الحشرات",      accent: "#7c3aed" },
   { type: "qcs_stock_rotation",     key: "stock_rotation", icon: "📦",  titleEn: "Stock Rotation",     titleAr: "دوران المخزون",       accent: "#0ea5e9" },
+  { type: "qcs_visitor_checklist",  key: "visitor",        icon: "🧍",  titleEn: "Visitor Checklist",  titleAr: "قائمة الزوار",        accent: "#0b5236" },
+  { type: "qcs_staff_sickness",     key: "staff_sickness", icon: "🩺",  titleEn: "Staff Sickness",     titleAr: "أمراض الموظفين",     accent: "#0f3d2e" },
+  { type: "qcs_employee_return_to_work", key: "return_to_work", icon: "🏥", titleEn: "Return to Work",  titleAr: "العودة للعمل",       accent: "#0b5236" },
 ];
 
 const TABS = [
@@ -86,6 +98,9 @@ const TABS = [
   { key: "meat_waste",     icon: "🥩",  label: "Meat Waste",             element: <MeatWasteDisposalView /> },
   { key: "pest_control",   icon: "🐀",  label: "Pest Control",           element: <PestControlView /> },
   { key: "stock_rotation", icon: "📦",  label: "Stock Rotation",         element: <StockRotationView /> },
+  { key: "visitor",        icon: "🧍",  label: "Visitor Checklist",      element: <VisitorChecklistView /> },
+  { key: "staff_sickness", icon: "🩺",  label: "Staff Sickness",         element: <StaffSicknessView /> },
+  { key: "return_to_work", icon: "🏥",  label: "Return to Work",         element: <EmployeeReturnToWorkView /> },
 ];
 
 export default function QCSReportsView() {

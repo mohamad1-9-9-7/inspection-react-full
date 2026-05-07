@@ -187,7 +187,8 @@ export const mergeUniqueById = (serverArr, localArr) => {
   const put = (r) => {
     const k = makeKey(r);
     const prev = map.get(k) || {};
-    map.set(k, { ...prev, ...r }); // السيرفر سيغلب لأننا ندخله ثانيًا
+    // نحافظ على الـ id الأول (المحلي) عشان اختيار المستخدم ما يضيع بعد الـ refresh
+    map.set(k, { ...prev, ...r, id: prev.id || r.id });
   };
 
   (Array.isArray(localArr)  ? localArr  : []).forEach(put);
