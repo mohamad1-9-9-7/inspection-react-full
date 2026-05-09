@@ -17,18 +17,15 @@ import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 
 const TYPE = "ccp_monitoring_record";
 
+/* Certified branches within FSMS scope (per FSMS Manual §4.4 + §5.3).
+   Kitchen (Al Warqa), Food Trucks (FTR 1/2), Silicon Oasis and Al Barsha South
+   are NOT within the certification scope and intentionally excluded. */
 const BRANCHES = [
-  "Al Qusais (QCS)",
-  "FTR 1 — Mushrif Park",
-  "FTR 2 — Mamzar Park",
+  "Al Qusais (QCS) — Central Warehouse",
   "POS 10 — Abu Dhabi Butchery",
   "POS 11 — Al Ain Butchery",
   "POS 15 — Al Barsha Butchery",
-  "POS 19 — Al Warqa Kitchen (مطبخ الورقاء)",
-  "POS 24 — Silicon Oasis",
-  "POS 26 — Al Barsha South",
   "Production",
-  "Other",
 ];
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -55,7 +52,7 @@ export default function CCPInput() {
     reportDate: todayISO(),
     timeRecorded: nowHHMM(),
     ccpId: "",
-    product: { name: "", batch: "", branch: "Al Qusais (QCS)" },
+    product: { name: "", batch: "", branch: "Al Qusais (QCS) — Central Warehouse" },
     reading: { value: "" },
     deviation: {
       correctiveAction: "",
@@ -137,6 +134,10 @@ export default function CCPInput() {
       return alert(t("requireCorrective"));
     }
     if (!form.signoff.monitoredBy.trim()) return alert(t("requireMonitor"));
+    if (!form.signoff.verifiedBy.trim()) return alert(t("requireVerifier"));
+    if (form.signoff.verifiedBy.trim().toLowerCase() === form.signoff.monitoredBy.trim().toLowerCase()) {
+      return alert(t("verifierSameAsMonitor"));
+    }
 
     setSaving(true);
     openModal(t("saving"), "info");
@@ -366,16 +367,40 @@ export default function CCPInput() {
 
         {/* ===== Section: Sign-off ===== */}
         <Section title={t("signoff")}>
-          <div style={S.grid2}>
-            <Field label={t("monitoredBy")}>
-              <input style={S.input} value={form.signoff.monitoredBy}
-                onChange={(e) => setNested("signoff", "monitoredBy", e.target.value)} />
-            </Field>
-            <Field label={t("verifiedBy")}>
-              <input style={S.input} value={form.signoff.verifiedBy}
-                onChange={(e) => setNested("signoff", "verifiedBy", e.target.value)} />
-            </Field>
-          </div>
+          {(() => {
+            const m = (form.signoff.monitoredBy || "").trim().toLowerCase();
+            const v = (form.signoff.verifiedBy || "").trim().toLowerCase();
+            const sameName = m && v && m === v;
+            return (
+              <>
+                <div style={S.grid2}>
+                  <Field label={`${t("monitoredBy")} *`}>
+                    <input
+                      style={{ ...S.input, borderColor: form.signoff.monitoredBy ? "#cbd5e1" : "#fca5a5" }}
+                      value={form.signoff.monitoredBy}
+                      onChange={(e) => setNested("signoff", "monitoredBy", e.target.value)}
+                    />
+                  </Field>
+                  <Field label={`${t("verifiedBy")} *`}>
+                    <input
+                      style={{ ...S.input, borderColor: !form.signoff.verifiedBy ? "#fca5a5" : (sameName ? "#dc2626" : "#cbd5e1") }}
+                      value={form.signoff.verifiedBy}
+                      onChange={(e) => setNested("signoff", "verifiedBy", e.target.value)}
+                    />
+                  </Field>
+                </div>
+                {sameName && (
+                  <div style={{
+                    marginTop: 8, padding: "8px 12px", borderRadius: 8,
+                    background: "#fee2e2", border: "1.5px solid #fca5a5",
+                    color: "#7f1d1d", fontSize: 12, fontWeight: 800,
+                  }}>
+                    {t("verifierSameAsMonitor")}
+                  </div>
+                )}
+              </>
+            );
+          })()}
           <div style={{ ...S.grid2, marginTop: 12 }}>
             <SignaturePad
               label={`${t("monitorSig")}${form.signoff.monitoredBy ? ` (${form.signoff.monitoredBy})` : ""}`}

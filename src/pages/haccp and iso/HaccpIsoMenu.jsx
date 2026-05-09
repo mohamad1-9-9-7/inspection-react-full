@@ -19,6 +19,38 @@ const sections = [
     highlight: true,
   },
 
+  // 📜 Food Safety Policy (ISO 5.2) — Top-level controlled document
+  {
+    id: "food-safety-policy",
+    title: "📜 Food Safety Policy",
+    subtitle: "ISO 5.2 — Controlled policy + employee acknowledgment evidence + print for posting",
+    route: "/haccp-iso/food-safety-policy",
+  },
+
+  // 🎯 FSMS Risk Register (ISO 6.1) — Strategic + operational risks
+  {
+    id: "risk-register",
+    title: "🎯 FSMS Risk Register",
+    subtitle: "ISO 6.1 — 20 strategic + 15 operational risks (FSMS-RA-01): regulatory, supply chain, cyber, halal, receiving, cutting, cold storage, transport.",
+    route: "/haccp-iso/risk-register/view",
+  },
+
+  // 💡 FSMS Opportunity Register (ISO 6.1) — companion to Risk
+  {
+    id: "opportunity-register",
+    title: "💡 FSMS Opportunity Register",
+    subtitle: "ISO 6.1 — Actions to address opportunities (companion to Risk). 18 pre-loaded from FSMS-RA-01: 7 external + 11 internal factors.",
+    route: "/haccp-iso/opportunity-register/view",
+  },
+
+  // 🔄 FSMS Change Management Log (ISO 6.3) — Planning of Changes
+  {
+    id: "change-management",
+    title: "🔄 Change Management Log",
+    subtitle: "ISO 6.3 — Planning of Changes. 6-step procedure + 9 actual TELT changes from 2025 (relocations, suppliers, calibration, IT).",
+    route: "/haccp-iso/change-management/view",
+  },
+
   // 📊 HACCP / FSMS Linkage Dashboard
   {
     id: "haccp-dashboard",
@@ -63,6 +95,22 @@ const sections = [
     route: "/haccp-iso/sop-ssop",
   },
 
+  // 📚 Document Master Register (ISO 7.5)
+  {
+    id: "document-register",
+    title: "📚 Document Master Register",
+    subtitle: "Central register of all controlled documents — versions, owners, review dates & retention",
+    route: "/haccp-iso/document-register/view",
+  },
+
+  // 🪟 Glass & Brittle Plastic Register (Policy 2 + ISO 8.2 PRP)
+  {
+    id: "glass-register",
+    title: "🪟 Glass & Brittle Plastic Register",
+    subtitle: "Company-wide inventory of glass & brittle plastic items — risk, protection & inspection tracking",
+    route: "/haccp-iso/glass-register/view",
+  },
+
   // 🔄 Mock Recall / Traceability Drill
   {
     id: "mock-recall",
@@ -71,12 +119,44 @@ const sections = [
     route: "/haccp-iso/mock-recall/view",
   },
 
+  // 🚨 Real Product Recall (ISO 8.9.5)
+  {
+    id: "real-recall",
+    title: "🚨 Real Product Recall",
+    subtitle: "ISO 8.9.5 — Actual recall events with Class I/II/III, authority notification & cost tracking",
+    route: "/haccp-iso/real-recall/view",
+  },
+
   // 🎯 CCP Monitoring
   {
     id: "ccp-monitoring",
     title: "🎯 CCP Monitoring Log",
     subtitle: "Critical Control Points monitoring — readings, deviations, corrective actions",
     route: "/haccp-iso/ccp-monitoring/view",
+  },
+
+  // 🎯 FSMS Objectives (ISO 6.2)
+  {
+    id: "objectives",
+    title: "🎯 FSMS Objectives",
+    subtitle: "SMART objectives tracking — targets, live progress, owners & review status",
+    route: "/haccp-iso/objectives/view",
+  },
+
+  // 📞 Customer Complaints (ISO 7.4 + 9.1.2)
+  {
+    id: "customer-complaints",
+    title: "📞 Customer Complaints",
+    subtitle: "Complaint logging, root cause (5-Whys), CAPA & bi-yearly trend analysis",
+    route: "/haccp-iso/customer-complaints/view",
+  },
+
+  // 🌱 Continual Improvement Log (ISO 10.2)
+  {
+    id: "continual-improvement",
+    title: "🌱 Continual Improvement Log",
+    subtitle: "ISO 10.2 — Initiative tracking from idea → approval → implementation → effectiveness",
+    route: "/haccp-iso/continual-improvement/view",
   },
 
   // 📋 Management Review Meeting
@@ -101,6 +181,14 @@ const sections = [
     title: "🌡️ Calibration Log",
     subtitle: "Equipment calibration records, due dates, alerts & traceability",
     route: "/haccp-iso/calibration/view",
+  },
+
+  // 🌡 Internal Calibration (daily/weekly in-house verification)
+  {
+    id: "internal-calibration",
+    title: "🌡 Internal Calibration Log",
+    subtitle: "Daily/weekly probe verification (ice-point, boiling, master-probe) — covers ALL branches incl. kitchen, food trucks & all POSes",
+    route: "/haccp-iso/internal-calibration/view",
   },
 ];
 

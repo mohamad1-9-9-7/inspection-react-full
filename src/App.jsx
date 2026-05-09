@@ -226,6 +226,46 @@ const InternalAuditView  = lazy(() => import("./pages/haccp and iso/InternalAudi
 const CalibrationInput = lazy(() => import("./pages/haccp and iso/Calibration/CalibrationInput"));
 const CalibrationView  = lazy(() => import("./pages/haccp and iso/Calibration/CalibrationView"));
 
+// 🌡 Internal Calibration Log (in-house ice-point/boiling/master-probe checks)
+const InternalCalibrationInput = lazy(() => import("./pages/haccp and iso/InternalCalibration/InternalCalibrationInput"));
+const InternalCalibrationView  = lazy(() => import("./pages/haccp and iso/InternalCalibration/InternalCalibrationView"));
+
+// 📞 Customer Complaints (ISO 7.4 + 9.1.2)
+const CustomerComplaintInput = lazy(() => import("./pages/haccp and iso/CustomerComplaints/CustomerComplaintInput"));
+const CustomerComplaintView  = lazy(() => import("./pages/haccp and iso/CustomerComplaints/CustomerComplaintView"));
+
+// 🎯 FSMS Objectives (ISO 6.2)
+const ObjectivesInput = lazy(() => import("./pages/haccp and iso/Objectives/ObjectivesInput"));
+const ObjectivesView  = lazy(() => import("./pages/haccp and iso/Objectives/ObjectivesView"));
+
+// 📚 Document Master Register (ISO 7.5)
+const DocumentRegisterInput = lazy(() => import("./pages/haccp and iso/DocumentRegister/DocumentRegisterInput"));
+const DocumentRegisterView  = lazy(() => import("./pages/haccp and iso/DocumentRegister/DocumentRegisterView"));
+
+// 📜 Food Safety Policy (ISO 5.2)
+const FoodSafetyPolicyView = lazy(() => import("./pages/haccp and iso/FoodSafetyPolicy/FoodSafetyPolicyView"));
+
+// 🚨 Real Product Recall (ISO 8.9.5)
+const RealRecallInput = lazy(() => import("./pages/haccp and iso/RealRecall/RealRecallInput"));
+const RealRecallView  = lazy(() => import("./pages/haccp and iso/RealRecall/RealRecallView"));
+
+// 🌱 Continual Improvement Log (ISO 10.2)
+const ContinualImprovementInput = lazy(() => import("./pages/haccp and iso/ContinualImprovement/ContinualImprovementInput"));
+const ContinualImprovementView  = lazy(() => import("./pages/haccp and iso/ContinualImprovement/ContinualImprovementView"));
+
+// 🪟 Glass & Brittle Plastic Register (Policy 2 + ISO 8.2 PRP)
+const GlassRegisterInput = lazy(() => import("./pages/haccp and iso/GlassRegister/GlassRegisterInput"));
+const GlassRegisterView  = lazy(() => import("./pages/haccp and iso/GlassRegister/GlassRegisterView"));
+
+// 🎯 FSMS Risk Register (ISO 6.1 — closes SGS Stage 2 Major NC #2)
+const RiskRegisterView = lazy(() => import("./pages/haccp and iso/RiskRegister/RiskRegisterView"));
+
+// 💡 FSMS Opportunity Register (ISO 6.1 — actions to address risks AND opportunities)
+const OpportunityRegisterView = lazy(() => import("./pages/haccp and iso/OpportunityRegister/OpportunityRegisterView"));
+
+// 🔄 FSMS Change Management Log (ISO 6.3 — Planning of Changes)
+const ChangeManagementLogView = lazy(() => import("./pages/haccp and iso/ChangeManagementLog/ChangeManagementLogView"));
+
 // 🆕 📦 Product Details Input
 const ProductDetailsInput = lazy(() =>
   import("./pages/haccp and iso/ProductDetailsInput")
@@ -1078,6 +1118,196 @@ export default function App() {
           element={
             <ProtectedRoute>
               <CalibrationView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🌡 Internal Calibration Log (in-house verification, all branches) */}
+        <Route
+          path="/haccp-iso/internal-calibration"
+          element={
+            <ProtectedRoute>
+              <InternalCalibrationInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/internal-calibration/view"
+          element={
+            <ProtectedRoute>
+              <InternalCalibrationView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 📞 Customer Complaints (ISO 7.4 + 9.1.2) */}
+        <Route
+          path="/haccp-iso/customer-complaints"
+          element={
+            <ProtectedRoute>
+              <CustomerComplaintInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/customer-complaints/view"
+          element={
+            <ProtectedRoute>
+              <CustomerComplaintView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🎯 FSMS Objectives (ISO 6.2) */}
+        <Route
+          path="/haccp-iso/objectives"
+          element={
+            <ProtectedRoute>
+              <ObjectivesInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/objectives/view"
+          element={
+            <ProtectedRoute>
+              <ObjectivesView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 📚 Document Master Register (ISO 7.5) */}
+        <Route
+          path="/haccp-iso/document-register"
+          element={
+            <ProtectedRoute>
+              <DocumentRegisterInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/document-register/view"
+          element={
+            <ProtectedRoute>
+              <DocumentRegisterView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 📜 Food Safety Policy (ISO 5.2) */}
+        <Route
+          path="/haccp-iso/food-safety-policy"
+          element={
+            <ProtectedRoute>
+              <FoodSafetyPolicyView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🚨 Real Product Recall (ISO 8.9.5) */}
+        <Route
+          path="/haccp-iso/real-recall"
+          element={
+            <ProtectedRoute>
+              <RealRecallInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/real-recall/view"
+          element={
+            <ProtectedRoute>
+              <RealRecallView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🌱 Continual Improvement Log (ISO 10.2) */}
+        <Route
+          path="/haccp-iso/continual-improvement"
+          element={
+            <ProtectedRoute>
+              <ContinualImprovementInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/continual-improvement/view"
+          element={
+            <ProtectedRoute>
+              <ContinualImprovementView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🪟 Glass & Brittle Plastic Register (Policy 2 + ISO 8.2 PRP) */}
+        <Route
+          path="/haccp-iso/glass-register"
+          element={
+            <ProtectedRoute>
+              <GlassRegisterInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/glass-register/view"
+          element={
+            <ProtectedRoute>
+              <GlassRegisterView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🎯 FSMS Risk Register (ISO 6.1 — closes SGS Stage 2 Major NC #2) */}
+        <Route
+          path="/haccp-iso/risk-register"
+          element={
+            <ProtectedRoute>
+              <RiskRegisterView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/risk-register/view"
+          element={
+            <ProtectedRoute>
+              <RiskRegisterView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 💡 FSMS Opportunity Register (ISO 6.1 — companion to Risk Register) */}
+        <Route
+          path="/haccp-iso/opportunity-register"
+          element={
+            <ProtectedRoute>
+              <OpportunityRegisterView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/opportunity-register/view"
+          element={
+            <ProtectedRoute>
+              <OpportunityRegisterView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🔄 FSMS Change Management Log (ISO 6.3 — Planning of Changes) */}
+        <Route
+          path="/haccp-iso/change-management"
+          element={
+            <ProtectedRoute>
+              <ChangeManagementLogView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/change-management/view"
+          element={
+            <ProtectedRoute>
+              <ChangeManagementLogView />
             </ProtectedRoute>
           }
         />

@@ -89,6 +89,75 @@ export default function MRMInput() {
     });
   }
 
+  /* ─── 🆕 Auto-pull from Customer Complaints (bi-yearly summary) ─── */
+  async function pullComplaints() {
+    try {
+      const res = await fetch(`${API_BASE}/api/reports?type=customer_complaint`, { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+      if (arr.length === 0) {
+        alert(lang === "ar" ? "لا توجد شكاوى مسجلة." : "No complaints recorded.");
+        return;
+      }
+      // Last 6 months
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const recent = arr.filter((r) => new Date(r?.payload?.complaintDate || 0) >= sixMonthsAgo);
+      const total = recent.length;
+      const open = recent.filter((r) => (r?.payload?.status || "Open") !== "Closed").length;
+      const critical = recent.filter((r) => r?.payload?.severity === "Critical").length;
+      const byType = {};
+      recent.forEach((r) => {
+        const t = r?.payload?.type || "Other";
+        byType[t] = (byType[t] || 0) + 1;
+      });
+      const typesSummary = Object.entries(byType).map(([k, v]) => `${k}: ${v}`).join(", ");
+      const summary = lang === "ar"
+        ? `📊 ملخص شكاوى آخر 6 شهور (تلقائي):\n• الإجمالي: ${total}\n• مفتوحة: ${open}\n• حرجة: ${critical}\n• حسب النوع: ${typesSummary}\n\nالحالات الحرجة المفتوحة:\n` +
+          recent.filter((r) => r?.payload?.severity === "Critical" && (r?.payload?.status || "Open") !== "Closed")
+            .map((r) => `  - ${r?.payload?.complaintDate}: ${r?.payload?.complainant} — ${r?.payload?.product || "—"}`)
+            .join("\n")
+        : `📊 Complaints summary (last 6 months — auto-pulled):\n• Total: ${total}\n• Open: ${open}\n• Critical: ${critical}\n• By type: ${typesSummary}\n\nOpen critical cases:\n` +
+          recent.filter((r) => r?.payload?.severity === "Critical" && (r?.payload?.status || "Open") !== "Closed")
+            .map((r) => `  - ${r?.payload?.complaintDate}: ${r?.payload?.complainant} — ${r?.payload?.product || "—"}`)
+            .join("\n");
+      setField("inputs.customerFeedback", summary);
+    } catch (e) {
+      alert(t("saveError") + ": " + (e?.message || e));
+    }
+  }
+
+  /* ─── 🆕 Auto-pull from Continual Improvement Log ─── */
+  async function pullImprovement() {
+    try {
+      const res = await fetch(`${API_BASE}/api/reports?type=continual_improvement`, { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+      if (arr.length === 0) {
+        alert(lang === "ar" ? "لا توجد مبادرات تحسين." : "No improvement initiatives.");
+        return;
+      }
+      const completed = arr.filter((r) => r?.payload?.status === "Completed");
+      const effective = arr.filter((r) => r?.payload?.effective === "Yes");
+      const inProgress = arr.filter((r) => r?.payload?.status === "InProgress");
+      const summary = lang === "ar"
+        ? `📊 مبادرات التحسين المستمر (تلقائي):\n• الإجمالي: ${arr.length}\n• مكتملة: ${completed.length}\n• مُثبتة الفعالية: ${effective.length}\n• قيد التنفيذ: ${inProgress.length}\n\nالمبادرات الفعّالة:\n` +
+          effective.map((r) => `  ✓ ${r?.payload?.initiativeTitle} — ${r?.payload?.actualResult || "—"}`).join("\n") +
+          `\n\nالمبادرات قيد التنفيذ:\n` +
+          inProgress.map((r) => `  🚀 ${r?.payload?.initiativeTitle} (${r?.payload?.progress || 0}%) — ${r?.payload?.owner || "—"}`).join("\n")
+        : `📊 Continual Improvement Initiatives (auto-pulled):\n• Total: ${arr.length}\n• Completed: ${completed.length}\n• Proven effective: ${effective.length}\n• In progress: ${inProgress.length}\n\nEffective initiatives:\n` +
+          effective.map((r) => `  ✓ ${r?.payload?.initiativeTitle} — ${r?.payload?.actualResult || "—"}`).join("\n") +
+          `\n\nIn progress:\n` +
+          inProgress.map((r) => `  🚀 ${r?.payload?.initiativeTitle} (${r?.payload?.progress || 0}%) — ${r?.payload?.owner || "—"}`).join("\n");
+      // Append to "changes affecting FSMS" since improvements often drive system changes
+      const existing = form.inputs.changesAffectingFSMS || "";
+      const merged = existing ? `${existing}\n\n${summary}` : summary;
+      setField("inputs.changesAffectingFSMS", merged);
+    } catch (e) {
+      alert(t("saveError") + ": " + (e?.message || e));
+    }
+  }
+
   async function save() {
     if (!form.meetingDate) { alert(t("requiredField")); return; }
     setSaving(true);
@@ -159,7 +228,17 @@ export default function MRMInput() {
           <label style={S.label}>{t("mrmInput1")}</label>
           <textarea style={S.textarea} value={form.inputs.previousActionsStatus} onChange={(e) => setField("inputs.previousActionsStatus", e.target.value)} />
 
-          <label style={S.label}>{t("mrmInput2")}</label>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 8, marginTop: 8 }}>
+            <label style={{ ...S.label, marginTop: 0 }}>{t("mrmInput2")}</label>
+            <button
+              type="button"
+              onClick={pullComplaints}
+              style={{ ...S.btn("primary"), padding: "5px 12px", fontSize: 11 }}
+              title={lang === "ar" ? "سحب آخر 6 شهور من شكاوى العملاء" : "Pull last 6 months of customer complaints"}
+            >
+              📥 {lang === "ar" ? "سحب من الشكاوى" : "Pull from Complaints"}
+            </button>
+          </div>
           <textarea style={S.textarea} value={form.inputs.customerFeedback} onChange={(e) => setField("inputs.customerFeedback", e.target.value)} />
 
           <label style={S.label}>{t("mrmInput3")}</label>
@@ -183,7 +262,17 @@ export default function MRMInput() {
           <label style={S.label}>{t("mrmInput9")}</label>
           <textarea style={S.textarea} value={form.inputs.emergencyIncidents} onChange={(e) => setField("inputs.emergencyIncidents", e.target.value)} />
 
-          <label style={S.label}>{t("mrmInput10")}</label>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 8, marginTop: 8 }}>
+            <label style={{ ...S.label, marginTop: 0 }}>{t("mrmInput10")}</label>
+            <button
+              type="button"
+              onClick={pullImprovement}
+              style={{ ...S.btn("primary"), padding: "5px 12px", fontSize: 11 }}
+              title={lang === "ar" ? "سحب مبادرات التحسين المستمر" : "Pull continual improvement initiatives"}
+            >
+              📥 {lang === "ar" ? "سحب من التحسين المستمر" : "Pull from Continual Improvement"}
+            </button>
+          </div>
           <textarea style={S.textarea} value={form.inputs.changesAffectingFSMS} onChange={(e) => setField("inputs.changesAffectingFSMS", e.target.value)} />
         </div>
 

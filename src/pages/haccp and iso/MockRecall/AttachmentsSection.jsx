@@ -2,7 +2,7 @@
 // قسم المرفقات لـ Mock Recall: رفع متعدّد + تصنيف + ضغط تلقائي + معاينة + حذف
 // كل مرفق يُحفظ كـ Base64 في الـ payload (متوافق مع نمط بقية النظام)
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB قبل الضغط
 const MAX_DIMENSION = 1280;              // أقصى عرض/ارتفاع بعد الضغط
@@ -261,26 +261,53 @@ export default function AttachmentsSection({ value = [], onChange, t, lang, dir 
   );
 }
 
-/* ===== Lightbox component ===== */
+/* ===== Lightbox component — full-screen, click to toggle actual size, ESC to close ===== */
 function Lightbox({ attachment, onClose, onDownload, t, dir, categoryLabel }) {
+  const [actualSize, setActualSize] = useState(false);
+
+  /* ESC to close + lock body scroll while open */
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
   return (
     <div style={S.lbOverlay} onClick={onClose}>
-      <div style={{ ...S.lbBox, direction: dir }} onClick={(e) => e.stopPropagation()}>
-        <div style={S.lbHeader}>
-          <div>
-            <div style={{ fontWeight: 900, fontSize: "1rem" }}>{categoryLabel}</div>
-            <div style={{ opacity: 0.85, fontSize: "0.85rem", marginTop: 2 }}>
-              {attachment.label || attachment.fileName}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={onDownload} style={S.lbBtn}>{t("download")}</button>
-            <button onClick={onClose} style={S.lbCloseBtn}>✖</button>
+      {/* Floating header — overlaid on image */}
+      <div style={{ ...S.lbHeader, direction: dir }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 900, fontSize: "1rem", color: "#fff" }}>{categoryLabel}</div>
+          <div style={{ opacity: 0.85, fontSize: "0.85rem", marginTop: 2, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {attachment.label || attachment.fileName}
           </div>
         </div>
-        <div style={S.lbBody}>
-          <img src={attachment.imageBase64} alt={attachment.label || ""} style={S.lbImg} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={(e) => { e.stopPropagation(); setActualSize((v) => !v); }} style={S.lbBtn}
+            title={actualSize ? t("fitScreen") || "Fit screen" : t("actualSize") || "Actual size"}>
+            {actualSize ? "🔽 Fit" : "🔍 1:1"}
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); onDownload(); }} style={S.lbBtn}>{t("download")}</button>
+          <button onClick={(e) => { e.stopPropagation(); onClose(); }} style={S.lbCloseBtn}>✖</button>
         </div>
+      </div>
+
+      {/* Image area — full screen, scrollable when in actual-size mode */}
+      <div
+        style={{ ...S.lbBody, overflow: actualSize ? "auto" : "hidden" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img
+          src={attachment.imageBase64}
+          alt={attachment.label || ""}
+          style={actualSize ? S.lbImgActual : S.lbImgFull}
+          onClick={() => setActualSize((v) => !v)}
+        />
       </div>
     </div>
   );
@@ -405,33 +432,24 @@ const S = {
     fontWeight: 800,
     fontSize: "0.75rem",
   },
+  /* ===== Full-screen lightbox ===== */
   lbOverlay: {
     position: "fixed", inset: 0,
-    background: "rgba(0,0,0,0.85)",
+    background: "rgba(0,0,0,0.95)",
     zIndex: 10001,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-  },
-  lbBox: {
-    background: "#fff",
-    borderRadius: 12,
-    maxWidth: "95vw",
-    maxHeight: "92vh",
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
     fontFamily: "system-ui,-apple-system,'Segoe UI',sans-serif",
   },
   lbHeader: {
-    background: "linear-gradient(135deg,#1e3a5f,#2d5a8e)",
+    position: "fixed",
+    top: 0, left: 0, right: 0,
+    background: "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.55) 80%, transparent)",
     color: "#fff",
-    padding: "12px 16px",
+    padding: "14px 18px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     gap: 10,
+    zIndex: 10003,
   },
   lbBtn: {
     background: "rgba(255,255,255,0.18)",
@@ -442,28 +460,42 @@ const S = {
     cursor: "pointer",
     fontWeight: 800,
     fontSize: "0.85rem",
+    whiteSpace: "nowrap",
   },
   lbCloseBtn: {
-    background: "rgba(255,255,255,0.2)",
+    background: "rgba(220,38,38,0.85)",
     border: "1px solid rgba(255,255,255,0.4)",
     color: "#fff",
-    width: 32, height: 32,
+    width: 36, height: 36,
     borderRadius: 8,
     cursor: "pointer",
-    fontWeight: 800,
+    fontWeight: 900,
+    fontSize: "1rem",
   },
   lbBody: {
-    padding: 12,
-    background: "#f8fafc",
-    overflow: "auto",
-    flex: 1,
+    position: "absolute", inset: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    padding: 0,
   },
-  lbImg: {
-    maxWidth: "100%",
-    maxHeight: "80vh",
+  /* Fit-to-screen mode: image scales to viewport while preserving aspect */
+  lbImgFull: {
+    maxWidth: "100vw",
+    maxHeight: "100vh",
+    width: "auto",
+    height: "auto",
     objectFit: "contain",
+    cursor: "zoom-in",
+    display: "block",
+  },
+  /* Actual-size mode: image rendered at native pixel dimensions, scrollable */
+  lbImgActual: {
+    width: "auto",
+    height: "auto",
+    maxWidth: "none",
+    maxHeight: "none",
+    cursor: "zoom-out",
+    display: "block",
   },
 };

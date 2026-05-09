@@ -18,6 +18,15 @@ const TYPES = {
   audit:      "internal_audit_record",
   calib:      "calibration_record",
   licenses:   "licenses_contracts",
+  // 🆕 New modules (Customer Complaints, FSMS Objectives, Document Register,
+  //                Food Safety Policy Acks, Real Recall, Continual Improvement, Glass Register)
+  complaint:        "customer_complaint",
+  objective:        "fsms_objective",
+  docMeta:          "document_metadata",
+  policyAck:        "policy_acknowledgment",
+  realRecall:       "real_recall",
+  improvement:      "continual_improvement",
+  glassReg:         "glass_register_item",
 };
 
 async function fetchType(type) {
@@ -182,15 +191,19 @@ export default function HaccpDashboard() {
   const [data, setData] = useState({
     ccp: [], mockRecall: [], supplier: [], product: [], dm: [],
     mrm: [], audit: [], calib: [], licenses: [],
+    complaint: [], objective: [], docMeta: [], policyAck: [],
+    realRecall: [], improvement: [], glassReg: [],
   });
   const [loading, setLoading] = useState(true);
   const [refreshedAt, setRefreshedAt] = useState(null);
 
   async function load() {
     setLoading(true);
-    const [ccp, mockRecall, supplier, product, dm, mrm, audit, calib, licenses] =
-      await Promise.all(Object.values(TYPES).map(fetchType));
-    setData({ ccp, mockRecall, supplier, product, dm, mrm, audit, calib, licenses });
+    const keys = Object.keys(TYPES);
+    const results = await Promise.all(keys.map((k) => fetchType(TYPES[k])));
+    const next = {};
+    keys.forEach((k, i) => { next[k] = results[i]; });
+    setData(next);
     setRefreshedAt(new Date());
     setLoading(false);
   }
@@ -271,20 +284,99 @@ export default function HaccpDashboard() {
     return { total: list.length, due30, overdue };
   }, [data.calib]);
 
+  /* ─── 🆕 Stats for new modules ─── */
+  const complaintStats = useMemo(() => {
+    const list = data.complaint || [];
+    const open = list.filter((r) => (r?.payload?.status || "Open") !== "Closed").length;
+    const criticalOpen = list.filter((r) => {
+      const p = r?.payload || {};
+      return (p.status || "Open") !== "Closed" && p.severity === "Critical";
+    }).length;
+    return { total: list.length, open, criticalOpen };
+  }, [data.complaint]);
+
+  const objectiveStats = useMemo(() => {
+    const list = data.objective || [];
+    const onTrack = list.filter((r) => (r?.payload?.status || "OnTrack") === "OnTrack").length;
+    const atRisk = list.filter((r) => r?.payload?.status === "AtRisk").length;
+    const offTrack = list.filter((r) => r?.payload?.status === "OffTrack").length;
+    const achieved = list.filter((r) => r?.payload?.status === "Achieved").length;
+    return { total: list.length, onTrack, atRisk, offTrack, achieved };
+  }, [data.objective]);
+
+  const policyAckStats = useMemo(() => {
+    const list = data.policyAck || [];
+    const monthStart = startOfMonth();
+    const ofMonth = list.filter((r) => new Date(pickDate(r) || 0).getTime() >= monthStart).length;
+    return { total: list.length, ofMonth };
+  }, [data.policyAck]);
+
+  const realRecallStats = useMemo(() => {
+    const list = data.realRecall || [];
+    const active = list.filter((r) => (r?.payload?.status || "Active") !== "Closed").length;
+    const recoveryRates = list
+      .map((r) => {
+        const p = r?.payload || {};
+        const d = parseFloat(p.qtyDistributed);
+        const rec = parseFloat(p.qtyRecovered);
+        if (!d || isNaN(d) || isNaN(rec)) return null;
+        return (rec / d) * 100;
+      })
+      .filter((v) => v !== null);
+    const avgRec = recoveryRates.length > 0
+      ? recoveryRates.reduce((a, b) => a + b, 0) / recoveryRates.length
+      : null;
+    return { total: list.length, active, avgRec };
+  }, [data.realRecall]);
+
+  const improvementStats = useMemo(() => {
+    const list = data.improvement || [];
+    const inProgress = list.filter((r) => r?.payload?.status === "InProgress").length;
+    const completed = list.filter((r) => r?.payload?.status === "Completed").length;
+    const effective = list.filter((r) => r?.payload?.effective === "Yes").length;
+    return { total: list.length, inProgress, completed, effective };
+  }, [data.improvement]);
+
+  const glassRegStats = useMemo(() => {
+    const list = data.glassReg || [];
+    const today = Date.now();
+    const highRiskUnprotected = list.filter((r) => {
+      const p = r?.payload || {};
+      return p.riskAssessment === "High" && p.protection === "None" && p.condition !== "Removed";
+    }).length;
+    const overdue = list.filter((r) => {
+      const next = r?.payload?.nextInspection;
+      if (!next || r?.payload?.condition === "Removed") return false;
+      return new Date(next).getTime() < today;
+    }).length;
+    return { total: list.length, highRiskUnprotected, overdue };
+  }, [data.glassReg]);
+
+  const docMetaStats = useMemo(() => {
+    return { total: (data.docMeta || []).length };
+  }, [data.docMeta]);
+
   function go(c) {
     navigate(`/haccp-iso/haccp-manual?section=${encodeURIComponent(c)}`);
   }
 
   /* Linkage matrix rows */
   const linkage = [
+    { clauses: ["5.2"],         module: "📜 " + (lang === "ar" ? "سياسة سلامة الغذاء" : "Food Safety Policy"),         count: policyAckStats.total,   status: "ok", route: "/haccp-iso/food-safety-policy" },
+    { clauses: ["6.2"],         module: "🎯 " + (lang === "ar" ? "أهداف FSMS" : "FSMS Objectives"),                    count: objectiveStats.total,   status: objectiveStats.offTrack > 0 ? "bad" : (objectiveStats.atRisk > 0 ? "warn" : "ok"), route: "/haccp-iso/objectives/view" },
+    { clauses: ["7.4", "9.1.2"], module: "📞 " + (lang === "ar" ? "شكاوى العملاء" : "Customer Complaints"),             count: complaintStats.total,   status: complaintStats.criticalOpen > 0 ? "bad" : (complaintStats.open > 0 ? "warn" : "ok"), route: "/haccp-iso/customer-complaints/view" },
+    { clauses: ["7.5"],         module: "📚 " + (lang === "ar" ? "السجل الرئيسي للوثائق" : "Document Master Register"), count: docMetaStats.total,     status: "ok", route: "/haccp-iso/document-register/view" },
     { clauses: ["8.5", "8.6"],  module: "🎯 " + (lang === "ar" ? "مراقبة CCP" : "CCP Monitoring"),                  count: ccpStats.total,         status: ccpStats.deviations > 0 ? "warn" : "ok",  route: "/haccp-iso/ccp-monitoring/view" },
     { clauses: ["8.3", "8.9"],  module: "🔄 " + (lang === "ar" ? "السحب الوهمي / التتبع" : "Mock Recall / Traceability"), count: mockRecallStats.total,  status: mockRecallStats.lastDays !== null && mockRecallStats.lastDays > 100 ? "warn" : "ok", route: "/haccp-iso/mock-recall/view" },
+    { clauses: ["8.9.5"],       module: "🚨 " + (lang === "ar" ? "السحب الفعلي" : "Real Product Recall"),              count: realRecallStats.total,  status: realRecallStats.active > 0 ? "bad" : "ok", route: "/haccp-iso/real-recall/view" },
+    { clauses: ["8.2"],         module: "🪟 " + (lang === "ar" ? "سجل الزجاج والبلاستيك الهش" : "Glass & Brittle Plastic"), count: glassRegStats.total,    status: glassRegStats.highRiskUnprotected > 0 ? "bad" : (glassRegStats.overdue > 0 ? "warn" : "ok"), route: "/haccp-iso/glass-register/view" },
     { clauses: ["4.2"],         module: "🤝 " + (lang === "ar" ? "تقييم الموردين" : "Supplier Evaluation"),         count: supplierStats.total,    status: "ok", route: "/haccp-iso/supplier-evaluation" },
     { clauses: ["8.5", "products"], module: "🥩 " + (lang === "ar" ? "تفاصيل المنتج" : "Product Details"),           count: productStats.total,     status: "ok", route: "/haccp-iso/product-details/view" },
     { clauses: ["4.2"],         module: "🏛️ " + (lang === "ar" ? "تفتيش البلدية" : "DM Inspection"),                  count: dmStats.total,          status: "ok", route: "/haccp-iso/dm-inspection/view" },
     { clauses: ["7.5", "8.2"],  module: "📑 SOP & sSOP",                                                              count: "—",                    status: "ok", route: "/haccp-iso/sop-ssop" },
     { clauses: ["9.3"],         module: "📋 " + (lang === "ar" ? "مراجعة الإدارة (MRM)" : "Management Review (MRM)"), count: mrmStats.total,         status: mrmStats.lastDays !== null && mrmStats.lastDays > 365 ? "warn" : "ok", route: "/haccp-iso/mrm/view" },
     { clauses: ["9.2"],         module: "🔍 " + (lang === "ar" ? "التدقيق الداخلي" : "Internal Audit"),               count: auditStats.total,       status: auditStats.openNc > 0 ? "warn" : "ok", route: "/haccp-iso/internal-audit/view" },
+    { clauses: ["10.2"],        module: "🌱 " + (lang === "ar" ? "التحسين المستمر" : "Continual Improvement"),         count: improvementStats.total, status: "ok", route: "/haccp-iso/continual-improvement/view" },
     { clauses: ["8.7"],         module: "🌡️ " + (lang === "ar" ? "المعايرة" : "Calibration"),                          count: calibStats.total,       status: (calibStats.overdue > 0) ? "bad" : (calibStats.due30 > 0 ? "warn" : "ok"), route: "/haccp-iso/calibration/view" },
     { clauses: ["4.4"],         module: "📜 " + (lang === "ar" ? "الرخص والعقود" : "Licenses & Contracts"),           count: (data.licenses || []).length, status: "ok", route: "/haccp-iso/licenses-contracts/view" },
   ];
@@ -372,6 +464,85 @@ export default function HaccpDashboard() {
             sub={t("kpiProductSub")}
             accent="#0369a1"
             clauses={["8.5", "products"]} onClauseClick={go}
+          />
+
+          {/* 🆕 New module KPIs */}
+          <KPI
+            icon="📜" label={lang === "ar" ? "اطلاع على السياسة" : "Policy Acks"}
+            value={policyAckStats.total}
+            sub={lang === "ar" ? `${policyAckStats.ofMonth} هذا الشهر` : `${policyAckStats.ofMonth} this month`}
+            accent="#d97706"
+            clauses={["5.2"]} onClauseClick={go}
+          />
+          <KPI
+            icon="🎯" label={lang === "ar" ? "أهداف FSMS" : "FSMS Objectives"}
+            value={objectiveStats.total}
+            sub={
+              objectiveStats.offTrack > 0
+                ? (lang === "ar" ? `❌ ${objectiveStats.offTrack} متأخرة` : `❌ ${objectiveStats.offTrack} off-track`)
+                : objectiveStats.atRisk > 0
+                ? (lang === "ar" ? `⚠️ ${objectiveStats.atRisk} معرّضة للخطر` : `⚠️ ${objectiveStats.atRisk} at-risk`)
+                : (lang === "ar" ? `✅ ${objectiveStats.onTrack} في المسار` : `✅ ${objectiveStats.onTrack} on-track`)
+            }
+            accent={objectiveStats.offTrack > 0 ? "#b91c1c" : (objectiveStats.atRisk > 0 ? "#a16207" : "#15803d")}
+            clauses={["6.2"]} onClauseClick={go}
+          />
+          <KPI
+            icon="📞" label={lang === "ar" ? "شكاوى العملاء" : "Customer Complaints"}
+            value={complaintStats.total}
+            sub={
+              complaintStats.criticalOpen > 0
+                ? (lang === "ar" ? `🔴 ${complaintStats.criticalOpen} حرجة مفتوحة` : `🔴 ${complaintStats.criticalOpen} critical open`)
+                : complaintStats.open > 0
+                ? (lang === "ar" ? `🟠 ${complaintStats.open} مفتوحة` : `🟠 ${complaintStats.open} open`)
+                : (lang === "ar" ? "✅ كلها مغلقة" : "✅ all closed")
+            }
+            accent={complaintStats.criticalOpen > 0 ? "#b91c1c" : (complaintStats.open > 0 ? "#a16207" : "#15803d")}
+            clauses={["7.4", "9.1.2"]} onClauseClick={go}
+          />
+          <KPI
+            icon="📚" label={lang === "ar" ? "وثائق محدّثة يدوياً" : "Doc Metadata"}
+            value={docMetaStats.total}
+            sub={lang === "ar" ? "بيانات وصفية مضافة" : "Custom metadata added"}
+            accent="#0f766e"
+            clauses={["7.5"]} onClauseClick={go}
+          />
+          <KPI
+            icon="🚨" label={lang === "ar" ? "السحب الفعلي" : "Real Recalls"}
+            value={realRecallStats.total}
+            sub={
+              realRecallStats.active > 0
+                ? (lang === "ar" ? `🔴 ${realRecallStats.active} نشطة` : `🔴 ${realRecallStats.active} active`)
+                : realRecallStats.avgRec !== null
+                ? (lang === "ar" ? `استرداد متوسط: ${realRecallStats.avgRec.toFixed(0)}%` : `Avg recovery: ${realRecallStats.avgRec.toFixed(0)}%`)
+                : (lang === "ar" ? "✅ لا سحوبات نشطة" : "✅ no active recalls")
+            }
+            accent={realRecallStats.active > 0 ? "#b91c1c" : "#15803d"}
+            clauses={["8.9.5"]} onClauseClick={go}
+          />
+          <KPI
+            icon="🌱" label={lang === "ar" ? "التحسين المستمر" : "Continual Improvement"}
+            value={improvementStats.total}
+            sub={
+              lang === "ar"
+                ? `🚀 ${improvementStats.inProgress} جاري · 🏆 ${improvementStats.effective} فعّالة`
+                : `🚀 ${improvementStats.inProgress} in progress · 🏆 ${improvementStats.effective} effective`
+            }
+            accent="#16a34a"
+            clauses={["10.2"]} onClauseClick={go}
+          />
+          <KPI
+            icon="🪟" label={lang === "ar" ? "الزجاج والبلاستيك الهش" : "Glass & Brittle Plastic"}
+            value={glassRegStats.total}
+            sub={
+              glassRegStats.highRiskUnprotected > 0
+                ? (lang === "ar" ? `🚨 ${glassRegStats.highRiskUnprotected} عالية الخطر بدون حماية` : `🚨 ${glassRegStats.highRiskUnprotected} high-risk unprotected`)
+                : glassRegStats.overdue > 0
+                ? (lang === "ar" ? `⏰ ${glassRegStats.overdue} فحص متأخر` : `⏰ ${glassRegStats.overdue} overdue inspection`)
+                : (lang === "ar" ? "✅ كلها بحالة جيدة" : "✅ all OK")
+            }
+            accent={glassRegStats.highRiskUnprotected > 0 ? "#b91c1c" : (glassRegStats.overdue > 0 ? "#a16207" : "#15803d")}
+            clauses={["8.2"]} onClauseClick={go}
           />
         </div>
 
