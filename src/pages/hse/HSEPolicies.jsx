@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  loadLocal, saveLocal, useHSELang, HSELangToggle,
+  apiList, apiSave, apiUpdate, useHSELang, HSELangToggle,
 } from "./hseShared";
 
 const T = {
@@ -306,13 +306,15 @@ export default function HSEPolicies() {
   const [editingId, setEditingId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [draft, setDraft] = useState({ approvedDate: "", reviewDate: "", approvedBy: "", status: "draft", notes: "" });
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const arr = loadLocal(TYPE);
+  async function reload() {
+    const arr = await apiList(TYPE);
     const map = {};
-    arr.forEach((s) => { map[s.policyId] = s; });
+    arr.forEach((s) => { if (s.policyId) map[s.policyId] = s; });
     setStatuses(map);
-  }, []);
+  }
+  useEffect(() => { reload(); }, []);
 
   function startEdit(p) {
     setEditingId(p.id);
@@ -326,11 +328,23 @@ export default function HSEPolicies() {
     });
   }
 
-  function saveStatus(p) {
-    const map = { ...statuses, [p.id]: { ...draft, policyId: p.id, code: p.code, titleAr: p.title.ar, titleEn: p.title.en } };
-    setStatuses(map);
-    saveLocal(TYPE, Object.values(map));
-    setEditingId(null);
+  async function saveStatus(p) {
+    setSaving(true);
+    try {
+      const existing = statuses[p.id];
+      const payload = { ...draft, policyId: p.id, code: p.code, titleAr: p.title.ar, titleEn: p.title.en };
+      if (existing && existing.id) {
+        await apiUpdate(TYPE, existing.id, payload, draft.approvedBy || "HSE");
+      } else {
+        await apiSave(TYPE, payload, draft.approvedBy || "HSE");
+      }
+      await reload();
+      setEditingId(null);
+    } catch (e) {
+      alert((lang === "ar" ? "❌ خطأ بالحفظ: " : "❌ Save error: ") + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
 
   const filtered = POLICIES.filter((p) => {
@@ -486,8 +500,10 @@ export default function HSEPolicies() {
                       <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
                     </div>
                     <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                      <button style={buttonPrimary} onClick={() => saveStatus(p)}>{pick(T.save)}</button>
-                      <button style={buttonGhost} onClick={() => setEditingId(null)}>{pick(T.cancel)}</button>
+                      <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={() => saveStatus(p)} disabled={saving}>
+                        {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.save)}
+                      </button>
+                      <button style={buttonGhost} onClick={() => setEditingId(null)} disabled={saving}>{pick(T.cancel)}</button>
                     </div>
                   </div>
                 )}

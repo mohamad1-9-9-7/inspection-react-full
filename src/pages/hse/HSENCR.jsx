@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO, nowHHMM,
-  loadLocal, appendLocal, deleteLocal, updateLocal, SITE_LOCATIONS,
+  apiList, apiSave, apiDelete, apiUpdate, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -150,31 +150,51 @@ export default function HSENCR() {
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(blank());
   const [viewing, setViewing] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setItems(loadLocal(TYPE)); }, []);
+  async function reload() {
+    const arr = await apiList(TYPE);
+    setItems(arr);
+  }
+  useEffect(() => { reload(); }, []);
   function printReport() { window.print(); }
 
   function toggleType(v) {
     setDraft((d) => ({ ...d, types: { ...d.types, [v]: !d.types[v] } }));
   }
 
-  function save() {
+  async function save() {
     if (!draft.description.trim()) { alert(pick(T.needDesc)); return; }
-    appendLocal(TYPE, draft);
-    setItems(loadLocal(TYPE));
-    alert(pick(T.saved));
-    setDraft(blank()); setTab("list");
+    setSaving(true);
+    try {
+      await apiSave(TYPE, draft, draft.reportedBy || "HSE");
+      await reload();
+      alert(pick(T.saved));
+      setDraft(blank()); setTab("list");
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
-  function closeNCR(id) {
+  async function closeNCR(id) {
     const closer = prompt(pick(T.closer));
     if (!closer) return;
-    updateLocal(TYPE, id, { status: "closed", closedDate: todayISO(), closedBy: closer });
-    setItems(loadLocal(TYPE));
+    try {
+      await apiUpdate(TYPE, id, { status: "closed", closedDate: todayISO(), closedBy: closer }, closer);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالإغلاق: ", en: "❌ Close error: " })) + (e?.message || e));
+    }
   }
-  function remove(id) {
+  async function remove(id) {
     if (!window.confirm(pick(T.confirmDel))) return;
-    deleteLocal(TYPE, id);
-    setItems(loadLocal(TYPE));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحذف: ", en: "❌ Delete error: " })) + (e?.message || e));
+    }
   }
 
   return (
@@ -304,8 +324,10 @@ export default function HSENCR() {
             </div>
 
             <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={buttonPrimary} onClick={save}>{pick(T.saveBtn)}</button>
-              <button style={buttonGhost} onClick={() => setTab("list")}>{pick(T.cancel)}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
+              </button>
+              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}

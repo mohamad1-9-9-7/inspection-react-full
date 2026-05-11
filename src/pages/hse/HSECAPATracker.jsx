@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  loadLocal, appendLocal, deleteLocal, updateLocal,
+  apiList, apiSave, apiDelete, apiUpdate,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -107,26 +107,47 @@ export default function HSECAPATracker() {
   const [draft, setDraft] = useState(blank());
   const [editingId, setEditingId] = useState(null);
   const [filter, setFilter] = useState("active");
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setItems(loadLocal(TYPE)); }, []);
+  async function reload() {
+    const arr = await apiList(TYPE);
+    setItems(arr);
+  }
+  useEffect(() => { reload(); }, []);
 
   function startEdit(it) { setDraft({ ...it }); setEditingId(it.id); setTab("new"); }
-  function save() {
+  async function save() {
     if (!draft.action.trim()) { alert(pick(T.needAction)); return; }
-    if (editingId) updateLocal(TYPE, editingId, draft);
-    else appendLocal(TYPE, draft);
-    setItems(loadLocal(TYPE));
-    setDraft(blank()); setEditingId(null); setTab("list");
+    setSaving(true);
+    try {
+      if (editingId) await apiUpdate(TYPE, editingId, draft);
+      else await apiSave(TYPE, draft, draft.responsibility || "HSE");
+      await reload();
+      setDraft(blank()); setEditingId(null); setTab("list");
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
-  function quickClose(id) {
+  async function quickClose(id) {
     const verifier = prompt(pick(T.closer));
     if (!verifier) return;
-    updateLocal(TYPE, id, { status: "closed", closedDate: todayISO(), closedBy: verifier, verifiedBy: verifier });
-    setItems(loadLocal(TYPE));
+    try {
+      await apiUpdate(TYPE, id, { status: "closed", closedDate: todayISO(), closedBy: verifier, verifiedBy: verifier }, verifier);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالإغلاق: ", en: "❌ Close error: " })) + (e?.message || e));
+    }
   }
-  function remove(id) {
+  async function remove(id) {
     if (!window.confirm(pick(T.confirmDel))) return;
-    deleteLocal(TYPE, id); setItems(loadLocal(TYPE));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحذف: ", en: "❌ Delete error: " })) + (e?.message || e));
+    }
   }
 
   const filtered = useMemo(() => items.filter((it) => {
@@ -272,8 +293,10 @@ export default function HSECAPATracker() {
             )}
 
             <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={buttonPrimary} onClick={save}>{pick(T.saveBtn)}</button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }}>{pick(T.cancel)}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
+              </button>
+              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}

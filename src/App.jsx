@@ -363,34 +363,19 @@ const CCPSettings = lazy(() => import("./pages/haccp and iso/CCPMonitoring/CCPSe
 
 // 🦺 HSE — Health, Safety & Environment
 const HSEMenu                  = lazy(() => import("./pages/hse/HSEMenu"));
-const HSEVisionMission         = lazy(() => import("./pages/hse/HSEVisionMission"));
-const HSELegalFramework        = lazy(() => import("./pages/hse/HSELegalFramework"));
-const HSEOrgStructure          = lazy(() => import("./pages/hse/HSEOrgStructure"));
+const HSECompanyProfile        = lazy(() => import("./pages/hse/HSECompanyProfile"));
 const HSEPolicies              = lazy(() => import("./pages/hse/HSEPolicies"));
 const HSERiskRegister          = lazy(() => import("./pages/hse/HSERiskRegister"));
 const HSESOPs                  = lazy(() => import("./pages/hse/HSESOPs"));
 const HSEIncidentReport        = lazy(() => import("./pages/hse/HSEIncidentReport"));
-const HSENearMiss              = lazy(() => import("./pages/hse/HSENearMiss"));
-const HSEDailyInspection       = lazy(() => import("./pages/hse/HSEDailyInspection"));
 const HSEWorkPermit            = lazy(() => import("./pages/hse/HSEWorkPermit"));
-const HSEConfinedSpacePermit   = lazy(() => import("./pages/hse/HSEConfinedSpacePermit"));
-const HSEExcavationPermit      = lazy(() => import("./pages/hse/HSEExcavationPermit"));
 const HSEMonthlySafetyReport   = lazy(() => import("./pages/hse/HSEMonthlySafetyReport"));
-const HSEInjurySummary         = lazy(() => import("./pages/hse/HSEInjurySummary"));
-const HSEPreliminaryAccident   = lazy(() => import("./pages/hse/HSEPreliminaryAccident"));
-const HSEFatalAccident         = lazy(() => import("./pages/hse/HSEFatalAccident"));
-const HSEFinalAccident         = lazy(() => import("./pages/hse/HSEFinalAccident"));
 const HSENCR                   = lazy(() => import("./pages/hse/HSENCR"));
-const HSEDailyReport           = lazy(() => import("./pages/hse/HSEDailyReport"));
 const HSEFireEquipment         = lazy(() => import("./pages/hse/HSEFireEquipment"));
 const HSEToolboxMeeting        = lazy(() => import("./pages/hse/HSEToolboxMeeting"));
-const HSEFireExtinguisherLocations = lazy(() => import("./pages/hse/HSEFireExtinguisherLocations"));
 const HSEEmergencyContacts     = lazy(() => import("./pages/hse/HSEEmergencyContacts"));
-const HSEHandPowerTools        = lazy(() => import("./pages/hse/HSEHandPowerTools"));
-const HSELadderSafety          = lazy(() => import("./pages/hse/HSELadderSafety"));
 const HSEWelfare               = lazy(() => import("./pages/hse/HSEWelfare"));
 const HSEForkliftInspection    = lazy(() => import("./pages/hse/HSEForkliftInspection"));
-const HSETemperatureLog        = lazy(() => import("./pages/hse/HSETemperatureLog"));
 const HSEShipmentReceiving     = lazy(() => import("./pages/hse/HSEShipmentReceiving"));
 const HSECleaningLog           = lazy(() => import("./pages/hse/HSECleaningLog"));
 const HSESwabsLog              = lazy(() => import("./pages/hse/HSESwabsLog"));
@@ -404,10 +389,6 @@ const HSEWasteLog              = lazy(() => import("./pages/hse/HSEWasteLog"));
 const HSECAPATracker           = lazy(() => import("./pages/hse/HSECAPATracker"));
 const HSETrainingMatrix        = lazy(() => import("./pages/hse/HSETrainingMatrix"));
 const HSELicenses              = lazy(() => import("./pages/hse/HSELicenses"));
-const HSEKPIs                  = lazy(() => import("./pages/hse/HSEKPIs"));
-const HSEBudget                = lazy(() => import("./pages/hse/HSEBudget"));
-const HSEImplementationPlan    = lazy(() => import("./pages/hse/HSEImplementationPlan"));
-const HSESuccessFactors        = lazy(() => import("./pages/hse/HSESuccessFactors"));
 
 /** حماية المسارات الخاصة */
 /** Redirects /old-path/t/:token → /new-path/:token preserving the real token value */
@@ -1622,34 +1603,19 @@ export default function App() {
 
         {/* 🦺 HSE — Health, Safety & Environment */}
         <Route path="/hse" element={<ProtectedRoute><HSEMenu /></ProtectedRoute>} />
-        <Route path="/hse/vision-mission" element={<ProtectedRoute><HSEVisionMission /></ProtectedRoute>} />
-        <Route path="/hse/legal-framework" element={<ProtectedRoute><HSELegalFramework /></ProtectedRoute>} />
-        <Route path="/hse/org-structure" element={<ProtectedRoute><HSEOrgStructure /></ProtectedRoute>} />
+        <Route path="/hse/company-profile" element={<ProtectedRoute><HSECompanyProfile /></ProtectedRoute>} />
         <Route path="/hse/policies" element={<ProtectedRoute><HSEPolicies /></ProtectedRoute>} />
         <Route path="/hse/risk-register" element={<ProtectedRoute><HSERiskRegister /></ProtectedRoute>} />
         <Route path="/hse/sops" element={<ProtectedRoute><HSESOPs /></ProtectedRoute>} />
         <Route path="/hse/incident-report" element={<ProtectedRoute><HSEIncidentReport /></ProtectedRoute>} />
-        <Route path="/hse/near-miss" element={<ProtectedRoute><HSENearMiss /></ProtectedRoute>} />
-        <Route path="/hse/daily-inspection" element={<ProtectedRoute><HSEDailyInspection /></ProtectedRoute>} />
         <Route path="/hse/work-permit" element={<ProtectedRoute><HSEWorkPermit /></ProtectedRoute>} />
-        <Route path="/hse/confined-space-permit" element={<ProtectedRoute><HSEConfinedSpacePermit /></ProtectedRoute>} />
-        <Route path="/hse/excavation-permit" element={<ProtectedRoute><HSEExcavationPermit /></ProtectedRoute>} />
         <Route path="/hse/monthly-safety-report" element={<ProtectedRoute><HSEMonthlySafetyReport /></ProtectedRoute>} />
-        <Route path="/hse/injury-summary" element={<ProtectedRoute><HSEInjurySummary /></ProtectedRoute>} />
-        <Route path="/hse/preliminary-accident" element={<ProtectedRoute><HSEPreliminaryAccident /></ProtectedRoute>} />
-        <Route path="/hse/fatal-accident" element={<ProtectedRoute><HSEFatalAccident /></ProtectedRoute>} />
-        <Route path="/hse/final-accident" element={<ProtectedRoute><HSEFinalAccident /></ProtectedRoute>} />
         <Route path="/hse/ncr" element={<ProtectedRoute><HSENCR /></ProtectedRoute>} />
-        <Route path="/hse/daily-report" element={<ProtectedRoute><HSEDailyReport /></ProtectedRoute>} />
         <Route path="/hse/fire-equipment" element={<ProtectedRoute><HSEFireEquipment /></ProtectedRoute>} />
         <Route path="/hse/toolbox-meeting" element={<ProtectedRoute><HSEToolboxMeeting /></ProtectedRoute>} />
-        <Route path="/hse/fire-extinguisher-locations" element={<ProtectedRoute><HSEFireExtinguisherLocations /></ProtectedRoute>} />
         <Route path="/hse/emergency-contacts" element={<ProtectedRoute><HSEEmergencyContacts /></ProtectedRoute>} />
-        <Route path="/hse/hand-power-tools" element={<ProtectedRoute><HSEHandPowerTools /></ProtectedRoute>} />
-        <Route path="/hse/ladder-safety" element={<ProtectedRoute><HSELadderSafety /></ProtectedRoute>} />
         <Route path="/hse/welfare" element={<ProtectedRoute><HSEWelfare /></ProtectedRoute>} />
         <Route path="/hse/forklift-inspection" element={<ProtectedRoute><HSEForkliftInspection /></ProtectedRoute>} />
-        <Route path="/hse/temperature-log" element={<ProtectedRoute><HSETemperatureLog /></ProtectedRoute>} />
         <Route path="/hse/shipment-receiving" element={<ProtectedRoute><HSEShipmentReceiving /></ProtectedRoute>} />
         <Route path="/hse/cleaning-log" element={<ProtectedRoute><HSECleaningLog /></ProtectedRoute>} />
         <Route path="/hse/swabs-log" element={<ProtectedRoute><HSESwabsLog /></ProtectedRoute>} />
@@ -1663,10 +1629,6 @@ export default function App() {
         <Route path="/hse/capa-tracker" element={<ProtectedRoute><HSECAPATracker /></ProtectedRoute>} />
         <Route path="/hse/training-matrix" element={<ProtectedRoute><HSETrainingMatrix /></ProtectedRoute>} />
         <Route path="/hse/licenses" element={<ProtectedRoute><HSELicenses /></ProtectedRoute>} />
-        <Route path="/hse/kpis" element={<ProtectedRoute><HSEKPIs /></ProtectedRoute>} />
-        <Route path="/hse/budget" element={<ProtectedRoute><HSEBudget /></ProtectedRoute>} />
-        <Route path="/hse/implementation-plan" element={<ProtectedRoute><HSEImplementationPlan /></ProtectedRoute>} />
-        <Route path="/hse/success-factors" element={<ProtectedRoute><HSESuccessFactors /></ProtectedRoute>} />
 
         {/* ⚙️ Settings */}
         <Route

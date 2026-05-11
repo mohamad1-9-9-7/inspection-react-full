@@ -144,14 +144,14 @@ const COMMITTEES = [
     frequency: { ar: "اجتماع شهري", en: "Monthly meeting" } },
 ];
 
-export default function HSEOrgStructure() {
+export default function HSEOrgStructure({ embedded = false }) {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
   const [expandedRole, setExpandedRole] = useState("manager");
 
-  return (
-    <main style={pageStyle} dir={dir}>
-      <div style={containerStyle}>
+  const content = (
+    <>
+      {!embedded && (
         <div style={headerBar}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 950 }}>{pick(T.title)}</div>
@@ -162,8 +162,9 @@ export default function HSEOrgStructure() {
             <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
+      )}
 
-        <div style={{ ...cardStyle, marginBottom: 14, background: "linear-gradient(135deg, #f3f4f6, #ffffff)", borderInlineStart: "5px solid #1f2937" }}>
+      <div style={{ ...cardStyle, marginBottom: 14, background: "linear-gradient(135deg, #f3f4f6, #ffffff)", borderInlineStart: "5px solid #1f2937" }}>
           <p style={{ fontSize: 14, lineHeight: 1.9, color: "#1f0f00", margin: 0 }}>{pick(T.pageIntro)}</p>
         </div>
 
@@ -266,7 +267,14 @@ export default function HSEOrgStructure() {
             </tbody>
           </table>
         </div>
-      </div>
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <main style={pageStyle} dir={dir}>
+      <div style={containerStyle}>{content}</div>
     </main>
   );
 }

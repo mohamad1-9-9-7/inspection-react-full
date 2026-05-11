@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  loadLocal, appendLocal, deleteLocal,
+  apiList, apiSave, apiDelete,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -81,26 +81,42 @@ export default function HSEPPELog() {
   const [items, setItems] = useState([]);
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(blank());
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setItems(loadLocal(TYPE)); }, []);
+  async function reload() {
+    const arr = await apiList(TYPE);
+    setItems(arr);
+  }
+  useEffect(() => { reload(); }, []);
 
   function setQty(itemKey, val) {
     const v = Number(val) || 0;
     setDraft((d) => ({ ...d, itemsIssued: { ...d.itemsIssued, [itemKey]: v } }));
   }
-  function save() {
+  async function save() {
     if (!draft.employeeName.trim()) { alert(pick(T.needName)); return; }
     const tot = Object.values(draft.itemsIssued).reduce((a, b) => a + (Number(b) || 0), 0);
     if (tot === 0) { alert(pick(T.needItem)); return; }
-    appendLocal(TYPE, draft);
-    setItems(loadLocal(TYPE));
-    alert(pick(T.saved));
-    setDraft(blank()); setTab("list");
+    setSaving(true);
+    try {
+      await apiSave(TYPE, draft, draft.issuedBy || "HSE");
+      await reload();
+      alert(pick(T.saved));
+      setDraft(blank()); setTab("list");
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
-  function remove(id) {
+  async function remove(id) {
     if (!window.confirm(pick(T.confirmDel))) return;
-    deleteLocal(TYPE, id);
-    setItems(loadLocal(TYPE));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحذف: ", en: "❌ Delete error: " })) + (e?.message || e));
+    }
   }
 
   const itemTotals = useMemo(() => {
@@ -174,8 +190,10 @@ export default function HSEPPELog() {
             </div>
 
             <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={buttonPrimary} onClick={save}>{pick(T.saveBtn)}</button>
-              <button style={buttonGhost} onClick={() => setTab("list")}>{pick(T.cancel)}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
+              </button>
+              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}

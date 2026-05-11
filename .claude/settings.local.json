@@ -98,7 +98,15 @@
       "Bash(cp /tmp/fsms_unpacked/word/media/image2.jpeg \"D:/inspection-react-full/public/haccp-manual-images/\")",
       "Bash(cp /tmp/fsms_unpacked/word/media/image3.jpeg \"D:/inspection-react-full/public/haccp-manual-images/\")",
       "Bash(cp /tmp/fsms_unpacked/word/media/image3.png \"D:/inspection-react-full/public/haccp-manual-images/\")",
-      "Bash(cp /tmp/fsms_unpacked/word/media/image4.jpeg \"D:/inspection-react-full/public/haccp-manual-images/\")"
+      "Bash(cp /tmp/fsms_unpacked/word/media/image4.jpeg \"D:/inspection-react-full/public/haccp-manual-images/\")",
+      "Bash(node -e \"require\\('fs'\\).readFileSync\\('src/pages/haccp and iso/Objectives/ObjectivesView.jsx','utf8'\\); console.log\\('OK'\\)\")",
+      "Bash(npx --yes esbuild \"src/pages/hse/HSEEvacuationDrills.jsx\" --loader=jsx --bundle=false --log-level=warning)",
+      "Bash(npx --yes esbuild \"src/pages/hse/HSEEvacuationDrills.jsx\" --loader=jsx --bundle=false)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(npx --yes esbuild \"src/pages/hse/HSEEvacuationDrills.jsx\" --loader=jsx --bundle=false --color=false)",
+      "PowerShell($out = & npx --yes esbuild \"src/pages/hse/HSEEvacuationDrills.jsx\" --loader=jsx --bundle=false 2>&1 | Out-String; if \\($LASTEXITCODE -eq 0\\) { Write-Output \"PARSE OK\" } else { Write-Output \"PARSE FAILED - exit $LASTEXITCODE\"; Write-Output $out })",
+      "Bash(node -e \"const acorn=require\\('acorn'\\);const fs=require\\('fs'\\);const files=['src/pages/hse/hseShared.js','src/pages/hse/HSEIncidentReport.jsx','src/pages/hse/HSEWorkPermit.jsx','src/pages/hse/HSELicenses.jsx','src/pages/hse/HSEFireEquipment.jsx','src/pages/hse/HSEForkliftInspection.jsx','src/pages/hse/HSEToolboxMeeting.jsx','src/pages/hse/HSEEvacuationDrills.jsx','src/pages/hse/HSEMonthlySafetyReport.jsx','src/pages/hse/HSENCR.jsx','src/pages/hse/HSECAPATracker.jsx','src/pages/hse/HSERiskRegister.jsx','src/pages/hse/HSEEmergencyContacts.jsx','src/pages/hse/HSEPolicies.jsx','src/pages/hse/HSESOPs.jsx','src/pages/hse/HSETrainingMatrix.jsx','src/pages/hse/HSEPPELog.jsx','src/pages/hse/HSEShipmentReceiving.jsx','src/pages/hse/HSEGenericLog.jsx','src/pages/hse/HSEChecklistShared.jsx'];console.log\\('Note: acorn cannot parse JSX, only checking JS file'\\);try{acorn.parse\\(fs.readFileSync\\('src/pages/hse/hseShared.js','utf8'\\),{ecmaVersion:2022,sourceType:'module'}\\);console.log\\('hseShared.js: OK'\\);}catch\\(e\\){console.log\\('hseShared.js: ERROR -',e.message\\);}\")",
+      "Bash(npx --no-install eslint --no-eslintrc --parser-options=ecmaVersion:2022,sourceType:module,ecmaFeatures:{jsx:true} src/pages/hse/hseShared.js src/pages/hse/HSEIncidentReport.jsx)"
     ]
   }
 }

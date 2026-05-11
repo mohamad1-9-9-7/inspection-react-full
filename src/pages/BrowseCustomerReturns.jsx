@@ -62,8 +62,35 @@ function normalizeReturns(raw) {
   return Array.from(byDate.values());
 }
 
+/**
+ * Aggressive customer key — used for grouping.
+ * Removes ALL whitespace + uppercases. So:
+ *   "Zou Zou", "ZOU ZOU", "ZOUZOU", " ZouZou " → all become "ZOUZOU"
+ */
+function customerKey(name) {
+  return (name || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+/**
+ * Module-level canonical-label map (key → most common original spelling).
+ * Populated by the component during render via a useMemo.
+ * Pre-populated as empty; falls back to a simple uppercase normalization until built.
+ */
+let _canonicalCustomerMap = {};
+
+/**
+ * Returns the canonical (display-friendly) customer name for a row.
+ * - Uses canonical map (most-common spelling for each aggressive key) if available.
+ * - Falls back to UPPERCASE + collapsed-spaces version of the raw name.
+ *
+ * Result: aggregations using customerOf() naturally merge "Zou Zou" + "ZOU ZOU" + "ZOUZOU"
+ * into ONE bucket, displayed with the most common spelling (usually "ZOU ZOU").
+ */
 function customerOf(row) {
-  return row?.customerName || "";
+  const raw = (row?.customerName || "").trim();
+  if (!raw) return "";
+  const aggKey = customerKey(raw);
+  return _canonicalCustomerMap[aggKey] || raw.toUpperCase().replace(/\s+/g, " ");
 }
 function actionText(row) {
   return row?.action === "إجراء آخر..." || row?.action === "Other..."
@@ -2477,6 +2504,37 @@ export default function BrowseReturns() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  /* ============================================================
+     Canonical customer-name map (case + whitespace-insensitive merge)
+     Builds a mapping: aggressiveKey → most-common original spelling.
+     E.g. "Zou Zou" (20) + "ZOU ZOU" (21) + "ZOUZOU" (12) → all map to "ZOU ZOU".
+     Side-effect mirror to module-level _canonicalCustomerMap so customerOf() reads it.
+     ============================================================ */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useMemo(() => {
+    const counts = {};
+    for (const rec of returnsData) {
+      const items = rec?.payload?.items || [];
+      for (const it of items) {
+        const raw = (it?.customerName || "").trim();
+        if (!raw) continue;
+        const aggKey = customerKey(raw);
+        const labelKey = raw.toUpperCase().replace(/\s+/g, " ");
+        if (!counts[aggKey]) counts[aggKey] = {};
+        counts[aggKey][labelKey] = (counts[aggKey][labelKey] || 0) + 1;
+      }
+    }
+    const map = {};
+    for (const aggKey of Object.keys(counts)) {
+      const spellings = counts[aggKey];
+      // pick the spelling with the most occurrences
+      const best = Object.entries(spellings).sort((a, b) => b[1] - a[1])[0][0];
+      map[aggKey] = best;
+    }
+    _canonicalCustomerMap = map;
+    return map;
+  }, [returnsData]);
 
   /* ============================================================
      Changes map

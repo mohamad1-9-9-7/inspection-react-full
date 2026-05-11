@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO, nowHHMM,
-  loadLocal, appendLocal, deleteLocal, MEAT_PRODUCT_TYPES,
+  apiList, apiSave, apiDelete, MEAT_PRODUCT_TYPES,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -169,21 +169,37 @@ export default function HSEShipmentReceiving() {
   const [items, setItems] = useState([]);
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(blank());
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setItems(loadLocal(TYPE)); }, []);
+  async function reload() {
+    const arr = await apiList(TYPE);
+    setItems(arr);
+  }
+  useEffect(() => { reload(); }, []);
 
-  function save() {
+  async function save() {
     if (!draft.supplier.trim()) { alert(pick(T.needSupplier)); return; }
     if (!draft.totalQuantityKg) { alert(pick(T.needQty)); return; }
-    appendLocal(TYPE, draft);
-    setItems(loadLocal(TYPE));
-    alert(pick(T.saved));
-    setDraft(blank()); setTab("list");
+    setSaving(true);
+    try {
+      await apiSave(TYPE, draft, draft.receivedBy || "HSE");
+      await reload();
+      alert(pick(T.saved));
+      setDraft(blank()); setTab("list");
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
-  function remove(id) {
+  async function remove(id) {
     if (!window.confirm(pick(T.confirmDel))) return;
-    deleteLocal(TYPE, id);
-    setItems(loadLocal(TYPE));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحذف: ", en: "❌ Delete error: " })) + (e?.message || e));
+    }
   }
 
   const stats = useMemo(() => {
@@ -399,8 +415,10 @@ export default function HSEShipmentReceiving() {
             </div>
 
             <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={buttonPrimary} onClick={save}>{pick(T.saveBtn)}</button>
-              <button style={buttonGhost} onClick={() => setTab("list")}>{pick(T.cancel)}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
+              </button>
+              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}

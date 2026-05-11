@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO, nowHHMM,
-  loadLocal, appendLocal, deleteLocal, updateLocal, SITE_LOCATIONS,
+  apiList, apiSave, apiDelete, apiUpdate, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -41,6 +41,21 @@ const T = {
   emergency:   { ar: "خطة الطوارئ", en: "Emergency Plan" },
   issued:      { ar: "أصدر التصريح", en: "Issued by" },
   approved:    { ar: "اعتمد التصريح (HSE Manager)", en: "Approved by (HSE Manager)" },
+  // Confined Space specifics
+  csSec:       { ar: "🕳️ تفاصيل الأماكن المغلقة (Confined Space)", en: "🕳️ Confined Space Details" },
+  csGases:     { ar: "🧪 قياس الغازات قبل الدخول", en: "🧪 Gas Monitoring Before Entry" },
+  csO2:        { ar: "O₂ الأكسجين (19.5–23.5%)", en: "O₂ Oxygen (19.5–23.5%)" },
+  csH2S:       { ar: "H₂S كبريتيد الهيدروجين (< 10 ppm)", en: "H₂S (< 10 ppm)" },
+  csLEL:       { ar: "LEL الحد الأدنى للانفجار (< 10%)", en: "LEL (< 10%)" },
+  csCO:        { ar: "CO أول أكسيد الكربون (< 35 ppm)", en: "CO (< 35 ppm)" },
+  csNH3:       { ar: "NH₃ الأمونيا (< 25 ppm)", en: "NH₃ Ammonia (< 25 ppm)" },
+  csStandby:   { ar: "👮 المراقب الخارجي (Standby Attendant)", en: "👮 Standby Attendant" },
+  csStandbyPh: { ar: "اسم المراقب", en: "Watchman name" },
+  csEntries:   { ar: "🚪 سجل دخول/خروج", en: "🚪 Entry / Exit Log" },
+  csEntryName: { ar: "اسم الداخل", en: "Entrant" },
+  csEntryIn:   { ar: "وقت الدخول", en: "Time In" },
+  csEntryOut:  { ar: "وقت الخروج", en: "Time Out" },
+  csAddEntry:  { ar: "+ إضافة دخول", en: "+ Add Entry" },
   saveBtn:     { ar: "💾 إصدار التصريح", en: "💾 Issue Permit" },
   cancel:      { ar: "إلغاء", en: "Cancel" },
   needDesc:    { ar: "اكتب وصف العمل", en: "Enter work description" },
@@ -134,6 +149,9 @@ const blank = () => ({
   supervisor: "", supervisorContact: "",
   safetyChecks: {}, ppeRequired: "", hazardsIdentified: "", emergencyPlan: "",
   issuedBy: "", approvedBy: "",
+  // Confined Space (only used when type = confined_space)
+  csO2: "", csH2S: "", csLEL: "", csCO: "", csNH3: "",
+  csStandbyAttendant: "", csEntries: [],
   status: "active", closedDate: "", closedBy: "", closedNotes: "",
 });
 
@@ -143,30 +161,50 @@ export default function HSEWorkPermit() {
   const [items, setItems] = useState([]);
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(blank());
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setItems(loadLocal(TYPE)); }, []);
+  async function reload() {
+    const arr = await apiList(TYPE);
+    setItems(arr);
+  }
+  useEffect(() => { reload(); }, []);
 
   function setCheck(key, val) {
     setDraft((d) => ({ ...d, safetyChecks: { ...d.safetyChecks, [key]: val } }));
   }
-  function save() {
+  async function save() {
     if (!draft.workDescription.trim()) { alert(pick(T.needDesc)); return; }
     if (!draft.workerName.trim()) { alert(pick(T.needWorker)); return; }
-    appendLocal(TYPE, draft);
-    setItems(loadLocal(TYPE));
-    alert(pick(T.saved));
-    setDraft(blank()); setTab("list");
+    setSaving(true);
+    try {
+      await apiSave(TYPE, draft, draft.issuedBy || "HSE");
+      await reload();
+      alert(pick(T.saved));
+      setDraft(blank()); setTab("list");
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
-  function closePermit(id) {
+  async function closePermit(id) {
     const closer = prompt(pick(T.closer));
     if (!closer) return;
-    updateLocal(TYPE, id, { status: "closed", closedDate: todayISO(), closedBy: closer });
-    setItems(loadLocal(TYPE));
+    try {
+      await apiUpdate(TYPE, id, { status: "closed", closedDate: todayISO(), closedBy: closer }, closer);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالإغلاق: ", en: "❌ Close error: " })) + (e?.message || e));
+    }
   }
-  function remove(id) {
+  async function remove(id) {
     if (!window.confirm(pick(T.confirmDel))) return;
-    deleteLocal(TYPE, id);
-    setItems(loadLocal(TYPE));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحذف: ", en: "❌ Delete error: " })) + (e?.message || e));
+    }
   }
 
   const checks = SAFETY_CHECKS[draft.type] || [];
@@ -246,6 +284,68 @@ export default function HSEWorkPermit() {
               })}
             </div>
 
+            {/* Confined Space specifics — shown only when type = confined_space (replaces F-07a) */}
+            {draft.type === "confined_space" && (
+              <div style={{ marginTop: 14, padding: 14, background: "linear-gradient(135deg, #fed7aa, #ffedd5)", borderRadius: 12, border: "2px solid #ea580c" }}>
+                <div style={{ fontWeight: 950, marginBottom: 12, color: "#7c2d12", fontSize: 14 }}>{pick(T.csSec)}</div>
+
+                {/* Gas readings */}
+                <div style={{ fontWeight: 800, fontSize: 12, color: "#9a3412", marginBottom: 8 }}>{pick(T.csGases)}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+                  <div><label style={labelStyle}>{pick(T.csO2)}</label><input type="number" step="0.1" placeholder="20.9 %" value={draft.csO2} onChange={(e) => setDraft({ ...draft, csO2: e.target.value })} style={inputStyle} /></div>
+                  <div><label style={labelStyle}>{pick(T.csH2S)}</label><input type="number" step="0.1" placeholder="0 ppm" value={draft.csH2S} onChange={(e) => setDraft({ ...draft, csH2S: e.target.value })} style={inputStyle} /></div>
+                  <div><label style={labelStyle}>{pick(T.csLEL)}</label><input type="number" step="0.1" placeholder="0 %" value={draft.csLEL} onChange={(e) => setDraft({ ...draft, csLEL: e.target.value })} style={inputStyle} /></div>
+                  <div><label style={labelStyle}>{pick(T.csCO)}</label><input type="number" step="0.1" placeholder="0 ppm" value={draft.csCO} onChange={(e) => setDraft({ ...draft, csCO: e.target.value })} style={inputStyle} /></div>
+                  <div><label style={labelStyle}>{pick(T.csNH3)}</label><input type="number" step="0.1" placeholder="0 ppm" value={draft.csNH3} onChange={(e) => setDraft({ ...draft, csNH3: e.target.value })} style={inputStyle} /></div>
+                </div>
+
+                {/* Standby Attendant */}
+                <div style={{ marginTop: 12 }}>
+                  <label style={labelStyle}>{pick(T.csStandby)}</label>
+                  <input type="text" placeholder={pick(T.csStandbyPh)} value={draft.csStandbyAttendant} onChange={(e) => setDraft({ ...draft, csStandbyAttendant: e.target.value })} style={inputStyle} />
+                </div>
+
+                {/* Entry/Exit Log */}
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontWeight: 800, fontSize: 12, color: "#9a3412" }}>{pick(T.csEntries)}</div>
+                    <button
+                      type="button"
+                      style={{ ...buttonGhost, padding: "5px 12px", fontSize: 12 }}
+                      onClick={() => setDraft({ ...draft, csEntries: [...(draft.csEntries || []), { name: "", in: nowHHMM(), out: "" }] })}
+                    >
+                      {pick(T.csAddEntry)}
+                    </button>
+                  </div>
+                  {(draft.csEntries || []).map((entry, idx) => (
+                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 110px 110px auto", gap: 8, marginBottom: 6, alignItems: "center" }}>
+                      <input type="text" placeholder={pick(T.csEntryName)} value={entry.name} onChange={(e) => {
+                        const arr = [...draft.csEntries]; arr[idx] = { ...arr[idx], name: e.target.value }; setDraft({ ...draft, csEntries: arr });
+                      }} style={inputStyle} />
+                      <input type="time" step={1} value={entry.in} onChange={(e) => {
+                        const arr = [...draft.csEntries]; arr[idx] = { ...arr[idx], in: e.target.value }; setDraft({ ...draft, csEntries: arr });
+                      }} style={inputStyle} />
+                      <input type="time" step={1} value={entry.out} onChange={(e) => {
+                        const arr = [...draft.csEntries]; arr[idx] = { ...arr[idx], out: e.target.value }; setDraft({ ...draft, csEntries: arr });
+                      }} style={inputStyle} />
+                      <button
+                        type="button"
+                        style={{ ...buttonGhost, padding: "5px 10px", fontSize: 11, color: "#b91c1c", borderColor: "#fecaca" }}
+                        onClick={() => setDraft({ ...draft, csEntries: draft.csEntries.filter((_, i) => i !== idx) })}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  ))}
+                  {(!draft.csEntries || draft.csEntries.length === 0) && (
+                    <div style={{ fontSize: 11, color: "#9a3412", fontStyle: "italic", padding: "8px 0" }}>
+                      {lang === "ar" ? "لا يوجد سجلات دخول بعد" : "No entries logged yet"}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div style={{ marginTop: 10 }}>
               <label style={labelStyle}>{pick(T.ppeReq)}</label>
               <input type="text" value={draft.ppeRequired} onChange={(e) => setDraft({ ...draft, ppeRequired: e.target.value })} placeholder={pick(T.ppePh)} style={inputStyle} />
@@ -265,8 +365,10 @@ export default function HSEWorkPermit() {
             </div>
 
             <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={buttonPrimary} onClick={save}>{pick(T.saveBtn)}</button>
-              <button style={buttonGhost} onClick={() => setTab("list")}>{pick(T.cancel)}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
+              </button>
+              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}

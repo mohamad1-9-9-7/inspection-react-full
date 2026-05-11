@@ -259,6 +259,45 @@ export default function CustomerReturns() {
   const [isDirty, setIsDirty] = useState(false);
   const savedRowsRef = useRef(null); // snapshot of last-saved rows
 
+  // ✅ Existing customer names (auto-suggest from past records)
+  const [existingCustomers, setExistingCustomers] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCustomers() {
+      try {
+        const res = await fetch(`${API_BASE}/api/reports?type=returns_customers`, { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const arr = Array.isArray(json) ? json : json?.data || [];
+        // Build canonical-label map: aggressive key (no spaces, uppercase) → most common spelling
+        // This merges "Zou Zou" + "ZOU ZOU" + "ZOUZOU" into ONE entry — the most common one
+        const labelCounts = {};
+        for (const rec of arr) {
+          const items = rec?.payload?.items || [];
+          for (const it of items) {
+            const raw = (it?.customerName || "").trim();
+            if (!raw) continue;
+            const aggKey = raw.toUpperCase().replace(/\s+/g, ""); // aggressive: remove all whitespace
+            const labelKey = raw.toUpperCase().replace(/\s+/g, " "); // pretty: collapse whitespace to single space
+            if (!labelCounts[aggKey]) labelCounts[aggKey] = {};
+            labelCounts[aggKey][labelKey] = (labelCounts[aggKey][labelKey] || 0) + 1;
+          }
+        }
+        // Pick most common spelling per aggressive key
+        const canonical = Object.keys(labelCounts).map((aggKey) => {
+          const spellings = labelCounts[aggKey];
+          const best = Object.entries(spellings).sort((a, b) => b[1] - a[1])[0][0];
+          return best;
+        }).sort((a, b) => a.localeCompare(b));
+        if (!cancelled) setExistingCustomers(canonical);
+      } catch {
+        // ignore — autocomplete is optional
+      }
+    }
+    loadCustomers();
+    return () => { cancelled = true; };
+  }, []);
+
   // ✅ Auto-save draft to localStorage on every rows/date change
   useEffect(() => {
     try {
@@ -429,6 +468,13 @@ export default function CustomerReturns() {
         direction: "rtl"
       }}
     >
+      {/* Shared datalist for customer name autocomplete */}
+      <datalist id="customer-names-list">
+        {existingCustomers.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+
       {/* Hero header */}
       <div style={{
         background: "linear-gradient(180deg, rgba(255,255,255,.85), rgba(255,255,255,.65))",
@@ -660,9 +706,12 @@ export default function CustomerReturns() {
                 </td>
                 <td style={td}>
                   <input style={input}
+                    list="customer-names-list"
                     placeholder="اسم الزبون / Customer name"
                     value={row.customerName}
-                    onChange={e => handleChange(idx, "customerName", e.target.value)} />
+                    onChange={e => handleChange(idx, "customerName", e.target.value)}
+                    title={existingCustomers.length > 0 ? `📋 ${existingCustomers.length} زبون مسجّل سابقاً — ابدأ بالكتابة لاختيار من القائمة` : ""}
+                    autoComplete="off" />
                 </td>
                 <td style={td}>
                   <input style={input}

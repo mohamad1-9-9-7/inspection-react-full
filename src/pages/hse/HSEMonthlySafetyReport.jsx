@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  loadLocal, appendLocal, deleteLocal, SITE_LOCATIONS,
+  apiList, apiSave, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -149,7 +149,47 @@ export default function HSEMonthlySafetyReport() {
   const [draft, setDraft] = useState(blank());
   const [viewing, setViewing] = useState(null);
 
-  useEffect(() => { setItems(loadLocal(TYPE)); }, []);
+  // Live KPIs auto-pulled from F-01 (incident_reports)
+  const [incidents, setIncidents] = useState([]);
+  useEffect(() => {
+    apiList("incident_reports").then(setIncidents).catch(() => setIncidents([]));
+  }, []);
+
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  const liveKPIs = useMemo(() => {
+    const inMonth = (it) => (it.reportDate || "").startsWith(selectedMonth);
+    const all = incidents.filter(inMonth);
+    const nearMiss = all.filter((it) => it.severity === "near_miss").length;
+    const firstAid = all.filter((it) => it.severity === "first_aid").length;
+    const lti      = all.filter((it) => it.severity === "lti").length;
+    const major    = all.filter((it) => it.severity === "major").length;
+    const fatal    = all.filter((it) => it.severity === "fatal").length;
+    const closed   = all.filter((it) => it.status === "closed").length;
+    const closureRate = all.length ? Math.round((closed / all.length) * 100) : 0;
+    // Days without injury — from latest LTI/Major/Fatal across all time
+    const lastSerious = incidents
+      .filter((it) => ["lti", "major", "fatal"].includes(it.severity))
+      .map((it) => it.reportDate)
+      .filter(Boolean)
+      .sort()
+      .pop();
+    const daysWithoutInjury = lastSerious
+      ? Math.floor((Date.now() - new Date(lastSerious).getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+    return { total: all.length, nearMiss, firstAid, lti, major, fatal, closureRate, daysWithoutInjury };
+  }, [incidents, selectedMonth]);
+
+  const [saving, setSaving] = useState(false);
+
+  async function reload() {
+    const arr = await apiList(TYPE);
+    setItems(arr);
+  }
+  useEffect(() => { reload(); }, []);
   function printReport() { window.print(); }
 
   function setMetric(group, key, field, val) {
@@ -159,17 +199,28 @@ export default function HSEMonthlySafetyReport() {
     }));
   }
 
-  function save() {
+  async function save() {
     if (!draft.month.trim() && !draft.dateFrom) { alert(pick(T.needMonth)); return; }
-    appendLocal(TYPE, draft);
-    setItems(loadLocal(TYPE));
-    alert(pick(T.saved));
-    setDraft(blank()); setTab("list");
+    setSaving(true);
+    try {
+      await apiSave(TYPE, draft, draft.preparedBy || "HSE");
+      await reload();
+      alert(pick(T.saved));
+      setDraft(blank()); setTab("list");
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
-  function remove(id) {
+  async function remove(id) {
     if (!window.confirm(pick(T.confirmDel))) return;
-    deleteLocal(TYPE, id);
-    setItems(loadLocal(TYPE));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحذف: ", en: "❌ Delete error: " })) + (e?.message || e));
+    }
   }
 
   return (
@@ -185,6 +236,44 @@ export default function HSEMonthlySafetyReport() {
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
             <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newReport)}</button>
             <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
+          </div>
+        </div>
+
+        {/* ⚡ Live KPI Dashboard (auto-pulled from F-01) — replaces standalone KPI Dashboard */}
+        <div style={{ ...cardStyle, marginBottom: 14, padding: 18, background: "linear-gradient(135deg, #fff, #fff7ed)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 950, color: HSE_COLORS.primaryDark }}>
+                ⚡ {lang === "ar" ? "مؤشرات الأداء المباشرة" : "Live KPI Dashboard"}
+              </div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                {lang === "ar" ? "مُستخرجة تلقائياً من F-01 (تقارير الحوادث)" : "Auto-pulled from F-01 (Incident Reports)"}
+              </div>
+            </div>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              style={{ ...inputStyle, maxWidth: 180, fontWeight: 800 }}
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+            <KpiTile color="#1e40af" bg="#dbeafe" icon="👁️" value={liveKPIs.nearMiss}
+                     label={lang === "ar" ? "شبه حوادث" : "Near-Miss"} />
+            <KpiTile color="#0e7490" bg="#cffafe" icon="🏥" value={liveKPIs.firstAid}
+                     label={lang === "ar" ? "إسعاف أولي" : "First Aid"} />
+            <KpiTile color="#854d0e" bg="#fef9c3" icon="⚠️" value={liveKPIs.lti}
+                     label={lang === "ar" ? "LTI" : "LTI"} />
+            <KpiTile color="#9a3412" bg="#fed7aa" icon="🚨" value={liveKPIs.major}
+                     label={lang === "ar" ? "شديد" : "Major"} />
+            <KpiTile color="#7f1d1d" bg="#fee2e2" icon="💀" value={liveKPIs.fatal}
+                     label={lang === "ar" ? "وفاة" : "Fatal"} />
+            <KpiTile color="#166534" bg="#dcfce7" icon="✅" value={`${liveKPIs.closureRate}%`}
+                     label={lang === "ar" ? "نسبة الإغلاق" : "Closure %"} />
+            <KpiTile color="#7c3aed" bg="#ede9fe" icon="📅"
+                     value={liveKPIs.daysWithoutInjury == null ? "—" : liveKPIs.daysWithoutInjury}
+                     label={lang === "ar" ? "يوم بدون إصابة" : "Days w/o Injury"} />
           </div>
         </div>
 
@@ -244,8 +333,10 @@ export default function HSEMonthlySafetyReport() {
             </div>
 
             <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={buttonPrimary} onClick={save}>{pick(T.saveBtn)}</button>
-              <button style={buttonGhost} onClick={() => setTab("list")}>{pick(T.cancel)}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
+              </button>
+              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}
@@ -469,6 +560,23 @@ function ViewBlock({ title, children }) {
     <div style={{ marginBottom: 14, padding: 12, background: "#fff7ed", borderRadius: 10, border: "1px solid rgba(120,53,15,0.18)" }}>
       <div style={{ fontWeight: 950, marginBottom: 10, color: HSE_COLORS.primaryDark, fontSize: 14 }}>{title}</div>
       {children}
+    </div>
+  );
+}
+
+/* Live KPI tile (used in dashboard at top) */
+function KpiTile({ color, bg, icon, value, label }) {
+  return (
+    <div style={{
+      padding: "12px 14px",
+      borderRadius: 12,
+      background: bg,
+      border: `1px solid ${color}33`,
+      borderInlineStart: `4px solid ${color}`,
+    }}>
+      <div style={{ fontSize: 22, marginBottom: 4 }}>{icon}</div>
+      <div style={{ fontSize: 24, fontWeight: 950, color, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 11, fontWeight: 800, color, marginTop: 4, opacity: 0.85 }}>{label}</div>
     </div>
   );
 }

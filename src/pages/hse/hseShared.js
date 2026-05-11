@@ -2,6 +2,7 @@
 // عناصر مشتركة لصفحات HSE — ألوان، استايل، helpers، ثوابت
 
 import React, { useState, useEffect, useCallback } from "react";
+import API_BASE from "../../config/api";
 
 /* ========== i18n (Bilingual EN / AR) ========== */
 const LANG_KEY = "hse_lang";
@@ -129,7 +130,7 @@ export const nowHHMM = () => {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
-// Local storage helpers (used by HSE pages — works offline + syncs by type key)
+// Local storage helpers (kept for cache fallback only — server is primary)
 const STORAGE_PREFIX = "hse_";
 
 export function loadLocal(type) {
@@ -173,6 +174,152 @@ export function updateLocal(type, id, patch) {
   saveLocal(type, arr);
 }
 
+/* ============================================================
+   SERVER API HELPERS — primary persistence for HSE records
+   نفس باترن HACCP/ISO: type=hse_<sub_type>, payload=record
+   ============================================================ */
+
+/** Convert short HSE type → full server type with prefix (e.g. "incident_reports" → "hse_incident_reports") */
+function fullType(t) {
+  if (!t) return "hse_unknown";
+  return t.startsWith("hse_") ? t : `hse_${t}`;
+}
+
+/** Flatten server record { id, type, reporter, payload } → { id, ...payload } for UI consumption */
+function flattenRecord(rec) {
+  if (!rec) return null;
+  const p = rec.payload || rec.data?.payload || {};
+  return {
+    id: rec.id || rec._id || p.id,
+    ...p,
+    createdAt: p.createdAt || rec.createdAt,
+    updatedAt: p.updatedAt || rec.updatedAt,
+  };
+}
+
+/** Load all records of a given HSE type from server, with localStorage fallback on network failure. */
+export async function apiList(type) {
+  const ft = fullType(type);
+  try {
+    const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(ft)}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json().catch(() => null);
+    const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+    const out = arr.map(flattenRecord).filter(Boolean);
+    // Sort newest-first by createdAt
+    out.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    // Refresh local cache
+    saveLocal(type, out);
+    return out;
+  } catch (e) {
+    console.warn(`HSE apiList(${ft}) failed, using cache:`, e?.message || e);
+    return loadLocal(type);
+  }
+}
+
+/** Load a single record by id. */
+export async function apiGet(id) {
+  if (!id) return null;
+  try {
+    const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json().catch(() => null);
+    return flattenRecord(json?.data || json);
+  } catch (e) {
+    console.warn(`HSE apiGet(${id}) failed:`, e?.message || e);
+    return null;
+  }
+}
+
+/** Create a new HSE record on the server. Returns the saved record (flattened). */
+export async function apiSave(type, item, reporter = "HSE") {
+  const ft = fullType(type);
+  const payload = {
+    ...item,
+    createdAt: item.createdAt || new Date().toISOString(),
+  };
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: ft, reporter, payload }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json().catch(() => null);
+  return flattenRecord(json?.data || json) || { id: null, ...payload };
+}
+
+/** Update an existing HSE record. */
+export async function apiUpdate(type, id, patch, reporter = "HSE") {
+  const ft = fullType(type);
+  // Fetch current record first to merge payload (server PUT replaces full payload)
+  const current = await apiGet(id);
+  const merged = {
+    ...(current || {}),
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  delete merged.id;
+  const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: ft, reporter, payload: merged }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json().catch(() => null);
+  return flattenRecord(json?.data || json) || { id, ...merged };
+}
+
+/** Delete a HSE record. */
+export async function apiDelete(id) {
+  if (!id) return;
+  const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+/** React hook: load + auto-refresh a HSE list, with create/update/delete helpers. */
+export function useHSEList(type) {
+  const [items, setItems] = useState(() => loadLocal(type));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const arr = await apiList(type);
+      setItems(arr);
+    } catch (e) {
+      setError(e?.message || String(e));
+      setItems(loadLocal(type));
+    } finally {
+      setLoading(false);
+    }
+  }, [type]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const add = useCallback(async (item, reporter) => {
+    const saved = await apiSave(type, item, reporter);
+    await reload();
+    return saved;
+  }, [type, reload]);
+
+  const update = useCallback(async (id, patch, reporter) => {
+    const saved = await apiUpdate(type, id, patch, reporter);
+    await reload();
+    return saved;
+  }, [type, reload]);
+
+  const remove = useCallback(async (id) => {
+    await apiDelete(id);
+    await reload();
+  }, [reload]);
+
+  return { items, loading, error, reload, add, update, remove, setItems };
+}
+
 /* Severity × Likelihood (1-5 each) → 1-25 */
 export function calcRiskScore(likelihood, severity) {
   const l = Number(likelihood) || 0;
@@ -189,75 +336,98 @@ export function riskLevelLabel(score, lang) {
   return { level: "—", color: "#475569", bg: "#f1f5f9" };
 }
 
-/* Common page wrapper styles */
+/* ============================================================
+   MODERN STYLES — HSE module (rounded, soft shadows, focus rings)
+   ============================================================ */
+
 export const pageStyle = {
   minHeight: "100vh",
-  padding: "20px 16px 60px",
-  background: HSE_COLORS.bg + ", #fff7ed",
-  fontFamily: "Cairo, system-ui, -apple-system, sans-serif",
+  padding: "24px 18px 80px",
+  background:
+    "radial-gradient(circle at 10% 0%, rgba(251,146,60,0.16) 0, rgba(255,255,255,0) 40%)," +
+    "radial-gradient(circle at 90% 100%, rgba(245,158,11,0.12) 0, rgba(255,255,255,0) 50%)," +
+    "linear-gradient(180deg, #fff7ed 0%, #fffaf3 100%)",
+  fontFamily: 'Cairo, system-ui, -apple-system, "Segoe UI", sans-serif',
   color: HSE_COLORS.textDark,
 };
 
-export const containerStyle = { maxWidth: 1100, margin: "0 auto" };
+export const containerStyle = { maxWidth: 1180, margin: "0 auto" };
 
 export const headerBar = {
   display: "flex", alignItems: "center", justifyContent: "space-between",
-  gap: 12, padding: "12px 16px", borderRadius: 16,
-  background: "rgba(255,255,255,0.92)",
-  border: `1px solid ${HSE_COLORS.border}`,
-  boxShadow: HSE_COLORS.shadow,
-  marginBottom: 16, flexWrap: "wrap",
+  gap: 14, padding: "16px 22px", borderRadius: 20,
+  background: "rgba(255,255,255,0.96)",
+  border: "1px solid rgba(120, 53, 15, 0.10)",
+  boxShadow: "0 14px 36px rgba(234,88,12,0.10)",
+  marginBottom: 18, flexWrap: "wrap",
+  backdropFilter: "blur(6px)",
 };
 
 export const buttonPrimary = {
-  padding: "10px 18px", borderRadius: 12,
-  background: "linear-gradient(135deg, #f97316, #dc2626)",
-  color: "#fff", border: "none", cursor: "pointer",
-  fontWeight: 800, fontSize: 14,
-  boxShadow: "0 8px 18px rgba(234,88,12,0.30)",
+  padding: "10px 20px", borderRadius: 999,
+  background: "linear-gradient(135deg, #f97316, #ea580c)",
+  color: "#fff", border: "1px solid rgba(0,0,0,0)", cursor: "pointer",
+  fontWeight: 800, fontSize: 13.5, letterSpacing: "0.01em",
+  boxShadow: "0 8px 20px rgba(234,88,12,0.28)",
+  transition: "transform .15s ease, box-shadow .15s ease, opacity .15s ease",
 };
 
 export const buttonGhost = {
-  padding: "8px 14px", borderRadius: 10,
-  background: "rgba(255,255,255,0.9)",
+  padding: "9px 16px", borderRadius: 999,
+  background: "#fff",
   color: HSE_COLORS.primaryDark,
-  border: `1px solid ${HSE_COLORS.border}`,
+  border: "1px solid rgba(120, 53, 15, 0.16)",
   cursor: "pointer", fontWeight: 700, fontSize: 13,
+  boxShadow: "0 2px 6px rgba(234,88,12,0.06)",
+  transition: "background .15s, border-color .15s",
 };
 
 export const inputStyle = {
-  width: "100%", padding: "10px 12px",
-  borderRadius: 10, border: `1px solid ${HSE_COLORS.border}`,
-  background: "#fff", fontSize: 14, fontFamily: "inherit",
+  width: "100%", padding: "11px 14px",
+  borderRadius: 12, border: "1.5px solid #fed7aa",
+  background: "#fffbf5", fontSize: 14, fontFamily: "inherit",
+  color: HSE_COLORS.textDark,
   outline: "none",
+  transition: "border-color .15s, box-shadow .15s, background .15s",
 };
 
 export const labelStyle = {
   display: "block", marginBottom: 6,
-  fontSize: 13, fontWeight: 800, color: HSE_COLORS.primaryDark,
+  fontSize: 12, fontWeight: 800, color: HSE_COLORS.primaryDark,
+  letterSpacing: "0.02em",
 };
 
 export const cardStyle = {
-  background: HSE_COLORS.cardBg,
-  border: `1px solid ${HSE_COLORS.border}`,
-  borderRadius: 16, padding: 18,
-  boxShadow: HSE_COLORS.shadow,
+  background: "#fff",
+  border: "1px solid rgba(120, 53, 15, 0.10)",
+  borderRadius: 18, padding: 22,
+  boxShadow: "0 10px 30px rgba(234,88,12,0.08)",
 };
 
+/* ===== Modern table (alternating rows, hover highlight, no harsh borders) ===== */
 export const tableStyle = {
-  width: "100%", borderCollapse: "collapse",
-  background: "#fff", borderRadius: 12, overflow: "hidden",
-  boxShadow: HSE_COLORS.shadow,
+  width: "100%", borderCollapse: "separate", borderSpacing: 0,
+  background: "#fff",
+  borderRadius: 16, overflow: "hidden",
+  boxShadow: "0 8px 24px rgba(234,88,12,0.08)",
+  border: "1px solid rgba(120, 53, 15, 0.08)",
 };
 
 export const thStyle = {
-  padding: "10px 12px", textAlign: "right",
-  background: "linear-gradient(135deg, #fed7aa, #fef3c7)",
-  color: HSE_COLORS.primaryDark, fontWeight: 900, fontSize: 13,
-  borderBottom: `1px solid ${HSE_COLORS.border}`,
+  padding: "14px 16px", textAlign: "start",
+  background: "linear-gradient(135deg, #fff7ed, #ffedd5)",
+  color: HSE_COLORS.primaryDark,
+  fontWeight: 900, fontSize: 12,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  borderBottom: "1px solid #fed7aa",
+  whiteSpace: "nowrap",
 };
 
 export const tdStyle = {
-  padding: "9px 12px", borderBottom: "1px solid #fef3c7",
-  fontSize: 13, color: HSE_COLORS.textDark,
+  padding: "13px 16px",
+  borderBottom: "1px solid #fef3c7",
+  fontSize: 13.5,
+  color: HSE_COLORS.textDark,
+  verticalAlign: "middle",
 };

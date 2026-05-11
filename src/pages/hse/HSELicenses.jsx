@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  loadLocal, appendLocal, deleteLocal, updateLocal, saveLocal,
+  apiList, apiSave, apiDelete, apiUpdate,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -118,12 +118,28 @@ export default function HSELicenses() {
   const [draft, setDraft] = useState(blank());
   const [editingId, setEditingId] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    let arr = loadLocal(TYPE);
-    if (!arr || arr.length === 0) { arr = SEED; saveLocal(TYPE, arr); }
+  async function reload() {
+    const arr = await apiList(TYPE);
+    if (!arr || arr.length === 0) {
+      // Seed the server once with default licenses
+      try {
+        for (const seed of SEED) {
+          await apiSave(TYPE, seed, "HSE_seed");
+        }
+        const fresh = await apiList(TYPE);
+        setItems(fresh);
+        return;
+      } catch (e) {
+        console.warn("HSE Licenses seed failed, showing local SEED:", e?.message || e);
+        setItems(SEED);
+        return;
+      }
+    }
     setItems(arr);
-  }, []);
+  }
+  useEffect(() => { reload(); }, []);
 
   function startEdit(it) {
     setDraft({ ...it,
@@ -133,16 +149,28 @@ export default function HSELicenses() {
     });
     setEditingId(it.id); setTab("new");
   }
-  function save() {
+  async function save() {
     if (!String(draft.name).trim()) { alert(pick(T.needName)); return; }
-    if (editingId) updateLocal(TYPE, editingId, draft);
-    else appendLocal(TYPE, draft);
-    setItems(loadLocal(TYPE));
-    setDraft(blank()); setEditingId(null); setTab("list");
+    setSaving(true);
+    try {
+      if (editingId) await apiUpdate(TYPE, editingId, draft);
+      else await apiSave(TYPE, draft);
+      await reload();
+      setDraft(blank()); setEditingId(null); setTab("list");
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
-  function remove(id) {
+  async function remove(id) {
     if (!window.confirm(pick(T.confirmDel))) return;
-    deleteLocal(TYPE, id); setItems(loadLocal(TYPE));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحذف: ", en: "❌ Delete error: " })) + (e?.message || e));
+    }
   }
 
   const filtered = useMemo(() => items.filter((it) => {
@@ -248,8 +276,10 @@ export default function HSELicenses() {
               <textarea value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} style={{ ...inputStyle, minHeight: 60 }} />
             </div>
             <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={buttonPrimary} onClick={save}>{pick(T.save)}</button>
-              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }}>{pick(T.cancel)}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.save)}
+              </button>
+              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}

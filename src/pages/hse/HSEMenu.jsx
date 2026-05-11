@@ -5,6 +5,7 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 import { useHSELang, HSELangToggle } from "./hseShared";
+import HSELocalMigration from "./HSELocalMigration";
 
 const T = {
   brandSub:    { ar: "AL MAWASHI — قسم الصحة والسلامة والبيئة", en: "AL MAWASHI — HSE Department" },
@@ -28,28 +29,12 @@ const T = {
 const sections = [
   // ═════ Strategic / Reference ═════
   {
-    id: "vision-mission", group: { ar: "📌 الإطار الاستراتيجي", en: "📌 Strategic Framework" },
-    icon: "🎯",
-    title:    { ar: "الرؤية والرسالة والأهداف", en: "Vision, Mission & Strategic Objectives" },
-    subtitle: { ar: "الرؤية، الرسالة، 8 أهداف استراتيجية، نطاق العمل، الفوائد المتوقعة",
-                en: "Vision, mission, 8 strategic goals, scope of work, expected benefits" },
-    route: "/hse/vision-mission",
-  },
-  {
-    id: "legal", group: { ar: "📌 الإطار الاستراتيجي", en: "📌 Strategic Framework" },
-    icon: "⚖️",
-    title:    { ar: "الإطار القانوني والتنظيمي", en: "Legal & Regulatory Framework" },
-    subtitle: { ar: "قوانين UAE الاتحادية + بلدية دبي + الدفاع المدني + ISO 45001/14001/22000",
-                en: "UAE Federal laws + Dubai Municipality + Civil Defence + ISO 45001/14001/22000" },
-    route: "/hse/legal-framework",
-  },
-  {
-    id: "org-structure", group: { ar: "📌 الإطار الاستراتيجي", en: "📌 Strategic Framework" },
-    icon: "🏢",
-    title:    { ar: "الهيكل التنظيمي والأدوار", en: "Organizational Structure & Roles" },
-    subtitle: { ar: "مدير HSE + ضابط HSE + مسؤول سلامة الغذاء + المنسق + اللجان (5-6 موظفين)",
-                en: "HSE Manager + HSE Officer + Food Safety Officer + Coordinator + Committees (5-6 staff)" },
-    route: "/hse/org-structure",
+    id: "company-profile", group: { ar: "📌 الإطار الاستراتيجي", en: "📌 Strategic Framework" },
+    icon: "🏛️",
+    title:    { ar: "ملف الشركة (الرؤية + الهيكل)", en: "Company Profile (Vision + Org)" },
+    subtitle: { ar: "تبويبان: الرؤية والرسالة والأهداف · الهيكل التنظيمي والأدوار",
+                en: "Two tabs: Vision/Mission/Goals · Organizational Structure & Roles" },
+    route: "/hse/company-profile",
   },
 
   // ═════ Policies & Procedures ═════
@@ -88,44 +73,12 @@ const sections = [
     route: "/hse/incident-report",
   },
   {
-    id: "preliminary-accident", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "⚠️",
-    title:    { ar: "F-23 · تقرير أوّلي للحادث", en: "F-23 · Preliminary Accident Report" },
-    subtitle: { ar: "تقرير سريع خلال 24 ساعة (مكمل لـ F-01) — مركبات/إصابة/بيئي/حريق",
-                en: "Rapid 24-hour report (complement to F-01) — Vehicles/Injury/Env/Fire" },
-    route: "/hse/preliminary-accident",
-  },
-  {
-    id: "final-accident", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "📕",
-    title:    { ar: "F-25 · التقرير النهائي للحادث", en: "F-25 · Final Accident Report" },
-    subtitle: { ar: "تحقيق شامل + 5 Whys + CAPA قصير وطويل المدى + دروس مستفادة",
-                en: "Full investigation + 5 Whys + Short & Long-term CAPA + Lessons Learned" },
-    route: "/hse/final-accident",
-  },
-  {
-    id: "fatal-accident", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "💀",
-    title:    { ar: "F-24 · حادث مميت", en: "F-24 · Fatal Accident" },
-    subtitle: { ar: "تقرير حادث وفاة + إبلاغ MOHRE/الدفاع المدني/النيابة العامة + الأسرة + التأمين",
-                en: "Fatal report + Notify MOHRE/Civil Defence/Prosecution + Family + Insurance" },
-    route: "/hse/fatal-accident",
-  },
-  {
     id: "ncr", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
     icon: "🚫",
     title:    { ar: "F-26 · تقرير عدم المطابقة (NCR)", en: "F-26 · Non-Conformance Report (NCR)" },
     subtitle: { ar: "بلاغ عدم مطابقة + سبب جذري + إجراء تصحيحي/وقائي + فحص فاعلية",
                 en: "Non-conformance + Root cause + Corrective/Preventive action + Effectiveness check" },
     route: "/hse/ncr",
-  },
-  {
-    id: "daily-report", group: { ar: "📊 التقارير الدورية", en: "📊 Periodic Reports" },
-    icon: "📅",
-    title:    { ar: "F-27 · التقرير اليومي", en: "F-27 · Daily Safety Report" },
-    subtitle: { ar: "ملاحظات يومية مختصرة + ساعات عمل/شبه حوادث/Toolbox/تصاريح",
-                en: "Brief daily observations + Manhours/Near miss/Toolbox/Permits" },
-    route: "/hse/daily-report",
   },
   {
     id: "fire-equipment", group: { ar: "🧯 السلامة من الحريق", en: "🧯 Fire Safety" },
@@ -136,36 +89,12 @@ const sections = [
     route: "/hse/fire-equipment",
   },
   {
-    id: "fire-extinguisher-locations", group: { ar: "🧯 السلامة من الحريق", en: "🧯 Fire Safety" },
-    icon: "📍",
-    title:    { ar: "F-30 · مواقع الطفايات", en: "F-30 · Extinguisher Locations" },
-    subtitle: { ar: "خريطة مواقع الطفايات + النوع/السعة + ارتفاع التركيب + تواريخ الفحص والانتهاء",
-                en: "Extinguisher locations map + Type/Capacity + Mount height + Inspection/Expiry dates" },
-    route: "/hse/fire-extinguisher-locations",
-  },
-  {
     id: "emergency-contacts", group: { ar: "🧯 السلامة من الحريق", en: "🧯 Fire Safety" },
     icon: "📞",
     title:    { ar: "F-31 · جهات الطوارئ", en: "F-31 · Emergency Contacts" },
     subtitle: { ar: "قائمة موحدة (998/999/997/112) + المستشفيات + السلطات + الإدارة الداخلية",
                 en: "Consolidated list (998/999/997/112) + Hospitals + Authorities + Internal management" },
     route: "/hse/emergency-contacts",
-  },
-  {
-    id: "hand-power-tools", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "🔧",
-    title:    { ar: "F-32 · فحص الأدوات", en: "F-32 · Hand & Power Tools" },
-    subtitle: { ar: "فحص أدوات يدوية وكهربائية وهوائية + ELCB + معدات الوقاية الشخصية",
-                en: "Hand/power/pneumatic tools inspection + ELCB + PPE checks" },
-    route: "/hse/hand-power-tools",
-  },
-  {
-    id: "ladder-safety", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "🪜",
-    title:    { ar: "F-33 · سلامة السلالم", en: "F-33 · Ladder Safety" },
-    subtitle: { ar: "22 بنداً لفحص السلالم — الحالة، الملاءمة، الوضع، الاستخدام الآمن",
-                en: "22-item ladder check — Condition, Suitability, Placement, Safe use" },
-    route: "/hse/ladder-safety",
   },
   {
     id: "welfare", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
@@ -192,14 +121,6 @@ const sections = [
     route: "/hse/toolbox-meeting",
   },
   {
-    id: "injury-summary", group: { ar: "📊 التقارير الدورية", en: "📊 Periodic Reports" },
-    icon: "🩹",
-    title:    { ar: "F-22 · ملخص الإصابات", en: "F-22 · Injury Summary" },
-    subtitle: { ar: "جدول شهري لكل الإصابات (تاريخ/اسم/شارة/مهنة/طبيعة/أيام فقد)",
-                en: "Monthly table of all injuries (date/name/badge/craft/nature/days lost)" },
-    route: "/hse/injury-summary",
-  },
-  {
     id: "monthly-safety", group: { ar: "📊 التقارير الدورية", en: "📊 Periodic Reports" },
     icon: "📊",
     title:    { ar: "F-21 · التقرير الشهري للسلامة", en: "F-21 · Monthly Safety Report" },
@@ -208,52 +129,12 @@ const sections = [
     route: "/hse/monthly-safety-report",
   },
   {
-    id: "near-miss", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "👁️",
-    title:    { ar: "F-02 · شبه حادث (Near-Miss)", en: "F-02 · Near-Miss Report" },
-    subtitle: { ar: "بلاغات مبكرة + بلاغ مجهول الهوية + عدّاد شهري (مستهدف ≥10)",
-                en: "Early warnings + Anonymous reports + Monthly counter (target ≥10)" },
-    route: "/hse/near-miss",
-  },
-  {
-    id: "daily-inspection", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "📋",
-    title:    { ar: "F-04 · التفتيش اليومي", en: "F-04 · Daily Inspection" },
-    subtitle: { ar: "8 محاور (PPE، حرارة، نظافة، إطفاء، غازات، رافعات، حشرات، كهرباء) + طباعة",
-                en: "8 axes (PPE, Temp, Hygiene, Fire, Gases, Forklifts, Pests, Electrical) + Print" },
-    route: "/hse/daily-inspection",
-  },
-  {
     id: "work-permit", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
     icon: "📋",
     title:    { ar: "F-07 · تصاريح العمل", en: "F-07 · Work Permits" },
     subtitle: { ar: "أعمال ساخنة، ارتفاعات، كهرباء، كيماويات، رفع",
                 en: "Hot work, Heights, Electrical, Chemicals, Lifting" },
     route: "/hse/work-permit",
-  },
-  {
-    id: "confined-space-permit", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "🕳️",
-    title:    { ar: "F-07a · تصريح الأماكن المغلقة", en: "F-07a · Confined Space Permit" },
-    subtitle: { ar: "تصريح دخول مفصّل + قياس غازات (O₂/H₂S/LEL/CO/NH₃) + سجل دخول/خروج",
-                en: "Detailed entry permit + gas monitoring (O₂/H₂S/LEL/CO/NH₃) + entry/exit log" },
-    route: "/hse/confined-space-permit",
-  },
-  {
-    id: "excavation-permit", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "⛏️",
-    title:    { ar: "F-07b · تصريح الحفريات", en: "F-07b · Excavation Permit" },
-    subtitle: { ar: "تحقق من الخدمات تحت الأرض (كهرباء/ميكانيكي/اتصالات) + الأبعاد + الاحتياطات",
-                en: "Underground services verification + dimensions + precautions" },
-    route: "/hse/excavation-permit",
-  },
-  {
-    id: "temperature-log", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "🌡️",
-    title:    { ar: "F-08 · سجل الحرارة", en: "F-08 · Temperature Log" },
-    subtitle: { ar: "8 غرف (تبريد + تجميد) كل 4 ساعات — تقييم تلقائي للالتزام",
-                en: "8 rooms (chiller + freezer) every 4 hours — Auto compliance scoring" },
-    route: "/hse/temperature-log",
   },
   {
     id: "shipment-receiving", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
@@ -362,39 +243,6 @@ const sections = [
     route: "/hse/licenses",
   },
 
-  // ═════ Strategic Tools ═════
-  {
-    id: "kpi-dashboard", group: { ar: "📊 الإدارة الاستراتيجية", en: "📊 Strategic Management" },
-    icon: "📊",
-    title:    { ar: "لوحة مؤشرات الأداء (KPI)", en: "KPI Dashboard" },
-    subtitle: { ar: "LTIFR · TRIR · أيام بدون إصابة · الالتزام بالحرارة · نسبة الإغلاق",
-                en: "LTIFR · TRIR · Days without injury · Temp compliance · Closure rate" },
-    route: "/hse/kpis",
-  },
-  {
-    id: "budget", group: { ar: "📊 الإدارة الاستراتيجية", en: "📊 Strategic Management" },
-    icon: "💰",
-    title:    { ar: "الميزانية (CAPEX + OPEX)", en: "Budget (CAPEX + OPEX)" },
-    subtitle: { ar: "تكاليف التأسيس 195k-425k + التشغيلية 1.15M-1.88M + ROI",
-                en: "CAPEX 195k-425k + OPEX 1.15M-1.88M + ROI" },
-    route: "/hse/budget",
-  },
-  {
-    id: "implementation", group: { ar: "📊 الإدارة الاستراتيجية", en: "📊 Strategic Management" },
-    icon: "🗓️",
-    title:    { ar: "خطة التنفيذ — 12 شهراً", en: "12-Month Implementation Plan" },
-    subtitle: { ar: "4 مراحل + 10 إجراءات فورية + شريط تقدّم",
-                en: "4 phases + 10 immediate actions + Progress bar" },
-    route: "/hse/implementation-plan",
-  },
-  {
-    id: "success", group: { ar: "📊 الإدارة الاستراتيجية", en: "📊 Strategic Management" },
-    icon: "🌟",
-    title:    { ar: "عوامل النجاح والتوصيات", en: "Success Factors & Recommendations" },
-    subtitle: { ar: "7 عوامل نجاح + 6 مخاطر تجنّبها + خلاصة ختامية",
-                en: "7 success factors + 6 risks to avoid + Final summary" },
-    route: "/hse/success-factors",
-  },
 ];
 
 /* ===== Styles (Orange + Red HSE theme) ===== */
@@ -498,6 +346,7 @@ export default function HSEMenu() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <HSELocalMigration />
             <HSELangToggle lang={lang} toggle={toggle} />
             <div style={badgeStyle}>{pick(T.badgeText)}</div>
           </div>

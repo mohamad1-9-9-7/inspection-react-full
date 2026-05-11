@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  loadLocal, saveLocal, calcRiskScore, riskLevelLabel,
+  apiList, apiSave, apiDelete, apiUpdate, calcRiskScore, riskLevelLabel,
   SITE_LOCATIONS, HAZARD_CATEGORIES, tableStyle, thStyle, tdStyle,
   useHSELang, HSELangToggle,
 } from "./hseShared";
@@ -138,17 +138,28 @@ export default function HSERiskRegister() {
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState(blank());
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    let arr = loadLocal("risk_register");
+  async function reload() {
+    const arr = await apiList("risk_register");
     if (!arr || arr.length === 0) {
-      arr = SEED_RISKS;
-      saveLocal("risk_register", arr);
+      // Seed once
+      try {
+        for (const seed of SEED_RISKS) {
+          await apiSave("risk_register", seed, "HSE_seed");
+        }
+        const fresh = await apiList("risk_register");
+        setRisks(fresh);
+        return;
+      } catch (e) {
+        console.warn("Risk Register seed failed, showing local SEED:", e?.message || e);
+        setRisks(SEED_RISKS);
+        return;
+      }
     }
     setRisks(arr);
-  }, []);
-
-  function persist(arr) { setRisks(arr); saveLocal("risk_register", arr); }
+  }
+  useEffect(() => { reload(); }, []);
 
   function startNew() { setDraft(blank()); setEditingId("__new__"); setShowForm(true); }
   function startEdit(r) {
@@ -163,20 +174,32 @@ export default function HSERiskRegister() {
     setShowForm(true);
   }
 
-  function save() {
+  async function save() {
     if (!String(draft.hazard).trim()) { alert(pick(T.enterHazard)); return; }
-    if (editingId === "__new__") {
-      const id = `risk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      persist([{ ...draft, id }, ...risks]);
-    } else {
-      persist(risks.map((r) => (r.id === editingId ? { ...draft, id: editingId } : r)));
+    setSaving(true);
+    try {
+      if (editingId === "__new__") {
+        await apiSave("risk_register", draft);
+      } else {
+        await apiUpdate("risk_register", editingId, draft);
+      }
+      await reload();
+      setShowForm(false); setEditingId(null);
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSaving(false);
     }
-    setShowForm(false); setEditingId(null);
   }
 
-  function remove(id) {
+  async function remove(id) {
     if (!window.confirm(pick(T.confirmDel))) return;
-    persist(risks.filter((r) => r.id !== id));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحذف: ", en: "❌ Delete error: " })) + (e?.message || e));
+    }
   }
 
   const filtered = useMemo(() => {
@@ -332,8 +355,10 @@ export default function HSERiskRegister() {
             </div>
 
             <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-              <button style={buttonPrimary} onClick={save}>{pick(T.save)}</button>
-              <button style={buttonGhost} onClick={() => { setShowForm(false); setEditingId(null); }}>{pick(T.cancel)}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.save)}
+              </button>
+              <button style={buttonGhost} onClick={() => { setShowForm(false); setEditingId(null); }} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}

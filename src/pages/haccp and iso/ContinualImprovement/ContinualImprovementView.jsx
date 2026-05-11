@@ -110,7 +110,7 @@ const S = {
   }),
   tlConnector: (active, color) => ({
     position: "absolute", top: 12, height: 2,
-    width: "100%", left: "50%",
+    width: "100%", insetInlineStart: "50%",
     background: active ? color : "#cbd5e1",
     zIndex: 1,
   }),

@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  loadLocal, appendLocal, deleteLocal,
+  apiList, apiSave, apiDelete,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -116,18 +116,36 @@ export default function HSETrainingMatrix() {
   const [items, setItems] = useState([]);
   const [tab, setTab] = useState("matrix");
   const [draft, setDraft] = useState(blank());
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setItems(loadLocal(TYPE)); }, []);
-
-  function save() {
-    if (!draft.attendees.trim()) { alert(pick(T.needAtt)); return; }
-    appendLocal(TYPE, draft); setItems(loadLocal(TYPE));
-    alert(pick(T.saved));
-    setDraft(blank()); setTab("records");
+  async function reload() {
+    const arr = await apiList(TYPE);
+    setItems(arr);
   }
-  function remove(id) {
+  useEffect(() => { reload(); }, []);
+
+  async function save() {
+    if (!draft.attendees.trim()) { alert(pick(T.needAtt)); return; }
+    setSaving(true);
+    try {
+      await apiSave(TYPE, draft, draft.trainer || "HSE");
+      await reload();
+      alert(pick(T.saved));
+      setDraft(blank()); setTab("records");
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function remove(id) {
     if (!window.confirm(pick(T.confirmDel))) return;
-    deleteLocal(TYPE, id); setItems(loadLocal(TYPE));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((pick({ ar: "❌ خطأ بالحذف: ", en: "❌ Delete error: " })) + (e?.message || e));
+    }
   }
 
   const courseCount = useMemo(() => {
@@ -225,8 +243,10 @@ export default function HSETrainingMatrix() {
             </div>
 
             <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={buttonPrimary} onClick={save}>{pick(T.saveBtn)}</button>
-              <button style={buttonGhost} onClick={() => setTab("matrix")}>{pick(T.cancel)}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
+              </button>
+              <button style={buttonGhost} onClick={() => setTab("matrix")} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}

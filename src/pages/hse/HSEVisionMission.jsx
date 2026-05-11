@@ -106,13 +106,13 @@ const BENEFITS = [
   { ar: "تعزيز سمعة الشركة كمورّد موثوق أمام كبار العملاء من الفنادق والمطاعم وسلاسل البيع", en: "Strengthen reputation as a trusted supplier for hotels, restaurants, and retail chains" },
 ];
 
-export default function HSEVisionMission() {
+export default function HSEVisionMission({ embedded = false }) {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
 
-  return (
-    <main style={pageStyle} dir={dir}>
-      <div style={containerStyle}>
+  const content = (
+    <>
+      {!embedded && (
         <div style={headerBar}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 950 }}>{pick(T.pageTitle)}</div>
@@ -123,8 +123,9 @@ export default function HSEVisionMission() {
             <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
+      )}
 
-        {/* Executive Summary — full opening narrative */}
+      {/* Executive Summary — full opening narrative */}
         <div style={{ ...cardStyle, marginBottom: 14, background: "linear-gradient(135deg, #f3f4f6, #ffffff)", borderInlineStart: "5px solid #1f2937" }}>
           <div style={{ fontSize: 16, fontWeight: 950, color: "#1f2937", marginBottom: 10 }}>{pick(T.execTitle)}</div>
           <p style={{ fontSize: 15, lineHeight: 1.9, color: "#1f0f00", margin: 0 }}>{pick(T.execP1)}</p>
@@ -197,14 +198,21 @@ export default function HSEVisionMission() {
           </div>
         </div>
 
-        <div style={{ ...cardStyle, marginBottom: 14, background: "linear-gradient(135deg, #dcfce7, #f0fdf4)" }}>
-          <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 6, color: "#166534" }}>{pick(T.benefitsTitle)}</div>
-          <p style={{ fontSize: 13, color: "#166534", lineHeight: 1.8, margin: "0 0 12px", opacity: 0.85 }}>{pick(T.benefitsIntro)}</p>
-          <ul style={{ margin: 0, paddingInlineStart: 20, fontSize: 14, lineHeight: 2 }}>
-            {BENEFITS.map((b, i) => <li key={i} style={{ marginBottom: 4 }}>{pick(b)}</li>)}
-          </ul>
-        </div>
+      <div style={{ ...cardStyle, marginBottom: 14, background: "linear-gradient(135deg, #dcfce7, #f0fdf4)" }}>
+        <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 6, color: "#166534" }}>{pick(T.benefitsTitle)}</div>
+        <p style={{ fontSize: 13, color: "#166534", lineHeight: 1.8, margin: "0 0 12px", opacity: 0.85 }}>{pick(T.benefitsIntro)}</p>
+        <ul style={{ margin: 0, paddingInlineStart: 20, fontSize: 14, lineHeight: 2 }}>
+          {BENEFITS.map((b, i) => <li key={i} style={{ marginBottom: 4 }}>{pick(b)}</li>)}
+        </ul>
       </div>
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <main style={pageStyle} dir={dir}>
+      <div style={containerStyle}>{content}</div>
     </main>
   );
 }

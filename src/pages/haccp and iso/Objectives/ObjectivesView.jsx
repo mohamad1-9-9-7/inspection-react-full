@@ -87,7 +87,82 @@ const S = {
     fontSize: 12,
     cursor: "pointer",
   }),
+
+  /* Charter (static ISO 6.2 Objectives) */
+  charterCard: {
+    background: "#fff",
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 14,
+    border: "1px solid #c7d2fe",
+    boxShadow: "0 6px 16px rgba(67,56,202,0.06)",
+    borderLeft: "4px solid #0891b2",
+  },
+  charterHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 10,
+  },
+  charterTitle: { fontSize: 18, fontWeight: 950, color: "#0891b2" },
+  charterPara: { fontSize: 13, color: "#1e293b", lineHeight: 1.7, marginBottom: 8 },
+  charterParaTelt: { fontSize: 13, color: "#1e293b", lineHeight: 1.7, marginBottom: 12 },
+  teltMark: { color: "#dc2626", fontWeight: 900 },
+  charterTableWrap: { overflowX: "auto", marginTop: 8, border: "1px solid #cbd5e1", borderRadius: 8 },
+  charterTable: { width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 720 },
+  charterTh: {
+    background: "#ecfeff",
+    color: "#0891b2",
+    fontWeight: 900,
+    textAlign: "start",
+    padding: "10px 12px",
+    borderBottom: "2px solid #0891b2",
+    borderRight: "1px solid #cbd5e1",
+    verticalAlign: "top",
+    whiteSpace: "nowrap",
+  },
+  charterTd: {
+    padding: "10px 12px",
+    borderBottom: "1px solid #e2e8f0",
+    borderRight: "1px solid #e2e8f0",
+    color: "#1e293b",
+    verticalAlign: "top",
+    lineHeight: 1.5,
+  },
 };
+
+const CHARTER_HEADERS_EN = ["Objective", "Target / Measure", "Action Plan", "Responsibility", "Frequency", "Monitoring / Verification"];
+const CHARTER_HEADERS_AR = ["الهدف", "المستهدف / القياس", "خطة العمل", "المسؤولية", "التكرار", "المراقبة / التحقق"];
+
+const CHARTER_ROWS_EN = [
+  ["Achieve A Grade with zero major NCs", "100% compliance in internal & external audits", "Implement corrective/preventive actions, regular internal audits", "QA Manager / All Departments", "Every audit", "Internal audit reports, external audit reports"],
+  ["Achieve A Grade from Abu Dhabi Municipality & Al Ain", "100% compliance with local regulations", "Review regulatory requirements, staff training, facility readiness", "QA Manager / Compliance Officer", "Every audit", "Municipal inspection reports"],
+  ["100% staff trained in basic hygiene & EFST as per UAE regulation", "All production and support staff trained", "Conduct training programs, maintain attendance", "QA / HR", "Annually", "Training records, attendance sheets"],
+  ["Achieve zero food safety complaints from customers", "<1 complaint per month", "Complaint handling system, root cause analysis & corrective actions", "QA / Customer Service", "Monthly", "Complaint logs, CAPA records"],
+  ["Maintain cold storage temperature ≤5°C and processing area ≤10°C", "100% compliance with temperature limits", "Install sensors, alarms, monitor & record temperature", "Warehouse & Production Managers", "Daily", "Temperature logs, calibration reports"],
+  ["Achieve ~50% GMP compliance across all sites", "≥50% score in GMP assessment", "Conduct site audits, corrective actions, staff training", "QA / Site Supervisors", "Quarterly", "GMP audit reports"],
+  ["Ensure timely delivery of products", "≥ 95% on-time delivery", "Optimize routes, flexible delivery scheduling", "Logistics Manager", "Daily", "Delivery logs, transport records"],
+  ["Prevent cross-contamination", "Zero contamination incidents", "Hygiene control, color-coded tools, training", "QA / Hygiene Officer", "Continuous", "Inspection checklist"],
+  ["Ensure proper waste management", "100% compliance with waste disposal procedures", "Waste segregation, approved disposal contractor", "QA / Hygiene Officer", "Daily", "Waste disposal records, inspection"],
+  ["Ensure continuous supply despite shipment delays", "No stock shortage / minimum buffer stock maintained", "Maintain multiple suppliers, safety stock, monitor global risks", "Procurement Manager", "Monthly", "Stock records, supplier performance review"],
+  ["Prevent operational disruption due to flood", "Zero product loss due to flood", "Emergency plan, protect storage, backup transport", "Maintenance / Logistics", "As required", "Emergency drill, inspection records"],
+];
+
+const CHARTER_ROWS_AR = [
+  ["الحصول على درجة A مع عدم وجود حالات عدم مطابقة كبيرة", "التزام 100% في التدقيق الداخلي والخارجي", "تنفيذ الإجراءات التصحيحية/الوقائية، تدقيقات داخلية منتظمة", "مدير الجودة / كل الأقسام", "كل تدقيق", "تقارير التدقيق الداخلي والخارجي"],
+  ["الحصول على درجة A من بلدية أبوظبي والعين", "التزام 100% باللوائح المحلية", "مراجعة المتطلبات التنظيمية، تدريب الموظفين، جاهزية المنشأة", "مدير الجودة / مسؤول الالتزام", "كل تدقيق", "تقارير التفتيش البلدي"],
+  ["تدريب 100% من الموظفين على النظافة الأساسية و EFST وفق لوائح الإمارات", "تم تدريب كل موظفي الإنتاج والدعم", "إجراء برامج التدريب وحفظ الحضور", "الجودة / الموارد البشرية", "سنوياً", "سجلات التدريب وأوراق الحضور"],
+  ["تحقيق صفر شكاوى سلامة غذاء من العملاء", "أقل من شكوى واحدة شهرياً", "نظام معالجة الشكاوى، تحليل الأسباب الجذرية والإجراءات التصحيحية", "الجودة / خدمة العملاء", "شهرياً", "سجلات الشكاوى وسجلات CAPA"],
+  ["الحفاظ على حرارة التخزين البارد ≤5°م ومنطقة التجهيز ≤10°م", "التزام 100% بحدود الحرارة", "تركيب حساسات وإنذارات ومراقبة وتسجيل الحرارة", "مدراء المستودع والإنتاج", "يومياً", "سجلات الحرارة وتقارير المعايرة"],
+  ["تحقيق التزام GMP ~50% في جميع المواقع", "≥50% في تقييم GMP", "تدقيق المواقع، إجراءات تصحيحية، تدريب الموظفين", "الجودة / مشرفي المواقع", "ربع سنوي", "تقارير تدقيق GMP"],
+  ["ضمان توصيل المنتجات في الوقت المحدد", "≥ 95% توصيل في الوقت", "تحسين الطرق، جدولة توصيل مرنة", "مدير اللوجستيات", "يومياً", "سجلات التوصيل وسجلات النقل"],
+  ["منع التلوث المتقاطع", "صفر حالات تلوث", "ضبط النظافة، أدوات بألوان محددة، تدريب", "الجودة / مسؤول النظافة", "مستمر", "قائمة التفتيش"],
+  ["ضمان إدارة سليمة للنفايات", "التزام 100% بإجراءات التخلص من النفايات", "فصل النفايات، مقاول تخلص معتمد", "الجودة / مسؤول النظافة", "يومياً", "سجلات التخلص من النفايات والتفتيش"],
+  ["ضمان توريد مستمر رغم تأخيرات الشحن", "لا نقص بالمخزون / مخزون احتياطي محفوظ", "موردين متعددين، مخزون أمان، مراقبة المخاطر العالمية", "مدير المشتريات", "شهرياً", "سجلات المخزون ومراجعة أداء الموردين"],
+  ["منع تعطّل العمليات بسبب الفيضانات", "صفر خسارة منتجات بسبب الفيضانات", "خطة طوارئ، حماية التخزين، نقل احتياطي", "الصيانة / اللوجستيات", "حسب الحاجة", "تمارين الطوارئ وسجلات التفتيش"],
+];
 
 function calcProgress(target, current, direction) {
   const t = parseFloat(target);
@@ -107,6 +182,7 @@ export default function ObjectivesView() {
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [showCharter, setShowCharter] = useState(true);
 
   async function load() {
     setLoading(true);
@@ -161,6 +237,55 @@ export default function ObjectivesView() {
             <button style={S.btn("primary")} onClick={() => navigate("/haccp-iso/objectives")}>{t("new")}</button>
             <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
           </div>
+        </div>
+
+        {/* Charter — Static ISO 6.2 Objectives & Planning */}
+        <div style={S.charterCard}>
+          <div style={S.charterHeader}>
+            <div style={S.charterTitle}>
+              {lang === "ar" ? "الأهداف وتخطيط تحقيقها" : "Objectives and Planning to Achieve Them"}
+            </div>
+            <button style={S.btn("secondary")} onClick={() => setShowCharter(!showCharter)}>
+              {showCharter ? (lang === "ar" ? "▲ طيّ" : "▲ Hide") : (lang === "ar" ? "▼ عرض" : "▼ Show")}
+            </button>
+          </div>
+
+          {showCharter && (
+            <>
+              <div style={S.charterPara}>
+                {lang === "ar"
+                  ? "تضع المنظمة أهداف سلامة الغذاء وتخطّط الإجراءات لتحقيقها، وذلك لضمان التحكم الفعّال بمخاطر سلامة الغذاء والتحسين المستمر لـ FSMS."
+                  : "The organization establishes food safety objectives and plans actions to achieve them in order to ensure effective control of food safety hazards and continual improvement of the FSMS."}
+              </div>
+              <div style={S.charterParaTelt}>
+                <span style={S.teltMark}>{lang === "ar" ? "يتم تطوير أهداف سلامة الغذاء لـ TELT" : "TELT's"}</span>{" "}
+                {lang === "ar"
+                  ? "بناءً على: المخاطر والفرص المحددة (البند 6.1)، سياسة سلامة الغذاء، المتطلبات القانونية والتنظيمية (UAE Food Code، بلدية دبي)، المتطلبات التشغيلية وتوقعات العملاء."
+                  : "Food safety objectives are developed based on: Identified risks and opportunities (Clause 6.1), Food safety policy, Legal and regulatory requirements (UAE Food Code, Dubai Municipality), Operational requirements and customer expectations."}
+              </div>
+
+              <div style={S.charterTableWrap}>
+                <table style={S.charterTable}>
+                  <thead>
+                    <tr>
+                      {(lang === "ar" ? CHARTER_HEADERS_AR : CHARTER_HEADERS_EN).map((h, i) => (
+                        <th key={i} style={S.charterTh}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(lang === "ar" ? CHARTER_ROWS_AR : CHARTER_ROWS_EN).map((row, ri) => (
+                      <tr key={ri}>
+                        {row.map((cell, ci) => (
+                          <td key={ci} style={S.charterTd}>{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
 
         {/* KPIs */}

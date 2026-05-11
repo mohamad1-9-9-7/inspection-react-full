@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  loadLocal, appendLocal, deleteLocal, SITE_LOCATIONS,
+  apiList, apiSave, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -31,6 +31,7 @@ export default function HSEChecklist({
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(makeBlank());
   const [viewing, setViewing] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   function makeBlank() {
     return {
@@ -47,27 +48,42 @@ export default function HSEChecklist({
     };
   }
 
-  useEffect(() => { setItems(loadLocal(storageKey)); /* eslint-disable-next-line */ }, [storageKey]);
+  async function reload() {
+    const arr = await apiList(storageKey);
+    setItems(arr);
+  }
+  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [storageKey]);
   function printReport() { window.print(); }
 
   function setResult(itemKey, val) {
     setDraft((d) => ({ ...d, results: { ...d.results, [itemKey]: val } }));
   }
 
-  function save() {
+  async function save() {
     if (!draft.inspector.trim()) {
       alert(lang === "ar" ? "أدخل اسم المفتش" : "Enter inspector name");
       return;
     }
-    appendLocal(storageKey, draft);
-    setItems(loadLocal(storageKey));
-    alert(lang === "ar" ? "✅ تم الحفظ" : "✅ Saved");
-    setDraft(makeBlank()); setTab("list");
+    setSaving(true);
+    try {
+      await apiSave(storageKey, draft, draft.inspector || "HSE");
+      await reload();
+      alert(lang === "ar" ? "✅ تم الحفظ" : "✅ Saved");
+      setDraft(makeBlank()); setTab("list");
+    } catch (e) {
+      alert((lang === "ar" ? "❌ خطأ بالحفظ: " : "❌ Save error: ") + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
-  function remove(id) {
+  async function remove(id) {
     if (!window.confirm(lang === "ar" ? "حذف؟" : "Delete?")) return;
-    deleteLocal(storageKey, id);
-    setItems(loadLocal(storageKey));
+    try {
+      await apiDelete(id);
+      await reload();
+    } catch (e) {
+      alert((lang === "ar" ? "❌ خطأ بالحذف: " : "❌ Delete error: ") + (e?.message || e));
+    }
   }
 
   // Stats
@@ -210,8 +226,10 @@ export default function HSEChecklist({
             </div>
 
             <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-              <button style={buttonPrimary} onClick={save}>{lang === "ar" ? "💾 حفظ" : "💾 Save"}</button>
-              <button style={buttonGhost} onClick={() => setTab("list")}>{lang === "ar" ? "إلغاء" : "Cancel"}</button>
+              <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+                {saving ? (lang === "ar" ? "⏳ جارٍ الحفظ…" : "⏳ Saving…") : (lang === "ar" ? "💾 حفظ" : "💾 Save")}
+              </button>
+              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{lang === "ar" ? "إلغاء" : "Cancel"}</button>
             </div>
           </div>
         )}

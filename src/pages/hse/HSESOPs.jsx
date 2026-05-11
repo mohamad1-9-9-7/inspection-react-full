@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  loadLocal, saveLocal, useHSELang, HSELangToggle,
+  apiList, apiSave, apiUpdate, useHSELang, HSELangToggle,
 } from "./hseShared";
 
 const T = {
@@ -229,13 +229,15 @@ export default function HSESOPs() {
   const [editingCode, setEditingCode] = useState(null);
   const [expandedCode, setExpandedCode] = useState(null);
   const [draft, setDraft] = useState({ version: "1.0", approvedDate: "", reviewDate: "", owner: "", status: "draft" });
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const arr = loadLocal(TYPE);
+  async function reload() {
+    const arr = await apiList(TYPE);
     const map = {};
-    arr.forEach((s) => { map[s.code] = s; });
+    arr.forEach((s) => { if (s.code) map[s.code] = s; });
     setStatuses(map);
-  }, []);
+  }
+  useEffect(() => { reload(); }, []);
 
   function startEdit(item) {
     setEditingCode(item.code);
@@ -249,11 +251,23 @@ export default function HSESOPs() {
     });
   }
 
-  function saveStatus(item) {
-    const map = { ...statuses, [item.code]: { ...draft, code: item.code, titleAr: item.title.ar, titleEn: item.title.en } };
-    setStatuses(map);
-    saveLocal(TYPE, Object.values(map));
-    setEditingCode(null);
+  async function saveStatus(item) {
+    setSaving(true);
+    try {
+      const existing = statuses[item.code];
+      const payload = { ...draft, code: item.code, titleAr: item.title.ar, titleEn: item.title.en };
+      if (existing && existing.id) {
+        await apiUpdate(TYPE, existing.id, payload, draft.owner || "HSE");
+      } else {
+        await apiSave(TYPE, payload, draft.owner || "HSE");
+      }
+      await reload();
+      setEditingCode(null);
+    } catch (e) {
+      alert((lang === "ar" ? "❌ خطأ بالحفظ: " : "❌ Save error: ") + (e?.message || e));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -380,8 +394,10 @@ export default function HSESOPs() {
                           </div>
                         </div>
                         <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-                          <button style={buttonPrimary} onClick={() => saveStatus(it)}>{pick(T.save)}</button>
-                          <button style={buttonGhost} onClick={() => setEditingCode(null)}>{pick(T.cancel)}</button>
+                          <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={() => saveStatus(it)} disabled={saving}>
+                            {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.save)}
+                          </button>
+                          <button style={buttonGhost} onClick={() => setEditingCode(null)} disabled={saving}>{pick(T.cancel)}</button>
                         </div>
                       </div>
                     )}
