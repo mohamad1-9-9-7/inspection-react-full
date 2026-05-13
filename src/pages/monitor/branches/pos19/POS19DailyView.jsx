@@ -5,7 +5,7 @@ import PrintButton from "../_shared/PrintButton";
 
 /* ─────────────────────────────────────────────
    POS19DailyView — Viewer Hub  (Re-Designed)
-   14 ملفات مربوطة / 0 placeholders ✅
+   18 ملفات مربوطة / 0 placeholders ✅
 ───────────────────────────────────────────── */
 
 // ✅ Personal Hygiene View
@@ -36,6 +36,14 @@ const TRLView  = lazy(() => import("./view pos 19/TraceabilityLogView"));
 const WICView  = lazy(() => import("./view pos 19/WoodenItemsConditionChecklistView"));
 // ✅ Cooking Temperature Monitoring Record View
 const CTMView  = lazy(() => import("./view pos 19/CookingTemperatureMonitoringView"));
+// ✅ Defrosting Record View
+const DFView   = lazy(() => import("./view pos 19/DefrostingRecordView"));
+// ✅ Cooling Log View
+const CoolView = lazy(() => import("./view pos 19/CoolingLogView"));
+// ✅ Reheating Log View
+const RHView   = lazy(() => import("./view pos 19/ReheatingLogView"));
+// ✅ Calibration Log View
+const CalView  = lazy(() => import("./view pos 19/CalibrationLogView"));
 
 /* ─── Global Styles injected once ─── */
 const STYLES = `
@@ -510,9 +518,13 @@ const TABS = [
   { key: "traceability",           icon: "🔗", label: "Traceability Log",                       live: true  },
   { key: "woodenItemsCondition",   icon: "🪵", label: "Wooden Items Condition Monitoring",      live: true  },
   { key: "cookingTemperature",     icon: "🍳", label: "Cooking Temperature Record",             live: true  },
+  { key: "defrosting",             icon: "❄️", label: "Defrosting Record",                       live: true  },
+  { key: "cooling",                icon: "🧊", label: "Cooling Temperature Log",                live: true  },
+  { key: "reheating",              icon: "♨️", label: "Reheating Temperature Log",              live: true  },
+  { key: "calibration",            icon: "📏", label: "Thermometer Calibration Log",            live: true  },
 ];
 
-const LIVE_COUNT = TABS.filter(t => t.live && t.key !== "overview").length; // 14
+const LIVE_COUNT = TABS.filter(t => t.live && t.key !== "overview").length; // 18
 
 /* ─── Sub-components ─── */
 const Loader = ({ label }) => (
@@ -676,6 +688,10 @@ export default function POS19DailyView() {
       case "traceability":          return wrap(<TRLView />,    "Traceability Log");
       case "woodenItemsCondition":  return wrap(<WICView />,    "Wooden Items Condition");
       case "cookingTemperature":    return wrap(<CTMView />,    "Cooking Temperature Record");
+      case "defrosting":            return wrap(<DFView />,     "Defrosting Record");
+      case "cooling":               return wrap(<CoolView />,   "Cooling Log");
+      case "reheating":             return wrap(<RHView />,     "Reheating Log");
+      case "calibration":           return wrap(<CalView />,    "Calibration Log");
       default:
         return <div className="pos19-panel" />;
     }

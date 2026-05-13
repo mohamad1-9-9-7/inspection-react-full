@@ -65,6 +65,18 @@ const WoodenItemsConditionChecklistInput = lazy(() =>
 const CookingTemperatureMonitoringInput = lazy(() =>
   import("./pos19_inputs/CookingTemperatureMonitoringInput")
 );
+const DefrostingRecordInput = lazy(() =>
+  import("./pos19_inputs/DefrostingRecordInput")
+);
+const CoolingLogInput = lazy(() =>
+  import("./pos19_inputs/CoolingLogInput")
+);
+const ReheatingLogInput = lazy(() =>
+  import("./pos19_inputs/ReheatingLogInput")
+);
+const CalibrationLogInput = lazy(() =>
+  import("./pos19_inputs/CalibrationLogInput")
+);
 
 export default function POS19Layout() {
   const [activeTab, setActiveTab] = useState("shipments");
@@ -85,6 +97,10 @@ export default function POS19Layout() {
     { key: "traceability", label: "🔗 Traceability Log" },
     { key: "woodenItemsCondition", label: "🪵 Wooden items Condition Monitoring Checklist" },
     { key: "cookingTemperature", label: "🍳 Cooking Temperature Monitoring Record" },
+    { key: "defrosting", label: "❄️ Defrosting Record" },
+    { key: "cooling", label: "🧊 Cooling Temperature Log" },
+    { key: "reheating", label: "♨️ Reheating Temperature Log" },
+    { key: "calibration", label: "📏 Thermometer Calibration Log" },
   ];
 
   const panelStyle = {
@@ -220,6 +236,38 @@ export default function POS19Layout() {
           <div style={panelStyle}>
             <Suspense fallback={<Loading />}>
               <CookingTemperatureMonitoringInput />
+            </Suspense>
+          </div>
+        );
+      case "defrosting":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading />}>
+              <DefrostingRecordInput />
+            </Suspense>
+          </div>
+        );
+      case "cooling":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading />}>
+              <CoolingLogInput />
+            </Suspense>
+          </div>
+        );
+      case "reheating":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading />}>
+              <ReheatingLogInput />
+            </Suspense>
+          </div>
+        );
+      case "calibration":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading />}>
+              <CalibrationLogInput />
             </Suspense>
           </div>
         );

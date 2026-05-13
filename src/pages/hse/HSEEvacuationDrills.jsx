@@ -6,7 +6,7 @@ import mawashiLogo from "../../assets/almawashi-logo.jpg";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   inputStyle, HSE_COLORS,
-  apiList, apiSave, apiDelete,
+  apiList, apiSave, apiUpdate, apiDelete,
   useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -24,6 +24,7 @@ const T = {
   confirmDelete:{ ar: "حذف هذا التقرير؟", en: "Delete this report?" },
   noRecords:    { ar: "لا توجد تقارير محفوظة بعد", en: "No reports saved yet" },
   view:         { ar: "👁️ عرض", en: "👁️ View" },
+  edit:         { ar: "✏️ تعديل", en: "✏️ Edit" },
 
   // Document control header
   docTitle:     { ar: "عنوان الوثيقة",  en: "Document Title" },
@@ -441,6 +442,7 @@ export default function HSEEvacuationDrills() {
   const [tab, setTab] = useState("list");
   const [viewing, setViewing] = useState(null); // record being viewed read-only
   const [draft, setDraft] = useState(EMPTY_DRAFT);
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   async function reload() {
@@ -449,6 +451,13 @@ export default function HSEEvacuationDrills() {
   }
   useEffect(() => { reload(); }, []);
 
+  function startEdit(it) {
+    setDraft({ ...EMPTY_DRAFT, ...it });
+    setEditingId(it.id);
+    setViewing(null);
+    setTab("new");
+  }
+
   async function save() {
     if (!draft.date) {
       alert(lang === "ar" ? "تاريخ التجربة مطلوب" : "Drill date is required");
@@ -456,9 +465,14 @@ export default function HSEEvacuationDrills() {
     }
     setSaving(true);
     try {
-      await apiSave(STORAGE_KEY, draft, draft.coordinator || "HSE");
+      if (editingId) {
+        await apiUpdate(STORAGE_KEY, editingId, draft, draft.coordinator || "HSE");
+      } else {
+        await apiSave(STORAGE_KEY, draft, draft.coordinator || "HSE");
+      }
       await reload();
       setDraft(EMPTY_DRAFT);
+      setEditingId(null);
       setTab("list");
       alert(pick(T.saved));
     } catch (e) {
@@ -564,7 +578,7 @@ export default function HSEEvacuationDrills() {
               <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
                 {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.save)}
               </button>
-              <button style={buttonGhost} onClick={() => { setDraft(EMPTY_DRAFT); setTab("list"); }} disabled={saving}>{pick(T.cancel)}</button>
+              <button style={buttonGhost} onClick={() => { setDraft(EMPTY_DRAFT); setEditingId(null); setTab("list"); }} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </>
         )}
@@ -632,6 +646,12 @@ export default function HSEEvacuationDrills() {
                         onClick={() => setViewing(it)}
                       >
                         {pick(T.view)}
+                      </button>
+                      <button
+                        style={{ ...buttonGhost, padding: "8px 14px", fontSize: 12, color: "#1e40af", borderColor: "#bfdbfe", background: "#eff6ff" }}
+                        onClick={() => startEdit(it)}
+                      >
+                        {pick(T.edit)}
                       </button>
                       <button
                         style={{ ...buttonGhost, padding: "8px 14px", fontSize: 12, color: "#b91c1c", borderColor: "#fecaca", background: "#fff5f5" }}

@@ -9,7 +9,7 @@ const LANG_KEY = "hse_lang";
 
 export function useHSELang() {
   const [lang, setLang] = useState(() => {
-    try { return localStorage.getItem(LANG_KEY) || "ar"; } catch { return "ar"; }
+    try { return localStorage.getItem(LANG_KEY) || "en"; } catch { return "en"; }
   });
   useEffect(() => {
     try { localStorage.setItem(LANG_KEY, lang); } catch {}
@@ -276,6 +276,29 @@ export async function apiDelete(id) {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+/** Upload an image/file via the server. Returns the public URL. */
+export async function apiUploadFile(file) {
+  if (!file) throw new Error("No file");
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
+    throw new Error(data?.error || `Upload failed (HTTP ${res.status})`);
+  }
+  return data.optimized_url || data.url;
+}
+
+/** Delete a previously uploaded image/file by URL. */
+export async function apiDeleteFile(url) {
+  if (!url) return;
+  const res = await fetch(`${API_BASE}/api/images?url=${encodeURIComponent(url)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) throw new Error(data?.error || "Delete file failed");
 }
 
 /** React hook: load + auto-refresh a HSE list, with create/update/delete helpers. */

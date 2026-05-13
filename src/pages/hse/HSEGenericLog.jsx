@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS,
-  apiList, apiSave, apiDelete,
+  apiList, apiSave, apiUpdate, apiDelete, apiUploadFile, apiDeleteFile,
   tableStyle, thStyle, tdStyle,
   useHSELang, HSELangToggle,
 } from "./hseShared";
@@ -19,6 +19,7 @@ const COMMON_T = {
   saved:   { ar: "✅ تم الحفظ", en: "✅ Saved" },
   cancel:  { ar: "إلغاء",     en: "Cancel" },
   delete:  { ar: "حذف",      en: "Delete" },
+  edit:    { ar: "✏️ تعديل", en: "✏️ Edit" },
   confirmDelete: { ar: "حذف؟", en: "Delete?" },
   noRecords:     { ar: "لا توجد سجلات بعد", en: "No records yet" },
   noRecordsHint: { ar: "اضغط \"+ إضافة\" لإنشاء أول سجل", en: "Click \"+ Add\" to create your first record" },
@@ -85,6 +86,7 @@ export default function HSEGenericLog({
     return out;
   }, [fields]);
   const [draft, setDraft] = useState(blank);
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   async function reload() {
@@ -92,6 +94,12 @@ export default function HSEGenericLog({
     setItems(arr);
   }
   useEffect(() => { reload(); }, [storageKey]);
+
+  function startEdit(it) {
+    setDraft({ ...blank, ...it });
+    setEditingId(it.id);
+    setTab("new");
+  }
 
   async function save() {
     for (const f of fields) {
@@ -102,10 +110,16 @@ export default function HSEGenericLog({
     }
     setSaving(true);
     try {
-      await apiSave(storageKey, draft, draft.preparedBy || draft.inspectedBy || draft.recordedBy || "HSE");
+      const reporter = draft.preparedBy || draft.inspectedBy || draft.recordedBy || "HSE";
+      if (editingId) {
+        await apiUpdate(storageKey, editingId, draft, reporter);
+      } else {
+        await apiSave(storageKey, draft, reporter);
+      }
       await reload();
       alert(pick(COMMON_T.saved));
       setDraft(blank);
+      setEditingId(null);
       setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
@@ -195,6 +209,19 @@ export default function HSEGenericLog({
             {labelText}
           </label>
         );
+      case "file":
+        return (
+          <div key={f.key} style={baseStyle}>
+            {labelEl}
+            <FileUploadField
+              value={val}
+              onChange={setVal}
+              accept={f.accept || "image/*,application/pdf"}
+              multiple={f.multiple !== false}
+              lang={lang}
+            />
+          </div>
+        );
       default:
         return (
           <div key={f.key} style={baseStyle}>
@@ -216,6 +243,17 @@ export default function HSEGenericLog({
     if (col.render) return col.render(v, it, lang);
     if (v === true) return "✅";
     if (v === false) return "—";
+    // File column: show 📎 count + first link
+    if (col.type === "file") {
+      const urls = Array.isArray(v) ? v : v ? [v] : [];
+      if (urls.length === 0) return "—";
+      return (
+        <a href={urls[0]} target="_blank" rel="noopener noreferrer"
+           style={{ color: "#1e40af", fontWeight: 800, textDecoration: "none" }}>
+          📎 {urls.length}
+        </a>
+      );
+    }
     // If column has options for translation
     if (col.options) return OL(col.options.find((o) => OV(o) === v) || v, lang) || v || "—";
     return v || "—";
@@ -249,7 +287,7 @@ export default function HSEGenericLog({
               <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
                 {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(COMMON_T.save)}
               </button>
-              <button style={buttonGhost} onClick={() => { setDraft(blank); setTab("list"); }} disabled={saving}>{pick(COMMON_T.cancel)}</button>
+              <button style={buttonGhost} onClick={() => { setDraft(blank); setEditingId(null); setTab("list"); }} disabled={saving}>{pick(COMMON_T.cancel)}</button>
             </div>
           </div>
         )}
@@ -286,7 +324,9 @@ export default function HSEGenericLog({
                       listColumns={listColumns}
                       renderCell={renderCell}
                       onDelete={() => remove(it.id)}
+                      onEdit={() => startEdit(it)}
                       deleteLabel={pick(COMMON_T.delete)}
+                      editLabel={pick(COMMON_T.edit)}
                     />
                   ))}
                 </tbody>
@@ -300,7 +340,7 @@ export default function HSEGenericLog({
 }
 
 /* Row with hover highlight + alternating background */
-function ModernRow({ it, idx, listColumns, renderCell, onDelete, deleteLabel }) {
+function ModernRow({ it, idx, listColumns, renderCell, onDelete, onEdit, deleteLabel, editLabel }) {
   const [hover, setHover] = useState(false);
   const baseBg = idx % 2 === 0 ? "#fff" : "#fffbf5";
   return (
@@ -316,23 +356,163 @@ function ModernRow({ it, idx, listColumns, renderCell, onDelete, deleteLabel }) 
         <td key={c.key} style={tdStyle}>{renderCell(c, it)}</td>
       ))}
       <td style={{ ...tdStyle, textAlign: "center" }}>
-        <button
-          style={{
-            padding: "7px 14px",
-            borderRadius: 999,
-            background: "#fff5f5",
-            color: "#b91c1c",
-            border: "1px solid #fecaca",
-            cursor: "pointer",
-            fontWeight: 700,
-            fontSize: 12,
-            transition: "all .15s",
-          }}
-          onClick={onDelete}
-        >
-          🗑 {deleteLabel}
-        </button>
+        <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+          {onEdit && (
+            <button
+              style={{
+                padding: "7px 14px",
+                borderRadius: 999,
+                background: "#eff6ff",
+                color: "#1e40af",
+                border: "1px solid #bfdbfe",
+                cursor: "pointer",
+                fontWeight: 700,
+                fontSize: 12,
+                transition: "all .15s",
+              }}
+              onClick={onEdit}
+            >
+              {editLabel}
+            </button>
+          )}
+          <button
+            style={{
+              padding: "7px 14px",
+              borderRadius: 999,
+              background: "#fff5f5",
+              color: "#b91c1c",
+              border: "1px solid #fecaca",
+              cursor: "pointer",
+              fontWeight: 700,
+              fontSize: 12,
+              transition: "all .15s",
+            }}
+            onClick={onDelete}
+          >
+            🗑 {deleteLabel}
+          </button>
+        </div>
       </td>
     </tr>
+  );
+}
+
+/* ===== File upload field — supports images + PDFs ===== */
+function FileUploadField({ value, onChange, accept = "image/*,application/pdf", multiple = true, lang }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const urls = Array.isArray(value) ? value : value ? [value] : [];
+
+  async function handleFiles(files) {
+    if (!files || files.length === 0) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const uploaded = [];
+      for (const f of files) {
+        const url = await apiUploadFile(f);
+        uploaded.push(url);
+      }
+      if (multiple) {
+        onChange([...urls, ...uploaded]);
+      } else {
+        // Single-file mode: delete previous if any, then set new
+        if (urls[0]) { try { await apiDeleteFile(urls[0]); } catch {} }
+        onChange(uploaded[0]);
+      }
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removeOne(url) {
+    if (!window.confirm(lang === "ar" ? "حذف هذا الملف؟" : "Delete this file?")) return;
+    try { await apiDeleteFile(url); } catch (e) { console.warn("delete file err:", e); }
+    if (multiple) {
+      onChange(urls.filter((u) => u !== url));
+    } else {
+      onChange("");
+    }
+  }
+
+  return (
+    <div>
+      <label style={{
+        display: "inline-flex", alignItems: "center", gap: 8,
+        padding: "10px 16px", borderRadius: 12, cursor: uploading ? "wait" : "pointer",
+        background: uploading ? "#fef3c7" : "linear-gradient(135deg, #fed7aa, #fef3c7)",
+        border: "1.5px solid #fcd34d",
+        fontWeight: 800, fontSize: 13, color: "#7c2d12",
+        opacity: uploading ? 0.7 : 1,
+      }}>
+        {uploading
+          ? (lang === "ar" ? "⏳ جارٍ الرفع…" : "⏳ Uploading…")
+          : (lang === "ar" ? "📎 رفع ملف / صورة" : "📎 Upload file / image")}
+        <input
+          type="file"
+          accept={accept}
+          multiple={multiple}
+          disabled={uploading}
+          onChange={(e) => handleFiles(Array.from(e.target.files || []))}
+          style={{ display: "none" }}
+        />
+      </label>
+
+      {error && (
+        <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: "#fee2e2", color: "#7f1d1d", fontSize: 12, fontWeight: 700 }}>
+          ❌ {error}
+        </div>
+      )}
+
+      {urls.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+          {urls.map((url, i) => {
+            const isImage = /\.(jpe?g|png|gif|webp|svg)(\?|$)/i.test(url);
+            return (
+              <div key={url + i} style={{
+                position: "relative", borderRadius: 10, overflow: "hidden",
+                border: "1px solid #fed7aa", background: "#fff",
+                width: isImage ? 110 : "auto", minWidth: 110,
+              }}>
+                {isImage ? (
+                  <a href={url} target="_blank" rel="noopener noreferrer">
+                    <img src={url} alt="upload" style={{ width: 110, height: 90, objectFit: "cover", display: "block" }} />
+                  </a>
+                ) : (
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "10px 14px", color: "#7c2d12",
+                      fontSize: 12, fontWeight: 800, textDecoration: "none",
+                    }}
+                  >
+                    📄 {(lang === "ar" ? "ملف PDF" : "PDF File")}
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeOne(url)}
+                  title={lang === "ar" ? "حذف" : "Remove"}
+                  style={{
+                    position: "absolute", top: 4, insetInlineEnd: 4,
+                    width: 22, height: 22, borderRadius: "50%",
+                    background: "rgba(239,68,68,0.92)", color: "#fff",
+                    border: "none", cursor: "pointer",
+                    fontSize: 12, fontWeight: 950, lineHeight: 1,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+                  }}
+                >×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

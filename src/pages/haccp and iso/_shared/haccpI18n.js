@@ -1573,9 +1573,9 @@ export function useHaccpLang() {
   const [lang, setLang] = useState(() => {
     try {
       const v = localStorage.getItem(STORAGE_KEY);
-      return v === "en" || v === "ar" ? v : "ar";
+      return v === "en" || v === "ar" ? v : "en";
     } catch {
-      return "ar";
+      return "en";
     }
   });
 

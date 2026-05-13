@@ -1207,8 +1207,7 @@ export default function SupplierEvaluationResults() {
       const saved = localStorage.getItem("qcs_results_lang");
       if (saved === "ar" || saved === "en") return saved;
     } catch {}
-    const navLang = (typeof navigator !== "undefined" && navigator.language) || "en";
-    return String(navLang).toLowerCase().startsWith("ar") ? "ar" : "en";
+    return "en";
   });
 
   useEffect(() => {
@@ -1242,6 +1241,10 @@ export default function SupplierEvaluationResults() {
   const [uploadingDecl, setUploadingDecl] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editFlash, setEditFlash] = useState("");
+  /* attachment editing state */
+  const [attachmentsDraft, setAttachmentsDraft] = useState([]);            // general attachments
+  const [fieldAttachmentsDraft, setFieldAttachmentsDraft] = useState({});  // { att_key: [files] }
+  const [uploadingAtt, setUploadingAtt] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -1698,6 +1701,15 @@ export default function SupplierEvaluationResults() {
       file: d.file && typeof d.file === "object" && d.file.url ? { ...d.file } : null,
     });
 
+    // Seed attachment drafts from current attachments
+    setAttachmentsDraft(Array.isArray(openedAttachments) ? [...openedAttachments] : []);
+    const fa = openedFieldAttachments && typeof openedFieldAttachments === "object" ? openedFieldAttachments : {};
+    const deepCloneFA = {};
+    Object.keys(fa).forEach((k) => {
+      deepCloneFA[k] = Array.isArray(fa[k]) ? [...fa[k]] : [];
+    });
+    setFieldAttachmentsDraft(deepCloneFA);
+
     setEditingNotes(false);
     setEditMode(true);
     setEditFlash("");
@@ -1709,7 +1721,60 @@ export default function SupplierEvaluationResults() {
     setFieldsDraft({});
     setAnswersDraft({});
     setDeclarationDraft(null);
+    setAttachmentsDraft([]);
+    setFieldAttachmentsDraft({});
     setEditFlash("");
+  };
+
+  /* ===== Attachment editing handlers ===== */
+  const handleAddGeneralAttachments = async (filesList) => {
+    if (!filesList || filesList.length === 0) return;
+    setUploadingAtt(true);
+    try {
+      const uploaded = [];
+      for (const f of filesList) {
+        const u = await uploadViaServer(f);
+        uploaded.push(u);
+      }
+      setAttachmentsDraft((prev) => [...(prev || []), ...uploaded]);
+    } catch (e) {
+      console.error(e);
+      alert(String(e?.message || e));
+    } finally {
+      setUploadingAtt(false);
+    }
+  };
+
+  const handleRemoveGeneralAttachment = (index) => {
+    setAttachmentsDraft((prev) => (prev || []).filter((_, i) => i !== index));
+  };
+
+  const handleAddFieldAttachments = async (fieldKey, filesList) => {
+    if (!fieldKey || !filesList || filesList.length === 0) return;
+    setUploadingAtt(true);
+    try {
+      const uploaded = [];
+      for (const f of filesList) {
+        const u = await uploadViaServer(f);
+        uploaded.push(u);
+      }
+      setFieldAttachmentsDraft((prev) => ({
+        ...(prev || {}),
+        [fieldKey]: [...((prev || {})[fieldKey] || []), ...uploaded],
+      }));
+    } catch (e) {
+      console.error(e);
+      alert(String(e?.message || e));
+    } finally {
+      setUploadingAtt(false);
+    }
+  };
+
+  const handleRemoveFieldAttachment = (fieldKey, index) => {
+    setFieldAttachmentsDraft((prev) => {
+      const arr = (prev || {})[fieldKey] || [];
+      return { ...(prev || {}), [fieldKey]: arr.filter((_, i) => i !== index) };
+    });
   };
 
   const handleUploadDeclarationFile = async (file) => {
@@ -1775,6 +1840,8 @@ export default function SupplierEvaluationResults() {
         fields: newFields,
         answers: newAnswers,
         declaration: newDeclaration,
+        attachments: Array.isArray(attachmentsDraft) ? attachmentsDraft : [],
+        fieldAttachments: fieldAttachmentsDraft && typeof fieldAttachmentsDraft === "object" ? fieldAttachmentsDraft : {},
         meta: {
           ...(currentPayload.meta || {}),
           counts: newCounts,
@@ -1793,6 +1860,8 @@ export default function SupplierEvaluationResults() {
             fields: { ...(currentPayload.public.submission.fields || {}), ...fieldsDraft },
             answers: { ...(currentPayload.public.submission.answers || {}), ...answersDraft },
             declaration: newDeclaration,
+            attachments: Array.isArray(attachmentsDraft) ? attachmentsDraft : [],
+            fieldAttachments: fieldAttachmentsDraft && typeof fieldAttachmentsDraft === "object" ? fieldAttachmentsDraft : {},
           },
         };
       }
@@ -1821,6 +1890,8 @@ export default function SupplierEvaluationResults() {
       setFieldsDraft({});
       setAnswersDraft({});
       setDeclarationDraft(null);
+      setAttachmentsDraft([]);
+      setFieldAttachmentsDraft({});
       setEditFlash(t.editSaved);
       setTimeout(() => setEditFlash(""), 2500);
     } catch (e) {
@@ -2833,80 +2904,184 @@ export default function SupplierEvaluationResults() {
                     color: "#78350f",
                     paddingBottom: 8,
                     borderBottom: "2px dashed rgba(245,158,11,0.35)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 10,
                   }}
                 >
-                  📎 {t.attachments}
+                  <span>📎 {t.attachments}</span>
+                  {editMode && (
+                    <label style={{
+                      padding: "7px 14px",
+                      borderRadius: 999,
+                      cursor: uploadingAtt ? "wait" : "pointer",
+                      background: uploadingAtt ? "#fde68a" : "linear-gradient(135deg, #f59e0b, #d97706)",
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      border: "none",
+                      boxShadow: "0 4px 12px rgba(217,119,6,0.30)",
+                      opacity: uploadingAtt ? 0.7 : 1,
+                    }}>
+                      {uploadingAtt
+                        ? (lang === "ar" ? "⏳ جارٍ الرفع…" : "⏳ Uploading…")
+                        : (lang === "ar" ? "➕ إضافة مرفق عام" : "➕ Add general attachment")}
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*,application/pdf"
+                        disabled={uploadingAtt}
+                        onChange={(e) => { handleAddGeneralAttachments(Array.from(e.target.files || [])); e.target.value = ""; }}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                  )}
                 </div>
 
-                {!hasAnyAttachments ? (
-                  <div style={{ color: "#78350f", fontWeight: 800, fontSize: 14 }}>{t.noAttachments}</div>
-                ) : (
-                  <div style={{ display: "grid", gap: 14 }}>
-                    {/* General attachments */}
-                    {openedAttachments.length ? (
-                      <div style={{ display: "grid", gap: 10 }}>
-                        <div style={{ fontWeight: 950, color: "#0f172a" }}>{t.attachmentsGeneral}</div>
-                        {openedAttachments.map((f, i) => {
-                          const url = normalizeUrl(f?.url || f?.optimized_url || f?.secure_url || "");
-                          const name = f?.name || f?.filename || `File ${i + 1}`;
-                          return (
-                            <button
-                              key={`g-${url}-${i}`}
-                              type="button"
-                              onClick={() => setOpenAttachment({ ...f, url, name })}
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                gap: 10,
-                                alignItems: "center",
-                                padding: 12,
-                                borderRadius: 14,
-                                border: "1px solid rgba(15,23,42,0.12)",
-                                background: "rgba(255,255,255,0.96)",
-                                color: "#0f172a",
-                                fontWeight: 900,
-                                cursor: "pointer",
-                                textAlign: isRTL ? "right" : "left",
-                              }}
-                            >
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {name}</span>
-                              <span style={{ color: "#64748b", fontWeight: 850, fontSize: 12 }}>{t.preview}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
+                {(() => {
+                  // Source switches based on editMode
+                  const generalSource = editMode ? (attachmentsDraft || []) : openedAttachments;
+                  const fieldSource = editMode ? (fieldAttachmentsDraft || {}) : openedFieldAttachments;
+                  const fieldEntries = editMode
+                    ? Object.keys(fieldSource).map((k) => ({ key: k, files: Array.isArray(fieldSource[k]) ? fieldSource[k] : [] }))
+                    : fieldAttEntries;
+                  const empty = (!generalSource || generalSource.length === 0)
+                    && (!fieldEntries || fieldEntries.every((g) => !g.files || g.files.length === 0));
 
-                    {/* Field attachments */}
-                    {fieldAttEntries.length ? (
-                      <div style={{ display: "grid", gap: 12 }}>
-                        <div style={{ fontWeight: 950, color: "#0f172a" }}>{t.attachmentsByField}</div>
-
-                        {fieldAttEntries.map((grp) => (
-                          <div
-                            key={grp.key}
-                            style={{
-                              border: "1px solid rgba(15,23,42,0.12)",
-                              borderRadius: 14,
-                              background: "rgba(248,250,252,0.85)",
-                              padding: 12,
-                            }}
-                          >
-                            <div style={{ fontWeight: 980, color: "#0f172a", marginBottom: 10 }}>
-                              • {getFieldAttachmentLabel(grp.key)}
-                              <span style={{ color: "#64748b", fontWeight: 850, fontSize: 12 }}> ({grp.key})</span>
+                  if (empty && !editMode) {
+                    return <div style={{ color: "#78350f", fontWeight: 800, fontSize: 14 }}>{t.noAttachments}</div>;
+                  }
+                  return (
+                    <div style={{ display: "grid", gap: 14 }}>
+                      {/* General attachments */}
+                      {(generalSource && generalSource.length > 0) || editMode ? (
+                        <div style={{ display: "grid", gap: 10 }}>
+                          <div style={{ fontWeight: 950, color: "#0f172a" }}>{t.attachmentsGeneral}</div>
+                          {(generalSource || []).length === 0 ? (
+                            <div style={{ color: "#64748b", fontSize: 13, fontStyle: "italic", padding: 8 }}>
+                              {lang === "ar" ? "لا توجد مرفقات عامة — اضغط على زر الإضافة أعلاه" : "No general attachments — click the add button above"}
                             </div>
-
-                            <div style={{ display: "grid", gap: 10 }}>
-                              {grp.files.map((f, i) => {
-                                const url = normalizeUrl(f?.url || f?.optimized_url || f?.secure_url || "");
-                                const name = f?.name || f?.filename || `File ${i + 1}`;
-                                return (
+                          ) : (
+                            (generalSource || []).map((f, i) => {
+                              const url = normalizeUrl(f?.url || f?.optimized_url || f?.secure_url || "");
+                              const name = f?.name || f?.filename || `File ${i + 1}`;
+                              return (
+                                <div key={`g-${url}-${i}`} style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  alignItems: "center",
+                                  padding: 12,
+                                  borderRadius: 14,
+                                  border: "1px solid rgba(15,23,42,0.12)",
+                                  background: "rgba(255,255,255,0.96)",
+                                  color: "#0f172a",
+                                  fontWeight: 900,
+                                  textAlign: isRTL ? "right" : "left",
+                                }}>
                                   <button
-                                    key={`f-${grp.key}-${url}-${i}`}
                                     type="button"
                                     onClick={() => setOpenAttachment({ ...f, url, name })}
                                     style={{
+                                      flex: 1,
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      gap: 10,
+                                      alignItems: "center",
+                                      background: "transparent",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      color: "inherit",
+                                      fontWeight: 900,
+                                      textAlign: "inherit",
+                                      padding: 0,
+                                    }}
+                                  >
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {name}</span>
+                                    <span style={{ color: "#64748b", fontWeight: 850, fontSize: 12 }}>{t.preview}</span>
+                                  </button>
+                                  {editMode && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveGeneralAttachment(i)}
+                                      title={lang === "ar" ? "حذف" : "Remove"}
+                                      style={{
+                                        marginInlineStart: 8,
+                                        padding: "4px 10px",
+                                        borderRadius: 999,
+                                        background: "#fee2e2",
+                                        color: "#991b1b",
+                                        border: "1px solid #fecaca",
+                                        fontWeight: 900,
+                                        fontSize: 12,
+                                        cursor: "pointer",
+                                      }}
+                                    >✕</button>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      ) : null}
+
+                      {/* Field attachments */}
+                      {(fieldEntries.length > 0) || editMode ? (
+                        <div style={{ display: "grid", gap: 12 }}>
+                          <div style={{ fontWeight: 950, color: "#0f172a" }}>{t.attachmentsByField}</div>
+
+                          {fieldEntries.map((grp) => (
+                            <div
+                              key={grp.key}
+                              style={{
+                                border: "1px solid rgba(15,23,42,0.12)",
+                                borderRadius: 14,
+                                background: "rgba(248,250,252,0.85)",
+                                padding: 12,
+                              }}
+                            >
+                              <div style={{ fontWeight: 980, color: "#0f172a", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                                <span>
+                                  • {getFieldAttachmentLabel(grp.key)}
+                                  <span style={{ color: "#64748b", fontWeight: 850, fontSize: 12 }}> ({grp.key})</span>
+                                </span>
+                                {editMode && (
+                                  <label style={{
+                                    padding: "5px 12px",
+                                    borderRadius: 999,
+                                    cursor: uploadingAtt ? "wait" : "pointer",
+                                    background: uploadingAtt ? "#e5e7eb" : "#dbeafe",
+                                    color: "#1e40af",
+                                    fontSize: 11,
+                                    fontWeight: 900,
+                                    border: "1px solid #bfdbfe",
+                                    opacity: uploadingAtt ? 0.7 : 1,
+                                  }}>
+                                    {lang === "ar" ? "➕ إضافة" : "➕ Add"}
+                                    <input
+                                      type="file"
+                                      multiple
+                                      accept="image/*,application/pdf"
+                                      disabled={uploadingAtt}
+                                      onChange={(e) => { handleAddFieldAttachments(grp.key, Array.from(e.target.files || [])); e.target.value = ""; }}
+                                      style={{ display: "none" }}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+
+                              <div style={{ display: "grid", gap: 10 }}>
+                                {grp.files.length === 0 ? (
+                                  <div style={{ color: "#64748b", fontSize: 12, fontStyle: "italic", padding: 6 }}>
+                                    {lang === "ar" ? "لا توجد ملفات لهذا الحقل" : "No files for this field"}
+                                  </div>
+                                ) : grp.files.map((f, i) => {
+                                  const url = normalizeUrl(f?.url || f?.optimized_url || f?.secure_url || "");
+                                  const name = f?.name || f?.filename || `File ${i + 1}`;
+                                  return (
+                                    <div key={`f-${grp.key}-${url}-${i}`} style={{
                                       display: "flex",
                                       justifyContent: "space-between",
                                       gap: 10,
@@ -2917,22 +3092,58 @@ export default function SupplierEvaluationResults() {
                                       background: "rgba(255,255,255,0.96)",
                                       color: "#0f172a",
                                       fontWeight: 900,
-                                      cursor: "pointer",
                                       textAlign: isRTL ? "right" : "left",
-                                    }}
-                                  >
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {name}</span>
-                                    <span style={{ color: "#64748b", fontWeight: 850, fontSize: 12 }}>{t.preview}</span>
-                                  </button>
-                                );
-                              })}
+                                    }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setOpenAttachment({ ...f, url, name })}
+                                        style={{
+                                          flex: 1,
+                                          display: "flex",
+                                          justifyContent: "space-between",
+                                          gap: 10,
+                                          alignItems: "center",
+                                          background: "transparent",
+                                          border: "none",
+                                          cursor: "pointer",
+                                          color: "inherit",
+                                          fontWeight: 900,
+                                          textAlign: "inherit",
+                                          padding: 0,
+                                        }}
+                                      >
+                                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📎 {name}</span>
+                                        <span style={{ color: "#64748b", fontWeight: 850, fontSize: 12 }}>{t.preview}</span>
+                                      </button>
+                                      {editMode && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveFieldAttachment(grp.key, i)}
+                                          title={lang === "ar" ? "حذف" : "Remove"}
+                                          style={{
+                                            marginInlineStart: 8,
+                                            padding: "4px 10px",
+                                            borderRadius: 999,
+                                            background: "#fee2e2",
+                                            color: "#991b1b",
+                                            border: "1px solid #fecaca",
+                                            fontWeight: 900,
+                                            fontSize: 12,
+                                            cursor: "pointer",
+                                          }}
+                                        >✕</button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* YES/NO questions */}

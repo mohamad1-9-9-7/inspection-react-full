@@ -153,6 +153,12 @@ export default function PersonalHygieneChecklistInput() {
         ]}
       />
 
+      {/* Important info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#eff6ff", border:"1px solid #bfdbfe", borderLeft:"4px solid #3b82f6", borderRadius:8, color:"#1e40af", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>ℹ️</div>
+        <div><strong>Important (PRP):</strong> All food handlers must <b>wash hands</b> before food handling, after toilet use, after touching face/hair, and between tasks. <b>No jewelry, exposed cuts/wounds, or work while ill</b> (vomiting, diarrhea, fever). Hair must be fully covered, nails trimmed and unpainted, and clean uniform worn.</div>
+      </div>
+
       {/* Title band */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>Good Hygiene Practices</div>

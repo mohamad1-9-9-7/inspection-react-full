@@ -159,6 +159,12 @@ export default function HotHoldingTemperatureLogInput() {
         ]}
       />
 
+      {/* Critical info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
+        <div><strong>Critical Limit (CCP):</strong> Hot-held food must be maintained at <b>≥ 60°C continuously</b>. Check temperature at least <b>every 2 hours</b>. Any food held below 60°C for more than <b>2 hours</b> must be either reheated to ≥ 75°C or discarded — never returned to hot holding.</div>
+      </div>
+
       {/* Note strip */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>

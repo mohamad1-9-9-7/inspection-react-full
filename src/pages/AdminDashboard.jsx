@@ -310,6 +310,17 @@ export default function AdminDashboard() {
               )}
               {opMsg   && <div className={`ad-sync-msg ${isErr?"err":"ok"}`}>{opMsg}</div>}
             </div>
+            <button
+              className="ad-hbtn"
+              onClick={() => navigate("/ai-assistant")}
+              style={{
+                background: "linear-gradient(135deg, #7c3aed, #2563eb)",
+                color: "#fff",
+                fontWeight: 900,
+                boxShadow: "0 8px 18px rgba(124,58,237,.30)",
+              }}
+              title="AI Assistant"
+            >🤖 AI Assistant</button>
             <button className="ad-hbtn ad-hbtn-refresh" onClick={reloadFromServer}>🔄 Refresh</button>
             <button className="ad-hbtn ad-hbtn-logout"  onClick={()=>navigate("/")}>🚪 Logout</button>
           </div>

@@ -20,12 +20,11 @@ function emptyRow() {
     date: "",
     productName: "",
     supplier: "",
-    batchLotNo: "",
     productionDate: "",
     expiryDate: "",
-    quantityReceived: "",
-    quantityUsed: "",
-    quantityDisposed: "",
+    finalProduct: "",
+    finalProductionDate: "",
+    finalExpiryDate: "",
     storageLocation: "",
     disposalReason: "",
     checkedBy: "",
@@ -84,19 +83,18 @@ export default function TraceabilityLogInput() {
   function removeRow(i){ setRows(prev => prev.filter((_, idx) => idx !== i)); }
 
   const colDefs = useMemo(() => ([
-    <col key="date"     style={{ width: 110 }} />,
-    <col key="prod"     style={{ width: 160 }} />,
-    <col key="supp"     style={{ width: 160 }} />,
-    <col key="batch"    style={{ width: 130 }} />,
-    <col key="prodDate" style={{ width: 110 }} />,
-    <col key="expDate"  style={{ width: 110 }} />,
-    <col key="qtyRec"   style={{ width: 90 }} />,
-    <col key="qtyUsed"  style={{ width: 90 }} />,
-    <col key="qtyDisp"  style={{ width: 90 }} />,
-    <col key="storage"  style={{ width: 140 }} />,
-    <col key="reason"   style={{ width: 160 }} />,
-    <col key="chk"      style={{ width: 120 }} />,
-    <col key="del"      style={{ width: 70 }} />,
+    <col key="date"          style={{ width: 110 }} />,
+    <col key="prod"          style={{ width: 160 }} />,
+    <col key="supp"          style={{ width: 160 }} />,
+    <col key="prodDate"      style={{ width: 110 }} />,
+    <col key="expDate"       style={{ width: 110 }} />,
+    <col key="finalProduct"  style={{ width: 160 }} />,
+    <col key="finalProdDate" style={{ width: 130 }} />,
+    <col key="finalExpDate"  style={{ width: 130 }} />,
+    <col key="storage"       style={{ width: 140 }} />,
+    <col key="reason"        style={{ width: 160 }} />,
+    <col key="chk"           style={{ width: 120 }} />,
+    <col key="del"           style={{ width: 70 }} />,
   ]), []);
 
   async function handleSave() {
@@ -138,6 +136,12 @@ export default function TraceabilityLogInput() {
         ]}
       />
 
+      {/* Important info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#eff6ff", border:"1px solid #bfdbfe", borderLeft:"4px solid #3b82f6", borderRadius:8, color:"#1e40af", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>ℹ️</div>
+        <div><strong>Important (HACCP Requirement):</strong> Every raw material must be traceable to its <b>supplier batch / lot</b>, and every final product traceable back to its raw-material batches. This record is the basis for <b>product recall</b> — incomplete entries can compromise the entire recall capability. Keep records on file for at least <b>2 years</b>.</div>
+      </div>
+
       {/* Title strip */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>PRODUCT TRACEABILITY RECORD</div>
@@ -150,14 +154,13 @@ export default function TraceabilityLogInput() {
           <thead>
             <tr>
               <th style={thCell}>Date</th>
-              <th style={thCell}>Product{"\n"}Name</th>
+              <th style={thCell}>Raw{"\n"}Name</th>
               <th style={thCell}>Supplier</th>
-              <th style={thCell}>Batch /{ "\n"}Lot No.</th>
               <th style={thCell}>Production{"\n"}Date</th>
               <th style={thCell}>Expiry{"\n"}Date</th>
-              <th style={thCell}>Qty{"\n"}Received</th>
-              <th style={thCell}>Qty{"\n"}Used</th>
-              <th style={thCell}>Qty{"\n"}Disposed</th>
+              <th style={thCell}>Final{"\n"}Product</th>
+              <th style={thCell}>Final Prod.{"\n"}Date</th>
+              <th style={thCell}>Final Exp.{"\n"}Date</th>
               <th style={thCell}>Storage{"\n"}Location</th>
               <th style={thCell}>Disposal{"\n"}Reason</th>
               <th style={thCell}>Checked{"\n"}by</th>
@@ -168,14 +171,13 @@ export default function TraceabilityLogInput() {
             {rows.map((r, i) => (
               <tr key={i}>
                 <td style={tdCell}><input type="date"   value={r.date}             onChange={e=>updateRow(i,"date",e.target.value)}             style={inputStyle} /></td>
-                <td style={tdCell}><input type="text"   value={r.productName}      onChange={e=>updateRow(i,"productName",e.target.value)}      style={inputStyle} placeholder="Product" /></td>
+                <td style={tdCell}><input type="text"   value={r.productName}      onChange={e=>updateRow(i,"productName",e.target.value)}      style={inputStyle} placeholder="Raw" /></td>
                 <td style={tdCell}><input type="text"   value={r.supplier}         onChange={e=>updateRow(i,"supplier",e.target.value)}         style={inputStyle} placeholder="Supplier" /></td>
-                <td style={tdCell}><input type="text"   value={r.batchLotNo}       onChange={e=>updateRow(i,"batchLotNo",e.target.value)}       style={inputStyle} placeholder="Batch/Lot" /></td>
                 <td style={tdCell}><input type="date"   value={r.productionDate}   onChange={e=>updateRow(i,"productionDate",e.target.value)}   style={inputStyle} /></td>
                 <td style={tdCell}><input type="date"   value={r.expiryDate}       onChange={e=>updateRow(i,"expiryDate",e.target.value)}       style={inputStyle} /></td>
-                <td style={tdCell}><input type="number" value={r.quantityReceived} onChange={e=>updateRow(i,"quantityReceived",e.target.value)} style={inputStyle} placeholder="kg/units" /></td>
-                <td style={tdCell}><input type="number" value={r.quantityUsed}     onChange={e=>updateRow(i,"quantityUsed",e.target.value)}     style={inputStyle} placeholder="kg/units" /></td>
-                <td style={tdCell}><input type="number" value={r.quantityDisposed} onChange={e=>updateRow(i,"quantityDisposed",e.target.value)} style={inputStyle} placeholder="kg/units" /></td>
+                <td style={tdCell}><input type="text"   value={r.finalProduct}        onChange={e=>updateRow(i,"finalProduct",e.target.value)}        style={inputStyle} placeholder="Final Product" /></td>
+                <td style={tdCell}><input type="date"   value={r.finalProductionDate} onChange={e=>updateRow(i,"finalProductionDate",e.target.value)} style={inputStyle} /></td>
+                <td style={tdCell}><input type="date"   value={r.finalExpiryDate}     onChange={e=>updateRow(i,"finalExpiryDate",e.target.value)}     style={inputStyle} /></td>
                 <td style={tdCell}><input type="text"   value={r.storageLocation}  onChange={e=>updateRow(i,"storageLocation",e.target.value)}  style={inputStyle} placeholder="Location" /></td>
                 <td style={tdCell}><input type="text"   value={r.disposalReason}   onChange={e=>updateRow(i,"disposalReason",e.target.value)}   style={inputStyle} placeholder="If any" /></td>
                 <td style={tdCell}><input type="text"   value={r.checkedBy}        onChange={e=>updateRow(i,"checkedBy",e.target.value)}        style={inputStyle} /></td>

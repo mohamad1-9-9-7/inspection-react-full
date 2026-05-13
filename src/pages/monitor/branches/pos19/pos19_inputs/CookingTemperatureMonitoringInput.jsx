@@ -176,6 +176,12 @@ export default function CookingTemperatureMonitoringInput() {
         ]}
       />
 
+      {/* Critical info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
+        <div><strong>Critical Limit (CCP):</strong> Core internal temperature must reach <b>≥ 75°C for at least 15 seconds</b> (poultry & minced meat <b>≥ 82°C</b>). Always verify with a <b>calibrated probe thermometer</b> inserted at the thickest part of the food. Out-of-limit batches must be cooked further or rejected.</div>
+      </div>
+
       {/* Table */}
       <div style={{ overflowX:"auto" }}>
         <table style={{ width:"100%", borderCollapse:"collapse", tableLayout:"fixed", fontSize:12 }}>

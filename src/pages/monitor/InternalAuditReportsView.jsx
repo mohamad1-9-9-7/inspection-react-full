@@ -1,5 +1,6 @@
 // src/pages/monitor/InternalAuditReportsView.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 
 /* ===== API base (aligned with your project) ===== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -28,29 +29,76 @@ const TYPE_KEY = "internal_multi_audit";
 const SHOW_DEBUG = false;
 
 /* ===== Known branch codes (normalize branch name from raw text) ===== */
-const BRANCH_CODES = [
-  "QCS",
-  "POS 6","POS 7","POS 10","POS 11","POS 14","POS 15","POS 16","POS 17","POS 18",
-  "POS 19","POS 21","POS 24","POS 25","POS 26","POS 31","POS 34","POS 35","POS 36",
-  "POS 37","POS 38","POS 41","POS 42","POS 43","POS 44","POS 45",
-  "FTR1","FTR2","PRODUCTION"
+/* ===== Smart branch matching =====
+ * Each branch has a canonical code + a list of aliases (English + Arabic)
+ * that often appear in audit reports as the "location" or "branch" field.
+ * The matcher is order-sensitive: more specific codes come first so
+ * "POS 11" doesn't accidentally match "POS 1".
+ */
+const BRANCHES = [
+  { code: "QCS",         labelEn: "QCS — Al Qusais Warehouse",       labelAr: "QCS — مستودع القصيص",          aliases: ["QCS","QUSAIS WAREHOUSE","QUSAIS-WAREHOUSE","AL QUSAIS","ALQUSAIS","QUSAIS","قصيص","مستودع القصيص","المستودع"] },
+  { code: "POS 45",      labelEn: "POS 45",                          labelAr: "POS 45",                       aliases: ["POS 45","POS45"] },
+  { code: "POS 44",      labelEn: "POS 44",                          labelAr: "POS 44",                       aliases: ["POS 44","POS44"] },
+  { code: "POS 43",      labelEn: "POS 43",                          labelAr: "POS 43",                       aliases: ["POS 43","POS43"] },
+  { code: "POS 42",      labelEn: "POS 42",                          labelAr: "POS 42",                       aliases: ["POS 42","POS42"] },
+  { code: "POS 41",      labelEn: "POS 41",                          labelAr: "POS 41",                       aliases: ["POS 41","POS41"] },
+  { code: "POS 38",      labelEn: "POS 38",                          labelAr: "POS 38",                       aliases: ["POS 38","POS38"] },
+  { code: "POS 37",      labelEn: "POS 37",                          labelAr: "POS 37",                       aliases: ["POS 37","POS37"] },
+  { code: "POS 36",      labelEn: "POS 36",                          labelAr: "POS 36",                       aliases: ["POS 36","POS36"] },
+  { code: "POS 35",      labelEn: "POS 35",                          labelAr: "POS 35",                       aliases: ["POS 35","POS35"] },
+  { code: "POS 34",      labelEn: "POS 34",                          labelAr: "POS 34",                       aliases: ["POS 34","POS34"] },
+  { code: "POS 31",      labelEn: "POS 31",                          labelAr: "POS 31",                       aliases: ["POS 31","POS31"] },
+  { code: "POS 26",      labelEn: "POS 26",                          labelAr: "POS 26",                       aliases: ["POS 26","POS26"] },
+  { code: "POS 25",      labelEn: "POS 25",                          labelAr: "POS 25",                       aliases: ["POS 25","POS25"] },
+  { code: "POS 24",      labelEn: "POS 24",                          labelAr: "POS 24",                       aliases: ["POS 24","POS24"] },
+  { code: "POS 21",      labelEn: "POS 21",                          labelAr: "POS 21",                       aliases: ["POS 21","POS21"] },
+  { code: "POS 19",      labelEn: "POS 19 — Motor City",             labelAr: "POS 19 — موتور سيتي",          aliases: ["POS 19","POS19","MOTOR CITY"] },
+  { code: "POS 18",      labelEn: "POS 18",                          labelAr: "POS 18",                       aliases: ["POS 18","POS18"] },
+  { code: "POS 17",      labelEn: "POS 17 — Mushrif Coop",           labelAr: "POS 17 — تعاونية المشرف",      aliases: ["POS 17","POS17","MUSHRIF COOP","تعاونية المشرف"] },
+  { code: "POS 16",      labelEn: "POS 16 — AFCOP Maqta Mall",        labelAr: "POS 16 — AFCOP مول المقطع",   aliases: ["POS 16","POS16","AFCOP","MAQTA MALL","المقطع"] },
+  // 🔥 Aliased branches (Arabic names + butchery name):
+  { code: "POS 15",      labelEn: "POS 15 — Al Barsha Butchery",     labelAr: "POS 15 — ملحمة البرشا",        aliases: ["POS 15","POS15","ALBARSHA","AL BARSHA","ملحمة البرشا","البرشا","BARSHA"] },
+  { code: "POS 14",      labelEn: "POS 14 — Al Ain Butchery",        labelAr: "POS 14 — ملحمة العين",        aliases: ["POS 14","POS14","AL AIN BUTCHERY","ملحمة العين","AL AIN","العين"] },
+  { code: "POS 11",      labelEn: "POS 11 — Al Ain Market",          labelAr: "POS 11 — سوق العين",          aliases: ["POS 11","POS11","AL AIN MARKET","سوق العين"] },
+  { code: "POS 10",      labelEn: "POS 10 — Abu Dhabi Butchery",     labelAr: "POS 10 — ملحمة أبوظبي",        aliases: ["POS 10","POS10","ABU DHABI BUTCHERY","ملحمة أبوظبي","ملحمة ابوظبي","ABU DHABI","ABUDHABI","أبوظبي","ابوظبي"] },
+  { code: "POS 7",       labelEn: "POS 7",                           labelAr: "POS 7",                        aliases: ["POS 7","POS7"] },
+  { code: "POS 6",       labelEn: "POS 6 — Sharjah Butchery",        labelAr: "POS 6 — ملحمة الشارقة",        aliases: ["POS 6","POS6","SHARJAH BUTCHERY","ملحمة الشارقة","الشارقة"] },
+  { code: "FTR 1",       labelEn: "FTR 1 — Al Mushrif Park",         labelAr: "FTR 1 — حديقة المشرف",         aliases: ["FTR1","FTR 1","AL MUSHRIF","MUSHRIF PARK","المشرف","حديقة المشرف","حديقة المشرف بارك"] },
+  { code: "FTR 2",       labelEn: "FTR 2 — Al Mamzar (Park/Beach)",  labelAr: "FTR 2 — الممزر (حديقة/شاطئ)",  aliases: ["FTR2","FTR 2","MAMZAR","AL MAMZAR","الممزر","حديقة الممزر","شاطئ الممزر"] },
+  { code: "PRODUCTION",  labelEn: "Production",                       labelAr: "الإنتاج",                      aliases: ["PRODUCTION","الإنتاج","انتاج"] },
 ];
+
+/** Normalize a string for matching: strip spaces, dashes, diacritics, lowercase. */
+function _normalize(s) {
+  return String(s || "")
+    .replace(/[ً-ْ]/g, "")   // strip Arabic diacritics
+    .toUpperCase()
+    .replace(/[\s\-_،,()/]+/g, "");
+}
 
 function canonicalBranchName(str) {
   if (!str) return "";
   const t = String(str).trim();
-  const tUpperNoSpace = t.toUpperCase().replace(/\s+/g, "");
-  for (const code of BRANCH_CODES) {
-    const codeUpperNoSpace = code.toUpperCase().replace(/\s+/g, "");
-    if (
-      tUpperNoSpace.startsWith(codeUpperNoSpace) ||
-      tUpperNoSpace.includes(codeUpperNoSpace)
-    ) {
-      return code;
+  const norm = _normalize(t);
+  for (const b of BRANCHES) {
+    for (const alias of b.aliases) {
+      const a = _normalize(alias);
+      if (!a) continue;
+      if (norm === a || norm.includes(a)) return b.code;
     }
   }
-  return t;
+  return t; // unknown — keep as-is
 }
+
+/** Returns a friendly display label for a canonical branch code in the chosen language. */
+function getBranchLabel(code, lang) {
+  const found = BRANCHES.find((b) => b.code === code);
+  if (!found) return code;
+  return lang === "ar" ? found.labelAr : found.labelEn;
+}
+
+// Back-compat: legacy array of just codes (used in a few spots)
+const BRANCH_CODES = BRANCHES.map((b) => b.code);
 
 /* ===== Helpers ===== */
 function safe(obj, path, fb) {
@@ -111,8 +159,10 @@ function buildDateTreeFromViews(list) {
   return tree;
 }
 
-/* image -> base64 (compressed) */
-async function fileToCompressedDataURL(file, maxSide = 1280, quality = 0.8) {
+/* ✅ Upload image to Cloudinary via /api/images → returns URL.
+ *    Replaces the old base64 path that was bloating the DB and crashing the server.
+ *    Keeps the same client-side compression to <=1280px / quality 0.8 to keep uploads small. */
+async function uploadCompressedToCloudinary(file, maxSide = 1280, quality = 0.8) {
   const img = await new Promise((res, rej) => {
     const i = new Image();
     i.onload = () => res(i);
@@ -126,7 +176,18 @@ async function fileToCompressedDataURL(file, maxSide = 1280, quality = 0.8) {
   canvas.height = Math.round(height * scale);
   const ctx = canvas.getContext("2d");
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", quality);
+  const blob = await new Promise((resolve) =>
+    canvas.toBlob((b) => resolve(b), "image/jpeg", quality)
+  );
+  if (!blob) throw new Error("Failed to compress image");
+  const fd = new FormData();
+  fd.append("file", blob, (file.name || "image").replace(/\.\w+$/, "") + ".jpg");
+  const res = await fetch(`${API_BASE}/api/images`, { method: "POST", body: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok || !(data.optimized_url || data.url)) {
+    throw new Error(data?.error || `Upload failed (HTTP ${res.status})`);
+  }
+  return data.optimized_url || data.url;
 }
 
 /* === حساب نسبة العناصر المغلقة بشكل قوي === */
@@ -156,11 +217,13 @@ const C = {
 };
 
 export default function InternalAuditReportsView() {
+  const navigate = useNavigate();
   const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);   // ✅ auto-load on mount (DB is now lightweight after migration)
   const [branchFilter, setBranchFilter] = useState("");
   const [q, setQ] = useState("");
   const [error, setError] = useState("");
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   // Date tree filters
   const [yearFilter, setYearFilter] = useState(null);
@@ -184,32 +247,28 @@ export default function InternalAuditReportsView() {
   // refs لكروت التقارير (لاستخراج PDF من نفس التصميم)
   const cardRefs = useRef({});
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await fetch(
-          `${REPORTS_URL}?type=${encodeURIComponent(TYPE_KEY)}`,
-          { cache: "no-store" }
-        );
-        if (!res.ok) throw new Error("Failed to fetch reports");
-        const json = await res.json();
-        const arr = Array.isArray(json) ? json : json?.data ?? [];
-        if (!alive) return;
-        setData(arr);
-      } catch {
-        if (!alive) return;
-        setError("Failed to load reports");
-      } finally {
-        alive && setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
+  const loadReports = React.useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `${REPORTS_URL}?type=${encodeURIComponent(TYPE_KEY)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`Failed to fetch reports (HTTP ${res.status})`);
+      const json = await res.json();
+      const arr = Array.isArray(json) ? json : json?.data ?? [];
+      setData(arr);
+      setHasLoaded(true);
+    } catch (e) {
+      setError(e?.message || "Failed to load reports. The server may be out of memory (try /admin/image-migration first).");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // ✅ Auto-load on mount (safe again now that DB no longer contains base64 images)
+  useEffect(() => { loadReports(); }, [loadReports]);
 
   // normalize for UI
   const normalized = useMemo(() => {
@@ -287,6 +346,60 @@ export default function InternalAuditReportsView() {
     () => buildDateTreeFromViews(normalized),
     [normalized]
   );
+
+  /* ===== KPIs computed from the live data ===== */
+  const kpis = useMemo(() => {
+    const total = normalized.length;
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const last30 = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+
+    const thisMonthCount = normalized.filter((r) =>
+      `${r.y}-${String(r.m).padStart(2, "0")}` === ym
+    ).length;
+    const last30dCount = normalized.filter((r) => r.ts >= last30).length;
+
+    const avgClosure = total > 0
+      ? Math.round(normalized.reduce((a, r) => a + (Number(r.percentageClosed) || 0), 0) / total)
+      : 0;
+
+    // count of "no" answers across all tables (open findings)
+    let openFindings = 0, totalFindings = 0;
+    for (const r of normalized) {
+      for (const row of (r.table || [])) {
+        // Look for status / closed / answer-like fields
+        const status = String(row.status || row.closed || row.answer || row.compliance || "").toLowerCase();
+        if (status) totalFindings++;
+        if (status === "no" || status === "open" || status === "not closed") openFindings++;
+      }
+    }
+
+    const branchCount = branches.length;
+    const lastAudit = normalized[0];
+
+    return {
+      total,
+      thisMonthCount,
+      last30dCount,
+      avgClosure,
+      openFindings,
+      totalFindings,
+      branchCount,
+      lastAuditDate: lastAudit ? new Date(lastAudit.ts).toLocaleDateString("en-GB") : "—",
+    };
+  }, [normalized, branches]);
+
+  /* ===== UI language toggle (per page) ===== */
+  const [pageLang, setPageLang] = useState(() => {
+    try { return localStorage.getItem("internal_audit_lang") || "en"; } catch { return "en"; }
+  });
+  const isAr = pageLang === "ar";
+  const tt = (en, ar) => isAr ? ar : en;
+  const togglePageLang = () => {
+    const next = isAr ? "en" : "ar";
+    setPageLang(next);
+    try { localStorage.setItem("internal_audit_lang", next); } catch {}
+  };
 
   /* ===== actions ===== */
   const refresh = async () => {
@@ -433,13 +546,25 @@ export default function InternalAuditReportsView() {
     const current = Array.isArray(row[field]) ? row[field] : [];
     const capacity = Math.max(0, 5 - current.length);
     const slice = Array.from(files).slice(0, capacity);
-    const dataURLs = [];
+    if (!slice.length) return;
+    // ✅ Upload each picked image to Cloudinary → store URL (NOT base64) in the record.
+    const urls = [];
+    let failed = 0;
     for (const f of slice) {
-      const data = await fileToCompressedDataURL(f);
-      dataURLs.push(data);
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const url = await uploadCompressedToCloudinary(f);
+        urls.push(url);
+      } catch (e) {
+        console.error("Upload failed:", f?.name, e);
+        failed++;
+      }
     }
-    row[field] = [...current, ...dataURLs];
-    setDraft({ ...draft });
+    if (urls.length) {
+      row[field] = [...current, ...urls];
+      setDraft({ ...draft });
+    }
+    if (failed > 0) alert(`Failed to upload ${failed} image(s). Uploaded ${urls.length} successfully.`);
   };
   const removeImage = (idx, field, imgIdx) => {
     const t = getTable();
@@ -757,142 +882,202 @@ export default function InternalAuditReportsView() {
         padding: 16,
         fontFamily: "Arial, sans-serif",
         direction: "ltr",
+        minHeight: "100vh",
+        background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
       }}
     >
-      {/* Date tree */}
-      <aside style={asideStyle}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Date Tree</div>
+      <style>{`
+        @media print {
+          .ia-no-print { display: none !important; }
+          body { background: #fff !important; }
+        }
+      `}</style>
+      {/* ====== Modern Date Tree Sidebar ====== */}
+      <aside style={treeAside} className="ia-no-print">
+        <div style={treeHeader}>
+          <span style={{ fontSize: 16 }}>🗂️</span>
+          <span style={{ fontWeight: 1000, fontSize: 13 }}>{tt("Date Tree", "شجرة التواريخ")}</span>
+          <span style={treeCountBadge}>{normalized.length}</span>
+        </div>
+
         <button
-          style={chip(
-            yearFilter == null && monthFilter == null && dayFilter == null
-          )}
-          onClick={() => {
-            setYearFilter(null);
-            setMonthFilter(null);
-            setDayFilter(null);
-          }}
+          type="button"
+          style={treeAllBtn(yearFilter == null && monthFilter == null && dayFilter == null)}
+          onClick={() => { setYearFilter(null); setMonthFilter(null); setDayFilter(null); }}
         >
-          All
+          📁 {tt("All Reports", "كل التقارير")}
+          <span style={treeCountBadgeSm}>{normalized.length}</span>
         </button>
 
-        {Object.keys(dateTree)
-          .sort((a, b) => b - a)
-          .map((y) => (
-            <div key={y} style={{ marginTop: 10 }}>
-              <button
-                style={chip(
-                  yearFilter === Number(y) &&
-                    monthFilter == null &&
-                    dayFilter == null
-                )}
-                onClick={() => {
-                  setYearFilter(Number(y));
-                  setMonthFilter(null);
-                  setDayFilter(null);
-                }}
-              >
-                {y}
-              </button>
-
-              {yearFilter === Number(y) && (
-                <div style={{ marginTop: 6 }}>
-                  {Object.keys(dateTree[y])
-                    .sort((a, b) => Number(a) - Number(b))
-                    .map((m) => (
-                      <div key={m} style={{ marginBottom: 6 }}>
-                        <button
-                          style={chip(
-                            yearFilter === Number(y) &&
-                              monthFilter === Number(m) &&
-                              dayFilter == null
-                          )}
-                          onClick={() => {
-                            setYearFilter(Number(y));
-                            setMonthFilter(Number(m));
-                            setDayFilter(null);
-                          }}
-                        >
-                          {`${String(m).padStart(2, "0")}-${y}`}
-                        </button>
-
-                        {monthFilter === Number(m) && (
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 6,
-                              marginTop: 6,
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+          {Object.keys(dateTree).sort((a, b) => b - a).map((y) => {
+            const yOpen = yearFilter === Number(y);
+            const yCount = Object.values(dateTree[y]).reduce((a, mObj) => a + Object.values(mObj).reduce((b, day) => b + (day?.length || 0), 0), 0);
+            return (
+              <div key={y}>
+                <button
+                  type="button"
+                  style={treeYearBtn(yOpen)}
+                  onClick={() => {
+                    if (yOpen) { setYearFilter(null); setMonthFilter(null); setDayFilter(null); }
+                    else { setYearFilter(Number(y)); setMonthFilter(null); setDayFilter(null); }
+                  }}
+                >
+                  <span style={treeChev}>{yOpen ? "▼" : "▶"}</span>
+                  <span style={{ fontWeight: 1000, fontSize: 13 }}>📅 {y}</span>
+                  <span style={treeCountBadgeSm}>{yCount}</span>
+                </button>
+                {yOpen && (
+                  <div style={{ marginInlineStart: 14, marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
+                    {Object.keys(dateTree[y]).sort((a, b) => Number(b) - Number(a)).map((m) => {
+                      const mOpen = monthFilter === Number(m);
+                      const mCount = Object.values(dateTree[y][m]).reduce((a, day) => a + (day?.length || 0), 0);
+                      return (
+                        <div key={m}>
+                          <button
+                            type="button"
+                            style={treeMonthBtn(mOpen)}
+                            onClick={() => {
+                              if (mOpen) { setMonthFilter(null); setDayFilter(null); }
+                              else { setMonthFilter(Number(m)); setDayFilter(null); }
                             }}
                           >
-                            {Object.keys(dateTree[y][m])
-                              .sort((a, b) => Number(a) - Number(b))
-                              .map((d) => (
-                                <button
-                                  key={d}
-                                  style={chip(
-                                    yearFilter === Number(y) &&
-                                      monthFilter === Number(m) &&
-                                      dayFilter === Number(d)
-                                  )}
-                                  onClick={() => {
-                                    setYearFilter(Number(y));
-                                    setMonthFilter(Number(m));
-                                    setDayFilter(Number(d));
-                                  }}
-                                >
-                                  {`${String(d).padStart(
-                                    2,
-                                    "0"
-                                  )}-${String(m).padStart(
-                                    2,
-                                    "0"
-                                  )}-${y}`}
-                                </button>
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          ))}
+                            <span style={treeChev}>{mOpen ? "▼" : "▶"}</span>
+                            <span style={{ fontWeight: 900, fontSize: 12 }}>
+                              {monthName(Number(m))}
+                            </span>
+                            <span style={treeCountBadgeSm}>{mCount}</span>
+                          </button>
+                          {mOpen && (
+                            <div style={{ marginInlineStart: 14, marginTop: 3, display: "flex", flexDirection: "column", gap: 2 }}>
+                              {Object.keys(dateTree[y][m]).sort((a, b) => Number(b) - Number(a)).map((d) => {
+                                const dActive = dayFilter === Number(d);
+                                const dCount = dateTree[y][m][d]?.length || 0;
+                                return (
+                                  <button
+                                    key={d}
+                                    type="button"
+                                    style={treeDayBtn(dActive)}
+                                    onClick={() => setDayFilter(dActive ? null : Number(d))}
+                                  >
+                                    <span style={{ fontWeight: 800, fontSize: 11 }}>
+                                      {String(d).padStart(2, "0")} {monthName(Number(m)).slice(0, 3)}
+                                    </span>
+                                    <span style={treeCountBadgeSm}>{dCount}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </aside>
 
       <main>
-        <h2 style={{ marginTop: 0 }}>Internal Audit Reports – CAPA</h2>
+        {/* ====== Modern Header ====== */}
+        <div style={modernHeader.card} dir={isAr ? "rtl" : "ltr"}>
+          <div style={modernHeader.row}>
+            <div style={modernHeader.brandWrap}>
+              <div style={modernHeader.brandIco}>📋</div>
+              <div>
+                <h1 style={modernHeader.title}>
+                  {tt("Internal Audit Reports — CAPA", "تقارير التدقيق الداخلي — CAPA")}
+                </h1>
+                <div style={modernHeader.subtitle}>
+                  {tt("Track findings, corrective actions & closure rates", "متابعة الملاحظات والإجراءات التصحيحية ونسب الإغلاق")}
+                </div>
+              </div>
+            </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            alignItems: "center",
-            margin: "12px 0",
-          }}
-        >
+            <div style={modernHeader.toolbar}>
+              <button type="button" onClick={togglePageLang} style={modernHeader.toolBtn} title="Toggle language">
+                🌐 {isAr ? "EN" : "AR"}
+              </button>
+              <button type="button" onClick={loadReports} disabled={loading} style={modernHeader.toolBtn} title="Refresh">
+                ↻ {tt("Refresh", "تحديث")}
+              </button>
+              <button type="button" onClick={() => window.print()} style={modernHeader.toolBtn} title="Print">
+                🖨️ {tt("Print", "طباعة")}
+              </button>
+              <button type="button" onClick={() => navigate("/ai-assistant")} style={modernHeader.aiBtn} title="AI Assistant">
+                🤖 {tt("AI", "AI")}
+              </button>
+            </div>
+          </div>
+
+          {/* KPI strip */}
+          <div style={modernHeader.kpiRow} className="ia-no-print">
+            <KpiTile icon="📁" label={tt("Total Reports", "إجمالي")} value={kpis.total} color="#0f172a" bg="linear-gradient(135deg,#fff,#f1f5f9)" />
+            <KpiTile icon="📅" label={tt("This Month", "هذا الشهر")} value={kpis.thisMonthCount} color="#1e40af" bg="linear-gradient(135deg,#dbeafe,#eff6ff)" />
+            <KpiTile icon="⏱️" label={tt("Last 30d", "آخر 30 يوم")} value={kpis.last30dCount} color="#5b21b6" bg="linear-gradient(135deg,#e9d5ff,#faf5ff)" />
+            <KpiTile icon="🏢" label={tt("Branches", "الفروع")} value={kpis.branchCount} color="#0e7490" bg="linear-gradient(135deg,#cffafe,#ecfeff)" />
+            <KpiTile
+              icon="✅"
+              label={tt("Closure Rate", "نسبة الإغلاق")}
+              value={`${kpis.avgClosure}%`}
+              color={kpis.avgClosure >= 80 ? "#166534" : kpis.avgClosure >= 50 ? "#92400e" : "#991b1b"}
+              bg={kpis.avgClosure >= 80 ? "linear-gradient(135deg,#dcfce7,#f0fdf4)" :
+                  kpis.avgClosure >= 50 ? "linear-gradient(135deg,#fef3c7,#fffbeb)" :
+                  "linear-gradient(135deg,#fee2e2,#fef2f2)"}
+            />
+            {kpis.openFindings > 0 && (
+              <KpiTile icon="🚨" label={tt("Open Findings", "ملاحظات مفتوحة")} value={kpis.openFindings} color="#991b1b" bg="linear-gradient(135deg,#fee2e2,#fef2f2)" />
+            )}
+            <KpiTile icon="🕐" label={tt("Last Audit", "آخر تدقيق")} value={kpis.lastAuditDate} color="#475569" bg="linear-gradient(135deg,#f8fafc,#fff)" smaller />
+          </div>
+        </div>
+
+        {/* ====== Tools bar (filter / search / sort) ====== */}
+        <div style={toolsBar.row} className="ia-no-print" dir={isAr ? "rtl" : "ltr"}>
+          <div style={toolsBar.searchWrap}>
+            <span style={toolsBar.searchIcon}>🔍</span>
+            <input
+              placeholder={tt("Search by branch / title / report no / auditor…", "ابحث بالفرع / العنوان / رقم التقرير / المُدقق…")}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={toolsBar.searchInput}
+            />
+            {q && <button type="button" onClick={() => setQ("")} style={toolsBar.clearBtn}>✕</button>}
+          </div>
+
           <select
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
-            style={inputStyle}
+            style={toolsBar.select}
           >
-            <option value="">All Branches</option>
+            <option value="">{tt("All Branches", "كل الفروع")} ({branches.length})</option>
             {branches.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
+              <option key={b} value={b}>{getBranchLabel(b, pageLang)}</option>
             ))}
           </select>
-          <input
-            placeholder="Search (branch / title / report no / auditor)"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={inputStyle}
-          />
+
+          {(branchFilter || q || yearFilter != null || monthFilter != null || dayFilter != null) && (
+            <button
+              type="button"
+              onClick={() => { setBranchFilter(""); setQ(""); setYearFilter(null); setMonthFilter(null); setDayFilter(null); }}
+              style={toolsBar.clearAll}
+            >
+              ✕ {tt("Clear all filters", "مسح الفلاتر")}
+            </button>
+          )}
+
+          <span style={{ flex: 1 }} />
+
+          <span style={toolsBar.resultCount}>
+            {tt("Showing", "يعرض")} <strong>{rows.length}</strong> / {normalized.length}
+          </span>
         </div>
 
         {loading && <p>Loading...</p>}
         {error && <p style={{ color: "red" }}>{error}</p>}
-        {!loading && groups.length === 0 && <p>No reports found.</p>}
+        {!loading && !error && groups.length === 0 && <p>No reports found.</p>}
 
         <div
           style={{
@@ -1007,7 +1192,7 @@ export default function InternalAuditReportsView() {
                               ) : (
                                 <>
                                   <div style={{ fontWeight: 700 }}>
-                                    {r.branch || "-"}
+                                    {r.branch ? getBranchLabel(r.branch, pageLang) : "-"}
                                   </div>
                                   {r.location && (
                                     <div
@@ -1882,4 +2067,193 @@ const preStyle = {
   overflow: "auto",
   maxHeight: 300,
   fontSize: 12,
+};
+
+/* ===== KPI Tile + modern header / tools styles ===== */
+function KpiTile({ icon, label, value, color, bg, smaller }) {
+  return (
+    <div style={{
+      background: bg,
+      color,
+      borderRadius: 14,
+      padding: "10px 12px",
+      border: "1px solid rgba(226,232,240,.95)",
+      boxShadow: "0 6px 14px rgba(2,6,23,.06)",
+      minWidth: 130,
+      display: "flex",
+      flexDirection: "column",
+      gap: 2,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 18 }}>{icon}</span>
+        <span style={{ fontSize: 10, fontWeight: 1000, letterSpacing: ".05em", textTransform: "uppercase", opacity: 0.75 }}>{label}</span>
+      </div>
+      <div style={{ fontSize: smaller ? 14 : 22, fontWeight: 1000, lineHeight: 1.1 }}>{value}</div>
+    </div>
+  );
+}
+
+const modernHeader = {
+  card: {
+    background: "linear-gradient(180deg, #ffffff, #fafbff)",
+    border: "1px solid #e2e8f0",
+    borderRadius: 18,
+    padding: "16px 18px",
+    marginBottom: 14,
+    boxShadow: "0 12px 32px rgba(2,6,23,.08)",
+  },
+  row: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 12,
+    marginBottom: 14,
+  },
+  brandWrap: { display: "flex", alignItems: "center", gap: 12 },
+  brandIco: {
+    width: 44, height: 44, borderRadius: 12,
+    background: "linear-gradient(135deg, #2563eb, #7c3aed)", color: "#fff",
+    display: "grid", placeItems: "center", fontSize: 22,
+    boxShadow: "0 10px 22px rgba(37,99,235,.30)",
+  },
+  title: { margin: 0, fontSize: 20, fontWeight: 1000, color: "#0f172a", lineHeight: 1.2 },
+  subtitle: { fontSize: 12, color: "#64748b", fontWeight: 800, marginTop: 4 },
+  toolbar: { display: "flex", gap: 8, flexWrap: "wrap" },
+  toolBtn: {
+    padding: "8px 14px", borderRadius: 12,
+    background: "linear-gradient(180deg,#fff,#f8fafc)",
+    color: "#0f172a", border: "1px solid #cbd5e1",
+    fontWeight: 900, fontSize: 12, cursor: "pointer",
+    fontFamily: "inherit",
+    boxShadow: "0 4px 10px rgba(2,6,23,.04)",
+  },
+  aiBtn: {
+    padding: "8px 14px", borderRadius: 12,
+    background: "linear-gradient(135deg,#7c3aed,#2563eb)", color: "#fff",
+    border: "none", fontWeight: 1000, fontSize: 12, cursor: "pointer",
+    fontFamily: "inherit",
+    boxShadow: "0 8px 18px rgba(124,58,237,.30)",
+  },
+  kpiRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+    gap: 10,
+  },
+};
+
+const toolsBar = {
+  row: {
+    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+    padding: "10px 14px", marginBottom: 14,
+    background: "#fff", border: "1px solid #e2e8f0",
+    borderRadius: 14, boxShadow: "0 8px 18px rgba(2,6,23,.06)",
+  },
+  searchWrap: {
+    display: "flex", alignItems: "center", gap: 8,
+    background: "#f8fafc", border: "1px solid #cbd5e1",
+    borderRadius: 999, padding: "5px 12px",
+    minWidth: 320, flex: "1 1 320px",
+  },
+  searchIcon: { fontSize: 14, opacity: 0.6 },
+  searchInput: {
+    flex: 1, border: "none", outline: "none",
+    background: "transparent", fontSize: 13, fontWeight: 800, color: "#0f172a",
+    fontFamily: "inherit",
+  },
+  clearBtn: {
+    background: "transparent", border: "none",
+    color: "#64748b", cursor: "pointer", fontSize: 14, fontWeight: 1000,
+    padding: 0, lineHeight: 1,
+  },
+  select: {
+    padding: "8px 12px", borderRadius: 999,
+    background: "#f8fafc", border: "1px solid #cbd5e1",
+    fontWeight: 900, fontSize: 12, color: "#0f172a",
+    cursor: "pointer", fontFamily: "inherit",
+  },
+  clearAll: {
+    padding: "7px 14px", borderRadius: 999,
+    background: "linear-gradient(135deg, #fee2e2, #fef2f2)",
+    color: "#991b1b", border: "1px solid #fecaca",
+    fontWeight: 1000, fontSize: 12, cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  resultCount: {
+    fontSize: 12, color: "#475569", fontWeight: 800,
+  },
+};
+
+/* ===== Modern Date-Tree sidebar styles ===== */
+const treeAside = {
+  position: "sticky",
+  top: 12,
+  alignSelf: "flex-start",
+  maxHeight: "calc(100vh - 24px)",
+  overflow: "auto",
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 14,
+  padding: 12,
+  boxShadow: "0 8px 20px rgba(2,6,23,.06)",
+};
+const treeHeader = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "8px 6px 10px",
+  borderBottom: "2px dashed #e2e8f0",
+  marginBottom: 8,
+};
+const treeCountBadge = {
+  marginInlineStart: "auto",
+  background: "#0b1220", color: "#fff",
+  padding: "2px 10px", borderRadius: 999,
+  fontWeight: 1000, fontSize: 11,
+};
+const treeCountBadgeSm = {
+  marginInlineStart: "auto",
+  background: "#94a3b8", color: "#fff",
+  padding: "1px 7px", borderRadius: 999,
+  fontWeight: 1000, fontSize: 10,
+};
+const treeAllBtn = (active) => ({
+  width: "100%",
+  display: "flex", alignItems: "center", gap: 8,
+  padding: "10px 12px",
+  background: active ? "linear-gradient(135deg, #dbeafe, #eff6ff)" : "#f8fafc",
+  border: `1px solid ${active ? "#3b82f6" : "#e2e8f0"}`,
+  borderRadius: 12, cursor: "pointer",
+  fontWeight: 1000, fontSize: 12, color: "#0f172a",
+  fontFamily: "inherit", textAlign: "start",
+});
+const treeYearBtn = (active) => ({
+  width: "100%",
+  display: "flex", alignItems: "center", gap: 8,
+  padding: "9px 10px",
+  background: active ? "linear-gradient(135deg, #fef3c7, #fffbeb)" : "transparent",
+  border: `1px solid ${active ? "#fcd34d" : "#e2e8f0"}`,
+  borderRadius: 10, cursor: "pointer",
+  fontFamily: "inherit", color: "#0f172a", textAlign: "start",
+});
+const treeMonthBtn = (active) => ({
+  width: "100%",
+  display: "flex", alignItems: "center", gap: 8,
+  padding: "6px 10px",
+  background: active ? "#dbeafe" : "transparent",
+  border: `1px solid ${active ? "#bfdbfe" : "#f1f5f9"}`,
+  borderRadius: 8, cursor: "pointer",
+  fontFamily: "inherit", color: "#0f172a", textAlign: "start",
+});
+const treeDayBtn = (active) => ({
+  width: "100%",
+  display: "flex", alignItems: "center", gap: 8,
+  padding: "5px 10px",
+  background: active ? "#fee2e2" : "transparent",
+  border: `1px dashed ${active ? "#fca5a5" : "#cbd5e1"}`,
+  borderRadius: 6, cursor: "pointer",
+  fontFamily: "inherit", color: "#0f172a", textAlign: "start",
+});
+const treeChev = {
+  fontSize: 9, color: "#64748b", width: 10,
 };

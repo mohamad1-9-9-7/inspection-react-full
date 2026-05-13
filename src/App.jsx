@@ -73,8 +73,11 @@ const FTR2ReportView = lazy(() =>
   import("./pages/monitor/branches/ftr2/FTR2ReportView")
 );
 
-const OHCUpload = lazy(() => import("./pages/ohc/OHCUpload"));
-const OHCView = lazy(() => import("./pages/ohc/OHCView"));
+const OHCHub = lazy(() => import("./pages/ohc/OHCHub"));
+const OHCUploadPage = lazy(() => import("./pages/ohc/OHCUploadPage"));
+const OHCViewPage = lazy(() => import("./pages/ohc/OHCViewPage"));
+const ImageMigration = lazy(() => import("./pages/admin/ImageMigration"));
+const AIAssistant    = lazy(() => import("./pages/AIAssistant"));
 
 const QCSRawMaterialInspection = lazy(() =>
   import("./pages/monitor/branches/shipment_recc/QCSRawMaterialInspection")
@@ -111,8 +114,13 @@ const FinishedProductReports = lazy(() =>
   import("./pages/finished/FinishedProductReports")
 );
 
-// 🆕 سيارات
-const CarIconPage = lazy(() => import("./pages/car/pages/CarIcon"));
+// 🆕 سيارات — Hub + sub-pages
+const CarsHub               = lazy(() => import("./pages/car/CarsHub"));
+const CarsLoadingPage       = lazy(() => import("./pages/car/pages/LoadingLogPage"));
+const CarsCleaningPage      = lazy(() => import("./pages/car/pages/CleaningPage"));
+const CarsLoadingReports    = lazy(() => import("./pages/car/pages/LoadingReportsPage"));
+const CarsCleaningReports   = lazy(() => import("./pages/car/pages/CleaningReportsPage"));
+const CarsFleetKPI          = lazy(() => import("./pages/car/pages/FleetKPI"));
 
 // ✅✅✅ 🆕 موافقات السيارات (Input + View)
 const CarApprovalsInput = lazy(() => import("./pages/car/pages/Approvals"));
@@ -376,19 +384,17 @@ const HSEToolboxMeeting        = lazy(() => import("./pages/hse/HSEToolboxMeetin
 const HSEEmergencyContacts     = lazy(() => import("./pages/hse/HSEEmergencyContacts"));
 const HSEWelfare               = lazy(() => import("./pages/hse/HSEWelfare"));
 const HSEForkliftInspection    = lazy(() => import("./pages/hse/HSEForkliftInspection"));
-const HSEShipmentReceiving     = lazy(() => import("./pages/hse/HSEShipmentReceiving"));
 const HSECleaningLog           = lazy(() => import("./pages/hse/HSECleaningLog"));
 const HSESwabsLog              = lazy(() => import("./pages/hse/HSESwabsLog"));
 const HSEPestControl           = lazy(() => import("./pages/hse/HSEPestControl"));
 const HSEEquipmentMaintenance  = lazy(() => import("./pages/hse/HSEEquipmentMaintenance"));
-const HSEMedicalChecks         = lazy(() => import("./pages/hse/HSEMedicalChecks"));
 const HSEEvacuationDrills      = lazy(() => import("./pages/hse/HSEEvacuationDrills"));
 const HSEPPELog                = lazy(() => import("./pages/hse/HSEPPELog"));
-const HSEContractorsVisitors   = lazy(() => import("./pages/hse/HSEContractorsVisitors"));
 const HSEWasteLog              = lazy(() => import("./pages/hse/HSEWasteLog"));
 const HSECAPATracker           = lazy(() => import("./pages/hse/HSECAPATracker"));
 const HSETrainingMatrix        = lazy(() => import("./pages/hse/HSETrainingMatrix"));
 const HSELicenses              = lazy(() => import("./pages/hse/HSELicenses"));
+const HSEKPIs                  = lazy(() => import("./pages/hse/HSEKPIs"));
 
 /** حماية المسارات الخاصة */
 /** Redirects /old-path/t/:token → /new-path/:token preserving the real token value */
@@ -831,13 +837,21 @@ export default function App() {
           }
         />
 
-        {/* ohc/* */}
+        {/* 🩺 OHC Hub + sub-pages */}
         <Route path="/ohc">
           <Route
             index
             element={
               <ProtectedRoute>
-                <OHCUpload />
+                <OHCHub />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="upload"
+            element={
+              <ProtectedRoute>
+                <OHCUploadPage />
               </ProtectedRoute>
             }
           />
@@ -845,11 +859,31 @@ export default function App() {
             path="view"
             element={
               <ProtectedRoute>
-                <OHCView />
+                <OHCViewPage />
               </ProtectedRoute>
             }
           />
         </Route>
+
+        {/* 🖼️ Admin: base64 → Cloudinary URL migration — kept for direct access; also embedded in Settings */}
+        <Route
+          path="/admin/image-migration"
+          element={
+            <ProtectedRoute>
+              <ImageMigration />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🤖 AI Assistant — standalone (linked from main dashboard) */}
+        <Route
+          path="/ai-assistant"
+          element={
+            <ProtectedRoute>
+              <AIAssistant />
+            </ProtectedRoute>
+          }
+        />
 
         {/* admin/QCS raw material view */}
         <Route
@@ -1529,15 +1563,13 @@ export default function App() {
           }
         />
 
-        {/* 🆕 مسار السيارات */}
-        <Route
-          path="/cars"
-          element={
-            <ProtectedRoute>
-              <CarIconPage />
-            </ProtectedRoute>
-          }
-        />
+        {/* 🚚 Fleet Hub + sub-pages */}
+        <Route path="/cars" element={<ProtectedRoute><CarsHub /></ProtectedRoute>} />
+        <Route path="/car/loading" element={<ProtectedRoute><CarsLoadingPage /></ProtectedRoute>} />
+        <Route path="/car/cleaning" element={<ProtectedRoute><CarsCleaningPage /></ProtectedRoute>} />
+        <Route path="/car/loading-reports" element={<ProtectedRoute><CarsLoadingReports /></ProtectedRoute>} />
+        <Route path="/car/cleaning-reports" element={<ProtectedRoute><CarsCleaningReports /></ProtectedRoute>} />
+        <Route path="/car/fleet-kpi" element={<ProtectedRoute><CarsFleetKPI /></ProtectedRoute>} />
 
         {/* ✅✅✅ مسارات موافقات السيارات */}
         <Route
@@ -1616,19 +1648,17 @@ export default function App() {
         <Route path="/hse/emergency-contacts" element={<ProtectedRoute><HSEEmergencyContacts /></ProtectedRoute>} />
         <Route path="/hse/welfare" element={<ProtectedRoute><HSEWelfare /></ProtectedRoute>} />
         <Route path="/hse/forklift-inspection" element={<ProtectedRoute><HSEForkliftInspection /></ProtectedRoute>} />
-        <Route path="/hse/shipment-receiving" element={<ProtectedRoute><HSEShipmentReceiving /></ProtectedRoute>} />
         <Route path="/hse/cleaning-log" element={<ProtectedRoute><HSECleaningLog /></ProtectedRoute>} />
         <Route path="/hse/swabs-log" element={<ProtectedRoute><HSESwabsLog /></ProtectedRoute>} />
         <Route path="/hse/pest-control" element={<ProtectedRoute><HSEPestControl /></ProtectedRoute>} />
         <Route path="/hse/equipment-maintenance" element={<ProtectedRoute><HSEEquipmentMaintenance /></ProtectedRoute>} />
-        <Route path="/hse/medical-checks" element={<ProtectedRoute><HSEMedicalChecks /></ProtectedRoute>} />
         <Route path="/hse/evacuation-drills" element={<ProtectedRoute><HSEEvacuationDrills /></ProtectedRoute>} />
         <Route path="/hse/ppe-log" element={<ProtectedRoute><HSEPPELog /></ProtectedRoute>} />
-        <Route path="/hse/contractors-visitors" element={<ProtectedRoute><HSEContractorsVisitors /></ProtectedRoute>} />
         <Route path="/hse/waste-log" element={<ProtectedRoute><HSEWasteLog /></ProtectedRoute>} />
         <Route path="/hse/capa-tracker" element={<ProtectedRoute><HSECAPATracker /></ProtectedRoute>} />
         <Route path="/hse/training-matrix" element={<ProtectedRoute><HSETrainingMatrix /></ProtectedRoute>} />
         <Route path="/hse/licenses" element={<ProtectedRoute><HSELicenses /></ProtectedRoute>} />
+        <Route path="/hse/kpis" element={<ProtectedRoute><HSEKPIs /></ProtectedRoute>} />
 
         {/* ⚙️ Settings */}
         <Route

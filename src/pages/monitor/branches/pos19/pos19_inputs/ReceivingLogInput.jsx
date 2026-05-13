@@ -156,6 +156,12 @@ export default function ReceivingLogInput() {
         ]}
       />
 
+      {/* Critical info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
+        <div><strong>Critical Limit (CCP):</strong> <b>Reject the delivery</b> if any of the following is found: chilled goods <b>&gt; 5°C</b>, frozen goods <b>&gt; -18°C</b>, damaged or torn packaging, expired or short shelf-life, missing/unclear labels, foreign odor, or visible pest contamination. Verify temperature with a calibrated probe before signing receipt.</div>
+      </div>
+
       {/* Legend */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>

@@ -189,6 +189,12 @@ export default function FoodTemperatureVerificationInput() {
         ]}
       />
 
+      {/* Critical info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
+        <div><strong>Critical Limits (CCP):</strong> Cooking / Reheating <b>≥ 75°C</b> &nbsp;|&nbsp; Hot Holding <b>≥ 60°C</b> &nbsp;|&nbsp; Chilled <b>≤ 5°C</b> &nbsp;|&nbsp; Frozen <b>≤ -18°C</b>. Food must not stay in the danger zone (5–60°C) for more than 2 hours total. Any out-of-limit reading requires immediate corrective action and food evaluation.</div>
+      </div>
+
       {/* ── Action buttons ── */}
       <div style={{ display:"flex", gap:8, padding:"0 0 10px", justifyContent:"flex-end" }}>
         <button onClick={addRow} style={actionBtn("#0ea5e9")}>+ Add Row</button>

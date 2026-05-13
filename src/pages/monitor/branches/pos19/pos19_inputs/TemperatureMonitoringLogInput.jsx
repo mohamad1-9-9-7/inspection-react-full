@@ -194,6 +194,12 @@ export default function TemperatureMonitoringLogInput() {
         ]}
       />
 
+      {/* Critical info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
+        <div><strong>Critical Limit (CCP):</strong> Chiller <b>≤ 5°C</b> &nbsp;|&nbsp; Freezer <b>≤ -18°C</b> &nbsp;|&nbsp; Ambient store <b>≤ 25°C</b>. Check temperatures <b>at least twice per day</b> (morning &amp; evening). Out-of-limit readings require immediate corrective action — evaluate food safety, relocate stock, and call maintenance.</div>
+      </div>
+
       {/* Limits strip */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>

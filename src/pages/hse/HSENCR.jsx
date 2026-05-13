@@ -101,6 +101,7 @@ const T = {
   closer:       { ar: "اسم من يُغلق NCR:", en: "Name of person closing NCR:" },
   confirmDel:   { ar: "حذف؟", en: "Delete?" },
   view:         { ar: "👁️ عرض", en: "👁️ View" },
+  edit:         { ar: "✏️ تعديل", en: "✏️ Edit" },
   del:          { ar: "حذف", en: "Delete" },
   print:        { ar: "🖨️ طباعة / PDF", en: "🖨️ Print / PDF" },
   closeModal:   { ar: "✖ إغلاق", en: "✖ Close" },
@@ -150,6 +151,7 @@ export default function HSENCR() {
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(blank());
   const [viewing, setViewing] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   async function reload() {
@@ -163,14 +165,25 @@ export default function HSENCR() {
     setDraft((d) => ({ ...d, types: { ...d.types, [v]: !d.types[v] } }));
   }
 
+  function startEdit(it) {
+    setDraft({ ...blank(), ...it });
+    setEditingId(it.id);
+    setViewing(null);
+    setTab("new");
+  }
+
   async function save() {
     if (!draft.description.trim()) { alert(pick(T.needDesc)); return; }
     setSaving(true);
     try {
-      await apiSave(TYPE, draft, draft.reportedBy || "HSE");
+      if (editingId) {
+        await apiUpdate(TYPE, editingId, draft, draft.reportedBy || "HSE");
+      } else {
+        await apiSave(TYPE, draft, draft.reportedBy || "HSE");
+      }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setTab("list");
+      setDraft(blank()); setEditingId(null); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -327,7 +340,7 @@ export default function HSENCR() {
               <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
                 {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
               </button>
-              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
+              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}
@@ -361,11 +374,14 @@ export default function HSENCR() {
                       <td style={tdStyle}>{pick(sevLabels[it.severity] || { ar: it.severity, en: it.severity })}</td>
                       <td style={tdStyle}>{pick(stLabels[it.status] || { ar: it.status, en: it.status })}</td>
                       <td style={tdStyle}>
-                        <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, marginInlineEnd: 4 }} onClick={() => setViewing(it)}>{pick(T.view)}</button>
-                        {it.status !== "closed" && (
-                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, marginInlineEnd: 4 }} onClick={() => closeNCR(it.id)}>{pick(T.closeNCR)}</button>
-                        )}
-                        <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => setViewing(it)}>{pick(T.view)}</button>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#1e40af" }} onClick={() => startEdit(it)}>{pick(T.edit)}</button>
+                          {it.status !== "closed" && (
+                            <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => closeNCR(it.id)}>{pick(T.closeNCR)}</button>
+                          )}
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                        </div>
                       </td>
                     </tr>
                   );

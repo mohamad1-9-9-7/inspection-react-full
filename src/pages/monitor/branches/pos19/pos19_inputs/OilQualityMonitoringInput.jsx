@@ -119,6 +119,12 @@ export default function OilQualityMonitoringInput() {
         ]}
       />
 
+      {/* Critical info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
+        <div><strong>Critical Limit:</strong> Discard frying oil when Total Polar Materials (TPM) <b>&gt; 24%</b>, or when oil shows excessive darkening, persistent foaming, or off-odor / off-taste. <b>Filter oil daily</b> and check quality at least once per shift. Never top up old oil with fresh oil to mask deterioration.</div>
+      </div>
+
       {/* Table */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>RECORD</div>

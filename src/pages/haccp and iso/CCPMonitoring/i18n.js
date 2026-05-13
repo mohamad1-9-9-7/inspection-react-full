@@ -389,8 +389,8 @@ export function useLang() {
   const [lang, setLang] = useState(() => {
     try {
       const v = localStorage.getItem(STORAGE_KEY);
-      return v === "en" || v === "ar" ? v : "ar";
-    } catch { return "ar"; }
+      return v === "en" || v === "ar" ? v : "en";
+    } catch { return "en"; }
   });
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, lang); } catch {} }, [lang]);
   function t(key, vars) {

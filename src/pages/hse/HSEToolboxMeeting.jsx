@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO, nowHHMM,
-  apiList, apiSave, apiDelete, SITE_LOCATIONS,
+  apiList, apiSave, apiUpdate, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -60,6 +60,7 @@ const T = {
   saved:        { ar: "✅ تم حفظ المحضر", en: "✅ Minutes saved" },
   confirmDel:   { ar: "حذف؟", en: "Delete?" },
   view:         { ar: "👁️ عرض", en: "👁️ View" },
+  edit:         { ar: "✏️ تعديل", en: "✏️ Edit" },
   del:          { ar: "حذف", en: "Delete" },
   print:        { ar: "🖨️ طباعة / PDF", en: "🖨️ Print / PDF" },
   closeModal:   { ar: "✖ إغلاق", en: "✖ Close" },
@@ -96,6 +97,7 @@ export default function HSEToolboxMeeting() {
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(blank());
   const [viewing, setViewing] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   async function reload() {
@@ -104,6 +106,13 @@ export default function HSEToolboxMeeting() {
   }
   useEffect(() => { reload(); }, []);
   function printReport() { window.print(); }
+
+  function startEdit(it) {
+    setDraft({ ...blank(), ...it });
+    setEditingId(it.id);
+    setViewing(null);
+    setTab("new");
+  }
 
   function setAtt(idx, field, val) {
     setDraft((d) => {
@@ -128,10 +137,14 @@ export default function HSEToolboxMeeting() {
     if (!draft.topic.trim()) { alert(pick(T.needTopic)); return; }
     setSaving(true);
     try {
-      await apiSave(TYPE, draft, draft.conductedBy || "HSE");
+      if (editingId) {
+        await apiUpdate(TYPE, editingId, draft, draft.conductedBy || "HSE");
+      } else {
+        await apiSave(TYPE, draft, draft.conductedBy || "HSE");
+      }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setTab("list");
+      setDraft(blank()); setEditingId(null); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -255,7 +268,7 @@ export default function HSEToolboxMeeting() {
               <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
                 {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
               </button>
-              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
+              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}
@@ -288,8 +301,11 @@ export default function HSEToolboxMeeting() {
                       <td style={tdStyle}>{att}</td>
                       <td style={tdStyle}>{dur ? `${dur} min` : "—"}</td>
                       <td style={tdStyle}>
-                        <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, marginInlineEnd: 4 }} onClick={() => setViewing(it)}>{pick(T.view)}</button>
-                        <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => setViewing(it)}>{pick(T.view)}</button>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#1e40af" }} onClick={() => startEdit(it)}>{pick(T.edit)}</button>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                        </div>
                       </td>
                     </tr>
                   );

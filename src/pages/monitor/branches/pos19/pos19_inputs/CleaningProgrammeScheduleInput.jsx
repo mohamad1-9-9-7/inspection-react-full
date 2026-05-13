@@ -728,6 +728,12 @@ export default function CleaningProgrammeScheduleInput() {
         ]}
       />
 
+      {/* Important info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#eff6ff", border:"1px solid #bfdbfe", borderLeft:"4px solid #3b82f6", borderRadius:8, color:"#1e40af", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>ℹ️</div>
+        <div><strong>Important (PRP):</strong> Cleaning must be performed at the specified frequency for each area/equipment. Any missed schedule must be documented with the reason and corrective action. Use food-grade detergents and sanitizers at the correct concentration and contact time.</div>
+      </div>
+
       {/* Standard line */}
       <div style={{
         border:"1px solid #1f3b70",

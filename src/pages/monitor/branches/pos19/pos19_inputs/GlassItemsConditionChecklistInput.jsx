@@ -163,6 +163,12 @@ export default function GlassItemsConditionChecklistInput() {
         ]}
       />
 
+      {/* Critical info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
+        <div><strong>Critical (Foreign-Object Hazard):</strong> Any cracked, chipped, or broken glass / hard-plastic item in the food area must be reported <b>immediately</b>. Quarantine the surrounding area, inspect any exposed food, and replace the damaged item <b>before resuming work</b>. Document the incident in the corrective-action column.</div>
+      </div>
+
       {/* Legend */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>

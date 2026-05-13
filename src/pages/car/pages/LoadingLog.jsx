@@ -440,13 +440,14 @@ export default function LoadingLog() {
 
   const inputStyle = {
     width: "100%",
-    padding: "10px 12px",
-    fontSize: "14px",
+    padding: "6px 8px",
+    fontSize: "12.5px",
     border: "1px solid #c0d0e0",
-    borderRadius: "8px",
+    borderRadius: "6px",
     backgroundColor: "#fefefe",
     transition: "border-color 0.2s",
     boxSizing: "border-box",
+    minWidth: 0,
   };
 
   const inputInvalid = {
@@ -465,34 +466,40 @@ export default function LoadingLog() {
   };
 
   const tableWrapperStyle = {
-    overflowX: "auto",
+    overflowX: "visible",
     padding: "0",
+    width: "100%",
   };
 
   const tableStyle = {
     width: "100%",
     borderCollapse: "collapse",
-    // widened because we added 5 new Yes/No columns
-    minWidth: "1750px",
+    tableLayout: "auto",   // auto-size to fit viewport (no horizontal scroll)
   };
 
   const thStyle = {
     backgroundColor: "#f0f2f5",
-    padding: "12px 8px",
-    fontSize: "11px",
+    padding: "8px 4px",
+    fontSize: "10.5px",
     fontWeight: "700",
     color: "#4a5568",
-    textAlign: "left",
+    textAlign: "center",
     textTransform: "uppercase",
     border: "1px solid #c0d0e0",
+    wordBreak: "normal",
+    overflowWrap: "break-word",
+    lineHeight: 1.25,
+    verticalAlign: "middle",
   };
 
   const tdStyle = {
-    padding: "10px 8px",
+    padding: "6px 4px",
     border: "1px solid #c0d0e0",
     textAlign: "left",
     verticalAlign: "middle",
     boxSizing: "border-box",
+    wordBreak: "normal",
+    fontSize: "12px",
   };
 
   const tdInvalid = {
@@ -503,17 +510,20 @@ export default function LoadingLog() {
 
   const radioGroupStyle = {
     display: "flex",
+    flexDirection: "column",   // YES on top, NO below — fits narrow columns
     justifyContent: "center",
-    alignItems: "center",
-    gap: "16px",
+    alignItems: "flex-start",
+    gap: "4px",
   };
 
   const radioLabelStyle = {
-    fontSize: "13px",
+    fontSize: "11px",
     color: "#4a5568",
-    display: "flex",
+    display: "inline-flex",
     alignItems: "center",
-    gap: "4px",
+    gap: "3px",
+    whiteSpace: "nowrap",   // ← prevents "YES" / "NO" from breaking character-by-character
+    flexShrink: 0,
   };
 
   const buttonStyle = {

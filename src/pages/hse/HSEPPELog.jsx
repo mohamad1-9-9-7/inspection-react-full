@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  apiList, apiSave, apiDelete,
+  apiList, apiSave, apiUpdate, apiDelete,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -52,6 +52,7 @@ const T = {
   rPeriodicS: { ar: "🔁 دوري", en: "🔁 Periodic" },
   rVisitorS:  { ar: "👥 زائر", en: "👥 Visitor" },
   del: { ar: "حذف", en: "Delete" },
+  edit: { ar: "✏️ تعديل", en: "✏️ Edit" },
 };
 
 const PPE_ITEMS = [
@@ -81,6 +82,7 @@ export default function HSEPPELog() {
   const [items, setItems] = useState([]);
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(blank());
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   async function reload() {
@@ -93,16 +95,25 @@ export default function HSEPPELog() {
     const v = Number(val) || 0;
     setDraft((d) => ({ ...d, itemsIssued: { ...d.itemsIssued, [itemKey]: v } }));
   }
+  function startEdit(it) {
+    setDraft({ ...blank(), ...it });
+    setEditingId(it.id);
+    setTab("new");
+  }
   async function save() {
     if (!draft.employeeName.trim()) { alert(pick(T.needName)); return; }
     const tot = Object.values(draft.itemsIssued).reduce((a, b) => a + (Number(b) || 0), 0);
     if (tot === 0) { alert(pick(T.needItem)); return; }
     setSaving(true);
     try {
-      await apiSave(TYPE, draft, draft.issuedBy || "HSE");
+      if (editingId) {
+        await apiUpdate(TYPE, editingId, draft, draft.issuedBy || "HSE");
+      } else {
+        await apiSave(TYPE, draft, draft.issuedBy || "HSE");
+      }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setTab("list");
+      setDraft(blank()); setEditingId(null); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -193,7 +204,7 @@ export default function HSEPPELog() {
               <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
                 {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
               </button>
-              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
+              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}
@@ -229,7 +240,10 @@ export default function HSEPPELog() {
                       </td>
                       <td style={tdStyle}>{rec.issuedBy}</td>
                       <td style={tdStyle}>
-                        <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(rec.id)}>{pick(T.del)}</button>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#1e40af" }} onClick={() => startEdit(rec)}>{pick(T.edit)}</button>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(rec.id)}>{pick(T.del)}</button>
+                        </div>
                       </td>
                     </tr>
                   );

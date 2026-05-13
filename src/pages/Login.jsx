@@ -707,8 +707,8 @@ function Login() {
           ))}
         </div>
 
-        {/* KPI button (no password) */}
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 22 }}>
+        {/* KPI + AI Assistant buttons (no password) */}
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 22, gap: 12, flexWrap: "wrap" }}>
           <button
             onClick={() => {
               localStorage.setItem('currentUser', JSON.stringify({
@@ -737,6 +737,58 @@ function Login() {
             }}
           >
             📊 Open KPI Dashboard
+          </button>
+
+          {/* 🤖 AI Assistant — quick access from login (no password) */}
+          <button
+            onClick={() => {
+              // Ensure a minimal "guest" session so ProtectedRoute lets the assistant load.
+              try {
+                if (!localStorage.getItem('currentUser')) {
+                  localStorage.setItem('currentUser', JSON.stringify({
+                    username: 'ai-guest',
+                    role: 'AI Assistant',
+                  }));
+                }
+              } catch {}
+              navigate('/ai-assistant');
+            }}
+            onMouseEnter={() => setHoveredRoleId("ai")}
+            onMouseLeave={() => setHoveredRoleId(null)}
+            style={{
+              padding: "14px 26px",
+              borderRadius: 14,
+              background: hoveredRoleId === "ai"
+                ? "linear-gradient(135deg, #a78bfa, #7c3aed)"
+                : "linear-gradient(135deg, #7c3aed, #4f46e5)",
+              color: "#fff",
+              border: "2px solid rgba(255,255,255,0.9)",
+              fontSize: "1.05rem",
+              fontWeight: "900",
+              boxShadow: "0 10px 24px rgba(124,58,237,0.35)",
+              transition: "transform .2s ease, box-shadow .2s ease, background .25s ease",
+              transform: hoveredRoleId === "ai" ? "translateY(-2px)" : "translateY(0)",
+              cursor: "pointer",
+              letterSpacing: "0.3px",
+              position: "relative",
+            }}
+            title="AI Assistant — quick help, summaries, and report guidance"
+          >
+            🤖 AI Assistant
+            <span style={{
+              position: "absolute",
+              top: -7,
+              insetInlineEnd: -7,
+              background: "linear-gradient(135deg, #f97316, #ea580c)",
+              color: "#fff",
+              fontSize: 9,
+              fontWeight: 1000,
+              padding: "2px 7px",
+              borderRadius: 999,
+              letterSpacing: ".05em",
+              boxShadow: "0 4px 10px rgba(249,115,22,.35)",
+              textTransform: "uppercase",
+            }}>NEW</span>
           </button>
         </div>
       </div>

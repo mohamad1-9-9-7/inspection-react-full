@@ -553,8 +553,7 @@ export default function SupplierApproval({ publicMode = false, publicToken = "",
       const saved = localStorage.getItem("qcs_supplier_lang");
       if (saved === "ar" || saved === "en") return saved;
     } catch {}
-    const navLang = (typeof navigator !== "undefined" && navigator.language) || "en";
-    return String(navLang).toLowerCase().startsWith("ar") ? "ar" : "en";
+    return "en";
   }, []);
   const [lang, setLang] = useState(initialLang);
   const t = UI[lang] || UI.en;

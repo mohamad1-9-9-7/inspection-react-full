@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import ReportHeader from "../_shared/ReportHeader";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -20,7 +19,7 @@ const btn = (bg) => ({ background:bg,color:"#fff",border:"none",borderRadius:8,p
 const formatDMY = (iso) => { if(!iso)return iso; const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?`${m[3]}/${m[2]}/${m[1]}`:iso; };
 const isFilledRow = (r={}) => Object.values(r).some(v=>String(v??"").trim()!=="");
 
-function emptyRow(){ return {date:"",productName:"",supplier:"",batchLotNo:"",productionDate:"",expiryDate:"",quantityReceived:"",quantityUsed:"",quantityDisposed:"",storageLocation:"",disposalReason:"",checkedBy:""}; }
+function emptyRow(){ return {date:"",productName:"",supplier:"",productionDate:"",expiryDate:"",finalProduct:"",finalProductionDate:"",finalExpiryDate:"",storageLocation:"",disposalReason:"",checkedBy:""}; }
 
 export default function TraceabilityLogView() {
   const reportRef    = useRef(null);
@@ -37,9 +36,23 @@ export default function TraceabilityLogView() {
   const [expandedYears,setExpandedYears]   = useState({});
   const [expandedMonths,setExpandedMonths] = useState({});
 
-  const thCell = {border:"1px solid #1f3b70",padding:"6px 4px",textAlign:"center",whiteSpace:"pre-line",fontWeight:700,background:"#f5f8ff",color:"#0b1f4d"};
-  const tdCell = {border:"1px solid #1f3b70",padding:"6px 4px",textAlign:"center",verticalAlign:"middle"};
-  const inputStyle = {width:"100%",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 6px"};
+  const gridStyle = {width:"max-content",borderCollapse:"collapse",tableLayout:"fixed",fontSize:13};
+  const thCell = {border:"1px solid #1f3b70",padding:"8px 6px",textAlign:"center",whiteSpace:"pre-line",fontWeight:700,background:"#f5f8ff",color:"#0b1f4d"};
+  const tdCell = {border:"1px solid #1f3b70",padding:"8px 6px",textAlign:"center",verticalAlign:"middle"};
+  const inputStyle = {width:"100%",border:"1px solid #c7d2fe",borderRadius:6,padding:"6px 8px"};
+  const colDefs = [
+    <col key="date"                style={{width:110}}/>,
+    <col key="productName"         style={{width:200}}/>,
+    <col key="supplier"            style={{width:180}}/>,
+    <col key="productionDate"      style={{width:130}}/>,
+    <col key="expiryDate"          style={{width:130}}/>,
+    <col key="finalProduct"        style={{width:200}}/>,
+    <col key="finalProductionDate" style={{width:150}}/>,
+    <col key="finalExpiryDate"     style={{width:150}}/>,
+    <col key="storageLocation"     style={{width:160}}/>,
+    <col key="disposalReason"      style={{width:180}}/>,
+    <col key="checkedBy"           style={{width:140}}/>,
+  ];
 
   async function fetchAllDates(){
     try{const res=await fetch(`${API_BASE}/api/reports?type=${TYPE}`,{cache:"no-store"});const data=await res.json();const list=Array.isArray(data)?data:data?.data??[];
@@ -94,12 +107,12 @@ export default function TraceabilityLogView() {
       const p=record?.payload||{};const rows=(p.entries||[]).filter(isFilledRow);
       const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet("TraceabilityLog");
       const border={top:{style:"thin",color:{argb:"1F3B70"}},left:{style:"thin",color:{argb:"1F3B70"}},bottom:{style:"thin",color:{argb:"1F3B70"}},right:{style:"thin",color:{argb:"1F3B70"}}};
-      const COL_HEADERS=["Date","Product Name","Supplier","Batch/Lot No.","Production Date","Expiry Date","Qty Received","Qty Used","Qty Disposed","Storage Location","Disposal Reason","Checked by"];
-      ws.columns=[{width:12},{width:20},{width:20},{width:16},{width:14},{width:14},{width:14},{width:12},{width:14},{width:18},{width:20},{width:16}];
+      const COL_HEADERS=["Date","Raw Name","Supplier","Production Date","Expiry Date","Final Product","Final Prod. Date","Final Exp. Date","Storage Location","Disposal Reason","Checked by"];
+      ws.columns=[{width:12},{width:20},{width:20},{width:14},{width:14},{width:20},{width:16},{width:16},{width:18},{width:20},{width:16}];
       ws.mergeCells(1,1,1,COL_HEADERS.length);const r1=ws.getCell(1,1);r1.value=`POS 19 | Traceability Log — ${FORM_REF}`;r1.alignment={horizontal:"center",vertical:"middle"};r1.font={size:13,bold:true};r1.fill={type:"pattern",pattern:"solid",fgColor:{argb:"E9F0FF"}};ws.getRow(1).height=22;
       ws.mergeCells(2,1,2,COL_HEADERS.length);ws.getCell(2,1).value=`Branch: ${BRANCH} | Section: ${safe(p.section)} | Date: ${safe(p.reportDate)}`;ws.getCell(2,1).alignment={horizontal:"center"};ws.getRow(2).height=18;
       const hr=ws.getRow(4);hr.values=COL_HEADERS;hr.eachCell(cell=>{cell.font={bold:true};cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"DCE6F1"}};cell.border=border;});hr.height=28;
-      let rIdx=5;rows.forEach(e=>{ws.getRow(rIdx).values=[safe(e.date),safe(e.productName),safe(e.supplier),safe(e.batchLotNo),safe(e.productionDate),safe(e.expiryDate),safe(e.quantityReceived),safe(e.quantityUsed),safe(e.quantityDisposed),safe(e.storageLocation),safe(e.disposalReason),safe(e.checkedBy)];ws.getRow(rIdx).eachCell(cell=>{cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.border=border;});ws.getRow(rIdx).height=20;rIdx++;});
+      let rIdx=5;rows.forEach(e=>{ws.getRow(rIdx).values=[safe(e.date),safe(e.productName),safe(e.supplier),safe(e.productionDate),safe(e.expiryDate),safe(e.finalProduct),safe(e.finalProductionDate),safe(e.finalExpiryDate),safe(e.storageLocation),safe(e.disposalReason),safe(e.checkedBy)];ws.getRow(rIdx).eachCell(cell=>{cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.border=border;});ws.getRow(rIdx).height=20;rIdx++;});
       rIdx+=1;[["Checked by:",p.checkedBy||""],["Verified by:",p.verifiedBy||""],["Rev.Date:",p.revDate||""],["Rev.No:",p.revNo||""]].forEach(([label,val],i)=>{const c=i*2+1;const lc=ws.getCell(rIdx,c);const vc=ws.getCell(rIdx,c+1);lc.value=label;lc.font={bold:true};vc.value=val;lc.border=vc.border=border;});
       const buf=await wb.xlsx.writeBuffer({useStyles:true,useSharedStrings:true});const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));a.download=`POS19_Traceability_${p.reportDate||date}.xlsx`;a.click();URL.revokeObjectURL(a.href);
     }catch(e){console.error(e);alert("⚠️ XLSX export failed.");}
@@ -150,49 +163,58 @@ export default function TraceabilityLogView() {
         <div>
           {loading&&<p>Loading…</p>}{err&&<p style={{color:"#b91c1c"}}>{err}</p>}
           {!loading&&!err&&!record&&<div style={{padding:12,border:"1px dashed #9ca3af",borderRadius:8,textAlign:"center"}}>No report for this date.</div>}
-          {record&&(<div ref={reportRef}>
-            <ReportHeader
-              title="Traceability Log"
-              fields={[
-                { label: "Report Date", value: safe(record.payload?.reportDate) },
-                { label: "Branch",      value: safe(record.payload?.branch) },
-                { label: "Form Ref",    value: FORM_REF },
-                { label: "Section",     value: safe(record.payload?.section) },
-              ]}
-            />
-            <div style={{border:"1px solid #1f3b70",borderBottom:"none"}}><div style={{...thCell,background:"#e9f0ff"}}>PRODUCT TRACEABILITY RECORD</div></div>
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontSize:12}}>
-                <colgroup>
-                  <col style={{width:110}}/><col style={{width:160}}/><col style={{width:160}}/><col style={{width:130}}/>
-                  <col style={{width:110}}/><col style={{width:110}}/><col style={{width:90}}/><col style={{width:90}}/>
-                  <col style={{width:90}}/><col style={{width:140}}/><col style={{width:160}}/><col style={{width:120}}/>
-                  {editing&&<col style={{width:70}}/>}
-                </colgroup>
-                <thead><tr>
-                  <th style={thCell}>Date</th><th style={thCell}>Product{"\n"}Name</th><th style={thCell}>Supplier</th><th style={thCell}>Batch /{ "\n"}Lot No.</th>
-                  <th style={thCell}>Production{"\n"}Date</th><th style={thCell}>Expiry{"\n"}Date</th>
-                  <th style={thCell}>Qty{"\n"}Received</th><th style={thCell}>Qty{"\n"}Used</th><th style={thCell}>Qty{"\n"}Disposed</th>
-                  <th style={thCell}>Storage{"\n"}Location</th><th style={thCell}>Disposal{"\n"}Reason</th><th style={thCell}>Checked{"\n"}by</th>
-                  {editing&&<th style={thCell}>—</th>}
-                </tr></thead>
+          {record&&(<div style={{overflowX:"auto",overflowY:"hidden"}}>
+            <div ref={reportRef} style={{width:"max-content"}}>
+              {/* Meta */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2, 1fr)",gap:8,marginBottom:8,fontSize:12,minWidth:1730}}>
+                <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
+                <div><strong>Report Date:</strong> {safe(record.payload?.reportDate)}</div>
+                <div><strong>Form Ref:</strong> {FORM_REF}</div>
+                <div><strong>Section:</strong> {safe(record.payload?.section)}</div>
+              </div>
+
+              {/* Table */}
+              <table style={gridStyle}>
+                <colgroup>{colDefs}{editing&&<col style={{width:70}}/>}</colgroup>
+                <thead>
+                  <tr>
+                    <th style={thCell}>Date</th>
+                    <th style={thCell}>Raw{"\n"}Name</th>
+                    <th style={thCell}>Supplier</th>
+                    <th style={thCell}>Production{"\n"}Date</th>
+                    <th style={thCell}>Expiry{"\n"}Date</th>
+                    <th style={thCell}>Final{"\n"}Product</th>
+                    <th style={thCell}>Final Prod.{"\n"}Date</th>
+                    <th style={thCell}>Final Exp.{"\n"}Date</th>
+                    <th style={thCell}>Storage{"\n"}Location</th>
+                    <th style={thCell}>Disposal{"\n"}Reason</th>
+                    <th style={thCell}>Checked{"\n"}by</th>
+                    {editing&&<th style={thCell}>—</th>}
+                  </tr>
+                </thead>
                 <tbody>
                   {!editing?(rows.filter(isFilledRow).map((r,idx)=>(<tr key={idx}>
-                    <td style={tdCell}>{formatDMY(safe(r.date))}</td><td style={tdCell}>{safe(r.productName)}</td><td style={tdCell}>{safe(r.supplier)}</td><td style={tdCell}>{safe(r.batchLotNo)}</td>
-                    <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td><td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
-                    <td style={tdCell}>{safe(r.quantityReceived)}</td><td style={tdCell}>{safe(r.quantityUsed)}</td><td style={tdCell}>{safe(r.quantityDisposed)}</td>
-                    <td style={tdCell}>{safe(r.storageLocation)}</td><td style={tdCell}>{safe(r.disposalReason)}</td><td style={tdCell}>{safe(r.checkedBy)}</td>
+                    <td style={tdCell}>{formatDMY(safe(r.date))}</td>
+                    <td style={tdCell}>{safe(r.productName)}</td>
+                    <td style={tdCell}>{safe(r.supplier)}</td>
+                    <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td>
+                    <td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
+                    <td style={tdCell}>{safe(r.finalProduct)}</td>
+                    <td style={tdCell}>{formatDMY(safe(r.finalProductionDate))}</td>
+                    <td style={tdCell}>{formatDMY(safe(r.finalExpiryDate))}</td>
+                    <td style={tdCell}>{safe(r.storageLocation)}</td>
+                    <td style={tdCell}>{safe(r.disposalReason)}</td>
+                    <td style={tdCell}>{safe(r.checkedBy)}</td>
                   </tr>))):(
                     editRows.map((r,i)=>(<tr key={i}>
                       <td style={tdCell}><input type="date" value={r.date||""} onChange={e=>upd(i,"date",e.target.value)} style={inputStyle}/></td>
                       <td style={tdCell}><input value={r.productName||""} onChange={e=>upd(i,"productName",e.target.value)} style={inputStyle}/></td>
                       <td style={tdCell}><input value={r.supplier||""} onChange={e=>upd(i,"supplier",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input value={r.batchLotNo||""} onChange={e=>upd(i,"batchLotNo",e.target.value)} style={inputStyle}/></td>
                       <td style={tdCell}><input type="date" value={r.productionDate||""} onChange={e=>upd(i,"productionDate",e.target.value)} style={inputStyle}/></td>
                       <td style={tdCell}><input type="date" value={r.expiryDate||""} onChange={e=>upd(i,"expiryDate",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input type="number" value={r.quantityReceived||""} onChange={e=>upd(i,"quantityReceived",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input type="number" value={r.quantityUsed||""} onChange={e=>upd(i,"quantityUsed",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input type="number" value={r.quantityDisposed||""} onChange={e=>upd(i,"quantityDisposed",e.target.value)} style={inputStyle}/></td>
+                      <td style={tdCell}><input value={r.finalProduct||""} onChange={e=>upd(i,"finalProduct",e.target.value)} style={inputStyle}/></td>
+                      <td style={tdCell}><input type="date" value={r.finalProductionDate||""} onChange={e=>upd(i,"finalProductionDate",e.target.value)} style={inputStyle}/></td>
+                      <td style={tdCell}><input type="date" value={r.finalExpiryDate||""} onChange={e=>upd(i,"finalExpiryDate",e.target.value)} style={inputStyle}/></td>
                       <td style={tdCell}><input value={r.storageLocation||""} onChange={e=>upd(i,"storageLocation",e.target.value)} style={inputStyle}/></td>
                       <td style={tdCell}><input value={r.disposalReason||""} onChange={e=>upd(i,"disposalReason",e.target.value)} style={inputStyle}/></td>
                       <td style={tdCell}><input value={r.checkedBy||""} onChange={e=>upd(i,"checkedBy",e.target.value)} style={inputStyle}/></td>
@@ -201,12 +223,37 @@ export default function TraceabilityLogView() {
                   )}
                 </tbody>
               </table>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginTop:12,fontSize:12}}>
-              <div><strong>Checked by:</strong> {safe(record.payload?.checkedBy)}</div>
-              <div><strong>Verified by:</strong> {safe(record.payload?.verifiedBy)}</div>
-              <div><strong>Rev.Date:</strong> {safe(record.payload?.revDate)}</div>
-              <div><strong>Rev.No:</strong> {safe(record.payload?.revNo)}</div>
+
+              {/* Note */}
+              <div style={{marginTop:10,paddingTop:8,borderTop:"2px solid #1f3b70",fontSize:12,color:"#0b1f4d",lineHeight:1.6,width:"max-content"}}>
+                <strong style={{color:"#0b1f4d"}}>Note:</strong>
+                <span style={{marginInlineStart:4}}>
+                  Raw material receipts, usage and disposal at the kitchen should be recorded as per
+                  <span style={{fontWeight:800}}> “{FORM_REF}”</span>.
+                </span>
+              </div>
+
+              {/* Footer: Checked left | Verified right */}
+              <div style={{marginTop:12,width:"100%",display:"flex",justifyContent:"space-between",gap:16,flexWrap:"wrap",alignItems:"center",fontSize:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flex:"1 1 320px",minWidth:300}}>
+                  <strong>Checked by:</strong>
+                  <span style={{display:"inline-block",minWidth:260,borderBottom:"2px solid #1f3b70",lineHeight:"1.8",textAlign:"left"}}>
+                    {safe(record.payload?.checkedBy)}
+                  </span>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flex:"1 1 320px",minWidth:300,justifyContent:"flex-end"}}>
+                  <strong>Verified by:</strong>
+                  <span style={{display:"inline-block",minWidth:260,borderBottom:"2px solid #1f3b70",lineHeight:"1.8",textAlign:"left"}}>
+                    {safe(record.payload?.verifiedBy)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Rev info */}
+              <div style={{marginTop:8,display:"flex",justifyContent:"space-between",gap:16,fontSize:11,color:"#6b7280"}}>
+                <div><strong>Rev.Date:</strong> {safe(record.payload?.revDate)}</div>
+                <div><strong>Rev.No:</strong> {safe(record.payload?.revNo)}</div>
+              </div>
             </div>
           </div>)}
         </div>

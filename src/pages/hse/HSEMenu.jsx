@@ -129,20 +129,20 @@ const sections = [
     route: "/hse/monthly-safety-report",
   },
   {
+    id: "kpis", group: { ar: "📊 التقارير الدورية", en: "📊 Periodic Reports" },
+    icon: "📈",
+    title:    { ar: "لوحة مؤشرات الأداء (KPI Dashboard)", en: "KPI Dashboard" },
+    subtitle: { ar: "Lagging + Leading — LTIFR، TRIR، Near Miss، إغلاق CAPA، حرارة، تراخيص — تُحسب آلياً",
+                en: "Lagging + Leading — LTIFR, TRIR, Near Miss, CAPA closure, temperature, licenses — auto-calculated" },
+    route: "/hse/kpis",
+  },
+  {
     id: "work-permit", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
     icon: "📋",
     title:    { ar: "F-07 · تصاريح العمل", en: "F-07 · Work Permits" },
     subtitle: { ar: "أعمال ساخنة، ارتفاعات، كهرباء، كيماويات، رفع",
                 en: "Hot work, Heights, Electrical, Chemicals, Lifting" },
     route: "/hse/work-permit",
-  },
-  {
-    id: "shipment-receiving", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "📦",
-    title:    { ar: "F-09 · استلام الشحنات", en: "F-09 · Shipment Receiving" },
-    subtitle: { ar: "✈️ شحنات اللحوم بالطيارة (مبردة/مجمدة) + AWB + الشهادات + الحرارة",
-                en: "✈️ Air-imported meat (chilled/frozen) + AWB + Certificates + Temperature" },
-    route: "/hse/shipment-receiving",
   },
   {
     id: "cleaning-log", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
@@ -177,14 +177,6 @@ const sections = [
     route: "/hse/equipment-maintenance",
   },
   {
-    id: "medical-checks", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "🩺",
-    title:    { ar: "F-14 · الفحوصات الطبية", en: "F-14 · Medical Checks" },
-    subtitle: { ar: "بطاقة صحية + فحص سنوي + TB + لياقة العمل في البيئات الباردة",
-                en: "Health Card + Annual check + TB + Cold-environment fitness" },
-    route: "/hse/medical-checks",
-  },
-  {
     id: "evacuation-drills", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
     icon: "🚨",
     title:    { ar: "F-16 · تجارب الإخلاء", en: "F-16 · Evacuation Drills" },
@@ -199,14 +191,6 @@ const sections = [
     subtitle: { ar: "13 صنف معدات + إحصائيات الاستهلاك",
                 en: "13 PPE items + Consumption statistics" },
     route: "/hse/ppe-log",
-  },
-  {
-    id: "contractors-visitors", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },
-    icon: "👥",
-    title:    { ar: "F-17 · المقاولون والزوار", en: "F-17 · Contractors & Visitors" },
-    subtitle: { ar: "Induction + PPE + بطاقة صحية + متابعة الدخول والخروج",
-                en: "Induction + PPE + Health card + Entry/exit tracking" },
-    route: "/hse/contractors-visitors",
   },
   {
     id: "waste-log", group: { ar: "📝 النماذج التشغيلية", en: "📝 Operational Forms" },

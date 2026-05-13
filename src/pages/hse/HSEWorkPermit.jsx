@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO, nowHHMM,
-  apiList, apiSave, apiDelete, apiUpdate, SITE_LOCATIONS,
+  apiList, apiSave, apiDelete, apiUpdate, SITE_LOCATIONS, /* edit-mode reuse apiUpdate */
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -65,6 +65,7 @@ const T = {
   confirmDel:  { ar: "حذف؟", en: "Delete?" },
   close:       { ar: "إغلاق", en: "Close" },
   del:         { ar: "حذف", en: "Delete" },
+  edit:        { ar: "✏️ تعديل", en: "✏️ Edit" },
   noRecords:   { ar: "لا توجد تصاريح", en: "No permits" },
   cols: {
     no:      { ar: "الرقم", en: "No." },
@@ -161,6 +162,7 @@ export default function HSEWorkPermit() {
   const [items, setItems] = useState([]);
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(blank());
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   async function reload() {
@@ -172,15 +174,24 @@ export default function HSEWorkPermit() {
   function setCheck(key, val) {
     setDraft((d) => ({ ...d, safetyChecks: { ...d.safetyChecks, [key]: val } }));
   }
+  function startEdit(it) {
+    setDraft({ ...blank(), ...it });
+    setEditingId(it.id);
+    setTab("new");
+  }
   async function save() {
     if (!draft.workDescription.trim()) { alert(pick(T.needDesc)); return; }
     if (!draft.workerName.trim()) { alert(pick(T.needWorker)); return; }
     setSaving(true);
     try {
-      await apiSave(TYPE, draft, draft.issuedBy || "HSE");
+      if (editingId) {
+        await apiUpdate(TYPE, editingId, draft, draft.issuedBy || "HSE");
+      } else {
+        await apiSave(TYPE, draft, draft.issuedBy || "HSE");
+      }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setTab("list");
+      setDraft(blank()); setEditingId(null); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -368,7 +379,7 @@ export default function HSEWorkPermit() {
               <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
                 {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
               </button>
-              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
+              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(blank()); }} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}
@@ -407,10 +418,13 @@ export default function HSEWorkPermit() {
                         {it.status === "closed" && pick(T.stClosed)}
                       </td>
                       <td style={tdStyle}>
-                        {it.status === "active" && (
-                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => closePermit(it.id)}>{pick(T.close)}</button>
-                        )}
-                        <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c", marginInlineStart: 4 }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#1e40af" }} onClick={() => startEdit(it)}>{pick(T.edit)}</button>
+                          {it.status === "active" && (
+                            <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => closePermit(it.id)}>{pick(T.close)}</button>
+                          )}
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                        </div>
                       </td>
                     </tr>
                   );

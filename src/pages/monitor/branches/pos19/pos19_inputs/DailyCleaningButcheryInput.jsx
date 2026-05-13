@@ -177,6 +177,12 @@ export default function DailyCleaningChecklistInput() {
         ]}
       />
 
+      {/* Important info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#eff6ff", border:"1px solid #bfdbfe", borderLeft:"4px solid #3b82f6", borderRadius:8, color:"#1e40af", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>ℹ️</div>
+        <div><strong>Important (PRP):</strong> Clean and sanitize all areas, surfaces, and equipment at the <b>end of each shift</b> (or more frequently as needed). Apply sanitizer at the correct concentration with the required contact time. Mark each item ✓ when satisfactory or ✗ when needing corrective action.</div>
+      </div>
+
       {/* Title + Legend */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>AREA</div>

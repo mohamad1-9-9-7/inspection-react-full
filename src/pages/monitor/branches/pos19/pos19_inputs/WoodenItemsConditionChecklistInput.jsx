@@ -134,6 +134,12 @@ export default function WoodenItemsConditionChecklistInput() {
         ]}
       />
 
+      {/* Critical info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
+        <div><strong>Critical (Physical & Biological Hazard):</strong> Wooden cutting boards and utensils must be free of <b>cracks, splinters, deep grooves, mold, or excessive wear</b>. Damaged wood harbors bacteria and can release splinters into food — <b>replace immediately</b> if damaged. Inspect weekly and after any sign of deterioration.</div>
+      </div>
+
       {/* Legend */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>

@@ -171,6 +171,12 @@ export default function EquipmentInspectionSanitizingLogInput() {
         ]}
       />
 
+      {/* Critical info banner */}
+      <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
+        <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
+        <div><strong>Critical Requirement (PRP/CCP):</strong> All food-contact surfaces and equipment must be cleaned and sanitized <b>every 4 hours</b> and <b>after each use / change of food type</b>. Inspect for damage, rust, or wear before each shift. Any deficiency requires immediate corrective action — record it in the corrective-action column.</div>
+      </div>
+
       {/* ── Action buttons ── */}
       <div style={{ display:"flex", gap:8, padding:"0 0 10px", justifyContent:"flex-end" }}>
         <button onClick={addRow} style={actionBtn("#0ea5e9")}>+ Add Row</button>

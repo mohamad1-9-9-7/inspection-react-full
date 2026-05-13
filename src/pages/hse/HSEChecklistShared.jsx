@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO,
-  apiList, apiSave, apiDelete, SITE_LOCATIONS,
+  apiList, apiSave, apiUpdate, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle, useHSELang, HSELangToggle,
 } from "./hseShared";
 
@@ -31,6 +31,7 @@ export default function HSEChecklist({
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(makeBlank());
   const [viewing, setViewing] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   function makeBlank() {
@@ -59,6 +60,13 @@ export default function HSEChecklist({
     setDraft((d) => ({ ...d, results: { ...d.results, [itemKey]: val } }));
   }
 
+  function startEdit(it) {
+    setDraft({ ...makeBlank(), ...it });
+    setEditingId(it.id);
+    setViewing(null);
+    setTab("new");
+  }
+
   async function save() {
     if (!draft.inspector.trim()) {
       alert(lang === "ar" ? "أدخل اسم المفتش" : "Enter inspector name");
@@ -66,10 +74,14 @@ export default function HSEChecklist({
     }
     setSaving(true);
     try {
-      await apiSave(storageKey, draft, draft.inspector || "HSE");
+      if (editingId) {
+        await apiUpdate(storageKey, editingId, draft, draft.inspector || "HSE");
+      } else {
+        await apiSave(storageKey, draft, draft.inspector || "HSE");
+      }
       await reload();
       alert(lang === "ar" ? "✅ تم الحفظ" : "✅ Saved");
-      setDraft(makeBlank()); setTab("list");
+      setDraft(makeBlank()); setEditingId(null); setTab("list");
     } catch (e) {
       alert((lang === "ar" ? "❌ خطأ بالحفظ: " : "❌ Save error: ") + (e?.message || e));
     } finally {
@@ -229,7 +241,7 @@ export default function HSEChecklist({
               <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
                 {saving ? (lang === "ar" ? "⏳ جارٍ الحفظ…" : "⏳ Saving…") : (lang === "ar" ? "💾 حفظ" : "💾 Save")}
               </button>
-              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{lang === "ar" ? "إلغاء" : "Cancel"}</button>
+              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); setDraft(makeBlank()); }} disabled={saving}>{lang === "ar" ? "إلغاء" : "Cancel"}</button>
             </div>
           </div>
         )}
@@ -266,12 +278,17 @@ export default function HSEChecklist({
                         </span>
                       </td>
                       <td style={tdStyle}>
-                        <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, marginInlineEnd: 4 }} onClick={() => setViewing(it)}>
-                          {lang === "ar" ? "👁️ عرض" : "👁️ View"}
-                        </button>
-                        <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>
-                          {lang === "ar" ? "حذف" : "Delete"}
-                        </button>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => setViewing(it)}>
+                            {lang === "ar" ? "👁️ عرض" : "👁️ View"}
+                          </button>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#1e40af" }} onClick={() => startEdit(it)}>
+                            {lang === "ar" ? "✏️ تعديل" : "✏️ Edit"}
+                          </button>
+                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>
+                            {lang === "ar" ? "حذف" : "Delete"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

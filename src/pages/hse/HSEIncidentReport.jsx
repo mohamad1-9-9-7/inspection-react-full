@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
   cardStyle, inputStyle, labelStyle, HSE_COLORS, todayISO, nowHHMM,
-  apiList, apiSave, apiDelete, SITE_LOCATIONS,
+  apiList, apiSave, apiUpdate, apiDelete, SITE_LOCATIONS,
   tableStyle, thStyle, tdStyle,
   useHSELang, HSELangToggle,
 } from "./hseShared";
@@ -101,6 +101,7 @@ const T = {
   saved:    { ar: "✅ تم حفظ تقرير الحادث", en: "✅ Incident report saved" },
   confirmDel: { ar: "حذف هذا التقرير؟", en: "Delete this report?" },
   del:      { ar: "حذف", en: "Delete" },
+  edit:     { ar: "✏️ تعديل", en: "✏️ Edit" },
   // statuses
   stOpen:   { ar: "🔴 مفتوح", en: "🔴 Open" },
   stInv:    { ar: "🟡 قيد التحقيق", en: "🟡 Investigating" },
@@ -197,6 +198,7 @@ export default function HSEIncidentReport() {
   const [items, setItems] = useState([]);
   const [tab, setTab] = useState("list");
   const [draft, setDraft] = useState(blank());
+  const [editingId, setEditingId] = useState(null);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -208,16 +210,26 @@ export default function HSEIncidentReport() {
   useEffect(() => { reload(); }, []);
   function set(k, v) { setDraft((d) => ({ ...d, [k]: v })); }
 
+  function startEdit(it) {
+    setDraft({ ...blank(), ...it });
+    setEditingId(it.id);
+    setTab("new");
+  }
+
   async function save() {
     if (!draft.description.trim()) { alert(pick(T.needDesc)); return; }
     if (!draft.anonymous && !draft.reporter.trim()) { alert(pick(T.needReporter)); return; }
     const toSave = draft.anonymous ? { ...draft, reporter: "🕵️ Anonymous", reporterRole: "" } : draft;
     setSaving(true);
     try {
-      await apiSave(TYPE, toSave, toSave.reporter || "HSE");
+      if (editingId) {
+        await apiUpdate(TYPE, editingId, toSave, toSave.reporter || "HSE");
+      } else {
+        await apiSave(TYPE, toSave, toSave.reporter || "HSE");
+      }
       await reload();
       alert(pick(T.saved));
-      setDraft(blank()); setTab("list");
+      setDraft(blank()); setEditingId(null); setTab("list");
     } catch (e) {
       alert((pick({ ar: "❌ خطأ بالحفظ: ", en: "❌ Save error: " })) + (e?.message || e));
     } finally {
@@ -263,7 +275,7 @@ export default function HSEIncidentReport() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <HSELangToggle lang={lang} toggle={toggle} />
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => setTab("list")}>{pick(T.list)} ({items.length})</button>
-            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => setTab("new")}>{pick(T.newReport)}</button>
+            <button style={tab === "new" ? buttonPrimary : buttonGhost} onClick={() => { setEditingId(null); setDraft(blank()); setTab("new"); }}>{editingId ? (pick({ ar: "✏️ تعديل تقرير", en: "✏️ Editing Report" })) : pick(T.newReport)}</button>
             <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
@@ -488,8 +500,8 @@ export default function HSEIncidentReport() {
               <button style={{ ...buttonPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
                 {saving ? (pick({ ar: "⏳ جارٍ الحفظ…", en: "⏳ Saving…" })) : pick(T.saveBtn)}
               </button>
-              <button style={buttonGhost} onClick={() => setDraft(blank())} disabled={saving}>{pick(T.clearBtn)}</button>
-              <button style={buttonGhost} onClick={() => setTab("list")} disabled={saving}>{pick(T.cancel)}</button>
+              <button style={buttonGhost} onClick={() => { setDraft(blank()); setEditingId(null); }} disabled={saving}>{pick(T.clearBtn)}</button>
+              <button style={buttonGhost} onClick={() => { setTab("list"); setEditingId(null); }} disabled={saving}>{pick(T.cancel)}</button>
             </div>
           </div>
         )}
@@ -548,7 +560,10 @@ export default function HSEIncidentReport() {
                           {it.status === "closed" && pick(T.stClosed)}
                         </td>
                         <td style={tdStyle}>
-                          <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#1e40af" }} onClick={() => startEdit(it)}>{pick(T.edit)}</button>
+                            <button style={{ ...buttonGhost, padding: "4px 10px", fontSize: 12, color: "#b91c1c" }} onClick={() => remove(it.id)}>{pick(T.del)}</button>
+                          </div>
                         </td>
                       </tr>
                     );

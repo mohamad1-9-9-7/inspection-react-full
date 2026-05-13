@@ -22,8 +22,8 @@ import {
 import { scanExpiry, summarize, pickAlertable } from "../utils/expiryTracker";
 import API_BASE from "../config/api";
 
-const REMINDER_CHECK_MS = 60_000;       // كل دقيقة
-const GLOBAL_REFRESH_MS = 5 * 60_000;   // كل 5 دقائق
+const REMINDER_CHECK_MS = 5 * 60_000;   // كل 5 دقائق (مخفّض لتقليل ضغط السيرفر)
+const GLOBAL_REFRESH_MS = 15 * 60_000;  // كل 15 دقيقة
 
 export default function NotificationManager() {
   useEffect(() => {
