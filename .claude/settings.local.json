@@ -132,7 +132,17 @@
       "Bash(nslookup -type=mx almawashi.ae)",
       "Bash(nslookup smtp.almawashi.ae)",
       "Bash(nslookup mail.almawashi.ae)",
-      "Bash(nslookup -type=A almawashi.ae)"
+      "Bash(nslookup -type=A almawashi.ae)",
+      "Bash(grep -n \"style:.*\\\\.\\\\.\\\\..*style\\\\|style={{.*\\\\.\\\\.\\\\..*style\\\\|fontWeight: 700 }\\\\|background: \\\\\"#\" \"D:\\\\inspection-react-full\\\\src\\\\pages\\\\monitor\\\\branches\\\\shipment_recc\\\\QCSRawMaterialForm.jsx\")",
+      "Bash(node -e 'require\\('\\\\''@babel/core'\\\\''\\).transformFileSync\\('\\\\''__TRACKED_VAR__'\\\\'',{presets:[['\\\\''@babel/preset-react'\\\\'',{runtime:'\\\\''classic'\\\\''}]]}\\); console.log\\('\\\\''OK __TRACKED_VAR__'\\\\''\\)')",
+      "Bash(node -e 'require\\('\\\\''@babel/core'\\\\''\\).transformFileSync\\('\\\\''__TRACKED_VAR__'\\\\'',{presets:[['\\\\''@babel/preset-react'\\\\'',{runtime:'\\\\''classic'\\\\''}]]}\\); console.log\\('\\\\''OK  __TRACKED_VAR__'\\\\''\\)')",
+      "Bash(node -e \"require\\('@babel/core'\\).transformFileSync\\('src/pages/training/TrainingSessionsList.jsx',{presets:[['@babel/preset-react',{runtime:'classic'}]]}\\); console.log\\('OK List'\\)\")",
+      "Bash(cd /d D:\\\\inspection-react-full)",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash(node -e \"const p=require\\('D:/inspection-react-full/package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
+      "Bash(git -C \"D:\\\\inspection-react-full\" status --short)",
+      "Bash(git -C \"D:\\\\inspection-react-full\" diff --stat)",
+      "Bash(git -C \"D:\\\\inspection-react-full\" log --oneline -8)"
     ]
   }
 }

@@ -47,40 +47,44 @@ async function createReport(body) {
 
 /* ===================== الخارق 1 Design Tokens ===================== */
 const C = {
-  navy:      "#1e3a5f",
-  navyLight: "#2d5a8e",
-  accent:    "#3b82f6",
-  accentBg:  "#eff6ff",
+  navy:      "#4338ca",
+  navyLight: "#6366f1",
+  accent:    "#4f46e5",
+  accentBg:  "#eef2ff",
   teal:      "#0d9488",
   tealBg:    "#f0fdfa",
   purple:    "#7c3aed",
-  purpleBg:  "#ede9fe",
+  purpleBg:  "#f5f3ff",
   red:       "#dc2626",
   green:     "#16a34a",
-  gray50:    "#f9fafb",
-  gray100:   "#f3f4f6",
+  gray50:    "#f6f7fb",
+  gray100:   "#f1f2f6",
   gray200:   "#e5e7eb",
   gray400:   "#9ca3af",
-  gray700:   "#374151",
+  gray700:   "#334155",
   white:     "#ffffff",
-  border:    "#dbeafe",
+  border:    "#eceef3",
 };
 
 const actionBtn = (bg, disabled = false) => ({
   background: disabled ? C.gray200 : bg,
   color: disabled ? C.gray400 : C.white,
-  border: "none", borderRadius: 8, padding: "8px 14px",
-  fontWeight: 700, fontSize: 13,
+  border: "none", borderRadius: 10, padding: "9px 16px",
+  fontWeight: 700, fontSize: 13, letterSpacing: "0.01em",
   cursor: disabled ? "not-allowed" : "pointer",
-  whiteSpace: "nowrap", transition: "opacity .15s",
+  whiteSpace: "nowrap",
+  boxShadow: disabled ? "none" : "0 1px 2px rgba(16,24,40,.06)",
+  transition: "transform .12s ease, filter .12s ease",
 });
 
 const inputSt = {
   width: "100%", boxSizing: "border-box",
-  border: `1px solid ${C.border}`, borderRadius: 8,
-  padding: "10px 12px", fontSize: 14, color: C.gray700,
+  border: `1px solid #dfe3ea`, borderRadius: 10,
+  padding: "10px 14px", fontSize: 14, color: C.gray700,
   background: C.white, outline: "none",
   fontFamily: "inherit",
+  boxShadow: "0 1px 2px rgba(16,24,40,.03)",
+  transition: "border-color .12s ease, box-shadow .12s ease",
 };
 
 const textareaSt = {
@@ -857,13 +861,13 @@ export default function TrainingSessionCreate() {
   };
 
   return (
-    <div style={{ background:C.gray50, minHeight:"100vh", fontFamily:"'Segoe UI',system-ui,sans-serif", color:C.gray700, direction:"ltr" }}>
+    <div style={{ background:"radial-gradient(1000px 480px at 100% -8%, #eef2ff 0%, transparent 55%), #f6f7fb", minHeight:"100vh", fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", color:C.gray700, direction:"ltr", padding:"28px 20px 36px", boxSizing:"border-box" }}>
 
       {/* ── Top bar ── */}
-      <div style={{ background:`linear-gradient(135deg,${C.navy} 0%,${C.navyLight} 100%)`, padding:"14px 20px", display:"flex", alignItems:"center", gap:12, borderRadius:"12px 12px 0 0", flexWrap:"wrap" }}>
+      <div style={{ maxWidth:1080, margin:"0 auto", background:`linear-gradient(135deg,${C.navy} 0%,${C.accent} 50%,${C.navyLight} 100%)`, padding:"20px 24px", display:"flex", alignItems:"center", gap:12, borderRadius:"18px 18px 0 0", flexWrap:"wrap", boxShadow:"0 12px 30px rgba(79,70,229,.26)" }}>
         <div>
-          <div style={{ color:C.white, fontWeight:800, fontSize:17, letterSpacing:.3 }}>➕ Create Training Session</div>
-          <div style={{ color:"#93c5fd", fontSize:12, marginTop:2 }}>
+          <div style={{ color:C.white, fontWeight:800, fontSize:18, letterSpacing:"-0.01em" }}>➕ Create Training Session</div>
+          <div style={{ color:"rgba(255,255,255,.85)", fontSize:12.5, marginTop:4, fontWeight:500 }}>
             Select module → fill details → save. Question bank attached automatically.
           </div>
         </div>
@@ -876,7 +880,7 @@ export default function TrainingSessionCreate() {
       </div>
 
       {/* ── Body ── */}
-      <div style={{ border:`1px solid ${C.border}`, borderTop:"none", borderRadius:"0 0 12px 12px", background:C.white, padding:18, display:"grid", gap:16 }}>
+      <div style={{ maxWidth:1080, margin:"0 auto", border:`1px solid ${C.border}`, borderTop:"none", borderRadius:"0 0 18px 18px", background:C.white, padding:24, display:"grid", gap:16, boxShadow:"0 14px 34px rgba(16,24,40,.07)" }}>
 
         {/* ── KPI cards ── */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:10 }}>

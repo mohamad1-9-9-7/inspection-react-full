@@ -1,7 +1,7 @@
 // src/pages/BrowseReturns.jsx
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import {
-  FiSearch, FiX, FiDownload, FiPrinter, FiRefreshCw, FiLock,
+  FiSearch, FiX, FiDownload, FiPrinter, FiRefreshCw, FiLock, FiMail,
   FiChevronDown, FiChevronRight, FiEye, FiSliders, FiBarChart2,
   FiCalendar, FiGrid, FiList, FiBookmark, FiTrendingUp, FiTrendingDown,
   FiCheck, FiInfo, FiActivity, FiPieChart, FiSave, FiTrash2,
@@ -9,6 +9,8 @@ import {
   FiFilter, FiColumns, FiZap, FiHelpCircle, FiPackage, FiClock,
   FiTarget,
 } from "react-icons/fi";
+import EmailSendModal from "./shared/EmailSendModal";
+import { escapeHtml } from "./shared/emailReportUtils";
 
 /* ============================================================
    API
@@ -2161,6 +2163,7 @@ export default function BrowseReturns() {
   const [viewerData, setViewerData] = useState({ title: "", images: [] });
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditItem, setAuditItem] = useState(null);
+  const [emailOpen, setEmailOpen] = useState(false);
   const [productOpen, setProductOpen] = useState(false);
   const [productInit, setProductInit] = useState({ code: "", name: "" });
 
@@ -3151,7 +3154,138 @@ export default function BrowseReturns() {
     return window.XLSX;
   }
 
-  const handleExportPDF = async () => {
+  /* ===== Email helpers (Returns) ===== */
+  const collectReportImages = useCallback((rep) => {
+    const items = rep?.items || [];
+    const urls = [];
+    for (const it of items) {
+      if (Array.isArray(it.images)) {
+        for (const u of it.images) if (u && typeof u === "string") urls.push(u);
+      }
+    }
+    return urls;
+  }, []);
+
+  const buildReturnsHtml = useCallback((rep, opts = {}) => {
+    const items = rep?.items || [];
+    const date = rep?.reportDate || "—";
+    const note = opts.note;
+    const attCount = opts.attachmentsCount;
+    const includeTable = !!opts.includeTable;
+    const rows = items.map((row, i) => {
+      const pos = row.butchery || row.pos || "";
+      const qtyType = row.qtyType || "";
+      const action = row.action || row.customAction || "";
+      return `<tr>
+        <td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center;">${i + 1}</td>
+        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(row.productName || "—")}</td>
+        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(row.origin || "—")}</td>
+        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(pos)}</td>
+        <td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:right;">${escapeHtml(row.quantity ?? "")}</td>
+        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(qtyType)}</td>
+        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(row.expiry || "—")}</td>
+        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(row.remarks || "")}</td>
+        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(action)}</td>
+      </tr>`;
+    }).join("");
+    const noteHtml = note && String(note).trim()
+      ? `<div style="margin:14px 0;padding:10px 12px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:6px;"><b>Note:</b><br/>${escapeHtml(note).replace(/\n/g, "<br/>")}</div>`
+      : "";
+    const attInfo = attCount
+      ? `<div style="margin-top:8px;padding:8px 12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;font-size:12px;color:#1e3a8a;">📎 <b>${attCount} file(s) attached</b></div>`
+      : "";
+    return `
+      <div style="font-family:Inter,Roboto,Arial,sans-serif;background:#f1f5f9;padding:20px;color:#0f172a;">
+        <div style="max-width:900px;margin:auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08);">
+          <div style="background:#0f172a;color:#fff;padding:16px 22px;">
+            <div style="font-size:18px;font-weight:900;">AL MAWASHI</div>
+            <div style="font-size:12px;opacity:.85;">Trans Emirates Livestock Trading L.L.C.</div>
+          </div>
+          <div style="padding:18px 22px;">
+            <h3 style="margin:0;">Returns Report</h3>
+            <div style="color:#64748b;font-size:13px;margin-top:4px;">Date: <b>${escapeHtml(date)}</b> · ${items.length} item(s)</div>
+            ${attInfo}
+            ${noteHtml}
+            ${includeTable ? `
+            <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin-top:14px;font-size:12px;">
+              <tr style="background:#0f172a;color:#fff;">
+                <th style="border:1px solid #1e293b;padding:7px 8px;">SL</th>
+                <th style="border:1px solid #1e293b;padding:7px 8px;">PRODUCT</th>
+                <th style="border:1px solid #1e293b;padding:7px 8px;">ORIGIN</th>
+                <th style="border:1px solid #1e293b;padding:7px 8px;">POS</th>
+                <th style="border:1px solid #1e293b;padding:7px 8px;">QTY</th>
+                <th style="border:1px solid #1e293b;padding:7px 8px;">QTY TYPE</th>
+                <th style="border:1px solid #1e293b;padding:7px 8px;">EXPIRY</th>
+                <th style="border:1px solid #1e293b;padding:7px 8px;">REMARKS</th>
+                <th style="border:1px solid #1e293b;padding:7px 8px;">ACTION</th>
+              </tr>
+              ${rows}
+            </table>` : `
+            <div style="margin-top:14px;padding:14px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;text-align:center;color:#64748b;font-size:13px;">
+              📄 جدول المرتجعات الكامل (${items.length} صنف) في ملف الـ PDF المرفق.
+            </div>`}
+          </div>
+          <div style="background:#f8fafc;padding:12px 22px;color:#64748b;font-size:11px;text-align:center;">
+            Generated by Al Mawashi QCS System
+          </div>
+        </div>
+      </div>`;
+  }, []);
+
+  const buildReturnsText = useCallback((rep, opts = {}) => {
+    const items = rep?.items || [];
+    const date = rep?.reportDate || "—";
+    const includeTable = !!opts.includeTable;
+    const lines = [];
+    lines.push("AL MAWASHI — RETURNS REPORT");
+    lines.push("═══════════════════════════");
+    lines.push(`Date: ${date}    Items: ${items.length}`);
+    lines.push("");
+    if (includeTable) {
+      items.forEach((row, i) => {
+        lines.push(`${i + 1}. ${row.productName || "—"}`);
+        lines.push(`   Origin: ${row.origin || "—"}  |  POS: ${row.butchery || row.pos || "—"}`);
+        lines.push(`   Qty: ${row.quantity ?? "—"} ${row.qtyType || ""}  |  Expiry: ${row.expiry || "—"}`);
+        if (row.remarks) lines.push(`   Remarks: ${row.remarks}`);
+        if (row.action) lines.push(`   Action: ${row.action}`);
+        lines.push("");
+      });
+    } else {
+      lines.push(`📄 جدول المرتجعات الكامل (${items.length} صنف) في ملف الـ PDF المرفق.`);
+      lines.push("");
+    }
+    if (opts.note) {
+      lines.push("Note from inspector:");
+      lines.push(String(opts.note).trim());
+      lines.push("");
+    }
+    if (opts.pdfUrl) {
+      lines.push("📎 Full PDF:");
+      lines.push(opts.pdfUrl);
+    }
+    lines.push("");
+    lines.push("Generated by Al Mawashi QCS System");
+    return lines.join("\n");
+  }, []);
+
+  const emailConfig = useMemo(() => ({
+    reportTitle: "Returns Report",
+    getSubject: (rep) => `[Returns] Report — ${rep?.reportDate || "—"}`,
+    generatePdf: async (_rep) => handleExportPDF({ returnBlob: true }),
+    buildHtml: buildReturnsHtml,
+    buildText: buildReturnsText,
+    getImages: collectReportImages,
+    getCertificate: () => null,
+    getSummary: (rep) => ({
+      fields: [
+        { label: "Date", value: rep?.reportDate || "—" },
+        { label: "Items", value: String(rep?.items?.length || 0) },
+      ],
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [buildReturnsHtml, buildReturnsText, collectReportImages]);
+
+  const handleExportPDF = async (opts = {}) => {
     if (!selectedReport) return;
     try {
       const JsPDF = await ensureJsPDF();
@@ -3200,10 +3334,18 @@ export default function BrowseReturns() {
         columnStyles,
         didDrawPage: () => drawHeader(),
       });
-      doc.save(`returns_${selectedReport.reportDate}.pdf`);
+      const filename = `returns_${selectedReport.reportDate}.pdf`;
+      if (opts.returnBlob) {
+        const blob = doc.output("blob");
+        const dataUri = doc.output("datauristring");
+        const base64 = dataUri.split(",")[1] || "";
+        return { blob, base64, filename };
+      }
+      doc.save(filename);
       toast("PDF exported", "ok");
     } catch (e) {
       console.error(e);
+      if (opts.returnBlob) throw e;
       toast("Failed to generate PDF", "err");
     }
   };
@@ -4275,6 +4417,7 @@ export default function BrowseReturns() {
                         {/* Exports */}
                         <IconBtn icon={FiPrinter} onClick={handlePrint}>Print</IconBtn>
                         <IconBtn icon={FiDownload} onClick={handleExportPDF}>PDF</IconBtn>
+                        <IconBtn icon={FiMail} onClick={() => setEmailOpen(true)}>Email</IconBtn>
                         <IconBtn icon={FiDownload} onClick={handleExportXLSXSelected}>XLSX</IconBtn>
                         <IconBtn icon={FiDownload} onClick={handleExportCSV}>CSV</IconBtn>
                         <IconBtn icon={FiLock} onClick={handleExportXLSXAllLocked}>XLSX (ALL)</IconBtn>
@@ -4591,6 +4734,12 @@ export default function BrowseReturns() {
           auditTrailByKey={auditTrailByKey}
           initialCode={productInit.code}
           initialName={productInit.name}
+        />
+        <EmailSendModal
+          open={emailOpen}
+          onClose={() => setEmailOpen(false)}
+          payload={selectedReport}
+          config={emailConfig}
         />
 
         {/* Floating bulk action bar */}

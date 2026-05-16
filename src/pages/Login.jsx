@@ -228,7 +228,7 @@ function Login() {
     setModalError("");
 
     // كلمات المرور المحلية — fallback دائم
-    const LOCAL_PASSWORDS = { returns:"0000", qcsView:"0000", iso:"802410", hse:"802410", default:"9999" };
+    const LOCAL_PASSWORDS = { returns:"0000", qcsView:"0000", iso:"802410", hse:"802410", maintenance:"0000", default:"9999" };
     const localExpected = LOCAL_PASSWORDS[selectedRole.id] ?? LOCAL_PASSWORDS.default;
     let success = password === localExpected;
 

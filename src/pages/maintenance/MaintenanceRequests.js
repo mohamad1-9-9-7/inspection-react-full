@@ -1,308 +1,222 @@
-// src/pages/maintenance/MaintenanceRequests.jsx
-import React, { useState } from "react";
+// src/pages/maintenance/MaintenanceRequests.js
+// Stage 1 — Requester form. Bilingual, mirrors the paper "Maintenance Enquiry Form".
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  BRANCHES, PRIORITIES, STATUS, nextRequestNo, saveMaintenance, pushTimeline,
+} from "./maintenanceShared";
+import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
+import { useFontScale, FontScaleControl } from "./useFontScale";
 
-/* ==================== API ==================== */
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
-
-async function apiFetch(url, opts = {}) {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...opts,
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`${opts.method || "GET"} ${url} -> ${res.status} ${res.statusText}\n${t}`);
-  }
-  try { return await res.json(); } catch { return { ok: true }; }
-}
-
-// الحفظ على السيرفر الخارجي فقط (مطلوب: payload.reportDate)
-async function saveMaintenanceToServer(form) {
-  const ymd =
-    form.date && /^\d{4}-\d{2}-\d{2}$/.test(form.date)
-      ? form.date
-      : new Date().toISOString().slice(0, 10);
-
-  const createdAtISO = new Date(`${ymd}T12:00:00`).toISOString();
-
-  const payload = {
-    ...form,
-    requestDate: ymd,       // للعرض
-    reportDate: ymd,        // ✅ شرط السيرفر
-    createdAt: createdAtISO,
-    status: form.status || "قيد التنفيذ / In Progress",
-    _clientSavedAt: Date.now(),
-  };
-
-  const reporter = form.reporter || "anonymous";
-  const attempts = [
-    { url: `${API_BASE}/api/reports`, method: "PUT", body: JSON.stringify({ reporter, type: "maintenance", payload }) },
-    { url: `${API_BASE}/api/reports?type=maintenance`, method: "PUT", body: JSON.stringify({ reporter, payload }) },
-  ];
-
-  let lastErr = null;
-  for (const a of attempts) {
-    try { return await apiFetch(a.url, a); } catch (e) { lastErr = e; }
-  }
-  throw lastErr || new Error("Save failed");
-}
-
-/* ==================== UI DATA ==================== */
-const BRANCHES = [
-  "QCS","POS 6","POS 7","POS 10","POS 11","POS 14","POS 15","POS 16","POS 17",
-  "POS 19","POS 21","POS 24","POS 25","POS 37","POS 38","POS 42","POS 44","POS 45","FTR1","FTR2",
-];
-const ISSUE_TYPES = [
-  { ar: "مشكلة نظافة", en: "Cleaning Issue" },
-  { ar: "مشكلة برادات", en: "Refrigerator Issue" },
-  { ar: "مشكلة كهرباء", en: "Electrical Issue" },
-  { ar: "مشكلة مياه", en: "Water Issue" },
-  { ar: "أخرى", en: "Other" },
-];
-const PRIORITIES = [
-  { ar: "منخفضة", en: "Low" },
-  { ar: "متوسطة", en: "Medium" },
-  { ar: "عالية", en: "High" },
-  { ar: "طارئة", en: "Urgent" },
-];
-
-/* ===== إعدادات توحيد أبعاد الصور =====
-   mode: 'cover' للقصّ المركزي بدون تمديد (شكل احترافي)
-         'contain' لتبطين بخلفية بيضاء بدون قصّ */
-const IMG_CFG = {
-  width: 180,
-  height: 150,
-  mode: "cover",        // بدّلها إلى "contain" إن أردت عدم القص
-  type: "image/jpeg",
-  quality: 0.9,
-  bg: "#ffffff",        // تُستخدم مع contain فقط
-};
 const MAX_IMAGES = 20;
 
-/* ===== Helpers ===== */
-function readFileAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
+const emptyProblem = () => ({ location: "", problem: "", startedDate: "", deadline: "" });
 
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-
-// يعيد DataURL موحّد الأبعاد حسب IMG_CFG
-async function resizeFileToDataURL(file, cfg = IMG_CFG) {
-  const srcDataURL = await readFileAsDataURL(file);
-  const img = await loadImage(srcDataURL);
-
-  const { width: W, height: H, mode, type, quality, bg } = cfg;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d");
-
-  if (mode === "contain") {
-    // مبدئيًا خلفية بيضاء
-    ctx.fillStyle = bg || "#fff";
-    ctx.fillRect(0, 0, W, H);
-    const scale = Math.min(W / img.width, H / img.height);
-    const dw = img.width * scale;
-    const dh = img.height * scale;
-    const dx = (W - dw) / 2;
-    const dy = (H - dh) / 2;
-    ctx.drawImage(img, dx, dy, dw, dh);
-  } else {
-    // cover (اقتصاص مركزي)
-    const scale = Math.max(W / img.width, H / img.height);
-    const dw = img.width * scale;
-    const dh = img.height * scale;
-    const dx = (W - dw) / 2;
-    const dy = (H - dh) / 2;
-    ctx.drawImage(img, dx, dy, dw, dh);
-  }
-
-  return canvas.toDataURL(type || "image/jpeg", quality ?? 0.9);
-}
-
-/* ==================== PAGE ==================== */
 export default function MaintenanceRequests() {
+  const navigate = useNavigate();
   const today = new Date().toISOString().slice(0, 10);
 
+  const [requestNo, setRequestNo] = useState("…");
   const [form, setForm] = useState({
-    title: "", description: "", branch: "", issueType: "", reporter: "",
-    priority: "", images: [], date: today,
+    branch: "", dateOfForm: today, applicant: "", dateReceived: "", recipient: "",
+    priority: "", reporter: "",
   });
+  const [problems, setProblems] = useState([emptyProblem(), emptyProblem(), emptyProblem()]);
+  const [images, setImages] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState("");
   const [err, setErr] = useState("");
+  const fontScale = useFontScale();
 
-  const handleChange = (e) =>
-    setForm((s) => ({ ...s, [e.target.name]: e.target.value }));
+  useEffect(() => { nextRequestNo().then(setRequestNo).catch(() => setRequestNo("MR-NEW")); }, []);
 
-  // ✅ يدعم اختيار متعدد وعلى دفعات + يجعل كل الصور بنفس الأبعاد (IMG_CFG)
-  const handleImageChange = async (e) => {
+  const ch = (e) => setForm((s) => ({ ...s, [e.target.name]: e.target.value }));
+  const chProb = (i, k, v) =>
+    setProblems((rows) => rows.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
+  const addProb = () => setProblems((r) => [...r, emptyProblem()]);
+  const delProb = (i) => setProblems((r) => (r.length > 1 ? r.filter((_, idx) => idx !== i) : r));
+
+  const onImages = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-
-    // تحويل كل ملف إلى DataURL موحّد الأبعاد
-    const normalized = await Promise.all(
-      files.map((f) => resizeFileToDataURL(f, IMG_CFG))
-    );
-
-    setForm((s) => {
-      const merged = [...(s.images || []), ...normalized];
-      const unique = Array.from(new Set(merged)); // إزالة تكرارات بسيطة
-      return { ...s, images: unique.slice(0, MAX_IMAGES) };
-    });
-
-    // تنظيف input ليسمح باختيار نفس الملف مرة أخرى
-    e.target.value = "";
-  };
-
-  const removeImage = (index) => {
-    setForm((s) => {
-      const next = [...(s.images || [])];
-      next.splice(index, 1);
-      return { ...s, images: next };
-    });
-  };
-
-  const resetForm = () =>
-    setForm({ title: "", description: "", branch: "", issueType: "", reporter: "", priority: "", images: [], date: today });
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErr(""); setToast(""); setSubmitting(true);
+    setUploading(true);
+    setErr("");
     try {
-      await saveMaintenanceToServer(form);
-      setToast("✅ تم حفظ الطلب على السيرفر الخارجي");
-      resetForm();
+      const urls = [];
+      for (const f of files) {
+        try {
+          const url = await uploadImageToServer(f, "maintenance_request");
+          if (url) urls.push(url);
+        } catch (ex) {
+          console.warn("upload failed:", ex);
+        }
+      }
+      if (!urls.length) setErr("❌ فشل رفع الصور / Image upload failed");
+      setImages((s) => Array.from(new Set([...s, ...urls])).slice(0, MAX_IMAGES));
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+  const delImage = (i) => setImages((s) => s.filter((_, idx) => idx !== i));
+
+  const reset = () => {
+    setForm({ branch: "", dateOfForm: today, applicant: "", dateReceived: "", recipient: "", priority: "", reporter: "" });
+    setProblems([emptyProblem(), emptyProblem(), emptyProblem()]);
+    setImages([]);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr(""); setToast("");
+    const cleanProblems = problems.filter(
+      (p) => p.location.trim() || p.problem.trim() || p.startedDate || p.deadline
+    );
+    if (!form.branch) { setErr("الرجاء اختيار الفرع / Please select a branch"); return; }
+    if (!form.applicant.trim()) { setErr("الرجاء إدخال مقدّم الطلب / Applicant is required"); return; }
+    if (cleanProblems.length === 0) { setErr("أضف مشكلة واحدة على الأقل / Add at least one problem"); return; }
+
+    setSubmitting(true);
+    try {
+      // Never persist the "…" / "MR-NEW" placeholder — resolve a real number first.
+      const rn = /^MR-\d{4}-\d+$/.test(requestNo)
+        ? requestNo
+        : await nextRequestNo(requestNo);
+      if (rn !== requestNo) setRequestNo(rn);
+
+      const rec = {
+        requestNo: rn,
+        ...form,
+        reporter: form.applicant,
+        problems: cleanProblems,
+        images,
+        status: STATUS.NEW,
+        maintenanceComment: "", workshop: "", materials: [], totalCost: "",
+        procurement: { name: "", date: "" }, management: { name: "", date: "" },
+      };
+      rec.timeline = pushTimeline(rec, "تم إنشاء الطلب / Request created", form.applicant);
+      await saveMaintenance(rec, { by: form.applicant });
+      setToast(`✅ تم حفظ الطلب ${rn} / Saved successfully`);
+      reset();
+      nextRequestNo(rn).then(setRequestNo).catch(() => {});
+      setTimeout(() => setToast(""), 3500);
     } catch (ex) {
-      setErr("❌ فشل الحفظ على السيرفر الخارجي.\n" + (ex?.message || "")); console.error(ex);
+      setErr("❌ فشل الحفظ على السيرفر / Save failed\n" + (ex?.message || ""));
     } finally {
       setSubmitting(false);
-      setTimeout(() => setToast(""), 3000);
     }
   };
 
   return (
-    <div style={sx.page}>
-      {/* شريط تقدم بسيط عند الإرسال */}
-      <div style={{position:"fixed",top:0,left:0,height:3,width:submitting?"100%":0,background:"#2563eb",transition:"width .25s ease",zIndex:50}}/>
-      <div style={sx.shell}>
-        <div style={sx.header}>
-          <div>
-            <h2 style={sx.title}>Create Maintenance Request / إنشاء طلب صيانة</h2>
-            <div style={sx.sub}>الحفظ يتم مباشرة على السيرفر الخارجي</div>
+    <div style={sx.page} dir="rtl">
+      <div style={{ position: "fixed", top: 0, left: 0, height: 3, width: submitting ? "100%" : 0, background: "#b91c1c", transition: "width .25s", zIndex: 50 }} />
+      <div style={{ ...sx.shell, zoom: fontScale.scale }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <FontScaleControl {...fontScale} />
+        </div>
+        {/* Header — mirrors paper form */}
+        <div style={sx.brandRow}>
+          <div style={{ color: "#b91c1c", fontWeight: 900, fontSize: 22 }}>
+            المواشي
+            <small style={{ display: "block", color: "#475569", fontWeight: 600, fontSize: 11 }}>
+              Trans Emirates Livestock Trading L.L.C.
+            </small>
           </div>
+          <div style={{ textAlign: "center" }}>
+            <h2 style={sx.title}>طلب أعمال صيانة عامة</h2>
+            <div style={{ fontSize: 13, color: "#475569", fontWeight: 700 }}>Maintenance Enquiry Form</div>
+          </div>
+          <div style={{ color: "#b91c1c", fontWeight: 900, fontSize: 20 }}>AL&nbsp;MAWASHI</div>
         </div>
 
-        {err && <div style={sx.alertError}>{err}</div>}
+        <div style={sx.reqNo}>رقم الطلب / Request No: <b>{requestNo}</b></div>
+
+        {err && <div style={sx.alertErr}>{err}</div>}
         {toast && <div style={sx.alertOk}>{toast}</div>}
 
-        <form onSubmit={handleSubmit} style={sx.form}>
-          {/* معلومات أساسية */}
-          <div style={sx.sectionHead}>🧾 Basic Info / المعلومات الأساسية</div>
-
-          <div className="grid">
-            <div style={sx.field}>
-              <label style={sx.label}>📅 Request Date / تاريخ الطلب</label>
-              <input className="mr-input" type="date" name="date" value={form.date} onChange={handleChange} required style={sx.input}/>
-            </div>
-
-            <div style={sx.field}>
-              <label style={sx.label}>🏢 Branch / الفرع</label>
-              <select className="mr-input" name="branch" value={form.branch} onChange={handleChange} required style={sx.input}>
-                <option value="">-- Select Branch --</option>
+        <form onSubmit={submit}>
+          {/* Meta grid */}
+          <div style={sx.grid2}>
+            <Field label="الفرع / Branch *">
+              <select name="branch" value={form.branch} onChange={ch} style={sx.input} required>
+                <option value="">— اختر / Select —</option>
                 {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
-            </div>
-
-            <div style={sx.field}>
-              <label style={sx.label}>⚙️ Issue Type / نوع العطل</label>
-              <select className="mr-input" name="issueType" value={form.issueType} onChange={handleChange} required style={sx.input}>
-                <option value="">-- Select Issue --</option>
-                {ISSUE_TYPES.map((t, i) => <option key={i} value={t.en}>{t.ar} / {t.en}</option>)}
-              </select>
-            </div>
-
-            <div style={sx.field}>
-              <label style={sx.label}>🚨 Priority / درجة الأهمية</label>
-              <select className="mr-input" name="priority" value={form.priority} onChange={handleChange} required style={sx.input}>
-                <option value="">-- Select Priority --</option>
+            </Field>
+            <Field label="تاريخ تقديم الطلب / Date of form">
+              <input type="date" name="dateOfForm" value={form.dateOfForm} onChange={ch} style={sx.input} />
+            </Field>
+            <Field label="مقدم الطلب / Applicant *">
+              <input name="applicant" value={form.applicant} onChange={ch} style={sx.input} placeholder="الاسم / Name" required />
+            </Field>
+            <Field label="الأولوية / Priority">
+              <select name="priority" value={form.priority} onChange={ch} style={sx.input}>
+                <option value="">— اختر / Select —</option>
                 {PRIORITIES.map((p, i) => <option key={i} value={p.en}>{p.ar} / {p.en}</option>)}
               </select>
-            </div>
-
-            <div style={sx.field}>
-              <label style={sx.label}>👤 Reporter / المبلّغ</label>
-              <input className="mr-input" name="reporter" value={form.reporter} onChange={handleChange} required placeholder="اسمك" style={sx.input}/>
-            </div>
+            </Field>
           </div>
 
-          {/* تفاصيل الطلب */}
-          <div style={sx.sectionHead}>🛠️ Details / تفاصيل الطلب</div>
-          <div className="grid">
-            <div style={sx.field}>
-              <label style={sx.label}>📌 Title / عنوان الطلب</label>
-              <input className="mr-input" name="title" value={form.title} onChange={handleChange} required placeholder="مثال: عطل ثلاجة - قسم اللحوم" style={sx.input}/>
+          {/* Problems table */}
+          <div style={sx.secT}>الرجاء القيام بأعمال الصيانة التالية / Please provide maintenance as follows</div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={sx.table}>
+              <thead>
+                <tr>
+                  <th style={{ ...sx.th, width: 40 }}>S. م</th>
+                  <th style={sx.th}>الموقع بالضبط<br />Exact location</th>
+                  <th style={sx.th}>المشكلة<br />Problem</th>
+                  <th style={sx.th}>تاريخ بداية المشكلة<br />Problem started</th>
+                  <th style={sx.th}>وقت التنفيذ<br />Deadline</th>
+                  <th style={{ ...sx.th, width: 44 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {problems.map((p, i) => (
+                  <tr key={i}>
+                    <td style={sx.tdC}>{i + 1}</td>
+                    <td style={sx.td}><input style={sx.cell} value={p.location} onChange={(e) => chProb(i, "location", e.target.value)} /></td>
+                    <td style={sx.td}><input style={sx.cell} value={p.problem} onChange={(e) => chProb(i, "problem", e.target.value)} /></td>
+                    <td style={sx.td}><input type="date" style={sx.cell} value={p.startedDate} onChange={(e) => chProb(i, "startedDate", e.target.value)} /></td>
+                    <td style={sx.td}><input type="date" style={sx.cell} value={p.deadline} onChange={(e) => chProb(i, "deadline", e.target.value)} /></td>
+                    <td style={sx.tdC}>
+                      <button type="button" onClick={() => delProb(i)} style={sx.delBtn} title="حذف الصف">✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button type="button" onClick={addProb} style={sx.addBtn}>➕ إضافة صف / Add row</button>
+
+          {/* Images */}
+          <div style={sx.secT}>الصور / Images</div>
+          <input type="file" accept="image/*" multiple onChange={onImages} disabled={uploading} />
+          <div style={sx.hint}>
+            {uploading ? "⏳ جارٍ الرفع على Cloudinary…" : `تُرفع على Cloudinary. الحد الأقصى ${MAX_IMAGES}.`}
+          </div>
+          {!!images.length && (
+            <div style={sx.imgGrid}>
+              {images.map((src, i) => (
+                <div key={i} style={sx.imgTile}>
+                  <img src={src} alt={`img-${i}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <button type="button" onClick={() => delImage(i)} style={sx.imgX}>✕</button>
+                </div>
+              ))}
             </div>
+          )}
 
-            <div style={{ ...sx.field, gridColumn: "1 / -1" }}>
-              <label style={sx.label}>📝 Description / وصف الطلب</label>
-              <textarea className="mr-textarea" name="description" value={form.description} onChange={handleChange} required rows={4} placeholder="اشرح المشكلة بإيجاز…" style={sx.textarea}/>
-            </div>
-
-            <div style={{ ...sx.field, gridColumn: "1 / -1" }}>
-              <label style={sx.label}>📸 Images / صور وقت الطلب</label>
-
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleImageChange}
-              />
-              <div style={sx.hint}>
-                كل الصور ستُحَوَّل تلقائيًا إلى {IMG_CFG.width}×{IMG_CFG.height} ({IMG_CFG.mode}) قبل الحفظ. الحد الأقصى: {MAX_IMAGES}.
-              </div>
-
-              {!!form.images?.length && (
-                <>
-                  <div className="mr-grid-images">
-                    {form.images.map((src, i) => (
-                      <div key={i} className="mr-img-tile" title={`Image ${i+1}`}>
-                        <img src={src} alt={`img-${i}`} />
-                        <button
-                          type="button"
-                          className="mr-img-remove"
-                          onClick={() => removeImage(i)}
-                          title="حذف الصورة"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={sx.hint}>تم إرفاق {form.images.length} صورة</div>
-                </>
-              )}
-            </div>
+          <div style={sx.note}>
+            ℹ️ أقسام (تعليق الصيانة / المواد / التكلفة / الموافقات) تُعبّأ من قسم الصيانة والإدارة عبر صفحة "تصفّح الطلبات".
+            <br/>Maintenance comment, materials, cost &amp; approvals are filled later by the Maintenance dept &amp; Management via "Browse Requests".
           </div>
 
-          {/* أزرار */}
           <div style={sx.actions}>
-            <button type="button" onClick={resetForm} disabled={submitting} style={sx.btnGhost} className="mr-btnGhost" title="مسح الحقول">🧹 Clear / مسح</button>
-            <button type="submit" style={sx.btnPrimary} className="mr-btnPrimary" disabled={submitting}>
-              {submitting ? "جارٍ الحفظ…" : "💾 Save / حفظ الطلب"}
+            <button type="button" onClick={() => navigate("/maintenance-home")} style={sx.btnGhost}>↩ رجوع / Back</button>
+            <button type="button" onClick={reset} disabled={submitting} style={sx.btnGhost}>🧹 مسح / Clear</button>
+            <button type="submit" disabled={submitting || uploading} style={sx.btnPrimary}>
+              {submitting ? "جارٍ الحفظ…" : uploading ? "⏳ جارٍ رفع الصور…" : "💾 حفظ الطلب / Save Request"}
             </button>
           </div>
         </form>
@@ -311,98 +225,38 @@ export default function MaintenanceRequests() {
   );
 }
 
-/* ==================== styles ==================== */
+const Field = ({ label, children }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+    <label style={sx.label}>{label}</label>
+    {children}
+  </div>
+);
+
 const sx = {
-  page: {
-    minHeight: "100vh",
-    background:
-      "radial-gradient(900px 450px at -10% -10%, rgba(255,255,255,.18), transparent 60%)," +
-      "radial-gradient(800px 400px at 110% 0%, rgba(255,255,255,.12), transparent 62%)," +
-      "linear-gradient(135deg,#3b82f6 0%, #7c3aed 60%, #9333ea 100%)",
-    padding: 24,
-    direction: "rtl",
-    fontFamily: "Cairo, ui-sans-serif, system-ui",
-  },
-  shell: {
-    maxWidth: 980,
-    margin: "24px auto",
-    background: "rgba(255,255,255,.88)",
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
-    padding: 24,
-    borderRadius: 24,
-    boxShadow: "0 20px 60px rgba(2,6,23,.18)",
-    border: "1px solid rgba(255,255,255,.65)",
-  },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 },
-  title: { margin: 0, fontSize: 22, fontWeight: 900, color: "#0f172a" },
-  sub: { color: "#334155", fontSize: 13 },
-  alertError: { marginTop: 12, whiteSpace: "pre-wrap", background: "#fee2e2", color: "#9f1239", border: "1px solid #fecaca", borderRadius: 12, padding: "10px 12px", fontWeight: 700 },
-  alertOk: { marginTop: 12, background: "#dcfce7", color: "#166534", border: "1px solid #86efac", borderRadius: 12, padding: "10px 12px", fontWeight: 700 },
-  sectionHead: {
-    marginTop: 18, marginBottom: 10, fontWeight: 900, color: "#0f172a",
-    background: "linear-gradient(90deg,#eef2ff,#e9d5ff)",
-    border: "1px solid #e0e7ff", display: "inline-block",
-    padding: "6px 12px", borderRadius: 999, fontSize: 14,
-  },
-  form: { marginTop: 10 },
-  field: { display: "flex", flexDirection: "column", gap: 6 },
-  label: { fontWeight: 800, color: "#0f172a", fontSize: 14 },
-  input: {
-    width: "100%", padding: "12px 14px",
-    border: "1px solid #cbd5e1", borderRadius: 14,
-    background: "#f8fafc", fontSize: 15,
-    transition: "box-shadow .15s ease, border-color .15s ease, transform .05s ease",
-  },
-  textarea: {
-    width: "100%", padding: "12px 14px",
-    border: "1px solid #cbd5e1", borderRadius: 14,
-    background: "#f8fafc", fontSize: 15, resize: "vertical", minHeight: 120,
-    transition: "box-shadow .15s ease, border-color .15s ease",
-  },
-  hint: { marginTop: 6, fontSize: 13, color: "#64748b" },
-  actions: { marginTop: 14, display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" },
-  btnPrimary: {
-    background: "linear-gradient(90deg,#2563eb,#7c3aed)",
-    color: "#fff", border: "none", padding: "12px 18px",
-    borderRadius: 14, fontWeight: 900, fontSize: 15, cursor: "pointer",
-    minWidth: 170, boxShadow: "0 8px 20px rgba(37,99,235,.25)", transition: "transform .06s ease",
-  },
-  btnGhost: {
-    background: "rgba(255,255,255,.6)", color: "#334155",
-    border: "1px solid #e2e8f0", padding: "12px 18px",
-    borderRadius: 14, fontWeight: 800, fontSize: 14, cursor: "pointer",
-    transition: "transform .06s ease",
-  },
+  page: { minHeight: "100vh", background: "linear-gradient(135deg,#f1f5f9,#e0e7ff)", padding: 20, fontFamily: "Cairo, system-ui, sans-serif" },
+  shell: { maxWidth: 920, margin: "16px auto", background: "#fff", padding: 24, borderRadius: 16, boxShadow: "0 16px 40px rgba(2,6,23,.14)", border: "1px solid #e2e8f0" },
+  brandRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid #b91c1c", paddingBottom: 10 },
+  title: { margin: 0, fontSize: 20, fontWeight: 900, color: "#0f172a" },
+  reqNo: { textAlign: "center", margin: "12px 0", fontSize: 15, color: "#b91c1c", fontWeight: 700 },
+  alertErr: { whiteSpace: "pre-wrap", background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 12px", fontWeight: 700, marginBottom: 10 },
+  alertOk: { background: "#dcfce7", color: "#166534", border: "1px solid #86efac", borderRadius: 10, padding: "10px 12px", fontWeight: 700, marginBottom: 10 },
+  grid2: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 },
+  label: { fontWeight: 800, color: "#0f172a", fontSize: 13 },
+  input: { width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: 10, background: "#f8fafc", fontSize: 14, boxSizing: "border-box" },
+  secT: { marginTop: 20, marginBottom: 8, fontWeight: 900, color: "#0f172a", borderBottom: "2px solid #0f172a", paddingBottom: 4, fontSize: 14 },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
+  th: { border: "1px solid #334155", background: "#b91c1c", color: "#fff", padding: "7px 6px", fontWeight: 800, textAlign: "center" },
+  td: { border: "1px solid #334155", padding: 3 },
+  tdC: { border: "1px solid #334155", padding: 3, textAlign: "center", fontWeight: 700 },
+  cell: { width: "100%", border: "none", outline: "none", padding: "7px 6px", background: "transparent", fontSize: 13, boxSizing: "border-box" },
+  delBtn: { border: "none", background: "#fee2e2", color: "#b91c1c", borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontWeight: 800 },
+  addBtn: { marginTop: 8, border: "1px dashed #94a3b8", background: "#f8fafc", color: "#334155", borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontWeight: 800 },
+  hint: { marginTop: 6, fontSize: 12, color: "#64748b" },
+  imgGrid: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 },
+  imgTile: { position: "relative", width: 110, height: 110, borderRadius: 12, overflow: "hidden", border: "1px solid #e2e8f0", background: "#fff" },
+  imgX: { position: "absolute", top: 5, left: 5, background: "rgba(239,68,68,.95)", color: "#fff", border: "none", borderRadius: 8, padding: "2px 7px", fontWeight: 800, cursor: "pointer" },
+  note: { marginTop: 18, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1e3a8a", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, lineHeight: 1.7 },
+  actions: { marginTop: 18, display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" },
+  btnPrimary: { background: "linear-gradient(90deg,#b91c1c,#dc2626)", color: "#fff", border: "none", padding: "12px 20px", borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: "pointer", minWidth: 190 },
+  btnGhost: { background: "#fff", color: "#334155", border: "1px solid #cbd5e1", padding: "12px 18px", borderRadius: 12, fontWeight: 800, fontSize: 14, cursor: "pointer" },
 };
-
-/* شبكة + تحسينات + شبكة صور */
-const style = document.createElement("style");
-style.textContent = `
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-
-  .mr-input, .mr-textarea { outline: none; }
-  .mr-input:hover, .mr-textarea:hover { border-color: #94a3b8; }
-  .mr-input:focus, .mr-textarea:focus {
-    border-color: #60a5fa !important;
-    box-shadow: 0 0 0 4px rgba(59,130,246,.15);
-    background: #ffffff;
-  }
-
-  .mr-btnPrimary:hover { transform: translateY(-1px); }
-  .mr-btnPrimary:active { transform: translateY(0px) scale(.99); }
-  .mr-btnGhost:hover    { transform: translateY(-1px); }
-  .mr-btnGhost:active   { transform: translateY(0px) scale(.99); }
-
-  /* شبكة معاينات الصور */
-  .mr-grid-images { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
-  .mr-img-tile { position:relative; width:120px; height:120px; border-radius:14px; overflow:hidden;
-                 border:1px solid #e2e8f0; box-shadow:0 2px 8px rgba(2,6,23,0.08); background:#fff; }
-  .mr-img-tile img { width:100%; height:100%; object-fit:cover; display:block; }
-  .mr-img-remove { position:absolute; top:6px; left:6px; background:rgba(239,68,68,.95); color:#fff;
-                   border:none; border-radius:10px; padding:2px 8px; font-weight:800; cursor:pointer; }
-`;
-if (typeof document !== "undefined" && !document.getElementById("mr-ui-style")) {
-  style.id = "mr-ui-style";
-  document.head.appendChild(style);
-}

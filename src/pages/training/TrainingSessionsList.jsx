@@ -173,15 +173,27 @@ function parseTrainingDetails(rawText) {
   }));
 }
 
-/* ✅ Dark glass tones for details blocks (NO WHITE) */
+/* ✅ Soft pastel tones for details blocks (light, eye-comfortable) */
 const DETAIL_TONES = [
-  { bd: "rgba(59,130,246,0.35)", bg: "linear-gradient(180deg, rgba(2,6,23,0.32), rgba(30,41,59,0.28))" }, // blue
-  { bd: "rgba(168,85,247,0.35)", bg: "linear-gradient(180deg, rgba(2,6,23,0.32), rgba(49,46,129,0.18))" }, // violet
-  { bd: "rgba(249,115,22,0.32)", bg: "linear-gradient(180deg, rgba(2,6,23,0.32), rgba(124,45,18,0.18))" }, // orange
-  { bd: "rgba(34,197,94,0.28)", bg: "linear-gradient(180deg, rgba(2,6,23,0.32), rgba(20,83,45,0.18))" }, // green
-  { bd: "rgba(244,63,94,0.30)", bg: "linear-gradient(180deg, rgba(2,6,23,0.32), rgba(136,19,55,0.16))" }, // rose
-  { bd: "rgba(148,163,184,0.28)", bg: "linear-gradient(180deg, rgba(2,6,23,0.32), rgba(15,23,42,0.22))" }, // slate
+  { bd: "#bfdbfe", bg: "linear-gradient(180deg,#f4f9ff,#eaf3ff)", head: "#1e40af", body: "#fbfdff" }, // blue
+  { bd: "#ddd6fe", bg: "linear-gradient(180deg,#f8f6ff,#f1eeff)", head: "#5b21b6", body: "#fcfbff" }, // violet
+  { bd: "#fed7aa", bg: "linear-gradient(180deg,#fff8f1,#fff1e3)", head: "#9a3412", body: "#fffbf6" }, // orange
+  { bd: "#bbf7d0", bg: "linear-gradient(180deg,#f2fcf6,#e9f9ef)", head: "#15803d", body: "#f7fdfa" }, // green
+  { bd: "#fecdd3", bg: "linear-gradient(180deg,#fff5f6,#ffedef)", head: "#be123c", body: "#fffafb" }, // rose
+  { bd: "#e2e8f0", bg: "linear-gradient(180deg,#f8fafc,#eef2f7)", head: "#334155", body: "#fbfcfe" }, // slate
 ];
+
+/* ===================== ✅ per-session quick stats (for smart sort/filter) ===================== */
+function rowStats(r) {
+  const list = Array.isArray(r?.payload?.participants) ? r.payload.participants : [];
+  const valid = list.filter((p) => String(p?.name || "").trim());
+  const total = valid.length;
+  const pass = valid.filter(
+    (p) => String(p?.result || "").toUpperCase() === "PASS"
+  ).length;
+  const rate = total ? Math.round((pass / total) * 100) : 0;
+  return { total, pass, rate };
+}
 
 /* ===================== Component ===================== */
 export default function TrainingSessionsList() {
@@ -191,6 +203,14 @@ export default function TrainingSessionsList() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [info, setInfo] = useState("");
+
+  // ✅ Smart filter / sort tools
+  const [sortBy, setSortBy] = useState("newest");
+  const [fBranch, setFBranch] = useState("");
+  const [fModule, setFModule] = useState("");
+  const [fQuiz, setFQuiz] = useState("all"); // all | with | without
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const [selected, setSelected] = useState(null);
   const [participants, setParticipants] = useState([]);
@@ -293,14 +313,91 @@ export default function TrainingSessionsList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const branchOptions = useMemo(() => {
+    const s = new Set();
+    for (const r of rows) {
+      const b = safeBranch(r);
+      if (b) s.add(b);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const moduleOptions = useMemo(() => {
+    const s = new Set();
+    for (const r of rows) {
+      const m = safeModule(r);
+      if (m) s.add(m);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return rows;
     return rows.filter((r) => {
-      const blob = `${safeTitle(r)} ${safeBranch(r)} ${safeModule(r)} ${safeDate(r)}`.toLowerCase();
-      return blob.includes(s);
+      if (s) {
+        const blob = `${safeTitle(r)} ${safeBranch(r)} ${safeModule(r)} ${safeDate(r)}`.toLowerCase();
+        if (!blob.includes(s)) return false;
+      }
+      if (fBranch && safeBranch(r) !== fBranch) return false;
+      if (fModule && safeModule(r) !== fModule) return false;
+      const quiz = hasQuiz(r?.payload);
+      if (fQuiz === "with" && !quiz) return false;
+      if (fQuiz === "without" && quiz) return false;
+      const d = safeDate(r);
+      if (dateFrom && (!d || d < dateFrom)) return false;
+      if (dateTo && (!d || d > dateTo)) return false;
+      return true;
     });
-  }, [rows, q]);
+  }, [rows, q, fBranch, fModule, fQuiz, dateFrom, dateTo]);
+
+  const visible = useMemo(() => {
+    const arr = filtered.slice();
+    const byStr = (fn) => (a, b) =>
+      String(fn(a) || "").localeCompare(String(fn(b) || ""));
+    switch (sortBy) {
+      case "oldest":
+        arr.sort((a, b) => sortByNewest(a, b) * -1);
+        break;
+      case "title":
+        arr.sort(byStr(safeTitle));
+        break;
+      case "branch":
+        arr.sort(byStr(safeBranch));
+        break;
+      case "module":
+        arr.sort(byStr(safeModule));
+        break;
+      case "participants":
+        arr.sort((a, b) => rowStats(b).total - rowStats(a).total);
+        break;
+      case "passrate":
+        arr.sort((a, b) => rowStats(b).rate - rowStats(a).rate);
+        break;
+      case "newest":
+      default:
+        arr.sort(sortByNewest);
+        break;
+    }
+    return arr;
+  }, [filtered, sortBy]);
+
+  const activeFilterCount =
+    (q.trim() ? 1 : 0) +
+    (fBranch ? 1 : 0) +
+    (fModule ? 1 : 0) +
+    (fQuiz !== "all" ? 1 : 0) +
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0);
+
+  const clearAllFilters = () => {
+    setQ("");
+    setFBranch("");
+    setFModule("");
+    setFQuiz("all");
+    setDateFrom("");
+    setDateTo("");
+    setSortBy("newest");
+  };
 
   const dateTree = useMemo(() => {
     const tree = {};
@@ -676,89 +773,126 @@ export default function TrainingSessionsList() {
 
   /* ===================== ✅ THEME (Mock Recall View Style) ===================== */
   const THEME = {
-    text: "#1f2937",
-    textStrong: "#0b1f4d",
+    text: "#475569",
+    textStrong: "#1e293b",
     muted: "#64748b",
     muted2: "#94a3b8",
-    line: "#e5e7eb",
-    lineStrong: "#cbd5e1",
+    line: "#e8eef6",
+    lineStrong: "#dbe3ef",
     glassBg: "#ffffff",
-    glassBd: "#e5e7eb",
-    glassShadow: "0 1px 3px rgba(0,0,0,0.04)",
+    glassBd: "#e6ecf5",
+    glassShadow: "0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.05)",
     surfaceBg: "#ffffff",
-    surfaceBd: "#e5e7eb",
-    surfaceShadow: "0 1px 3px rgba(0,0,0,0.04)",
-    inputBg: "#f8fafc",
-    inputBd: "#e2e8f0",
+    surfaceBd: "#e6ecf5",
+    surfaceShadow: "0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.05)",
+    inputBg: "#ffffff",
+    inputBd: "#d6e0ef",
     inputPh: "#94a3b8",
-    headerBg: "linear-gradient(135deg,#1e3a5f,#2d5a8e)",
+    // ✅ Soft Sky header — light gradient, slate-blue text (no harsh dark)
+    headerBg: "linear-gradient(135deg,#eef4ff 0%,#e3edff 50%,#dbeafe 100%)",
+    headerText: "#1e3a8a",
+    headerSub: "#496397",
+    headerLine: "#cdddf5",
+    // ✅ soft sub-surface tints (replace old dark navy fills)
+    subBg: "#f6f9ff",
+    subBg2: "#eef4fc",
+    tableHeadBg: "#eef4fc",
   };
 
   const pageStyle = {
     minHeight: "100vh",
     width: "100%",
-    padding: "20px 18px",
-    background: "linear-gradient(150deg,#eef2ff,#f8fafc 55%,#ecfdf5)",
+    padding: "22px 20px 32px",
+    background:
+      "radial-gradient(1100px 520px at 100% -8%, #eaf1ff 0%, transparent 55%)," +
+      "radial-gradient(900px 480px at -5% 0%, #eef6ff 0%, transparent 50%)," +
+      "#f7f9fc",
     boxSizing: "border-box",
     direction: "ltr",
-    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
+    fontFamily: "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
     color: THEME.text,
   };
 
   const glass = {
     background: THEME.glassBg,
     border: `1px solid ${THEME.glassBd}`,
-    borderRadius: 12,
+    borderRadius: 16,
     boxShadow: THEME.glassShadow,
   };
 
   const surface = {
     background: THEME.surfaceBg,
     border: `1px solid ${THEME.surfaceBd}`,
-    borderRadius: 12,
+    borderRadius: 16,
     boxShadow: THEME.surfaceShadow,
   };
 
   const btn = (kind = "light") => {
     const m = {
-      dark:    { bg: "rgba(255,255,255,0.18)", fg: "#fff",    bd: "rgba(255,255,255,0.4)" },
-      light:   { bg: "rgba(255,255,255,0.12)", fg: "#fff",    bd: "rgba(255,255,255,0.3)" },
-      blue:    { bg: "#1e40af",                fg: "#fff",    bd: "transparent" },
-      red:     { bg: "#fef2f2",                fg: "#991b1b", bd: "#fca5a5" },
-      violet:  { bg: "#ede9fe",                fg: "#5b21b6", bd: "#ddd6fe" },
-      green:   { bg: "#15803d",                fg: "#fff",    bd: "transparent" },
-      gray:    { bg: "#f1f5f9",                fg: "#334155", bd: "#e2e8f0" },
-      warning: { bg: "#fff7ed",                fg: "#9a3412", bd: "#fdba74" },
+      dark:    { bg: "#3b82f6",                fg: "#fff",    bd: "transparent" },
+      light:   { bg: "#ffffff",                fg: "#1e3a8a", bd: "#cdddf5" },
+      blue:    { bg: "#3b82f6",                fg: "#fff",    bd: "transparent" },
+      red:     { bg: "#fef2f2",                fg: "#b91c1c", bd: "#fecaca" },
+      violet:  { bg: "#f5f3ff",                fg: "#6d28d9", bd: "#e9d5ff" },
+      green:   { bg: "#16a34a",                fg: "#fff",    bd: "transparent" },
+      gray:    { bg: "#f1f5f9",                fg: "#475569", bd: "#e5e7eb" },
+      warning: { bg: "#fffbeb",                fg: "#b45309", bd: "#fde68a" },
     };
     const c = m[kind] || m.light;
     return {
-      padding: "9px 14px",
+      padding: "9px 16px",
       borderRadius: 10,
       border: `1px solid ${c.bd}`,
       background: c.bg,
       color: c.fg,
       cursor: "pointer",
-      fontWeight: 800,
-      fontSize: "0.88rem",
+      fontWeight: 700,
+      fontSize: "0.875rem",
+      letterSpacing: "0.01em",
       whiteSpace: "nowrap",
-      transition: "filter .12s ease",
+      transition: "transform .12s ease, box-shadow .12s ease, filter .12s ease",
     };
   };
 
   const inputStyle = {
     width: "100%",
-    padding: "9px 12px",
-    borderRadius: 8,
-    border: `1.5px solid ${THEME.inputBd}`,
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: `1px solid ${THEME.inputBd}`,
     outline: "none",
-    fontWeight: 700,
+    fontWeight: 600,
     fontSize: "0.92rem",
     color: THEME.textStrong,
     background: THEME.inputBg,
     fontFamily: "inherit",
+    boxShadow: "0 1px 2px rgba(16,24,40,.03)",
+    transition: "border-color .12s ease, box-shadow .12s ease",
   };
 
-  const TOP_EST = 320; // navy header + KPI row + filters bar + margins
+  const selectStyle = {
+    padding: "9px 12px",
+    borderRadius: 10,
+    border: `1px solid ${THEME.inputBd}`,
+    outline: "none",
+    fontWeight: 700,
+    fontSize: "0.85rem",
+    color: THEME.textStrong,
+    background: THEME.inputBg,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    boxShadow: "0 1px 2px rgba(16,24,40,.03)",
+  };
+  const fieldLabel = {
+    fontSize: "0.68rem",
+    fontWeight: 800,
+    color: THEME.muted,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    marginBottom: 4,
+    display: "block",
+  };
+
+  const TOP_EST = 372; // header + KPI row + smart toolbar + margins
   const rightPanelHeight = `calc(100vh - ${TOP_EST}px)`;
 
   const token = selected ? getSessionToken() : "";
@@ -821,12 +955,13 @@ export default function TrainingSessionsList() {
       {/* ========= TOP HEADER (navy gradient, like Mock Recall) ========= */}
       <div
         style={{
-          background: "linear-gradient(135deg,#1e3a5f,#2d5a8e)",
-          color: "#fff",
-          padding: "18px 22px",
-          borderRadius: 14,
-          boxShadow: "0 6px 18px rgba(30,58,95,0.20)",
-          marginBottom: 14,
+          background: THEME.headerBg,
+          color: THEME.headerText,
+          border: `1px solid ${THEME.headerLine}`,
+          padding: "22px 26px",
+          borderRadius: 18,
+          boxShadow: "0 6px 22px rgba(59,130,246,0.10)",
+          marginBottom: 18,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -835,10 +970,10 @@ export default function TrainingSessionsList() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 900 }}>
+          <h1 style={{ margin: 0, fontSize: "1.6rem", fontWeight: 800, letterSpacing: "-0.02em" }}>
             🎓 Training Sessions
           </h1>
-          <div style={{ opacity: 0.85, marginTop: 4, fontSize: "0.92rem" }}>
+          <div style={{ color: THEME.headerSub, marginTop: 6, fontSize: "0.9rem", fontWeight: 600 }}>
             {loading ? "Loading…" : (info || `Browse, view participants, run quizzes, and track KPIs.`)}
           </div>
         </div>
@@ -857,7 +992,7 @@ export default function TrainingSessionsList() {
 
       {/* ========= KPI ROW ========= */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-        <KPICardLocal icon="📋" label="Total Sessions" value={kpis.total} sub={q ? `Filtered from ${rows.length}` : "All sessions"} accent="#1e40af" />
+        <KPICardLocal icon="📋" label="Total Sessions" value={kpis.total} sub={activeFilterCount ? `Filtered from ${rows.length}` : "All sessions"} accent="#1e40af" />
         <KPICardLocal icon="🏢" label="Branches Covered" value={kpis.branches} sub="distinct branches" accent="#0891b2" />
         <KPICardLocal icon="📚" label="Modules Covered" value={kpis.modules} sub="distinct modules" accent="#7c3aed" />
         <KPICardLocal icon="📝" label="With Quiz" value={`${kpis.withQuiz}/${kpis.total || 0}`} sub={kpis.total ? `${Math.round((kpis.withQuiz / kpis.total) * 100)}% have quiz` : "—"} accent="#15803d" />
@@ -871,33 +1006,179 @@ export default function TrainingSessionsList() {
         />
       </div>
 
-      {/* ========= FILTER BAR ========= */}
+      {/* ========= SMART FILTER / SORT TOOLBAR ========= */}
       <div
         style={{
           background: "#fff",
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: 12,
+          border: `1px solid ${THEME.glassBd}`,
+          borderRadius: 14,
+          padding: 14,
           marginBottom: 14,
+          boxShadow: THEME.glassShadow,
           display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+          flexDirection: "column",
+          gap: 12,
         }}
       >
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="🔎 Search by Branch / Module / Title / Date…"
-          style={{ ...inputStyle, flex: 1, minWidth: 280 }}
-        />
-        {q && (
-          <button onClick={() => setQ("")} style={btn("gray")}>✕ Clear</button>
-        )}
-        <span style={{ color: "#64748b", fontSize: "0.88rem", fontWeight: 700 }}>
-          {filtered.length} session(s)
-        </span>
+        {/* Row 1: search + count + clear all */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="🔎 Search by Branch / Module / Title / Date…"
+            style={{ ...inputStyle, flex: 1, minWidth: 240 }}
+          />
+          <span
+            style={{
+              fontSize: "0.8rem",
+              fontWeight: 800,
+              color: "#1e40af",
+              background: "#eef4fc",
+              border: "1px solid #cdddf5",
+              padding: "8px 12px",
+              borderRadius: 999,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {visible.length} / {rows.length} session(s)
+          </span>
+          <button
+            onClick={clearAllFilters}
+            disabled={activeFilterCount === 0 && sortBy === "newest"}
+            style={{
+              ...btn("gray"),
+              opacity: activeFilterCount === 0 && sortBy === "newest" ? 0.5 : 1,
+              cursor:
+                activeFilterCount === 0 && sortBy === "newest"
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+            title="Reset all filters & sorting"
+          >
+            ✕ Clear all{activeFilterCount ? ` (${activeFilterCount})` : ""}
+          </button>
+        </div>
+
+        {/* Row 2: smart controls */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "flex-end",
+          }}
+        >
+          <div>
+            <label style={fieldLabel}>↕ Sort by</label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="newest">📅 Newest first</option>
+              <option value="oldest">📅 Oldest first</option>
+              <option value="title">🔤 Title (A→Z)</option>
+              <option value="branch">🏢 Branch (A→Z)</option>
+              <option value="module">📚 Module (A→Z)</option>
+              <option value="participants">👥 Most participants</option>
+              <option value="passrate">✅ Best pass rate</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={fieldLabel}>🏢 Branch</label>
+            <select
+              value={fBranch}
+              onChange={(e) => setFBranch(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="">All branches</option>
+              {branchOptions.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={fieldLabel}>📚 Module</label>
+            <select
+              value={fModule}
+              onChange={(e) => setFModule(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="">All modules</option>
+              {moduleOptions.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={fieldLabel}>📝 Quiz</label>
+            <div
+              style={{
+                display: "flex",
+                background: "#f1f5f9",
+                border: `1px solid ${THEME.inputBd}`,
+                borderRadius: 10,
+                padding: 3,
+                gap: 2,
+              }}
+            >
+              {[
+                { k: "all", t: "All" },
+                { k: "with", t: "With" },
+                { k: "without", t: "Without" },
+              ].map((o) => (
+                <button
+                  key={o.k}
+                  onClick={() => setFQuiz(o.k)}
+                  style={{
+                    border: "none",
+                    background: fQuiz === o.k ? "#fff" : "transparent",
+                    color: fQuiz === o.k ? "#1e3a8a" : THEME.muted,
+                    boxShadow:
+                      fQuiz === o.k ? "0 1px 3px rgba(30,58,138,0.16)" : "none",
+                    fontWeight: 900,
+                    fontSize: 12,
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    transition: "all .12s",
+                  }}
+                >
+                  {o.t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={fieldLabel}>📆 From date</label>
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={selectStyle}
+            />
+          </div>
+
+          <div>
+            <label style={fieldLabel}>📆 To date</label>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={selectStyle}
+            />
+          </div>
+        </div>
       </div>
 
       <div
@@ -927,19 +1208,20 @@ export default function TrainingSessionsList() {
           <div
             style={{
               padding: "12px 14px",
-              borderBottom: `1px solid ${THEME.line}`,
+              borderBottom: `1px solid ${THEME.headerLine}`,
               display: "flex",
               justifyContent: "space-between",
               gap: 10,
               alignItems: "center",
               background: THEME.headerBg,
-              color: "#fff",
+              color: THEME.headerText,
             }}
           >
             <div style={{ fontWeight: 1000, fontSize: 14, letterSpacing: 0.3 }}>📚 Library</div>
             <div style={{
               display: "flex",
-              background: "rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.6)",
+              border: `1px solid ${THEME.headerLine}`,
               borderRadius: 10,
               padding: 3,
               gap: 2,
@@ -949,7 +1231,8 @@ export default function TrainingSessionsList() {
                 style={{
                   border: "none",
                   background: rightTab === "SESSIONS" ? "#fff" : "transparent",
-                  color: rightTab === "SESSIONS" ? "#0f172a" : "#cbd5e1",
+                  color: rightTab === "SESSIONS" ? "#1e3a8a" : THEME.headerSub,
+                  boxShadow: rightTab === "SESSIONS" ? "0 1px 3px rgba(30,58,138,0.18)" : "none",
                   fontWeight: 1000,
                   fontSize: 11,
                   padding: "6px 12px",
@@ -966,7 +1249,8 @@ export default function TrainingSessionsList() {
                 style={{
                   border: "none",
                   background: rightTab === "TREE" ? "#fff" : "transparent",
-                  color: rightTab === "TREE" ? "#0f172a" : "#cbd5e1",
+                  color: rightTab === "TREE" ? "#1e3a8a" : THEME.headerSub,
+                  boxShadow: rightTab === "TREE" ? "0 1px 3px rgba(30,58,138,0.18)" : "none",
                   fontWeight: 1000,
                   fontSize: 11,
                   padding: "6px 12px",
@@ -1006,16 +1290,18 @@ export default function TrainingSessionsList() {
                     <style>{`@keyframes tspin { to { transform: rotate(360deg); } }`}</style>
                     Loading sessions…
                   </div>
-                ) : filtered.length === 0 ? (
+                ) : visible.length === 0 ? (
                   <div style={{
                     padding: "40px 16px", textAlign: "center",
                     color: THEME.muted, fontWeight: 700, fontSize: 13,
                   }}>
                     <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.5 }}>📭</div>
-                    {q ? "No sessions match your search." : "No sessions found yet."}
+                    {activeFilterCount
+                      ? "No sessions match your filters."
+                      : "No sessions found yet."}
                   </div>
                 ) : (
-                  filtered.map((r, idx) => {
+                  visible.map((r, idx) => {
                     const active = selected && getId(selected) === getId(r);
                     return (
                       <button
@@ -1148,18 +1434,18 @@ export default function TrainingSessionsList() {
                               padding: "10px 12px",
                               cursor: "pointer",
                               border: "none",
-                              background: isYearOpen ? "linear-gradient(135deg,#0f172a,#1e293b)" : "#f1f5f9",
+                              background: isYearOpen ? "linear-gradient(135deg,#e0edff,#eef5ff)" : THEME.subBg2,
                               fontWeight: 1000,
                               fontSize: 13,
                               display: "flex",
                               justifyContent: "space-between",
                               alignItems: "center",
-                              color: isYearOpen ? "#fff" : THEME.textStrong,
+                              color: isYearOpen ? "#1e40af" : THEME.textStrong,
                               transition: "all .15s",
                             }}
                           >
                             <span>📁 {year}</span>
-                            <span style={{ color: isYearOpen ? "#cbd5e1" : THEME.muted }}>
+                            <span style={{ color: isYearOpen ? "#3b82f6" : THEME.muted }}>
                               {isYearOpen ? "▾" : "▸"}
                             </span>
                           </button>
@@ -1265,8 +1551,8 @@ export default function TrainingSessionsList() {
                                                   color: isDayOpen ? "#7c3aed" : THEME.muted,
                                                 }}>
                                                   <span style={{
-                                                    background: "#fbcfe8",
-                                                    color: "#9f1239",
+                                                    background: "#dbeafe",
+                                                    color: "#1e40af",
                                                     padding: "1px 7px",
                                                     borderRadius: 999,
                                                     fontSize: 10,
@@ -1431,8 +1717,8 @@ export default function TrainingSessionsList() {
                   marginTop: 12,
                   padding: 12,
                   borderRadius: 16,
-                  border: "1px solid rgba(14,165,233,0.45)",
-                  background: "linear-gradient(180deg, rgba(2,6,23,0.30), rgba(2,6,23,0.18))",
+                  border: "1px solid #bae6fd",
+                  background: "linear-gradient(180deg,#f0f9ff,#e6f4ff)",
                 }}
               >
                 <div
@@ -1485,7 +1771,7 @@ export default function TrainingSessionsList() {
                   padding: 12,
                   borderRadius: 16,
                   border: `1px solid ${THEME.lineStrong}`,
-                  background: "linear-gradient(180deg, rgba(2,6,23,0.30), rgba(2,6,23,0.18))",
+                  background: THEME.subBg,
                 }}
               >
                 <div
@@ -1557,7 +1843,7 @@ export default function TrainingSessionsList() {
                             border: `1px solid ${tone.bd}`,
                             background: tone.bg,
                             overflow: "hidden",
-                            boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
+                            boxShadow: "0 4px 14px rgba(15,23,42,0.06)",
                           }}
                         >
                           <button
@@ -1574,12 +1860,12 @@ export default function TrainingSessionsList() {
                               alignItems: "center",
                               gap: 10,
                               fontWeight: 1100,
-                              color: THEME.textStrong,
+                              color: tone.head,
                             }}
                             title="Toggle"
                           >
                             <span style={{ lineHeight: 1.3 }}>{sec.header}</span>
-                            <span style={{ color: THEME.muted, fontWeight: 1100 }}>
+                            <span style={{ color: tone.head, opacity: 0.65, fontWeight: 1100 }}>
                               {open ? "▾" : "▸"}
                             </span>
                           </button>
@@ -1589,10 +1875,10 @@ export default function TrainingSessionsList() {
                               style={{
                                 padding: 12,
                                 borderTop: `1px solid ${tone.bd}`,
-                                background: "rgba(2,6,23,0.35)",
+                                background: tone.body,
                                 whiteSpace: "pre-wrap",
                                 lineHeight: 1.7,
-                                fontWeight: 900,
+                                fontWeight: 700,
                                 color: THEME.text,
                               }}
                             >
@@ -1616,8 +1902,8 @@ export default function TrainingSessionsList() {
                   marginTop: 12,
                   padding: 12,
                   borderRadius: 16,
-                  border: "1px solid rgba(99,102,241,0.45)",
-                  background: "linear-gradient(180deg, rgba(2,6,23,0.30), rgba(2,6,23,0.18))",
+                  border: "1px solid #ddd6fe",
+                  background: "linear-gradient(180deg,#f8f6ff,#f1eeff)",
                 }}
               >
                 <div style={{ fontWeight: 1100, color: THEME.textStrong }}>
@@ -1630,11 +1916,11 @@ export default function TrainingSessionsList() {
                       marginTop: 10,
                       padding: 12,
                       borderRadius: 14,
-                      border: `1px solid ${THEME.line}`,
-                      background: "rgba(2,6,23,0.40)",
+                      border: "1px solid #e9e5ff",
+                      background: "#fcfbff",
                       whiteSpace: "pre-wrap",
                       lineHeight: 1.7,
-                      fontWeight: 900,
+                      fontWeight: 700,
                       color: THEME.text,
                     }}
                   >
@@ -1711,9 +1997,9 @@ export default function TrainingSessionsList() {
                             style={{
                               textAlign: "left",
                               padding: 12,
-                              background: "rgba(2,6,23,0.45)",
-                              borderTop: `1px solid ${THEME.line}`,
-                              borderBottom: `1px solid ${THEME.line}`,
+                              background: THEME.tableHeadBg,
+                              borderTop: `1px solid ${THEME.lineStrong}`,
+                              borderBottom: `1px solid ${THEME.lineStrong}`,
                               fontWeight: 1100,
                               whiteSpace: "nowrap",
                               position: "sticky",
@@ -1826,9 +2112,9 @@ export default function TrainingSessionsList() {
                                   style={{
                                     padding: "10px 12px",
                                     borderRadius: 12,
-                                    border: "1px solid rgba(244,63,94,0.35)",
-                                    background: "rgba(127,29,29,0.20)",
-                                    color: "#fecdd3",
+                                    border: "1px solid #fecaca",
+                                    background: "#fef2f2",
+                                    color: "#b91c1c",
                                     cursor: "pointer",
                                     fontWeight: 1000,
                                     opacity: deletingSession ? 0.6 : 1,
@@ -1920,7 +2206,7 @@ export default function TrainingSessionsList() {
         </div>
 
         {!moduleName || questions.length === 0 ? (
-          <div style={{ color: "#fecdd3", fontWeight: 1000 }}>
+          <div style={{ color: "#b91c1c", fontWeight: 1000 }}>
             No question bank for this module yet.
           </div>
         ) : (
@@ -1955,14 +2241,12 @@ export default function TrainingSessionsList() {
                             padding: "10px 12px",
                             borderRadius: 14,
                             border: `1px solid ${
-                              checked ? "rgba(99,102,241,0.60)" : THEME.line
+                              checked ? "#818cf8" : THEME.line
                             }`,
                             cursor: "pointer",
-                            background: checked
-                              ? "linear-gradient(135deg, rgba(99,102,241,0.18), rgba(2,6,23,0.18))"
-                              : "rgba(2,6,23,0.22)",
-                            fontWeight: 900,
-                            color: THEME.text,
+                            background: checked ? "#eef2ff" : "#f8fafc",
+                            fontWeight: 700,
+                            color: THEME.textStrong,
                           }}
                         >
                           <input
@@ -1997,7 +2281,7 @@ export default function TrainingSessionsList() {
         ]}
       >
         {!(viewParticipant?.quizAttempt?.answers?.length) ? (
-          <div style={{ color: "#fecdd3", fontWeight: 1000 }}>No saved answers.</div>
+          <div style={{ color: "#b91c1c", fontWeight: 1000 }}>No saved answers.</div>
         ) : (
           <>
             <div
@@ -2086,14 +2370,14 @@ export default function TrainingSessionsList() {
                         const isCorrect = oi === correct;
 
                         let border = THEME.line;
-                        let bg = "rgba(2,6,23,0.22)";
+                        let bg = "#f8fafc";
                         if (isCorrect) {
-                          border = "rgba(34,197,94,0.35)";
-                          bg = "rgba(20,83,45,0.18)";
+                          border = "#bbf7d0";
+                          bg = "#f0fdf4";
                         }
                         if (isChosen && !isCorrect) {
-                          border = "rgba(244,63,94,0.35)";
-                          bg = "rgba(127,29,29,0.18)";
+                          border = "#fecaca";
+                          bg = "#fef2f2";
                         }
 
                         return (
@@ -2144,32 +2428,48 @@ function KPICardLocal({ icon, label, value, sub, accent = "#1e40af", bad }) {
         flex: "1 1 180px",
         minWidth: 180,
         background: "#fff",
-        border: "1px solid #e5e7eb",
-        borderInlineStart: `4px solid ${bad ? "#ef4444" : accent}`,
-        borderRadius: 12,
-        padding: "12px 14px",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        border: "1px solid #eceef3",
+        borderRadius: 16,
+        padding: "16px 18px",
+        boxShadow: "0 1px 2px rgba(16,24,40,.04), 0 10px 28px rgba(16,24,40,.05)",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 18 }}>{icon}</span>
-        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+      <span
+        style={{
+          position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: 4,
+          background: bad ? "#ef4444" : accent,
+        }}
+      />
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span
+          style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 34, height: 34, borderRadius: 10, fontSize: 17,
+            background: bad ? "#fef2f2" : `${accent}14`,
+          }}
+        >
+          {icon}
+        </span>
+        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
           {label}
         </span>
       </div>
       <div
         style={{
-          fontSize: "1.6rem",
-          fontWeight: 900,
-          color: bad ? "#b91c1c" : accent,
+          fontSize: "1.9rem",
+          fontWeight: 800,
+          color: bad ? "#b91c1c" : "#1e293b",
           lineHeight: 1.1,
-          marginTop: 4,
+          marginTop: 10,
+          letterSpacing: "-0.02em",
         }}
       >
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>
+        <div style={{ fontSize: "0.78rem", color: "#94a3b8", fontWeight: 500, marginTop: 2 }}>
           {sub}
         </div>
       )}

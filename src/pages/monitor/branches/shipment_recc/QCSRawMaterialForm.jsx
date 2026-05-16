@@ -14,7 +14,6 @@ import {
   makeClientId,
   deleteImage,
 } from "./qcsRawApi";
-import EmailReportModal from "./EmailReportModal";
 
 /* ===== Helpers & Constants ===== */
 const makeStableId = () =>
@@ -136,7 +135,7 @@ const styles = {
     fontSize: "1rem",
   },
 
-  focused: { boxShadow: "0 0 0 4px rgba(59,130,246,.20)", borderColor: "#6366f1" },
+  focused: { boxShadow: "0 0 0 4px rgba(59,130,246,.20)", border: "1px solid #6366f1" },
   fieldset: { marginBottom: 18, padding: 14, border: "1px solid #e5e7eb", borderRadius: 14, background: "#f8fafc" },
   legend: { fontWeight: 900, fontSize: "1.09rem", color: "#1e293b" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(270px,1fr))", gap: 12, marginTop: 10 },
@@ -317,7 +316,6 @@ export default function QCSRawMaterialForm() {
   const [toast, setToast] = useState({ type: null, msg: "" });
   const [saveMsg, setSaveMsg] = useState("");
   const [confirmDialog, setConfirmDialog] = useState({open:false,type:"",onOk:null});
-  const [emailOpen, setEmailOpen] = useState(false);
   const saveLockRef = useRef(false);
   const lastSaveTsRef = useRef(0);
 
@@ -755,7 +753,7 @@ export default function QCSRawMaterialForm() {
               <span style={styles.badge}>
                 Manual Save Only{saveMsg ? <b> · {saveMsg}</b> : null}
               </span>
-              <span style={{ ...styles.badge, background: "#e0f2fe", borderColor: "#7dd3fc", color: "#075985" }}>
+              <span style={{ ...styles.badge, background: "#e0f2fe", border: "1px solid #7dd3fc", color: "#075985" }}>
                 {ymdToDMY(createdDate)} · #{entrySequence}
               </span>
               {entryKey ? (
@@ -1225,29 +1223,9 @@ export default function QCSRawMaterialForm() {
             <button onClick={() => navigate("/admin/all-reports-view")} style={styles.viewButton}>
               📊 All Reports (Summary)
             </button>
-
-            <button
-              onClick={() => setEmailOpen(true)}
-              style={{ ...styles.viewButton, background: "#7c3aed", borderColor: "#7c3aed" }}
-              title="إرسال التقرير بالإيميل مع PDF مرفق"
-            >
-              📨 Email Report
-            </button>
           </div>
         </div>
       </div>
-
-      <EmailReportModal
-        open={emailOpen}
-        onClose={() => setEmailOpen(false)}
-        payload={{
-          ...buildReportPayload({ createdDate: toYMD(createdDate), uniqueKey: entryKey, sequence: entrySequence }),
-          shipmentStatus,
-          createdDate: toYMD(createdDate),
-          entrySequence,
-        }}
-        onSent={() => showToast("success", "تم إرسال الإيميل ✅")}
-      />
 
       {/* Toast */}
       {toast.type && (

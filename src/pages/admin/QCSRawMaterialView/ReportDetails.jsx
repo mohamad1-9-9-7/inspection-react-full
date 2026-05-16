@@ -9,6 +9,8 @@ import {
   deleteImageUrl, // من viewUtils
   upsertReportOnServer, // ✅ الحفظ على السيرفر (UPSERT)
 } from "./viewUtils";
+import EmailSendModal from "../../shared/EmailSendModal";
+import { qcsEmailConfig } from "../../monitor/branches/shipment_recc/qcsEmailConfig";
 
 /* ================= Helpers للإجماليات ================= */
 const toNum = (v) => {
@@ -251,6 +253,18 @@ export default function ReportDetails({
 }) {
   const [showAttachments, setShowAttachments] = useState(true);
   const [deleting, setDeleting] = useState(false); // حالة زر الحذف
+  const [emailOpen, setEmailOpen] = useState(false);
+
+  // Normalize selectedReport for EmailSendModal (it expects shipmentStatus + entrySequence)
+  const emailPayload = useMemo(() => {
+    if (!selectedReport) return null;
+    return {
+      ...selectedReport,
+      shipmentStatus: selectedReport.shipmentStatus || selectedReport.status || "",
+      entrySequence: selectedReport.entrySequence ?? selectedReport.sequence ?? "",
+      createdDate: selectedReport.createdDate || String(selectedReport.date || "").slice(0, 10),
+    };
+  }, [selectedReport]);
 
   // زر الحذف مع تأكيد + حماية PIN
   const handleDeleteReport = async () => {
@@ -787,7 +801,28 @@ export default function ReportDetails({
                 : "📋 Incoming Shipment Report"}
             </h3>
 
-            <div className="no-print no-pdf" style={{ display: "flex", gap: 8 }}>
+            <div className="no-print no-pdf" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => setEmailOpen(true)}
+                disabled={!selectedReport}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #6d28d9",
+                  background: "#7c3aed",
+                  cursor: selectedReport ? "pointer" : "not-allowed",
+                  color: "#fff",
+                  fontWeight: 900,
+                  opacity: selectedReport ? 1 : 0.6,
+                }}
+                title="Send this report by email (with PDF attached)"
+              >
+                📨 Email Report
+              </button>
+
               <button
                 onClick={handleDeleteReport}
                 disabled={!selectedReport || deleting}
@@ -1481,6 +1516,13 @@ export default function ReportDetails({
       )}
 
       <Modal />
+
+      <EmailSendModal
+        open={emailOpen}
+        onClose={() => setEmailOpen(false)}
+        payload={emailPayload}
+        config={qcsEmailConfig}
+      />
     </div>
   );
 }
