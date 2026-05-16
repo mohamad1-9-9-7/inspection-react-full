@@ -142,7 +142,17 @@
       "Bash(node -e \"const p=require\\('D:/inspection-react-full/package.json'\\);console.log\\(JSON.stringify\\(p.scripts,null,2\\)\\)\")",
       "Bash(git -C \"D:\\\\inspection-react-full\" status --short)",
       "Bash(git -C \"D:\\\\inspection-react-full\" diff --stat)",
-      "Bash(git -C \"D:\\\\inspection-react-full\" log --oneline -8)"
+      "Bash(git -C \"D:\\\\inspection-react-full\" log --oneline -8)",
+      "Bash(node --check \"D:\\\\inspection-server\\\\index.cjs\")",
+      "Bash(git -C \"D:\\\\inspection-server\" status --short)",
+      "Bash(git -C \"D:\\\\inspection-server\" rev-parse --abbrev-ref HEAD)",
+      "Bash(git -C \"D:\\\\inspection-server\" remote -v)",
+      "Bash(git -C \"D:\\\\inspection-server\" rev-parse --abbrev-ref --symbolic-full-name @{u})",
+      "Bash(git -C \"D:\\\\inspection-server\" log --oneline -5)",
+      "Bash(git -C \"D:\\\\inspection-server\" diff index.cjs)",
+      "Bash(git -C \"D:\\\\inspection-server\" diff package.json)",
+      "Bash(git -C \"D:\\\\inspection-server\" add index.cjs package.json)",
+      "Bash(git -C 'D:\\\\inspection-server' commit -m ' *)"
     ]
   }
 }

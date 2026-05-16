@@ -147,7 +147,18 @@ export function pushTimeline(record, action, by) {
   return [...(Array.isArray(record.timeline) ? record.timeline : []), entry];
 }
 
-/** Save / upsert a maintenance record (server pattern requires reportDate). */
+/**
+ * Save a maintenance record.
+ *
+ * IMPORTANT: the generic `PUT /api/reports` upserts the row matching
+ * `type + payload.reportDate`. For maintenance there are MANY requests per
+ * day (one reportDate, many requestNo), so that endpoint would overwrite a
+ * sibling request created the same day → silent data loss.
+ *
+ * So we route explicitly:
+ *   • New request (no numeric server id) → POST  → always a fresh row.
+ *   • Existing request (has numeric id)  → PUT /api/reports/:id → that row only.
+ */
 export async function saveMaintenance(record, { by } = {}) {
   const ymd = record.reportDate || record.dateOfForm || dateOnly(record.createdAt) || new Date().toISOString().slice(0, 10);
   const createdAtISO = record.createdAt || new Date(`${ymd}T12:00:00`).toISOString();
@@ -160,15 +171,27 @@ export async function saveMaintenance(record, { by } = {}) {
     _clientSavedAt: Date.now(),
   };
   const reporter = record.reporter || by || "anonymous";
-  const attempts = [
-    { url: `${API_BASE}/api/reports`, method: "PUT", body: JSON.stringify({ reporter, type: TYPE, payload }) },
-    { url: `${API_BASE}/api/reports?type=${TYPE}`, method: "PUT", body: JSON.stringify({ reporter, payload }) },
-  ];
-  let lastErr = null;
-  for (const a of attempts) {
-    try { return await apiFetch(a.url, a); } catch (e) { lastErr = e; }
+
+  const rawId = record._id;
+  const hasId =
+    rawId !== null && rawId !== undefined && /^\d+$/.test(String(rawId));
+
+  if (hasId) {
+    try {
+      return await apiFetch(`${API_BASE}/api/reports/${encodeURIComponent(rawId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ type: TYPE, payload }),
+      });
+    } catch (e) {
+      // Row no longer exists → fall through and recreate it.
+      if (!/\b404\b/.test(String(e?.message || ""))) throw e;
+    }
   }
-  throw lastErr || new Error("Save failed");
+
+  return await apiFetch(`${API_BASE}/api/reports`, {
+    method: "POST",
+    body: JSON.stringify({ reporter, type: TYPE, payload }),
+  });
 }
 
 /** Delete a maintenance record by its server numeric id. */

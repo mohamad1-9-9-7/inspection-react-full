@@ -10,7 +10,9 @@ import { useFontScale, FontScaleControl } from "./useFontScale";
 
 const MAX_IMAGES = 20;
 
-const emptyProblem = () => ({ location: "", problem: "", startedDate: "", deadline: "" });
+// Deadline ("وقت التنفيذ") is set by the Maintenance dept on the Browse page,
+// not by the requester here.
+const emptyProblem = () => ({ location: "", problem: "", startedDate: "" });
 
 export default function MaintenanceRequests() {
   const navigate = useNavigate();
@@ -27,7 +29,20 @@ export default function MaintenanceRequests() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState("");
   const [err, setErr] = useState("");
+  const [savedNo, setSavedNo] = useState(""); // → opens the success popup
+  const [copied, setCopied] = useState(false);
   const fontScale = useFontScale();
+
+  const copySavedNo = async () => {
+    try {
+      if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(savedNo);
+      else window.prompt("انسخ رقم الطلب / Copy request number:", savedNo);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt("انسخ رقم الطلب / Copy request number:", savedNo);
+    }
+  };
 
   useEffect(() => { nextRequestNo().then(setRequestNo).catch(() => setRequestNo("MR-NEW")); }, []);
 
@@ -71,7 +86,7 @@ export default function MaintenanceRequests() {
     e.preventDefault();
     setErr(""); setToast("");
     const cleanProblems = problems.filter(
-      (p) => p.location.trim() || p.problem.trim() || p.startedDate || p.deadline
+      (p) => p.location.trim() || p.problem.trim() || p.startedDate
     );
     if (!form.branch) { setErr("الرجاء اختيار الفرع / Please select a branch"); return; }
     if (!form.applicant.trim()) { setErr("الرجاء إدخال مقدّم الطلب / Applicant is required"); return; }
@@ -97,10 +112,10 @@ export default function MaintenanceRequests() {
       };
       rec.timeline = pushTimeline(rec, "تم إنشاء الطلب / Request created", form.applicant);
       await saveMaintenance(rec, { by: form.applicant });
-      setToast(`✅ تم حفظ الطلب ${rn} / Saved successfully`);
+      setCopied(false);
+      setSavedNo(rn); // open the success popup with the request number
       reset();
       nextRequestNo(rn).then(setRequestNo).catch(() => {});
-      setTimeout(() => setToast(""), 3500);
     } catch (ex) {
       setErr("❌ فشل الحفظ على السيرفر / Save failed\n" + (ex?.message || ""));
     } finally {
@@ -168,7 +183,6 @@ export default function MaintenanceRequests() {
                   <th style={sx.th}>الموقع بالضبط<br />Exact location</th>
                   <th style={sx.th}>المشكلة<br />Problem</th>
                   <th style={sx.th}>تاريخ بداية المشكلة<br />Problem started</th>
-                  <th style={sx.th}>وقت التنفيذ<br />Deadline</th>
                   <th style={{ ...sx.th, width: 44 }}></th>
                 </tr>
               </thead>
@@ -179,7 +193,6 @@ export default function MaintenanceRequests() {
                     <td style={sx.td}><input style={sx.cell} value={p.location} onChange={(e) => chProb(i, "location", e.target.value)} /></td>
                     <td style={sx.td}><input style={sx.cell} value={p.problem} onChange={(e) => chProb(i, "problem", e.target.value)} /></td>
                     <td style={sx.td}><input type="date" style={sx.cell} value={p.startedDate} onChange={(e) => chProb(i, "startedDate", e.target.value)} /></td>
-                    <td style={sx.td}><input type="date" style={sx.cell} value={p.deadline} onChange={(e) => chProb(i, "deadline", e.target.value)} /></td>
                     <td style={sx.tdC}>
                       <button type="button" onClick={() => delProb(i)} style={sx.delBtn} title="حذف الصف">✕</button>
                     </td>
@@ -221,6 +234,75 @@ export default function MaintenanceRequests() {
           </div>
         </form>
       </div>
+
+      {savedNo && (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,.55)", zIndex: 9999,
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+          }}
+          onMouseDown={(e) => e.target === e.currentTarget && setSavedNo("")}
+        >
+          <div
+            dir="rtl"
+            style={{
+              background: "#fff", width: "min(94vw,440px)", borderRadius: 18,
+              padding: "26px 24px", textAlign: "center", fontFamily: "Cairo, system-ui",
+              boxShadow: "0 24px 60px rgba(0,0,0,.35)", border: "1px solid #e2e8f0",
+            }}
+          >
+            <div style={{ fontSize: 46, lineHeight: 1 }}>✅</div>
+            <h3 style={{ margin: "12px 0 4px", fontSize: 19, fontWeight: 900, color: "#0f172a" }}>
+              تم استلام طلبك بنجاح
+            </h3>
+            <div style={{ color: "#64748b", fontSize: 13, fontWeight: 700, marginBottom: 16 }}>
+              Request submitted successfully
+            </div>
+
+            <div style={{ fontSize: 12.5, color: "#64748b", fontWeight: 800, marginBottom: 6 }}>
+              رقم الطلب / Request No
+            </div>
+            <div
+              style={{
+                userSelect: "all", fontSize: 26, fontWeight: 900, color: "#b91c1c",
+                letterSpacing: 0.5, background: "#fef2f2", border: "1px dashed #fca5a5",
+                borderRadius: 12, padding: "12px 10px", marginBottom: 14, direction: "ltr",
+              }}
+            >
+              {savedNo}
+            </div>
+
+            <div style={{ fontSize: 12.5, color: "#475569", fontWeight: 700, lineHeight: 1.7, marginBottom: 18 }}>
+              📌 احتفظ بهذا الرقم لمتابعة حالة طلبك في صفحة «تصفّح الطلبات».
+              <br />Keep this number to track your request in “Browse Requests”.
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={copySavedNo}
+                style={{
+                  background: copied ? "#16a34a" : "linear-gradient(90deg,#b91c1c,#dc2626)",
+                  color: "#fff", border: "none", padding: "11px 20px", borderRadius: 12,
+                  fontWeight: 900, fontSize: 14, cursor: "pointer", minWidth: 150,
+                }}
+              >
+                {copied ? "✓ تم النسخ / Copied" : "📋 نسخ الرقم / Copy"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSavedNo("")}
+                style={{
+                  background: "#fff", color: "#334155", border: "1px solid #cbd5e1",
+                  padding: "11px 18px", borderRadius: 12, fontWeight: 800, fontSize: 14, cursor: "pointer",
+                }}
+              >
+                إغلاق / Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

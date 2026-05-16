@@ -17,6 +17,21 @@ const GATE_KEY = "mnt_browse_gate_ok";
 // Urgent → High → Medium → Low (stored as English string from the form)
 const PRIORITY_RANK = { Urgent: 4, High: 3, Medium: 2, Low: 1 };
 const prRank = (p) => PRIORITY_RANK[String(p || "").trim()] || 0;
+
+// Color-coded priority chip (matches en value from the form, also tolerates ar)
+const PR_META = {
+  Urgent: { ar: "طارئة", en: "Urgent", bg: "#dc2626", fg: "#fff", bd: "#dc2626", icon: "🚨" },
+  High: { ar: "عالية", en: "High", bg: "#ffedd5", fg: "#9a3412", bd: "#fdba74", icon: "🔴" },
+  Medium: { ar: "متوسطة", en: "Medium", bg: "#fef9c3", fg: "#854d0e", bd: "#fde68a", icon: "🟡" },
+  Low: { ar: "منخفضة", en: "Low", bg: "#ecfdf5", fg: "#166534", bd: "#a7f3d0", icon: "🟢" },
+};
+function priorityMeta(p) {
+  const v = String(p || "").trim();
+  if (!v) return null;
+  if (PR_META[v]) return PR_META[v];
+  for (const k in PR_META) if (PR_META[k].ar === v) return PR_META[k];
+  return { ar: v, en: "", bg: "#f1f5f9", fg: "#334155", bd: "#cbd5e1", icon: "•" };
+}
 const rowCost = (r) => {
   const n = parseFloat(String(r.totalCost || "").replace(/[^\d.\-]/g, ""));
   return Number.isFinite(n) && n ? n : sumCost(r.materials);
@@ -65,6 +80,61 @@ function Gate({ onOk }) {
   );
 }
 
+/* ===================== Image Lightbox (popup) ===================== */
+function ImageLightbox({ src, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+  return (
+    <div
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(2,6,23,.88)", zIndex: 10000,
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      }}
+    >
+      <button
+        type="button" onClick={onClose} aria-label="إغلاق / Close"
+        style={{
+          position: "absolute", top: 16, insetInlineEnd: 18, width: 42, height: 42,
+          background: "rgba(255,255,255,.16)", color: "#fff",
+          border: "1px solid rgba(255,255,255,.45)", borderRadius: 10,
+          fontSize: 18, fontWeight: 900, cursor: "pointer",
+        }}
+      >
+        ✕
+      </button>
+      <img
+        src={src}
+        alt="preview"
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: "94vw", maxHeight: "88vh", objectFit: "contain",
+          borderRadius: 10, background: "#fff", boxShadow: "0 24px 60px rgba(0,0,0,.55)",
+        }}
+      />
+      <a
+        href={src} target="_blank" rel="noreferrer"
+        style={{
+          position: "absolute", bottom: 16, insetInlineStart: "50%",
+          transform: "translateX(-50%)", background: "rgba(255,255,255,.16)",
+          color: "#fff", border: "1px solid rgba(255,255,255,.45)", borderRadius: 10,
+          padding: "8px 16px", fontWeight: 800, fontSize: 13, textDecoration: "none",
+        }}
+      >
+        ↗ فتح الأصل / Open original
+      </a>
+    </div>
+  );
+}
+
 /* ===================== Edit Modal ===================== */
 function EditModal({ rec, onClose, onSaved, scale = 1 }) {
   const [dateReceived, setDateReceived] = useState(rec.dateReceived || "");
@@ -79,9 +149,14 @@ function EditModal({ rec, onClose, onSaved, scale = 1 }) {
   const [technician, setTechnician] = useState(rec.technician || "");
   const [completionNote, setCompletionNote] = useState(rec.completionNote || "");
   const [proofs, setProofs] = useState(Array.isArray(rec.proofs) ? rec.proofs : []);
+  // "وقت التنفيذ" — set here by Maintenance (drives the Overdue logic)
+  const [problems, setProblems] = useState(
+    Array.isArray(rec.problems) ? rec.problems.map((p) => ({ ...p })) : []
+  );
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [lightbox, setLightbox] = useState(null);
 
   const onProofs = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -106,6 +181,9 @@ function EditModal({ rec, onClose, onSaved, scale = 1 }) {
 
   const total = useMemo(() => sumCost(materials), [materials]);
 
+  const chDeadline = (i, v) =>
+    setProblems((r) => r.map((p, idx) => (idx === i ? { ...p, deadline: v } : p)));
+
   const chMat = (i, k, v) => setMaterials((r) => r.map((m, idx) => idx === i ? { ...m, [k]: v } : m));
   const addMat = () => setMaterials((r) => [...r, { item: "", description: "", cost: "" }]);
   const delMat = (i) => setMaterials((r) => r.length > 1 ? r.filter((_, idx) => idx !== i) : r);
@@ -121,6 +199,7 @@ function EditModal({ rec, onClose, onSaved, scale = 1 }) {
       );
       const next = {
         ...rec,
+        problems,
         dateReceived,
         recipient,
         maintenanceComment: comment,
@@ -156,6 +235,40 @@ function EditModal({ rec, onClose, onSaved, scale = 1 }) {
             <input style={m.inp} placeholder="اسم المستلم / قسم الصيانة" value={recipient} onChange={(e) => setRecipient(e.target.value)} />
           </div>
         </div>
+
+        <label style={m.lbl}>⏱️ وقت التنفيذ / Deadline — يحدّده قسم الصيانة (Set by Maintenance)</label>
+        {problems.length ? (
+          <table style={m.table}>
+            <thead><tr>
+              <th style={{ ...m.th, width: 34 }}>#</th>
+              <th style={m.th}>الموقع / Location</th>
+              <th style={m.th}>المشكلة / Problem</th>
+              <th style={{ ...m.th, width: 170 }}>وقت التنفيذ / Deadline</th>
+            </tr></thead>
+            <tbody>
+              {problems.map((p, i) => (
+                <tr key={i}>
+                  <td style={{ ...m.td, textAlign: "center", fontWeight: 800 }}>{i + 1}</td>
+                  <td style={m.td}><div style={{ padding: "6px", fontSize: 13 }}>{p.location || "—"}</div></td>
+                  <td style={m.td}><div style={{ padding: "6px", fontSize: 13 }}>{p.problem || "—"}</div></td>
+                  <td style={m.td}>
+                    <input
+                      type="date"
+                      style={m.cell}
+                      value={p.deadline || ""}
+                      min={p.startedDate || undefined}
+                      onChange={(e) => chDeadline(i, e.target.value)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "#64748b", padding: "2px 0 6px" }}>
+            لا توجد مشاكل مُسجّلة لتحديد وقت تنفيذ لها / No logged problems to set a deadline for.
+          </div>
+        )}
 
         <label style={m.lbl}>تعليق قسم الصيانة / Maintenance comment</label>
         <textarea style={m.ta} value={comment} onChange={(e) => setComment(e.target.value)} rows={3} />
@@ -209,7 +322,7 @@ function EditModal({ rec, onClose, onSaved, scale = 1 }) {
                 <div key={i} style={{ position: "relative", width: 92, height: 92, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", background: "#f8fafc" }}>
                   {isPdf
                     ? <a href={src} target="_blank" rel="noreferrer" style={{ display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center", fontSize: 28, textDecoration: "none" }}>📄</a>
-                    : <a href={src} target="_blank" rel="noreferrer"><img src={src} alt={`p${i}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></a>}
+                    : <img src={src} alt={`p${i}`} onClick={() => setLightbox(src)} style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "zoom-in" }} />}
                   <button type="button" onClick={() => delProof(i)} style={{ position: "absolute", top: 4, left: 4, background: "rgba(220,38,38,.95)", color: "#fff", border: "none", borderRadius: 6, padding: "2px 7px", fontWeight: 800, cursor: "pointer" }}>✕</button>
                 </div>
               );
@@ -249,6 +362,7 @@ function EditModal({ rec, onClose, onSaved, scale = 1 }) {
           </button>
         </div>
       </div>
+      {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   );
 }
@@ -274,6 +388,7 @@ export default function BrowseMaintenanceRequests() {
   const [expanded, setExpanded] = useState(null);
   const [editRec, setEditRec] = useState(null);
   const [toast, setToast] = useState("");
+  const [lightbox, setLightbox] = useState(null);
 
   const load = async () => {
     setLoading(true); setErr("");
@@ -491,12 +606,21 @@ export default function BrowseMaintenanceRequests() {
           const over = isOverdue(r);
           const open = expanded === (r.requestNo + r.createdAt);
           const status = r.status || STATUS.NEW;
+          const pm = priorityMeta(r.priority);
           return (
             <div key={r.requestNo + r.createdAt} style={{ ...s.card, ...(over ? { borderColor: "#dc2626", boxShadow: "0 0 0 1px #dc2626 inset" } : {}) }}>
               <div style={s.cardTop} onClick={() => setExpanded(open ? null : r.requestNo + r.createdAt)}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <b style={{ color: "#b91c1c", fontSize: 15 }}>{r.requestNo || "—"}</b>
                   <span style={{ ...s.chip, background: tone.bg, color: tone.fg, border: `1px solid ${tone.bd}` }}>{status}</span>
+                  {pm && (
+                    <span
+                      style={{ ...s.chip, background: pm.bg, color: pm.fg, border: `1px solid ${pm.bd}` }}
+                      title="أولوية الطلب / Priority"
+                    >
+                      {pm.icon} {pm.ar}{pm.en ? ` / ${pm.en}` : ""}
+                    </span>
+                  )}
                   {over && <span style={s.overChip}>⚠️ متأخّر / Overdue</span>}
                   <span style={{ color: "#475569", fontWeight: 700 }}>{r.branch}</span>
                   <span style={{ color: "#64748b" }}>👤 {r.applicant || "—"}</span>
@@ -556,9 +680,13 @@ export default function BrowseMaintenanceRequests() {
                     <><div style={s.secT}>صور الطلب / Request Images</div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {r.images.map((src, i) => (
-                          <a key={i} href={src} target="_blank" rel="noreferrer">
-                            <img src={src} alt={`i${i}`} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e8f0" }} />
-                          </a>
+                          <img
+                            key={i}
+                            src={src}
+                            alt={`i${i}`}
+                            onClick={() => setLightbox(src)}
+                            style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e8f0", cursor: "zoom-in" }}
+                          />
                         ))}
                       </div></>
                   )}
@@ -568,12 +696,18 @@ export default function BrowseMaintenanceRequests() {
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {r.proofs.map((src, i) => {
                           const isPdf = /\.pdf(\?|#|$)/i.test(src);
-                          return (
+                          return isPdf ? (
                             <a key={i} href={src} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-                              {isPdf
-                                ? <div style={{ width: 90, height: 90, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc" }}>📄</div>
-                                : <img src={src} alt={`pf${i}`} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #16a34a" }} />}
+                              <div style={{ width: 90, height: 90, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc" }}>📄</div>
                             </a>
+                          ) : (
+                            <img
+                              key={i}
+                              src={src}
+                              alt={`pf${i}`}
+                              onClick={() => setLightbox(src)}
+                              style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #16a34a", cursor: "zoom-in" }}
+                            />
                           );
                         })}
                       </div></>
@@ -654,6 +788,8 @@ export default function BrowseMaintenanceRequests() {
           }}
         />
       )}
+
+      {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   );
 }

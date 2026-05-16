@@ -5,6 +5,7 @@ import './Login.css';
 import logo from '../assets/almawashi-logo.jpg';
 import API_BASE from '../config/api';
 import usePresence from '../hooks/usePresence';
+import { countUnseenMaintenance } from './maintenance/maintenanceCount';
 
 /* ─── Theme palettes (light / dark) ─── */
 const LIGHT_THEME = {
@@ -194,6 +195,9 @@ function Login() {
   const [modalError, setModalError] = useState("");
   const [modalLoading, setModalLoading] = useState(false);
 
+  // 🔔 Maintenance requests not yet acknowledged (no "Date received")
+  const [maintenanceUnseen, setMaintenanceUnseen] = useState(0);
+
   // 🌓 Theme state (persisted)
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem("theme") || "light"; } catch { return "light"; }
@@ -207,6 +211,24 @@ function Login() {
 
   // 👥 Presence (online users + daily visits)
   const presence = usePresence({ enabled: location.pathname === "/" });
+
+  // 🔔 Refresh the maintenance badge on mount + whenever the tab regains focus
+  useEffect(() => {
+    let alive = true;
+    const refresh = () =>
+      countUnseenMaintenance()
+        .then((n) => { if (alive) setMaintenanceUnseen(n); })
+        .catch(() => {});
+    refresh();
+    const onFocus = () => { if (document.visibilityState !== "hidden") refresh(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, []);
 
   const handleRoleClick = (role) => {
     if (role.id === "kpi") {
@@ -690,8 +712,35 @@ function Login() {
               }}
               style={roleTile(hoveredRoleId === role.id)}
               className="mx-role-glass"
-              title={role.label}
+              title={role.id === "maintenance" && maintenanceUnseen > 0
+                ? `${role.label} — ${maintenanceUnseen} طلب جديد بدون استلام / new unacknowledged`
+                : role.label}
             >
+              {role.id === "maintenance" && maintenanceUnseen > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    minWidth: 24,
+                    height: 24,
+                    padding: "0 7px",
+                    borderRadius: 999,
+                    background: "#dc2626",
+                    color: "#fff",
+                    fontSize: "0.8rem",
+                    fontWeight: 900,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 0 0 2px rgba(255,255,255,0.85), 0 4px 10px rgba(220,38,38,0.5)",
+                    zIndex: 3,
+                  }}
+                  aria-label={`${maintenanceUnseen} طلبات صيانة بدون تاريخ استلام`}
+                >
+                  {maintenanceUnseen > 99 ? "99+" : maintenanceUnseen}
+                </span>
+              )}
               <div style={{ fontSize: "3rem", lineHeight: 1, position: "relative", zIndex: 1 }}>{role.icon}</div>
               <div style={{
                 fontSize: "0.95rem",

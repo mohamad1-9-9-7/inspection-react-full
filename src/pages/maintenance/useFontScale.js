@@ -8,16 +8,20 @@ const KEY = "mnt_font_scale";
 const MIN = 1;
 const MAX = 1.6;
 const STEP = 0.1;
+// "كبير بس بالمعقول" — comfortable default for the (older) maintenance supervisor.
+// Snaps to the 0.1 step grid, so keep it on a tenth (1.2 = 120%).
+const DEFAULT = 1.2;
 
 const clamp = (n) => Math.min(MAX, Math.max(MIN, Math.round(n * 10) / 10));
 
 export function useFontScale() {
   const [scale, setScale] = useState(() => {
     try {
-      const v = parseFloat(localStorage.getItem(KEY) || "1");
-      return Number.isFinite(v) ? clamp(v) : 1;
+      const raw = localStorage.getItem(KEY);
+      const v = parseFloat(raw == null ? String(DEFAULT) : raw);
+      return Number.isFinite(v) ? clamp(v) : DEFAULT;
     } catch {
-      return 1;
+      return DEFAULT;
     }
   });
 
@@ -29,7 +33,7 @@ export function useFontScale() {
 
   const inc = useCallback(() => setScale((s) => clamp(s + STEP)), []);
   const dec = useCallback(() => setScale((s) => clamp(s - STEP)), []);
-  const reset = useCallback(() => setScale(1), []);
+  const reset = useCallback(() => setScale(DEFAULT), []);
 
   return { scale, inc, dec, reset, isMin: scale <= MIN, isMax: scale >= MAX };
 }
