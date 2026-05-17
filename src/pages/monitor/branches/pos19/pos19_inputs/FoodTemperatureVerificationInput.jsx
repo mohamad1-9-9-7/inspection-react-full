@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/FoodTemperatureVerificationInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+import API_BASE from "../../../../../config/api";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "pos19_food_temp_verification_draft_v1";
@@ -13,14 +14,6 @@ const loadDraft = () => {
   }
 };
 
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
 
 const TYPE     = "pos19_food_temperature_verification";
 const BRANCH   = "WARQA KITCHEN";

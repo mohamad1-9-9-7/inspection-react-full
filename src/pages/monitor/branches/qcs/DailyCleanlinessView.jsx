@@ -2,16 +2,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import API_BASE from "../../../../config/api";
 
 /* ===== API base (نفس أسلوب مشروعك) ===== */
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 /* نوع تقرير QCS للنظافة اليومية */
 const TYPE = "qcs-clean";

@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/ftr1/FTR1CookingTemperatureLogInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import API_BASE from "../../../../config/api";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "ftr1_cooking_temp_log_draft_v1";
@@ -13,14 +14,7 @@ const loadDraft = () => {
 };
 
 /* ===== API base ===== */
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 /* ===== ثوابت التقرير ===== */
 const TYPE   = "ftr1_cooking_temperature_log";

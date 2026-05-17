@@ -1,15 +1,8 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/CoolingLogInput.jsx
 import React, { useEffect, useRef, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+import API_BASE from "../../../../../config/api";
 
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
 
 const TYPE     = "pos19_cooling_log";
 const BRANCH   = "POS 19";

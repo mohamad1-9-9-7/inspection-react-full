@@ -1,10 +1,7 @@
 // src/pages/settings/BackupTab.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import API_BASE from "../../config/api";
 
-const API_BASE = String(
-  (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
 
 /* ============================================================
    تصنيف أنواع التقارير حسب الفرع/الفئة

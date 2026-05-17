@@ -11,8 +11,7 @@ import FTR1ReportView     from "./monitor/branches/ftr1/FTR1ReportView";
 import FTR2ReportView     from "./monitor/branches/ftr2/FTR2ReportView";
 import { resilientFetch } from "./monitor/branches/_shared/resilientFetch";
 import ExpiryWidget       from "../components/ExpiryWidget";
-
-const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+import API_BASE           from "../config/api";
 
 /**
  * Wake up the server before making bulk requests.

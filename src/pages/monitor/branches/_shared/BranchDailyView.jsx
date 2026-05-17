@@ -449,7 +449,7 @@ export default function BranchDailyView({
         <aside className="bdv-sidebar">
           <div className="bdv-sidebar-header">
             <div className="bdv-branch-badge">● {branchCode}</div>
-            <h2 className="bdv-sidebar-title" dangerouslySetInnerHTML={{ __html: title }} />
+            <h2 className="bdv-sidebar-title">{title}</h2>
             <div className="bdv-sidebar-sub">{subtitle}</div>
           </div>
 

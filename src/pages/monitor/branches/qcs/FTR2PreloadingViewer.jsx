@@ -2,16 +2,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import PreloadingKPIBar from "../_shared/PreloadingKPIBar";
 import CollapsibleDateTree from "../_shared/CollapsibleDateTree";
+import API_BASE from "../../../../config/api";
 
 /* ===== API base ===== */
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 /* ===== Type / constants ===== */
 const TYPE = "ftr2_preloading_inspection";

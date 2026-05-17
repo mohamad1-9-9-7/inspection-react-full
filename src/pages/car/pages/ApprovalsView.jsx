@@ -1,12 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
+import API_BASE from "../../../config/api";
 
 /* ========== API ========== */
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
-    "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 const TYPE = "car_approvals";
 const FIXED_DATE = "2000-01-01";

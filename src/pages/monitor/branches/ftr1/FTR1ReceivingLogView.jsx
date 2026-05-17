@@ -10,17 +10,10 @@ import React, {
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { resilientFetch, classifyError } from "../_shared/resilientFetch";
+import API_BASE from "../../../../config/api";
 
 /* ========= API BASE (robust like your other pages) ========= */
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    (typeof process !== "undefined" &&
-      (process.env?.REACT_APP_API_URL ||
-        process.env?.VITE_API_URL ||
-        process.env?.RENDER_EXTERNAL_URL)) ||
-    "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 const TYPE = "ftr1_receiving_log_butchery";
 const LIST_LIMIT = 180;

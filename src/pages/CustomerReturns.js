@@ -1,9 +1,7 @@
 // src/pages/CustomerReturns.js
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-
-// API base
-const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+import API_BASE from "../config/api";
 
 // Actions (English only, for storage/consistency)
 const ACTIONS = [

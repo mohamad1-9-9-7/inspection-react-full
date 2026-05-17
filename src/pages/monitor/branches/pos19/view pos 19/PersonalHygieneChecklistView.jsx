@@ -4,15 +4,9 @@ import unionLogo from "../../../../../assets/unioncoop-logo.png";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
+import API_BASE from "../../../../../config/api";
 
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-      process.env.VITE_API_URL ||
-      process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 const TYPE = "pos19_personal_hygiene";
 const BRANCH = "POS 19";

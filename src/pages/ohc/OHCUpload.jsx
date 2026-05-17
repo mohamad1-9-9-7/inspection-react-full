@@ -1,17 +1,10 @@
 // src/pages/ohc/OHCUpload.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import API_BASE from "../../config/api";
 
 /* ========= API ========= */
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  (typeof process !== "undefined" &&
-    (process.env?.REACT_APP_API_URL ||
-      process.env?.VITE_API_URL ||
-      process.env?.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 /* Server report type */
 const TYPE = "ohc_certificate";

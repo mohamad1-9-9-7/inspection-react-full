@@ -1,17 +1,10 @@
 import React, { useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx-js-style";
+import API_BASE from "../../config/api";
 
 /* ========= API ========= */
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-    (typeof process !== "undefined" &&
-      (process.env?.REACT_APP_API_URL ||
-        process.env?.VITE_API_URL ||
-        process.env?.RENDER_EXTERNAL_URL)) ||
-    "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 /* نوع التقرير على السيرفر */
 const TYPE = "finished_products_report";

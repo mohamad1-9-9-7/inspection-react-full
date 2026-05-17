@@ -1,15 +1,9 @@
 // src/pages/monitor/branches/qcs/InternalAuditInput.jsx
 import React, { useMemo, useState } from "react";
+import API_BASE from "../../../../config/api";
 
 /* ===== API base ===== */
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 /* ===== Constants ===== */
 const TYPE   = "qcs_internal_audit";

@@ -1,16 +1,10 @@
 // src/pages/monitor/branches/POS 11/POS11TraceabilityLogInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { REPORTS_URL } from "../shipment_recc/qcsRawApi";
+import API_BASE from "../../../../config/api";
 
 /* ===== API base ===== */
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 /* ===== ثابت التقرير ===== */
 const TYPE   = "pos11_traceability_log";

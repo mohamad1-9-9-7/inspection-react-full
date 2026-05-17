@@ -1,14 +1,8 @@
 // src/pages/monitor/branches/qcs/CorrectiveActionReportInput.jsx
 import React, { useState, useMemo } from "react";
+import API_BASE from "../../../../config/api";
 
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-     process.env.VITE_API_URL ||
-     process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 const TYPE   = "qcs_corrective_action";
 const BRANCH = "QCS";

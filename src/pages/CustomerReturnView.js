@@ -1,8 +1,6 @@
 // src/pages/CustomerReturnView.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
-
-// API base
-const API_BASE = process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+import API_BASE from "../config/api";
 
 /* ========== Fetch (type=returns_customers) ========== */
 async function fetchReports() {

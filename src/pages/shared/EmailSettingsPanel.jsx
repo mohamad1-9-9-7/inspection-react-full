@@ -17,6 +17,7 @@ import {
   isValidEmail,
 } from "./emailReportSettings";
 import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
+import { sanitizeHtml } from "../../utils/sanitizeHtml";
 
 const styles = {
   overlay: {
@@ -282,7 +283,7 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
           {/* Signature preview */}
           <div style={styles.preview}>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", marginBottom: 6 }}>PREVIEW</div>
-            <div dangerouslySetInnerHTML={{ __html: buildSignatureHtml(s) || "<em style='color:#94a3b8'>لا يوجد توقيع.</em>" }} />
+            <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(buildSignatureHtml(s) || "<em style='color:#94a3b8'>لا يوجد توقيع.</em>") }} />
           </div>
         </div>
 

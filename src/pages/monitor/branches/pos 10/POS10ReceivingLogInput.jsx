@@ -1,14 +1,8 @@
 // src/pages/monitor/branches/pos 10/POS10ReceivingLogInput.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import API_BASE from "../../../../config/api";
 
-const API_BASE = String(
-  (typeof window !== "undefined" && window.__QCS_API__) ||
-  (typeof process !== "undefined" &&
-    (process.env.REACT_APP_API_URL ||
-      process.env.VITE_API_URL ||
-      process.env.RENDER_EXTERNAL_URL)) ||
-  "https://inspection-server-4nvj.onrender.com"
-).replace(/\/$/, "");
+
 
 // نوع التقرير و الفرع (مكيّف لـ POS 10)
 const TYPE = "pos10_receiving_log_butchery";
