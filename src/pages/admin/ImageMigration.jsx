@@ -7,12 +7,17 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
 
-const TYPE = "internal_multi_audit";
+const TYPE_OPTIONS = [
+  { value: "internal_multi_audit",     label: "Internal Multi Audit" },
+  { value: "customer_complaint",       label: "Customer Complaints" },
+  { value: "municipality_inspection",  label: "Municipality Inspection" },
+];
 
 /* ===== Helpers ===== */
 
-function isBase64Image(s) {
-  return typeof s === "string" && /^data:image\/[a-z0-9.+-]+;base64,/i.test(s);
+// Matches base64 images AND base64 PDFs — both bloat the payload.
+function isBase64Asset(s) {
+  return typeof s === "string" && /^data:(image\/[a-z0-9.+-]+|application\/pdf);base64,/i.test(s);
 }
 
 function approxBase64Bytes(s) {
@@ -23,7 +28,7 @@ function approxBase64Bytes(s) {
 }
 
 function scanBase64(obj, path = "$", acc = { count: 0, bytes: 0, samplePaths: [] }) {
-  if (isBase64Image(obj)) {
+  if (isBase64Asset(obj)) {
     acc.count++;
     acc.bytes += approxBase64Bytes(obj);
     if (acc.samplePaths.length < 5) acc.samplePaths.push(path);
@@ -40,7 +45,7 @@ function scanBase64(obj, path = "$", acc = { count: 0, bytes: 0, samplePaths: []
 }
 
 async function replaceBase64(obj, uploadFn, counter = { uploaded: 0, failed: 0, errors: [] }, path = "$") {
-  if (isBase64Image(obj)) {
+  if (isBase64Asset(obj)) {
     try {
       const url = await uploadFn(obj);
       counter.uploaded++;
@@ -104,8 +109,8 @@ async function fetchWithRetry(url, opts = {}, tries = 4) {
   throw lastErr || new Error("Failed after retries");
 }
 
-async function fetchAuditReports() {
-  const res = await fetchWithRetry(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, {}, 4);
+async function fetchAuditReports(type) {
+  const res = await fetchWithRetry(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {}, 4);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json().catch(() => ({}));
   const arr = Array.isArray(data) ? data
@@ -113,14 +118,14 @@ async function fetchAuditReports() {
             : Array.isArray(data?.items) ? data.items
             : Array.isArray(data?.rows) ? data.rows
             : [];
-  return arr.filter((r) => r?.type === TYPE || !r?.type);
+  return arr.filter((r) => r?.type === type || !r?.type);
 }
 
-async function updateRecord(id, payload) {
+async function updateRecord(id, payload, type) {
   const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type: TYPE, reporter: "image_migration_tool", payload }),
+    body: JSON.stringify({ type, reporter: "image_migration_tool", payload }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json().catch(() => ({}));
@@ -137,6 +142,7 @@ function formatBytes(n) {
 
 export default function ImageMigration() {
   const navigate = useNavigate();
+  const [type, setType] = useState("internal_multi_audit");
   const [scanning, setScanning] = useState(false);
   const [running, setRunning] = useState(false);
   const [reports, setReports] = useState([]);
@@ -155,10 +161,10 @@ export default function ImageMigration() {
     setProgress({ done: 0, total: 0, uploaded: 0, failed: 0 });
 
     setScanning(true);
-    appendLog(`🔎 Fetching internal_multi_audit records…`);
+    appendLog(`🔎 Fetching ${type} records…`);
     try {
-      const arr = await fetchAuditReports();
-      appendLog(`✅ Got ${arr.length} record(s). Scanning for base64 images…`);
+      const arr = await fetchAuditReports(type);
+      appendLog(`✅ Got ${arr.length} record(s). Scanning for base64 images/PDFs…`);
       let totalCount = 0, totalBytes = 0, recordsWithImages = 0;
       for (const r of arr) {
         const res = scanBase64(r?.payload || {});
@@ -173,7 +179,7 @@ export default function ImageMigration() {
         totalImages: totalCount,
         totalBytes,
       });
-      appendLog(`📊 Found ${totalCount} base64 image(s), ~${formatBytes(totalBytes)} in ${recordsWithImages} of ${arr.length} record(s)`);
+      appendLog(`📊 Found ${totalCount} base64 file(s), ~${formatBytes(totalBytes)} in ${recordsWithImages} of ${arr.length} record(s)`);
       if (totalCount === 0) appendLog(`✨ No migration needed — all clean!`);
     } catch (e) {
       const msg = e?.message || String(e);
@@ -188,8 +194,8 @@ export default function ImageMigration() {
   async function doMigrate() {
     if (!reports.length) { setError("Run a scan first."); return; }
     if (!window.confirm(
-      `Migrate ${scanResult.totalImages} image(s) across ${scanResult.recordsWithImages} record(s)?\n\n` +
-      `Each image will be uploaded to Cloudinary (/api/images) and the record will be updated.\n\n` +
+      `Migrate ${scanResult.totalImages} file(s) across ${scanResult.recordsWithImages} record(s)?\n\n` +
+      `Each file will be uploaded to Cloudinary (/api/images) and the record will be updated.\n\n` +
       `This is irreversible. Make sure your server has a backup.`
     )) return;
 
@@ -213,7 +219,7 @@ export default function ImageMigration() {
         if (counter.uploaded === 0 && counter.failed === 0) {
           appendLog(`⏭️ #${i + 1} (${id}): nothing to migrate`);
         } else {
-          await updateRecord(id, newPayload);
+          await updateRecord(id, newPayload, type);
           appendLog(`✅ #${i + 1} (${id}): uploaded ${counter.uploaded}, failed ${counter.failed}, saved`);
         }
       } catch (e) {
@@ -240,47 +246,59 @@ export default function ImageMigration() {
       <div style={s.card}>
         <div style={s.header}>
           <div>
-            <div style={s.title}>🖼️ Internal Audit — Image Cleanup</div>
+            <div style={s.title}>🖼️ Image &amp; PDF Cleanup</div>
             <div style={s.subtitle}>
-              Converts the base64 images stored in <code style={s.code}>internal_multi_audit</code> records
-              into lightweight Cloudinary URLs. This is the ONE table that's crashing your server.
+              Converts base64 images <strong>and PDFs</strong> stored inside a report type into
+              lightweight Cloudinary URLs. Pick the report type below, then scan & migrate.
             </div>
           </div>
           <button type="button" onClick={() => navigate(-1)} style={s.btn}>← Back</button>
         </div>
 
         <div style={s.banner}>
-          <strong>⚠️ Why this exists:</strong> Internal Audit reports store images as massive base64 strings
-          (each image = ~1 MB inline). When the page loads ALL records at once, the server runs out of memory
-          (512 MB on Starter plan) and crashes. This tool uploads each image to Cloudinary and replaces it
-          with a short URL (~80 bytes). After migration, the server is happy.
+          <strong>⚠️ Why this exists:</strong> Some report types store images/PDFs as massive base64 strings
+          inline in the payload. When the page loads ALL records at once, the server runs out of memory
+          and the page won't open fully. This tool uploads each file to Cloudinary and replaces it
+          with a short URL (~80 bytes). After migration, the page loads fast and complete.
         </div>
 
         {/* Step 1: Scan */}
         <div style={s.section}>
-          <div style={s.sectionTitle}>1. Scan (read-only — safe)</div>
-          <button
-            type="button"
-            onClick={doScan}
-            disabled={scanning || running}
-            style={s.btnPrimary}
-          >
-            {scanning ? "⏳ Scanning…" : "🔎 Scan internal_multi_audit"}
-          </button>
+          <div style={s.sectionTitle}>1. Pick report type & scan (read-only — safe)</div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              disabled={scanning || running}
+              style={s.select}
+            >
+              {TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label} ({o.value})</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={doScan}
+              disabled={scanning || running}
+              style={s.btnPrimary}
+            >
+              {scanning ? "⏳ Scanning…" : `🔎 Scan ${type}`}
+            </button>
+          </div>
 
           {scanResult && (
             <div style={s.resultCard}>
               <table style={s.statsTable}>
                 <tbody>
                   <tr><td>Total records</td><td style={s.statValue}>{scanResult.totalRecords}</td></tr>
-                  <tr><td>Records with base64 images</td><td style={s.statValue}>{scanResult.recordsWithImages}</td></tr>
-                  <tr><td>Total base64 images</td><td style={s.statValue}>{scanResult.totalImages}</td></tr>
+                  <tr><td>Records with base64 files</td><td style={s.statValue}>{scanResult.recordsWithImages}</td></tr>
+                  <tr><td>Total base64 files (images + PDFs)</td><td style={s.statValue}>{scanResult.totalImages}</td></tr>
                   <tr><td>Estimated memory savings after migration</td><td style={{ ...s.statValue, color: "#16a34a" }}>{formatBytes(scanResult.totalBytes)}</td></tr>
                 </tbody>
               </table>
               {scanResult.totalImages === 0 && (
                 <div style={{ ...s.notice, background: "#dcfce7", color: "#166534" }}>
-                  ✅ Clean — no base64 images found. Your records are already using URLs.
+                  ✅ Clean — no base64 files found. Your records are already using URLs.
                 </div>
               )}
             </div>
@@ -297,7 +315,7 @@ export default function ImageMigration() {
               disabled={running || scanning}
               style={{ ...s.btnPrimary, background: running ? "#9ca3af" : "linear-gradient(135deg, #16a34a, #15803d)" }}
             >
-              {running ? "⏳ Migrating…" : `🚀 Migrate ${scanResult.totalImages} image(s)`}
+              {running ? "⏳ Migrating…" : `🚀 Migrate ${scanResult.totalImages} file(s)`}
             </button>
 
             {progress.total > 0 && (
@@ -376,6 +394,11 @@ const s = {
     color: "#fff", border: "none",
     fontWeight: 1000, fontSize: 14, cursor: "pointer",
     boxShadow: "0 12px 24px rgba(37,99,235,.30)",
+  },
+  select: {
+    padding: "12px 16px", borderRadius: 14,
+    border: "1px solid rgba(148,163,184,.55)", background: "#fff",
+    color: "#0f172a", fontWeight: 900, fontSize: 14, cursor: "pointer",
   },
   banner: {
     background: "#fef9c3", border: "1px solid #fde68a",

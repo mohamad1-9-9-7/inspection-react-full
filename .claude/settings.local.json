@@ -152,7 +152,9 @@
       "Bash(git -C \"D:\\\\inspection-server\" diff index.cjs)",
       "Bash(git -C \"D:\\\\inspection-server\" diff package.json)",
       "Bash(git -C \"D:\\\\inspection-server\" add index.cjs package.json)",
-      "Bash(git -C 'D:\\\\inspection-server' commit -m ' *)"
+      "Bash(git -C 'D:\\\\inspection-server' commit -m ' *)",
+      "Bash(npx --no-install eslint \"src/pages/haccp and iso/CustomerComplaints/CustomerComplaintInput.jsx\" \"src/pages/haccp and iso/CustomerComplaints/CustomerComplaintView.jsx\" \"src/pages/haccp and iso/MunicipalityInspectionInput.jsx\" \"src/pages/haccp and iso/MunicipalityInspectionView.jsx\")",
+      "Bash(npm run *)"
     ]
   }
 }

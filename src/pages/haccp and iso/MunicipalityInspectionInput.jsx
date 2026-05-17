@@ -3,6 +3,7 @@ import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 import HaccpLinkBadge from "./FSMSManual/HaccpLinkBadge";
+import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
 
 const API_BASE = String(
   (typeof window !== "undefined" && window.__QCS_API__) ||
@@ -34,7 +35,9 @@ function loadImageFromFile(file) {
   });
 }
 
-async function compressToDataURL(file, { maxDim = 1280, quality = 0.8 } = {}) {
+/* Compress client-side to a JPEG File, then upload to Cloudinary.
+   base64 never enters the report payload. */
+async function compressToFile(file, { maxDim = 1280, quality = 0.8 } = {}) {
   const img = await loadImageFromFile(file);
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
@@ -46,16 +49,10 @@ async function compressToDataURL(file, { maxDim = 1280, quality = 0.8 } = {}) {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas not supported");
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", quality);
-}
-
-function readFileAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result || ""));
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+  if (!blob) throw new Error("Image compression failed");
+  const base = String(file?.name || "image").replace(/\.[^.]+$/, "");
+  return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
 }
 
 // ── styles ─────────────────────────────────────────────────────────────────
@@ -129,12 +126,13 @@ export default function MunicipalityInspectionInput() {
       setProcessingImages(true);
       const newItems = [];
       for (const file of picked) {
-        const dataUrl = await compressToDataURL(file, { maxDim: 1280, quality: 0.8 });
+        const compressed = await compressToFile(file, { maxDim: 1280, quality: 0.8 });
+        const url = await uploadImageToServer(compressed, "municipality_inspection");
         newItems.push({
           id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
           name: file?.name || "image.jpg",
           mime: "image/jpeg",
-          dataUrl,
+          url,
         });
       }
       setImages((prev) => [...prev, ...newItems]);
@@ -161,12 +159,12 @@ export default function MunicipalityInspectionInput() {
           alert(`PDF too large: ${file.name}\nLimit: 2 MB`);
           continue;
         }
-        const dataUrl = await readFileAsDataURL(file);
+        const url = await uploadImageToServer(file, "municipality_inspection");
         newItems.push({
           id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
           name: file?.name || "file.pdf",
           mime: "application/pdf",
-          dataUrl,
+          url,
           size: file.size || 0,
         });
       }
@@ -194,10 +192,10 @@ export default function MunicipalityInspectionInput() {
         inspectionDate,
         inspectionGrade: inspectionGrade.trim(),
         notes: notes.trim(),
-        images: images.map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl })),
-        pdfs: pdfs.map(({ name, mime, dataUrl, size }) => ({ name, mime, dataUrl, size })),
+        images: images.map(({ name, mime, url }) => ({ name, mime, url })),
+        pdfs: pdfs.map(({ name, mime, url, size }) => ({ name, mime, url, size })),
         savedAt: Date.now(),
-        storage: "base64",
+        storage: "cloudinary",
       };
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
@@ -335,9 +333,9 @@ export default function MunicipalityInspectionInput() {
                 overflow: "hidden", background: "#fff",
                 boxShadow: "0 4px 14px rgba(0,0,0,0.06)",
               }}>
-                <a href={it.dataUrl} target="_blank" rel="noreferrer" style={{ display: "block" }}>
+                <a href={it.url || it.dataUrl} target="_blank" rel="noreferrer" style={{ display: "block" }}>
                   <img
-                    src={it.dataUrl} alt={`img-${idx + 1}`}
+                    src={it.url || it.dataUrl} alt={`img-${idx + 1}`}
                     style={{ width: "100%", height: 130, objectFit: "cover", display: "block" }}
                   />
                 </a>
@@ -409,7 +407,7 @@ export default function MunicipalityInspectionInput() {
                     <div style={{ fontSize: 13, color: "#94a3b8", fontWeight: 600, marginTop: 2 }}>
                       {p.size ? `${Math.round(p.size / 1024)} KB` : ""}
                       {" · "}
-                      <a href={p.dataUrl} target="_blank" rel="noreferrer"
+                      <a href={p.url || p.dataUrl} target="_blank" rel="noreferrer"
                         style={{ color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>
                         Open PDF
                       </a>

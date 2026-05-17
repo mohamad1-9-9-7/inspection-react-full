@@ -46,7 +46,7 @@ function normalizeImages(images) {
     .map((x, idx) => {
       if (!x) return null;
       if (typeof x === "object") {
-        const src = x.dataUrl || x.url || x.src || "";
+        const src = x.url || x.dataUrl || x.src || "";
         return src ? { src, name: x.name || `Image ${idx + 1}` } : null;
       }
       if (typeof x === "string" && x) return { src: x, name: `Image ${idx + 1}` };
@@ -69,7 +69,7 @@ function normalizePDFs(payload) {
     .map((x, idx) => {
       if (!x) return null;
       if (typeof x === "object") {
-        const src = x.dataUrl || x.url || x.src || "";
+        const src = x.url || x.dataUrl || x.src || "";
         const mime = (x.mime || x.type || "").toLowerCase();
         if (!src) return null;
         const isPdf = mime === "application/pdf" ||

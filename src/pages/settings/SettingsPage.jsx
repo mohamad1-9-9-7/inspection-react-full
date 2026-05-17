@@ -12,6 +12,7 @@ import BulkExport from "./tools/BulkExport";
 import DateTree from "./tools/DateTree";
 import AppearanceAndLanguage from "./tools/AppearanceAndLanguage";
 import ImageMigration from "../admin/ImageMigration";
+import ComplaintNumberBackfill from "../admin/ComplaintNumberBackfill";
 
 const SECTIONS = [
   {
@@ -37,6 +38,7 @@ const SECTIONS = [
     label: "Admin Tools",
     items: [
       { id: "image-migration", icon: "🖼️", title: "Image Cleanup",         desc: "Convert base64 → Cloudinary URLs" },
+      { id: "complaint-numbers", icon: "🔢", title: "Complaint Numbers",    desc: "Backfill missing complaint No." },
       { id: "server-health",   icon: "🩺", title: "Server Health",         desc: "Ping + latency monitor" },
     ],
   },
@@ -104,6 +106,7 @@ export default function SettingsPage() {
             {active === "export"           && <BulkExport />}
             {active === "backup"           && <BackupTab />}
             {active === "image-migration"  && <ImageMigration />}
+            {active === "complaint-numbers" && <ComplaintNumberBackfill />}
             {active === "server-health"    && <ServerHealth />}
           </div>
         </main>

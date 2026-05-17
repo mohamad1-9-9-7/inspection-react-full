@@ -7,6 +7,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { uploadImageToServer } from "../../monitor/branches/shipment_recc/qcsRawApi";
 
 const TYPE = "customer_complaint";
 
@@ -26,7 +27,9 @@ function loadImageFromFile(file) {
   });
 }
 
-async function compressToDataURL(file, { maxDim = IMG_MAX_DIM, quality = IMG_QUALITY } = {}) {
+/* Compress client-side to a JPEG File, then it gets uploaded to Cloudinary.
+   We keep base64 OUT of the report payload entirely. */
+async function compressToFile(file, { maxDim = IMG_MAX_DIM, quality = IMG_QUALITY } = {}) {
   const img = await loadImageFromFile(file);
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
@@ -38,22 +41,33 @@ async function compressToDataURL(file, { maxDim = IMG_MAX_DIM, quality = IMG_QUA
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas not supported");
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", quality);
-}
-
-function readFileAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result || ""));
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+  if (!blob) throw new Error("Image compression failed");
+  const base = String(file?.name || "image").replace(/\.[^.]+$/, "");
+  return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
 }
 
 function formatBytes(n) {
   if (!n || n < 1024) return `${n || 0} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/* Auto-generate the next complaint number for a given year.
+   Scans every existing record (incl. old ones) for the CC-<year>-#### pattern
+   and continues from the highest sequence so numbers never collide. */
+function nextComplaintNumber(records, year) {
+  const re = new RegExp(`^CC-${year}-(\\d+)$`);
+  let max = 0;
+  for (const rec of Array.isArray(records) ? records : []) {
+    const n = String(rec?.payload?.complaintNumber || "").trim();
+    const m = re.exec(n);
+    if (m) {
+      const v = parseInt(m[1], 10);
+      if (Number.isFinite(v) && v > max) max = v;
+    }
+  }
+  return `CC-${year}-${String(max + 1).padStart(4, "0")}`;
 }
 
 const empty = {
@@ -135,6 +149,7 @@ export default function CustomerComplaintInput() {
   const [saving, setSaving] = useState(false);
   const [processingImages, setProcessingImages] = useState(false);
   const [processingPdfs, setProcessingPdfs] = useState(false);
+  const [numGenerating, setNumGenerating] = useState(false);
 
   const imgInputRef = useRef(null);
   const pdfInputRef = useRef(null);
@@ -155,6 +170,31 @@ export default function CustomerComplaintInput() {
       .catch(() => {});
   }, [editId]);
 
+  /* New complaint → auto-generate the next sequential number,
+     continuing from existing (including old) records. */
+  useEffect(() => {
+    if (editId) return;
+    let cancelled = false;
+    const year = String(empty.complaintDate).slice(0, 4);
+    (async () => {
+      try {
+        setNumGenerating(true);
+        const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+        const next = nextComplaintNumber(arr, year);
+        if (!cancelled) setForm((f) => (f.complaintNumber ? f : { ...f, complaintNumber: next }));
+      } catch {
+        if (!cancelled) {
+          setForm((f) => (f.complaintNumber ? f : { ...f, complaintNumber: `CC-${year}-0001` }));
+        }
+      } finally {
+        if (!cancelled) setNumGenerating(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [editId]);
+
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
   }
@@ -169,12 +209,13 @@ export default function CustomerComplaintInput() {
       const newItems = [];
       for (const file of picked) {
         if (!String(file?.type || "").startsWith("image/")) continue;
-        const dataUrl = await compressToDataURL(file);
+        const compressed = await compressToFile(file);
+        const url = await uploadImageToServer(compressed, "customer_complaint");
         newItems.push({
           id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
           name: file?.name || "image.jpg",
           mime: "image/jpeg",
-          dataUrl,
+          url,
         });
       }
       if (!newItems.length) {
@@ -204,12 +245,12 @@ export default function CustomerComplaintInput() {
           alert((lang === "ar" ? "ملف PDF كبير جداً: " : "PDF too large: ") + file.name + `\n${lang === "ar" ? "الحد الأقصى" : "Max"}: ${formatBytes(PDF_MAX_BYTES)}`);
           continue;
         }
-        const dataUrl = await readFileAsDataURL(file);
+        const url = await uploadImageToServer(file, "customer_complaint");
         newItems.push({
           id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
           name: file?.name || "file.pdf",
           mime: "application/pdf",
-          dataUrl,
+          url,
           size: file.size || 0,
         });
       }
@@ -262,10 +303,14 @@ export default function CustomerComplaintInput() {
       const method = editId ? "PUT" : "POST";
       const payload = {
         ...form,
-        images: (form.images || []).map(({ name, mime, dataUrl }) => ({ name, mime, dataUrl })),
-        pdfs:   (form.pdfs   || []).map(({ name, mime, dataUrl, size }) => ({ name, mime, dataUrl, size })),
+        // Cloudinary URLs only — never base64 in the payload. Old un-migrated
+        // records may still carry dataUrl; keep it so editing them is non-destructive.
+        images: (form.images || []).map(({ name, mime, url, dataUrl }) =>
+          url ? { name, mime, url } : { name, mime, dataUrl }),
+        pdfs: (form.pdfs || []).map(({ name, mime, url, dataUrl, size }) =>
+          url ? { name, mime, url, size } : { name, mime, dataUrl, size }),
         savedAt: Date.now(),
-        storage: "base64",
+        storage: "cloudinary",
       };
       const res = await fetch(url, {
         method,
@@ -281,7 +326,7 @@ export default function CustomerComplaintInput() {
     }
   }
 
-  const busy = saving || processingImages || processingPdfs;
+  const busy = saving || processingImages || processingPdfs || numGenerating;
 
   return (
     <main style={{ ...S.shell, direction: dir }}>
@@ -307,7 +352,18 @@ export default function CustomerComplaintInput() {
             </div>
             <div>
               <label style={S.label}>{t("ccNumber")}</label>
-              <input style={S.input} value={form.complaintNumber} onChange={(e) => setField("complaintNumber", e.target.value)} placeholder={t("ccNumberPh")} />
+              <input
+                style={{ ...S.input, background: "#f8fafc", color: "#475569", cursor: "not-allowed", fontWeight: 800 }}
+                value={form.complaintNumber}
+                readOnly
+                placeholder={numGenerating ? (lang === "ar" ? "...جاري التوليد" : "...generating") : "CC-YYYY-NNNN"}
+                title={lang === "ar" ? "رقم تلقائي — لا يُعدّل يدوياً" : "Auto-generated — not editable"}
+              />
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, marginTop: 3 }}>
+                {lang === "ar"
+                  ? "🔢 رقم تلقائي متسلسل (يراعي التقارير القديمة الموجودة)"
+                  : "🔢 Auto-generated sequential number (respects existing reports)"}
+              </div>
             </div>
             <div>
               <label style={S.label}>{t("ccChannel")}</label>
@@ -402,7 +458,7 @@ export default function CustomerComplaintInput() {
             <div style={S.thumbGrid}>
               {form.images.map((img) => (
                 <div key={img.id} style={S.thumbBox}>
-                  <img src={img.dataUrl} alt={img.name} style={S.thumbImg} />
+                  <img src={img.url || img.dataUrl} alt={img.name} style={S.thumbImg} />
                   <div style={S.thumbName}>{img.name}</div>
                   <button
                     type="button"
@@ -461,7 +517,7 @@ export default function CustomerComplaintInput() {
                     </div>
                   </div>
                   <a
-                    href={pdf.dataUrl}
+                    href={pdf.url || pdf.dataUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ ...S.btn("secondary"), padding: "5px 12px", fontSize: 11, textDecoration: "none" }}

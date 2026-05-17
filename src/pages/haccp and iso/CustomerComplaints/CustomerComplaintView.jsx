@@ -7,51 +7,18 @@ import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import {
+  SEVERITY_COLOR, STATUS_COLOR, TYPE_LABELS, TYPE_COLORS,
+  safeDate, daysBetween,
+} from "./customerComplaintShared";
+import { ImagePreviewModal, ComplaintReportModal } from "./CustomerComplaintModals";
 
 const TYPE = "customer_complaint";
 
 /* ─────────────────────────────────────────────────────────────
-   Visual maps
+   Helpers (export/CSV only — shared visual maps & date utils live
+   in ./customerComplaintShared; popup modals in ./CustomerComplaintModals)
    ───────────────────────────────────────────────────────────── */
-const SEVERITY_COLOR = {
-  Low:      { bg: "#dcfce7", color: "#166534", border: "#86efac" },
-  Medium:   { bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
-  High:     { bg: "#fed7aa", color: "#9a3412", border: "#fdba74" },
-  Critical: { bg: "#fecaca", color: "#991b1b", border: "#fca5a5" },
-};
-
-const STATUS_COLOR = {
-  Open:          { bg: "#fed7aa", color: "#9a3412" },
-  Investigation: { bg: "#fef3c7", color: "#854d0e" },
-  Closed:        { bg: "#dcfce7", color: "#166534" },
-};
-
-const TYPE_LABELS = {
-  BPC: "BPC", Foreign: "Foreign", Allergen: "Allergen", Quality: "Quality",
-  Packaging: "Packaging", Service: "Service", Other: "Other",
-};
-
-const TYPE_COLORS = {
-  BPC: "#dc2626", Foreign: "#ea580c", Allergen: "#d97706",
-  Quality: "#0891b2", Packaging: "#7c3aed", Service: "#0284c7", Other: "#64748b",
-};
-
-/* ─────────────────────────────────────────────────────────────
-   Helpers
-   ───────────────────────────────────────────────────────────── */
-function safeDate(s) {
-  if (!s) return null;
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-function daysBetween(a, b) {
-  const da = safeDate(a), db = safeDate(b);
-  if (!da || !db) return null;
-  const ms = db.getTime() - da.getTime();
-  return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
-}
-
 function escapeCSV(v) {
   const s = v == null ? "" : String(v);
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -144,9 +111,6 @@ const S = {
     fontSize: 11, fontWeight: 900, background: c.bg, color: c.color,
     border: c.border ? `1px solid ${c.border}` : "none",
   }),
-  detailBlock: { marginTop: 10, paddingTop: 10, borderTop: "1px dashed #fed7aa" },
-  miniTitle: { fontSize: 12, fontWeight: 900, color: "#9a3412", marginBottom: 4 },
-  miniText: { fontSize: 13, color: "#1e293b", whiteSpace: "pre-wrap", lineHeight: 1.5 },
 
   /* Trend */
   trendBox: { display: "flex", alignItems: "flex-end", gap: 4, height: 100, padding: "8px 0" },
@@ -193,7 +157,7 @@ export default function CustomerComplaintView() {
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openId, setOpenId] = useState(null);
+  const [detailRec, setDetailRec] = useState(null);
   const [previewSrc, setPreviewSrc] = useState(null);
 
   /* Filters */
@@ -543,7 +507,6 @@ export default function CustomerComplaintView() {
 
         {filtered.map((rec) => {
           const p = rec?.payload || {};
-          const isOpen = openId === rec.id;
           const sevColor = SEVERITY_COLOR[p.severity] || SEVERITY_COLOR.Low;
           const stColor = STATUS_COLOR[p.status] || STATUS_COLOR.Open;
           const images = Array.isArray(p.images) ? p.images : [];
@@ -589,8 +552,8 @@ export default function CustomerComplaintView() {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button style={S.btn("secondary")} onClick={() => setOpenId(isOpen ? null : rec.id)}>
-                    {isOpen ? t("collapse") : t("expand")}
+                  <button style={S.btn("primary")} onClick={() => setDetailRec(rec)}>
+                    📋 {isAr ? "عرض التقرير" : "View Report"}
                   </button>
                   <button style={S.btn("secondary")} onClick={() => navigate(`/haccp-iso/customer-complaints?edit=${rec.id}`)}>
                     {t("edit")}
@@ -598,88 +561,21 @@ export default function CustomerComplaintView() {
                   <button style={S.btn("danger")} onClick={() => del(rec.id)}>{t("del")}</button>
                 </div>
               </div>
-
-              {isOpen && (
-                <div style={S.detailBlock}>
-                  {p.description && (
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={S.miniTitle}>{t("ccDescription")}</div>
-                      <div style={S.miniText}>{p.description}</div>
-                    </div>
-                  )}
-                  {p.investigation && (
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={S.miniTitle}>{t("ccInvestigation")}</div>
-                      <div style={S.miniText}>{p.investigation}</div>
-                    </div>
-                  )}
-                  {p.rootCause && (
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={S.miniTitle}>{t("ccRootCause")}</div>
-                      <div style={S.miniText}>{p.rootCause}</div>
-                    </div>
-                  )}
-                  {p.capa && (
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={S.miniTitle}>{t("ccCAPA")}</div>
-                      <div style={S.miniText}>{p.capa}</div>
-                    </div>
-                  )}
-
-                  {/* Attachments */}
-                  {(images.length > 0 || pdfs.length > 0) && (
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={S.miniTitle}>📎 {isAr ? "المرفقات" : "Attachments"}</div>
-
-                      {pdfs.length > 0 && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-                          {pdfs.map((pdf, i) => (
-                            <a
-                              key={`${pdf.name}_${i}`}
-                              href={pdf.dataUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={S.pdfTile}
-                              title={pdf.name}
-                            >
-                              <span style={{ fontSize: 18 }}>📄</span>
-                              <span style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pdf.name}</span>
-                            </a>
-                          ))}
-                        </div>
-                      )}
-
-                      {images.length > 0 && (
-                        <div style={S.attachGrid}>
-                          {images.map((img, i) => (
-                            <button
-                              key={`${img.name}_${i}`}
-                              type="button"
-                              style={S.thumb}
-                              onClick={() => setPreviewSrc(img.dataUrl)}
-                              title={img.name}
-                            >
-                              <img src={img.dataUrl} alt={img.name} style={S.thumbImg} />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {(p.closureDate || p.closedBy) && (
-                    <div style={S.meta}>
-                      {p.closureDate && <>📅 {t("ccClosureDate")}: {p.closureDate} </>}
-                      {p.closedBy && <>• 👤 {t("ccClosedBy")}: {p.closedBy}</>}
-                      {resolutionDays != null && <> • ⏱ {isAr ? "زمن الإغلاق" : "Resolution"}: {resolutionDays}{isAr ? " يوم" : " days"}</>}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           );
         })}
       </div>
+
+      {/* Full report modal */}
+      {detailRec && (
+        <ComplaintReportModal
+          rec={detailRec}
+          onClose={() => setDetailRec(null)}
+          onPreview={(src) => setPreviewSrc(src)}
+          isAr={isAr}
+          S={S}
+        />
+      )}
 
       {/* Full-screen image preview modal */}
       {previewSrc && (
@@ -697,59 +593,22 @@ export default function CustomerComplaintView() {
           .cc-trend-row { grid-template-columns: 1fr !important; }
         }
       `}</style>
+
+      {/* When the report modal is open, print ONLY the report */}
+      {detailRec && (
+        <style>{`
+          @media print {
+            body * { visibility: hidden !important; }
+            .cc-report-print, .cc-report-print * { visibility: visible !important; }
+            .cc-report-print {
+              position: absolute !important; left: 0 !important; top: 0 !important;
+              width: 100% !important; max-height: none !important;
+              overflow: visible !important; box-shadow: none !important; border: 0 !important;
+            }
+            .cc-report-noprint { display: none !important; }
+          }
+        `}</style>
+      )}
     </main>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Full-screen image preview modal
-   - Click image (or "1:1" button) toggles between fit-screen and actual-size
-   - ESC closes
-   - Locks body scroll while open
-   ───────────────────────────────────────────────────────────── */
-function ImagePreviewModal({ src, onClose, S }) {
-  const [actualSize, setActualSize] = useState(false);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
-
-  return (
-    <div style={S.modalBackdrop} onClick={onClose} role="dialog" aria-modal="true">
-      <div style={S.modalHeader} onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setActualSize((v) => !v); }}
-          style={S.modalBtn}
-          title={actualSize ? "Fit screen" : "Actual size"}
-        >
-          {actualSize ? "🔽 Fit" : "🔍 1:1"}
-        </button>
-        <button
-          type="button"
-          aria-label="Close"
-          style={S.modalClose}
-          onClick={(e) => { e.stopPropagation(); onClose(); }}
-        >×</button>
-      </div>
-      <div
-        style={{ ...S.modalBody, overflow: actualSize ? "auto" : "hidden" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <img
-          src={src}
-          alt="preview"
-          style={actualSize ? S.modalImgActual : S.modalImgFit}
-          onClick={() => setActualSize((v) => !v)}
-        />
-      </div>
-    </div>
   );
 }

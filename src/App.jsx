@@ -77,6 +77,7 @@ const OHCHub = lazy(() => import("./pages/ohc/OHCHub"));
 const OHCUploadPage = lazy(() => import("./pages/ohc/OHCUploadPage"));
 const OHCViewPage = lazy(() => import("./pages/ohc/OHCViewPage"));
 const ImageMigration = lazy(() => import("./pages/admin/ImageMigration"));
+const ComplaintNumberBackfill = lazy(() => import("./pages/admin/ComplaintNumberBackfill"));
 const AIAssistant    = lazy(() => import("./pages/AIAssistant"));
 
 const QCSRawMaterialInspection = lazy(() =>
@@ -871,6 +872,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ImageMigration />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🔢 Admin: backfill missing customer-complaint numbers */}
+        <Route
+          path="/admin/complaint-numbers"
+          element={
+            <ProtectedRoute>
+              <ComplaintNumberBackfill />
             </ProtectedRoute>
           }
         />
