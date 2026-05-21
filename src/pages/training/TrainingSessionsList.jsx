@@ -1,6 +1,8 @@
 // src/pages/training/TrainingSessionsList.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { QRCodeSVG } from 'qrcode.react';
+import TrainingReferenceModal, { MODULE_DETAILS_BI } from './TrainingReferenceModal';
 
 import {
   REPORTS_URL,
@@ -195,6 +197,361 @@ function rowStats(r) {
   return { total, pass, rate };
 }
 
+/* ===================== Constants ===================== */
+const TOTAL_MODULES = 16; // total required training modules per branch
+
+/* ===================== Certificate Modal ===================== */
+function CertificateModal({ open, onClose, participant, moduleName, branch, date, conductedBy }) {
+  if (!open || !participant) return null;
+
+  const name     = String(participant.name        || '').trim();
+  const empId    = String(participant.employeeId  || '').trim();
+  const desig    = String(participant.designation || '').trim();
+  const scoreNum = parseInt(String(participant.score || '0').replace('%',''), 10) || 0;
+  const certNo   = `AM-FS-${(date||'').replace(/-/g,'')}-${String(participant.slNo||'01').padStart(3,'0')}`;
+
+  // Expiry = training date + 1 year
+  const expiryDate = (() => {
+    if (!date) return '';
+    const d = new Date(date);
+    d.setFullYear(d.getFullYear() + 1);
+    return d.toISOString().split('T')[0];
+  })();
+  const daysLeft = expiryDate
+    ? Math.ceil((new Date(expiryDate) - new Date()) / 86400000)
+    : null;
+  const expiryColor = daysLeft === null ? '#94a3b8'
+    : daysLeft < 0 ? '#ef4444' : daysLeft < 30 ? '#f59e0b' : '#22c55e';
+
+  // QR verify URL — works with both BrowserRouter (web) and HashRouter (Electron)
+  const verifyUrl = (() => {
+    const origin = window.location.origin;
+    const isHash = window.location.hash.startsWith('#/');
+    const base   = isHash ? `${origin}/#/training/verify` : `${origin}/training/verify`;
+    const qs = [
+      `cert=${encodeURIComponent(certNo)}`,
+      `n=${encodeURIComponent(name)}`,
+      `id=${encodeURIComponent(empId)}`,
+      `mod=${encodeURIComponent(moduleName||'')}`,
+      `date=${encodeURIComponent(date||'')}`,
+      `score=${scoreNum}`,
+      `by=${encodeURIComponent(conductedBy||'')}`,
+      `branch=${encodeURIComponent(branch||'')}`,
+      `exp=${encodeURIComponent(expiryDate)}`,
+    ].join('&');
+    return `${base}?${qs}`;
+  })();
+
+  const doPrint = () => {
+    // Set filename: browser uses document.title as the PDF filename
+    const safeName = name.replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_') || 'Participant';
+    const prevTitle = document.title;
+    document.title = `Training_Certificate_${safeName}`;
+
+    const s = document.createElement('style');
+    s.id = '_cert_ps_';
+    s.textContent = `
+      @media print {
+        @page { size: A4 landscape; margin: 0; }
+        body > * { display: none !important; }
+        body > #root { display: block !important; }
+        #cert-overlay {
+          display: flex !important;
+          position: fixed !important; inset: 0 !important;
+          background: #fff !important;
+          backdrop-filter: none !important;
+          align-items: flex-start !important;
+          justify-content: center !important;
+          padding: 0 !important;
+          overflow: visible !important;
+        }
+        .cert-noprint { display: none !important; }
+        #cert-print {
+          display: flex !important;
+          width: 100% !important;
+          max-width: none !important;
+          min-height: 100vh !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          margin: 0 !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
+        #cert-print * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
+        #cert-left-panel {
+          background: linear-gradient(160deg,#0f172a 0%,#1e3a8a 55%,#312e81 100%) !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
+    `;
+    document.head.appendChild(s);
+    window.print();
+    setTimeout(() => {
+      document.getElementById('_cert_ps_')?.remove();
+      document.title = prevTitle;
+    }, 1500);
+  };
+
+  return (
+    <div
+      id="cert-overlay"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position:'fixed', inset:0, zIndex:10000,
+        background:'rgba(6,9,22,0.92)', backdropFilter:'blur(14px)',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        padding:'20px 16px', overflowY:'auto',
+      }}
+    >
+      {/* Floating action bar */}
+      <div className="cert-noprint" style={{
+        position:'fixed', top:20, right:20,
+        display:'flex', gap:10, zIndex:1,
+      }}>
+        <button onClick={doPrint} style={{
+          background:'linear-gradient(135deg,#4338ca,#6366f1)',
+          color:'#fff', border:'none', borderRadius:12,
+          padding:'11px 22px', fontWeight:700, fontSize:13, cursor:'pointer',
+          boxShadow:'0 4px 18px rgba(99,102,241,.5)',
+          display:'flex', alignItems:'center', gap:7,
+        }}>🖨️ Print / طباعة</button>
+        <button onClick={onClose} style={{
+          background:'rgba(255,255,255,.08)', color:'#fff',
+          border:'1px solid rgba(255,255,255,.18)',
+          borderRadius:12, padding:'11px 15px', fontWeight:700, fontSize:14, cursor:'pointer',
+        }}>✕</button>
+      </div>
+
+      {/* ── Certificate Card — split layout (×1.5 larger) ── */}
+      <div id="cert-print" style={{
+        width:'100%', maxWidth:1320,
+        display:'flex', minHeight:760,
+        borderRadius:24,
+        boxShadow:'0 50px 140px rgba(0,0,0,.8)',
+        overflow:'hidden',
+        fontFamily:"'Inter','Segoe UI',system-ui,sans-serif",
+      }}>
+
+        {/* ── LEFT PANEL (dark gradient) ── */}
+        <div id="cert-left-panel" style={{
+          width:360, flexShrink:0,
+          background:'linear-gradient(160deg,#0f172a 0%,#1e3a8a 55%,#312e81 100%)',
+          display:'flex', flexDirection:'column', alignItems:'center',
+          justifyContent:'space-between', padding:'36px 26px 22px', position:'relative',
+          overflow:'hidden',
+        }}>
+          {/* Decorative arcs */}
+          <div style={{
+            position:'absolute', width:360, height:360, borderRadius:'50%',
+            border:'1px solid rgba(255,255,255,.06)',
+            top:-80, left:-80, pointerEvents:'none',
+          }}/>
+          <div style={{
+            position:'absolute', width:260, height:260, borderRadius:'50%',
+            border:'1px solid rgba(255,255,255,.04)',
+            bottom:100, right:-80, pointerEvents:'none',
+          }}/>
+
+          {/* ── TOP GROUP ── */}
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
+            {/* Logo */}
+            <div style={{
+              background:'#fff', borderRadius:22, padding:9,
+              boxShadow:'0 10px 40px rgba(0,0,0,.5)', marginBottom:26,
+            }}>
+              <img src="/mawashi-logo.jpg" alt="" style={{ height:90, width:90, objectFit:'contain', display:'block', borderRadius:16 }} />
+            </div>
+
+            {/* Company */}
+            <div style={{ textAlign:'center', marginBottom:30 }}>
+              <div style={{ color:'rgba(255,255,255,.5)', fontSize:11, letterSpacing:2.5, textTransform:'uppercase', marginBottom:6 }}>
+                شركة المواشي
+              </div>
+              <div style={{ color:'rgba(255,255,255,.9)', fontSize:15, fontWeight:700, letterSpacing:.5 }}>
+                Al Mawashi Company
+              </div>
+              <div style={{ color:'rgba(255,255,255,.5)', fontSize:12, marginTop:5 }}>
+                قسم الجودة
+              </div>
+            </div>
+
+            {/* Score ring — 148×148, r=63 */}
+            <div style={{ position:'relative', width:148, height:148, marginBottom:20 }}>
+              <svg viewBox="0 0 148 148" style={{ position:'absolute', inset:0, transform:'rotate(-90deg)' }}>
+                <circle cx={74} cy={74} r={63} fill="none" stroke="rgba(255,255,255,.1)" strokeWidth={10}/>
+                <circle cx={74} cy={74} r={63} fill="none"
+                  stroke={scoreNum >= 90 ? '#34d399' : '#22c55e'}
+                  strokeWidth={10} strokeLinecap="round"
+                  strokeDasharray={`${2*Math.PI*63 * scoreNum/100} ${2*Math.PI*63}`}
+                />
+              </svg>
+              <div style={{
+                position:'absolute', inset:0,
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+              }}>
+                <div style={{ fontSize:36, fontWeight:900, color:'#fff', lineHeight:1 }}>{scoreNum}%</div>
+                <div style={{ fontSize:11, color:'rgba(255,255,255,.55)', letterSpacing:1.5, marginTop:5 }}>SCORE</div>
+              </div>
+            </div>
+
+            {/* PASS badge */}
+            <div style={{
+              background:'linear-gradient(135deg,#16a34a,#22c55e)',
+              color:'#fff', padding:'11px 34px', borderRadius:999,
+              fontSize:15, fontWeight:800, letterSpacing:2,
+              boxShadow:'0 5px 20px rgba(22,163,74,.5)',
+              marginBottom:9,
+            }}>PASSED ✓</div>
+            <div style={{ color:'rgba(255,255,255,.55)', fontSize:13, letterSpacing:.5 }}>نجح — اجتاز التقييم</div>
+          </div>
+
+          {/* ── BOTTOM GROUP: QR + cert number ── */}
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+            <div style={{
+              background:'#fff', borderRadius:10, padding:6,
+              boxShadow:'0 4px 16px rgba(0,0,0,.4)',
+            }}>
+              <QRCodeSVG value={verifyUrl} size={78} level="M" />
+            </div>
+            <div style={{ color:'rgba(255,255,255,.3)', fontSize:9, letterSpacing:1.8, textTransform:'uppercase', marginTop:2 }}>
+              Scan to Verify
+            </div>
+            <div style={{ color:'rgba(255,255,255,.2)', fontSize:8.5, letterSpacing:.8 }}>{certNo}</div>
+          </div>
+        </div>
+
+        {/* ── RIGHT PANEL (white) ── */}
+        <div style={{
+          flex:1, background:'#ffffff',
+          display:'flex', flexDirection:'column',
+          padding:'38px 48px 28px',
+        }}>
+          {/* Header label */}
+          <div style={{ marginBottom:22 }}>
+            <div style={{
+              fontSize:13, fontWeight:800, letterSpacing:5,
+              color:'#6366f1', textTransform:'uppercase', marginBottom:6,
+            }}>Certificate of Achievement</div>
+            <div style={{
+              fontSize:28, fontWeight:900, color:'#0f172a', letterSpacing:'-0.03em', lineHeight:1.1,
+            }}>شهادة إتمام التدريب بنجاح</div>
+            <div style={{ height:4, width:72, background:'linear-gradient(90deg,#4338ca,#6366f1)', borderRadius:99, marginTop:11 }}/>
+          </div>
+
+          {/* Intro */}
+          <div style={{ fontSize:15, color:'#94a3b8', marginBottom:9, fontStyle:'italic' }}>
+            This is to certify that — يُشهد بأن
+          </div>
+
+          {/* Name */}
+          <div style={{
+            fontSize:42, fontWeight:900, color:'#0f172a',
+            letterSpacing:'-0.03em', lineHeight:1.1, marginBottom:12,
+          }}>{name || '— —'}</div>
+
+          {/* ID + Designation chips */}
+          <div style={{ display:'flex', gap:10, marginBottom:20, flexWrap:'wrap' }}>
+            {empId && (
+              <span style={{
+                fontSize:14, fontWeight:700, color:'#4338ca',
+                background:'#eef2ff', border:'1px solid #c7d2fe',
+                padding:'6px 18px', borderRadius:999,
+              }}>ID: {empId}</span>
+            )}
+            {desig && (
+              <span style={{
+                fontSize:14, fontWeight:600, color:'#475569',
+                background:'#f8fafc', border:'1px solid #e2e8f0',
+                padding:'6px 18px', borderRadius:999,
+              }}>{desig}</span>
+            )}
+          </div>
+
+          {/* Statement */}
+          <div style={{ fontSize:15, color:'#475569', marginBottom:14, lineHeight:1.7 }}>
+            has successfully completed and <span style={{ fontWeight:700, color:'#15803d' }}>PASSED</span> the training module:
+            <br/>
+            <span style={{ fontSize:14, color:'#92400e' }}>أتمّ بنجاح وحدة التدريب التالية واجتاز التقييم بتفوق</span>
+          </div>
+
+          {/* Module name */}
+          <div style={{
+            background:'linear-gradient(135deg,#eef2ff,#e0e7ff)',
+            border:'2px solid #c7d2fe',
+            borderLeft:'5px solid #4338ca',
+            borderRadius:13, padding:'16px 24px',
+            fontSize:20, fontWeight:800, color:'#1e3a8a',
+            marginBottom:22, letterSpacing:'-0.01em',
+          }}>{moduleName}</div>
+
+          {/* Meta row */}
+          <div style={{
+            display:'flex', gap:22, flexWrap:'wrap',
+            fontSize:14, color:'#64748b', marginBottom:'auto', paddingBottom:16,
+          }}>
+            <span>📅 <strong style={{color:'#0f172a'}}>{date || '—'}</strong></span>
+            <span>🏢 <strong style={{color:'#0f172a'}}>{branch || '—'}</strong></span>
+            <span>Pass mark: <strong style={{color:'#15803d'}}>80%</strong></span>
+            {expiryDate && (
+              <span>⏳ Valid until: <strong style={{color: expiryColor}}>{expiryDate}</strong>
+                {daysLeft !== null && daysLeft < 60 && (
+                  <span style={{fontSize:12, color:expiryColor, marginLeft:5}}>
+                    ({daysLeft < 0 ? 'EXPIRED' : `${daysLeft}d left`})
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+
+          {/* Divider */}
+          <div style={{ height:1, background:'#f1f5f9', margin:'12px 0' }}/>
+
+          {/* Signature row */}
+          <div style={{ display:'flex', gap:30, justifyContent:'space-between' }}>
+            {/* Trainer */}
+            <div style={{ flex:1 }}>
+              <div style={{
+                height:36, borderBottom:'1.5px solid #334155',
+                marginBottom:6, display:'flex', alignItems:'flex-end',
+                paddingBottom:5,
+              }}>
+                {conductedBy && (
+                  <span style={{ fontSize:14, fontWeight:700, color:'#1e293b' }}>{conductedBy}</span>
+                )}
+              </div>
+              <div style={{ fontSize:11, color:'#94a3b8', fontWeight:600 }}>Trainer / المدرب</div>
+            </div>
+
+            {/* QA Manager */}
+            <div style={{ flex:1 }}>
+              <div style={{
+                height:36, borderBottom:'1.5px solid #334155', marginBottom:6,
+              }}/>
+              <div style={{ fontSize:11, color:'#94a3b8', fontWeight:600 }}>Quality Manager / مدير الجودة</div>
+              <div style={{ fontSize:10, color:'#cbd5e1', marginTop:3 }}>شركة المواشي — قسم الجودة</div>
+            </div>
+          </div>
+
+          {/* Bottom bar */}
+          <div style={{
+            marginTop:16, paddingTop:12, borderTop:'1px solid #f1f5f9',
+            display:'flex', justifyContent:'space-between', alignItems:'center',
+          }}>
+            <span style={{ fontSize:11, color:'#cbd5e1', letterSpacing:.5 }}>Al Mawashi Company — Quality Department</span>
+            <span style={{ fontSize:11, color:'#cbd5e1' }}>ISO 22000:2018</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ===================== Component ===================== */
 export default function TrainingSessionsList() {
   const nav = useNavigate();
@@ -216,6 +573,9 @@ export default function TrainingSessionsList() {
   const [participants, setParticipants] = useState([]);
   const [savingParticipants, setSavingParticipants] = useState(false);
 
+  const [refOpen, setRefOpen] = useState(false);
+  const [certData, setCertData] = useState(null);
+  const [complianceOpen, setComplianceOpen] = useState(false);
   const [quizOpen, setQuizOpen] = useState(false);
   const [quizIndex, setQuizIndex] = useState(-1);
   const [quizAnswers, setQuizAnswers] = useState({});
@@ -950,6 +1310,61 @@ export default function TrainingSessionsList() {
     };
   })();
 
+  /* ── Branch Compliance (all-time, uses full rows not filtered) ── */
+  const branchCompliance = useMemo(() => {
+    const map = {};
+    for (const r of rows) {
+      const br = safeBranch(r);
+      const mo = safeModule(r);
+      if (!br) continue;
+      if (!map[br]) map[br] = { modules: new Set(), pass: 0, total: 0, sessions: 0, lastDate: null };
+      const b = map[br];
+      b.sessions++;
+      if (mo) b.modules.add(mo);
+      const st = rowStats(r);
+      b.pass  += st.pass;
+      b.total += st.total;
+      const d = safeDate(r);
+      if (d && (!b.lastDate || d > b.lastDate)) b.lastDate = d;
+    }
+    return Object.entries(map).map(([branch, data]) => {
+      const coverage = Math.round((data.modules.size / TOTAL_MODULES) * 100);
+      const passRate  = data.total > 0 ? Math.round((data.pass / data.total) * 100) : 0;
+      const score     = Math.round((coverage + passRate) / 2);
+      return { branch, coverage, passRate, score, modules: data.modules.size, sessions: data.sessions, lastDate: data.lastDate };
+    }).sort((a, b) => b.score - a.score);
+  }, [rows]);
+
+  /* ── Renewal Alerts: PASS participants expiring within 90 days ── */
+  const renewalAlerts = useMemo(() => {
+    const today = new Date();
+    const alerts = [];
+    for (const r of rows) {
+      const d = safeDate(r);
+      if (!d) continue;
+      const expiry = new Date(d);
+      expiry.setFullYear(expiry.getFullYear() + 1);
+      const daysLeft = Math.ceil((expiry - today) / 86400000);
+      if (daysLeft > 90) continue; // only show within 90 days
+      const parts = normalizeToArray(r.payload?.participants || r.participants || []);
+      for (const p of parts) {
+        if (String(p.result || '').toLowerCase() !== 'pass') continue;
+        alerts.push({
+          name: String(p.name || '').trim(),
+          empId: String(p.employeeId || '').trim(),
+          desig: String(p.designation || '').trim(),
+          module: safeModule(r),
+          branch: safeBranch(r),
+          trainedDate: d,
+          expiryDate: expiry.toISOString().split('T')[0],
+          daysLeft,
+        });
+      }
+    }
+    return alerts.sort((a, b) => a.daysLeft - b.daysLeft);
+  }, [rows]);
+  const [renewalOpen, setRenewalOpen] = useState(false);
+
   return (
     <div style={pageStyle}>
       {/* ========= TOP HEADER (navy gradient, like Mock Recall) ========= */}
@@ -984,6 +1399,9 @@ export default function TrainingSessionsList() {
           <button onClick={() => nav("/training/create")} style={btn("dark")}>
             ➕ New Training
           </button>
+          <button onClick={() => nav("/training/gap-analysis")} style={btn("light")}>
+            📊 Gap Analysis
+          </button>
           <button onClick={() => nav("/training")} style={btn("light")}>
             ↩ Back
           </button>
@@ -1005,6 +1423,197 @@ export default function TrainingSessionsList() {
           bad={kpis.daysSinceLast !== null && kpis.daysSinceLast > 90}
         />
       </div>
+
+      {/* ========= BRANCH COMPLIANCE ========= */}
+      <div style={{
+        background:'#fff', border:'1px solid #e2e8f0', borderRadius:14,
+        marginBottom:14, overflow:'hidden',
+        boxShadow:'0 1px 4px rgba(15,23,42,.06)',
+      }}>
+        <button
+          onClick={() => setComplianceOpen(p => !p)}
+          style={{
+            width:'100%', background:'transparent', border:'none', cursor:'pointer',
+            padding:'12px 18px', display:'flex', alignItems:'center', gap:10,
+            justifyContent:'space-between',
+          }}
+        >
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:16 }}>🏆</span>
+            <span style={{ fontWeight:800, color:'#0f172a', fontSize:13 }}>Branch Compliance — امتثال الفروع</span>
+            <span style={{
+              fontSize:10, fontWeight:700, color:'#64748b',
+              background:'#f1f5f9', borderRadius:999, padding:'2px 8px',
+            }}>{branchCompliance.length} branches</span>
+          </div>
+          <span style={{ color:'#94a3b8', fontSize:12, transition:'transform .2s',
+            display:'inline-block', transform: complianceOpen ? 'rotate(180deg)' : 'none' }}>▼</span>
+        </button>
+
+        {complianceOpen && (
+          <div style={{ padding:'4px 14px 16px', borderTop:'1px solid #f1f5f9' }}>
+            <div style={{ fontSize:10, color:'#64748b', marginBottom:10, padding:'0 4px' }}>
+              Score = (Modules Covered / {TOTAL_MODULES} total × 50%) + (Pass Rate × 50%)
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(210px, 1fr))', gap:10 }}>
+              {branchCompliance.length === 0 ? (
+                <div style={{ color:'#94a3b8', padding:12, fontSize:13 }}>No data yet.</div>
+              ) : branchCompliance.map(bc => {
+                const col  = bc.score >= 80 ? '#16a34a' : bc.score >= 60 ? '#d97706' : '#dc2626';
+                const bg   = bc.score >= 80 ? '#f0fdf4' : bc.score >= 60 ? '#fffbeb' : '#fef2f2';
+                const bd   = bc.score >= 80 ? '#bbf7d0' : bc.score >= 60 ? '#fde68a' : '#fecaca';
+                const label= bc.score >= 80 ? 'Good'    : bc.score >= 60 ? 'Fair'    : 'Needs Work';
+                return (
+                  <div key={bc.branch} style={{
+                    background: bg, border:`1.5px solid ${bd}`, borderRadius:12,
+                    padding:'12px 14px',
+                  }}>
+                    {/* Branch name + badge */}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                      <div style={{ fontWeight:800, fontSize:12, color:'#0f172a', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        🏢 {bc.branch}
+                      </div>
+                      <div style={{
+                        flexShrink:0, marginLeft:6,
+                        background: col, color:'#fff',
+                        fontSize:9, fontWeight:800,
+                        padding:'2px 7px', borderRadius:999,
+                      }}>{label}</div>
+                    </div>
+
+                    {/* Big score */}
+                    <div style={{ display:'flex', alignItems:'flex-end', gap:6, marginBottom:10 }}>
+                      <div style={{ fontSize:36, fontWeight:900, color: col, lineHeight:1 }}>{bc.score}</div>
+                      <div style={{ fontSize:14, fontWeight:700, color: col, marginBottom:4 }}>%</div>
+                      <div style={{ fontSize:10, color:'#64748b', marginBottom:5 }}>compliance</div>
+                    </div>
+
+                    {/* Coverage bar */}
+                    <div style={{ marginBottom:6 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:9.5, fontWeight:700, color:'#475569', marginBottom:3 }}>
+                        <span>📚 Coverage ({bc.modules}/{TOTAL_MODULES} modules)</span>
+                        <span style={{ color: col }}>{bc.coverage}%</span>
+                      </div>
+                      <div style={{ height:5, background:'#e2e8f0', borderRadius:99 }}>
+                        <div style={{ height:5, width:`${bc.coverage}%`, background: col, borderRadius:99, transition:'width .4s' }}/>
+                      </div>
+                    </div>
+
+                    {/* Pass rate bar */}
+                    <div style={{ marginBottom:8 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:9.5, fontWeight:700, color:'#475569', marginBottom:3 }}>
+                        <span>✅ Pass Rate</span>
+                        <span style={{ color: col }}>{bc.passRate}%</span>
+                      </div>
+                      <div style={{ height:5, background:'#e2e8f0', borderRadius:99 }}>
+                        <div style={{ height:5, width:`${bc.passRate}%`, background:'#3b82f6', borderRadius:99, transition:'width .4s' }}/>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:9, color:'#94a3b8' }}>
+                      <span>{bc.sessions} sessions</span>
+                      <span>Last: {bc.lastDate || '—'}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ========= RENEWAL ALERTS ========= */}
+      {renewalAlerts.length > 0 && (
+        <div style={{
+          background:'#fff', border:'1.5px solid #fde68a',
+          borderRadius:14, marginBottom:14,
+          boxShadow:'0 2px 10px rgba(245,158,11,.08)',
+        }}>
+          <button
+            onClick={() => setRenewalOpen(o => !o)}
+            style={{
+              width:'100%', background:'none', border:'none', cursor:'pointer',
+              display:'flex', alignItems:'center', justifyContent:'space-between',
+              padding:'12px 16px', borderRadius:14,
+            }}
+          >
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ fontSize:18 }}>🔔</span>
+              <div style={{ textAlign:'left' }}>
+                <div style={{ fontSize:13, fontWeight:700, color:'#92400e' }}>
+                  Renewals Due / تجديدات مستحقة
+                </div>
+                <div style={{ fontSize:11, color:'#b45309', marginTop:1 }}>
+                  {renewalAlerts.filter(a => a.daysLeft < 0).length > 0 && (
+                    <span style={{ color:'#dc2626', fontWeight:700 }}>
+                      {renewalAlerts.filter(a => a.daysLeft < 0).length} expired •{' '}
+                    </span>
+                  )}
+                  {renewalAlerts.filter(a => a.daysLeft >= 0).length} expiring within 90 days
+                </div>
+              </div>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{
+                fontSize:10, fontWeight:700, color:'#92400e',
+                background:'#fef3c7', borderRadius:999, padding:'2px 8px',
+                border:'1px solid #fde68a',
+              }}>{renewalAlerts.length} employees</span>
+              <span style={{ color:'#d97706', fontSize:12, display:'inline-block',
+                transform: renewalOpen ? 'rotate(180deg)' : 'none', transition:'transform .2s' }}>▼</span>
+            </div>
+          </button>
+
+          {renewalOpen && (
+            <div style={{ padding:'0 14px 14px', borderTop:'1px solid #fef3c7' }}>
+              <div style={{
+                display:'grid',
+                gridTemplateColumns:'repeat(auto-fill, minmax(260px, 1fr))',
+                gap:8, marginTop:10,
+              }}>
+                {renewalAlerts.map((a, i) => {
+                  const expired = a.daysLeft < 0;
+                  const urgent  = !expired && a.daysLeft < 30;
+                  const col = expired ? '#dc2626' : urgent ? '#d97706' : '#16a34a';
+                  const bg  = expired ? '#fef2f2' : urgent ? '#fffbeb' : '#f0fdf4';
+                  const bd  = expired ? '#fecaca' : urgent ? '#fde68a' : '#bbf7d0';
+                  return (
+                    <div key={i} style={{
+                      background: bg, border:`1px solid ${bd}`,
+                      borderRadius:10, padding:'10px 13px',
+                    }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                        <div>
+                          <div style={{ fontWeight:700, fontSize:12, color:'#0f172a' }}>{a.name || '—'}</div>
+                          <div style={{ fontSize:10, color:'#64748b', marginTop:1 }}>
+                            {a.empId && <span style={{ marginRight:6 }}>ID: {a.empId}</span>}
+                            {a.desig && <span>{a.desig}</span>}
+                          </div>
+                        </div>
+                        <span style={{
+                          fontSize:10, fontWeight:800, color: col,
+                          background:'#fff', border:`1px solid ${bd}`,
+                          borderRadius:999, padding:'2px 7px', whiteSpace:'nowrap',
+                        }}>
+                          {expired ? `Expired ${Math.abs(a.daysLeft)}d ago` : `${a.daysLeft}d left`}
+                        </span>
+                      </div>
+                      <div style={{ marginTop:7, fontSize:10, color:'#475569', display:'flex', gap:8, flexWrap:'wrap' }}>
+                        <span>📚 {a.module || '—'}</span>
+                        <span>🏢 {a.branch || '—'}</span>
+                      </div>
+                      <div style={{ marginTop:4, fontSize:9.5, color:'#94a3b8' }}>
+                        Trained: {a.trainedDate} → Expires: <strong style={{color: col}}>{a.expiryDate}</strong>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ========= SMART FILTER / SORT TOOLBAR ========= */}
       <div
@@ -1693,6 +2302,19 @@ export default function TrainingSessionsList() {
 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button
+                    onClick={() => setRefOpen(true)}
+                    disabled={deletingSession}
+                    style={{
+                      ...btn("violet"),
+                      background: 'linear-gradient(135deg,#4338ca,#6366f1)',
+                      boxShadow: '0 2px 8px rgba(99,102,241,.35)',
+                    }}
+                    title="Open trainer reference card for this module"
+                  >
+                    📖 References
+                  </button>
+
+                  <button
                     onClick={deleteTrainingSession}
                     disabled={deletingSession || loading}
                     style={{
@@ -1990,7 +2612,7 @@ export default function TrainingSessionsList() {
                 <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                   <thead>
                     <tr>
-                      {["SL", "NAME", "DESIGNATION", "EMP ID", "SCORE", "RESULT", "LAST QUIZ", ""].map(
+                      {["SL", "NAME", "DESIGNATION", "EMP ID", "SCORE", "RESULT", "LAST QUIZ", "CERT", ""].map(
                         (h) => (
                           <th
                             key={h}
@@ -2017,7 +2639,7 @@ export default function TrainingSessionsList() {
                   <tbody>
                     {participants.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ padding: 14, color: THEME.muted, fontWeight: 900 }}>
+                        <td colSpan={9} style={{ padding: 14, color: THEME.muted, fontWeight: 900 }}>
                           No participants yet. Anyone who submits the session link will appear here automatically ✅
                         </td>
                       </tr>
@@ -2085,6 +2707,27 @@ export default function TrainingSessionsList() {
                                 <Badge text={p.lastQuizAt || "-"} tone="gray" />
                                 {hasAnswers ? <Badge text="Answers Saved" tone="amber" /> : null}
                               </div>
+                            </td>
+
+                            {/* Certificate column */}
+                            <td style={{ padding: 12, borderBottom: `1px solid rgba(148,163,184,0.14)`, whiteSpace: "nowrap" }}>
+                              {res === "PASS" ? (
+                                <button
+                                  onClick={() => setCertData({ participant: p, idx })}
+                                  style={{
+                                    padding:'7px 12px', borderRadius:10, border:'1.5px solid #fde68a',
+                                    background:'linear-gradient(135deg,#fef9c3,#fef3c7)',
+                                    color:'#92400e', fontWeight:800, fontSize:11.5,
+                                    cursor:'pointer', whiteSpace:'nowrap',
+                                    boxShadow:'0 1px 4px rgba(245,158,11,.2)',
+                                  }}
+                                  title="Print achievement certificate"
+                                >
+                                  🏆 Certificate
+                                </button>
+                              ) : (
+                                <span style={{ fontSize:11, color:'#cbd5e1' }}>—</span>
+                              )}
                             </td>
 
                             <td style={{ padding: 12, borderBottom: `1px solid rgba(148,163,184,0.14)`, whiteSpace: "nowrap" }}>
@@ -2416,6 +3059,35 @@ export default function TrainingSessionsList() {
       <div style={{ marginTop: 14, textAlign: "center", color: "#64748b", fontWeight: 700, fontSize: "0.85rem" }}>
         Built by Eng. Mohammed Abdullah
       </div>
+
+      {/* ── Certificate Modal ── */}
+      {certData && selected && (
+        <CertificateModal
+          open={!!certData}
+          onClose={() => setCertData(null)}
+          participant={certData.participant}
+          session={selected}
+          moduleName={moduleName}
+          branch={safeBranch(selected)}
+          date={safeDate(selected)}
+          conductedBy={selected?.payload?.conductedBy || ''}
+        />
+      )}
+
+      {/* ── Trainer Reference Card Modal ── */}
+      {selected && (
+        <TrainingReferenceModal
+          open={refOpen}
+          onClose={() => setRefOpen(false)}
+          moduleName={moduleName}
+          branch={safeBranch(selected)}
+          date={safeDate(selected)}
+          details={MODULE_DETAILS_BI[moduleName] || selected?.payload?.details || ''}
+          objectives={selected?.payload?.objectives || ''}
+          conductedBy={selected?.payload?.conductedBy || ''}
+          quickCheckQuestions={(QUIZ_BANK[moduleName] || []).slice(0, 5)}
+        />
+      )}
     </div>
   );
 }

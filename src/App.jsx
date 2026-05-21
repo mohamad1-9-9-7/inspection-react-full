@@ -349,6 +349,11 @@ const TrainingAnnualPlan = lazy(() =>
 // ✅🆕 صفحة المتدرّب (رابط/QR)
 const TrainingQuizLink = lazy(() => import("./pages/training/TrainingQuizLink"));
 
+// ✅🆕 Certificate Verification (public QR scan page)
+const TrainingCertVerify = lazy(() => import("./pages/training/TrainingCertVerify"));
+// ✅🆕 Training Gap Analysis
+const TrainingGapAnalysis = lazy(() => import("./pages/training/TrainingGapAnalysis"));
+
 // ✅ 🆕 SOP & sSOP Page
 const SopSsopPage = lazy(() =>
   import("./pages/haccp and iso/SOP/SopSsopPage")
@@ -547,6 +552,19 @@ export default function App() {
 
         {/* ✅🆕 Alias إضافي للتوكن (بدون تسجيل دخول) */}
         <Route path="/training/quiz/:token" element={<TrainingQuizLink />} />
+
+        {/* ✅🆕 Certificate Verification (public — scanned from QR) */}
+        <Route path="/training/verify" element={<TrainingCertVerify />} />
+
+        {/* ✅🆕 Training Gap Analysis (protected) */}
+        <Route
+          path="/training/gap-analysis"
+          element={
+            <ProtectedRoute>
+              <TrainingGapAnalysis />
+            </ProtectedRoute>
+          }
+        />
 
         {/* monitor/* */}
         <Route path="/monitor">

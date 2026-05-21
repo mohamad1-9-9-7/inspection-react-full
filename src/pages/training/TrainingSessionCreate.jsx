@@ -1,6 +1,7 @@
 // src/pages/training/TrainingSessionCreate.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import TrainingReferenceModal, { MODULE_DETAILS_BI } from './TrainingReferenceModal';
 
 /* ===================== API base ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -128,6 +129,8 @@ const MODULES = [
   "OHS: Manual Handling",
   "OHS: Fire Safety & Emergency",
   "OHS: First Aid & Incident Reporting",
+  "TESTO OIL — Oil Quality Test",
+  "Quality System Usage",
 ];
 
 const BRANCHES = [
@@ -153,435 +156,6 @@ const BRANCHES = [
 ];
 
 /* ===================== Training Details Templates ===================== */
-const DEFAULT_DETAILS_BI = `A) General food safety & hygiene requirements (site rules).
-   أ) متطلبات السلامة الغذائية والنظافة العامة (قواعد الموقع).
-B) Time/Temperature control basics and monitoring.
-   ب) أساسيات التحكم بالوقت/الحرارة والمراقبة.
-C) Date control: production/slaughter/expiry and FEFO.
-   ج) التحكم بالتواريخ: إنتاج/ذبح/انتهاء وتطبيق FEFO.
-D) Segregation: expired/hold/reject identification.
-   د) العزل: تمييز منتهي/معلّق/مرفوض.
-E) Cross contamination prevention (tools, surfaces, covering).
-   هـ) منع التلوث المتبادل (أدوات، أسطح، تغطية).
-F) Cleaning and sanitation basics (sequence and records).
-   و) أساسيات التنظيف والتعقيم (التسلسل والسجلات).
-G) Chemical storage & safe handling (SDS/PPE).
-   ز) تخزين واستخدام المواد الكيميائية بأمان (SDS/PPE).
-H) Personal hygiene & PPE compliance.
-   ح) نظافة شخصية والالتزام بوسائل الوقاية.
-I) Waste handling and housekeeping.
-   ط) إدارة النفايات ونظافة الموقع.
-J) Incident/NC reporting and corrective action.
-   ي) الإبلاغ عن الحوادث/عدم المطابقة والإجراء التصحيحي.
-K) Verification: supervisor/QA checks.
-   ك) التحقق: تفتيش المشرف/QA.
-L) Documentation: fill records correctly and on time.
-   ل) التوثيق: تعبئة السجلات بشكل صحيح وفي الوقت المحدد.`;
-
-const MODULE_DETAILS_BI = {
-  "Personnel Hygiene": `A) Hand washing rules & frequency (when and how).
-   أ) قواعد غسل اليدين وتكراره (متى وكيف).
-B) PPE: gloves, mask, hairnet, apron (correct use).
-   ب) معدات الوقاية: قفازات/كمامة/شبكة شعر/مريول (استخدام صحيح).
-C) No jewelry / short nails / clean uniform.
-   ج) منع المجوهرات/أظافر قصيرة/زي نظيف.
-D) Illness reporting (fever/diarrhea) and exclusion rules.
-   د) الإبلاغ عن المرض (حمى/إسهال) ومنع العمل عند المرض.
-E) Wound management: waterproof dressing + glove.
-   هـ) التعامل مع الجروح: ضماد مقاوم للماء + قفاز.
-F) No eating/drinking/smoking in food areas.
-   و) منع الأكل/الشرب/التدخين في مناطق الغذاء.
-G) Hand sanitizer use & contact time (if applicable).
-   ز) استخدام المعقم وزمن التماس (إن وجد).
-H) Personal items storage (phones/bags) outside work area.
-   ح) حفظ الأغراض الشخصية (موبايل/شنطة) خارج منطقة العمل.
-I) Visitor/contractor hygiene rules.
-   ط) قواعد نظافة الزوار/المقاولين.
-J) Toilet hygiene & returning to work (hand wash mandatory).
-   ي) نظافة الحمام والعودة للعمل (غسل اليدين إلزامي).
-K) Cough/sneeze etiquette & contamination prevention.
-   ك) آداب السعال/العطاس ومنع التلوث.
-L) Daily hygiene checks + actions for non-compliance.
-   ل) فحص يومي للنظافة + إجراء عند عدم الالتزام.`,
-
-  "GHP / Cleaning & Sanitation": `A) Cleaning sequence: rinse → detergent → scrub → rinse → sanitize.
-   أ) تسلسل التنظيف: شطف → منظف → فرك → شطف → تعقيم.
-B) Chemical dilution & correct dosage (as per SOP/SDS).
-   ب) تخفيف المواد الكيميائية والجرعة الصحيحة (حسب SOP/SDS).
-C) Sanitizer contact time & verification.
-   ج) زمن تلامس المعقم والتحقق منه.
-D) Color coding tools/areas to prevent cross contamination.
-   د) نظام الألوان للأدوات/المناطق لمنع التلوث المتبادل.
-E) Cleaning schedule: frequency, responsible person, sign-off.
-   هـ) جدول التنظيف: التكرار، المسؤول، التوقيع.
-F) High-touch points cleaning (handles, switches, scales).
-   و) تنظيف نقاط اللمس العالية (مقابض، مفاتيح، ميزان).
-G) Spill management (raw meat juices): immediate clean + sanitize.
-   ز) التعامل مع الانسكابات (عصارة لحم): تنظيف وتعقيم فوراً.
-H) Waste bins cleaning, liners, and pest prevention.
-   ح) تنظيف سلال النفايات والبطانات ومنع الآفات.
-I) Tool storage: clean/dry/off-floor, dedicated racks.
-   ط) حفظ الأدوات: نظيفة/جافة/بعيدة عن الأرض وعلى رفوف مخصصة.
-J) Post-cleaning inspection & corrective action for failures.
-   ي) تفتيش بعد التنظيف وإجراء تصحيحي عند الفشل.
-K) Records: cleaning log, chemical log, verification log.
-   ك) السجلات: سجل تنظيف/كيميائيات/تحقق.
-L) Equipment cleaning after use (slicers, grinders, tables).
-   ل) تنظيف المعدات بعد الاستخدام (سلايسر/مفرمة/طاولات).`,
-
-  Receiving: `A) Temperature checks (product + vehicle/chiller) vs limits.
-   أ) فحص الحرارة (المنتج + السيارة/المبرّد) حسب الحدود.
-B) Date checks: production/slaughter (if applicable) & expiry.
-   ب) فحص التواريخ: إنتاج/ذبح (إن وجد) والانتهاء.
-C) Packaging integrity: seal, vacuum, leakage, damage.
-   ج) سلامة التغليف: إغلاق/فاكيوم/تسريب/تلف.
-D) Label verification: name, batch/lot, origin, halal (if required).
-   د) التحقق من الملصق: اسم/دفعة/منشأ/حلال (إذا مطلوب).
-E) Documents: invoice/COA/halal certificate (as applicable).
-   هـ) المستندات: فاتورة/COA/شهادة حلال (حسب الحاجة).
-F) Acceptance criteria and rejection/hold decision.
-   و) معايير القبول وقرار الرفض/الحجز.
-G) Segregation: accepted vs rejected/held items (HOLD tag).
-   ز) فصل المقبول عن المرفوض/المحجوز (ملصق HOLD).
-H) NC handling: inform QA, record, corrective action.
-   ح) التعامل مع عدم المطابقة: إبلاغ QA، توثيق، إجراء تصحيحي.
-I) Time control: move items quickly to chiller.
-   ط) التحكم بالوقت: إدخال المنتجات للبراد بسرعة.
-J) Cross contamination prevention during unloading (clean pallets).
-   ي) منع التلوث أثناء التنزيل (طبالي نظيفة).
-K) Receiving area hygiene and housekeeping.
-   ك) نظافة منطقة الاستلام والترتيب.
-L) Recording in receiving log & QA verification.
-   ل) التسجيل في سجل الاستلام والتحقق من QA.`,
-
-  Storage: `A) Chiller temperature monitoring & limits (typ. 0–5°C).
-   أ) مراقبة حرارة البراد والحدود (عادة 0–5°C).
-B) FEFO arrangement & stock rotation checks.
-   ب) ترتيب FEFO وفحص تدوير المخزون.
-C) Segregation: raw vs RTE; chemicals away from food.
-   ج) العزل: نيء مقابل جاهز؛ الكيميائيات بعيداً عن الغذاء.
-D) Covering products and preventing drip contamination.
-   د) تغطية المنتجات ومنع تلوث التنقيط.
-E) Correct stacking, airflow, off-floor storage.
-   هـ) رص صحيح وتدفق هواء وحفظ بعيداً عن الأرض.
-F) Expired/near-expiry identification, hold, disposal.
-   و) تمييز منتهي/قريب الانتهاء، حجز، إعدام.
-G) Traceability: batch/lot visibility & labeling.
-   ز) التتبع: ظهور رقم الدفعة/اللوط واللابل.
-H) Cleaning schedule for cold room & shelves.
-   ح) جدول تنظيف غرفة التبريد والرفوف.
-I) Pest prevention, door discipline, housekeeping.
-   ط) منع الآفات والانضباط بالأبواب والترتيب.
-J) In/Out handling to reduce door-open time.
-   ي) إدخال/إخراج لتقليل وقت فتح الباب.
-K) Corrective action for deviations (temp high, spill, damage).
-   ك) إجراء تصحيحي للانحرافات (ارتفاع حرارة/انسكاب/تلف).
-L) Documentation: storage log & verification.
-   ل) التوثيق: سجل التخزين والتحقق.`,
-
-  "Time & Temperature / CCP": `A) Danger Zone awareness (approx. 5–60°C).
-   أ) معرفة منطقة الخطر (تقريباً 5–60°C).
-B) Chilled holding requirements & monitoring frequency.
-   ب) متطلبات الحفظ المبرد وتكرار المراقبة.
-C) Hot holding requirements (>60°C) where applicable.
-   ج) متطلبات الحفظ الساخن (>60°C) عند الحاجة.
-D) CCP monitoring: who/when/how + critical limits.
-   د) مراقبة CCP: من/متى/كيف + الحدود الحرجة.
-E) Corrective action when limits exceeded (hold/evaluate/discard).
-   هـ) إجراء تصحيحي عند تجاوز الحدود (حجز/تقييم/إعدام).
-F) Thermometer calibration & verification records.
-   و) معايرة الترمومتر وسجلات التحقق.
-G) Display temperature monitoring and corrective actions.
-   ز) مراقبة حرارة العرض والإجراءات التصحيحية.
-H) Transport temperature monitoring (chiller vehicle).
-   ح) مراقبة حرارة النقل (سيارة مبردة).
-I) Thawing/cooling time control (if applicable).
-   ط) التحكم بوقت الإذابة/التبريد (إن وجد).
-J) Breakdown plan: backup, escalation, product protection.
-   ي) خطة أعطال: بديل/تصعيد/حماية المنتج.
-K) Record keeping & QA review.
-   ك) حفظ السجلات ومراجعة QA.
-L) Trend analysis and prevention for repeat deviations.
-   ل) تحليل الاتجاهات ومنع تكرار الانحرافات.`,
-
-  "HACCP Basics": `A) HACCP purpose: prevent hazards proactively.
-   أ) هدف الهاسب: منع المخاطر بشكل استباقي.
-B) Hazard types: biological/chemical/physical (meat examples).
-   ب) أنواع المخاطر: ميكروبية/كيميائية/فيزيائية (أمثلة اللحوم).
-C) PRP vs OPRP vs CCP (simple understanding).
-   ج) الفرق بين PRP و OPRP و CCP (بشكل مبسط).
-D) Critical limits and why they matter.
-   د) الحدود الحرجة ولماذا هي مهمة.
-E) Monitoring: method, frequency, responsibility.
-   هـ) المراقبة: طريقة/تكرار/مسؤولية.
-F) Corrective action steps for deviations.
-   و) خطوات الإجراء التصحيحي عند الانحراف.
-G) Verification activities (review, audits, checks).
-   ز) أنشطة التحقق (مراجعة/تدقيق/تفتيش).
-H) Records: evidence of control and compliance.
-   ح) السجلات: دليل التحكم والالتزام.
-I) Traceability basics & recall awareness.
-   ط) أساسيات التتبع والاسترجاع.
-J) Complaints/incidents escalation and documentation.
-   ي) تصعيد الشكاوى/الحوادث وتوثيقها.
-K) Roles and accountability in HACCP system.
-   ك) الأدوار والمسؤوليات ضمن نظام الهاسب.
-L) Continuous improvement from findings.
-   ل) التحسين المستمر بناءً على النتائج.`,
-
-  "Allergen Control": `A) Identify allergens present (milk, gluten, egg, etc.).
-   أ) تحديد مسببات الحساسية (حليب/غلوتين/بيض...).
-B) Prevent cross-contact: dedicated tools/areas if needed.
-   ب) منع التلامس المتبادل: أدوات/مناطق مخصصة عند الحاجة.
-C) Cleaning between allergen/non-allergen (method + verification).
-   ج) تنظيف بين منتجات حساسية/بدون حساسية (طريقة + تحقق).
-D) Labeling: allergen declaration accuracy.
-   د) الملصقات: دقة الإفصاح عن الحساسية.
-E) Storage segregation and sealed containers.
-   هـ) عزل التخزين واستخدام عبوات محكمة.
-F) Changeover procedure and workflow.
-   و) إجراءات التحويل بين المنتجات وسير العمل.
-G) What to do if label missing/incorrect (HOLD + inform QA).
-   ز) ماذا نفعل إذا اللابل ناقص/خاطئ (حجز + إبلاغ QA).
-H) Staff awareness of severity and symptoms.
-   ح) وعي الموظفين بخطورة الأعراض.
-I) Rework control (if applicable) and restrictions.
-   ط) التحكم بإعادة التصنيع (إن وجد) والقيود.
-J) Waste/cleanup after allergen spill.
-   ي) تنظيف بعد انسكاب مادة مسببة للحساسية.
-K) Records: allergen checklist + cleaning verification.
-   ك) السجلات: قائمة حساسية + تحقق التنظيف.
-L) NC and corrective actions for allergen failures.
-   ل) عدم المطابقة والإجراء التصحيحي لحالات الحساسية.`,
-
-  "Cross Contamination Control": `A) Separate raw vs RTE areas and tools.
-   أ) فصل النيء عن الجاهز للأكل في المناطق والأدوات.
-B) Hand hygiene between tasks (wash/change gloves).
-   ب) نظافة اليدين بين المهام (غسل/تغيير قفازات).
-C) Color coding knives/boards; dedicated equipment.
-   ج) ترميز الألوان للسكاكين/الألواح؛ معدات مخصصة.
-D) Prevent drip contamination in chiller (top-to-bottom rule).
-   د) منع تلوث التنقيط في البراد (الأعلى للأسفل).
-E) Clean/sanitize shared surfaces and contact points.
-   هـ) تنظيف/تعقيم الأسطح المشتركة ونقاط التلامس.
-F) Handling phones/money then returning to food handling.
-   و) التعامل مع الهاتف/المال ثم العودة للعمل الغذائي.
-G) Covering products; safe packaging practices.
-   ز) تغطية المنتجات وممارسات تغليف آمنة.
-H) Waste handling without contaminating food areas.
-   ح) التعامل مع النفايات بدون تلويث مناطق الغذاء.
-I) Workflow control: staff movement and zoning.
-   ط) التحكم بسير العمل: حركة الموظفين وتقسيم المناطق.
-J) Equipment cleaning after raw processing.
-   ي) تنظيف المعدات بعد معالجة النيء.
-K) Verification: hygiene checks / swabs (if applicable).
-   ك) التحقق: فحوصات نظافة / مسحات (إن وجدت).
-L) Documentation and corrective actions.
-   ل) التوثيق والإجراءات التصحيحية.`,
-
-  "Chemical Safety (Food + OHS)": `A) Chemical identification & labeling (no unlabeled bottles).
-   أ) تعريف الكيميائيات ووضع لابل (ممنوع عبوات بدون لابل).
-B) Storage in designated chemical cabinet (away from food).
-   ب) تخزينها في خزانة مخصصة بعيداً عن الغذاء.
-C) Dilution procedure, dosage control & measuring tools.
-   ج) إجراءات التخفيف والتحكم بالجرعة وأدوات القياس.
-D) SDS availability and key hazard understanding.
-   د) توفر SDS وفهم المخاطر الأساسية.
-E) PPE when handling chemicals (gloves/eye protection).
-   هـ) معدات الوقاية عند الاستخدام (قفازات/نظارات).
-F) Mixing chemicals prohibited unless SOP instructs.
-   و) ممنوع خلط الكيميائيات إلا حسب SOP.
-G) Spill response and first aid actions.
-   ز) التعامل مع الانسكاب وإسعافات أولية.
-H) Prevent chemical contamination of food/packaging.
-   ح) منع تلوث الغذاء/التغليف بالكيميائيات.
-I) Disposal of empty containers and chemical waste.
-   ط) التخلص من العبوات الفارغة والنفايات الكيميائية.
-J) Use only approved chemicals and correct purpose.
-   ي) استخدام مواد معتمدة فقط وللغرض الصحيح.
-K) Records: chemical/dilution/verification logs.
-   ك) السجلات: كيميائيات/تخفيف/تحقق.
-L) Corrective actions for misuse/non-compliance.
-   ل) إجراء تصحيحي عند سوء الاستخدام/عدم الالتزام.`,
-
-  "Pest Control Awareness": `A) Signs of pests (droppings, gnaw marks, insects).
-   أ) علامات الآفات (فضلات/قضم/حشرات).
-B) Keep doors closed and prevent entry points.
-   ب) إبقاء الأبواب مغلقة ومنع نقاط الدخول.
-C) Housekeeping: remove waste and clean spills immediately.
-   ج) ترتيب ونظافة: إزالة النفايات وتنظيف الانسكابات فوراً.
-D) Waste management to reduce attraction.
-   د) إدارة النفايات لتقليل الجذب.
-E) Storage discipline: off-floor, away from walls.
-   هـ) انضباط التخزين: بعيد عن الأرض وعن الجدران.
-F) Report sightings immediately and record.
-   و) الإبلاغ الفوري وتوثيق المشاهدة.
-G) Do not touch bait stations/traps.
-   ز) عدم العبث بمصائد/طعوم مكافحة الآفات.
-H) Vendor-only pesticide application rules.
-   ح) تطبيق المبيدات فقط بواسطة الشركة المعتمدة.
-I) Monitor and review pest control logs.
-   ط) مراقبة ومراجعة سجلات الآفات.
-J) Corrective actions after pest evidence found.
-   ي) إجراءات تصحيحية عند وجود دليل آفات.
-K) Prevent contamination during treatments.
-   ك) منع التلوث أثناء المعالجات.
-L) Documentation and follow-up verification.
-   ل) التوثيق والتحقق والمتابعة.`,
-
-  "Waste Management": `A) Segregate waste: food vs general vs hazardous (if any).
-   أ) فصل النفايات: غذائية/عامة/خطرة (إن وجدت).
-B) Covered bins with liners; frequent emptying.
-   ب) سلال مغطاة مع بطانات وتفريغ متكرر.
-C) Clean/disinfect bins and waste area.
-   ج) تنظيف وتعقيم السلال ومنطقة النفايات.
-D) Avoid overflow and control odor/leaks.
-   د) منع الامتلاء الزائد والتحكم بالروائح/التسريب.
-E) Safe disposal of condemned/expired items.
-   هـ) التخلص الآمن من المنتجات المعدمة/المنتهية.
-F) Prevent cross contamination during waste handling.
-   و) منع التلوث المتبادل أثناء التعامل مع النفايات.
-G) PPE for waste handling (gloves, shoes).
-   ز) PPE للتعامل مع النفايات (قفازات/حذاء).
-H) Pest prevention linked to waste discipline.
-   ح) منع الآفات عبر الانضباط بالنفايات.
-I) Collection schedule and responsibilities.
-   ط) جدول جمع النفايات والمسؤوليات.
-J) Spill control during waste transport.
-   ي) التحكم بالانسكاب أثناء نقل النفايات.
-K) Records (condemnation/waste log if required).
-   ك) السجلات (سجل إعدام/نفايات إذا مطلوب).
-L) Corrective actions and improvement.
-   ل) إجراءات تصحيحية وتحسين.`,
-
-  "OHS: PPE & Safe Work": `A) Required PPE by task (gloves, shoes, apron, etc.).
-   أ) PPE المطلوب حسب المهمة (قفازات/حذاء/مريول...).
-B) PPE inspection, cleaning, and replacement.
-   ب) فحص PPE وتنظيفه واستبداله.
-C) Slips/trips prevention: dry floors, signage.
-   ج) منع الانزلاق/التعثر: أرضية جافة ولافتات.
-D) Safe behavior: no running, awareness and communication.
-   د) سلوك آمن: منع الركض والانتباه والتواصل.
-E) Near-miss reporting (why/how).
-   هـ) الإبلاغ عن الحوادث القريبة (لماذا/كيف).
-F) Safe use of equipment and electrical safety basics.
-   و) استخدام آمن للمعدات وأساسيات السلامة الكهربائية.
-G) Keep emergency exits clear at all times.
-   ز) إبقاء مخارج الطوارئ خالية دائماً.
-H) Manual handling awareness and asking for help.
-   ح) وعي المناولة اليدوية وطلب المساعدة.
-I) Knife/sharp tools safe practice awareness.
-   ط) ممارسات آمنة للسكاكين/الأدوات الحادة.
-J) Incident reporting procedure (who/when).
-   ي) إجراءات الإبلاغ عن الحوادث (من/متى).
-K) First response basics and escalation.
-   ك) أساسيات الاستجابة الأولى والتصعيد.
-L) Documentation and corrective actions.
-   ل) التوثيق والإجراءات التصحيحية.`,
-
-  "OHS: Knife Safety": `A) Knife handling rules (carry/pass/store).
-   أ) قواعد التعامل مع السكين (حمل/تسليم/تخزين).
-B) Cut-resistant glove: when mandatory and correct use.
-   ب) قفاز مقاوم للقطع: متى إلزامي وكيف يُستخدم.
-C) Cutting technique: stable board, controlled movements.
-   ج) أسلوب التقطيع: لوح ثابت وحركة مسيطر عليها.
-D) Sharpening rules: authorized person and safe method.
-   د) قواعد الشحذ: شخص مخول وطريقة آمنة.
-E) Never leave knives in sinks or hidden places.
-   هـ) ممنوع ترك السكاكين في المغسلة أو أماكن مخفية.
-F) Cleaning knives safely to avoid injury.
-   و) تنظيف السكاكين بطريقة آمنة لتجنب الإصابة.
-G) First aid for cuts + immediate reporting.
-   ز) إسعاف أولي للجروح + إبلاغ فوري.
-H) PPE and safety shoes requirement.
-   ح) PPE والحذاء الآمن.
-I) Housekeeping in cutting area.
-   ط) ترتيب ونظافة منطقة التقطيع.
-J) Unsafe conditions reporting (slippery floor, damaged knife).
-   ي) الإبلاغ عن المخاطر (أرضية زلقة/سكين تالف).
-K) Supervision checks and compliance.
-   ك) تفتيش المشرف والالتزام.
-L) Documentation and corrective actions.
-   ل) التوثيق والإجراءات التصحيحية.`,
-
-  "OHS: Manual Handling": `A) Assess load, plan route, and keep path clear.
-   أ) تقييم الحمولة وتخطيط المسار وإبقاء الطريق خالٍ.
-B) Correct lifting: bend knees, keep back straight.
-   ب) رفع صحيح: ثني الركب وإبقاء الظهر مستقيماً.
-C) Keep load close; avoid twisting (pivot with feet).
-   ج) إبقاء الحمل قريباً ومنع الالتفاف (تحريك القدمين).
-D) Use trolleys/equipment and ask for help for heavy loads.
-   د) استخدام عربات/معدات وطلب مساعدة للأحمال الثقيلة.
-E) Safe stacking height and stability.
-   هـ) رص آمن وارتفاع مناسب وثبات.
-F) Breaks and job rotation to reduce strain.
-   و) استراحات وتدوير مهام لتقليل الإجهاد.
-G) Report pain/strain early.
-   ز) الإبلاغ المبكر عن الألم/الإجهاد.
-H) Cold room specific risks (slip, restricted movement).
-   ح) مخاطر غرفة التبريد (انزلاق/حركة محدودة).
-I) PPE: safety shoes and gloves.
-   ط) PPE: حذاء أمان وقفازات.
-J) Near-miss reporting and learning.
-   ي) الإبلاغ عن الحوادث القريبة والتعلم منها.
-K) Supervision and coaching on technique.
-   ك) إشراف وتوجيه على الطريقة.
-L) Documentation and corrective actions.
-   ل) التوثيق والإجراءات التصحيحية.`,
-
-  "OHS: Fire Safety & Emergency": `A) Fire basics and common causes in workplace.
-   أ) أساسيات الحريق وأسبابه الشائعة في العمل.
-B) Emergency exits, assembly point, and evacuation route.
-   ب) مخارج الطوارئ ونقطة التجمع ومسار الإخلاء.
-C) Extinguishers types and PASS method (basic).
-   ج) أنواع الطفايات وطريقة PASS (مبسط).
-D) Alarm response and evacuation discipline.
-   د) الاستجابة للإنذار والانضباط بالإخلاء.
-E) Do not block exits/extinguishers (no storage).
-   هـ) ممنوع إغلاق المخارج/الطفايات (لا تخزين).
-F) Electrical safety and overload prevention.
-   و) سلامة الكهرباء ومنع التحميل الزائد.
-G) Gas/flame equipment precautions (if applicable).
-   ز) احتياطات معدات الغاز/اللهب (إن وجدت).
-H) Emergency contacts and reporting.
-   ح) أرقام الطوارئ والإبلاغ.
-I) Drill participation and attendance.
-   ط) المشاركة بتمارين الإخلاء والحضور.
-J) First response: isolate, call help, protect people.
-   ي) الاستجابة الأولى: عزل/طلب مساعدة/حماية الأشخاص.
-K) Post-incident reporting and actions.
-   ك) تقرير ما بعد الحادث والإجراءات.
-L) Documentation and corrective actions from drills.
-   ل) التوثيق والإجراءات التصحيحية من التمارين.`,
-
-  "OHS: First Aid & Incident Reporting": `A) First aid limits and when to call emergency services.
-   أ) حدود الإسعاف الأولي ومتى نطلب الإسعاف.
-B) First aid box location and responsible persons.
-   ب) مكان صندوق الإسعاف والمسؤولين.
-C) Incident reporting steps (who/when/how).
-   ج) خطوات الإبلاغ عن الحوادث (من/متى/كيف).
-D) Cuts: stop bleeding, dress, record.
-   د) الجروح: إيقاف النزف وتضميد وتوثيق.
-E) Burns: cool with water, protect, report.
-   هـ) الحروق: تبريد بالماء وحماية وإبلاغ.
-F) Fainting/heat stress: safe positioning and escalation.
-   و) إغماء/إجهاد حراري: وضعية آمنة وتصعيد.
-G) Chemical exposure: rinse and follow SDS.
-   ز) تعرض كيميائي: شطف واتباع SDS.
-H) Near-miss definition and reporting importance.
-   ح) تعريف near-miss وأهمية الإبلاغ.
-I) Basic investigation: what happened and why.
-   ط) تحقيق مبسط: ماذا حدث ولماذا.
-J) Corrective/preventive actions assignment and follow-up.
-   ي) تحديد إجراءات تصحيحية/وقائية والمتابعة.
-K) Return-to-work restrictions if needed.
-   ك) قيود العودة للعمل عند الحاجة.
-L) Documentation and QA/HS review.
-   ل) التوثيق ومراجعة QA/السلامة.`,
-
-  __DEFAULT__: DEFAULT_DETAILS_BI,
-};
-
 function getDetailsTemplate(moduleName) {
   return MODULE_DETAILS_BI[moduleName] || MODULE_DETAILS_BI.__DEFAULT__;
 }
@@ -590,18 +164,28 @@ function getDetailsTemplate(moduleName) {
 const QUESTION_BANK = {
   "Personnel Hygiene": {
     en: [
-      { q: "When must hands be washed?", options: ["Before & after handling food", "Once per day", "Only when visibly dirty"], correct: 0 },
-      { q: "Are jewelry and watches allowed while handling food?", options: ["Yes, always", "No", "Only a ring"], correct: 1 },
-      { q: "What should you do if you have a cut on your hand?", options: ["Continue normally", "Cover with waterproof dressing + glove", "Rinse with water only"], correct: 1 },
-      { q: "Best method to prevent cross contamination is:", options: ["Use the same tools for everything", "Separate tools/surfaces and sanitize", "Leave food uncovered"], correct: 1 },
-      { q: "PPE stands for:", options: ["Personal Protective Equipment", "Ready-to-eat product", "Storage procedure"], correct: 0 },
+      { q: "What is the ideal water temperature for effective handwashing?", options: ["Any temperature is fine", "Cold water only (below 15°C)", "Warm water (38–45°C)"], correct: 2 },
+      { q: "Why are BLUE plasters used in food production?", options: ["They are cheaper", "Blue is rare in food — easy to detect if it falls off", "Blue kills bacteria"], correct: 1 },
+      { q: "How long must a food handler wait after illness symptoms stop before returning to work?", options: ["24 hours", "At least 48 hours + medical clearance", "Only until they feel better"], correct: 1 },
+      { q: "Hand sanitizer should be used:", options: ["Instead of handwashing to save time", "After proper handwashing as an additional step", "Only when soap is unavailable"], correct: 1 },
+      { q: "After sneezing while handling food, you must:", options: ["Continue working after wiping with glove", "Step away → change mask → full handwash → change gloves", "Just change gloves"], correct: 1 },
+      { q: "Gloves must be replaced:", options: ["Only when visibly torn", "Every hour or when torn/task changes — with handwash before wearing", "At the end of the shift only"], correct: 1 },
+      { q: "A food handler with diarrhea must:", options: ["Continue working with extra gloves", "Report to supervisor and be excluded for ≥48 hrs after symptoms stop", "Just avoid handling ready-to-eat food"], correct: 1 },
+      { q: "Nail polish is NOT allowed for food handlers because:", options: ["It is against fashion rules", "It can flake off into food and harbour bacteria", "It is expensive"], correct: 1 },
+      { q: "Personal mobile phones in production areas are:", options: ["Allowed if kept in pocket", "Strictly forbidden — must be kept in lockers outside", "Allowed only for supervisors"], correct: 1 },
+      { q: "Before entering the toilet, a food handler must:", options: ["Remove apron and discard gloves", "Keep apron on but wash hands inside", "Take off only gloves"], correct: 0 },
     ],
     ar: [
-      { q: "متى يجب غسل اليدين؟", options: ["قبل وبعد التعامل مع الطعام", "مرة واحدة يوميًا", "فقط عند الاتساخ"], correct: 0 },
-      { q: "هل يسمح بارتداء المجوهرات/الساعة أثناء العمل؟", options: ["نعم دائمًا", "لا", "فقط الخاتم"], correct: 1 },
-      { q: "ماذا نفعل عند وجود جرح باليد؟", options: ["نستمر بدون شيء", "نغطيه بضماد مقاوم للماء + قفاز", "نغسله بالماء فقط"], correct: 1 },
-      { q: "أفضل طريقة لمنع التلوث المتبادل؟", options: ["استخدام نفس الأدوات دائمًا", "فصل الأدوات/الأسطح وتعقيمها", "ترك الطعام مكشوف"], correct: 1 },
-      { q: "معنى PPE هو:", options: ["معدات الوقاية الشخصية", "منتج جاهز للأكل", "إجراء تخزين"], correct: 0 },
+      { q: "ما هي درجة حرارة الماء المثالية لغسل اليدين الفعّال؟", options: ["أي درجة حرارة تكفي", "ماء بارد فقط (أقل من 15°C)", "ماء دافئ (38–45°C)"], correct: 2 },
+      { q: "لماذا يُستخدم الضماد الأزرق في مناطق إنتاج الغذاء؟", options: ["أرخص ثمناً", "الأزرق نادر في الطعام — سهل الكشف إذا سقط", "اللون الأزرق يقتل البكتيريا"], correct: 1 },
+      { q: "كم يجب أن ينتظر متداول الغذاء بعد توقف أعراض المرض قبل العودة؟", options: ["24 ساعة", "48 ساعة على الأقل + شهادة طبية", "فقط حتى يشعر بتحسن"], correct: 1 },
+      { q: "معقم اليدين يُستخدم:", options: ["بدلاً عن الغسل لتوفير الوقت", "بعد الغسل الكامل كخطوة إضافية", "فقط عند عدم توفر الصابون"], correct: 1 },
+      { q: "بعد العطاس أثناء العمل بالغذاء يجب:", options: ["الاستمرار بعد مسح القفاز", "ابتعد ← غيّر الكمامة ← اغسل اليدين ← غيّر القفازات", "تغيير القفازات فقط"], correct: 1 },
+      { q: "يجب استبدال القفازات:", options: ["فقط عند التلف الظاهر", "كل ساعة أو عند التلف/تغيير المهمة مع غسل اليدين", "في نهاية الشفت فقط"], correct: 1 },
+      { q: "متداول الغذاء الذي يعاني من إسهال يجب أن:", options: ["يستمر بالعمل مع قفازات إضافية", "يُبلّغ المشرف ويُستبعد ≥48 ساعة بعد التوقف", "يتجنب فقط الأطعمة الجاهزة"], correct: 1 },
+      { q: "ممنوع طلاء الأظافر لمتداولي الغذاء لأنه:", options: ["يخالف قواعد المظهر", "قد يتقشر في الطعام ويحجب البكتيريا", "مكلف"], correct: 1 },
+      { q: "الموبايل الشخصي في مناطق الإنتاج:", options: ["مسموح في الجيب", "ممنوع تماماً — يُحفظ في الخزانة خارجاً", "مسموح فقط للمشرفين"], correct: 1 },
+      { q: "قبل دخول الحمام على متداول الغذاء:", options: ["خلع المريول ورمي القفازات", "الإبقاء على المريول وغسل اليدين داخلاً", "خلع القفازات فقط"], correct: 0 },
     ],
   },
   "GHP / Cleaning & Sanitation": {
@@ -748,6 +332,40 @@ const QUESTION_BANK = {
       { q: "قبل الرفع يجب:", options: ["تحديد المسار والتخطيط", "إغماض العين", "الركض"], correct: 0 },
     ],
   },
+
+  "TESTO OIL — Oil Quality Test": {
+    en: [
+      { q: "When should you test oil quality with TESTO 270?", options: ["Once a week", "Before service + every 2–3 hrs during frying", "Only when oil looks dark"], correct: 1 },
+      { q: "What TPM% level requires IMMEDIATE oil discard?", options: [">15%", ">24%", ">27%"], correct: 2 },
+      { q: "A RED reading on TESTO 270 means:", options: ["Oil is perfect", "Monitor more frequently", "Discard oil immediately — do NOT use"], correct: 2 },
+      { q: "After using the TESTO probe you must:", options: ["Rinse in water and leave wet", "Wipe dry and store in its protective case", "Leave it resting in the fryer"], correct: 1 },
+      { q: "TPM stands for:", options: ["Total Polar Material", "Temperature Per Minute", "Testo Product Manual"], correct: 0 },
+    ],
+    ar: [
+      { q: "متى يجب قياس جودة الزيت بجهاز TESTO 270؟", options: ["مرة بالأسبوع", "قبل الخدمة + كل 2-3 ساعات أثناء القلي", "فقط عندما يبدو الزيت داكناً"], correct: 1 },
+      { q: "أي نسبة TPM% تستوجب إعدام الزيت فوراً؟", options: [">15%", ">24%", ">27%"], correct: 2 },
+      { q: "القراءة الحمراء على TESTO 270 تعني:", options: ["الزيت ممتاز", "يحتاج مراقبة بتكرار أكبر", "أعدم الزيت فوراً — ممنوع الاستخدام"], correct: 2 },
+      { q: "بعد استخدام مجس TESTO يجب:", options: ["شطفه بالماء وتركه مبللاً", "تجفيفه وحفظه في حقيبته الواقية", "تركه في المقلاة"], correct: 1 },
+      { q: "معنى TPM:", options: ["المواد القطبية الكلية", "درجة حرارة في الدقيقة", "دليل منتج Testo"], correct: 0 },
+    ],
+  },
+
+  "Quality System Usage": {
+    en: [
+      { q: "Where do you view health certificates in the system?", options: ["Returns module", "Health Certificates section", "Meat Status page"], correct: 1 },
+      { q: "A RED alert in the system means:", options: ["Everything is fine", "Immediate action required", "Monthly check due"], correct: 1 },
+      { q: "Before navigating away from a data entry page you must:", options: ["Close the browser", "Save the data", "Print the page"], correct: 1 },
+      { q: "Current stock, hold items, and near-expiry alerts are found in:", options: ["Meat Status section", "Certificates section", "Returns section"], correct: 0 },
+      { q: "If you see a system error you should:", options: ["Fix system data manually", "Screenshot + contact QA/IT", "Ignore it and continue"], correct: 1 },
+    ],
+    ar: [
+      { q: "أين تجد الشهادات الصحية في النظام؟", options: ["وحدة المرتجعات", "قسم الشهادات الصحية", "صفحة حالة اللحم"], correct: 1 },
+      { q: "التنبيه الأحمر في النظام يعني:", options: ["كل شيء بخير", "إجراء فوري مطلوب", "فحص شهري مطلوب"], correct: 1 },
+      { q: "قبل مغادرة صفحة إدخال البيانات يجب:", options: ["إغلاق المتصفح", "حفظ البيانات", "طباعة الصفحة"], correct: 1 },
+      { q: "المخزون الحالي والمعزول وتنبيهات انتهاء الصلاحية تُشاهد في:", options: ["قسم حالة اللحم", "قسم الشهادات", "قسم المرتجعات"], correct: 0 },
+      { q: "عند ظهور خطأ في النظام:", options: ["تعديل بيانات النظام يدوياً", "لقطة شاشة + تواصل مع QA/IT", "تجاهله والاستمرار"], correct: 1 },
+    ],
+  },
 };
 
 function pickQuestionsForModule(moduleName) {
@@ -758,6 +376,8 @@ function pickQuestionsForModule(moduleName) {
     ar: [{ q: "هذا القسم يحتاج أسئلة من QA.", options: ["موافق"], correct: 0 }],
   };
 }
+
+
 
 /* ===================== Sub-components (defined OUTSIDE to preserve focus) ===================== */
 const InfoCard = ({ label, value, children }) => (
@@ -785,6 +405,7 @@ const FieldLabel = ({ children }) => (
 export default function TrainingSessionCreate() {
   const nav = useNavigate();
   const [saving, setSaving] = useState(false);
+  const [showReference, setShowReference] = useState(false);
 
   const DEFAULT_MODULE = "Personnel Hygiene";
 
@@ -873,6 +494,7 @@ export default function TrainingSessionCreate() {
         </div>
         <div style={{ marginLeft:"auto", display:"flex", gap:7, flexWrap:"wrap", alignItems:"center" }}>
           <button onClick={() => nav("/training")} style={actionBtn(C.gray700)}>↩ Back</button>
+          <button onClick={() => setShowReference(true)} style={actionBtn("#7c3aed")}>📖 مرجع التدريب</button>
           <button onClick={onSave} disabled={saving} style={actionBtn(saving ? C.gray400 : "#10b981", saving)}>
             {saving ? "Saving…" : "💾 Save Session"}
           </button>
@@ -1040,6 +662,7 @@ export default function TrainingSessionCreate() {
             <button onClick={() => nav("/training")} style={{ ...actionBtn(C.gray700), background:"transparent", color:C.gray700, border:`1px solid ${C.gray200}` }}>
               Cancel
             </button>
+            <button onClick={() => setShowReference(true)} style={actionBtn("#7c3aed")}>📖 مرجع التدريب</button>
             <button onClick={onSave} disabled={saving} style={actionBtn(saving ? C.gray400 : "#10b981", saving)}>
               {saving ? "Saving…" : "💾 Save Session"}
             </button>
@@ -1047,6 +670,20 @@ export default function TrainingSessionCreate() {
         </div>
 
       </div>
+
+      <TrainingReferenceModal
+        open={showReference}
+        onClose={() => setShowReference(false)}
+        moduleName={effectiveModule}
+        branch={branch}
+        date={date}
+        details={details}
+        objectives={objectives}
+        conductedBy={conductedBy}
+        quickCheckQuestions={(QUESTION_BANK[effectiveModule]?.en || []).slice(0, 5).map(q => ({
+          q_en: q.q, options_en: q.options, correct: q.correct,
+        }))}
+      />
     </div>
   );
 }

@@ -158,7 +158,12 @@
       "Bash(node -e \"const p=require\\('path'\\); ['src/pages/monitor/branches/pos19/pos19_inputs/X.jsx','src/pages/monitor/branches/pos19/view pos 19/X.jsx','src/pages/monitor/branches/pos19/files/X.jsx','src/pages/monitor/branches/pos19/back up/X.jsx','src/pages/monitor/branches/qcs/X.jsx','src/pages/haccp and iso/X.jsx','src/pages/haccp and iso/Supplier Approval/X.jsx','src/pages/settings/X.jsx','src/pages/store/X.jsx','src/pages/monitor/branches/_shared/X.jsx','src/pages/ohc/X.jsx','src/pages/training/X.jsx','src/pages/finished/X.js','src/pages/BFS PIC EFST/X.jsx','src/pages/monitor/branches/POS 11/X.jsx','src/pages/monitor/branches/pos 10/X.jsx'].forEach\\(f=>{const d=p.posix.dirname\\(f.replace\\(/\\\\\\\\\\\\\\\\/g,'/'\\)\\); let r=p.posix.relative\\(d,'src/config'\\); console.log\\(f,'=>',r\\);}\\);\")",
       "Bash(node -e \"const p=require\\('path'\\); ['src/pages/monitor/branches/pos19/pos19_inputs/X.jsx','src/pages/monitor/branches/pos19/view pos 19/X.jsx','src/pages/monitor/branches/pos19/files/X.jsx','src/pages/monitor/branches/pos19/back up/X.jsx','src/pages/monitor/branches/qcs/X.jsx','src/pages/haccp and iso/X.jsx','src/pages/haccp and iso/Supplier Approval/X.jsx','src/pages/settings/X.jsx','src/pages/store/X.jsx','src/pages/monitor/branches/_shared/X.jsx','src/pages/ohc/X.jsx','src/pages/training/X.jsx','src/pages/finished/X.js','src/pages/BFS PIC EFST/X.jsx','src/pages/monitor/branches/POS 11/X.jsx','src/pages/monitor/branches/pos 10/X.jsx'].forEach\\(f=>{const d=p.posix.dirname\\(f\\); let r=p.posix.relative\\(d,'src/config'\\); console.log\\(f,'=>',r+'/api'\\);}\\);\")",
       "Bash(node __migrate_api_base.cjs --dry)",
-      "Bash(node __migrate_api_base.cjs)"
+      "Bash(node __migrate_api_base.cjs)",
+      "Bash(git restore *)",
+      "Bash(npx vite *)",
+      "Bash(node_modules/.bin/vite build *)",
+      "WebSearch",
+      "Bash(grep -n \"[?؟]$\" \"D:\\\\inspection-react-full\\\\src\\\\pages\\\\training\\\\TrainingSessionCreate.jsx\")"
     ]
   }
 }

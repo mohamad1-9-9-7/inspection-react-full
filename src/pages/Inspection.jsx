@@ -65,6 +65,7 @@ const BRANCH_LIST = [
   { code: "POS 45",      en: "POS 45",                            ar: "POS 45" },
   { code: "FTR 1",       en: "FTR 1 — Al Mushrif Park",          ar: "FTR 1 — حديقة المشرف" },
   { code: "FTR 2",       en: "FTR 2 — Al Mamzar",                ar: "FTR 2 — الممزر" },
+  { code: "AL WARQA KITCHEN", en: "Al Warqa Kitchen",            ar: "مطبخ الورقاء" },
 ];
 
 const RISK_OPTIONS = [
@@ -109,10 +110,10 @@ export default function Inspection() {
   const [branch, setBranch] = useState(draft?.branch || "");
   const [date, setDate] = useState(draft?.date || new Date().toISOString().slice(0,10));
   const [reportNo, setReportNo] = useState(draft?.reportNo || "");
-  const [auditBy, setAuditBy] = useState(draft?.auditBy || "MOHAMAD ABDULLAH (QC)");
+  const [auditBy, setAuditBy] = useState(draft?.auditBy || "MOHAMAD ABDULLAH (QA)");
   const [location, setLocation] = useState(draft?.location || "");
   const [approvedBy] = useState("Hussam O. Sarhan");
-  const [issuedBy] = useState("MOHAMAD ABDULLAH  QC");
+  const [issuedBy] = useState("MOHAMAD ABDULLAH QA");
 
   /* ===== Table rows ===== */
   const [rows, setRows] = useState(
@@ -318,14 +319,175 @@ export default function Inspection() {
   return (
     <div style={pageWrap} dir={isAr ? "rtl" : "ltr"} className="ins-page-wrap">
       <style>{`
+        .ins-print-logo-header { display: none; }
+
+        @page {
+          margin: 32mm 10mm 15mm 10mm;
+          size: A4 landscape;
+        }
+
         @media print {
+          /* ── Logo header – fixed = repeats on every page ── */
+          .ins-print-logo-header {
+            display: flex !important;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 26mm;
+            padding: 4mm 8mm;
+            align-items: center;
+            justify-content: space-between;
+            background: #fff;
+            border-bottom: 2.5px solid #0f172a;
+            z-index: 9999;
+            gap: 12px;
+          }
+          .ins-print-logo-header img {
+            height: 42px;
+            width: auto;
+            object-fit: contain;
+          }
+          .ins-print-logo-center {
+            text-align: center;
+            flex: 1;
+          }
+          .ins-print-logo-center .title {
+            font-size: 13px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+          }
+          .ins-print-logo-center .sub {
+            font-size: 9px;
+            color: #64748b;
+            margin-top: 2px;
+            font-weight: 700;
+          }
+          .ins-print-logo-meta {
+            text-align: right;
+            font-size: 9px;
+            font-weight: 800;
+            color: #0f172a;
+            line-height: 1.7;
+          }
+
+          /* ── General resets ── */
           .ins-no-print { display: none !important; }
-          .ins-page-wrap { background: #fff !important; padding: 0 !important; }
+          .ins-page-wrap { background: #fff !important; padding: 4px !important; }
+
+          /* ── Fix overflow clipping ── */
+          .ins-table-scroll-wrap { overflow: visible !important; }
+          .ins-table-wrap {
+            overflow: visible !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            min-width: 0 !important;
+            border: 1px solid #94a3b8 !important;
+          }
+
+          /* ── Header row ── */
+          .ins-table-header-row {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            font-size: 8px !important;
+          }
+
+          /* ── DATA ROWS: grid → table so break-inside works ── */
+          .ins-table-row {
+            display: table !important;
+            width: 100% !important;
+            table-layout: fixed !important;
+            border-collapse: collapse !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            margin-bottom: 0 !important;
+          }
+          .ins-table-row > div {
+            display: table-cell !important;
+            vertical-align: top !important;
+            border: 1px solid #cbd5e1 !important;
+            padding: 5px 6px !important;
+            overflow: visible !important;
+            word-break: break-word !important;
+          }
+          /* Column widths */
+          .ins-table-row > div:nth-child(1) { width: 19% !important; }
+          .ins-table-row > div:nth-child(2) { width: 16% !important; }
+          .ins-table-row > div:nth-child(3) { width: 19% !important; }
+          .ins-table-row > div:nth-child(4) { width: 11% !important; }
+          .ins-table-row > div:nth-child(5) { width: 11% !important; }
+          .ins-table-row > div:nth-child(6) { width: 9% !important; }
+          .ins-table-row > div:nth-child(7) { width: 9% !important; }
+          .ins-table-row > div:nth-child(8) { display: none !important; }
+
+          /* ── Textarea: show full text ── */
+          .ins-table-row textarea {
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            resize: none !important;
+            border: none !important;
+            padding: 0 !important;
+            font-size: 9px !important;
+            background: transparent !important;
+            width: 100% !important;
+            display: block !important;
+            line-height: 1.45 !important;
+            white-space: pre-wrap !important;
+          }
+
+          /* ── Select: plain text ── */
+          .ins-table-row select {
+            border: none !important;
+            background: transparent !important;
+            font-size: 9px !important;
+            font-weight: 800 !important;
+            padding: 0 !important;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+          }
+
+          /* ── Images ── */
+          .ins-table-row img {
+            max-width: 60px !important;
+            max-height: 50px !important;
+            object-fit: cover !important;
+            border-radius: 3px !important;
+          }
+
+          /* ── Hide add row / upload buttons ── */
+          .ins-add-row-btn { display: none !important; }
+          .ins-upload-btn  { display: none !important; }
+
+          /* ── Footer & header cards ── */
+          .ins-header-card {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+          .ins-footer-card {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
         }
       `}</style>
 
+      {/* Print-only logo header (fixed = appears on every page) */}
+      <div className="ins-print-logo-header">
+        <img src="/assets/almawashi-logo.jpg" alt="Al Mawashi" />
+        <div className="ins-print-logo-center">
+          <div className="title">Internal Audit Report</div>
+          <div className="sub">CORRECTIVE &amp; PREVENTIVE ACTION &nbsp;|&nbsp; FS-QM/REC/CA/1 &nbsp;|&nbsp; Rev 00</div>
+        </div>
+        <div className="ins-print-logo-meta">
+          <div><b>Branch:</b> {branch || "—"}</div>
+          <div><b>Date:</b> {date}</div>
+          <div><b>Report No:</b> {reportNo || "—"}</div>
+          <div><b>Audited By:</b> {auditBy}</div>
+        </div>
+      </div>
+
       {/* Modern Header with KPIs */}
-      <div style={modernHeaderCard}>
+      <div style={modernHeaderCard} className="ins-header-card">
         <div style={modernHeaderTop}>
           <div style={{display:"flex", alignItems:"center", gap:14}}>
             <div style={brandIco}>📋</div>
@@ -412,9 +574,9 @@ export default function Inspection() {
       </div>
 
       {/* Table */}
-      <div style={tableScroll}>
-        <div style={tableWrap}>
-          <div style={tableHeaderRow}>
+      <div style={tableScroll} className="ins-table-scroll-wrap">
+        <div style={tableWrap} className="ins-table-wrap">
+          <div style={tableHeaderRow} className="ins-table-header-row">
             <div style={th}>{tt("Non-Conformance","عدم المطابقة")}</div>
             <div style={th}>{tt("Root Cause","السبب الجذري")}</div>
             <div style={th}>{tt("Corrective / Preventive","إجراء تصحيحي/وقائي")}</div>
@@ -432,7 +594,7 @@ export default function Inspection() {
                               r.status === "In Progress" ? "#eab308" :
                               r.status === "Open" ? "#dc2626" : "transparent";
             return (
-            <div key={idx} style={{...tr, borderLeft: `4px solid ${rowAccent}`}}>
+            <div key={idx} style={{...tr, borderLeft: `4px solid ${rowAccent}`}} className="ins-table-row">
               <div style={td}>
                 <textarea value={r.nonConformance} onChange={e=>updateRow(idx,{nonConformance:e.target.value})} style={cellTextArea} placeholder={tt("Describe the finding...", "صف الملاحظة...")}/>
               </div>
@@ -507,14 +669,14 @@ export default function Inspection() {
             );
           })}
 
-          <div style={{padding:"10px"}}>
+          <div style={{padding:"10px"}} className="ins-add-row-btn">
             <button onClick={addRow} style={addRowBtn}>+ {tt("Add Row","إضافة سطر")}</button>
           </div>
         </div>
       </div>
 
       {/* Footer */}
-      <div style={footerCard}>
+      <div style={footerCard} className="ins-footer-card">
         <label style={{display:"block", marginBottom:8, fontWeight:1000, color:"#0f172a"}}>
           📝 {tt("Comment for Next Audit","ملاحظات للتدقيق القادم")}
         </label>
@@ -600,7 +762,7 @@ function ImageField({ list, uploading, onAdd, onRemove, label = "Upload" }) {
         )}
       </div>
 
-      <div style={{display:"flex", alignItems:"center", gap:8, marginTop:6}}>
+      <div style={{display:"flex", alignItems:"center", gap:8, marginTop:6}} className="ins-upload-btn">
         <label style={{...uploadBtn, opacity: canAdd ? 1 : 0.5, pointerEvents: canAdd ? "auto" : "none"}}>
           {uploading ? "⏳" : `📎 ${label} ${count}/5`}
           <input

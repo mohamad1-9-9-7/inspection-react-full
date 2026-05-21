@@ -667,166 +667,182 @@ export default function InternalAuditReportsView() {
       );
 
       const el = cardRefs.current[view.id];
-      if (!el) {
-        alert("Open the report card first, then export.");
-        return;
-      }
+      if (!el) { alert("Open the report card first, then export."); return; }
 
-      const scale = 2;
-      const canvas = await html2canvas(el, {
-        scale,
+      const A4_W    = 841.89;
+      const A4_H    = 595.28;
+      const LOGO_H  = 70;          // pt — header bar height on each page
+      const CONT_H  = A4_H - LOGO_H; // pt — usable content per page
+      const SCALE   = 2;
+      const hdr     = view._raw?.payload?.header || {};
+
+      // ── 1. Pre-load logo as base64 ──
+      const logoBase64 = await new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const c = document.createElement("canvas");
+          c.width = img.width; c.height = img.height;
+          c.getContext("2d").drawImage(img, 0, 0);
+          resolve(c.toDataURL("image/jpeg", 0.9));
+        };
+        img.onerror = () => resolve(null);
+        img.src = "/assets/almawashi-logo.jpg";
+      });
+
+      // ── 2. Clone card – strip buttons ──
+      const clone = el.cloneNode(true);
+      clone.querySelectorAll(".pdf-no-print").forEach((d) => d.remove());
+      clone.style.cssText = `position:fixed;left:-9999px;top:0;width:${el.offsetWidth}px;background:#fff;padding:8px;box-sizing:border-box;`;
+      document.body.appendChild(clone);
+
+      // ── 3. Measure row positions before rendering ──
+      await new Promise((r) => setTimeout(r, 80));
+      const cloneRect  = clone.getBoundingClientRect();
+      const rowRects   = Array.from(clone.querySelectorAll("[data-pdf-row]")).map((r) => {
+        const rect = r.getBoundingClientRect();
+        return {
+          top:    (rect.top    - cloneRect.top) * SCALE,
+          bottom: (rect.bottom - cloneRect.top) * SCALE,
+        };
+      });
+
+      // ── 4. Render to canvas ──
+      const canvas = await html2canvas(clone, {
+        scale: SCALE,
         backgroundColor: "#ffffff",
         useCORS: true,
+        allowTaint: false,
         logging: false,
+        height: clone.scrollHeight,
+        windowHeight: clone.scrollHeight + 200,
       });
+      document.body.removeChild(clone);
 
-      const pdf = new jsPDF({
-        orientation: "landscape",
-        unit: "pt",
-        format: "a4",
-      });
-      const pdfW = pdf.internal.pageSize.getWidth();
-      const pdfH = pdf.internal.pageSize.getHeight();
+      // ── 5. Find smart page break points (never cut mid-row) ──
+      const contH_px = CONT_H * (canvas.width / A4_W); // content height in canvas px
+      const pageStarts = [0];
+      let from = 0;
+      while (true) {
+        const natural = from + contH_px;
+        if (natural >= canvas.height) break;
+        // Walk rows backwards — find last row whose bottom ≤ natural break
+        let cut = natural;
+        for (let i = rowRects.length - 1; i >= 0; i--) {
+          const { top, bottom } = rowRects[i];
+          if (bottom <= natural && bottom > from + contH_px * 0.25) { cut = bottom; break; }
+          if (top   <  natural && top   > from + contH_px * 0.25)   { cut = top;    break; }
+        }
+        if (cut <= from) cut = natural; // safety
+        pageStarts.push(cut);
+        from = cut;
+      }
+      pageStarts.push(canvas.height);
 
-      const imgW = pdfW;
-      const imgH = (canvas.height * pdfW) / canvas.width;
-      const pageCount = Math.ceil(imgH / pdfH);
-
-      for (let i = 0; i < pageCount; i++) {
-        if (i > 0) pdf.addPage();
-        const sy = (canvas.height / pageCount) * i;
-        const sH = canvas.height / pageCount;
-        const pageCanvas = document.createElement("canvas");
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sH;
-        const ctx = pageCanvas.getContext("2d");
-        ctx.drawImage(
-          canvas,
-          0,
-          sy,
-          canvas.width,
-          sH,
-          0,
-          0,
-          canvas.width,
-          sH
+      // ── 6. Helper: draw logo bar (called for every page) ──
+      const drawHeader = (pdf, pageNum, total) => {
+        // white background bar
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(0, 0, A4_W, LOGO_H, "F");
+        // separator line
+        pdf.setDrawColor(15, 23, 42);
+        pdf.setLineWidth(1.5);
+        pdf.line(0, LOGO_H - 1, A4_W, LOGO_H - 1);
+        // logo image
+        if (logoBase64) pdf.addImage(logoBase64, "JPEG", 8, 7, 85, 52);
+        // center title
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(13);
+        pdf.setTextColor(15, 23, 42);
+        pdf.text("INTERNAL AUDIT REPORT", A4_W / 2, 25, { align: "center" });
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(
+          "CORRECTIVE & PREVENTIVE ACTION  |  FS-QM/REC/CA/1  |  Rev 00",
+          A4_W / 2, 36, { align: "center" }
         );
-        const dataUrl = pageCanvas.toDataURL("image/jpeg", 0.95);
-        pdf.addImage(
-          dataUrl,
-          "JPEG",
-          0,
-          0,
-          imgW,
-          (sH * pdfW) / canvas.width
-        );
+        // right meta
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(15, 23, 42);
+        const rx = A4_W - 10;
+        pdf.text(`Branch: ${view.branch || "—"}`,            rx, 16, { align: "right" });
+        pdf.text(`Date: ${hdr.date || view.reportDate || "—"}`, rx, 28, { align: "right" });
+        pdf.text(`Report No: ${hdr.reportNo || "—"}`,        rx, 40, { align: "right" });
+        pdf.text(`Audited By: ${hdr.auditConductedBy || hdr.auditBy || "—"}`, rx, 52, { align: "right" });
+        // page number
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(7.5);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text(`Page ${pageNum} / ${total}`, A4_W / 2, LOGO_H - 6, { align: "center" });
+      };
+
+      // ── 7. Build content pages ──
+      const totalPages = pageStarts.length - 1;
+      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+
+      for (let p = 0; p < totalPages; p++) {
+        if (p > 0) pdf.addPage();
+        drawHeader(pdf, p + 1, totalPages);
+
+        const srcY = pageStarts[p];
+        const srcH = Math.ceil(pageStarts[p + 1] - srcY);
+        if (srcH <= 0) continue;
+
+        const slice = document.createElement("canvas");
+        slice.width  = canvas.width;
+        slice.height = srcH;
+        slice.getContext("2d").drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+
+        const sliceH_pt = Math.min(srcH * (A4_W / canvas.width), CONT_H);
+        pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", 0, LOGO_H, A4_W, sliceH_pt);
       }
 
+      // ── 8. Image gallery ──
       const allImages = [];
       (view.table || []).forEach((row, idx) => {
-        const e1 = Array.isArray(row.evidenceImgs)
-          ? row.evidenceImgs
-          : [];
-        const e2 = Array.isArray(row.closedEvidenceImgs)
-          ? row.closedEvidenceImgs
-          : [];
-        e1.forEach((src) =>
-          allImages.push({ src, label: `Row ${idx + 1} - Evidence` })
-        );
-        e2.forEach((src) =>
-          allImages.push({
-            src,
-            label: `Row ${idx + 1} - Closed Evidence`,
-          })
-        );
+        (Array.isArray(row.evidenceImgs)       ? row.evidenceImgs       : []).forEach((src) => allImages.push({ src, label: `Row ${idx + 1} — Evidence` }));
+        (Array.isArray(row.closedEvidenceImgs) ? row.closedEvidenceImgs : []).forEach((src) => allImages.push({ src, label: `Row ${idx + 1} — Closed Evidence` }));
       });
 
-      const galleryStartPage = pdf.getNumberOfPages() + 1;
       if (allImages.length) {
         pdf.addPage();
-        pdf.setFontSize(18);
-        pdf.text("Images Gallery", 40, 50);
-        pdf.setFontSize(11);
-        pdf.text(`Total images: ${allImages.length}`, 40, 70);
+        drawHeader(pdf, totalPages + 1, totalPages + 1);
+        pdf.setFont("helvetica", "bold"); pdf.setFontSize(14); pdf.setTextColor(15, 23, 42);
+        pdf.text("Images Gallery", 40, LOGO_H + 24);
+        pdf.setFont("helvetica", "normal"); pdf.setFontSize(10);
+        pdf.text(`Total: ${allImages.length} image(s)`, 40, LOGO_H + 40);
 
         for (let i = 0; i < allImages.length; i++) {
-          if (i > 0) pdf.addPage();
+          pdf.addPage();
+          drawHeader(pdf, totalPages + 2 + i, totalPages + 1 + allImages.length);
           const { src, label } = allImages[i];
-          pdf.setFontSize(12);
-          pdf.text(label, 40, 40);
-
-          const margin = 40;
-          const boxW = pdfW - margin * 2;
-          const boxH = pdfH - margin * 2 - 20;
+          pdf.setFont("helvetica", "bold"); pdf.setFontSize(11); pdf.setTextColor(15, 23, 42);
+          pdf.text(label, 40, LOGO_H + 20);
+          const margin = 30;
+          const boxW = A4_W - margin * 2;
+          const boxH = CONT_H - 30;
           let base64 = src;
           if (!String(src).startsWith("data:image")) {
             const resp = await fetch(src);
             const blob = await resp.blob();
-            base64 = await new Promise((ok) => {
-              const fr = new FileReader();
-              fr.onload = () => ok(fr.result);
-              fr.readAsDataURL(blob);
-            });
+            base64 = await new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(blob); });
           }
           const tmp = new Image();
-          await new Promise((res, rej) => {
-            tmp.onload = res;
-            tmp.onerror = rej;
-            tmp.src = base64;
-          });
-          const ratio = Math.min(
-            boxW / tmp.width,
-            boxH / tmp.height
-          );
-          const w = tmp.width * ratio;
-          const h = tmp.height * ratio;
-          const x = margin + (boxW - w) / 2;
-          const y = margin + 20 + (boxH - h) / 2;
-          pdf.addImage(base64, "JPEG", x, y, w, h);
+          await new Promise((res, rej) => { tmp.onload = res; tmp.onerror = rej; tmp.src = base64; });
+          const ratio = Math.min(boxW / tmp.width, boxH / tmp.height);
+          const w = tmp.width * ratio; const h = tmp.height * ratio;
+          pdf.addImage(base64, "JPEG", margin + (boxW - w) / 2, LOGO_H + 28 + (boxH - h) / 2, w, h);
         }
       }
 
-      if (allImages.length) {
-        const elRect = el.getBoundingClientRect();
-        const imgs = Array.from(el.querySelectorAll("img[alt='evidence']"));
-        const totalPdfH = (canvas.height * pdfW) / canvas.width;
-
-        let targetPage = galleryStartPage;
-        imgs.forEach((imgEl) => {
-          const r = imgEl.getBoundingClientRect();
-          const relX = (r.left - elRect.left) / elRect.width;
-          const relY = (r.top - elRect.top) / elRect.height;
-          const relW = r.width / elRect.width;
-          const relH = r.height / elRect.height;
-
-          const pdfX = relX * pdfW;
-          const pdfY = relY * totalPdfH;
-          const pdfWrect = relW * pdfW;
-          const pdfHrect = relH * totalPdfH;
-
-          const pageIndex = Math.floor(pdfY / pdfH);
-          const yOnPage = pdfY - pageIndex * pdfH;
-
-          const pageNo = 1 + pageIndex;
-          pdf.setPage(pageNo);
-          pdf.link(pdfX, yOnPage, pdfWrect, pdfHrect, {
-            pageNumber: Math.min(
-              targetPage,
-              pdf.getNumberOfPages()
-            ),
-          });
-
-          targetPage = Math.min(
-            targetPage + 1,
-            pdf.getNumberOfPages()
-          );
-        });
-      }
-
-      pdf.save(`internal-audit-${view.reportNo || "report"}.pdf`);
+      const safeBranch = (view.branch || "report").replace(/\s+/g, "-");
+      const safeDate   = hdr.date || view.reportDate || "";
+      pdf.save(`Internal-Audit_${safeBranch}_${safeDate}.pdf`);
     } catch (e) {
       console.error(e);
-      alert("PDF export failed.");
+      alert("PDF export failed. See console for details.");
     }
   };
 
@@ -1342,6 +1358,7 @@ export default function InternalAuditReportsView() {
                           </div>
 
                           <div
+                            className="pdf-no-print"
                             style={{
                               display: "flex",
                               gap: 8,
@@ -1453,6 +1470,7 @@ export default function InternalAuditReportsView() {
                                     return (
                                       <div
                                         key={ridx}
+                                        data-pdf-row="true"
                                         style={{ ...tr, background: bg }}
                                       >
                                         <div style={td}>
