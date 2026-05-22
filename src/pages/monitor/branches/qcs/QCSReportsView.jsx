@@ -35,6 +35,9 @@ const StaffSicknessView                 = lazy(() => import("./StaffSicknessView
 // 🆕 Employee Return to Work view
 const EmployeeReturnToWorkView          = lazy(() => import("./EmployeeReturnToWorkView"));
 
+// 🆕 Product Rejection view
+const ProductRejectionView              = lazy(() => import("./ProductRejectionView"));
+
 const CC_HEADER = {
   documentTitle: "QCS — Daily Cleanliness",
   documentNo: "FS-QM/REC/CLN",
@@ -64,7 +67,8 @@ const DASH_TYPES = [
   { type: "qcs_stock_rotation",     key: "stock_rotation", icon: "📦",  titleEn: "Stock Rotation",     titleAr: "دوران المخزون",       accent: "#0ea5e9" },
   { type: "qcs_visitor_checklist",  key: "visitor",        icon: "🧍",  titleEn: "Visitor Checklist",  titleAr: "قائمة الزوار",        accent: "#0b5236" },
   { type: "qcs_staff_sickness",     key: "staff_sickness", icon: "🩺",  titleEn: "Staff Sickness",     titleAr: "أمراض الموظفين",     accent: "#0f3d2e" },
-  { type: "qcs_employee_return_to_work", key: "return_to_work", icon: "🏥", titleEn: "Return to Work",  titleAr: "العودة للعمل",       accent: "#0b5236" },
+  { type: "qcs_employee_return_to_work", key: "return_to_work",    icon: "🏥", titleEn: "Return to Work",      titleAr: "العودة للعمل",        accent: "#0b5236" },
+  { type: "qcs_product_rejection",       key: "product_rejection", icon: "🚫", titleEn: "Product Rejection",   titleAr: "رفض المنتجات",        accent: "#dc2626" },
 ];
 
 const TABS = [
@@ -100,7 +104,8 @@ const TABS = [
   { key: "stock_rotation", icon: "📦",  label: "Stock Rotation",         element: <StockRotationView /> },
   { key: "visitor",        icon: "🧍",  label: "Visitor Checklist",      element: <VisitorChecklistView /> },
   { key: "staff_sickness", icon: "🩺",  label: "Staff Sickness",         element: <StaffSicknessView /> },
-  { key: "return_to_work", icon: "🏥",  label: "Return to Work",         element: <EmployeeReturnToWorkView /> },
+  { key: "return_to_work",    icon: "🏥",  label: "Return to Work",         element: <EmployeeReturnToWorkView /> },
+  { key: "product_rejection", icon: "🚫",  label: "Product Rejection",      element: <ProductRejectionView /> },
 ];
 
 export default function QCSReportsView() {

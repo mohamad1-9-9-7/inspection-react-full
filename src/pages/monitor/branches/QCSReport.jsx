@@ -44,6 +44,9 @@ import StaffSicknessInput from "./qcs/StaffSicknessInput";
 // 🆕 Employee Return to Work — Input
 import EmployeeReturnToWorkInput from "./qcs/EmployeeReturnToWorkInput";
 
+// 🆕 Product Rejection — Input
+import ProductRejectionInput from "./qcs/ProductRejectionInput";
+
 export default function QCSReport() {
   const [activeTab, setActiveTab] = useState("shipment");
 
@@ -174,6 +177,9 @@ export default function QCSReport() {
 
     // 🆕 Employee Return to Work
     { id: "returnToWork", label: "🏥 Employee Return to Work" },
+
+    // 🆕 Product Rejection
+    { id: "productRejection", label: "🚫 Product Rejection Report" },
   ];
 
   return (
@@ -326,6 +332,13 @@ export default function QCSReport() {
         {activeTab === "returnToWork" && (
           <div style={card}>
             <EmployeeReturnToWorkInput />
+          </div>
+        )}
+
+        {/* 🚫 Product Rejection */}
+        {activeTab === "productRejection" && (
+          <div style={card}>
+            <ProductRejectionInput />
           </div>
         )}
       </div>

@@ -330,8 +330,8 @@ function CertificateModal({ open, onClose, participant, moduleName, branch, date
 
       {/* ── Certificate Card — split layout (×1.5 larger) ── */}
       <div id="cert-print" style={{
-        width:'100%', maxWidth:1320,
-        display:'flex', minHeight:760,
+        width:'100%', maxWidth:1500,
+        display:'flex', minHeight:880,
         borderRadius:24,
         boxShadow:'0 50px 140px rgba(0,0,0,.8)',
         overflow:'hidden',
@@ -340,7 +340,7 @@ function CertificateModal({ open, onClose, participant, moduleName, branch, date
 
         {/* ── LEFT PANEL (dark gradient) ── */}
         <div id="cert-left-panel" style={{
-          width:360, flexShrink:0,
+          width:420, flexShrink:0,
           background:'linear-gradient(160deg,#0f172a 0%,#1e3a8a 55%,#312e81 100%)',
           display:'flex', flexDirection:'column', alignItems:'center',
           justifyContent:'space-between', padding:'36px 26px 22px', position:'relative',
@@ -417,7 +417,7 @@ function CertificateModal({ open, onClose, participant, moduleName, branch, date
               background:'#fff', borderRadius:10, padding:6,
               boxShadow:'0 4px 16px rgba(0,0,0,.4)',
             }}>
-              <QRCodeSVG value={verifyUrl} size={78} level="M" />
+              <QRCodeSVG value={verifyUrl} size={112} level="M" />
             </div>
             <div style={{ color:'rgba(255,255,255,.3)', fontSize:9, letterSpacing:1.8, textTransform:'uppercase', marginTop:2 }}>
               Scan to Verify
@@ -2382,138 +2382,6 @@ export default function TrainingSessionsList() {
                 ) : (
                   <div style={{ marginTop: 10, fontSize: 12, color: THEME.muted, fontWeight: 900 }}>
                     Click “Generate & Copy Link” to create the session link.
-                  </div>
-                )}
-              </div>
-
-              {/* ✅ Training Details (A–L) — GRID + COLLAPSIBLE */}
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 12,
-                  borderRadius: 16,
-                  border: `1px solid ${THEME.lineStrong}`,
-                  background: THEME.subBg,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ fontWeight: 1100, color: THEME.textStrong }}>
-                    📌 DETAIL OF TRAINING (A–L) — EN / AR
-                  </div>
-
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => {
-                        const t = String(selected?.payload?.details || "");
-                        if (!t.trim()) return alert("No training details saved in this session.");
-                        try {
-                          if (navigator?.clipboard?.writeText) navigator.clipboard.writeText(t);
-                          else window.prompt("Copy details:", t);
-                        } catch {
-                          window.prompt("Copy details:", t);
-                        }
-                      }}
-                      style={btn("light")}
-                    >
-                      📋 Copy
-                    </button>
-
-                    <button
-                      onClick={expandAllDetails}
-                      disabled={!detailsSections.length}
-                      style={{ ...btn("light"), opacity: detailsSections.length ? 1 : 0.6 }}
-                    >
-                      ▾ Expand all
-                    </button>
-                    <button
-                      onClick={collapseAllDetails}
-                      disabled={!detailsSections.length}
-                      style={{ ...btn("light"), opacity: detailsSections.length ? 1 : 0.6 }}
-                    >
-                      ▸ Collapse all
-                    </button>
-                  </div>
-                </div>
-
-                {detailsSections.length ? (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-                      gap: 10,
-                      alignItems: "start",
-                    }}
-                  >
-                    {detailsSections.map((sec, i) => {
-                      const open = !!detailOpen[sec.key];
-                      const tone = DETAIL_TONES[i % DETAIL_TONES.length];
-
-                      return (
-                        <div
-                          key={`${sec.key}_${i}`}
-                          style={{
-                            borderRadius: 14,
-                            border: `1px solid ${tone.bd}`,
-                            background: tone.bg,
-                            overflow: "hidden",
-                            boxShadow: "0 4px 14px rgba(15,23,42,0.06)",
-                          }}
-                        >
-                          <button
-                            onClick={() => toggleDetail(sec.key)}
-                            style={{
-                              width: "100%",
-                              textAlign: "left",
-                              border: "none",
-                              background: "transparent",
-                              cursor: "pointer",
-                              padding: 12,
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: 10,
-                              fontWeight: 1100,
-                              color: tone.head,
-                            }}
-                            title="Toggle"
-                          >
-                            <span style={{ lineHeight: 1.3 }}>{sec.header}</span>
-                            <span style={{ color: tone.head, opacity: 0.65, fontWeight: 1100 }}>
-                              {open ? "▾" : "▸"}
-                            </span>
-                          </button>
-
-                          {open && (
-                            <div
-                              style={{
-                                padding: 12,
-                                borderTop: `1px solid ${tone.bd}`,
-                                background: tone.body,
-                                whiteSpace: "pre-wrap",
-                                lineHeight: 1.7,
-                                fontWeight: 700,
-                                color: THEME.text,
-                              }}
-                            >
-                              {sec.bodyText || "-"}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 10, color: THEME.muted, fontWeight: 900 }}>
-                    No training details found for this session.
                   </div>
                 )}
               </div>
