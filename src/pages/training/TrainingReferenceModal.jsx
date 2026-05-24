@@ -1,6 +1,7 @@
 // src/pages/training/TrainingReferenceModal.jsx
 // Shared trainer reference card — used by TrainingSessionCreate AND TrainingSessionsList
 import React, { useState } from 'react';
+import { useGlobalLang, getModuleName } from './TrainingSessionsList.helpers';
 
 /* ===================== Letter colour palette (A–L) ===================== */
 export const LETTER_PALETTE = [
@@ -1390,6 +1391,11 @@ export default function TrainingReferenceModal({
   quickCheckQuestions,   // optional: array of {q_en|q, q_ar, options_en|options, options_ar, correct}
 }) {
   const [openIdx, setOpenIdx] = useState(0);
+  const [globalLang, setGlobalLang] = useGlobalLang();
+  // "both" = show EN+AR (default for unified flow); "en" / "ar" filter the body lines
+  const [viewMode, setViewMode] = useState(globalLang); // synced with global lang
+  // sync when global lang changes
+  React.useEffect(() => { setViewMode(globalLang); }, [globalLang]);
 
   if (!open) return null;
 
@@ -1441,7 +1447,7 @@ export default function TrainingReferenceModal({
               <div style={{ color:'rgba(255,255,255,.45)', fontSize:9.5, fontWeight:800, letterSpacing:2.5, textTransform:'uppercase', marginBottom:5 }}>
                 Al Mawashi — Training Reference Guide
               </div>
-              <div style={{ color:'#fff', fontWeight:800, fontSize:22, letterSpacing:'-0.03em', lineHeight:1.2 }}>{moduleName}</div>
+              <div style={{ color:'#fff', fontWeight:800, fontSize:22, letterSpacing:'-0.03em', lineHeight:1.2 }}>{getModuleName(moduleName, viewMode)}</div>
               <div style={{ display:'flex', gap:14, marginTop:8, flexWrap:'wrap' }}>
                 {[['🏢', branch], ['📅', date], conductedBy && ['👤', conductedBy]].filter(Boolean).map(([icon, label], i) => (
                   <span key={i} style={{ color:'rgba(255,255,255,.75)', fontSize:12, fontWeight:500, display:'flex', alignItems:'center', gap:4 }}>
@@ -1451,11 +1457,24 @@ export default function TrainingReferenceModal({
               </div>
             </div>
             <div className="tm-noprint" style={{ display:'flex', gap:8, alignSelf:'flex-start', flexShrink:0 }}>
+              {/* ✅ Language toggle */}
+              <div style={{ display:'flex', background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.2)', borderRadius:10, overflow:'hidden' }}>
+                <button onClick={() => { setViewMode('en'); setGlobalLang('en'); }} style={{
+                  background: viewMode === 'en' ? '#fff' : 'transparent',
+                  color: viewMode === 'en' ? '#1e3a8a' : '#fff',
+                  border:'none', padding:'9px 12px', fontWeight:700, fontSize:12, cursor:'pointer',
+                }}>EN</button>
+                <button onClick={() => { setViewMode('ar'); setGlobalLang('ar'); }} style={{
+                  background: viewMode === 'ar' ? '#fff' : 'transparent',
+                  color: viewMode === 'ar' ? '#1e3a8a' : '#fff',
+                  border:'none', padding:'9px 12px', fontWeight:700, fontSize:12, cursor:'pointer',
+                }}>عربي</button>
+              </div>
               <button onClick={doPrint} style={{
                 background:'#fff', color:'#1e3a8a', border:'none', borderRadius:10,
                 padding:'9px 16px', fontWeight:700, fontSize:12.5, cursor:'pointer',
                 boxShadow:'0 2px 10px rgba(0,0,0,.2)',
-              }}>🖨️ طباعة</button>
+              }}>🖨️ {viewMode === 'ar' ? 'طباعة' : 'Print'}</button>
               <button onClick={onClose} style={{
                 background:'rgba(255,255,255,.1)', color:'#fff',
                 border:'1px solid rgba(255,255,255,.2)',
@@ -1548,9 +1567,11 @@ export default function TrainingReferenceModal({
                       }}>{sec.letter}</div>
 
                       <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:15, fontWeight:700, color: isOpen ? '#0f172a' : '#374151', lineHeight:1.35 }}>{sec.en}</div>
-                        {sec.ar && (
-                          <div style={{ fontSize:15, fontWeight:600, color:'#475569', marginTop:3, direction:'rtl', textAlign:'right', lineHeight:1.5 }}>{sec.ar}</div>
+                        {viewMode !== 'ar' && (
+                          <div style={{ fontSize:15, fontWeight:700, color: isOpen ? '#0f172a' : '#374151', lineHeight:1.35 }}>{sec.en}</div>
+                        )}
+                        {sec.ar && viewMode !== 'en' && (
+                          <div style={{ fontSize:15, fontWeight:600, color: viewMode === 'ar' ? '#0f172a' : '#475569', marginTop: viewMode === 'ar' ? 0 : 3, direction:'rtl', textAlign:'right', lineHeight:1.5 }}>{sec.ar}</div>
                         )}
                       </div>
 
@@ -1573,6 +1594,9 @@ export default function TrainingReferenceModal({
                         <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
                           {sec.body.map((line, li) => {
                             const arabic  = isAr(line);
+                            // ✅ filter by chosen language
+                            if (viewMode === 'ar' && !arabic) return null;
+                            if (viewMode === 'en' && arabic)  return null;
                             const lbl     = isLabel(line);
                             const arLbl   = isArLabel(line);
                             const isQ     = isQuestion(line);

@@ -353,6 +353,8 @@ const TrainingQuizLink = lazy(() => import("./pages/training/TrainingQuizLink"))
 const TrainingCertVerify = lazy(() => import("./pages/training/TrainingCertVerify"));
 // ✅🆕 Training Gap Analysis
 const TrainingGapAnalysis = lazy(() => import("./pages/training/TrainingGapAnalysis"));
+// 🛠️ Training Admin
+const TrainingAdmin = lazy(() => import("./pages/training/TrainingAdmin"));
 
 // ✅ 🆕 SOP & sSOP Page
 const SopSsopPage = lazy(() =>
@@ -562,6 +564,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <TrainingGapAnalysis />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🛠️ Training Admin */}
+        <Route
+          path="/training/admin"
+          element={
+            <ProtectedRoute>
+              <TrainingAdmin />
             </ProtectedRoute>
           }
         />

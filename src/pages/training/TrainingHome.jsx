@@ -1,9 +1,13 @@
 // src/pages/training/TrainingHome.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useGlobalLang } from "./TrainingSessionsList.helpers";
 
 export default function TrainingHome() {
   const navigate = useNavigate();
+  const [lang, setLang] = useGlobalLang();
+  const isAr = lang === "ar";
+  const tL = (en, ar) => (isAr ? ar : en);
 
   const pageStyle = {
     minHeight: "100vh",
@@ -11,7 +15,7 @@ export default function TrainingHome() {
     background: "linear-gradient(135deg, #0ea5e9 0%, #7c3aed 55%, #111827 100%)",
     padding: "18px 14px",
     boxSizing: "border-box",
-    direction: "ltr",
+    direction: isAr ? "rtl" : "ltr",
     fontFamily: "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
   };
 
@@ -92,14 +96,15 @@ export default function TrainingHome() {
       <div style={{ ...glass, padding: 16, maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 1100, color: "#0f172a" }}>🎓 Internal Training</div>
+            <div style={{ fontSize: 18, fontWeight: 1100, color: "#0f172a" }}>🎓 {tL("Internal Training", "التدريب الداخلي")}</div>
             <div style={{ marginTop: 6, color: "#64748b", fontSize: 13, fontWeight: 900 }}>
-              Choose an action to continue.
+              {tL("Choose an action to continue.", "اختر إجراءً للمتابعة.")}
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => navigate(-1)} style={topBtn}>↩ Back</button>
+            <button onClick={() => setLang(isAr ? "en" : "ar")} style={topBtn}>🌐 {isAr ? "EN" : "ع"}</button>
+            <button onClick={() => navigate(-1)} style={topBtn}>{tL("↩ Back", "↩ رجوع")}</button>
           </div>
         </div>
       </div>
@@ -124,12 +129,12 @@ export default function TrainingHome() {
               style={card(true)}
               onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
               onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0px)")}
-              title="Create a new training session"
+              title={tL("Create a new training session", "إنشاء جلسة تدريبية جديدة")}
             >
               <div style={iconBox("blue")}>➕</div>
-              <div style={title}>Create New Training</div>
+              <div style={title}>{tL("Create New Training", "إنشاء تدريب جديد")}</div>
               <div style={sub}>
-                Create a session (branch, module, date, title) and save it online.
+                {tL("Create a session (branch, module, date, title) and save it online.", "أنشئ جلسة (الفرع، الوحدة، التاريخ، العنوان) واحفظها عبر الإنترنت.")}
               </div>
             </div>
 
@@ -142,12 +147,12 @@ export default function TrainingHome() {
               style={card(false)}
               onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
               onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0px)")}
-              title="Browse training sessions"
+              title={tL("Browse training sessions", "تصفح جلسات التدريب")}
             >
               <div style={iconBox("violet")}>📚</div>
-              <div style={title}>Training Library</div>
+              <div style={title}>{tL("Training Library", "مكتبة التدريب")}</div>
               <div style={sub}>
-                Browse sessions, add participants, run quiz, and track KPIs.
+                {tL("Browse sessions, add participants, run quiz, and track KPIs.", "تصفح الجلسات، أضف المشاركين، شغّل الاختبار، وتابع مؤشرات الأداء.")}
               </div>
             </div>
 
@@ -160,12 +165,30 @@ export default function TrainingHome() {
               style={card(false)}
               onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
               onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0px)")}
-              title="View / edit the annual training plan per branch & month"
+              title={tL("View / edit the annual training plan per branch & month", "عرض / تعديل خطة التدريب السنوية لكل فرع وشهر")}
             >
               <div style={iconBox("green")}>📅</div>
-              <div style={title}>Annual Training Plan</div>
+              <div style={title}>{tL("Annual Training Plan", "الخطة السنوية للتدريب")}</div>
               <div style={sub}>
-                Yearly schedule — which training is required for each branch in each month.
+                {tL("Yearly schedule — which training is required for each branch in each month.", "الجدول السنوي — أي تدريب مطلوب لكل فرع في كل شهر.")}
+              </div>
+            </div>
+
+            {/* Admin */}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate("/training/admin")}
+              onKeyDown={(e) => e.key === "Enter" && navigate("/training/admin")}
+              style={card(false)}
+              onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0px)")}
+              title={tL("Manage modules, questions, references and settings", "إدارة الوحدات والأسئلة والمراجع والإعدادات")}
+            >
+              <div style={iconBox("violet")}>🛠️</div>
+              <div style={title}>{tL("Training Admin", "إدارة التدريب")}</div>
+              <div style={sub}>
+                {tL("Add/edit modules, questions, references and settings.", "أضف/عدّل الوحدات والأسئلة والمراجع والإعدادات.")}
               </div>
             </div>
 
@@ -178,23 +201,26 @@ export default function TrainingHome() {
               style={card(false)}
               onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
               onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0px)")}
-              title="Go back"
+              title={tL("Go back", "العودة للخلف")}
             >
               <div style={iconBox("gray")}>↩</div>
-              <div style={title}>Back</div>
+              <div style={title}>{tL("Back", "رجوع")}</div>
               <div style={sub}>
-                Return to the previous page.
+                {tL("Return to the previous page.", "العودة إلى الصفحة السابقة.")}
               </div>
             </div>
           </div>
 
           <div style={{ marginTop: 12, color: "#64748b", fontSize: 13, fontWeight: 900 }}>
-            ✅ Ready: Create Training + Online Save + Sessions Viewer (Participants, Quiz, KPIs) + Annual Plan.
+            {tL(
+              "✅ Ready: Create Training + Online Save + Sessions Viewer (Participants, Quiz, KPIs) + Annual Plan.",
+              "✅ جاهز: إنشاء تدريب + حفظ إلكتروني + عارض الجلسات (المشاركون، الاختبار، مؤشرات الأداء) + الخطة السنوية."
+            )}
           </div>
         </div>
 
-        <div style={{ textAlign: "left", color: "rgba(255,255,255,0.9)", fontWeight: 900 }}>
-          Built by Eng. Mohammed Abdullah
+        <div style={{ textAlign: isAr ? "right" : "left", color: "rgba(255,255,255,0.9)", fontWeight: 900 }}>
+          {tL("Built by Eng. Mohammed Abdullah", "تطوير: م. محمد عبدالله")}
         </div>
       </div>
     </div>

@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import html2canvas from "html2canvas";
 import { QRCodeCanvas } from "qrcode.react";
+import {
+  useGlobalLang,
+  getModuleName,
+  LANG_STORAGE_KEY,
+} from "./TrainingSessionsList.helpers";
 
 /* ===== API base (same pattern) ===== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -77,7 +82,10 @@ export default function TrainingQuizLink() {
 
   const [loading, setLoading] = useState(true);
   const [info, setInfo] = useState(null);
-  const [lang, setLang] = useState("EN");
+  // ✅ Unified lang via localStorage (qcs_training_lang) — shared across all training pages
+  const [langLower, setLangLower] = useGlobalLang(); // "en" | "ar"
+  const lang = langLower === "ar" ? "AR" : "EN";
+  const setLang = (v) => setLangLower(v === "AR" || v === "ar" ? "ar" : "en");
   const [answers, setAnswers] = useState({});
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
@@ -363,10 +371,14 @@ export default function TrainingQuizLink() {
     background: "linear-gradient(180deg,#ffffff,#f8fafc)",
   };
 
+  // ✅ tiny translator for quiz UI
+  const tL = (en, ar) => (lang === "AR" ? ar : en);
+  const isAr = lang === "AR";
+
   if (loading) {
     return (
       <div style={page}>
-        <div style={card}>Loading…</div>
+        <div style={card}>{tL("Loading…", "جارٍ التحميل…")}</div>
       </div>
     );
   }
@@ -375,7 +387,7 @@ export default function TrainingQuizLink() {
     return (
       <div style={page}>
         <div style={card}>
-          <div style={{ fontWeight: 1100, color: "#be123c" }}>Error</div>
+          <div style={{ fontWeight: 1100, color: "#be123c" }}>{tL("Error", "خطأ")}</div>
           <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{msg}</div>
         </div>
       </div>
@@ -383,7 +395,7 @@ export default function TrainingQuizLink() {
   }
 
   return (
-    <div style={page}>
+    <div style={page} dir={isAr ? "rtl" : "ltr"}>
       <div style={card}>
         {/* ✅ QR SECTION */}
         <div
@@ -414,15 +426,15 @@ export default function TrainingQuizLink() {
                 alignItems: "center",
               }}
             >
-              <div style={{ fontWeight: 1100, color: "#0f172a" }}>📌 Scan QR</div>
+              <div style={{ fontWeight: 1100, color: "#0f172a" }}>📌 {tL("Scan QR", "مسح الـ QR")}</div>
               <QRCodeCanvas value={shareUrl || ""} size={140} includeMargin />
               <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
-                Training Quiz Link
+                {tL("Training Quiz Link", "رابط الاختبار التدريبي")}
               </div>
             </div>
 
             <div style={{ minWidth: 260 }}>
-              <div style={{ fontWeight: 1100, color: "#0f172a" }}>🔗 Link</div>
+              <div style={{ fontWeight: 1100, color: "#0f172a" }}>🔗 {tL("Link", "الرابط")}</div>
               <div
                 style={{
                   marginTop: 6,
@@ -439,9 +451,9 @@ export default function TrainingQuizLink() {
                 {shareUrl}
               </div>
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={copyLink} style={btn(false)}>Copy Link</button>
-                <button onClick={downloadQR} style={btn(false)}>Download QR</button>
-                <button onClick={printQR} style={btn(false)}>Print</button>
+                <button onClick={copyLink} style={btn(false)}>{tL("Copy Link", "نسخ الرابط")}</button>
+                <button onClick={downloadQR} style={btn(false)}>{tL("Download QR", "تنزيل الـ QR")}</button>
+                <button onClick={printQR} style={btn(false)}>{tL("Print", "طباعة")}</button>
               </div>
             </div>
           </div>
@@ -467,10 +479,10 @@ export default function TrainingQuizLink() {
         >
           <div>
             <div style={{ fontWeight: 1100, fontSize: 18, color: "#0f172a" }}>
-              🧪 {quiz?.module || "Training Quiz"}
+              🧪 {quiz?.module ? getModuleName(quiz.module, langLower) : (lang === "AR" ? "اختبار تدريبي" : "Training Quiz")}
             </div>
             <div style={{ marginTop: 6, color: "#64748b", fontWeight: 900 }}>
-              Pass Mark: {passMark}%
+              {lang === "AR" ? "درجة النجاح" : "Pass Mark"}: {passMark}%
             </div>
           </div>
         </div>
@@ -486,49 +498,49 @@ export default function TrainingQuizLink() {
           }}
         >
           <div style={{ fontWeight: 1100, color: "#0f172a", marginBottom: 10 }}>
-            👤 Trainee Details
+            👤 {tL("Trainee Details", "بيانات المتدرّب")}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
-                Name
+                {tL("Name", "الاسم")}
               </div>
               <input
                 value={pName}
                 onChange={(e) => setPName(e.target.value)}
-                placeholder="Your name"
+                placeholder={tL("Your name", "اسمك الكامل")}
                 style={inputStyle}
               />
             </div>
 
             <div>
               <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
-                Employee ID
+                {tL("Employee ID", "الرقم الوظيفي")}
               </div>
               <input
                 value={pEmployeeId}
                 onChange={(e) => setPEmployeeId(e.target.value)}
-                placeholder="Employee ID"
+                placeholder={tL("Employee ID", "الرقم الوظيفي")}
                 style={inputStyle}
               />
             </div>
 
             <div style={{ gridColumn: "1 / -1" }}>
               <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
-                Designation
+                {tL("Designation", "المسمى الوظيفي")}
               </div>
               <input
                 value={pDesignation}
                 onChange={(e) => setPDesignation(e.target.value)}
-                placeholder="Designation"
+                placeholder={tL("Designation", "المسمى الوظيفي")}
                 style={inputStyle}
               />
             </div>
           </div>
 
           <div style={{ marginTop: 10, color: "#64748b", fontWeight: 900, fontSize: 12 }}>
-            Submission key (for tracking):{" "}
+            {tL("Submission key (for tracking)", "مفتاح الإرسال (للتتبع)")}:{" "}
             <span style={{ userSelect: "all" }}>{participantKey || "-"}</span>
           </div>
         </div>
@@ -545,12 +557,12 @@ export default function TrainingQuizLink() {
               whiteSpace: "pre-wrap",
             }}
           >
-            {msg || "✅ Done"}
+            {msg || (tL("✅ Done", "✅ تم"))}
           </div>
         ) : (
           <>
             <div style={{ marginTop: 10, color: "#64748b", fontWeight: 900 }}>
-              Questions: {questions.length}
+              {tL("Questions", "عدد الأسئلة")}: {questions.length}
             </div>
 
             {msg ? (
@@ -571,8 +583,10 @@ export default function TrainingQuizLink() {
 
             <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
               {questions.map((q, i) => {
-                const qText = lang === "AR" ? q.q_ar : q.q_en;
-                const opts = lang === "AR" ? q.options_ar || [] : q.options_en || [];
+                const qText = lang === "AR" ? (q.q_ar || q.q_en) : (q.q_en || q.q_ar);
+                const opts = lang === "AR"
+                  ? (q.options_ar?.length ? q.options_ar : (q.options_en || []))
+                  : (q.options_en?.length ? q.options_en : (q.options_ar || []));
                 return (
                   <div
                     key={i}
@@ -652,7 +666,7 @@ export default function TrainingQuizLink() {
                 opacity: saving ? 0.75 : 1,
               }}
             >
-              {saving ? "Saving..." : "✅ Submit"}
+              {saving ? tL("Saving...", "جارٍ الحفظ...") : tL("✅ Submit", "✅ إرسال")}
             </button>
           </>
         )}

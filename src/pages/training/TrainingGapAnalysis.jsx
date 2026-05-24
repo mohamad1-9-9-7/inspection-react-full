@@ -5,14 +5,16 @@ import { useNavigate } from 'react-router-dom';
 import {
   REPORTS_URL, TYPE, fetchJson,
   safeDate, safeBranch, safeModule, normalizeToArray,
+  useGlobalLang, getModuleNameShort, getModuleName,
 } from './TrainingSessionsList.helpers';
 import { MODULE_DETAILS_BI } from './TrainingReferenceModal';
 
 /* ─── All 16 required modules (order determines column order) ─── */
 const ALL_MODULES = Object.keys(MODULE_DETAILS_BI).filter(k => k !== '__DEFAULT__');
 
-/* short label for chips / headers */
-const shortLabel = (m) => {
+/* short label for chips / headers (uses helper for AR + EN) */
+const shortLabel = (m, lang = 'en') => {
+  if (lang === 'ar') return getModuleNameShort(m, 'ar');
   const map = {
     'Personnel Hygiene':              'Hygiene',
     'GHP / Cleaning & Sanitation':    'GHP',
@@ -103,6 +105,7 @@ const THEME = {
    =================================================================== */
 export default function TrainingGapAnalysis() {
   const nav = useNavigate();
+  const [globalLang] = useGlobalLang();
 
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(false);
@@ -343,7 +346,7 @@ export default function TrainingGapAnalysis() {
                         <span key={m} style={{
                           fontSize:9, background:'#fef2f2', border:'1px solid #fecaca',
                           color:'#dc2626', borderRadius:6, padding:'2px 6px', fontWeight:600,
-                        }}>{shortLabel(m)}</span>
+                        }}>{shortLabel(m, globalLang)}</span>
                       ))}
                       {emp.missing.length > 4 && (
                         <span style={{ fontSize:9, color:'#94a3b8' }}>+{emp.missing.length - 4}</span>
@@ -368,7 +371,7 @@ export default function TrainingGapAnalysis() {
                               borderRadius:8, padding:'8px 10px',
                             }}>
                               <div style={{ fontSize:10, fontWeight:700, color: info ? '#15803d' : '#94a3b8', marginBottom:2 }}>
-                                {info ? '✅' : '⬜'} {shortLabel(m)}
+                                {info ? '✅' : '⬜'} {shortLabel(m, globalLang)}
                               </div>
                               <div style={{ fontSize:9, color:'#64748b' }}>
                                 {info
@@ -409,7 +412,7 @@ export default function TrainingGapAnalysis() {
                       transform:'rotate(180deg)', height:100, verticalAlign:'bottom',
                       minWidth:36,
                     }}>
-                      {shortLabel(m)}
+                      {shortLabel(m, globalLang)}
                     </th>
                   ))}
                   <th style={{ padding:'6px 10px', textAlign:'center', fontSize:9,

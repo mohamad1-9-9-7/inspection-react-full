@@ -1,6 +1,7 @@
 // src/pages/training/TrainingAnnualPlan.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useGlobalLang, getModuleNameShort, getModuleName } from "./TrainingSessionsList.helpers";
 
 /* ===================== API base ===================== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -265,6 +266,7 @@ const inputSt = {
 /* ===================== Component ===================== */
 export default function TrainingAnnualPlan() {
   const navigate = useNavigate();
+  const [globalLang] = useGlobalLang();
 
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
@@ -1176,7 +1178,10 @@ export default function TrainingAnnualPlan() {
                                     }
                                   >
                                     {showActual && delivered ? "✓ " : ""}
-                                    {m.length > 18 ? m.slice(0, 16) + "…" : m}
+                                    {(() => {
+                                      const label = getModuleNameShort(m, globalLang);
+                                      return label.length > 18 ? label.slice(0, 16) + "…" : label;
+                                    })()}
                                   </span>
                                 );
                               })}
@@ -1192,7 +1197,10 @@ export default function TrainingAnnualPlan() {
                                   }}
                                   title={`${m} — delivered but NOT in plan`}
                                 >
-                                  + {m.length > 16 ? m.slice(0, 14) + "…" : m}
+                                  + {(() => {
+                                      const label = getModuleNameShort(m, globalLang);
+                                      return label.length > 16 ? label.slice(0, 14) + "…" : label;
+                                    })()}
                                 </span>
                               ))}
                             </div>
@@ -1413,7 +1421,7 @@ export default function TrainingAnnualPlan() {
                         onChange={() => toggleModuleInCell(editor.branch, editor.month, m)}
                         style={{ width: 18, height: 18, accentColor: isOHS ? "#ea580c" : C.blue, flexShrink: 0 }}
                       />
-                      <span style={{ flex: 1 }}>{m}</span>
+                      <span style={{ flex: 1 }}>{getModuleName(m, globalLang)}</span>
                       {wasDelivered && (
                         <span style={{ fontSize: 9, fontWeight: 1000, color: "#fff", background: "#10b981", padding: "2px 7px", borderRadius: 999 }}
                           title="A session for this module was delivered this month">

@@ -14,6 +14,108 @@ export const REPORTS_URL = `${API_BASE}/api/reports`;
 export const TYPE = "training_session";
 export const PASS_MARK = 80;
 
+/* ===================== ✅ Unified language ===================== */
+export const LANG_STORAGE_KEY = "qcs_training_lang";
+
+export function getStoredLang() {
+  try {
+    const v = localStorage.getItem(LANG_STORAGE_KEY);
+    if (v === "ar" || v === "AR") return "ar";
+    if (v === "en" || v === "EN") return "en";
+  } catch {}
+  return "en";
+}
+
+export function setStoredLang(lang) {
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, lang === "ar" || lang === "AR" ? "ar" : "en");
+  } catch {}
+}
+
+export function useGlobalLang() {
+  const [lang, setLangState] = React.useState(getStoredLang);
+
+  React.useEffect(() => {
+    function onStorage(e) {
+      if (e.key === LANG_STORAGE_KEY && e.newValue) {
+        setLangState(e.newValue === "ar" ? "ar" : "en");
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const setLang = React.useCallback((next) => {
+    const norm = next === "ar" || next === "AR" ? "ar" : "en";
+    setStoredLang(norm);
+    setLangState(norm);
+    // notify other tabs/components
+    try {
+      window.dispatchEvent(new StorageEvent("storage", { key: LANG_STORAGE_KEY, newValue: norm }));
+    } catch {}
+  }, []);
+
+  return [lang, setLang];
+}
+
+/* ===================== ✅ Module names AR translations ===================== */
+export const MODULES_AR = {
+  "Personnel Hygiene": "النظافة الشخصية",
+  "GHP / Cleaning & Sanitation": "GHP / التنظيف والتعقيم",
+  "Receiving": "الاستلام",
+  "Storage": "التخزين",
+  "Time & Temperature / CCP": "الوقت والحرارة / نقطة التحكم الحرجة",
+  "HACCP Basics": "أساسيات HACCP",
+  "Allergen Control": "التحكم بمسببات الحساسية",
+  "Cross Contamination Control": "التحكم بالتلوث المتبادل",
+  "Chemical Safety (Food + OHS)": "سلامة المواد الكيميائية",
+  "Pest Control Awareness": "الوعي بمكافحة الآفات",
+  "Waste Management": "إدارة النفايات",
+  "OHS: PPE & Safe Work": "السلامة المهنية: معدات الوقاية والعمل الآمن",
+  "OHS: Knife Safety": "السلامة المهنية: سلامة السكاكين",
+  "OHS: Manual Handling": "السلامة المهنية: المناولة اليدوية",
+  "OHS: Fire Safety & Emergency": "السلامة المهنية: الحرائق والطوارئ",
+  "OHS: First Aid & Incident Reporting": "السلامة المهنية: الإسعافات الأولية والإبلاغ",
+  "TESTO OIL — Oil Quality Test": "اختبار جودة الزيت TESTO",
+  "Quality System Usage": "استخدام نظام الجودة",
+};
+
+export const MODULES_AR_SHORT = {
+  "Personnel Hygiene": "النظافة",
+  "GHP / Cleaning & Sanitation": "GHP",
+  "Receiving": "الاستلام",
+  "Storage": "التخزين",
+  "Time & Temperature / CCP": "الحرارة/CCP",
+  "HACCP Basics": "HACCP",
+  "Allergen Control": "الحساسية",
+  "Cross Contamination Control": "التلوث المتبادل",
+  "Chemical Safety (Food + OHS)": "الكيميائيات",
+  "Pest Control Awareness": "الآفات",
+  "Waste Management": "النفايات",
+  "OHS: PPE & Safe Work": "PPE",
+  "OHS: Knife Safety": "السكاكين",
+  "OHS: Manual Handling": "المناولة",
+  "OHS: Fire Safety & Emergency": "الحرائق",
+  "OHS: First Aid & Incident Reporting": "الإسعافات",
+  "TESTO OIL — Oil Quality Test": "TESTO",
+  "Quality System Usage": "نظام الجودة",
+};
+
+/** Returns module name in the requested language. Falls back to English. */
+export function getModuleName(name, lang = "en") {
+  if (!name) return "";
+  const l = lang === "ar" || lang === "AR" ? "ar" : "en";
+  if (l === "ar") return MODULES_AR[name] || name;
+  return name;
+}
+
+export function getModuleNameShort(name, lang = "en") {
+  if (!name) return "";
+  const l = lang === "ar" || lang === "AR" ? "ar" : "en";
+  if (l === "ar") return MODULES_AR_SHORT[name] || MODULES_AR[name] || name;
+  return name;
+}
+
 /* ===================== ✅ PUBLIC ORIGIN (Netlify/Vite/CRA) ===================== */
 /**
  * الهدف: أي رابط يتولد يكون أونلاين حتى لو أنت فاتح محلي.

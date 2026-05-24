@@ -4,10 +4,14 @@
 // Uses useLocation so it works with both BrowserRouter (web) and HashRouter (Electron).
 import React, { useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useGlobalLang, getModuleName } from './TrainingSessionsList.helpers';
 
 export default function TrainingCertVerify() {
   const location = useLocation();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const [globalLang, setGlobalLang] = useGlobalLang();
+  const isAr = globalLang === 'ar';
+  const tL = (en, ar) => (isAr ? ar : en);
 
   const certNo  = params.get('cert')   || '';
   const name    = params.get('n')      || '';
@@ -71,7 +75,14 @@ export default function TrainingCertVerify() {
               <div style={{ color:'#fff', fontSize:13, fontWeight:700 }}>قسم الجودة — Certificate Verification</div>
             </div>
           </div>
-          <div style={{ color:'rgba(255,255,255,.3)', fontSize:10, letterSpacing:1 }}>AM-VERIFY</div>
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <button
+              onClick={() => setGlobalLang(isAr ? 'en' : 'ar')}
+              style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.25)', borderRadius:8, padding:'6px 10px', fontWeight:800, fontSize:11, cursor:'pointer' }}
+              title={isAr ? 'English' : 'عربي'}
+            >🌐 {isAr ? 'EN' : 'ع'}</button>
+            <div style={{ color:'rgba(255,255,255,.3)', fontSize:10, letterSpacing:1 }}>AM-VERIFY</div>
+          </div>
         </div>
 
         {/* Status badge */}
@@ -97,7 +108,7 @@ export default function TrainingCertVerify() {
 
           {/* Name */}
           <div style={{ marginBottom:14 }}>
-            <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>Participant / المتدرب</div>
+            <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, marginBottom:3 }}>{tL('Participant', 'المتدرّب')}</div>
             <div style={{ fontSize:24, fontWeight:900, color:'#0f172a', letterSpacing:'-0.02em' }}>{name || '—'}</div>
             <div style={{ display:'flex', gap:7, marginTop:6, flexWrap:'wrap' }}>
               {empId && (
@@ -110,13 +121,14 @@ export default function TrainingCertVerify() {
 
           {/* Module */}
           <div style={{ marginBottom:14 }}>
-            <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, marginBottom:5 }}>Training Module / وحدة التدريب</div>
+            <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, marginBottom:5 }}>{tL('Training Module', 'وحدة التدريب')}</div>
             <div style={{
               background:'linear-gradient(135deg,#eef2ff,#e0e7ff)',
               border:'1.5px solid #c7d2fe', borderLeft:'4px solid #4338ca',
               borderRadius:10, padding:'10px 14px',
               fontSize:14, fontWeight:800, color:'#1e3a8a',
-            }}>{module || '—'}</div>
+              direction: isAr ? 'rtl' : 'ltr',
+            }}>{module ? getModuleName(module, globalLang) : '—'}</div>
           </div>
 
           {/* Score + expiry grid */}

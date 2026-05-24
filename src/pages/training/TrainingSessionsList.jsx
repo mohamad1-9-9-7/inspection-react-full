@@ -26,6 +26,8 @@ import {
   KPI,
   Modal,
   PUBLIC_ORIGIN, // ✅ NEW
+  useGlobalLang, // ✅ unified language hook
+  getModuleName, // ✅ AR/EN module name helper
 } from "./TrainingSessionsList.helpers";
 
 /* ===================== Small utils (no helpers edits needed) ===================== */
@@ -52,6 +54,20 @@ function hasQuiz(payload) {
     ? payload.questions
     : [];
   return Array.isArray(qs) && qs.length > 0;
+}
+
+// ✅ Normalize module name for case-insensitive / trimmed lookup
+function normMod(s) { return String(s || "").trim().toLowerCase(); }
+
+// ✅ Look up questions in any bank using exact match then case-insensitive fallback
+function lookupBank(bank, moduleName) {
+  if (!moduleName || !bank) return [];
+  // 1. Exact match
+  if (Array.isArray(bank[moduleName]) && bank[moduleName].length) return bank[moduleName];
+  // 2. Case-insensitive match
+  const key = normMod(moduleName);
+  const found = Object.keys(bank).find((k) => normMod(k) === key);
+  return (found && Array.isArray(bank[found]) && bank[found].length) ? bank[found] : [];
 }
 
 function buildQuizFromBank(moduleName, questions, passMark) {
@@ -201,7 +217,7 @@ function rowStats(r) {
 const TOTAL_MODULES = 16; // total required training modules per branch
 
 /* ===================== Certificate Modal ===================== */
-function CertificateModal({ open, onClose, participant, moduleName, branch, date, conductedBy }) {
+function CertificateModal({ open, onClose, participant, moduleName, branch, date, conductedBy, lang = "en" }) {
   if (!open || !participant) return null;
 
   const name     = String(participant.name        || '').trim();
@@ -488,7 +504,7 @@ function CertificateModal({ open, onClose, participant, moduleName, branch, date
             borderRadius:13, padding:'16px 24px',
             fontSize:20, fontWeight:800, color:'#1e3a8a',
             marginBottom:22, letterSpacing:'-0.01em',
-          }}>{moduleName}</div>
+          }}>{getModuleName(moduleName, lang)}</div>
 
           {/* Meta row */}
           <div style={{
@@ -560,6 +576,8 @@ export default function TrainingSessionsList() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [info, setInfo] = useState("");
+  // ✅ Live question bank fetched from DB (training_questions records from admin)
+  const [liveQuizBank, setLiveQuizBank] = useState({});
 
   // ✅ Smart filter / sort tools
   const [sortBy, setSortBy] = useState("newest");
@@ -580,12 +598,16 @@ export default function TrainingSessionsList() {
   const [quizIndex, setQuizIndex] = useState(-1);
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizSaving, setQuizSaving] = useState(false);
-  const [quizLang, setQuizLang] = useState("EN");
+  // ✅ Unified language (qcs_training_lang) shared across all training pages
+  const [globalLang, setGlobalLang] = useGlobalLang(); // "en" | "ar"
+  const quizLang = globalLang === "ar" ? "AR" : "EN";
+  const setQuizLang = (v) => setGlobalLang(v === "AR" || v === "ar" ? "ar" : "en");
 
   // ✅ View Answers modal
   const [viewOpen, setViewOpen] = useState(false);
   const [viewIndex, setViewIndex] = useState(-1);
-  const [viewLang, setViewLang] = useState("EN");
+  const viewLang = globalLang === "ar" ? "AR" : "EN";
+  const setViewLang = setQuizLang;
 
   const [rightTab, setRightTab] = useState("SESSIONS");
 
@@ -606,8 +628,10 @@ export default function TrainingSessionsList() {
 
   const questions = useMemo(() => {
     if (!moduleName) return [];
-    return QUIZ_BANK[moduleName] || QUIZ_BANK["Food Safety"] || [];
-  }, [moduleName]);
+    // ✅ DB questions (from admin) take priority; hardcoded bank is the fallback
+    // Uses normalized lookup so "Oil Quality Test TESTO" matches "oil quality test testo"
+    return lookupBank(liveQuizBank, moduleName) || lookupBank(QUIZ_BANK, moduleName) || [];
+  }, [moduleName, liveQuizBank]);
 
   const sessionStats = useMemo(() => {
     if (!selected) return null;
@@ -638,9 +662,24 @@ export default function TrainingSessionsList() {
     setLoading(true);
     setInfo("");
     try {
-      const data = await fetchJson(
-        `${REPORTS_URL}?type=${encodeURIComponent(TYPE)}`
-      );
+      // ✅ Fetch sessions AND the admin's question bank in parallel
+      const [data, qData] = await Promise.all([
+        fetchJson(`${REPORTS_URL}?type=${encodeURIComponent(TYPE)}`),
+        fetchJson(`${REPORTS_URL}?type=training_questions`).catch(() => []),
+      ]);
+
+      // Build live question bank map: { [moduleName]: questions[] }
+      const qArr = normalizeToArray(qData);
+      const bankMap = {};
+      qArr.forEach((rec) => {
+        const mod = rec?.payload?.module;
+        const qs = rec?.payload?.questions;
+        if (mod && Array.isArray(qs) && qs.length > 0) {
+          bankMap[mod] = qs;
+        }
+      });
+      setLiveQuizBank(bankMap);
+
       const arr = normalizeToArray(data).slice().sort(sortByNewest);
       setRows(arr);
 
@@ -842,6 +881,7 @@ export default function TrainingSessionsList() {
     return `${origin}/t/${encodeURIComponent(token)}`;
   };
 
+  // Returns: url string on success, null if already showed its own error, "" on silent failure
   const ensureTokenAndGetLink = async () => {
     if (!selected) return "";
     const id = getId(selected);
@@ -851,7 +891,10 @@ export default function TrainingSessionsList() {
     try {
       const existingToken = getSessionToken();
       const payload0 = selected.payload || {};
-      const needQuiz = !hasQuiz(payload0);
+      // ✅ Regenerate quiz if: no quiz yet, OR DB has fresh questions for this module
+      const dbQs = lookupBank(liveQuizBank, moduleName);
+      const hasDBQuestions = dbQs.length > 0;
+      const needQuiz = !hasQuiz(payload0) || hasDBQuestions;
 
       const nextPayload = { ...payload0 };
 
@@ -861,10 +904,12 @@ export default function TrainingSessionsList() {
 
       if (needQuiz) {
         if (!moduleName || !questions.length) {
-          alert(
-            "No question bank for this module yet (cannot generate trainee link)."
-          );
-          return "";
+          const available = Object.keys(liveQuizBank);
+          const hint = available.length
+            ? `\n\nModules with questions in DB: ${available.join(", ")}\nSession module: "${moduleName}"`
+            : "\n\n(No question records found in DB — add questions in Training Admin first.)";
+          alert(`No question bank for this module yet.\nCannot generate trainee link.${hint}`);
+          return null; // ← null = already alerted, callers should NOT add another alert
         }
         nextPayload.quiz = buildQuizFromBank(moduleName, questions, PASS_MARK);
       }
@@ -884,7 +929,7 @@ export default function TrainingSessionsList() {
     } catch (e) {
       console.error(e);
       alert(`Failed to generate link: ${String(e?.message || e)}`);
-      return "";
+      return null; // already alerted
     } finally {
       setLinkBusy(false);
     }
@@ -892,7 +937,8 @@ export default function TrainingSessionsList() {
 
   const copySessionLink = async () => {
     const url = await ensureTokenAndGetLink();
-    if (!url) return alert("Cannot generate link (missing session id/origin).");
+    if (url === null) return; // already showed its own error
+    if (!url) return alert("Cannot generate link — missing session ID or origin.");
     try {
       if (navigator?.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
@@ -908,7 +954,8 @@ export default function TrainingSessionsList() {
 
   const openSessionLink = async () => {
     const url = await ensureTokenAndGetLink();
-    if (!url) return alert("Cannot generate/open link.");
+    if (url === null) return; // already showed its own error
+    if (!url) return alert("Cannot open link — missing session ID or origin.");
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
@@ -1984,7 +2031,7 @@ export default function TrainingSessionsList() {
                             borderRadius: 999,
                             border: "1px solid #ddd6fe",
                           }}>
-                            📚 {safeModule(r) || "—"}
+                            📚 {getModuleName(safeModule(r), globalLang) || "—"}
                           </span>
                           <span style={{
                             fontSize: 10, fontWeight: 800,
@@ -2229,7 +2276,7 @@ export default function TrainingSessionsList() {
                                                             padding: "2px 6px",
                                                             borderRadius: 999,
                                                           }}>
-                                                            📚 {safeModule(r) || "—"}
+                                                            📚 {getModuleName(safeModule(r), globalLang) || "—"}
                                                           </span>
                                                           <span style={{
                                                             fontSize: 9, fontWeight: 800,
@@ -2296,7 +2343,7 @@ export default function TrainingSessionsList() {
                   </div>
                   <div style={{ marginTop: 6, color: THEME.muted, fontSize: 13, fontWeight: 800 }}>
                     Date: {safeDate(selected)} — Branch: {safeBranch(selected)} — Module:{" "}
-                    {safeModule(selected)}
+                    {getModuleName(safeModule(selected), globalLang)}
                   </div>
                 </div>
 
@@ -2723,8 +2770,10 @@ export default function TrainingSessionsList() {
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
             {questions.map((qq, i) => {
-              const qText = quizLang === "AR" ? qq.q_ar : qq.q_en;
-              const opts = quizLang === "AR" ? qq.options_ar : qq.options_en;
+              const qText = quizLang === "AR" ? (qq.q_ar || qq.q_en) : (qq.q_en || qq.q_ar);
+              const opts = quizLang === "AR"
+                ? (qq.options_ar?.length ? qq.options_ar : (qq.options_en || []))
+                : (qq.options_en?.length ? qq.options_en : (qq.options_ar || []));
 
               return (
                 <div
@@ -2841,8 +2890,10 @@ export default function TrainingSessionsList() {
 
             <div style={{ display: "grid", gap: 12 }}>
               {viewParticipant.quizAttempt.answers.map((a, i) => {
-                const qText = viewLang === "AR" ? a.q_ar : a.q_en;
-                const opts = viewLang === "AR" ? a.options_ar : a.options_en;
+                const qText = viewLang === "AR" ? (a.q_ar || a.q_en) : (a.q_en || a.q_ar);
+                const opts = viewLang === "AR"
+                  ? (a.options_ar?.length ? a.options_ar : (a.options_en || []))
+                  : (a.options_en?.length ? a.options_en : (a.options_ar || []));
 
                 const chosen = typeof a.chosen === "number" ? a.chosen : -1;
                 const correct = typeof a.correct === "number" ? a.correct : -1;
@@ -2939,6 +2990,7 @@ export default function TrainingSessionsList() {
           branch={safeBranch(selected)}
           date={safeDate(selected)}
           conductedBy={selected?.payload?.conductedBy || ''}
+          lang={globalLang}
         />
       )}
 
@@ -2953,7 +3005,7 @@ export default function TrainingSessionsList() {
           details={MODULE_DETAILS_BI[moduleName] || selected?.payload?.details || ''}
           objectives={selected?.payload?.objectives || ''}
           conductedBy={selected?.payload?.conductedBy || ''}
-          quickCheckQuestions={(QUIZ_BANK[moduleName] || []).slice(0, 5)}
+          quickCheckQuestions={(lookupBank(liveQuizBank, moduleName) || lookupBank(QUIZ_BANK, moduleName) || []).slice(0, 5)}
         />
       )}
     </div>

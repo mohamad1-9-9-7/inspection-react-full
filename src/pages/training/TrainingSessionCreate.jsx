@@ -112,7 +112,7 @@ Evaluation: Quiz/Observation/Verbal Q&A • Passing: ≥80% or Satisfactory.
 Training records must be reviewed & approved by QA / Food Safety Team Leader.`;
 
 /* ===================== Modules & Branches ===================== */
-const MODULES = [
+export const MODULES = [
   "Personnel Hygiene",
   "GHP / Cleaning & Sanitation",
   "Receiving",
@@ -161,7 +161,7 @@ function getDetailsTemplate(moduleName) {
 }
 
 /* ===================== Question Bank ===================== */
-const QUESTION_BANK = {
+export const QUESTION_BANK = {
   "Personnel Hygiene": {
     en: [
       { q: "What is the ideal water temperature for effective handwashing?", options: ["Any temperature is fine", "Cold water only (below 15°C)", "Warm water (38–45°C)"], correct: 2 },
