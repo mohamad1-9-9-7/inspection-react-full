@@ -294,11 +294,35 @@ body {
 .d-btn-primary:hover { opacity: .88; }
 
 @media (max-width: 640px) {
+  .d-root { padding: 16px 14px 48px; }
   .d-stats { grid-template-columns: repeat(2,1fr); }
-  .d-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .d-header { flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px 18px; }
   .d-brand { text-align: left; }
   .d-h-title { font-size: 20px; }
-  .d-grid { grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); }
+  .d-grid { grid-template-columns: repeat(auto-fill, minmax(155px,1fr)); }
+}
+
+@media (max-width: 480px) {
+  .d-root { padding: 12px 10px 40px; }
+  .d-header { padding: 14px 14px; gap: 10px; border-radius: 14px; }
+  .d-h-title { font-size: 18px; }
+  .d-h-date { font-size: 10.5px; }
+  .d-brand-name { font-size: 14px; }
+  .d-brand-sub { font-size: 8px; max-width: 160px; }
+  .d-stat { padding: 10px 12px; border-radius: 10px; }
+  .d-stat-val { font-size: 18px; }
+  .d-stat-lbl { font-size: 8.5px; }
+  .d-section { font-size: 9px; letter-spacing: .12em; }
+  .d-grid { grid-template-columns: repeat(auto-fill, minmax(145px,1fr)); gap: 7px; }
+  .d-card { height: 64px; padding: 0 11px; border-radius: 11px; }
+  .d-card-name { font-size: 12px; }
+  .d-icon { width: 36px; height: 36px; font-size: 16px; border-radius: 8px; }
+  .d-modal { padding: 18px; border-radius: 14px; }
+}
+
+@media (max-width: 360px) {
+  .d-grid { grid-template-columns: repeat(2,1fr); }
+  .d-stats { grid-template-columns: repeat(2,1fr); gap: 7px; }
 }
 `;
 

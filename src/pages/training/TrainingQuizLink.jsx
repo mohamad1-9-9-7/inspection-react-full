@@ -501,7 +501,7 @@ export default function TrainingQuizLink() {
             👤 {tL("Trainee Details", "بيانات المتدرّب")}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
             <div>
               <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
                 {tL("Name", "الاسم")}

@@ -208,6 +208,8 @@ body {
 ::-webkit-scrollbar-track  { background: var(--bg-page); }
 ::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: var(--radius-full); }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #30363d; }
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
 /* ── Animations ───────────────────────────────────────── */
 @keyframes qms-fade-in {
@@ -221,4 +223,92 @@ body {
 
 .qms-fade-in {
   animation: qms-fade-in 0.25s ease both;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Mobile-First Responsive Overrides
+   ══════════════════════════════════════════════════════════ */
+
+/* ── iOS: منع التكبير التلقائي عند التركيز على الحقول
+   (iOS Safari يكبّر أي input بـ font-size < 16px) ─────── */
+@media (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea,
+  .qms-input {
+    font-size: 16px !important;
+  }
+}
+
+/* ── Tablet (≤ 768px) ──────────────────────────────────── */
+@media (max-width: 768px) {
+  html { font-size: 14px; }
+
+  .qms-card {
+    padding: var(--space-4);
+  }
+
+  .qms-page-title {
+    font-size: var(--font-size-lg);
+  }
+
+  /* Touch-friendly tap targets */
+  .qms-btn {
+    min-height: 44px;
+  }
+}
+
+/* ── Mobile (≤ 480px) ──────────────────────────────────── */
+@media (max-width: 480px) {
+  html { font-size: 13px; }
+
+  .qms-card {
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+  }
+
+  .qms-card-sm {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .qms-page-header {
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+
+  .qms-page-title {
+    font-size: var(--font-size-md);
+  }
+
+  .qms-btn {
+    min-height: 44px;
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .qms-btn-lg {
+    padding: var(--space-3) var(--space-6);
+    font-size: var(--font-size-base);
+  }
+
+  .qms-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+}
+
+/* ── Small phones (≤ 360px) ────────────────────────────── */
+@media (max-width: 360px) {
+  html { font-size: 12.5px; }
+
+  .qms-card {
+    padding: var(--space-3);
+  }
+}
+
+/* ── Safe area insets (iPhone notch / home bar) ─────────── */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
 }

@@ -108,12 +108,12 @@ function PasswordModal({ show, roleLabel, onSubmit, onClose, error, loading }) {
       display: "flex", alignItems: "center", justifyContent: "center",
       zIndex: 2000,
     }}>
-      <div style={{
+      <div className="mx-pw-modal" style={{
         background: "rgba(255,255,255,0.85)",
         backdropFilter: "blur(8px)",
         padding: "2.2rem 2.5rem",
         borderRadius: "18px",
-        minWidth: 360,
+        width: "min(420px, 92vw)",
         boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
         textAlign: "center",
         position: "relative",
@@ -341,11 +341,11 @@ function Login() {
     zIndex: 2,
   };
 
-  // Role tiles (keep same sizing/layout)
+  // Role tiles — responsive via CSS vars (overridden in the <style> block for mobile)
   const roleTile = (active) => ({
-    width: 160,
-    height: 160,
-    borderRadius: 24,
+    width: "var(--mx-tile-size, 160px)",
+    height: "var(--mx-tile-size, 160px)",
+    borderRadius: "var(--mx-tile-radius, 24px)",
     cursor: "pointer",
     border: `2px solid ${t.tileBorder}`,
     background: active
@@ -513,6 +513,83 @@ function Login() {
           pointer-events:none;
         }
         .mx-role-glass:hover::after{ opacity: .9; }
+
+        /* ═══════════════════════════════════════════════
+           Mobile responsive — Login page
+           ═══════════════════════════════════════════════ */
+
+        /* Tablet ≤ 768px */
+        @media (max-width: 768px) {
+          :root {
+            --mx-tile-size: 150px;
+            --mx-tile-radius: 22px;
+            --mx-icon-size: 2.6rem;
+            --mx-label-size: 0.88rem;
+          }
+          .mx-card-glass {
+            padding: 20px 18px 24px !important;
+          }
+          .mx-roles-grid {
+            gap: 0.8rem !important;
+          }
+        }
+
+        /* Mobile ≤ 600px — 2 بلاطات في كل صف */
+        @media (max-width: 600px) {
+          :root {
+            --mx-tile-size: 140px;
+            --mx-tile-radius: 20px;
+            --mx-icon-size: 2.3rem;
+            --mx-label-size: 0.82rem;
+          }
+          .mx-card-glass {
+            padding: 18px 14px 22px !important;
+          }
+          .mx-roles-grid {
+            gap: 0.65rem !important;
+          }
+          .mx-brand-title {
+            font-size: 14px !important;
+          }
+          .mx-brand-sub {
+            font-size: 9px !important;
+          }
+        }
+
+        /* Small phones ≤ 420px */
+        @media (max-width: 420px) {
+          :root {
+            --mx-tile-size: 130px;
+            --mx-tile-radius: 18px;
+            --mx-icon-size: 2.1rem;
+            --mx-label-size: 0.78rem;
+          }
+          .mx-card-glass {
+            padding: 16px 12px 20px !important;
+          }
+          .mx-roles-grid {
+            gap: 0.55rem !important;
+          }
+          .mx-pw-modal {
+            padding: 1.6rem 1.4rem !important;
+          }
+        }
+
+        /* Very small ≤ 360px */
+        @media (max-width: 360px) {
+          :root {
+            --mx-tile-size: 118px;
+            --mx-tile-radius: 16px;
+            --mx-icon-size: 1.9rem;
+            --mx-label-size: 0.73rem;
+          }
+          .mx-card-glass {
+            padding: 14px 10px 18px !important;
+          }
+          .mx-roles-grid {
+            gap: 0.45rem !important;
+          }
+        }
       `}</style>
 
       {/* Animated background blobs */}
@@ -545,8 +622,8 @@ function Login() {
 
       {/* Brand text (top-right) */}
       <div style={brandWrap}>
-        <div style={brandTitle}>AL MAWASHI</div>
-        <div style={brandSub}>Trans Emirates Livestock Trading L.L.C.</div>
+        <div className="mx-brand-title" style={brandTitle}>AL MAWASHI</div>
+        <div className="mx-brand-sub" style={brandSub}>Trans Emirates Livestock Trading L.L.C.</div>
       </div>
 
       {/* 🌓 Theme toggle + 👥 Presence widget (top-left) */}
@@ -687,6 +764,7 @@ function Login() {
         )}
 
         <div
+          className="mx-roles-grid"
           style={{
             display: 'flex',
             justifyContent: 'center',
@@ -741,9 +819,9 @@ function Login() {
                   {maintenanceUnseen > 99 ? "99+" : maintenanceUnseen}
                 </span>
               )}
-              <div style={{ fontSize: "3rem", lineHeight: 1, position: "relative", zIndex: 1 }}>{role.icon}</div>
+              <div style={{ fontSize: "var(--mx-icon-size, 3rem)", lineHeight: 1, position: "relative", zIndex: 1 }}>{role.icon}</div>
               <div style={{
-                fontSize: "0.95rem",
+                fontSize: "var(--mx-label-size, 0.95rem)",
                 textAlign: "center",
                 marginTop: "0.2rem",
                 color: t.tileText,

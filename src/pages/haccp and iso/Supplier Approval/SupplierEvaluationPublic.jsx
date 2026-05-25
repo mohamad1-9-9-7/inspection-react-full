@@ -2813,7 +2813,7 @@ export default function SupplierEvaluationPublic() {
             </div>
 
             {/* Name + Position fields */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div data-decl-grid style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <div style={{ display: "grid", gap: 6 }}>
                 <label style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
                   {isRTL ? "الاسم *" : "Name *"}
@@ -2915,7 +2915,7 @@ export default function SupplierEvaluationPublic() {
             grid-template-columns: 1fr !important;
           }
         }
-        @media (max-width: 560px) {
+        @media (max-width: 600px) {
           [data-decl-grid] { grid-template-columns: 1fr !important; }
         }
       `}</style>

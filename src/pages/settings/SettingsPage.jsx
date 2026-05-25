@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import BackupTab from "./BackupTab";
+import ExcelBackupTab from "./ExcelBackupTab";
 import NotificationsTab from "./NotificationsTab";
 import DataInventory from "./tools/DataInventory";
 import ServerHealth from "./tools/ServerHealth";
@@ -31,6 +32,7 @@ const SECTIONS = [
       { id: "date-tree",      icon: "🗂️", title: "Date Tree Explorer",    desc: "Browse by Year / Month / Day" },
       { id: "export",         icon: "📦", title: "Bulk Export",           desc: "Download as JSON / CSV" },
       { id: "backup",         icon: "💾", title: "Backup & Restore",      desc: "Full local backup" },
+      { id: "excel-backup",   icon: "📊", title: "Excel Backup",          desc: "كل الفروع → ZIP + Excel" },
     ],
   },
   {
@@ -105,6 +107,7 @@ export default function SettingsPage() {
             {active === "date-tree"        && <DateTree />}
             {active === "export"           && <BulkExport />}
             {active === "backup"           && <BackupTab />}
+            {active === "excel-backup"    && <ExcelBackupTab />}
             {active === "image-migration"  && <ImageMigration />}
             {active === "complaint-numbers" && <ComplaintNumberBackfill />}
             {active === "server-health"    && <ServerHealth />}
@@ -123,7 +126,7 @@ const s = {
     color: "#0f172a",
   },
   layout: {
-    maxWidth: 1400, margin: "0 auto",
+    width: "100%",
     display: "grid",
     gridTemplateColumns: "280px 1fr",
     minHeight: "100vh",
@@ -198,5 +201,5 @@ const s = {
     padding: "24px 28px",
     overflow: "auto",
   },
-  contentInner: { maxWidth: 1100 },
+  contentInner: { width: "100%" },
 };
