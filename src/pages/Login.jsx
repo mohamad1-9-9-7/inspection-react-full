@@ -92,6 +92,160 @@ const roles = [
   },
 ];
 
+/* ────────────────────────────────────────
+   Named Account Login Modal
+──────────────────────────────────────── */
+function NamedLoginModal({ show, onClose, onSuccess }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
+
+  React.useEffect(() => {
+    if (show) { setUsername(""); setPassword(""); setError(""); }
+  }, [show]);
+
+  if (!show) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!username.trim() || !password.trim()) {
+      setError("Please enter username and password");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      if (res.status === 404) {
+        setError("⚠️ Server not updated yet — deploy index.cjs to Render first");
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
+      if (data.ok && data.user) {
+        onSuccess(data.user);
+      } else {
+        const errMap = {
+          invalid_credentials: "❌ Wrong username or password",
+          account_disabled:    "🔒 This account is disabled",
+        };
+        setError(errMap[data.error] || "❌ Login failed");
+      }
+    } catch {
+      setError("❌ Could not connect to server");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0,
+      background: "rgba(17,24,39,.45)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 2001,
+    }}>
+      <div style={{
+        background: "rgba(255,255,255,.92)",
+        backdropFilter: "blur(12px)",
+        borderRadius: 20,
+        padding: "2.2rem 2.5rem",
+        width: "min(440px, 94vw)",
+        boxShadow: "0 24px 60px rgba(0,0,0,.22)",
+        border: "1px solid rgba(255,255,255,.65)",
+        position: "relative",
+      }}>
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute", top: 12, left: 14,
+            fontSize: 20, background: "transparent", border: "none",
+            color: "#b91c1c", cursor: "pointer",
+          }}
+        >✖</button>
+
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{ fontSize: 36, marginBottom: 6 }}>🔐</div>
+          <div style={{ fontWeight: 900, fontSize: 17, color: "#0f172a" }}>Staff Account Login</div>
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, fontWeight: 700 }}>
+            Sign in with your personal account
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 12 }}>
+            <label style={nlStyle.label}>Username</label>
+            <input
+              type="text"
+              autoFocus
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              placeholder="Enter your username"
+              style={nlStyle.input}
+              onKeyDown={e => e.stopPropagation()}
+            />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={nlStyle.label}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              style={nlStyle.input}
+              onKeyDown={e => e.stopPropagation()}
+            />
+          </div>
+
+          {error && (
+            <div style={{ color: "#b91c1c", fontWeight: 800, marginBottom: 12, fontSize: 13 }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: "100%",
+              background: loading
+                ? "#a5b4fc"
+                : "linear-gradient(135deg,#7c3aed,#2563eb)",
+              color: "#fff", border: "none",
+              padding: "12px 0", borderRadius: 12,
+              fontWeight: 900, fontSize: 15,
+              cursor: loading ? "not-allowed" : "pointer",
+              boxShadow: "0 6px 18px rgba(124,58,237,.35)",
+              fontFamily: "Cairo, sans-serif",
+            }}
+          >
+            {loading ? "Signing in…" : "Sign In →"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const nlStyle = {
+  label: {
+    display: "block", fontSize: 11, fontWeight: 900,
+    color: "#475569", textTransform: "uppercase",
+    letterSpacing: ".05em", marginBottom: 5,
+  },
+  input: {
+    width: "100%", padding: "11px 14px",
+    border: "1.5px solid #c7d2fe", borderRadius: 12,
+    fontSize: 14, background: "#eef2ff",
+    outline: "none", fontFamily: "Cairo, sans-serif",
+    boxSizing: "border-box",
+  },
+};
+
 function PasswordModal({ show, roleLabel, onSubmit, onClose, error, loading }) {
   const [password, setPassword] = useState("");
 
@@ -194,6 +348,7 @@ function Login() {
   const [selectedRole, setSelectedRole] = useState(null);
   const [modalError, setModalError] = useState("");
   const [modalLoading, setModalLoading] = useState(false);
+  const [namedLoginOpen, setNamedLoginOpen] = useState(false);
 
   // 🔔 Maintenance requests not yet acknowledged (no "Date received")
   const [maintenanceUnseen, setMaintenanceUnseen] = useState(0);
@@ -295,6 +450,19 @@ function Login() {
     setModalOpen(false);
     setModalError("");
     setSelectedRole(null);
+  };
+
+  const handleNamedLoginSuccess = (user) => {
+    setNamedLoginOpen(false);
+    localStorage.setItem("currentUser", JSON.stringify({
+      username:    user.username,
+      displayName: user.displayName,
+      role:        user.isAdmin ? "Admin" : "Staff",
+      permissions: user.permissions,
+      isAdmin:     user.isAdmin,
+      type:        "named",
+    }));
+    navigate("/named-dashboard");
   };
 
   if (location.pathname !== "/") {
@@ -834,8 +1002,42 @@ function Login() {
           ))}
         </div>
 
+        {/* Staff Login separator */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 14,
+          margin: "22px auto 0", maxWidth: 560, width: "100%",
+        }}>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
+          <button
+            onClick={() => setNamedLoginOpen(true)}
+            onMouseEnter={() => setHoveredRoleId("named")}
+            onMouseLeave={() => setHoveredRoleId(null)}
+            style={{
+              padding: "11px 24px",
+              borderRadius: 12,
+              background: hoveredRoleId === "named"
+                ? "rgba(255,255,255,.28)"
+                : "rgba(255,255,255,.16)",
+              color: "#fff",
+              border: "1.5px solid rgba(255,255,255,.5)",
+              fontSize: "0.97rem",
+              fontWeight: 900,
+              cursor: "pointer",
+              fontFamily: "Cairo, sans-serif",
+              backdropFilter: "blur(8px)",
+              transition: "all .2s ease",
+              transform: hoveredRoleId === "named" ? "translateY(-1px)" : "translateY(0)",
+              boxShadow: "0 6px 16px rgba(0,0,0,.15)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            🔐 Sign in with your account
+          </button>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
+        </div>
+
         {/* KPI + AI Assistant buttons (no password) */}
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 22, gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 14, gap: 12, flexWrap: "wrap" }}>
           <button
             onClick={() => {
               localStorage.setItem('currentUser', JSON.stringify({
@@ -939,6 +1141,12 @@ function Login() {
         onClose={handleModalClose}
         error={modalError}
         loading={modalLoading}
+      />
+
+      <NamedLoginModal
+        show={namedLoginOpen}
+        onClose={() => setNamedLoginOpen(false)}
+        onSuccess={handleNamedLoginSuccess}
       />
     </div>
   );

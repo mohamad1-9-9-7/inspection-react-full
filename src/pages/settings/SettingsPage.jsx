@@ -14,6 +14,7 @@ import DateTree from "./tools/DateTree";
 import AppearanceAndLanguage from "./tools/AppearanceAndLanguage";
 import ImageMigration from "../admin/ImageMigration";
 import ComplaintNumberBackfill from "../admin/ComplaintNumberBackfill";
+import AccountsManagementTab from "./AccountsManagementTab";
 
 const SECTIONS = [
   {
@@ -33,6 +34,13 @@ const SECTIONS = [
       { id: "export",         icon: "📦", title: "Bulk Export",           desc: "Download as JSON / CSV" },
       { id: "backup",         icon: "💾", title: "Backup & Restore",      desc: "Full local backup" },
       { id: "excel-backup",   icon: "📊", title: "Excel Backup",          desc: "كل الفروع → ZIP + Excel" },
+    ],
+  },
+  {
+    id: "accounts",
+    label: "Accounts",
+    items: [
+      { id: "accounts-mgmt", icon: "👥", title: "Account Management", desc: "Users · permissions · activity log" },
     ],
   },
   {
@@ -111,6 +119,7 @@ export default function SettingsPage() {
             {active === "image-migration"  && <ImageMigration />}
             {active === "complaint-numbers" && <ComplaintNumberBackfill />}
             {active === "server-health"    && <ServerHealth />}
+            {active === "accounts-mgmt"   && <AccountsManagementTab />}
           </div>
         </main>
       </div>

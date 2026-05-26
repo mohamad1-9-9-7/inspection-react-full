@@ -5,6 +5,7 @@ import NotificationManager from "./components/NotificationManager";
 
 // Lazy imports
 const Login = lazy(() => import("./pages/Login"));
+const NamedDashboard = lazy(() => import("./pages/NamedDashboard"));
 const Inspection = lazy(() => import("./pages/Inspection"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
@@ -1707,6 +1708,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🔐 Named Account Dashboard */}
+        <Route
+          path="/named-dashboard"
+          element={
+            <ProtectedRoute>
+              <NamedDashboard />
             </ProtectedRoute>
           }
         />
