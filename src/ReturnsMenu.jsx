@@ -1,8 +1,28 @@
 // src/ReturnsMenu.jsx
 import React from "react";
 import { Link } from "react-router-dom";
+import { isItemAllowed } from "./utils/sectionItems";
+
+/* Each button is tagged with a perm id matching SECTION_ITEMS.returns.items[].id */
+const browseLinks = [
+  { perm: "returns.browse",         to: "/returns/browse",            icon: "📂", label: "Browse Returns Reports" },
+  { perm: "meatDaily.browse",       to: "/meat-daily/browse",         icon: "📊", label: "Browse Meat Daily" },
+  { perm: "customerReturns.browse", to: "/returns-customers/browse",  icon: "👤", label: "Browse Customer Returns" },
+  { perm: "inventory.browse",       to: "/inventory-daily/browse",    icon: "📦", label: "Browse Inventory Daily" },
+  { perm: "enoc.browse",            to: "/enoc-returns/browse-view",  icon: "⛽", label: "Browse ENOC Returns" },
+];
+const createLinks = [
+  { perm: "returns.create",         to: "/returns",                   icon: "📝", label: "Create Returns Report",        aria: "Create returns report" },
+  { perm: "meatDaily.create",       to: "/meat-daily/input",          icon: "🧾", label: "Create Meat Daily Report",     aria: "Create meat daily report" },
+  { perm: "customerReturns.create", to: "/returns-customers/new",     icon: "✍️", label: "Create Customer Returns",      aria: "Create customer returns report" },
+  { perm: "inventory.create",       to: "/inventory-daily/input",     icon: "🧮", label: "Create Inventory Daily Report", aria: "Create inventory daily report" },
+  { perm: "enoc.create",            to: "/enoc-returns/input",        icon: "⛽", label: "Create ENOC Returns Report",   aria: "Create ENOC returns report" },
+];
 
 export default function ReturnsMenu() {
+  const visibleBrowse = browseLinks.filter(l => isItemAllowed("returns", l.perm));
+  const visibleCreate = createLinks.filter(l => isItemAllowed("returns", l.perm));
+
   return (
     <div
       className="ret-page"
@@ -89,62 +109,39 @@ export default function ReturnsMenu() {
           <h1 className="title">Returns & Daily Meat Status</h1>
 
           <div className="actions" role="group" aria-label="Actions">
-            {/* LEFT: Browse */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <Link to="/returns/browse" className="btn btn--ghost">
-                <span className="btn__icon">📂</span>
-                <span>Browse Returns Reports</span>
-              </Link>
+            {/* LEFT: Browse (filtered by per-user permissions) */}
+            {visibleBrowse.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                {visibleBrowse.map(l => (
+                  <Link key={l.perm} to={l.to} className="btn btn--ghost">
+                    <span className="btn__icon">{l.icon}</span>
+                    <span>{l.label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
 
-              <Link to="/meat-daily/browse" className="btn btn--ghost">
-                <span className="btn__icon">📊</span>
-                <span>Browse Meat Daily</span>
-              </Link>
+            {/* RIGHT: Create (filtered by per-user permissions) */}
+            {visibleCreate.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                {visibleCreate.map(l => (
+                  <Link key={l.perm} to={l.to} className="btn btn--primary" aria-label={l.aria}>
+                    <span className="btn__icon">{l.icon}</span>
+                    <span>{l.label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
 
-              <Link to="/returns-customers/browse" className="btn btn--ghost">
-                <span className="btn__icon">👤</span>
-                <span>Browse Customer Returns</span>
-              </Link>
-
-              <Link to="/inventory-daily/browse" className="btn btn--ghost">
-                <span className="btn__icon">📦</span>
-                <span>Browse Inventory Daily</span>
-              </Link>
-
-              {/* ✅ صار مربوط بالصفحة الجديدة (View Only) */}
-              <Link to="/enoc-returns/browse-view" className="btn btn--ghost">
-                <span className="btn__icon">⛽</span>
-                <span>Browse ENOC Returns</span>
-              </Link>
-            </div>
-
-            {/* RIGHT: Create */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <Link to="/returns" className="btn btn--primary" aria-label="Create returns report">
-                <span className="btn__icon">📝</span>
-                <span>Create Returns Report</span>
-              </Link>
-
-              <Link to="/meat-daily/input" className="btn btn--primary" aria-label="Create meat daily report">
-                <span className="btn__icon">🧾</span>
-                <span>Create Meat Daily Report</span>
-              </Link>
-
-              <Link to="/returns-customers/new" className="btn btn--primary" aria-label="Create customer returns report">
-                <span className="btn__icon">✍️</span>
-                <span>Create Customer Returns</span>
-              </Link>
-
-              <Link to="/inventory-daily/input" className="btn btn--primary" aria-label="Create inventory daily report">
-                <span className="btn__icon">🧮</span>
-                <span>Create Inventory Daily Report</span>
-              </Link>
-
-              <Link to="/enoc-returns/input" className="btn btn--primary" aria-label="Create ENOC returns report">
-                <span className="btn__icon">⛽</span>
-                <span>Create ENOC Returns Report</span>
-              </Link>
-            </div>
+            {/* Empty state — no buttons granted */}
+            {visibleBrowse.length === 0 && visibleCreate.length === 0 && (
+              <div style={{
+                padding: "30px 16px", textAlign: "center",
+                color: "rgba(255,255,255,.85)", fontWeight: 700,
+              }}>
+                🔒 No pages assigned to your account in this section — contact your administrator
+              </div>
+            )}
           </div>
         </div>
       </section>

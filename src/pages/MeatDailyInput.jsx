@@ -161,49 +161,11 @@ export default function MeatDailyInput() {
   const [rows, setRows] = useState([baseRow()]);
   const [msg, setMsg] = useState("");
 
-  /* ===== Password gate (small box) ===== */
-  const [authed, setAuthed] = useState(false);
-  const [pwd, setPwd] = useState("");
-  const [err, setErr] = useState("");
+  /* Authentication handled at app login — no per-page gate */
 
   // صور: حالة المودال + أي صف مفتوح
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageRowIndex, setImageRowIndex] = useState(-1);
-
-  const submitPwd = () => {
-    if (pwd === "9999") {
-      setAuthed(true);
-      setPwd("");
-      setErr("");
-    } else setErr("Wrong password.");
-  };
-  const closeGate = () => {
-    if (window.history.length > 1) window.history.back();
-  };
-
-  if (!authed) {
-    return (
-      <div style={auth.overlay}>
-        <div style={auth.card} role="dialog" aria-modal="true" aria-labelledby="pw-title">
-          <button style={auth.close} onClick={closeGate} aria-label="Close">×</button>
-          <div id="pw-title" style={auth.title}>
-            <span style={{ fontWeight: 900, color: "#1f2937" }}>Password required</span> 🔒
-          </div>
-          <input
-            type="password"
-            value={pwd}
-            onChange={(e) => setPwd(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submitPwd()}
-            placeholder="Enter password"
-            style={auth.input}
-            autoFocus
-          />
-          <button onClick={submitPwd} style={auth.primary}>Sign in</button>
-          {err && <div style={auth.err}>❌ {err}</div>}
-        </div>
-      </div>
-    );
-  }
 
   /* ===== page logic ===== */
   const addRow = () => setRows((p) => [...p, baseRow()]);
@@ -577,57 +539,3 @@ const thumbRemove = {
   cursor: "pointer",
 };
 
-/* ===== auth (small box) styles ===== */
-const auth = {
-  overlay: {
-    minHeight: "100vh",
-    background: "#e5e7eb",
-    display: "grid",
-    placeItems: "center",
-    padding: "1rem",
-  },
-  card: {
-    width: "min(440px, 92vw)",
-    background: "#ffffff",
-    borderRadius: 14,
-    padding: 16,
-    color: "#0b1021",
-    boxShadow: "0 18px 40px rgba(0,0,0,.25)",
-    position: "relative",
-  },
-  close: {
-    position: "absolute",
-    left: 10,
-    top: 10,
-    width: 26,
-    height: 26,
-    borderRadius: 999,
-    border: "none",
-    background: "#fee2e2",
-    color: "#b91c1c",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
-  title: { textAlign: "center", marginBottom: 8, fontSize: 16, fontWeight: 800, color: "#1f2937" },
-  input: {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 10,
-    border: "1px solid #c7d2fe",
-    background: "#eef2ff",
-    outline: "none",
-  },
-  primary: {
-    width: "100%",
-    marginTop: 10,
-    padding: "12px 14px",
-    border: "none",
-    borderRadius: 10,
-    fontWeight: 900,
-    color: "#fff",
-    background: "#6d28d9",
-    cursor: "pointer",
-    boxShadow: "0 10px 24px rgba(109,40,217,.28)",
-  },
-  err: { color: "#dc2626", fontWeight: 800, textAlign: "center", marginTop: 8 },
-};

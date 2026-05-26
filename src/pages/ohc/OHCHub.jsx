@@ -3,10 +3,13 @@
 
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { isItemAllowed } from "../../utils/sectionItems";
 
 const cards = [
   {
     id: "upload",
+    /* SECTION_ITEMS id: matches "ohc.upload" in the Admin selector */
+    permId: "ohc.upload",
     icon: "📥",
     title: { ar: "إدخال / رفع شهادة جديدة", en: "Upload New Certificate" },
     subtitle: {
@@ -19,6 +22,7 @@ const cards = [
   },
   {
     id: "view",
+    permId: "ohc.view",
     icon: "📋",
     title: { ar: "عرض / استعراض الشهادات", en: "View / Browse Certificates" },
     subtitle: {
@@ -83,9 +87,9 @@ export default function OHCHub() {
           </p>
         </section>
 
-        {/* Two big cards side-by-side */}
+        {/* Two big cards side-by-side — filtered by per-user OHC permissions */}
         <section style={s.cardsGrid}>
-          {cards.map((c) => {
+          {cards.filter(c => isItemAllowed("ohc", c.permId)).map((c) => {
             const isHover = hover === c.id;
             return (
               <button

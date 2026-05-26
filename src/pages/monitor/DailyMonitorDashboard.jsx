@@ -44,13 +44,6 @@ const META = {
   ftr:     { color: "#fbbf24", dark: "#451a03", badge: "FTR Branch",       icon: "🚚" },
 };
 
-const STATS = [
-  { icon: "🏢", val: branches.length,                            label: "Total Branches" },
-  { icon: "🏪", val: branches.filter(b => b.type === "pos").length, label: "POS Branches" },
-  { icon: "🚚", val: branches.filter(b => b.type === "ftr").length, label: "FTR Branches" },
-  { icon: "👨‍🍳", val: 1,                                           label: "Kitchen" },
-];
-
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
 
@@ -328,11 +321,7 @@ body {
 
 export default function DailyMonitorDashboard() {
   const navigate = useNavigate();
-  const [showPwd, setShowPwd]             = useState(false);
-  const [pendingBranch, setPendingBranch] = useState(null);
-  const [pwd, setPwd]                     = useState("");
-  const [pwdError, setPwdError]           = useState("");
-  const [dateStr, setDateStr]             = useState("");
+  const [dateStr, setDateStr] = useState("");
 
   useEffect(() => {
     const fmt = () =>
@@ -348,28 +337,42 @@ export default function DailyMonitorDashboard() {
     return () => clearInterval(t);
   }, []);
 
+  /* ── Named-account branch access control (per-icon: Daily Monitor) ── */
+  const currentUser = (() => {
+    try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
+  })();
+  const isNamedAccount = currentUser.type === "named";
+
+  /* allowedBranches may be:
+     - { daily: [...], admin: [...] }   ← new per-icon format
+     - [...]                            ← legacy flat array (applies to both)
+     - undefined                        ← no restriction */
+  const ab = currentUser.allowedBranches;
+  const dailyAllowed = Array.isArray(ab)
+    ? ab                                    // legacy
+    : (ab && Array.isArray(ab.daily) ? ab.daily : []);
+
+  /* Filter branch cards for restricted accounts */
+  const visibleBranches = (isNamedAccount && dailyAllowed.length > 0)
+    ? branches.filter(b => dailyAllowed.includes(b.id))
+    : branches;
+
+  /* Dynamic stats based on visible branches */
+  const stats = [
+    { icon: "🏢", val: visibleBranches.length,                                  label: "Total Branches" },
+    { icon: "🏪", val: visibleBranches.filter(b => b.type === "pos").length,    label: "POS Branches" },
+    { icon: "🚚", val: visibleBranches.filter(b => b.type === "ftr").length,    label: "FTR Branches" },
+    { icon: "👨‍🍳", val: visibleBranches.filter(b => b.type === "kitchen").length, label: "Kitchen" },
+  ];
+
   const goBranch = (id) => {
     if (id === "FTR 2") navigate("/monitor/ftr2");
     else if (id === "FTR 1") navigate("/monitor/ftr1");
     else navigate(`/monitor/${toSlug(id)}`);
   };
 
-  const open = (branch) => {
-    setPendingBranch(branch);
-    setPwd(""); setPwdError(""); setShowPwd(true);
-  };
-
-  const submit = (e) => {
-    e?.preventDefault();
-    if (!pendingBranch) return;
-    if (pwd === `${pendingBranch.id}123`) {
-      setShowPwd(false); goBranch(pendingBranch.id);
-    } else {
-      setPwdError("Incorrect password");
-    }
-  };
-
-  const m = pendingBranch ? META[pendingBranch.type] : null;
+  /* Authentication happens at login — open branch directly */
+  const open = (branch) => goBranch(branch.id);
 
   return (
     <>
@@ -397,7 +400,7 @@ export default function DailyMonitorDashboard() {
 
         {/* Stats */}
         <div className="d-stats">
-          {STATS.map(s => (
+          {stats.map(s => (
             <div className="d-stat" key={s.label}>
               <div className="d-stat-icon">{s.icon}</div>
               <div>
@@ -409,11 +412,15 @@ export default function DailyMonitorDashboard() {
         </div>
 
         {/* Section label */}
-        <div className="d-section">Select a branch to view reports</div>
+        <div className="d-section">
+          {isNamedAccount && dailyAllowed.length > 0
+            ? `Your assigned branches (${visibleBranches.length})`
+            : "Select a branch to view reports"}
+        </div>
 
         {/* Cards */}
         <div className="d-grid">
-          {branches.map(branch => {
+          {visibleBranches.map(branch => {
             const meta = META[branch.type];
             const showId = branch.label !== branch.id && branch.type !== "qcs" && branch.type !== "prod";
             return (
@@ -441,43 +448,20 @@ export default function DailyMonitorDashboard() {
               </div>
             );
           })}
+
+          {/* Empty state when all branches are restricted away */}
+          {visibleBranches.length === 0 && (
+            <div style={{
+              gridColumn: "1/-1", textAlign: "center",
+              color: "#2d3f55", padding: "48px 0",
+              fontWeight: 700, fontSize: 15,
+            }}>
+              🔒 No branches assigned to your account — contact your administrator
+            </div>
+          )}
         </div>
 
       </div>
-
-      {/* Modal */}
-      {showPwd && m && (
-        <div
-          className="d-backdrop"
-          style={{ "--cc": m.color, "--cd": m.dark }}
-          onClick={() => setShowPwd(false)}
-        >
-          <div className="d-modal" onClick={e => e.stopPropagation()}>
-            <div className="d-modal-icon">{m.icon}</div>
-            <div className="d-modal-title">Enter Password</div>
-            <div className="d-modal-sub">
-              Branch: <b>{pendingBranch.label}</b>
-            </div>
-            <form onSubmit={submit}>
-              <input
-                className="d-modal-input"
-                type="password"
-                placeholder="••••••••"
-                value={pwd}
-                onChange={e => { setPwd(e.target.value); setPwdError(""); }}
-                autoFocus
-              />
-              {pwdError && <div className="d-modal-err">⚠ {pwdError}</div>}
-              <div className="d-modal-actions">
-                <button type="button" className="d-btn d-btn-ghost"
-                  onClick={() => setShowPwd(false)}>Cancel</button>
-                <button type="submit" className="d-btn d-btn-primary"
-                  style={{ background: m.color }}>Continue →</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }

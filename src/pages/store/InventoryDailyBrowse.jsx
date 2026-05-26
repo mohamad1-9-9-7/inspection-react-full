@@ -151,15 +151,9 @@ export default function InventoryDailyBrowse() {
 
   const dateTree = useMemo(() => groupByDateTree(list), [list]);
 
-  function requirePassword() {
-    const pwd = window.prompt("Enter password:");
-    return pwd === "12345";
-  }
-
   // ==== حذف مُصلّح (بدون body/headers) ====
   async function handleDelete() {
     if (!selected) return;
-    if (!requirePassword()) return;
     if (!window.confirm(`Delete report dated ${selected.date}? This cannot be undone.`)) return;
     try {
       setMsg("Deleting…");
@@ -181,7 +175,6 @@ export default function InventoryDailyBrowse() {
 
   function handleEdit() {
     if (!selected) return;
-    if (!requirePassword()) return;
     const url = `/store/inventory-daily/input?date=${encodeURIComponent(selected.date)}`;
     window.location.href = url;
   }

@@ -51,16 +51,29 @@ export default function DailyReportsTab({
   onOpenPOS26Report,
 }) {
   const navigate = useNavigate();
-  const [showPwd, setShowPwd]             = useState(false);
-  const [pendingBranch, setPendingBranch] = useState(null);
-  const [pwd, setPwd]                     = useState("");
-  const [pwdError, setPwdError]           = useState("");
-  const [dateStr, setDateStr]             = useState("");
+  const [dateStr, setDateStr] = useState("");
 
   useEffect(() => {
     const fmt = () => setDateStr(new Date().toLocaleString("en-AE",{timeZone:"Asia/Dubai",weekday:"long",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"}));
     fmt(); const t=setInterval(fmt,30_000); return ()=>clearInterval(t);
   }, []);
+
+  /* ── Named-account branch access control (per-icon: Admin) ──
+     allowedBranches may be { daily:[...], admin:[...] } (new) or [...] (legacy)
+     "Al Warqa Kitchen" in this list is the same physical branch as "POS 19" in the selector. */
+  const currentUser = (() => {
+    try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
+  })();
+  const isNamedAccount = currentUser.type === "named";
+  const ab = currentUser.allowedBranches;
+  const adminAllowed = Array.isArray(ab)
+    ? ab
+    : (ab && Array.isArray(ab.admin) ? ab.admin : []);
+
+  const aliasForMatch = (b) => (b === "Al Warqa Kitchen" ? "POS 19" : b);
+  const visibleBranches = (isNamedAccount && adminAllowed.length > 0)
+    ? branches.filter(b => adminAllowed.includes(aliasForMatch(b)))
+    : branches;
 
   const openBranchAfterAuth = (branch) => {
     if (branch==="QCS")                  { onOpenQCSReport        ? onOpenQCSReport()        : navigate("/admin/monitor/branches/qcs/reports"); }
@@ -76,20 +89,8 @@ export default function DailyReportsTab({
     else { alert("No report available for: "+branch); }
   };
 
-  const open = (branch) => { setPendingBranch(branch); setPwd(""); setPwdError(""); setShowPwd(true); };
-
-  const submit = (e) => {
-    e?.preventDefault(); if (!pendingBranch) return;
-    const expected =
-      pendingBranch === "PRODUCTION"      ? "PRD123"    :
-      pendingBranch === "Al Warqa Kitchen" ? "POS 19123" :
-      `${pendingBranch}123`;
-    if (pwd===expected) { setShowPwd(false); openBranchAfterAuth(pendingBranch); }
-    else setPwdError("كلمة المرور غير صحيحة");
-  };
-
-  const modalType = pendingBranch ? getType(pendingBranch) : null;
-  const m         = modalType ? META[modalType] : null;
+  /* Authentication happens at login — open the branch directly */
+  const open = (branch) => openBranchAfterAuth(branch);
 
   return (
     <>
@@ -113,7 +114,11 @@ export default function DailyReportsTab({
 
         {/* Topbar */}
         <div className="dr-topbar">
-          <div className="dr-section">اختر الفرع</div>
+          <div className="dr-section">
+            {isNamedAccount && adminAllowed.length > 0
+              ? `الفروع المخصّصة لك (${visibleBranches.length}) / Your assigned branches`
+              : "اختر الفرع"}
+          </div>
           <div className="dr-count">
             <div className="dr-count-dot"/>
             عدد التقارير: {dailyReports.length}
@@ -122,7 +127,7 @@ export default function DailyReportsTab({
 
         {/* Cards */}
         <div className="dr-grid">
-          {branches.map(branch => {
+          {visibleBranches.map(branch => {
             const type=getType(branch), meta=META[type];
             return (
               <div key={branch} className="dr-card" role="button" tabIndex={0}
@@ -144,6 +149,16 @@ export default function DailyReportsTab({
               </div>
             );
           })}
+
+          {visibleBranches.length === 0 && (
+            <div style={{
+              gridColumn: "1/-1", textAlign: "center",
+              padding: "40px 16px", color: "#64748b",
+              fontWeight: 700, fontSize: 15,
+            }}>
+              🔒 لا توجد فروع مخصّصة لهذا الحساب — راجع الإدارة
+            </div>
+          )}
         </div>
 
         {/* QCS button */}
@@ -154,26 +169,6 @@ export default function DailyReportsTab({
         </div>
 
       </div>
-
-      {/* Modal */}
-      {showPwd && m && (
-        <div className="dr-backdrop" style={{"--cc":m.color,"--cd":m.dark}} onClick={()=>setShowPwd(false)}>
-          <div className="dr-modal" onClick={e=>e.stopPropagation()}>
-            <div className="dr-modal-icon">{m.icon}</div>
-            <div className="dr-modal-title">إدخال كلمة السر</div>
-            <div className="dr-modal-sub">الفرع: <b>{pendingBranch}</b></div>
-            <form onSubmit={submit}>
-              <input className="dr-modal-input" type="password" placeholder="••••••••"
-                value={pwd} onChange={e=>{setPwd(e.target.value);setPwdError("");}} autoFocus/>
-              {pwdError && <div className="dr-modal-err">⚠ {pwdError}</div>}
-              <div className="dr-modal-actions">
-                <Button type="button" variant="ghost" size="sm" onClick={()=>setShowPwd(false)}>إلغاء</Button>
-                <Button type="submit" variant="primary" size="sm" style={{background:m.color}}>متابعة ←</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }

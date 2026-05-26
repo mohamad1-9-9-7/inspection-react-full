@@ -174,7 +174,11 @@
       "PowerShell(New-Item -ItemType Directory -Force -Path \"D:\\\\inspection-react-full\\\\src\\\\pages\\\\settings\\\\excel-exporters\")",
       "Bash(sleep 5 && cat \"/c/Users/moham/AppData/Local/Temp/claude/D--inspection-react-full/6d41abba-b616-456d-897d-17d0b972f5de/tasks/bp0ql490h.output\" 2>/dev/null | head -40)",
       "PowerShell(\\(Get-ChildItem \"D:\\\\inspection-react-full\\\\src\\\\pages\\\\settings\\\\excel-exporters\\\\\" -File\\).Count)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npx --yes acorn --ecma2020 --module src/App.jsx)",
+      "Bash(npx --yes acorn --ecma2020 --module src/pages/Login.jsx)",
+      "Bash(node --check D:\\\\inspection-server\\\\index.cjs)",
+      "Bash(node --check src/pages/settings/AccountsManagementTab.jsx)"
     ]
   }
 }

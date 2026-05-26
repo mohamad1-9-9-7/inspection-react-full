@@ -412,12 +412,23 @@ function TokenRedirect({ to }) {
   return <Navigate to={`${to}/${encodeURIComponent(token || "")}`} replace />;
 }
 
+/* Session valid for 8 hours from loginAt */
+const SESSION_MAX_MS = 8 * 60 * 60 * 1000;
+
 function ProtectedRoute({ children }) {
   let isAuthed = false;
   try {
-    const raw =
-      typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
-    isAuthed = !!(raw && JSON.parse(raw));
+    const raw = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
+    if (raw) {
+      const user = JSON.parse(raw);
+      const age  = Date.now() - (user?.loginAt || 0);
+      if (user && age < SESSION_MAX_MS) {
+        isAuthed = true;
+      } else {
+        // Session expired — clean up
+        localStorage.removeItem("currentUser");
+      }
+    }
   } catch {
     isAuthed = false;
   }
