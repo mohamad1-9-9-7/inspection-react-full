@@ -70,10 +70,11 @@ function lookupBank(bank, moduleName) {
   return (found && Array.isArray(bank[found]) && bank[found].length) ? bank[found] : [];
 }
 
-function buildQuizFromBank(moduleName, questions, passMark) {
+function buildQuizFromBank(moduleName, questions, passMark, level = "") {
   const safeQ = Array.isArray(questions) ? questions : [];
   return {
     module: String(moduleName || "").trim(),
+    level: String(level || "").trim(), // ✅ NEW: level/difficulty this quiz targets
     passMark: Number(passMark) || 80,
     questions: safeQ.map((qq) => ({
       q_ar: qq?.q_ar || "",
@@ -83,6 +84,27 @@ function buildQuizFromBank(moduleName, questions, passMark) {
       correct: Number.isFinite(Number(qq?.correct)) ? Number(qq.correct) : 0,
     })),
   };
+}
+
+/* ✅ NEW: pick up to `count` questions for a given level (difficulty).
+   - level "" → return all (no level chosen → backward compatible)
+   - else → questions whose `difficulty` matches the level; if fewer than
+     `count` exist it fills from the rest so the quiz still reaches `count`.
+   Each level needs its own 5 tagged questions in Training Admin to be fully distinct. */
+function pickLevelQuestions(all, level, count = 5) {
+  const arr = Array.isArray(all) ? all : [];
+  const lvl = String(level || "").trim().toLowerCase();
+  if (!lvl) return arr;
+  const chosen = arr
+    .filter((q) => String(q?.difficulty || "").trim().toLowerCase() === lvl)
+    .slice(0, count);
+  if (chosen.length < count) {
+    for (const q of arr) {
+      if (chosen.length >= count) break;
+      if (!chosen.includes(q)) chosen.push(q);
+    }
+  }
+  return chosen;
 }
 
 /* ===================== ✅ NEW: dedupe participants (EmployeeId first, then name) ===================== */
@@ -625,13 +647,20 @@ export default function TrainingSessionsList() {
   const [detailOpen, setDetailOpen] = useState(() => ({}));
 
   const moduleName = selected ? safeModule(selected) : "";
+  // ✅ Level (difficulty) this session targets — "" means all levels
+  const sessionLevel = selected ? String(selected?.payload?.level || "").trim() : "";
 
   const questions = useMemo(() => {
     if (!moduleName) return [];
-    // ✅ DB questions (from admin) take priority; hardcoded bank is the fallback
-    // Uses normalized lookup so "Oil Quality Test TESTO" matches "oil quality test testo"
-    return lookupBank(liveQuizBank, moduleName) || lookupBank(QUIZ_BANK, moduleName) || [];
-  }, [moduleName, liveQuizBank]);
+    // ✅ DB questions (from admin) take priority; hardcoded bank is the fallback.
+    // IMPORTANT: lookupBank returns [] (truthy) when empty, so `a || b` never
+    // fell through to the fallback — check .length explicitly so HACCP & others
+    // correctly use the built-in QUIZ_BANK.
+    const live = lookupBank(liveQuizBank, moduleName);
+    const all = live.length ? live : lookupBank(QUIZ_BANK, moduleName);
+    // ✅ If the session targets a level, return that level's 5 questions
+    return pickLevelQuestions(all, sessionLevel, 5);
+  }, [moduleName, liveQuizBank, sessionLevel]);
 
   const sessionStats = useMemo(() => {
     if (!selected) return null;
@@ -911,7 +940,7 @@ export default function TrainingSessionsList() {
           alert(`No question bank for this module yet.\nCannot generate trainee link.${hint}`);
           return null; // ← null = already alerted, callers should NOT add another alert
         }
-        nextPayload.quiz = buildQuizFromBank(moduleName, questions, PASS_MARK);
+        nextPayload.quiz = buildQuizFromBank(moduleName, questions, PASS_MARK, sessionLevel);
       }
 
       const finalToken = existingToken || nextPayload.quizToken;
@@ -2402,6 +2431,7 @@ export default function TrainingSessionsList() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <Badge text="Trainee Link (One for all)" tone="violet" />
                     <Badge text={`Module: ${moduleName || "-"}`} tone="gray" />
+                    {sessionLevel ? <Badge text={`Level: ${sessionLevel}`} tone="blue" /> : null}
                   </div>
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -3005,7 +3035,10 @@ export default function TrainingSessionsList() {
           details={MODULE_DETAILS_BI[moduleName] || selected?.payload?.details || ''}
           objectives={selected?.payload?.objectives || ''}
           conductedBy={selected?.payload?.conductedBy || ''}
-          quickCheckQuestions={(lookupBank(liveQuizBank, moduleName) || lookupBank(QUIZ_BANK, moduleName) || []).slice(0, 5)}
+          quickCheckQuestions={(() => {
+            const live = lookupBank(liveQuizBank, moduleName);
+            return (live.length ? live : lookupBank(QUIZ_BANK, moduleName)).slice(0, 5);
+          })()}
         />
       )}
     </div>

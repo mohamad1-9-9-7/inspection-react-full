@@ -206,7 +206,10 @@
       "Bash(node --check \"D:/inspection-server/index.cjs\")",
       "Bash(echo \"NODE_CHECK_EXIT=$?\")",
       "PowerShell($m = Select-String -Path \"D:\\\\inspection-react-full\\\\src\\\\pages\\\\settings\\\\AccountsManagementTab.jsx\" -Pattern \"[؀-ۿ]\"; \"COUNT=\" + $m.Count; $m | ForEach-Object { \"$\\($_.LineNumber\\): $\\($_.Line.Trim\\(\\)\\)\" })",
-      "Bash(echo \"BUILD_EXIT=$?\")"
+      "Bash(echo \"BUILD_EXIT=$?\")",
+      "Bash(powershell -NoProfile -Command \"\\(Get-Content 'D:\\\\inspection-react-full\\\\src\\\\pages\\\\training\\\\TrainingSessionsList.helpers.js'\\).Count; '----CREATE----'; \\(Get-Content 'D:\\\\inspection-react-full\\\\src\\\\pages\\\\training\\\\TrainingSessionCreate.jsx'\\).Count\")",
+      "PowerShell($p='D:\\\\inspection-react-full\\\\src\\\\pages\\\\training\\\\TrainingAdmin.jsx'; \"LINES=\" + \\(Get-Content $p\\).Count + \" SIZE=\" + \\(Get-Item $p\\).Length)",
+      "PowerShell(node 'D:\\\\inspection-react-full\\\\__syncheck.cjs')"
     ]
   }
 }

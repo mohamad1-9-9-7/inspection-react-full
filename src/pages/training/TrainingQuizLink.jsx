@@ -484,6 +484,11 @@ export default function TrainingQuizLink() {
             <div style={{ marginTop: 6, color: "#64748b", fontWeight: 900 }}>
               {lang === "AR" ? "درجة النجاح" : "Pass Mark"}: {passMark}%
             </div>
+            {quiz?.level ? (
+              <div style={{ marginTop: 4, color: "#64748b", fontWeight: 900 }}>
+                {lang === "AR" ? "المستوى" : "Level"}: {quiz.level}
+              </div>
+            ) : null}
           </div>
         </div>
 

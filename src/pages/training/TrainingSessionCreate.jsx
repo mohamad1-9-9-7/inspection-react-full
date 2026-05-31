@@ -155,6 +155,16 @@ const BRANCHES = [
   "FTR 2 - Mamzar food truck",
 ];
 
+/* ===================== Levels (difficulty) ===================== */
+// Reuses the per-question "difficulty" field managed in Training Admin
+// (labelled "المستوى" there). "" = all levels.
+export const LEVELS = [
+  { value: "",       en: "All Levels",   ar: "كل المستويات" },
+  { value: "Easy",   en: "Easy",         ar: "سهل / مبتدئ" },
+  { value: "Medium", en: "Medium",       ar: "متوسط" },
+  { value: "Hard",   en: "Hard",         ar: "صعب / متقدم" },
+];
+
 /* ===================== Training Details Templates ===================== */
 function getDetailsTemplate(moduleName) {
   return MODULE_DETAILS_BI[moduleName] || MODULE_DETAILS_BI.__DEFAULT__;
@@ -419,6 +429,7 @@ export default function TrainingSessionCreate() {
   const [objectives, setObjectives]           = useState(DEFAULT_OBJECTIVES);
   const [conductedBy, setConductedBy]         = useState("");
   const [verifiedBy, setVerifiedBy]           = useState("");
+  const [level, setLevel]                     = useState(""); // ✅ "" = All Levels; else Easy/Medium/Hard
 
   const effectiveModule = useCustomModule && customModule.trim()
     ? customModule.trim()
@@ -464,6 +475,7 @@ export default function TrainingSessionCreate() {
         ...DEFAULT_DOC,
         date, branch,
         moduleName: effectiveModule,
+        level, // ✅ NEW: target level/difficulty for this session's quiz
         title, uniqueKey, details, objectives,
         conductedBy, verifiedBy,
         participants: [],
@@ -573,6 +585,21 @@ export default function TrainingSessionCreate() {
               >
                 {useCustomModule ? "← الرجوع للقائمة الأصلية" : "+ إضافة تدريب مخصص جديد"}
               </button>
+            </div>
+
+            {/* Level / Difficulty */}
+            <div>
+              <FieldLabel>📊 Level / المستوى</FieldLabel>
+              <select value={level} onChange={e => setLevel(e.target.value)} style={inputSt}>
+                {LEVELS.map(l => (
+                  <option key={l.value || "all"} value={l.value}>{l.en} — {l.ar}</option>
+                ))}
+              </select>
+              <div style={{ marginTop:6, fontSize:11, color:C.gray400 }}>
+                {level
+                  ? "سيظهر للمتدرّب 5 أسئلة من هذا المستوى."
+                  : "كل المستويات — تظهر كل أسئلة الوحدة."}
+              </div>
             </div>
 
             {/* Conducted By */}
