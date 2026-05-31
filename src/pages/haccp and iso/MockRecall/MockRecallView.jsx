@@ -374,7 +374,7 @@ export default function MockRecallView() {
                         fontSize: "0.82rem",
                       }}
                       title={t("deleteAction")}
-                    >
+                     data-delete-action="true">
                       {t("deleteAction")}
                     </button>
                     <span style={{ color: "#64748b", fontSize: "1.2rem" }}>

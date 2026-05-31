@@ -1653,7 +1653,7 @@ export default function QCSDailyView() {
                   marginLeft: "6px",
                 }}
                 title="Delete report"
-              >
+               data-delete-action="true">
                 Delete
               </button>
             </li>

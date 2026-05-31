@@ -598,7 +598,7 @@ export default function RMInspectionReportPackaging() {
                       fontWeight: 800,
                       cursor: "pointer",
                     }}
-                  >
+                   data-delete-action="true">
                     ×
                   </button>
                 </td>

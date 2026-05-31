@@ -237,7 +237,7 @@ export default function POS15TemperatureView() {
               <button onClick={handleExportPDF} style={btnGreen}>
                 ⬇ Export PDF
               </button>
-              <button onClick={() => handleDelete(selectedReport)} style={btnRed}>
+              <button onClick={() => handleDelete(selectedReport)} style={btnRed} data-delete-action="true">
                 🗑 Delete
               </button>
             </div>

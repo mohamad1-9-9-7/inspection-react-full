@@ -279,7 +279,7 @@ export default function RealRecallView() {
                   <button style={S.btn("secondary")} onClick={() => navigate(`/haccp-iso/real-recall?edit=${rec.id}`)}>
                     {t("edit")}
                   </button>
-                  <button style={S.btn("danger")} onClick={() => del(rec.id)}>{t("del")}</button>
+                  <button style={S.btn("danger")} onClick={() => del(rec.id)} data-delete-action="true">{t("del")}</button>
                 </div>
               </div>
 

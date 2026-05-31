@@ -201,7 +201,7 @@ export default function PestControlView() {
                     </td>
                     <td style={S.td}>{fmtDate(p.nextVisitDate)}</td>
                     <td style={S.td}>
-                      <button style={S.btnDanger} onClick={() => deleteRecord(r._id || r.id)}>حذف</button>
+                      <button style={S.btnDanger} onClick={() => deleteRecord(r._id || r.id)} data-delete-action="true">حذف</button>
                     </td>
                   </tr>
                 );

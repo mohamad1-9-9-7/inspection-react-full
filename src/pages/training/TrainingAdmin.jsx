@@ -1166,7 +1166,7 @@ function ModulesSection({ T, theme, tt, isAr, lang, modulesWithStats, showAddMod
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button onClick={() => onJumpToQuestions(m.name)} style={btnStyle(theme, "primary")}>{tt("btn_questions")}</button>
                       <button onClick={() => setEditingModule({ originalName: m.name, name: m.name, icon: m.icon, color: m.color, description: m.description })} style={btnStyle(theme, "ghost")}>{tt("btn_edit")}</button>
-                      <button onClick={() => onDelete(m.name)} style={btnStyle(theme, "danger")}>{tt("btn_delete")}</button>
+                      <button onClick={() => onDelete(m.name)} style={btnStyle(theme, "danger")} data-delete-action="true">{tt("btn_delete")}</button>
                     </div>
                   </>
                 )}
@@ -1314,7 +1314,7 @@ function QuestionsSection({ T, theme, tt, isAr, lang, modulesWithStats, qModule,
                         <button onClick={() => onMove(idx, 1)} style={btnStyle(theme, "ghost")} title={tt("move_down")}>↓</button>
                         <button onClick={() => onDuplicate(idx)} style={btnStyle(theme, "ghost")} title={tt("duplicate_tip")}>{tt("btn_duplicate")}</button>
                         <button onClick={() => { setEditingQIdx(idx); setEditingQData({ ...q, options_en: [...(q.options_en || ["","",""])], options_ar: [...(q.options_ar || ["","",""])] }); }} style={btnStyle(theme, "ghost")}>{tt("btn_edit")}</button>
-                        <button onClick={() => onDelete(idx)} style={btnStyle(theme, "danger")}>{tt("btn_delete")}</button>
+                        <button onClick={() => onDelete(idx)} style={btnStyle(theme, "danger")} data-delete-action="true">{tt("btn_delete")}</button>
                       </div>
                     </div>
                   )}
@@ -1436,7 +1436,7 @@ function ReferencesSection({ T, theme, tt, isAr, lang, modules, references, filt
               <button onClick={selectAll} style={btnStyle(theme, "ghost")}>
                 {selectedRefs.size === filteredRefs.length ? tt("deselect_all") : tt("select_all")}
               </button>
-              <button onClick={onBulkDelete} style={btnStyle(theme, "danger")}>{tt("bulk_delete")} ({selectedRefs.size})</button>
+              <button onClick={onBulkDelete} style={btnStyle(theme, "danger")} data-delete-action="true">{tt("bulk_delete")} ({selectedRefs.size})</button>
             </>
           )}
         </div>
@@ -1538,7 +1538,7 @@ function ReferencesSection({ T, theme, tt, isAr, lang, modules, references, filt
                         </button>
                       )}
                       <button onClick={() => setEditingRef({ id: r.id, payload: { ...p } })} style={btnStyle(theme, "ghost")}>{tt("btn_edit")}</button>
-                      <button onClick={() => onDelete(r.id)} style={btnStyle(theme, "danger")}>{tt("btn_delete")}</button>
+                      <button onClick={() => onDelete(r.id)} style={btnStyle(theme, "danger")} data-delete-action="true">{tt("btn_delete")}</button>
                     </div>
                   </div>
                 </div>

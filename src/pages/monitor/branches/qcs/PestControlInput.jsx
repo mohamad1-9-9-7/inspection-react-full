@@ -429,7 +429,7 @@ export default function PestControlInput() {
           <div key={st.id} style={S.stationCard}>
             <div style={S.stationHead}>
               <span style={{ fontWeight: 900, fontSize: 13 }}>محطة #{idx + 1}</span>
-              <button type="button" style={S.btnDanger} onClick={() => removeStation(st.id)}>حذف</button>
+              <button type="button" style={S.btnDanger} onClick={() => removeStation(st.id)} data-delete-action="true">حذف</button>
             </div>
             <div style={S.row3}>
               <div>

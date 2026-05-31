@@ -1167,7 +1167,7 @@ export default function QCSRawMaterialInspection() {
                         style={styles.dangerButton}
                         disabled={samples.length <= 1}
                         title={samples.length <= 1 ? "At least one sample is required" : "Remove last sample column"}
-                      >
+                       data-delete-action="true">
                         🗑 Remove Sample (column)
                       </button>
                     </div>

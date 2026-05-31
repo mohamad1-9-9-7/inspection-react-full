@@ -967,7 +967,7 @@ export default function LoadingReports() {
                                     title="Delete day (server)"
                                     style={deleteBtn}
                                     onClick={(e) => { e.stopPropagation(); handleDeleteByDayKey(k); }}
-                                  >
+                                   data-delete-action="true">
                                     🗑
                                   </button>
                                 </div>
@@ -1012,7 +1012,7 @@ export default function LoadingReports() {
                 title="Delete day (server)"
                 style={deleteBtn}
                 onClick={(e) => { e.stopPropagation(); handleDeleteByDayKey(k); }}
-              >
+               data-delete-action="true">
                 🗑
               </button>
             </div>

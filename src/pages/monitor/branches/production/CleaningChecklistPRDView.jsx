@@ -220,7 +220,7 @@ export default function CleaningChecklistPRDView() {
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={load} style={btnBlue}>⟳ Refresh</button>
           <button onClick={exportPDF} style={btnDark} disabled={!selected}>⬇️ Export PDF</button>
-          <button onClick={handleDelete} style={btnRed} disabled={!selected || loading}>🗑️ Delete</button>
+          <button onClick={handleDelete} style={btnRed} disabled={!selected || loading} data-delete-action="true">🗑️ Delete</button>
         </div>
       </div>
 

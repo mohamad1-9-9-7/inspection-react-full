@@ -16,52 +16,78 @@ import AppearanceAndLanguage from "./tools/AppearanceAndLanguage";
 import ImageMigration from "../admin/ImageMigration";
 import ComplaintNumberBackfill from "../admin/ComplaintNumberBackfill";
 import AccountsManagementTab from "./AccountsManagementTab";
+import SecurityControlsTab from "./SecurityControlsTab";
+import SubscriptionTab from "../admin/SubscriptionTab";
+import PlansTab        from "./PlansTab";
+import CompaniesTab    from "./CompaniesTab";
+import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 
 /* ─── Sections + per-item colored gradients (matched to NamedDashboard tiles) ─── */
 const SECTIONS = [
   {
     id: "general",
-    label: "General",
+    label: "General", lk: "secGeneral",
     items: [
-      { id: "appearance",    icon: "🎨", title: "Appearance & Language", desc: "Theme, AR/EN preferences",
+      { id: "appearance",    icon: "🎨", title: "Appearance & Language", desc: "Theme, AR/EN preferences", tk: "tAppearance", dk: "tAppearanceD",
         grad: "linear-gradient(135deg,#06b6d4,#0284c7)", glow: "rgba(6,182,212,.45)" },
-      { id: "notifications", icon: "🔔", title: "Notifications",         desc: "Daily reminders, alerts",
+      { id: "notifications", icon: "🔔", title: "Notifications",         desc: "Daily reminders, alerts", tk: "tNotifications", dk: "tNotificationsD",
         grad: "linear-gradient(135deg,#f59e0b,#d97706)", glow: "rgba(245,158,11,.45)" },
     ],
   },
   {
     id: "data",
-    label: "Data Tools",
+    label: "Data Tools", lk: "secData",
     items: [
-      { id: "inventory",     icon: "📊", title: "Data Inventory",     desc: "Count + size per record type",
+      { id: "inventory",     icon: "📊", title: "Data Inventory",     desc: "Count + size per record type", tk: "tInventory", dk: "tInventoryD",
         grad: "linear-gradient(135deg,#3b82f6,#1d4ed8)", glow: "rgba(59,130,246,.45)" },
-      { id: "date-tree",     icon: "🗂️", title: "Date Tree Explorer", desc: "Browse by Year / Month / Day",
+      { id: "date-tree",     icon: "🗂️", title: "Date Tree Explorer", desc: "Browse by Year / Month / Day", tk: "tDateTree", dk: "tDateTreeD",
         grad: "linear-gradient(135deg,#8b5cf6,#6d28d9)", glow: "rgba(139,92,246,.45)" },
-      { id: "export",        icon: "📦", title: "Bulk Export",        desc: "Download as JSON / CSV",
+      { id: "export",        icon: "📦", title: "Bulk Export",        desc: "Download as JSON / CSV", tk: "tExport", dk: "tExportD",
         grad: "linear-gradient(135deg,#10b981,#059669)", glow: "rgba(16,185,129,.45)" },
-      { id: "backup",        icon: "💾", title: "Backup & Restore",   desc: "Full local backup",
+      { id: "backup",        icon: "💾", title: "Backup & Restore",   desc: "Full local backup", tk: "tBackup", dk: "tBackupD",
         grad: "linear-gradient(135deg,#0891b2,#0e7490)", glow: "rgba(8,145,178,.45)" },
-      { id: "excel-backup",  icon: "📑", title: "Excel Backup",       desc: "كل الفروع → ZIP + Excel",
+      { id: "excel-backup",  icon: "📑", title: "Excel Backup",       desc: "All branches → ZIP + Excel", tk: "tExcelBackup", dk: "tExcelBackupD",
         grad: "linear-gradient(135deg,#84cc16,#65a30d)", glow: "rgba(132,204,22,.45)" },
     ],
   },
   {
     id: "accounts",
-    label: "Accounts",
+    label: "Accounts", lk: "secAccounts",
     items: [
-      { id: "accounts-mgmt", icon: "👥", title: "Account Management", desc: "Users · permissions · activity log",
+      { id: "accounts-mgmt", icon: "👥", title: "Account Management", desc: "Users · permissions · activity log", tk: "tAccounts", dk: "tAccountsD",
         grad: "linear-gradient(135deg,#7c3aed,#6d28d9)", glow: "rgba(124,58,237,.45)" },
     ],
   },
   {
-    id: "admin",
-    label: "Admin Tools",
+    id: "billing",
+    label: "Billing & Plans", lk: "secBilling",
     items: [
-      { id: "image-migration",  icon: "🖼️", title: "Image Cleanup",      desc: "Convert base64 → Cloudinary URLs",
+      { id: "subscription", icon: "💳", title: "Subscription",  desc: "Current plan · activation · expiry", tk: "tSubscription", dk: "tSubscriptionD",
+        grad: "linear-gradient(135deg,#059669,#065f46)", glow: "rgba(5,150,105,.45)" },
+      { id: "plans",        icon: "📋", title: "Plans",         desc: "Create · edit · price · limits", tk: "tPlans", dk: "tPlansD",
+        grad: "linear-gradient(135deg,#0891b2,#0e7490)", glow: "rgba(8,145,178,.45)" },
+      { id: "companies",    icon: "🏢", title: "Companies",     desc: "Clients · assign plans · track", tk: "tCompanies", dk: "tCompaniesD",
+        grad: "linear-gradient(135deg,#3b82f6,#1d4ed8)", glow: "rgba(59,130,246,.45)" },
+    ],
+  },
+  {
+    id: "security",
+    label: "Security", lk: "secSecurity",
+    items: [
+      { id: "security-controls", icon: "🔐", title: "Security Controls",
+        desc: "Delete permissions · read-only mode · session timeout", tk: "tSecurity", dk: "tSecurityD",
+        grad: "linear-gradient(135deg,#dc2626,#9f1239)", glow: "rgba(220,38,38,.45)" },
+    ],
+  },
+  {
+    id: "admin",
+    label: "Admin Tools", lk: "secAdmin",
+    items: [
+      { id: "image-migration",  icon: "🖼️", title: "Image Cleanup",      desc: "Convert base64 → Cloudinary URLs", tk: "tImageMigration", dk: "tImageMigrationD",
         grad: "linear-gradient(135deg,#ec4899,#db2777)", glow: "rgba(236,72,153,.45)" },
-      { id: "complaint-numbers", icon: "🔢", title: "Complaint Numbers", desc: "Backfill missing complaint No.",
+      { id: "complaint-numbers", icon: "🔢", title: "Complaint Numbers", desc: "Backfill missing complaint No.", tk: "tComplaintNumbers", dk: "tComplaintNumbersD",
         grad: "linear-gradient(135deg,#f97316,#ea580c)", glow: "rgba(249,115,22,.45)" },
-      { id: "server-health",    icon: "🩺", title: "Server Health",      desc: "Ping + latency monitor",
+      { id: "server-health",    icon: "🩺", title: "Server Health",      desc: "Ping + latency monitor", tk: "tServerHealth", dk: "tServerHealthD",
         grad: "linear-gradient(135deg,#ef4444,#dc2626)", glow: "rgba(239,68,68,.45)" },
     ],
   },
@@ -71,15 +97,16 @@ const SECTIONS = [
 const ALL_ITEMS = SECTIONS.flatMap(s => s.items);
 const findItem  = (id) => ALL_ITEMS.find(it => it.id === id);
 
-function greeting() {
+function greetingKey() {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  return "Good evening";
+  if (h < 12) return "goodMorning";
+  if (h < 17) return "goodAfternoon";
+  return "goodEvening";
 }
 
 export default function SettingsPage() {
   const navigate = useNavigate();
+  const { t, isAr, dir, lang, toggle } = useSettingsLang();
   const [active, setActive] = useState(null);   // null = hub (grid), id = open panel
   const [hovered, setHovered] = useState(null);
   const [time, setTime] = useState(new Date());
@@ -101,7 +128,7 @@ export default function SettingsPage() {
   const activeItem = active ? findItem(active) : null;
 
   return (
-    <div style={s.page}>
+    <div style={s.page} dir={dir}>
       <style>{`
         @keyframes ndFloat{
           0%  {transform:translate(0,0)   scale(1);}
@@ -142,7 +169,7 @@ export default function SettingsPage() {
           <img src={logo} alt="logo" style={s.brandLogo}/>
           <div>
             <div style={s.brandName}>Al Mawashi QMS</div>
-            <div style={s.brandSub}>⚙️ Settings &amp; Admin Tools</div>
+            <div style={s.brandSub}>⚙️ {t("settingsTitle")}</div>
           </div>
         </div>
 
@@ -155,7 +182,7 @@ export default function SettingsPage() {
           <div style={s.userChip}>
             <div style={s.avatar}>{displayName[0]?.toUpperCase() || "U"}</div>
             <div>
-              <div style={s.userHello}>{greeting()} · Settings</div>
+              <div style={s.userHello}>{t(greetingKey())}</div>
               <div style={s.userName}>
                 {displayName}
                 {isAdmin && (
@@ -165,14 +192,15 @@ export default function SettingsPage() {
                     border: "1px solid rgba(245,158,11,.4)",
                     padding: "1px 6px", borderRadius: 999,
                   }}>
-                    👑 Admin
+                    👑 {t("adminTag")}
                   </span>
                 )}
               </div>
             </div>
           </div>
+          <LangToggle lang={lang} toggle={toggle} style={{ marginRight: 8 }} />
           <button className="nd-btn" onClick={() => navigate(-1)} style={s.btnBack}>
-            ← Back
+            ← {t("back")}
           </button>
         </div>
       </header>
@@ -183,15 +211,15 @@ export default function SettingsPage() {
           /* ── HUB VIEW: colored tiles grouped by section ── */
           <>
             <div style={s.hero}>
-              <h1 style={s.heroTitle}>Settings &amp; Tools</h1>
+              <h1 style={s.heroTitle}>{t("settingsTitle")}</h1>
               <p style={s.heroSub}>
-                {ALL_ITEMS.length} tool{ALL_ITEMS.length !== 1 ? "s" : ""} available · click any card to open
+                {ALL_ITEMS.length} {t(ALL_ITEMS.length !== 1 ? "settingsSubPlural" : "settingsSub")} · {t("clickToOpen")}
               </p>
             </div>
 
             {SECTIONS.map(sec => (
               <section key={sec.id} style={{ marginBottom: 28 }}>
-                <div style={s.sectionLabel}>{sec.label}</div>
+                <div style={s.sectionLabel}>{t(sec.lk)}</div>
                 <div style={s.grid}>
                   {sec.items.map(item => (
                     <button
@@ -212,8 +240,8 @@ export default function SettingsPage() {
                       <div style={s.tileIconWrap}>
                         <span style={s.tileIcon}>{item.icon}</span>
                       </div>
-                      <div style={s.tileLabel}>{item.title}</div>
-                      <div style={s.tileDesc}>{item.desc}</div>
+                      <div style={s.tileLabel}>{t(item.tk)}</div>
+                      <div style={s.tileDesc}>{t(item.dk)}</div>
                     </button>
                   ))}
                 </div>
@@ -221,44 +249,51 @@ export default function SettingsPage() {
             ))}
           </>
         ) : (
-          /* ── PANEL VIEW: opened tool inside a glass card ── */
+          /* ── PANEL VIEW ── */
           <>
-            {/* Panel header with breadcrumb */}
-            <div style={s.panelHeader}>
-              <button
-                className="nd-btn"
-                onClick={() => setActive(null)}
-                style={s.btnHub}
-              >
-                ← All Tools
-              </button>
-              {activeItem && (
-                <div style={s.crumb}>
-                  <div style={{ ...s.crumbIcon, background: activeItem.grad, boxShadow: `0 6px 18px ${activeItem.glow}` }}>
-                    {activeItem.icon}
-                  </div>
-                  <div>
-                    <div style={s.crumbTitle}>{activeItem.title}</div>
-                    <div style={s.crumbDesc}>{activeItem.desc}</div>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Account Management → full-screen overlay, handles its own layout */}
+            {active === "accounts-mgmt" && (
+              <AccountsManagementTab onClose={() => setActive(null)} />
+            )}
 
-            {/* Glass card containing the tool */}
-            <div style={s.panelCard}>
-              {active === "appearance"        && <AppearanceAndLanguage />}
-              {active === "notifications"     && <NotificationsTab />}
-              {active === "inventory"         && <DataInventory />}
-              {active === "date-tree"         && <DateTree />}
-              {active === "export"            && <BulkExport />}
-              {active === "backup"            && <BackupTab />}
-              {active === "excel-backup"      && <ExcelBackupTab />}
-              {active === "image-migration"   && <ImageMigration />}
-              {active === "complaint-numbers" && <ComplaintNumberBackfill />}
-              {active === "server-health"     && <ServerHealth />}
-              {active === "accounts-mgmt"     && <AccountsManagementTab />}
-            </div>
+            {/* All other tools: breadcrumb + white glass card */}
+            {active !== "accounts-mgmt" && (
+              <>
+                <div style={s.panelHeader}>
+                  <button className="nd-btn" onClick={() => setActive(null)} style={s.btnHub}>
+                    ← {t("allTools")}
+                  </button>
+                  {activeItem && (
+                    <div style={s.crumb}>
+                      <div style={{ ...s.crumbIcon, background: activeItem.grad, boxShadow: `0 6px 18px ${activeItem.glow}` }}>
+                        {activeItem.icon}
+                      </div>
+                      <div>
+                        <div style={s.crumbTitle}>{t(activeItem.tk)}</div>
+                        <div style={s.crumbDesc}>{t(activeItem.dk)}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div style={s.panelCard}>
+                  {active === "appearance"        && <AppearanceAndLanguage />}
+                  {active === "notifications"     && <NotificationsTab />}
+                  {active === "inventory"         && <DataInventory />}
+                  {active === "date-tree"         && <DateTree />}
+                  {active === "export"            && <BulkExport />}
+                  {active === "backup"            && <BackupTab />}
+                  {active === "excel-backup"      && <ExcelBackupTab />}
+                  {active === "image-migration"   && <ImageMigration />}
+                  {active === "complaint-numbers" && <ComplaintNumberBackfill />}
+                  {active === "server-health"     && <ServerHealth />}
+                  {active === "security-controls" && <SecurityControlsTab />}
+                  {active === "subscription"      && <SubscriptionTab />}
+                  {active === "plans"             && <PlansTab />}
+                  {active === "companies"         && <CompaniesTab />}
+                </div>
+              </>
+            )}
           </>
         )}
       </main>

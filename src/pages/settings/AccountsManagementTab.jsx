@@ -1,43 +1,33 @@
 // src/pages/settings/AccountsManagementTab.jsx
-// 👥 Account Management — list · add/edit · CRUD permissions · employees · activity log
+// 👥 Account Control Center — full-screen dark admin dashboard
+// Accepts optional onClose prop; when omitted it renders inline.
+
 import React, { useState, useEffect, useCallback } from "react";
 import API_BASE from "../../config/api";
 import { SECTION_ITEMS } from "../../utils/sectionItems";
 
-/* ─── Master branch list (same IDs as DailyMonitorDashboard) ─── */
+/* ═══════════════════════════════════════════════════════ CONSTANTS */
+
 const MASTER_BRANCHES = [
   { id: "QCS",        label: "🛡️ QCS" },
   { id: "PRODUCTION", label: "🏭 Production" },
-  { id: "POS 6",      label: "POS 6" },
-  { id: "POS 7",      label: "POS 7" },
-  { id: "POS 10",     label: "POS 10" },
-  { id: "POS 11",     label: "POS 11" },
-  { id: "POS 14",     label: "POS 14" },
-  { id: "POS 15",     label: "POS 15" },
-  { id: "POS 16",     label: "POS 16" },
-  { id: "POS 17",     label: "POS 17" },
-  { id: "POS 18",     label: "POS 18" },
-  { id: "POS 19",     label: "👨‍🍳 Al Warqa Kitchen" },
-  { id: "POS 21",     label: "POS 21" },
-  { id: "POS 24",     label: "POS 24" },
-  { id: "POS 25",     label: "POS 25" },
-  { id: "POS 26",     label: "POS 26" },
-  { id: "POS 31",     label: "POS 31" },
-  { id: "POS 34",     label: "POS 34" },
-  { id: "POS 35",     label: "POS 35" },
-  { id: "POS 36",     label: "POS 36" },
-  { id: "POS 37",     label: "POS 37" },
-  { id: "POS 38",     label: "POS 38" },
-  { id: "POS 41",     label: "POS 41" },
-  { id: "POS 42",     label: "POS 42" },
-  { id: "POS 43",     label: "POS 43" },
-  { id: "POS 44",     label: "POS 44" },
-  { id: "POS 45",     label: "POS 45" },
-  { id: "FTR 1",      label: "🚚 FTR 1" },
-  { id: "FTR 2",      label: "🚚 FTR 2" },
+  { id: "POS 6",  label: "POS 6"  }, { id: "POS 7",  label: "POS 7"  },
+  { id: "POS 10", label: "POS 10" }, { id: "POS 11", label: "POS 11" },
+  { id: "POS 14", label: "POS 14" }, { id: "POS 15", label: "POS 15" },
+  { id: "POS 16", label: "POS 16" }, { id: "POS 17", label: "POS 17" },
+  { id: "POS 18", label: "POS 18" },
+  { id: "POS 19", label: "👨‍🍳 Al Warqa Kitchen" },
+  { id: "POS 21", label: "POS 21" }, { id: "POS 24", label: "POS 24" },
+  { id: "POS 25", label: "POS 25" }, { id: "POS 26", label: "POS 26" },
+  { id: "POS 31", label: "POS 31" }, { id: "POS 34", label: "POS 34" },
+  { id: "POS 35", label: "POS 35" }, { id: "POS 36", label: "POS 36" },
+  { id: "POS 37", label: "POS 37" }, { id: "POS 38", label: "POS 38" },
+  { id: "POS 41", label: "POS 41" }, { id: "POS 42", label: "POS 42" },
+  { id: "POS 43", label: "POS 43" }, { id: "POS 44", label: "POS 44" },
+  { id: "POS 45", label: "POS 45" },
+  { id: "FTR 1",  label: "🚚 FTR 1" }, { id: "FTR 2", label: "🚚 FTR 2" },
 ];
 
-/* ─── sections (same order as NamedDashboard) ─── */
 const SECTIONS = [
   { id: "admin",            label: "👑 Admin" },
   { id: "inspector",        label: "🔍 Inspector" },
@@ -45,11 +35,11 @@ const SECTIONS = [
   { id: "daily",            label: "📅 Daily Monitor" },
   { id: "ohc",              label: "🩺 OHC" },
   { id: "returns",          label: "♻️ Returns" },
-  { id: "finalProduct",     label: "🏷️ Final Product Report" },
+  { id: "finalProduct",     label: "🏷️ Final Product" },
   { id: "cars",             label: "🚗 Cars" },
-  { id: "maintenance",      label: "🔧 Maintenance Requests" },
+  { id: "maintenance",      label: "🔧 Maintenance" },
   { id: "qcsView",          label: "📦 QCS Shipments" },
-  { id: "training",         label: "🎓 Training Certificates" },
+  { id: "training",         label: "🎓 Training Certs" },
   { id: "internalTraining", label: "🧑‍🏫 Internal Training" },
   { id: "iso",              label: "📘 ISO & HACCP" },
   { id: "halalAudit",       label: "📋 HALAL Audit" },
@@ -65,26 +55,42 @@ const CRUD_OPS = [
 ];
 
 const EMPTY_FORM = {
-  username: "",
-  displayName: "",
-  password: "",
-  confirmPassword: "",
-  isAdmin: false,
-  isFullAccess: false,
-  // crudPerms: { sectionId: ["view","write","edit","delete"] }
-  crudPerms: {},
-  employees: [],
-  // allowedBranches: { [sectionId]: [branchId, ...] }  → [] = all branches for that section
-  // Independent per icon — set restrictions for any section the account can access.
-  allowedBranches: {},
+  username: "", displayName: "", password: "", confirmPassword: "",
+  isAdmin: false, isFullAccess: false, crudPerms: {}, employees: [], allowedBranches: {},
 };
 
-/* Normalize allowedBranches into an object keyed by section ID.
-   Handles legacy flat-array format (applied to both daily + admin historically). */
+const BRANCH_THEMES = {
+  admin:            { icon:"👑",  title:"Admin",             bg:"#fffbeb", border:"#fde68a", accent:"#b45309", chipOn:"#fef3c7", chipOnText:"#78350f", badgeBg:"#fef3c7", badgeBorder:"#fcd34d", badgeText:"#78350f" },
+  inspector:        { icon:"🔍",  title:"Inspector",         bg:"#eff6ff", border:"#bfdbfe", accent:"#1d4ed8", chipOn:"#dbeafe", chipOnText:"#1e3a8a", badgeBg:"#dbeafe", badgeBorder:"#93c5fd", badgeText:"#1e3a8a" },
+  supervisor:       { icon:"🛠️", title:"Supervisor",        bg:"#f5f3ff", border:"#ddd6fe", accent:"#6d28d9", chipOn:"#ede9fe", chipOnText:"#4c1d95", badgeBg:"#ede9fe", badgeBorder:"#c4b5fd", badgeText:"#4c1d95" },
+  daily:            { icon:"📅",  title:"Daily Monitor",     bg:"#ecfeff", border:"#a5f3fc", accent:"#0e7490", chipOn:"#cffafe", chipOnText:"#155e75", badgeBg:"#cffafe", badgeBorder:"#67e8f9", badgeText:"#155e75" },
+  ohc:              { icon:"🩺",  title:"OHC",               bg:"#ecfdf5", border:"#a7f3d0", accent:"#059669", chipOn:"#d1fae5", chipOnText:"#064e3b", badgeBg:"#d1fae5", badgeBorder:"#6ee7b7", badgeText:"#064e3b" },
+  returns:          { icon:"♻️", title:"Returns",           bg:"#fff7ed", border:"#fed7aa", accent:"#ea580c", chipOn:"#ffedd5", chipOnText:"#7c2d12", badgeBg:"#ffedd5", badgeBorder:"#fdba74", badgeText:"#7c2d12" },
+  finalProduct:     { icon:"🏷️", title:"Final Product",     bg:"#fdf2f8", border:"#fbcfe8", accent:"#be185d", chipOn:"#fce7f3", chipOnText:"#831843", badgeBg:"#fce7f3", badgeBorder:"#f9a8d4", badgeText:"#831843" },
+  cars:             { icon:"🚗",  title:"Cars",              bg:"#f8fafc", border:"#cbd5e1", accent:"#475569", chipOn:"#e2e8f0", chipOnText:"#1e293b", badgeBg:"#e2e8f0", badgeBorder:"#94a3b8", badgeText:"#1e293b" },
+  maintenance:      { icon:"🔧",  title:"Maintenance",       bg:"#fef2f2", border:"#fecaca", accent:"#b91c1c", chipOn:"#fee2e2", chipOnText:"#7f1d1d", badgeBg:"#fee2e2", badgeBorder:"#fca5a5", badgeText:"#7f1d1d" },
+  qcsView:          { icon:"📦",  title:"QCS Shipments",     bg:"#eef2ff", border:"#c7d2fe", accent:"#4338ca", chipOn:"#e0e7ff", chipOnText:"#312e81", badgeBg:"#e0e7ff", badgeBorder:"#a5b4fc", badgeText:"#312e81" },
+  training:         { icon:"🎓",  title:"Training Certs",    bg:"#faf5ff", border:"#e9d5ff", accent:"#7e22ce", chipOn:"#f3e8ff", chipOnText:"#581c87", badgeBg:"#f3e8ff", badgeBorder:"#d8b4fe", badgeText:"#581c87" },
+  internalTraining: { icon:"🧑‍🏫", title:"Internal Training", bg:"#eff6ff", border:"#bfdbfe", accent:"#1e40af", chipOn:"#dbeafe", chipOnText:"#1e3a8a", badgeBg:"#dbeafe", badgeBorder:"#93c5fd", badgeText:"#1e3a8a" },
+  iso:              { icon:"📘",  title:"ISO & HACCP",       bg:"#ecfeff", border:"#a5f3fc", accent:"#0e7490", chipOn:"#cffafe", chipOnText:"#155e75", badgeBg:"#cffafe", badgeBorder:"#67e8f9", badgeText:"#155e75" },
+  halalAudit:       { icon:"📋",  title:"HALAL Audit",       bg:"#f7fee7", border:"#d9f99d", accent:"#4d7c0f", chipOn:"#ecfccb", chipOnText:"#365314", badgeBg:"#ecfccb", badgeBorder:"#bef264", badgeText:"#365314" },
+  hse:              { icon:"🦺",  title:"HSE",               bg:"#fefce8", border:"#fef08a", accent:"#a16207", chipOn:"#fef9c3", chipOnText:"#713f12", badgeBg:"#fef9c3", badgeBorder:"#fde047", badgeText:"#713f12" },
+  settings:         { icon:"⚙️",  title:"Settings",          bg:"#f1f5f9", border:"#cbd5e1", accent:"#334155", chipOn:"#e2e8f0", chipOnText:"#0f172a", badgeBg:"#e2e8f0", badgeBorder:"#94a3b8", badgeText:"#0f172a" },
+};
+
+const AVATAR_GRADS = [
+  "linear-gradient(135deg,#3b82f6,#7c3aed)",
+  "linear-gradient(135deg,#10b981,#0891b2)",
+  "linear-gradient(135deg,#f59e0b,#ef4444)",
+  "linear-gradient(135deg,#ec4899,#8b5cf6)",
+  "linear-gradient(135deg,#06b6d4,#3b82f6)",
+  "linear-gradient(135deg,#f97316,#e11d48)",
+];
+
+/* ═══════════════════════════════════════════════════════ HELPERS */
+
 function normalizeBranches(val) {
-  if (Array.isArray(val)) {
-    return { daily: [...val], admin: [...val] };
-  }
+  if (Array.isArray(val)) return { daily: [...val], admin: [...val] };
   if (val && typeof val === "object") {
     const out = {};
     for (const [k, v] of Object.entries(val)) {
@@ -95,19 +101,17 @@ function normalizeBranches(val) {
   return {};
 }
 
-/* ─── Password strength ─── */
 function checkPasswordStrength(pw) {
   if (!pw) return null;
   const issues = [];
-  if (pw.length < 8)           issues.push("at least 8 characters");
-  if (!/[A-Za-z]/.test(pw))   issues.push("a letter");
-  if (!/[0-9]/.test(pw))      issues.push("a number");
+  if (pw.length < 8)         issues.push("at least 8 characters");
+  if (!/[A-Za-z]/.test(pw)) issues.push("a letter");
+  if (!/[0-9]/.test(pw))    issues.push("a number");
   if (issues.length === 0) return { level: "strong", color: "#16a34a", label: "🟢 Strong" };
   if (issues.length === 1) return { level: "medium", color: "#d97706", label: "🟡 Fair — needs " + issues.join(", ") };
   return { level: "weak", color: "#dc2626", label: "🔴 Weak — needs " + issues.join(", ") };
 }
 
-/* ─── helpers ─── */
 function fmt(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("en-GB", {
@@ -116,25 +120,19 @@ function fmt(iso) {
   });
 }
 
-// permissions from DB is still the old array ["inspector","*"] — derive from crudPerms
 function permissionsArrayFromCrud(isFullAccess, crudPerms) {
   if (isFullAccess) return ["*"];
   return Object.keys(crudPerms).filter(k => crudPerms[k]?.length > 0);
 }
 
-// Convert old permissions array to our form state
 function formStateFromUser(u) {
   const oldPerms = u.permissions || [];
   const isFullAccess = oldPerms.includes("*");
-  // crudPerms from DB (new field) or derive from old permissions (view only as default)
   let crudPerms = {};
   if (u.crud_perms && typeof u.crud_perms === "object" && !Array.isArray(u.crud_perms)) {
     crudPerms = u.crud_perms;
   } else if (!isFullAccess) {
-    // old account — give each section "view" by default
-    oldPerms.forEach(id => {
-      if (id !== "*") crudPerms[id] = ["view"];
-    });
+    oldPerms.forEach(id => { if (id !== "*") crudPerms[id] = ["view"]; });
   }
   return {
     id:              u.id,
@@ -150,75 +148,57 @@ function formStateFromUser(u) {
   };
 }
 
-/* ══════════════════════════════════════════════
-   CRUD PERMISSIONS TABLE
-══════════════════════════════════════════════ */
+const avatarGrad = (username) =>
+  AVATAR_GRADS[(username?.charCodeAt(0) || 0) % AVATAR_GRADS.length];
+
+/* ═══════════════════════════════════════════════════════
+   CRUD PERMISSIONS TABLE (light — inside white form card)
+═══════════════════════════════════════════════════════ */
 function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
   const toggleSection = (sectionId) => {
     const next = { ...crudPerms };
-    if (next[sectionId]) {
-      delete next[sectionId];
-    } else {
-      next[sectionId] = ["view"]; // default: view only
-    }
+    if (next[sectionId]) delete next[sectionId];
+    else next[sectionId] = ["view"];
     onChange(next);
   };
-
   const toggleOp = (sectionId, op) => {
     const ops = crudPerms[sectionId] || [];
     let next;
     if (ops.includes(op)) {
       next = ops.filter(o => o !== op);
-      // if removing view, remove everything
       if (op === "view") next = [];
     } else {
       next = [...ops, op];
-      // if adding write/edit/delete, ensure view is included
       if (!next.includes("view")) next = ["view", ...next];
     }
     onChange({ ...crudPerms, [sectionId]: next });
   };
-
   const selectAllOps = (sectionId) => {
     const ops = crudPerms[sectionId] || [];
     const allSelected = CRUD_OPS.every(o => ops.includes(o.id));
-    onChange({
-      ...crudPerms,
-      [sectionId]: allSelected ? ["view"] : CRUD_OPS.map(o => o.id),
-    });
+    onChange({ ...crudPerms, [sectionId]: allSelected ? ["view"] : CRUD_OPS.map(o => o.id) });
   };
-
   const allSectionsOn = SECTIONS.every(s => crudPerms[s.id]?.length > 0);
 
   return (
     <div style={fs.permBox}>
-      {/* Header */}
       <div style={fs.permHeader}>
         <span style={fs.permTitle}>🔐 Permissions</span>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={isFullAccess}
+        <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
+          <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer" }}>
+            <input type="checkbox" checked={isFullAccess}
               onChange={e => onFullAccessChange(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "#7c3aed" }}
-            />
-            <span style={{ fontWeight: 900, color: "#7c3aed", fontSize: 15 }}>
+              style={{ width:18, height:18, accentColor:"#7c3aed" }} />
+            <span style={{ fontWeight:900, color:"#7c3aed", fontSize:15 }}>
               ⭐ Full Access (all sections + all operations)
             </span>
           </label>
           {!isFullAccess && (
-            <button
-              type="button"
-              onClick={() => {
-                const next = {};
-                SECTIONS.forEach(s => {
-                  next[s.id] = allSectionsOn ? ["view"] : CRUD_OPS.map(o => o.id);
-                });
-                onChange(next);
-              }}
-              style={fs.btnSelectAll}
-            >
+            <button type="button" onClick={() => {
+              const next = {};
+              SECTIONS.forEach(s => { next[s.id] = allSectionsOn ? ["view"] : CRUD_OPS.map(o => o.id); });
+              onChange(next);
+            }} style={fs.btnSelectAll}>
               {allSectionsOn ? "⬇️ All View-Only" : "⬆️ All Full Access"}
             </button>
           )}
@@ -230,14 +210,14 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
           ⭐ This account has unrestricted access to all sections and operations.
         </div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX:"auto" }}>
           <table style={fs.permTable}>
             <thead>
               <tr>
-                <th style={{ ...fs.permTh, textAlign: "left", minWidth: 190 }}>Section</th>
+                <th style={{ ...fs.permTh, textAlign:"left", minWidth:190 }}>Section</th>
                 <th style={fs.permTh}>Access</th>
                 {CRUD_OPS.map(op => (
-                  <th key={op.id} style={{ ...fs.permTh, color: op.color }}>{op.label}</th>
+                  <th key={op.id} style={{ ...fs.permTh, color:op.color }}>{op.label}</th>
                 ))}
                 <th style={fs.permTh}>All Ops</th>
               </tr>
@@ -247,46 +227,24 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
                 const hasAccess = !!(crudPerms[sec.id]?.length > 0);
                 const ops = crudPerms[sec.id] || [];
                 return (
-                  <tr
-                    key={sec.id}
-                    style={{
-                      background: i % 2 === 0 ? "#f8fafc" : "#fff",
-                      opacity: hasAccess ? 1 : 0.5,
-                    }}
-                  >
-                    <td style={fs.permTd}>
-                      <span style={{ fontWeight: 800, fontSize: 14 }}>{sec.label}</span>
-                    </td>
-                    <td style={{ ...fs.permTd, textAlign: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={hasAccess}
-                        onChange={() => toggleSection(sec.id)}
-                        style={{ width: 17, height: 17, accentColor: "#2563eb", cursor: "pointer" }}
-                      />
+                  <tr key={sec.id} style={{ background: i % 2 === 0 ? "#f8fafc" : "#fff", opacity: hasAccess ? 1 : 0.5 }}>
+                    <td style={fs.permTd}><span style={{ fontWeight:800, fontSize:14 }}>{sec.label}</span></td>
+                    <td style={{ ...fs.permTd, textAlign:"center" }}>
+                      <input type="checkbox" checked={hasAccess} onChange={() => toggleSection(sec.id)}
+                        style={{ width:17, height:17, accentColor:"#2563eb", cursor:"pointer" }} />
                     </td>
                     {CRUD_OPS.map(op => (
-                      <td key={op.id} style={{ ...fs.permTd, textAlign: "center" }}>
-                        <input
-                          type="checkbox"
-                          checked={ops.includes(op.id)}
+                      <td key={op.id} style={{ ...fs.permTd, textAlign:"center" }}>
+                        <input type="checkbox" checked={ops.includes(op.id)}
                           disabled={!hasAccess || (op.id !== "view" && !ops.includes("view"))}
                           onChange={() => toggleOp(sec.id, op.id)}
-                          style={{
-                            width: 16, height: 16,
-                            accentColor: op.color, cursor: hasAccess ? "pointer" : "not-allowed",
-                          }}
-                        />
+                          style={{ width:16, height:16, accentColor:op.color, cursor: hasAccess ? "pointer" : "not-allowed" }} />
                       </td>
                     ))}
-                    <td style={{ ...fs.permTd, textAlign: "center" }}>
+                    <td style={{ ...fs.permTd, textAlign:"center" }}>
                       {hasAccess && (
-                        <button
-                          type="button"
-                          onClick={() => selectAllOps(sec.id)}
-                          style={fs.btnAllOps}
-                          title="Toggle all operations"
-                        >
+                        <button type="button" onClick={() => selectAllOps(sec.id)}
+                          style={fs.btnAllOps} title="Toggle all operations">
                           {CRUD_OPS.every(o => ops.includes(o.id)) ? "🔓" : "🔒"}
                         </button>
                       )}
@@ -302,173 +260,108 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
   );
 }
 
-/* ══════════════════════════════════════════════
-   EMPLOYEES LIST
-══════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   EMPLOYEES LIST (light — inside form card)
+═══════════════════════════════════════════════════════ */
 function EmployeesList({ employees, onChange }) {
   const [newName, setNewName] = useState("");
-
   const add = () => {
     const n = newName.trim();
     if (!n || employees.includes(n)) return;
     onChange([...employees, n]);
     setNewName("");
   };
-
   const remove = (name) => onChange(employees.filter(e => e !== name));
 
   return (
     <div style={fs.empBox}>
       <div style={fs.permTitle}>
         👷 Employees
-        <span style={{ fontWeight: 700, fontSize: 12, color: "#94a3b8", marginLeft: 8 }}>
-          (will appear in the "who is working?" popup after login)
+        <span style={{ fontWeight:700, fontSize:12, color:"#94a3b8", marginLeft:8 }}>
+          (appear in the operator picker after login)
         </span>
       </div>
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+      <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
         {employees.map(name => (
           <div key={name} style={fs.empChip}>
-            <span style={{ fontWeight: 800 }}>{name}</span>
-            <button
-              type="button"
-              onClick={() => remove(name)}
-              style={fs.empRemoveBtn}
-            >×</button>
+            <span style={{ fontWeight:800 }}>{name}</span>
+            <button type="button" onClick={() => remove(name)} style={fs.empRemoveBtn}>×</button>
           </div>
         ))}
-        {employees.length === 0 && (
-          <span style={{ color: "#94a3b8", fontSize: 13 }}>No employees added yet</span>
-        )}
+        {employees.length === 0 && <span style={{ color:"#94a3b8", fontSize:13 }}>No employees added yet</span>}
       </div>
-
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          style={{ ...fs.input, maxWidth: 240, flex: 1 }}
-          placeholder="Employee name…"
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && (e.preventDefault(), add())}
-        />
+      <div style={{ display:"flex", gap:8 }}>
+        <input style={{ ...fs.input, maxWidth:240, flex:1 }} placeholder="Employee name…"
+          value={newName} onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && (e.preventDefault(), add())} />
         <button type="button" onClick={add} style={fs.btnAdd2}>+ Add</button>
       </div>
     </div>
   );
 }
 
-/* ══════════════════════════════════════════════
-   ITEM SELECTOR — per-section (branches OR sub-pages)
-   selected: string[]  → [] = all items; [...] = restricted list
-   items:    [{ id, icon?, label }, ...]  ← what the user can check
-   kind:     "branches" | "pages"          ← only changes the wording
-   theme:    color preset (see BRANCH_THEMES)
-══════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   BRANCH / PAGE SELECTOR (light — inside form card)
+═══════════════════════════════════════════════════════ */
 function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind = "branches" }) {
   const list = Array.isArray(items) && items.length > 0 ? items : MASTER_BRANCHES;
   const isRestricted = selected.length > 0;
   const noun  = kind === "pages" ? "page" : "branch";
   const nounP = kind === "pages" ? "pages" : "branches";
-
-  const toggle = (id) => {
-    if (selected.includes(id)) {
-      onChange(selected.filter(b => b !== id));
-    } else {
-      onChange([...selected, id]);
-    }
-  };
-
-  const selectAll = () => onChange(list.map(b => b.id));
-  const clearAll  = () => onChange([]);
+  const toggle = (id) =>
+    onChange(selected.includes(id) ? selected.filter(b => b !== id) : [...selected, id]);
 
   return (
-    <div style={{
-      border: `1.5px solid ${theme.border}`, borderRadius: 14,
-      padding: "16px 18px", marginBottom: 14,
-      background: theme.bg,
-    }}>
-      {/* Title row */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        gap: 10, flexWrap: "wrap", marginBottom: 8,
-      }}>
-        <div style={{ fontWeight: 900, fontSize: 16, color: theme.accent }}>
+    <div style={{ border:`1.5px solid ${theme.border}`, borderRadius:14, padding:"16px 18px", marginBottom:14, background:theme.bg }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap", marginBottom:8 }}>
+        <div style={{ fontWeight:900, fontSize:16, color:theme.accent }}>
           {theme.icon} {theme.title} — {kind === "pages" ? "Page Access" : "Branch Access"}
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={selectAll}
-            style={{
-              fontSize: 12, fontWeight: 900, color: theme.accent,
-              background: "#fff", border: `1px solid ${theme.border}`,
-              borderRadius: 8, cursor: "pointer", padding: "5px 11px", fontFamily: "inherit",
-            }}
-          >
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+          <button type="button" onClick={() => onChange(list.map(b => b.id))}
+            style={{ fontSize:12, fontWeight:900, color:theme.accent, background:"#fff", border:`1px solid ${theme.border}`, borderRadius:8, cursor:"pointer", padding:"5px 11px", fontFamily:"inherit" }}>
             ☑️ Select All
           </button>
-          <button
-            type="button"
-            onClick={clearAll}
-            style={{
-              fontSize: 12, fontWeight: 900, color: "#475569",
-              background: "#fff", border: "1px solid #e2e8f0",
-              borderRadius: 8, cursor: "pointer", padding: "5px 11px", fontFamily: "inherit",
-            }}
-          >
+          <button type="button" onClick={() => onChange([])}
+            style={{ fontSize:12, fontWeight:900, color:"#475569", background:"#fff", border:"1px solid #e2e8f0", borderRadius:8, cursor:"pointer", padding:"5px 11px", fontFamily:"inherit" }}>
             ⬜ Clear
           </button>
         </div>
       </div>
 
-      <p style={{ fontSize: 13, color: "#475569", marginBottom: 12, fontWeight: 700 }}>
+      <p style={{ fontSize:13, color:"#475569", marginBottom:12, fontWeight:700 }}>
         {nounP[0].toUpperCase() + nounP.slice(1)} this account can access in <strong>{sectionLabel || theme.title}</strong>.
         Leave all unchecked for full access.
       </p>
 
-      {/* All-access toggle */}
-      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 12 }}>
-        <input
-          type="checkbox"
-          checked={!isRestricted}
-          onChange={() => onChange([])}
-          style={{ width: 17, height: 17, accentColor: theme.accent }}
-        />
-        <span style={{ fontWeight: 900, color: theme.accent, fontSize: 15 }}>
+      <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", marginBottom:12 }}>
+        <input type="checkbox" checked={!isRestricted} onChange={() => onChange([])}
+          style={{ width:17, height:17, accentColor:theme.accent }} />
+        <span style={{ fontWeight:900, color:theme.accent, fontSize:15 }}>
           ⭐ All {nounP[0].toUpperCase() + nounP.slice(1)} (no restriction)
         </span>
       </label>
 
-      {/* Item chips */}
       <div style={{
-        display: "grid",
-        gridTemplateColumns: kind === "pages"
-          ? "repeat(auto-fill, minmax(220px,1fr))"
-          : "repeat(auto-fill, minmax(140px,1fr))",
-        gap: 6,
+        display:"grid",
+        gridTemplateColumns: kind === "pages" ? "repeat(auto-fill,minmax(220px,1fr))" : "repeat(auto-fill,minmax(140px,1fr))",
+        gap:6,
       }}>
         {list.map(b => {
           const checked = selected.includes(b.id);
           return (
-            <label
-              key={b.id}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 10px", borderRadius: 8, cursor: "pointer",
-                background: checked ? theme.chipOn : "#fff",
-                border: `1.5px solid ${checked ? theme.accent : "#e2e8f0"}`,
-                fontWeight: checked ? 900 : 700,
-                fontSize: 13,
-                color: checked ? theme.chipOnText : "#64748b",
-                transition: "all .12s",
-                userSelect: "none",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => toggle(b.id)}
-                style={{ width: 14, height: 14, accentColor: theme.accent, flexShrink: 0 }}
-              />
+            <label key={b.id} style={{
+              display:"flex", alignItems:"center", gap:6,
+              padding:"7px 10px", borderRadius:8, cursor:"pointer",
+              background: checked ? theme.chipOn : "#fff",
+              border:`1.5px solid ${checked ? theme.accent : "#e2e8f0"}`,
+              fontWeight: checked ? 900 : 700,
+              fontSize:13,
+              color: checked ? theme.chipOnText : "#64748b",
+              transition:"all .12s", userSelect:"none",
+            }}>
+              <input type="checkbox" checked={checked} onChange={() => toggle(b.id)}
+                style={{ width:14, height:14, accentColor:theme.accent, flexShrink:0 }} />
               {b.label}
             </label>
           );
@@ -476,11 +369,9 @@ function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind =
       </div>
 
       {isRestricted && (
-        <div style={{
-          marginTop: 12, padding: "8px 12px", borderRadius: 8,
-          background: theme.badgeBg, border: `1px solid ${theme.badgeBorder}`,
-          fontSize: 13, fontWeight: 800, color: theme.badgeText,
-        }}>
+        <div style={{ marginTop:12, padding:"8px 12px", borderRadius:8,
+          background:theme.badgeBg, border:`1px solid ${theme.badgeBorder}`,
+          fontSize:13, fontWeight:800, color:theme.badgeText }}>
           🔒 Restricted to {selected.length} {selected.length !== 1 ? nounP : noun}
         </div>
       )}
@@ -488,36 +379,13 @@ function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind =
   );
 }
 
-/* Per-section themes for the BranchSelector (matched to NamedDashboard tile colors) */
-const BRANCH_THEMES = {
-  admin:            { icon: "👑",  title: "Admin",              bg: "#fffbeb", border: "#fde68a", accent: "#b45309", chipOn: "#fef3c7", chipOnText: "#78350f", badgeBg: "#fef3c7", badgeBorder: "#fcd34d", badgeText: "#78350f" },
-  inspector:        { icon: "🔍",  title: "Inspector",          bg: "#eff6ff", border: "#bfdbfe", accent: "#1d4ed8", chipOn: "#dbeafe", chipOnText: "#1e3a8a", badgeBg: "#dbeafe", badgeBorder: "#93c5fd", badgeText: "#1e3a8a" },
-  supervisor:       { icon: "🛠️", title: "Supervisor",         bg: "#f5f3ff", border: "#ddd6fe", accent: "#6d28d9", chipOn: "#ede9fe", chipOnText: "#4c1d95", badgeBg: "#ede9fe", badgeBorder: "#c4b5fd", badgeText: "#4c1d95" },
-  daily:            { icon: "📅",  title: "Daily Monitor",      bg: "#ecfeff", border: "#a5f3fc", accent: "#0e7490", chipOn: "#cffafe", chipOnText: "#155e75", badgeBg: "#cffafe", badgeBorder: "#67e8f9", badgeText: "#155e75" },
-  ohc:              { icon: "🩺",  title: "OHC",                bg: "#ecfdf5", border: "#a7f3d0", accent: "#059669", chipOn: "#d1fae5", chipOnText: "#064e3b", badgeBg: "#d1fae5", badgeBorder: "#6ee7b7", badgeText: "#064e3b" },
-  returns:          { icon: "♻️", title: "Returns",            bg: "#fff7ed", border: "#fed7aa", accent: "#ea580c", chipOn: "#ffedd5", chipOnText: "#7c2d12", badgeBg: "#ffedd5", badgeBorder: "#fdba74", badgeText: "#7c2d12" },
-  finalProduct:     { icon: "🏷️", title: "Final Product",      bg: "#fdf2f8", border: "#fbcfe8", accent: "#be185d", chipOn: "#fce7f3", chipOnText: "#831843", badgeBg: "#fce7f3", badgeBorder: "#f9a8d4", badgeText: "#831843" },
-  cars:             { icon: "🚗",  title: "Cars",               bg: "#f8fafc", border: "#cbd5e1", accent: "#475569", chipOn: "#e2e8f0", chipOnText: "#1e293b", badgeBg: "#e2e8f0", badgeBorder: "#94a3b8", badgeText: "#1e293b" },
-  maintenance:      { icon: "🔧",  title: "Maintenance",        bg: "#fef2f2", border: "#fecaca", accent: "#b91c1c", chipOn: "#fee2e2", chipOnText: "#7f1d1d", badgeBg: "#fee2e2", badgeBorder: "#fca5a5", badgeText: "#7f1d1d" },
-  qcsView:          { icon: "📦",  title: "QCS Shipments",      bg: "#eef2ff", border: "#c7d2fe", accent: "#4338ca", chipOn: "#e0e7ff", chipOnText: "#312e81", badgeBg: "#e0e7ff", badgeBorder: "#a5b4fc", badgeText: "#312e81" },
-  training:         { icon: "🎓",  title: "Training Certs",     bg: "#faf5ff", border: "#e9d5ff", accent: "#7e22ce", chipOn: "#f3e8ff", chipOnText: "#581c87", badgeBg: "#f3e8ff", badgeBorder: "#d8b4fe", badgeText: "#581c87" },
-  internalTraining: { icon: "🧑‍🏫", title: "Internal Training", bg: "#eff6ff", border: "#bfdbfe", accent: "#1e40af", chipOn: "#dbeafe", chipOnText: "#1e3a8a", badgeBg: "#dbeafe", badgeBorder: "#93c5fd", badgeText: "#1e3a8a" },
-  iso:              { icon: "📘",  title: "ISO & HACCP",        bg: "#ecfeff", border: "#a5f3fc", accent: "#0e7490", chipOn: "#cffafe", chipOnText: "#155e75", badgeBg: "#cffafe", badgeBorder: "#67e8f9", badgeText: "#155e75" },
-  halalAudit:       { icon: "📋",  title: "HALAL Audit",        bg: "#f7fee7", border: "#d9f99d", accent: "#4d7c0f", chipOn: "#ecfccb", chipOnText: "#365314", badgeBg: "#ecfccb", badgeBorder: "#bef264", badgeText: "#365314" },
-  hse:              { icon: "🦺",  title: "HSE",                bg: "#fefce8", border: "#fef08a", accent: "#a16207", chipOn: "#fef9c3", chipOnText: "#713f12", badgeBg: "#fef9c3", badgeBorder: "#fde047", badgeText: "#713f12" },
-  settings:         { icon: "⚙️",  title: "Settings",           bg: "#f1f5f9", border: "#cbd5e1", accent: "#334155", chipOn: "#e2e8f0", chipOnText: "#0f172a", badgeBg: "#e2e8f0", badgeBorder: "#94a3b8", badgeText: "#0f172a" },
-};
-
-/* SECTION_ITEMS imported from utils/sectionItems.js — shared with hub pages. */
-
-/* ══════════════════════════════════════════════
-   ACCOUNT FORM
-══════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   ACCOUNT FORM (white card — inside dark panel)
+═══════════════════════════════════════════════════════ */
 function AccountForm({ initial, onSave, onCancel, saving }) {
   const [form, setForm] = useState(initial || EMPTY_FORM);
-  const [err, setErr] = useState("");
+  const [err, setErr]   = useState("");
   const isEdit = !!initial?.id;
-
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSubmit = (e) => {
@@ -537,11 +405,8 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
 
   return (
     <form onSubmit={handleSubmit} style={fs.formWrap}>
-      <h3 style={fs.title}>
-        {isEdit ? "✏️ Edit Account" : "➕ Add New Account"}
-      </h3>
+      <h3 style={fs.title}>{isEdit ? "✏️ Edit Account" : "➕ Add New Account"}</h3>
 
-      {/* Username + Display Name */}
       <div style={fs.row}>
         <label style={fs.field}>
           <span style={fs.label}>Username *</span>
@@ -557,7 +422,6 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
         </label>
       </div>
 
-      {/* Passwords */}
       <div style={fs.row}>
         <div style={fs.field}>
           <span style={fs.label}>{isEdit ? "New Password (blank = no change)" : "Password *"}</span>
@@ -565,16 +429,11 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
             onChange={e => set("password", e.target.value)}
             placeholder={isEdit ? "Leave blank to keep" : "Enter password"}
             autoComplete="new-password" />
-          {/* Password strength indicator */}
           {form.password && (() => {
             const s = checkPasswordStrength(form.password);
-            return (
-              <div style={{ marginTop: 5, fontSize: 13, fontWeight: 800, color: s.color }}>
-                {s.label}
-              </div>
-            );
+            return <div style={{ marginTop:5, fontSize:13, fontWeight:800, color:s.color }}>{s.label}</div>;
           })()}
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3, fontWeight: 700 }}>
+          <div style={{ fontSize:11, color:"#94a3b8", marginTop:3, fontWeight:700 }}>
             Min 8 chars · must have a letter and a number
           </div>
         </div>
@@ -582,86 +441,61 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
           <span style={fs.label}>Confirm Password</span>
           <input type="password" style={fs.input} value={form.confirmPassword}
             onChange={e => set("confirmPassword", e.target.value)}
-            placeholder="Repeat password"
-            autoComplete="new-password" />
-          {/* Match indicator */}
+            placeholder="Repeat password" autoComplete="new-password" />
           {form.confirmPassword && (
-            <div style={{
-              marginTop: 5, fontSize: 13, fontWeight: 800,
-              color: form.password === form.confirmPassword ? "#16a34a" : "#dc2626",
-            }}>
+            <div style={{ marginTop:5, fontSize:13, fontWeight:800,
+              color: form.password === form.confirmPassword ? "#16a34a" : "#dc2626" }}>
               {form.password === form.confirmPassword ? "✅ Passwords match" : "❌ Passwords don't match"}
             </div>
           )}
         </label>
       </div>
 
-      {/* Admin flag */}
-      <label style={{ ...fs.checkRow, marginBottom: 18 }}>
+      <label style={{ ...fs.checkRow, marginBottom:18 }}>
         <input type="checkbox" checked={form.isAdmin}
           onChange={e => set("isAdmin", e.target.checked)}
-          style={{ width: 18, height: 18, accentColor: "#7c3aed" }} />
-        <span style={{ fontWeight: 900, color: "#7c3aed", fontSize: 15 }}>
+          style={{ width:18, height:18, accentColor:"#7c3aed" }} />
+        <span style={{ fontWeight:900, color:"#7c3aed", fontSize:15 }}>
           👑 Admin — can manage accounts in Settings
         </span>
       </label>
 
-      {/* CRUD Permissions Table */}
-      <CrudTable
-        isFullAccess={form.isFullAccess}
-        crudPerms={form.crudPerms}
-        onChange={v => set("crudPerms", v)}
-        onFullAccessChange={v => set("isFullAccess", v)}
-      />
+      <CrudTable isFullAccess={form.isFullAccess} crudPerms={form.crudPerms}
+        onChange={v => set("crudPerms", v)} onFullAccessChange={v => set("isFullAccess", v)} />
 
-      {/* Employees */}
-      <EmployeesList
-        employees={form.employees}
-        onChange={v => set("employees", v)}
-      />
+      <EmployeesList employees={form.employees} onChange={v => set("employees", v)} />
 
-      {/* Per-section item access — branches OR sub-pages depending on the section type */}
+      {/* Per-section access control */}
       {(() => {
         const access = form.allowedBranches || {};
-        /* Sections this account has access to AND that have an inner restriction config */
-        const activeSections = SECTIONS
-          .filter(sec => {
-            const cfg = SECTION_ITEMS[sec.id];
-            if (!cfg || cfg.kind === "none") return false;
-            return form.isFullAccess || (form.crudPerms?.[sec.id]?.length > 0);
-          })
-          .map(sec => sec.id);
+        const activeSections = SECTIONS.filter(sec => {
+          const cfg = SECTION_ITEMS[sec.id];
+          if (!cfg || cfg.kind === "none") return false;
+          return form.isFullAccess || (form.crudPerms?.[sec.id]?.length > 0);
+        }).map(sec => sec.id);
         if (activeSections.length === 0) return null;
-
-        const updateSection = (sec, list) =>
-          set("allowedBranches", { ...access, [sec]: list });
-
+        const updateSection = (sec, list) => set("allowedBranches", { ...access, [sec]: list });
         return (
-          <div style={{ marginBottom: 4 }}>
-            <div style={{ fontWeight: 1000, fontSize: 15, color: "#0f172a", marginBottom: 4 }}>
+          <div style={{ marginBottom:4 }}>
+            <div style={{ fontWeight:1000, fontSize:15, color:"#0f172a", marginBottom:4 }}>
               🔐 Section Access Control
-              <span style={{ fontWeight: 700, fontSize: 12, color: "#94a3b8", marginLeft: 6 }}>
-                (configured independently for each icon)
+              <span style={{ fontWeight:700, fontSize:12, color:"#94a3b8", marginLeft:6 }}>
+                (configured independently per section)
               </span>
             </div>
-            <p style={{ fontSize: 12, color: "#64748b", marginBottom: 12, fontWeight: 700 }}>
-              For every section this account can access, choose which branches or pages are visible.
-              Leave all unchecked to grant access to everything.
+            <p style={{ fontSize:12, color:"#64748b", marginBottom:12, fontWeight:700 }}>
+              For every section, choose which branches or pages are visible. Leave all unchecked = full access.
             </p>
             {activeSections.map(sid => {
               const cfg     = SECTION_ITEMS[sid];
               const theme   = BRANCH_THEMES[sid] || BRANCH_THEMES.daily;
               const secMeta = SECTIONS.find(x => x.id === sid);
               return (
-                <BranchSelector
-                  key={sid}
-                  kind={cfg.kind}
+                <BranchSelector key={sid} kind={cfg.kind}
                   items={cfg.kind === "pages" ? cfg.items : MASTER_BRANCHES}
-                  theme={theme}
-                  sectionLabel={secMeta?.label || theme.title}
+                  theme={theme} sectionLabel={secMeta?.label || theme.title}
                   selected={Array.isArray(access[sid]) ? access[sid] : []}
-                  onChange={list => updateSection(sid, list)}
-                />
+                  onChange={list => updateSection(sid, list)} />
               );
             })}
           </div>
@@ -670,7 +504,7 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
 
       {err && <div style={fs.err}>⚠️ {err}</div>}
 
-      <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+      <div style={{ display:"flex", gap:10, marginTop:22 }}>
         <button type="submit" disabled={saving} style={fs.btnSave}>
           {saving ? "Saving…" : isEdit ? "💾 Save Changes" : "✅ Create Account"}
         </button>
@@ -680,74 +514,370 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
   );
 }
 
-/* ══════════════════════════════════════════════
-   ACTIVITY LOG
-══════════════════════════════════════════════ */
-function ActivityLogTab() {
-  const [logs, setLogs]       = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter]   = useState("");
+/* ═══════════════════════════════════════════════════════
+   ACCOUNT CARD (dark — accounts grid)
+═══════════════════════════════════════════════════════ */
+/* Days-since-login helper for staleness badge */
+function daysSince(iso) {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const url = filter
-        ? `${API_BASE}/api/activity-log?limit=200&username=${encodeURIComponent(filter)}`
-        : `${API_BASE}/api/activity-log?limit=200`;
-      const r = await fetch(url);
-      const d = await r.json();
-      if (d.ok) setLogs(d.logs || []);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [filter]);
+function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminCount }) {
+  const [hover, setHover] = useState(false);
+  const initial = (user.display_name || user.username || "?")[0].toUpperCase();
+  const grad    = avatarGrad(user.username);
+  const isFullAcc = user.permissions?.includes("*");
+  const sections  = Object.keys(user.crud_perms || {}).filter(k => (user.crud_perms[k] || []).length > 0);
+  const isSelf       = user.username === currentUsername;
+  const isLastAdmin  = user.is_admin && adminCount <= 1;
+  const isRootAdmin  = user.username === "admin";
+  const canDelete    = !isSelf && !isRootAdmin && !isLastAdmin;
+  const canToggle    = !isSelf && !(user.is_admin && user.is_active && isLastAdmin);
 
-  useEffect(() => { load(); }, [load]);
+  /* Login freshness colour: green<7d, yellow<30d, red>=30d, gray=never */
+  const dSince = daysSince(user.last_login);
+  const freshness =
+    dSince === null  ? { color:"#94a3b8", label:"Never logged in" } :
+    dSince === 0     ? { color:"#34d399", label:"Today" } :
+    dSince <  7      ? { color:"#34d399", label:`${dSince}d ago` } :
+    dSince < 30      ? { color:"#fbbf24", label:`${dSince}d ago` } :
+                       { color:"#f87171", label:`${dSince}d ago` };
 
-  const actionColor = { login: "#16a34a", logout: "#dc2626" };
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background:   hover ? "rgba(255,255,255,.085)" : "rgba(255,255,255,.04)",
+        border:       `1.5px solid ${hover ? "rgba(96,165,250,.5)" : "rgba(255,255,255,.08)"}`,
+        borderRadius: 16,
+        padding:      "14px 16px",
+        backdropFilter: "blur(12px)",
+        transition:   "all .15s ease",
+        boxShadow:    hover ? "0 10px 28px rgba(0,0,0,.32)" : "0 2px 8px rgba(0,0,0,.18)",
+        opacity:      user.is_active ? 1 : 0.55,
+        display:      "grid",
+        gridTemplateColumns: "auto 1fr auto auto",
+        alignItems:   "center",
+        gap:          14,
+      }}
+    >
+      {/* Avatar */}
+      <div style={{
+        width:52, height:52, borderRadius:14, background:grad,
+        display:"grid", placeItems:"center",
+        fontSize:22, fontWeight:1000, color:"#fff", flexShrink:0,
+        boxShadow:"0 4px 12px rgba(0,0,0,.4)",
+        border:"1.5px solid rgba(255,255,255,.18)",
+      }}>
+        {initial}
+      </div>
+
+      {/* Main info column: name + meta row */}
+      <div style={{ minWidth:0 }}>
+        <div style={{ display:"flex", alignItems:"baseline", gap:10, flexWrap:"wrap" }}>
+          <span style={{ fontWeight:1000, fontSize:17, color:"#f1f5f9",
+            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {user.display_name || user.username}
+          </span>
+          <span style={{ fontSize:13, color:"rgba(255,255,255,.5)", fontWeight:700 }}>
+            @{user.username}
+          </span>
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:6, alignItems:"center" }}>
+          {user.is_admin && (
+            <span style={ac.chip("#fbbf24","rgba(251,191,36,.16)")}>👑 Admin</span>
+          )}
+          {isFullAcc ? (
+            <span style={ac.chip("#a78bfa","rgba(167,139,250,.16)")}>⭐ Full Access</span>
+          ) : (
+            <span style={ac.chip("#60a5fa","rgba(96,165,250,.16)")}>
+              🔐 {sections.length} section{sections.length !== 1 ? "s" : ""}
+            </span>
+          )}
+          {Array.isArray(user.employees) && user.employees.length > 0 && (
+            <span style={ac.chip("#34d399","rgba(52,211,153,.16)")}>
+              👷 {user.employees.length}
+            </span>
+          )}
+          <span style={{ fontSize:12, fontWeight:800, color:freshness.color,
+            padding:"3px 9px", borderRadius:999,
+            background:`${freshness.color}1f`, border:`1px solid ${freshness.color}55`,
+            whiteSpace:"nowrap" }}
+            title={`Last login: ${fmt(user.last_login)}`}>
+            🕐 {freshness.label}
+          </span>
+        </div>
+      </div>
+
+      {/* Status pill */}
+      <div style={{
+        padding:"5px 12px", borderRadius:999, fontSize:12, fontWeight:900, flexShrink:0,
+        background: user.is_active ? "rgba(52,211,153,.18)" : "rgba(248,113,113,.18)",
+        color:      user.is_active ? "#34d399" : "#f87171",
+        border:    `1px solid ${user.is_active ? "rgba(52,211,153,.3)" : "rgba(248,113,113,.3)"}`,
+      }}>
+        {user.is_active ? "● Active" : "● Off"}
+      </div>
+
+      {/* Action buttons */}
+      <div style={{ display:"flex", gap:5, flexShrink:0 }}>
+        <button className="acm-actbtn" onClick={onEdit} style={{
+          ...ac.actBtn,
+          background:"rgba(59,130,246,.2)", color:"#93c5fd",
+          border:"1.5px solid rgba(59,130,246,.35)",
+        }} title="Edit account">✏️</button>
+        <button className={canToggle ? "acm-actbtn" : ""} onClick={canToggle ? onToggle : undefined} disabled={!canToggle} style={{
+          ...ac.actBtn,
+          background: user.is_active ? "rgba(251,191,36,.18)" : "rgba(52,211,153,.18)",
+          color:      user.is_active ? "#fbbf24" : "#34d399",
+          border:    `1.5px solid ${user.is_active ? "rgba(251,191,36,.3)" : "rgba(52,211,153,.3)"}`,
+          opacity:    canToggle ? 1 : 0.45,
+          cursor:     canToggle ? "pointer" : "not-allowed",
+        }} title={
+          isSelf ? "You can't disable your own account"
+          : !canToggle ? "Can't disable the last admin"
+          : user.is_active ? "Disable account" : "Enable account"
+        }>
+          {user.is_active ? "🔒" : "🔓"}
+        </button>
+        {canDelete && (
+          <button className="acm-actbtn" onClick={onDelete} style={{
+            ...ac.actBtn,
+            background:"rgba(248,113,113,.18)", color:"#f87171",
+            border:"1.5px solid rgba(248,113,113,.3)",
+          }} title="Delete account" data-delete-action="true">🗑️</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const ac = {
+  chip: (color, bg) => ({
+    padding:"3px 9px", borderRadius:999,
+    fontSize:12, fontWeight:900, color, background:bg,
+    border:`1px solid ${color}55`, whiteSpace:"nowrap",
+  }),
+  actBtn: {
+    padding:"8px 11px", borderRadius:10,
+    fontSize:15, fontWeight:900, cursor:"pointer",
+    fontFamily:"Cairo,'Segoe UI',sans-serif",
+    transition:"filter .15s, transform .12s",
+    textAlign:"center",
+  },
+};
+
+/* ═══════════════════════════════════════════════════════
+   DORMANT ACCOUNTS — accounts inactive for 30/60+ days
+═══════════════════════════════════════════════════════ */
+function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEdit, onDelete }) {
+  /* Bucket by staleness — only active accounts, since disabled are already off */
+  const buckets = { d30: [], d60: [], d90: [], never: [] };
+  users.forEach(u => {
+    if (!u.is_active) return;
+    if (!u.last_login) { buckets.never.push(u); return; }
+    const d = Math.floor((Date.now() - new Date(u.last_login).getTime()) / 86400000);
+    if (d >= 90) buckets.d90.push(u);
+    else if (d >= 60) buckets.d60.push(u);
+    else if (d >= 30) buckets.d30.push(u);
+  });
+
+  const groups = [
+    { key:"never", icon:"🚫", label:"Never logged in",        color:"#94a3b8", help:"Created but never used", list:buckets.never },
+    { key:"d90",   icon:"🔴", label:"Dormant 90+ days",       color:"#f87171", help:"Strong candidate to disable", list:buckets.d90 },
+    { key:"d60",   icon:"🟠", label:"Dormant 60–89 days",     color:"#fb923c", help:"Likely abandoned account", list:buckets.d60 },
+    { key:"d30",   icon:"🟡", label:"Dormant 30–59 days",     color:"#fbbf24", help:"Review — possible inactive user", list:buckets.d30 },
+  ];
+  const totalDormant = buckets.never.length + buckets.d90.length + buckets.d60.length + buckets.d30.length;
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
-        <input
-          style={{ ...fs.input, maxWidth: 240 }}
-          placeholder="Filter by username…"
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-        />
-        <button onClick={load} style={fs.btnRefresh}>🔄 Refresh</button>
+      {/* Summary banner */}
+      <div style={{
+        padding:"16px 20px", borderRadius:14, marginBottom:18,
+        background: totalDormant === 0 ? "rgba(52,211,153,.12)" : "rgba(251,191,36,.12)",
+        border: `1px solid ${totalDormant === 0 ? "rgba(52,211,153,.4)" : "rgba(251,191,36,.4)"}`,
+        color: totalDormant === 0 ? "#34d399" : "#fcd34d",
+        fontWeight:800, fontSize:15, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap",
+      }}>
+        <span style={{ fontSize:24 }}>{totalDormant === 0 ? "✅" : "⚠️"}</span>
+        <div style={{ flex:1, minWidth:200 }}>
+          {totalDormant === 0
+            ? "All active accounts logged in recently — no cleanup needed."
+            : <>Found <strong>{totalDormant}</strong> dormant account{totalDormant !== 1 ? "s" : ""} that haven't been used recently.
+                Review and disable any that belong to former employees.</>}
+        </div>
       </div>
 
+      {totalDormant === 0 ? null : groups.filter(g => g.list.length > 0).map(g => (
+        <section key={g.key} style={{ marginBottom:22 }}>
+          <div style={{
+            display:"flex", alignItems:"center", gap:10, marginBottom:10, flexWrap:"wrap",
+            padding:"8px 12px", borderRadius:10,
+            background:`${g.color}11`, border:`1px solid ${g.color}44`,
+          }}>
+            <span style={{ fontSize:20 }}>{g.icon}</span>
+            <span style={{ fontWeight:1000, fontSize:16, color:g.color }}>
+              {g.label}
+            </span>
+            <span style={{ fontSize:13, color:`${g.color}cc`, fontWeight:800,
+              background:`${g.color}22`, padding:"2px 9px", borderRadius:999 }}>
+              {g.list.length}
+            </span>
+            <span style={{ marginLeft:"auto", fontSize:12, color:"rgba(255,255,255,.5)", fontWeight:700 }}>
+              {g.help}
+            </span>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {g.list.map(u => (
+              <AccountCard key={u.id} user={u}
+                currentUsername={currentUsername}
+                adminCount={adminCount}
+                onEdit={() => onEdit(u)}
+                onToggle={() => onToggle(u)}
+                onDelete={() => onDelete(u)} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   FAILED LOGINS MONITOR — security audit
+═══════════════════════════════════════════════════════ */
+function FailedLoginsTab() {
+  const [data, setData]       = useState({ recent: [], byIpLastHour: [] });
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setNotFound(false);
+    try {
+      const r = await fetch(`${API_BASE}/api/security/failed-logins?limit=50`);
+      if (r.status === 404) { setNotFound(true); setLoading(false); return; }
+      const d = await r.json();
+      if (d.ok) setData({ recent: d.recent || [], byIpLastHour: d.byIpLastHour || [] });
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const reasonMap = {
+    unknown_user:     { label: "Unknown user",     icon:"❓" },
+    wrong_password:   { label: "Wrong password",   icon:"🔑" },
+    account_disabled: { label: "Disabled account", icon:"🚫" },
+  };
+
+  if (notFound) {
+    return (
+      <div style={{ padding:"16px 20px", borderRadius:12,
+        background:"rgba(251,191,36,.14)", border:"1px solid rgba(251,191,36,.4)",
+        color:"#fbbf24", fontWeight:800 }}>
+        ⚠️ Server endpoint /api/security/failed-logins not found — push the latest <strong>index.cjs</strong> to Render and refresh.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18, flexWrap:"wrap" }}>
+        <h3 style={{ margin:0, fontWeight:1000, fontSize:18, color:"#f1f5f9" }}>
+          🛡️ Failed Login Attempts
+        </h3>
+        <button className="acm-actbtn" onClick={load} style={p.btnRefresh}>🔄 Refresh</button>
+      </div>
+
+      {/* Suspicious IPs (last hour, 5+ attempts) */}
+      {data.byIpLastHour.filter(x => x.attempts >= 5).length > 0 && (
+        <div style={{
+          padding:"14px 18px", borderRadius:12, marginBottom:18,
+          background:"rgba(248,113,113,.13)", border:"1px solid rgba(248,113,113,.45)",
+          color:"#fca5a5",
+        }}>
+          <div style={{ fontWeight:1000, fontSize:15, marginBottom:8, color:"#f87171" }}>
+            🚨 Suspicious activity — possible brute force
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {data.byIpLastHour.filter(x => x.attempts >= 5).map(x => (
+              <div key={x.ip_addr} style={{
+                display:"flex", gap:10, alignItems:"center", flexWrap:"wrap",
+                background:"rgba(0,0,0,.25)", padding:"8px 12px", borderRadius:8,
+                fontSize:13, fontWeight:700,
+              }}>
+                <span style={{ fontWeight:1000, color:"#fff", fontSize:14 }}>{x.ip_addr || "unknown"}</span>
+                <span style={{ background:"rgba(248,113,113,.3)", color:"#fff",
+                  padding:"2px 9px", borderRadius:999, fontWeight:900 }}>
+                  {x.attempts} attempts
+                </span>
+                <span style={{ color:"rgba(255,255,255,.6)" }}>
+                  tried: {(x.usernames || []).slice(0,3).join(", ") || "—"}
+                  {(x.usernames?.length || 0) > 3 && ` +${x.usernames.length - 3}`}
+                </span>
+                <span style={{ marginLeft:"auto", color:"rgba(255,255,255,.5)", fontSize:12 }}>
+                  last: {fmt(x.last_at)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Stats row */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",
+        gap:12, marginBottom:18 }}>
+        <FailStat color="#f87171" bg="rgba(248,113,113,.14)" label="Total recent" val={data.recent.length} />
+        <FailStat color="#fbbf24" bg="rgba(251,191,36,.14)" label="Last hour"
+          val={data.byIpLastHour.reduce((a,b)=>a + (b.attempts||0), 0)} />
+        <FailStat color="#a78bfa" bg="rgba(167,139,250,.14)" label="Unique IPs (1h)"
+          val={data.byIpLastHour.length} />
+      </div>
+
+      {/* Recent attempts table */}
       {loading ? (
-        <div style={fs.loading}>Loading…</div>
-      ) : logs.length === 0 ? (
-        <div style={fs.empty}>No activity recorded yet.</div>
+        <div style={p.empty}><div style={{ fontSize:30, marginBottom:8 }}>⏳</div>Loading…</div>
+      ) : data.recent.length === 0 ? (
+        <div style={p.empty}>
+          <div style={{ fontSize:30, marginBottom:8 }}>✅</div>
+          No failed login attempts recorded.
+        </div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={fs.table}>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
               <tr>
-                {["Time", "Account", "Operator", "Action", "IP"].map(h => (
-                  <th key={h} style={fs.th}>{h}</th>
+                {["Time","Username","Reason","IP"].map(h => (
+                  <th key={h} style={{
+                    padding:"14px 16px", fontSize:14, fontWeight:900,
+                    color:"rgba(255,255,255,.6)", textAlign:"left",
+                    borderBottom:"1px solid rgba(255,255,255,.1)",
+                    background:"rgba(255,255,255,.04)",
+                    whiteSpace:"nowrap", letterSpacing:".06em", textTransform:"uppercase",
+                  }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {logs.map(log => (
-                <tr key={log.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                  <td style={fs.td}>{fmt(log.created_at)}</td>
-                  <td style={{ ...fs.td, fontWeight: 900 }}>{log.username}</td>
-                  <td style={{ ...fs.td, color: "#475569" }}>
-                    {log.detail?.operator || log.detail?.displayName || "—"}
-                  </td>
-                  <td style={{ ...fs.td, fontWeight: 900,
-                    color: actionColor[log.action] || "#374151" }}>
-                    {log.action === "login"  ? "🟢 login"
-                     : log.action === "logout" ? "🔴 logout"
-                     : log.action}
-                  </td>
-                  <td style={{ ...fs.td, fontSize: 13, color: "#94a3b8" }}>{log.ip_addr || "—"}</td>
-                </tr>
-              ))}
+              {data.recent.map((r, i) => {
+                const reason = reasonMap[r.detail?.reason] || { label: r.detail?.reason || "—", icon: "⚠️" };
+                return (
+                  <tr key={r.id} style={{
+                    borderBottom:"1px solid rgba(255,255,255,.06)",
+                    background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,.025)",
+                  }}>
+                    <td style={al.td}>{fmt(r.created_at)}</td>
+                    <td style={{ ...al.td, fontWeight:900, color:"#e2e8f0" }}>{r.username || "—"}</td>
+                    <td style={{ ...al.td, fontWeight:800, color:"#fbbf24" }}>
+                      {reason.icon} {reason.label}
+                    </td>
+                    <td style={{ ...al.td, fontSize:14, color:"rgba(255,255,255,.5)" }}>{r.ip_addr || "—"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -756,50 +886,266 @@ function ActivityLogTab() {
   );
 }
 
-/* ══════════════════════════════════════════════
-   PERMISSION SUMMARY for the list table
-══════════════════════════════════════════════ */
-function PermSummary({ permissions, crudPerms }) {
-  if (!permissions) return <span style={{ color: "#94a3b8" }}>—</span>;
-  if (permissions.includes("*"))
-    return <span style={{ color: "#7c3aed", fontWeight: 900 }}>⭐ Full Access</span>;
+function FailStat({ color, bg, label, val }) {
+  return (
+    <div style={{
+      padding:"12px 16px", borderRadius:12,
+      background: bg, border: `1px solid ${color}44`,
+      display:"flex", flexDirection:"column", gap:2,
+    }}>
+      <span style={{ fontSize:24, fontWeight:1000, color, lineHeight:1 }}>{val}</span>
+      <span style={{ fontSize:12, color:"rgba(255,255,255,.6)", fontWeight:800,
+        textTransform:"uppercase", letterSpacing:".05em" }}>{label}</span>
+    </div>
+  );
+}
 
-  const sections = Object.keys(crudPerms || {}).filter(k => crudPerms[k]?.length > 0);
-  if (sections.length === 0)
-    return <span style={{ color: "#94a3b8" }}>No sections</span>;
+/* ═══════════════════════════════════════════════════════
+   ACTIVITY LOG (grouped by account — click to expand)
+═══════════════════════════════════════════════════════ */
+function ActivityLogTab() {
+  const [logs, setLogs]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter]   = useState("");
+  const [expanded, setExpanded] = useState(new Set());  // set of usernames
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/api/activity-log?limit=500`);
+      const d = await r.json();
+      if (d.ok) setLogs(d.logs || []);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = (username) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  };
+  const expandAll   = () => setExpanded(new Set(groups.map(g => g.username)));
+  const collapseAll = () => setExpanded(new Set());
+
+  /* Group by username — keep entries sorted newest-first within each group */
+  const groupMap = new Map();
+  for (const log of logs) {
+    const key = log.username || "(unknown)";
+    if (!groupMap.has(key)) groupMap.set(key, []);
+    groupMap.get(key).push(log);
+  }
+  let groups = Array.from(groupMap.entries()).map(([username, entries]) => {
+    const last     = entries[0]; // already newest first from server
+    const logins   = entries.filter(e => e.action === "login").length;
+    const logouts  = entries.filter(e => e.action === "logout").length;
+    const failed   = entries.filter(e => e.action === "login_failed").length;
+    const uniqueIps = new Set(entries.map(e => e.ip_addr).filter(Boolean)).size;
+    return {
+      username, entries, last, logins, logouts, failed, uniqueIps,
+      total: entries.length,
+    };
+  });
+
+  /* Filter by username */
+  if (filter) {
+    const q = filter.toLowerCase();
+    groups = groups.filter(g => g.username.toLowerCase().includes(q));
+  }
+  /* Sort by most recent activity */
+  groups.sort((a, b) => new Date(b.last?.created_at || 0) - new Date(a.last?.created_at || 0));
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-      {sections.slice(0, 4).map(id => {
-        const ops = crudPerms[id] || [];
-        const label = SECTIONS.find(s => s.id === id)?.label?.split(" ")[0] || id;
-        const allOps = CRUD_OPS.every(o => ops.includes(o.id));
-        return (
-          <span key={id} style={{
-            background: allOps ? "#dbeafe" : "#f1f5f9",
-            color: allOps ? "#1d4ed8" : "#475569",
-            fontSize: 12, fontWeight: 700,
-            padding: "2px 8px", borderRadius: 999,
-            border: `1px solid ${allOps ? "#bfdbfe" : "#e2e8f0"}`,
-          }}>
-            {label}
-          </span>
-        );
-      })}
-      {sections.length > 4 && (
-        <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700 }}>
-          +{sections.length - 4}
-        </span>
+    <div>
+      {/* Toolbar */}
+      <div style={{ display:"flex", gap:10, alignItems:"center", marginBottom:14, flexWrap:"wrap" }}>
+        <div style={{ flex:1, minWidth:220, position:"relative" }}>
+          <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:18, pointerEvents:"none" }}>🔍</span>
+          <input
+            style={{ ...p.searchInput, paddingLeft:42, width:"100%", boxSizing:"border-box" }}
+            placeholder="Filter by account name…"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+          />
+        </div>
+        <button className="acm-actbtn" onClick={expandAll} style={p.btnRefresh}>📂 Expand All</button>
+        <button className="acm-actbtn" onClick={collapseAll} style={p.btnRefresh}>📁 Collapse All</button>
+        <button className="acm-actbtn" onClick={load} style={p.btnRefresh}>🔄 Refresh</button>
+      </div>
+
+      {/* Summary line */}
+      {!loading && groups.length > 0 && (
+        <div style={{ fontSize:14, color:"rgba(255,255,255,.55)", fontWeight:700, marginBottom:12 }}>
+          📊 Showing <strong style={{ color:"#e2e8f0" }}>{groups.length}</strong> account{groups.length !== 1 ? "s" : ""}
+          {" · "}<strong style={{ color:"#e2e8f0" }}>{logs.length}</strong> total events
+          {filter && <> · filtered by "{filter}"</>}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={p.empty}><div style={{ fontSize:30, marginBottom:8 }}>⏳</div>Loading activity…</div>
+      ) : groups.length === 0 ? (
+        <div style={p.empty}>
+          <div style={{ fontSize:30, marginBottom:8 }}>{filter ? "🔍" : "📜"}</div>
+          {filter ? `No accounts match "${filter}"` : "No activity recorded yet."}
+        </div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {groups.map(g => {
+            const isOpen = expanded.has(g.username);
+            const lastAction = g.last?.action;
+            const lastColor =
+              lastAction === "login"        ? "#34d399" :
+              lastAction === "logout"       ? "#f87171" :
+              lastAction === "login_failed" ? "#fbbf24" : "#94a3b8";
+            return (
+              <div key={g.username} style={{
+                background:"rgba(255,255,255,.04)",
+                border:`1px solid ${isOpen ? "rgba(96,165,250,.4)" : "rgba(255,255,255,.08)"}`,
+                borderRadius:12,
+                overflow:"hidden",
+                transition:"border-color .15s",
+              }}>
+                {/* ─── Group header (clickable to toggle) ─── */}
+                <button onClick={() => toggle(g.username)} style={{
+                  width:"100%", border:"none", cursor:"pointer", fontFamily:"inherit",
+                  display:"grid",
+                  gridTemplateColumns:"auto 1fr auto auto",
+                  alignItems:"center", gap:14,
+                  padding:"12px 16px",
+                  background: isOpen ? "rgba(96,165,250,.08)" : "transparent",
+                  color:"#f1f5f9", textAlign:"left",
+                  transition:"background .15s",
+                }}>
+                  {/* Avatar */}
+                  <div style={{
+                    width:44, height:44, borderRadius:12, background:avatarGrad(g.username),
+                    display:"grid", placeItems:"center",
+                    fontSize:20, fontWeight:1000, color:"#fff",
+                    boxShadow:"0 4px 10px rgba(0,0,0,.4)",
+                    border:"1.5px solid rgba(255,255,255,.18)",
+                  }}>
+                    {g.username[0]?.toUpperCase() || "?"}
+                  </div>
+
+                  {/* Name + meta */}
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontWeight:1000, fontSize:18, color:"#f1f5f9", lineHeight:1.2 }}>
+                      {g.username}
+                    </div>
+                    <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:4, fontSize:13, color:"rgba(255,255,255,.55)", fontWeight:700 }}>
+                      <span>🕐 Last: <span style={{ color:lastColor, fontWeight:900 }}>{fmt(g.last?.created_at)}</span></span>
+                      {g.uniqueIps > 1 && <span>🌐 {g.uniqueIps} IPs</span>}
+                    </div>
+                  </div>
+
+                  {/* Activity chips */}
+                  <div style={{ display:"flex", gap:5, flexWrap:"nowrap" }}>
+                    {g.logins > 0 && (
+                      <span style={al.miniChip("#34d399","rgba(52,211,153,.18)")}>🟢 {g.logins}</span>
+                    )}
+                    {g.logouts > 0 && (
+                      <span style={al.miniChip("#f87171","rgba(248,113,113,.18)")}>🔴 {g.logouts}</span>
+                    )}
+                    {g.failed > 0 && (
+                      <span style={al.miniChip("#fbbf24","rgba(251,191,36,.18)")}>⚠️ {g.failed}</span>
+                    )}
+                  </div>
+
+                  {/* Expand chevron + total */}
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{
+                      padding:"3px 11px", borderRadius:999,
+                      background:"rgba(96,165,250,.18)", color:"#93c5fd",
+                      fontSize:13, fontWeight:900,
+                      border:"1px solid rgba(96,165,250,.3)",
+                    }}>{g.total}</span>
+                    <span style={{
+                      fontSize:20, color:"rgba(255,255,255,.45)",
+                      transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                      transition:"transform .15s",
+                      lineHeight:1,
+                    }}>›</span>
+                  </div>
+                </button>
+
+                {/* ─── Expanded body: full event list ─── */}
+                {isOpen && (
+                  <div style={{
+                    borderTop:"1px solid rgba(255,255,255,.07)",
+                    background:"rgba(0,0,0,.18)",
+                  }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                      <thead>
+                        <tr>
+                          {["Time","Operator","Action","IP"].map(h => (
+                            <th key={h} style={al.subTh}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.entries.map((log, i) => {
+                          const op = log.detail?.operator || log.detail?.displayName || "—";
+                          const reason = log.detail?.reason;
+                          const isLogin   = log.action === "login";
+                          const isLogout  = log.action === "logout";
+                          const isFailed  = log.action === "login_failed";
+                          const color = isLogin ? "#34d399" : isLogout ? "#f87171" : isFailed ? "#fbbf24" : "#e2e8f0";
+                          return (
+                            <tr key={log.id} style={{
+                              borderBottom:"1px solid rgba(255,255,255,.05)",
+                              background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,.02)",
+                            }}>
+                              <td style={al.td}>{fmt(log.created_at)}</td>
+                              <td style={{ ...al.td, color:"rgba(255,255,255,.6)" }}>{op}</td>
+                              <td style={{ ...al.td, fontWeight:900, color }}>
+                                {isLogin  ? "🟢 login"
+                                 : isLogout ? "🔴 logout"
+                                 : isFailed ? `⚠️ failed${reason ? ` (${reason})` : ""}`
+                                 : log.action}
+                              </td>
+                              <td style={{ ...al.td, fontSize:14, color:"rgba(255,255,255,.45)" }}>
+                                {log.ip_addr || "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-/* ══════════════════════════════════════════════
-   MAIN COMPONENT
-══════════════════════════════════════════════ */
-export default function AccountsManagementTab() {
-  const [tab, setTab]           = useState("list");
+const al = {
+  td: { padding:"11px 14px", fontSize:15, color:"rgba(255,255,255,.8)", verticalAlign:"middle" },
+  subTh: {
+    padding:"10px 14px", fontSize:12, fontWeight:900,
+    color:"rgba(255,255,255,.5)", textAlign:"left",
+    borderBottom:"1px solid rgba(255,255,255,.08)",
+    whiteSpace:"nowrap", letterSpacing:".06em", textTransform:"uppercase",
+  },
+  miniChip: (color, bg) => ({
+    padding:"3px 9px", borderRadius:999,
+    fontSize:12, fontWeight:900, color, background:bg,
+    border:`1px solid ${color}55`, whiteSpace:"nowrap",
+  }),
+};
+
+/* ═══════════════════════════════════════════════════════
+   MAIN — Account Control Center
+═══════════════════════════════════════════════════════ */
+export default function AccountsManagementTab({ onClose }) {
+  const [view, setView]         = useState("list");
   const [users, setUsers]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [serverReady, setServerReady] = useState(true);
@@ -807,6 +1153,7 @@ export default function AccountsManagementTab() {
   const [saving, setSaving]     = useState(false);
   const [msg, setMsg]           = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [search, setSearch]     = useState("");
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -824,10 +1171,10 @@ export default function AccountsManagementTab() {
 
   const showMsg = (type, text) => {
     setMsg({ type, text });
-    setTimeout(() => setMsg(null), 4500);
+    /* Success disappears fast; errors hang around so the admin actually sees them */
+    setTimeout(() => setMsg(null), type === "ok" ? 4500 : 9000);
   };
 
-  /* ── Save ── */
   const handleSave = async (form) => {
     if (!serverReady) { showMsg("err", "Server not deployed yet"); return; }
     setSaving(true);
@@ -835,7 +1182,6 @@ export default function AccountsManagementTab() {
       const isEdit = !!editUser?.id;
       const url    = isEdit ? `${API_BASE}/api/app-users/${editUser.id}` : `${API_BASE}/api/app-users`;
       const method = isEdit ? "PUT" : "POST";
-
       const permissions = permissionsArrayFromCrud(form.isFullAccess, form.crudPerms);
       const body = {
         username:        form.username.trim(),
@@ -847,358 +1193,486 @@ export default function AccountsManagementTab() {
         isAdmin:         form.isAdmin,
       };
       if (form.password) body.password = form.password;
-
-      const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch(url, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
       const d = await r.json();
-
       if (!d.ok) {
-        const errMap = { username_taken: "Username already taken." };
-        showMsg("err", errMap[d.error] || d.error || "Server error");
+        showMsg("err", d.error === "username_taken" ? "Username already taken." : (d.error || "Server error"));
       } else {
         showMsg("ok", isEdit ? "Account updated ✅" : "Account created ✅");
-        setTab("list"); setEditUser(null); loadUsers();
+        setView("list"); setEditUser(null); loadUsers();
       }
     } catch { showMsg("err", "Network error — please try again"); }
     setSaving(false);
   };
 
-  /* ── Toggle active ── */
   const handleToggle = async (user) => {
+    /* Self-disable protection (server-side trust applies — UI lock is primary) */
+    const currentName = (() => {
+      try { return JSON.parse(localStorage.getItem("currentUser") || "{}").username || ""; }
+      catch { return ""; }
+    })();
+    if (user.is_active && user.username === currentName) {
+      showMsg("err", "You can't disable your own account while logged in");
+      return;
+    }
+    /* Don't allow disabling the last active admin */
+    if (user.is_active && user.is_admin &&
+        users.filter(u => u.is_admin && u.is_active).length <= 1) {
+      showMsg("err", "Can't disable the last active admin");
+      return;
+    }
     try {
       const r = await fetch(`${API_BASE}/api/app-users/${user.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: !user.is_active }),
+        method:"PUT", headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ isActive: !user.is_active }),
       });
       const d = await r.json();
       if (d.ok) {
         setUsers(prev => prev.map(u => u.id === user.id ? d.user : u));
         showMsg("ok", user.is_active ? "Account disabled" : "Account enabled");
+      } else {
+        showMsg("err", d.error || "Operation rejected by server");
       }
     } catch { showMsg("err", "Toggle failed"); }
   };
 
-  /* ── Delete ── */
   const handleDelete = async (user) => {
+    /* Belt-and-suspenders guards (UI already hides the button, but never trust the UI) */
+    const currentName = (() => {
+      try { return JSON.parse(localStorage.getItem("currentUser") || "{}").username || ""; }
+      catch { return ""; }
+    })();
+    if (user.username === currentName) {
+      showMsg("err", "You can't delete your own account");
+      setConfirmDel(null); return;
+    }
+    if (user.username === "admin") {
+      showMsg("err", "The root admin account is protected");
+      setConfirmDel(null); return;
+    }
+    if (user.is_admin && users.filter(u => u.is_admin && u.is_active).length <= 1) {
+      showMsg("err", "Can't delete the last active admin");
+      setConfirmDel(null); return;
+    }
     try {
-      const r = await fetch(`${API_BASE}/api/app-users/${user.id}`, { method: "DELETE" });
+      const r = await fetch(`${API_BASE}/api/app-users/${user.id}`, { method:"DELETE" });
       const d = await r.json();
       if (d.ok) {
         setUsers(prev => prev.filter(u => u.id !== user.id));
         showMsg("ok", `Deleted "${user.username}"`);
+      } else {
+        showMsg("err", d.error || "Delete failed");
       }
     } catch { showMsg("err", "Delete failed"); }
     setConfirmDel(null);
   };
 
-  const TABS = [
-    { id: "list",     label: "👥 Accounts" },
-    { id: "activity", label: "📜 Activity Log" },
+  const exportCSV = () => {
+    const headers = ["Username","Display Name","Admin","Permissions","Sections","Employees","Last Login","Status"];
+    const rows = users.map(u => [
+      u.username,
+      u.display_name || "",
+      u.is_admin ? "Yes" : "No",
+      u.permissions?.includes("*") ? "Full Access" : "Restricted",
+      u.permissions?.includes("*") ? "All" : Object.keys(u.crud_perms || {}).filter(k => (u.crud_perms[k] || []).length > 0).join("; "),
+      (u.employees || []).join("; "),
+      fmt(u.last_login),
+      u.is_active ? "Active" : "Disabled",
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type:"text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `accounts_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  };
+
+  const filteredUsers = search
+    ? users.filter(u =>
+        u.username?.toLowerCase().includes(search.toLowerCase()) ||
+        (u.display_name || "").toLowerCase().includes(search.toLowerCase())
+      )
+    : users;
+
+  /* Current logged-in username — used to lock self-destruction in cards */
+  const currentUsername = (() => {
+    try { return JSON.parse(localStorage.getItem("currentUser") || "{}").username || ""; }
+    catch { return ""; }
+  })();
+  const adminCount = users.filter(u => u.is_admin && u.is_active).length;
+
+  const stats = [
+    { label:"Total",    val:users.length,                              color:"#60a5fa", bg:"rgba(96,165,250,.15)"  },
+    { label:"Active",   val:users.filter(u => u.is_active).length,    color:"#34d399", bg:"rgba(52,211,153,.15)"  },
+    { label:"Disabled", val:users.filter(u => !u.is_active).length,   color:"#f87171", bg:"rgba(248,113,113,.15)" },
+    { label:"Admins",   val:users.filter(u => u.is_admin).length,     color:"#fbbf24", bg:"rgba(251,191,36,.15)"  },
+  ];
+
+  /* active nav key */
+  const activeNav =
+    view === "form" && !editUser ? "new" :
+    view === "form" &&  editUser ? "edit" :
+    view;
+
+  /* Dormant = active accounts with no login in 30+ days (or never logged in) */
+  const dormantCount = users.filter(u => {
+    if (!u.is_active) return false;
+    const d = u.last_login ? Math.floor((Date.now() - new Date(u.last_login).getTime()) / 86400000) : 9999;
+    return d >= 30;
+  }).length;
+
+  const NAV = [
+    { id:"list",     icon:"👥", label:"All Accounts", badge: users.length },
+    { id:"new",      icon:"➕", label:"Add Account" },
+    { id:"dormant",  icon:"😴", label:"Dormant",      badge: dormantCount || undefined,
+      badgeColor: dormantCount > 0 ? "warn" : null },
+    { id:"security", icon:"🛡️", label:"Failed Logins" },
+    { id:"activity", icon:"📜", label:"Activity Log" },
   ];
 
   return (
-    <div style={{ maxWidth: 1000 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <div>
-          <h2 style={{ margin: 0, fontWeight: 1000, fontSize: 24, color: "#0f172a" }}>
-            👥 Account Management
-          </h2>
-          <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 16 }}>
-            Manage accounts · CRUD permissions · employees · activity log
-          </p>
+    <div style={p.shell}>
+      <style>{`
+        .acm-tab:hover{background:rgba(255,255,255,.1) !important; color:#fff !important;}
+        .acm-actbtn:hover{filter:brightness(1.15); transform:translateY(-1px);}
+        .acm-actbtn{transition:all .15s;}
+        .acm-searchinput:focus{border-color:rgba(96,165,250,.6) !important; outline:none;}
+        .acm-searchinput::placeholder{color:rgba(255,255,255,.3);}
+      `}</style>
+
+      {/* ══════════════ COMPACT TOOLBAR ══════════════ */}
+      <div style={p.toolbar}>
+        {/* Stats inline */}
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+          {stats.map(s => (
+            <div key={s.label} style={{ ...p.statChipInline, background:s.bg, border:`1px solid ${s.color}44` }}>
+              <span style={{ color:s.color, fontWeight:1000, fontSize:18, lineHeight:1 }}>{s.val}</span>
+              <span style={{ color:"rgba(255,255,255,.65)", fontSize:14, fontWeight:800 }}>{s.label}</span>
+            </div>
+          ))}
         </div>
-        {tab !== "form" && (
-          <button onClick={() => { setEditUser(null); setTab("form"); }} style={fs.btnAdd}>
-            ➕ Add Account
+
+        <div style={{ flex:1 }} />
+
+        {/* Action buttons */}
+        <button className="acm-actbtn" onClick={exportCSV}
+          style={{ ...p.btnToolbar, background:"rgba(16,185,129,.18)", color:"#34d399", border:"1px solid rgba(16,185,129,.35)" }}
+          title="Export all accounts as CSV">
+          📥 CSV
+        </button>
+        {onClose && (
+          <button className="acm-actbtn" onClick={onClose}
+            style={{ ...p.btnToolbar, background:"rgba(255,255,255,.08)", color:"#e2e8f0", border:"1px solid rgba(255,255,255,.18)" }}>
+            ✕
           </button>
         )}
       </div>
 
-      {/* Toast */}
-      {msg && (
-        <div style={{
-          padding: "12px 18px", borderRadius: 10, marginBottom: 16,
-          fontWeight: 800, fontSize: 16,
-          background: msg.type === "ok" ? "#dcfce7" : "#fee2e2",
-          color:      msg.type === "ok" ? "#166534" : "#991b1b",
-          border:     `1px solid ${msg.type === "ok" ? "#86efac" : "#fca5a5"}`,
-        }}>
-          {msg.text}
-        </div>
-      )}
-
-      {/* Delete confirm */}
-      {confirmDel && (
-        <div style={fs.overlay}>
-          <div style={fs.modal}>
-            <div style={{ fontWeight: 900, fontSize: 20, marginBottom: 10 }}>🗑️ Delete Account</div>
-            <p style={{ color: "#374151", marginBottom: 18, fontSize: 16 }}>
-              Delete <strong>{confirmDel.username}</strong>? This cannot be undone.
-            </p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => handleDelete(confirmDel)} style={fs.btnDanger}>Delete</button>
-              <button onClick={() => setConfirmDel(null)} style={fs.btnCancel}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tabs */}
-      {tab !== "form" && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 20,
-          borderBottom: "2px solid #e2e8f0", paddingBottom: 0 }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              padding: "10px 22px", background: "none", border: "none",
-              borderBottom: tab === t.id ? "3px solid #2563eb" : "3px solid transparent",
-              color: tab === t.id ? "#2563eb" : "#64748b",
-              fontWeight: 900, fontSize: 16, cursor: "pointer",
-              fontFamily: "inherit", marginBottom: -2,
-            }}>
-              {t.label}
+      {/* ══════════════ HORIZONTAL TABS ══════════════ */}
+      <div style={p.tabsBar}>
+        {NAV.map(n => {
+          const isActive = activeNav === n.id;
+          return (
+            <button key={n.id} className="acm-tab"
+              onClick={() => {
+                if (n.id === "new") { setEditUser(null); setView("form"); }
+                else { setView(n.id); }
+              }}
+              style={{
+                ...p.tab,
+                background: isActive ? "rgba(96,165,250,.18)" : "transparent",
+                color:      isActive ? "#93c5fd" : "rgba(255,255,255,.55)",
+                borderBottom: `2px solid ${isActive ? "#60a5fa" : "transparent"}`,
+              }}
+            >
+              <span style={{ fontSize:20 }}>{n.icon}</span>
+              <span>{n.label}</span>
+              {n.badge !== undefined && (
+                <span style={{
+                  fontSize:13, fontWeight:900,
+                  background: n.badgeColor === "warn" ? "rgba(251,191,36,.25)" : "rgba(96,165,250,.2)",
+                  color:      n.badgeColor === "warn" ? "#fbbf24" : "#93c5fd",
+                  padding:"2px 9px", borderRadius:999,
+                  border: `1px solid ${n.badgeColor === "warn" ? "rgba(251,191,36,.4)" : "rgba(96,165,250,.3)"}`,
+                }}>{n.badge}</span>
+              )}
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* Server not ready */}
-      {!serverReady && (
-        <div style={{ background:"#fffbeb", border:"1.5px solid #fbbf24",
-          borderRadius:12, padding:"16px 20px", marginBottom:16,
-          display:"flex", gap:14, alignItems:"flex-start" }}>
-          <span style={{ fontSize: 24 }}>⚠️</span>
-          <div>
-            <div style={{ fontWeight: 900, color: "#92400e", fontSize: 15, marginBottom: 4 }}>
-              Server not updated yet
-            </div>
-            <div style={{ color: "#78350f", fontSize: 14, lineHeight: 1.6 }}>
-              Push <strong>index.cjs</strong> to Render first, then refresh.
-            </div>
+          );
+        })}
+        {view === "form" && editUser && (
+          <div style={{
+            marginLeft:"auto", display:"flex", alignItems:"center", gap:8,
+            padding:"6px 12px", borderRadius:9,
+            background:"rgba(167,139,250,.15)", border:"1px solid rgba(167,139,250,.3)",
+            fontSize:15, fontWeight:800, color:"#c4b5fd",
+          }}>
+            ✏️ Editing <strong>{editUser.username}</strong>
+            <button onClick={() => { setView("list"); setEditUser(null); }}
+              style={{ background:"none", border:"none", cursor:"pointer", color:"#c4b5fd",
+                fontWeight:900, fontSize:18, padding:"0 2px", lineHeight:1 }}>×</button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* List */}
-      {tab === "list" && (
-        <div>
-          {loading ? (
-            <div style={fs.loading}>Loading accounts…</div>
-          ) : users.length === 0 ? (
-            <div style={fs.empty}>No accounts yet.</div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={fs.table}>
-                <thead>
-                  <tr>
-                    {["Username","Display Name","Permissions","Employees","Admin","Status","Last Login","Actions"].map(h => (
-                      <th key={h} style={fs.th}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(u => (
-                    <tr key={u.id} style={{
-                      borderBottom: "1px solid #f1f5f9",
-                      opacity: u.is_active ? 1 : 0.5,
-                    }}>
-                      <td style={{ ...fs.td, fontWeight: 900, color: "#1e3a5f" }}>{u.username}</td>
-                      <td style={fs.td}>{u.display_name || "—"}</td>
-                      <td style={fs.td}>
-                        <PermSummary permissions={u.permissions} crudPerms={u.crud_perms} />
-                      </td>
-                      <td style={fs.td}>
-                        {Array.isArray(u.employees) && u.employees.length > 0
-                          ? <span style={{ fontSize: 13, color: "#475569" }}>
-                              {u.employees.slice(0,2).join(", ")}
-                              {u.employees.length > 2 && ` +${u.employees.length-2}`}
-                            </span>
-                          : <span style={{ color: "#94a3b8", fontSize: 13 }}>—</span>}
-                      </td>
-                      <td style={{ ...fs.td, textAlign: "center" }}>
-                        {u.is_admin ? "👑" : "—"}
-                      </td>
-                      <td style={{ ...fs.td, textAlign: "center" }}>
-                        <span style={{
-                          padding: "4px 14px", borderRadius: 999, fontSize: 14, fontWeight: 900,
-                          background: u.is_active ? "#dcfce7" : "#fee2e2",
-                          color:      u.is_active ? "#166534" : "#991b1b",
-                        }}>
-                          {u.is_active ? "Active" : "Disabled"}
-                        </span>
-                      </td>
-                      <td style={{ ...fs.td, fontSize: 13, color: "#64748b" }}>
-                        {fmt(u.last_login)}
-                      </td>
-                      <td style={{ ...fs.td, whiteSpace: "nowrap" }}>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button
-                            onClick={() => { setEditUser(u); setTab("form"); }}
-                            style={fs.btnSm} title="Edit">✏️
-                          </button>
-                          <button
-                            onClick={() => handleToggle(u)}
-                            style={{ ...fs.btnSm, background: u.is_active ? "#fef3c7" : "#dcfce7" }}
-                            title={u.is_active ? "Disable" : "Enable"}
-                          >
-                            {u.is_active ? "🔒" : "🔓"}
-                          </button>
-                          <button
-                            onClick={() => setConfirmDel(u)}
-                            style={{ ...fs.btnSm, background: "#fee2e2", color: "#991b1b" }}
-                            title="Delete" disabled={u.username === "admin"}
-                          >🗑️</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {/* ══════════════ MAIN CONTENT ══════════════ */}
+      <main style={p.mainContent}>
+
+          {/* Toast notification */}
+          {msg && (
+            <div style={{
+              padding:"12px 18px", borderRadius:12, marginBottom:18,
+              fontWeight:800, fontSize:15,
+              background: msg.type === "ok" ? "rgba(52,211,153,.18)" : "rgba(248,113,113,.18)",
+              color:      msg.type === "ok" ? "#34d399" : "#f87171",
+              border:    `1px solid ${msg.type === "ok" ? "rgba(52,211,153,.4)" : "rgba(248,113,113,.4)"}`,
+              backdropFilter:"blur(8px)",
+              display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+            }}>
+              <span>{msg.text}</span>
+              <button onClick={() => setMsg(null)} style={{
+                background:"transparent", border:"none", cursor:"pointer",
+                color:"inherit", fontSize:18, fontWeight:1000, padding:"0 4px",
+                lineHeight:1, opacity:0.7,
+              }} title="Dismiss">✕</button>
             </div>
           )}
+
+          {/* Server not ready warning */}
+          {!serverReady && (
+            <div style={{
+              padding:"14px 18px", borderRadius:12, marginBottom:18,
+              background:"rgba(251,191,36,.14)", border:"1px solid rgba(251,191,36,.35)",
+              color:"#fbbf24", fontWeight:800, fontSize:14,
+            }}>
+              ⚠️ Server endpoint not found — push <strong>index.cjs</strong> to Render, then refresh.
+            </div>
+          )}
+
+          {/* ── LIST VIEW ── */}
+          {view === "list" && (
+            <div>
+              {/* Search + refresh */}
+              <div style={{ display:"flex", gap:10, marginBottom:14, flexWrap:"wrap" }}>
+                <div style={{ flex:1, minWidth:240, position:"relative" }}>
+                  <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:16, pointerEvents:"none" }}>🔍</span>
+                  <input
+                    className="acm-searchinput"
+                    style={{ ...p.searchInput, paddingLeft:40, width:"100%", boxSizing:"border-box" }}
+                    placeholder="Search by name or username…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                  />
+                </div>
+                <button className="acm-actbtn" onClick={loadUsers} style={p.btnRefresh}>
+                  🔄 Refresh
+                </button>
+                <button className="acm-actbtn"
+                  onClick={() => { setEditUser(null); setView("form"); }}
+                  style={{ ...p.btnRefresh, background:"rgba(59,130,246,.22)", color:"#93c5fd", border:"1px solid rgba(59,130,246,.4)" }}>
+                  ➕ Add Account
+                </button>
+              </div>
+
+              {/* Content */}
+              {loading ? (
+                <div style={p.empty}><div style={{ fontSize:34, marginBottom:10 }}>⏳</div>Loading accounts…</div>
+              ) : filteredUsers.length === 0 ? (
+                <div style={p.empty}>
+                  <div style={{ fontSize:34, marginBottom:10 }}>{search ? "🔍" : "👥"}</div>
+                  {search ? `No accounts match "${search}"` : "No accounts yet — click Add Account"}
+                </div>
+              ) : (
+                <div style={p.cardsGrid}>
+                  {filteredUsers.map(u => (
+                    <AccountCard key={u.id} user={u}
+                      currentUsername={currentUsername}
+                      adminCount={adminCount}
+                      onEdit={() => { setEditUser(u); setView("form"); }}
+                      onToggle={() => handleToggle(u)}
+                      onDelete={() => setConfirmDel(u)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── FORM VIEW ── */}
+          {view === "form" && (
+            <AccountForm
+              initial={editUser ? formStateFromUser(editUser) : EMPTY_FORM}
+              onSave={handleSave}
+              onCancel={() => { setView("list"); setEditUser(null); }}
+              saving={saving}
+            />
+          )}
+
+          {/* ── DORMANT ACCOUNTS VIEW ── */}
+          {view === "dormant" && (
+            <DormantAccountsTab
+              users={users}
+              currentUsername={currentUsername}
+              adminCount={adminCount}
+              onToggle={handleToggle}
+              onEdit={(u) => { setEditUser(u); setView("form"); }}
+              onDelete={(u) => setConfirmDel(u)}
+            />
+          )}
+
+          {/* ── FAILED LOGINS VIEW ── */}
+          {view === "security" && <FailedLoginsTab />}
+
+          {/* ── ACTIVITY VIEW ── */}
+          {view === "activity" && <ActivityLogTab />}
+      </main>
+
+      {/* ══════════════ DELETE CONFIRM MODAL ══════════════ */}
+      {confirmDel && (
+        <div style={p.overlay}>
+          <div style={p.modal}>
+            <div style={{ fontWeight:1000, fontSize:20, marginBottom:10, color:"#f1f5f9" }}>
+              🗑️ Delete Account
+            </div>
+            <p style={{ color:"rgba(255,255,255,.7)", marginBottom:20, fontSize:15, lineHeight:1.65 }}>
+              Delete account <strong style={{ color:"#f1f5f9" }}>{confirmDel.username}</strong>?<br/>
+              This action cannot be undone.
+            </p>
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={() => handleDelete(confirmDel)} style={{
+                flex:1, padding:"13px", background:"#dc2626", color:"#fff",
+                border:"none", borderRadius:10, fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
+              }} data-delete-action="true">🗑️ Delete</button>
+              <button onClick={() => setConfirmDel(null)} style={{
+                flex:1, padding:"13px",
+                background:"rgba(255,255,255,.1)", color:"#e2e8f0",
+                border:"1px solid rgba(255,255,255,.18)", borderRadius:10,
+                fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
+              }}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
-
-      {/* Form */}
-      {tab === "form" && (
-        <AccountForm
-          initial={editUser ? formStateFromUser(editUser) : EMPTY_FORM}
-          onSave={handleSave}
-          onCancel={() => { setTab("list"); setEditUser(null); }}
-          saving={saving}
-        />
-      )}
-
-      {/* Activity */}
-      {tab === "activity" && <ActivityLogTab />}
     </div>
   );
 }
 
-/* ─── Styles ─── */
-const fs = {
-  formWrap: {
-    background: "#fff", border: "1px solid #e2e8f0",
-    borderRadius: 16, padding: "28px 32px", maxWidth: 920,
+/* ═══════════════════════════════════════════════════════
+   DARK PANEL STYLES
+═══════════════════════════════════════════════════════ */
+const p = {
+  /* Compact shell — no min-height, sizes to its content. Sits inside parent. */
+  shell: {
+    background:"linear-gradient(140deg,rgba(15,23,42,.98) 0%,rgba(30,27,75,.96) 50%,rgba(15,23,42,.98) 100%)",
+    display:"flex", flexDirection:"column",
+    fontFamily:"Cairo,'Segoe UI',system-ui,sans-serif",
+    borderRadius:16,
+    border:"1px solid rgba(255,255,255,.08)",
+    overflow:"hidden",
+    position:"relative",
   },
-  title: { margin: "0 0 22px", fontWeight: 1000, fontSize: 22, color: "#0f172a" },
-  row:   { display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap" },
-  field: { flex: 1, minWidth: 220, display: "flex", flexDirection: "column", gap: 6 },
-  label: { fontSize: 14, fontWeight: 900, color: "#475569", textTransform: "uppercase", letterSpacing: ".05em" },
-  input: {
-    padding: "12px 14px", border: "1.5px solid #e2e8f0", borderRadius: 10,
-    fontSize: 16, fontFamily: "inherit", color: "#0f172a",
-    background: "#f8fafc", outline: "none", width: "100%", boxSizing: "border-box",
+  /* Toolbar row: stats + actions */
+  toolbar: {
+    display:"flex", alignItems:"center", gap:12, flexWrap:"wrap",
+    padding:"14px 18px",
+    background:"rgba(255,255,255,.03)",
+    borderBottom:"1px solid rgba(255,255,255,.06)",
   },
-  checkRow: { display: "flex", alignItems: "center", gap: 10, cursor: "pointer", padding: "6px 8px", borderRadius: 8 },
-  err: {
-    color: "#991b1b", background: "#fee2e2",
-    padding: "10px 14px", borderRadius: 8, fontSize: 15, fontWeight: 800, marginTop: 10,
+  statChipInline: {
+    display:"inline-flex", alignItems:"baseline", gap:6,
+    padding:"7px 14px", borderRadius:999,
   },
-  /* permissions table */
-  permBox: {
-    border: "1.5px solid #e2e8f0", borderRadius: 14,
-    padding: "16px 18px", marginBottom: 18, background: "#fafafa",
+  btnToolbar: {
+    padding:"10px 18px", borderRadius:10,
+    fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
+    whiteSpace:"nowrap",
   },
-  permHeader: {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    flexWrap: "wrap", gap: 10, marginBottom: 14,
+  /* Horizontal tab strip */
+  tabsBar: {
+    display:"flex", alignItems:"center", gap:4, flexWrap:"wrap",
+    padding:"6px 14px 0",
+    background:"rgba(255,255,255,.02)",
+    borderBottom:"1px solid rgba(255,255,255,.07)",
   },
-  permTitle: { fontWeight: 900, fontSize: 16, color: "#0f172a" },
-  fullAccessBanner: {
-    background: "#f3e8ff", border: "1px solid #d8b4fe",
-    borderRadius: 10, padding: "12px 16px",
-    color: "#7c3aed", fontWeight: 800, fontSize: 15,
+  tab: {
+    display:"inline-flex", alignItems:"center", gap:8,
+    padding:"12px 18px",
+    border:"none", borderRadius:"10px 10px 0 0",
+    cursor:"pointer", fontFamily:"inherit",
+    fontWeight:800, fontSize:18,
+    transition:"all .15s",
+    whiteSpace:"nowrap",
   },
-  permTable: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
-  permTh: {
-    padding: "10px 14px", background: "#f1f5f9",
-    fontSize: 13, fontWeight: 900, color: "#475569",
-    textAlign: "center", whiteSpace: "nowrap",
-    borderBottom: "2px solid #e2e8f0",
-  },
-  permTd: { padding: "10px 12px", verticalAlign: "middle" },
-  btnSelectAll: {
-    fontSize: 13, fontWeight: 900, color: "#2563eb",
-    background: "#dbeafe", border: "1px solid #bfdbfe",
-    borderRadius: 8, cursor: "pointer", padding: "5px 12px", fontFamily: "inherit",
-  },
-  btnAllOps: {
-    background: "none", border: "none", cursor: "pointer",
-    fontSize: 16, padding: "2px 6px", borderRadius: 6,
-  },
-  /* employees */
-  empBox: {
-    border: "1.5px solid #e2e8f0", borderRadius: 14,
-    padding: "16px 18px", marginBottom: 18, background: "#fafafa",
-  },
-  empChip: {
-    display: "flex", alignItems: "center", gap: 6,
-    background: "#dbeafe", border: "1px solid #bfdbfe",
-    borderRadius: 999, padding: "4px 12px",
-    fontSize: 14,
-  },
-  empRemoveBtn: {
-    background: "none", border: "none", cursor: "pointer",
-    color: "#dc2626", fontWeight: 900, fontSize: 17,
-    lineHeight: 1, padding: "0 2px",
-  },
-  btnAdd2: {
-    padding: "10px 18px", background: "#2563eb", color: "#fff",
-    border: "none", borderRadius: 10, fontWeight: 900,
-    fontSize: 15, cursor: "pointer", fontFamily: "inherit",
-  },
-  /* buttons */
-  btnSave: {
-    padding: "12px 26px",
-    background: "linear-gradient(135deg,#2563eb,#7c3aed)",
-    color: "#fff", border: "none", borderRadius: 10,
-    fontWeight: 900, fontSize: 16, cursor: "pointer", fontFamily: "inherit",
-  },
-  btnCancel: {
-    padding: "12px 22px", background: "#f1f5f9", color: "#374151",
-    border: "1px solid #e2e8f0", borderRadius: 10,
-    fontWeight: 900, fontSize: 16, cursor: "pointer", fontFamily: "inherit",
-  },
-  btnAdd: {
-    padding: "12px 24px",
-    background: "linear-gradient(135deg,#2563eb,#7c3aed)",
-    color: "#fff", border: "none", borderRadius: 10,
-    fontWeight: 900, fontSize: 16, cursor: "pointer", fontFamily: "inherit",
-    boxShadow: "0 6px 16px rgba(37,99,235,.25)",
+  /* Content area: auto-sized, padding only */
+  mainContent: { padding:"18px 20px" },
+  searchInput: {
+    padding:"11px 14px", borderRadius:11,
+    background:"rgba(255,255,255,.06)",
+    border:"1px solid rgba(255,255,255,.12)",
+    color:"#f1f5f9", fontSize:18,
+    fontFamily:"Cairo,'Segoe UI',sans-serif",
+    fontWeight:700,
   },
   btnRefresh: {
-    padding: "10px 16px", background: "#f1f5f9", color: "#374151",
-    border: "1px solid #e2e8f0", borderRadius: 10,
-    fontWeight: 900, fontSize: 15, cursor: "pointer", fontFamily: "inherit",
+    padding:"11px 18px", borderRadius:11,
+    background:"rgba(255,255,255,.06)", color:"#e2e8f0",
+    border:"1px solid rgba(255,255,255,.13)",
+    fontWeight:900, fontSize:15, cursor:"pointer",
+    fontFamily:"Cairo,'Segoe UI',sans-serif",
+    whiteSpace:"nowrap",
   },
-  btnDanger: {
-    padding: "12px 22px", background: "#dc2626", color: "#fff",
-    border: "none", borderRadius: 10,
-    fontWeight: 900, fontSize: 16, cursor: "pointer", fontFamily: "inherit",
-  },
-  btnSm: {
-    padding: "7px 12px", background: "#f1f5f9",
-    border: "1px solid #e2e8f0", borderRadius: 8,
-    fontSize: 17, cursor: "pointer",
-  },
-  table: { width: "100%", borderCollapse: "collapse" },
-  th: {
-    padding: "12px 16px", background: "#f8fafc",
-    fontSize: 14, fontWeight: 900, color: "#64748b",
-    textAlign: "left", whiteSpace: "nowrap",
-    borderBottom: "2px solid #e2e8f0",
-  },
-  td: { padding: "14px 16px", fontSize: 15, color: "#0f172a", verticalAlign: "middle" },
-  loading: { padding: "40px 0", textAlign: "center", color: "#94a3b8", fontWeight: 700, fontSize: 16 },
-  empty:   { padding: "40px 0", textAlign: "center", color: "#94a3b8", fontWeight: 700, fontSize: 16 },
+  cardsGrid: { display:"flex", flexDirection:"column", gap:10 },
+  empty: { textAlign:"center", padding:"30px 20px", color:"rgba(255,255,255,.35)", fontWeight:700, fontSize:16 },
   overlay: {
-    position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
-    display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999,
+    position:"fixed", inset:0,
+    background:"rgba(0,0,0,.65)",
+    display:"flex", alignItems:"center", justifyContent:"center",
+    zIndex:9999, backdropFilter:"blur(6px)",
   },
   modal: {
-    background: "#fff", borderRadius: 16, padding: "28px 32px",
-    boxShadow: "0 20px 60px rgba(0,0,0,.2)",
-    width: "min(440px,92vw)", border: "1px solid #e2e8f0",
+    background:"rgba(15,23,42,.96)",
+    border:"1px solid rgba(255,255,255,.16)",
+    borderRadius:18, padding:"24px 28px",
+    width:"min(420px,92vw)",
+    backdropFilter:"blur(24px)",
+    boxShadow:"0 28px 64px rgba(0,0,0,.55)",
   },
+};
+
+/* ═══════════════════════════════════════════════════════
+   LIGHT FORM STYLES (used inside white AccountForm card)
+═══════════════════════════════════════════════════════ */
+const fs = {
+  formWrap: {
+    background:"#fff", border:"1px solid #e2e8f0",
+    borderRadius:18, padding:"28px 32px",
+    maxWidth:"100%",
+  },
+  title:  { margin:"0 0 22px", fontWeight:1000, fontSize:22, color:"#0f172a" },
+  row:    { display:"flex", gap:16, marginBottom:16, flexWrap:"wrap" },
+  field:  { flex:1, minWidth:220, display:"flex", flexDirection:"column", gap:6 },
+  label:  { fontSize:13, fontWeight:900, color:"#475569", textTransform:"uppercase", letterSpacing:".05em" },
+  input:  {
+    padding:"12px 14px", border:"1.5px solid #e2e8f0", borderRadius:10,
+    fontSize:16, fontFamily:"inherit", color:"#0f172a",
+    background:"#f8fafc", outline:"none", width:"100%", boxSizing:"border-box",
+  },
+  checkRow: { display:"flex", alignItems:"center", gap:10, cursor:"pointer", padding:"6px 8px", borderRadius:8 },
+  err: { color:"#991b1b", background:"#fee2e2", padding:"10px 14px", borderRadius:8, fontSize:15, fontWeight:800, marginTop:10 },
+  /* permissions table */
+  permBox:    { border:"1.5px solid #e2e8f0", borderRadius:14, padding:"16px 18px", marginBottom:18, background:"#fafafa" },
+  permHeader: { display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10, marginBottom:14 },
+  permTitle:  { fontWeight:900, fontSize:16, color:"#0f172a" },
+  fullAccessBanner: { background:"#f3e8ff", border:"1px solid #d8b4fe", borderRadius:10, padding:"12px 16px", color:"#7c3aed", fontWeight:800, fontSize:15 },
+  permTable:  { width:"100%", borderCollapse:"collapse", fontSize:14 },
+  permTh:     { padding:"10px 14px", background:"#f1f5f9", fontSize:13, fontWeight:900, color:"#475569", textAlign:"center", whiteSpace:"nowrap", borderBottom:"2px solid #e2e8f0" },
+  permTd:     { padding:"10px 12px", verticalAlign:"middle" },
+  btnSelectAll: { fontSize:13, fontWeight:900, color:"#2563eb", background:"#dbeafe", border:"1px solid #bfdbfe", borderRadius:8, cursor:"pointer", padding:"5px 12px", fontFamily:"inherit" },
+  btnAllOps:  { background:"none", border:"none", cursor:"pointer", fontSize:16, padding:"2px 6px", borderRadius:6 },
+  /* employees */
+  empBox:      { border:"1.5px solid #e2e8f0", borderRadius:14, padding:"16px 18px", marginBottom:18, background:"#fafafa" },
+  empChip:     { display:"flex", alignItems:"center", gap:6, background:"#dbeafe", border:"1px solid #bfdbfe", borderRadius:999, padding:"4px 12px", fontSize:14 },
+  empRemoveBtn:{ background:"none", border:"none", cursor:"pointer", color:"#dc2626", fontWeight:900, fontSize:17, lineHeight:1, padding:"0 2px" },
+  btnAdd2:     { padding:"10px 18px", background:"#2563eb", color:"#fff", border:"none", borderRadius:10, fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit" },
+  /* form action buttons */
+  btnSave:     { padding:"12px 26px", background:"linear-gradient(135deg,#2563eb,#7c3aed)", color:"#fff", border:"none", borderRadius:10, fontWeight:900, fontSize:16, cursor:"pointer", fontFamily:"inherit" },
+  btnCancel:   { padding:"12px 22px", background:"#f1f5f9", color:"#374151", border:"1px solid #e2e8f0", borderRadius:10, fontWeight:900, fontSize:16, cursor:"pointer", fontFamily:"inherit" },
 };

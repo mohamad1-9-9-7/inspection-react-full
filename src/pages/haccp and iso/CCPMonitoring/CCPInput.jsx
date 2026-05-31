@@ -124,6 +124,7 @@ export default function CCPInput() {
     return evaluateReading(form.reading.value, selectedCCP.criticalLimit);
   }, [selectedCCP, form.reading.value]);
 
+  // strict === false: null (no reading yet) and true (in-limit) are never deviations
   const isDeviation = evaluation === false;
 
   /* ====== Save ====== */
@@ -228,6 +229,8 @@ export default function CCPInput() {
         {loadingExisting && <div style={S.loadBox}>{t("loadingExisting")}</div>}
         {editLoadErr && <div style={S.errBox}>{editLoadErr}</div>}
 
+        {/* fieldset disables all form controls while save is in flight */}
+        <fieldset disabled={saving} style={{ border: "none", padding: 0, margin: 0 }}>
         {/* Brand header */}
         <div style={{ marginBottom: 12 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
@@ -427,6 +430,7 @@ export default function CCPInput() {
             dir={dir}
           />
         </Section>
+        </fieldset>
 
         {/* ===== Save buttons ===== */}
         <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 16, flexWrap: "wrap" }}>

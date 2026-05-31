@@ -514,7 +514,7 @@ export default function OilQualityMonitoringView() {
           {editing && (
             <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
           )}
-          <button onClick={handleDelete} style={btn("#dc2626")}>Delete (password)</button>
+          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
 
           <button onClick={exportXLSX} disabled={!rowsToShow.length} style={btn("#0ea5e9")}>Export XLSX</button>
           <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>

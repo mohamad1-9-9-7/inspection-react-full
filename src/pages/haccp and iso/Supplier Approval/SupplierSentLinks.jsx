@@ -574,7 +574,7 @@ export default function SupplierSentLinks() {
                 🚫 تعطيل
               </button>
             )}
-            <button style={S.btn("danger")} onClick={() => deleteRecord(rec)} title="حذف السجل">
+            <button style={S.btn("danger")} onClick={() => deleteRecord(rec)} title="حذف السجل" data-delete-action="true">
               🗑️ حذف
             </button>
           </div>
@@ -692,7 +692,7 @@ export default function SupplierSentLinks() {
               <button style={S.btn("warn")} onClick={bulkRevoke} disabled={bulkBusy}>
                 🚫 تعطيل المحدد
               </button>
-              <button style={S.btn("danger")} onClick={bulkDelete} disabled={bulkBusy}>
+              <button style={S.btn("danger")} onClick={bulkDelete} disabled={bulkBusy} data-delete-action="true">
                 🗑️ حذف المحدد
               </button>
               <button style={S.btn("secondary")} onClick={clearSel} disabled={bulkBusy}>

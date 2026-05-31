@@ -382,7 +382,7 @@ export default function Approvals() {
                   <td style={s.td}><input value={r.remarks} onChange={(e) => setVal(i, "remarks", e.target.value)} style={s.in} /></td>
 
                   <td style={s.td}>
-                    <button type="button" onClick={() => delRow(i)} style={s.btnDanger}>🗑️ Delete</button>
+                    <button type="button" onClick={() => delRow(i)} style={s.btnDanger} data-delete-action="true">🗑️ Delete</button>
                   </td>
                 </tr>
               );

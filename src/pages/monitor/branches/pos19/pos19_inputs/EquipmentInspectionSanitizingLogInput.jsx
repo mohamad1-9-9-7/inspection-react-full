@@ -259,7 +259,7 @@ export default function EquipmentInspectionSanitizingLogInput() {
                         color:rows.length===1?C.gray400:C.red,
                         border:"none", borderRadius:6, width:36, height:34,
                         cursor:rows.length===1?"not-allowed":"pointer",
-                        fontWeight:700, fontSize:17 }}>
+                        fontWeight:700, fontSize:17 }} data-delete-action="true">
                       ×
                     </button>
                   </td>

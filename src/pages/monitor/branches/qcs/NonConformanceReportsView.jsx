@@ -487,7 +487,7 @@ export default function NonConformanceReportsView() {
                   color: "#ef4444",
                   fontWeight: 800,
                 }}
-              >
+               data-delete-action="true">
                 🗑️ Delete
               </button>
             </div>

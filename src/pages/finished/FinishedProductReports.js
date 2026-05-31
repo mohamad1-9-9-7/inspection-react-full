@@ -1719,7 +1719,7 @@ export default function FinishedProductReports() {
                       onClick={() => requestDeleteReport(rep.dbId || rep.reportId)}
                       style={btnDanger}
                       disabled={busy}
-                    >
+                     data-delete-action="true">
                       Delete Report
                     </button>
                   </div>
@@ -1876,7 +1876,7 @@ export default function FinishedProductReports() {
                                 style={btnDangerSm}
                                 title="Delete row"
                                 disabled={busy}
-                              >
+                               data-delete-action="true">
                                 🗑️
                               </button>
                             </td>
@@ -1919,7 +1919,7 @@ export default function FinishedProductReports() {
               <button onClick={closeConfirm} style={btnGhost} disabled={busy}>
                 Cancel
               </button>
-              <button onClick={confirmDeletion} style={btnDanger} disabled={busy}>
+              <button onClick={confirmDeletion} style={btnDanger} disabled={busy} data-delete-action="true">
                 Delete
               </button>
             </div>

@@ -358,7 +358,7 @@ export default function POS11PersonalHygieneView() {
                 ⬆ Import JSON
               </button>
 
-              <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")}>
+              <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">
                 🗑 Delete
               </button>
 

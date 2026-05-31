@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 import { useHSELang, HSELangToggle } from "./hseShared";
 import HSELocalMigration from "./HSELocalMigration";
+import { isItemAllowed } from "../../utils/sectionItems";
 
 const T = {
   brandSub:    { ar: "AL MAWASHI — قسم الصحة والسلامة والبيئة", en: "AL MAWASHI — HSE Department" },
@@ -360,10 +361,11 @@ export default function HSEMenu() {
           <span>✅ ISO 45001 · ISO 14001 · ISO 22000 · HACCP</span>
         </div>
 
+        {/* Cards — filtered by per-user HSE permissions */}
         <section aria-label="HSE sections">
           {(() => {
             const groups = {};
-            sections.forEach((s) => {
+            sections.filter(s => isItemAllowed("hse", s.id)).forEach((s) => {
               const g = pick(s.group) || "Sections";
               if (!groups[g]) groups[g] = [];
               groups[g].push(s);

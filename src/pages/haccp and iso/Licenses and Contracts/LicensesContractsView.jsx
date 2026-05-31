@@ -821,7 +821,7 @@ export default function LicensesContractsView() {
                 )}
 
                 {selected && (
-                  <button style={btnSolid("#ef4444")} onClick={() => handleDelete(selected)}>
+                  <button style={btnSolid("#ef4444")} onClick={() => handleDelete(selected)} data-delete-action="true">
                     Delete
                   </button>
                 )}
@@ -1072,7 +1072,7 @@ export default function LicensesContractsView() {
 
                                 {editing && (
                                   <td style={{ padding: "10px 10px", borderBottom: "1px solid #f1f5f9" }}>
-                                    <button type="button" style={miniBtnRed} onClick={() => deleteContractRow(i)}>
+                                    <button type="button" style={miniBtnRed} onClick={() => deleteContractRow(i)} data-delete-action="true">
                                       Remove
                                     </button>
                                   </td>

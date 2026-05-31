@@ -838,7 +838,7 @@ export default function ENOCReturnsBrowse() {
                 </>
               )}
 
-              <button style={btnRed} onClick={deleteDayReport} disabled={!selectedReport || savingEdit}>
+              <button style={btnRed} onClick={deleteDayReport} disabled={!selectedReport || savingEdit} data-delete-action="true">
                 🗑 Delete This Day Report
               </button>
             </div>
@@ -1113,7 +1113,7 @@ export default function ENOCReturnsBrowse() {
                                         if (ok) deleteDraftRow(globalIndex);
                                       }}
                                       title="Delete row"
-                                    >
+                                     data-delete-action="true">
                                       ✖
                                     </button>
                                   </td>

@@ -172,7 +172,7 @@ export default function PersonalHygieneChecklistInput() {
             {rows.map((r, i) => (
               <tr key={i}>
                 <td style={{ ...tdCell, padding:"2px" }}>
-                  <button onClick={() => deleteRow(i)} title="Delete row" style={{ width:"32px", height:"28px", border:"1px solid #ef4444", background:"#fef2f2", color:"#b91c1c", borderRadius:6, fontWeight:800, cursor:"pointer" }}>×</button>
+                  <button onClick={() => deleteRow(i)} title="Delete row" style={{ width:"32px", height:"28px", border:"1px solid #ef4444", background:"#fef2f2", color:"#b91c1c", borderRadius:6, fontWeight:800, cursor:"pointer" }} data-delete-action="true">×</button>
                 </td>
                 <td style={tdCell}>
                   <input type="text" placeholder="Name" value={r.staffName} onChange={(e) => updateRow(i, "staffName", e.target.value)} style={inputStyle} />

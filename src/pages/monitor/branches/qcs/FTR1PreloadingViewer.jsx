@@ -605,7 +605,7 @@ export default function FTR1PreloadingViewer() {
               </>
             )}
 
-            <button onClick={deleteReport} style={btn("#fef2f2", "#7f1d1d", "#fecaca")}>🗑️ Delete</button>
+            <button onClick={deleteReport} style={btn("#fef2f2", "#7f1d1d", "#fecaca")} data-delete-action="true">🗑️ Delete</button>
 
             {loading && <span style={{ fontWeight: 700, color: COLORS.ink }}>Loading…</span>}
             {!!error && <span style={{ color: COLORS.danger, fontWeight: 800 }}>{error}</span>}

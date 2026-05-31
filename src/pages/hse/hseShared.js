@@ -204,7 +204,8 @@ export async function apiList(type) {
     const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(ft)}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json().catch(() => null);
-    const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+    const raw = Array.isArray(json) ? json : json?.data || json?.items || [];
+    const arr = Array.isArray(raw) ? raw : [];
     const out = arr.map(flattenRecord).filter(Boolean);
     // Sort newest-first by createdAt
     out.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));

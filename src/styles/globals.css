@@ -2,6 +2,12 @@
    Global Styles — يُستورد مرة واحدة في index.js
    ============================================================ */
 
+/* ── Security: hide ALL delete/destructive buttons when setting is OFF ── */
+/* Buttons get [data-delete-action] via Button variant="danger" or manually  */
+body:not(.sec-delete-allowed) [data-delete-action] {
+  display: none !important;
+}
+
 @import './variables.css';
 
 /* ── Reset أساسي ────────────────────────────────────────── */

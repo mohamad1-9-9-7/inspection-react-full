@@ -1059,7 +1059,7 @@ export default function TraceabilityLogInput() {
                         color: "#b91c1c",
                       }}
                       title="Delete batch"
-                    >
+                     data-delete-action="true">
                       × Delete batch
                     </button>
                   </div>
@@ -1263,7 +1263,7 @@ export default function TraceabilityLogInput() {
                               color: "#9a3412",
                             }}
                             title="Remove this raw line"
-                          >
+                           data-delete-action="true">
                             – Remove RAW
                           </button>
                         </div>
@@ -1400,7 +1400,7 @@ export default function TraceabilityLogInput() {
                               color: "#9f1239",
                             }}
                             title="Remove this final line"
-                          >
+                           data-delete-action="true">
                             – Remove FINAL
                           </button>
                         </div>

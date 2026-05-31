@@ -36,6 +36,7 @@ export default function Button({
       disabled={disabled || loading}
       onClick={onClick}
       style={style}
+      {...(variant === 'danger' ? { 'data-delete-action': 'true' } : {})}
       {...rest}
     >
       {loading && (

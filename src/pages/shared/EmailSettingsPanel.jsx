@@ -321,14 +321,14 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
               ))}
               {history.length > 12 && <span style={{ color: "#94a3b8", fontSize: 11 }}>+{history.length - 12} more</span>}
             </div>
-            <button onClick={handleClearHistory} style={{ ...styles.btnDanger, marginTop: 8 }}>
+            <button onClick={handleClearHistory} style={{ ...styles.btnDanger, marginTop: 8 }} data-delete-action="true">
               Clear history
             </button>
           </div>
         )}
 
         <div style={styles.actions}>
-          <button onClick={handleReset} style={styles.btnDanger}>↺ Reset to defaults</button>
+          <button onClick={handleReset} style={styles.btnDanger} data-delete-action="true">↺ Reset to defaults</button>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onClose} style={styles.btnGhost}>إلغاء</button>
             <button onClick={handleSave} style={styles.btnPrimary}>💾 Save Settings</button>

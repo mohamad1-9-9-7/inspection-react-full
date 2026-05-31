@@ -663,7 +663,7 @@ export default function Inspection() {
                 <button onClick={()=>duplicateRow(idx)} style={iconBtnSm} title={tt("Duplicate row","نسخ السطر")}>📋</button>
                 <button onClick={()=>clearRow(idx)} style={iconBtnSm} title={tt("Clear row","مسح السطر")}>🧹</button>
                 {r.status !== "Closed" && <button onClick={()=>markRowClosed(idx)} style={{...iconBtnSm, background:"#dcfce7", color:"#166534"}} title={tt("Mark Closed","تعليم كمغلق")}>✅</button>}
-                <button onClick={()=>removeRow(idx)} style={{...iconBtnSm, background:"#fee2e2", color:"#991b1b"}} title={tt("Remove row","حذف السطر")}>✕</button>
+                <button onClick={()=>removeRow(idx)} style={{...iconBtnSm, background:"#fee2e2", color:"#991b1b"}} title={tt("Remove row","حذف السطر")} data-delete-action="true">✕</button>
               </div>
             </div>
             );

@@ -701,7 +701,7 @@ export default function Cleaning() {
 
                   <td style={{ ...td, whiteSpace: "nowrap" }}>
                     {rows.length > 1 && (
-                      <button type="button" onClick={() => removeRow(i)} style={btnDanger} title="Delete this row">
+                      <button type="button" onClick={() => removeRow(i)} style={btnDanger} title="Delete this row" data-delete-action="true">
                         🗑 Delete
                       </button>
                     )}

@@ -740,7 +740,7 @@ export default function FTR1ReceivingLog() {
 
                 {/* Actions */}
                 <td style={tdCell}>
-                  <button type="button" onClick={() => removeRow(idx)} title="Delete row" style={btnSm("#ef4444")}>
+                  <button type="button" onClick={() => removeRow(idx)} title="Delete row" style={btnSm("#ef4444")} data-delete-action="true">
                     Delete
                   </button>
                 </td>

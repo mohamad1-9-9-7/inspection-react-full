@@ -618,7 +618,7 @@ export default function POS15TraceabilityLogInput() {
                       onClick={() => deleteBatch(bi)}
                       style={{ ...miniBtn, background:"#fef2f2", borderColor:"#ef4444", color:"#b91c1c" }}
                       title="Delete batch"
-                    >× Delete batch</button>
+                     data-delete-action="true">× Delete batch</button>
                   </div>
                 </td>
 
@@ -677,7 +677,7 @@ export default function POS15TraceabilityLogInput() {
                             onClick={()=>deleteInput(bi, ii)}
                             style={{ ...miniBtn, background:"#fff7ed", borderColor:"#f97316", color:"#9a3412" }}
                             title="Remove this raw line"
-                          >– Remove RAW</button>
+                           data-delete-action="true">– Remove RAW</button>
                         </div>
                       </div>
                     ))}
@@ -717,7 +717,7 @@ export default function POS15TraceabilityLogInput() {
                             onClick={()=>deleteOutput(bi, oi)}
                             style={{ ...miniBtn, background:"#fff1f2", borderColor:"#fb7185", color:"#9f1239" }}
                             title="Remove this final line"
-                          >– Remove FINAL</button>
+                           data-delete-action="true">– Remove FINAL</button>
                         </div>
                       </div>
                     ))}

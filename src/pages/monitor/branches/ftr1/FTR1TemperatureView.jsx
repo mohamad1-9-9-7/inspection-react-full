@@ -379,7 +379,7 @@ export default function FTR1TemperatureView() {
                 className="btn-delete"
                 style={btn("#c0392b")}
                 title="Delete this report (password: 9999)"
-              >
+               data-delete-action="true">
                 🗑 Delete
               </button>
               <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>

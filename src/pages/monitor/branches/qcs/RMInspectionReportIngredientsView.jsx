@@ -455,7 +455,7 @@ export default function RMInspectionReportIngredientsView() {
                 disabled={editMode}
                 title={editMode ? "Exit edit mode first" : "Delete"}
                 style={miniBtn(editMode ? "#9ca3af" : "#c0392b")}
-              >
+               data-delete-action="true">
                 🗑 Delete
               </button>
             </div>

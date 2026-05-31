@@ -379,7 +379,7 @@ export default function GlassRegisterView() {
                           </button>
                           <button
                             style={{ ...S.btn("danger"), padding: "5px 10px", fontSize: 11, marginInlineStart: 4 }}
-                            onClick={() => del(rec.id)}
+                            onClick={() => del(rec.id)} data-delete-action="true"
                           >
                             🗑️
                           </button>

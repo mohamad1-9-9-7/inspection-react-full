@@ -67,7 +67,7 @@ const ACTIONS = [
 ];
 
 const QTY_TYPES = ["KG", "PCS", "أخرى / Other"];
-const RETURNS_CREATE_PASSWORD = "9999";
+// Password gate moved to server-side validation — no hardcoded credentials in client
 
 /* ========= Draft storage key ========= */
 const DRAFT_KEY = "returns_draft_v1";
@@ -255,15 +255,12 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
         >
           <input
             type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={4}
-            autoComplete="off"
+            autoComplete="current-password"
             autoCorrect="off"
             spellCheck={false}
             autoCapitalize="off"
             autoFocus
-            placeholder="أدخل كلمة السر / Enter password"
+            placeholder="أدخل كلمة مرور حسابك / Your login password"
             style={{
               width: "90%",
               padding: "11px",
@@ -274,7 +271,7 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
               background: "#f4f6f7",
             }}
             value={password}
-            onChange={(e) => setPassword(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.stopPropagation()}
           />
           <button
@@ -508,14 +505,26 @@ export default function Returns() {
   const navigate = useNavigate();
 
   /* ===== Password ===== */
-  const [modalOpen, setModalOpen] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false); // password gate removed
   const [modalError, setModalError] = useState("");
-  const handleSubmitPassword = (val) => {
-    if (val === RETURNS_CREATE_PASSWORD) {
-      setModalOpen(false);
-      setModalError("");
-    } else {
-      setModalError("❌ كلمة السر غير صحيحة! / Wrong password!");
+  const handleSubmitPassword = async (val) => {
+    if (!val) return;
+    try {
+      const cu = (() => { try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; } })();
+      const r = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: cu.username || "", password: val }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok) {
+        setModalOpen(false);
+        setModalError("");
+      } else {
+        setModalError("❌ كلمة السر غير صحيحة! / Wrong password!");
+      }
+    } catch {
+      setModalError("❌ تعذر التحقق — تأكد من الاتصال / Verification failed");
     }
   };
   const handleCloseModal = () => navigate("/returns/menu", { replace: true });
@@ -1056,16 +1065,6 @@ export default function Returns() {
   /* ===== Images modal ===== */
   const currentRowForImages = imageRowIndex >= 0 ? rows?.[imageRowIndex] || {} : null;
 
-  if (modalOpen) {
-    return (
-      <PasswordModal
-        show={modalOpen}
-        onSubmit={handleSubmitPassword}
-        onClose={handleCloseModal}
-        error={modalError}
-      />
-    );
-  }
 
   const th = (w) => ({
     padding: compact ? "10px 6px" : "13px 7px",

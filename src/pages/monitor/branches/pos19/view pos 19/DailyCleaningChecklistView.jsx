@@ -340,7 +340,7 @@ export default function DailyCleaningChecklistView() {
         <div style={{ marginLeft:"auto", display:"flex", gap:7, flexWrap:"wrap", alignItems:"center" }}>
           <button onClick={toggleEdit}   style={actionBtn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"✏️ Edit"}</button>
           {editing && <button onClick={saveEdit} style={actionBtn("#10b981")}>💾 Save</button>}
-          <button onClick={handleDelete} style={actionBtn(C.red)}>🗑 Delete</button>
+          <button onClick={handleDelete} style={actionBtn(C.red)} data-delete-action="true">🗑 Delete</button>
           <button onClick={exportXLSX}   style={actionBtn("#0ea5e9", !record?.payload?.entries?.length)} disabled={!record?.payload?.entries?.length}>📊 XLSX</button>
           <button onClick={exportJSON}   style={actionBtn("#0284c7", !record)} disabled={!record}>📄 JSON</button>
           <button onClick={exportPDF}    style={actionBtn(C.gray700)}>🖨 PDF</button>

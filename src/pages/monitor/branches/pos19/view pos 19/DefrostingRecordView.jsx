@@ -178,7 +178,7 @@ export default function DefrostingRecordView() {
         <div style={{ marginInlineStart:"auto", display:"flex", gap:8, flexWrap:"wrap" }}>
           <button onClick={toggleEdit} style={btn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"Edit (password)"}</button>
           {editing && <><button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button><button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button></>}
-          <button onClick={handleDelete} style={btn("#dc2626")}>Delete (password)</button>
+          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
           <button onClick={exportXLSX} disabled={!rows.filter(isFilledRow).length} style={btn("#0ea5e9")}>Export XLSX</button>
           <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
           <button onClick={exportPDF} style={btn("#374151")}>Export PDF</button>
@@ -270,7 +270,7 @@ export default function DefrostingRecordView() {
                         <td style={tdCell}><input type="number" step="0.1" value={r.endTemp||""} onChange={e=>upd(i,"endTemp",e.target.value)} style={inputStyle}/></td>
                         <td style={tdCell}><input type="number" step="0.1" value={r.defrostTemp||""} onChange={e=>upd(i,"defrostTemp",e.target.value)} style={inputStyle}/></td>
                         <td style={tdCell}><input value={r.remarks||""} onChange={e=>upd(i,"remarks",e.target.value)} style={inputStyle}/></td>
-                        <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")}>Del</button></td>
+                        <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")} data-delete-action="true">Del</button></td>
                       </tr>
                     ))}
                   </tbody>

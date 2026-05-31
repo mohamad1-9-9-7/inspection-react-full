@@ -1,7 +1,10 @@
 // src/App.jsx
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import NotificationManager from "./components/NotificationManager";
+import API_BASE from "./config/api";
+
+const SubscriptionExpired = lazy(() => import("./pages/SubscriptionExpired"));
 
 // Lazy imports
 const Login = lazy(() => import("./pages/Login"));
@@ -202,6 +205,9 @@ const InventoryDailyBrowse = lazy(() =>
 );
 
 // 🆕 🎓 Training Certificates – BFS / PIC / EFST
+const TrainingCertHub = lazy(() =>
+  import("./pages/BFS PIC EFST/TrainingCertHub")
+);
 const TrainingCertificatesUpload = lazy(() =>
   import("./pages/BFS PIC EFST/TrainingCertificatesUpload")
 );
@@ -415,24 +421,61 @@ function TokenRedirect({ to }) {
 /* Session valid for 8 hours from loginAt */
 const SESSION_MAX_MS = 8 * 60 * 60 * 1000;
 
+/* Fetch subscription once on app init and cache it */
+function useSubscriptionFetch() {
+  useEffect(() => {
+    const cache = (() => { try { return JSON.parse(localStorage.getItem("subscription_cache") || "{}"); } catch { return {}; } })();
+    const age   = Date.now() - (cache.fetchedAt || 0);
+    if (age < 60 * 60 * 1000) return; // fresh within 1 hour — skip
+    fetch(`${API_BASE}/api/subscription`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok && data.subscription) {
+          localStorage.setItem("subscription_cache", JSON.stringify({
+            status:    data.subscription.status,
+            end_date:  data.subscription.end_date,
+            plan:      data.subscription.plan,
+            fetchedAt: Date.now(),
+          }));
+        }
+      })
+      .catch(() => {}); // non-fatal
+  }, []);
+}
+
+function isSubscriptionExpired() {
+  try {
+    const cache = JSON.parse(localStorage.getItem("subscription_cache") || "{}");
+    if (!cache.status) return false; // no cache yet — allow through
+    if (cache.status === "expired" || cache.status === "suspended") return true;
+    if (cache.end_date && new Date(cache.end_date) < new Date()) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function ProtectedRoute({ children }) {
   let isAuthed = false;
+  let isSuperAdmin = false;
   try {
     const raw = typeof window !== "undefined" ? localStorage.getItem("currentUser") : null;
     if (raw) {
       const user = JSON.parse(raw);
       const age  = Date.now() - (user?.loginAt || 0);
       if (user && age < SESSION_MAX_MS) {
-        isAuthed = true;
+        isAuthed     = true;
+        isSuperAdmin = user.isSuperAdmin || false;
       } else {
-        // Session expired — clean up
         localStorage.removeItem("currentUser");
       }
     }
   } catch {
     isAuthed = false;
   }
-  return isAuthed ? children : <Navigate to="/" replace />;
+  if (!isAuthed) return <Navigate to="/" replace />;
+  if (isSubscriptionExpired() && !isSuperAdmin) return <Navigate to="/subscription-expired" replace />;
+  return children;
 }
 
 // صفحة مؤقتة لأي فرع /monitor/:slug
@@ -473,7 +516,25 @@ function NotFound() {
   );
 }
 
+function useDeleteGuard() {
+  useEffect(() => {
+    const sync = () => {
+      try {
+        const allowed = JSON.parse(localStorage.getItem("appSecuritySettings") || "{}").allowDeleteRecords === true;
+        document.body.classList.toggle("sec-delete-allowed", allowed);
+      } catch {
+        document.body.classList.remove("sec-delete-allowed");
+      }
+    };
+    sync();
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
+}
+
 export default function App() {
+  useDeleteGuard();
+  useSubscriptionFetch();
   return (
     <Suspense
       fallback={
@@ -486,6 +547,7 @@ export default function App() {
       <Routes>
         {/* الجذر */}
         <Route path="/" element={<Login />} />
+        <Route path="/subscription-expired" element={<SubscriptionExpired />} />
         <Route
           path="/inspection"
           element={
@@ -1669,14 +1731,25 @@ export default function App() {
         />
 
         {/* 🆕 🎓 Training Certificates */}
+        {/* Hub — landing page with Upload / View cards */}
         <Route
           path="/training-certificates"
+          element={
+            <ProtectedRoute>
+              <TrainingCertHub />
+            </ProtectedRoute>
+          }
+        />
+        {/* Upload new certificate */}
+        <Route
+          path="/training-certificates/upload"
           element={
             <ProtectedRoute>
               <TrainingCertificatesUpload />
             </ProtectedRoute>
           }
         />
+        {/* View / Browse certificates */}
         <Route
           path="/training-certificates/view"
           element={

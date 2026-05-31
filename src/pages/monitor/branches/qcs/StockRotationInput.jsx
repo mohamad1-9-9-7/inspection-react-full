@@ -364,7 +364,7 @@ export default function StockRotationInput() {
                   {isNear && <span style={{ ...S.badge("#f59e0b"), marginInlineStart: 8 }}>قريب الانتهاء</span>}
                   {!it.positionCorrect && <span style={{ ...S.badge("#dc2626"), marginInlineStart: 8 }}>وضع خاطئ</span>}
                 </span>
-                <button type="button" style={S.btnDanger} onClick={() => removeItem(it.id)}>حذف</button>
+                <button type="button" style={S.btnDanger} onClick={() => removeItem(it.id)} data-delete-action="true">حذف</button>
               </div>
 
               <div style={S.row3}>

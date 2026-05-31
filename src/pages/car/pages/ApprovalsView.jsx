@@ -1279,7 +1279,7 @@ export default function ApprovalsView() {
                         <td style={s.td}>
                           <div style={s.actions}>
                             <button type="button" onClick={() => startEdit(uid)} style={s.btnGhost} disabled={saving}>✏ Edit</button>
-                            <button type="button" onClick={() => deleteRow(uid)} style={s.btnDanger} disabled={saving}>🗑 Delete</button>
+                            <button type="button" onClick={() => deleteRow(uid)} style={s.btnDanger} disabled={saving} data-delete-action="true">🗑 Delete</button>
                           </div>
                         </td>
                       </tr>

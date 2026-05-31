@@ -343,7 +343,7 @@ export default function POS15PersonalHygieneView() {
                   border: "none",
                   cursor: "pointer",
                 }}
-              >
+               data-delete-action="true">
                 🗑 Delete
               </button>
 

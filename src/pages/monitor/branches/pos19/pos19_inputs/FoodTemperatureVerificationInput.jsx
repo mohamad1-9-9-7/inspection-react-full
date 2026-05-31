@@ -272,7 +272,7 @@ export default function FoodTemperatureVerificationInput() {
                     <button onClick={()=>removeRow(i)} disabled={rows.length===1}
                       style={{ background:rows.length===1?"#e5e7eb":"#fee2e2", color:rows.length===1?C.gray400:C.red,
                         border:"none", borderRadius:6, width:38, height:36, cursor:rows.length===1?"not-allowed":"pointer",
-                        fontWeight:700, fontSize:18 }}>
+                        fontWeight:700, fontSize:18 }} data-delete-action="true">
                       ×
                     </button>
                   </td>

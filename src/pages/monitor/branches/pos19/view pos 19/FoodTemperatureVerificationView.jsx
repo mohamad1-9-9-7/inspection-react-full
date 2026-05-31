@@ -361,7 +361,7 @@ export default function FoodTemperatureVerificationView() {
             <button onClick={addEditRow} style={actionBtn("#16a34a")}>+ Row</button>
             <button onClick={saveEdit}   style={actionBtn("#10b981")}>💾 Save</button>
           </>}
-          <button onClick={handleDelete} style={actionBtn(C.red)}>🗑 Delete</button>
+          <button onClick={handleDelete} style={actionBtn(C.red)} data-delete-action="true">🗑 Delete</button>
           <button onClick={exportXLSX}   style={actionBtn("#0ea5e9", !entries.length)} disabled={!entries.length}>📊 XLSX</button>
           <button onClick={exportJSON}   style={actionBtn("#0284c7", !record)} disabled={!record}>📄 JSON</button>
           <button onClick={exportPDF}    style={actionBtn(C.gray700)}>🖨 PDF</button>

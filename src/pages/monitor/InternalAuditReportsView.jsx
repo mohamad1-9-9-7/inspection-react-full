@@ -1410,7 +1410,7 @@ export default function InternalAuditReportsView() {
                                     handleDelete(r);
                                   }}
                                   style={dangerBtn}
-                                >
+                                 data-delete-action="true">
                                   Delete
                                 </button>
                               </>
@@ -1631,7 +1631,7 @@ export default function InternalAuditReportsView() {
                                             <button
                                               onClick={() => removeRow(ridx)}
                                               style={iconBtn}
-                                            >
+                                             data-delete-action="true">
                                               ✕
                                             </button>
                                           </div>

@@ -5,6 +5,7 @@ import React, { useState } from "react";
 
 // All language-related localStorage keys used across the app
 const LANG_KEYS = [
+  { key: "settings_lang",             label: "Settings & Billing" },
   { key: "hse_lang",                  label: "HSE module" },
   { key: "haccp_modules_lang_v1",     label: "HACCP / ISO" },
   { key: "ccp_lang_v1",               label: "CCP Monitoring" },

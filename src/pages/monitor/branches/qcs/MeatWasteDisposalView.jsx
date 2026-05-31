@@ -156,7 +156,7 @@ export default function MeatWasteDisposalView() {
                   <span style={S.pill("#9333ea", "#f3e8ff")}>📋 {entries.length} إدخال</span>
                 </div>
               </div>
-              <button style={S.btnDanger} onClick={() => del(rec.id)}>🗑️ حذف السجل</button>
+              <button style={S.btnDanger} onClick={() => del(rec.id)} data-delete-action="true">🗑️ حذف السجل</button>
             </div>
 
             {p.generalNotes && (

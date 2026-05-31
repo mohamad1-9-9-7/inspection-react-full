@@ -1253,7 +1253,7 @@ function ThumbGrid({ items = [], onDelete, docMode = false }) {
     <div style={grid}>
       {items.map((it, i) => (
         <div style={cell} key={it.url || i}>
-          <button type="button" onClick={() => onDelete(it.url)} style={delBtn}>
+          <button type="button" onClick={() => onDelete(it.url)} style={delBtn} data-delete-action="true">
             Delete
           </button>
           {docMode ? (

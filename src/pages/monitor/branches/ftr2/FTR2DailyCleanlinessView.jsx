@@ -306,7 +306,7 @@ export default function FTR2DailyCleanlinessView() {
                 <button onClick={triggerImport} style={btnImport}>
                   ⬆ Import JSON
                 </button>
-                <button onClick={() => handleDelete(selectedReport)} style={btnDelete}>
+                <button onClick={() => handleDelete(selectedReport)} style={btnDelete} data-delete-action="true">
                   🗑 Delete
                 </button>
               </div>

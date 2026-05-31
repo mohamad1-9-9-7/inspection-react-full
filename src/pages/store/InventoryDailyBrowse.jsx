@@ -502,7 +502,7 @@ export default function InventoryDailyBrowse() {
                 <button onClick={handleEdit} style={pill("#fef9c3", "#fde68a", "#78350f")} disabled={!selected || loading}>
                   ✏️ Edit
                 </button>
-                <button onClick={handleDelete} style={pill("#fee2e2", "#fecaca", "#7f1d1d")} disabled={!selected || loading}>
+                <button onClick={handleDelete} style={pill("#fee2e2", "#fecaca", "#7f1d1d")} disabled={!selected || loading} data-delete-action="true">
                   🗑 Delete
                 </button>
                 <div style={{ color: "rgba(255,255,255,.9)", fontWeight: 700, marginInlineStart: 8 }}>

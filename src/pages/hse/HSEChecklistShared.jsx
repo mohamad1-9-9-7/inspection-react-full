@@ -387,14 +387,14 @@ export default function HSEChecklist({
               {viewing.observations && (
                 <div style={{ padding: 12, marginBottom: 12, borderRadius: 10, background: "#fef9c3" }}>
                   <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 6, color: "#854d0e" }}>📝 {lang === "ar" ? "ملاحظات" : "Notes"}</div>
-                  <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{viewing.observations}</div>
+                  <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{String(viewing.observations || "")}</div>
                 </div>
               )}
 
               {viewing.correctiveActions && (
                 <div style={{ padding: 12, marginBottom: 12, borderRadius: 10, background: "#fee2e2" }}>
                   <div style={{ fontWeight: 900, fontSize: 13, marginBottom: 6, color: "#7f1d1d" }}>⚠️ {lang === "ar" ? "إجراءات تصحيحية" : "Corrective Actions"}</div>
-                  <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{viewing.correctiveActions}</div>
+                  <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{String(viewing.correctiveActions || "")}</div>
                   {viewing.followUpDate && (
                     <div style={{ marginTop: 8, fontSize: 12, color: "#7f1d1d" }}>
                       📅 {lang === "ar" ? "متابعة" : "Follow-up"}: <b>{viewing.followUpDate}</b>

@@ -273,7 +273,7 @@ export default function CCPView() {
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(id); }}
                       style={{ background: "#fef2f2", color: "#991b1b", border: "1px solid #fca5a5",
-                        padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 800, fontSize: "0.82rem" }}>
+                        padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 800, fontSize: "0.82rem" }} data-delete-action="true">
                       {t("deleteAction")}
                     </button>
                     <span style={{ color: "#64748b", fontSize: "1.2rem" }}>{isExpanded ? "▲" : "▼"}</span>

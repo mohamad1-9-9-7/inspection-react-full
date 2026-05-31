@@ -136,7 +136,6 @@ function formatDateTime(iso) {
 const TABS = [
   { key: "dailyReports", label: "Daily Reports", icon: "🗓️" },
   { key: "reports",      label: "Reports",        icon: "📑" },
-  { key: "qcsShipment",  label: "QCS Shipments",  icon: "📦" },
   { key: "kpi",          label: "KPI",            icon: "📈" },
 ];
 
@@ -265,16 +264,14 @@ export default function AdminDashboard() {
           onOpenQCSReport={()          => navigate("/admin/monitor/branches/qcs/reports")}
           onOpenPOS19Report={()        => navigate("/admin/pos19")}
           onOpenPOS10Report={()        => navigate("/admin/pos10")}
-          onOpenQCSShipmentReport={()  => openTabView({ key:"qcsShipment", label:"QCS Shipments", icon:"📦" })}
           onOpenFTR1Report={()         => openTabView({ key:"ftr1", label:"FTR1 Report", icon:"🏭" })}
           onOpenFTR2Report={()         => openTabView({ key:"ftr2", label:"FTR2 Report", icon:"🏭" })}
           onOpenProductionReport={()   => navigate("/admin/production")}
           language="en"
         />
       )}
-      {activeView === "qcsShipment"  && <HideDeleteScope><QCSRawMaterialView language="en"/></HideDeleteScope>}
-      {activeView === "kpi"          && <KPIDashboard/>}
-      {activeView === "ftr1"         && <FTR1ReportView/>}
+      {activeView === "kpi"  && <KPIDashboard/>}
+      {activeView === "ftr1" && <FTR1ReportView/>}
       {activeView === "ftr2"         && <FTR2ReportView language="en"/>}
     </>
   );

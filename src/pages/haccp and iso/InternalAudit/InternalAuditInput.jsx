@@ -168,7 +168,7 @@ export default function InternalAuditInput() {
             <div key={i} style={S.finding}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <div style={{ fontWeight: 950, color: "#854d0e", fontSize: 13 }}>{t("finding")} #{i + 1}</div>
-                <button style={S.btn("danger")} onClick={() => removeFinding(i)}>{t("removeFinding")}</button>
+                <button style={S.btn("danger")} onClick={() => removeFinding(i)} data-delete-action="true">{t("removeFinding")}</button>
               </div>
               <div style={S.row4}>
                 <div>

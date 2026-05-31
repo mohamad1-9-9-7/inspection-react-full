@@ -361,7 +361,7 @@ export default function FTR1DailyCleanlinessView() {
                   onClick={() => handleDelete(selectedReport)}
                   style={{ ...btnDelete }}
                   title="Delete this report (password required)"
-                >
+                 data-delete-action="true">
                   🗑 Delete
                 </button>
               </div>

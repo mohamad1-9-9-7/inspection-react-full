@@ -388,7 +388,7 @@ function ModernRow({ it, idx, listColumns, renderCell, onDelete, onEdit, deleteL
               transition: "all .15s",
             }}
             onClick={onDelete}
-          >
+           data-delete-action="true">
             🗑 {deleteLabel}
           </button>
         </div>

@@ -281,7 +281,7 @@ export default function OnlineCuttingRecordView() {
           <button onClick={exportJSON} disabled={!record} className="ocv-btn ocv-btn-info">
             {isAr ? "تصدير JSON" : "Export JSON"}
           </button>
-          <button onClick={handleDelete} disabled={!record} className="ocv-btn ocv-btn-danger">
+          <button onClick={handleDelete} disabled={!record} className="ocv-btn ocv-btn-danger" data-delete-action="true">
             {isAr ? "حذف" : "Delete"}
           </button>
         </div>

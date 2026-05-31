@@ -177,7 +177,7 @@ export default function CleaningProgrammeScheduleInput() {
                 ))}
                 <td style={tdCell}><input type="text" value={r.responsiblePerson} onChange={e=>updateRow(i,"responsiblePerson",e.target.value)} style={inputStyle} /></td>
                 <td style={tdCell}><input type="text" value={r.remarks} onChange={e=>updateRow(i,"remarks",e.target.value)} style={inputStyle} /></td>
-                <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")}>Del</button></td>
+                <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")} data-delete-action="true">Del</button></td>
               </tr>
             ))}
           </tbody>

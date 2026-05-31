@@ -246,7 +246,7 @@ function ConfirmDialog({ open, message, onConfirm, onCancel }) {
         <div style={{marginBottom:20,fontWeight:800,fontSize:"1.12rem"}}>{message}</div>
         <div style={{display:"flex",justifyContent:"center",gap:18}}>
           <button style={styles.saveButton} onClick={onConfirm}>نعم</button>
-          <button style={styles.dangerButton} onClick={onCancel}>لا</button>
+          <button style={styles.dangerButton} onClick={onCancel} data-delete-action="true">لا</button>
         </div>
       </div>
     </div>
@@ -1089,7 +1089,7 @@ export default function QCSRawMaterialForm() {
                   <td colSpan={1 + samples.length} style={{ padding: "0.7rem" }}>
                     <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                       <button onClick={addSample} style={styles.addButton}>➕ Add Sample (column)</button>
-                      <button onClick={removeSample} style={styles.dangerButton} disabled={samples.length <= 1}>🗑 Remove Sample (column)</button>
+                      <button onClick={removeSample} style={styles.dangerButton} disabled={samples.length <= 1} data-delete-action="true">🗑 Remove Sample (column)</button>
                     </div>
                   </td>
                 </tr>
@@ -1164,7 +1164,7 @@ export default function QCSRawMaterialForm() {
                   onClick={handleDeleteCertificate}
                   style={{ background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, padding: "5px 12px", fontWeight: 900, cursor: "pointer" }}
                   title="Delete certificate"
-                >
+                 data-delete-action="true">
                   ✕ Delete
                 </button>
               </div>

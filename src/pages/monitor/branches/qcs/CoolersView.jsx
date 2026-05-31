@@ -523,7 +523,7 @@ export default function CoolersView() {
           <button onClick={handleExportJSON} style={btnJson}>⬇ Export JSON</button>
           <button onClick={handleImportTrigger} style={btnImport}>⬆ Import JSON</button>
           <input ref={fileInputRef} type="file" accept="application/json" style={{ display:"none" }} onChange={handleImportJSON} />
-          <button onClick={handleDeleteCurrent} style={btnDelete} disabled={!selectedDate}>🗑 Delete</button>
+          <button onClick={handleDeleteCurrent} style={btnDelete} disabled={!selectedDate} data-delete-action="true">🗑 Delete</button>
         </div>
       </aside>
 

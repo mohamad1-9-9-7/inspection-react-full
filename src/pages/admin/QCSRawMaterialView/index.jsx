@@ -2,16 +2,22 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import SidebarTree from "./SidebarTree";
 import ReportDetails from "./ReportDetails";
+import "./QCSRawMaterialView.css";
 import {
   fetchFromServer,
   mergeUniqueById,
   loadFromLocal,
   saveToLocal,
+  saveToSession,
+  loadFromSession,
   upsertReportOnServer,
   deleteOnServer,
   groupByYMD,
   getDisplayId,
   getCreatedDate,
+  base64ToFile,
+  countBase64Certs,
+  uploadImageViaServer,
 } from "./viewUtils";
 
 export default function QCSRawMaterialView() {
@@ -20,6 +26,14 @@ export default function QCSRawMaterialView() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loadingServer, setLoadingServer] = useState(false);
   const [serverErr, setServerErr] = useState("");
+  const [migrating, setMigrating]         = useState(false);
+  const [migrateProgress, setMigrateProgress] = useState({ done: 0, total: 0 });
+
+  // ── filters ──
+  const [statusFilter, setStatusFilter] = useState("");   // "" | "Acceptable" | "Average" | "Not OK"
+  const [typeFilter,   setTypeFilter]   = useState("");   // "" | shipmentType string
+  const [dateFrom,     setDateFrom]     = useState("");   // "YYYY-MM-DD"
+  const [dateTo,       setDateTo]       = useState("");
 
   const abortRef = useRef(null);
 
@@ -37,7 +51,8 @@ export default function QCSRawMaterialView() {
         )
       );
       setReports(merged);
-      saveToLocal(merged);
+      saveToLocal(merged);   // persists stripped list to localStorage
+      saveToSession(merged); // fast cache for next refresh (cleared on tab close)
     } catch (e) {
       if (e.name !== "AbortError") setServerErr("Unable to fetch from server now.");
     } finally {
@@ -46,16 +61,26 @@ export default function QCSRawMaterialView() {
   };
 
   useEffect(() => {
-    // show local immediately
-    const local = loadFromLocal().sort((a, b) =>
-      String(b.createdAt || b.date || "").localeCompare(
-        String(a.createdAt || a.date || "")
-      )
-    );
-    setReports(local);
+    // Priority: sessionStorage (fastest) → localStorage → empty
+    const session = loadFromSession();
+    const local   = loadFromLocal();
+    const initial = (session.length >= local.length ? session : local)
+      .sort((a, b) =>
+        String(b.createdAt || b.date || "").localeCompare(
+          String(a.createdAt || a.date || "")
+        )
+      );
+    setReports(initial);
     refresh();
-    const onFocus = () => refresh();
-    const onStorage = () => setReports(loadFromLocal());
+    const onFocus   = () => refresh();
+    const onStorage = () => {
+      const updated = loadFromLocal().sort((a, b) =>
+        String(b.createdAt || b.date || "").localeCompare(
+          String(a.createdAt || a.date || "")
+        )
+      );
+      setReports(updated);
+    };
     window.addEventListener("focus", onFocus);
     window.addEventListener("storage", onStorage);
     return () => {
@@ -107,24 +132,118 @@ export default function QCSRawMaterialView() {
     if (!ok) alert("⚠️ Failed to delete from server. Removed locally.");
   };
 
-  // filter + tree
+  // ===== Migrate base64 certificates → Cloudinary =====
+  const handleMigrateBase64 = async () => {
+    const toMigrate = reports.filter(
+      (r) => typeof r?.certificateFile === "string" && r.certificateFile.startsWith("data:")
+    );
+    if (!toMigrate.length) {
+      alert("✅ No base64 certificates found. All records already use Cloudinary URLs.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Found ${toMigrate.length} report(s) with base64 certificates.\nUpload them to Cloudinary now?`
+      )
+    )
+      return;
+
+    setMigrating(true);
+    setMigrateProgress({ done: 0, total: toMigrate.length });
+
+    let updatedList = [...reports];
+    let successCount = 0;
+    const failures = [];
+
+    for (const report of toMigrate) {
+      try {
+        const file = base64ToFile(
+          report.certificateFile,
+          report.certificateName || "certificate"
+        );
+        if (!file) throw new Error("base64ToFile returned null");
+
+        const url = await uploadImageViaServer(file, "qcs_certificate");
+
+        // patch in the local list
+        updatedList = updatedList.map((r) =>
+          r.id === report.id
+            ? { ...r, certificateUrl: url, certificateFile: "" }
+            : r
+        );
+
+        // persist to server
+        const patched = updatedList.find((r) => r.id === report.id);
+        if (patched) await upsertReportOnServer(patched);
+
+        successCount++;
+      } catch (err) {
+        console.warn("Migration failed for report", report.id, err);
+        failures.push(
+          report?.generalInfo?.airwayBill ||
+            report?.generalInfo?.invoiceNo ||
+            report.id
+        );
+      }
+      setMigrateProgress((p) => ({ ...p, done: p.done + 1 }));
+    }
+
+    setReports(updatedList);
+    saveToLocal(updatedList);
+    saveToSession(updatedList);
+    setMigrating(false);
+    setMigrateProgress({ done: 0, total: 0 });
+
+    if (failures.length) {
+      alert(
+        `Migration done: ${successCount} ✅  |  ${failures.length} ❌ failed:\n${failures.join(", ")}`
+      );
+    } else {
+      alert(`✅ Migration complete — ${successCount} certificate(s) uploaded to Cloudinary.`);
+    }
+  };
+
+  // ── unique shipment types for filter dropdown ──
+  const uniqueTypes = useMemo(
+    () => [...new Set(reports.map((r) => r.shipmentType).filter(Boolean))].sort(),
+    [reports]
+  );
+
+  // ── filter + tree ──
   const filteredReports = useMemo(() => {
     const term = (searchTerm || "").toLowerCase();
     return reports.filter((r) => {
+      // text search
       const hay = [
         r.generalInfo?.airwayBill,
         r.generalInfo?.invoiceNo,
+        r.generalInfo?.supplierName,
         r.uniqueKey,
         r.shipmentType,
         r.status,
         getCreatedDate(r),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(term);
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (term && !hay.includes(term)) return false;
+
+      // status filter
+      if (statusFilter) {
+        const s = String(r.status || "").toLowerCase();
+        if (statusFilter === "Acceptable" && s !== "acceptable") return false;
+        if (statusFilter === "Average"    && s !== "average")    return false;
+        if (statusFilter === "Not OK"     && (s === "acceptable" || s === "average" || !s)) return false;
+      }
+
+      // type filter
+      if (typeFilter && r.shipmentType !== typeFilter) return false;
+
+      // date range
+      const d = getCreatedDate(r);
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo   && d > dateTo)   return false;
+
+      return true;
     });
-  }, [reports, searchTerm]);
+  }, [reports, searchTerm, statusFilter, typeFilter, dateFrom, dateTo]);
 
   const tree = useMemo(
     () =>
@@ -402,70 +521,46 @@ export default function QCSRawMaterialView() {
     reader.readAsText(file);
   };
 
-  const styles = {
-    page: {
-      minHeight: "100vh",
-      background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
-      fontFamily:
-        "Inter, system-ui, -apple-system, Segoe UI, Roboto, Cairo, sans-serif",
-    },
-    hero: {
-      position: "relative",
-      height: 220,
-      background:
-        "linear-gradient(135deg, #4f46e5 0%, #7c3aed 35%, #0ea5e9 100%)",
-      overflow: "hidden",
-      zIndex: 0,
-    },
-    heroBlobA: {
-      position: "absolute",
-      width: 400,
-      height: 400,
-      left: -120,
-      top: -180,
-      borderRadius: "50%",
-      background:
-        "radial-gradient(closest-side, rgba(255,255,255,.25), rgba(255,255,255,0))",
-    },
-    heroBlobB: {
-      position: "absolute",
-      width: 500,
-      height: 300,
-      right: -140,
-      top: -120,
-      borderRadius: "50%",
-      background:
-        "radial-gradient(closest-side, rgba(255,255,255,.18), rgba(255,255,255,0))",
-      transform: "rotate(-15deg)",
-    },
-    heroWave: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: -1,
-      width: "100%",
-      height: 140,
-      display: "block",
-      pointerEvents: "none",
-      zIndex: 0,
-    },
-    contentWrap: {
-      display: "flex",
-      gap: "1rem",
-      padding: "0 16px 24px",
-      marginTop: -80,
-      position: "relative",
-      zIndex: 1,
-    },
+  // ── Excel export (filtered reports) ──
+  const handleExportExcel = async () => {
+    if (!filteredReports.length) return alert("No reports to export.");
+    const { utils, writeFile } = await import("xlsx");
+    const rows = filteredReports.map((r) => ({
+      "AWB / Invoice":   getDisplayId(r),
+      "Date":            getCreatedDate(r),
+      "Supplier":        r.generalInfo?.supplierName || "-",
+      "Brand":           r.generalInfo?.brand        || "-",
+      "Origin":          r.generalInfo?.origin       || "-",
+      "Shipment Type":   r.shipmentType              || "-",
+      "Status":          r.status                    || "-",
+      "Total Qty (pcs)": r.totalQuantity             || "-",
+      "Total Wt (kg)":   r.totalWeight               || "-",
+      "Avg Wt (kg)":     r.averageWeight             || "-",
+      "Inspector":       r.inspectedBy || r.inspectorName || r.generalInfo?.inspectorName || "-",
+      "Notes":           r.notes       || r.generalInfo?.notes || "-",
+    }));
+    const ws = utils.json_to_sheet(rows);
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, "QCS Shipments");
+    // auto column widths
+    const colW = Object.keys(rows[0] || {}).map((k) => ({
+      wch: Math.max(k.length, ...rows.map((r) => String(r[k] || "").length), 10),
+    }));
+    ws["!cols"] = colW;
+    writeFile(wb, `QCS_Shipments_${new Date().toISOString().slice(0,10)}.xlsx`);
   };
 
   return (
-    <div style={styles.page}>
-      {/* Hero */}
-      <div style={styles.hero} aria-hidden="true">
-        <div style={styles.heroBlobA} />
-        <div style={styles.heroBlobB} />
-        <svg viewBox="0 0 1440 140" preserveAspectRatio="none" style={styles.heroWave}>
+    <div className="qrm-page">
+      {/* ── Hero banner ── */}
+      <div className="qrm-hero">
+        <div className="qrm-hero-blob-a" aria-hidden="true" />
+        <div className="qrm-hero-blob-b" aria-hidden="true" />
+        <div className="qrm-hero-content">
+          <h1 className="qrm-hero-title">📦 QCS Raw Material Shipments</h1>
+          <p className="qrm-hero-sub">Inspection records · certificates · history</p>
+        </div>
+        <svg viewBox="0 0 1440 140" preserveAspectRatio="none" className="qrm-hero-wave" aria-hidden="true">
           <path
             fill="#ffffff"
             d="M0,64 C240,128 480,0 720,32 C960,64 1200,160 1440,96 L1440,140 L0,140 Z"
@@ -473,7 +568,8 @@ export default function QCSRawMaterialView() {
         </svg>
       </div>
 
-      <div style={styles.contentWrap}>
+      {/* ── Content: sidebar + details panel ── */}
+      <div className="qrm-content-wrap">
         <SidebarTree
           tree={tree}
           selectedReportId={selectedReportId}
@@ -487,24 +583,25 @@ export default function QCSRawMaterialView() {
           setSearchTerm={setSearchTerm}
           onExportJSON={handleExportJSON}
           onImportJSON={handleImportJSON}
+          onExportExcel={handleExportExcel}
           getDisplayId={getDisplayId}
+          base64Count={countBase64Certs(reports)}
+          migrating={migrating}
+          migrateProgress={migrateProgress}
+          onMigrateBase64={handleMigrateBase64}
+          statusFilter={statusFilter}   setStatusFilter={setStatusFilter}
+          typeFilter={typeFilter}       setTypeFilter={setTypeFilter}
+          dateFrom={dateFrom}           setDateFrom={setDateFrom}
+          dateTo={dateTo}               setDateTo={setDateTo}
+          uniqueTypes={uniqueTypes}
+          filteredCount={filteredReports.length}
+          totalCount={reports.length}
         />
 
-        {/* Main */}
+        {/* Details panel — glassmorphism card */}
         <main
           ref={mainRef}
-          className="print-main"
-          style={{
-            flex: 1,
-            maxHeight: "80vh",
-            overflowY: "auto",
-            background: "#fff",
-            borderRadius: 16,
-            padding: "1rem",
-            boxShadow:
-              "0 10px 20px rgba(2,6,23,0.06), 0 1px 2px rgba(2,6,23,0.04)",
-            border: "1px solid #e5e7eb",
-          }}
+          className="qrm-main print-main"
         >
           <div className="print-area" ref={printAreaRef}>
             <ReportDetails

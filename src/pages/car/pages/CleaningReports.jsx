@@ -584,7 +584,7 @@ export default function CleaningReports() {
                       })}
                     </select>
 
-                    <button onClick={handleDelete} disabled={!activeRecord} style={btnDanger} title="Delete selected record">Delete</button>
+                    <button onClick={handleDelete} disabled={!activeRecord} style={btnDanger} title="Delete selected record" data-delete-action="true">Delete</button>
                   </div>
                 </div>
               )}

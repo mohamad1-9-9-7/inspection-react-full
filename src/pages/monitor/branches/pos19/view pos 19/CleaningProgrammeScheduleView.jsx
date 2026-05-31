@@ -599,7 +599,7 @@ export default function CleaningProgrammeScheduleView() {
         <button onClick={handleCopyLink} style={btnStyle("#7c3aed")}>
           Copy Link
         </button>
-        <button onClick={handleDelete} style={btnStyle("#b91c1c")}>
+        <button onClick={handleDelete} style={btnStyle("#b91c1c")} data-delete-action="true">
           Delete
         </button>
       </div>

@@ -230,7 +230,7 @@ export default function CookingTemperatureMonitoringInput() {
                 })}
                 <td style={tdCell}><input type="text" value={r.comment} onChange={e=>updateRow(i,"comment",e.target.value)} style={inputStyle} placeholder="Comment" /></td>
                 <td style={tdCell}><input type="text" value={r.monitoredBy} onChange={e=>updateRow(i,"monitoredBy",e.target.value)} style={inputStyle} /></td>
-                <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")}>Del</button></td>
+                <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")} data-delete-action="true">Del</button></td>
               </tr>
             ))}
           </tbody>

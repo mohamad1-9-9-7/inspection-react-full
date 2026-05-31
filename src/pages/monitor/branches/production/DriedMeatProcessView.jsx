@@ -306,7 +306,7 @@ export default function DriedMeatProcessView() {
           <button onClick={exportJSON} disabled={!record} className="dmv-btn dmv-btn-info">
             {isAr ? "تصدير JSON" : "Export JSON"}
           </button>
-          <button onClick={handleDelete} disabled={!record} className="dmv-btn dmv-btn-danger">
+          <button onClick={handleDelete} disabled={!record} className="dmv-btn dmv-btn-danger" data-delete-action="true">
             {isAr ? "حذف" : "Delete"}
           </button>
         </div>

@@ -642,7 +642,7 @@ export default function GlassItemsConditionChecklistView() {
           {editing && (
             <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
           )}
-          <button onClick={handleDelete} style={btn("#dc2626")}>
+          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">
             Delete (password)
           </button>
 

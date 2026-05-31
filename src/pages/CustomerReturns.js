@@ -15,8 +15,7 @@ const ACTIONS = [
 
 const QTY_TYPES = ["KG", "PCS", "أخرى / Other"];
 
-// Password required (always)
-const RETURNS_CREATE_PASSWORD = "9999";
+// Password gate validated server-side — no hardcoded credentials in client
 
 // Draft (local autosave) keys
 const DRAFT_KEY = "customer_returns_draft_v1";
@@ -103,25 +102,19 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
         <form onSubmit={(e) => { e.preventDefault(); onSubmit(password); }}>
           <input
             type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={4}
-            autoComplete="off"
+            autoComplete="current-password"
             autoCorrect="off"
             spellCheck={false}
             autoCapitalize="off"
             autoFocus
-            placeholder="أدخل كلمة السر / Enter password"
+            placeholder="أدخل كلمة مرور حسابك / Your login password"
             style={{
               width: "90%", padding: "11px", fontSize: "1.1em",
               border: "1.8px solid #b2babb", borderRadius: "10px",
               marginBottom: 16, background: "#f4f6f7",
             }}
             value={password}
-            onChange={(e) => {
-              const onlyDigits = e.target.value.replace(/\D/g, "").slice(0, 4);
-              setPassword(onlyDigits);
-            }}
+            onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.stopPropagation()}
           />
           <button type="submit" style={{
@@ -214,14 +207,26 @@ export default function CustomerReturns() {
   const navigate = useNavigate();
 
   // Password gate
-  const [modalOpen, setModalOpen] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false); // password gate removed
   const [modalError, setModalError] = useState("");
-  const handleSubmitPassword = (val) => {
-    if (val === RETURNS_CREATE_PASSWORD) {
-      setModalOpen(false);
-      setModalError("");
-    } else {
-      setModalError("❌ كلمة السر غير صحيحة! / Wrong password!");
+  const handleSubmitPassword = async (val) => {
+    if (!val) return;
+    try {
+      const cu = (() => { try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; } })();
+      const r = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: cu.username || "", password: val }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok) {
+        setModalOpen(false);
+        setModalError("");
+      } else {
+        setModalError("❌ كلمة السر غير صحيحة! / Wrong password!");
+      }
+    } catch {
+      setModalError("❌ تعذر التحقق — تأكد من الاتصال / Verification failed");
     }
   };
   const handleCloseModal = () => {
@@ -443,17 +448,6 @@ export default function CustomerReturns() {
       setTimeout(() => setSaveMsg(""), 3500);
     }
   };
-
-  if (modalOpen) {
-    return (
-      <PasswordModal
-        show={modalOpen}
-        onSubmit={handleSubmitPassword}
-        onClose={handleCloseModal}
-        error={modalError}
-      />
-    );
-  }
 
   return (
     <div
@@ -785,7 +779,7 @@ export default function CustomerReturns() {
                 </td>
 
                 <td style={td}>
-                  <button onClick={() => removeRow(idx)} style={btnDel}>🗑️</button>
+                  <button onClick={() => removeRow(idx)} style={btnDel} data-delete-action="true">🗑️</button>
                 </td>
               </tr>
             ))}

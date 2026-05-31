@@ -349,7 +349,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
             background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca",
             borderRadius: 10, padding: "8px 14px", fontWeight: 800, cursor: deleting ? "not-allowed" : "pointer",
           }}
-        >
+         data-delete-action="true">
           {deleting ? "…" : "🗑 Delete"}
         </button>
       </div>

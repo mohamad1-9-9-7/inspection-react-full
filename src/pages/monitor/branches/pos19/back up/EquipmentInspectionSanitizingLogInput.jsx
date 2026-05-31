@@ -238,7 +238,7 @@ export default function EquipmentInspectionSanitizingLogInput() {
                     <input value={r.checkedByRow} onChange={(e)=>updateCell(i, "checkedByRow", e.target.value)} style={input} />
                   </td>
                   <td style={td}>
-                    <button onClick={()=>removeRow(i)} style={btn("#dc2626")}>Delete</button>
+                    <button onClick={()=>removeRow(i)} style={btn("#dc2626")} data-delete-action="true">Delete</button>
                   </td>
                 </tr>
               );

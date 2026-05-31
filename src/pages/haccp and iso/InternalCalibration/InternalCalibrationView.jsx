@@ -368,7 +368,7 @@ export default function InternalCalibrationView() {
                         <button style={{ ...S.btn("secondary"), padding: "4px 10px", fontSize: 11 }} onClick={() => navigate(`/haccp-iso/internal-calibration?edit=${rec.id}`)}>
                           {isAr ? "تعديل" : "Edit"}
                         </button>
-                        <button style={{ ...S.btn("danger"), padding: "4px 10px", fontSize: 11, marginInlineStart: 4 }} onClick={() => del(rec.id)}>
+                        <button style={{ ...S.btn("danger"), padding: "4px 10px", fontSize: 11, marginInlineStart: 4 }} onClick={() => del(rec.id)} data-delete-action="true">
                           {isAr ? "حذف" : "Delete"}
                         </button>
                       </td>

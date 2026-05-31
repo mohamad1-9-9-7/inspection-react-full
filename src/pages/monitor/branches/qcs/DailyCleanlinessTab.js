@@ -347,7 +347,7 @@ function DailyCleanlinessTable({ rows, setRows }) {
                   <td style={tdCenter()}>—</td>
                   <td style={tdCenter()}>—</td>
                   <td style={tdCenter()}>
-                    <button onClick={() => removeRow(i)} style={btnDel()}>✖</button>
+                    <button onClick={() => removeRow(i)} style={btnDel()} data-delete-action="true">✖</button>
                   </td>
                 </tr>
               );
@@ -386,7 +386,7 @@ function DailyCleanlinessTable({ rows, setRows }) {
                 </td>
 
                 <td style={tdCenter()}>
-                  <button onClick={() => removeRow(i)} style={btnDel()}>✖</button>
+                  <button onClick={() => removeRow(i)} style={btnDel()} data-delete-action="true">✖</button>
                 </td>
               </tr>
             );

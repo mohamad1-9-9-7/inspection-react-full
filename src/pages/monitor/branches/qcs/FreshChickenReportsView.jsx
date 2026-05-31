@@ -468,7 +468,7 @@ export default function FreshChickenReportsView() {
                 type="button"
                 onClick={onDeleteActive}
                 style={{ ...btnGhost, borderColor: "#dc2626", color: "#dc2626" }}
-              >
+               data-delete-action="true">
                 🗑️ Delete this report
               </button>
             )}

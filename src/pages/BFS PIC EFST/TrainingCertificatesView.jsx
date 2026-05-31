@@ -2154,7 +2154,7 @@ export default function TrainingCertificatesView() {
                                       ? "default"
                                       : "pointer",
                                 }}
-                              >
+                               data-delete-action="true">
                                 {deletingRid === r._rid
                                   ? "Deleting…"
                                   : "Delete"}

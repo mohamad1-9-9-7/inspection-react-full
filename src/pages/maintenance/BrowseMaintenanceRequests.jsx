@@ -765,7 +765,7 @@ export default function BrowseMaintenanceRequests() {
                     )}
                     <button onClick={() => printMaintenanceForm(r)} style={s.aPrint}>🖨 طباعة / Print</button>
                     <button onClick={() => downloadMaintenancePdf(r)} style={s.aPdf}>📄 PDF</button>
-                    <button onClick={() => handleDelete(r)} style={s.aDel}>🗑 حذف / Delete</button>
+                    <button onClick={() => handleDelete(r)} style={s.aDel} data-delete-action="true">🗑 حذف / Delete</button>
                   </div>
                 </div>
               )}

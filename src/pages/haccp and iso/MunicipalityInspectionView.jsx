@@ -611,7 +611,7 @@ export default function MunicipalityInspectionView() {
                     padding: "11px 20px", fontWeight: 700, fontSize: 15,
                     cursor: deletePass === DELETE_PASSWORD ? "pointer" : "not-allowed",
                   }}
-                >
+                 data-delete-action="true">
                   {deleting ? "Deleting..." : "Delete Report"}
                 </button>
               </div>

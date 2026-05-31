@@ -651,7 +651,7 @@ async function exportXLSX() {
           {editing && (
             <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
           )}
-          <button onClick={handleDelete} style={btn("#dc2626")}>Delete (password)</button>
+          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
 
           {/* Export / Import */}
           <button onClick={exportXLSX} disabled={!record?.payload?.entries?.length} style={btn("#0ea5e9")}>

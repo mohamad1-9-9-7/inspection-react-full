@@ -5,6 +5,10 @@ import EmptyState from "../../components/EmptyState";
 const EMPTY_USER = { username: "", password: "", jobTitle: "", employeeId: "" };
 
 export default function UsersTab({ users = [], setUsers = () => {} }) {
+  const currentUser = (() => { try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; } })();
+  if (!currentUser?.isAdmin) {
+    return <div style={{ padding: 24, color: "#dc2626", fontWeight: 700 }}>⛔ Admin access required.</div>;
+  }
   const [newUser,        setNewUser]        = useState(EMPTY_USER);
   const [showPasswords,  setShowPasswords]  = useState([]);
   const [editingIndex,   setEditingIndex]   = useState(null);
@@ -17,6 +21,10 @@ export default function UsersTab({ users = [], setUsers = () => {} }) {
   const handleAddUser = () => {
     if (!newUser.username || !newUser.password || !newUser.jobTitle || !newUser.employeeId) {
       alert("⚠️ الرجاء إدخال جميع الحقول.");
+      return;
+    }
+    if (newUser.password.length < 6) {
+      alert("⚠️ كلمة المرور يجب أن تكون 6 أحرف على الأقل.");
       return;
     }
     if (users.some(u => u.username === newUser.username)) {

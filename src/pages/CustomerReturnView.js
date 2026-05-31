@@ -905,7 +905,7 @@ export default function CustomerReturnView() {
                 <div style={{ fontWeight: 900, color: "#0f172a" }}>Date: {selectedReport.reportDate}</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={startAddRow} style={btnBlue} disabled={!selectedReport}>➕ Add Row</button>
-                  <button onClick={handleDeleteDay} style={btnDanger}>🗑️ Delete this day's report from server</button>
+                  <button onClick={handleDeleteDay} style={btnDanger} data-delete-action="true">🗑️ Delete this day's report from server</button>
                 </div>
               </div>
 
@@ -968,7 +968,7 @@ export default function CustomerReturnView() {
                           </td>
                           <td style={{...td2, ...col.ops, borderRight: "none"}}>
                             <button onClick={()=>startEditRow(i)} style={btnGraySm}>✏️</button>
-                            <button onClick={()=>deleteRow(i)} style={btnDangerSm}>🗑️</button>
+                            <button onClick={()=>deleteRow(i)} style={btnDangerSm} data-delete-action="true">🗑️</button>
                           </td>
                         </tr>
                       );

@@ -327,7 +327,7 @@ export default function POS10PestControlView() {
               <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
               <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
               <button onClick={triggerImport} style={btn("#f39c12")}>⬆ Import JSON</button>
-              <button onClick={() => handleDelete(selected)} style={btn("#c0392b")}>🗑 Delete</button>
+              <button onClick={() => handleDelete(selected)} style={btn("#c0392b")} data-delete-action="true">🗑 Delete</button>
 
               {/* hidden input for import */}
               <input

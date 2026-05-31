@@ -174,7 +174,7 @@ export default function TraceabilityLogInput() {
                 <td style={tdCell}><input type="text"   value={r.storageLocation}  onChange={e=>updateRow(i,"storageLocation",e.target.value)}  style={inputStyle} placeholder="Location" /></td>
                 <td style={tdCell}><input type="text"   value={r.disposalReason}   onChange={e=>updateRow(i,"disposalReason",e.target.value)}   style={inputStyle} placeholder="If any" /></td>
                 <td style={tdCell}><input type="text"   value={r.checkedBy}        onChange={e=>updateRow(i,"checkedBy",e.target.value)}        style={inputStyle} /></td>
-                <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")}>Del</button></td>
+                <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")} data-delete-action="true">Del</button></td>
               </tr>
             ))}
           </tbody>

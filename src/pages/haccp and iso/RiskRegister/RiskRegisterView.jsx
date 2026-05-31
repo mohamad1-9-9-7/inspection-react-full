@@ -841,7 +841,7 @@ export default function RiskRegisterView() {
                 title={lang === "ar"
                   ? `حذف ${dupCount} نسخة مكررة من قاعدة البيانات`
                   : `Delete ${dupCount} duplicate records from database`}
-              >
+               data-delete-action="true">
                 🧹 {lang === "ar" ? `تنظيف ${dupCount} مكرر` : `Clean ${dupCount} duplicates`}
               </button>
             )}
@@ -1096,7 +1096,7 @@ export default function RiskRegisterView() {
                       <td style={{ ...S.td, fontSize: 12 }}>{r.owner || "—"}</td>
                       <td style={{ ...S.td, textAlign: "center", whiteSpace: "nowrap" }}>
                         <button style={{ ...S.btn("secondary"), padding: "4px 10px", fontSize: 11 }} onClick={() => startEdit(r)}>{pick(T.edit)}</button>
-                        <button style={{ ...S.btn("danger"), padding: "4px 10px", fontSize: 11, marginInlineStart: 4 }} onClick={() => remove(r)}>{pick(T.del)}</button>
+                        <button style={{ ...S.btn("danger"), padding: "4px 10px", fontSize: 11, marginInlineStart: 4 }} onClick={() => remove(r)} data-delete-action="true">{pick(T.del)}</button>
                       </td>
                     </tr>
                   );

@@ -527,7 +527,7 @@ export default function CustomerComplaintInput() {
                   <button
                     type="button"
                     style={{ ...S.btn("danger"), padding: "5px 12px", fontSize: 11 }}
-                    onClick={() => removePdf(pdf.id)}
+                    onClick={() => removePdf(pdf.id)} data-delete-action="true"
                   >
                     {lang === "ar" ? "حذف" : "Remove"}
                   </button>

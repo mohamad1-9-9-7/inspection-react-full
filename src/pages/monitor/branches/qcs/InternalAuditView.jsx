@@ -257,7 +257,7 @@ export default function InternalAuditView() {
                     onClick={e => { e.stopPropagation(); handleDelete(rec._id); }} // ✅
                     disabled={deleting === rec._id}
                     style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "5px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
-                  >
+                   data-delete-action="true">
                     {deleting === rec._id ? "…" : "🗑 Delete"}
                   </button>
                 </div>

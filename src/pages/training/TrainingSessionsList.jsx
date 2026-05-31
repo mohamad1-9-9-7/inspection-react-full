@@ -2370,7 +2370,7 @@ export default function TrainingSessionsList() {
                       cursor: deletingSession ? "not-allowed" : "pointer",
                     }}
                     title="Delete training session"
-                  >
+                   data-delete-action="true">
                     {deletingSession ? "Deleting..." : "🗑 Delete Training"}
                   </button>
 
@@ -2677,7 +2677,7 @@ export default function TrainingSessionsList() {
                                     fontWeight: 1000,
                                     opacity: deletingSession ? 0.6 : 1,
                                   }}
-                                >
+                                 data-delete-action="true">
                                   Delete
                                 </button>
                               </div>

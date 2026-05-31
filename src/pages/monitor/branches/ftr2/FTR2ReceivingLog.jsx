@@ -766,7 +766,7 @@ export default function FTR2ReceivingLog() {
                     onClick={() => removeRow(idx)}
                     title="Delete row"
                     style={btnSm("#ef4444")}
-                  >
+                   data-delete-action="true">
                     Delete
                   </button>
                 </td>

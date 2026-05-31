@@ -255,7 +255,7 @@ export default function DailyCleaningChecklistInput() {
                       fontSize: 16,
                       lineHeight: 1,
                     }}
-                  >
+                   data-delete-action="true">
                     ×
                   </button>
                 </td>

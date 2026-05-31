@@ -324,7 +324,7 @@ export default function POS10DailyCleaningView() {
                 <button
                   onClick={() => handleDelete(selectedReport)}
                   style={btnDelete}
-                >
+                 data-delete-action="true">
                   🗑 Delete
                 </button>
               </div>

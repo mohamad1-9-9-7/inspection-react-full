@@ -517,7 +517,7 @@ export default function FTR2OilCalibrationView() {
                   border: "none",
                   cursor: "pointer",
                 }}
-              >
+               data-delete-action="true">
                 🗑 Delete
               </button>
 

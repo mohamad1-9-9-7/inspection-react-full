@@ -376,7 +376,7 @@ export default function ObjectivesView() {
                   <button style={S.btn("secondary")} onClick={() => navigate(`/haccp-iso/objectives?edit=${rec.id}`)}>
                     {t("edit")}
                   </button>
-                  <button style={S.btn("danger")} onClick={() => del(rec.id)}>{t("del")}</button>
+                  <button style={S.btn("danger")} onClick={() => del(rec.id)} data-delete-action="true">{t("del")}</button>
                 </div>
               </div>
 

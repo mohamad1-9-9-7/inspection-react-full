@@ -100,7 +100,7 @@ const ACTIONS = [
 ];
 
 const QTY_TYPES = ["KG", "PCS", "Other"];
-const ENOC_RETURNS_CREATE_PASSWORD = "9999";
+// password gate removed
 
 /* ========= Draft ========= */
 const DRAFT_KEY = "enoc_returns_draft_v1";
@@ -416,22 +416,6 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
 export default function ENOCReturnsInput() {
   const navigate = useNavigate();
 
-  /* Password gate */
-  const [modalOpen, setModalOpen] = useState(true);
-  const [modalError, setModalError] = useState("");
-
-  const handleSubmitPassword = (val) => {
-    if (val === ENOC_RETURNS_CREATE_PASSWORD) {
-      setModalOpen(false);
-      setModalError("");
-    } else {
-      setModalError("Wrong password!");
-    }
-  };
-
-  const handleCloseModal = () => {
-    navigate("/returns/menu", { replace: true });
-  };
 
   /* Row factory */
   const blankRow = () => ({
@@ -493,9 +477,8 @@ export default function ENOCReturnsInput() {
     }
   }, []);
 
-  /* ===== Draft autosave (only after password) ===== */
+  /* ===== Draft autosave ===== */
   useEffect(() => {
-    if (modalOpen) return;
     if (!hydratedRef.current) return;
 
     const t = setTimeout(() => {
@@ -510,7 +493,7 @@ export default function ENOCReturnsInput() {
     }, 250);
 
     return () => clearTimeout(t);
-  }, [reportDate, rows, modalOpen]);
+  }, [reportDate, rows]);
 
   const clearDraft = () => {
     try {
@@ -919,16 +902,6 @@ export default function ENOCReturnsInput() {
     return { ...mergedCell, background: "#fff1f2" };
   };
 
-  if (modalOpen) {
-    return (
-      <PasswordModal
-        show={modalOpen}
-        onSubmit={handleSubmitPassword}
-        onClose={handleCloseModal}
-        error={modalError}
-      />
-    );
-  }
 
   return (
     <div style={pageWrap}>
@@ -1241,7 +1214,7 @@ export default function ENOCReturnsInput() {
                   {/* DELETE ROW */}
                   <td style={{ ...td, ...cellBorder, ...borders }}>
                     {rows.length > 1 && (
-                      <button onClick={() => removeRow(idx)} style={btnDel} title="Delete row">
+                      <button onClick={() => removeRow(idx)} style={btnDel} title="Delete row" data-delete-action="true">
                         ✖
                       </button>
                     )}

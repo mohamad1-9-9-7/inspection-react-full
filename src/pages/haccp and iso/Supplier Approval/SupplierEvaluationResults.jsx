@@ -2213,7 +2213,7 @@ export default function SupplierEvaluationResults() {
                           <button style={btnPrimary} onClick={() => setOpenId(String(rep?.id ?? r?.id))} disabled={isDeleting}>
                             {t.view}
                           </button>
-                          <button style={btnDanger} onClick={() => handleDelete(r)} disabled={isDeleting}>
+                          <button style={btnDanger} onClick={() => handleDelete(r)} disabled={isDeleting} data-delete-action="true">
                             {isDeleting ? t.deleting : t.del}
                           </button>
                         </div>
@@ -2396,7 +2396,7 @@ export default function SupplierEvaluationResults() {
                     style={btnDanger}
                     disabled={editMode || String(deletingId) === String(getReportObj(opened)?.id ?? opened?.id)}
                     onClick={() => handleDelete(opened)}
-                  >
+                   data-delete-action="true">
                     {String(deletingId) === String(getReportObj(opened)?.id ?? opened?.id) ? t.deleting : t.del}
                   </button>
 
@@ -2782,7 +2782,7 @@ export default function SupplierEvaluationResults() {
                                   disabled={uploadingDecl || savingEdit}
                                   onClick={handleRemoveDeclarationFile}
                                   style={{ ...btnDanger, padding: "6px 10px", fontSize: 13 }}
-                                >
+                                 data-delete-action="true">
                                   {t.declRemove}
                                 </button>
                               </div>

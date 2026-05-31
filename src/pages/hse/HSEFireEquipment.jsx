@@ -288,7 +288,7 @@ export default function HSEFireEquipment() {
                       <td style={tdStyle}>
                         <button type="button" onClick={() => copyRow(i)} style={{ ...buttonGhost, padding: "2px 6px", fontSize: 10, marginInlineEnd: 2 }}>{pick(T.copyRow)}</button>
                         {(draft.rows || []).length > 1 && (
-                          <button type="button" onClick={() => removeRow(i)} style={{ ...buttonGhost, padding: "2px 6px", fontSize: 10, color: "#b91c1c" }}>{pick(T.removeRow)}</button>
+                          <button type="button" onClick={() => removeRow(i)} style={{ ...buttonGhost, padding: "2px 6px", fontSize: 10, color: "#b91c1c" }} data-delete-action="true">{pick(T.removeRow)}</button>
                         )}
                       </td>
                     </tr>

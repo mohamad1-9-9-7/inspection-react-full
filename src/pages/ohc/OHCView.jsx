@@ -2357,7 +2357,7 @@ export default function OHCView() {
                               fontSize: 11,
                               fontWeight: 700,
                             }}
-                          >
+                           data-delete-action="true">
                             Delete
                           </button>
                         </td>
@@ -2579,7 +2579,7 @@ export default function OHCView() {
                       fontSize: 13,
                       cursor: "pointer",
                     }}
-                  >
+                   data-delete-action="true">
                     Remove Image
                   </button>
                   <button

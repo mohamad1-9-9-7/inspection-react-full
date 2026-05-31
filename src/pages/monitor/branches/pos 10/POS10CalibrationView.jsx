@@ -349,7 +349,7 @@ export default function POS10CalibrationView() {
               <button onClick={triggerImport} style={btn("#f39c12")}>
                 ⬆ Import JSON
               </button>
-              <button onClick={() => handleDelete(selected)} style={btn("#c0392b")}>
+              <button onClick={() => handleDelete(selected)} style={btn("#c0392b")} data-delete-action="true">
                 🗑 Delete
               </button>
 

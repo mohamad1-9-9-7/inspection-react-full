@@ -216,7 +216,7 @@ export default function PersonalHygienePRDInput() {
                     className="ph-btn-icon ph-btn-danger"
                     title={t("btn_remove")}
                     disabled={entries.length === 1}
-                  >
+                   data-delete-action="true">
                     ×
                   </button>
                 </td>

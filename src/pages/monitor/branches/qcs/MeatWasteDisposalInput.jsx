@@ -300,7 +300,7 @@ export default function MeatWasteDisposalInput() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontWeight: 900, color: "#854d0e", fontSize: 14 }}>إدخال #{idx + 1}</span>
             {entries.length > 1 && (
-              <button style={S.btnDanger} onClick={() => removeEntry(idx)} disabled={busy}>🗑️ حذف الإدخال</button>
+              <button style={S.btnDanger} onClick={() => removeEntry(idx)} data-delete-action="true" disabled={busy}>🗑️ حذف الإدخال</button>
             )}
           </div>
 

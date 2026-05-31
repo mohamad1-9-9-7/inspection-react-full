@@ -650,7 +650,7 @@ export default function OpportunityRegisterView() {
                     <td style={{ ...S.td, fontSize: 12, maxWidth: 200, color: "#475569" }}>{txt(r.monitoring, lang)}</td>
                     <td style={{ ...S.td, textAlign: "center", whiteSpace: "nowrap" }}>
                       <button style={{ ...S.btn("secondary"), padding: "4px 10px", fontSize: 11 }} onClick={() => startEdit(r)}>{pick(T.edit)}</button>
-                      <button style={{ ...S.btn("danger"), padding: "4px 10px", fontSize: 11, marginInlineStart: 4 }} onClick={() => remove(r)}>{pick(T.del)}</button>
+                      <button style={{ ...S.btn("danger"), padding: "4px 10px", fontSize: 11, marginInlineStart: 4 }} onClick={() => remove(r)} data-delete-action="true">{pick(T.del)}</button>
                     </td>
                   </tr>
                 ))}

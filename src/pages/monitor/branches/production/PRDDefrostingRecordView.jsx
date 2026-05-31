@@ -247,7 +247,7 @@ export default function PRDDefrostingRecordView() {
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={load} style={btnBlue}>⟳ Refresh</button>
           <button onClick={exportPDF} style={btnDark} disabled={!selected}>⬇️ Export PDF</button>
-          <button onClick={handleDelete} style={btnRed} disabled={!selected || loading} title="Delete current report">🗑️ Delete</button>
+          <button onClick={handleDelete} style={btnRed} disabled={!selected || loading} title="Delete current report" data-delete-action="true">🗑️ Delete</button>
         </div>
       </div>
 

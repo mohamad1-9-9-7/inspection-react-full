@@ -358,7 +358,7 @@ export default function CalibrationView() {
                           <button style={{ ...S.btn("secondary"), padding: "4px 10px", fontSize: 11 }} onClick={() => navigate(`/haccp-iso/calibration?edit=${rec.id}`)}>
                             ✏️
                           </button>
-                          <button style={{ ...S.btn("danger"), padding: "4px 10px", fontSize: 11, marginInlineStart: 4 }} onClick={() => del(rec.id)}>
+                          <button style={{ ...S.btn("danger"), padding: "4px 10px", fontSize: 11, marginInlineStart: 4 }} onClick={() => del(rec.id)} data-delete-action="true">
                             🗑️
                           </button>
                         </td>

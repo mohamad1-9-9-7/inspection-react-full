@@ -69,6 +69,7 @@ function Login() {
           crudPerms:       data.user.crudPerms        || {},
           allowedBranches: data.user.allowedBranches  || [], // [] = all branches
           isAdmin:         data.user.isAdmin,
+          isSuperAdmin:    data.user.isSuperAdmin || false,
           type:            "named",
           loginAt:         Date.now(),   // ← session expiry anchor
         }));

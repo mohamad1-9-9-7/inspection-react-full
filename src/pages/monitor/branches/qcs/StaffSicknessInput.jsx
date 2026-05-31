@@ -298,7 +298,7 @@ export default function StaffSicknessInput() {
                   <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} placeholder="Comments…" value={r.comments} onChange={(e) => setRow(i, "comments", e.target.value)} />
                 </td>
                 <td style={{ ...td, textAlign: "center" }}>
-                  <button type="button" onClick={() => delRow(i)} style={delRowBtn} disabled={rows.length <= 1}>
+                  <button type="button" onClick={() => delRow(i)} style={delRowBtn} disabled={rows.length <= 1} data-delete-action="true">
                     🗑
                   </button>
                 </td>

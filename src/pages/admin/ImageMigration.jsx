@@ -11,6 +11,7 @@ const TYPE_OPTIONS = [
   { value: "internal_multi_audit",     label: "Internal Multi Audit" },
   { value: "customer_complaint",       label: "Customer Complaints" },
   { value: "municipality_inspection",  label: "Municipality Inspection" },
+  { value: "training_certificate",     label: "Training Certificates (BFS/PIC/EFST)" },
 ];
 
 /* ===== Helpers ===== */

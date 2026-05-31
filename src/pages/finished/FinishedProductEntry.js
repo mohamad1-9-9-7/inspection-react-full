@@ -1003,7 +1003,7 @@ export default function FinishedProductEntry() {
                         cursor: rows.length === 1 ? "not-allowed" : "pointer",
                         width: "100%",
                       }}
-                    >
+                     data-delete-action="true">
                       🗑️
                     </button>
                   </td>

@@ -3,6 +3,7 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 import FloatingSettingsButton from "../../components/FloatingSettingsButton";
+import { isItemAllowed } from "../../utils/sectionItems";
 
 /**
  * Main hub for ISO 22000 & HACCP
@@ -463,10 +464,10 @@ export default function HaccpIsoMenu() {
           <p style={taglineStyle}>Bright green + cyan theme — same system behavior. Pick a section to open its page.</p>
         </header>
 
-        {/* Cards */}
+        {/* Cards — filtered by per-user ISO permissions */}
         <section aria-label="ISO & HACCP sections">
           <div style={gridStyle}>
-            {sections.map((item) => {
+            {sections.filter(item => isItemAllowed("iso", item.id)).map((item) => {
               const isHover = hoverId === item.id;
               return (
                 <button

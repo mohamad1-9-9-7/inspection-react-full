@@ -297,7 +297,7 @@ export default function DailyCleanlinessView() {
                 <button onClick={handleExportPDF} style={btnExport}>⬇ Export PDF</button>
                 <button onClick={handleExportJSON} style={btnJson}>⬇ Export JSON</button>
                 <button onClick={triggerImport} style={btnImport}>⬆ Import JSON</button>
-                <button onClick={() => handleDelete(selectedReport)} style={btnDelete}>🗑 Delete</button>
+                <button onClick={() => handleDelete(selectedReport)} style={btnDelete} data-delete-action="true">🗑 Delete</button>
               </div>
               <input
                 ref={fileInputRef}

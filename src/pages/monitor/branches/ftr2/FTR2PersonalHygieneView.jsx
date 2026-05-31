@@ -374,7 +374,7 @@ export default function FTR2PersonalHygieneView() {
                 onClick={() => handleDelete(selectedReport)}
                 style={btn("#c0392b")}
                 title="Delete this report (password: 9999)"
-              >
+               data-delete-action="true">
                 🗑 Delete
               </button>
 

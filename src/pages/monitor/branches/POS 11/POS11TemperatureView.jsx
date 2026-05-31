@@ -380,7 +380,7 @@ export default function POS11TemperatureView() {
             <button onClick={exportCSV} style={btn("#10b981")}>
               ⬇️ Export Excel (CSV)
             </button>
-            <button onClick={handleDelete} style={btn("#ef4444")}>
+            <button onClick={handleDelete} style={btn("#ef4444")} data-delete-action="true">
               🗑️ Delete
             </button>
           </div>

@@ -290,7 +290,7 @@ export default function CorrectiveActionReportsView() {
                 disabled={busy}
                 onClick={async () => { await onDelete(); }}
                 style={{ marginLeft: "auto", padding: "10px 14px", borderRadius: 10, border: "1px solid #ef4444", background: "#fff", color: "#ef4444", fontWeight: 800 }}
-              >
+               data-delete-action="true">
                 🗑️ Delete
               </button>
             </div>

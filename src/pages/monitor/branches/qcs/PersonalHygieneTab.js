@@ -689,7 +689,7 @@ export default function PersonalHygieneTab(props) {
                     color: "#ef4444",
                     background: "#fff",
                   }}
-                >
+                 data-delete-action="true">
                   ✖
                 </button>
               </td>

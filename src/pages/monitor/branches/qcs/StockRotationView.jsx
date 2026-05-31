@@ -195,7 +195,7 @@ export default function StockRotationView() {
                     <td style={S.td}>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button style={S.btnDetails} onClick={() => setDetail(r)}>تفاصيل</button>
-                        <button style={S.btnDanger} onClick={() => deleteRecord(r._id || r.id)}>حذف</button>
+                        <button style={S.btnDanger} onClick={() => deleteRecord(r._id || r.id)} data-delete-action="true">حذف</button>
                       </div>
                     </td>
                   </tr>

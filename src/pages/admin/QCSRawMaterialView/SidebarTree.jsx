@@ -1,6 +1,12 @@
 // SidebarTree.jsx
-import React, { useMemo, useRef } from "react";
+import React, { useMemo, useRef, useEffect } from "react";
 import { monthNames } from "./viewUtils";
+import "./QCSRawMaterialView.css";
+
+const MONTH_SHORT = [
+  "Jan","Feb","Mar","Apr","May","Jun",
+  "Jul","Aug","Sep","Oct","Nov","Dec",
+];
 
 export default function SidebarTree({
   tree,
@@ -11,21 +17,43 @@ export default function SidebarTree({
   onRefresh,
   canExportPDF,
   onExportPDF,
+  onExportExcel,
   searchTerm,
   setSearchTerm,
   onExportJSON,
   onImportJSON,
   getDisplayId,
+  // filters
+  statusFilter = "",    setStatusFilter,
+  typeFilter   = "",    setTypeFilter,
+  dateFrom     = "",    setDateFrom,
+  dateTo       = "",    setDateTo,
+  uniqueTypes  = [],
+  filteredCount = 0,
+  totalCount    = 0,
+  // migration
+  base64Count      = 0,
+  migrating        = false,
+  migrateProgress  = { done: 0, total: 0 },
+  onMigrateBase64,
 }) {
   const importRef = useRef(null);
-  const [openYears, setOpenYears] = React.useState({});
+  const [openYears,  setOpenYears]  = React.useState({});
   const [openMonths, setOpenMonths] = React.useState({});
-  const [openDays, setOpenDays] = React.useState({});
+  const [openDays,   setOpenDays]   = React.useState({});
 
   const yearsSorted = useMemo(
     () => Object.keys(tree).sort((a, b) => b.localeCompare(a)),
     [tree]
   );
+
+  // Auto-expand latest year on first load
+  const autoExpanded = useRef(false);
+  useEffect(() => {
+    if (autoExpanded.current || yearsSorted.length === 0) return;
+    setOpenYears((p) => ({ ...p, [yearsSorted[0]]: true }));
+    autoExpanded.current = true;
+  }, [yearsSorted]);
 
   const countMonth = (year, m) => {
     const days = tree?.[year]?.[m] || {};
@@ -33,7 +61,6 @@ export default function SidebarTree({
     Object.keys(days).forEach((d) => (total += (days[d] || []).length));
     return total;
   };
-
   const countYear = (year) => {
     const months = tree?.[year] || {};
     let total = 0;
@@ -41,452 +68,292 @@ export default function SidebarTree({
     return total;
   };
 
-  const styles = {
-    aside: {
-      flex: "0 0 320px",
-      maxHeight: "80vh",
-      overflowY: "auto",
-      background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-      borderRadius: 16,
-      border: "1px solid #e5e7eb",
-      boxShadow: "0 12px 28px rgba(2,6,23,0.08)",
-      padding: 14,
-    },
+  // Quick date helpers
+  const today = new Date().toISOString().slice(0, 10);
+  const applyQuick = (key) => {
+    const now = new Date();
+    if (key === "today") {
+      setDateFrom(today); setDateTo(today);
+    } else if (key === "week") {
+      const d = new Date(now);
+      d.setDate(d.getDate() - d.getDay());
+      setDateFrom(d.toISOString().slice(0, 10));
+      setDateTo(today);
+    } else if (key === "month") {
+      setDateFrom(`${today.slice(0, 7)}-01`);
+      setDateTo(today);
+    }
+  };
 
-    header: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 10,
-      marginBottom: 10,
-      padding: "6px 4px",
-    },
-    title: {
-      margin: 0,
-      color: "#0f172a",
-      fontWeight: 900,
-      letterSpacing: 0.2,
-      fontSize: "1.05rem",
-    },
-    badge: {
-      padding: "6px 10px",
-      borderRadius: 999,
-      fontWeight: 900,
-      fontSize: 12,
-      background: "#111827",
-      color: "#fff",
-      border: "1px solid rgba(255,255,255,0.12)",
-      whiteSpace: "nowrap",
-    },
+  const hasFilters = statusFilter || typeFilter || dateFrom || dateTo;
+  const clearFilters = () => {
+    setStatusFilter(""); setTypeFilter("");
+    setDateFrom("");     setDateTo("");
+  };
 
-    actionsRow: { display: "flex", gap: 8, marginBottom: 10 },
-    actionBtn: (variant, disabled) => {
-      const base = {
-        flex: 1,
-        padding: "10px 12px",
-        borderRadius: 12,
-        fontWeight: 900,
-        cursor: disabled ? "not-allowed" : "pointer",
-        border: "1px solid #e5e7eb",
-        boxShadow: "0 6px 14px rgba(2,6,23,0.06)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        transition: "transform .12s ease, box-shadow .12s ease",
-      };
+  const isQuickActive = (key) => {
+    const now = new Date();
+    if (key === "today") return dateFrom === today && dateTo === today;
+    if (key === "month") return dateFrom === `${today.slice(0,7)}-01` && dateTo === today;
+    return false;
+  };
 
-      const variants = {
-        refresh: {
-          background: disabled ? "#cbd5e1" : "linear-gradient(135deg,#10b981,#0ea5e9)",
-          color: "#fff",
-          border: "1px solid rgba(15,118,110,0.35)",
-        },
-        pdf: {
-          background: disabled ? "#c7d2fe" : "linear-gradient(135deg,#0ea5e9,#6366f1)",
-          color: "#fff",
-          border: "1px solid rgba(29,78,216,0.35)",
-        },
-      };
-      return { ...base, ...variants[variant] };
-    },
-
-    status: (type) => ({
-      marginBottom: 10,
-      padding: "10px 12px",
-      borderRadius: 12,
-      fontWeight: 900,
-      border: "1px solid",
-      background:
-        type === "loading"
-          ? "linear-gradient(180deg,#ecfeff,#f0f9ff)"
-          : "linear-gradient(180deg,#fff1f2,#ffe4e6)",
-      borderColor: type === "loading" ? "#67e8f9" : "#fecaca",
-      color: type === "loading" ? "#0369a1" : "#b91c1c",
-      boxShadow: "0 6px 14px rgba(2,6,23,0.05)",
-    }),
-
-    searchWrap: {
-      position: "relative",
-      marginBottom: 12,
-    },
-    searchInput: {
-      width: "100%",
-      padding: "12px 12px 12px 40px",
-      borderRadius: 14,
-      border: "1px solid #e5e7eb",
-      outline: "none",
-      background: "#fff",
-      boxShadow: "0 6px 14px rgba(2,6,23,0.05)",
-      fontWeight: 700,
-    },
-    searchIcon: {
-      position: "absolute",
-      left: 12,
-      top: "50%",
-      transform: "translateY(-50%)",
-      fontSize: 16,
-      opacity: 0.75,
-    },
-
-    treeWrap: {
-      padding: 8,
-      borderRadius: 14,
-      border: "1px solid #e5e7eb",
-      background: "rgba(255,255,255,0.75)",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9)",
-    },
-
-    // timeline line (left rail)
-    rail: {
-      position: "relative",
-      paddingLeft: 14,
-    },
-    railLine: {
-      position: "absolute",
-      left: 6,
-      top: 8,
-      bottom: 8,
-      width: 2,
-      background: "linear-gradient(180deg,#c7d2fe,#bae6fd,#bbf7d0)",
-      borderRadius: 99,
-      opacity: 0.85,
-    },
-
-    // Year / Month / Day cards
-    node: {
-      marginBottom: 10,
-    },
-    nodeBtn: (level, open) => {
-      const base = {
-        width: "100%",
-        textAlign: "left",
-        padding: "10px 12px",
-        borderRadius: 14,
-        border: "1px solid #e5e7eb",
-        background: "#fff",
-        cursor: "pointer",
-        fontWeight: 900,
-        color: "#0f172a",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 10,
-        boxShadow: "0 10px 22px rgba(2,6,23,0.06)",
-        transition: "transform .12s ease, box-shadow .12s ease",
-      };
-
-      const tint =
-        level === "year"
-          ? { background: open ? "linear-gradient(180deg,#eef2ff,#ffffff)" : "#fff" }
-          : level === "month"
-          ? { background: open ? "linear-gradient(180deg,#eff6ff,#ffffff)" : "#fff" }
-          : { background: open ? "linear-gradient(180deg,#ecfeff,#ffffff)" : "#fff" };
-
-      return { ...base, ...tint };
-    },
-
-    leftDot: (level) => ({
-      width: 10,
-      height: 10,
-      borderRadius: 999,
-      background:
-        level === "year" ? "#6366f1" : level === "month" ? "#0ea5e9" : "#10b981",
-      boxShadow: "0 0 0 4px rgba(99,102,241,0.12)",
-      flex: "0 0 auto",
-    }),
-
-    metaRow: {
-      display: "flex",
-      alignItems: "center",
-      gap: 10,
-      minWidth: 0,
-    },
-    label: {
-      minWidth: 0,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    countPill: {
-      padding: "4px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 900,
-      border: "1px solid #e5e7eb",
-      background: "#f8fafc",
-      color: "#0f172a",
-      whiteSpace: "nowrap",
-    },
-    chevron: {
-      width: 30,
-      height: 30,
-      borderRadius: 10,
-      border: "1px solid #e5e7eb",
-      background: "#fff",
-      display: "grid",
-      placeItems: "center",
-      fontWeight: 900,
-      color: "#0f172a",
-      flex: "0 0 auto",
-    },
-
-    children: {
-      marginTop: 8,
-      marginLeft: 10,
-      paddingLeft: 10,
-      borderLeft: "2px dashed rgba(148,163,184,0.6)",
-    },
-
-    // report item button
-    reportBtn: (active) => ({
-      width: "100%",
-      padding: "10px 10px",
-      borderRadius: 14,
-      cursor: "pointer",
-      border: active ? "2px solid #111827" : "1px solid #e5e7eb",
-      background: active ? "linear-gradient(180deg,#f1f5f9,#ffffff)" : "#fff",
-      boxShadow: active ? "0 10px 20px rgba(2,6,23,0.10)" : "0 6px 14px rgba(2,6,23,0.05)",
-      fontWeight: active ? 900 : 700,
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      textAlign: "left",
-      color: "#0f172a",
-      gap: 10,
-    }),
-    reportLeft: { display: "flex", flexDirection: "column", gap: 4, minWidth: 0 },
-    reportTopLine: {
-      display: "flex",
-      gap: 8,
-      alignItems: "center",
-      minWidth: 0,
-    },
-    small: { fontSize: 12, opacity: 0.78, fontWeight: 800, whiteSpace: "nowrap" },
-    reportId: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-    statusChip: (status) => {
-      const s = String(status || "").toLowerCase();
-      const ok = s === "acceptable";
-      const mid = s === "average";
-      const bg = ok ? "#dcfce7" : mid ? "#fef9c3" : "#fee2e2";
-      const br = ok ? "#86efac" : mid ? "#fde68a" : "#fecaca";
-      const fg = ok ? "#166534" : mid ? "#854d0e" : "#991b1b";
-      const txt = ok ? "ACCEPT" : mid ? "AVERAGE" : "NOT OK";
-      const icon = ok ? "✅" : mid ? "⚠️" : "❌";
-      return {
-        background: bg,
-        border: `1px solid ${br}`,
-        color: fg,
-        padding: "6px 10px",
-        borderRadius: 999,
-        fontWeight: 900,
-        fontSize: 12,
-        whiteSpace: "nowrap",
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-      };
-      // eslint-disable-next-line no-unreachable
-      return { txt, icon };
-    },
-
-    footerWrap: {
-      marginTop: 12,
-      paddingTop: 12,
-      borderTop: "1px dashed #cbd5e1",
-    },
-    footerBtn: (variant) => ({
-      padding: 10,
-      borderRadius: 12,
-      width: "100%",
-      fontWeight: 900,
-      border: "1px solid",
-      cursor: "pointer",
-      boxShadow: "0 8px 18px rgba(2,6,23,0.06)",
-      background:
-        variant === "export"
-          ? "linear-gradient(135deg,#111827,#334155)"
-          : "linear-gradient(135deg,#16a34a,#22c55e)",
-      color: "#fff",
-      borderColor: variant === "export" ? "#111827" : "#15803d",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-    }),
+  // chip color helper
+  const chipClass = (status) => {
+    const s = String(status || "").toLowerCase();
+    if (s === "acceptable") return "qrm-chip qrm-chip--ok";
+    if (s === "average")    return "qrm-chip qrm-chip--avg";
+    return                         "qrm-chip qrm-chip--bad";
+  };
+  const chipLabel = (status) => {
+    const s = String(status || "").toLowerCase();
+    if (s === "acceptable") return "✅ OK";
+    if (s === "average")    return "⚠️ AVG";
+    return status ? "❌ NO" : "—";
   };
 
   return (
-    <aside className="no-print" style={styles.aside}>
-      {/* Header */}
-      <div style={styles.header}>
-        <h3 style={styles.title}>📅 Reports Timeline</h3>
-        <span style={styles.badge}>{yearsSorted.reduce((a, y) => a + countYear(y), 0)} total</span>
+    <aside className="qrm-aside no-print">
+
+      {/* ── Header ── */}
+      <div className="qrm-sb-header">
+        <h3 className="qrm-sb-title">📅 Timeline</h3>
+        <span className="qrm-sb-total">
+          {hasFilters ? `${filteredCount} / ${totalCount}` : `${totalCount} total`}
+        </span>
       </div>
 
-      {/* Actions */}
-      <div style={styles.actionsRow}>
-        <button onClick={onRefresh} style={styles.actionBtn("refresh", false)} title="Reload">
-          🔄 Refresh
+      {/* ── Action buttons ── */}
+      <div className="qrm-actions-row">
+        <button
+          className="qrm-action-btn qrm-action-btn--refresh"
+          onClick={onRefresh}
+          title="Reload from server"
+        >
+          🔄 {loadingServer ? "Loading…" : "Refresh"}
         </button>
         <button
+          className="qrm-action-btn qrm-action-btn--pdf"
           onClick={onExportPDF}
           disabled={!canExportPDF}
-          style={styles.actionBtn("pdf", !canExportPDF)}
           title="Export selected report to PDF"
         >
           ⬇️ PDF
         </button>
+        <button
+          className="qrm-action-btn qrm-action-btn--excel"
+          onClick={onExportExcel}
+          title="Export filtered reports to Excel"
+        >
+          📊 Excel
+        </button>
       </div>
 
-      {loadingServer && <div style={styles.status("loading")}>⏳ Fetching from server…</div>}
-      {serverErr && <div style={styles.status("error")}>{serverErr}</div>}
+      {/* ── Status messages ── */}
+      {loadingServer && (
+        <div className="qrm-status qrm-status--loading">⏳ Fetching from server…</div>
+      )}
+      {serverErr && (
+        <div className="qrm-status qrm-status--error">{serverErr}</div>
+      )}
 
-      {/* Search */}
-      <div style={styles.searchWrap}>
-        <span style={styles.searchIcon}>🔎</span>
+      {/* ── Search ── */}
+      <div className="qrm-search-wrap">
+        <span className="qrm-search-icon">🔎</span>
         <input
+          className="qrm-search-input"
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search (AWB / Invoice / Key)"
-          style={styles.searchInput}
+          placeholder="AWB / Invoice / Supplier / Status…"
         />
       </div>
 
-      {/* Tree */}
-      <div style={styles.treeWrap}>
-        <div style={styles.rail}>
-          <div style={styles.railLine} />
+      {/* ══ FILTERS ══ */}
+      <div className="qrm-filters">
+        {/* Status */}
+        <div>
+          <div className="qrm-filter-label">Status</div>
+          <div className="qrm-status-chips">
+            {[
+              { key: "",           label: "All",        cls: "qrm-sc qrm-sc--all" },
+              { key: "Acceptable", label: "✅ Accept",  cls: "qrm-sc qrm-sc--ok"  },
+              { key: "Average",    label: "⚠️ Average", cls: "qrm-sc qrm-sc--avg" },
+              { key: "Not OK",     label: "❌ Not OK",  cls: "qrm-sc qrm-sc--bad" },
+            ].map(({ key, label, cls }) => (
+              <button
+                key={key}
+                className={`${cls}${statusFilter === key ? " qrm-sc--active" : ""}`}
+                onClick={() => setStatusFilter(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Shipment type */}
+        {uniqueTypes.length > 0 && (
+          <div>
+            <div className="qrm-filter-label">Shipment Type</div>
+            <select
+              className="qrm-filter-select"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="">All types</option>
+              {uniqueTypes.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Date range */}
+        <div>
+          <div className="qrm-filter-label">Date Range</div>
+          <div className="qrm-date-row">
+            <input
+              type="date" className="qrm-filter-date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              placeholder="From"
+            />
+            <input
+              type="date" className="qrm-filter-date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              placeholder="To"
+            />
+          </div>
+        </div>
+
+        {/* Quick buttons */}
+        <div>
+          <div className="qrm-quick-btns">
+            {[
+              { key: "today", label: "Today" },
+              { key: "week",  label: "This Week" },
+              { key: "month", label: "This Month" },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                className={`qrm-qb${isQuickActive(key) ? " qrm-qb--active" : ""}`}
+                onClick={() => applyQuick(key)}
+              >
+                {label}
+              </button>
+            ))}
+            {hasFilters && (
+              <button className="qrm-clear-filters" onClick={clearFilters}>
+                ✕ Clear
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ══ TREE ══ */}
+      <div className="qrm-tree-wrap">
+        <div className="qrm-rail">
+          <div className="qrm-rail-line" />
 
           {yearsSorted.map((year) => {
-            const yearOpen = !!openYears[year];
+            const yearOpen  = !!openYears[year];
             const yearCount = countYear(year);
 
             return (
-              <div key={year} style={styles.node}>
+              <div key={year} className="qrm-node">
                 <button
+                  className={`qrm-node-btn qrm-node-btn--year${yearOpen ? " qrm-node-btn--open" : ""}`}
                   onClick={() => setOpenYears((p) => ({ ...p, [year]: !p[year] }))}
-                  style={styles.nodeBtn("year", yearOpen)}
                 >
-                  <span style={styles.metaRow}>
-                    <span style={styles.leftDot("year")} />
-                    <span style={styles.label}>Year {year}</span>
-                    <span style={styles.countPill}>{yearCount}</span>
+                  <span className="qrm-meta-row">
+                    <span className="qrm-left-dot qrm-left-dot--year" />
+                    <span className="qrm-node-label">📆 {year}</span>
+                    <span className="qrm-count-pill">{yearCount}</span>
                   </span>
-                  <span style={styles.chevron}>{yearOpen ? "▾" : "▸"}</span>
+                  <span className="qrm-chevron">{yearOpen ? "▾" : "▸"}</span>
                 </button>
 
                 {yearOpen && (
-                  <div style={styles.children}>
+                  <div className="qrm-children">
                     {Object.keys(tree[year])
                       .sort((a, b) => b.localeCompare(a))
                       .map((m) => {
-                        const ym = `${year}-${m}`;
+                        const ym        = `${year}-${m}`;
                         const monthOpen = !!openMonths[ym];
-                        const monthLabel = monthNames[parseInt(m, 10) - 1] || m;
-                        const monthCount = countMonth(year, m);
+                        const mIdx      = parseInt(m, 10) - 1;
+                        const mShort    = MONTH_SHORT[mIdx] || m;
+                        const mFull     = monthNames[mIdx]  || m;
+                        const mCount    = countMonth(year, m);
 
                         return (
-                          <div key={ym} style={styles.node}>
+                          <div key={ym} className="qrm-node">
                             <button
+                              className={`qrm-node-btn qrm-node-btn--month${monthOpen ? " qrm-node-btn--open" : ""}`}
                               onClick={() => setOpenMonths((p) => ({ ...p, [ym]: !p[ym] }))}
-                              style={styles.nodeBtn("month", monthOpen)}
                             >
-                              <span style={styles.metaRow}>
-                                <span style={styles.leftDot("month")} />
-                                <span style={styles.label}>
-                                  {monthLabel} <span style={{ opacity: 0.7, fontWeight: 900 }}>({m})</span>
+                              <span className="qrm-meta-row">
+                                <span className="qrm-left-dot qrm-left-dot--month" />
+                                <span className="qrm-node-label" title={mFull}>
+                                  🗓 {mShort} {year}
                                 </span>
-                                <span style={styles.countPill}>{monthCount}</span>
+                                <span className="qrm-count-pill">{mCount}</span>
                               </span>
-                              <span style={styles.chevron}>{monthOpen ? "▾" : "▸"}</span>
+                              <span className="qrm-chevron">{monthOpen ? "▾" : "▸"}</span>
                             </button>
 
                             {monthOpen && (
-                              <div style={styles.children}>
+                              <div className="qrm-children">
                                 {Object.keys(tree[year][m])
                                   .sort((a, b) => b.localeCompare(a))
                                   .map((d) => {
-                                    const ymd = `${ym}-${d}`;
-                                    const dayOpen = !!openDays[ymd];
+                                    const ymd      = `${ym}-${d}`;
+                                    const dayOpen  = !!openDays[ymd];
                                     const dayReports = tree[year][m][d] || [];
 
                                     return (
-                                      <div key={ymd} style={styles.node}>
+                                      <div key={ymd} className="qrm-node">
                                         <button
+                                          className={`qrm-node-btn qrm-node-btn--day${dayOpen ? " qrm-node-btn--open" : ""}`}
                                           onClick={() => setOpenDays((p) => ({ ...p, [ymd]: !p[ymd] }))}
-                                          style={styles.nodeBtn("day", dayOpen)}
                                         >
-                                          <span style={styles.metaRow}>
-                                            <span style={styles.leftDot("day")} />
-                                            <span style={styles.label}>
-                                              {year}-{m}-{d}
+                                          <span className="qrm-meta-row">
+                                            <span className="qrm-left-dot qrm-left-dot--day" />
+                                            <span className="qrm-node-label">
+                                              {mShort} {d}, {year}
                                             </span>
-                                            <span style={styles.countPill}>{dayReports.length}</span>
+                                            <span className="qrm-count-pill">{dayReports.length}</span>
                                           </span>
-                                          <span style={styles.chevron}>{dayOpen ? "▾" : "▸"}</span>
+                                          <span className="qrm-chevron">{dayOpen ? "▾" : "▸"}</span>
                                         </button>
 
                                         {dayOpen && (
-                                          <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                                          <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
                                             {dayReports.map((r, idx) => {
-                                              const uniqueKey = `${ymd}-${r.id || "noid"}-${
-                                                r.serverId || "nosid"
-                                              }-${r.uniqueKey || "nokey"}-${idx}`;
-
+                                              const key    = `${ymd}-${r.id || idx}`;
                                               const active = selectedReportId === r.id;
-                                              const statusStyle = styles.statusChip(r.status);
-                                              const s = String(r.status || "").toLowerCase();
-                                              const ok = s === "acceptable";
-                                              const mid = s === "average";
-                                              const chipTxt = ok ? "ACCEPT" : mid ? "AVERAGE" : "NOT OK";
-                                              const chipIcon = ok ? "✅" : mid ? "⚠️" : "❌";
-
                                               return (
                                                 <button
-                                                  key={uniqueKey}
+                                                  key={key}
+                                                  className={`qrm-report-btn${active ? " qrm-report-btn--active" : ""}`}
                                                   onClick={() => setSelectedReportId(r.id)}
-                                                  title={`Open report ${getDisplayId(r)}`}
-                                                  style={styles.reportBtn(active)}
+                                                  title={getDisplayId(r)}
                                                 >
-                                                  <div style={styles.reportLeft}>
-                                                    <div style={styles.reportTopLine}>
-                                                      <span style={styles.reportId}>{getDisplayId(r)}</span>
-                                                      {r.sequence ? (
-                                                        <span style={styles.small}># {r.sequence}</span>
-                                                      ) : null}
+                                                  <div className="qrm-report-left">
+                                                    <div className="qrm-report-top-line">
+                                                      <span className="qrm-report-id">{getDisplayId(r)}</span>
+                                                      {r.sequence && (
+                                                        <span className="qrm-report-seq">#{r.sequence}</span>
+                                                      )}
                                                     </div>
-                                                    {r.shipmentType ? (
-                                                      <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-                                                        {r.shipmentType}
-                                                      </div>
-                                                    ) : null}
+                                                    {r.shipmentType && (
+                                                      <span className="qrm-report-type">{r.shipmentType}</span>
+                                                    )}
                                                   </div>
-
-                                                  <span style={statusStyle}>
-                                                    <span>{chipIcon}</span>
-                                                    <span>{chipTxt}</span>
+                                                  <span className={chipClass(r.status)}>
+                                                    {chipLabel(r.status)}
                                                   </span>
                                                 </button>
                                               );
@@ -506,31 +373,78 @@ export default function SidebarTree({
               </div>
             );
           })}
+
+          {yearsSorted.length === 0 && (
+            <p style={{ textAlign:"center", color:"#6b7280", fontWeight:700, padding:"16px 0", fontSize:13 }}>
+              {loadingServer ? "Loading…" : "No reports found."}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Footer */}
-      <div style={styles.footerWrap}>
-        <button onClick={onExportJSON} style={styles.footerBtn("export")}>
-          ⬇️ Export reports (JSON)
+      {/* ── Footer ── */}
+      <div className="qrm-footer-wrap">
+        <button className="qrm-footer-btn qrm-footer-btn--export" onClick={onExportJSON}>
+          ⬇️ Export JSON backup
         </button>
 
-        <div style={{ height: 8 }} />
-
-        <button onClick={() => importRef.current?.click()} style={styles.footerBtn("import")}>
-          ⬆️ Import reports
+        <button className="qrm-footer-btn qrm-footer-btn--import" onClick={() => importRef.current?.click()}>
+          ⬆️ Import JSON
         </button>
-
         <input
           ref={importRef}
           type="file"
           accept="application/json"
-          onChange={(e) => {
-            onImportJSON(e);
-            if (importRef.current) importRef.current.value = "";
-          }}
+          onChange={(e) => { onImportJSON(e); if (importRef.current) importRef.current.value = ""; }}
           style={{ display: "none" }}
         />
+
+        {/* ── Migrate base64 → Cloudinary ── always visible ── */}
+        <div
+          style={{
+            padding: "10px 12px", borderRadius: 12,
+            border: "1px solid",
+            color: "#fff",
+            background: migrating
+              ? "linear-gradient(135deg,#1e40af,#3b82f6)"
+              : base64Count > 0
+              ? "linear-gradient(135deg,#b45309,#f59e0b)"
+              : "linear-gradient(135deg,#374151,#6b7280)",
+            borderColor: migrating ? "#1e3a8a" : base64Count > 0 ? "#92400e" : "#374151",
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 12, marginBottom: 6, opacity: .92 }}>
+            {migrating
+              ? `⏳ Migrating… ${migrateProgress.done} / ${migrateProgress.total}`
+              : base64Count > 0
+              ? `⚠️ ${base64Count} cert${base64Count > 1 ? "s" : ""} still base64`
+              : "☁️ Migrate base64 → Cloudinary"}
+          </div>
+
+          {migrating && migrateProgress.total > 0 && (
+            <div style={{ height:6, borderRadius:99, background:"rgba(255,255,255,.25)", marginBottom:8, overflow:"hidden" }}>
+              <div style={{
+                height:"100%", borderRadius:99, background:"#fff",
+                width:`${Math.round((migrateProgress.done/migrateProgress.total)*100)}%`,
+                transition:"width .3s ease",
+              }}/>
+            </div>
+          )}
+
+          <button
+            onClick={onMigrateBase64}
+            disabled={migrating}
+            style={{
+              width:"100%", padding:"8px 0", borderRadius:10,
+              border:"1px solid rgba(255,255,255,.35)",
+              background: migrating ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.18)",
+              color:"#fff", fontWeight:900, cursor: migrating ? "not-allowed" : "pointer",
+              fontSize:13, opacity: migrating ? .6 : 1,
+            }}
+          >
+            {migrating ? "Running…" : base64Count > 0 ? `☁️ Migrate ${base64Count} cert${base64Count>1?"s":""}` : "☁️ Scan & Migrate"}
+          </button>
+        </div>
       </div>
     </aside>
   );

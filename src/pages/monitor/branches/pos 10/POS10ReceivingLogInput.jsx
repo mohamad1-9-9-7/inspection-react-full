@@ -679,7 +679,7 @@ export default function POS10ReceivingLogInput() {
                       cursor: "pointer",
                     }}
                     title="Delete this row"
-                  >
+                   data-delete-action="true">
                     ✕
                   </button>
                 </td>

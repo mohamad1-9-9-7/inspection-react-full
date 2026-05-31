@@ -487,7 +487,7 @@ export default function POS11PestControlView() {
             {editing ? "Cancel Edit" : "Edit (password)"}
           </button>
           {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
-          <button onClick={handleDelete} style={btn("#dc2626")}>Delete (password)</button>
+          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
 
           <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>Export XLSX</button>
           <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
@@ -659,7 +659,7 @@ export default function POS11PestControlView() {
                           <td style={{ ...tdCell, textAlign:"center", width:60 }}>
                             <div style={{ display:"flex", gap:6, alignItems:"center", justifyContent:"center" }}>
                               <span>{idx+1}</span>
-                              <button onClick={()=>removeRow(idx)} style={{ ...btn("#ef4444"), padding:"2px 8px" }}>✖</button>
+                              <button onClick={()=>removeRow(idx)} style={{ ...btn("#ef4444"), padding:"2px 8px" }} data-delete-action="true">✖</button>
                             </div>
                           </td>
                           <td style={tdCell}>

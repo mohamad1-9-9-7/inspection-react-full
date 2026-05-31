@@ -457,7 +457,7 @@ function ContactSection({ group, title, bg, rows, setRow, addRow, removeRow, pic
                   <td style={tdStyle}><input type="tel" value={r.alt || ""} onChange={(e) => setRow(group, i, "alt", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
                   <td style={tdStyle}><input type="text" value={r.notes || ""} onChange={(e) => setRow(group, i, "notes", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
                   <td style={tdStyle}>
-                    <button type="button" onClick={() => removeRow(group, i)} style={{ ...buttonGhost, padding: "3px 8px", fontSize: 11, color: "#b91c1c" }}>{pick(t.removeRow)}</button>
+                    <button type="button" onClick={() => removeRow(group, i)} style={{ ...buttonGhost, padding: "3px 8px", fontSize: 11, color: "#b91c1c" }} data-delete-action="true">{pick(t.removeRow)}</button>
                   </td>
                 </tr>
               );

@@ -139,7 +139,7 @@ export default function InternalAuditView() {
                     {isOpen ? "▲" : "▼"} {t("findings")}
                   </button>
                   <button style={S.btn("secondary")} onClick={() => navigate(`/haccp-iso/internal-audit?edit=${rec.id}`)}>{t("edit")}</button>
-                  <button style={S.btn("danger")} onClick={() => del(rec.id)}>{t("del")}</button>
+                  <button style={S.btn("danger")} onClick={() => del(rec.id)} data-delete-action="true">{t("del")}</button>
                 </div>
               </div>
 

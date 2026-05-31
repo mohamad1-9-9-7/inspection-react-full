@@ -41,7 +41,6 @@ export default function DailyReportsTab({
   setDailyReports,
   onOpenQCSReport,
   onOpenPOS19Report,
-  onOpenQCSShipmentReport,
   onOpenFTR1Report,
   onOpenFTR2Report,
   onOpenProductionReport,
@@ -161,12 +160,6 @@ export default function DailyReportsTab({
           )}
         </div>
 
-        {/* QCS button */}
-        <div className="dr-qcs-btn">
-          <Button variant="primary" size="lg" onClick={onOpenQCSShipmentReport}>
-            📦 تقرير استلام الشحنات — QCS
-          </Button>
-        </div>
 
       </div>
     </>

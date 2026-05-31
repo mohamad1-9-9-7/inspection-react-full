@@ -1,26 +1,9 @@
 // viewUtils.js
 
-/* ========= Env / API roots ========= */
-const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
+import { API_BASE as _API_BASE } from "../../../config/api";
 
-const fromWindow =
-  typeof window !== "undefined" ? window.__QCS_API__ : undefined;
-
-const fromProcess =
-  typeof process !== "undefined"
-    ? (process.env?.REACT_APP_API_URL || process.env?.VITE_API_URL)
-    : undefined;
-
-let fromVite;
-try {
-  fromVite = import.meta.env && import.meta.env.VITE_API_URL;
-} catch {
-  fromVite = undefined;
-}
-
-const API_ROOT = fromWindow || fromProcess || fromVite || API_ROOT_DEFAULT;
-
-export const API_BASE = String(API_ROOT).replace(/\/$/, "");
+/* ========= API root (single source of truth) ========= */
+export const API_BASE = _API_BASE;
 
 export const IS_SAME_ORIGIN = (() => {
   try { return new URL(API_BASE).origin === window.location.origin; }
@@ -164,9 +147,86 @@ export const loadFromLocal = () => {
   catch { return []; }
 };
 
+/* ====== base64 helpers ====== */
+const _isBase64 = (s) => typeof s === "string" && s.startsWith("data:");
+
+/** Convert a data-URL (base64) to a File object for upload */
+export function base64ToFile(dataUrl, fileName = "certificate") {
+  try {
+    const [header, data] = dataUrl.split(",");
+    const mime = header.match(/:(.*?);/)?.[1] || "application/octet-stream";
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const ext = mime.includes("pdf") ? ".pdf" : mime.split("/")[1] ? `.${mime.split("/")[1]}` : "";
+    const safeName = fileName.includes(".") ? fileName : `${fileName}${ext}`;
+    return new File([bytes], safeName, { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+/** Count reports that still have base64 certificate data */
+export function countBase64Certs(reports) {
+  return (Array.isArray(reports) ? reports : []).filter(
+    (r) => _isBase64(r?.certificateFile)
+  ).length;
+}
+
+/* ====== strip large base64 blobs before saving (avoids QuotaExceededError) ====== */
+
+const _stripBlobs = (r) => {
+  if (!r) return r;
+  const out = { ...r };
+  // drop base64 certificate — certificateUrl (Cloudinary URL) is already there
+  if (_isBase64(out.certificateFile)) out.certificateFile = "";
+  // drop any base64 images (should already be URLs, but guard against old records)
+  if (Array.isArray(out.images))
+    out.images = out.images.filter((u) => !_isBase64(u));
+  return out;
+};
+
 export const saveToLocal = (list) => {
-  try { localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(list)); }
-  catch {}
+  // Pass 1: strip base64 blobs
+  const stripped = list.map(_stripBlobs);
+  try {
+    localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(stripped));
+    return; // success
+  } catch (_e1) {}
+
+  // Pass 2: still too big → drop images arrays, keep everything else
+  const noImages = stripped.map((r) => ({ ...r, images: [] }));
+  try {
+    localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(noImages));
+    return;
+  } catch (_e2) {}
+
+  // Pass 3: last resort — keep only the 200 most-recent records (no images)
+  try {
+    const recent = noImages
+      .slice()
+      .sort((a, b) =>
+        String(b.createdAt || b.date || "").localeCompare(
+          String(a.createdAt || a.date || "")
+        )
+      )
+      .slice(0, 200);
+    localStorage.setItem(LS_KEY_REPORTS, JSON.stringify(recent));
+  } catch {}
+};
+
+/* ====== sessionStorage cache (survives tab-refresh, cleared when tab closes) ====== */
+const SS_KEY = "qcs_session_cache";
+
+export const saveToSession = (list) => {
+  try {
+    sessionStorage.setItem(SS_KEY, JSON.stringify(list.map(_stripBlobs)));
+  } catch {}
+};
+
+export const loadFromSession = () => {
+  try { return JSON.parse(sessionStorage.getItem(SS_KEY) || "[]"); }
+  catch { return []; }
 };
 
 /* ✅ دمج بدون أي اعتماد على serverId */

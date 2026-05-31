@@ -862,7 +862,7 @@ export default function FTR1ReceivingLogView() {
                       border: "none",
                       cursor: "pointer",
                     }}
-                  >
+                   data-delete-action="true">
                     🗑 Delete
                   </button>
                 </>

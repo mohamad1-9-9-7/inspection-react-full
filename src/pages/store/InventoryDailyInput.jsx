@@ -752,7 +752,7 @@ export default function InventoryDailyInput() {
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             <button onClick={() => addRow(sec.id)} style={pill("#ffffff", c.border, c.ink)}>+ Add Row</button>
-                            <button onClick={() => deleteSection(sec.id)} style={pill("#fee2e2", "#fecaca", "#7f1d1d")}>Delete Section</button>
+                            <button onClick={() => deleteSection(sec.id)} style={pill("#fee2e2", "#fecaca", "#7f1d1d")} data-delete-action="true">Delete Section</button>
                           </div>
                         </div>
                       </td>
@@ -884,7 +884,7 @@ export default function InventoryDailyInput() {
                             >
                               Duplicate
                             </button>
-                            <button onClick={() => removeRow(sec.id, r.id)} style={btnDel}>Delete</button>
+                            <button onClick={() => removeRow(sec.id, r.id)} style={btnDel} data-delete-action="true">Delete</button>
                           </td>
                         </tr>
                       );

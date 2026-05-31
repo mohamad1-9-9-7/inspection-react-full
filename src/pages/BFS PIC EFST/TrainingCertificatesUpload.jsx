@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
+import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
 
 /* ========= API ========= */
 
@@ -24,27 +25,23 @@ async function jsonFetch(url, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-// Compress image in-memory to ~1280px longest side, quality ≈ 0.8 (JPEG)
-async function compressImage(file) {
+// Compress image to File (1280px / 0.8 quality) — for Cloudinary upload
+async function compressToFile(file, { maxDim = 1280, quality = 0.8 } = {}) {
   const dataURL = await new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onload = () => resolve(fr.result);
     fr.onerror = reject;
     fr.readAsDataURL(file);
   });
-
   const img = await new Promise((resolve, reject) => {
     const i = new Image();
     i.onload = () => resolve(i);
     i.onerror = reject;
     i.src = dataURL;
   });
-
-  const maxSide = 1280;
-  const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const ratio = Math.min(1, maxDim / Math.max(img.width, img.height));
   const w = Math.round(img.width * ratio);
   const h = Math.round(img.height * ratio);
-
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
@@ -52,9 +49,16 @@ async function compressImage(file) {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, 0, 0, w, h);
-
-  const out = canvas.toDataURL("image/jpeg", 0.8);
-  return out;
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) { reject(new Error("Canvas toBlob failed")); return; }
+        resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+      },
+      "image/jpeg",
+      quality
+    );
+  });
 }
 
 /* ========= Nationalities (dropdown like OHC) ========= */
@@ -418,8 +422,8 @@ function makeEmptyCert() {
     customCourseName: "",
     issueDate: "",
     expiryDate: "",
-    imageData: "",
-    imageMeta: { name: "", type: "" },
+    imageUrl: "",       // Cloudinary URL (لا base64)
+    imageName: "",
   };
 }
 
@@ -516,6 +520,12 @@ export default function TrainingCertificatesBFS() {
       }
     }
 
+    // منع الحفظ إذا صورة لسه بتُرفع
+    if (certs.some((c) => c.imageUrl === "__uploading__")) {
+      setMsg({ type: "error", text: "Please wait — image upload still in progress." });
+      return;
+    }
+
     const activeCerts = certs.filter(
       (c) =>
         String(c.courseType || "").trim() &&
@@ -548,9 +558,8 @@ export default function TrainingCertificatesBFS() {
           courseType: courseTypeToSave,
           issueDate: cert.issueDate,
           expiryDate: cert.expiryDate || undefined,
-          imageData: cert.imageData || undefined,
-          imageName: cert.imageData ? cert.imageMeta.name : undefined,
-          imageType: cert.imageData ? cert.imageMeta.type : undefined,
+          imageUrl: cert.imageUrl || undefined,          // Cloudinary URL فقط
+          imageName: cert.imageName || undefined,
           savedAt: new Date().toISOString(),
         };
 
@@ -622,22 +631,29 @@ export default function TrainingCertificatesBFS() {
       return;
     }
 
+    // أظهر حالة "جاري الرفع"
+    setCerts((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], imageUrl: "__uploading__", imageName: file.name };
+      return next;
+    });
+    setMsg({ type: "", text: "" });
+
     try {
-      const compressed = await compressImage(file);
+      const compressed = await compressToFile(file);
+      const url = await uploadImageToServer(compressed, "training_certificate");
       setCerts((prev) => {
         const next = [...prev];
-        const current = { ...next[index] };
-        current.imageData = compressed;
-        current.imageMeta = { name: file.name, type: "image/jpeg" };
-        next[index] = current;
+        next[index] = { ...next[index], imageUrl: url, imageName: file.name };
         return next;
       });
-      setMsg({ type: "", text: "" });
     } catch {
-      setMsg({
-        type: "error",
-        text: "Image processing failed. Try another image.",
+      setCerts((prev) => {
+        const next = [...prev];
+        next[index] = { ...next[index], imageUrl: "", imageName: "" };
+        return next;
       });
+      setMsg({ type: "error", text: "Image upload to Cloudinary failed. Try again." });
     } finally {
       e.target.value = "";
     }
@@ -646,10 +662,7 @@ export default function TrainingCertificatesBFS() {
   function removeCertImage(index) {
     setCerts((prev) => {
       const next = [...prev];
-      const current = { ...next[index] };
-      current.imageData = "";
-      current.imageMeta = { name: "", type: "" };
-      next[index] = current;
+      next[index] = { ...next[index], imageUrl: "", imageName: "" };
       return next;
     });
   }
@@ -1072,7 +1085,13 @@ export default function TrainingCertificatesBFS() {
                     </div>
                   </label>
 
-                  {cert.imageData && (
+                  {cert.imageUrl === "__uploading__" && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: "#0369a1", fontWeight: 600 }}>
+                      ⏳ Uploading to Cloudinary…
+                    </div>
+                  )}
+
+                  {cert.imageUrl && cert.imageUrl !== "__uploading__" && (
                     <div
                       style={{
                         marginTop: 10,
@@ -1088,7 +1107,7 @@ export default function TrainingCertificatesBFS() {
                       }}
                     >
                       <img
-                        src={cert.imageData}
+                        src={cert.imageUrl}
                         alt={`Certificate ${index + 1}`}
                         style={{
                           height: 90,
@@ -1135,6 +1154,26 @@ export default function TrainingCertificatesBFS() {
               flexWrap: "wrap",
             }}
           >
+            {/* زر رجوع للقائمة الرئيسية */}
+            <button
+              type="button"
+              onClick={() => navigate("/training-certificates")}
+              style={{
+                padding: "10px 18px",
+                background: "linear-gradient(135deg,#f1f5f9,#e2e8f0)",
+                color: "#374151",
+                border: "1px solid #cbd5e1",
+                borderRadius: 999,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              ← Back
+            </button>
             {/* زر عرض الشهادات */}
             <button
               type="button"

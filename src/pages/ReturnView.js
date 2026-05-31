@@ -895,7 +895,7 @@ export default function ReturnView() {
                     ⬇️ Export PDF
                   </button>
                   <button onClick={startAddRow} style={addRowBtn}>➕ Add Row</button>
-                  <button onClick={handleDeleteDay} style={deleteBtnMain}>🗑️ Delete This Day Report</button>
+                  <button onClick={handleDeleteDay} style={deleteBtnMain} data-delete-action="true">🗑️ Delete This Day Report</button>
                 </div>
               </div>
 
@@ -1041,7 +1041,7 @@ export default function ReturnView() {
                             ) : (
                               <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                                 <button onClick={() => startEditRow(i)} style={editBtn}>✏️ Edit</button>
-                                <button onClick={() => deleteRow(i)} style={rowDeleteBtn}>🗑️</button>
+                                <button onClick={() => deleteRow(i)} style={rowDeleteBtn} data-delete-action="true">🗑️</button>
                                 <button onClick={() => openImagesFor(i)} style={imageBtn}>🖼️ {row.images?.length || 0}/{MAX_IMAGES_PER_PRODUCT}</button>
                               </div>
                             )}

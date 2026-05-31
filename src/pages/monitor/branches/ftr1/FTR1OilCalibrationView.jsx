@@ -437,7 +437,7 @@ export default function FTR1OilCalibrationView() {
                 className="btn-delete"
                 style={btnDel}
                 title="Delete this report (password: 9999)"
-              >
+               data-delete-action="true">
                 🗑 Delete
               </button>
 

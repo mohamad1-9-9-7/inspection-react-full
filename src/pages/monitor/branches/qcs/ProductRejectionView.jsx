@@ -194,7 +194,7 @@ export default function ProductRejectionView() {
                       )}
                     </td>
                     <td style={S.td}>
-                      <button style={S.btnDanger} onClick={() => del(rec.id)}>🗑️ حذف</button>
+                      <button style={S.btnDanger} onClick={() => del(rec.id)} data-delete-action="true">🗑️ حذف</button>
                     </td>
                   </tr>
                 );

@@ -556,7 +556,7 @@ export default function MeatDailyView() {
                     onChange={importJSON}
                     style={{ display: "none" }}
                   />
-                  <button onClick={handleDelete} style={s.btnDel}>🗑️ Delete this day</button>
+                  <button onClick={handleDelete} style={s.btnDel} data-delete-action="true">🗑️ Delete this day</button>
                 </div>
               </div>
 
@@ -650,7 +650,7 @@ export default function MeatDailyView() {
                         </td>
 
                         <td style={s.td}>
-                          <button onClick={() => handleDeleteRow(i)} style={s.btnDelSmall}>🗑️ Delete</button>
+                          <button onClick={() => handleDeleteRow(i)} style={s.btnDelSmall} data-delete-action="true">🗑️ Delete</button>
                         </td>
                       </tr>
                     ))}
