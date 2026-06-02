@@ -135,6 +135,8 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
   const [scheduleAt, setScheduleAt] = useState("");
   const [priority, setPriority] = useState("normal");
   const [includeTable, setIncludeTable] = useState(false);
+  const [sortBy, setSortBy] = useState("default");   // default | branch | action | origin | product | expiry
+  const [groupBy, setGroupBy] = useState("none");    // none | branch | action | origin
   const [method, setMethod] = useState("outlook");
   const [progress, setProgress] = useState("");
   const [info, setInfo] = useState("");
@@ -161,6 +163,8 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     setPriority(s.priority || "normal");
     setScheduleAt("");
     setIncludeTable(false);
+    setSortBy("default");
+    setGroupBy("none");
     const saved = lsGet(LS_METHOD, "outlook");
     setMethod(SEND_METHODS.some((m) => m.id === saved) ? saved : "outlook");
     setNote("");
@@ -198,7 +202,7 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
   async function sendViaMailto() {
     setProgress("⏳ Generating PDF...");
     const { blob: pdfBlob, base64: pdfBase64Raw, filename: pdfFilename } =
-      await config.generatePdf(payload);
+      await config.generatePdf(payload, { sortBy, groupBy });
 
     const pdfBase64 = pdfBase64Raw || (await (async () => {
       const { blobToBase64 } = await import("./emailReportUtils");
@@ -234,7 +238,7 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     }
 
     setProgress("📩 Building email package...");
-    let html = config.buildHtml(payload, { note, pdfUrl: null, attachmentsCount: attachments.length, includeTable });
+    let html = config.buildHtml(payload, { note, pdfUrl: null, attachmentsCount: attachments.length, includeTable, sortBy, groupBy });
 
     // Prepend banners (schedule / confidentiality) and append signature
     const banners = [];
@@ -292,7 +296,7 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
 
   async function generateAndUploadPdf() {
     setProgress("⏳ Generating PDF...");
-    const { blob, filename } = await config.generatePdf(payload);
+    const { blob, filename } = await config.generatePdf(payload, { sortBy, groupBy });
     setProgress("☁️ Uploading PDF (Cloudinary)...");
     const pdfUrl = await uploadPdfBlob(blob, filename);
     return { blob, pdfUrl, filename };
@@ -301,7 +305,7 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
   async function sendViaWhatsapp() {
     const { pdfUrl } = await generateAndUploadPdf();
     setProgress("💬 Opening WhatsApp...");
-    let body = config.buildText(payload, { note, pdfUrl, includeTable });
+    let body = config.buildText(payload, { note, pdfUrl, includeTable, sortBy, groupBy });
     if (scheduleAt) body = `📅 Scheduled: ${new Date(scheduleAt).toLocaleString("en-GB", { timeZone: "Asia/Dubai" })}\n\n` + body;
     body += buildSignatureText(settings);
     const text = `*${subject.trim()}*\n\n${body}`;
@@ -315,7 +319,7 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
   async function sendViaCopy() {
     const { pdfUrl } = await generateAndUploadPdf();
     setProgress("📋 Copying to clipboard...");
-    let body = config.buildText(payload, { note, pdfUrl, includeTable });
+    let body = config.buildText(payload, { note, pdfUrl, includeTable, sortBy, groupBy });
     if (scheduleAt) body = `📅 Scheduled: ${new Date(scheduleAt).toLocaleString("en-GB", { timeZone: "Asia/Dubai" })}\n\n` + body;
     body += buildSignatureText(settings);
     const text =
@@ -520,6 +524,49 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
               ({includeTable ? "مفعّل — الجدول يظهر بالإيميل" : "معطّل — PDF مرفق فقط"})
             </span>
           </label>
+        </div>
+
+        {/* ===== Sort / Group controls — apply to PDF + email table ===== */}
+        <div style={{ ...styles.field, padding: "12px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: "#334155", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+            🗂️ ترتيب البنود في التقرير
+            <span style={{ fontWeight: 600, fontSize: 11, color: "#64748b" }}>
+              (يطبَّق على PDF والجدول داخل الإيميل)
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 4 }}>
+                ↕️ فرز حسب
+              </label>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+                disabled={busy} style={styles.input}>
+                <option value="default">— الترتيب الأصلي —</option>
+                <option value="branch">🏪 الفرع / POS</option>
+                <option value="action">🎯 الإجراء</option>
+                <option value="origin">🌍 المنشأ</option>
+                <option value="product">📦 اسم المنتج</option>
+                <option value="expiry">📅 تاريخ الانتهاء</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 4 }}>
+                📂 تجميع حسب
+              </label>
+              <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}
+                disabled={busy} style={styles.input}>
+                <option value="none">— بدون تجميع —</option>
+                <option value="branch">🏪 الفرع / POS</option>
+                <option value="action">🎯 الإجراء</option>
+                <option value="origin">🌍 المنشأ</option>
+              </select>
+            </div>
+          </div>
+          {(sortBy !== "default" || groupBy !== "none") && (
+            <div style={{ fontSize: 11, color: "#1e40af", fontWeight: 700, marginTop: 8, padding: "6px 10px", background: "#eff6ff", borderRadius: 6 }}>
+              ✓ سيُطبَّق على البنود قبل إنشاء الملف.
+            </div>
+          )}
         </div>
 
         <div style={styles.field}>

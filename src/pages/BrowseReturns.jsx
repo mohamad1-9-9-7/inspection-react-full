@@ -11,6 +11,8 @@ import {
 } from "react-icons/fi";
 import EmailSendModal from "./shared/EmailSendModal";
 import { escapeHtml } from "./shared/emailReportUtils";
+import { MAWASHI_LOGO_B64 } from "../assets/mawashi-logo-b64";
+import { arrangeItems, GROUP_LABEL } from "./shared/itemSortGroup";
 
 /* ============================================================
    API
@@ -3167,91 +3169,201 @@ export default function BrowseReturns() {
   }, []);
 
   const buildReturnsHtml = useCallback((rep, opts = {}) => {
-    const items = rep?.items || [];
     const date = rep?.reportDate || "—";
     const note = opts.note;
     const attCount = opts.attachmentsCount;
     const includeTable = !!opts.includeTable;
-    const rows = items.map((row, i) => {
+    const sortBy  = opts.sortBy  || "default";
+    const groupBy = opts.groupBy || "none";
+
+    /* Sort + group the items per the user's choice in the modal */
+    const { groups, totalCount } = arrangeItems(rep?.items || [], { sortBy, groupBy });
+    const isGrouped = groupBy !== "none";
+    const items = rep?.items || [];
+
+    /* Categorize action by keyword to colorize the cell — looks modern in Outlook */
+    const actionColor = (a) => {
+      const s = String(a || "").toLowerCase();
+      if (!s) return { bg: "#f1f5f9", fg: "#64748b" };
+      if (s.includes("condemn") || s.includes("إتلاف") || s.includes("اتلاف")) return { bg: "#fee2e2", fg: "#991b1b" };
+      if (s.includes("production") || s.includes("إنتاج") || s.includes("انتاج")) return { bg: "#dcfce7", fg: "#166534" };
+      if (s.includes("supplier") || s.includes("مورد"))                          return { bg: "#fef3c7", fg: "#92400e" };
+      if (s.includes("separat") || s.includes("فصل"))                            return { bg: "#dbeafe", fg: "#1e40af" };
+      return { bg: "#ede9fe", fg: "#5b21b6" };
+    };
+
+    /* Build a single row of <tr> HTML — used for both grouped and flat layouts */
+    const renderRow = (row, i) => {
       const pos = row.butchery || row.pos || "";
       const qtyType = row.qtyType || "";
       const action = row.action || row.customAction || "";
-      return `<tr>
-        <td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:center;">${i + 1}</td>
-        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(row.productName || "—")}</td>
-        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(row.origin || "—")}</td>
-        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(pos)}</td>
-        <td style="border:1px solid #cbd5e1;padding:6px 8px;text-align:right;">${escapeHtml(row.quantity ?? "")}</td>
-        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(qtyType)}</td>
-        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(row.expiry || "—")}</td>
-        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(row.remarks || "")}</td>
-        <td style="border:1px solid #cbd5e1;padding:6px 8px;">${escapeHtml(action)}</td>
+      const stripe = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+      const ac = actionColor(action);
+      return `<tr style="background:${stripe};">
+        <td style="padding:10px 12px;text-align:center;font-weight:700;color:#94a3b8;font-size:12px;border-bottom:1px solid #f1f5f9;">${i + 1}</td>
+        <td style="padding:10px 12px;font-weight:600;color:#0f172a;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.productName || "—")}</td>
+        <td style="padding:10px 12px;color:#475569;border-bottom:1px solid #f1f5f9;"><span style="display:inline-block;padding:2px 8px;background:#f1f5f9;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.3px;">${escapeHtml(row.origin || "—")}</span></td>
+        <td style="padding:10px 12px;color:#0f172a;font-weight:600;border-bottom:1px solid #f1f5f9;">${escapeHtml(pos)}</td>
+        <td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.quantity ?? "")}</td>
+        <td style="padding:10px 12px;color:#64748b;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(qtyType)}</td>
+        <td style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.expiry || "—")}</td>
+        <td style="padding:10px 12px;color:#475569;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.remarks || "")}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-block;padding:3px 10px;background:${ac.bg};color:${ac.fg};border-radius:6px;font-size:11px;font-weight:800;">${escapeHtml(action) || "—"}</span></td>
       </tr>`;
-    }).join("");
+    };
+
+    let runningIdx = 0;
+    const bodyHtml = isGrouped
+      ? groups.map((g) => {
+          const groupHeader = `<tr style="background:linear-gradient(90deg,#312e81 0%,#1e40af 100%);color:#ffffff;">
+            <td colspan="9" style="padding:10px 14px;font-size:12px;font-weight:900;letter-spacing:1px;text-transform:uppercase;">
+              📂 ${escapeHtml(g.label)} <span style="background:rgba(255,255,255,.18);padding:2px 9px;border-radius:999px;font-size:11px;margin-inline-start:8px;">${g.items.length}</span>
+            </td>
+          </tr>`;
+          const groupRows = g.items.map((row) => renderRow(row, runningIdx++)).join("");
+          return groupHeader + groupRows;
+        }).join("")
+      : groups[0].items.map((row, i) => renderRow(row, i)).join("");
+
     const noteHtml = note && String(note).trim()
-      ? `<div style="margin:14px 0;padding:10px 12px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:6px;"><b>Note:</b><br/>${escapeHtml(note).replace(/\n/g, "<br/>")}</div>`
+      ? `<div style="margin:18px 0;padding:14px 16px;background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);border-left:4px solid #f59e0b;border-radius:10px;color:#78350f;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">📝 Note from Inspector</div>
+          <div style="font-size:14px;line-height:1.6;">${escapeHtml(note).replace(/\n/g, "<br/>")}</div>
+        </div>`
       : "";
+
     const attInfo = attCount
-      ? `<div style="margin-top:8px;padding:8px 12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;font-size:12px;color:#1e3a8a;">📎 <b>${attCount} file(s) attached</b></div>`
+      ? `<div style="display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:10px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a8a;font-weight:700;">📎 <b>${attCount}</b> file(s) attached</div>`
       : "";
+
     return `
-      <div style="font-family:Inter,Roboto,Arial,sans-serif;background:#f1f5f9;padding:20px;color:#0f172a;">
-        <div style="max-width:900px;margin:auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08);">
-          <div style="background:#0f172a;color:#fff;padding:16px 22px;">
-            <div style="font-size:18px;font-weight:900;">AL MAWASHI</div>
-            <div style="font-size:12px;opacity:.85;">Trans Emirates Livestock Trading L.L.C.</div>
-          </div>
-          <div style="padding:18px 22px;">
-            <h3 style="margin:0;">Returns Report</h3>
-            <div style="color:#64748b;font-size:13px;margin-top:4px;">Date: <b>${escapeHtml(date)}</b> · ${items.length} item(s)</div>
-            ${attInfo}
-            ${noteHtml}
-            ${includeTable ? `
-            <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin-top:14px;font-size:12px;">
-              <tr style="background:#0f172a;color:#fff;">
-                <th style="border:1px solid #1e293b;padding:7px 8px;">SL</th>
-                <th style="border:1px solid #1e293b;padding:7px 8px;">PRODUCT</th>
-                <th style="border:1px solid #1e293b;padding:7px 8px;">ORIGIN</th>
-                <th style="border:1px solid #1e293b;padding:7px 8px;">POS</th>
-                <th style="border:1px solid #1e293b;padding:7px 8px;">QTY</th>
-                <th style="border:1px solid #1e293b;padding:7px 8px;">QTY TYPE</th>
-                <th style="border:1px solid #1e293b;padding:7px 8px;">EXPIRY</th>
-                <th style="border:1px solid #1e293b;padding:7px 8px;">REMARKS</th>
-                <th style="border:1px solid #1e293b;padding:7px 8px;">ACTION</th>
+      <div style="font-family:'Segoe UI',Inter,Roboto,Arial,sans-serif;background:#f1f5f9;padding:24px 16px;color:#0f172a;">
+        <div style="max-width:980px;margin:auto;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 10px 40px rgba(2,6,23,.08);border:1px solid #e2e8f0;">
+
+          <!-- Header band with logo -->
+          <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#312e81 100%);padding:22px 28px;color:#ffffff;">
+            <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
+              <tr>
+                <td style="vertical-align:middle;width:90px;">
+                  <div style="background:#ffffff;border-radius:12px;padding:8px;display:inline-block;box-shadow:0 4px 12px rgba(0,0,0,.25);">
+                    <img src="${MAWASHI_LOGO_B64}" alt="Al Mawashi" width="68" height="68" style="display:block;border-radius:6px;width:68px;height:68px;object-fit:cover;" />
+                  </div>
+                </td>
+                <td style="vertical-align:middle;padding-inline-start:18px;">
+                  <div style="font-size:11px;font-weight:800;letter-spacing:3px;opacity:.7;text-transform:uppercase;">Quality Control System</div>
+                  <div style="font-size:24px;font-weight:900;margin-top:4px;letter-spacing:.5px;">Returns Report</div>
+                  <div style="font-size:12px;opacity:.75;margin-top:4px;">Trans Emirates Livestock Trading L.L.C.</div>
+                </td>
+                <td style="vertical-align:middle;text-align:right;">
+                  <div style="background:rgba(255,255,255,.12);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:8px 14px;display:inline-block;">
+                    <div style="font-size:10px;opacity:.8;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Report Date</div>
+                    <div style="font-size:16px;font-weight:900;margin-top:2px;font-variant-numeric:tabular-nums;">${escapeHtml(date)}</div>
+                  </div>
+                </td>
               </tr>
-              ${rows}
-            </table>` : `
-            <div style="margin-top:14px;padding:14px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;text-align:center;color:#64748b;font-size:13px;">
-              📄 جدول المرتجعات الكامل (${items.length} صنف) في ملف الـ PDF المرفق.
+            </table>
+          </div>
+
+          <!-- Metrics strip -->
+          <div style="padding:18px 28px;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);border-bottom:1px solid #e2e8f0;">
+            <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+              <tr>
+                <td style="vertical-align:middle;">
+                  <div style="display:inline-flex;align-items:center;gap:10px;">
+                    <div style="background:#dbeafe;color:#1e40af;border-radius:10px;padding:8px 14px;font-weight:900;font-size:18px;font-variant-numeric:tabular-nums;">${totalCount}</div>
+                    <div>
+                      <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Total Items</div>
+                      <div style="font-size:13px;color:#0f172a;font-weight:700;margin-top:1px;">Returned for review</div>
+                    </div>
+                    ${isGrouped ? `<div style="margin-inline-start:10px;padding:5px 12px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:8px;font-size:11px;font-weight:800;">📂 Grouped by ${escapeHtml(GROUP_LABEL[groupBy]?.en || groupBy)} · ${groups.length} groups</div>` : ""}
+                    ${sortBy !== "default" ? `<div style="margin-inline-start:6px;padding:5px 12px;background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:8px;font-size:11px;font-weight:800;">↕️ Sorted by ${escapeHtml(sortBy)}</div>` : ""}
+                  </div>
+                </td>
+                <td style="text-align:right;vertical-align:middle;">${attInfo}</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Body -->
+          <div style="padding:22px 28px;">
+            ${noteHtml}
+
+            ${includeTable ? `
+            <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-top:${noteHtml ? 0 : 4}px;">
+              <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead>
+                  <tr style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#ffffff;">
+                    <th style="padding:12px 12px;text-align:center;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">#</th>
+                    <th style="padding:12px 12px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Product</th>
+                    <th style="padding:12px 12px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Origin</th>
+                    <th style="padding:12px 12px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">POS</th>
+                    <th style="padding:12px 12px;text-align:right;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Qty</th>
+                    <th style="padding:12px 12px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Unit</th>
+                    <th style="padding:12px 12px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Expiry</th>
+                    <th style="padding:12px 12px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Remarks</th>
+                    <th style="padding:12px 12px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Action</th>
+                  </tr>
+                </thead>
+                <tbody>${bodyHtml}</tbody>
+              </table>
+            </div>` : `
+            <div style="margin-top:8px;padding:24px;background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%);border:2px dashed #cbd5e1;border-radius:14px;text-align:center;">
+              <div style="font-size:36px;line-height:1;">📄</div>
+              <div style="margin-top:10px;color:#334155;font-weight:800;font-size:14px;">جدول المرتجعات الكامل في ملف الـ PDF المرفق</div>
+              <div style="margin-top:4px;color:#64748b;font-size:12px;">${totalCount} item(s) · Full details enclosed</div>
             </div>`}
           </div>
-          <div style="background:#f8fafc;padding:12px 22px;color:#64748b;font-size:11px;text-align:center;">
-            Generated by Al Mawashi QCS System
+
+          <!-- Footer -->
+          <div style="background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);padding:14px 28px;border-top:1px solid #e2e8f0;">
+            <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
+              <tr>
+                <td style="vertical-align:middle;font-size:11px;color:#64748b;font-weight:700;">
+                  ⚙️ Generated by Al Mawashi QCS System
+                </td>
+                <td style="vertical-align:middle;text-align:right;font-size:10px;color:#94a3b8;letter-spacing:.5px;">
+                  Quality · Safety · Trust
+                </td>
+              </tr>
+            </table>
           </div>
         </div>
       </div>`;
   }, []);
 
   const buildReturnsText = useCallback((rep, opts = {}) => {
-    const items = rep?.items || [];
     const date = rep?.reportDate || "—";
     const includeTable = !!opts.includeTable;
+    const sortBy  = opts.sortBy  || "default";
+    const groupBy = opts.groupBy || "none";
+    const { groups, totalCount } = arrangeItems(rep?.items || [], { sortBy, groupBy });
+    const isGrouped = groupBy !== "none";
     const lines = [];
     lines.push("AL MAWASHI — RETURNS REPORT");
     lines.push("═══════════════════════════");
-    lines.push(`Date: ${date}    Items: ${items.length}`);
+    lines.push(`Date: ${date}    Items: ${totalCount}`);
+    if (sortBy !== "default") lines.push(`Sorted by: ${sortBy}`);
+    if (isGrouped) lines.push(`Grouped by: ${groupBy}`);
     lines.push("");
     if (includeTable) {
-      items.forEach((row, i) => {
-        lines.push(`${i + 1}. ${row.productName || "—"}`);
-        lines.push(`   Origin: ${row.origin || "—"}  |  POS: ${row.butchery || row.pos || "—"}`);
-        lines.push(`   Qty: ${row.quantity ?? "—"} ${row.qtyType || ""}  |  Expiry: ${row.expiry || "—"}`);
-        if (row.remarks) lines.push(`   Remarks: ${row.remarks}`);
-        if (row.action) lines.push(`   Action: ${row.action}`);
-        lines.push("");
+      let n = 0;
+      groups.forEach((g) => {
+        if (isGrouped) {
+          lines.push(`📂 ${g.label} (${g.items.length})`);
+          lines.push("─".repeat(40));
+        }
+        g.items.forEach((row) => {
+          n++;
+          lines.push(`${n}. ${row.productName || "—"}`);
+          lines.push(`   Origin: ${row.origin || "—"}  |  POS: ${row.butchery || row.pos || "—"}`);
+          lines.push(`   Qty: ${row.quantity ?? "—"} ${row.qtyType || ""}  |  Expiry: ${row.expiry || "—"}`);
+          if (row.remarks) lines.push(`   Remarks: ${row.remarks}`);
+          if (row.action) lines.push(`   Action: ${row.action}`);
+          lines.push("");
+        });
       });
     } else {
-      lines.push(`📄 جدول المرتجعات الكامل (${items.length} صنف) في ملف الـ PDF المرفق.`);
+      lines.push(`📄 جدول المرتجعات الكامل (${totalCount} صنف) في ملف الـ PDF المرفق.`);
       lines.push("");
     }
     if (opts.note) {
@@ -3268,10 +3380,25 @@ export default function BrowseReturns() {
     return lines.join("\n");
   }, []);
 
-  const emailConfig = useMemo(() => ({
+  /* NOT memoized on purpose — generatePdf must see the latest handleExportPDF
+     (which closes over the current selectedReport). Memoizing this object
+     froze it to the first render where selectedReport was null, so
+     generatePdf returned undefined and EmailSendModal crashed on destructure. */
+  const emailConfig = {
     reportTitle: "Returns Report",
     getSubject: (rep) => `[Returns] Report — ${rep?.reportDate || "—"}`,
-    generatePdf: async (_rep) => handleExportPDF({ returnBlob: true }),
+    generatePdf: async (rep, pdfOpts = {}) => {
+      const target = rep || selectedReport;
+      if (!target) throw new Error("No report selected to email");
+      const result = await handleExportPDF({
+        returnBlob: true,
+        reportOverride: target,
+        sortBy:  pdfOpts.sortBy  || "default",
+        groupBy: pdfOpts.groupBy || "none",
+      });
+      if (!result || !result.blob) throw new Error("PDF generation produced no blob");
+      return result;
+    },
     buildHtml: buildReturnsHtml,
     buildText: buildReturnsText,
     getImages: collectReportImages,
@@ -3282,11 +3409,17 @@ export default function BrowseReturns() {
         { label: "Items", value: String(rep?.items?.length || 0) },
       ],
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [buildReturnsHtml, buildReturnsText, collectReportImages]);
+  };
 
   const handleExportPDF = async (opts = {}) => {
-    if (!selectedReport) return;
+    /* opts.reportOverride lets the email path explicitly pass the report,
+       so we never rely on the possibly-stale `selectedReport` closure. */
+    const report = opts.reportOverride || selectedReport;
+    if (!report) {
+      console.warn("[handleExportPDF] no report available", { opts, hasSelected: !!selectedReport });
+      if (opts.returnBlob) throw new Error("No report to export");
+      return;
+    }
     try {
       const JsPDF = await ensureJsPDF();
       await ensureAutoTable();
@@ -3300,7 +3433,7 @@ export default function BrowseReturns() {
         doc.setFont("helvetica", "bold"); doc.setFontSize(16);
         doc.text("Returns Report", marginL, 36);
         doc.setFont("helvetica", "normal"); doc.setFontSize(11);
-        doc.text(`Date: ${selectedReport.reportDate}`, marginL, 54);
+        doc.text(`Date: ${report.reportDate}`, marginL, 54);
         const rightX = pageWidth - marginR;
         doc.setFont("helvetica", "bold"); doc.setTextColor(180, 0, 0); doc.setFontSize(18);
         doc.text("AL MAWASHI", rightX, 30, { align: "right" });
@@ -3308,8 +3441,21 @@ export default function BrowseReturns() {
         doc.text("Trans Emirates Livestock Trading L.L.C.", rightX, 46, { align: "right" });
       };
       drawHeader();
-      const changeMap = changeMapByDate.get(selectedReport?.reportDate || "") || new Map();
-      const body = sortedRows.map((row, i) => {
+      const changeMap = changeMapByDate.get(report?.reportDate || "") || new Map();
+      /* For the email path: prefer the report's full item list rather than sortedRows
+         (which may be empty if the email is triggered without the view being mounted). */
+      const rowsForPdf = opts.reportOverride
+        ? (Array.isArray(report.items) ? report.items : [])
+        : sortedRows;
+
+      /* Apply email-modal sort + group choices (no-op when sortBy=default & groupBy=none) */
+      const { groups: pdfGroups } = arrangeItems(rowsForPdf, {
+        sortBy:  opts.sortBy  || "default",
+        groupBy: opts.groupBy || "none",
+      });
+      const isGroupedPdf = (opts.groupBy || "none") !== "none";
+
+      const buildBody = (rows, startIdx = 0) => rows.map((row, i) => {
         const pos = safeButchery(row);
         const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType || "" : row.qtyType || "";
         const curr = actionTextSafe(row);
@@ -3320,21 +3466,50 @@ export default function BrowseReturns() {
           const dateTxt = formatChangeDatePDF(ch);
           actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? `\n${dateTxt}` : ""}`;
         }
-        return [String(i + 1), row.productName || "", row.origin || "", pos || "", String(row.quantity ?? ""), qtyType, row.expiry || "", row.remarks || "", actionCell];
+        return [String(startIdx + i + 1), row.productName || "", row.origin || "", pos || "", String(row.quantity ?? ""), qtyType, row.expiry || "", row.remarks || "", actionCell];
       });
       const frac = [0.05, 0.18, 0.09, 0.08, 0.06, 0.08, 0.08, 0.18, 0.20];
       const columnStyles = {};
       frac.forEach((f, idx) => (columnStyles[idx] = { cellWidth: Math.floor(avail * f) }));
       columnStyles[0].halign = "center"; columnStyles[4].halign = "center"; columnStyles[6].halign = "center";
-      doc.autoTable({
-        head: [["SL", "PRODUCT", "ORIGIN", "POS", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"]],
-        body, margin: { top: marginTop, left: marginL, right: marginR }, tableWidth: avail,
+
+      const baseTableOpts = {
+        margin: { top: marginTop, left: marginL, right: marginR },
+        tableWidth: avail,
         styles: { font: "helvetica", fontSize: 10, cellPadding: 4, lineColor: [226, 232, 240], lineWidth: 0.5, halign: "left", valign: "middle", overflow: "linebreak", wordBreak: "break-word", minCellHeight: 16 },
         headStyles: { fillColor: [238, 242, 255], textColor: [15, 23, 42], fontStyle: "bold", halign: "center" },
         columnStyles,
         didDrawPage: () => drawHeader(),
-      });
-      const filename = `returns_${selectedReport.reportDate}.pdf`;
+      };
+
+      if (isGroupedPdf) {
+        /* Render one autoTable per group with a coloured banner row as a header.
+           autoTable lays out sequentially, so subsequent tables continue down the page. */
+        let runningStart = 0;
+        pdfGroups.forEach((g, gIdx) => {
+          doc.autoTable({
+            ...baseTableOpts,
+            head: [
+              [{
+                content: `📂 ${g.label}  (${g.items.length})`,
+                colSpan: 9,
+                styles: { fillColor: [49, 46, 129], textColor: 255, halign: "left", fontStyle: "bold", fontSize: 11 },
+              }],
+              ["SL", "PRODUCT", "ORIGIN", "POS", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"],
+            ],
+            body: buildBody(g.items, runningStart),
+            startY: gIdx === 0 ? undefined : (doc.lastAutoTable?.finalY || 0) + 8,
+          });
+          runningStart += g.items.length;
+        });
+      } else {
+        doc.autoTable({
+          ...baseTableOpts,
+          head: [["SL", "PRODUCT", "ORIGIN", "POS", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"]],
+          body: buildBody(pdfGroups[0]?.items || rowsForPdf),
+        });
+      }
+      const filename = `returns_${report.reportDate}.pdf`;
       if (opts.returnBlob) {
         const blob = doc.output("blob");
         const dataUri = doc.output("datauristring");
@@ -3344,7 +3519,7 @@ export default function BrowseReturns() {
       doc.save(filename);
       toast("PDF exported", "ok");
     } catch (e) {
-      console.error(e);
+      console.error("[handleExportPDF] failed:", e);
       if (opts.returnBlob) throw e;
       toast("Failed to generate PDF", "err");
     }

@@ -90,13 +90,31 @@ export function clearRecipientHistory() {
   try { localStorage.removeItem(RECIPIENT_HISTORY_KEY); } catch {}
 }
 
-/* ===== Saved Email Contacts (server + local fallback) ===== */
+/* ===== Saved Email Contacts (server + local fallback) =====
+   Contact shape:  { email: string, name: string }
+   Backward compat: legacy strings (just emails) are auto-upgraded to objects
+   with empty `name`. New writes always store the object form. */
+
+function normalizeContact(c) {
+  if (!c) return null;
+  if (typeof c === "string") {
+    const e = c.trim();
+    return e ? { email: e, name: "" } : null;
+  }
+  if (typeof c === "object") {
+    const e = String(c.email || "").trim();
+    if (!e) return null;
+    return { email: e, name: String(c.name || "").trim() };
+  }
+  return null;
+}
 
 function getLocalContacts() {
   try {
     const raw = localStorage.getItem(CONTACTS_LS_KEY);
     const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.map(normalizeContact).filter(Boolean);
   } catch { return []; }
 }
 
@@ -104,57 +122,89 @@ function setLocalContacts(arr) {
   try { localStorage.setItem(CONTACTS_LS_KEY, JSON.stringify(arr)); } catch {}
 }
 
-const dedupeCI = (arr) => {
-  const seen = new Set();
-  const out = [];
-  for (const x of arr) {
-    const v = String(x || "").trim();
-    const k = v.toLowerCase();
-    if (!v || seen.has(k)) continue;
-    seen.add(k);
-    out.push(v);
+/** Dedupe by email (case-insensitive); when duplicates exist, prefer the one
+    that has a non-empty name (later wins so server overrides local). */
+const dedupeContacts = (arr) => {
+  const map = new Map();
+  for (const c of arr) {
+    const n = normalizeContact(c);
+    if (!n) continue;
+    const k = n.email.toLowerCase();
+    const prev = map.get(k);
+    if (!prev) { map.set(k, n); continue; }
+    // merge: keep whichever has a name
+    map.set(k, { email: n.email, name: n.name || prev.name });
   }
-  return out.sort((a, b) => a.localeCompare(b));
+  return Array.from(map.values()).sort((a, b) => {
+    const an = (a.name || a.email).toLowerCase();
+    const bn = (b.name || b.email).toLowerCase();
+    return an.localeCompare(bn);
+  });
 };
 
-/** Fetch saved contacts (server merged with local cache). Always resolves. */
+/** Fetch saved contacts (server merged with local cache). Always resolves.
+    Returns array of {email, name} objects. */
 export async function listEmailContacts() {
   try {
     const recs = await listReportsByType(CONTACT_TYPE);
-    const serverEmails = (Array.isArray(recs) ? recs : [])
-      .map((r) => r?.payload?.email)
+    const serverContacts = (Array.isArray(recs) ? recs : [])
+      .map((r) => normalizeContact(r?.payload))
       .filter(Boolean);
-    const merged = dedupeCI([...serverEmails, ...getLocalContacts()]);
+    const merged = dedupeContacts([...serverContacts, ...getLocalContacts()]);
     setLocalContacts(merged);
     return merged;
   } catch {
-    return dedupeCI(getLocalContacts());
+    return dedupeContacts(getLocalContacts());
   }
 }
 
-/** Add a contact: validate, save to server (with local fallback). Returns the cleaned email. */
-export async function addEmailContact(email) {
+/** Add a contact: validate, save. Accepts (email) or (email, name) — second arg optional.
+    Returns the cleaned {email, name} object. */
+export async function addEmailContact(email, name = "") {
   const e = String(email || "").trim();
   if (!EMAIL_RE_LOCAL.test(e)) throw new Error("صيغة الإيميل غير صحيحة");
+  const n = String(name || "").trim();
 
   const existing = getLocalContacts();
-  if (existing.some((x) => x.toLowerCase() === e.toLowerCase())) {
-    return e; // already saved
+  const found = existing.find((x) => x.email.toLowerCase() === e.toLowerCase());
+  if (found) {
+    // Already exists — update name if a new non-empty one is supplied
+    if (n && n !== found.name) {
+      const next = existing.map((x) =>
+        x.email.toLowerCase() === e.toLowerCase() ? { email: x.email, name: n } : x
+      );
+      setLocalContacts(dedupeContacts(next));
+      try { await postMeta(CONTACT_TYPE, { email: e, name: n }); } catch {}
+      return { email: e, name: n };
+    }
+    return found;
   }
-  // Optimistic local save first
-  setLocalContacts(dedupeCI([...existing, e]));
+  // New: optimistic local save first
+  const newContact = { email: e, name: n };
+  setLocalContacts(dedupeContacts([...existing, newContact]));
   try {
-    await postMeta(CONTACT_TYPE, { email: e });
+    await postMeta(CONTACT_TYPE, { email: e, name: n });
   } catch {
     // server unreachable — kept locally, will re-sync on next listEmailContacts
   }
-  return e;
+  return newContact;
 }
 
-/** Remove from local cache (server records are append-only meta; we just hide locally). */
+/** Remove from local cache by email. */
 export function removeLocalContact(email) {
   const e = String(email || "").trim().toLowerCase();
-  setLocalContacts(getLocalContacts().filter((x) => x.toLowerCase() !== e));
+  setLocalContacts(getLocalContacts().filter((x) => x.email.toLowerCase() !== e));
+}
+
+/** Find a contact's display name by email (case-insensitive). Falls back to email. */
+export function contactLabel(emailOrContact, contacts = []) {
+  if (typeof emailOrContact === "object" && emailOrContact?.email) {
+    return emailOrContact.name || emailOrContact.email;
+  }
+  const e = String(emailOrContact || "").trim().toLowerCase();
+  if (!e) return "";
+  const found = contacts.find((c) => c.email.toLowerCase() === e);
+  return found?.name ? `${found.name} <${found.email}>` : (found?.email || emailOrContact);
 }
 
 export function isValidEmail(s) {

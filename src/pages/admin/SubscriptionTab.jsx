@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import API_BASE from "../../config/api";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
+import InvoicesSection from "./InvoicesSection";
 
 /* الخطط الحقيقية تُجلب من /api/plans (تبويب Plans). الألوان دوّارة لأن الجدول لا يخزّن لوناً. */
 const PLAN_COLORS = ["#64748b", "#3b82f6", "#7c3aed", "#0891b2", "#059669", "#db2777"];
@@ -133,7 +134,7 @@ export default function SubscriptionTab() {
       if (data.ok) {
         setSub(data.subscription);
         setEditing(false);
-        setMsg("✅ Subscription updated successfully");
+        setMsg("✅ " + t("subUpdated"));
         /* refresh the cached status used by the subscription guard */
         localStorage.setItem("subscription_cache", JSON.stringify({
           status:    data.subscription.status,
@@ -144,7 +145,7 @@ export default function SubscriptionTab() {
         setTimeout(() => setMsg(""), 3000);
       }
     } catch {
-      setMsg("❌ Failed to save — check connection");
+      setMsg("❌ " + t("failSave"));
     } finally {
       setSaving(false);
     }
@@ -163,14 +164,12 @@ export default function SubscriptionTab() {
       }}>
         <div style={{ fontWeight:800, fontSize:16, marginBottom:8 }}>⚠️ {t("subBackendMissing")}</div>
         <div style={{ fontSize:14, lineHeight:1.7 }}>
-          The subscription table doesn't exist on the server yet.<br/>
-          Please <strong>deploy the updated <code>index.cjs</code></strong> to Render,
-          then come back here.
+          {t("subBackendBody")}
         </div>
         <button onClick={load} style={{
           marginTop:14, background:"#f59e0b", color:"#fff", border:"none",
           borderRadius:8, padding:"8px 20px", fontWeight:700, fontSize:13, cursor:"pointer",
-        }}>🔄 Retry</button>
+        }}>🔄 {t("subRetry")}</button>
       </div>
     </div>
   );
@@ -198,13 +197,13 @@ export default function SubscriptionTab() {
       {expiringSoon && (
         <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:10,
                       padding:"14px 20px", color:"#92400e", fontWeight:700, marginBottom:16, fontSize:17 }}>
-          ⚠️ Subscription expires in {days} day{days !== 1 ? "s" : ""}! Please renew soon.
+          ⚠️ {t("subExpiresIn")} {days} {t("dayWord")}! {t("subRenewSoon")}
         </div>
       )}
       {isExpired && (
         <div style={{ background:"#fee2e2", border:"1px solid #fca5a5", borderRadius:10,
                       padding:"14px 20px", color:"#991b1b", fontWeight:700, marginBottom:16, fontSize:17 }}>
-          🚫 Subscription has expired — users are currently blocked from the system.
+          🚫 {t("subExpiredBlock")}
         </div>
       )}
       {msg && (
@@ -238,7 +237,7 @@ export default function SubscriptionTab() {
           {days !== null && (
             <div style={{ marginLeft:"auto", fontSize:17, fontWeight:700,
                           color: isExpired ? "#991b1b" : expiringSoon ? "#92400e" : "#064e3b" }}>
-              {isExpired ? "Expired" : `${days} days remaining`}
+              {isExpired ? t("subExpired") : `${days} ${t("subDays")}`}
             </div>
           )}
         </div>
@@ -247,64 +246,64 @@ export default function SubscriptionTab() {
         <div style={{ padding:"22px 24px" }}>
           {!editing ? (
             <>
-              <Row label="Plan"          value={planLabel} />
-              <Row label="Status"        value={statusMeta.label} />
-              <Row label="Start Date"    value={sub.start_date?.substring(0,10) || "—"} />
-              <Row label="End Date"      value={sub.end_date?.substring(0,10) || "—"} />
-              <Row label="Price"         value={sub.price ? `${sub.price} ${sub.currency || "USD"} / month` : "—"} />
-              <Row label="Plan Limits"   value={
+              <Row label={t("plan")}          value={planLabel} />
+              <Row label={t("status")}        value={statusMeta.label} />
+              <Row label={t("startDate")}     value={sub.start_date?.substring(0,10) || "—"} />
+              <Row label={t("endDate")}       value={sub.end_date?.substring(0,10) || "—"} />
+              <Row label={t("price")}         value={sub.price ? `${sub.price} ${sub.currency || "USD"} ${t("subPerMonth")}` : "—"} />
+              <Row label={t("subPlanLimits")} value={
                 currentPlan
-                  ? `${fmtLimit(currentPlan.max_branches)} branches · ${fmtLimit(currentPlan.max_users)} users`
+                  ? `${fmtLimit(currentPlan.max_branches)} ${t("branches")} · ${fmtLimit(currentPlan.max_users)} ${t("users")}`
                   : "—"
               } />
-              {sub.notes && <Row label="Notes" value={sub.notes} />}
-              <Row label="Last Updated"  value={sub.updated_by || "—"} />
+              {sub.notes && <Row label={t("notes")} value={sub.notes} />}
+              <Row label={t("subLastUpdated")}  value={sub.updated_by || "—"} />
 
               {isSuperAdmin ? (
                 <button onClick={() => setEditing(true)} style={{
                   marginTop:20, background:"#3b82f6", color:"#fff",
                   border:"none", borderRadius:8, padding:"12px 28px",
                   fontWeight:700, fontSize:18, cursor:"pointer",
-                }}>✏️ Edit Subscription</button>
+                }}>✏️ {t("subEdit")}</button>
               ) : (
                 <div style={{ marginTop:16, fontSize:16, color:"#94a3b8" }}>
-                  Contact your super-admin to modify subscription details.
+                  {t("subContactSuper")}
                 </div>
               )}
             </>
           ) : (
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-              <Field label="Plan">
+              <Field label={t("plan")}>
                 {plans.length > 0 ? (
                   <select value={form.plan} onChange={e => pickPlan(e.target.value)} style={selectStyle}>
                     {/* لو القيمة المخزّنة لا تطابق أي خطة حقيقية، اعرضها كي لا تُفقد */}
                     {!findPlan(plans, form.plan) && form.plan && (
-                      <option value={form.plan}>{form.plan} (custom)</option>
+                      <option value={form.plan}>{form.plan} ({t("subCustom")})</option>
                     )}
                     {plans.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                   </select>
                 ) : (
                   <div style={{ fontSize:15, color:"#92400e", background:"#fef3c7",
                                 border:"1px solid #fde68a", borderRadius:8, padding:"10px 14px" }}>
-                    No plans defined yet. Create plans in the <strong>Plans</strong> tab first.
+                    {t("subNoPlans")}
                   </div>
                 )}
               </Field>
-              <Field label="Status">
+              <Field label={t("status")}>
                 <select value={form.status} onChange={e => setForm(f => ({...f, status: e.target.value}))} style={selectStyle}>
-                  <option value="active">Active</option>
-                  <option value="trial">Trial</option>
-                  <option value="expired">Expired</option>
-                  <option value="suspended">Suspended</option>
+                  <option value="active">{t("stActive")}</option>
+                  <option value="trial">{t("stTrial")}</option>
+                  <option value="expired">{t("stExpired")}</option>
+                  <option value="suspended">{t("stSuspended")}</option>
                 </select>
               </Field>
-              <Field label="Start Date">
+              <Field label={t("startDate")}>
                 <input type="date" value={form.start_date} onChange={e => setForm(f => ({...f, start_date: e.target.value}))} style={inputStyle} />
               </Field>
-              <Field label="End Date">
+              <Field label={t("endDate")}>
                 <input type="date" value={form.end_date} onChange={e => setForm(f => ({...f, end_date: e.target.value}))} style={inputStyle} />
               </Field>
-              <Field label="Price">
+              <Field label={t("price")}>
                 <div style={{ display:"flex", gap:8 }}>
                   <input type="number" value={form.price} onChange={e => setForm(f => ({...f, price: e.target.value}))}
                     placeholder="0.00" style={{ ...inputStyle, flex:1 }} />
@@ -314,7 +313,7 @@ export default function SubscriptionTab() {
                   </select>
                 </div>
               </Field>
-              <Field label="Notes">
+              <Field label={t("notes")}>
                 <textarea value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))}
                   rows={3} style={{ ...inputStyle, resize:"vertical" }} />
               </Field>
@@ -324,12 +323,12 @@ export default function SubscriptionTab() {
                   padding:"12px 28px", fontWeight:700, fontSize:18,
                   cursor: saving ? "not-allowed" : "pointer", opacity: saving ? .7 : 1,
                 }}>
-                  {saving ? "Saving…" : "✅ Save Changes"}
+                  {saving ? t("saving") : `✅ ${t("subSaveChanges")}`}
                 </button>
                 <button onClick={() => { setEditing(false); load(); }} style={{
                   background:"#f1f5f9", color:"#475569", border:"none", borderRadius:8,
                   padding:"12px 28px", fontWeight:700, fontSize:18, cursor:"pointer",
-                }}>Cancel</button>
+                }}>{t("cancel")}</button>
               </div>
             </div>
           )}
@@ -339,7 +338,7 @@ export default function SubscriptionTab() {
       {/* Plans comparison — الخطط الحقيقية من تبويب Plans */}
       {plans.length > 0 && (
         <div style={{ marginTop:28 }}>
-          <h3 style={{ fontSize:18, fontWeight:700, color:"#475569", marginBottom:14 }}>Available Plans</h3>
+          <h3 style={{ fontSize:18, fontWeight:700, color:"#475569", marginBottom:14 }}>{t("subAvailPlans")}</h3>
           <div style={{ display:"grid", gridTemplateColumns:`repeat(${Math.min(plans.length, 3)},1fr)`, gap:12 }}>
             {plans.map((p, idx) => {
               const c        = planColor(idx);
@@ -352,12 +351,12 @@ export default function SubscriptionTab() {
                 }}>
                   <div style={{ fontWeight:800, color:c, fontSize:19 }}>{p.name}</div>
                   <div style={{ fontSize:26, fontWeight:900, color:"#1e293b", margin:"10px 0 6px" }}>
-                    {p.price > 0 ? `${p.price} ${p.currency}` : "Free"}
+                    {p.price > 0 ? `${p.price} ${p.currency}` : t("free")}
                   </div>
-                  <div style={{ fontSize:15, color:"#64748b" }}>{fmtLimit(p.max_branches)} branches</div>
-                  <div style={{ fontSize:15, color:"#64748b" }}>{fmtLimit(p.max_users)} users</div>
+                  <div style={{ fontSize:15, color:"#64748b" }}>{fmtLimit(p.max_branches)} {t("branches")}</div>
+                  <div style={{ fontSize:15, color:"#64748b" }}>{fmtLimit(p.max_users)} {t("users")}</div>
                   {isActive && (
-                    <div style={{ marginTop:8, fontSize:14, color:c, fontWeight:700 }}>Current Plan</div>
+                    <div style={{ marginTop:8, fontSize:14, color:c, fontWeight:700 }}>{t("subCurrentPlan")}</div>
                   )}
                 </div>
               );
@@ -365,6 +364,9 @@ export default function SubscriptionTab() {
           </div>
         </div>
       )}
+
+      {/* ── Invoices history & issuance ── */}
+      <InvoicesSection subscription={sub} />
     </div>
   );
 }

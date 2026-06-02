@@ -56,6 +56,8 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
   const [uploading, setUploading] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [newContact, setNewContact] = useState("");
+  const [newContactName, setNewContactName] = useState("");
+  const [contactSearch, setContactSearch] = useState("");
   const [contactBusy, setContactBusy] = useState(false);
   const [contactErr, setContactErr] = useState("");
 
@@ -73,12 +75,14 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
 
   async function handleAddContact() {
     const e = newContact.trim();
+    const n = newContactName.trim();
     setContactErr("");
     if (!isValidEmail(e)) { setContactErr("صيغة الإيميل غير صحيحة / Invalid email"); return; }
     setContactBusy(true);
     try {
-      await addEmailContact(e);
+      await addEmailContact(e, n);
       setNewContact("");
+      setNewContactName("");
       await reloadContacts();
     } catch (ex) {
       setContactErr(ex?.message || "فشل الحفظ / Save failed");
@@ -173,12 +177,22 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
         <div style={styles.section}>
           <div style={styles.sectionH}>📇 Email Contacts ({contacts.length})</div>
           <div style={styles.meta}>
-            هذه القائمة هي مصدر الإيميلات في To/CC/BCC. الإضافة من هنا فقط — تُحفظ على السيرفر.
+            كل جهة اتصال = <b>اسم شائع</b> + إيميل. تقدر تبحث وقت الإرسال بأي منهما.
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginTop: 8 }}>
+
+          {/* Add new — two fields side by side */}
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr auto", gap: 8, marginTop: 8 }}>
             <input
               style={styles.input}
-              placeholder="email@almawashi.ae"
+              placeholder="🏷️ الاسم الشائع (مثلاً: أحمد المدير)"
+              value={newContactName}
+              disabled={contactBusy}
+              onChange={(e) => setNewContactName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddContact(); } }}
+            />
+            <input
+              style={styles.input}
+              placeholder="✉️ email@almawashi.ae"
               value={newContact}
               disabled={contactBusy}
               onChange={(e) => setNewContact(e.target.value)}
@@ -190,24 +204,57 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
               disabled={contactBusy || !newContact.trim()}
               style={{ ...styles.btnPrimary, opacity: (contactBusy || !newContact.trim()) ? 0.5 : 1, whiteSpace: "nowrap" }}
             >
-              {contactBusy ? "…" : "+ Add Email"}
+              {contactBusy ? "…" : "+ Add"}
             </button>
           </div>
           {contactErr && <div style={{ ...styles.meta, color: "#dc2626", fontWeight: 700 }}>{contactErr}</div>}
+
+          {/* Search box */}
+          {contacts.length > 3 && (
+            <div style={{ position: "relative", marginTop: 12 }}>
+              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 14, pointerEvents: "none", color: "#94a3b8" }}>🔍</span>
+              <input
+                style={{ ...styles.input, paddingLeft: 32 }}
+                placeholder="ابحث بالاسم أو الإيميل…"
+                value={contactSearch}
+                onChange={(e) => setContactSearch(e.target.value)}
+              />
+            </div>
+          )}
+
           {contacts.length > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-              {contacts.map((c) => (
-                <span key={c} style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  background: "#eef2ff", color: "#3730a3", border: "1px solid #c7d2fe",
-                  borderRadius: 999, padding: "4px 6px 4px 10px", fontSize: 12, fontWeight: 700,
-                }}>
-                  {c}
-                  <button type="button" onClick={() => handleRemoveContact(c)}
-                    style={{ border: "none", background: "rgba(0,0,0,.08)", color: "#3730a3", borderRadius: 999, width: 18, height: 18, cursor: "pointer", lineHeight: "16px", fontWeight: 900, fontSize: 12, padding: 0 }}
-                    title="حذف">×</button>
-                </span>
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10, maxHeight: 240, overflowY: "auto" }}>
+              {(() => {
+                const q = contactSearch.trim().toLowerCase();
+                const filtered = q
+                  ? contacts.filter((c) =>
+                      (c.email || "").toLowerCase().includes(q) ||
+                      (c.name || "").toLowerCase().includes(q)
+                    )
+                  : contacts;
+                if (filtered.length === 0) {
+                  return <div style={{ ...styles.meta, marginTop: 4 }}>لا نتائج مطابقة.</div>;
+                }
+                return filtered.map((c) => (
+                  <div key={c.email} style={{
+                    display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between",
+                    background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8,
+                    padding: "8px 12px",
+                  }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 13 }}>
+                        {c.name || <span style={{ color: "#94a3b8", fontStyle: "italic" }}>بدون اسم</span>}
+                      </div>
+                      <div style={{ color: "#64748b", fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {c.email}
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => handleRemoveContact(c.email)}
+                      style={{ border: "none", background: "#fee2e2", color: "#991b1b", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 800, fontSize: 12 }}
+                      title="حذف">حذف</button>
+                  </div>
+                ));
+              })()}
             </div>
           ) : (
             <div style={{ ...styles.meta, marginTop: 8 }}>لا يوجد إيميلات محفوظة بعد.</div>

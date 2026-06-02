@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import API_BASE from "../../config/api";
 import { SECTION_ITEMS } from "../../utils/sectionItems";
+import { useSettingsLang } from "./_shared/settingsI18n";
 
 /* ═══════════════════════════════════════════════════════ CONSTANTS */
 
@@ -29,29 +30,29 @@ const MASTER_BRANCHES = [
 ];
 
 const SECTIONS = [
-  { id: "admin",            label: "👑 Admin" },
-  { id: "inspector",        label: "🔍 Inspector" },
-  { id: "supervisor",       label: "🛠️ Supervisor" },
-  { id: "daily",            label: "📅 Daily Monitor" },
-  { id: "ohc",              label: "🩺 OHC" },
-  { id: "returns",          label: "♻️ Returns" },
-  { id: "finalProduct",     label: "🏷️ Final Product" },
-  { id: "cars",             label: "🚗 Cars" },
-  { id: "maintenance",      label: "🔧 Maintenance" },
-  { id: "qcsView",          label: "📦 QCS Shipments" },
-  { id: "training",         label: "🎓 Training Certs" },
-  { id: "internalTraining", label: "🧑‍🏫 Internal Training" },
-  { id: "iso",              label: "📘 ISO & HACCP" },
-  { id: "halalAudit",       label: "📋 HALAL Audit" },
-  { id: "hse",              label: "🦺 HSE" },
-  { id: "settings",         label: "⚙️ Settings" },
+  { id: "admin",            icon: "👑",   nameKey: "amSecAdmin" },
+  { id: "inspector",        icon: "🔍",   nameKey: "amSecInspector" },
+  { id: "supervisor",       icon: "🛠️",  nameKey: "amSecSupervisor" },
+  { id: "daily",            icon: "📅",   nameKey: "amSecDaily" },
+  { id: "ohc",              icon: "🩺",   nameKey: "amSecOhc" },
+  { id: "returns",          icon: "♻️",  nameKey: "amSecReturns" },
+  { id: "finalProduct",     icon: "🏷️",  nameKey: "amSecFinalProduct" },
+  { id: "cars",             icon: "🚗",   nameKey: "amSecCars" },
+  { id: "maintenance",      icon: "🔧",   nameKey: "amSecMaintenance" },
+  { id: "qcsView",          icon: "📦",   nameKey: "amSecQcsView" },
+  { id: "training",         icon: "🎓",   nameKey: "amSecTraining" },
+  { id: "internalTraining", icon: "🧑‍🏫", nameKey: "amSecInternalTraining" },
+  { id: "iso",              icon: "📘",   nameKey: "amSecIso" },
+  { id: "halalAudit",       icon: "📋",   nameKey: "amSecHalalAudit" },
+  { id: "hse",              icon: "🦺",  nameKey: "amSecHse" },
+  { id: "settings",         icon: "⚙️",  nameKey: "amSecSettings" },
 ];
 
 const CRUD_OPS = [
-  { id: "view",   label: "👁️ View",   color: "#2563eb" },
-  { id: "write",  label: "✏️ Write",  color: "#059669" },
-  { id: "edit",   label: "📝 Edit",   color: "#d97706" },
-  { id: "delete", label: "🗑️ Delete", color: "#dc2626" },
+  { id: "view",   icon: "👁️", nameKey: "amView",   color: "#2563eb" },
+  { id: "write",  icon: "✏️", nameKey: "amWrite",  color: "#059669" },
+  { id: "edit",   icon: "📝", nameKey: "amEditOp", color: "#d97706" },
+  { id: "delete", icon: "🗑️", nameKey: "amDelOp",  color: "#dc2626" },
 ];
 
 const EMPTY_FORM = {
@@ -101,15 +102,16 @@ function normalizeBranches(val) {
   return {};
 }
 
-function checkPasswordStrength(pw) {
+function checkPasswordStrength(pw, t) {
   if (!pw) return null;
   const issues = [];
-  if (pw.length < 8)         issues.push("at least 8 characters");
-  if (!/[A-Za-z]/.test(pw)) issues.push("a letter");
-  if (!/[0-9]/.test(pw))    issues.push("a number");
-  if (issues.length === 0) return { level: "strong", color: "#16a34a", label: "🟢 Strong" };
-  if (issues.length === 1) return { level: "medium", color: "#d97706", label: "🟡 Fair — needs " + issues.join(", ") };
-  return { level: "weak", color: "#dc2626", label: "🔴 Weak — needs " + issues.join(", ") };
+  if (pw.length < 8)        issues.push(t("amPwAtLeast8"));
+  if (!/[A-Za-z]/.test(pw)) issues.push(t("amPwLetter"));
+  if (!/[0-9]/.test(pw))    issues.push(t("amPwNumber"));
+  const needs = issues.join(", ");
+  if (issues.length === 0) return { level: "strong", color: "#16a34a", label: `🟢 ${t("amPwStrong")}`, needs: "" };
+  if (issues.length === 1) return { level: "medium", color: "#d97706", label: `🟡 ${t("amPwFair")} ${needs}`, needs };
+  return { level: "weak", color: "#dc2626", label: `🔴 ${t("amPwWeak")} ${needs}`, needs };
 }
 
 function fmt(iso) {
@@ -155,6 +157,7 @@ const avatarGrad = (username) =>
    CRUD PERMISSIONS TABLE (light — inside white form card)
 ═══════════════════════════════════════════════════════ */
 function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
+  const { t } = useSettingsLang();
   const toggleSection = (sectionId) => {
     const next = { ...crudPerms };
     if (next[sectionId]) delete next[sectionId];
@@ -183,14 +186,14 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
   return (
     <div style={fs.permBox}>
       <div style={fs.permHeader}>
-        <span style={fs.permTitle}>🔐 Permissions</span>
+        <span style={fs.permTitle}>🔐 {t("amPermissions")}</span>
         <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
           <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer" }}>
             <input type="checkbox" checked={isFullAccess}
               onChange={e => onFullAccessChange(e.target.checked)}
               style={{ width:18, height:18, accentColor:"#7c3aed" }} />
             <span style={{ fontWeight:900, color:"#7c3aed", fontSize:15 }}>
-              ⭐ Full Access (all sections + all operations)
+              ⭐ {t("amFullAccess")}
             </span>
           </label>
           {!isFullAccess && (
@@ -199,7 +202,7 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
               SECTIONS.forEach(s => { next[s.id] = allSectionsOn ? ["view"] : CRUD_OPS.map(o => o.id); });
               onChange(next);
             }} style={fs.btnSelectAll}>
-              {allSectionsOn ? "⬇️ All View-Only" : "⬆️ All Full Access"}
+              {allSectionsOn ? `⬇️ ${t("amAllViewOnly")}` : `⬆️ ${t("amAllFullAccess")}`}
             </button>
           )}
         </div>
@@ -207,19 +210,19 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
 
       {isFullAccess ? (
         <div style={fs.fullAccessBanner}>
-          ⭐ This account has unrestricted access to all sections and operations.
+          ⭐ {t("amFullAccessBanner")}
         </div>
       ) : (
         <div style={{ overflowX:"auto" }}>
           <table style={fs.permTable}>
             <thead>
               <tr>
-                <th style={{ ...fs.permTh, textAlign:"left", minWidth:190 }}>Section</th>
-                <th style={fs.permTh}>Access</th>
+                <th style={{ ...fs.permTh, textAlign:"left", minWidth:190 }}>{t("amColSection")}</th>
+                <th style={fs.permTh}>{t("amColAccess")}</th>
                 {CRUD_OPS.map(op => (
-                  <th key={op.id} style={{ ...fs.permTh, color:op.color }}>{op.label}</th>
+                  <th key={op.id} style={{ ...fs.permTh, color:op.color }}>{op.icon} {t(op.nameKey)}</th>
                 ))}
-                <th style={fs.permTh}>All Ops</th>
+                <th style={fs.permTh}>{t("amColAllOps")}</th>
               </tr>
             </thead>
             <tbody>
@@ -228,7 +231,7 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
                 const ops = crudPerms[sec.id] || [];
                 return (
                   <tr key={sec.id} style={{ background: i % 2 === 0 ? "#f8fafc" : "#fff", opacity: hasAccess ? 1 : 0.5 }}>
-                    <td style={fs.permTd}><span style={{ fontWeight:800, fontSize:14 }}>{sec.label}</span></td>
+                    <td style={fs.permTd}><span style={{ fontWeight:800, fontSize:14 }}>{sec.icon} {t(sec.nameKey)}</span></td>
                     <td style={{ ...fs.permTd, textAlign:"center" }}>
                       <input type="checkbox" checked={hasAccess} onChange={() => toggleSection(sec.id)}
                         style={{ width:17, height:17, accentColor:"#2563eb", cursor:"pointer" }} />
@@ -244,7 +247,7 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
                     <td style={{ ...fs.permTd, textAlign:"center" }}>
                       {hasAccess && (
                         <button type="button" onClick={() => selectAllOps(sec.id)}
-                          style={fs.btnAllOps} title="Toggle all operations">
+                          style={fs.btnAllOps} title={t("amToggleAllOps")}>
                           {CRUD_OPS.every(o => ops.includes(o.id)) ? "🔓" : "🔒"}
                         </button>
                       )}
@@ -264,6 +267,7 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
    EMPLOYEES LIST (light — inside form card)
 ═══════════════════════════════════════════════════════ */
 function EmployeesList({ employees, onChange }) {
+  const { t } = useSettingsLang();
   const [newName, setNewName] = useState("");
   const add = () => {
     const n = newName.trim();
@@ -276,9 +280,9 @@ function EmployeesList({ employees, onChange }) {
   return (
     <div style={fs.empBox}>
       <div style={fs.permTitle}>
-        👷 Employees
+        👷 {t("amEmployees")}
         <span style={{ fontWeight:700, fontSize:12, color:"#94a3b8", marginLeft:8 }}>
-          (appear in the operator picker after login)
+          {t("amEmployeesHint")}
         </span>
       </div>
       <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
@@ -288,13 +292,13 @@ function EmployeesList({ employees, onChange }) {
             <button type="button" onClick={() => remove(name)} style={fs.empRemoveBtn}>×</button>
           </div>
         ))}
-        {employees.length === 0 && <span style={{ color:"#94a3b8", fontSize:13 }}>No employees added yet</span>}
+        {employees.length === 0 && <span style={{ color:"#94a3b8", fontSize:13 }}>{t("amNoEmployees")}</span>}
       </div>
       <div style={{ display:"flex", gap:8 }}>
-        <input style={{ ...fs.input, maxWidth:240, flex:1 }} placeholder="Employee name…"
+        <input style={{ ...fs.input, maxWidth:240, flex:1 }} placeholder={t("amEmployeeNamePh")}
           value={newName} onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && (e.preventDefault(), add())} />
-        <button type="button" onClick={add} style={fs.btnAdd2}>+ Add</button>
+        <button type="button" onClick={add} style={fs.btnAdd2}>+ {t("amAdd")}</button>
       </div>
     </div>
   );
@@ -304,10 +308,11 @@ function EmployeesList({ employees, onChange }) {
    BRANCH / PAGE SELECTOR (light — inside form card)
 ═══════════════════════════════════════════════════════ */
 function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind = "branches" }) {
+  const { t } = useSettingsLang();
   const list = Array.isArray(items) && items.length > 0 ? items : MASTER_BRANCHES;
   const isRestricted = selected.length > 0;
-  const noun  = kind === "pages" ? "page" : "branch";
-  const nounP = kind === "pages" ? "pages" : "branches";
+  const noun  = kind === "pages" ? t("amPageWord") : t("amBranchWord");
+  const nounP = kind === "pages" ? t("amPagesWord") : t("amBranchesWord");
   const toggle = (id) =>
     onChange(selected.includes(id) ? selected.filter(b => b !== id) : [...selected, id]);
 
@@ -315,30 +320,29 @@ function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind =
     <div style={{ border:`1.5px solid ${theme.border}`, borderRadius:14, padding:"16px 18px", marginBottom:14, background:theme.bg }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap", marginBottom:8 }}>
         <div style={{ fontWeight:900, fontSize:16, color:theme.accent }}>
-          {theme.icon} {theme.title} — {kind === "pages" ? "Page Access" : "Branch Access"}
+          {sectionLabel || `${theme.icon} ${theme.title}`} — {kind === "pages" ? t("amPageAccess") : t("amBranchAccess")}
         </div>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
           <button type="button" onClick={() => onChange(list.map(b => b.id))}
             style={{ fontSize:12, fontWeight:900, color:theme.accent, background:"#fff", border:`1px solid ${theme.border}`, borderRadius:8, cursor:"pointer", padding:"5px 11px", fontFamily:"inherit" }}>
-            ☑️ Select All
+            ☑️ {t("amSelectAll")}
           </button>
           <button type="button" onClick={() => onChange([])}
             style={{ fontSize:12, fontWeight:900, color:"#475569", background:"#fff", border:"1px solid #e2e8f0", borderRadius:8, cursor:"pointer", padding:"5px 11px", fontFamily:"inherit" }}>
-            ⬜ Clear
+            ⬜ {t("amClear")}
           </button>
         </div>
       </div>
 
       <p style={{ fontSize:13, color:"#475569", marginBottom:12, fontWeight:700 }}>
-        {nounP[0].toUpperCase() + nounP.slice(1)} this account can access in <strong>{sectionLabel || theme.title}</strong>.
-        Leave all unchecked for full access.
+        {kind === "pages" ? t("amAccessHelpPages") : t("amAccessHelpBranches")} <strong>{sectionLabel || theme.title}</strong>. {t("amAccessHelpTail")}
       </p>
 
       <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", marginBottom:12 }}>
         <input type="checkbox" checked={!isRestricted} onChange={() => onChange([])}
           style={{ width:17, height:17, accentColor:theme.accent }} />
         <span style={{ fontWeight:900, color:theme.accent, fontSize:15 }}>
-          ⭐ All {nounP[0].toUpperCase() + nounP.slice(1)} (no restriction)
+          ⭐ {kind === "pages" ? t("amAllPages") : t("amAllBranches")}
         </span>
       </label>
 
@@ -372,7 +376,7 @@ function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind =
         <div style={{ marginTop:12, padding:"8px 12px", borderRadius:8,
           background:theme.badgeBg, border:`1px solid ${theme.badgeBorder}`,
           fontSize:13, fontWeight:800, color:theme.badgeText }}>
-          🔒 Restricted to {selected.length} {selected.length !== 1 ? nounP : noun}
+          🔒 {t("amRestrictedTo")} {selected.length} {selected.length !== 1 ? nounP : noun}
         </div>
       )}
     </div>
@@ -383,6 +387,7 @@ function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind =
    ACCOUNT FORM (white card — inside dark panel)
 ═══════════════════════════════════════════════════════ */
 function AccountForm({ initial, onSave, onCancel, saving }) {
+  const { t } = useSettingsLang();
   const [form, setForm] = useState(initial || EMPTY_FORM);
   const [err, setErr]   = useState("");
   const isEdit = !!initial?.id;
@@ -391,61 +396,61 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     setErr("");
-    if (!form.username.trim()) return setErr("Username is required");
-    if (!isEdit && !form.password.trim()) return setErr("Password is required");
+    if (!form.username.trim()) return setErr(t("amUsernameReq"));
+    if (!isEdit && !form.password.trim()) return setErr(t("amPasswordReq"));
     if (form.password) {
-      const str = checkPasswordStrength(form.password);
-      if (str?.level === "weak") return setErr("Password is too weak — " + str.label.replace(/^🔴 Weak — /, ""));
-      if (form.password !== form.confirmPassword) return setErr("Passwords don't match");
+      const str = checkPasswordStrength(form.password, t);
+      if (str?.level === "weak") return setErr(`${t("amPasswordTooWeak")} ${str.needs}`);
+      if (form.password !== form.confirmPassword) return setErr(t("amPasswordsNoMatch"));
     }
     if (!form.isFullAccess && Object.keys(form.crudPerms).length === 0)
-      return setErr("Grant at least one section or enable Full Access");
+      return setErr(t("amGrantOne"));
     onSave(form);
   };
 
   return (
     <form onSubmit={handleSubmit} style={fs.formWrap}>
-      <h3 style={fs.title}>{isEdit ? "✏️ Edit Account" : "➕ Add New Account"}</h3>
+      <h3 style={fs.title}>{isEdit ? `✏️ ${t("amEditAccount")}` : `➕ ${t("amAddAccount")}`}</h3>
 
       <div style={fs.row}>
         <label style={fs.field}>
-          <span style={fs.label}>Username *</span>
+          <span style={fs.label}>{t("amUsername")} *</span>
           <input style={fs.input} value={form.username}
             onChange={e => set("username", e.target.value)}
-            placeholder="e.g. mohamad" disabled={isEdit} />
+            placeholder={t("amUsernamePh")} disabled={isEdit} />
         </label>
         <label style={fs.field}>
-          <span style={fs.label}>Display Name</span>
+          <span style={fs.label}>{t("amDisplayName")}</span>
           <input style={fs.input} value={form.displayName}
             onChange={e => set("displayName", e.target.value)}
-            placeholder="e.g. Mohammed Abdullah" />
+            placeholder={t("amDisplayNamePh")} />
         </label>
       </div>
 
       <div style={fs.row}>
         <div style={fs.field}>
-          <span style={fs.label}>{isEdit ? "New Password (blank = no change)" : "Password *"}</span>
+          <span style={fs.label}>{isEdit ? t("amNewPassword") : `${t("amPassword")} *`}</span>
           <input type="password" style={fs.input} value={form.password}
             onChange={e => set("password", e.target.value)}
-            placeholder={isEdit ? "Leave blank to keep" : "Enter password"}
+            placeholder={isEdit ? t("amPasswordKeepPh") : t("amPasswordEnterPh")}
             autoComplete="new-password" />
           {form.password && (() => {
-            const s = checkPasswordStrength(form.password);
+            const s = checkPasswordStrength(form.password, t);
             return <div style={{ marginTop:5, fontSize:13, fontWeight:800, color:s.color }}>{s.label}</div>;
           })()}
           <div style={{ fontSize:11, color:"#94a3b8", marginTop:3, fontWeight:700 }}>
-            Min 8 chars · must have a letter and a number
+            {t("amPasswordRule")}
           </div>
         </div>
         <label style={fs.field}>
-          <span style={fs.label}>Confirm Password</span>
+          <span style={fs.label}>{t("amConfirmPassword")}</span>
           <input type="password" style={fs.input} value={form.confirmPassword}
             onChange={e => set("confirmPassword", e.target.value)}
-            placeholder="Repeat password" autoComplete="new-password" />
+            placeholder={t("amConfirmPasswordPh")} autoComplete="new-password" />
           {form.confirmPassword && (
             <div style={{ marginTop:5, fontSize:13, fontWeight:800,
               color: form.password === form.confirmPassword ? "#16a34a" : "#dc2626" }}>
-              {form.password === form.confirmPassword ? "✅ Passwords match" : "❌ Passwords don't match"}
+              {form.password === form.confirmPassword ? `✅ ${t("amPasswordsMatch")}` : `❌ ${t("amPasswordsNoMatch")}`}
             </div>
           )}
         </label>
@@ -456,7 +461,7 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
           onChange={e => set("isAdmin", e.target.checked)}
           style={{ width:18, height:18, accentColor:"#7c3aed" }} />
         <span style={{ fontWeight:900, color:"#7c3aed", fontSize:15 }}>
-          👑 Admin — can manage accounts in Settings
+          👑 {t("amAdminCheckbox")}
         </span>
       </label>
 
@@ -478,13 +483,13 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
         return (
           <div style={{ marginBottom:4 }}>
             <div style={{ fontWeight:1000, fontSize:15, color:"#0f172a", marginBottom:4 }}>
-              🔐 Section Access Control
+              🔐 {t("amSectionAccessControl")}
               <span style={{ fontWeight:700, fontSize:12, color:"#94a3b8", marginLeft:6 }}>
-                (configured independently per section)
+                {t("amSectionAccessHint")}
               </span>
             </div>
             <p style={{ fontSize:12, color:"#64748b", marginBottom:12, fontWeight:700 }}>
-              For every section, choose which branches or pages are visible. Leave all unchecked = full access.
+              {t("amSectionAccessDesc")}
             </p>
             {activeSections.map(sid => {
               const cfg     = SECTION_ITEMS[sid];
@@ -493,7 +498,7 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
               return (
                 <BranchSelector key={sid} kind={cfg.kind}
                   items={cfg.kind === "pages" ? cfg.items : MASTER_BRANCHES}
-                  theme={theme} sectionLabel={secMeta?.label || theme.title}
+                  theme={theme} sectionLabel={secMeta ? `${secMeta.icon} ${t(secMeta.nameKey)}` : theme.title}
                   selected={Array.isArray(access[sid]) ? access[sid] : []}
                   onChange={list => updateSection(sid, list)} />
               );
@@ -506,9 +511,9 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
 
       <div style={{ display:"flex", gap:10, marginTop:22 }}>
         <button type="submit" disabled={saving} style={fs.btnSave}>
-          {saving ? "Saving…" : isEdit ? "💾 Save Changes" : "✅ Create Account"}
+          {saving ? t("saving") : isEdit ? `💾 ${t("amSaveChanges")}` : `✅ ${t("amCreateAccount")}`}
         </button>
-        <button type="button" onClick={onCancel} style={fs.btnCancel}>Cancel</button>
+        <button type="button" onClick={onCancel} style={fs.btnCancel}>{t("cancel")}</button>
       </div>
     </form>
   );
@@ -524,6 +529,7 @@ function daysSince(iso) {
 }
 
 function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminCount }) {
+  const { t } = useSettingsLang();
   const [hover, setHover] = useState(false);
   const initial = (user.display_name || user.username || "?")[0].toUpperCase();
   const grad    = avatarGrad(user.username);
@@ -538,11 +544,11 @@ function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminC
   /* Login freshness colour: green<7d, yellow<30d, red>=30d, gray=never */
   const dSince = daysSince(user.last_login);
   const freshness =
-    dSince === null  ? { color:"#94a3b8", label:"Never logged in" } :
-    dSince === 0     ? { color:"#34d399", label:"Today" } :
-    dSince <  7      ? { color:"#34d399", label:`${dSince}d ago` } :
-    dSince < 30      ? { color:"#fbbf24", label:`${dSince}d ago` } :
-                       { color:"#f87171", label:`${dSince}d ago` };
+    dSince === null  ? { color:"#94a3b8", label:t("amNeverLoggedIn") } :
+    dSince === 0     ? { color:"#34d399", label:t("amToday") } :
+    dSince <  7      ? { color:"#34d399", label:`${dSince} ${t("amDaysAgo")}` } :
+    dSince < 30      ? { color:"#fbbf24", label:`${dSince} ${t("amDaysAgo")}` } :
+                       { color:"#f87171", label:`${dSince} ${t("amDaysAgo")}` };
 
   return (
     <div
@@ -587,13 +593,13 @@ function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminC
         </div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:6, alignItems:"center" }}>
           {user.is_admin && (
-            <span style={ac.chip("#fbbf24","rgba(251,191,36,.16)")}>👑 Admin</span>
+            <span style={ac.chip("#fbbf24","rgba(251,191,36,.16)")}>👑 {t("adminTag")}</span>
           )}
           {isFullAcc ? (
-            <span style={ac.chip("#a78bfa","rgba(167,139,250,.16)")}>⭐ Full Access</span>
+            <span style={ac.chip("#a78bfa","rgba(167,139,250,.16)")}>⭐ {t("amFullAccessShort")}</span>
           ) : (
             <span style={ac.chip("#60a5fa","rgba(96,165,250,.16)")}>
-              🔐 {sections.length} section{sections.length !== 1 ? "s" : ""}
+              🔐 {sections.length} {sections.length !== 1 ? t("amSectionsWord") : t("amSectionWord")}
             </span>
           )}
           {Array.isArray(user.employees) && user.employees.length > 0 && (
@@ -605,7 +611,7 @@ function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminC
             padding:"3px 9px", borderRadius:999,
             background:`${freshness.color}1f`, border:`1px solid ${freshness.color}55`,
             whiteSpace:"nowrap" }}
-            title={`Last login: ${fmt(user.last_login)}`}>
+            title={`${t("amLastLogin")}: ${fmt(user.last_login)}`}>
             🕐 {freshness.label}
           </span>
         </div>
@@ -618,7 +624,7 @@ function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminC
         color:      user.is_active ? "#34d399" : "#f87171",
         border:    `1px solid ${user.is_active ? "rgba(52,211,153,.3)" : "rgba(248,113,113,.3)"}`,
       }}>
-        {user.is_active ? "● Active" : "● Off"}
+        {user.is_active ? `● ${t("amActive")}` : `● ${t("amOff")}`}
       </div>
 
       {/* Action buttons */}
@@ -627,7 +633,7 @@ function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminC
           ...ac.actBtn,
           background:"rgba(59,130,246,.2)", color:"#93c5fd",
           border:"1.5px solid rgba(59,130,246,.35)",
-        }} title="Edit account">✏️</button>
+        }} title={t("amEditAccountTip")}>✏️</button>
         <button className={canToggle ? "acm-actbtn" : ""} onClick={canToggle ? onToggle : undefined} disabled={!canToggle} style={{
           ...ac.actBtn,
           background: user.is_active ? "rgba(251,191,36,.18)" : "rgba(52,211,153,.18)",
@@ -636,9 +642,9 @@ function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminC
           opacity:    canToggle ? 1 : 0.45,
           cursor:     canToggle ? "pointer" : "not-allowed",
         }} title={
-          isSelf ? "You can't disable your own account"
-          : !canToggle ? "Can't disable the last admin"
-          : user.is_active ? "Disable account" : "Enable account"
+          isSelf ? t("amCantDisableSelf")
+          : !canToggle ? t("amCantDisableLastAdmin")
+          : user.is_active ? t("amDisableAccount") : t("amEnableAccount")
         }>
           {user.is_active ? "🔒" : "🔓"}
         </button>
@@ -647,7 +653,7 @@ function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminC
             ...ac.actBtn,
             background:"rgba(248,113,113,.18)", color:"#f87171",
             border:"1.5px solid rgba(248,113,113,.3)",
-          }} title="Delete account" data-delete-action="true">🗑️</button>
+          }} title={t("amDeleteAccountTip")} data-delete-action="true">🗑️</button>
         )}
       </div>
     </div>
@@ -673,6 +679,7 @@ const ac = {
    DORMANT ACCOUNTS — accounts inactive for 30/60+ days
 ═══════════════════════════════════════════════════════ */
 function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEdit, onDelete }) {
+  const { t } = useSettingsLang();
   /* Bucket by staleness — only active accounts, since disabled are already off */
   const buckets = { d30: [], d60: [], d90: [], never: [] };
   users.forEach(u => {
@@ -685,10 +692,10 @@ function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEd
   });
 
   const groups = [
-    { key:"never", icon:"🚫", label:"Never logged in",        color:"#94a3b8", help:"Created but never used", list:buckets.never },
-    { key:"d90",   icon:"🔴", label:"Dormant 90+ days",       color:"#f87171", help:"Strong candidate to disable", list:buckets.d90 },
-    { key:"d60",   icon:"🟠", label:"Dormant 60–89 days",     color:"#fb923c", help:"Likely abandoned account", list:buckets.d60 },
-    { key:"d30",   icon:"🟡", label:"Dormant 30–59 days",     color:"#fbbf24", help:"Review — possible inactive user", list:buckets.d30 },
+    { key:"never", icon:"🚫", label:t("amNeverLoggedIn"), color:"#94a3b8", help:t("amNeverHelp"),     list:buckets.never },
+    { key:"d90",   icon:"🔴", label:t("amDormant90"),     color:"#f87171", help:t("amDormant90Help"), list:buckets.d90 },
+    { key:"d60",   icon:"🟠", label:t("amDormant60"),     color:"#fb923c", help:t("amDormant60Help"), list:buckets.d60 },
+    { key:"d30",   icon:"🟡", label:t("amDormant30"),     color:"#fbbf24", help:t("amDormant30Help"), list:buckets.d30 },
   ];
   const totalDormant = buckets.never.length + buckets.d90.length + buckets.d60.length + buckets.d30.length;
 
@@ -705,9 +712,8 @@ function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEd
         <span style={{ fontSize:24 }}>{totalDormant === 0 ? "✅" : "⚠️"}</span>
         <div style={{ flex:1, minWidth:200 }}>
           {totalDormant === 0
-            ? "All active accounts logged in recently — no cleanup needed."
-            : <>Found <strong>{totalDormant}</strong> dormant account{totalDormant !== 1 ? "s" : ""} that haven't been used recently.
-                Review and disable any that belong to former employees.</>}
+            ? t("amDormantAllGood")
+            : <>{t("amDormantFound1")} <strong>{totalDormant}</strong> {t("amDormantFound2")}</>}
         </div>
       </div>
 
@@ -750,6 +756,7 @@ function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEd
    FAILED LOGINS MONITOR — security audit
 ═══════════════════════════════════════════════════════ */
 function FailedLoginsTab() {
+  const { t } = useSettingsLang();
   const [data, setData]       = useState({ recent: [], byIpLastHour: [] });
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -768,9 +775,9 @@ function FailedLoginsTab() {
   useEffect(() => { load(); }, [load]);
 
   const reasonMap = {
-    unknown_user:     { label: "Unknown user",     icon:"❓" },
-    wrong_password:   { label: "Wrong password",   icon:"🔑" },
-    account_disabled: { label: "Disabled account", icon:"🚫" },
+    unknown_user:     { label: t("amReasonUnknownUser"),   icon:"❓" },
+    wrong_password:   { label: t("amReasonWrongPassword"), icon:"🔑" },
+    account_disabled: { label: t("amReasonDisabled"),      icon:"🚫" },
   };
 
   if (notFound) {
@@ -778,7 +785,7 @@ function FailedLoginsTab() {
       <div style={{ padding:"16px 20px", borderRadius:12,
         background:"rgba(251,191,36,.14)", border:"1px solid rgba(251,191,36,.4)",
         color:"#fbbf24", fontWeight:800 }}>
-        ⚠️ Server endpoint /api/security/failed-logins not found — push the latest <strong>index.cjs</strong> to Render and refresh.
+        ⚠️ {t("amFailedNotFound")}
       </div>
     );
   }
@@ -787,9 +794,9 @@ function FailedLoginsTab() {
     <div>
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18, flexWrap:"wrap" }}>
         <h3 style={{ margin:0, fontWeight:1000, fontSize:18, color:"#f1f5f9" }}>
-          🛡️ Failed Login Attempts
+          🛡️ {t("amFailedTitle")}
         </h3>
-        <button className="acm-actbtn" onClick={load} style={p.btnRefresh}>🔄 Refresh</button>
+        <button className="acm-actbtn" onClick={load} style={p.btnRefresh}>🔄 {t("amRefresh")}</button>
       </div>
 
       {/* Suspicious IPs (last hour, 5+ attempts) */}
@@ -800,7 +807,7 @@ function FailedLoginsTab() {
           color:"#fca5a5",
         }}>
           <div style={{ fontWeight:1000, fontSize:15, marginBottom:8, color:"#f87171" }}>
-            🚨 Suspicious activity — possible brute force
+            🚨 {t("amSuspicious")}
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
             {data.byIpLastHour.filter(x => x.attempts >= 5).map(x => (
@@ -812,14 +819,14 @@ function FailedLoginsTab() {
                 <span style={{ fontWeight:1000, color:"#fff", fontSize:14 }}>{x.ip_addr || "unknown"}</span>
                 <span style={{ background:"rgba(248,113,113,.3)", color:"#fff",
                   padding:"2px 9px", borderRadius:999, fontWeight:900 }}>
-                  {x.attempts} attempts
+                  {x.attempts} {t("amAttempts")}
                 </span>
                 <span style={{ color:"rgba(255,255,255,.6)" }}>
-                  tried: {(x.usernames || []).slice(0,3).join(", ") || "—"}
+                  {t("amTried")}: {(x.usernames || []).slice(0,3).join(", ") || "—"}
                   {(x.usernames?.length || 0) > 3 && ` +${x.usernames.length - 3}`}
                 </span>
                 <span style={{ marginLeft:"auto", color:"rgba(255,255,255,.5)", fontSize:12 }}>
-                  last: {fmt(x.last_at)}
+                  {t("amLast")}: {fmt(x.last_at)}
                 </span>
               </div>
             ))}
@@ -830,27 +837,27 @@ function FailedLoginsTab() {
       {/* Stats row */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",
         gap:12, marginBottom:18 }}>
-        <FailStat color="#f87171" bg="rgba(248,113,113,.14)" label="Total recent" val={data.recent.length} />
-        <FailStat color="#fbbf24" bg="rgba(251,191,36,.14)" label="Last hour"
+        <FailStat color="#f87171" bg="rgba(248,113,113,.14)" label={t("amTotalRecent")} val={data.recent.length} />
+        <FailStat color="#fbbf24" bg="rgba(251,191,36,.14)" label={t("amLastHour")}
           val={data.byIpLastHour.reduce((a,b)=>a + (b.attempts||0), 0)} />
-        <FailStat color="#a78bfa" bg="rgba(167,139,250,.14)" label="Unique IPs (1h)"
+        <FailStat color="#a78bfa" bg="rgba(167,139,250,.14)" label={t("amUniqueIps")}
           val={data.byIpLastHour.length} />
       </div>
 
       {/* Recent attempts table */}
       {loading ? (
-        <div style={p.empty}><div style={{ fontSize:30, marginBottom:8 }}>⏳</div>Loading…</div>
+        <div style={p.empty}><div style={{ fontSize:30, marginBottom:8 }}>⏳</div>{t("loading")}</div>
       ) : data.recent.length === 0 ? (
         <div style={p.empty}>
           <div style={{ fontSize:30, marginBottom:8 }}>✅</div>
-          No failed login attempts recorded.
+          {t("amNoFailed")}
         </div>
       ) : (
         <div style={{ overflowX:"auto" }}>
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
               <tr>
-                {["Time","Username","Reason","IP"].map(h => (
+                {[t("amColTime"), t("amUsername"), t("amColReason"), t("amColIp")].map(h => (
                   <th key={h} style={{
                     padding:"14px 16px", fontSize:14, fontWeight:900,
                     color:"rgba(255,255,255,.6)", textAlign:"left",
@@ -904,6 +911,7 @@ function FailStat({ color, bg, label, val }) {
    ACTIVITY LOG (grouped by account — click to expand)
 ═══════════════════════════════════════════════════════ */
 function ActivityLogTab() {
+  const { t } = useSettingsLang();
   const [logs, setLogs]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter]   = useState("");
@@ -966,31 +974,31 @@ function ActivityLogTab() {
           <span style={{ position:"absolute", left:14, top:"50%", transform:"translateY(-50%)", fontSize:18, pointerEvents:"none" }}>🔍</span>
           <input
             style={{ ...p.searchInput, paddingLeft:42, width:"100%", boxSizing:"border-box" }}
-            placeholder="Filter by account name…"
+            placeholder={t("amFilterByAccount")}
             value={filter}
             onChange={e => setFilter(e.target.value)}
           />
         </div>
-        <button className="acm-actbtn" onClick={expandAll} style={p.btnRefresh}>📂 Expand All</button>
-        <button className="acm-actbtn" onClick={collapseAll} style={p.btnRefresh}>📁 Collapse All</button>
-        <button className="acm-actbtn" onClick={load} style={p.btnRefresh}>🔄 Refresh</button>
+        <button className="acm-actbtn" onClick={expandAll} style={p.btnRefresh}>📂 {t("amExpandAll")}</button>
+        <button className="acm-actbtn" onClick={collapseAll} style={p.btnRefresh}>📁 {t("amCollapseAll")}</button>
+        <button className="acm-actbtn" onClick={load} style={p.btnRefresh}>🔄 {t("amRefresh")}</button>
       </div>
 
       {/* Summary line */}
       {!loading && groups.length > 0 && (
         <div style={{ fontSize:14, color:"rgba(255,255,255,.55)", fontWeight:700, marginBottom:12 }}>
-          📊 Showing <strong style={{ color:"#e2e8f0" }}>{groups.length}</strong> account{groups.length !== 1 ? "s" : ""}
-          {" · "}<strong style={{ color:"#e2e8f0" }}>{logs.length}</strong> total events
-          {filter && <> · filtered by "{filter}"</>}
+          📊 {t("amShowing")} <strong style={{ color:"#e2e8f0" }}>{groups.length}</strong> {t("amAccountsWord")}
+          {" · "}<strong style={{ color:"#e2e8f0" }}>{logs.length}</strong> {t("amTotalEvents")}
+          {filter && <> · {t("amFilteredBy")} "{filter}"</>}
         </div>
       )}
 
       {loading ? (
-        <div style={p.empty}><div style={{ fontSize:30, marginBottom:8 }}>⏳</div>Loading activity…</div>
+        <div style={p.empty}><div style={{ fontSize:30, marginBottom:8 }}>⏳</div>{t("amLoadingActivity")}</div>
       ) : groups.length === 0 ? (
         <div style={p.empty}>
           <div style={{ fontSize:30, marginBottom:8 }}>{filter ? "🔍" : "📜"}</div>
-          {filter ? `No accounts match "${filter}"` : "No activity recorded yet."}
+          {filter ? `${t("amNoMatchAccounts")} "${filter}"` : t("amNoActivity")}
         </div>
       ) : (
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -1037,7 +1045,7 @@ function ActivityLogTab() {
                       {g.username}
                     </div>
                     <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:4, fontSize:13, color:"rgba(255,255,255,.55)", fontWeight:700 }}>
-                      <span>🕐 Last: <span style={{ color:lastColor, fontWeight:900 }}>{fmt(g.last?.created_at)}</span></span>
+                      <span>🕐 {t("amLast")}: <span style={{ color:lastColor, fontWeight:900 }}>{fmt(g.last?.created_at)}</span></span>
                       {g.uniqueIps > 1 && <span>🌐 {g.uniqueIps} IPs</span>}
                     </div>
                   </div>
@@ -1081,7 +1089,7 @@ function ActivityLogTab() {
                     <table style={{ width:"100%", borderCollapse:"collapse" }}>
                       <thead>
                         <tr>
-                          {["Time","Operator","Action","IP"].map(h => (
+                          {[t("amColTime"), t("amColOperator"), t("amColAction"), t("amColIp")].map(h => (
                             <th key={h} style={al.subTh}>{h}</th>
                           ))}
                         </tr>
@@ -1102,9 +1110,9 @@ function ActivityLogTab() {
                               <td style={al.td}>{fmt(log.created_at)}</td>
                               <td style={{ ...al.td, color:"rgba(255,255,255,.6)" }}>{op}</td>
                               <td style={{ ...al.td, fontWeight:900, color }}>
-                                {isLogin  ? "🟢 login"
-                                 : isLogout ? "🔴 logout"
-                                 : isFailed ? `⚠️ failed${reason ? ` (${reason})` : ""}`
+                                {isLogin  ? `🟢 ${t("amActionLogin")}`
+                                 : isLogout ? `🔴 ${t("amActionLogout")}`
+                                 : isFailed ? `⚠️ ${t("amActionFailed")}${reason ? ` (${reason})` : ""}`
                                  : log.action}
                               </td>
                               <td style={{ ...al.td, fontSize:14, color:"rgba(255,255,255,.45)" }}>
@@ -1145,6 +1153,7 @@ const al = {
    MAIN — Account Control Center
 ═══════════════════════════════════════════════════════ */
 export default function AccountsManagementTab({ onClose }) {
+  const { t, dir } = useSettingsLang();
   const [view, setView]         = useState("list");
   const [users, setUsers]       = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -1176,7 +1185,7 @@ export default function AccountsManagementTab({ onClose }) {
   };
 
   const handleSave = async (form) => {
-    if (!serverReady) { showMsg("err", "Server not deployed yet"); return; }
+    if (!serverReady) { showMsg("err", t("amServerNotDeployed")); return; }
     setSaving(true);
     try {
       const isEdit = !!editUser?.id;
@@ -1196,12 +1205,12 @@ export default function AccountsManagementTab({ onClose }) {
       const r = await fetch(url, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
       const d = await r.json();
       if (!d.ok) {
-        showMsg("err", d.error === "username_taken" ? "Username already taken." : (d.error || "Server error"));
+        showMsg("err", d.error === "username_taken" ? t("amUsernameTaken") : (d.error || t("amServerError")));
       } else {
-        showMsg("ok", isEdit ? "Account updated ✅" : "Account created ✅");
+        showMsg("ok", isEdit ? `${t("amAccountUpdated")} ✅` : `${t("amAccountCreated")} ✅`);
         setView("list"); setEditUser(null); loadUsers();
       }
-    } catch { showMsg("err", "Network error — please try again"); }
+    } catch { showMsg("err", t("amNetworkError")); }
     setSaving(false);
   };
 
@@ -1212,13 +1221,13 @@ export default function AccountsManagementTab({ onClose }) {
       catch { return ""; }
     })();
     if (user.is_active && user.username === currentName) {
-      showMsg("err", "You can't disable your own account while logged in");
+      showMsg("err", t("amCantDisableSelfLoggedIn"));
       return;
     }
     /* Don't allow disabling the last active admin */
     if (user.is_active && user.is_admin &&
         users.filter(u => u.is_admin && u.is_active).length <= 1) {
-      showMsg("err", "Can't disable the last active admin");
+      showMsg("err", t("amCantDisableLastActiveAdmin"));
       return;
     }
     try {
@@ -1229,11 +1238,11 @@ export default function AccountsManagementTab({ onClose }) {
       const d = await r.json();
       if (d.ok) {
         setUsers(prev => prev.map(u => u.id === user.id ? d.user : u));
-        showMsg("ok", user.is_active ? "Account disabled" : "Account enabled");
+        showMsg("ok", user.is_active ? t("amAccountDisabled") : t("amAccountEnabled"));
       } else {
-        showMsg("err", d.error || "Operation rejected by server");
+        showMsg("err", d.error || t("amOperationRejected"));
       }
-    } catch { showMsg("err", "Toggle failed"); }
+    } catch { showMsg("err", t("amToggleFailed")); }
   };
 
   const handleDelete = async (user) => {
@@ -1243,15 +1252,15 @@ export default function AccountsManagementTab({ onClose }) {
       catch { return ""; }
     })();
     if (user.username === currentName) {
-      showMsg("err", "You can't delete your own account");
+      showMsg("err", t("amCantDeleteSelf"));
       setConfirmDel(null); return;
     }
     if (user.username === "admin") {
-      showMsg("err", "The root admin account is protected");
+      showMsg("err", t("amRootProtected"));
       setConfirmDel(null); return;
     }
     if (user.is_admin && users.filter(u => u.is_admin && u.is_active).length <= 1) {
-      showMsg("err", "Can't delete the last active admin");
+      showMsg("err", t("amCantDeleteLastAdmin"));
       setConfirmDel(null); return;
     }
     try {
@@ -1259,11 +1268,11 @@ export default function AccountsManagementTab({ onClose }) {
       const d = await r.json();
       if (d.ok) {
         setUsers(prev => prev.filter(u => u.id !== user.id));
-        showMsg("ok", `Deleted "${user.username}"`);
+        showMsg("ok", `${t("amDeleted")} "${user.username}"`);
       } else {
-        showMsg("err", d.error || "Delete failed");
+        showMsg("err", d.error || t("amDeleteFailed"));
       }
-    } catch { showMsg("err", "Delete failed"); }
+    } catch { showMsg("err", t("amDeleteFailed")); }
     setConfirmDel(null);
   };
 
@@ -1302,10 +1311,10 @@ export default function AccountsManagementTab({ onClose }) {
   const adminCount = users.filter(u => u.is_admin && u.is_active).length;
 
   const stats = [
-    { label:"Total",    val:users.length,                              color:"#60a5fa", bg:"rgba(96,165,250,.15)"  },
-    { label:"Active",   val:users.filter(u => u.is_active).length,    color:"#34d399", bg:"rgba(52,211,153,.15)"  },
-    { label:"Disabled", val:users.filter(u => !u.is_active).length,   color:"#f87171", bg:"rgba(248,113,113,.15)" },
-    { label:"Admins",   val:users.filter(u => u.is_admin).length,     color:"#fbbf24", bg:"rgba(251,191,36,.15)"  },
+    { label:t("amStatTotal"),    val:users.length,                              color:"#60a5fa", bg:"rgba(96,165,250,.15)"  },
+    { label:t("amStatActive"),   val:users.filter(u => u.is_active).length,    color:"#34d399", bg:"rgba(52,211,153,.15)"  },
+    { label:t("amStatDisabled"), val:users.filter(u => !u.is_active).length,   color:"#f87171", bg:"rgba(248,113,113,.15)" },
+    { label:t("amStatAdmins"),   val:users.filter(u => u.is_admin).length,     color:"#fbbf24", bg:"rgba(251,191,36,.15)"  },
   ];
 
   /* active nav key */
@@ -1322,16 +1331,16 @@ export default function AccountsManagementTab({ onClose }) {
   }).length;
 
   const NAV = [
-    { id:"list",     icon:"👥", label:"All Accounts", badge: users.length },
-    { id:"new",      icon:"➕", label:"Add Account" },
-    { id:"dormant",  icon:"😴", label:"Dormant",      badge: dormantCount || undefined,
+    { id:"list",     icon:"👥", label:t("amNavAll"), badge: users.length },
+    { id:"new",      icon:"➕", label:t("amNavAdd") },
+    { id:"dormant",  icon:"😴", label:t("amNavDormant"), badge: dormantCount || undefined,
       badgeColor: dormantCount > 0 ? "warn" : null },
-    { id:"security", icon:"🛡️", label:"Failed Logins" },
-    { id:"activity", icon:"📜", label:"Activity Log" },
+    { id:"security", icon:"🛡️", label:t("amNavFailed") },
+    { id:"activity", icon:"📜", label:t("amNavActivity") },
   ];
 
   return (
-    <div style={p.shell}>
+    <div style={p.shell} dir={dir}>
       <style>{`
         .acm-tab:hover{background:rgba(255,255,255,.1) !important; color:#fff !important;}
         .acm-actbtn:hover{filter:brightness(1.15); transform:translateY(-1px);}
@@ -1357,7 +1366,7 @@ export default function AccountsManagementTab({ onClose }) {
         {/* Action buttons */}
         <button className="acm-actbtn" onClick={exportCSV}
           style={{ ...p.btnToolbar, background:"rgba(16,185,129,.18)", color:"#34d399", border:"1px solid rgba(16,185,129,.35)" }}
-          title="Export all accounts as CSV">
+          title={t("amExportCsvTip")}>
           📥 CSV
         </button>
         {onClose && (
@@ -1406,7 +1415,7 @@ export default function AccountsManagementTab({ onClose }) {
             background:"rgba(167,139,250,.15)", border:"1px solid rgba(167,139,250,.3)",
             fontSize:15, fontWeight:800, color:"#c4b5fd",
           }}>
-            ✏️ Editing <strong>{editUser.username}</strong>
+            ✏️ {t("amEditing")} <strong>{editUser.username}</strong>
             <button onClick={() => { setView("list"); setEditUser(null); }}
               style={{ background:"none", border:"none", cursor:"pointer", color:"#c4b5fd",
                 fontWeight:900, fontSize:18, padding:"0 2px", lineHeight:1 }}>×</button>
@@ -1433,7 +1442,7 @@ export default function AccountsManagementTab({ onClose }) {
                 background:"transparent", border:"none", cursor:"pointer",
                 color:"inherit", fontSize:18, fontWeight:1000, padding:"0 4px",
                 lineHeight:1, opacity:0.7,
-              }} title="Dismiss">✕</button>
+              }} title={t("amDismiss")}>✕</button>
             </div>
           )}
 
@@ -1444,7 +1453,7 @@ export default function AccountsManagementTab({ onClose }) {
               background:"rgba(251,191,36,.14)", border:"1px solid rgba(251,191,36,.35)",
               color:"#fbbf24", fontWeight:800, fontSize:14,
             }}>
-              ⚠️ Server endpoint not found — push <strong>index.cjs</strong> to Render, then refresh.
+              ⚠️ {t("amServerNotFound")}
             </div>
           )}
 
@@ -1458,28 +1467,28 @@ export default function AccountsManagementTab({ onClose }) {
                   <input
                     className="acm-searchinput"
                     style={{ ...p.searchInput, paddingLeft:40, width:"100%", boxSizing:"border-box" }}
-                    placeholder="Search by name or username…"
+                    placeholder={t("amSearchPlaceholder")}
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                   />
                 </div>
                 <button className="acm-actbtn" onClick={loadUsers} style={p.btnRefresh}>
-                  🔄 Refresh
+                  🔄 {t("amRefresh")}
                 </button>
                 <button className="acm-actbtn"
                   onClick={() => { setEditUser(null); setView("form"); }}
                   style={{ ...p.btnRefresh, background:"rgba(59,130,246,.22)", color:"#93c5fd", border:"1px solid rgba(59,130,246,.4)" }}>
-                  ➕ Add Account
+                  ➕ {t("amNavAdd")}
                 </button>
               </div>
 
               {/* Content */}
               {loading ? (
-                <div style={p.empty}><div style={{ fontSize:34, marginBottom:10 }}>⏳</div>Loading accounts…</div>
+                <div style={p.empty}><div style={{ fontSize:34, marginBottom:10 }}>⏳</div>{t("amLoadingAccounts")}</div>
               ) : filteredUsers.length === 0 ? (
                 <div style={p.empty}>
                   <div style={{ fontSize:34, marginBottom:10 }}>{search ? "🔍" : "👥"}</div>
-                  {search ? `No accounts match "${search}"` : "No accounts yet — click Add Account"}
+                  {search ? `${t("amNoMatchAccounts")} "${search}"` : t("amNoAccounts")}
                 </div>
               ) : (
                 <div style={p.cardsGrid}>
@@ -1530,23 +1539,23 @@ export default function AccountsManagementTab({ onClose }) {
         <div style={p.overlay}>
           <div style={p.modal}>
             <div style={{ fontWeight:1000, fontSize:20, marginBottom:10, color:"#f1f5f9" }}>
-              🗑️ Delete Account
+              🗑️ {t("amDeleteAccountTitle")}
             </div>
             <p style={{ color:"rgba(255,255,255,.7)", marginBottom:20, fontSize:15, lineHeight:1.65 }}>
-              Delete account <strong style={{ color:"#f1f5f9" }}>{confirmDel.username}</strong>?<br/>
-              This action cannot be undone.
+              {t("amDeleteConfirm1")} <strong style={{ color:"#f1f5f9" }}>{confirmDel.username}</strong>?<br/>
+              {t("amDeleteConfirm2")}
             </p>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={() => handleDelete(confirmDel)} style={{
                 flex:1, padding:"13px", background:"#dc2626", color:"#fff",
                 border:"none", borderRadius:10, fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
-              }} data-delete-action="true">🗑️ Delete</button>
+              }} data-delete-action="true">🗑️ {t("delete")}</button>
               <button onClick={() => setConfirmDel(null)} style={{
                 flex:1, padding:"13px",
                 background:"rgba(255,255,255,.1)", color:"#e2e8f0",
                 border:"1px solid rgba(255,255,255,.18)", borderRadius:10,
                 fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
-              }}>Cancel</button>
+              }}>{t("cancel")}</button>
             </div>
           </div>
         </div>

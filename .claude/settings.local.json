@@ -209,7 +209,10 @@
       "Bash(echo \"BUILD_EXIT=$?\")",
       "Bash(powershell -NoProfile -Command \"\\(Get-Content 'D:\\\\inspection-react-full\\\\src\\\\pages\\\\training\\\\TrainingSessionsList.helpers.js'\\).Count; '----CREATE----'; \\(Get-Content 'D:\\\\inspection-react-full\\\\src\\\\pages\\\\training\\\\TrainingSessionCreate.jsx'\\).Count\")",
       "PowerShell($p='D:\\\\inspection-react-full\\\\src\\\\pages\\\\training\\\\TrainingAdmin.jsx'; \"LINES=\" + \\(Get-Content $p\\).Count + \" SIZE=\" + \\(Get-Item $p\\).Length)",
-      "PowerShell(node 'D:\\\\inspection-react-full\\\\__syncheck.cjs')"
+      "PowerShell(node 'D:\\\\inspection-react-full\\\\__syncheck.cjs')",
+      "Bash(node --check index.cjs)",
+      "Bash(awk 'NR>=575 && NR<=600' \"D:/inspection-react-full/src/App.jsx\")",
+      "Bash(node -e \"const fs=require\\('fs'\\);const b=fs.readFileSync\\('public/assets/almawashi-logo.jpg'\\).toString\\('base64'\\);console.log\\('Size base64:',b.length,'chars'\\);console.log\\('First 60:',b.slice\\(0,60\\)\\);fs.writeFileSync\\('src/assets/mawashi-logo-b64.js','// Auto-generated — Al Mawashi logo as base64 data URI for email\\\\nexport const MAWASHI_LOGO_B64 = \\\\\"data:image/jpeg;base64,'+b+'\\\\\";\\\\n'\\);console.log\\('Written to src/assets/mawashi-logo-b64.js'\\);\")"
     ]
   }
 }
