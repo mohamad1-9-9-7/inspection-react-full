@@ -254,6 +254,11 @@ const ALL_ROLES = [
     glow: "rgba(234,179,8,.45)",
   },
   {
+    id: "emailCenter", label: "Email Center", route: "/email-center", icon: "📨",
+    grad: "linear-gradient(135deg,#1e40af,#7c3aed)",
+    glow: "rgba(30,64,175,.45)",
+  },
+  {
     id: "settings", label: "Settings", route: "/settings", icon: "⚙️",
     grad: "linear-gradient(135deg,#475569,#334155)",
     glow: "rgba(71,85,105,.45)",

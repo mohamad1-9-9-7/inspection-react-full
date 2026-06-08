@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import SignatureName from "../../../../shared/SignatureName";
 
 
 const TYPE     = "pos19_sanitizer_concentration";
@@ -203,8 +204,8 @@ export default function SanitizerConcentrationVerificationView() {
               </table>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginTop:12,fontSize:12}}>
-              <div><strong>Checked by:</strong> {safe(record.payload?.checkedBy)}</div>
-              <div><strong>Verified by:</strong> {safe(record.payload?.verifiedBy)}</div>
+              <div><strong>Checked by:</strong> <SignatureName name={safe(record.payload?.checkedBy)} underline={false} /></div>
+              <div><strong>Verified by:</strong> <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} /></div>
               <div><strong>Rev.Date:</strong> {safe(record.payload?.revDate)}</div>
               <div><strong>Rev.No:</strong> {safe(record.payload?.revNo)}</div>
             </div>

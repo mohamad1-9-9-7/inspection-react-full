@@ -105,6 +105,10 @@ const COURSE_OPTIONS = [
   { value: "PIC", label: "Person In Charge (PIC)" },
   { value: "EFST", label: "EFST" },
   { value: "HACCP", label: "HACCP" },
+  { value: "HALAL", label: "شهادة الحلال" },
+  { value: "FIRST_AID", label: "الإسعافات الأولية" },
+  { value: "EMERGENCY", label: "الطوارئ" },
+  { value: "ISO22000_AUDIT", label: "التدقيق الداخلي ايزو 22000" },
   { value: "OTHER", label: "Other / Custom" },
 ];
 

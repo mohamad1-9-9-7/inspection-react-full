@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/qcs/InternalAuditView.jsx
 import React, { useState, useEffect, useCallback } from "react";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 /* ===== API base ===== */
 
@@ -233,7 +234,7 @@ export default function InternalAuditView() {
                   <div style={{ fontSize: 13, color: "#64748b", display: "flex", gap: 16, flexWrap: "wrap" }}>
                     {h.conductedBy && <span>👤 <b>{h.conductedBy}</b></span>}
                     {ft.auditorName && <span>✍️ {ft.auditorName}</span>}
-                    {h.verifiedBy  && <span>✅ Verified by: {h.verifiedBy}</span>}
+                    {h.verifiedBy  && <span>✅ Verified by: <SignatureName name={h.verifiedBy} underline={false} inline /></span>}
                   </div>
                 </div>
 

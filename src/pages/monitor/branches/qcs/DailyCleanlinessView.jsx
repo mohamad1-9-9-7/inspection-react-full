@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 /* ===== API base (نفس أسلوب مشروعك) ===== */
 
@@ -377,8 +378,8 @@ export default function DailyCleanlinessView() {
 
             {/* التذييل */}
             <div style={{ marginTop:"1.5rem", display:"flex", justifyContent:"space-between", fontWeight:600, padding:"0 1rem" }}>
-              <span>Checked By: {ftr?.checkedBy || "—"}</span>
-              <span>Verified By: {ftr?.verifiedBy || "—"}</span>
+              <SignatureName label="Checked By" name={ftr?.checkedBy} align="start" />
+              <SignatureName label="Verified By" name={ftr?.verifiedBy} align="end" />
             </div>
           </div>
         )}

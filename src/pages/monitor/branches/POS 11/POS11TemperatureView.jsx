@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 /* ===== API base (متوافق مع نمط المشروع) ===== */
 
@@ -502,16 +503,9 @@ export default function POS11TemperatureView() {
                   {formatDMY(payload?.date)}
                 </span>
               </div>
-              <div style={{ fontWeight: 700 }}>
-                Checked By:{" "}
-                <span style={{ fontWeight: 800 }}>
-                  {safe(payload?.checkedBy) || "—"}
-                </span>
-                <span style={{ marginInline: 10 }}></span>
-                Verified By:{" "}
-                <span style={{ fontWeight: 800 }}>
-                  {safe(payload?.verifiedBy) || "—"}
-                </span>
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                <SignatureName label="Checked By" name={safe(payload?.checkedBy)} align="start" />
+                <SignatureName label="Verified By" name={safe(payload?.verifiedBy)} align="end" />
               </div>
             </div>
 

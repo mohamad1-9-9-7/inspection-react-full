@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 
 
@@ -978,7 +979,7 @@ export default function POS11ReceivingLogView() {
                           textAlign: "left",
                         }}
                       >
-                        {safe(record.payload?.verifiedBy)}
+                        <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} />
                       </span>
                     ) : (
                       <input

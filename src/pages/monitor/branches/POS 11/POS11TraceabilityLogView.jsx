@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 
 
@@ -934,7 +935,7 @@ export default function POS11TraceabilityLogView() {
                     <strong>Checked by:</strong>
                     {!editing ? (
                       <span style={{ display: "inline-block", minWidth: 260, borderBottom: "2px solid #1f3b70", lineHeight: "1.8", textAlign: "left" }}>
-                        {safe(record.payload?.checkedBy)}
+                        <SignatureName name={safe(record.payload?.checkedBy)} underline={false} />
                       </span>
                     ) : (
                       <input
@@ -949,7 +950,7 @@ export default function POS11TraceabilityLogView() {
                     <strong>Verified by:</strong>
                     {!editing ? (
                       <span style={{ display: "inline-block", minWidth: 260, borderBottom: "2px solid #1f3b70", lineHeight: "1.8", textAlign: "left" }}>
-                        {safe(record.payload?.verifiedBy)}
+                        <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} />
                       </span>
                     ) : (
                       <input

@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import SignatureName from "../../../shared/SignatureName";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -463,8 +464,8 @@ export default function FTR1TemperatureView() {
 
             {/* توقيعات */}
             <div style={signRow}>
-              <div>Checked By:- <span style={{ fontWeight: 500 }}>{selectedReport?.payload?.checkedBy || "—"}</span></div>
-              <div>Verified By:- <span style={{ fontWeight: 500 }}>{selectedReport?.payload?.verifiedBy || "—"}</span></div>
+              <SignatureName label="Checked By" name={selectedReport?.payload?.checkedBy} align="start" />
+              <SignatureName label="Verified By" name={selectedReport?.payload?.verifiedBy} align="end" />
             </div>
           </div>
         )}

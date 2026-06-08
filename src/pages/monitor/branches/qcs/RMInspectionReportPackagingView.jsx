@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 
 
@@ -557,7 +558,7 @@ export default function RMInspectionReportPackagingView() {
                 <div>
                   <b>Checked By:</b>{" "}
                   {!editMode ? (
-                    currentPayload?.checkedBy || ""
+                    <SignatureName name={currentPayload?.checkedBy} underline={false} inline />
                   ) : (
                     <input
                       value={String(currentPayload?.checkedBy || "")}
@@ -570,7 +571,7 @@ export default function RMInspectionReportPackagingView() {
                 <div>
                   <b>Verified By:</b>{" "}
                   {!editMode ? (
-                    currentPayload?.verifiedBy || ""
+                    <SignatureName name={currentPayload?.verifiedBy} underline={false} inline />
                   ) : (
                     <input
                       value={String(currentPayload?.verifiedBy || "")}

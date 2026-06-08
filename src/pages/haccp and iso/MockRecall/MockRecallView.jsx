@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
+import SignatureName from "../../shared/SignatureName";
 import LinkedReportPopup from "./LinkedReportPopup";
 import { useLang, LangToggle, getDrillShortLabel } from "./i18n";
 import AttachmentsSection from "./AttachmentsSection";
@@ -656,7 +657,7 @@ export default function MockRecallView() {
                       </div>
                       <div>
                         <div style={S.subTitle}>✍️ {t("verifiedBy")}</div>
-                        <div style={S.text}>{p.signoff?.verifiedBy || "—"}</div>
+                        <div style={S.text}><SignatureName name={p.signoff?.verifiedBy} underline={false} /></div>
                         {p.signoff?.verifiedBySignature && (
                           <img src={p.signoff.verifiedBySignature}
                             alt="verified by signature"

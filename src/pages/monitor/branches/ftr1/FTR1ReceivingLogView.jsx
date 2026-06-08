@@ -11,6 +11,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 /* ========= API BASE (robust like your other pages) ========= */
 
@@ -1113,10 +1114,10 @@ export default function FTR1ReceivingLogView() {
                     }}
                   >
                     <div>
-                      Checked By: {(!isEditing ? selectedReport?.payload : draft)?.checkedBy || "—"}
+                      <SignatureName label="Checked By" name={(!isEditing ? selectedReport?.payload : draft)?.checkedBy} inline />
                     </div>
                     <div>
-                      Verified By: {(!isEditing ? selectedReport?.payload : draft)?.verifiedBy || "—"}
+                      <SignatureName label="Verified By" name={(!isEditing ? selectedReport?.payload : draft)?.verifiedBy} inline />
                     </div>
                   </div>
                 </div>

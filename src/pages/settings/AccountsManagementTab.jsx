@@ -528,7 +528,7 @@ function daysSince(iso) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
-function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminCount }) {
+function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsername, adminCount }) {
   const { t } = useSettingsLang();
   const [hover, setHover] = useState(false);
   const initial = (user.display_name || user.username || "?")[0].toUpperCase();
@@ -634,6 +634,13 @@ function AccountCard({ user, onEdit, onToggle, onDelete, currentUsername, adminC
           background:"rgba(59,130,246,.2)", color:"#93c5fd",
           border:"1.5px solid rgba(59,130,246,.35)",
         }} title={t("amEditAccountTip")}>✏️</button>
+        {onResetPw && (
+          <button className="acm-actbtn" onClick={onResetPw} style={{
+            ...ac.actBtn,
+            background:"rgba(167,139,250,.18)", color:"#c4b5fd",
+            border:"1.5px solid rgba(167,139,250,.35)",
+          }} title={t("amResetPwTip")}>🔑</button>
+        )}
         <button className={canToggle ? "acm-actbtn" : ""} onClick={canToggle ? onToggle : undefined} disabled={!canToggle} style={{
           ...ac.actBtn,
           background: user.is_active ? "rgba(251,191,36,.18)" : "rgba(52,211,153,.18)",
@@ -676,9 +683,146 @@ const ac = {
 };
 
 /* ═══════════════════════════════════════════════════════
+   RESET PASSWORD MODAL — admin sets a new password for a user.
+   Passwords are scrypt-hashed server-side and can never be read back,
+   so the only safe recovery path is assigning a fresh one here.
+═══════════════════════════════════════════════════════ */
+function generateStrongPassword() {
+  /* 14 chars, guaranteed letters + digits (matches checkPasswordStrength rules) */
+  const sets = {
+    upper: "ABCDEFGHJKLMNPQRSTUVWXYZ",
+    lower: "abcdefghijkmnpqrstuvwxyz",
+    digit: "23456789",
+    sym:   "!@#$%*?-",
+  };
+  const all = sets.upper + sets.lower + sets.digit + sets.sym;
+  const rnd = (str) => str[Math.floor(Math.random() * str.length)];
+  let pw = [rnd(sets.upper), rnd(sets.lower), rnd(sets.digit), rnd(sets.sym)];
+  for (let i = pw.length; i < 14; i++) pw.push(rnd(all));
+  /* Fisher–Yates shuffle so the guaranteed chars aren't always in front */
+  for (let i = pw.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pw[i], pw[j]] = [pw[j], pw[i]];
+  }
+  return pw.join("");
+}
+
+function ResetPasswordModal({ user, onClose, onSave, saving }) {
+  const { t } = useSettingsLang();
+  const [pw, setPw]       = useState("");
+  const [show, setShow]   = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr]     = useState("");
+
+  const strength = checkPasswordStrength(pw, t);
+
+  const copy = async () => {
+    if (!pw) return;
+    try { await navigator.clipboard.writeText(pw); setCopied(true); setTimeout(() => setCopied(false), 1800); }
+    catch { /* clipboard may be blocked — user can still read it */ }
+  };
+
+  const submit = (e) => {
+    e.preventDefault();
+    setErr("");
+    if (!pw.trim()) return setErr(t("amPasswordReq"));
+    if (strength?.level === "weak") return setErr(`${t("amPasswordTooWeak")} ${strength.needs}`);
+    onSave(pw);
+  };
+
+  return (
+    <div style={p.overlay}>
+      <form onSubmit={submit} style={{ ...p.modal, width:"min(460px,93vw)" }}>
+        <div style={{ fontWeight:1000, fontSize:20, marginBottom:6, color:"#f1f5f9" }}>
+          🔑 {t("amResetPwTitle")}
+        </div>
+        <p style={{ color:"rgba(255,255,255,.7)", marginBottom:16, fontSize:15, lineHeight:1.6 }}>
+          {t("amResetPwFor")} <strong style={{ color:"#c4b5fd" }}>{user.display_name || user.username}</strong>
+          <span style={{ color:"rgba(255,255,255,.5)" }}> (@{user.username})</span>
+        </p>
+
+        <label style={{ fontSize:13, fontWeight:900, color:"rgba(255,255,255,.6)",
+          textTransform:"uppercase", letterSpacing:".05em", display:"block", marginBottom:7 }}>
+          {t("amResetPwNew")}
+        </label>
+        <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+          <input
+            type={show ? "text" : "password"}
+            value={pw}
+            onChange={e => setPw(e.target.value)}
+            autoComplete="new-password"
+            autoFocus
+            style={{
+              flex:1, padding:"12px 14px", borderRadius:10, fontSize:16,
+              fontFamily:"'Courier New',monospace", letterSpacing:".04em",
+              background:"rgba(255,255,255,.07)", border:"1.5px solid rgba(255,255,255,.16)",
+              color:"#f1f5f9", outline:"none",
+            }}
+          />
+          <button type="button" onClick={() => setShow(s => !s)} style={p.pwIconBtn}
+            title={show ? t("amResetPwHide") : t("amResetPwShow")}>
+            {show ? "🙈" : "👁️"}
+          </button>
+          <button type="button" onClick={copy} disabled={!pw} style={{
+            ...p.pwIconBtn, opacity: pw ? 1 : 0.4,
+            color: copied ? "#34d399" : "#e2e8f0",
+          }} title={t("amResetPwCopy")}>
+            {copied ? "✅" : "📋"}
+          </button>
+        </div>
+
+        {pw && strength && (
+          <div style={{ fontSize:13, fontWeight:800, color:strength.color, marginBottom:10 }}>
+            {strength.label}
+          </div>
+        )}
+
+        <button type="button" onClick={() => { setPw(generateStrongPassword()); setShow(true); setCopied(false); }}
+          style={{
+            width:"100%", padding:"11px", marginBottom:14, borderRadius:10,
+            background:"rgba(167,139,250,.18)", color:"#c4b5fd",
+            border:"1px solid rgba(167,139,250,.35)", cursor:"pointer",
+            fontWeight:900, fontSize:15, fontFamily:"inherit",
+          }}>
+          🎲 {t("amResetPwGenerate")}
+        </button>
+
+        <div style={{ fontSize:12.5, color:"rgba(255,255,255,.5)", lineHeight:1.6, marginBottom:16, fontWeight:700 }}>
+          ℹ️ {t("amResetPwHint")}
+        </div>
+
+        {err && (
+          <div style={{ color:"#fca5a5", background:"rgba(248,113,113,.14)",
+            border:"1px solid rgba(248,113,113,.3)", padding:"9px 13px", borderRadius:9,
+            fontSize:14, fontWeight:800, marginBottom:14 }}>⚠️ {err}</div>
+        )}
+
+        <div style={{ display:"flex", gap:10 }}>
+          <button type="submit" disabled={saving || !pw} style={{
+            flex:1, padding:"13px",
+            background: (saving || !pw) ? "rgba(124,58,237,.4)" : "linear-gradient(135deg,#7c3aed,#2563eb)",
+            color:"#fff", border:"none", borderRadius:10,
+            fontWeight:900, fontSize:15, cursor: (saving || !pw) ? "not-allowed" : "pointer",
+            fontFamily:"inherit",
+          }}>
+            {saving ? t("saving") : `💾 ${t("amResetPwSave")}`}
+          </button>
+          <button type="button" onClick={onClose} style={{
+            flex:1, padding:"13px",
+            background:"rgba(255,255,255,.1)", color:"#e2e8f0",
+            border:"1px solid rgba(255,255,255,.18)", borderRadius:10,
+            fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
+          }}>{t("cancel")}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
    DORMANT ACCOUNTS — accounts inactive for 30/60+ days
 ═══════════════════════════════════════════════════════ */
-function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEdit, onDelete }) {
+function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEdit, onDelete, onResetPw }) {
   const { t } = useSettingsLang();
   /* Bucket by staleness — only active accounts, since disabled are already off */
   const buckets = { d30: [], d60: [], d90: [], never: [] };
@@ -743,7 +887,8 @@ function DormantAccountsTab({ users, currentUsername, adminCount, onToggle, onEd
                 adminCount={adminCount}
                 onEdit={() => onEdit(u)}
                 onToggle={() => onToggle(u)}
-                onDelete={() => onDelete(u)} />
+                onDelete={() => onDelete(u)}
+                onResetPw={() => onResetPw(u)} />
             ))}
           </div>
         </section>
@@ -1162,6 +1307,7 @@ export default function AccountsManagementTab({ onClose }) {
   const [saving, setSaving]     = useState(false);
   const [msg, setMsg]           = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [resetPwUser, setResetPwUser] = useState(null);
   const [search, setSearch]     = useState("");
 
   const loadUsers = useCallback(async () => {
@@ -1274,6 +1420,26 @@ export default function AccountsManagementTab({ onClose }) {
       }
     } catch { showMsg("err", t("amDeleteFailed")); }
     setConfirmDel(null);
+  };
+
+  const handleResetPw = async (newPassword) => {
+    if (!resetPwUser) return;
+    if (!serverReady) { showMsg("err", t("amServerNotDeployed")); return; }
+    setSaving(true);
+    try {
+      const r = await fetch(`${API_BASE}/api/app-users/${resetPwUser.id}`, {
+        method:"PUT", headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({ password: newPassword }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        showMsg("ok", `${t("amResetPwDone")} — @${resetPwUser.username} ✅`);
+        setResetPwUser(null);
+      } else {
+        showMsg("err", d.error || t("amResetPwFailed"));
+      }
+    } catch { showMsg("err", t("amNetworkError")); }
+    setSaving(false);
   };
 
   const exportCSV = () => {
@@ -1498,7 +1664,8 @@ export default function AccountsManagementTab({ onClose }) {
                       adminCount={adminCount}
                       onEdit={() => { setEditUser(u); setView("form"); }}
                       onToggle={() => handleToggle(u)}
-                      onDelete={() => setConfirmDel(u)} />
+                      onDelete={() => setConfirmDel(u)}
+                      onResetPw={() => setResetPwUser(u)} />
                   ))}
                 </div>
               )}
@@ -1524,6 +1691,7 @@ export default function AccountsManagementTab({ onClose }) {
               onToggle={handleToggle}
               onEdit={(u) => { setEditUser(u); setView("form"); }}
               onDelete={(u) => setConfirmDel(u)}
+              onResetPw={(u) => setResetPwUser(u)}
             />
           )}
 
@@ -1533,6 +1701,16 @@ export default function AccountsManagementTab({ onClose }) {
           {/* ── ACTIVITY VIEW ── */}
           {view === "activity" && <ActivityLogTab />}
       </main>
+
+      {/* ══════════════ RESET PASSWORD MODAL ══════════════ */}
+      {resetPwUser && (
+        <ResetPasswordModal
+          user={resetPwUser}
+          saving={saving}
+          onClose={() => setResetPwUser(null)}
+          onSave={handleResetPw}
+        />
+      )}
 
       {/* ══════════════ DELETE CONFIRM MODAL ══════════════ */}
       {confirmDel && (
@@ -1643,6 +1821,12 @@ const p = {
     width:"min(420px,92vw)",
     backdropFilter:"blur(24px)",
     boxShadow:"0 28px 64px rgba(0,0,0,.55)",
+  },
+  pwIconBtn: {
+    padding:"0 13px", borderRadius:10,
+    background:"rgba(255,255,255,.08)", color:"#e2e8f0",
+    border:"1px solid rgba(255,255,255,.16)",
+    fontSize:17, cursor:"pointer", fontFamily:"inherit", flexShrink:0,
   },
 };
 

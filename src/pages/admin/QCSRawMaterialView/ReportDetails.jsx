@@ -12,6 +12,7 @@ import {
 } from "./viewUtils";
 import EmailSendModal from "../../shared/EmailSendModal";
 import { qcsEmailConfig } from "../../monitor/branches/shipment_recc/qcsEmailConfig";
+import { isDeleteAllowedForBranch } from "../../settings/SecurityControlsTab";
 
 /* ── Security settings helper ── */
 function getSecSetting(key) {
@@ -1048,7 +1049,7 @@ export default function ReportDetails({
                 📨 Email
               </button>
 
-              {getSecSetting("allowDeleteRecords") === true && (
+              {isDeleteAllowedForBranch("QCS") === true && (
                 <button
                   className="qcs-action-btn-sm"
                   onClick={handleDeleteReport}

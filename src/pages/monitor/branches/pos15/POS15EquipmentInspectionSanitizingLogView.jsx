@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 
 
@@ -835,8 +836,8 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
 
               {/* Footer info */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:12, marginTop:12, fontSize:12 }}>
-                <div><strong>Checked by (footer):</strong> {safe(record.payload?.checkedBy)}</div>
-                <div><strong>Verified by:</strong> {safe(record.payload?.verifiedBy)}</div>
+                <div><strong>Checked by (footer):</strong> <SignatureName name={safe(record.payload?.checkedBy)} underline={false} /></div>
+                <div><strong>Verified by:</strong> <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} /></div>
                 <div><strong>Date:</strong> {safe(record.payload?.reportDate)}</div>
                 <div><strong>Branch:</strong> {BRANCH}</div>
               </div>

@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import SignatureName from "../../../shared/SignatureName";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -511,8 +512,8 @@ export default function FTR2PersonalHygieneView() {
                 fontWeight: 700,
               }}
             >
-              <div>Checked By: {payload?.checkedBy || "—"}</div>
-              <div>Verified by (QA): {payload?.verifiedByQA || payload?.verifiedBy || "—"}</div>
+              <SignatureName label="Checked By" name={payload?.checkedBy} align="start" />
+              <SignatureName label="Verified by (QA)" name={payload?.verifiedByQA || payload?.verifiedBy} align="end" />
             </div>
           </div>
         )}

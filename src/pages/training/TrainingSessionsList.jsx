@@ -29,6 +29,45 @@ import {
   useGlobalLang, // ✅ unified language hook
   getModuleName, // ✅ AR/EN module name helper
 } from "./TrainingSessionsList.helpers";
+import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
+
+/* ===================== ✅ Participant images (Cloudinary, max 2/each) ===================== */
+const MAX_PARTICIPANT_IMAGES = 2;
+
+async function compressToFile(file, { maxDim = 1280, quality = 0.8 } = {}) {
+  const dataURL = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = dataURL;
+  });
+  const ratio = Math.min(1, maxDim / Math.max(img.width, img.height));
+  const w = Math.round(img.width * ratio);
+  const h = Math.round(img.height * ratio);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, w, h);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) { reject(new Error("Canvas toBlob failed")); return; }
+        resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+      },
+      "image/jpeg",
+      quality
+    );
+  });
+}
 
 /* ===================== Small utils (no helpers edits needed) ===================== */
 function makeToken(len = 22) {
@@ -725,6 +764,18 @@ export default function TrainingSessionsList() {
           const raw = fresh?.payload?.participants || [];
           const cleaned = dedupeParticipants(raw);
           setParticipants(renumberParticipants(cleaned));
+
+          const rawImgs = Array.isArray(fresh?.payload?.images) ? fresh.payload.images : [];
+          setSessionImages(
+            rawImgs
+              .map((im) =>
+                typeof im === "string"
+                  ? { url: im, name: "" }
+                  : { url: String(im?.url || ""), name: String(im?.name || "") }
+              )
+              .filter((im) => im.url)
+              .slice(0, MAX_PARTICIPANT_IMAGES)
+          );
         }
       }
     } catch (e) {
@@ -849,6 +900,18 @@ export default function TrainingSessionsList() {
     const cleaned = dedupeParticipants(raw);
     setParticipants(renumberParticipants(cleaned));
 
+    const rawImgs = Array.isArray(r?.payload?.images) ? r.payload.images : [];
+    setSessionImages(
+      rawImgs
+        .map((im) =>
+          typeof im === "string"
+            ? { url: im, name: "" }
+            : { url: String(im?.url || ""), name: String(im?.name || "") }
+        )
+        .filter((im) => im.url)
+        .slice(0, MAX_PARTICIPANT_IMAGES)
+    );
+
     const det = parseTrainingDetails(String(r?.payload?.details || ""));
     const nextOpen = {};
     det.forEach((s) => (nextOpen[s.key] = false));
@@ -864,6 +927,7 @@ export default function TrainingSessionsList() {
   const closeSession = () => {
     setSelected(null);
     setParticipants([]);
+    setSessionImages([]);
     setQuizOpen(false);
     setQuizIndex(-1);
     setQuizAnswers({});
@@ -898,6 +962,77 @@ export default function TrainingSessionsList() {
       const copy = Array.isArray(prev) ? [...prev] : [];
       copy[idx] = { ...(copy[idx] || {}), [key]: value };
       return renumberParticipants(copy);
+    });
+  };
+
+  /* ===== Session images (Cloudinary, max 2 per session) ===== */
+  const [sessionImages, setSessionImages] = useState([]); // [{url, name}]
+  const [uploadingSessionPhoto, setUploadingSessionPhoto] = useState(false);
+  const [savingSessionPhotos, setSavingSessionPhotos] = useState(false);
+  const [photoViewer, setPhotoViewer] = useState(null); // { title, images: [], startAt }
+
+  const persistSessionImages = async (nextImages) => {
+    if (!selected) return;
+    const id = getId(selected);
+    if (!id) return;
+    setSavingSessionPhotos(true);
+    try {
+      const updated = {
+        ...selected,
+        payload: { ...(selected.payload || {}), images: nextImages },
+      };
+      await updateReportOnServer(id, updated);
+      setSelected(updated);
+      setSessionImages(nextImages);
+    } catch (e) {
+      console.error(e);
+      alert(`Failed to save photos: ${String(e?.message || e)}`);
+    } finally {
+      setSavingSessionPhotos(false);
+    }
+  };
+
+  const handleSessionImageUpload = async (fileList) => {
+    const files = Array.from(fileList || []).filter((f) => /^image\//.test(f.type));
+    if (!files.length) return;
+    if (!selected) return;
+    const room = MAX_PARTICIPANT_IMAGES - sessionImages.length;
+    if (room <= 0) {
+      alert(`Maximum ${MAX_PARTICIPANT_IMAGES} photos per session.`);
+      return;
+    }
+    const toUpload = files.slice(0, room);
+    setUploadingSessionPhoto(true);
+    try {
+      const uploaded = [];
+      for (const f of toUpload) {
+        const compressed = await compressToFile(f);
+        const url = await uploadImageToServer(compressed, "training_session");
+        if (url) uploaded.push({ url, name: f.name });
+      }
+      if (uploaded.length) {
+        const next = [...sessionImages, ...uploaded].slice(0, MAX_PARTICIPANT_IMAGES);
+        await persistSessionImages(next);
+      }
+    } catch (e) {
+      console.error(e);
+      alert(`Failed to upload photo: ${String(e?.message || e)}`);
+    } finally {
+      setUploadingSessionPhoto(false);
+    }
+  };
+
+  const removeSessionImage = async (imgIdx) => {
+    const next = sessionImages.filter((_, i) => i !== imgIdx);
+    await persistSessionImages(next);
+  };
+
+  const openSessionPhotoViewer = (startAt = 0) => {
+    if (!sessionImages.length) return;
+    setPhotoViewer({
+      title: `Session Photos — ${safeTitle(selected) || safeModule(selected) || ""}`,
+      images: sessionImages,
+      startAt,
     });
   };
 
@@ -2517,6 +2652,113 @@ export default function TrainingSessionsList() {
                 </div>
               )}
 
+              {/* ===================== Session Photos (max 2 — Cloudinary) ===================== */}
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 14,
+                  border: "1px solid #e5e7eb",
+                  background: "linear-gradient(180deg,#ffffff,#f8fafc)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                  <div style={{ fontWeight: 1100, color: "#0f172a", fontSize: 14 }}>
+                    📷 Session Photos <span style={{ color: "#64748b", fontWeight: 900, fontSize: 12 }}>(max {MAX_PARTICIPANT_IMAGES})</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    {sessionImages.length > 0 && (
+                      <button
+                        onClick={() => openSessionPhotoViewer(0)}
+                        style={btn("light")}
+                        disabled={deletingSession}
+                      >
+                        👁 View Photos
+                      </button>
+                    )}
+                    {sessionImages.length < MAX_PARTICIPANT_IMAGES && (
+                      <>
+                        <input
+                          id="session-image-upload"
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          style={{ display: "none" }}
+                          onChange={(e) => {
+                            handleSessionImageUpload(e.target.files);
+                            e.target.value = "";
+                          }}
+                        />
+                        <label
+                          htmlFor="session-image-upload"
+                          style={{
+                            ...btn("dark"),
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            cursor: (uploadingSessionPhoto || savingSessionPhotos || deletingSession) ? "not-allowed" : "pointer",
+                            opacity: (uploadingSessionPhoto || savingSessionPhotos || deletingSession) ? 0.6 : 1,
+                            pointerEvents: (uploadingSessionPhoto || savingSessionPhotos || deletingSession) ? "none" : "auto",
+                          }}
+                        >
+                          {uploadingSessionPhoto ? "⏳ Uploading..." : `📤 Upload Photo (${sessionImages.length}/${MAX_PARTICIPANT_IMAGES})`}
+                        </label>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {sessionImages.length === 0 ? (
+                  <div style={{ color: "#94a3b8", fontWeight: 900, fontSize: 13 }}>
+                    No photos uploaded for this session yet.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {sessionImages.map((im, ii) => (
+                      <div
+                        key={ii}
+                        style={{
+                          position: "relative",
+                          width: 110, height: 110,
+                          borderRadius: 12,
+                          overflow: "hidden",
+                          border: "1px solid #e5e7eb",
+                          background: "#f8fafc",
+                          cursor: "pointer",
+                          boxShadow: "0 1px 3px rgba(2,6,23,0.08)",
+                        }}
+                        onClick={() => openSessionPhotoViewer(ii)}
+                        title={im.name || `Image ${ii + 1}`}
+                      >
+                        <img
+                          src={im.url}
+                          alt={im.name || `img${ii + 1}`}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); if (window.confirm("Delete this photo?")) removeSessionImage(ii); }}
+                          title="Remove"
+                          disabled={savingSessionPhotos}
+                          style={{
+                            position: "absolute",
+                            top: 4, right: 4,
+                            width: 24, height: 24, borderRadius: "50%",
+                            border: "1px solid #fecaca", background: "#fef2f2",
+                            color: "#b91c1c", fontWeight: 1000, fontSize: 13,
+                            lineHeight: 1, cursor: "pointer",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            opacity: savingSessionPhotos ? 0.6 : 1,
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div
                 style={{
                   marginTop: 12,
@@ -3022,6 +3264,74 @@ export default function TrainingSessionsList() {
           conductedBy={selected?.payload?.conductedBy || ''}
           lang={globalLang}
         />
+      )}
+
+      {/* ── Participant Photos Viewer ── */}
+      {photoViewer && (
+        <div
+          onClick={() => setPhotoViewer(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(2,6,23,0.78)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff", borderRadius: 18, padding: 18,
+              maxWidth: 1000, width: "100%", maxHeight: "90vh", overflow: "auto",
+              boxShadow: "0 30px 80px rgba(2,6,23,0.5)",
+              border: "1px solid rgba(148,163,184,0.4)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ fontWeight: 1100, color: "#0f172a", fontSize: 16 }}>
+                📷 {photoViewer.title || "Session Photos"}
+              </div>
+              <button
+                onClick={() => setPhotoViewer(null)}
+                style={{
+                  padding: "8px 14px", borderRadius: 10,
+                  border: "1px solid #e5e7eb", background: "#f8fafc",
+                  color: "#0f172a", fontWeight: 1000, cursor: "pointer",
+                }}
+              >
+                Close ✖
+              </button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+              {photoViewer.images.map((im, i) => (
+                <a
+                  key={i}
+                  href={im.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "block",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    background: "#f8fafc",
+                  }}
+                  title="Open photo in a new tab"
+                >
+                  <img
+                    src={im.url}
+                    alt={im.name || `image-${i + 1}`}
+                    style={{ width: "100%", height: "auto", display: "block", maxHeight: "70vh", objectFit: "contain" }}
+                  />
+                  {im.name ? (
+                    <div style={{ padding: 8, fontSize: 12, color: "#475569", fontWeight: 900, wordBreak: "break-all" }}>
+                      {im.name}
+                    </div>
+                  ) : null}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Trainer Reference Card Modal ── */}

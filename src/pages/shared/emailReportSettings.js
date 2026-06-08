@@ -7,8 +7,30 @@ import { postMeta, listReportsByType } from "../monitor/branches/shipment_recc/q
 const STORAGE_KEY = "qcs_email_settings_v1";
 const RECIPIENT_HISTORY_KEY = "qcs_email_recipient_history_v1";
 const CONTACTS_LS_KEY = "qcs_email_contacts_v1";
+const TEMPLATES_LS_KEY = "qcs_email_templates_v1";
 const CONTACT_TYPE = "qcs_email_contact";
 const MAX_HISTORY = 30;
+
+/* ===== Classification levels (UI labels + colors) ===== */
+export const CLASSIFICATIONS = [
+  { id: "public",       label: "🟢 Public",                color: "#15803d", bg: "#dcfce7", border: "#86efac" },
+  { id: "internal",     label: "🔵 Internal",              color: "#1d4ed8", bg: "#dbeafe", border: "#93c5fd" },
+  { id: "confidential", label: "🟡 Confidential",          color: "#a16207", bg: "#fef3c7", border: "#fcd34d" },
+  { id: "highly",       label: "🔴 Highly Confidential",   color: "#991b1b", bg: "#fee2e2", border: "#fca5a5" },
+];
+export const getClassification = (id) =>
+  CLASSIFICATIONS.find((c) => c.id === id) || CLASSIFICATIONS[1]; // default Internal
+
+/* ===== Recipient roles ===== */
+export const RECIPIENT_ROLES = [
+  { id: "none",     label: "—",                color: "#94a3b8", bg: "#f1f5f9" },
+  { id: "action",   label: "⚡ Action",        color: "#b91c1c", bg: "#fee2e2" },
+  { id: "approver", label: "✅ Approver",      color: "#15803d", bg: "#dcfce7" },
+  { id: "reviewer", label: "📋 Reviewer",      color: "#1d4ed8", bg: "#dbeafe" },
+  { id: "fyi",      label: "👁️ FYI",          color: "#7c3aed", bg: "#ede9fe" },
+];
+export const getRole = (id) =>
+  RECIPIENT_ROLES.find((r) => r.id === id) || RECIPIENT_ROLES[0];
 
 const EMAIL_RE_LOCAL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -34,7 +56,13 @@ function defaultSettings() {
     signatureImageUrl: "",          // Cloudinary URL for logo/signature image
     priority: "normal",             // high | normal | low
     requestReadReceipt: false,
-    confidentialityNote: false,     // adds "Internal Use Only" banner
+    confidentialityNote: false,     // (legacy) adds "Internal Use Only" banner
+    defaultClassification: "internal", // public | internal | confidential | highly
+    /* Auto-routing: per-report-type default recipients
+       Shape: { [reportType]: { to: [], cc: [] } }
+       When the modal opens, if the report's type matches an entry here,
+       the To/CC are pre-filled from this (unless user already saved different defaults). */
+    autoRouting: {},
   };
 }
 
@@ -99,12 +127,13 @@ function normalizeContact(c) {
   if (!c) return null;
   if (typeof c === "string") {
     const e = c.trim();
-    return e ? { email: e, name: "" } : null;
+    return e ? { email: e, name: "", groups: [] } : null;
   }
   if (typeof c === "object") {
     const e = String(c.email || "").trim();
     if (!e) return null;
-    return { email: e, name: String(c.name || "").trim() };
+    const groups = Array.isArray(c.groups) ? c.groups.map((g) => String(g || "").trim()).filter(Boolean) : [];
+    return { email: e, name: String(c.name || "").trim(), groups };
   }
   return null;
 }
@@ -122,8 +151,9 @@ function setLocalContacts(arr) {
   try { localStorage.setItem(CONTACTS_LS_KEY, JSON.stringify(arr)); } catch {}
 }
 
-/** Dedupe by email (case-insensitive); when duplicates exist, prefer the one
-    that has a non-empty name (later wins so server overrides local). */
+/** Dedupe by email (case-insensitive). For conflicts, merge fields:
+    - name: take the non-empty one (later wins if both non-empty)
+    - groups: union of both sides */
 const dedupeContacts = (arr) => {
   const map = new Map();
   for (const c of arr) {
@@ -132,8 +162,12 @@ const dedupeContacts = (arr) => {
     const k = n.email.toLowerCase();
     const prev = map.get(k);
     if (!prev) { map.set(k, n); continue; }
-    // merge: keep whichever has a name
-    map.set(k, { email: n.email, name: n.name || prev.name });
+    const mergedGroups = Array.from(new Set([...(prev.groups || []), ...(n.groups || [])]));
+    map.set(k, {
+      email: n.email,
+      name:  n.name || prev.name,
+      groups: mergedGroups,
+    });
   }
   return Array.from(map.values()).sort((a, b) => {
     const an = (a.name || a.email).toLowerCase();
@@ -158,42 +192,186 @@ export async function listEmailContacts() {
   }
 }
 
-/** Add a contact: validate, save. Accepts (email) or (email, name) — second arg optional.
-    Returns the cleaned {email, name} object. */
-export async function addEmailContact(email, name = "") {
+/** Add a contact: validate, save. Accepts (email), (email, name), or (email, name, groups[]).
+    Returns the cleaned {email, name, groups} object. */
+export async function addEmailContact(email, name = "", groups = []) {
   const e = String(email || "").trim();
   if (!EMAIL_RE_LOCAL.test(e)) throw new Error("صيغة الإيميل غير صحيحة");
   const n = String(name || "").trim();
+  const g = Array.isArray(groups) ? groups.map((x) => String(x || "").trim()).filter(Boolean) : [];
 
   const existing = getLocalContacts();
   const found = existing.find((x) => x.email.toLowerCase() === e.toLowerCase());
   if (found) {
-    // Already exists — update name if a new non-empty one is supplied
-    if (n && n !== found.name) {
-      const next = existing.map((x) =>
-        x.email.toLowerCase() === e.toLowerCase() ? { email: x.email, name: n } : x
-      );
-      setLocalContacts(dedupeContacts(next));
-      try { await postMeta(CONTACT_TYPE, { email: e, name: n }); } catch {}
-      return { email: e, name: n };
-    }
-    return found;
+    /* Update existing contact: take new name if provided, merge groups */
+    const next = existing.map((x) => {
+      if (x.email.toLowerCase() !== e.toLowerCase()) return x;
+      return {
+        email: x.email,
+        name:  n || x.name,
+        groups: Array.from(new Set([...(x.groups || []), ...g])),
+      };
+    });
+    setLocalContacts(dedupeContacts(next));
+    const updated = next.find((x) => x.email.toLowerCase() === e.toLowerCase());
+    try { await postMeta(CONTACT_TYPE, { email: e, name: updated.name, groups: updated.groups }); } catch {}
+    return updated;
   }
-  // New: optimistic local save first
-  const newContact = { email: e, name: n };
+  /* New contact */
+  const newContact = { email: e, name: n, groups: g };
   setLocalContacts(dedupeContacts([...existing, newContact]));
   try {
-    await postMeta(CONTACT_TYPE, { email: e, name: n });
+    await postMeta(CONTACT_TYPE, { email: e, name: n, groups: g });
   } catch {
     // server unreachable — kept locally, will re-sync on next listEmailContacts
   }
   return newContact;
 }
 
+/** Update an existing contact's groups (overwrites the groups list). */
+export async function updateContactGroups(email, groups) {
+  const e = String(email || "").trim().toLowerCase();
+  if (!e) return;
+  const g = Array.isArray(groups) ? groups.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  const existing = getLocalContacts();
+  const found = existing.find((x) => x.email.toLowerCase() === e);
+  if (!found) return;
+  const next = existing.map((x) =>
+    x.email.toLowerCase() === e ? { ...x, groups: g } : x
+  );
+  setLocalContacts(dedupeContacts(next));
+  try { await postMeta(CONTACT_TYPE, { email: found.email, name: found.name, groups: g }); } catch {}
+}
+
+/** List unique group names from all contacts, sorted. */
+export function listGroupsFromContacts(contacts) {
+  const set = new Set();
+  for (const c of contacts || []) {
+    for (const g of (c?.groups || [])) {
+      const t = String(g || "").trim();
+      if (t) set.add(t);
+    }
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+/** Get all emails belonging to a group (case-insensitive group match). */
+export function expandGroup(groupName, contacts) {
+  const g = String(groupName || "").trim().toLowerCase();
+  if (!g) return [];
+  return (contacts || [])
+    .filter((c) => (c.groups || []).some((x) => String(x || "").trim().toLowerCase() === g))
+    .map((c) => c.email);
+}
+
 /** Remove from local cache by email. */
 export function removeLocalContact(email) {
   const e = String(email || "").trim().toLowerCase();
   setLocalContacts(getLocalContacts().filter((x) => x.email.toLowerCase() !== e));
+}
+
+/* ===== Email Templates — quick-action presets ===== */
+
+/* Template shape:
+   {
+     id: string,           // unique
+     name: string,         // shown on the button
+     icon: string,         // emoji
+     subject: string,      // overrides modal subject when applied
+     note: string,         // overrides Note
+     toGroups: string[],   // group names → expanded to emails
+     ccGroups: string[],
+     toEmails: string[],   // explicit emails (in addition to groups)
+     ccEmails: string[],
+     priority: "high"|"normal"|"low",
+     classification: "public"|"internal"|"confidential"|"highly",
+     includeTable: boolean,
+     sortBy: string,
+     groupBy: string,
+   }
+*/
+
+export function loadTemplates() {
+  try {
+    const raw = localStorage.getItem(TEMPLATES_LS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
+export function saveTemplates(arr) {
+  try { localStorage.setItem(TEMPLATES_LS_KEY, JSON.stringify(arr || [])); } catch {}
+}
+
+/** Persist a new template (or update by id). Returns the saved template. */
+export function saveTemplate(t) {
+  const id = String(t.id || `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+  const safe = {
+    id,
+    name:           String(t.name || "Untitled").trim() || "Untitled",
+    icon:           String(t.icon || "📧"),
+    subject:        String(t.subject || ""),
+    note:           String(t.note || ""),
+    toGroups:       Array.isArray(t.toGroups) ? t.toGroups : [],
+    ccGroups:       Array.isArray(t.ccGroups) ? t.ccGroups : [],
+    toEmails:       Array.isArray(t.toEmails) ? t.toEmails : [],
+    ccEmails:       Array.isArray(t.ccEmails) ? t.ccEmails : [],
+    priority:       PRIORITY_VALUES.includes(t.priority) ? t.priority : "normal",
+    classification: t.classification || "internal",
+    includeTable:   !!t.includeTable,
+    sortBy:         String(t.sortBy || "default"),
+    groupBy:        String(t.groupBy || "none"),
+  };
+  const all = loadTemplates();
+  const idx = all.findIndex((x) => x.id === id);
+  if (idx >= 0) all[idx] = safe; else all.push(safe);
+  saveTemplates(all);
+  return safe;
+}
+
+export function deleteTemplate(id) {
+  saveTemplates(loadTemplates().filter((t) => t.id !== id));
+}
+
+/** Expand a template's groups + explicit emails to a final list of emails. */
+export function expandTemplateRecipients(template, contacts) {
+  const t = template || {};
+  const fromGroups = (groups) => (groups || []).flatMap((g) => expandGroup(g, contacts));
+  const dedupe = (arr) => {
+    const seen = new Set();
+    const out = [];
+    for (const e of arr) {
+      const k = String(e || "").trim().toLowerCase();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      out.push(e);
+    }
+    return out;
+  };
+  return {
+    to: dedupe([...fromGroups(t.toGroups), ...(t.toEmails || [])]),
+    cc: dedupe([...fromGroups(t.ccGroups), ...(t.ccEmails || [])]),
+  };
+}
+
+/* ===== Auto-routing helpers ===== */
+
+/** Get the auto-routing config for a given report type, or null. */
+export function getAutoRoute(reportType, settings) {
+  if (!reportType) return null;
+  const cfg = settings?.autoRouting?.[reportType];
+  if (!cfg) return null;
+  return {
+    toGroups: Array.isArray(cfg.toGroups) ? cfg.toGroups : [],
+    ccGroups: Array.isArray(cfg.ccGroups) ? cfg.ccGroups : [],
+    toEmails: Array.isArray(cfg.toEmails) ? cfg.toEmails : [],
+    ccEmails: Array.isArray(cfg.ccEmails) ? cfg.ccEmails : [],
+  };
+}
+
+/** Expand an auto-route to a final email list. */
+export function expandAutoRoute(route, contacts) {
+  return expandTemplateRecipients(route, contacts); // same shape
 }
 
 /** Find a contact's display name by email (case-insensitive). Falls back to email. */

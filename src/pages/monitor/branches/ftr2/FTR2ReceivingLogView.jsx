@@ -10,6 +10,7 @@ import React, {
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { resilientFetch, classifyError } from "../_shared/resilientFetch";
+import SignatureName from "../../../shared/SignatureName";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -597,12 +598,12 @@ export default function FTR2ReceivingLogView() {
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontWeight: 700, color: "#263042", flexWrap: "wrap", gap: 8 }}>
                     <div>
                       Checked By:{" "}
-                      {!isEditing ? selectedReport?.payload?.checkedBy || "—"
+                      {!isEditing ? <SignatureName name={selectedReport?.payload?.checkedBy} underline={false} inline />
                         : <input type="text" value={draft?.checkedBy ?? ""} onChange={e => updateDraftMeta("checkedBy", e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem", minWidth: 180 }} />}
                     </div>
                     <div>
                       Verified By:{" "}
-                      {!isEditing ? selectedReport?.payload?.verifiedBy || "—"
+                      {!isEditing ? <SignatureName name={selectedReport?.payload?.verifiedBy} underline={false} inline />
                         : <input type="text" value={draft?.verifiedBy ?? ""} onChange={e => updateDraftMeta("verifiedBy", e.target.value)} style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem", minWidth: 180 }} />}
                     </div>
                   </div>

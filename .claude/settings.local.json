@@ -212,7 +212,16 @@
       "PowerShell(node 'D:\\\\inspection-react-full\\\\__syncheck.cjs')",
       "Bash(node --check index.cjs)",
       "Bash(awk 'NR>=575 && NR<=600' \"D:/inspection-react-full/src/App.jsx\")",
-      "Bash(node -e \"const fs=require\\('fs'\\);const b=fs.readFileSync\\('public/assets/almawashi-logo.jpg'\\).toString\\('base64'\\);console.log\\('Size base64:',b.length,'chars'\\);console.log\\('First 60:',b.slice\\(0,60\\)\\);fs.writeFileSync\\('src/assets/mawashi-logo-b64.js','// Auto-generated — Al Mawashi logo as base64 data URI for email\\\\nexport const MAWASHI_LOGO_B64 = \\\\\"data:image/jpeg;base64,'+b+'\\\\\";\\\\n'\\);console.log\\('Written to src/assets/mawashi-logo-b64.js'\\);\")"
+      "Bash(node -e \"const fs=require\\('fs'\\);const b=fs.readFileSync\\('public/assets/almawashi-logo.jpg'\\).toString\\('base64'\\);console.log\\('Size base64:',b.length,'chars'\\);console.log\\('First 60:',b.slice\\(0,60\\)\\);fs.writeFileSync\\('src/assets/mawashi-logo-b64.js','// Auto-generated — Al Mawashi logo as base64 data URI for email\\\\nexport const MAWASHI_LOGO_B64 = \\\\\"data:image/jpeg;base64,'+b+'\\\\\";\\\\n'\\);console.log\\('Written to src/assets/mawashi-logo-b64.js'\\);\")",
+      "Bash(grep -c \"{ \\\\.\\\\.\\\\.cellInputStyle, minWidth:\" src/pages/ReturnView.js)",
+      "Bash(npx --no-install eslint src/pages/ReturnView.js)",
+      "Bash(set CI=false)",
+      "Bash(npx --no-install react-scripts build)",
+      "PowerShell(npm run build 2>&1)",
+      "Bash(curl -s -o /dev/null -w \"google: HTTP %{http_code}\\\\n\" \"https://www.google.com\")",
+      "Bash(curl -s -o /dev/null -w \"render: HTTP %{http_code}\\\\n\" \"https://inspection-server-4nvj.onrender.com/\")",
+      "Bash(git rm *)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const src=fs.readFileSync\\('src/pages/training/TrainingSessionsList.jsx','utf8'\\);require\\('@babel/parser'\\).parse\\(src,{sourceType:'module',plugins:['jsx']}\\);console.log\\('parsed ok'\\)\")"
     ]
   }
 }

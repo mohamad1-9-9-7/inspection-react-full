@@ -13,8 +13,14 @@ import {
   clearRecipientHistory,
   listEmailContacts,
   addEmailContact,
+  updateContactGroups,
+  listGroupsFromContacts,
   removeLocalContact,
   isValidEmail,
+  CLASSIFICATIONS,
+  loadTemplates,
+  saveTemplate,
+  deleteTemplate,
 } from "./emailReportSettings";
 import { uploadImageToServer } from "../monitor/branches/shipment_recc/qcsRawApi";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
@@ -28,6 +34,9 @@ const styles = {
     width: "min(720px, 96vw)", maxHeight: "94vh", overflow: "auto",
     background: "#fff", borderRadius: 16, boxShadow: "0 28px 56px rgba(0,0,0,.32)",
     padding: 22, color: "#0f172a", fontFamily: "Inter,Roboto,Cairo,sans-serif",
+  },
+  embeddedWrap: {
+    padding: "20px 24px", color: "#0f172a", fontFamily: "Inter,Roboto,Cairo,sans-serif",
   },
   title:   { margin: 0, fontSize: 20, fontWeight: 900, color: "#0f172a" },
   sub:     { marginTop: 4, fontSize: 13, color: "#475569" },
@@ -50,16 +59,24 @@ const styles = {
   btnLink:    { background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontWeight: 700, padding: "4px 6px" },
 };
 
-export default function EmailSettingsPanel({ open, onClose, onSaved }) {
+export default function EmailSettingsPanel({ open, onClose, onSaved, embedded = false }) {
   const [s, setS] = useState(() => loadEmailSettings());
   const [history, setHistory] = useState([]);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [newContact, setNewContact] = useState("");
   const [newContactName, setNewContactName] = useState("");
+  const [newContactGroups, setNewContactGroups] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [contactBusy, setContactBusy] = useState(false);
   const [contactErr, setContactErr] = useState("");
+
+  /* Inline group editor: tracks which contact's groups are being edited */
+  const [editingGroupsFor, setEditingGroupsFor] = useState(null);
+  const [editingGroupsValue, setEditingGroupsValue] = useState("");
+
+  const [templates, setTemplates] = useState([]);
 
   const reloadContacts = () => listEmailContacts().then(setContacts).catch(() => {});
 
@@ -69,6 +86,8 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
       setHistory(loadRecipientHistory());
       setNewContact("");
       setContactErr("");
+      setEditingGroupsFor(null);
+      setTemplates(loadTemplates());
       reloadContacts();
     }
   }, [open]);
@@ -76,19 +95,33 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
   async function handleAddContact() {
     const e = newContact.trim();
     const n = newContactName.trim();
+    const g = newContactGroups.split(/[,;]+/).map((x) => x.trim()).filter(Boolean);
     setContactErr("");
     if (!isValidEmail(e)) { setContactErr("صيغة الإيميل غير صحيحة / Invalid email"); return; }
     setContactBusy(true);
     try {
-      await addEmailContact(e, n);
+      await addEmailContact(e, n, g);
       setNewContact("");
       setNewContactName("");
+      setNewContactGroups("");
       await reloadContacts();
     } catch (ex) {
       setContactErr(ex?.message || "فشل الحفظ / Save failed");
     } finally {
       setContactBusy(false);
     }
+  }
+
+  function startEditGroups(c) {
+    setEditingGroupsFor(c.email);
+    setEditingGroupsValue((c.groups || []).join(", "));
+  }
+  async function saveEditGroups() {
+    const g = editingGroupsValue.split(/[,;]+/).map((x) => x.trim()).filter(Boolean);
+    await updateContactGroups(editingGroupsFor, g);
+    setEditingGroupsFor(null);
+    setEditingGroupsValue("");
+    await reloadContacts();
   }
 
   function handleRemoveContact(email) {
@@ -119,7 +152,12 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
   function handleSave() {
     saveEmailSettings(s);
     onSaved?.(s);
-    onClose?.();
+    if (embedded) {
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2200);
+    } else {
+      onClose?.();
+    }
   }
 
   function handleReset() {
@@ -134,9 +172,8 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
     setHistory([]);
   }
 
-  return (
-    <div style={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose?.()}>
-      <div style={styles.modal}>
+  const content = (
+    <>
         <h3 style={styles.title}>⚙️ Email Settings</h3>
         <div style={styles.sub}>إعدادات تنطبق على كل التقارير. تُحفظ محلياً.</div>
 
@@ -180,11 +217,11 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
             كل جهة اتصال = <b>اسم شائع</b> + إيميل. تقدر تبحث وقت الإرسال بأي منهما.
           </div>
 
-          {/* Add new — two fields side by side */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr auto", gap: 8, marginTop: 8 }}>
+          {/* Add new — three fields side by side */}
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 1fr auto", gap: 8, marginTop: 8 }}>
             <input
               style={styles.input}
-              placeholder="🏷️ الاسم الشائع (مثلاً: أحمد المدير)"
+              placeholder="🏷️ الاسم الشائع"
               value={newContactName}
               disabled={contactBusy}
               onChange={(e) => setNewContactName(e.target.value)}
@@ -197,6 +234,15 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
               disabled={contactBusy}
               onChange={(e) => setNewContact(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddContact(); } }}
+            />
+            <input
+              style={styles.input}
+              placeholder="📁 Groups (comma-separated)"
+              value={newContactGroups}
+              disabled={contactBusy}
+              onChange={(e) => setNewContactGroups(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddContact(); } }}
+              title="مثلاً: QA Team, Management"
             />
             <button
               type="button"
@@ -235,11 +281,13 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
                 if (filtered.length === 0) {
                   return <div style={{ ...styles.meta, marginTop: 4 }}>لا نتائج مطابقة.</div>;
                 }
-                return filtered.map((c) => (
+                return filtered.map((c) => {
+                  const isEditing = editingGroupsFor === c.email;
+                  return (
                   <div key={c.email} style={{
                     display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between",
                     background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8,
-                    padding: "8px 12px",
+                    padding: "8px 12px", flexWrap: "wrap",
                   }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 13 }}>
@@ -248,12 +296,46 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
                       <div style={{ color: "#64748b", fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {c.email}
                       </div>
+                      {/* Group chips or inline editor */}
+                      {isEditing ? (
+                        <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center" }}>
+                          <input
+                            style={{ ...styles.input, padding: "5px 8px", fontSize: 12, flex: 1 }}
+                            placeholder="Groups, comma-separated"
+                            value={editingGroupsValue}
+                            autoFocus
+                            onChange={(e) => setEditingGroupsValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") saveEditGroups(); if (e.key === "Escape") setEditingGroupsFor(null); }}
+                          />
+                          <button type="button" onClick={saveEditGroups}
+                            style={{ ...styles.btnPrimary, padding: "5px 10px", fontSize: 11 }}>حفظ</button>
+                          <button type="button" onClick={() => setEditingGroupsFor(null)}
+                            style={{ ...styles.btnGhost, padding: "5px 10px", fontSize: 11 }}>إلغاء</button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                          {(c.groups || []).map((g) => (
+                            <span key={g} style={{
+                              display: "inline-flex", alignItems: "center",
+                              padding: "1px 7px", borderRadius: 999,
+                              background: "#fef3c7", color: "#92400e",
+                              border: "1px solid #fcd34d", fontWeight: 700, fontSize: 10,
+                            }}>@{g}</span>
+                          ))}
+                          <button type="button" onClick={() => startEditGroups(c)}
+                            style={{ background: "none", border: "1px dashed #cbd5e1", borderRadius: 999,
+                              padding: "1px 8px", fontSize: 10, color: "#64748b", cursor: "pointer", fontWeight: 700 }}>
+                            {(c.groups || []).length ? "✏️ تعديل" : "+ Group"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <button type="button" onClick={() => handleRemoveContact(c.email)}
                       style={{ border: "none", background: "#fee2e2", color: "#991b1b", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontWeight: 800, fontSize: 12 }}
                       title="حذف">حذف</button>
                   </div>
-                ));
+                  );
+                });
               })()}
             </div>
           ) : (
@@ -351,11 +433,61 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
               onChange={(e) => set("requestReadReceipt", e.target.checked)} />
             Request read receipt (Disposition-Notification-To)
           </label>
+          <div style={styles.field}>
+            <label style={styles.label}>🔒 Default Classification</label>
+            <select style={styles.input} value={s.defaultClassification || "internal"}
+              onChange={(e) => set("defaultClassification", e.target.value)}>
+              {CLASSIFICATIONS.map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+            <div style={styles.meta}>
+              يحدّد البانر الافتراضي عند فتح المودال. تقدر تغيّره لكل إيميل قبل الإرسال.
+            </div>
+          </div>
           <label style={styles.check}>
-            <input type="checkbox" checked={s.confidentialityNote}
-              onChange={(e) => set("confidentialityNote", e.target.checked)} />
-            Add "Internal Use Only" confidentiality banner
+            <input type="checkbox" checked={s.requestReadReceipt}
+              onChange={(e) => set("requestReadReceipt", e.target.checked)} />
+            Request read receipt (relies on recipient's mail client — free, no tracking)
           </label>
+        </div>
+
+        {/* === Templates === */}
+        <div style={styles.section}>
+          <div style={styles.sectionH}>📝 Email Templates ({templates.length})</div>
+          <div style={styles.meta}>
+            القوالب تظهر كأزرار سريعة فوق مودال الإرسال — ضغطة وحدة تعبّي كل الحقول. أنشئ قالب من المودال نفسه بـ "💾 Save current as template".
+          </div>
+          {templates.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, maxHeight: 200, overflowY: "auto" }}>
+              {templates.map((t) => (
+                <div key={t.id} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  gap: 10, background: "#f8fafc", border: "1px solid #e2e8f0",
+                  borderRadius: 8, padding: "8px 12px",
+                }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 13 }}>
+                      {t.icon} {t.name}
+                    </div>
+                    <div style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>
+                      To: {(t.toEmails?.length || 0) + (t.toGroups?.length || 0)} ·
+                      CC: {(t.ccEmails?.length || 0) + (t.ccGroups?.length || 0)}
+                      {t.toGroups?.length ? ` · 📁 ${t.toGroups.join(", ")}` : ""}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => { deleteTemplate(t.id); setTemplates(loadTemplates()); }}
+                    style={{ ...styles.btnDanger, padding: "4px 10px", fontSize: 11 }}>
+                    حذف
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ ...styles.meta, marginTop: 8, padding: "12px", background: "#f8fafc", borderRadius: 8, textAlign: "center" }}>
+              لا توجد قوالب بعد. افتح إيميل وعبّي البيانات، ثم اضغط "💾 Save as template".
+            </div>
+          )}
         </div>
 
         {/* === Recipient History === */}
@@ -375,13 +507,33 @@ export default function EmailSettingsPanel({ open, onClose, onSaved }) {
         )}
 
         <div style={styles.actions}>
-          <button onClick={handleReset} style={styles.btnDanger} data-delete-action="true">↺ Reset to defaults</button>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={onClose} style={styles.btnGhost}>إلغاء</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={handleReset} style={styles.btnDanger} data-delete-action="true">↺ Reset to defaults</button>
+            {!embedded && (
+              <button type="button"
+                onClick={() => { onClose?.(); window.location.href = "/email-center"; }}
+                style={{ ...styles.btnGhost, color: "#7c3aed", borderColor: "#c4b5fd", padding: "8px 14px", fontSize: 12 }}>
+                📨 Email Center →
+              </button>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            {embedded && savedFlash && (
+              <span style={{ color: "#16a34a", fontWeight: 800, fontSize: 13 }}>✅ تم الحفظ</span>
+            )}
+            {!embedded && <button onClick={onClose} style={styles.btnGhost}>إلغاء</button>}
             <button onClick={handleSave} style={styles.btnPrimary}>💾 Save Settings</button>
           </div>
         </div>
-      </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div style={styles.embeddedWrap}>{content}</div>;
+  }
+  return (
+    <div style={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose?.()}>
+      <div style={styles.modal}>{content}</div>
     </div>
   );
 }

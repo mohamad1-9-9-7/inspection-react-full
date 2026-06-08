@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/qcs/StaffSicknessView.jsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 /* ===== API base ===== */
 
@@ -446,7 +447,7 @@ function SignBox({ title, name, date }) {
   return (
     <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
       <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".05em" }}>{title}</p>
-      <p style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{name || "—"}</p>
+      <p style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 800, color: "#0f172a" }}><SignatureName name={name} underline={false} size={26} /></p>
       <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>{date ? fmt(date) : "—"}</p>
     </div>
   );

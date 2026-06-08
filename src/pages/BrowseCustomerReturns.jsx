@@ -3449,6 +3449,7 @@ export default function BrowseReturns() {
      generatePdf returned undefined and EmailSendModal crashed on destructure. */
   const emailConfig = {
     reportTitle: "Customer Returns Report",
+    reportType:  "customer_returns",
     getSubject: (rep) => `[Customer Returns] Report — ${rep?.reportDate || "—"}`,
     generatePdf: async (rep, pdfOpts = {}) => {
       const target = rep || selectedReport;
@@ -3458,6 +3459,7 @@ export default function BrowseReturns() {
         reportOverride: target,
         sortBy:  pdfOpts.sortBy  || "default",
         groupBy: pdfOpts.groupBy || "none",
+        classification: pdfOpts.classification || "",
       });
       if (!result || !result.blob) throw new Error("PDF generation produced no blob");
       return result;
@@ -3503,7 +3505,24 @@ export default function BrowseReturns() {
         doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
         doc.text("Trans Emirates Livestock Trading L.L.C.", rightX, 46, { align: "right" });
       };
+      const drawWatermark = () => {
+        if (!opts.classification || opts.classification === "public" || opts.classification === "internal") return;
+        const txt = opts.classification === "highly" ? "HIGHLY CONFIDENTIAL" : "CONFIDENTIAL";
+        const isRed = opts.classification === "highly";
+        doc.saveGraphicsState && doc.saveGraphicsState();
+        try { doc.setGState && doc.setGState(new doc.GState({ opacity: 0.10 })); } catch {}
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(72);
+        doc.setTextColor(isRed ? 220 : 180, isRed ? 38 : 120, isRed ? 38 : 30);
+        const w = doc.internal.pageSize.getWidth();
+        const h = doc.internal.pageSize.getHeight();
+        doc.text(txt, w / 2, h / 2, { align: "center", angle: -30 });
+        doc.setTextColor(0, 0, 0);
+        try { doc.setGState && doc.setGState(new doc.GState({ opacity: 1 })); } catch {}
+        doc.restoreGraphicsState && doc.restoreGraphicsState();
+      };
       drawHeader();
+      drawWatermark();
       const changeMap = changeMapByDate.get(report?.reportDate || "") || new Map();
       /* For the email path: prefer the report's full item list rather than sortedRows. */
       const rowsForPdf = opts.reportOverride
@@ -3541,7 +3560,7 @@ export default function BrowseReturns() {
         styles: { font: "helvetica", fontSize: 10, cellPadding: 4, lineColor: [226, 232, 240], lineWidth: 0.5, halign: "left", valign: "middle", overflow: "linebreak", wordBreak: "break-word", minCellHeight: 16 },
         headStyles: { fillColor: [238, 242, 255], textColor: [15, 23, 42], fontStyle: "bold", halign: "center" },
         columnStyles,
-        didDrawPage: () => drawHeader(),
+        didDrawPage: () => { drawHeader(); drawWatermark(); },
       };
 
       if (isGroupedPdf) {

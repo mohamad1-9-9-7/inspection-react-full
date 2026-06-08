@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/production/PersonalHygienePRDView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import SignatureName from "../../../shared/SignatureName";
 
 const API_BASE =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
@@ -518,10 +519,10 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
           width: "100%",
         }}>
           <div style={{ textAlign: "left", flex: 1 }}>
-            Checked By: {checkedBy}
+            <SignatureName label="Checked By" name={checkedBy} align="start" />
           </div>
-          <div style={{ textAlign: "right", flex: 1 }}>
-            Verified By: {verifiedBy}
+          <div style={{ textAlign: "right", flex: 1, display: "flex", justifyContent: "flex-end" }}>
+            <SignatureName label="Verified By" name={verifiedBy} align="end" />
           </div>
         </div>
 

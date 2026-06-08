@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import SignatureName from "../../../shared/SignatureName";
 
 /* ================= API base (متطابق مع FreshChickenInter) ================= */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";

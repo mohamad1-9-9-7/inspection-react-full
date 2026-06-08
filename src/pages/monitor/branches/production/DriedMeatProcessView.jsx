@@ -6,6 +6,7 @@ import PRDReportHeader from "./_shared/PRDReportHeader";
 import PrintButton, { PrintOfficialHeader } from "./_shared/PrintButton";
 import { useLang } from "./_shared/i18n";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 
 const TYPE = "prod_dried_meat";
@@ -557,9 +558,9 @@ export default function DriedMeatProcessView() {
               </Panel>
 
               <div className="dmv-footer">
-                <div className="dmv-sig"><label>{t("dm_checked")}</label><div>{safe(f.checkedBy) || "—"}</div></div>
-                <div className="dmv-sig"><label>{t("dm_verified")}</label><div>{safe(f.verifiedBy) || "—"}</div></div>
-                <div className="dmv-sig"><label>{t("dm_approved")}</label><div>{safe(f.approvedBy) || "—"}</div></div>
+                <div className="dmv-sig"><label>{t("dm_checked")}</label><div><SignatureName name={safe(f.checkedBy)} underline={false} /></div></div>
+                <div className="dmv-sig"><label>{t("dm_verified")}</label><div><SignatureName name={safe(f.verifiedBy)} underline={false} /></div></div>
+                <div className="dmv-sig"><label>{t("dm_approved")}</label><div><SignatureName name={safe(f.approvedBy)} underline={false} /></div></div>
               </div>
             </>
           )}

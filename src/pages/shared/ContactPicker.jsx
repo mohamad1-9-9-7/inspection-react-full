@@ -3,7 +3,7 @@
 // Each contact is { email, name }. Backward-compat: bare strings auto-upgrade.
 
 import React, { useMemo, useState, useRef, useEffect } from "react";
-import { addEmailContact, isValidEmail } from "./emailReportSettings";
+import { addEmailContact, isValidEmail, listGroupsFromContacts, expandGroup } from "./emailReportSettings";
 
 const styles = {
   wrap: { marginTop: 4 },
@@ -107,16 +107,32 @@ export default function ContactPicker({
         ? value.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean)
         : []);
 
-  /* Normalize contacts: accept either string[] or {email,name}[] */
+  /* Normalize contacts: accept either string[] or {email,name,groups}[] */
   const normContacts = useMemo(
     () =>
       (Array.isArray(contacts) ? contacts : [])
         .map((c) => (typeof c === "string"
-          ? { email: c.trim(), name: "" }
-          : { email: String(c?.email || "").trim(), name: String(c?.name || "").trim() }))
+          ? { email: c.trim(), name: "", groups: [] }
+          : {
+              email: String(c?.email || "").trim(),
+              name: String(c?.name || "").trim(),
+              groups: Array.isArray(c?.groups) ? c.groups : [],
+            }))
         .filter((c) => c.email),
     [contacts]
   );
+
+  /* Derived: group names */
+  const allGroups = useMemo(() => listGroupsFromContacts(normContacts), [normContacts]);
+
+  /* Add an entire group at once — appends only emails not already selected */
+  function addGroup(groupName) {
+    const members = expandGroup(groupName, normContacts);
+    if (!members.length) return;
+    const seen = new Set(safeValue.map((v) => String(v).toLowerCase()));
+    const additions = members.filter((m) => !seen.has(String(m).toLowerCase()));
+    if (additions.length) onChange([...safeValue, ...additions]);
+  }
 
   /* Build a lookup so we can show the name on a selected chip */
   const contactsByEmail = useMemo(() => {
@@ -226,6 +242,34 @@ export default function ContactPicker({
                 <button type="button" style={styles.chipX} disabled={disabled}
                   onClick={() => removeChip(e)} title="Remove">×</button>
               </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Quick-add groups */}
+      {allGroups.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: ".5px",
+            alignSelf: "center", marginInlineEnd: 4 }}>📁 GROUPS:</span>
+          {allGroups.map((g) => {
+            const memberCount = expandGroup(g, normContacts).length;
+            return (
+              <button key={g} type="button" onClick={() => addGroup(g)} disabled={disabled}
+                title={`Add all ${memberCount} member(s) of ${g}`}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 5,
+                  padding: "4px 10px", borderRadius: 999,
+                  background: "#fef3c7", color: "#92400e",
+                  border: "1px solid #fcd34d", fontWeight: 800, fontSize: 11,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.5 : 1,
+                  fontFamily: "inherit",
+                }}>
+                @{g}
+                <span style={{ background: "rgba(146,64,14,.15)", borderRadius: 999,
+                  padding: "0px 6px", fontSize: 10 }}>{memberCount}</span>
+              </button>
             );
           })}
         </div>

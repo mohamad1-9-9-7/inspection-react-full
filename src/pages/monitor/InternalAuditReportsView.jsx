@@ -1,6 +1,7 @@
 // src/pages/monitor/InternalAuditReportsView.jsx
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import SignatureName from "../shared/SignatureName";
 
 /* ===== API base (aligned with your project) ===== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -1179,7 +1180,7 @@ export default function InternalAuditReportsView() {
                             <span style={{ opacity: 0.6 }}>|</span>
                             <b>Issued By:</b>&nbsp;{r.issuedBy}
                             <span style={{ opacity: 0.6 }}>|</span>
-                            <b>Approved By:</b>&nbsp;{r.approvedBy}
+                            <b>Approved By:</b>&nbsp;<SignatureName name={r.approvedBy} underline={false} inline />
                           </div>
 
                           <div
@@ -1733,7 +1734,7 @@ export default function InternalAuditReportsView() {
                                           }}
                                         />
                                       ) : (
-                                        r.reviewedBy || "-"
+                                        <SignatureName name={r.reviewedBy} underline={false} inline />
                                       )}
                                     </div>
                                   </div>

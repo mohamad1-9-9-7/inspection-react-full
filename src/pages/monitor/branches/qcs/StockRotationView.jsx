@@ -3,6 +3,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 
+import SignatureName from "../../../shared/SignatureName";
+
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const CRA = (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) || undefined;
 let VITE; try { VITE = import.meta.env?.VITE_API_URL; } catch {}
@@ -222,8 +224,8 @@ export default function StockRotationView() {
                 <div><b>الموقع:</b> {p.location}</div>
                 <div><b>منطقة التخزين:</b> {p.storageArea}</div>
                 <div><b>الطريقة:</b> {p.rotationMethod}</div>
-                <div><b>المدقق:</b> {p.auditedBy}</div>
-                <div><b>المعتمد:</b> {p.verifiedBy || "—"}</div>
+                <div><b>المدقق:</b> <SignatureName name={p.auditedBy} underline={false} inline /></div>
+                <div><b>المعتمد:</b> <SignatureName name={p.verifiedBy} underline={false} inline /></div>
                 <div><b>وقت التدقيق:</b> {p.auditTime || "—"}</div>
               </div>
 

@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import SignatureName from "../../../../shared/SignatureName";
 
 
 const TYPE     = "pos19_wooden_items_condition";
@@ -201,7 +202,7 @@ export default function WoodenItemsConditionChecklistView() {
             <div style={{marginTop:12}}>
               <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}>
                 <strong>Verified by:</strong>
-                {!editing?(<span style={{display:"inline-block",minWidth:260,borderBottom:"2px solid #1f3b70",lineHeight:"1.8"}}>{safe(record.payload?.verifiedBy)}</span>):(<input value={footer.verifiedBy} onChange={e=>setFooter(p=>({...p,verifiedBy:e.target.value}))} style={{border:"none",borderBottom:"2px solid #1f3b70",padding:"4px 6px",outline:"none",fontSize:12,color:"#0b1f4d"}}/>)}
+                {!editing?(<span style={{display:"inline-block",minWidth:260,borderBottom:"2px solid #1f3b70",lineHeight:"1.8"}}><SignatureName name={safe(record.payload?.verifiedBy)} underline={false} /></span>):(<input value={footer.verifiedBy} onChange={e=>setFooter(p=>({...p,verifiedBy:e.target.value}))} style={{border:"none",borderBottom:"2px solid #1f3b70",padding:"4px 6px",outline:"none",fontSize:12,color:"#0b1f4d"}}/>)}
               </div>
               <div style={{marginTop:8,fontSize:11,color:"#0b1f4d"}}><strong>NOTE:</strong> Any wooden items found defective, cracked, or not within the standards should be removed from the section immediately.</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:12,fontSize:12}}>

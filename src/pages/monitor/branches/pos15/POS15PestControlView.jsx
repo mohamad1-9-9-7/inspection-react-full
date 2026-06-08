@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import SignatureName from "../../../shared/SignatureName";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -430,8 +431,8 @@ export default function POS15PestControlView() {
 
               {/* Sign-off */}
               <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", fontWeight: 600 }}>
-                <div>Checked By: {selected?.payload?.checkedBy || "—"}</div>
-                <div>Verified By: {selected?.payload?.verifiedBy || "—"}</div>
+                <SignatureName label="Checked By" name={selected?.payload?.checkedBy} align="start" />
+                <SignatureName label="Verified By" name={selected?.payload?.verifiedBy} align="end" />
               </div>
             </div>
           </>

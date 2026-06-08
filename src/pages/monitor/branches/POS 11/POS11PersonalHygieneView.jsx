@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import SignatureName from "../../../shared/SignatureName";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -509,11 +510,11 @@ export default function POS11PersonalHygieneView() {
               >
                 <div>
                   Checked By (Branch Supervisor - PIC):{" "}
-                  <span style={{ fontWeight: 900 }}>{checkedBySupervisor}</span>
+                  <SignatureName name={checkedBySupervisor === "—" ? "" : checkedBySupervisor} underline={false} inline />
                 </div>
                 <div>
                   Verified by (QA):{" "}
-                  <span style={{ fontWeight: 900 }}>{verifiedByQA}</span>
+                  <SignatureName name={verifiedByQA === "—" ? "" : verifiedByQA} underline={false} inline />
                 </div>
               </div>
 

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../../config/api";
+import SignatureName from "../../../../shared/SignatureName";
 
 
 const TYPE     = "pos19_defrosting_record";
@@ -283,11 +284,11 @@ export default function DefrostingRecordView() {
                 <div style={{ marginTop:12, width:"100%", display:"flex", justifyContent:"space-between", gap:16, flexWrap:"wrap", alignItems:"center", fontSize:12 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8, flex:"1 1 320px", minWidth:300 }}>
                     <strong>Checked by:</strong>
-                    <span style={{ display:"inline-block", minWidth:260, borderBottom:"2px solid #1f3b70", lineHeight:"1.8", textAlign:"left" }}>{safe(record.payload?.checkedBy)}</span>
+                    <span style={{ display:"inline-block", minWidth:260, borderBottom:"2px solid #1f3b70", lineHeight:"1.8", textAlign:"left" }}><SignatureName name={safe(record.payload?.checkedBy)} underline={false} /></span>
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:8, flex:"1 1 320px", minWidth:300, justifyContent:"flex-end" }}>
                     <strong>Verified by:</strong>
-                    <span style={{ display:"inline-block", minWidth:260, borderBottom:"2px solid #1f3b70", lineHeight:"1.8", textAlign:"left" }}>{safe(record.payload?.verifiedBy)}</span>
+                    <span style={{ display:"inline-block", minWidth:260, borderBottom:"2px solid #1f3b70", lineHeight:"1.8", textAlign:"left" }}><SignatureName name={safe(record.payload?.verifiedBy)} underline={false} /></span>
                   </div>
                 </div>
               </div>

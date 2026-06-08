@@ -3,6 +3,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import SignatureName from "../../../../shared/SignatureName";
 
 
 
@@ -543,7 +544,7 @@ export default function EquipmentInspectionSanitizingLogView() {
               {/* ── Footer ── */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
-                  ["✅ Verified by", safe(record.payload?.verifiedBy)],
+                  ["✅ Verified by", <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} />],
                   ["📅 Date",        safe(record.payload?.reportDate)],
                 ].map(([label,val])=>(
                   <div key={label} style={{background:C.tealBg,border:`1px solid #99f6e4`,borderRadius:8,padding:"9px 14px"}}>

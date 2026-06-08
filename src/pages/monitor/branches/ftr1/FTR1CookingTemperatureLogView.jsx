@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 
 
@@ -473,7 +474,7 @@ export default function FTR1CookingTemperatureLogView() {
                     style={{ ...input, width: 260 }}
                   />
                 ) : (
-                  <span style={{ fontWeight: 500 }}>{selectedReport?.payload?.verifiedBy || "—"}</span>
+                  <SignatureName name={selectedReport?.payload?.verifiedBy} underline={false} inline />
                 )}
               </div>
               <div>Branch:- <span style={{ fontWeight: 500 }}>{(editMode ? (draft?.branch||BRANCH) : (selectedReport?.payload?.branch||BRANCH))}</span></div>

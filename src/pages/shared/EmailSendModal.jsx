@@ -18,6 +18,15 @@ import {
   buildSignatureText,
   pushRecipientHistory,
   listEmailContacts,
+  CLASSIFICATIONS,
+  getClassification,
+  RECIPIENT_ROLES,
+  getRole,
+  loadTemplates,
+  saveTemplate,
+  expandTemplateRecipients,
+  getAutoRoute,
+  expandAutoRoute,
 } from "./emailReportSettings";
 import EmailSettingsPanel from "./EmailSettingsPanel";
 import ContactPicker from "./ContactPicker";
@@ -138,6 +147,16 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
   const [sortBy, setSortBy] = useState("default");   // default | branch | action | origin | product | expiry
   const [groupBy, setGroupBy] = useState("none");    // none | branch | action | origin
   const [method, setMethod] = useState("outlook");
+
+  /* New: classification, recipient roles, templates, attachment manager */
+  const [classification, setClassification] = useState("internal");
+  const [recipientRoles, setRecipientRoles] = useState({});  // { [email.toLowerCase()]: "approver"|"reviewer"|"fyi"|"action" }
+  const [showRoles, setShowRoles] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [imageSelection, setImageSelection] = useState({});  // { [url]: boolean } default true
+  const [showAttachments, setShowAttachments] = useState(false);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
   const [progress, setProgress] = useState("");
   const [info, setInfo] = useState("");
   const [error, setError] = useState("");
@@ -156,11 +175,27 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     if (!open) return;
     const s = loadEmailSettings();
     setSettings(s);
-    // Pre-fill from saved defaults (as arrays)
-    setTo(splitToArr(lsGet(LS_TO, "") || s.defaultTo));
-    setCc(splitToArr(lsGet(LS_CC, "") || s.defaultCc));
+    setTemplates(loadTemplates());
+
+    /* Pre-fill from saved defaults (as arrays) */
+    let initialTo = splitToArr(lsGet(LS_TO, "") || s.defaultTo);
+    let initialCc = splitToArr(lsGet(LS_CC, "") || s.defaultCc);
+
+    /* Auto-routing: if config provides a reportType and the user has a routing
+       config for it, merge those defaults in (without dropping anything the user
+       had saved as a global default). */
+    setTo(initialTo);
+    setCc(initialCc);
     setBcc(splitToArr(s.defaultBcc));
+
     setPriority(s.priority || "normal");
+    setClassification(s.defaultClassification || "internal");
+    setRecipientRoles({});
+    setShowRoles(false);
+    setShowAttachments(false);
+    setShowSaveTemplate(false);
+    setTemplateName("");
+    setImageSelection({});
     setScheduleAt("");
     setIncludeTable(false);
     setSortBy("default");
@@ -174,9 +209,78 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     const baseSubject = config?.getSubject?.(payload) || "";
     const prefix = (s.subjectPrefix || "").trim();
     setSubject(prefix && !baseSubject.startsWith(prefix) ? `${prefix} ${baseSubject}` : baseSubject);
-    refreshContacts();
+
+    /* Async: load contacts, then apply auto-routing if applicable */
+    (async () => {
+      const list = await refreshContacts();
+      const route = getAutoRoute(config?.reportType, s);
+      if (route) {
+        const { to: routeTo, cc: routeCc } = expandAutoRoute(route, list);
+        if (routeTo.length) setTo((prev) => mergeUniqueCI(prev, routeTo));
+        if (routeCc.length) setCc((prev) => mergeUniqueCI(prev, routeCc));
+      }
+      /* Initialize attachment selection — all images selected by default */
+      const images = (config?.getImages?.(payload) || []).filter(Boolean);
+      const init = {};
+      for (const u of images) init[u] = true;
+      setImageSelection(init);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /* Helper: merge two arrays of emails case-insensitively */
+  function mergeUniqueCI(base, additions) {
+    const seen = new Set(base.map((x) => String(x).toLowerCase()));
+    const out = [...base];
+    for (const a of additions) {
+      const k = String(a).toLowerCase();
+      if (!seen.has(k)) { seen.add(k); out.push(a); }
+    }
+    return out;
+  }
+
+  /* Apply a template to all relevant modal state */
+  function applyTemplate(t) {
+    if (!t) return;
+    const expanded = expandTemplateRecipients(t, contacts);
+    if (expanded.to.length) setTo(expanded.to);
+    if (expanded.cc.length) setCc(expanded.cc);
+    if (t.subject) setSubject(t.subject);
+    if (t.note) setNote(t.note);
+    if (t.priority) setPriority(t.priority);
+    if (t.classification) setClassification(t.classification);
+    if (typeof t.includeTable === "boolean") setIncludeTable(t.includeTable);
+    if (t.sortBy)  setSortBy(t.sortBy);
+    if (t.groupBy) setGroupBy(t.groupBy);
+    setInfo(`✓ Applied template: ${t.name}`);
+    setTimeout(() => setInfo(""), 2500);
+  }
+
+  /* Save current modal state as a new template */
+  function handleSaveAsTemplate() {
+    const n = templateName.trim() || subject.trim() || "Untitled";
+    const t = saveTemplate({
+      name: n, icon: "📧",
+      subject, note,
+      toEmails: to, ccEmails: cc,
+      priority, classification,
+      includeTable, sortBy, groupBy,
+    });
+    setTemplates(loadTemplates());
+    setShowSaveTemplate(false);
+    setTemplateName("");
+    setInfo(`💾 Template saved: ${t.name}`);
+    setTimeout(() => setInfo(""), 2500);
+  }
+
+  /* Cycle a recipient's role: none → action → approver → reviewer → fyi → none */
+  function cycleRole(email) {
+    const key = String(email).toLowerCase();
+    const cur = recipientRoles[key] || "none";
+    const ids = RECIPIENT_ROLES.map((r) => r.id);
+    const next = ids[(ids.indexOf(cur) + 1) % ids.length];
+    setRecipientRoles((m) => ({ ...m, [key]: next }));
+  }
 
   const summary = useMemo(
     () => config?.getSummary?.(payload) || { fields: [] },
@@ -197,19 +301,55 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     subject.trim().length > 0 &&
     (!needsRecipients || (toValid && ccValid));
 
+  /* ===== Audit log helper — fire-and-forget POST to /api/email-history.
+     Imports API_BASE lazily to avoid coupling this module to any single page. */
+  async function logEmailSent({ methodUsed, attachmentCount }) {
+    try {
+      const { default: API_BASE } = await import("../../config/api");
+      const reportDate = payload?.reportDate || null;
+      let me = "";
+      try { me = JSON.parse(localStorage.getItem("currentUser") || "{}").username || ""; } catch {}
+      await fetch(`${API_BASE}/api/email-history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sent_by:          me,
+          report_type:      config?.reportType || "",
+          report_title:     config?.reportTitle || "",
+          report_date:      reportDate,
+          subject:          subject.trim(),
+          to_emails:        to,
+          cc_emails:        cc,
+          bcc_emails:       bcc,
+          classification,
+          priority,
+          method:           methodUsed,
+          attachment_count: attachmentCount || 0,
+          note:             (note || "").slice(0, 2000),
+          status:           "sent",
+        }),
+      });
+    } catch (err) {
+      /* Audit log is best-effort — never block the user on it */
+      console.warn("[EmailHistory] log failed (non-blocking):", err);
+    }
+  }
+
   /* ===== Send dispatchers ===== */
 
   async function sendViaMailto() {
     setProgress("⏳ Generating PDF...");
     const { blob: pdfBlob, base64: pdfBase64Raw, filename: pdfFilename } =
-      await config.generatePdf(payload, { sortBy, groupBy });
+      await config.generatePdf(payload, { sortBy, groupBy, classification });
 
     const pdfBase64 = pdfBase64Raw || (await (async () => {
       const { blobToBase64 } = await import("./emailReportUtils");
       return blobToBase64(pdfBlob);
     })());
 
-    const images = (config.getImages?.(payload) || []).filter(Boolean);
+    /* Apply the user's attachment-manager selection (default: all selected) */
+    const allImages = (config.getImages?.(payload) || []).filter(Boolean);
+    const images = allImages.filter((u) => imageSelection[u] !== false);
     const cert = config.getCertificate?.(payload);
 
     const attachments = [
@@ -238,16 +378,37 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     }
 
     setProgress("📩 Building email package...");
-    let html = config.buildHtml(payload, { note, pdfUrl: null, attachmentsCount: attachments.length, includeTable, sortBy, groupBy });
+    let html = config.buildHtml(payload, {
+      note, pdfUrl: null, attachmentsCount: attachments.length,
+      includeTable, sortBy, groupBy,
+      classification,
+      recipientRoles, recipients: { to: toList, cc: ccList, bcc: bccList },
+    });
 
-    // Prepend banners (schedule / confidentiality) and append signature
+    // Prepend banners (classification + schedule) and append signature
     const banners = [];
+    /* Classification banner — replaces the legacy single "Internal" toggle */
+    const classMeta = getClassification(classification);
+    if (classification && classification !== "public") {
+      const forwardWarn = classification === "highly" ? " · DO NOT FORWARD" : "";
+      banners.push(`<div style="background:${classMeta.bg};border:1px solid ${classMeta.border};color:${classMeta.color};padding:8px 14px;border-radius:8px;margin:10px auto;max-width:780px;font-family:Inter,Arial,sans-serif;font-size:12px;font-weight:900;text-align:center;letter-spacing:1px;text-transform:uppercase;">🔒 ${classMeta.label.replace(/^[^\s]+\s/, "")}${forwardWarn}</div>`);
+    }
     if (scheduleAt) {
       const niceTime = new Date(scheduleAt).toLocaleString("en-GB", { timeZone: "Asia/Dubai" });
       banners.push(`<div style="background:#fef3c7;border:1px solid #f59e0b;color:#78350f;padding:10px 14px;border-radius:8px;margin:10px auto;max-width:780px;font-family:Inter,Arial,sans-serif;font-size:13px;font-weight:700;">📅 <b>Scheduled to send:</b> ${niceTime} (Dubai) — In Outlook: <i>Options → Delay Delivery → Do not deliver before</i>.</div>`);
     }
-    if (settings.confidentialityNote) {
-      banners.push(`<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:8px 14px;border-radius:8px;margin:10px auto;max-width:780px;font-family:Inter,Arial,sans-serif;font-size:12px;font-weight:800;text-align:center;letter-spacing:0.5px;">🔒 INTERNAL USE ONLY — DO NOT FORWARD</div>`);
+    /* Recipient roles roster — appended only if at least one role was set */
+    const rolesSet = Object.entries(recipientRoles).filter(([, r]) => r && r !== "none");
+    if (rolesSet.length) {
+      const rolesHtml = rolesSet.map(([emKey, rId]) => {
+        const meta = getRole(rId);
+        const display = [...toList, ...ccList, ...bccList].find((x) => String(x).toLowerCase() === emKey) || emKey;
+        return `<span style="display:inline-flex;align-items:center;gap:5px;margin:2px;padding:3px 9px;border-radius:6px;background:${meta.bg};color:${meta.color};border:1px solid ${meta.color}40;font-size:11px;font-weight:800;">${meta.label}: ${display}</span>`;
+      }).join("");
+      banners.push(`<div style="background:#f8fafc;border:1px solid #e2e8f0;color:#0f172a;padding:10px 14px;border-radius:8px;margin:10px auto;max-width:780px;font-family:Inter,Arial,sans-serif;font-size:12px;">
+        <div style="font-weight:900;letter-spacing:.5px;text-transform:uppercase;color:#64748b;font-size:11px;margin-bottom:6px;">🎯 Roles assigned</div>
+        ${rolesHtml}
+      </div>`);
     }
     if (banners.length) {
       const bannerHtml = `<div style="background:#f1f5f9;padding:12px 0 0;">${banners.join("")}</div>`;
@@ -291,12 +452,14 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     lsSet(LS_TO, to.join(", "));
     lsSet(LS_CC, cc.join(", "));
     pushRecipientHistory([...toList, ...ccList, ...bccList]);
+    /* Audit log — fire-and-forget after the .eml is in the user's hands */
+    logEmailSent({ methodUsed: "outlook", attachmentCount: attachments.length });
     setTimeout(() => onClose?.(), 5000);
   }
 
   async function generateAndUploadPdf() {
     setProgress("⏳ Generating PDF...");
-    const { blob, filename } = await config.generatePdf(payload, { sortBy, groupBy });
+    const { blob, filename } = await config.generatePdf(payload, { sortBy, groupBy, classification });
     setProgress("☁️ Uploading PDF (Cloudinary)...");
     const pdfUrl = await uploadPdfBlob(blob, filename);
     return { blob, pdfUrl, filename };
@@ -313,6 +476,7 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     window.open(url, "_blank", "noopener,noreferrer");
     setInfo("💬 WhatsApp Web فُتح — اختر المستلم وأرسل.");
     pushRecipientHistory([...toList, ...ccList]);
+    logEmailSent({ methodUsed: "whatsapp", attachmentCount: 1 });
     setTimeout(() => onClose?.(), 1800);
   }
 
@@ -332,6 +496,7 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
       await navigator.clipboard.writeText(text);
       setInfo("📋 تم النسخ — الصقه (Ctrl+V) وين ما بدك.");
       pushRecipientHistory([...toList, ...ccList, ...bccList]);
+      logEmailSent({ methodUsed: "copy", attachmentCount: 1 });
     } catch {
       throw new Error("فشل النسخ. المتصفح يمنع الوصول للحافظة.");
     }
@@ -413,6 +578,34 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
           </div>
         )}
 
+        {/* ===== Quick Actions / Templates ===== */}
+        {templates.length > 0 && (
+          <div style={{ marginTop: 14, padding: "10px 12px", background: "linear-gradient(135deg,#f5f3ff,#eef2ff)", border: "1px solid #c7d2fe", borderRadius: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 900, color: "#4338ca", letterSpacing: ".5px", textTransform: "uppercase", marginBottom: 8 }}>
+              ⚡ Quick Actions
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {templates.slice(0, 6).map((t) => (
+                <button key={t.id} type="button" onClick={() => applyTemplate(t)} disabled={busy}
+                  style={{
+                    padding: "6px 12px", background: "#fff", color: "#3730a3",
+                    border: "1px solid #c7d2fe", borderRadius: 999,
+                    fontWeight: 800, fontSize: 12, cursor: busy ? "not-allowed" : "pointer",
+                    fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 5,
+                  }}
+                  title={`Apply template: ${t.name}`}>
+                  {t.icon} {t.name}
+                </button>
+              ))}
+              {templates.length > 6 && (
+                <span style={{ fontSize: 11, color: "#64748b", alignSelf: "center" }}>
+                  +{templates.length - 6} more in ⚙️ Settings
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         <div style={styles.field}>
           <label style={styles.label}>Send via:</label>
           <div style={styles.methodGrid}>
@@ -480,9 +673,9 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
             style={styles.input} disabled={busy} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <div style={styles.field}>
-            <label style={styles.label}>📅 Schedule reminder (optional)</label>
+            <label style={styles.label}>📅 Schedule reminder</label>
             <input
               type="datetime-local"
               value={scheduleAt}
@@ -490,7 +683,6 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
               style={styles.input}
               disabled={busy}
             />
-            <div style={styles.meta}>يضيف banner للرسالة + تعليمات Delay Delivery في Outlook.</div>
           </div>
           <div style={styles.field}>
             <label style={styles.label}>Priority</label>
@@ -501,7 +693,132 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
               <option value="low">🔵 Low</option>
             </select>
           </div>
+          <div style={styles.field}>
+            <label style={styles.label}>🔒 Classification</label>
+            <select value={classification} onChange={(e) => setClassification(e.target.value)}
+              style={{
+                ...styles.input,
+                background: getClassification(classification).bg,
+                color: getClassification(classification).color,
+                fontWeight: 800,
+                borderColor: getClassification(classification).border,
+              }} disabled={busy}>
+              {CLASSIFICATIONS.map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {/* ===== Recipient Roles (collapsible) ===== */}
+        {needsRecipients && (to.length + cc.length + bcc.length) > 0 && (
+          <div style={{ ...styles.field, padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10 }}>
+            <button type="button" onClick={() => setShowRoles((v) => !v)}
+              style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+              <span style={{ fontWeight: 800, fontSize: 13, color: "#334155" }}>
+                🎯 Recipient Roles
+                <span style={{ fontWeight: 600, fontSize: 11, color: "#64748b", marginInlineStart: 8 }}>
+                  ({Object.values(recipientRoles).filter((r) => r && r !== "none").length} assigned)
+                </span>
+              </span>
+              <span style={{ color: "#64748b", fontSize: 12 }}>{showRoles ? "▲" : "▼"}</span>
+            </button>
+            {showRoles && (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: 11, color: "#64748b" }}>اضغط على الدور بجانب كل مستلم للتدوير بين الأدوار.</div>
+                {[...to, ...cc, ...bcc].map((email) => {
+                  const key = String(email).toLowerCase();
+                  const found = contacts.find((c) => c.email.toLowerCase() === key);
+                  const role = getRole(recipientRoles[key] || "none");
+                  return (
+                    <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 8px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6 }}>
+                      <span style={{ fontSize: 12, color: "#0f172a", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {found?.name ? `${found.name} <${email}>` : email}
+                      </span>
+                      <button type="button" onClick={() => cycleRole(email)} disabled={busy}
+                        style={{
+                          padding: "3px 10px", borderRadius: 6,
+                          background: role.bg, color: role.color,
+                          border: `1px solid ${role.color}40`,
+                          fontWeight: 800, fontSize: 11, cursor: busy ? "not-allowed" : "pointer",
+                          fontFamily: "inherit", whiteSpace: "nowrap",
+                        }}>
+                        {role.label}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== Attachment Manager (collapsible) ===== */}
+        {(() => {
+          const allImages = (config?.getImages?.(payload) || []).filter(Boolean);
+          if (allImages.length === 0) return null;
+          const selectedCount = allImages.filter((u) => imageSelection[u] !== false).length;
+          return (
+            <div style={{ ...styles.field, padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10 }}>
+              <button type="button" onClick={() => setShowAttachments((v) => !v)}
+                style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                <span style={{ fontWeight: 800, fontSize: 13, color: "#334155" }}>
+                  📎 Attachments
+                  <span style={{ fontWeight: 600, fontSize: 11, color: "#64748b", marginInlineStart: 8 }}>
+                    ({selectedCount} / {allImages.length + 1} selected · 1 PDF auto + {selectedCount} photos)
+                  </span>
+                </span>
+                <span style={{ color: "#64748b", fontSize: 12 }}>{showAttachments ? "▲" : "▼"}</span>
+              </button>
+              {showAttachments && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
+                    PDF التقرير يُرفق دائماً. اختر الصور المراد إرفاقها (افتراضياً: الكل).
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                    <button type="button" onClick={() => {
+                      const all = {};
+                      for (const u of allImages) all[u] = true;
+                      setImageSelection(all);
+                    }} style={{ padding: "4px 10px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      ☑ Select All
+                    </button>
+                    <button type="button" onClick={() => {
+                      const none = {};
+                      for (const u of allImages) none[u] = false;
+                      setImageSelection(none);
+                    }} style={{ padding: "4px 10px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      ☐ Deselect All
+                    </button>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+                    {allImages.map((url, i) => {
+                      const checked = imageSelection[url] !== false;
+                      const filename = (url.split("/").pop() || `photo_${i + 1}`).split("?")[0];
+                      return (
+                        <label key={url} style={{
+                          position: "relative", border: `2px solid ${checked ? "#16a34a" : "#cbd5e1"}`,
+                          borderRadius: 8, overflow: "hidden", cursor: "pointer",
+                          background: "#fff", opacity: checked ? 1 : 0.5,
+                        }}>
+                          <input type="checkbox" checked={checked}
+                            onChange={(e) => setImageSelection((m) => ({ ...m, [url]: e.target.checked }))}
+                            style={{ position: "absolute", top: 4, left: 4, zIndex: 2, width: 18, height: 18, accentColor: "#16a34a" }} />
+                          <img src={url} alt={filename}
+                            style={{ width: "100%", height: 80, objectFit: "cover", display: "block" }}
+                            onError={(e) => { e.target.style.background = "#fee2e2"; }} />
+                          <div style={{ padding: "4px 6px", fontSize: 10, color: "#475569", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {filename}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div style={styles.field}>
           <label
@@ -580,14 +897,45 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
         {info && !progress && <div style={styles.info}>{info}</div>}
         {error && <div style={styles.err}>{error}</div>}
 
-        <div style={styles.actions}>
-          <button onClick={onClose} disabled={busy} style={{ ...styles.btnGhost, ...(busy ? styles.btnDisabled : {}) }}>
-            إغلاق
+        {/* ===== Save-as-template inline form ===== */}
+        {showSaveTemplate && (
+          <div style={{ marginTop: 14, padding: "12px 14px", background: "#f5f3ff", border: "1px dashed #c4b5fd", borderRadius: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#4338ca", marginBottom: 6 }}>
+              💾 احفظ هذا الإعداد كقالب لاستخدامه لاحقاً بضغطة وحدة
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder="اسم القالب (مثلاً: تقرير يومي للمدراء)"
+                style={{ ...styles.input, flex: 1 }}
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveAsTemplate(); }} />
+              <button type="button" onClick={handleSaveAsTemplate}
+                style={{ ...styles.btnPrimary, padding: "9px 16px", fontSize: 13 }}>
+                Save
+              </button>
+              <button type="button" onClick={() => { setShowSaveTemplate(false); setTemplateName(""); }}
+                style={{ ...styles.btnGhost, padding: "9px 14px", fontSize: 13 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ ...styles.actions, justifyContent: "space-between" }}>
+          <button type="button" onClick={() => setShowSaveTemplate(true)} disabled={busy || showSaveTemplate}
+            style={{ ...styles.btnGhost, fontSize: 12, padding: "8px 14px", color: "#7c3aed", borderColor: "#c4b5fd", ...(busy ? styles.btnDisabled : {}) }}>
+            💾 Save as template
           </button>
-          <button onClick={handleSend} disabled={!canSend}
-            style={{ ...styles.btnPrimary, ...(canSend ? {} : styles.btnDisabled) }}>
-            {sendLabel}
-          </button>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={onClose} disabled={busy} style={{ ...styles.btnGhost, ...(busy ? styles.btnDisabled : {}) }}>
+              إغلاق
+            </button>
+            <button onClick={handleSend} disabled={!canSend}
+              style={{ ...styles.btnPrimary, ...(canSend ? {} : styles.btnDisabled) }}>
+              {sendLabel}
+            </button>
+          </div>
         </div>
       </div>
 

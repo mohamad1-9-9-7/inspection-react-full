@@ -5,6 +5,7 @@ import jsPDF from "jspdf";
 import unionLogo from "../../../../../assets/unioncoop-logo.png";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import SignatureName from "../../../../shared/SignatureName";
 
 
 
@@ -700,7 +701,7 @@ export default function OilQualityMonitoringView() {
                     <strong>Verified by:</strong>
                     {!editing ? (
                       <span style={{ display:"inline-block", minWidth:260, borderBottom:"2px solid #1f3b70", lineHeight:"1.8" }}>
-                        {safe(record.payload?.verifiedBy)}
+                        <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} />
                       </span>
                     ) : (
                       <input

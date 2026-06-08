@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import SignatureName from "../../../../shared/SignatureName";
 
 
 const TYPE     = "pos19_cooking_temperature";
@@ -248,7 +249,7 @@ export default function CookingTemperatureMonitoringView() {
               </ol>
             </div>
             <div style={{marginTop:12,fontSize:12}}>
-              <strong>Verified By:</strong> {safe(record.payload?.verifiedBy)}
+              <SignatureName label="Verified By" name={safe(record.payload?.verifiedBy)} inline />
             </div>
           </div>)}
         </div>

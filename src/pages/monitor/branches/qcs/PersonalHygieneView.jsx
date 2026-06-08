@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
+import SignatureName from "../../../shared/SignatureName";
 
 /* ===== API base (أسلوب موحّد) ===== */
 
@@ -383,7 +384,7 @@ export default function PersonalHygieneVIEW() {
             {/* التذييل + التوقيعات الرقمية */}
             <div style={{ marginTop:"1.5rem", display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, padding:"0 1rem" }}>
               <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                <span style={{ fontWeight:700 }}>Checked By: {ftr?.checkedBy || "—"}</span>
+                <SignatureName label="Checked By" name={ftr?.checkedBy} align="start" />
                 {ftr?.checkedBySignature && (
                   <img
                     src={ftr.checkedBySignature}
@@ -393,7 +394,7 @@ export default function PersonalHygieneVIEW() {
                 )}
               </div>
               <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"flex-end" }}>
-                <span style={{ fontWeight:700 }}>Verified By: {ftr?.verifiedBy || "—"}</span>
+                <SignatureName label="Verified By" name={ftr?.verifiedBy} align="end" />
                 {ftr?.verifiedBySignature && (
                   <img
                     src={ftr.verifiedBySignature}

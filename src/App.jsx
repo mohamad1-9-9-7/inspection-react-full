@@ -1,10 +1,13 @@
 // src/App.jsx
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import { Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import { Suspense, lazy, useEffect } from "react";
 import NotificationManager from "./components/NotificationManager";
 import API_BASE from "./config/api";
+import { branchIdFromPath } from "./config/branches";
+import { isDeleteAllowedForBranch } from "./pages/settings/SecurityControlsTab";
 
 const SubscriptionExpired = lazy(() => import("./pages/SubscriptionExpired"));
+const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
 
 // Lazy imports
 const Login = lazy(() => import("./pages/Login"));
@@ -517,10 +520,14 @@ function NotFound() {
 }
 
 function useDeleteGuard() {
+  const location = useLocation();
   useEffect(() => {
     const sync = () => {
       try {
-        const allowed = JSON.parse(localStorage.getItem("appSecuritySettings") || "{}").allowDeleteRecords === true;
+        // Route-aware: branch pages use their per-branch override; everywhere
+        // else falls back to the master switch (branchId = null).
+        const branchId = branchIdFromPath(location.pathname);
+        const allowed = isDeleteAllowedForBranch(branchId);
         document.body.classList.toggle("sec-delete-allowed", allowed);
       } catch {
         document.body.classList.remove("sec-delete-allowed");
@@ -529,7 +536,7 @@ function useDeleteGuard() {
     sync();
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
-  }, []);
+  }, [location.pathname]);
 }
 
 export default function App() {
@@ -570,6 +577,15 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ExpiryCenter />
+            </ProtectedRoute>
+          }
+        />
+        {/* 📨 Email Center — audit history + analytics */}
+        <Route
+          path="/email-center"
+          element={
+            <ProtectedRoute>
+              <EmailCenter />
             </ProtectedRoute>
           }
         />

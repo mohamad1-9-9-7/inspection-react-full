@@ -141,7 +141,7 @@ const BRANCHES = [
   "POS 6", "POS 7", "POS 10", "POS 11", "POS 14", "POS 15", "POS 16", "POS 17",
   "POS 18", "POS 19", "POS 21", "POS 24", "POS 25", "POS 26", "POS 31",
   "POS 34", "POS 35", "POS 36", "POS 37", "POS 38", "POS 41", "POS 42",
-  "POS 43", "POS 44", "POS 45",
+  "POS 43", "POS 44", "POS 45", "POS 47", "POS 48",
   "FTR 1", "FTR 2",
   "KMC", "KPS",
   "W K C",   // ✅ NEW
@@ -153,8 +153,15 @@ function isOtherBranch(val) {
   const s = String(val || "").toLowerCase();
   return s.includes("other branch") || s.includes("فرع آخر");
 }
+// Old data sometimes stored the branch as a bare number (e.g. "47" / "48").
+// Normalize any bare-number branch to its "POS <n>" form.
+function normalizeBranch(val) {
+  const s = String(val ?? "").trim();
+  if (/^\d+$/.test(s)) return `POS ${s}`;
+  return s;
+}
 function safeButchery(row) {
-  return isOtherBranch(row?.butchery) ? row?.customButchery || "" : row?.butchery || "";
+  return isOtherBranch(row?.butchery) ? row?.customButchery || "" : normalizeBranch(row?.butchery);
 }
 function actionText(row) {
   return row?.action === "إجراء آخر..." ? row?.customAction || "" : row?.action || "";
@@ -303,6 +310,11 @@ export default function ReturnView() {
   const [editRowIdx, setEditRowIdx] = useState(null);
   const [editRowData, setEditRowData] = useState(null);
   const [addingRow, setAddingRow] = useState(false);
+
+  // ✅ Bulk edit mode — edit all rows at once, save once
+  const [bulkEdit, setBulkEdit] = useState(false);
+  const [bulkRows, setBulkRows] = useState([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageRowIndex, setImageRowIndex] = useState(-1);
 
@@ -464,7 +476,7 @@ export default function ReturnView() {
       itemCode: row.itemCode || "",
       productName: row.productName || "",
       origin: row.origin || "",
-      butchery: row.butchery || "",
+      butchery: isOtherBranch(row.butchery) ? row.butchery : normalizeBranch(row.butchery),
       customButchery: row.customButchery || "",
       quantity: row.quantity ?? "",
       qtyType: row.qtyType || "",
@@ -481,9 +493,12 @@ export default function ReturnView() {
 
   const prepareRowForSave = (row, existingImages = []) => {
     const qtyNum = Number(row.quantity);
-    const customB = (row.customButchery || "").trim();
     const chosen = (row.butchery || "").trim();
-    const butcheryLabel = (customB || isOtherBranch(chosen)) ? "فرع آخر... / Other branch" : chosen;
+    const isOther = isOtherBranch(chosen);
+    // Only keep customButchery when the chosen branch is actually "Other branch".
+    // Otherwise a stale custom value would force the save back to "Other branch".
+    const customB = isOther ? (row.customButchery || "").trim() : "";
+    const butcheryLabel = isOther ? "فرع آخر... / Other branch" : chosen;
     return {
       itemCode: (row.itemCode || "").trim(),
       productName: (row.productName || "").trim(),
@@ -547,6 +562,70 @@ export default function ReturnView() {
       console.error(e);
       setOpMsg("❌ Failed to save.");
     } finally {
+      setTimeout(() => setOpMsg(""), 3000);
+    }
+  };
+
+  /* ========== Bulk edit (edit all rows, save once) ========== */
+  const startBulkEdit = () => {
+    if (!selectedReport) return;
+    // close any single-row edit / add first
+    setAddingRow(false); setEditRowIdx(null); setEditRowData(null);
+    setRowSearch("");
+    setBulkRows((selectedReport.items || []).map((r) => ({
+      ...r,
+      butchery: isOtherBranch(r.butchery) ? r.butchery : normalizeBranch(r.butchery),
+      quantity: r.quantity ?? "",
+    })));
+    setBulkEdit(true);
+  };
+
+  const cancelBulkEdit = () => { setBulkEdit(false); setBulkRows([]); };
+
+  const updateBulkRow = (idx, patch) =>
+    setBulkRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+
+  // Mark/unmark a row for removal (kept in place so indices stay aligned)
+  const toggleBulkRemove = (idx) =>
+    setBulkRows((rows) => rows.map((r, i) => (i === idx ? { ...r, _removed: !r._removed } : r)));
+
+  const saveBulkEdit = async () => {
+    if (!selectedReport) return;
+    const kept = bulkRows.filter((r) => !r._removed);
+    if (kept.length === 0) {
+      setOpMsg("❌ At least one row is required."); setTimeout(() => setOpMsg(""), 3000); return;
+    }
+    // validate each kept row
+    for (let n = 0; n < kept.length; n++) {
+      const r = kept[n];
+      if (!r.productName?.trim()) {
+        setOpMsg(`❌ Row ${n + 1}: enter product name.`); setTimeout(() => setOpMsg(""), 3500); return;
+      }
+      const q = Number(r.quantity);
+      if (!Number.isFinite(q) || q <= 0) {
+        setOpMsg(`❌ Row ${n + 1}: enter a valid quantity (> 0).`); setTimeout(() => setOpMsg(""), 3500); return;
+      }
+      if (isOtherBranch(r.butchery) && !r.customButchery?.trim()) {
+        setOpMsg(`❌ Row ${n + 1}: enter the 'Other branch' name.`); setTimeout(() => setOpMsg(""), 3500); return;
+      }
+    }
+    try {
+      setBulkSaving(true);
+      setOpMsg("⏳ Saving all rows…");
+      const items = (selectedReport.items || []);
+      const prepared = bulkRows
+        .map((r, idx) => ({ r, img: items[idx]?.images || [] }))
+        .filter((x) => !x.r._removed)
+        .map((x) => prepareRowForSave(x.r, x.img));
+      await saveReportToServer(selectedReport.reportDate, prepared);
+      await reloadFromServer();
+      cancelBulkEdit();
+      setOpMsg("✅ All rows saved.");
+    } catch (e) {
+      console.error(e);
+      setOpMsg("❌ Failed to save all.");
+    } finally {
+      setBulkSaving(false);
       setTimeout(() => setOpMsg(""), 3000);
     }
   };
@@ -894,8 +973,11 @@ export default function ReturnView() {
                   <button onClick={handleExportPDF} style={{ background: "#111827", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer" }}>
                     ⬇️ Export PDF
                   </button>
-                  <button onClick={startAddRow} style={addRowBtn}>➕ Add Row</button>
-                  <button onClick={handleDeleteDay} style={deleteBtnMain} data-delete-action="true">🗑️ Delete This Day Report</button>
+                  {!bulkEdit && (selectedReport.items || []).length > 0 && (
+                    <button onClick={startBulkEdit} style={bulkEditBtn}>✏️ Edit All</button>
+                  )}
+                  {!bulkEdit && <button onClick={startAddRow} style={addRowBtn}>➕ Add Row</button>}
+                  {!bulkEdit && <button onClick={handleDeleteDay} style={deleteBtnMain} data-delete-action="true">🗑️ Delete This Day Report</button>}
                 </div>
               </div>
 
@@ -909,27 +991,54 @@ export default function ReturnView() {
                 </div>
               )}
 
-              {/* ✅ Row search */}
-              <div style={{ marginBottom: 10 }}>
-                <input
-                  value={rowSearch}
-                  onChange={(e) => setRowSearch(e.target.value)}
-                  placeholder="🔍 Search within table rows (product, branch, action, expiry…)"
-                  style={{ width: "100%", boxSizing: "border-box", padding: "8px 14px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", fontSize: "0.97em", color: "#111" }}
-                />
-                {rowSearch && (
-                  <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
-                    Showing {filteredRows.length} of {(selectedReport.items || []).length} rows
-                    <button onClick={() => setRowSearch("")} style={{ marginLeft: 8, background: "none", border: "none", color: "#3b82f6", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>✕ Clear</button>
-                  </div>
-                )}
-              </div>
+              {/* ✅ Row search (hidden while bulk editing) */}
+              {!bulkEdit && (
+                <div style={{ marginBottom: 10 }}>
+                  <input
+                    value={rowSearch}
+                    onChange={(e) => setRowSearch(e.target.value)}
+                    placeholder="🔍 Search within table rows (product, branch, action, expiry…)"
+                    style={{ width: "100%", boxSizing: "border-box", padding: "8px 14px", borderRadius: 10, border: "1.5px solid #93c5fd", background: "#eff6ff", fontSize: "0.97em", color: "#111" }}
+                  />
+                  {rowSearch && (
+                    <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
+                      Showing {filteredRows.length} of {(selectedReport.items || []).length} rows
+                      <button onClick={() => setRowSearch("")} style={{ marginLeft: 8, background: "none", border: "none", color: "#3b82f6", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>✕ Clear</button>
+                    </div>
+                  )}
+                </div>
+              )}
 
-              <div style={{ overflowX: "auto" }}>
-                <table style={detailTable}>
+              {/* ✅ Bulk edit sticky toolbar */}
+              {bulkEdit && (
+                <div style={bulkBar}>
+                  <span style={{ fontWeight: 800, color: "#1e3a8a", fontSize: "1.02em" }}>
+                    ✏️ Bulk edit — <strong>{bulkRows.filter((r) => !r._removed).length}</strong> row(s) being edited
+                  </span>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={saveBulkEdit} disabled={bulkSaving} style={{ ...bulkSaveBtn, opacity: bulkSaving ? 0.6 : 1, cursor: bulkSaving ? "not-allowed" : "pointer" }}>
+                      {bulkSaving ? "⏳ Saving…" : "💾 Save All"}
+                    </button>
+                    <button onClick={cancelBulkEdit} disabled={bulkSaving} style={bulkCancelBtn}>✖ Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              <style>{`
+                .rv-detail-table { border-collapse: separate; border-spacing: 0; }
+                .rv-detail-table thead th { position: sticky; top: 0; z-index: 2; }
+                .rv-row { transition: background .15s ease; }
+                .rv-row:hover td { background: #eff6ff !important; }
+                .rv-detail-table input:focus, .rv-detail-table select:focus {
+                  outline: none; border-color: #38bdf8;
+                  box-shadow: 0 0 0 3px rgba(56,189,248,.25); background: #fff;
+                }
+              `}</style>
+              <div style={detailTableWrap}>
+                <table style={detailTable} className="rv-detail-table">
                   <thead>
-                    <tr style={{ background: "#dbeafe", color: "#111" }}>
-                      <th style={thS}>SL.NO</th>
+                    <tr>
+                      <th style={{ ...thS, borderTopLeftRadius: 12 }}>SL.NO</th>
                       <th style={thS}>ITEM CODE</th>
                       <th style={thS}>PRODUCT NAME</th>
                       <th style={thS}>ORIGIN</th>
@@ -939,47 +1048,70 @@ export default function ReturnView() {
                       <th style={thS}>EXPIRY DATE</th>
                       <th style={thS}>REMARKS</th>
                       <th style={thS}>ACTION</th>
-                      <th style={thS}>ACTIONS</th>
+                      <th style={{ ...thS, borderTopRightRadius: 12 }}>ACTIONS</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredRows.map((row) => {
                       const i = row._origIdx;
+                      const editing = editRowIdx === i || bulkEdit;
+                      const draft = bulkEdit ? (bulkRows[i] || {}) : editRowData;
+                      const upd = (patch) => bulkEdit
+                        ? updateBulkRow(i, patch)
+                        : setEditRowData((s) => ({ ...s, ...patch }));
+                      const removed = bulkEdit && draft._removed;
+                      const rowBg = removed ? "#fef2f2" : bulkEdit ? "#fffdf5" : (i % 2 ? "#f8fbff" : "#ffffff");
+
+                      // A row marked for removal during bulk edit — show a slim "undo" line
+                      if (removed) {
+                        return (
+                          <tr key={i} style={{ background: rowBg }}>
+                            <td style={tdS}>{i + 1}</td>
+                            <td style={{ ...tdS, textAlign: "left", color: "#b91c1c", textDecoration: "line-through" }} colSpan={8}>
+                              {draft.productName || "—"} — will be removed on save
+                            </td>
+                            <td style={tdS}>
+                              <button onClick={() => toggleBulkRemove(i)} style={undoBtn} title="Keep this row">↩ Undo</button>
+                            </td>
+                          </tr>
+                        );
+                      }
+
                       return (
-                        <tr key={i} style={{ background: i % 2 ? "#f0f9ff" : "#fff" }}>
-                          <td style={tdS}>{i + 1}</td>
+                        <tr key={i} className="rv-row" style={{ background: rowBg }}>
+                          <td style={{ ...tdS, fontWeight: 700, color: "#94a3b8", fontVariantNumeric: "tabular-nums" }}>{i + 1}</td>
 
                           {/* ITEM CODE */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
-                              <input style={{ ...cellInputStyle, minWidth: 120 }} value={editRowData.itemCode} onChange={(e) => setEditRowData((s) => ({ ...s, itemCode: e.target.value }))} placeholder="ITEM CODE" />
+                            {editing ? (
+                              <input style={cellInputStyle} value={draft.itemCode || ""} onChange={(e) => upd({ itemCode: e.target.value })} placeholder="ITEM CODE" />
                             ) : row.itemCode || ""}
                           </td>
 
                           {/* PRODUCT */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
-                              <input style={cellInputStyle} value={editRowData.productName} onChange={(e) => setEditRowData((s) => ({ ...s, productName: e.target.value }))} placeholder="PRODUCT NAME" />
+                            {editing ? (
+                              <input style={cellInputStyle} value={draft.productName || ""} onChange={(e) => upd({ productName: e.target.value })} placeholder="PRODUCT NAME" />
                             ) : row.productName}
                           </td>
 
                           {/* ORIGIN */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
-                              <input style={cellInputStyle} value={editRowData.origin} onChange={(e) => setEditRowData((s) => ({ ...s, origin: e.target.value }))} placeholder="ORIGIN" />
+                            {editing ? (
+                              <input style={cellInputStyle} value={draft.origin || ""} onChange={(e) => upd({ origin: e.target.value })} placeholder="ORIGIN" />
                             ) : row.origin}
                           </td>
 
                           {/* BUTCHERY */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
-                                <select style={{ ...cellInputStyle, minWidth: 200 }} value={editRowData.butchery} onChange={(e) => setEditRowData((s) => ({ ...s, butchery: e.target.value }))}>
+                            {editing ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                <select style={cellInputStyle} value={draft.butchery || ""} onChange={(e) => upd({ butchery: e.target.value, customButchery: isOtherBranch(e.target.value) ? draft.customButchery : "" })}>
                                   <option value="">— Select a branch —</option>
                                   {BRANCHES.map((b) => <option key={b} value={b}>{isOtherBranch(b) ? "Other branch" : b}</option>)}
                                 </select>
-                                {isOtherBranch(editRowData.butchery) && (
-                                  <input style={{ ...cellInputStyle, minWidth: 200 }} value={editRowData.customButchery} onChange={(e) => setEditRowData((s) => ({ ...s, customButchery: e.target.value }))} placeholder="Enter branch name" />
+                                {isOtherBranch(draft.butchery) && (
+                                  <input style={cellInputStyle} value={draft.customButchery || ""} onChange={(e) => upd({ customButchery: e.target.value })} placeholder="Enter branch name" />
                                 )}
                               </div>
                             ) : safeButchery(row)}
@@ -987,44 +1119,44 @@ export default function ReturnView() {
 
                           {/* QUANTITY */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
-                              <input style={{ ...cellInputStyle, minWidth: 100 }} type="number" min="0" value={editRowData.quantity} onChange={(e) => setEditRowData((s) => ({ ...s, quantity: e.target.value }))} placeholder="QTY" />
+                            {editing ? (
+                              <input style={cellInputStyle} type="number" min="0" value={draft.quantity ?? ""} onChange={(e) => upd({ quantity: e.target.value })} placeholder="QTY" />
                             ) : row.quantity}
                           </td>
 
                           {/* QTY TYPE */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
-                                <input style={{ ...cellInputStyle, minWidth: 100 }} value={editRowData.qtyType} onChange={(e) => setEditRowData((s) => ({ ...s, qtyType: e.target.value }))} placeholder="QTY TYPE" />
-                                <input style={{ ...cellInputStyle, minWidth: 140 }} value={editRowData.customQtyType} onChange={(e) => setEditRowData((s) => ({ ...s, customQtyType: e.target.value }))} placeholder='Custom QTY TYPE' />
+                            {editing ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                <input style={cellInputStyle} value={draft.qtyType || ""} onChange={(e) => upd({ qtyType: e.target.value })} placeholder="QTY TYPE" />
+                                <input style={cellInputStyle} value={draft.customQtyType || ""} onChange={(e) => upd({ customQtyType: e.target.value })} placeholder='Custom QTY TYPE' />
                               </div>
                             ) : row.qtyType === "أخرى" ? row.customQtyType : row.qtyType || ""}
                           </td>
 
                           {/* EXPIRY — ✅ type="date" instead of text */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
-                              <input type="date" style={cellInputStyle} value={editRowData.expiry} onChange={(e) => setEditRowData((s) => ({ ...s, expiry: e.target.value }))} />
+                            {editing ? (
+                              <input type="date" style={cellInputStyle} value={draft.expiry || ""} onChange={(e) => upd({ expiry: e.target.value })} />
                             ) : row.expiry}
                           </td>
 
                           {/* REMARKS */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
-                              <input style={cellInputStyle} value={editRowData.remarks} onChange={(e) => setEditRowData((s) => ({ ...s, remarks: e.target.value }))} placeholder="REMARKS" />
+                            {editing ? (
+                              <input style={cellInputStyle} value={draft.remarks || ""} onChange={(e) => upd({ remarks: e.target.value })} placeholder="REMARKS" />
                             ) : row.remarks}
                           </td>
 
                           {/* ACTION */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
+                            {editing ? (
                               <div>
-                                <select value={editRowData.action} onChange={(e) => setEditRowData((s) => ({ ...s, action: e.target.value }))} style={cellInputStyle}>
+                                <select value={draft.action || ""} onChange={(e) => upd({ action: e.target.value })} style={cellInputStyle}>
                                   {ACTIONS.map((act) => <option value={act} key={act}>{act === "إجراء آخر..." ? "Other action..." : act}</option>)}
                                 </select>
-                                {editRowData.action === "إجراء آخر..." && (
-                                  <input value={editRowData.customAction} onChange={(e) => setEditRowData((s) => ({ ...s, customAction: e.target.value }))} placeholder="Specify action…" style={{ ...cellInputStyle, marginTop: 6 }} />
+                                {draft.action === "إجراء آخر..." && (
+                                  <input value={draft.customAction || ""} onChange={(e) => upd({ customAction: e.target.value })} placeholder="Specify action…" style={{ ...cellInputStyle, marginTop: 6 }} />
                                 )}
                               </div>
                             ) : row.action === "إجراء آخر..." ? row.customAction : row.action}
@@ -1032,7 +1164,9 @@ export default function ReturnView() {
 
                           {/* ROW BUTTONS */}
                           <td style={tdS}>
-                            {editRowIdx === i ? (
+                            {bulkEdit ? (
+                              <button onClick={() => toggleBulkRemove(i)} style={rowDeleteBtn} data-delete-action="true" title="Remove this row">🗑️</button>
+                            ) : editRowIdx === i ? (
                               <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                                 <button onClick={saveRow} style={saveBtn}>Save</button>
                                 <button onClick={cancelEditRow} style={cancelBtn}>Cancel</button>
@@ -1054,25 +1188,25 @@ export default function ReturnView() {
                     {addingRow && editRowIdx === (selectedReport.items || []).length && (
                       <tr style={{ background: "#fefce8" }}>
                         <td style={tdS}>{(selectedReport.items || []).length + 1}</td>
-                        <td style={tdS}><input style={{ ...cellInputStyle, minWidth: 120 }} value={editRowData.itemCode} onChange={(e) => setEditRowData((s) => ({ ...s, itemCode: e.target.value }))} placeholder="ITEM CODE" /></td>
+                        <td style={tdS}><input style={cellInputStyle} value={editRowData.itemCode} onChange={(e) => setEditRowData((s) => ({ ...s, itemCode: e.target.value }))} placeholder="ITEM CODE" /></td>
                         <td style={tdS}><input style={cellInputStyle} value={editRowData.productName} onChange={(e) => setEditRowData((s) => ({ ...s, productName: e.target.value }))} placeholder="PRODUCT NAME" /></td>
                         <td style={tdS}><input style={cellInputStyle} value={editRowData.origin} onChange={(e) => setEditRowData((s) => ({ ...s, origin: e.target.value }))} placeholder="ORIGIN" /></td>
                         <td style={tdS}>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
-                            <select style={{ ...cellInputStyle, minWidth: 200 }} value={editRowData.butchery} onChange={(e) => setEditRowData((s) => ({ ...s, butchery: e.target.value }))}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <select style={cellInputStyle} value={editRowData.butchery} onChange={(e) => setEditRowData((s) => ({ ...s, butchery: e.target.value, customButchery: isOtherBranch(e.target.value) ? s.customButchery : "" }))}>
                               <option value="">— Select a branch —</option>
                               {BRANCHES.map((b) => <option key={b} value={b}>{isOtherBranch(b) ? "Other branch" : b}</option>)}
                             </select>
                             {isOtherBranch(editRowData.butchery) && (
-                              <input style={{ ...cellInputStyle, minWidth: 200 }} value={editRowData.customButchery} onChange={(e) => setEditRowData((s) => ({ ...s, customButchery: e.target.value }))} placeholder="Enter branch name" />
+                              <input style={cellInputStyle} value={editRowData.customButchery} onChange={(e) => setEditRowData((s) => ({ ...s, customButchery: e.target.value }))} placeholder="Enter branch name" />
                             )}
                           </div>
                         </td>
-                        <td style={tdS}><input style={{ ...cellInputStyle, minWidth: 100 }} type="number" min="0" value={editRowData.quantity} onChange={(e) => setEditRowData((s) => ({ ...s, quantity: e.target.value }))} placeholder="QTY" /></td>
+                        <td style={tdS}><input style={cellInputStyle} type="number" min="0" value={editRowData.quantity} onChange={(e) => setEditRowData((s) => ({ ...s, quantity: e.target.value }))} placeholder="QTY" /></td>
                         <td style={tdS}>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
-                            <input style={{ ...cellInputStyle, minWidth: 100 }} value={editRowData.qtyType} onChange={(e) => setEditRowData((s) => ({ ...s, qtyType: e.target.value }))} placeholder="QTY TYPE" />
-                            <input style={{ ...cellInputStyle, minWidth: 140 }} value={editRowData.customQtyType} onChange={(e) => setEditRowData((s) => ({ ...s, customQtyType: e.target.value }))} placeholder="Custom QTY TYPE" />
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <input style={cellInputStyle} value={editRowData.qtyType} onChange={(e) => setEditRowData((s) => ({ ...s, qtyType: e.target.value }))} placeholder="QTY TYPE" />
+                            <input style={cellInputStyle} value={editRowData.customQtyType} onChange={(e) => setEditRowData((s) => ({ ...s, customQtyType: e.target.value }))} placeholder="Custom QTY TYPE" />
                           </div>
                         </td>
                         {/* ✅ type="date" for new row too */}
@@ -1169,10 +1303,12 @@ const treeSubHeader = { display: "flex", justifyContent: "space-between", paddin
 const treeDay = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", cursor: "pointer", borderBottom: "1px dashed #e5e7eb", fontSize: "0.98em", color: "#111" };
 const rightPanel = { flex: 1, background: "#fff", borderRadius: 15, boxShadow: "0 1px 12px #e8daef44", minHeight: 320, padding: "25px 28px", color: "#111" };
 
-const detailTable = { width: "100%", background: "#fff", borderRadius: 8, borderCollapse: "collapse", border: "1px solid #b6c8e3", marginTop: 6, minWidth: 950, color: "#111" };
-const thS = { padding: "10px 8px", textAlign: "center", fontSize: "0.98em", fontWeight: "bold", border: "1px solid #b6c8e3", background: "#dbeafe", color: "#111" };
-const tdS = { padding: "9px 8px", textAlign: "center", minWidth: 90, border: "1px solid #b6c8e3", color: "#111" };
-const cellInputStyle = { padding: "6px 8px", borderRadius: 6, border: "1px solid #b6c8e3", background: "#eef6ff", color: "#111", minWidth: 140 };
+/* ===== Modern table (Soft-Sky) ===== */
+const detailTableWrap = { overflowX: "auto", borderRadius: 14, border: "1px solid #e2e8f0", boxShadow: "0 6px 22px rgba(2,132,199,.10)", background: "#fff", marginTop: 6 };
+const detailTable = { width: "100%", background: "#fff", minWidth: 950, color: "#0f172a", fontSize: "0.93em" };
+const thS = { padding: "13px 10px", textAlign: "center", fontSize: 11, fontWeight: 800, letterSpacing: ".6px", textTransform: "uppercase", color: "#0c4a6e", background: "linear-gradient(180deg, #eff6ff, #e0f2fe)", borderBottom: "2px solid #bae6fd", whiteSpace: "nowrap" };
+const tdS = { padding: "11px 10px", textAlign: "center", minWidth: 90, borderBottom: "1px solid #eef2f7", color: "#1e293b", verticalAlign: "middle" };
+const cellInputStyle = { padding: "7px 10px", borderRadius: 9, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#0f172a", width: "100%", minWidth: 0, boxSizing: "border-box", fontSize: "0.95em", transition: "border-color .15s, box-shadow .15s" };
 const dateInputStyle = { borderRadius: 8, border: "1.5px solid #93c5fd", background: "#eff6ff", padding: "7px 13px", fontSize: "1em", minWidth: 120, color: "#111" };
 const clearBtn = { background: "#3b82f6", color: "#fff", border: "none", borderRadius: 10, padding: "7px 18px", fontWeight: "bold", fontSize: "1em", cursor: "pointer" };
 const saveBtn = { background: "#10b981", color: "#fff", border: "none", borderRadius: 6, padding: "4px 10px", fontWeight: "bold", cursor: "pointer" };
@@ -1184,6 +1320,13 @@ const jsonExportBtn = { background: "#0f766e", color: "#fff", border: "none", bo
 const jsonImportBtn = { background: "#7c3aed", color: "#fff", border: "none", borderRadius: 10, padding: "7px 18px", fontWeight: "bold", fontSize: "1em", cursor: "pointer" };
 const addRowBtn = { background: "#2563eb", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer" };
 const rowDeleteBtn = { background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontSize: 15, padding: "4px 8px", cursor: "pointer" };
+
+/* ===== Bulk edit styles (same Soft-Sky palette) ===== */
+const bulkEditBtn = { background: "linear-gradient(135deg, #0ea5e9, #6366f1)", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: "bold", cursor: "pointer", boxShadow: "0 2px 8px #bae6fd" };
+const bulkBar = { position: "sticky", top: 0, zIndex: 5, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10, padding: "10px 14px", borderRadius: 12, background: "linear-gradient(135deg, #eff6ff, #e0e7ff)", border: "1.5px solid #93c5fd", boxShadow: "0 2px 12px #c7d2fe66" };
+const bulkSaveBtn = { background: "#10b981", color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontWeight: "bold", fontSize: "1em", cursor: "pointer", boxShadow: "0 2px 8px #a7f3d0" };
+const bulkCancelBtn = { background: "#fff", color: "#475569", border: "1.5px solid #cbd5e1", borderRadius: 10, padding: "9px 16px", fontWeight: "bold", fontSize: "1em", cursor: "pointer" };
+const undoBtn = { background: "#fff", color: "#b91c1c", border: "1.5px solid #fecaca", borderRadius: 8, padding: "4px 10px", fontWeight: "bold", fontSize: 13, cursor: "pointer" };
 
 const galleryBack = { position: "fixed", inset: 0, background: "rgba(15,23,42,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 };
 const galleryCard = { width: "min(1400px, 96vw)", maxHeight: "80vh", overflow: "auto", background: "#fff", color: "#111", borderRadius: 14, border: "1px solid #e5e7eb", padding: "14px 16px", boxShadow: "0 12px 32px rgba(0,0,0,.25)" };

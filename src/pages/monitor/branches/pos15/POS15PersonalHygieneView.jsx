@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import SignatureName from "../../../shared/SignatureName";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -471,8 +472,8 @@ export default function POS15PersonalHygieneView() {
                   fontWeight: 600,
                 }}
               >
-                <div>Checked By: {selectedReport?.payload?.checkedBy || "—"}</div>
-                <div>Verified By: {selectedReport?.payload?.verifiedBy || "—"}</div>
+                <SignatureName label="Checked By" name={selectedReport?.payload?.checkedBy} align="start" />
+                <SignatureName label="Verified By" name={selectedReport?.payload?.verifiedBy} align="end" />
               </div>
             </div>
           </>

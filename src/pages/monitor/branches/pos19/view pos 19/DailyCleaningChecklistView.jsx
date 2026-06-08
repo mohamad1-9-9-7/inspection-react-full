@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import SignatureName from "../../../../shared/SignatureName";
 
 
 
@@ -499,8 +500,8 @@ export default function DailyCleaningChecklistView() {
               {/* ── Footer cards ── */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 {[
-                  ["👤 Checked by",  safe(record.payload?.checkedBy)],
-                  ["✅ Verified by", safe(record.payload?.verifiedBy)],
+                  ["👤 Checked by",  <SignatureName name={safe(record.payload?.checkedBy)} underline={false} />],
+                  ["✅ Verified by", <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} />],
                 ].map(([label,val])=>(
                   <div key={label} style={{background:C.tealBg,border:`1px solid #99f6e4`,borderRadius:8,padding:"9px 14px"}}>
                     <div style={{fontSize:10,color:C.teal,fontWeight:700,letterSpacing:.5,textTransform:"uppercase",marginBottom:2}}>{label}</div>

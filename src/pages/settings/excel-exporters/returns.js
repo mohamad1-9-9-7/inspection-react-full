@@ -22,6 +22,9 @@ const NC = COLS.length;
 function safeButchery(row) {
   const b = row?.butchery || "";
   if (/other branch|فرع آخر/i.test(b)) return row?.customButchery || b;
+  // Old data sometimes stored the branch as a bare number (e.g. "47" / "48").
+  const s = String(b).trim();
+  if (/^\d+$/.test(s)) return `POS ${s}`;
   return b;
 }
 function safeAction(row) {

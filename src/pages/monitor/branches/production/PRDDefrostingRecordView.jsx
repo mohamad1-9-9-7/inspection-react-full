@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/production/PRDDefrostingRecordView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import SignatureName from "../../../shared/SignatureName";
 
 const API_BASE =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
@@ -496,8 +497,8 @@ const ReportSheet = React.forwardRef(function ReportSheet({ report }, ref) {
 
       {/* Signatures */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-        <div style={sigBox}><strong>Checked By</strong><span style={sigLine}>{sig.checkedBy || "—"}</span></div>
-        <div style={sigBox}><strong>Verified By</strong><span style={sigLine}>{sig.verifiedBy || "—"}</span></div>
+        <div style={sigBox}><strong>Checked By</strong><span style={sigLine}><SignatureName name={sig.checkedBy} underline={false} /></span></div>
+        <div style={sigBox}><strong>Verified By</strong><span style={sigLine}><SignatureName name={sig.verifiedBy} underline={false} /></span></div>
       </div>
     </div>
   );
