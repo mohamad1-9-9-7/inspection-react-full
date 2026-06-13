@@ -1,4 +1,4 @@
-// src/pages/monitor/branches/pos19/pos19_views/TraceabilityLogView.jsx
+// src/pages/monitor/branches/pos19/view pos 19/TraceabilityLogView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -6,253 +6,896 @@ import API_BASE from "../../../../../config/api";
 import SignatureName from "../../../../shared/SignatureName";
 
 
-const TYPE     = "pos19_traceability_log";
-const BRANCH   = "POS 19";
-const FORM_REF = "FS-HACCP/POS19/TRC/10";
 
-const safe = (v) => v ?? "";
+const TYPE   = "pos19_traceability_log";
+const BRANCH = "POS 19";
+
+const safe  = (v) => (v ?? "");
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({ background:bg,color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer" });
-const formatDMY = (iso) => { if(!iso)return iso; const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?`${m[3]}/${m[2]}/${m[1]}`:iso; };
-const isFilledRow = (r={}) => Object.values(r).some(v=>String(v??"").trim()!=="");
+const btn   = (bg) => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" });
 
-function emptyRow(){ return {date:"",productName:"",supplier:"",productionDate:"",expiryDate:"",finalProduct:"",finalProductionDate:"",finalExpiryDate:"",storageLocation:"",disposalReason:"",checkedBy:""}; }
+const formatDMY = (iso) => {
+  if (!iso) return iso;
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+};
+
+// صف ممتلئ
+const isFilledRow = (r = {}) =>
+  Object.values(r).some((v) => String(v ?? "").trim() !== "");
+
+// نموذج صف
+function emptyRow() {
+  return {
+    batchId: "",
+    rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "",
+    rawWeight: "",
+    finalName: "", finalProdDate: "", finalExpDate: "",
+    finalWeight: "",
+  };
+}
+
+// مساواة الحقول عبر مجموعة صفوف
+const equalAcross = (rows, keys) => {
+  if (!rows.length) return false;
+  const f = rows[0];
+  return rows.every(r => keys.every(k => String(r?.[k] ?? "") === String(f?.[k] ?? "")));
+};
 
 export default function TraceabilityLogView() {
-  const reportRef    = useRef(null);
+  const reportRef = useRef(null);
   const fileInputRef = useRef(null);
-  const todayDubai   = useMemo(()=>{ try{return new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Dubai"});}catch{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;} },[]);
 
-  const [date,setDate]                     = useState(todayDubai);
-  const [loading,setLoading]               = useState(false);
-  const [err,setErr]                       = useState("");
-  const [record,setRecord]                 = useState(null);
-  const [editRows,setEditRows]             = useState([]);
-  const [editing,setEditing]               = useState(false);
-  const [allDates,setAllDates]             = useState([]);
-  const [expandedYears,setExpandedYears]   = useState({});
-  const [expandedMonths,setExpandedMonths] = useState({});
+  const todayDubai = useMemo(() => {
+    try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
+    catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+  }, []);
 
-  const gridStyle = {width:"max-content",borderCollapse:"collapse",tableLayout:"fixed",fontSize:13};
-  const thCell = {border:"1px solid #1f3b70",padding:"8px 6px",textAlign:"center",whiteSpace:"pre-line",fontWeight:700,background:"#f5f8ff",color:"#0b1f4d"};
-  const tdCell = {border:"1px solid #1f3b70",padding:"8px 6px",textAlign:"center",verticalAlign:"middle"};
-  const inputStyle = {width:"100%",border:"1px solid #c7d2fe",borderRadius:6,padding:"6px 8px"};
-  const colDefs = [
-    <col key="date"                style={{width:110}}/>,
-    <col key="productName"         style={{width:200}}/>,
-    <col key="supplier"            style={{width:180}}/>,
-    <col key="productionDate"      style={{width:130}}/>,
-    <col key="expiryDate"          style={{width:130}}/>,
-    <col key="finalProduct"        style={{width:200}}/>,
-    <col key="finalProductionDate" style={{width:150}}/>,
-    <col key="finalExpiryDate"     style={{width:150}}/>,
-    <col key="storageLocation"     style={{width:160}}/>,
-    <col key="disposalReason"      style={{width:180}}/>,
-    <col key="checkedBy"           style={{width:140}}/>,
-  ];
+  const [date, setDate] = useState(todayDubai);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [record, setRecord] = useState(null);
 
-  async function fetchAllDates(){
-    try{const res=await fetch(`${API_BASE}/api/reports?type=${TYPE}`,{cache:"no-store"});const data=await res.json();const list=Array.isArray(data)?data:data?.data??[];
-    const uniq=Array.from(new Set(list.map(r=>r?.payload).filter(p=>p&&p.branch===BRANCH&&p.reportDate).map(p=>p.reportDate))).sort((a,b)=>b.localeCompare(a));
-    setAllDates(uniq);
-    // Tree stays collapsed by default.
-    if(!uniq.includes(date)&&uniq.length)setDate(uniq[0]);}catch(e){console.warn(e);}
+  // Edit mode (password 9999)
+  const [editing, setEditing] = useState(false);
+  const [editRows, setEditRows] = useState(Array.from({ length: 12 }, () => emptyRow()));
+  const [editCheckedBy, setEditCheckedBy] = useState("");
+  const [editVerifiedBy, setEditVerifiedBy] = useState("");
+  const [allDates, setAllDates] = useState([]);
+
+  // Accordion state
+  const [expandedYears, setExpandedYears] = useState({});
+  const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
+
+  // Styles
+  const gridStyle = useMemo(() => ({
+    width: "max-content",
+    borderCollapse: "collapse",
+    tableLayout: "fixed",
+    fontSize: 13,
+  }), []);
+  const thCell = {
+    border: "1px solid #1f3b70",
+    padding: "8px 6px",
+    textAlign: "center",
+    whiteSpace: "pre-line",
+    fontWeight: 700,
+    background: "#f5f8ff",
+    color: "#0b1f4d",
+  };
+  const tdCell = {
+    border: "1px solid #1f3b70",
+    padding: "8px 6px",
+    textAlign: "center",
+    verticalAlign: "middle",
+  };
+  const inputStyle = {
+    width: "100%",
+    border: "1px solid #c7d2fe",
+    borderRadius: 6,
+    padding: "6px 8px",
+  };
+
+  // أعمدة الجدول
+  const colDefs = useMemo(() => ([
+    <col key="batchId"       style={{ width: 180 }} />,
+    <col key="rawName"       style={{ width: 260 }} />,
+    <col key="origProdDate"  style={{ width: 140 }} />,
+    <col key="origExpDate"   style={{ width: 140 }} />,
+    <col key="openedDate"    style={{ width: 120 }} />,
+    <col key="bestBefore"    style={{ width: 140 }} />,
+    <col key="rawWeight"     style={{ width: 120 }} />,
+    <col key="finalName"     style={{ width: 260 }} />,
+    <col key="finalProdDate" style={{ width: 160 }} />,
+    <col key="finalExpDate"  style={{ width: 160 }} />,
+    <col key="finalWeight"   style={{ width: 120 }} />,
+  ]), []);
+
+  /* ===== Fetch dates ===== */
+  async function fetchAllDates() {
+    try {
+      const q = new URLSearchParams({ type: TYPE });
+      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : data?.data ?? [];
+
+      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
+      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
+      setAllDates(uniq);
+
+      // Tree stays collapsed by default.
+      if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
+    } catch (e) {
+      console.warn("Failed to fetch dates", e);
+    }
   }
 
-  async function fetchRecord(d=date){
-    setLoading(true);setErr("");setRecord(null);setEditRows([]);
-    try{const res=await fetch(`${API_BASE}/api/reports?type=${TYPE}`,{cache:"no-store"});const data=await res.json();const list=Array.isArray(data)?data:data?.data??[];
-    const match=list.find(r=>r?.payload?.branch===BRANCH&&r?.payload?.reportDate===d)||null;setRecord(match);
-    const rows=match?.payload?.entries??[];setEditRows(rows.length?JSON.parse(JSON.stringify(rows)):[emptyRow()]);setEditing(false);}
-    catch(e){console.error(e);setErr("Failed to fetch data.");}finally{setLoading(false);}
+  /* ===== Fetch one record ===== */
+  async function fetchRecord(d = date) {
+    setLoading(true);
+    setErr("");
+    setRecord(null);
+    try {
+      const q = new URLSearchParams({ type: TYPE });
+      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : data?.data ?? [];
+
+      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      setRecord(match);
+
+      // Init edit buffers (at least 12 rows, but never fewer than the saved entries)
+      const editLen = Math.max(12, match?.payload?.entries?.length || 0);
+      const rows = Array.from({ length: editLen }, (_, i) => {
+        const e = match?.payload?.entries?.[i];
+        return e ? {
+          batchId: e.batchId ?? "",
+          rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
+          openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
+          rawWeight: e.rawWeight ?? "",
+          finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
+          finalWeight: e.finalWeight ?? "",
+        } : emptyRow();
+      });
+      setEditRows(rows);
+      setEditCheckedBy(match?.payload?.checkedBy || "");
+      setEditVerifiedBy(match?.payload?.verifiedBy || "");
+      setEditing(false);
+    } catch (e) {
+      console.error(e);
+      setErr("Failed to fetch data.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  useEffect(()=>{fetchAllDates();},[]);useEffect(()=>{if(date)fetchRecord(date);},[date]);
+  useEffect(() => { fetchAllDates(); }, []);
+  useEffect(() => { if (date) fetchRecord(date); }, [date]);
 
-  const askPass=(label="")=>(window.prompt(`${label}\nEnter password:`)||"")==="9999";
-
-  function toggleEdit(){
-    if(editing){const rows=record?.payload?.entries??[];setEditRows(rows.length?JSON.parse(JSON.stringify(rows)):[emptyRow()]);setEditing(false);return;}
-    if(!askPass("Enable edit mode"))return alert("❌ Wrong password");setEditing(true);
+  /* ===== Edit / Save / Delete ===== */
+  function toggleEdit() {
+    if (editing) {
+      const editLen = Math.max(12, record?.payload?.entries?.length || 0);
+      const rows = Array.from({ length: editLen }, (_, i) => {
+        const e = record?.payload?.entries?.[i];
+        return e ? {
+          batchId: e.batchId ?? "",
+          rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
+          openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
+          rawWeight: e.rawWeight ?? "",
+          finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
+          finalWeight: e.finalWeight ?? "",
+        } : emptyRow();
+      });
+      setEditRows(rows);
+      setEditCheckedBy(record?.payload?.checkedBy || "");
+      setEditVerifiedBy(record?.payload?.verifiedBy || "");
+      setEditing(false);
+      return;
+    }
+    setEditing(true);
   }
 
-  function upd(i,key,val){setEditRows(p=>{const n=[...p];n[i]={...n[i],[key]:val};return n;});}
-  function addRow(){setEditRows(p=>[...p,emptyRow()]);}
-  function delRow(i){setEditRows(p=>p.length===1?p:p.filter((_,idx)=>idx!==i));}
+  async function saveEdit() {
+    if (!record) return;
 
-  async function saveEdit(){
-    if(!askPass("Save changes"))return alert("❌ Wrong password");if(!record)return;
-    const rid=getId(record);const cleaned=editRows.filter(isFilledRow);
-    const payload={...(record?.payload||{}),branch:BRANCH,reportDate:record?.payload?.reportDate,entries:cleaned,savedAt:Date.now()};
-    try{setLoading(true);if(rid){try{await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"});}catch(e){console.warn(e);}}
-    const r=await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})});if(!r.ok)throw new Error();alert("✅ Changes saved");setEditing(false);await fetchRecord(payload.reportDate);await fetchAllDates();}
-    catch(e){console.error(e);alert("❌ Saving failed.");}finally{setLoading(false);}
+    if (!editRows.some(isFilledRow)) {
+      return alert("⚠️ Please fill at least one row before saving.");
+    }
+
+    const rid = getId(record);
+    const cleaned = editRows.filter(isFilledRow);
+
+    const payload = {
+      ...(record?.payload || {}),
+      branch: BRANCH,
+      reportDate: record?.payload?.reportDate,
+      entries: cleaned, // يحتوي على batchId و الأوزان
+      checkedBy: editCheckedBy,
+      verifiedBy: editVerifiedBy,
+      savedAt: Date.now(),
+    };
+
+    try {
+      setLoading(true);
+
+      // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
+      const url = rid
+        ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}`
+        : `${API_BASE}/api/reports`;
+      const postRes = await fetch(url, {
+        method: rid ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
+      });
+      if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
+
+      alert("✅ Changes saved");
+      setEditing(false);
+      await fetchRecord(payload.reportDate);
+      await fetchAllDates();
+    } catch (e) {
+      console.error(e);
+      alert("❌ Saving failed.\n" + String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function handleDelete(){
-    if(!record)return;if(!askPass("Delete confirmation"))return alert("❌ Wrong password");if(!window.confirm("Are you sure?"))return;
-    const rid=getId(record);if(!rid)return alert("⚠️ Missing id.");
-    try{setLoading(true);const res=await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"});if(!res.ok)throw new Error();alert("✅ Deleted");await fetchAllDates();setDate(allDates.find(d=>d!==record?.payload?.reportDate)||todayDubai);}
-    catch(e){alert("❌ Delete failed.");}finally{setLoading(false);}
+  async function handleDelete() {
+    if (!record) return;
+    if (!window.confirm("Are you sure you want to delete this report?")) return;
+
+    const rid = getId(record);
+    if (!rid) return alert("⚠️ Missing record id.");
+
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      alert("✅ Deleted");
+      await fetchAllDates();
+      const next = allDates.find((d) => d !== record?.payload?.reportDate) || todayDubai;
+      setDate(next);
+    } catch (e) {
+      console.error(e);
+      alert("❌ Delete failed.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function exportJSON(){if(!record)return;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({type:TYPE,payload:record.payload},null,2)],{type:"application/json"}));a.download=`POS19_Traceability_${record?.payload?.reportDate||date}.json`;a.click();URL.revokeObjectURL(a.href);}
-
-  async function exportXLSX(){
-    try{
-      const ExcelJS=(await import("exceljs")).default||(await import("exceljs"));
-      const p=record?.payload||{};const rows=(p.entries||[]).filter(isFilledRow);
-      const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet("TraceabilityLog");
-      const border={top:{style:"thin",color:{argb:"1F3B70"}},left:{style:"thin",color:{argb:"1F3B70"}},bottom:{style:"thin",color:{argb:"1F3B70"}},right:{style:"thin",color:{argb:"1F3B70"}}};
-      const COL_HEADERS=["Date","Raw Name","Supplier","Production Date","Expiry Date","Final Product","Final Prod. Date","Final Exp. Date","Storage Location","Disposal Reason","Checked by"];
-      ws.columns=[{width:12},{width:20},{width:20},{width:14},{width:14},{width:20},{width:16},{width:16},{width:18},{width:20},{width:16}];
-      ws.mergeCells(1,1,1,COL_HEADERS.length);const r1=ws.getCell(1,1);r1.value=`POS 19 | Traceability Log — ${FORM_REF}`;r1.alignment={horizontal:"center",vertical:"middle"};r1.font={size:13,bold:true};r1.fill={type:"pattern",pattern:"solid",fgColor:{argb:"E9F0FF"}};ws.getRow(1).height=22;
-      ws.mergeCells(2,1,2,COL_HEADERS.length);ws.getCell(2,1).value=`Branch: ${BRANCH} | Section: ${safe(p.section)} | Date: ${safe(p.reportDate)}`;ws.getCell(2,1).alignment={horizontal:"center"};ws.getRow(2).height=18;
-      const hr=ws.getRow(4);hr.values=COL_HEADERS;hr.eachCell(cell=>{cell.font={bold:true};cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"DCE6F1"}};cell.border=border;});hr.height=28;
-      let rIdx=5;rows.forEach(e=>{ws.getRow(rIdx).values=[safe(e.date),safe(e.productName),safe(e.supplier),safe(e.productionDate),safe(e.expiryDate),safe(e.finalProduct),safe(e.finalProductionDate),safe(e.finalExpiryDate),safe(e.storageLocation),safe(e.disposalReason),safe(e.checkedBy)];ws.getRow(rIdx).eachCell(cell=>{cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.border=border;});ws.getRow(rIdx).height=20;rIdx++;});
-      rIdx+=1;[["Checked by:",p.checkedBy||""],["Verified by:",p.verifiedBy||""],["Rev.Date:",p.revDate||""],["Rev.No:",p.revNo||""]].forEach(([label,val],i)=>{const c=i*2+1;const lc=ws.getCell(rIdx,c);const vc=ws.getCell(rIdx,c+1);lc.value=label;lc.font={bold:true};vc.value=val;lc.border=vc.border=border;});
-      const buf=await wb.xlsx.writeBuffer({useStyles:true,useSharedStrings:true});const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));a.download=`POS19_Traceability_${p.reportDate||date}.xlsx`;a.click();URL.revokeObjectURL(a.href);
-    }catch(e){console.error(e);alert("⚠️ XLSX export failed.");}
+  /* ===== Export / Import ===== */
+  function exportJSON() {
+    if (!record) return;
+    const out = { type: TYPE, payload: record.payload };
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `POS19_TraceabilityLog_${record?.payload?.reportDate || date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
-  async function exportPDF(){
-    if(!reportRef.current)return;const node=reportRef.current;const canvas=await html2canvas(node,{scale:2,windowWidth:node.scrollWidth,windowHeight:node.scrollHeight});
-    const pdf=new jsPDF("l","pt","a4");const pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),margin=20,headerH=50;
-    const drawH=()=>{pdf.setFillColor(233,240,255);pdf.rect(0,0,pageW,headerH,"F");pdf.setFont("helvetica","bold");pdf.setFontSize(13);pdf.text(`POS 19 | Traceability Log — ${record?.payload?.reportDate||date}`,pageW/2,28,{align:"center"});};
-    drawH();const usableW=pageW-margin*2,ratio=usableW/canvas.width,availH=pageH-(headerH+10)-margin;let ypx=0;
-    while(ypx<canvas.height){const sliceH=Math.min(canvas.height-ypx,availH/ratio);const pc=document.createElement("canvas");pc.width=canvas.width;pc.height=sliceH;pc.getContext("2d").drawImage(canvas,0,ypx,canvas.width,sliceH,0,0,canvas.width,sliceH);pdf.addImage(pc.toDataURL("image/png"),"PNG",margin,headerH+10,usableW,sliceH*ratio);ypx+=sliceH;if(ypx<canvas.height){pdf.addPage("a4","l");drawH();}}
-    pdf.save(`POS19_Traceability_${record?.payload?.reportDate||date}.pdf`);
+  // CSV (مع الأوزان)
+  function fallbackCSV(p) {
+    const headers = [
+      "Batch / Lot ID",
+      "Name of Raw Material Used for Preparation",
+      "Original Production Date",
+      "Original Expiry Date",
+      "Opened Date",
+      "Best Before Date",
+      "Raw Weight (kg)",
+      "Name of Product Prepared (Final Product)",
+      "Production Date (Final Product)",
+      "Expiry Date (Final Product)",
+      "Final Weight (kg)",
+      "Checked by",
+      "Verified by",
+    ];
+    const rows = (p.entries || []).filter(isFilledRow).map(e => ([
+      e?.batchId ?? "",
+      e?.rawName ?? "", e?.origProdDate ?? "", e?.origExpDate ?? "",
+      e?.openedDate ?? "", e?.bestBefore ?? "", e?.rawWeight ?? "",
+      e?.finalName ?? "", e?.finalProdDate ?? "", e?.finalExpDate ?? "", e?.finalWeight ?? "",
+      p?.checkedBy ?? "", p?.verifiedBy ?? "",
+    ]));
+    const csv = [headers, ...rows]
+      .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(","))
+      .join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `POS19_TraceabilityLog_${p.reportDate || date}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
-  async function importJSON(file){if(!file)return;try{const payload=JSON.parse(await file.text())?.payload||JSON.parse(await file.text());if(!payload?.reportDate)throw new Error();setLoading(true);const res=await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})});if(!res.ok)throw new Error();alert("✅ Imported");setDate(payload.reportDate);await fetchAllDates();await fetchRecord(payload.reportDate);}catch(e){console.error(e);alert("❌ Invalid JSON or save failed");}finally{if(fileInputRef.current)fileInputRef.current.value="";setLoading(false);}}
+  // XLSX
+  async function exportXLSX() {
+    try {
+      async function loadExcelJS() {
+        try {
+          const m = await import("exceljs/dist/exceljs.min.js");
+          return m?.default ?? m;
+        } catch (_) {}
+        try {
+          const m2 = await import("exceljs");
+          return m2?.default ?? m2;
+        } catch (_) {}
+        throw new Error("Failed to load ExcelJS");
+      }
+      const ExcelJS = await loadExcelJS();
+      const { saveAs } = await import("file-saver");
 
-  const grouped=useMemo(()=>{const out={};for(const d of allDates){const[y,m]=d.split("-");(out[y]||={}); (out[y][m]||=[]).push(d);}for(const y of Object.keys(out))out[y]=Object.fromEntries(Object.entries(out[y]).sort(([a],[b])=>Number(b)-Number(a)).map(([m,arr])=>[m,arr.sort((a,b)=>b.localeCompare(a))]));return Object.fromEntries(Object.entries(out).sort(([a],[b])=>Number(b)-Number(a)));}, [allDates]);
-  const toggleYear=(y)=>setExpandedYears(p=>({...p,[y]:!p[y]}));const toggleMonth=(y,m)=>setExpandedMonths(p=>({...p,[`${y}-${m}`]:!p[`${y}-${m}`]}));
-  const rows=record?.payload?.entries||[];
+      const p = record?.payload || {};
+      const rawRows = Array.isArray(p.entries) ? p.entries.filter(isFilledRow) : [];
+
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("TraceabilityLog");
+
+      const lightBlue = "D9E2F3";
+      const headBlue = "DCE6F1";
+      const borderThin = { style: "thin", color: { argb: "1F3B70" } };
+
+      // Title (11 عمود)
+      ws.mergeCells(1,1,1,11);
+      const r1 = ws.getCell(1,1);
+      r1.value = "POS 19 | Traceability Log";
+      r1.alignment = { horizontal: "center", vertical: "middle" };
+      r1.font = { size: 14, bold: true };
+      r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
+      ws.getRow(1).height = 26;
+
+      // Meta (يمين)
+      const meta = [
+        ["Branch:",     p.branch     || "POS 19"],
+        ["Report Date:",p.reportDate || ""],
+        ["Checked by:", p.checkedBy  || ""],
+        ["Verified by:",p.verifiedBy || ""],
+      ];
+      for (let i = 0; i < meta.length; i++) {
+        const rowIdx = 2 + i;
+        ws.mergeCells(rowIdx, 6, rowIdx, 11);
+        const c = ws.getCell(rowIdx, 6);
+        c.value = `${meta[i][0]} ${meta[i][1]}`;
+        c.alignment = { horizontal: "right", vertical: "middle" };
+        ws.getRow(rowIdx).height = 18;
+      }
+
+      ws.columns = [
+        { width: 24 }, // batch
+        { width: 28 }, { width: 18 }, { width: 18 }, { width: 16 },
+        { width: 18 }, { width: 14 }, // rawWeight
+        { width: 28 }, { width: 20 }, { width: 20 }, { width: 14 }, // finalWeight
+      ];
+
+      const COL_HEADERS = [
+        "Batch / Lot ID",
+        "Name of Raw Material Used for Preparation",
+        "Original Production Date",
+        "Original Expiry Date",
+        "Opened Date",
+        "Best Before Date",
+        "Raw Weight (kg)",
+        "Name of Product Prepared (Final Product)",
+        "Production Date (Final Product)",
+        "Expiry Date (Final Product)",
+        "Final Weight (kg)",
+      ];
+      const hr = ws.getRow(7);
+      hr.values = COL_HEADERS;
+      hr.eachCell((cell) => {
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headBlue } };
+        cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
+      });
+      hr.height = 28;
+
+      let rowIdx = 8;
+      rawRows.forEach((e) => {
+        ws.getRow(rowIdx).values = [
+          e?.batchId || "",
+          e?.rawName || "", e?.origProdDate || "", e?.origExpDate || "",
+          e?.openedDate || "", e?.bestBefore || "", e?.rawWeight || "",
+          e?.finalName || "", e?.finalProdDate || "", e?.finalExpDate || "", e?.finalWeight || "",
+        ];
+        ws.getRow(rowIdx).eachCell((cell) => {
+          cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+          cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin };
+        });
+        ws.getRow(rowIdx).height = 22;
+        rowIdx++;
+      });
+
+      const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
+      saveAs(
+        new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+        `POS19_TraceabilityLog_${p.reportDate || date}.xlsx`
+      );
+    } catch (err) {
+      console.error("[XLSX export error]", err);
+      try {
+        const p = record?.payload || {};
+        fallbackCSV(p);
+        alert("⚠️ XLSX export failed, CSV exported instead.\n" + (err?.message || err));
+      } catch (e2) {
+        alert("⚠️ XLSX and CSV export both failed.\n" + (err?.message || err));
+      }
+    }
+  }
+
+  async function importJSON(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const payload = parsed?.payload || parsed;
+      if (!payload?.reportDate) throw new Error("Invalid payload: missing reportDate");
+
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/api/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      alert("✅ Imported and saved");
+      setDate(payload.reportDate);
+      await fetchAllDates();
+      await fetchRecord(payload.reportDate);
+    } catch (e) {
+      console.error(e);
+      alert("❌ Invalid JSON or save failed");
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setLoading(false);
+    }
+  }
+
+  /* ===== PDF export ===== */
+  async function exportPDF() {
+    if (!reportRef.current) return;
+
+    const node = reportRef.current;
+    const canvas = await html2canvas(node, {
+      scale: 2,
+      windowWidth: node.scrollWidth,
+      windowHeight: node.scrollHeight,
+    });
+
+    const p = record?.payload || {};
+    const pdf = new jsPDF("l", "pt", "a4");
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 20;
+    const headerH = 50;
+
+    // Header
+    pdf.setFillColor(247, 249, 252);
+    pdf.rect(0, 0, pageW, headerH, "F");
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(16);
+    pdf.text(`POS 19 | Traceability Log (${p.reportDate || date})`, pageW / 2, 28, { align: "center" });
+
+    const usableW = pageW - margin * 2;
+    const availableH = pageH - (headerH + 10) - margin;
+
+    const ratio = usableW / canvas.width;
+    const totalHpx = canvas.height;
+    let ypx = 0;
+
+    while (ypx < totalHpx) {
+      const sliceHpx = Math.min(totalHpx - ypx, availableH / ratio);
+
+      const partCanvas = document.createElement("canvas");
+      partCanvas.width = canvas.width;
+      partCanvas.height = sliceHpx;
+      const ctx = partCanvas.getContext("2d");
+      ctx.drawImage(canvas, 0, ypx, canvas.width, sliceHpx, 0, 0, canvas.width, sliceHpx);
+      const partData = partCanvas.toDataURL("image/png");
+
+      const partHpt = sliceHpx * ratio;
+      pdf.addImage(partData, "PNG", margin, headerH + 10, usableW, partHpt);
+
+      ypx += sliceHpx;
+      if (ypx < totalHpx) {
+        pdf.addPage("a4", "l");
+        pdf.setFillColor(247, 249, 252);
+        pdf.rect(0, 0, pageW, headerH, "F");
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(16);
+        pdf.text(`POS 19 | Traceability Log (${p.reportDate || date})`, pageW / 2, 28, { align: "center" });
+      }
+    }
+
+    pdf.save(`POS19_TraceabilityLog_${p.reportDate || date}.pdf`);
+  }
+
+  /* ===== Grouping by batchId ===== */
+  const grouped = useMemo(() => {
+    const entries = record?.payload?.entries || [];
+    const groups = new Map();
+    for (const e of entries) {
+      const key = (e?.batchId ?? "").trim() || "—";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(e);
+    }
+    return groups;
+  }, [record]);
+
+  /* ===== Date tree ===== */
+  const groupedDates = useMemo(() => {
+    const out = {};
+    for (const d of allDates) {
+      const [y, m] = d.split("-");
+      (out[y] ||= {});
+      (out[y][m] ||= []).push(d);
+    }
+    for (const y of Object.keys(out))
+      out[y] = Object.fromEntries(
+        Object.entries(out[y])
+          .sort(([a],[b]) => Number(b) - Number(a))
+          .map(([m, arr]) => [m, arr.sort((a,b)=>b.localeCompare(a))])
+      );
+    return Object.fromEntries(Object.entries(out).sort(([a],[b]) => Number(b) - Number(a)));
+  }, [allDates]);
+
+  const toggleYear  = (y)    => setExpandedYears((p)  => ({ ...p, [y]: !p[y] }));
+  const toggleMonth = (y, m) => setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
 
   return (
-    <div style={{background:"#fff",border:"1px solid #dbe3f4",borderRadius:12,padding:16,color:"#0b1f4d",direction:"ltr"}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-        <div style={{fontWeight:800,fontSize:18}}>Traceability Log — View (POS 19)</div>
-        <div style={{marginInlineStart:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={toggleEdit} style={btn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"Edit (password)"}</button>
-          {editing&&<><button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button><button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button></>}
-          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
-          <button onClick={exportXLSX} disabled={!rows.filter(isFilledRow).length} style={btn("#0ea5e9")}>Export XLSX</button>
-          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
-          <button onClick={exportPDF} style={btn("#374151")}>Export PDF</button>
-          <label style={{...btn("#059669"),display:"inline-block"}}>Import JSON<input ref={fileInputRef} type="file" accept="application/json" onChange={e=>importJSON(e.target.files?.[0])} style={{display:"none"}}/></label>
+    <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d", direction:"ltr" }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
+        <div style={{ fontWeight:800, fontSize:18 }}>
+          Traceability Log — View (POS 19)
+        </div>
+
+        {/* Actions */}
+        <div style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
+            {editing ? "Cancel Edit" : "Edit"}
+          </button>
+          {editing && (
+            <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
+          )}
+          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete</button>
+
+          <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>
+            Export XLSX
+          </button>
+          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>
+            Export JSON
+          </button>
+          <button onClick={exportPDF} style={btn("#374151")}>
+            Export PDF
+          </button>
+          <label style={{ ...btn("#059669"), display:"inline-block" }}>
+            Import JSON
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              onChange={(e)=>importJSON(e.target.files?.[0])}
+              style={{ display:"none" }}
+            />
+          </label>
         </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:12}}>
-        <div style={{border:"1px solid #e5e7eb",borderRadius:10,padding:10,background:"#fafafa"}}>
-          <div style={{fontWeight:800,marginBottom:8}}>📅 Date Tree</div>
-          <div style={{maxHeight:380,overflowY:"auto"}}>
-            {Object.keys(grouped).length?Object.entries(grouped).map(([year,months])=>{const yOpen=!!expandedYears[year];return(<div key={year} style={{marginBottom:8}}>
-              <button onClick={()=>toggleYear(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"6px 10px",borderRadius:8,border:"1px solid #d1d5db",background:"#fff",cursor:"pointer",fontWeight:800}}><span>Year {year}</span><span>{yOpen?"▾":"▸"}</span></button>
-              {yOpen&&Object.entries(months).map(([month,days])=>{const key=`${year}-${month}`;const mOpen=!!expandedMonths[key];return(<div key={key} style={{marginTop:6,marginLeft:8}}>
-                <button onClick={()=>toggleMonth(year,month)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"6px 10px",borderRadius:8,border:"1px solid #e5e7eb",background:"#fff",cursor:"pointer",fontWeight:700}}><span>Month {month}</span><span>{mOpen?"▾":"▸"}</span></button>
-                {mOpen&&<ul style={{listStyle:"none",padding:"6px 2px 0 2px",margin:0}}>{days.map(d=>(<li key={d} style={{marginBottom:6}}><button onClick={()=>setDate(d)} style={{width:"100%",textAlign:"left",padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",background:d===date?"#2563eb":"#fff",color:d===date?"#fff":"#111827",fontWeight:700,cursor:"pointer"}}>{formatDMY(d)}</button></li>))}</ul>}
-              </div>);})}
-            </div>);}):<div style={{color:"#6b7280"}}>No available dates.</div>}
+
+      {/* Layout: Date tree + content */}
+      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
+        {/* Date tree */}
+        <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
+          <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
+          <div style={{ maxHeight:380, overflowY:"auto" }}>
+            {Object.keys(groupedDates).length ? (
+              Object.entries(groupedDates).map(([year, months]) => {
+                const yOpen = !!expandedYears[year];
+                return (
+                  <div key={year} style={{ marginBottom:8 }}>
+                    <button
+                      onClick={()=>toggleYear(year)}
+                      style={{
+                        display:"flex", alignItems:"center", justifyContent:"space-between",
+                        width:"100%", padding:"6px 10px", borderRadius:8,
+                        border:"1px solid #d1d5db", background:"#fff", cursor:"pointer", fontWeight:800
+                      }}
+                      title={yOpen ? "Collapse" : "Expand"}
+                    >
+                      <span>Year {year}</span>
+                      <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
+                    </button>
+
+                    {yOpen && Object.entries(months).map(([month, days]) => {
+                      const key = `${year}-${month}`;
+                      const mOpen = !!expandedMonths[key];
+                      return (
+                        <div key={key} style={{ marginTop:6, marginLeft:8 }}>
+                          <button
+                            onClick={()=>toggleMonth(year, month)}
+                            style={{
+                              display:"flex", alignItems:"center", justifyContent:"space-between",
+                              width:"100%", padding:"6px 10px", borderRadius:8,
+                              border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", fontWeight:700
+                            }}
+                            title={mOpen ? "Collapse" : "Expand"}
+                          >
+                            <span>Month {month}</span>
+                            <span aria-hidden="true">{mOpen ? "▾" : "▸"}</span>
+                          </button>
+
+                          {mOpen && (
+                            <div style={{ padding:"6px 2px 0 2px" }}>
+                              <ul style={{ listStyle:"none", padding:0, margin:0 }}>
+                                {days.map((d)=>(
+                                  <li key={d} style={{ marginBottom:6 }}>
+                                    <button
+                                      onClick={()=>setDate(d)}
+                                      style={{
+                                        width:"100%", textAlign:"left", padding:"8px 10px",
+                                        borderRadius:8, border:"1px solid #d1d5db",
+                                        background: d===date ? "#2563eb" : "#fff",
+                                        color: d===date ? "#fff" : "#111827",
+                                        fontWeight:700, cursor:"pointer"
+                                      }}
+                                      title={formatDMY(d)}
+                                    >
+                                      {formatDMY(d)}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })
+            ) : (
+              <div style={{ color:"#6b7280" }}>No available dates.</div>
+            )}
           </div>
         </div>
-        <div>
-          {loading&&<p>Loading…</p>}{err&&<p style={{color:"#b91c1c"}}>{err}</p>}
-          {!loading&&!err&&!record&&<div style={{padding:12,border:"1px dashed #9ca3af",borderRadius:8,textAlign:"center"}}>No report for this date.</div>}
-          {record&&(<div style={{overflowX:"auto",overflowY:"hidden"}}>
-            <div ref={reportRef} style={{width:"max-content"}}>
-              {/* Meta */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2, 1fr)",gap:8,marginBottom:8,fontSize:12,minWidth:1730}}>
-                <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
-                <div><strong>Report Date:</strong> {safe(record.payload?.reportDate)}</div>
-                <div><strong>Form Ref:</strong> {FORM_REF}</div>
-                <div><strong>Section:</strong> {safe(record.payload?.section)}</div>
-              </div>
 
-              {/* Table */}
-              <table style={gridStyle}>
-                <colgroup>{colDefs}{editing&&<col style={{width:70}}/>}</colgroup>
-                <thead>
-                  <tr>
-                    <th style={thCell}>Date</th>
-                    <th style={thCell}>Raw{"\n"}Name</th>
-                    <th style={thCell}>Supplier</th>
-                    <th style={thCell}>Production{"\n"}Date</th>
-                    <th style={thCell}>Expiry{"\n"}Date</th>
-                    <th style={thCell}>Final{"\n"}Product</th>
-                    <th style={thCell}>Final Prod.{"\n"}Date</th>
-                    <th style={thCell}>Final Exp.{"\n"}Date</th>
-                    <th style={thCell}>Storage{"\n"}Location</th>
-                    <th style={thCell}>Disposal{"\n"}Reason</th>
-                    <th style={thCell}>Checked{"\n"}by</th>
-                    {editing&&<th style={thCell}>—</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {!editing?(rows.filter(isFilledRow).map((r,idx)=>(<tr key={idx}>
-                    <td style={tdCell}>{formatDMY(safe(r.date))}</td>
-                    <td style={tdCell}>{safe(r.productName)}</td>
-                    <td style={tdCell}>{safe(r.supplier)}</td>
-                    <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td>
-                    <td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
-                    <td style={tdCell}>{safe(r.finalProduct)}</td>
-                    <td style={tdCell}>{formatDMY(safe(r.finalProductionDate))}</td>
-                    <td style={tdCell}>{formatDMY(safe(r.finalExpiryDate))}</td>
-                    <td style={tdCell}>{safe(r.storageLocation)}</td>
-                    <td style={tdCell}>{safe(r.disposalReason)}</td>
-                    <td style={tdCell}>{safe(r.checkedBy)}</td>
-                  </tr>))):(
-                    editRows.map((r,i)=>(<tr key={i}>
-                      <td style={tdCell}><input type="date" value={r.date||""} onChange={e=>upd(i,"date",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input value={r.productName||""} onChange={e=>upd(i,"productName",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input value={r.supplier||""} onChange={e=>upd(i,"supplier",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input type="date" value={r.productionDate||""} onChange={e=>upd(i,"productionDate",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input type="date" value={r.expiryDate||""} onChange={e=>upd(i,"expiryDate",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input value={r.finalProduct||""} onChange={e=>upd(i,"finalProduct",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input type="date" value={r.finalProductionDate||""} onChange={e=>upd(i,"finalProductionDate",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input type="date" value={r.finalExpiryDate||""} onChange={e=>upd(i,"finalExpiryDate",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input value={r.storageLocation||""} onChange={e=>upd(i,"storageLocation",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input value={r.disposalReason||""} onChange={e=>upd(i,"disposalReason",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input value={r.checkedBy||""} onChange={e=>upd(i,"checkedBy",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")} data-delete-action="true">Del</button></td>
-                    </tr>))
-                  )}
-                </tbody>
-              </table>
+        {/* Report content */}
+        <div style={{ minWidth: 0 }}>
+          {loading && <p>Loading…</p>}
+          {err && <p style={{ color:"#b91c1c" }}>{err}</p>}
 
-              {/* Note */}
-              <div style={{marginTop:10,paddingTop:8,borderTop:"2px solid #1f3b70",fontSize:12,color:"#0b1f4d",lineHeight:1.6,width:"max-content"}}>
-                <strong style={{color:"#0b1f4d"}}>Note:</strong>
-                <span style={{marginInlineStart:4}}>
-                  Raw material receipts, usage and disposal at the kitchen should be recorded as per
-                  <span style={{fontWeight:800}}> “{FORM_REF}”</span>.
-                </span>
-              </div>
+          {!loading && !err && !record && (
+            <div style={{ padding:12, border:"1px dashed #9ca3af", borderRadius:8, textAlign:"center" }}>
+              No report for this date.
+            </div>
+          )}
 
-              {/* Footer: Checked left | Verified right */}
-              <div style={{marginTop:12,width:"100%",display:"flex",justifyContent:"space-between",gap:16,flexWrap:"wrap",alignItems:"center",fontSize:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,flex:"1 1 320px",minWidth:300}}>
-                  <strong>Checked by:</strong>
-                  <span style={{display:"inline-block",minWidth:260,borderBottom:"2px solid #1f3b70",lineHeight:"1.8",textAlign:"left"}}>
-                    <SignatureName name={safe(record.payload?.checkedBy)} underline={false} />
+          {record && (
+            <div style={{ overflowX:"auto", overflowY:"hidden" }}>
+              <div ref={reportRef} style={{ width: "max-content" }}>
+                {/* Meta */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(2, 1fr)", gap:8, marginBottom:8, fontSize:12, minWidth: 1300 }}>
+                  <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
+                  <div><strong>Report Date:</strong> {safe(record.payload?.reportDate)}</div>
+                </div>
+
+                {/* Table */}
+                <table style={gridStyle}>
+                  <colgroup>{colDefs}</colgroup>
+                  <thead>
+                    <tr>
+                      <th style={thCell}>Batch / Lot ID</th>
+                      <th style={thCell}>Name of Raw Material Used for Preparation</th>
+                      <th style={thCell}>Original Production Date</th>
+                      <th style={thCell}>Original Expiry Date</th>
+                      <th style={thCell}>Opened Date</th>
+                      <th style={thCell}>Best Before Date</th>
+                      <th style={thCell}>Raw Weight (kg)</th>
+                      <th style={thCell}>Name of Product Prepared (Final Product)</th>
+                      <th style={thCell}>Production Date (Final Product)</th>
+                      <th style={thCell}>Expiry Date (Final Product)</th>
+                      <th style={thCell}>Final Weight (kg)</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {!editing ? (
+                      // === عرض مع دمج خلايا عند تكرار جانب واحد (raw أو final) + دمج batchId ===
+                      Array.from(grouped.entries()).map(([batchId, allRows], gi) => {
+                        const rows = allRows.filter(isFilledRow);
+                        if (!rows.length) return null;
+
+                        const rawsSame   = equalAcross(rows, ["rawName","origProdDate","origExpDate","openedDate","bestBefore","rawWeight"]);
+                        const finalsSame = equalAcross(rows, ["finalName","finalProdDate","finalExpDate","finalWeight"]);
+                        const span = rows.length;
+
+                        return (
+                          <React.Fragment key={`g-${gi}`}>
+                            {/* عنوان الباتش */}
+                            <tr>
+                              <td colSpan={11} style={{
+                                background: "#eef2ff",
+                                color: "#1e3a8a",
+                                fontWeight: 800,
+                                textAlign: "left",
+                                border: "1px solid #1f3b70",
+                                padding: "8px 10px"
+                              }}>
+                                Batch / Lot: {batchId} — {rows.length} row(s)
+                              </td>
+                            </tr>
+
+                            {rows.map((r, idx) => (
+                              <tr key={`${gi}-${idx}`}>
+                                {/* ✅ Batch id — خلية مدموجة مرة واحدة */}
+                                {idx === 0 && (
+                                  <td style={tdCell} rowSpan={span}>
+                                    {safe(batchId)}
+                                  </td>
+                                )}
+
+                                {/* RAW side */}
+                                {rawsSame ? (
+                                  idx === 0 ? (
+                                    <>
+                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].rawName)}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origProdDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origExpDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].openedDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].bestBefore))}</td>
+                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].rawWeight) ? `${rows[0].rawWeight} kg` : ""}</td>
+                                    </>
+                                  ) : null
+                                ) : (
+                                  <>
+                                    <td style={tdCell}>{safe(r.rawName)}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.origProdDate))}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.origExpDate))}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.openedDate))}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.bestBefore))}</td>
+                                    <td style={tdCell}>{safe(r.rawWeight) ? `${r.rawWeight} kg` : ""}</td>
+                                  </>
+                                )}
+
+                                {/* FINAL side */}
+                                {finalsSame ? (
+                                  idx === 0 ? (
+                                    <>
+                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].finalName)}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalProdDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalExpDate))}</td>
+                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].finalWeight) ? `${rows[0].finalWeight} kg` : ""}</td>
+                                    </>
+                                  ) : null
+                                ) : (
+                                  <>
+                                    <td style={tdCell}>{safe(r.finalName)}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.finalProdDate))}</td>
+                                    <td style={tdCell}>{formatDMY(safe(r.finalExpDate))}</td>
+                                    <td style={tdCell}>{safe(r.finalWeight) ? `${r.finalWeight} kg` : ""}</td>
+                                  </>
+                                )}
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        );
+                      })
+                    ) : (
+                      // === وضع التعديل (يشمل batchId و الأوزان) ===
+                      editRows.map((r, idx) => (
+                        <tr key={idx}>
+                          <td style={tdCell}>
+                            <input type="text" value={r.batchId || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], batchId:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="text" value={r.rawName || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], rawName:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="date" value={r.origProdDate || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], origProdDate:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="date" value={r.origExpDate || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], origExpDate:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="date" value={r.openedDate || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], openedDate:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="date" value={r.bestBefore || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], bestBefore:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="number" step="0.01" min="0" value={r.rawWeight || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], rawWeight:e.target.value}; return n;})} style={inputStyle} placeholder="e.g., 2.50"/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="text" value={r.finalName || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], finalName:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="date" value={r.finalProdDate || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], finalProdDate:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="date" value={r.finalExpDate || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], finalExpDate:e.target.value}; return n;})} style={inputStyle}/>
+                          </td>
+                          <td style={tdCell}>
+                            <input type="number" step="0.01" min="0" value={r.finalWeight || ""} onChange={(e)=>setEditRows(p=>{const n=[...p]; n[idx]={...n[idx], finalWeight:e.target.value}; return n;})} style={inputStyle} placeholder="e.g., 1.20"/>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+
+                {/* Note */}
+                <div
+                  style={{
+                    marginTop: 10,
+                    paddingTop: 8,
+                    borderTop: "2px solid #1f3b70",
+                    fontSize: 12,
+                    color: "#0b1f4d",
+                    lineHeight: 1.6,
+                    width: "max-content",
+                  }}
+                >
+                  <strong style={{ color: "#0b1f4d" }}>Note:</strong>
+                  <span style={{ marginInlineStart: 4 }}>
+                    The raw materials used for the preparation and the final product details should be recorded in the
+                    <span style={{ fontWeight: 800 }}> “Traceability Record Form”</span>.
                   </span>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:8,flex:"1 1 320px",minWidth:300,justifyContent:"flex-end"}}>
-                  <strong>Verified by:</strong>
-                  <span style={{display:"inline-block",minWidth:260,borderBottom:"2px solid #1f3b70",lineHeight:"1.8",textAlign:"left"}}>
-                    <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} />
-                  </span>
-                </div>
-              </div>
 
-              {/* Rev info */}
-              <div style={{marginTop:8,display:"flex",justifyContent:"space-between",gap:16,fontSize:11,color:"#6b7280"}}>
-                <div><strong>Rev.Date:</strong> {safe(record.payload?.revDate)}</div>
-                <div><strong>Rev.No:</strong> {safe(record.payload?.revNo)}</div>
+                {/* Footer: Checked left | Verified right */}
+                <div
+                  style={{
+                    marginTop: 12,
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 16,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 320px", minWidth: 300 }}>
+                    <strong>Checked by:</strong>
+                    {!editing ? (
+                      <span style={{ display: "inline-block", minWidth: 260, borderBottom: "2px solid #1f3b70", lineHeight: "1.8", textAlign: "left" }}>
+                        <SignatureName name={safe(record.payload?.checkedBy)} underline={false} />
+                      </span>
+                    ) : (
+                      <input
+                        value={editCheckedBy}
+                        onChange={(e) => setEditCheckedBy(e.target.value)}
+                        style={{ border: "none", borderBottom: "2px solid #1f3b70", padding: "4px 6px", outline: "none", minWidth: 260 }}
+                      />
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 320px", minWidth: 300, justifyContent: "flex-end" }}>
+                    <strong>Verified by:</strong>
+                    {!editing ? (
+                      <span style={{ display: "inline-block", minWidth: 260, borderBottom: "2px solid #1f3b70", lineHeight: "1.8", textAlign: "left" }}>
+                        <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} />
+                      </span>
+                    ) : (
+                      <input
+                        value={editVerifiedBy}
+                        onChange={(e) => setEditVerifiedBy(e.target.value)}
+                        style={{ border: "none", borderBottom: "2px solid #1f3b70", padding: "4px 6px", outline: "none", minWidth: 260 }}
+                      />
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>)}
+          )}
         </div>
       </div>
     </div>

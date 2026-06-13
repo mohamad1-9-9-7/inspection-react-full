@@ -6,9 +6,6 @@ const EMPTY_USER = { username: "", password: "", jobTitle: "", employeeId: "" };
 
 export default function UsersTab({ users = [], setUsers = () => {} }) {
   const currentUser = (() => { try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; } })();
-  if (!currentUser?.isAdmin) {
-    return <div style={{ padding: 24, color: "#dc2626", fontWeight: 700 }}>⛔ Admin access required.</div>;
-  }
   const [newUser,        setNewUser]        = useState(EMPTY_USER);
   const [showPasswords,  setShowPasswords]  = useState([]);
   const [editingIndex,   setEditingIndex]   = useState(null);
@@ -17,6 +14,10 @@ export default function UsersTab({ users = [], setUsers = () => {} }) {
   useEffect(() => {
     setShowPasswords(Array(users.length).fill(false));
   }, [users.length]);
+
+  if (!currentUser?.isAdmin) {
+    return <div style={{ padding: 24, color: "#dc2626", fontWeight: 700 }}>⛔ Admin access required.</div>;
+  }
 
   const handleAddUser = () => {
     if (!newUser.username || !newUser.password || !newUser.jobTitle || !newUser.employeeId) {

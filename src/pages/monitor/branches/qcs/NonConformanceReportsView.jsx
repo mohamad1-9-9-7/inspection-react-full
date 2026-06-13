@@ -25,7 +25,8 @@ const IS_SAME_ORIGIN = (() => {
   }
 })();
 
-const TYPE = "qcs_non_conformance";
+const DEFAULT_TYPE = "qcs_non_conformance";
+const DEFAULT_HEADER_LINE = "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS";
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 
 /* ===== Header view ===== */
@@ -47,7 +48,7 @@ function RowKV({ label, value }) {
   );
 }
 
-function NCHeaderView({ header, date, logoUrl }) {
+function NCHeaderView({ header, date, logoUrl, headerLine }) {
   const h = header || {};
   return (
     <div style={{ border: "1px solid #000", marginBottom: 8 }}>
@@ -97,7 +98,7 @@ function NCHeaderView({ header, date, logoUrl }) {
             borderBottom: "1px solid #000",
           }}
         >
-          TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS
+          {headerLine || DEFAULT_HEADER_LINE}
         </div>
         <div
           style={{
@@ -157,9 +158,9 @@ const sectionTitle = {
 };
 
 /* ===== Server helpers ===== */
-async function listReports() {
+async function listReports(type) {
   const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+    `${API_BASE}/api/reports?type=${encodeURIComponent(type || DEFAULT_TYPE)}`,
     { method: "GET", cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" }
   );
   if (!res.ok) return [];
@@ -212,7 +213,10 @@ function guessInputPathFromCurrentPath() {
 }
 
 /* ===== Component ===== */
-export default function NonConformanceReportsView() {
+export default function NonConformanceReportsView(props) {
+  const { type: typeProp, headerLine } = props || {};
+  const TYPE = typeProp || DEFAULT_TYPE;
+  const HEADER_LINE = headerLine || DEFAULT_HEADER_LINE;
   const navigate = useNavigate();
 
   const [data, setData] = useState([]);
@@ -230,7 +234,7 @@ export default function NonConformanceReportsView() {
 
   useEffect(() => {
     (async () => {
-      const rows = await listReports();
+      const rows = await listReports(TYPE);
       setData(rows);
       const g = groupByMonth(rows);
       if (g.length) {
@@ -238,10 +242,10 @@ export default function NonConformanceReportsView() {
         if (g[0][1]?.length) setActiveId(g[0][1][0].id);
       }
     })();
-  }, []);
+  }, [TYPE]);
 
   async function refresh() {
-    const rows = await listReports();
+    const rows = await listReports(TYPE);
     setData(rows);
   }
 
@@ -497,6 +501,7 @@ export default function NonConformanceReportsView() {
                 header={view?.headerTop}
                 date={view?.headRow?.reportDate}
                 logoUrl={view?.logoUrl}
+                headerLine={HEADER_LINE}
               />
 
               {/* Location */}

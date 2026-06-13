@@ -13,7 +13,12 @@ const TYPE_MAP = {
   coolers: "qcs-coolers",
   branchTemp: null, // ديناميكي حسب summary.type
   truckCleaning: "truck_daily_cleaning",
+  branchTrace: null,     // 🆕 ديناميكي حسب summary.type
+  branchReceiving: null, // 🆕 ديناميكي حسب summary.type
 };
+
+// الأنواع التي تُحدَّد ديناميكياً من summary.type (حسب الفرع المختار)
+const DYNAMIC_KINDS = ["branchTemp", "branchTrace", "branchReceiving"];
 
 const ACCENT_MAP = {
   shipment: "#1d4ed8",
@@ -22,6 +27,8 @@ const ACCENT_MAP = {
   coolers: "#06b6d4",
   branchTemp: "#3b82f6",
   truckCleaning: "#9333ea",
+  branchTrace: "#8b5cf6",
+  branchReceiving: "#d97706",
 };
 
 function ensureObject(v) {
@@ -43,6 +50,8 @@ export default function LinkedReportPopup({ open, onClose, kind, summary }) {
     coolers: t("popupCoolers"),
     branchTemp: t("popupBranchTemp"),
     truckCleaning: t("popupTruckCleaning"),
+    branchTrace: t("popupBranchTrace"),
+    branchReceiving: t("popupBranchReceiving"),
   };
 
   useEffect(() => {
@@ -52,8 +61,8 @@ export default function LinkedReportPopup({ open, onClose, kind, summary }) {
     setErr("");
     setReport(null);
 
-    // الـ branchTemp: نأخذ النوع من summary.type
-    const type = kind === "branchTemp" ? (summary?.type || null) : TYPE_MAP[kind];
+    // الأنواع الديناميكية (حسب الفرع): نأخذ النوع من summary.type
+    const type = DYNAMIC_KINDS.includes(kind) ? (summary?.type || null) : TYPE_MAP[kind];
     if (!type) {
       setErr(t("sourceMissing"));
       setLoading(false);
@@ -76,7 +85,7 @@ export default function LinkedReportPopup({ open, onClose, kind, summary }) {
         if (!found) {
           // fallback: نفس التاريخ
           const refDate =
-            summary?.receivedOn || summary?.reportDate || summary?.savedAt || "";
+            summary?.receivedOn || summary?.reportDate || summary?.date || summary?.savedAt || "";
           if (refDate) {
             const date10 = String(refDate).slice(0, 10);
             found = arr.find((x) => {
@@ -150,7 +159,143 @@ function ReportRenderer({ kind, report, highlight, accent, t, lang }) {
   if (kind === "coolers") return <CoolersView payload={p} accent={accent} t={t} lang={lang} />;
   if (kind === "branchTemp") return <BranchTempView payload={p} accent={accent} t={t} lang={lang} />;
   if (kind === "truckCleaning") return <TruckCleaningView payload={p} highlight={highlight} accent={accent} t={t} lang={lang} />;
+  if (kind === "branchTrace") return <BranchTraceView payload={p} accent={accent} t={t} lang={lang} />;
+  if (kind === "branchReceiving") return <BranchReceivingView payload={p} accent={accent} t={t} lang={lang} />;
   return <pre style={S.pre}>{JSON.stringify(p, null, 2)}</pre>;
+}
+
+/* ====== مساعد: صف ممتلئ (الملفات الأصلية تحفظ 12 صف فاضي كقالب) ====== */
+function isFilledRow(r = {}) {
+  return Object.values(r).some((v) => String(v ?? "").trim() !== "");
+}
+
+/* ====== 🆕 Branch Traceability Renderer — يطابق تخطيط ملف العرض في الفرع ====== */
+function BranchTraceView({ payload, accent, t, lang }) {
+  const rows = pickRowsArray(payload).filter(isFilledRow);
+  const L = lang === "ar"
+    ? { date:"التاريخ", branch:"الفرع", checkedBy:"دقّقه", verifiedBy:"اعتمده",
+        batchId:"رقم الدفعة", rawName:"المادة الخام", origProdDate:"تاريخ إنتاج المادة",
+        origExpDate:"تاريخ انتهاء المادة", openedDate:"تاريخ الفتح", bestBefore:"يُفضّل قبل",
+        rawWeight:"وزن المادة", finalName:"المنتج النهائي", finalProdDate:"تاريخ إنتاج المنتج",
+        finalExpDate:"تاريخ انتهاء المنتج", finalWeight:"وزن المنتج", batches:"دفعة" }
+    : { date:"Date", branch:"Branch", checkedBy:"Checked By", verifiedBy:"Verified By",
+        batchId:"Batch ID", rawName:"Raw Material", origProdDate:"Orig. Prod. Date",
+        origExpDate:"Orig. Exp. Date", openedDate:"Opened Date", bestBefore:"Best Before",
+        rawWeight:"Raw Weight", finalName:"Final Product", finalProdDate:"Final Prod. Date",
+        finalExpDate:"Final Exp. Date", finalWeight:"Final Weight", batches:"batches" };
+
+  const COLS = [
+    ["batchId", L.batchId], ["rawName", L.rawName], ["origProdDate", L.origProdDate],
+    ["origExpDate", L.origExpDate], ["openedDate", L.openedDate], ["bestBefore", L.bestBefore],
+    ["rawWeight", L.rawWeight], ["finalName", L.finalName], ["finalProdDate", L.finalProdDate],
+    ["finalExpDate", L.finalExpDate], ["finalWeight", L.finalWeight],
+  ];
+
+  return (
+    <div>
+      <SectionHeader text={t("dayInfo")} accent={accent} />
+      <KV label={L.date} value={String(payload?.reportDate || payload?.date || "").slice(0, 10)} highlight />
+      <KV label={L.branch} value={payload?.branch} />
+      <KV label={L.checkedBy} value={payload?.checkedBy} />
+      <KV label={L.verifiedBy} value={payload?.verifiedBy || payload?.verifiedByManager} />
+
+      <SectionHeader text={`🧬 ${rows.length} ${L.batches}`} accent={accent} />
+      {rows.length === 0 ? (
+        <div style={S.empty}>—</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                <th style={S.th}>#</th>
+                {COLS.map(([k, label]) => <th key={k} style={S.th}>{label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i}>
+                  <td style={S.tdC}>{i + 1}</td>
+                  {COLS.map(([k]) => (
+                    <td key={k} style={S.td}>{String(r?.[k] ?? "")}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ====== 🆕 Branch Receiving Renderer — يطابق تخطيط ملف العرض في الفرع ====== */
+function BranchReceivingView({ payload, accent, t, lang }) {
+  const rows = pickRowsArray(payload).filter(isFilledRow);
+  const L = lang === "ar"
+    ? { date:"التاريخ", time:"الوقت", branch:"الفرع", invoice:"رقم الفاتورة",
+        classification:"التصنيف", receivedBy:"استلمه", verifiedBy:"اعتمده",
+        supplier:"المورّد", foodItem:"المادة الغذائية", vehicleTemp:"حرارة السيارة",
+        foodTemp:"حرارة المادة", quantity:"الكمية", vehicleClean:"نظافة السيارة",
+        handlerHygiene:"نظافة العامل", appearanceOK:"المظهر", firmnessOK:"القوام",
+        smellOK:"الرائحة", packagingGood:"التغليف", countryOfOrigin:"بلد المنشأ",
+        productionDate:"تاريخ الإنتاج", expiryDate:"تاريخ الانتهاء", remarks:"ملاحظات",
+        items:"مادة مستلمة" }
+    : { date:"Date", time:"Time", branch:"Branch", invoice:"Invoice No",
+        classification:"Classification", receivedBy:"Received By", verifiedBy:"Verified By",
+        supplier:"Supplier", foodItem:"Food Item", vehicleTemp:"Vehicle Temp",
+        foodTemp:"Food Temp", quantity:"Qty", vehicleClean:"Vehicle Clean",
+        handlerHygiene:"Handler Hygiene", appearanceOK:"Appearance", firmnessOK:"Firmness",
+        smellOK:"Smell", packagingGood:"Packaging", countryOfOrigin:"Origin",
+        productionDate:"Prod. Date", expiryDate:"Exp. Date", remarks:"Remarks",
+        items:"items received" };
+
+  const COLS = [
+    ["supplier", L.supplier], ["foodItem", L.foodItem], ["vehicleTemp", L.vehicleTemp],
+    ["foodTemp", L.foodTemp], ["quantity", L.quantity], ["vehicleClean", L.vehicleClean],
+    ["handlerHygiene", L.handlerHygiene], ["appearanceOK", L.appearanceOK],
+    ["firmnessOK", L.firmnessOK], ["smellOK", L.smellOK], ["packagingGood", L.packagingGood],
+    ["countryOfOrigin", L.countryOfOrigin], ["productionDate", L.productionDate],
+    ["expiryDate", L.expiryDate], ["remarks", L.remarks],
+  ];
+
+  return (
+    <div>
+      <SectionHeader text={t("dayInfo")} accent={accent} />
+      <KV label={L.date} value={String(payload?.reportDate || payload?.date || "").slice(0, 10)} highlight />
+      <KV label={L.time} value={payload?.reportTime} />
+      <KV label={L.branch} value={payload?.branch} />
+      <KV label={L.invoice} value={payload?.invoiceNo} />
+      <KV label={L.classification} value={payload?.classification} />
+      <KV label={L.receivedBy} value={payload?.receivedBy} />
+      <KV label={L.verifiedBy} value={payload?.verifiedBy} />
+
+      <SectionHeader text={`📥 ${rows.length} ${L.items}`} accent={accent} />
+      {rows.length === 0 ? (
+        <div style={S.empty}>—</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                <th style={S.th}>#</th>
+                {COLS.map(([k, label]) => <th key={k} style={S.th}>{label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i}>
+                  <td style={S.tdC}>{i + 1}</td>
+                  {COLS.map(([k]) => (
+                    <td key={k} style={S.td}>{String(r?.[k] ?? "")}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ====== 🆕 Coolers Renderer ====== */

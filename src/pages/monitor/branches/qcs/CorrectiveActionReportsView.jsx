@@ -19,7 +19,8 @@ const IS_SAME_ORIGIN = (() => {
 })();
 
 /* ===== Constants ===== */
-const TYPE = "qcs_corrective_action";
+const DEFAULT_TYPE = "qcs_corrective_action";
+const DEFAULT_HEADER_LINE = "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS";
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 
 /* ===== Helpers ===== */
@@ -57,7 +58,7 @@ function RowKV({ label, value }) {
 }
 
 /* ===== Header band (بسيط) ===== */
-function CARHeaderView({ date, logoUrl }) {
+function CARHeaderView({ date, logoUrl, headerLine }) {
   return (
     <div style={{ border: "1px solid #000", marginBottom: 8 }}>
       <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", alignItems: "stretch" }}>
@@ -66,7 +67,7 @@ function CARHeaderView({ date, logoUrl }) {
         </div>
         <div>
           <div style={{ background: "#c0c0c0", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
-            TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS
+            {headerLine || DEFAULT_HEADER_LINE}
           </div>
           <div style={{ background: "#d6d6d6", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
             CORRECTIVE ACTION REPORT
@@ -84,9 +85,9 @@ function CARHeaderView({ date, logoUrl }) {
 }
 
 /* ===== Server helpers (مطابقة لنهج NC) ===== */
-async function listReports() {
+async function listReports(type) {
   const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+    `${API_BASE}/api/reports?type=${encodeURIComponent(type || DEFAULT_TYPE)}`,
     { method: "GET", cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" }
   );
   if (!res.ok) return [];
@@ -127,7 +128,10 @@ function groupByMonth(reports) {
 }
 
 /* ===== Component ===== */
-export default function CorrectiveActionReportsView() {
+export default function CorrectiveActionReportsView(props) {
+  const { type: typeProp, headerLine } = props || {};
+  const TYPE = typeProp || DEFAULT_TYPE;
+  const HEADER_LINE = headerLine || DEFAULT_HEADER_LINE;
   const [data, setData] = useState([]);
   const [activeMonth, setActiveMonth] = useState("");
   const [activeId, setActiveId] = useState("");
@@ -143,7 +147,7 @@ export default function CorrectiveActionReportsView() {
 
   useEffect(() => {
     (async () => {
-      const rows = await listReports();
+      const rows = await listReports(TYPE);
       setData(rows);
       const g = groupByMonth(rows);
       if (g.length) {
@@ -151,7 +155,7 @@ export default function CorrectiveActionReportsView() {
         if (g[0][1]?.length) setActiveId(g[0][1][0].id);
       }
     })();
-  }, []);
+  }, [TYPE]);
 
   /* ===== actions ===== */
   async function onDelete() {
@@ -160,7 +164,7 @@ export default function CorrectiveActionReportsView() {
     setBusy(true);
     const ok = await deleteReport(safeRouteId);
     if (!ok) alert("فشل الحذف");
-    const rows = await listReports();
+    const rows = await listReports(TYPE);
     setData(rows);
     setActiveId("");
     setBusy(false);
@@ -297,7 +301,7 @@ export default function CorrectiveActionReportsView() {
 
             {/* printable sheet */}
             <div ref={sheetRef} style={{ ...sheet }}>
-              <CARHeaderView date={h?.dateIssued} logoUrl={p?.logoUrl} />
+              <CARHeaderView date={h?.dateIssued} logoUrl={p?.logoUrl} headerLine={HEADER_LINE} />
 
               {/* Meta */}
               <table style={{ ...table, marginTop: 6 }}>

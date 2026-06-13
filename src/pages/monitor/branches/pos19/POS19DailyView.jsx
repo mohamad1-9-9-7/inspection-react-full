@@ -1,12 +1,7 @@
 // src/pages/monitor/branches/pos19/POS19DailyView.jsx
-import React, { useEffect, useMemo, useState, Suspense, lazy } from "react";
-import PrintStyles from "../_shared/PrintStyles";
-import PrintButton from "../_shared/PrintButton";
-
-/* ─────────────────────────────────────────────
-   POS19DailyView — Viewer Hub  (Re-Designed)
-   18 ملفات مربوطة / 0 placeholders ✅
-───────────────────────────────────────────── */
+// POS 19 — Daily Viewer Hub (unified design عبر BranchDailyView — تبويبات أفقية فوق)
+import React, { useEffect, useMemo, useState, lazy } from "react";
+import BranchDailyView from "../_shared/BranchDailyView";
 
 // ✅ Personal Hygiene View
 const PHView   = lazy(() => import("./view pos 19/PersonalHygieneChecklistView"));
@@ -44,529 +39,20 @@ const CoolView = lazy(() => import("./view pos 19/CoolingLogView"));
 const RHView   = lazy(() => import("./view pos 19/ReheatingLogView"));
 // ✅ Calibration Log View
 const CalView  = lazy(() => import("./view pos 19/CalibrationLogView"));
+// ✅ Non-Conformance Report View
+const NCView   = lazy(() => import("./view pos 19/NonConformanceReportsView"));
+// ✅ Finished Product Monitoring Checklist View
+const FPView   = lazy(() => import("./view pos 19/FinishedProductMonitoringView"));
+// ✅ Sanitation Record (CCP) – Veg/Fruits View
+const VSView   = lazy(() => import("./view pos 19/VegSanitationView"));
+// ✅ Blast Freezer / Chiller Log (CCP) View
+const BFView   = lazy(() => import("./view pos 19/BlastFreezerView"));
+// ✅ Dry Store Temp & Humidity View
+const DSView   = lazy(() => import("./view pos 19/DryStoreTempHumidityView"));
 
-/* ─── Global Styles injected once ─── */
-const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Tajawal:wght@400;500;700;800&display=swap');
-
-  .pos19-root {
-    --ink:     #0d1117;
-    --ink-mid: #1c2330;
-    --ink-low: #263040;
-    --rail:    #1e2d40;
-    --amber:   #f59e0b;
-    --amber-l: #fcd34d;
-    --teal:    #14b8a6;
-    --ok:      #22c55e;
-    --muted:   #64748b;
-    --border:  rgba(255,255,255,0.07);
-    --glass:   rgba(255,255,255,0.04);
-    --canvas:  #f0f2f5;
-
-    font-family: 'Tajawal', sans-serif;
-    direction: rtl;
-    display: flex;
-    flex-direction: row-reverse;
-    height: 100vh;
-    min-height: 600px;
-    background: var(--canvas);
-    overflow: hidden;
-  }
-
-  /* ── Sidebar ── */
-  .pos19-sidebar {
-    width: 280px;
-    min-width: 280px;
-    background: var(--ink);
-    display: flex;
-    flex-direction: column;
-    border-right: 3px solid var(--amber);
-    overflow: hidden;
-  }
-
-  .pos19-sidebar-header {
-    padding: 24px 20px 16px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .pos19-branch-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--amber);
-    color: var(--ink);
-    font-family: 'IBM Plex Mono', monospace;
-    font-weight: 700;
-    font-size: 11px;
-    letter-spacing: .12em;
-    padding: 4px 10px;
-    border-radius: 4px;
-    margin-bottom: 10px;
-  }
-
-  .pos19-sidebar-title {
-    color: #fff;
-    font-size: 16px;
-    font-weight: 800;
-    margin: 0 0 2px;
-    line-height: 1.3;
-  }
-
-  .pos19-sidebar-sub {
-    color: var(--muted);
-    font-size: 12px;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-
-  .pos19-nav {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 0;
-    scrollbar-width: thin;
-    scrollbar-color: var(--ink-low) transparent;
-  }
-
-  .pos19-nav-group {
-    padding: 0 12px;
-    margin-bottom: 4px;
-  }
-
-  .pos19-nav-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: none;
-    background: transparent;
-    color: #94a3b8;
-    font-family: 'Tajawal', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    text-align: right;
-    transition: all .18s ease;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .pos19-nav-btn:hover {
-    background: var(--glass);
-    color: #e2e8f0;
-  }
-
-  .pos19-nav-btn.active {
-    background: linear-gradient(90deg, rgba(245,158,11,.18) 0%, rgba(245,158,11,.06) 100%);
-    color: var(--amber-l);
-    font-weight: 700;
-  }
-
-  .pos19-nav-btn.active::before {
-    content: '';
-    position: absolute;
-    right: 0; top: 20%; bottom: 20%;
-    width: 3px;
-    background: var(--amber);
-    border-radius: 3px 0 0 3px;
-  }
-
-  .pos19-nav-icon {
-    font-size: 16px;
-    flex-shrink: 0;
-    width: 22px;
-    text-align: center;
-  }
-
-  .pos19-nav-label {
-    flex: 1;
-    line-height: 1.3;
-  }
-
-  .pos19-status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .pos19-status-dot.live  { background: var(--ok);    box-shadow: 0 0 6px var(--ok); }
-  .pos19-status-dot.soon  { background: var(--muted); }
-
-  .pos19-sidebar-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .pos19-connected-count {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--muted);
-    font-size: 12px;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-
-  .pos19-count-pill {
-    background: var(--ok);
-    color: #fff;
-    font-weight: 700;
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 20px;
-  }
-
-  /* ── Main area ── */
-  .pos19-main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--canvas);
-  }
-
-  .pos19-topbar {
-    background: #fff;
-    border-bottom: 1px solid #e2e8f0;
-    padding: 14px 28px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-  }
-
-  .pos19-topbar-title {
-    font-size: 17px;
-    font-weight: 800;
-    color: var(--ink);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .pos19-topbar-date {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    color: var(--muted);
-    background: #f1f5f9;
-    padding: 4px 12px;
-    border-radius: 20px;
-    border: 1px solid #e2e8f0;
-  }
-
-  .pos19-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 24px 28px;
-  }
-
-  /* ── Panel shell ── */
-  .pos19-panel {
-    background: #fff;
-    border-radius: 14px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-    padding: 24px;
-    min-height: 300px;
-  }
-
-  .pos19-panel-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid #f1f5f9;
-  }
-
-  .pos19-panel-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
-    background: var(--ink);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    flex-shrink: 0;
-  }
-
-  .pos19-panel-name {
-    font-size: 18px;
-    font-weight: 800;
-    color: var(--ink);
-    margin: 0 0 2px;
-  }
-
-  .pos19-panel-meta {
-    font-size: 12px;
-    color: var(--muted);
-    font-family: 'IBM Plex Mono', monospace;
-  }
-
-  .pos19-connected-badge {
-    margin-right: auto;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: #f0fdf4;
-    border: 1px solid #bbf7d0;
-    color: #15803d;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-
-  .pos19-coming-badge {
-    margin-right: auto;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: #fafafa;
-    border: 1px solid #e2e8f0;
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 700;
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-
-  /* ── Placeholder ── */
-  .pos19-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    padding: 60px 0;
-    color: var(--muted);
-    text-align: center;
-  }
-
-  .pos19-placeholder-icon {
-    font-size: 48px;
-    opacity: .35;
-  }
-
-  .pos19-placeholder-text {
-    font-size: 15px;
-    font-weight: 600;
-    color: #94a3b8;
-  }
-
-  .pos19-placeholder-sub {
-    font-size: 12px;
-    font-family: 'IBM Plex Mono', monospace;
-    color: #cbd5e1;
-  }
-
-  /* ── Suspense loader ── */
-  .pos19-loader {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    padding: 60px 0;
-    color: var(--muted);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 13px;
-  }
-
-  @keyframes pos19-spin {
-    to { transform: rotate(360deg); }
-  }
-
-  .pos19-spinner {
-    width: 20px;
-    height: 20px;
-    border: 2px solid #e2e8f0;
-    border-top-color: var(--amber);
-    border-radius: 50%;
-    animation: pos19-spin .7s linear infinite;
-  }
-
-  /* ── Overview ── */
-  .pos19-ov-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px,1fr));
-    gap: 14px;
-    margin-bottom: 24px;
-  }
-
-  .pos19-ov-card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 16px;
-  }
-
-  .pos19-ov-card-title {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    color: var(--muted);
-    margin-bottom: 6px;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-
-  .pos19-ov-card-value {
-    font-size: 26px;
-    font-weight: 800;
-    color: var(--ink);
-    font-family: 'IBM Plex Mono', monospace;
-  }
-
-  .pos19-ov-card-unit {
-    font-size: 12px;
-    color: var(--muted);
-  }
-
-  .pos19-check-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .pos19-check-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--ink);
-  }
-
-  .pos19-check-ok   { color: var(--ok);   font-size: 18px; }
-  .pos19-check-fail { color: #ef4444;     font-size: 18px; }
-
-  .pos19-date-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-
-  .pos19-date-label {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--ink);
-    white-space: nowrap;
-  }
-
-  .pos19-date-input {
-    padding: 8px 14px;
-    border-radius: 8px;
-    border: 1.5px solid #e2e8f0;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 13px;
-    color: var(--ink);
-    outline: none;
-    transition: border .18s;
-    background: #f8fafc;
-  }
-
-  .pos19-date-input:focus { border-color: var(--amber); }
-
-  .pos19-section-title {
-    font-size: 14px;
-    font-weight: 800;
-    color: var(--ink-mid);
-    margin: 20px 0 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .pos19-no-report {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    padding: 40px;
-    color: var(--muted);
-    font-size: 14px;
-  }
-
-  /* scrollbar */
-  .pos19-nav::-webkit-scrollbar { width: 4px; }
-  .pos19-nav::-webkit-scrollbar-thumb { background: var(--ink-low); border-radius: 4px; }
-`;
-
-/* ─── Tab config ─── */
-const TABS = [
-  { key: "overview",               icon: "📊", label: "Overview — POS 19",                      live: false },
-  { key: "cleaningProgramme",      icon: "🧼", label: "Cleaning Programme Schedule",             live: true  },
-  { key: "dailyCleaningButchery",  icon: "🧹", label: "Daily Cleaning – Butchery",              live: true  },
-  { key: "equipmentInspection",    icon: "🧪", label: "Equipment Inspection & Sanitizing",      live: true  },
-  { key: "foodTempVerification",   icon: "🌡️", label: "Food Temperature Verification",          live: true  },
-  { key: "glassItemsCondition",    icon: "🧯", label: "Glass Items Condition Monitoring",        live: true  },
-  { key: "hotHoldingTemp",         icon: "🔥", label: "Hot Holding Temperature Log",            live: true  },
-  { key: "oilQuality",             icon: "🛢️", label: "Oil Quality Monitoring",                 live: true  },
-  { key: "personalHygiene",        icon: "🧑‍🔬", label: "Personal Hygiene Checklist",           live: true  },
-  { key: "receivingLog",           icon: "📦", label: "Receiving Log",                          live: true  },
-  { key: "sanitizerConcentration", icon: "🧴", label: "Sanitizer Concentration Log",            live: true  },
-  { key: "temperatureMonitoring",  icon: "🌡️", label: "Temperature Monitoring Log",             live: true  },
-  { key: "traceability",           icon: "🔗", label: "Traceability Log",                       live: true  },
-  { key: "woodenItemsCondition",   icon: "🪵", label: "Wooden Items Condition Monitoring",      live: true  },
-  { key: "cookingTemperature",     icon: "🍳", label: "Cooking Temperature Record",             live: true  },
-  { key: "defrosting",             icon: "❄️", label: "Defrosting Record",                       live: true  },
-  { key: "cooling",                icon: "🧊", label: "Cooling Temperature Log",                live: true  },
-  { key: "reheating",              icon: "♨️", label: "Reheating Temperature Log",              live: true  },
-  { key: "calibration",            icon: "📏", label: "Thermometer Calibration Log",            live: true  },
-];
-
-const LIVE_COUNT = TABS.filter(t => t.live && t.key !== "overview").length; // 18
-
-/* ─── Sub-components ─── */
-const Loader = ({ label }) => (
-  <div className="pos19-loader">
-    <div className="pos19-spinner" />
-    جاري تحميل {label}…
-  </div>
-);
-
-const PlaceholderPanel = ({ icon, label }) => (
-  <div className="pos19-placeholder">
-    <div className="pos19-placeholder-icon">{icon}</div>
-    <div className="pos19-placeholder-text">{label}</div>
-    <div className="pos19-placeholder-sub">سيتم الربط قريباً — Coming Soon</div>
-  </div>
-);
-
-const PanelShell = ({ tab, children, isLive }) => (
-  <div className="pos19-panel">
-    <div className="pos19-panel-header">
-      <div className="pos19-panel-icon">{tab.icon}</div>
-      <div>
-        <div className="pos19-panel-name">{tab.label}</div>
-        <div className="pos19-panel-meta">POS-19 · {new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" })}</div>
-      </div>
-      {isLive ? (
-        <div className="pos19-connected-badge">
-          <span style={{width:7,height:7,borderRadius:'50%',background:'#22c55e',display:'inline-block'}}/>
-          LIVE
-        </div>
-      ) : (
-        <div className="pos19-coming-badge">⏳ SOON</div>
-      )}
-    </div>
-    {children}
-  </div>
-);
-
-/* ─── Main component ─── */
-export default function POS19DailyView() {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [reports, setReports]     = useState([]);
+/* ── Overview — ملخص اليوم من تقارير المفتش (localStorage) ── */
+function POS19Overview() {
+  const [reports, setReports] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
 
   const todayDubai = useMemo(() => {
@@ -588,183 +74,119 @@ export default function POS19DailyView() {
     [reports, selectedDate]
   );
 
-  /* ── Overview content ── */
-  const OverviewContent = () => {
-    if (!reports.length) return (
-      <div className="pos19-no-report">
-        <span style={{fontSize:40}}>📭</span>
-        لا توجد تقارير محفوظة حتى الآن لفرع POS 19
-      </div>
-    );
-
-    const temps   = selectedReport?.temperatures || {};
-    const clean   = selectedReport?.cleanliness  || {};
-    const uniform = !!selectedReport?.uniform;
-    const notes   = selectedReport?.notes || "—";
-
-    return (
-      <>
-        <div className="pos19-date-row">
-          <span className="pos19-date-label">اختر التاريخ:</span>
-          <input type="date" className="pos19-date-input"
-            value={selectedDate||""}
-            onChange={e => setSelectedDate(e.target.value)}
-          />
-        </div>
-
-        {selectedReport ? (
-          <>
-            <div className="pos19-ov-grid">
-              <div className="pos19-ov-card">
-                <div className="pos19-ov-card-title">براد 1</div>
-                <div className="pos19-ov-card-value">{temps.fridge1 ?? "—"}<span className="pos19-ov-card-unit"> °C</span></div>
-              </div>
-              <div className="pos19-ov-card">
-                <div className="pos19-ov-card-title">براد 2</div>
-                <div className="pos19-ov-card-value">{temps.fridge2 ?? "—"}<span className="pos19-ov-card-unit"> °C</span></div>
-              </div>
-              <div className="pos19-ov-card">
-                <div className="pos19-ov-card-title">براد 3</div>
-                <div className="pos19-ov-card-value">{temps.fridge3 ?? "—"}<span className="pos19-ov-card-unit"> °C</span></div>
-              </div>
-            </div>
-
-            <div className="pos19-section-title">🧼 نظافة الموقع</div>
-            <div className="pos19-check-list">
-              {[["الأرضيات",clean.floors],["الرفوف",clean.shelves],["الثلاجات",clean.fridges]].map(([lbl,val]) => (
-                <div className="pos19-check-row" key={lbl}>
-                  <span className={val ? "pos19-check-ok" : "pos19-check-fail"}>{val ? "✅" : "❌"}</span>
-                  {lbl}
-                </div>
-              ))}
-            </div>
-
-            <div className="pos19-section-title">👔 الزي الرسمي</div>
-            <div className="pos19-check-row">
-              <span className={uniform ? "pos19-check-ok" : "pos19-check-fail"}>{uniform ? "✅" : "❌"}</span>
-              {uniform ? "الموظف ملتزم بالزي" : "الموظف غير ملتزم بالزي"}
-            </div>
-
-            <div className="pos19-section-title">📝 ملاحظات المفتش</div>
-            <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:8,padding:'12px 16px',fontSize:14,color:'#334155',lineHeight:1.7}}>
-              {notes}
-            </div>
-          </>
-        ) : (
-          <div className="pos19-no-report">
-            <span style={{fontSize:36}}>❌</span>
-            لا يوجد تقرير لهذا التاريخ
-          </div>
-        )}
-      </>
-    );
+  const S = {
+    noReport: { display:"flex", flexDirection:"column", alignItems:"center", gap:12, padding:"50px 0", color:"#64748b", fontWeight:700, fontSize:16 },
+    dateRow: { display:"flex", alignItems:"center", gap:10, marginBottom:16, fontWeight:700, fontSize:15.5 },
+    dateInput: { padding:"8px 12px", border:"1.5px solid #c7d2fe", borderRadius:10, fontSize:15, fontFamily:"inherit" },
+    grid: { display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:12, marginBottom:18 },
+    card: {
+      background:"linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
+      border:"1px solid rgba(139,92,246,0.25)", borderRadius:14, padding:"14px 16px", textAlign:"center",
+    },
+    cardTitle: { fontSize:14.5, fontWeight:700, color:"#5b21b6", marginBottom:4 },
+    cardValue: { fontSize:28, fontWeight:900, color:"#0b1f4d" },
+    cardUnit: { fontSize:15, fontWeight:700, color:"#64748b" },
+    secTitle: { fontWeight:800, fontSize:16.5, color:"#0b1f4d", margin:"16px 0 8px" },
+    checkRow: { display:"flex", alignItems:"center", gap:8, padding:"6px 0", fontSize:15.5, fontWeight:600, color:"#334155" },
+    notes: { background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:10, padding:"12px 16px", fontSize:15, color:"#334155", lineHeight:1.7 },
   };
 
-  /* ── Tab content router ── */
-  const renderContent = () => {
-    const tab = TABS.find(t => t.key === activeTab) || TABS[0];
+  if (!reports.length) return (
+    <div style={S.noReport}>
+      <span style={{fontSize:40}}>📭</span>
+      لا توجد تقارير محفوظة حتى الآن لفرع POS 19
+    </div>
+  );
 
-    const wrap = (component, loaderLabel) => (
-      <PanelShell tab={tab} isLive>
-        <Suspense fallback={<Loader label={loaderLabel} />}>
-          {component}
-        </Suspense>
-      </PanelShell>
-    );
-
-    switch (activeTab) {
-      case "overview":              return <PanelShell tab={tab} isLive={false}><OverviewContent /></PanelShell>;
-      case "cleaningProgramme":     return wrap(<CPSView />,    "Cleaning Programme");
-      case "dailyCleaningButchery": return wrap(<DCView />,     "Daily Cleaning");
-      case "equipmentInspection":   return wrap(<EIView />,     "Equipment Inspection");
-      case "foodTempVerification":  return wrap(<FTView />,     "Food Temperature");
-      case "glassItemsCondition":   return wrap(<GlassView />,  "Glass Items");
-      case "oilQuality":            return wrap(<OilView />,    "Oil Quality");
-      case "personalHygiene":       return wrap(<PHView />,     "Personal Hygiene");
-      case "receivingLog":          return wrap(<RLView />,     "Receiving Log");
-      case "hotHoldingTemp":        return wrap(<HHTView />,    "Hot Holding Temperature");
-      case "sanitizerConcentration":return wrap(<SCVView />,    "Sanitizer Concentration");
-      case "temperatureMonitoring": return wrap(<TMLView />,    "Temperature Monitoring");
-      case "traceability":          return wrap(<TRLView />,    "Traceability Log");
-      case "woodenItemsCondition":  return wrap(<WICView />,    "Wooden Items Condition");
-      case "cookingTemperature":    return wrap(<CTMView />,    "Cooking Temperature Record");
-      case "defrosting":            return wrap(<DFView />,     "Defrosting Record");
-      case "cooling":               return wrap(<CoolView />,   "Cooling Log");
-      case "reheating":             return wrap(<RHView />,     "Reheating Log");
-      case "calibration":           return wrap(<CalView />,    "Calibration Log");
-      default:
-        return <div className="pos19-panel" />;
-    }
-  };
-
-  const activeTabObj = TABS.find(t => t.key === activeTab);
+  const temps   = selectedReport?.temperatures || {};
+  const clean   = selectedReport?.cleanliness  || {};
+  const uniform = !!selectedReport?.uniform;
+  const notes   = selectedReport?.notes || "—";
 
   return (
     <>
-      <style>{STYLES}</style>
-      <PrintStyles />
-      <div className="pos19-root">
+      <div style={S.dateRow}>
+        <span>اختر التاريخ:</span>
+        <input type="date" style={S.dateInput}
+          value={selectedDate||""}
+          onChange={e => setSelectedDate(e.target.value)}
+        />
+      </div>
 
-        {/* ── Sidebar ── */}
-        <aside className="pos19-sidebar">
-          <div className="pos19-sidebar-header">
-            <div className="pos19-branch-badge">● POS-19</div>
-            <h2 className="pos19-sidebar-title">عرض تقارير<br />الفرع</h2>
-            <div className="pos19-sidebar-sub">Daily Viewer Hub</div>
-          </div>
-
-          <nav className="pos19-nav">
-            {TABS.map(tab => (
-              <div className="pos19-nav-group" key={tab.key}>
-                <button
-                  className={`pos19-nav-btn ${activeTab === tab.key ? "active" : ""}`}
-                  onClick={() => setActiveTab(tab.key)}
-                  title={tab.label}
-                >
-                  <span className="pos19-nav-icon">{tab.icon}</span>
-                  <span className="pos19-nav-label">{tab.label}</span>
-                  <span className={`pos19-status-dot ${tab.live ? "live" : "soon"}`} />
-                </button>
+      {selectedReport ? (
+        <>
+          <div style={S.grid}>
+            {[["براد 1", temps.fridge1], ["براد 2", temps.fridge2], ["براد 3", temps.fridge3]].map(([lbl, val]) => (
+              <div style={S.card} key={lbl}>
+                <div style={S.cardTitle}>{lbl}</div>
+                <div style={S.cardValue}>{val ?? "—"}<span style={S.cardUnit}> °C</span></div>
               </div>
             ))}
-          </nav>
-
-          <div className="pos19-sidebar-footer">
-            <div className="pos19-connected-count">
-              <span className="pos19-count-pill">{LIVE_COUNT}</span>
-              ملفات مربوطة
-              <span style={{marginRight:'auto', color:'#22c55e', fontWeight:700}}>✅ مكتمل</span>
-            </div>
-          </div>
-        </aside>
-
-        {/* ── Main ── */}
-        <main className="pos19-main">
-          <div className="pos19-topbar">
-            <div className="pos19-topbar-title">
-              {activeTabObj?.icon} {activeTabObj?.label}
-            </div>
-            <div className="no-print" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {activeTab !== "overview" && (
-                <PrintButton
-                  title={activeTabObj?.label || "POS 19 Report"}
-                  reportDate={selectedDate || new Date().toLocaleDateString("en-CA")}
-                  lang="ar"
-                  variant="compact"
-                />
-              )}
-              <div className="pos19-topbar-date">
-                {new Date().toLocaleDateString("ar-AE", { timeZone:"Asia/Dubai", weekday:"long", year:"numeric", month:"long", day:"numeric" })}
-              </div>
-            </div>
           </div>
 
-          <div className="pos19-content">
-            {renderContent()}
-          </div>
-        </main>
+          <div style={S.secTitle}>🧼 نظافة الموقع</div>
+          {[["الأرضيات",clean.floors],["الرفوف",clean.shelves],["الثلاجات",clean.fridges]].map(([lbl,val]) => (
+            <div style={S.checkRow} key={lbl}>
+              <span>{val ? "✅" : "❌"}</span>
+              {lbl}
+            </div>
+          ))}
 
-      </div>
+          <div style={S.secTitle}>👔 الزي الرسمي</div>
+          <div style={S.checkRow}>
+            <span>{uniform ? "✅" : "❌"}</span>
+            {uniform ? "الموظف ملتزم بالزي" : "الموظف غير ملتزم بالزي"}
+          </div>
+
+          <div style={S.secTitle}>📝 ملاحظات المفتش</div>
+          <div style={S.notes}>{notes}</div>
+        </>
+      ) : (
+        <div style={S.noReport}>
+          <span style={{fontSize:36}}>❌</span>
+          لا يوجد تقرير لهذا التاريخ
+        </div>
+      )}
     </>
+  );
+}
+
+const TABS = [
+  { key: "overview",               icon: "📊", label: "Overview — POS 19",                      element: <POS19Overview /> },
+  { key: "cleaningProgramme",      icon: "🧼", label: "Cleaning Programme Schedule",            element: <CPSView />,   loaderLabel: "Cleaning Programme" },
+  { key: "dailyCleaningButchery",  icon: "🧹", label: "Daily Cleaning – Butchery",              element: <DCView />,    loaderLabel: "Daily Cleaning" },
+  { key: "equipmentInspection",    icon: "🧪", label: "Equipment Inspection & Sanitizing",      element: <EIView />,    loaderLabel: "Equipment Inspection" },
+  { key: "foodTempVerification",   icon: "🌡️", label: "Food Temperature Verification",          element: <FTView />,    loaderLabel: "Food Temperature" },
+  { key: "glassItemsCondition",    icon: "🧯", label: "Glass Items Condition Monitoring",       element: <GlassView />, loaderLabel: "Glass Items" },
+  { key: "hotHoldingTemp",         icon: "🔥", label: "Hot Holding Temperature Log",            element: <HHTView />,   loaderLabel: "Hot Holding Temperature" },
+  { key: "oilQuality",             icon: "🛢️", label: "Oil Quality Monitoring",                 element: <OilView />,   loaderLabel: "Oil Quality" },
+  { key: "personalHygiene",        icon: "🧑‍🔬", label: "Personal Hygiene Checklist",          element: <PHView />,    loaderLabel: "Personal Hygiene" },
+  { key: "receivingLog",           icon: "📦", label: "Receiving Log",                          element: <RLView />,    loaderLabel: "Receiving Log" },
+  { key: "sanitizerConcentration", icon: "🧴", label: "Sanitizer Concentration Log",            element: <SCVView />,   loaderLabel: "Sanitizer Concentration" },
+  { key: "temperatureMonitoring",  icon: "🌡️", label: "Temperature Monitoring Log",             element: <TMLView />,   loaderLabel: "Temperature Monitoring" },
+  { key: "traceability",           icon: "🔗", label: "Traceability Log",                       element: <TRLView />,   loaderLabel: "Traceability Log" },
+  { key: "woodenItemsCondition",   icon: "🪵", label: "Wooden Items Condition Monitoring",      element: <WICView />,   loaderLabel: "Wooden Items Condition" },
+  { key: "cookingTemperature",     icon: "🍳", label: "Cooking Temperature Record",             element: <CTMView />,   loaderLabel: "Cooking Temperature Record" },
+  { key: "defrosting",             icon: "❄️", label: "Defrosting Record",                      element: <DFView />,    loaderLabel: "Defrosting Record" },
+  { key: "cooling",                icon: "🧊", label: "Cooling Temperature Log",                element: <CoolView />,  loaderLabel: "Cooling Log" },
+  { key: "reheating",              icon: "♨️", label: "Reheating Temperature Log",              element: <RHView />,    loaderLabel: "Reheating Log" },
+  { key: "calibration",            icon: "📏", label: "Thermometer Calibration Log",            element: <CalView />,   loaderLabel: "Calibration Log" },
+  { key: "nonConformance",         icon: "🚫", label: "Non-Conformance Report",                 element: <NCView />,    loaderLabel: "Non-Conformance Report" },
+  { key: "finishedProduct",        icon: "🍖", label: "Finished Product Monitoring Checklist",  element: <FPView />,    loaderLabel: "Finished Product Checklist" },
+  { key: "vegSanitation",          icon: "🥬", label: "Sanitation Record (CCP) – Veg/Fruits",   element: <VSView />,    loaderLabel: "Sanitation Record (CCP)" },
+  { key: "blastFreezer",           icon: "🥶", label: "Blast Freezer / Chiller Log (CCP)",      element: <BFView />,    loaderLabel: "Blast Freezer / Chiller Log" },
+  { key: "dryStore",               icon: "📦", label: "Dry Store Temp & Humidity",              element: <DSView />,    loaderLabel: "Dry Store Temp & Humidity" },
+];
+
+/* ─── Main component ─── */
+export default function POS19DailyView() {
+  return (
+    <BranchDailyView
+      branchCode="POS-19"
+      title="عرض تقارير الفرع"
+      subtitle="Daily Viewer Hub"
+      tabs={TABS}
+      defaultTabKey="overview"
+    />
   );
 }

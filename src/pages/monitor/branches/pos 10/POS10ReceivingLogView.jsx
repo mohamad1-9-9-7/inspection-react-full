@@ -1,11 +1,21 @@
 // src/pages/monitor/branches/pos 10/POS10ReceivingLogView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
-
-
+import {
+  safe,
+  getId,
+  btn,
+  formatDMY,
+  isFilledRow,
+  norm,
+  GlassShell,
+  SearchBar,
+  GlobalResults,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "./pos10ViewKit";
 
 // Matches the POS10 input file (no external references)
 const TYPE = "pos10_receiving_log_butchery";
@@ -21,33 +31,29 @@ const TICK_COLS = [
   { key: "packagingGood", label: "Packaging good/undamaged/clean/no pests" },
 ];
 
-const safe = (v) => v ?? "";
-const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "8px 12px",
-  fontWeight: 700,
-  cursor: "pointer",
-});
-const formatDMY = (iso) => {
-  if (!iso) return iso;
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
-};
-
-// A row is considered filled if any field has a value
-const isFilledRow = (r = {}) =>
-  Object.values(r).some((v) => String(v ?? "").trim() !== "");
-
-/* ===== Search helpers ===== */
-const norm = (s) =>
-  String(s ?? "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+// شارة C / NC ملوّنة (C أخضر، NC أحمر)
+function Tick({ v }) {
+  const s = String(v ?? "").trim().toUpperCase();
+  if (!s) return null;
+  const ok = s === "C";
+  const bad = s === "NC";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 12px",
+        borderRadius: 999,
+        fontWeight: 800,
+        fontSize: 13.5,
+        background: ok ? "#d1fae5" : bad ? "#fee2e2" : "#e5e7eb",
+        color: ok ? "#065f46" : bad ? "#991b1b" : "#374151",
+        border: `1px solid ${ok ? "#6ee7b7" : bad ? "#fca5a5" : "#d1d5db"}`,
+      }}
+    >
+      {s}
+    </span>
+  );
+}
 
 function rowHaystack(r = {}) {
   return norm(
@@ -144,32 +150,33 @@ export default function POS10ReceivingLogView() {
   const [editReceivedBy, setEditReceivedBy] = useState("");
   const [allDates, setAllDates] = useState([]);
 
-  // Accordion state
-  const [expandedYears, setExpandedYears] = useState({});
-  const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
-
-  // Styles
+  // Styles — جدول يملأ الصفحة بتصميم طيفي عصري
   const gridStyle = useMemo(
     () => ({
-      width: "max-content",
+      width: "100%",
       borderCollapse: "collapse",
-      tableLayout: "fixed",
-      fontSize: 12,
+      fontSize: 15,
+      borderRadius: 12,
+      overflow: "hidden",
+      boxShadow: "0 2px 14px rgba(99,102,241,0.10)",
     }),
     []
   );
+  const theadRow = {
+    background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)",
+  };
   const thCell = {
-    border: "1px solid #1f3b70",
-    padding: "6px 4px",
+    border: "1px solid rgba(255,255,255,0.30)",
+    padding: "10px 8px",
     textAlign: "center",
     whiteSpace: "pre-line",
-    fontWeight: 700,
-    background: "#f5f8ff",
-    color: "#0b1f4d",
+    fontWeight: 800,
+    background: "transparent",
+    color: "#fff",
   };
   const tdCell = {
-    border: "1px solid #1f3b70",
-    padding: "6px 4px",
+    border: "1px solid #c7d2fe",
+    padding: "9px 7px",
     textAlign: "center",
     verticalAlign: "middle",
   };
@@ -177,39 +184,13 @@ export default function POS10ReceivingLogView() {
     width: "100%",
     border: "1px solid #c7d2fe",
     borderRadius: 6,
-    padding: "4px 6px",
+    padding: "5px 7px",
+    fontSize: 14,
   };
-
-  // Table columns (aligned with the input component)
-  const colDefs = useMemo(
-    () => [
-      <col key="supplier" style={{ width: 170 }} />,
-      <col key="food" style={{ width: 160 }} />,
-      <col key="vehT" style={{ width: 90 }} />,
-      <col key="foodT" style={{ width: 90 }} />,
-      <col key="qty" style={{ width: 110 }} />,
-      <col key="vehClean" style={{ width: 120 }} />,
-      <col key="handler" style={{ width: 140 }} />,
-      <col key="appearanceOK" style={{ width: 120 }} />,
-      <col key="firmnessOK" style={{ width: 110 }} />,
-      <col key="smellOK" style={{ width: 110 }} />,
-      <col key="pack" style={{ width: 220 }} />,
-      <col key="origin" style={{ width: 120 }} />,
-      <col key="prod" style={{ width: 120 }} />,
-      <col key="exp" style={{ width: 120 }} />,
-      <col key="remarks" style={{ width: 200 }} />,
-    ],
-    []
-  );
-
-  const openInTree = (d) => {
-    if (!d) return;
-    const parts = String(d).split("-");
-    const y = parts[0];
-    const m = parts[1];
-    setExpandedYears((prev) => ({ ...prev, [y]: true }));
-    setExpandedMonths((prev) => ({ ...prev, [`${y}-${m}`]: true }));
-  };
+  // صف متعرّج بألوان طيفية خفيفة
+  const zebra = (i) => ({
+    background: i % 2 ? "rgba(237,233,254,0.45)" : "#fff",
+  });
 
   /* ====== Fetch ====== */
   async function fetchAllDates() {
@@ -671,6 +652,12 @@ export default function POS10ReceivingLogView() {
   async function exportPDF() {
     if (!reportRef.current) return;
 
+    // تحميل ديناميكي — يخفّف حجم الصفحة عند الفتح
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
+
     const node = reportRef.current;
     const canvas = await html2canvas(node, {
       scale: 2,
@@ -734,38 +721,11 @@ export default function POS10ReceivingLogView() {
     pdf.save(`POS10_ReceivingLog_${record?.payload?.reportDate || date}.pdf`);
   }
 
-  /* ====== Group dates (Year -> Month -> Dates) ====== */
-  const grouped = useMemo(() => {
-    const out = {};
-    for (let i = 0; i < allDates.length; i++) {
-      const d = allDates[i];
-      const parts = String(d).split("-");
-      const y = parts[0];
-      const m = parts[1];
-      if (!out[y]) out[y] = {};
-      if (!out[y][m]) out[y][m] = [];
-      out[y][m].push(d);
-    }
-
-    const years = Object.keys(out).sort((a, b) => Number(b) - Number(a));
-    const finalOut = {};
-    for (let yi = 0; yi < years.length; yi++) {
-      const y = years[yi];
-      const monthsObj = out[y];
-      const months = Object.keys(monthsObj).sort((a, b) => Number(b) - Number(a));
-      const mOut = {};
-      for (let mi = 0; mi < months.length; mi++) {
-        const m = months[mi];
-        mOut[m] = (monthsObj[m] || []).slice().sort((a, b) => String(b).localeCompare(String(a)));
-      }
-      finalOut[y] = mOut;
-    }
-    return finalOut;
-  }, [allDates]);
-
-  const toggleYear = (y) => setExpandedYears((p) => ({ ...p, [y]: !p[y] }));
-  const toggleMonth = (y, m) =>
-    setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
+  /* ====== عناصر شجرة التاريخ (للمكوّن المشترك) ====== */
+  const treeItems = useMemo(
+    () => allDates.map((d) => ({ key: d, dateISO: d, label: formatDMY(d) })),
+    [allDates]
+  );
 
   /* ====== GLOBAL Search results across ALL days ====== */
   const globalResults = useMemo(() => {
@@ -806,8 +766,6 @@ export default function POS10ReceivingLogView() {
     return res;
   }, [allPayloads, search]);
 
-  const limitedGlobal = useMemo(() => globalResults.slice(0, 200), [globalResults]);
-
   /* ====== Current day table filtering uses same search (so user sees matches when opens date) ====== */
   const viewRows = useMemo(() => {
     const entries = (record?.payload?.entries || []).filter(isFilledRow);
@@ -830,30 +788,14 @@ export default function POS10ReceivingLogView() {
     return (r) => rowHaystack(r).includes(q);
   }, [search, record]);
 
-  const jumpTo = (d) => {
-    openInTree(d);
-    setDate(d);
-  };
+  const jumpTo = (d) => setDate(d); // الشجرة المشتركة تكشف موقع التاريخ تلقائياً
 
   return (
-    <div
-      style={{
-        background: "#fff",
-        border: "1px solid #dbe3f4",
-        borderRadius: 12,
-        padding: 16,
-        color: "#0b1f4d",
-        direction: "ltr",
-      }}
-    >
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <div style={{ fontWeight: 800, fontSize: 18 }}>
-          Receiving Log (Butchery) — View (POS 10)
-        </div>
-
-        {/* Actions */}
-        <div style={{ marginInlineStart: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <GlassShell
+      icon="📥"
+      title="Receiving Log (Butchery) — View (POS 10)"
+      actions={
+        <>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
             {editing ? "Cancel Edit" : "Edit (password)"}
           </button>
@@ -874,249 +816,92 @@ export default function POS10ReceivingLogView() {
               style={{ display: "none" }}
             />
           </label>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {/* ✅ One search input that searches ALL DAYS + filters current table */}
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 10,
-          padding: 10,
-          marginBottom: 12,
-          background: "#fafafa",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ fontWeight: 900 }}>🔎 Search (ALL days)</div>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search anything across all days: supplier / item / invoice / temps / expiry / remarks / received / verified ..."
-          style={{
-            flex: "1 1 520px",
-            minWidth: 260,
-            border: "1px solid #c7d2fe",
-            borderRadius: 8,
-            padding: "8px 10px",
-            outline: "none",
-          }}
-        />
-        <button
-          onClick={() => setSearch("")}
-          disabled={!search}
-          style={{
-            ...btn(search ? "#6b7280" : "#9ca3af"),
-            opacity: search ? 1 : 0.6,
-            cursor: search ? "pointer" : "not-allowed",
-          }}
-          title="Clear search"
-        >
-          Clear
-        </button>
-
-        <div style={{ marginInlineStart: "auto", fontSize: 12, color: "#374151", fontWeight: 800 }}>
-          {norm(search) ? (
-            <>Matches (all days): <span style={{ color: "#111827" }}>{globalResults.length}</span></>
-          ) : (
-            <>Search is empty</>
-          )}
-        </div>
-      </div>
+      <SearchBar
+        value={search}
+        onChange={setSearch}
+        placeholder="Search anything across all days: supplier / item / invoice / temps / expiry / remarks / received / verified ..."
+        count={globalResults.length}
+      />
 
       {/* Layout: Date tree + content */}
-      <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 12 }}>
-        {/* Left: Date tree + Global results */}
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, background: "#fafafa" }}>
-          {/* Global results panel */}
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>🧭 Global Results</div>
-
-            {!norm(search) ? (
-              <div style={{ color: "#6b7280", fontSize: 12 }}>
-                Type in the search box to see matches across all saved days.
-              </div>
-            ) : globalResults.length === 0 ? (
-              <div style={{ color: "#b91c1c", fontSize: 12 }}>
-                No matches across all days.
-              </div>
-            ) : (
-              <div style={{ maxHeight: 210, overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: 10, background: "#fff" }}>
-                {limitedGlobal.map((g, idx) => {
-                  const d = g.reportDate;
-                  const label =
+      <SidebarLayout
+        sidebarWidth={360}
+        sidebar={
+          <DateTreeSidebar
+            items={treeItems}
+            activeKey={date}
+            onPick={(it) => setDate(it.key)}
+            loading={loading && !allDates.length}
+            topSlot={
+              <GlobalResults
+                searchActive={!!norm(search)}
+                activeDate={date}
+                onJump={jumpTo}
+                items={globalResults.map((g, idx) => ({
+                  key: `${g.kind}-${g.reportDate}-${idx}`,
+                  date: g.reportDate,
+                  tag: g.kind === "meta" ? "Header" : "Row",
+                  label:
                     g.kind === "meta"
                       ? g.label
-                      : `${safe(g.row?.supplier)} — ${safe(g.row?.foodItem)} (Exp: ${formatDMY(safe(g.row?.expiryDate)) || "-"})`;
-
-                  return (
-                    <button
-                      key={`${g.kind}-${d}-${idx}`}
-                      onClick={() => jumpTo(d)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "8px 10px",
-                        border: "none",
-                        borderBottom: "1px solid #eef2ff",
-                        background: d === date ? "#eff6ff" : "#fff",
-                        cursor: "pointer",
-                      }}
-                      title="Open this date"
-                    >
-                      <div style={{ fontWeight: 900, fontSize: 12, color: "#111827" }}>
-                        {formatDMY(d)}
-                        <span style={{ marginLeft: 8, fontWeight: 700, color: "#6b7280" }}>
-                          {g.kind === "meta" ? "• Header" : "• Row"}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 12, color: "#0b1f4d", marginTop: 2 }}>
-                        {label || "(match)"}
-                      </div>
-                    </button>
-                  );
-                })}
-                {globalResults.length > 200 && (
-                  <div style={{ padding: 8, fontSize: 12, color: "#6b7280" }}>
-                    Showing first 200 results (refine search to narrow).
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Date tree */}
-          <div style={{ fontWeight: 900, marginBottom: 8 }}>📅 Date Tree</div>
-          <div style={{ maxHeight: 360, overflowY: "auto" }}>
-            {Object.keys(grouped).length ? (
-              Object.entries(grouped).map(([year, months]) => {
-                const yOpen = !!expandedYears[year];
-                return (
-                  <div key={year} style={{ marginBottom: 8 }}>
-                    <button
-                      onClick={() => toggleYear(year)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        width: "100%",
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #d1d5db",
-                        background: "#fff",
-                        cursor: "pointer",
-                        fontWeight: 900,
-                      }}
-                      title={yOpen ? "Collapse" : "Expand"}
-                    >
-                      <span>Year {year}</span>
-                      <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
-                    </button>
-
-                    {yOpen &&
-                      Object.entries(months).map(([month, days]) => {
-                        const key = `${year}-${month}`;
-                        const mOpen = !!expandedMonths[key];
-                        return (
-                          <div key={key} style={{ marginTop: 6, marginLeft: 8 }}>
-                            <button
-                              onClick={() => toggleMonth(year, month)}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "space-between",
-                                width: "100%",
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                border: "1px solid #e5e7eb",
-                                background: "#fff",
-                                cursor: "pointer",
-                                fontWeight: 800,
-                              }}
-                              title={mOpen ? "Collapse" : "Expand"}
-                            >
-                              <span>Month {month}</span>
-                              <span aria-hidden="true">{mOpen ? "▾" : "▸"}</span>
-                            </button>
-
-                            {mOpen && (
-                              <div style={{ padding: "6px 2px 0 2px" }}>
-                                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                                  {days.map((d) => (
-                                    <li key={d} style={{ marginBottom: 6 }}>
-                                      <button
-                                        onClick={() => setDate(d)}
-                                        style={{
-                                          width: "100%",
-                                          textAlign: "left",
-                                          padding: "8px 10px",
-                                          borderRadius: 8,
-                                          border: "1px solid #d1d5db",
-                                          background: d === date ? "#2563eb" : "#fff",
-                                          color: d === date ? "#fff" : "#111827",
-                                          fontWeight: 800,
-                                          cursor: "pointer",
-                                        }}
-                                        title={formatDMY(d)}
-                                      >
-                                        {formatDMY(d)}
-                                      </button>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                  </div>
-                );
-              })
-            ) : (
-              <div style={{ color: "#6b7280" }}>No available dates.</div>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Report content */}
-        <div style={{ minWidth: 0 }}>
+                      : `${safe(g.row?.supplier)} — ${safe(g.row?.foodItem)} (Exp: ${formatDMY(safe(g.row?.expiryDate)) || "-"})`,
+                }))}
+              />
+            }
+          />
+        }
+      >
           {loading && <p>Loading…</p>}
           {err && <p style={{ color: "#b91c1c" }}>{err}</p>}
 
-          {!loading && !err && !record && (
-            <div style={{ padding: 12, border: "1px dashed #9ca3af", borderRadius: 8, textAlign: "center" }}>
-              No report for this date.
-            </div>
-          )}
+          {!loading && !err && !record && <EmptyState />}
 
           {record && (
             <div style={{ overflowX: "auto", overflowY: "hidden" }}>
-              <div ref={reportRef} style={{ width: "max-content" }}>
-                {/* Info band */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 8, fontSize: 12, minWidth: 1100 }}>
-                  <div><strong>Date:</strong> {safe(record.payload?.reportDate)}</div>
-                  <div><strong>Time:</strong> {safe(record.payload?.reportTime)}</div>
-                  <div><strong>Invoice No:</strong> {safe(record.payload?.invoiceNo)}</div>
-                  <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
-                  <div><strong>Form Ref:</strong> {safe(record.payload?.formRef || "FSMS/BR/F01A")}</div>
-                  <div><strong>Classification:</strong> {safe(record.payload?.classification || "Official")}</div>
+              <div ref={reportRef} style={{ width: "100%", minWidth: 0 }}>
+                {/* Info band — شارات زجاجية تملأ العرض */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8, marginBottom: 10, fontSize: 14.5 }}>
+                  {[
+                    ["Date", safe(record.payload?.reportDate)],
+                    ["Time", safe(record.payload?.reportTime)],
+                    ["Invoice No", safe(record.payload?.invoiceNo)],
+                    ["Branch", safe(record.payload?.branch)],
+                    ["Form Ref", safe(record.payload?.formRef || "FSMS/BR/F01A")],
+                    ["Classification", safe(record.payload?.classification || "Official")],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{
+                      background: "linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
+                      border: "1px solid rgba(139,92,246,0.25)",
+                      borderRadius: 10,
+                      padding: "7px 12px",
+                    }}>
+                      <strong style={{ color: "#5b21b6" }}>{k}:</strong> {v || "—"}
+                    </div>
+                  ))}
                 </div>
 
-                {/* Legend strip */}
-                <div style={{ border: "1px solid #1f3b70", borderBottom: "none" }}>
-                  <div style={{ ...thCell, background: "#e9f0ff" }}>
-                    LEGEND: (C) – Conform &nbsp;&nbsp; / &nbsp;&nbsp; (NC) – Non-Conform
-                  </div>
+                {/* Legend strip — شريط طيفي */}
+                <div style={{
+                  background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)",
+                  border: "1px solid #c7d2fe",
+                  borderBottom: "none",
+                  borderRadius: "12px 12px 0 0",
+                  padding: "9px 8px",
+                  textAlign: "center",
+                  fontWeight: 800,
+                  color: "#0b1f4d",
+                }}>
+                  LEGEND: <span style={{ color: "#065f46" }}>(C) – Conform</span> &nbsp;&nbsp; / &nbsp;&nbsp; <span style={{ color: "#991b1b" }}>(NC) – Non-Conform</span>
                 </div>
 
                 {/* Table */}
                 <table style={gridStyle}>
-                  <colgroup>{colDefs}</colgroup>
                   <thead>
-                    <tr>
+                    <tr style={theadRow}>
                       <th style={thCell}>Name of the Supplier</th>
                       <th style={thCell}>Food Item</th>
                       <th style={thCell}>Vehicle Temp (°C)</th>
@@ -1141,18 +926,18 @@ export default function POS10ReceivingLogView() {
                     {!editing ? (
                       viewRows.length ? (
                         viewRows.map((r, idx) => (
-                          <tr key={idx}>
-                            <td style={tdCell}>{safe(r.supplier)}</td>
+                          <tr key={idx} style={zebra(idx)}>
+                            <td style={{ ...tdCell, fontWeight: 700 }}>{safe(r.supplier)}</td>
                             <td style={tdCell}>{safe(r.foodItem)}</td>
                             <td style={tdCell}>{safe(r.vehicleTemp)}</td>
                             <td style={tdCell}>{safe(r.foodTemp)}</td>
                             <td style={tdCell}>{safe(r.quantity)}</td>
-                            <td style={tdCell}>{safe(r.vehicleClean)}</td>
-                            <td style={tdCell}>{safe(r.handlerHygiene)}</td>
-                            <td style={tdCell}>{safe(r.appearanceOK)}</td>
-                            <td style={tdCell}>{safe(r.firmnessOK)}</td>
-                            <td style={tdCell}>{safe(r.smellOK)}</td>
-                            <td style={tdCell}>{safe(r.packagingGood)}</td>
+                            <td style={tdCell}><Tick v={r.vehicleClean} /></td>
+                            <td style={tdCell}><Tick v={r.handlerHygiene} /></td>
+                            <td style={tdCell}><Tick v={r.appearanceOK} /></td>
+                            <td style={tdCell}><Tick v={r.firmnessOK} /></td>
+                            <td style={tdCell}><Tick v={r.smellOK} /></td>
+                            <td style={tdCell}><Tick v={r.packagingGood} /></td>
                             <td style={tdCell}>{safe(r.countryOfOrigin)}</td>
                             <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td>
                             <td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
@@ -1336,7 +1121,8 @@ export default function POS10ReceivingLogView() {
                 </table>
 
                 {/* Notes */}
-                <div style={{ marginTop: 10, fontSize: 11, color: "#0b1f4d", width: "max-content" }}>
+                <div style={{ marginTop: 12, fontSize: 14, color: "#0b1f4d", lineHeight: 1.7,
+                  background: "rgba(255,255,255,0.6)", border: "1px solid #e0e7ff", borderRadius: 10, padding: "10px 14px" }}>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>Organoleptic Checks*</div>
                   <div>Appearance: Normal colour (Free from discoloration)</div>
                   <div>Firmness: Firm rather than soft.</div>
@@ -1361,7 +1147,7 @@ export default function POS10ReceivingLogView() {
                     alignItems: "center",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, flex: "1 1 320px", minWidth: 300 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, flex: "1 1 320px", minWidth: 300 }}>
                     <strong>Received by:</strong>
                     {!editing ? (
                       <span style={{ display: "inline-block", minWidth: 260, borderBottom: "2px solid #1f3b70", lineHeight: "1.8", textAlign: "left" }}>
@@ -1376,7 +1162,7 @@ export default function POS10ReceivingLogView() {
                     )}
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, flex: "1 1 320px", minWidth: 300, justifyContent: "flex-end" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, flex: "1 1 320px", minWidth: 300, justifyContent: "flex-end" }}>
                     <strong>Verified by:</strong>
                     {!editing ? (
                       <span style={{ display: "inline-block", minWidth: 260, borderBottom: "2px solid #1f3b70", lineHeight: "1.8", textAlign: "left" }}>
@@ -1401,8 +1187,7 @@ export default function POS10ReceivingLogView() {
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }

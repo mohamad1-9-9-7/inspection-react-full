@@ -4,6 +4,14 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import {
+  btn,
+  formatDMY as fmtDMY,
+  GlassShell,
+  DateTreeSidebar,
+  GLASS,
+  EmptyState,
+} from "../_shared/branchViewKit";
 
 
 
@@ -23,7 +31,6 @@ const DOC = {
 
 const safe  = (v) => (v ?? "");
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn   = (bg) => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" });
 
 const formatDMY = (iso) => {
   if (!iso) return iso;
@@ -69,104 +76,149 @@ export default function PRDTraceabilityLogView() {
   const [editCheckedBy, setEditCheckedBy] = useState("");
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
   const [editReportDate, setEditReportDate] = useState("");
-  const [allDates, setAllDates] = useState([]);
 
-  const [expandedYears, setExpandedYears] = useState({});
-  const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
+  // liteDates: [{id, reportDate}] — lightweight, no payload
+  const [liteDates, setLiteDates] = useState([]);
+  const liteDatesRef = useRef([]); // ref copy for sync access inside fetchRecord
+  // preloaded: Map<reportDate, fullRecord> — last 5 fetched upfront
+  const preloadedRef = useRef(new Map());
 
   const gridStyle = useMemo(() => ({
-    width: "max-content",
+    width: "100%",
     borderCollapse: "collapse",
-    tableLayout: "fixed",
-    fontSize: 13,
+    fontSize: 20,
+    borderRadius: 12,
+    overflow: "hidden",
+    boxShadow: "0 2px 14px rgba(99,102,241,0.10)",
   }), []);
+  const theadRow = {
+    background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)",
+  };
   const thCell = {
-    border: "1px solid #1f3b70",
-    padding: "8px 6px",
+    border: "1px solid rgba(255,255,255,0.30)",
+    padding: "10px 8px",
     textAlign: "center",
     whiteSpace: "pre-line",
-    fontWeight: 700,
-    background: "#f5f8ff",
-    color: "#0b1f4d",
+    fontWeight: 800,
+    background: "transparent",
+    color: "#fff",
+    fontSize: 20,
   };
   const tdCell = {
-    border: "1px solid #1f3b70",
-    padding: "8px 6px",
+    border: "1px solid #c7d2fe",
+    padding: "10px 8px",
     textAlign: "center",
     verticalAlign: "middle",
+    fontSize: 20,
   };
   const inputStyle = {
     width: "100%",
     border: "1px solid #c7d2fe",
     borderRadius: 6,
     padding: "6px 8px",
+    fontSize: 20,
   };
 
   const colDefs = useMemo(() => ([
-    <col key="batchId"       style={{ width: 180 }} />,
-    <col key="rawName"       style={{ width: 260 }} />,
-    <col key="origProdDate"  style={{ width: 140 }} />,
-    <col key="origExpDate"   style={{ width: 140 }} />,
-    <col key="openedDate"    style={{ width: 120 }} />,
-    <col key="bestBefore"    style={{ width: 140 }} />,
-    <col key="rawWeight"     style={{ width: 120 }} />,
-    <col key="finalName"     style={{ width: 260 }} />,
-    <col key="finalProdDate" style={{ width: 160 }} />,
-    <col key="finalExpDate"  style={{ width: 160 }} />,
-    <col key="finalWeight"   style={{ width: 120 }} />,
+    <col key="batchId"       style={{ width: "10%" }} />,
+    <col key="rawName"       style={{ width: "14%" }} />,
+    <col key="origProdDate"  style={{ width: "8%" }} />,
+    <col key="origExpDate"   style={{ width: "8%" }} />,
+    <col key="openedDate"    style={{ width: "7%" }} />,
+    <col key="bestBefore"    style={{ width: "8%" }} />,
+    <col key="rawWeight"     style={{ width: "7%" }} />,
+    <col key="finalName"     style={{ width: "14%" }} />,
+    <col key="finalProdDate" style={{ width: "8%" }} />,
+    <col key="finalExpDate"  style={{ width: "8%" }} />,
+    <col key="finalWeight"   style={{ width: "8%" }} />,
   ]), []);
 
-  /* ===== Fetch dates ===== */
-  async function fetchAllDates() {
+  /* ===== Init: fetch lite dates + last 5 full records in parallel ===== */
+  async function init() {
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
+      const [liteRes, fullRes] = await Promise.all([
+        fetch(`${API_BASE}/api/reports?type=${TYPE}&lite=1&limit=5000`, { cache: "no-store" }),
+        fetch(`${API_BASE}/api/reports?type=${TYPE}&limit=5`, { cache: "no-store" }),
+      ]);
 
-      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
-      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
-      setAllDates(uniq);
+      // lite dates
+      if (liteRes.ok) {
+        const data = await liteRes.json();
+        const rows = Array.isArray(data) ? data : data?.data ?? [];
+        const filtered = rows
+          .filter((r) => r.reportDate)
+          .map((r) => ({ id: r.id, reportDate: r.reportDate }))
+          .sort((a, b) => b.reportDate.localeCompare(a.reportDate));
+        liteDatesRef.current = filtered;
+        setLiteDates(filtered);
+      }
 
-      // Tree stays collapsed by default.
-      if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
+      // preload last 5 full records
+      if (fullRes.ok) {
+        const data = await fullRes.json();
+        const rows = Array.isArray(data) ? data : data?.data ?? [];
+        const map = preloadedRef.current;
+        rows.forEach((r) => {
+          const d = r?.payload?.reportDate;
+          if (d) map.set(d, r);
+        });
+        // show the most recent immediately
+        const first = rows[0];
+        if (first?.payload?.reportDate) {
+          applyRecord(first);
+          setDate(first.payload.reportDate);
+        }
+      }
     } catch (e) {
-      console.warn("Failed to fetch dates", e);
+      console.warn("Init fetch failed", e);
     }
   }
 
-  /* ===== Fetch one record ===== */
-  async function fetchRecord(d = date) {
+  /* ===== Apply a fetched record to state ===== */
+  function applyRecord(match) {
+    setRecord(match || null);
+    const rows = Array.from({ length: 12 }, (_, i) => {
+      const e = match?.payload?.entries?.[i];
+      return e ? {
+        batchId: e.batchId ?? "",
+        rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
+        openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
+        rawWeight: e.rawWeight ?? "",
+        finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
+        finalWeight: e.finalWeight ?? "",
+      } : emptyRow();
+    });
+    setEditRows(rows);
+    setEditCheckedBy(match?.payload?.checkedBy || "");
+    setEditVerifiedBy(match?.payload?.verifiedBy || "");
+    setEditReportDate(match?.payload?.reportDate || "");
+    setEditing(false);
+  }
+
+  /* ===== Fetch single record by date (on-demand for older dates) ===== */
+  async function fetchRecord(d) {
+    // check preload cache first
+    if (preloadedRef.current.has(d)) {
+      applyRecord(preloadedRef.current.get(d));
+      return;
+    }
+
+    // find the id from liteDatesRef (sync, always current)
+    const liteEntry = liteDatesRef.current.find((x) => x.reportDate === d);
+    if (!liteEntry?.id) {
+      setRecord(null);
+      return;
+    }
+
     setLoading(true);
     setErr("");
-    setRecord(null);
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/reports/${liteEntry.id}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
-      setRecord(match);
-
-      const rows = Array.from({ length: 12 }, (_, i) => {
-        const e = match?.payload?.entries?.[i];
-        return e ? {
-          batchId: e.batchId ?? "",
-          rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
-          openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
-          rawWeight: e.rawWeight ?? "",
-          finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
-          finalWeight: e.finalWeight ?? "",
-        } : emptyRow();
-      });
-      setEditRows(rows);
-      setEditCheckedBy(match?.payload?.checkedBy || "");
-      setEditVerifiedBy(match?.payload?.verifiedBy || "");
-      setEditReportDate(match?.payload?.reportDate || "");
-      setEditing(false);
+      const match = data?.report ?? null;
+      preloadedRef.current.set(d, match); // cache it
+      applyRecord(match);
     } catch (e) {
       console.error(e);
       setErr("Failed to fetch data.");
@@ -175,7 +227,7 @@ export default function PRDTraceabilityLogView() {
     }
   }
 
-  useEffect(() => { fetchAllDates(); }, []);
+  useEffect(() => { init(); }, []);
   useEffect(() => { if (date) fetchRecord(date); }, [date]);
 
   /* ===== Edit / Save / Delete with password ===== */
@@ -232,13 +284,9 @@ export default function PRDTraceabilityLogView() {
     try {
       setLoading(true);
 
-      if (rid) {
-        try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" }); }
-        catch (e) { console.warn("DELETE (ignored error):", e); }
-      }
-
-      const postRes = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
+      // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
+      const postRes = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, {
+        method: rid ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "production", type: TYPE, payload }), // ⬅️ production
       });
@@ -246,9 +294,8 @@ export default function PRDTraceabilityLogView() {
 
       alert("✅ Changes saved");
       setEditing(false);
-      await fetchAllDates();
+      await init();
       setDate(editReportDate);
-      await fetchRecord(editReportDate);
     } catch (e) {
       console.error(e);
       alert("❌ Saving failed.\n" + String(e?.message || e));
@@ -270,9 +317,8 @@ export default function PRDTraceabilityLogView() {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Deleted");
-      await fetchAllDates();
-      const next = allDates.find((d) => d !== record?.payload?.reportDate) || todayDubai;
-      setDate(next);
+      preloadedRef.current.delete(record?.payload?.reportDate);
+      await init();
     } catch (e) {
       console.error(e);
       alert("❌ Delete failed.");
@@ -457,9 +503,8 @@ export default function PRDTraceabilityLogView() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       alert("✅ Imported and saved");
+      await init();
       setDate(payload.reportDate);
-      await fetchAllDates();
-      await fetchRecord(payload.reportDate);
     } catch (e) {
       console.error(e);
       alert("❌ Invalid JSON or save failed");
@@ -539,162 +584,54 @@ export default function PRDTraceabilityLogView() {
     return groups;
   }, [record]);
 
-  /* ===== Date tree ===== */
-  const groupedDates = useMemo(() => {
-    const out = {};
-    for (const d of allDates) {
-      const [y, m] = d.split("-");
-      (out[y] ||= {});
-      (out[y][m] ||= []).push(d);
-    }
-    for (const y of Object.keys(out))
-      out[y] = Object.fromEntries(
-        Object.entries(out[y])
-          .sort(([a],[b]) => Number(b) - Number(a))
-          .map(([m, arr]) => [m, arr.sort((a,b)=>b.localeCompare(a))])
-      );
-    return Object.fromEntries(Object.entries(out).sort(([a],[b]) => Number(b) - Number(a)));
-  }, [allDates]);
-
-  const toggleYear  = (y)    => setExpandedYears((p)  => ({ ...p, [y]: !p[y] }));
-  const toggleMonth = (y, m) => setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
-
-  const headBoxBg = "#f5f8ff";
-  const headBorder = "1px solid #1f3b70";
-  const headTd = { border: headBorder, padding: "10px 12px", background: headBoxBg, fontSize: 12, color:"#0b1f4d" };
+  /* ===== treeItems for DateTreeSidebar ===== */
+  const treeItems = useMemo(() =>
+    liteDates.map((x) => ({ key: x.reportDate, dateISO: x.reportDate, label: fmtDMY(x.reportDate) })),
+  [liteDates]);
 
   return (
-    <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d", direction:"ltr" }}>
-      {/* Header (actions) */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-        <div style={{ fontWeight:800, fontSize:18 }}>
-          Traceability Log — View (PRODUCTION)
-        </div>
-
-        <div style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+    <GlassShell
+      icon="🏭"
+      title="Traceability Log — View (PRODUCTION)"
+      actions={
+        <>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
             {editing ? "Cancel Edit" : "Edit (password)"}
           </button>
-          {editing && (
-            <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
-          )}
+          {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
           <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
-
-          <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>
-            Export XLSX
-          </button>
-          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>
-            Export JSON
-          </button>
-          <button onClick={exportPDF} style={btn("#374151")}>
-            Export PDF
-          </button>
+          <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>Export XLSX</button>
+          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
+          <button onClick={exportPDF} style={btn("#374151")}>Export PDF</button>
           <label style={{ ...btn("#059669"), display:"inline-block" }}>
             Import JSON
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json"
-              onChange={(e)=>importJSON(e.target.files?.[0])}
-              style={{ display:"none" }}
-            />
+            <input ref={fileInputRef} type="file" accept="application/json"
+              onChange={(e)=>importJSON(e.target.files?.[0])} style={{ display:"none" }} />
           </label>
-        </div>
-      </div>
+        </>
+      }
+    >
+      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:14, alignItems:"start" }}>
+        {/* شجرة التواريخ — يسار */}
+        <DateTreeSidebar
+          items={treeItems}
+          activeKey={date}
+          onPick={(it) => setDate(it.key)}
+          loading={loading && !liteDates.length}
+          maxHeight="calc(100vh - 160px)"
+        />
 
-      {/* Layout: Date tree + content */}
-      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
-        {/* Date tree */}
-        <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
-          <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
-          <div style={{ maxHeight:380, overflowY:"auto" }}>
-            {Object.keys(groupedDates).length ? (
-              Object.entries(groupedDates).map(([year, months]) => {
-                const yOpen = !!expandedYears[year];
-                return (
-                  <div key={year} style={{ marginBottom:8 }}>
-                    <button
-                      onClick={()=>toggleYear(year)}
-                      style={{
-                        display:"flex", alignItems:"center", justifyContent:"space-between",
-                        width:"100%", padding:"6px 10px", borderRadius:8,
-                        border:"1px solid #d1d5db", background:"#fff", cursor:"pointer", fontWeight:800
-                      }}
-                      title={yOpen ? "Collapse" : "Expand"}
-                    >
-                      <span>Year {year}</span>
-                      <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
-                    </button>
-
-                    {yOpen && Object.entries(months).map(([month, days]) => {
-                      const key = `${year}-${month}`;
-                      const mOpen = !!expandedMonths[key];
-                      return (
-                        <div key={key} style={{ marginTop:6, marginLeft:8 }}>
-                          <button
-                            onClick={()=>toggleMonth(year, month)}
-                            style={{
-                              display:"flex", alignItems:"center", justifyContent:"space-between",
-                              width:"100%", padding:"6px 10px", borderRadius:8,
-                              border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", fontWeight:700
-                            }}
-                            title={mOpen ? "Collapse" : "Expand"}
-                          >
-                            <span>Month {month}</span>
-                            <span aria-hidden="true">{mOpen ? "▾" : "▸"}</span>
-                          </button>
-
-                          {mOpen && (
-                            <div style={{ padding:"6px 2px 0 2px" }}>
-                              <ul style={{ listStyle:"none", padding:0, margin:0 }}>
-                                {days.map((d)=>(
-                                  <li key={d} style={{ marginBottom:6 }}>
-                                    <button
-                                      onClick={()=>setDate(d)}
-                                      style={{
-                                        width:"100%", textAlign:"left", padding:"8px 10px",
-                                        borderRadius:8, border:"1px solid #d1d5db",
-                                        background: d===date ? "#2563eb" : "#fff",
-                                        color: d===date ? "#fff" : "#111827",
-                                        fontWeight:700, cursor:"pointer"
-                                      }}
-                                      title={formatDMY(d)}
-                                    >
-                                      {formatDMY(d)}
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })
-            ) : (
-              <div style={{ color:"#6b7280" }}>No available dates.</div>
-            )}
-          </div>
-        </div>
-
-        {/* Report content */}
-        <div style={{ minWidth: 0 }}>
-          {loading && <p>Loading…</p>}
+        {/* المحتوى الرئيسي */}
+        <div style={{ ...GLASS.content, minWidth:0 }}>
+          {loading && <p style={{ color:"#7c3aed", fontWeight:700 }}>Loading…</p>}
           {err && <p style={{ color:"#b91c1c" }}>{err}</p>}
-
-          {!loading && !err && !record && (
-            <div style={{ padding:12, border:"1px dashed #9ca3af", borderRadius:8, textAlign:"center" }}>
-              No report for this date.
-            </div>
-          )}
+          {!loading && !err && !record && <EmptyState />}
 
           {record && (
             <div style={{ overflowX:"auto", overflowY:"hidden" }}>
-              <div ref={reportRef} style={{ width: "max-content" }}>
+              <div ref={reportRef} style={{ minWidth: 900 }}>
                 {/* Header box */}
-                <div style={{ marginBottom: 10, minWidth: 1300 }}>
+                <div style={{ marginBottom: 10 }}>
                   <table style={{ borderCollapse:"collapse", width:"100%", border:"1px solid #1f3b70" }}>
                     <colgroup>
                       <col style={{ width: 120 }} />
@@ -744,12 +681,26 @@ export default function PRDTraceabilityLogView() {
                 </div>
 
                 {/* Meta */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(2, 1fr)", gap:8, marginBottom:8, fontSize:12, minWidth: 1300 }}>
-                  <div><strong>Area:</strong> {safe(record.payload?.branch)}</div>
-                  <div>
-                    <strong>Report Date:</strong>{" "}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:8, marginBottom:12, fontSize:14.5 }}>
+                  {[["Area", safe(record.payload?.branch)]].map(([k, v]) => (
+                    <div key={k} style={{
+                      background: "linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
+                      border: "1px solid rgba(139,92,246,0.25)",
+                      borderRadius: 10,
+                      padding: "8px 14px",
+                    }}>
+                      <strong style={{ color: "#5b21b6" }}>{k}:</strong> {v || "—"}
+                    </div>
+                  ))}
+                  <div style={{
+                    background: "linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
+                    border: "1px solid rgba(139,92,246,0.25)",
+                    borderRadius: 10,
+                    padding: "8px 14px",
+                  }}>
+                    <strong style={{ color: "#5b21b6" }}>Report Date:</strong>{" "}
                     {!editing ? (
-                      <span>{safe(record.payload?.reportDate)}</span>
+                      <span>{safe(record.payload?.reportDate) || "—"}</span>
                     ) : (
                       <input
                         type="date"
@@ -765,7 +716,7 @@ export default function PRDTraceabilityLogView() {
                 <table style={gridStyle}>
                   <colgroup>{colDefs}</colgroup>
                   <thead>
-                    <tr>
+                    <tr style={theadRow}>
                       <th style={thCell}>Batch / Lot ID</th>
                       <th style={thCell}>Name of Raw Material Used for Preparation</th>
                       <th style={thCell}>Original Production Date</th>
@@ -794,14 +745,15 @@ export default function PRDTraceabilityLogView() {
                           <React.Fragment key={`g-${gi}`}>
                             <tr>
                               <td colSpan={11} style={{
-                                background: "#eef2ff",
-                                color: "#1e3a8a",
+                                background: "linear-gradient(90deg,#ede9fe,#cffafe,#d1fae5)",
+                                color: "#4c1d95",
                                 fontWeight: 800,
+                                fontSize: 20,
                                 textAlign: "left",
-                                border: "1px solid #1f3b70",
-                                padding: "8px 10px"
+                                border: "1px solid #c7d2fe",
+                                padding: "9px 14px"
                               }}>
-                                Batch / Lot: {batchId} — {rows.length} row(s)
+                                🏷️ Batch / Lot: {batchId} — {rows.length} row(s)
                               </td>
                             </tr>
 
@@ -902,13 +854,14 @@ export default function PRDTraceabilityLogView() {
                 {/* Note */}
                 <div
                   style={{
-                    marginTop: 10,
-                    paddingTop: 8,
-                    borderTop: "2px solid #1f3b70",
-                    fontSize: 12,
+                    marginTop: 12,
+                    fontSize: 20,
                     color: "#0b1f4d",
-                    lineHeight: 1.6,
-                    width: "max-content",
+                    lineHeight: 1.7,
+                    background: "rgba(255,255,255,0.6)",
+                    border: "1px solid #e0e7ff",
+                    borderRadius: 10,
+                    padding: "10px 14px",
                   }}
                 >
                   <strong style={{ color: "#0b1f4d" }}>Note:</strong>
@@ -966,6 +919,6 @@ export default function PRDTraceabilityLogView() {
           )}
         </div>
       </div>
-    </div>
+    </GlassShell>
   );
 }

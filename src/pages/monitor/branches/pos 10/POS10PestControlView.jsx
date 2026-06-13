@@ -1,8 +1,15 @@
 // src/pages/monitor/branches/pos 10/POS10PestControlView.jsx
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
+import {
+  getId,
+  btn,
+  toISODate,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "./pos10ViewKit";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -27,7 +34,6 @@ export default function POS10PestControlView() {
   const closePreview = () => setPreview((p) => ({ ...p, open: false }));
 
   // Helpers
-  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
   const askPass = (label = "") =>
     (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
@@ -80,31 +86,31 @@ export default function POS10PestControlView() {
     }
   }
 
-  // Group (Year → Month → Days) — أحدث أولاً
-  const grouped = useMemo(() => {
-    const acc = {};
-    for (const r of reports) {
-      const d = getDate(r);
-      if (isNaN(d)) continue;
-      const y = String(d.getFullYear());
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      const ts = d.getTime();
-      acc[y] ||= {};
-      acc[y][m] ||= [];
-      acc[y][m].push({ ...r, _ts: ts, _label: `${day}/${m}/${y}` });
-    }
-    for (const y of Object.keys(acc)) {
-      for (const m of Object.keys(acc[y])) {
-        acc[y][m].sort((a, b) => b._ts - a._ts);
-      }
-    }
-    return acc;
-  }, [reports]);
+  // عناصر شجرة التاريخ الموحّدة
+  const treeItems = useMemo(
+    () =>
+      reports.map((r, i) => {
+        const d = getDate(r);
+        const iso = toISODate(d);
+        return {
+          key: getId(r) || `${iso}-${i}`,
+          dateISO: iso,
+          label: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`,
+          data: r,
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reports]
+  );
 
   // PDF
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
+    // تحميل ديناميكي — يخفّف حجم الصفحة عند الفتح
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
     const canvas = await html2canvas(reportRef.current, {
       scale: 2,
       windowWidth: reportRef.current.scrollWidth,
@@ -243,107 +249,46 @@ export default function POS10PestControlView() {
   };
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* Sidebar (Date Tree) */}
-      <div
-        style={{
-          minWidth: 260,
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: 10,
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
-      >
-        <h4 style={{ marginBottom: 12, color: "#6d28d9", textAlign: "center" }}>🗓️ Saved Reports (POS 10)</h4>
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(grouped).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.keys(grouped)
-              .sort((a, b) => Number(b) - Number(a)) // Years desc
-              .map((y) => (
-                <details key={y}>
-                  <summary style={{ fontWeight: "bold", marginBottom: 6 }}>📅 Year {y}</summary>
+    <GlassShell
+      icon="🪲"
+      title="Pest Control — View (POS 10)"
+      actions={
+        <>
+          <button onClick={handleExportPDF} disabled={!selected} style={btn("#27ae60")}>⬇ Export PDF</button>
+          <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
+          <button onClick={triggerImport} style={btn("#f39c12")}>⬆ Import JSON</button>
+          <button onClick={() => handleDelete(selected)} disabled={!selected} style={btn("#c0392b")} data-delete-action="true">🗑 Delete</button>
 
-                  {Object.keys(grouped[y])
-                    .sort((a, b) => Number(b) - Number(a)) // Months desc
-                    .map((m) => {
-                      const arr = grouped[y][m];
-                      return (
-                        <details key={m} style={{ marginLeft: "1rem" }}>
-                          <summary style={{ fontWeight: 600 }}>
-                            📅 Month {m} <span style={{ color: "#6b7280" }}>({arr.length})</span>
-                          </summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {arr.map((r, i) => {
-                              const active = getId(selected) && getId(selected) === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelected(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: 4,
-                                    borderRadius: 6,
-                                    cursor: "pointer",
-                                    background: active ? "#6d28d9" : "#ecf0f1",
-                                    color: active ? "#fff" : "#333",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {r._label}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
-
-      {/* Report viewer */}
-      <div
-        style={{
-          flex: 1,
-          background: "linear-gradient(120deg, #f6f8fa 65%, #e8daef 100%)",
-          padding: "1.5rem",
-          borderRadius: 14,
-          boxShadow: "0 4px 18px #d2b4de44",
-        }}
+          {/* hidden input for import */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            style={{ display: "none" }}
+            onChange={handleImportJSON}
+          />
+        </>
+      }
+    >
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            title="🗓️ Saved Reports"
+            items={treeItems}
+            activeKey={getId(selected)}
+            onPick={(it) => setSelected(it.data)}
+            loading={loading}
+            emptyText="❌ No reports"
+          />
+        }
       >
         {!selected ? (
-          <p>❌ No report selected.</p>
+          <EmptyState text="❌ No report selected." />
         ) : (
-          <>
-            {/* Actions */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
-              <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
-              <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
-              <button onClick={triggerImport} style={btn("#f39c12")}>⬆ Import JSON</button>
-              <button onClick={() => handleDelete(selected)} style={btn("#c0392b")} data-delete-action="true">🗑 Delete</button>
-
-              {/* hidden input for import */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={handleImportJSON}
-              />
-            </div>
-
-            {/* Content to export */}
             <div ref={reportRef}>
               {/* Header table */}
-              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8, fontSize: "0.9rem", border: "1px solid #9aa4ae", background: "#f8fbff" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8, fontSize: "1rem", border: "1px solid #9aa4ae", background: "#f8fbff" }}>
                 <tbody>
                   <tr>
                     <td rowSpan={4} style={{ border: "1px solid #9aa4ae", padding: "8px", width: 120, textAlign: "center" }}>
@@ -435,9 +380,8 @@ export default function POS10PestControlView() {
                 <SignatureName label="Verified By" name={selected?.payload?.verifiedBy} align="end" />
               </div>
             </div>
-          </>
         )}
-      </div>
+      </SidebarLayout>
 
       {/* Lightbox Modal للصور */}
       {preview.open && (
@@ -471,7 +415,7 @@ export default function POS10PestControlView() {
           </div>
         </div>
       )}
-    </div>
+    </GlassShell>
   );
 }
 
@@ -486,16 +430,6 @@ const thCell = {
 };
 const tdCellCenter = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "center" };
 const tdCellLeft = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "left" };
-
-const btn = (bg) => ({
-  padding: "6px 12px",
-  borderRadius: 6,
-  background: bg,
-  color: "#fff",
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
-});
 
 const btnMini = {
   padding: "4px 8px",

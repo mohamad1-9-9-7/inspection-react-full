@@ -103,11 +103,9 @@ export default function DefrostingRecordInput() {
         entries: cleanEntries, checkedBy, verifiedBy,
         savedAt: Date.now(),
       };
-      if (existingReport?.id) {
-        try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existingReport.id)}`, { method: "DELETE" }); } catch {}
-      }
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
+      const res = await fetch(existingReport?.id ? `${API_BASE}/api/reports/${encodeURIComponent(existingReport.id)}` : `${API_BASE}/api/reports`, {
+        method: existingReport?.id ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

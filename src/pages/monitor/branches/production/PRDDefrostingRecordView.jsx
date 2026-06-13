@@ -1,11 +1,15 @@
 // src/pages/monitor/branches/production/PRDDefrostingRecordView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import SignatureName from "../../../shared/SignatureName";
-
-const API_BASE =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
-  "https://inspection-server-4nvj.onrender.com";
+import API_BASE from "../../../../config/api";
+import {
+  btn,
+  formatDMY,
+  GlassShell,
+  DateTreeSidebar,
+  GLASS,
+  EmptyState,
+} from "../_shared/branchViewKit";
 
 const TYPE = "prod_defrosting_record";
 
@@ -89,6 +93,21 @@ export default function PRDDefrostingRecordView() {
 
   const groups = useMemo(() => groupByYMD(reports), [reports]);
   const selectedKey = getKey(selected);
+
+  /* Build treeItems for DateTreeSidebar */
+  const treeItems = useMemo(() => {
+    const seen = new Map();
+    for (const r of reports) {
+      const k = getKey(r);
+      if (!k || seen.has(k)) continue;
+      const h = r.payload?.header || {};
+      const pick = h.reportDate || h.month || h.issueDate || r.createdAt || "";
+      const n = normYMD(pick);
+      if (!n) continue;
+      seen.set(k, { key: k, dateISO: n.iso, label: formatDMY(n.iso), data: r });
+    }
+    return Array.from(seen.values()).sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+  }, [reports]);
 
   /* ============ Export PDF (التقرير فقط) ============ */
   function exportPDF() {
@@ -239,181 +258,88 @@ export default function PRDDefrostingRecordView() {
 
   /* ===================== UI ===================== */
   return (
-    <div style={styles.page}>
-      {/* شريط علوي */}
-      <div style={styles.topBar}>
-        <div style={{ fontWeight: 900, color: "#fff" }}>
-          Defrosting details {selected ? `(${selected?.payload?.header?.reportDate || selected?.payload?.header?.month || ""})` : ""}
+    <GlassShell
+      icon="🧊"
+      title="Defrosting Record — View (PRODUCTION)"
+      actions={
+        <>
+          <button onClick={load} style={btn("#7c3aed")}>⟳ Refresh</button>
+          <button onClick={exportPDF} style={btn("#374151")} disabled={!selected}>⬇️ Export PDF</button>
+          <button onClick={exportJSONAll} style={btn("#0284c7")}>⇩ Export JSON</button>
+          <button onClick={triggerImport} style={btn("#059669")} disabled={importing}>
+            {importing ? "Importing…" : "⇧ Import JSON"}
+          </button>
+          <button onClick={handleDelete} style={btn("#dc2626")} disabled={!selected || loading} data-delete-action="true">🗑️ Delete</button>
+          <input ref={fileRef} type="file" accept="application/json" style={{ display:"none" }} onChange={handleImportFile} />
+        </>
+      }
+    >
+      {/* تخطيط: محتوى يسار + شجرة التواريخ يمين */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 300px", gap:14, alignItems:"start" }}>
+
+        {/* المحتوى الرئيسي */}
+        <div style={{ ...GLASS.content, minWidth:0 }}>
+          {loading && <p style={{ color:"#7c3aed", fontWeight:700 }}>Loading…</p>}
+          {!loading && !selected && <EmptyState text="No report selected." />}
+          {selected && <ReportSheet ref={sheetRef} report={selected} />}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={load} style={btnBlue}>⟳ Refresh</button>
-          <button onClick={exportPDF} style={btnDark} disabled={!selected}>⬇️ Export PDF</button>
-          <button onClick={handleDelete} style={btnRed} disabled={!selected || loading} title="Delete current report" data-delete-action="true">🗑️ Delete</button>
-        </div>
+
+        {/* شجرة التواريخ — يمين */}
+        <DateTreeSidebar
+          items={treeItems}
+          activeKey={selectedKey}
+          onPick={(it) => setSelected(it.data)}
+          loading={loading && !reports.length}
+          maxHeight="calc(100vh - 160px)"
+        />
       </div>
 
-      <div style={styles.layout}>
-        {/* سايدبار سنة/شهر/يوم */}
-        <aside style={styles.sidebar}>
-          {/* NEW: import/export toolbar */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <button onClick={exportJSONAll} style={btnDark}>⇩ Export JSON (all)</button>
-            <button onClick={triggerImport} style={btnBlue} disabled={importing}>
-              {importing ? "Importing…" : "⇧ Import JSON"}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="application/json"
-              style={{ display: "none" }}
-              onChange={handleImportFile}
-            />
-          </div>
-
-          {loading && <div style={muted}>Loading…</div>}
-
-          {Object.keys(groups.years)
-            .sort((a, b) => Number(b) - Number(a)) // أحدث → أقدم
-            .map((yy) => (
-              <YearBlock
-                key={yy}
-                year={yy}
-                months={groups.years[yy]}
-                selectedKey={selectedKey}
-                onPick={setSelected}
-              />
-            ))}
-        </aside>
-
-        {/* مساحة العرض */}
-        <main style={styles.main}>
-          {!selected ? (
-            <div style={{ ...card, padding: 16 }}>No report selected</div>
-          ) : (
-            <div style={card}>
-              <ReportSheet ref={sheetRef} report={selected} />
-            </div>
-          )}
-        </main>
-      </div>
-
-      {/* CSS محلي: حدود واضحة + خط أكبر */}
       <style>{`
         .tbl {
           width: 100%;
           border-collapse: collapse;
-          box-shadow: 0 6px 18px rgba(2,6,23,.06);
-          border: 1.5px solid #94a3b8;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 2px 14px rgba(99,102,241,0.10);
+        }
+        .tbl thead tr {
+          background: linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%);
         }
         .tbl thead th {
-          position: sticky;
-          top: 0;
-          background: #e2e8f0;
-          border: 1.5px solid #94a3b8;
-          padding: 10px 8px;
-          font-size: 13px;
+          border: 1px solid rgba(255,255,255,0.30);
+          padding: 11px 9px;
+          font-size: 15px;
           text-transform: uppercase;
-          letter-spacing: .04em;
-          color: #0f172a;
+          letter-spacing: .03em;
+          color: #fff;
           font-weight: 900;
+          background: transparent;
         }
         .tbl td {
-          border: 1.5px solid #94a3b8;
-          padding: 10px 8px;
-          font-size: 13px;
-          font-weight: 700;
-          color: #1f2937;
+          border: 1px solid #c7d2fe;
+          padding: 11px 9px;
+          font-size: 15px;
+          font-weight: 600;
+          color: #1e293b;
           background: #fff;
         }
-        .tbl tbody tr:nth-child(2n) td { background:#f8fafc; }
+        .tbl tbody tr:nth-child(2n) td { background: rgba(237,233,254,0.18); }
 
-        .hdrTable { width:100%; border-collapse: collapse; margin-bottom: 10px; }
-        .hdrTable td { border:1px solid #e5e7eb; padding:8px 10px; font-weight:800; background:#fff; }
-        .hdrTable tr:nth-child(odd) td { background:#fbfbff; }
+        .hdrTable { width:100%; border-collapse:collapse; margin-bottom:12px; }
+        .hdrTable td {
+          border:1px solid #c7d2fe;
+          padding:9px 12px;
+          font-size:15px;
+          font-weight:700;
+          background: linear-gradient(135deg,rgba(237,233,254,0.4),rgba(224,242,254,0.3));
+          color:#1e293b;
+        }
+        .hdrTable tr:nth-child(odd) td { background:rgba(237,233,254,0.25); }
       `}</style>
-    </div>
+    </GlassShell>
   );
 }
 
-/* ===================== Sidebar Blocks ===================== */
-function YearBlock({ year, months, onPick, selectedKey }) {
-  const [open, setOpen] = useState(false);
-  const daysCount = Object.values(months).reduce((acc, days) => acc + Object.keys(days).length, 0);
-  return (
-    <div style={sb.year}>
-      <div style={sb.yearHeader} onClick={() => setOpen(!open)}>
-        <span>{open ? "▾" : "▸"}</span>
-        <strong>Year {year}</strong>
-        <span style={sb.badge}>{daysCount} days</span>
-      </div>
-      {open &&
-        Object.keys(months)
-          .sort((a, b) => Number(b) - Number(a))
-          .map((mm) => (
-            <MonthBlock
-              key={mm}
-              year={year}
-              month={mm}
-              days={months[mm]}
-              onPick={onPick}
-              selectedKey={selectedKey}
-            />
-          ))}
-    </div>
-  );
-}
-
-function MonthBlock({ year, month, days, onPick, selectedKey }) {
-  const [open, setOpen] = useState(false);
-  const totalItems = Object.values(days).reduce((acc, v) => acc + (v.items || 0), 0);
-  return (
-    <div style={sb.month}>
-      <div style={sb.monthHeader} onClick={() => setOpen(!open)}>
-        <span>{open ? "▾" : "▸"}</span>
-        <span style={{ fontWeight: 900 }}>Month {month}</span>
-        <span style={sb.badge}>{Object.keys(days).length} days</span>
-        <span style={sb.badgeMuted}>{totalItems} items</span>
-      </div>
-      {open &&
-        Object.keys(days)
-          .sort((a, b) => Number(b) - Number(a))
-          .map((dd) => (
-            <DateChip
-              key={dd}
-              y={year}
-              m={month}
-              d={dd}
-              info={days[dd]}
-              onPick={onPick}
-              selectedKey={selectedKey}
-            />
-          ))}
-    </div>
-  );
-}
-
-/* ==== زر التاريخ مع وسم العدد + تمييز أزرق ==== */
-function DateChip({ y, m, d, info, onPick, selectedKey }) {
-  const list = info?.list || [];
-  const first = list[0];
-  const isSel = list.some((r) => getKey(r) === selectedKey);
-  const label = `${y}-${m}-${d}`;
-  return (
-    <button
-      onClick={() => first && onPick(first)}
-      style={{
-        ...sb.dateChip,
-        ...(isSel ? sb.dateChipActive : null),
-      }}
-      title={label}
-    >
-      <span style={{ flex: 1, textAlign: "left" }}>{label}</span>
-      {list.length > 1 && (
-        <span style={sb.badgeMuted}>{list.length}</span>
-      )}
-    </button>
-  );
-}
 
 /* ===================== Sheet ===================== */
 const ReportSheet = React.forwardRef(function ReportSheet({ report }, ref) {
@@ -504,150 +430,21 @@ const ReportSheet = React.forwardRef(function ReportSheet({ report }, ref) {
   );
 });
 
-/* ===================== Styles ===================== */
-const styles = {
-  page: {
-    minHeight: "100vh",
-    padding: 14,
-    background:
-      "linear-gradient(160deg,#4f46e5 0%, #5b6ee6 30%, #4aa7e9 60%, #27c3f1 100%)",
-  },
-  topBar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    background: "rgba(255,255,255,.08)",
-    border: "1px solid rgba(255,255,255,.35)",
-    borderRadius: 14,
-    padding: "10px 12px",
-    color: "#fff",
-    boxShadow: "0 12px 28px rgba(0,0,0,.18) inset, 0 8px 20px rgba(0,0,0,.1)",
-    backdropFilter: "blur(6px)",
-    marginBottom: 10,
-    fontWeight: 900,
-  },
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "280px 1fr",
-    gap: 12,
-  },
-  sidebar: {
-    background: "rgba(255,255,255,.96)",
-    border: "1px solid #e5e7eb",
-    borderRadius: 14,
-    boxShadow: "0 14px 32px rgba(2,6,23,.08)",
-    padding: 10,
-    overflow: "auto",
-    maxHeight: "calc(100vh - 140px)",
-  },
-  main: {
-    minHeight: "70vh",
-  },
-};
-
-const card = {
-  background: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
-  boxShadow: "0 14px 32px rgba(2,6,23,.08)",
-  padding: 10,
-};
-
-const sb = {
-  year: { marginBottom: 8 },
-  yearHeader: {
-    display: "flex", alignItems: "center", gap: 8,
-    padding: "8px 10px",
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    background: "#f1f5f9",
-    cursor: "pointer",
-    fontWeight: 900,
-  },
-  month: { margin: "8px 0 6px 12px" },
-  monthHeader: {
-    display: "flex", alignItems: "center", gap: 8,
-    padding: "8px 10px",
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    background: "#f8fafc",
-    cursor: "pointer",
-    fontWeight: 900,
-  },
-  dateChip: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 10px",
-    marginLeft: 24,
-    marginTop: 6,
-    borderWidth: 2,
-    borderStyle: "solid",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    background: "#fff",
-    textAlign: "left",
-    fontWeight: 900,
-    boxShadow: "0 2px 6px rgba(2,6,23,.04)",
-    cursor: "pointer",
-    transition: "all .15s ease",
-  },
-  dateChipActive: {
-    borderColor: "#2563eb",
-    boxShadow: "0 0 0 3px rgba(37,99,235,.25)",
-    background: "rgba(37,99,235,.08)",
-    color: "#1e40af",
-  },
-  badge: {
-    marginLeft: "auto",
-    fontSize: 11,
-    fontWeight: 900,
-    color: "#0f172a",
-    background: "#e0e7ff",
-    border: "1px solid #c7d2fe",
-    padding: "2px 8px",
-    borderRadius: 999,
-  },
-  badgeMuted: {
-    marginLeft: 6,
-    fontSize: 11,
-    fontWeight: 900,
-    color: "#334155",
-    background: "#e2e8f0",
-    border: "1px solid #cbd5e1",
-    padding: "2px 8px",
-    borderRadius: 999,
-  },
-};
-
-const muted = { color: "#6b7280", fontWeight: 800 };
-
-const baseBtn = {
-  color: "#fff",
-  border: "none",
-  padding: "9px 14px",
-  borderRadius: 12,
-  cursor: "pointer",
-  fontWeight: 900,
-  boxShadow: "0 10px 20px rgba(0,0,0,.12)",
-};
-const btnBlue = { ...baseBtn, background: "linear-gradient(180deg,#3b82f6,#2563eb)" };
-const btnDark = { ...baseBtn, background: "linear-gradient(180deg,#111827,#0f172a)" };
-const btnRed = { ...baseBtn, background: "linear-gradient(180deg,#ef4444,#dc2626)" };
 
 const sigBox = {
-  border: "1px solid #e5e7eb",
+  border: "1px solid #c7d2fe",
   borderRadius: 10,
-  background: "#fff",
-  padding: "10px",
+  background: "linear-gradient(135deg,rgba(237,233,254,0.4),rgba(224,242,254,0.3))",
+  padding: "10px 14px",
   display: "flex",
   alignItems: "flex-end",
   gap: 10,
   fontWeight: 800,
+  fontSize: 14,
 };
 const sigLine = {
-  borderBottom: "1px solid #111",
+  borderBottom: "2px solid #7c3aed",
   flex: 1,
   paddingBottom: 2,
-  fontWeight: 800,
+  fontWeight: 700,
 };

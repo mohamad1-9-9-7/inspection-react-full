@@ -93,8 +93,8 @@ export default function ReheatingLogInput() {
     setSaving(true);
     try {
       const payload = { branch: BRANCH, formRef: FORM_REF, reportDate, section, entries: cleanEntries, checkedBy, verifiedBy, savedAt: Date.now() };
-      if (existingReport?.id) { try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existingReport.id)}`, { method: "DELETE" }); } catch {} }
-      const res = await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }) });
+      // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
+      const res = await fetch(existingReport?.id ? `${API_BASE}/api/reports/${encodeURIComponent(existingReport.id)}` : `${API_BASE}/api/reports`, { method: existingReport?.id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const saved = await res.json().catch(() => null);
       setExistingReport({ id: saved?._id || saved?.id || existingReport?.id || null, savedAt: payload.savedAt });

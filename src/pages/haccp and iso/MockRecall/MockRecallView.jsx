@@ -387,7 +387,7 @@ export default function MockRecallView() {
                 {isExpanded && (
                   <div style={S.cardBody}>
                     {/* 🔗 التقارير المرتبطة */}
-                    {p.linked && (p.linked.shipment || p.linked.loadingLog || p.linked.finishedProduct) && (
+                    {p.linked && Object.values(p.linked).some(Boolean) && (
                       <div style={{ marginBottom: 14 }}>
                         <div style={S.subTitle}>{t("linkedSourceTitle")}</div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
@@ -459,6 +459,41 @@ export default function MockRecallView() {
                                 { label: t("branch"), value: p.linked.branchTemp.branch, highlight: true },
                                 { label: t("drillDate"), value: String(p.linked.branchTemp.date || "").slice(0, 10) },
                                 { label: lang === "ar" ? "عدد القراءات" : "Records", value: p.linked.branchTemp.rowsCount },
+                              ]}
+                            />
+                          )}
+
+                          {/* 🆕 Branch Traceability Log */}
+                          {p.linked.branchTraceability && (
+                            <LinkedSourceCard
+                              icon="🧬"
+                              title={t("branchTraceTitle")}
+                              accent="#8b5cf6"
+                              openLabel={t("openSource")}
+                              onOpen={() => openSource("branchTrace", p.linked.branchTraceability)}
+                              fields={[
+                                { label: t("branch"), value: p.linked.branchTraceability.branch, highlight: true },
+                                { label: t("drillDate"), value: String(p.linked.branchTraceability.date || "").slice(0, 10) },
+                                { label: lang === "ar" ? "عدد الدفعات" : "Batches", value: p.linked.branchTraceability.rowsCount },
+                                { label: lang === "ar" ? "دقّقه" : "Checked By", value: p.linked.branchTraceability.checkedBy },
+                              ]}
+                            />
+                          )}
+
+                          {/* 🆕 Branch Receiving Log */}
+                          {p.linked.branchReceiving && (
+                            <LinkedSourceCard
+                              icon="📥"
+                              title={t("branchReceivingTitle")}
+                              accent="#d97706"
+                              openLabel={t("openSource")}
+                              onOpen={() => openSource("branchReceiving", p.linked.branchReceiving)}
+                              fields={[
+                                { label: t("branch"), value: p.linked.branchReceiving.branch, highlight: true },
+                                { label: t("drillDate"), value: String(p.linked.branchReceiving.date || "").slice(0, 10) },
+                                { label: lang === "ar" ? "عدد المواد" : "Items", value: p.linked.branchReceiving.rowsCount },
+                                { label: t("grnRef"), value: p.linked.branchReceiving.invoiceNo },
+                                { label: lang === "ar" ? "استلمه" : "Received By", value: p.linked.branchReceiving.receivedBy },
                               ]}
                             />
                           )}

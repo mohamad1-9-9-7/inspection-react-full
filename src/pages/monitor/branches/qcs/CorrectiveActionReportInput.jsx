@@ -4,10 +4,20 @@ import API_BASE from "../../../../config/api";
 
 
 
-const TYPE   = "qcs_corrective_action";
-const BRANCH = "QCS";
+const DEFAULT_TYPE     = "qcs_corrective_action";
+const DEFAULT_REPORTER = "qcs";
+const DEFAULT_BRANCH   = "QCS";
 
-export default function CorrectiveActionReportInput() {
+export default function CorrectiveActionReportInput(props) {
+  const {
+    type: typeProp,
+    reporter: reporterProp,
+    branch: branchProp,
+  } = props || {};
+  const TYPE     = typeProp || DEFAULT_TYPE;
+  const REPORTER = reporterProp || DEFAULT_REPORTER;
+  const BRANCH   = branchProp || DEFAULT_BRANCH;
+
   const [form, setForm] = useState({
     department: "",
     reportDate: "",          // ✅ تاريخ التقرير (يعتمد عليه الحفظ)
@@ -80,7 +90,7 @@ export default function CorrectiveActionReportInput() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ reporter:"qcs", type: TYPE, payload }),
+        body: JSON.stringify({ reporter: REPORTER, type: TYPE, payload }),
       });
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
       setMsg("✅ Saved successfully");

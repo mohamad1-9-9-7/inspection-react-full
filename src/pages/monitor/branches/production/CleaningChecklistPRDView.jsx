@@ -1,10 +1,17 @@
 // src/pages/monitor/branches/production/CleaningChecklistPRDView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-
-const API_BASE =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) ||
-  "https://inspection-server-4nvj.onrender.com";
+import API_BASE from "../../../../config/api";
+import {
+  safe,
+  getId,
+  btn,
+  formatDMY,
+  isFilledRow,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "../_shared/branchViewKit";
 
 const TYPE = "prod_cleaning_checklist";
 
@@ -26,22 +33,13 @@ function getKey(r) {
   const n = normYMD(r.payload?.reportDate || r.createdAt);
   return n?.iso || "";
 }
-function groupByYMD(arr) {
-  const years = {};
-  arr.forEach((r) => {
-    const pick = r.payload?.reportDate || r.createdAt || "";
-    const n = normYMD(pick);
-    if (!n) return;
-    const itemsCount = (r.payload?.entries || []).length || 0;
 
-    years[n.y] ||= {};
-    years[n.y][n.m] ||= {};
-    years[n.y][n.m][n.d] ||= { list: [], items: 0 };
-    years[n.y][n.m][n.d].list.push(r);
-    years[n.y][n.m][n.d].items += itemsCount;
-  });
-  return { years };
-}
+/* ===== Spectral table styles ===== */
+const gridStyle = { width: "100%", borderCollapse: "collapse", fontSize: 15, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 14px rgba(99,102,241,0.10)" };
+const theadRow = { background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" };
+const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "10px 8px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" };
+const tdCell = { border: "1px solid #c7d2fe", padding: "9px 7px", textAlign: "center", verticalAlign: "middle" };
+const zebra = (i) => ({ background: i % 2 ? "rgba(237,233,254,0.45)" : "#fff" });
 
 /* ===== Main View ===== */
 export default function CleaningChecklistPRDView() {
@@ -56,13 +54,12 @@ export default function CleaningChecklistPRDView() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${String(API_BASE).replace(/\/$/, "")}/api/reports?type=${TYPE}`,
+        `${API_BASE}/api/reports?type=${TYPE}`,
         { cache: "no-store" }
       );
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
 
-      // فرز قديم → جديد (والاختيار الافتراضي أحدث تقرير)
       arr.forEach((r) => (r.__dateStr = r.payload?.reportDate || r.createdAt || ""));
       arr.sort((a, b) => new Date(a.__dateStr || 0) - new Date(b.__dateStr || 0));
 
@@ -74,8 +71,21 @@ export default function CleaningChecklistPRDView() {
   }
   useEffect(() => { load(); }, []);
 
-  const groups = useMemo(() => groupByYMD(reports), [reports]);
   const selectedKey = getKey(selected);
+
+  /* Build treeItems from reports */
+  const treeItems = useMemo(() => {
+    const seen = new Map();
+    for (const r of reports) {
+      const k = getKey(r);
+      if (!k || seen.has(k)) continue;
+      const pick = r.payload?.reportDate || r.createdAt || "";
+      const n = normYMD(pick);
+      if (!n) continue;
+      seen.set(k, { key: k, dateISO: n.iso, label: formatDMY(n.iso), data: r });
+    }
+    return Array.from(seen.values());
+  }, [reports]);
 
   /* ===== Export PDF (sheet only) ===== */
   function exportPDF() {
@@ -108,7 +118,7 @@ export default function CleaningChecklistPRDView() {
     setTimeout(() => { w.focus(); w.print(); }, 100);
   }
 
-  /* ===== NEW: Export all reports as JSON ===== */
+  /* ===== Export all reports as JSON ===== */
   function exportJSONAll() {
     const dump = {
       meta: {
@@ -130,7 +140,7 @@ export default function CleaningChecklistPRDView() {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  /* ===== NEW: Import JSON → save to server → refresh ===== */
+  /* ===== Import JSON ===== */
   function triggerImport() { fileRef.current?.click(); }
   async function handleImportFile(e) {
     const file = e.target.files?.[0];
@@ -146,14 +156,13 @@ export default function CleaningChecklistPRDView() {
         alert("الملف لا يحتوي عناصر صالحة.");
         return;
       }
-      const base = String(API_BASE).replace(/\/$/, "");
       let ok = 0, fail = 0;
       for (const raw of items) {
         const payload = raw?.payload ?? raw;
         const reporter = raw?.reporter ?? "production";
         const type = raw?.type ?? TYPE;
         try {
-          const res = await fetch(`${base}/api/reports`, {
+          const res = await fetch(`${API_BASE}/api/reports`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ reporter, type, payload }),
@@ -173,7 +182,7 @@ export default function CleaningChecklistPRDView() {
     }
   }
 
-  /* ===== Delete (type + reportDate) ===== */
+  /* ===== Delete ===== */
   async function handleDelete() {
     if (!selected) return;
     const reportDateIso = normYMD(selected.payload?.reportDate || selected.createdAt)?.iso;
@@ -183,12 +192,11 @@ export default function CleaningChecklistPRDView() {
 
     setLoading(true);
     let ok = false, errText = "";
-    const base = String(API_BASE).replace(/\/$/, "");
     const tries = [
-      { url: `${base}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(reportDateIso)}`, method: "DELETE" },
-      { url: `${base}/api/reports/${TYPE}?reportDate=${encodeURIComponent(reportDateIso)}`, method: "DELETE" },
-      { url: `${base}/api/reports/delete`, method: "POST", body: JSON.stringify({ type: TYPE, reportDate: reportDateIso }) },
-      { url: `${base}/api/reports/${TYPE}/delete`, method: "POST", body: JSON.stringify({ reportDate: reportDateIso }) },
+      { url: `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(reportDateIso)}`, method: "DELETE" },
+      { url: `${API_BASE}/api/reports/${TYPE}?reportDate=${encodeURIComponent(reportDateIso)}`, method: "DELETE" },
+      { url: `${API_BASE}/api/reports/delete`, method: "POST", body: JSON.stringify({ type: TYPE, reportDate: reportDateIso }) },
+      { url: `${API_BASE}/api/reports/${TYPE}/delete`, method: "POST", body: JSON.stringify({ reportDate: reportDateIso }) },
     ];
     for (const t of tries) {
       try {
@@ -211,159 +219,50 @@ export default function CleaningChecklistPRDView() {
   }
 
   return (
-    <div style={styles.page}>
-      {/* Top bar */}
-      <div style={styles.topBar}>
-        <div style={{ fontWeight: 900, color: "#fff" }}>
-          Cleaning Checklist details {selected ? `(${selected?.payload?.reportDate || ""})` : ""}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={load} style={btnBlue}>⟳ Refresh</button>
-          <button onClick={exportPDF} style={btnDark} disabled={!selected}>⬇️ Export PDF</button>
-          <button onClick={handleDelete} style={btnRed} disabled={!selected || loading} data-delete-action="true">🗑️ Delete</button>
-        </div>
-      </div>
-
-      <div style={styles.layout}>
-        {/* Sidebar */}
-        <aside style={styles.sidebar}>
-          {/* NEW: import/export toolbar */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <button onClick={exportJSONAll} style={btnDark}>⇩ Export JSON (all)</button>
-            <button onClick={triggerImport} style={btnBlue} disabled={importing}>
-              {importing ? "Importing…" : "⇧ Import JSON"}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="application/json"
-              style={{ display: "none" }}
-              onChange={handleImportFile}
-            />
-          </div>
-
-          {loading && <div style={muted}>Loading…</div>}
-          {Object.keys(groups.years)
-            .sort((a, b) => Number(b) - Number(a)) // أحدث → أقدم
-            .map((yy) => (
-              <YearBlock
-                key={yy}
-                year={yy}
-                months={groups.years[yy]}
-                selectedKey={selectedKey}
-                onPick={setSelected}
-              />
-            ))}
-        </aside>
-
-        {/* Main */}
-        <main style={styles.main}>
-          {!selected ? (
-            <div style={{ ...card, padding: 16 }}>No report selected</div>
-          ) : (
-            <div style={card}>
-              <ReportSheet ref={sheetRef} data={selected.payload} />
-            </div>
-          )}
-        </main>
-      </div>
-
-      {/* Table CSS */}
-      <style>{`
-        .tbl { width:100%; border-collapse:collapse; box-shadow:0 6px 18px rgba(2,6,23,.06); }
-        .tbl th, .tbl td { border:1.5px solid #94a3b8; }
-        .tbl thead th {
-          position: sticky; top: 0;
-          background:#e2e8f0; border-bottom:1.5px solid #94a3b8;
-          padding:10px 8px; font-size:12px; letter-spacing:.04em;
-          text-transform:uppercase; color:#0f172a; font-weight:900;
-        }
-        .tbl td { padding:10px 8px; font-weight:700; color:#1f2937; background:#fff; }
-        .tbl tbody tr:nth-child(2n) td { background:#f8fafc; }
-
-        .hdrTable { width:100%; border-collapse:collapse; margin-bottom:10px; }
-        /* أغمق شوي كما طلبت */
-        .hdrTable td { border:2px solid #334155; padding:8px 10px; font-weight:800; background:#fff; }
-        .hdrTable tr:nth-child(odd) td { background:#f1f5f9; }
-      `}</style>
-    </div>
-  );
-}
-
-/* ===== Sidebar blocks ===== */
-function YearBlock({ year, months, onPick, selectedKey }) {
-  // مطوي افتراضياً
-  const [open, setOpen] = useState(false);
-  const daysCount = Object.keys(months).reduce((acc, m) => acc + Object.keys(months[m]).length, 0);
-  return (
-    <div style={sb.year}>
-      <div style={sb.yearHeader} onClick={() => setOpen(!open)}>
-        <span>{open ? "▾" : "▸"}</span>
-        <strong>Year {year}</strong>
-        <span style={sb.badge}>{daysCount} days</span>
-      </div>
-      {open &&
-        Object.keys(months)
-          .sort((a, b) => Number(b) - Number(a))
-          .map((mm) => (
-            <MonthBlock
-              key={mm}
-              year={year}
-              month={mm}
-              days={months[mm]}
-              onPick={onPick}
-              selectedKey={selectedKey}
-            />
-          ))}
-    </div>
-  );
-}
-
-function MonthBlock({ year, month, days, onPick, selectedKey }) {
-  // مطوي افتراضياً
-  const [open, setOpen] = useState(false);
-  const totalItems = Object.values(days).reduce((acc, v) => acc + (v.items || 0), 0);
-  return (
-    <div style={sb.month}>
-      <div style={sb.monthHeader} onClick={() => setOpen(!open)}>
-        <span>{open ? "▾" : "▸"}</span>
-        <span style={{ fontWeight: 900 }}>Month {month}</span>
-        <span style={sb.badge}>{Object.keys(days).length} days</span>
-        <span style={sb.badgeMuted}>{totalItems} items</span>
-      </div>
-      {open &&
-        Object.keys(days)
-          .sort((a, b) => Number(b) - Number(a))
-          .map((dd) => (
-            <DateChip
-              key={dd}
-              y={year}
-              m={month}
-              d={dd}
-              info={days[dd]}
-              onPick={onPick}
-              selectedKey={selectedKey}
-            />
-          ))}
-    </div>
-  );
-}
-
-/* زر التاريخ فقط + تمييز أزرق عند الاختيار */
-function DateChip({ y, m, d, info, onPick, selectedKey }) {
-  const list = info?.list || [];
-  const first = list[0];
-  const isSel = list.some((r) => getKey(r) === selectedKey);
-  const label = `${y}-${m}-${d}`;
-  return (
-    <button
-      onClick={() => first && onPick(first)}
-      style={{ ...sb.dateChip, ...(isSel ? sb.dateChipActive : null) }}
-      title={label}
+    <GlassShell
+      icon="🧹"
+      title="Cleaning Checklist — View (Production)"
+      actions={
+        <>
+          <button onClick={load} style={btn("#7c3aed")}>Refresh</button>
+          <button onClick={exportPDF} style={btn("#374151")} disabled={!selected}>Export PDF</button>
+          <button onClick={exportJSONAll} style={btn("#0284c7")}>Export JSON (all)</button>
+          <button onClick={triggerImport} style={btn("#059669")} disabled={importing}>
+            {importing ? "Importing…" : "Import JSON"}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json"
+            style={{ display: "none" }}
+            onChange={handleImportFile}
+          />
+          <button onClick={handleDelete} style={btn("#dc2626")} disabled={!selected || loading} data-delete-action="true">Delete</button>
+        </>
+      }
     >
-      <span style={{ flex: 1, textAlign: "left" }}>{label}</span>
-      {list.length > 1 && <span style={sb.badgeMuted}>{list.length}</span>}
-    </button>
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            items={treeItems}
+            activeKey={selectedKey}
+            onPick={(it) => setSelected(it.data)}
+            loading={loading && !reports.length}
+          />
+        }
+      >
+        {loading && <p>Loading…</p>}
+
+        {!loading && !selected && <EmptyState text="No report selected" />}
+
+        {selected && (
+          <div style={{ overflowX: "auto" }}>
+            <ReportSheet ref={sheetRef} data={selected.payload} />
+          </div>
+        )}
+      </SidebarLayout>
+    </GlassShell>
   );
 }
 
@@ -373,34 +272,49 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
   const rows = data?.entries || [];
   const footer = data?.footer || {};
 
-  return (
-    <div ref={ref} className="paper">
-      <div style={{ padding: 12 }}>
-        {/* Header */}
-        <table className="hdrTable">
-          <tbody>
-            <tr>
-              <td><strong>Document Title:</strong> {header.documentTitle || "Cleaning Checklist"}</td>
-              <td><strong>Document No:</strong> {header.documentNo || "—"}</td>
-            </tr>
-            <tr>
-              <td><strong>Issue Date:</strong> {header.issueDate || "—"}</td>
-              <td><strong>Revision No:</strong> {header.revisionNo || "—"}</td>
-            </tr>
-            <tr>
-              <td><strong>Area:</strong> {header.area || "—"}</td>
-              <td><strong>Issued By:</strong> {header.issuedBy || "—"}</td>
-            </tr>
-            <tr>
-              <td><strong>Controlling Officer:</strong> {header.controllingOfficer || "—"}</td>
-              <td><strong>Approved By:</strong> {header.approvedBy || "—"}</td>
-            </tr>
-          </tbody>
-        </table>
+  /* Glass meta badges */
+  const metaBadge = {
+    display: "inline-block",
+    background: "rgba(255,255,255,0.6)",
+    border: "1px solid #c7d2fe",
+    borderRadius: 10,
+    padding: "6px 12px",
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#0b1f4d",
+    marginRight: 8,
+    marginBottom: 6,
+  };
 
-        <h3 style={{ textAlign: "center", background: "#e5e7eb", padding: 6, marginBottom: 8 }}>
-          TRANS EMIRATES LIVESTOCK TRADING LLC<br/>CLEANING CHECKLIST — PRODUCTION
-        </h3>
+  return (
+    <div ref={ref}>
+      <div style={{ padding: 6 }}>
+        {/* Glass meta badges instead of old header table */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+          <span style={metaBadge}><strong>Document Title:</strong> {header.documentTitle || "Cleaning Checklist"}</span>
+          <span style={metaBadge}><strong>Document No:</strong> {header.documentNo || "—"}</span>
+          <span style={metaBadge}><strong>Issue Date:</strong> {header.issueDate || "—"}</span>
+          <span style={metaBadge}><strong>Revision No:</strong> {header.revisionNo || "—"}</span>
+          <span style={metaBadge}><strong>Area:</strong> {header.area || "—"}</span>
+          <span style={metaBadge}><strong>Issued By:</strong> {header.issuedBy || "—"}</span>
+          <span style={metaBadge}><strong>Controlling Officer:</strong> {header.controllingOfficer || "—"}</span>
+          <span style={metaBadge}><strong>Approved By:</strong> {header.approvedBy || "—"}</span>
+        </div>
+
+        {/* Title strip */}
+        <div style={{
+          textAlign: "center",
+          background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)",
+          border: "1px solid #c7d2fe",
+          borderRadius: 10,
+          padding: "9px 6px",
+          fontWeight: 800,
+          fontSize: 16,
+          color: "#0b1f4d",
+          marginBottom: 10,
+        }}>
+          🧹 CLEANING CHECKLIST — PRODUCTION
+        </div>
 
         {/* Date */}
         <div style={{ marginBottom: 8, fontWeight: 900 }}>
@@ -409,56 +323,56 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
 
         {/* Table */}
         <div style={{ overflowX: "auto" }}>
-          <table className="tbl">
+          <table style={gridStyle}>
             <thead>
-              <tr>
-                <th style={{ width: 70 }}>SI-No</th>
-                <th style={{ minWidth: 340 }}>General Cleaning</th>
-                <th style={{ minWidth: 260 }}>Chemical &amp; Concentration</th>
-                <th style={{ width: 80 }}>C/NC</th>
-                <th style={{ minWidth: 160 }}>Done By</th>
-                <th style={{ minWidth: 280 }}>Remarks &amp; CA</th>
+              <tr style={theadRow}>
+                <th style={{ ...thCell, width: 70 }}>SI-No</th>
+                <th style={{ ...thCell, minWidth: 340 }}>General Cleaning</th>
+                <th style={{ ...thCell, minWidth: 260 }}>Chemical &amp; Concentration</th>
+                <th style={{ ...thCell, width: 80 }}>C/NC</th>
+                <th style={{ ...thCell, minWidth: 160 }}>Done By</th>
+                <th style={{ ...thCell, minWidth: 280 }}>Remarks &amp; CA</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: "center", color: "#64748b", fontWeight: 800 }}>
+                  <td colSpan={6} style={{ ...tdCell, textAlign: "center", color: "#64748b", fontWeight: 800 }}>
                     No entries
                   </td>
                 </tr>
               ) : rows.map((r, i) => r.isSection ? (
-                <tr key={"sec-"+i} style={{ background:"#f3f4f6", fontWeight:800 }}>
-                  <td>{r.sectionNo}</td>
-                  <td>{r.section}</td>
-                  <td colSpan={4} style={{ textAlign:"center" }}>—</td>
+                <tr key={"sec-"+i} style={{ background: "rgba(237,233,254,0.55)", fontWeight: 800 }}>
+                  <td style={tdCell}>{r.sectionNo}</td>
+                  <td style={tdCell}>{r.section}</td>
+                  <td colSpan={4} style={{ ...tdCell, textAlign: "center" }}>—</td>
                 </tr>
               ) : (
-                <tr key={i}>
-                  <td>{r.letter || "—"}</td>
-                  <td style={{ textAlign:"left" }}>{r.general || ""}</td>
-                  <td style={{ textAlign:"left" }}>{r.chemical || ""}</td>
-                  <td>{r.cnc || ""}</td>
-                  <td style={{ textAlign:"left" }}>{r.doneBy || ""}</td>
-                  <td style={{ textAlign:"left" }}>{r.remarks || ""}</td>
+                <tr key={i} style={zebra(i)}>
+                  <td style={tdCell}>{r.letter || "—"}</td>
+                  <td style={{ ...tdCell, textAlign: "left" }}>{r.general || ""}</td>
+                  <td style={{ ...tdCell, textAlign: "left" }}>{r.chemical || ""}</td>
+                  <td style={tdCell}>{r.cnc || ""}</td>
+                  <td style={{ ...tdCell, textAlign: "left" }}>{r.doneBy || ""}</td>
+                  <td style={{ ...tdCell, textAlign: "left" }}>{r.remarks || ""}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        {/* Footer (CHECKED يسار / VERIFIED يمين) */}
+        {/* Footer */}
         <div style={{
           marginTop: 10,
           fontWeight: 900,
-          display:"flex",
-          alignItems:"center",
-          justifyContent:"space-between",
-          gap:12,
-          flexWrap:"wrap"
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap"
         }}>
-          <div style={{ textAlign:"left", flex:1 }}>CHECKED BY: {footer.checkedBy || "—"}</div>
-          <div style={{ textAlign:"right", flex:1 }}>VERIFIED BY: {footer.verifiedBy || "—"}</div>
+          <div style={{ textAlign: "left", flex: 1 }}>CHECKED BY: {footer.checkedBy || "—"}</div>
+          <div style={{ textAlign: "right", flex: 1 }}>VERIFIED BY: {footer.verifiedBy || "—"}</div>
         </div>
         <div style={{ marginTop: 6, fontSize: ".9rem", fontWeight: 800 }}>
           Remark:-Frequency-Daily &nbsp;&nbsp;&nbsp; (C = Conform, N/C = Non Conform)
@@ -467,129 +381,3 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
     </div>
   );
 });
-
-/* ===== Styles ===== */
-const styles = {
-  page: {
-    minHeight: "100vh",
-    padding: 14,
-    background:
-      "linear-gradient(160deg,#4f46e5 0%, #5b6ee6 30%, #4aa7e9 60%, #27c3f1 100%)",
-  },
-  topBar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    background: "rgba(255,255,255,.08)",
-    border: "1px solid rgba(255,255,255,.35)",
-    borderRadius: 14,
-    padding: "10px 12px",
-    color: "#fff",
-    boxShadow: "0 12px 28px rgba(0,0,0,.18) inset, 0 8px 20px rgba(0,0,0,.1)",
-    backdropFilter: "blur(6px)",
-    marginBottom: 10,
-    fontWeight: 900,
-  },
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "280px 1fr",
-    gap: 12,
-  },
-  sidebar: {
-    background: "rgba(255,255,255,.96)",
-    border: "1px solid #e5e7eb",
-    borderRadius: 14,
-    boxShadow: "0 14px 32px rgba(2,6,23,.08)",
-    padding: 10,
-    overflow: "auto",
-    maxHeight: "calc(100vh - 140px)",
-  },
-  main: { minHeight: "70vh" },
-};
-
-const card = {
-  background: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
-  boxShadow: "0 14px 32px rgba(2,6,23,.08)",
-  padding: 10,
-};
-
-const sb = {
-  year: { marginBottom: 8 },
-  yearHeader: {
-    display: "flex", alignItems: "center", gap: 8,
-    padding: "8px 10px",
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    background: "#f1f5f9",
-    cursor: "pointer",
-    fontWeight: 900,
-  },
-  month: { margin: "8px 0 6px 12px" },
-  monthHeader: {
-    display: "flex", alignItems: "center", gap: 8,
-    padding: "8px 10px",
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    background: "#f8fafc",
-    cursor: "pointer",
-    fontWeight: 900,
-  },
-  dateChip: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 10px",
-    marginLeft: 24,
-    marginTop: 6,
-    borderRadius: 12,
-    border: "2px solid #e5e7eb",
-    background: "#fff",
-    textAlign: "left",
-    fontWeight: 900,
-    boxShadow: "0 2px 6px rgba(2,6,23,.04)",
-    cursor: "pointer",
-    transition: "all .15s ease",
-  },
-  dateChipActive: {
-    borderColor: "#2563eb",
-    boxShadow: "0 0 0 3px rgba(37,99,235,.25)",
-    background: "rgba(37,99,235,.08)",
-    color: "#1e40af",
-  },
-  badge: {
-    marginLeft: "auto",
-    fontSize: 11,
-    fontWeight: 900,
-    color: "#0f172a",
-    background: "#e0e7ff",
-    border: "1px solid #c7d2fe",
-    padding: "2px 8px",
-    borderRadius: 999,
-  },
-  badgeMuted: {
-    marginLeft: 6,
-    fontSize: 11,
-    fontWeight: 900,
-    color: "#334155",
-    background: "#e2e8f0",
-    border: "1px solid #cbd5e1",
-    padding: "2px 8px",
-    borderRadius: 999,
-  },
-};
-
-const muted = { color: "#6b7280", fontWeight: 800 };
-const baseBtn = {
-  color: "#fff",
-  border: "none",
-  padding: "9px 14px",
-  borderRadius: 12,
-  cursor: "pointer",
-  fontWeight: 900,
-  boxShadow: "0 10px 20px rgba(0,0,0,.12)",
-};
-const btnBlue = { ...baseBtn, background: "linear-gradient(180deg,#3b82f6,#2563eb)" };
-const btnDark = { ...baseBtn, background: "linear-gradient(180deg,#111827,#0f172a)" };
-const btnRed  = { ...baseBtn, background: "linear-gradient(180deg,#ef4444,#dc2626)" };

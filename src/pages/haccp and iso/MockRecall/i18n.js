@@ -234,6 +234,13 @@ export const STRINGS = {
     coolersHint: "تاريخ سجل حرارة البرّادات",
     branchTempTitle: "حرارة الفرع",
     branchTempHint: "سجل حرارة فرع الإنتاج",
+    branchTraceTitle: "سجل التتبع حسب الفرع",
+    branchTraceHint: "اختر سجل تتبع من أي فرع — عند الاختيار يُعرض ملف العرض المحفوظ في الفرع",
+    branchReceivingTitle: "سجل الاستلام حسب الفرع",
+    branchReceivingHint: "اختر سجل استلام من أي فرع — عند الاختيار يُعرض ملف العرض المحفوظ في الفرع",
+    popupBranchTrace: "🧬 سجل التتبع — ملف العرض",
+    popupBranchReceiving: "📥 سجل الاستلام — ملف العرض",
+    viewFile: "📄 عرض الملف",
     truckCleaningTitle: "تنظيف السيارة",
     truckCleaningHint: "نفس رقم السيارة المرتبطة",
     pickBranchFirst: "⚠️ اختر فرع المنتج أولاً",
@@ -466,6 +473,13 @@ export const STRINGS = {
     coolersHint: "Pick a coolers log day",
     branchTempTitle: "Branch Temperature",
     branchTempHint: "Production branch temperature log",
+    branchTraceTitle: "Branch Traceability Log",
+    branchTraceHint: "Pick a traceability log from any branch — the branch view file opens on selection",
+    branchReceivingTitle: "Branch Receiving Log",
+    branchReceivingHint: "Pick a receiving log from any branch — the branch view file opens on selection",
+    popupBranchTrace: "🧬 Traceability Log — View File",
+    popupBranchReceiving: "📥 Receiving Log — View File",
+    viewFile: "📄 View File",
     truckCleaningTitle: "Truck Cleaning",
     truckCleaningHint: "Same vehicle as loading",
     pickBranchFirst: "⚠️ Select product branch first",
@@ -523,6 +537,25 @@ export const BRANCH_ONLY_TEMP_TYPES = [
   "ftr2_temperature",
 ];
 
+// 🆕 أنواع سجلات التتبع حسب الفرع (Traceability Log)
+export const BRANCH_TRACEABILITY_TYPES = [
+  "pos10_traceability_log",
+  "pos11_traceability_log",
+  "pos15_traceability_log",
+  "pos19_traceability_log",
+  "prd_traceability_log",
+];
+
+// 🆕 أنواع سجلات الاستلام حسب الفرع (Receiving Log)
+export const BRANCH_RECEIVING_TYPES = [
+  "pos10_receiving_log_butchery",
+  "pos11_receiving_log_butchery",
+  "pos15_receiving_log_butchery",
+  "pos19_receiving_log_butchery",
+  "ftr1_receiving_log_butchery",
+  "ftr2_receiving_log_butchery",
+];
+
 // خريطة عكسية: type → اسم الفرع للعرض
 export const TYPE_TO_BRANCH_LABEL = {
   "qcs-coolers": "QCS / Production",
@@ -532,6 +565,19 @@ export const TYPE_TO_BRANCH_LABEL = {
   "pos19_temperature_monitoring": "POS 19 (Al Warqa)",
   "ftr1_temperature": "FTR 1",
   "ftr2_temperature": "FTR 2",
+  // 🆕 Traceability per branch
+  "pos10_traceability_log": "POS 10",
+  "pos11_traceability_log": "POS 11",
+  "pos15_traceability_log": "POS 15",
+  "pos19_traceability_log": "POS 19 (Al Warqa)",
+  "prd_traceability_log": "Production",
+  // 🆕 Receiving per branch
+  "pos10_receiving_log_butchery": "POS 10",
+  "pos11_receiving_log_butchery": "POS 11",
+  "pos15_receiving_log_butchery": "POS 15",
+  "pos19_receiving_log_butchery": "POS 19 (Al Warqa)",
+  "ftr1_receiving_log_butchery": "FTR 1",
+  "ftr2_receiving_log_butchery": "FTR 2",
 };
 
 export function branchTempTypeFor(branch) {

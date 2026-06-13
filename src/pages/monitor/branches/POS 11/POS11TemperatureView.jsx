@@ -1,52 +1,29 @@
 // src/pages/monitor/branches/POS 11/POS11TemperatureView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import {
+  safe,
+  getId,
+  btn,
+  formatDMY,
+  toISODate,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "../_shared/branchViewKit";
 
-/* ===== API base (متوافق مع نمط المشروع) ===== */
-
-
-/* ===== ثوابت التقرير ===== */
+/* ===== Report constants ===== */
 const TYPE   = "pos11_temperature";
 const BRANCH = "POS 11";
 const ADMIN_PIN = "9999";
 
-/* ===== Helpers عامة ===== */
-const safe = (v) => (v ?? "");
-const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 10,
-  padding: "10px 14px",
-  fontWeight: 800,
-  cursor: "pointer",
-  boxShadow: "0 6px 14px #00000022",
-});
-const toISODate = (s) => {
-  try {
-    if (!s) return "";
-    const m = String(s).match(/^(\d{4}-\d{2}-\d{2})/);
-    return m ? m[1] : "";
-  } catch {
-    return "";
-  }
-};
-const formatDMY = (s) => {
-  const d = toISODate(s);
-  if (!d) return "—";
-  const [y, m, dd] = d.split("-");
-  return `${dd}/${m}/${y}`;
-};
-
+/* ===== Domain helpers ===== */
 const isFreezer = (name = "") => /freezer/i.test(String(name).trim());
 const isRoom    = (name = "") => /production\s*room/i.test(String(name).trim());
 const isChiller = (name = "") => /(cooler|chiller)/i.test(String(name).trim());
 
-/* KPI للمبرّدات/الشيلرات فقط (0–5°C) */
 function calculateKPI(rows = []) {
   const all = [];
   let out = 0;
@@ -69,7 +46,6 @@ function calculateKPI(rows = []) {
   return { avg, min, max, out };
 }
 
-/* تاريخ التقرير من الـ payload أو created_at */
 const getReportDate = (r) => {
   try {
     const p = r?.payload ?? r ?? {};
@@ -77,11 +53,11 @@ const getReportDate = (r) => {
     if (d1 && !isNaN(d1)) return d1;
     const d2 = r?.created_at ? new Date(r.created_at) : null;
     if (d2 && !isNaN(d2)) return d2;
-  } catch {}
+  } catch { /* ignore */ }
   return new Date(0);
 };
 
-/* ====== المكوّن ====== */
+/* ====== Component ====== */
 export default function POS11TemperatureView() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -89,7 +65,7 @@ export default function POS11TemperatureView() {
   const [opMsg, setOpMsg] = useState("");
   const printRef = useRef(null);
 
-  /* جلب كل تقارير النوع */
+  /* Fetch all reports */
   useEffect(() => {
     let abort = false;
     async function load() {
@@ -105,30 +81,24 @@ export default function POS11TemperatureView() {
           : json?.data || json?.items || [];
 
         if (!abort) {
-          // ترتيب تنازلي بالتاريخ (الأحدث أولاً)
           const sorted = [...arr].sort((a, b) => {
-            const da =
-              new Date(a?.payload?.date || a?.created_at || 0).getTime();
-            const db =
-              new Date(b?.payload?.date || b?.created_at || 0).getTime();
+            const da = new Date(a?.payload?.date || a?.created_at || 0).getTime();
+            const db = new Date(b?.payload?.date || b?.created_at || 0).getTime();
             return db - da;
           });
           setReports(sorted);
-          // افتراضيًا اختر آخر تقرير (الأحدث)
           if (sorted.length && !selectedId) {
             setSelectedId(getId(sorted[0]));
           }
         }
-      } catch (e) {
+      } catch {
         if (!abort) setReports([]);
       } finally {
         if (!abort) setLoading(false);
       }
     }
     load();
-    return () => {
-      abort = true;
-    };
+    return () => { abort = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -141,25 +111,25 @@ export default function POS11TemperatureView() {
   const rows = payload?.coolers || [];
   const kpi = useMemo(() => calculateKPI(rows), [rows]);
 
-  /* تجميع التقارير في شجرة Year → Month → Day */
-  const groupedReports = useMemo(() => {
-    const acc = {};
-    for (const r of reports) {
-      const d = getReportDate(r);
-      if (isNaN(d)) continue;
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      if (!acc[year]) acc[year] = {};
-      if (!acc[year][month]) acc[year][month] = [];
-      acc[year][month].push({ ...r, __day: day, __ts: d.getTime() });
-    }
-    return acc;
-  }, [reports]);
+  /* Build treeItems from reports */
+  const treeItems = useMemo(
+    () =>
+      reports.map((r) => {
+        const id = getId(r);
+        const d = getReportDate(r);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        return { key: id, dateISO: iso, label: formatDMY(iso), data: r };
+      }),
+    [reports]
+  );
 
-  /* PDF تصدير */
+  /* PDF export (dynamic) */
   const exportPDF = async () => {
     if (!printRef.current) return;
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
     const node = printRef.current;
     const canvas = await html2canvas(node, { scale: 2 });
     const imgData = canvas.toDataURL("image/png");
@@ -173,7 +143,13 @@ export default function POS11TemperatureView() {
     pdf.save(`POS11_Temperature_${formatDMY(payload?.date)}.pdf`);
   };
 
-  /* CSV تصدير (Excel) */
+  /* CSV export */
+  const csvSafe = (v) => {
+    const s = String(v ?? "");
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
   const exportCSV = () => {
     if (!rows.length) return;
     const headers = ["Cooler/Freezer", ...times, "Remarks"];
@@ -191,26 +167,18 @@ export default function POS11TemperatureView() {
       `Date:,${formatDMY(payload?.date)}`,
     ].join("\n");
     const csv = meta + "\n\n" + lines.join("\n");
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;",
-    });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `POS11_Temperature_${toISODate(payload?.date) || "report"}.csv`;
+    a.download = `POS11_Temperature_${toISODate(payload?.date ? new Date(payload.date) : new Date()) || "report"}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   };
 
-  const csvSafe = (v) => {
-    const s = String(v ?? "");
-    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-
-  /* حذف تقرير بعد PIN */
+  /* Delete */
   const handleDelete = async () => {
     if (!selected) return;
     const pin = window.prompt("Enter PIN to delete:");
@@ -227,7 +195,6 @@ export default function POS11TemperatureView() {
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      // تحديث القوائم + اختيار تقرير جديد إن وجد
       setReports((prev) => {
         const rest = prev.filter((r) => getId(r) !== id);
         setSelectedId(rest[0] ? getId(rest[0]) : "");
@@ -235,158 +202,73 @@ export default function POS11TemperatureView() {
       });
 
       setOpMsg("✅ Deleted.");
-    } catch (e) {
+    } catch {
       setOpMsg("❌ Failed to delete.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
   };
 
+  /* ===== Spectral table styles ===== */
+  const gridStyle = useMemo(() => ({
+    width: "100%",
+    borderCollapse: "collapse",
+    fontSize: 15,
+    borderRadius: 12,
+    overflow: "hidden",
+    boxShadow: "0 2px 14px rgba(99,102,241,0.10)",
+  }), []);
+  const theadRow = {
+    background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)",
+  };
+  const thCell = {
+    border: "1px solid rgba(255,255,255,0.30)",
+    padding: "10px 8px",
+    textAlign: "center",
+    whiteSpace: "pre-line",
+    fontWeight: 800,
+    background: "transparent",
+    color: "#fff",
+  };
+  const tdCell = {
+    border: "1px solid #c7d2fe",
+    padding: "9px 7px",
+    textAlign: "center",
+    verticalAlign: "middle",
+  };
+
+  const dateStr = payload?.date ? formatDMY(payload.date) : "—";
+
   return (
-    <div style={{ padding: 16, display: "flex", gap: 16 }}>
-      {/* ===== شجرة التواريخ (Sidebar) ===== */}
-      <div
-        style={{
-          minWidth: 260,
-          background: "#faf5ff",
-          padding: "12px 12px 14px",
-          borderRadius: 12,
-          boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-          height: "fit-content",
-        }}
+    <GlassShell
+      icon="🌡️"
+      title="Temperature Records — View (POS 11)"
+      actions={
+        <>
+          <button onClick={exportPDF} style={btn("#0ea5e9")}>
+            ⬇️ Export PDF
+          </button>
+          <button onClick={exportCSV} style={btn("#10b981")}>
+            ⬇️ Export Excel (CSV)
+          </button>
+          <button onClick={handleDelete} style={btn("#ef4444")} data-delete-action="true">
+            🗑️ Delete
+          </button>
+        </>
+      }
+    >
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            items={treeItems}
+            activeKey={selectedId}
+            onPick={(it) => setSelectedId(it.key)}
+            loading={loading && !reports.length}
+          />
+        }
       >
-        <h4
-          style={{
-            margin: "0 0 10px",
-            color: "#7c3aed",
-            textAlign: "center",
-            fontWeight: 800,
-          }}
-        >
-          📑 Saved Reports ({BRANCH})
-        </h4>
-
-        {loading ? (
-          <p style={{ textAlign: "center" }}>⏳ Loading…</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p style={{ textAlign: "center" }}>❌ No reports.</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports)
-              .sort(([ya], [yb]) => Number(yb) - Number(ya)) // سنوات تنازلي
-              .map(([year, months]) => (
-                <details key={year}>
-                  <summary
-                    style={{
-                      fontWeight: 700,
-                      marginBottom: 4,
-                      cursor: "pointer",
-                    }}
-                  >
-                    📅 Year {year}
-                  </summary>
-
-                  {Object.entries(months)
-                    .sort(([ma], [mb]) => Number(mb) - Number(ma)) // أشهر تنازلي
-                    .map(([month, days]) => {
-                      const daysSorted = [...days].sort(
-                        (a, b) => b.__ts - a.__ts
-                      ); // أيام تنازلي
-                      return (
-                        <details
-                          key={month}
-                          style={{ marginLeft: "1rem", marginBottom: 4 }}
-                        >
-                          <summary
-                            style={{
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              marginBottom: 4,
-                            }}
-                          >
-                            📆 Month {month}
-                          </summary>
-                          <ul
-                            style={{
-                              listStyle: "none",
-                              paddingLeft: "0.5rem",
-                              margin: 0,
-                            }}
-                          >
-                            {daysSorted.map((r, i) => {
-                              const active = selectedId === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelectedId(getId(r))}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: 4,
-                                    borderRadius: 8,
-                                    cursor: "pointer",
-                                    background: active ? "#7c3aed" : "#ede9fe",
-                                    color: active ? "#fff" : "#312e81",
-                                    fontWeight: 700,
-                                    textAlign: "center",
-                                    fontSize: 13,
-                                  }}
-                                >
-                                  {`${r.__day}/${month}/${year}`}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
-
-      {/* ===== منطقة التقرير ===== */}
-      <div style={{ flex: 1 }}>
-        <h2 style={{ margin: 0, marginBottom: 8 }}>
-          POS 11 — Temperature Records (View)
-        </h2>
-
-        {/* أزرار التصدير والحذف */}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            marginBottom: 10,
-          }}
-        >
-          <span style={{ fontWeight: 700 }}>
-            Selected Date:&nbsp;
-            <span style={{ fontWeight: 800 }}>
-              {payload?.date ? formatDMY(payload.date) : "—"}
-            </span>
-          </span>
-
-          <div
-            style={{
-              marginInlineStart: "auto",
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <button onClick={exportPDF} style={btn("#0ea5e9")}>
-              ⬇️ Export PDF
-            </button>
-            <button onClick={exportCSV} style={btn("#10b981")}>
-              ⬇️ Export Excel (CSV)
-            </button>
-            <button onClick={handleDelete} style={btn("#ef4444")} data-delete-action="true">
-              🗑️ Delete
-            </button>
-          </div>
-        </div>
-
+        {loading && <p>Loading…</p>}
         {opMsg && (
           <div
             style={{
@@ -398,150 +280,54 @@ export default function POS11TemperatureView() {
             {opMsg}
           </div>
         )}
+        {!loading && !selected && <EmptyState />}
+        {selected && (
+          <div ref={printRef} style={{ width: "100%", minWidth: 0 }}>
+            {/* Glass meta badges */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginBottom: 10, fontSize: 14.5 }}>
+              {[["Branch", BRANCH], ["Report Date", dateStr]].map(([k, v]) => (
+                <div key={k} style={{
+                  background: "linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
+                  border: "1px solid rgba(139,92,246,0.25)",
+                  borderRadius: 10,
+                  padding: "7px 12px",
+                }}>
+                  <strong style={{ color: "#5b21b6" }}>{k}:</strong> {v || "—"}
+                </div>
+              ))}
+            </div>
 
-        {!selected ? (
-          <div
-            style={{
-              background: "#fef2f2",
+            {/* Signatures */}
+            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 10 }}>
+              <SignatureName label="Checked By" name={safe(payload?.checkedBy)} align="start" />
+              <SignatureName label="Verified By" name={safe(payload?.verifiedBy)} align="end" />
+            </div>
+
+            {/* Rules box */}
+            <div style={{
+              border: "1px solid rgba(139,92,246,0.25)",
+              background: "rgba(241,245,249,0.7)",
+              padding: "8px 10px",
+              fontSize: 14,
+              marginBottom: 10,
               borderRadius: 10,
-              padding: 12,
-              border: "1px solid #fecaca",
-              fontWeight: 600,
-            }}
-          >
-            ❌ No report selected. Please choose a date from the left tree.
-          </div>
-        ) : (
-          <div
-            ref={printRef}
-            style={{
-              background:
-                "linear-gradient(120deg, #f6f8fa 65%, #e8daef 100%)",
-              padding: 16,
-              borderRadius: 14,
-              boxShadow: "0 4px 18px #d2b4de44",
-            }}
-          >
-            {/* ترويسة المستند نفسها */}
-            <table style={topTable}>
-              <tbody>
-                <tr>
-                  <td
-                    rowSpan={4}
-                    style={{
-                      ...tdHeader,
-                      width: 140,
-                      textAlign: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 900,
-                        color: "#a00",
-                        fontSize: 14,
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      AL
-                      <br />
-                      MAWASHI
-                    </div>
-                  </td>
-                  <td style={tdHeader}>
-                    <b>Document Title:</b> Temperature Control Record
-                  </td>
-                  <td style={tdHeader}>
-                    <b>Document No:</b> FS-QM/REC/TMP
-                  </td>
-                </tr>
-                <tr>
-                  <td style={tdHeader}>
-                    <b>Issue Date:</b> 05/02/2020
-                  </td>
-                  <td style={tdHeader}>
-                    <b>Revision No:</b> 0
-                  </td>
-                </tr>
-                <tr>
-                  <td style={tdHeader}>
-                    <b>Area:</b> {BRANCH}
-                  </td>
-                  <td style={tdHeader}>
-                    <b>Issued by:</b> MOHAMAD ABDULLAH
-                  </td>
-                </tr>
-                <tr>
-                  <td style={tdHeader}>
-                    <b>Controlling Officer:</b> Quality Controller
-                  </td>
-                  <td style={tdHeader}>
-                    <b>Approved by:</b> Hussam O. Sarhan
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div style={band1}>
-              TRANS EMIRATES LIVESTOCK MEAT TRADING LLC
-            </div>
-            <div style={band2}>TEMPERATURE CONTROL CHECKLIST (CCP)</div>
-
-            {/* معلومات اليوم المختار */}
-            <div
-              style={{
-                margin: "8px 0 10px",
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 8,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ fontWeight: 700 }}>
-                📅 Date:{" "}
-                <span style={{ fontWeight: 800 }}>
-                  {formatDMY(payload?.date)}
-                </span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                <SignatureName label="Checked By" name={safe(payload?.checkedBy)} align="start" />
-                <SignatureName label="Verified By" name={safe(payload?.verifiedBy)} align="end" />
-              </div>
-            </div>
-
-            {/* تعليمات مختصرة من ملف الإدخال */}
-            <div style={rulesBox}>
-              <div>
-                1. If the cooler temp is +5°C or more – corrective action
-                should be taken.
-              </div>
-              <div>
-                2. If the loading area is more than +16°C – corrective action
-                should be taken.
-              </div>
-              <div>
-                3. If the preparation area is more than +10°C – corrective
-                action should be taken.
-              </div>
+            }}>
+              <div>1. If the cooler temp is +5°C or more – corrective action should be taken.</div>
+              <div>2. If the loading area is more than +16°C – corrective action should be taken.</div>
+              <div>3. If the preparation area is more than +10°C – corrective action should be taken.</div>
+              <div style={{ marginTop: 6 }}><b>Note (Freezers):</b> acceptable range -25°C to -12°C.</div>
               <div style={{ marginTop: 6 }}>
-                <b>Note (Freezers):</b> acceptable range -25°C to -12°C.
-              </div>
-              <div style={{ marginTop: 6 }}>
-                <b>Corrective action:</b> Transfer the meat to another cold
-                room and call maintenance department to check and solve the
-                problem.
+                <b>Corrective action:</b> Transfer the meat to another cold room and call maintenance department to check and solve the problem.
               </div>
             </div>
 
-            {/* جدول العرض */}
-            <table style={gridTable}>
+            {/* Data table */}
+            <table style={gridStyle}>
               <thead>
-                <tr>
+                <tr style={theadRow}>
                   <th style={thCell}>Cooler/Freezer</th>
                   {times.map((t) => (
-                    <th key={t} style={thCell}>
-                      {t}
-                    </th>
+                    <th key={t} style={thCell}>{t}</th>
                   ))}
                   <th style={thCell}>Remarks</th>
                 </tr>
@@ -549,15 +335,13 @@ export default function POS11TemperatureView() {
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={i}>
-                    <td style={tdCellLeft}>
+                    <td style={{ ...tdCell, textAlign: "left" }}>
                       <b>{safe(r.name)}</b>
                     </td>
                     {times.map((t) => (
-                      <td key={t} style={tdCellCenter}>
-                        {safe(r?.temps?.[t])}
-                      </td>
+                      <td key={t} style={tdCell}>{safe(r?.temps?.[t])}</td>
                     ))}
-                    <td style={tdCellLeft}>
+                    <td style={{ ...tdCell, textAlign: "left" }}>
                       {safe(r?.remarks || r?.temps?.["Corrective Action"])}
                     </td>
                   </tr>
@@ -566,90 +350,15 @@ export default function POS11TemperatureView() {
             </table>
 
             {/* KPI */}
-            <div style={{ marginTop: 10, fontWeight: 800 }}>
-              KPI — Avg: {kpi.avg}°C | Min: {kpi.min}°C | Max: {kpi.max}°C |
-              Out-of-range: {kpi.out}
-              <span
-                style={{
-                  marginInlineStart: 10,
-                  fontWeight: 600,
-                  color: "#374151",
-                }}
-              >
+            <div style={{ marginTop: 10, fontWeight: 800, fontSize: 14 }}>
+              KPI — Avg: {kpi.avg}°C | Min: {kpi.min}°C | Max: {kpi.max}°C | Out-of-range: {kpi.out}
+              <span style={{ marginInlineStart: 10, fontWeight: 600, color: "#374151" }}>
                 (Chillers/Coolers only)
               </span>
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }
-
-/* ===== Styles (مطابقة لأسلوب الإدخال) ===== */
-const topTable = {
-  width: "100%",
-  borderCollapse: "collapse",
-  marginBottom: "8px",
-  fontSize: "0.9rem",
-  border: "1px solid #9aa4ae",
-  background: "#f8fbff",
-};
-const tdHeader = {
-  border: "1px solid #9aa4ae",
-  padding: "6px 8px",
-  verticalAlign: "middle",
-};
-const band1 = {
-  width: "100%",
-  textAlign: "center",
-  background: "#bfc7cf",
-  color: "#2c3e50",
-  fontWeight: 700,
-  padding: "6px 4px",
-  border: "1px solid #9aa4ae",
-  borderTop: "none",
-};
-const band2 = {
-  width: "100%",
-  textAlign: "center",
-  background: "#dde3e9",
-  color: "#2c3e50",
-  fontWeight: 700,
-  padding: "6px 4px",
-  border: "1px solid #9aa4ae",
-  borderTop: "none",
-  marginBottom: "8px",
-};
-const rulesBox = {
-  border: "1px solid #9aa4ae",
-  background: "#f1f5f9",
-  padding: "8px 10px",
-  fontSize: "0.92rem",
-  marginBottom: "10px",
-};
-const gridTable = {
-  width: "100%",
-  borderCollapse: "collapse",
-  border: "1px solid #9aa4ae",
-  background: "#ffffff",
-};
-const thCell = {
-  border: "1px solid #9aa4ae",
-  padding: "6px 8px",
-  textAlign: "center",
-  background: "#e0e6ed",
-  fontWeight: 700,
-  fontSize: "0.9rem",
-  whiteSpace: "nowrap",
-};
-const tdCellCenter = {
-  border: "1px solid #9aa4ae",
-  padding: "6px 8px",
-  textAlign: "center",
-};
-const tdCellLeft = {
-  border: "1px solid #9aa4ae",
-  padding: "6px 8px",
-  textAlign: "left",
-};

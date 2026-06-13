@@ -462,8 +462,6 @@ export default function LicensesContractsView() {
   // ── edit ───────────────────────────────────────────────────────────────
   function startEdit() {
     if (!selected) return;
-    const pass = window.prompt("Enter password to edit:");
-    if ((pass || "") !== "9999") return alert("Wrong password.");
 
     const licCopy = JSON.parse(JSON.stringify(license || {}));
     licCopy.fileUrls = normalizeFiles(licCopy);
@@ -590,8 +588,6 @@ export default function LicensesContractsView() {
 
   async function saveEdit() {
     if (!selected) return;
-    const pass = window.prompt("Confirm password to save:");
-    if ((pass || "") !== "9999") return alert("Wrong password.");
 
     const rid = getId(selected);
     if (!rid) return alert("Missing report ID.");

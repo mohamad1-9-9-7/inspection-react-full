@@ -7,9 +7,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import SignaturePad from "../../../components/SignaturePad";
 import API_BASE from "../../../config/api";
 import ReportLookupModal from "../../monitor/branches/_shared/ReportLookupModal";
-import { useLang, LangToggle, branchTempTypeFor, pickRowsArray, getDrillFullTitle, BRANCH_ONLY_TEMP_TYPES, branchLabelForType } from "./i18n";
+import { useLang, LangToggle, branchTempTypeFor, pickRowsArray, getDrillFullTitle, BRANCH_ONLY_TEMP_TYPES, BRANCH_TRACEABILITY_TYPES, BRANCH_RECEIVING_TYPES, branchLabelForType } from "./i18n";
 import { useMockRecallConfig } from "./useMockRecallConfig";
 import AttachmentsSection from "./AttachmentsSection";
+import LinkedReportPopup from "./LinkedReportPopup";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 
 const TYPE = "mock_recall_drill";
@@ -162,6 +163,8 @@ export default function MockRecallInput() {
       coolers: null,         // { id, date, rowsCount }
       branchTemp: null,      // { id, type, date, branch, rowsCount }
       truckCleaning: null,   // { id, date, truckNo, rowsCount }
+      branchTraceability: null, // 🆕 { id, type, date, branch, rowsCount }
+      branchReceiving: null,    // 🆕 { id, type, date, branch, rowsCount, invoiceNo }
     },
 
     // 📎 مرفقات وصور (Base64) — فواتير/تحويلات/فواتير استرجاع/...
@@ -169,8 +172,12 @@ export default function MockRecallInput() {
   });
 
   /* ====== أزرار الربط ====== */
-  const [lookupKind, setLookupKind] = useState(null); // "shipment" | "loading" | "finished" | "coolers" | "branchTemp" | "truckCleaning" | null
+  const [lookupKind, setLookupKind] = useState(null); // "shipment" | "loading" | "finished" | "coolers" | "branchTemp" | "truckCleaning" | "branchTrace" | "branchReceiving" | null
   const closeLookup = () => setLookupKind(null);
+
+  // 🆕 popup عرض ملف العرض المصدر (يفتح فور الاختيار)
+  const [viewPopup, setViewPopup] = useState({ open: false, kind: null, summary: null });
+  const closeViewPopup = () => setViewPopup({ open: false, kind: null, summary: null });
 
   // النوع المتاح للحرارة حسب الفرع المختار
   const branchTempType = branchTempTypeFor(form.product.branch);
@@ -377,6 +384,43 @@ export default function MockRecallInput() {
       cleaningRow: sub,
     };
     setForm((s) => ({ ...s, linked: { ...s.linked, truckCleaning: info } }));
+  }
+
+  /* 🆕 Branch Traceability picker — يحفظ الربط ويفتح ملف العرض فوراً */
+  function pickBranchTraceability(item) {
+    const p = item?.payload || {};
+    const sourceType = p?.__sourceType || item?._sourceType || null;
+    const info = {
+      id: item?.id || item?._id || null,
+      type: sourceType,
+      date: p.reportDate || p.date || "",
+      branch: p.branch || branchLabelForType(sourceType),
+      rowsCount: pickRowsArray(p).filter((r) =>
+        Object.values(r || {}).some((v) => String(v ?? "").trim() !== "")
+      ).length,
+      checkedBy: p.checkedBy || "",
+    };
+    setForm((s) => ({ ...s, linked: { ...s.linked, branchTraceability: info } }));
+    setViewPopup({ open: true, kind: "branchTrace", summary: info });
+  }
+
+  /* 🆕 Branch Receiving picker — يحفظ الربط ويفتح ملف العرض فوراً */
+  function pickBranchReceiving(item) {
+    const p = item?.payload || {};
+    const sourceType = p?.__sourceType || item?._sourceType || null;
+    const info = {
+      id: item?.id || item?._id || null,
+      type: sourceType,
+      date: p.reportDate || p.date || "",
+      branch: p.branch || branchLabelForType(sourceType),
+      rowsCount: pickRowsArray(p).filter((r) =>
+        Object.values(r || {}).some((v) => String(v ?? "").trim() !== "")
+      ).length,
+      invoiceNo: p.invoiceNo || "",
+      receivedBy: p.receivedBy || "",
+    };
+    setForm((s) => ({ ...s, linked: { ...s.linked, branchReceiving: info } }));
+    setViewPopup({ open: true, kind: "branchReceiving", summary: info });
   }
 
   /* ====== setters ====== */
@@ -723,6 +767,61 @@ export default function MockRecallInput() {
                   <div><b>{t("branch")}:</b> {d.branch || "—"}</div>
                   <div><b>{t("drillDate")}:</b> {String(d.date || "").slice(0, 10)}</div>
                   <div><b>{t("items").replace(/[📦]/g, "").trim()}:</b> {d.rowsCount}</div>
+                </>
+              )}
+            />
+
+            {/* 🆕 Branch Traceability Log — سجل التتبع حسب الفرع */}
+            <LinkCard
+              icon="🧬"
+              title={t("branchTraceTitle")}
+              subtitle={t("branchTraceHint")}
+              pickHere={t("pickHere")}
+              linkedLabel={t("linked")}
+              unlinkLabel={t("unlink")}
+              picked={form.linked.branchTraceability}
+              onPick={() => setLookupKind("branchTrace")}
+              onUnlink={() => unlink("branchTraceability")}
+              renderPicked={(d) => (
+                <>
+                  <div><b>{t("branch")}:</b> {d.branch || "—"}</div>
+                  <div><b>{t("drillDate")}:</b> {String(d.date || "").slice(0, 10)}</div>
+                  <div><b>{t("items").replace(/[📦]/g, "").trim()}:</b> {d.rowsCount}</div>
+                  <button
+                    type="button"
+                    onClick={() => setViewPopup({ open: true, kind: "branchTrace", summary: d })}
+                    style={S.btnViewFile}
+                  >
+                    {t("viewFile")}
+                  </button>
+                </>
+              )}
+            />
+
+            {/* 🆕 Branch Receiving Log — سجل الاستلام حسب الفرع */}
+            <LinkCard
+              icon="📥"
+              title={t("branchReceivingTitle")}
+              subtitle={t("branchReceivingHint")}
+              pickHere={t("pickHere")}
+              linkedLabel={t("linked")}
+              unlinkLabel={t("unlink")}
+              picked={form.linked.branchReceiving}
+              onPick={() => setLookupKind("branchReceiving")}
+              onUnlink={() => unlink("branchReceiving")}
+              renderPicked={(d) => (
+                <>
+                  <div><b>{t("branch")}:</b> {d.branch || "—"}</div>
+                  <div><b>{t("drillDate")}:</b> {String(d.date || "").slice(0, 10)}</div>
+                  <div><b>{t("items").replace(/[📦]/g, "").trim()}:</b> {d.rowsCount}</div>
+                  {d.invoiceNo && <div><b>{t("grnRef")}:</b> {d.invoiceNo}</div>}
+                  <button
+                    type="button"
+                    onClick={() => setViewPopup({ open: true, kind: "branchReceiving", summary: d })}
+                    style={S.btnViewFile}
+                  >
+                    {t("viewFile")}
+                  </button>
                 </>
               )}
             />
@@ -1283,6 +1382,92 @@ export default function MockRecallInput() {
             : "No POS/FTR branch temperature logs saved."}
         />
 
+        {/* 🆕 Branch Traceability Lookup */}
+        <ReportLookupModal
+          open={lookupKind === "branchTrace"}
+          onClose={closeLookup}
+          onPick={pickBranchTraceability}
+          type={BRANCH_TRACEABILITY_TYPES}
+          title={lang === "ar"
+            ? "🧬 ابحث في سجلات التتبع حسب الفرع (POS / Production)"
+            : "🧬 Branch Traceability Logs (POS / Production)"}
+          searchPlaceholder={lang === "ar"
+            ? "فرع / تاريخ / مُدقّق"
+            : "Branch / Date / Inspector"}
+          treeMode={true}
+          getDate={(p) => p?.reportDate || p?.date || ""}
+          searchFields={(p) => [
+            p?.reportDate, p?.date, p?.branch, p?.checkedBy, p?.verifiedBy,
+            branchLabelForType(p?.__sourceType),
+          ]}
+          displayItem={(p) => {
+            const arr = pickRowsArray(p).filter((r) =>
+              Object.values(r || {}).some((v) => String(v ?? "").trim() !== "")
+            );
+            const branchLabel = p?.branch || branchLabelForType(p?.__sourceType);
+            return {
+              primary: `🧬 ${String(p?.reportDate || p?.date || "—").slice(0, 10)} — ${branchLabel}`,
+              secondary: `${arr.length} ${lang === "ar" ? "دفعة/صف" : "batches"}`,
+              chips: [
+                p?.__sourceType ? `📊 ${p.__sourceType}` : null,
+                p?.checkedBy ? `✍ ${p.checkedBy}` : null,
+                p?.verifiedBy ? `👔 ${p.verifiedBy}` : null,
+              ].filter(Boolean),
+            };
+          }}
+          emptyText={lang === "ar"
+            ? "لا توجد سجلات تتبع محفوظة في أي فرع."
+            : "No branch traceability logs saved."}
+        />
+
+        {/* 🆕 Branch Receiving Lookup */}
+        <ReportLookupModal
+          open={lookupKind === "branchReceiving"}
+          onClose={closeLookup}
+          onPick={pickBranchReceiving}
+          type={BRANCH_RECEIVING_TYPES}
+          title={lang === "ar"
+            ? "📥 ابحث في سجلات الاستلام حسب الفرع (POS / FTR)"
+            : "📥 Branch Receiving Logs (POS / FTR)"}
+          searchPlaceholder={lang === "ar"
+            ? "فرع / تاريخ / مورّد / فاتورة"
+            : "Branch / Date / Supplier / Invoice"}
+          treeMode={true}
+          getDate={(p) => p?.reportDate || p?.date || ""}
+          searchFields={(p) => [
+            p?.reportDate, p?.date, p?.branch, p?.invoiceNo, p?.receivedBy, p?.verifiedBy,
+            ...pickRowsArray(p).map((r) => r?.supplier),
+            ...pickRowsArray(p).map((r) => r?.foodItem),
+            branchLabelForType(p?.__sourceType),
+          ]}
+          displayItem={(p) => {
+            const arr = pickRowsArray(p).filter((r) =>
+              Object.values(r || {}).some((v) => String(v ?? "").trim() !== "")
+            );
+            const branchLabel = p?.branch || branchLabelForType(p?.__sourceType);
+            return {
+              primary: `📥 ${String(p?.reportDate || p?.date || "—").slice(0, 10)} — ${branchLabel}`,
+              secondary: `${arr.length} ${lang === "ar" ? "مادة مستلمة" : "items received"}`,
+              chips: [
+                p?.__sourceType ? `📊 ${p.__sourceType}` : null,
+                p?.invoiceNo ? `🧾 ${p.invoiceNo}` : null,
+                p?.receivedBy ? `✍ ${p.receivedBy}` : null,
+              ].filter(Boolean),
+            };
+          }}
+          emptyText={lang === "ar"
+            ? "لا توجد سجلات استلام محفوظة في أي فرع."
+            : "No branch receiving logs saved."}
+        />
+
+        {/* 🆕 عرض ملف العرض المصدر — يفتح تلقائياً عند الاختيار */}
+        <LinkedReportPopup
+          open={viewPopup.open}
+          onClose={closeViewPopup}
+          kind={viewPopup.kind}
+          summary={viewPopup.summary}
+        />
+
         {/* 🆕 Truck Cleaning Lookup (flatten by truck row) */}
         <ReportLookupModal
           open={lookupKind === "truckCleaning"}
@@ -1534,6 +1719,17 @@ const S = {
     border: "none",
     borderRadius: 6,
     fontWeight: 700,
+    cursor: "pointer",
+  },
+  btnViewFile: {
+    marginTop: 8,
+    padding: "6px 14px",
+    background: "linear-gradient(180deg,#3b82f6,#2563eb)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    fontWeight: 800,
+    fontSize: "0.85rem",
     cursor: "pointer",
   },
   modalOverlay: {

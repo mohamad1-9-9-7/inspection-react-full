@@ -1,12 +1,7 @@
 // src/pages/monitor/branches/pos19/POS19Layout.jsx
-// POS 19 — Input Tabs ONLY. Shipments stays separate as before (no linking).
+// POS 19 — Input Tabs ONLY.
 
 import React, { useState, Suspense, lazy } from "react";
-
-// ✅ Shipments (يبقى كما هو)
-const QCSRawMaterialInspection = lazy(() =>
-  import("../shipment_recc/QCSRawMaterialInspection")
-);
 
 /* ✅ بقية تبويبات الإدخال (سننشئها لاحقاً داخل: src/pages/monitor/branches/pos19/pos19_inputs/)
    - CleaningProgrammeScheduleInput.jsx
@@ -77,12 +72,26 @@ const ReheatingLogInput = lazy(() =>
 const CalibrationLogInput = lazy(() =>
   import("./pos19_inputs/CalibrationLogInput")
 );
+const NonConformanceReportInput = lazy(() =>
+  import("./pos19_inputs/NonConformanceReportInput")
+);
+const FinishedProductMonitoringInput = lazy(() =>
+  import("./pos19_inputs/FinishedProductMonitoringInput")
+);
+const VegSanitationInput = lazy(() =>
+  import("./pos19_inputs/VegSanitationInput")
+);
+const BlastFreezerInput = lazy(() =>
+  import("./pos19_inputs/BlastFreezerInput")
+);
+const DryStoreTempHumidityInput = lazy(() =>
+  import("./pos19_inputs/DryStoreTempHumidityInput")
+);
 
 export default function POS19Layout() {
-  const [activeTab, setActiveTab] = useState("shipments");
+  const [activeTab, setActiveTab] = useState("cleaningProgramme");
 
   const tabs = [
-    { key: "shipments", label: "📦 Shipments" }, // يبقى منفصل كما طلبت
     { key: "cleaningProgramme", label: "🧼 Cleaning Programme Schedule" },
     { key: "dailyCleaningButchery", label: "🧹 Daily Cleaning checklist – Butchery" },
     { key: "equipmentInspection", label: "🧪 Equipment Inspection and Sanitizing Log" },
@@ -101,6 +110,11 @@ export default function POS19Layout() {
     { key: "cooling", label: "🧊 Cooling Temperature Log" },
     { key: "reheating", label: "♨️ Reheating Temperature Log" },
     { key: "calibration", label: "📏 Thermometer Calibration Log" },
+    { key: "nonConformance", label: "🚫 Non-Conformance Report" },
+    { key: "finishedProduct", label: "🍖 Finished Product Monitoring Checklist" },
+    { key: "vegSanitation", label: "🥬 Sanitation Record (CCP) – Veg/Fruits" },
+    { key: "blastFreezer", label: "🥶 Blast Freezer / Chiller Log (CCP)" },
+    { key: "dryStore", label: "📦 Dry Store Temp & Humidity" },
   ];
 
   const panelStyle = {
@@ -118,15 +132,6 @@ export default function POS19Layout() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case "shipments":
-        return (
-          <div style={panelStyle}>
-            <Suspense fallback={<Loading text="Loading Shipments form…" />}>
-              <QCSRawMaterialInspection />
-            </Suspense>
-          </div>
-        );
-
       case "cleaningProgramme":
         return (
           <div style={panelStyle}>
@@ -271,6 +276,46 @@ export default function POS19Layout() {
             </Suspense>
           </div>
         );
+      case "nonConformance":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading text="Loading Non-Conformance form…" />}>
+              <NonConformanceReportInput />
+            </Suspense>
+          </div>
+        );
+      case "finishedProduct":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading text="Loading Finished Product Checklist…" />}>
+              <FinishedProductMonitoringInput />
+            </Suspense>
+          </div>
+        );
+      case "vegSanitation":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading text="Loading Sanitation Record…" />}>
+              <VegSanitationInput />
+            </Suspense>
+          </div>
+        );
+      case "blastFreezer":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading text="Loading Blast Freezer Log…" />}>
+              <BlastFreezerInput />
+            </Suspense>
+          </div>
+        );
+      case "dryStore":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading text="Loading Dry Store Record…" />}>
+              <DryStoreTempHumidityInput />
+            </Suspense>
+          </div>
+        );
 
       default:
         return (
@@ -314,7 +359,7 @@ export default function POS19Layout() {
             📋 POS 19 — Operations Inputs
           </h2>
           <p style={{ color: "#6b7280", fontSize: "1rem" }}>
-            Input tabs for POS 19 (Shipments is separate; all others are standalone input forms).
+            Input tabs for POS 19 — standalone input forms.
           </p>
         </div>
 

@@ -1,8 +1,15 @@
 // src/pages/monitor/branches/pos 10/POS10PersonalHygieneView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
+import {
+  getId,
+  btn,
+  toISODate,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "./pos10ViewKit";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -26,9 +33,6 @@ export default function POS10PersonalHygieneView() {
   const [loading, setLoading] = useState(false);
   const reportRef = useRef();
   const fileInputRef = useRef(null);
-
-  // helper: ID موحّد للحذف والمقارنة
-  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 
   // 🔐 مطالبة كلمة السر (9999)
   const askPass = (label = "") =>
@@ -103,6 +107,12 @@ export default function POS10PersonalHygieneView() {
   // تصدير PDF + عنوان
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
+
+    // تحميل ديناميكي — يخفّف حجم الصفحة عند الفتح
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
 
     // إخفاء أزرار الأكشن أثناء التصوير
     const actions = reportRef.current.querySelector(".action-bar");
@@ -243,144 +253,71 @@ export default function POS10PersonalHygieneView() {
     }
   };
 
-  // Group reports by year → month → day (تنازلي)
-  const groupedReports = useMemo(() => {
-    return reports.reduce((acc, r) => {
-      const date = getReportDate(r);
-      if (isNaN(date)) return acc;
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      acc[year] ??= {};
-      acc[year][month] ??= [];
-      acc[year][month].push({ ...r, day, _dt: date.getTime() });
-      return acc;
-    }, {});
-  }, [reports]);
+  // عناصر شجرة التاريخ الموحّدة
+  const treeItems = useMemo(
+    () =>
+      reports.map((r, i) => {
+        const d = getReportDate(r);
+        const iso = toISODate(d);
+        return {
+          key: getId(r) || `${iso}-${i}`,
+          dateISO: iso,
+          label: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`,
+          data: r,
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reports]
+  );
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* Sidebar dates (مطوي افتراضياً) */}
-      <div
-        style={{
-          minWidth: "260px",
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: "10px",
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
-      >
-        <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
-          🗓️ Saved Reports (POS 10)
-        </h4>
+    <GlassShell
+      icon="🧑‍🔬"
+      title="Personal Hygiene — View (POS 10)"
+      actions={
+        <>
+          <button onClick={handleExportPDF} disabled={!selectedReport} style={btn("#27ae60")}>
+            ⬇ Export PDF
+          </button>
 
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports)
-              .sort(([ya], [yb]) => Number(yb) - Number(ya)) // ✅ سنوات تنازلي
-              .map(([year, months]) => (
-                <details key={year} open={false}>
-                  <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
-                    📅 Year {year}
-                  </summary>
+          <button onClick={handleExportJSON} style={btn("#16a085")}>
+            ⬇ Export JSON
+          </button>
 
-                  {Object.entries(months)
-                    .sort(([ma], [mb]) => Number(mb) - Number(ma)) // ✅ أشهر تنازلي
-                    .map(([month, days]) => {
-                      const daysSorted = [...days].sort((a, b) => b._dt - a._dt); // ✅ أيام تنازلي
-                      return (
-                        <details key={month} style={{ marginLeft: "1rem" }} open={false}>
-                          <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {daysSorted.map((r, i) => {
-                              const isActive =
-                                getId(selectedReport) &&
-                                getId(selectedReport) === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelectedReport(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: "4px",
-                                    borderRadius: "6px",
-                                    cursor: "pointer",
-                                    background: isActive ? "#6d28d9" : "#ecf0f1",
-                                    color: isActive ? "#fff" : "#333",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {`${r.day}/${month}/${year}`}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
+          <button onClick={triggerImport} style={btn("#f39c12")}>
+            ⬆ Import JSON
+          </button>
 
-      {/* Report display */}
-      <div
-        style={{
-          flex: 1,
-          background: "linear-gradient(120deg, #f6f8fa 65%, #e8daef 100%)",
-          padding: "1.5rem",
-          borderRadius: "14px",
-          boxShadow: "0 4px 18px #d2b4de44",
-        }}
+          <button onClick={() => handleDelete(selectedReport)} disabled={!selectedReport} style={btn("#c0392b")} data-delete-action="true">
+            🗑 Delete
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            style={{ display: "none" }}
+            onChange={handleImportJSON}
+          />
+        </>
+      }
+    >
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            title="🗓️ Saved Reports"
+            items={treeItems}
+            activeKey={getId(selectedReport)}
+            onPick={(it) => setSelectedReport(it.data)}
+            loading={loading}
+            emptyText="❌ No reports"
+          />
+        }
       >
         {!selectedReport ? (
-          <p>❌ No report selected.</p>
+          <EmptyState text="❌ No report selected." />
         ) : (
-          <>
-            {/* Actions */}
-            <div
-              className="action-bar"
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "0.6rem",
-                marginBottom: "1rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <button onClick={handleExportPDF} style={btn("#27ae60")}>
-                ⬇ Export PDF
-              </button>
-
-              <button onClick={handleExportJSON} style={btn("#16a085")}>
-                ⬇ Export JSON
-              </button>
-
-              <button onClick={triggerImport} style={btn("#f39c12")}>
-                ⬆ Import JSON
-              </button>
-
-              <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">
-                🗑 Delete
-              </button>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={handleImportJSON}
-              />
-            </div>
-
-            {/* Report content */}
             <div ref={reportRef}>
               {/* Header info */}
               <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "0.75rem" }}>
@@ -557,10 +494,9 @@ export default function POS10PersonalHygieneView() {
                 ✅ This report is electronically approved; no signature is required.
               </div>
             </div>
-          </>
         )}
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }
 
@@ -568,25 +504,16 @@ const thStyle = {
   padding: "6px",
   border: "1px solid #ccc",
   textAlign: "center",
-  fontSize: "0.85rem",
+  fontSize: "0.95rem",
 };
 const tdStyle = {
   padding: "6px",
   border: "1px solid #ccc",
   textAlign: "center",
+  fontSize: "0.95rem",
 };
 const tdHeader = {
   border: "1px solid #ccc",
-  padding: "4px 6px",
-  fontSize: "0.85rem",
+  padding: "5px 7px",
+  fontSize: "0.95rem",
 };
-
-const btn = (bg) => ({
-  padding: "6px 12px",
-  borderRadius: "6px",
-  background: bg,
-  color: "#fff",
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
-});

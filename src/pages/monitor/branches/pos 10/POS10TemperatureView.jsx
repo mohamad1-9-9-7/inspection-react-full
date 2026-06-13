@@ -1,8 +1,15 @@
 // src/pages/monitor/branches/pos 10/POS10TemperatureView.jsx
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
+import {
+  getId,
+  btn,
+  toISODate,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "./pos10ViewKit";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -49,8 +56,6 @@ export default function POS10TemperatureView() {
   const [loading, setLoading] = useState(false);
   const reportRef = useRef();
 
-  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-
   // 🔐 مطالبة كلمة السر (9999)
   const askPass = (label = "") =>
     (window.prompt(`${label}\nEnter password:`) || "") === "9999";
@@ -67,6 +72,7 @@ export default function POS10TemperatureView() {
 
   useEffect(() => {
     fetchReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchReports = async () => {
@@ -92,6 +98,11 @@ export default function POS10TemperatureView() {
 
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
+    // تحميل ديناميكي — يخفّف حجم الصفحة عند الفتح
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
     const canvas = await html2canvas(reportRef.current, {
       scale: 2,
       windowWidth: reportRef.current.scrollWidth,
@@ -135,227 +146,157 @@ export default function POS10TemperatureView() {
     }
   };
 
-  // -------- شجرة التاريخ (Year → Month → Days) | أحدث أولاً --------
-  const grouped = useMemo(() => {
-    const acc = {};
-    for (const r of reports) {
-      const d = getReportDate(r);
-      if (isNaN(d)) continue;
-      const y = String(d.getFullYear());
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      const ts = d.getTime();
-      acc[y] ||= {};
-      acc[y][m] ||= [];
-      acc[y][m].push({ ...r, _ts: ts, _label: `${day}/${m}/${y}` });
-    }
-    // ترتيب حديث → قديم
-    for (const y of Object.keys(acc)) {
-      for (const m of Object.keys(acc[y])) {
-        acc[y][m].sort((a, b) => b._ts - a._ts);
-      }
-    }
-    return acc;
-  }, [reports]);
+  // -------- عناصر شجرة التاريخ الموحّدة --------
+  const treeItems = useMemo(
+    () =>
+      reports.map((r, i) => {
+        const d = getReportDate(r);
+        const iso = toISODate(d);
+        return {
+          key: getId(r) || `${iso}-${i}`,
+          dateISO: iso,
+          label: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`,
+          data: r,
+        };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reports]
+  );
 
   const kpi = useMemo(() => calculateKPI(selectedReport?.payload?.coolers), [selectedReport]);
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* Sidebar (Date Tree) */}
-      <div
-        style={{
-          minWidth: 260,
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: 10,
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
-      >
-        <h4 style={{ marginBottom: 12, color: "#6d28d9", textAlign: "center" }}>🗓️ Saved Reports</h4>
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(grouped).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {/* سنوات: أحدث → أقدم */}
-            {Object.keys(grouped)
-              .sort((a, b) => Number(b) - Number(a))
-              .map((y) => (
-                <details key={y}>
-                  <summary style={{ fontWeight: "bold", marginBottom: 6 }}>📅 Year {y}</summary>
-
-                  {/* شهور: أحدث → أقدم */}
-                  {Object.keys(grouped[y])
-                    .sort((a, b) => Number(b) - Number(a))
-                    .map((m) => {
-                      const arr = grouped[y][m];
-                      return (
-                        <details key={m} style={{ marginLeft: "1rem" }}>
-                          <summary style={{ fontWeight: 600 }}>
-                            📅 Month {m} <span style={{ color: "#6b7280" }}>({arr.length})</span>
-                          </summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {arr.map((r, i) => {
-                              const active = getId(selectedReport) && getId(selectedReport) === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelectedReport(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: 4,
-                                    borderRadius: 6,
-                                    cursor: "pointer",
-                                    background: active ? "#6d28d9" : "#ecf0f1",
-                                    color: active ? "#fff" : "#333",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {r._label}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
-
-      {/* Report */}
-      <div
-        style={{
-          flex: 1,
-          background: "linear-gradient(120deg, #f6f8fa 65%, #e8daef 100%)",
-          padding: "1.5rem",
-          borderRadius: 14,
-          boxShadow: "0 4px 18px #d2b4de44",
-        }}
+    <GlassShell
+      icon="🌡️"
+      title="Temperature Log — View (POS 10)"
+      actions={
+        selectedReport && (
+          <>
+            <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
+            <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">
+              🗑 Delete
+            </button>
+          </>
+        )
+      }
+    >
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            title="🗓️ Saved Reports"
+            items={treeItems}
+            activeKey={getId(selectedReport)}
+            onPick={(it) => setSelectedReport(it.data)}
+            loading={loading}
+            emptyText="❌ No reports"
+          />
+        }
       >
         {!selectedReport ? (
-          <p>❌ No report selected.</p>
+          <EmptyState text="❌ No report selected." />
         ) : (
-          <>
-            {/* Actions */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
-              <button onClick={handleExportPDF} style={btnGreen}>
-                ⬇ Export PDF
-              </button>
-              <button onClick={() => handleDelete(selectedReport)} style={btnRed} data-delete-action="true">
-                🗑 Delete
-              </button>
+          <div ref={reportRef}>
+            {/* Header */}
+            <table style={topTable}>
+              <tbody>
+                <tr>
+                  <td rowSpan={4} style={{ ...tdHeader, width: 120, textAlign: "center" }}>
+                    <div style={{ fontWeight: 900, color: "#a00" }}>
+                      AL
+                      <br />
+                      MAWASHI
+                    </div>
+                  </td>
+                  <td style={tdHeader}>
+                    <b>Document Title:</b> Temperature Control Record
+                  </td>
+                  <td style={tdHeader}>
+                    <b>Document No:</b> FS-QM/REC/TMP
+                  </td>
+                </tr>
+                <tr>
+                  <td style={tdHeader}>
+                    <b>Issue Date:</b> 05/02/2020
+                  </td>
+                  <td style={tdHeader}>
+                    <b>Revision No:</b> 0
+                  </td>
+                </tr>
+                <tr>
+                  <td style={tdHeader}>
+                    <b>Area:</b> POS 10
+                  </td>
+                  <td style={tdHeader}>
+                    <b>Issued by:</b> MOHAMAD ABDULLAH
+                  </td>
+                </tr>
+                <tr>
+                  <td style={tdHeader}>
+                    <b>Controlling Officer:</b> Quality Controller
+                  </td>
+                  <td style={tdHeader}>
+                    <b>Approved by:</b> Hussam O. Sarhan
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style={band1}>TRANS EMIRATES LIVESTOCK MEAT TRADING LLC</div>
+            <div style={band2}>TEMPERATURE CONTROL CHECKLIST (CCP)</div>
+
+            <div style={{ margin: "8px 0 10px" }}>
+              <strong>Date:</strong>{" "}
+              {selectedReport?.payload?.date ||
+                selectedReport?.payload?.reportDate ||
+                getReportDate(selectedReport)?.toISOString()?.slice(0, 10) ||
+                "—"}
             </div>
 
-            {/* Content */}
-            <div ref={reportRef}>
-              {/* Header */}
-              <table style={topTable}>
-                <tbody>
-                  <tr>
-                    <td rowSpan={4} style={{ ...tdHeader, width: 120, textAlign: "center" }}>
-                      <div style={{ fontWeight: 900, color: "#a00" }}>
-                        AL
-                        <br />
-                        MAWASHI
-                      </div>
-                    </td>
-                    <td style={tdHeader}>
-                      <b>Document Title:</b> Temperature Control Record
-                    </td>
-                    <td style={tdHeader}>
-                      <b>Document No:</b> FS-QM/REC/TMP
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <b>Issue Date:</b> 05/02/2020
-                    </td>
-                    <td style={tdHeader}>
-                      <b>Revision No:</b> 0
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <b>Area:</b> POS 10
-                    </td>
-                    <td style={tdHeader}>
-                      <b>Issued by:</b> MOHAMAD ABDULLAH
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={tdHeader}>
-                      <b>Controlling Officer:</b> Quality Controller
-                    </td>
-                    <td style={tdHeader}>
-                      <b>Approved by:</b> Hussam O. Sarhan
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div style={band1}>TRANS EMIRATES LIVESTOCK MEAT TRADING LLC</div>
-              <div style={band2}>TEMPERATURE CONTROL CHECKLIST (CCP)</div>
-
-              <div style={{ margin: "8px 0 10px" }}>
-                <strong>Date:</strong>{" "}
-                {selectedReport?.payload?.date ||
-                  selectedReport?.payload?.reportDate ||
-                  getReportDate(selectedReport)?.toISOString()?.slice(0, 10) ||
-                  "—"}
-              </div>
-
-              {/* جدول القيم */}
-              <table style={gridTable}>
-                <thead>
-                  <tr>
-                    <th style={thCell}>Cooler/Freezer</th>
-                    {gridTimes.map((t) => (
-                      <th key={t} style={thCell}>
-                        {t}
-                      </th>
-                    ))}
-                    <th style={thCell}>Remarks</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedReport?.payload?.coolers?.map((c, idx) => (
-                    <tr key={idx}>
-                      <td style={tdCellLeft}>
-                        <b>{c.name}</b>
-                      </td>
-                      {gridTimes.map((t) => (
-                        <td key={t} style={tdCellCenter}>
-                          {c.temps?.[t] ?? "—"}
-                        </td>
-                      ))}
-                      <td style={tdCellLeft}>{c.remarks || "—"}</td>
-                    </tr>
+            {/* جدول القيم */}
+            <table style={gridTable}>
+              <thead>
+                <tr>
+                  <th style={thCell}>Cooler/Freezer</th>
+                  {gridTimes.map((t) => (
+                    <th key={t} style={thCell}>
+                      {t}
+                    </th>
                   ))}
-                </tbody>
-              </table>
+                  <th style={thCell}>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedReport?.payload?.coolers?.map((c, idx) => (
+                  <tr key={idx}>
+                    <td style={tdCellLeft}>
+                      <b>{c.name}</b>
+                    </td>
+                    {gridTimes.map((t) => (
+                      <td key={t} style={tdCellCenter}>
+                        {c.temps?.[t] ?? "—"}
+                      </td>
+                    ))}
+                    <td style={tdCellLeft}>{c.remarks || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-              {/* KPI */}
-              <div style={{ marginTop: 12, fontWeight: 700 }}>
-                KPI — Avg: {kpi.avg}°C | Min: {kpi.min}°C | Max: {kpi.max}°C | Out-of-range: {kpi.out}{" "}
-                <span style={{ color: "#374151" }}>(Coolers only)</span>
-              </div>
-
-              <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", fontWeight: 600 }}>
-                <SignatureName label="Checked By" name={selectedReport?.payload?.checkedBy} align="start" />
-                <SignatureName label="Verified By" name={selectedReport?.payload?.verifiedBy} align="end" />
-              </div>
+            {/* KPI */}
+            <div style={{ marginTop: 12, fontWeight: 700 }}>
+              KPI — Avg: {kpi.avg}°C | Min: {kpi.min}°C | Max: {kpi.max}°C | Out-of-range: {kpi.out}{" "}
+              <span style={{ color: "#374151" }}>(Coolers only)</span>
             </div>
-          </>
+
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", fontWeight: 600 }}>
+              <SignatureName label="Checked By" name={selectedReport?.payload?.checkedBy} align="start" />
+              <SignatureName label="Verified By" name={selectedReport?.payload?.verifiedBy} align="end" />
+            </div>
+          </div>
         )}
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }
 
@@ -364,7 +305,7 @@ const topTable = {
   width: "100%",
   borderCollapse: "collapse",
   marginBottom: 8,
-  fontSize: "0.9rem",
+  fontSize: "1rem",
   border: "1px solid #9aa4ae",
   background: "#f8fbff",
 };
@@ -396,15 +337,3 @@ const thCell = {
 };
 const tdCellCenter = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "center" };
 const tdCellLeft = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "left" };
-
-const btn = (bg) => ({
-  padding: "6px 12px",
-  borderRadius: 6,
-  background: bg,
-  color: "#fff",
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
-});
-const btnGreen = btn("#27ae60");
-const btnRed = btn("#c0392b");

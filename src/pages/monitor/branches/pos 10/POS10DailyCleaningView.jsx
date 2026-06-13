@@ -1,7 +1,13 @@
-import React, { useEffect, useState, useRef } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import SignatureName from "../../../shared/SignatureName";
+import {
+  btn,
+  formatDMY,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "./pos10ViewKit";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -52,6 +58,11 @@ export default function POS10DailyCleaningView() {
   // ===== PDF
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
+    // تحميل ديناميكي — يخفّف حجم الصفحة عند الفتح
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
     const buttons = reportRef.current.querySelector(".action-buttons");
     if (buttons) buttons.style.display = "none";
 
@@ -189,154 +200,77 @@ export default function POS10DailyCleaningView() {
     }
   };
 
-  // ===== Group by Year > Month > Day
-  const groupedReports = reports.reduce((acc, r) => {
-    const date = new Date(r.payload?.reportDate);
-    if (isNaN(date)) return acc;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    if (!acc[year]) acc[year] = {};
-    if (!acc[year][month]) acc[year][month] = [];
-    acc[year][month].push({ ...r, day, _dt: date.getTime() });
-    return acc;
-  }, {});
+  // ===== عناصر شجرة التاريخ الموحّدة
+  const treeItems = useMemo(
+    () =>
+      reports
+        .filter((r) => r?.payload?.reportDate && !isNaN(new Date(r.payload.reportDate)))
+        .map((r, i) => {
+          const iso = String(r.payload.reportDate).slice(0, 10);
+          return {
+            key: getId(r) || `${iso}-${i}`,
+            dateISO: iso,
+            label: formatDMY(iso),
+            data: r,
+          };
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reports]
+  );
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* Sidebar */}
-      <div
-        style={{
-          minWidth: "260px",
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: "10px",
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
-      >
-        <h4
-          style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}
-        >
-          🗓️ Saved Reports
-        </h4>
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(b) - Number(a))
-              .map(([year, months]) => (
-                <details key={year}>
-                  <summary style={{ fontWeight: "bold" }}>📅 Year {year}</summary>
-                  {Object.entries(months)
-                    .sort(([a], [b]) => Number(b) - Number(a))
-                    .map(([month, days]) => {
-                      const daysSorted = [...days].sort((x, y) => y._dt - x._dt);
-                      return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
-                          <summary style={{ fontWeight: "500" }}>
-                            📅 Month {month}
-                          </summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {daysSorted.map((r, i) => {
-                              const isActive =
-                                selectedReport && getId(selectedReport) === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelectedReport(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: "4px",
-                                    borderRadius: "6px",
-                                    cursor: "pointer",
-                                    background: isActive ? "#6d28d9" : "#ecf0f1",
-                                    color: isActive ? "#fff" : "#333",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                    borderLeft: isActive
-                                      ? "4px solid #4c1d95"
-                                      : "4px solid transparent",
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    gap: 8,
-                                  }}
-                                  title={isActive ? "Currently open" : "Open report"}
-                                >
-                                  <span>{`${r.day}/${month}/${year}`}</span>
-                                  {isActive ? (
-                                    <span>✔️</span>
-                                  ) : (
-                                    <span style={{ opacity: 0.5 }}>•</span>
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
-
-      {/* Report display */}
-      <div
-        style={{
-          flex: 1,
-          background: "#fff",
-          padding: "1.5rem",
-          borderRadius: "14px",
-          boxShadow: "0 4px 18px #d2b4de44",
-        }}
+    <GlassShell
+      icon="🧹"
+      title="Daily Cleaning — View (POS 10)"
+      actions={
+        <>
+          <button onClick={handleExportPDF} disabled={!selectedReport} style={btn("#27ae60")}>
+            ⬇ Export PDF
+          </button>
+          <button onClick={handleExportJSON} style={btn("#16a085")}>
+            ⬇ Export JSON
+          </button>
+          <button onClick={triggerImport} style={btn("#f39c12")}>
+            ⬆ Import JSON
+          </button>
+          <button
+            onClick={() => handleDelete(selectedReport)}
+            disabled={!selectedReport}
+            style={btn("#c0392b")}
+            data-delete-action="true"
+          >
+            🗑 Delete
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            style={{ display: "none" }}
+            onChange={handleImportJSON}
+          />
+        </>
+      }
+    >
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            title="🗓️ Saved Reports"
+            items={treeItems}
+            activeKey={getId(selectedReport)}
+            onPick={(it) => setSelectedReport(it.data)}
+            loading={loading}
+            emptyText="❌ No reports"
+          />
+        }
       >
         {!selectedReport ? (
-          <p>❌ No report selected.</p>
+          <EmptyState text="❌ No report selected." />
         ) : (
           <div ref={reportRef} style={{ paddingBottom: "100px" }}>
-            {/* Header with actions */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "1rem",
-              }}
-            >
-              <h3 style={{ color: "#2980b9" }}>
-                🧹 Report: {selectedReport.payload?.reportDate}
-              </h3>
-              <div className="action-buttons" style={{ display: "flex", gap: "0.6rem" }}>
-                <button onClick={handleExportPDF} style={btnExport}>
-                  ⬇ Export PDF
-                </button>
-                <button onClick={handleExportJSON} style={btnJson}>
-                  ⬇ Export JSON
-                </button>
-                <button onClick={triggerImport} style={btnImport}>
-                  ⬆ Import JSON
-                </button>
-                <button
-                  onClick={() => handleDelete(selectedReport)}
-                  style={btnDelete}
-                 data-delete-action="true">
-                  🗑 Delete
-                </button>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={handleImportJSON}
-              />
-            </div>
+            <h3 style={{ color: "#2980b9", marginTop: 0 }}>
+              🧹 Report: {selectedReport.payload?.reportDate}
+            </h3>
 
             {/* شعار */}
             <div style={{ textAlign: "right", marginBottom: "1rem" }}>
@@ -352,7 +286,7 @@ export default function POS10DailyCleaningView() {
                 width: "100%",
                 border: "1px solid #ccc",
                 marginBottom: "1rem",
-                fontSize: "0.9rem",
+                fontSize: "1rem",
                 borderCollapse: "collapse",
               }}
             >
@@ -462,8 +396,8 @@ export default function POS10DailyCleaningView() {
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }
 
@@ -471,20 +405,6 @@ const thStyle = {
   padding: "8px",
   border: "1px solid #ccc",
   textAlign: "center",
-  fontSize: "0.9rem",
+  fontSize: "1rem",
 };
 const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
-
-const btnBase = {
-  padding: "8px 14px",
-  borderRadius: "6px",
-  color: "#fff",
-  fontWeight: "600",
-  border: "none",
-  cursor: "pointer",
-};
-
-const btnExport = { ...btnBase, background: "#27ae60" };
-const btnJson = { ...btnBase, background: "#16a085" };
-const btnImport = { ...btnBase, background: "#f39c12" };
-const btnDelete = { ...btnBase, background: "#c0392b" };

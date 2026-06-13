@@ -196,8 +196,8 @@ export default function EquipmentInspectionSanitizingLogView() {
     const payload = { ...(record?.payload || {}), formRef: FORM_REF, branch: BRANCH, reportDate: record?.payload?.reportDate, entries: editRows, savedAt: Date.now() };
     try {
       setLoading(true);
-      if (rid) { try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" }); } catch {} }
-      const res = await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }) });
+      // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
+      const res = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, { method: rid ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Changes saved");
       setEditing(false);

@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/_shared/BranchDailyView.jsx
-// Unified Daily View Hub — shared design adopted from POS19DailyView.
-// كل الأفرع بتستخدم هالـ component حتى يكون التصميم موحّد.
+// Unified Daily View Hub — التبويبات أفقية أعلى الصفحة (بدل القائمة الجانبية)
+// والمحتوى يأخذ كامل العرض. كل الأفرع بتستخدم هالـ component حتى يكون التصميم موحّد.
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import PrintStyles from "./PrintStyles";
 import PrintButton from "./PrintButton";
@@ -20,34 +20,30 @@ const STYLES = `
     --ok:      #22c55e;
     --muted:   #64748b;
     --border:  rgba(255,255,255,0.07);
-    --glass:   rgba(255,255,255,0.04);
+    --glass:   rgba(255,255,255,0.05);
     --canvas:  #f0f2f5;
 
     font-family: 'Tajawal', sans-serif;
+    font-size: 16px;
     direction: rtl;
     display: flex;
-    flex-direction: row-reverse;
+    flex-direction: column;
     height: 100vh;
     min-height: 600px;
     background: var(--canvas);
     overflow: hidden;
   }
 
-  /* ── Sidebar ── */
-  .bdv-sidebar {
-    width: 280px;
-    min-width: 280px;
+  /* ── Header (dark) ── */
+  .bdv-header {
     background: var(--ink);
+    padding: 14px 24px 10px;
     display: flex;
-    flex-direction: column;
-    border-right: 3px solid var(--accent, var(--amber));
-    overflow: hidden;
-  }
-
-  .bdv-sidebar-header {
-    padding: 24px 20px 16px;
-    border-bottom: 1px solid var(--border);
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
     flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
   }
 
   .bdv-branch-badge {
@@ -58,105 +54,52 @@ const STYLES = `
     color: var(--ink);
     font-family: 'IBM Plex Mono', monospace;
     font-weight: 700;
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: .12em;
-    padding: 4px 10px;
-    border-radius: 4px;
-    margin-bottom: 10px;
+    padding: 5px 12px;
+    border-radius: 6px;
   }
 
-  .bdv-sidebar-title {
+  .bdv-header-title {
     color: #fff;
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 800;
-    margin: 0 0 2px;
+    margin: 0;
     line-height: 1.3;
   }
 
-  .bdv-sidebar-sub {
+  .bdv-header-sub {
     color: var(--muted);
-    font-size: 12px;
+    font-size: 13px;
     font-family: 'IBM Plex Mono', monospace;
   }
 
-  .bdv-nav {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 0;
-    scrollbar-width: thin;
-    scrollbar-color: var(--ink-low) transparent;
-  }
-
-  .bdv-nav-group {
-    padding: 0 12px;
-    margin-bottom: 4px;
-  }
-
-  .bdv-nav-btn {
-    width: 100%;
+  .bdv-header-actions {
+    margin-inline-start: auto;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: none;
-    background: transparent;
-    color: #94a3b8;
-    font-family: 'Tajawal', sans-serif;
+    flex-wrap: wrap;
+  }
+
+  .bdv-topbar-date {
+    font-family: 'IBM Plex Mono', monospace;
     font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    text-align: right;
-    transition: all .18s ease;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .bdv-nav-btn:hover {
+    color: #cbd5e1;
     background: var(--glass);
-    color: #e2e8f0;
+    padding: 5px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
   }
 
-  .bdv-nav-btn.active {
-    background: linear-gradient(90deg, var(--accent-soft, rgba(245,158,11,.18)) 0%, var(--accent-soft-2, rgba(245,158,11,.06)) 100%);
-    color: var(--accent-l, var(--amber-l));
+  .bdv-count-pill {
+    background: var(--ok);
+    color: #fff;
     font-weight: 700;
-  }
-
-  .bdv-nav-btn.active::before {
-    content: '';
-    position: absolute;
-    right: 0; top: 20%; bottom: 20%;
-    width: 3px;
-    background: var(--accent, var(--amber));
-    border-radius: 3px 0 0 3px;
-  }
-
-  .bdv-nav-icon {
-    font-size: 16px;
-    flex-shrink: 0;
-    width: 22px;
-    text-align: center;
-  }
-
-  .bdv-nav-label {
-    flex: 1;
-    line-height: 1.3;
-  }
-
-  .bdv-status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .bdv-status-dot.live  { background: var(--ok);    box-shadow: 0 0 6px var(--ok); }
-  .bdv-status-dot.soon  { background: var(--muted); }
-
-  .bdv-sidebar-footer {
-    padding: 14px 20px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
+    font-size: 13px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-family: 'IBM Plex Mono', monospace;
   }
 
   .bdv-connected-count {
@@ -164,62 +107,81 @@ const STYLES = `
     align-items: center;
     gap: 8px;
     color: var(--muted);
-    font-size: 12px;
+    font-size: 13px;
     font-family: 'IBM Plex Mono', monospace;
   }
 
-  .bdv-count-pill {
-    background: var(--ok);
-    color: #fff;
-    font-weight: 700;
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 20px;
-  }
-
-  /* ── Main area ── */
-  .bdv-main {
-    flex: 1;
+  /* ── Tab strip (horizontal, top, LTR: تبدأ من اليسار) ── */
+  .bdv-tabs {
+    background: var(--ink);
     display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--canvas);
-  }
-
-  .bdv-topbar {
-    background: #fff;
-    border-bottom: 1px solid #e2e8f0;
-    padding: 14px 28px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: stretch;
+    gap: 5px;
+    padding: 0 16px;
+    overflow-x: auto;
     flex-shrink: 0;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    border-bottom: 3px solid var(--accent, var(--amber));
+    scrollbar-width: thin;
+    scrollbar-color: var(--ink-low) transparent;
+    direction: ltr;
+    justify-content: flex-start;
   }
 
-  .bdv-topbar-title {
-    font-size: 17px;
-    font-weight: 800;
-    color: var(--ink);
-    display: flex;
+  .bdv-tab {
+    display: inline-flex;
     align-items: center;
     gap: 10px;
+    padding: 15px 26px 14px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    font-family: 'Tajawal', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .18s ease;
+    border-radius: 12px 12px 0 0;
+    position: relative;
   }
 
-  .bdv-topbar-date {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
-    color: var(--muted);
-    background: #f1f5f9;
-    padding: 4px 12px;
-    border-radius: 20px;
-    border: 1px solid #e2e8f0;
+  .bdv-tab:hover {
+    background: var(--glass);
+    color: #e2e8f0;
   }
 
+  .bdv-tab.active {
+    background: linear-gradient(180deg, var(--accent-soft, rgba(245,158,11,.20)) 0%, var(--accent-soft-2, rgba(245,158,11,.08)) 100%);
+    color: var(--accent-l, var(--amber-l));
+    font-weight: 800;
+  }
+
+  .bdv-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0; right: 0;
+    height: 3px;
+    background: var(--accent-l, var(--amber-l));
+    border-radius: 3px 3px 0 0;
+  }
+
+  .bdv-tab-icon { font-size: 21px; }
+
+  .bdv-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .bdv-status-dot.live  { background: var(--ok);    box-shadow: 0 0 6px var(--ok); }
+  .bdv-status-dot.soon  { background: var(--muted); }
+
+  /* ── Content ── */
   .bdv-content {
     flex: 1;
     overflow-y: auto;
-    padding: 24px 28px;
+    padding: 20px 24px;
   }
 
   /* ── Panel shell ── */
@@ -230,6 +192,7 @@ const STYLES = `
     box-shadow: 0 2px 12px rgba(0,0,0,0.06);
     padding: 24px;
     min-height: 300px;
+    font-size: 15px;
   }
 
   .bdv-panel-header {
@@ -242,26 +205,26 @@ const STYLES = `
   }
 
   .bdv-panel-icon {
-    width: 44px;
-    height: 44px;
+    width: 46px;
+    height: 46px;
     border-radius: 10px;
     background: var(--ink);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: 22px;
     flex-shrink: 0;
   }
 
   .bdv-panel-name {
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 800;
     color: var(--ink);
     margin: 0 0 2px;
   }
 
   .bdv-panel-meta {
-    font-size: 12px;
+    font-size: 13.5px;
     color: var(--muted);
     font-family: 'IBM Plex Mono', monospace;
   }
@@ -274,9 +237,9 @@ const STYLES = `
     background: #f0fdf4;
     border: 1px solid #bbf7d0;
     color: #15803d;
-    font-size: 11px;
+    font-size: 12.5px;
     font-weight: 700;
-    padding: 4px 10px;
+    padding: 5px 12px;
     border-radius: 20px;
     font-family: 'IBM Plex Mono', monospace;
   }
@@ -289,9 +252,9 @@ const STYLES = `
     background: #fafafa;
     border: 1px solid #e2e8f0;
     color: var(--muted);
-    font-size: 11px;
+    font-size: 12.5px;
     font-weight: 700;
-    padding: 4px 10px;
+    padding: 5px 12px;
     border-radius: 20px;
     font-family: 'IBM Plex Mono', monospace;
   }
@@ -305,14 +268,14 @@ const STYLES = `
     padding: 60px 0;
     color: var(--muted);
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 13px;
+    font-size: 14.5px;
   }
 
   @keyframes bdv-spin { to { transform: rotate(360deg); } }
 
   .bdv-spinner {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border: 2px solid #e2e8f0;
     border-top-color: var(--accent, var(--amber));
     border-radius: 50%;
@@ -331,12 +294,12 @@ const STYLES = `
     text-align: center;
   }
   .bdv-placeholder-icon { font-size: 48px; opacity: .35; }
-  .bdv-placeholder-text { font-size: 15px; font-weight: 600; color: #94a3b8; }
-  .bdv-placeholder-sub { font-size: 12px; font-family: 'IBM Plex Mono', monospace; color: #cbd5e1; }
+  .bdv-placeholder-text { font-size: 16px; font-weight: 600; color: #94a3b8; }
+  .bdv-placeholder-sub { font-size: 13px; font-family: 'IBM Plex Mono', monospace; color: #cbd5e1; }
 
   /* scrollbar */
-  .bdv-nav::-webkit-scrollbar { width: 4px; }
-  .bdv-nav::-webkit-scrollbar-thumb { background: var(--ink-low); border-radius: 4px; }
+  .bdv-tabs::-webkit-scrollbar { height: 5px; }
+  .bdv-tabs::-webkit-scrollbar-thumb { background: var(--ink-low); border-radius: 4px; }
 `;
 
 const Loader = ({ label }) => (
@@ -370,11 +333,11 @@ const PanelShell = ({ tab, children }) => (
 );
 
 /**
- * Shared Branch Daily View.
+ * Shared Branch Daily View — tabs on top, full-width content.
  *
  * Props:
  *  - branchCode: string  e.g. "POS-10"
- *  - title:      string  sidebar header title (Arabic). Defaults to "عرض تقارير الفرع".
+ *  - title:      string  header title (Arabic). Defaults to "عرض تقارير الفرع".
  *  - subtitle:   string  small mono subtitle. Defaults to "Daily Viewer Hub".
  *  - accent:     { color, light, soft, soft2 } — optional color theme (defaults to amber).
  *  - tabs: Array<{
@@ -425,6 +388,9 @@ export default function BranchDailyView({
       }
     : undefined;
 
+  // بعض الأفرع تمرّر العنوان مع <br/> نصيّاً — ننظّفه لأنه يُعرض حرفياً
+  const cleanTitle = String(title || "").replace(/<br\s*\/?>/gi, " ");
+
   const todayLabel = useMemo(() => {
     try {
       return new Date().toLocaleDateString("ar-AE", {
@@ -445,73 +411,62 @@ export default function BranchDailyView({
       <PrintStyles />
       <div className="bdv-root" style={rootStyle}>
 
-        {/* ── Sidebar ── */}
-        <aside className="bdv-sidebar">
-          <div className="bdv-sidebar-header">
-            <div className="bdv-branch-badge">● {branchCode}</div>
-            <h2 className="bdv-sidebar-title">{title}</h2>
-            <div className="bdv-sidebar-sub">{subtitle}</div>
+        {/* ── Header (dark) ── */}
+        <header className="bdv-header">
+          <div className="bdv-branch-badge">● {branchCode}</div>
+          <div>
+            <h2 className="bdv-header-title">{cleanTitle}</h2>
+            <div className="bdv-header-sub">{subtitle}</div>
           </div>
 
-          <nav className="bdv-nav">
-            {tabs.map((tab) => (
-              <div className="bdv-nav-group" key={tab.key}>
-                <button
-                  className={`bdv-nav-btn ${activeKey === tab.key ? "active" : ""}`}
-                  onClick={() => setActiveKey(tab.key)}
-                  title={tab.label}
-                >
-                  <span className="bdv-nav-icon">{tab.icon}</span>
-                  <span className="bdv-nav-label">{tab.label}</span>
-                  <span className={`bdv-status-dot ${tab.live === false ? "soon" : "live"}`} />
-                </button>
-              </div>
-            ))}
-          </nav>
-
-          <div className="bdv-sidebar-footer">
+          <div className="bdv-header-actions no-print">
             <div className="bdv-connected-count">
               <span className="bdv-count-pill">{liveCount}</span>
               ملفات مربوطة
-              <span style={{ marginRight: "auto", color: "#22c55e", fontWeight: 700 }}>✅ مكتمل</span>
             </div>
-          </div>
-        </aside>
-
-        {/* ── Main ── */}
-        <main className="bdv-main">
-          <div className="bdv-topbar">
-            <div className="bdv-topbar-title">
-              {activeTab?.icon} {activeTab?.label}
-            </div>
-            <div className="bdv-topbar-actions no-print" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {activeTab?.key !== "overview" && (
-                <PrintButton
-                  title={activeTab?.label || branchCode}
-                  documentNo=""
-                  reportDate={new Date().toLocaleDateString("en-CA")}
-                  lang={typeof document !== "undefined" && document.dir === "rtl" ? "ar" : "en"}
-                />
-              )}
-              <div className="bdv-topbar-date">{todayLabel}</div>
-            </div>
-          </div>
-
-          <div className="bdv-content">
-            {activeTab ? (
-              <PanelShell tab={{ ...activeTab, branchCode }}>
-                <Suspense fallback={<Loader label={activeTab.loaderLabel || activeTab.label} />}>
-                  {activeTab.element}
-                </Suspense>
-              </PanelShell>
-            ) : (
-              <div className="bdv-placeholder">
-                <div className="bdv-placeholder-icon">📭</div>
-                <div className="bdv-placeholder-text">لا توجد تقارير مربوطة</div>
-              </div>
+            {activeTab?.key !== "overview" && (
+              <PrintButton
+                title={activeTab?.label || branchCode}
+                documentNo=""
+                reportDate={new Date().toLocaleDateString("en-CA")}
+                lang={typeof document !== "undefined" && document.dir === "rtl" ? "ar" : "en"}
+              />
             )}
+            <div className="bdv-topbar-date">{todayLabel}</div>
           </div>
-        </main>
+        </header>
+
+        {/* ── Tabs (horizontal, top) ── */}
+        <nav className="bdv-tabs no-print">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              className={`bdv-tab ${activeKey === tab.key ? "active" : ""}`}
+              onClick={() => setActiveKey(tab.key)}
+              title={tab.label}
+            >
+              <span className="bdv-tab-icon">{tab.icon}</span>
+              <span>{tab.label}</span>
+              <span className={`bdv-status-dot ${tab.live === false ? "soon" : "live"}`} />
+            </button>
+          ))}
+        </nav>
+
+        {/* ── Content (full width) ── */}
+        <div className="bdv-content">
+          {activeTab ? (
+            <PanelShell tab={{ ...activeTab, branchCode }}>
+              <Suspense fallback={<Loader label={activeTab.loaderLabel || activeTab.label} />}>
+                {activeTab.element}
+              </Suspense>
+            </PanelShell>
+          ) : (
+            <div className="bdv-placeholder">
+              <div className="bdv-placeholder-icon">📭</div>
+              <div className="bdv-placeholder-text">لا توجد تقارير مربوطة</div>
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

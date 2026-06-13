@@ -1,11 +1,23 @@
 // src/pages/monitor/branches/ftr1/FTR1TemperatureView.jsx
-import React, { useEffect, useState, useRef } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import React, { useEffect, useState, useRef, useMemo } from "react";
+import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import {
+  getId,
+  btn,
+  formatDMY,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "../_shared/branchViewKit";
 
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+const TYPE = "ftr1_temperature";
+
+const toDate = (v) => {
+  const d = v ? new Date(v) : null;
+  return d && !isNaN(d) ? d : null;
+};
 
 export default function FTR1TemperatureView() {
   const [reports, setReports] = useState([]);
@@ -15,24 +27,17 @@ export default function FTR1TemperatureView() {
   const reportRef = useRef();
   const fileInputRef = useRef(null);
 
-  const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-  const toDate = (v) => {
-    const d = v ? new Date(v) : null;
-    return d && !isNaN(d) ? d : null;
-  };
-
-  // ===== Fetch (أحدث ← أقدم) =====
+  // ===== Fetch (newest first) =====
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=ftr1_temperature`, {
+      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, {
         cache: "no-store",
       });
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
 
-      // تنازلي: الأحدث أولًا
       arr.sort((a, b) => {
         const da = toDate(a?.payload?.date)?.getTime() || 0;
         const db = toDate(b?.payload?.date)?.getTime() || 0;
@@ -43,7 +48,7 @@ export default function FTR1TemperatureView() {
       setSelectedReport(arr[0] || null);
     } catch (err) {
       console.error(err);
-      alert("⚠️ Failed to fetch data from server.");
+      alert("Failed to fetch data from server.");
     } finally {
       setLoading(false);
     }
@@ -53,13 +58,14 @@ export default function FTR1TemperatureView() {
     fetchReports();
   }, []);
 
-  // ===== Export PDF: صفحة واحدة أفقية =====
+  // ===== Export PDF =====
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
 
-    const toolbar = reportRef.current.querySelector(".action-toolbar");
-    const prev = toolbar?.style.display;
-    if (toolbar) toolbar.style.display = "none";
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
 
     const canvas = await html2canvas(reportRef.current, {
       scale: 4,
@@ -72,7 +78,7 @@ export default function FTR1TemperatureView() {
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
 
-    let imgWidth = pageWidth - 20; // هوامش خفيفة
+    let imgWidth = pageWidth - 20;
     let imgHeight = (canvas.height * imgWidth) / canvas.width;
     if (imgHeight > pageHeight - 20) {
       imgHeight = pageHeight - 20;
@@ -83,11 +89,9 @@ export default function FTR1TemperatureView() {
 
     pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
     pdf.save(`FTR1_Temperature_${selectedReport?.payload?.date || "report"}.pdf`);
-
-    if (toolbar) toolbar.style.display = prev || "flex";
   };
 
-  // ===== Export XLS (CSV متوافق) =====
+  // ===== Export XLS (CSV) =====
   const handleExportXLS = () => {
     if (!selectedReport) return;
 
@@ -140,37 +144,37 @@ export default function FTR1TemperatureView() {
     URL.revokeObjectURL(url);
   };
 
-  // ===== Delete (بكلمة سر) =====
+  // ===== Delete =====
   const handleDelete = async (report) => {
     const pwd = window.prompt("Enter password to delete this report:");
     if (pwd === null) return;
     if (pwd.trim() !== "9999") {
-      alert("❌ Wrong password.");
+      alert("Wrong password.");
       return;
     }
     if (!window.confirm("Are you sure you want to delete this report?")) return;
 
     const rid = getId(report);
-    if (!rid) return alert("⚠️ Missing report ID.");
+    if (!rid) return alert("Missing report ID.");
     try {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete");
-      alert("✅ Report deleted successfully.");
+      alert("Report deleted successfully.");
       fetchReports();
     } catch (err) {
       console.error(err);
-      alert("⚠️ Failed to delete report.");
+      alert("Failed to delete report.");
     }
   };
 
-  // ===== Export JSON (كل التقارير) =====
+  // ===== Export JSON =====
   const handleExportJSON = () => {
     try {
       const payloads = reports.map((r) => r?.payload ?? r);
       const bundle = {
-        type: "ftr1_temperature",
+        type: TYPE,
         exportedAt: new Date().toISOString(),
         count: payloads.length,
         items: payloads,
@@ -189,7 +193,7 @@ export default function FTR1TemperatureView() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("❌ Failed to export JSON.");
+      alert("Failed to export JSON.");
     }
   };
 
@@ -208,7 +212,7 @@ export default function FTR1TemperatureView() {
         Array.isArray(json?.items) ? json.items :
         Array.isArray(json?.data) ? json.data : [];
       if (!itemsRaw.length) {
-        alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
+        alert("JSON file has no importable items.");
         return;
       }
       let ok = 0, fail = 0;
@@ -219,227 +223,166 @@ export default function FTR1TemperatureView() {
           const res = await fetch(`${API_BASE}/api/reports`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reporter: "ftr1", type: "ftr1_temperature", payload }),
+            body: JSON.stringify({ reporter: "ftr1", type: TYPE, payload }),
           });
           if (res.ok) ok++; else fail++;
         } catch {
           fail++;
         }
       }
-      alert(`✅ Imported: ${ok} ${fail ? `| ❌ Failed: ${fail}` : ""}`);
+      alert(`Imported: ${ok} ${fail ? `| Failed: ${fail}` : ""}`);
       await fetchReports();
     } catch (err) {
       console.error(err);
-      alert("❌ Invalid JSON file.");
+      alert("Invalid JSON file.");
     } finally {
       setLoading(false);
       if (e?.target) e.target.value = "";
     }
   };
 
-  // ===== Group (Year → Month → Day) تنازلي =====
-  const groupedReports = reports.reduce((acc, r) => {
-    const d = toDate(r?.payload?.date);
-    if (!d) return acc;
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    acc[y] ??= {};
-    acc[y][m] ??= [];
-    acc[y][m].push({ ...r, day, _dt: d.getTime() });
-    return acc;
-  }, {});
+  // ===== Tree items from reports =====
+  const treeItems = useMemo(() => {
+    return reports.map((r) => {
+      const d = r?.payload?.date || "";
+      const iso = d ? new Date(d).toISOString().slice(0, 10) : "";
+      return {
+        key: getId(r) || iso,
+        dateISO: iso,
+        label: formatDMY(iso) || d || "No date",
+        data: r,
+      };
+    });
+  }, [reports]);
 
-  // أعمدة الزمن (بدون "Corrective Action")
-  const times =
+  const activeKey = useMemo(() => getId(selectedReport), [selectedReport]);
+
+  // Times and coolers for selected report
+  const times = useMemo(() =>
     (selectedReport?.payload?.times || [
       "4:00 AM","6:00 AM","8:00 AM","10:00 AM","12:00 PM","2:00 PM","4:00 PM","6:00 PM","8:00 PM",
-    ]).filter((t) => String(t).toLowerCase() !== "corrective action");
+    ]).filter((t) => String(t).toLowerCase() !== "corrective action"),
+  [selectedReport]);
 
-  // ==== إزالة COOLER 9 من العرض ==== (احتياط)
-  const coolersRaw = (selectedReport?.payload?.coolers || []).map((c, idx) => ({
-    ...c,
-    __idx: idx,
-    __name: String(c?.name || c?.label || `Cooler ${idx + 1}`),
-  }));
-  const coolers = coolersRaw.filter((c) => {
-    const nm = c.__name.trim().toLowerCase().replace(/\s+/g, "");
-    return nm !== "cooler9" && c.__idx !== 8;
-  });
+  const coolers = useMemo(() => {
+    const coolersRaw = (selectedReport?.payload?.coolers || []).map((c, idx) => ({
+      ...c,
+      __idx: idx,
+      __name: String(c?.name || c?.label || `Cooler ${idx + 1}`),
+    }));
+    return coolersRaw.filter((c) => {
+      const nm = c.__name.trim().toLowerCase().replace(/\s+/g, "");
+      return nm !== "cooler9" && c.__idx !== 8;
+    });
+  }, [selectedReport]);
+
+  // ===== Spectral table styles =====
+  const gridStyle = { width: "100%", borderCollapse: "collapse", fontSize: 15, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 14px rgba(99,102,241,0.10)" };
+  const theadRow = { background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" };
+  const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "10px 8px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" };
+  const tdCellCenter = { border: "1px solid #c7d2fe", padding: "9px 7px", textAlign: "center", verticalAlign: "middle", fontWeight: 600, color: "#2c3e50" };
+  const tdCellLeft = { border: "1px solid #c7d2fe", padding: "9px 7px", textAlign: "left", verticalAlign: "middle" };
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* حارس CSS: يضمن ظهور زر الحذف مثل بقية الأزرار */}
-      <style>{`
-        .ftr1-temp .action-toolbar .btn-delete {
-          display: inline-flex !important;
-          visibility: visible !important;
-          opacity: 1 !important;
+    <GlassShell
+      icon="🌡️"
+      title="Temperature Control — View (FTR1 Mushrif Park)"
+      actions={
+        <>
+          <button onClick={() => handleDelete(selectedReport)} style={btn("#dc2626")} data-delete-action="true">Delete</button>
+          <button onClick={handleExportPDF} style={btn("#27ae60")}>Export PDF</button>
+          <button onClick={handleExportJSON} style={btn("#16a085")}>Export JSON</button>
+          <button onClick={handleExportXLS} style={btn("#0ea5e9")}>Export XLS</button>
+          <label style={{ ...btn("#059669"), display: "inline-block" }}>
+            Import JSON
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              onChange={handleImportJSON}
+              style={{ display: "none" }}
+            />
+          </label>
+        </>
+      }
+    >
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            items={treeItems}
+            activeKey={activeKey}
+            onPick={(it) => setSelectedReport(it.data)}
+            loading={loading}
+          />
         }
-      `}</style>
-
-      {/* Sidebar dates */}
-      <div
-        style={{
-          minWidth: "260px",
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: "10px",
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
       >
-        <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
-          🗓️ Saved Reports
-        </h4>
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(b) - Number(a))              /* سنوات تنازلي */
-              .map(([year, months]) => (
-                <details key={year}>
-                  <summary style={{ fontWeight: "bold", marginBottom: "6px" }}>
-                    📅 Year {year}
-                  </summary>
-                  {Object.entries(months)
-                    .sort(([a], [b]) => Number(b) - Number(a))          /* أشهر تنازلي */
-                    .map(([month, days]) => {
-                      const daysSorted = [...days].sort((x, y) => y._dt - x._dt); // أيام تنازلي
-                      return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
-                          <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {daysSorted.map((r, i) => {
-                              const active =
-                                getId(selectedReport) && getId(selectedReport) === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelectedReport(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: "4px",
-                                    borderRadius: "6px",
-                                    cursor: "pointer",
-                                    background: active ? "#dcd6f7" : "#ecf0f1",
-                                    color: active ? "#222" : "#333",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {`${r.day}/${month}/${year}`}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
-          </div>
-        )}
-      </div>
+        {loading && <p>Loading...</p>}
 
-      {/* Report display */}
-      <div
-        className="ftr1-temp"
-        style={{
-          flex: 1,
-          background: "#eef3f8",
-          padding: "1.5rem",
-          borderRadius: "14px",
-          boxShadow: "0 4px 18px #d2b4de44",
-        }}
-      >
-        {!selectedReport ? (
-          <p>❌ No report selected.</p>
-        ) : (
-          <div ref={reportRef}>
-            {/* شريط الأزرار (ثابت ومرئي دائمًا) */}
-            <div
-              className="action-toolbar"
-              style={{
-                position: "sticky",
-                top: 0,
-                zIndex: 5,
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "0.6rem",
-                padding: "8px 0 12px",
-                background: "linear-gradient(to bottom, #eef3f8, #eef3f8cc)",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                onClick={() => handleDelete(selectedReport)}
-                className="btn-delete"
-                style={btn("#c0392b")}
-                title="Delete this report (password: 9999)"
-               data-delete-action="true">
-                🗑 Delete
-              </button>
-              <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
-              <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
-              <button onClick={handleExportXLS} style={btn("#0ea5e9")}>⬇ Export XLS</button>
-              <button onClick={triggerImport} style={btn("#f39c12")}>⬆ Import JSON</button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={handleImportJSON}
-              />
+        {!loading && !selectedReport && <EmptyState text="No report selected." />}
+
+        {selectedReport && (
+          <div ref={reportRef} style={{ overflowX: "auto" }}>
+            {/* Meta badges */}
+            <div style={{ marginBottom: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 6 }}>
+                <tbody>
+                  <tr>
+                    <td style={metaCell}><strong>Document Title:</strong> Temperature Control Record</td>
+                    <td style={metaCell}><strong>Document No:</strong> FS-QM/REC/TMP</td>
+                  </tr>
+                  <tr>
+                    <td style={metaCell}><strong>Issue Date:</strong> 05/02/2020</td>
+                    <td style={metaCell}><strong>Revision No:</strong> 0</td>
+                  </tr>
+                  <tr>
+                    <td style={metaCell}><strong>Area:</strong> QA</td>
+                    <td style={metaCell}><strong>Issued by:</strong> MOHAMAD ABDULLAH</td>
+                  </tr>
+                  <tr>
+                    <td style={metaCell}><strong>Controlling Officer:</strong> Quality Controller</td>
+                    <td style={metaCell}><strong>Approved by:</strong> Hussam O. Sarhan</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Title strip */}
+              <div style={{
+                textAlign: "center",
+                background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)",
+                border: "1px solid #c7d2fe",
+                borderRadius: 10,
+                padding: "9px 6px",
+                fontWeight: 800,
+                fontSize: 16,
+                color: "#0b1f4d",
+                marginBottom: 10,
+              }}>
+                TEMPERATURE CONTROL CHECKLIST (CCP) — FTR1
+              </div>
             </div>
 
-            {/* الترويسة */}
-            <table style={topTable}>
-              <tbody>
-                <tr>
-                  <td rowSpan={4} style={{ ...tdHeader, width: 140, textAlign: "center" }}>
-                    <div style={{ fontWeight: 900, color: "#a00", fontSize: 14, lineHeight: 1.2 }}>
-                      AL<br/>MAWASHI
-                    </div>
-                  </td>
-                  <td style={tdHeader}><b>Document Title:</b> Temperature Control Record</td>
-                  <td style={tdHeader}><b>Document No:</b> FS-QM/REC/TMP</td>
-                </tr>
-                <tr>
-                  <td style={tdHeader}><b>Issue Date:</b> 05/02/2020</td>
-                  <td style={tdHeader}><b>Revision No:</b> 0</td>
-                </tr>
-                <tr>
-                  <td style={tdHeader}><b>Area:</b> QA</td>
-                  <td style={tdHeader}><b>Issued by:</b> MOHAMAD ABDULLAH</td>
-                </tr>
-                <tr>
-                  <td style={tdHeader}><b>Controlling Officer:</b> Quality Controller</td>
-                  <td style={tdHeader}><b>Approved by:</b> Hussam O. Sarhan</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div style={band1}>TRANS EMIRATES LIVESTOCK MEAT TRADING LLC</div>
-            <div style={band2}>TEMPERATURE CONTROL CHECKLIST (CCP)</div>
-
-            {/* تعليمات */}
-            <div style={rulesBox}>
-              <div>1. If the temp is +5°C or more / Check product temperature – corrective action should be taken.</div>
-              <div>2. If the loading area is more than +16°C – corrective action should be taken.</div>
-              <div>3. If the preparation area is more than +10°C – corrective action should be taken.</div>
+            {/* Rules */}
+            <div style={{
+              border: "1px solid #c7d2fe",
+              background: "rgba(255,255,255,0.6)",
+              borderRadius: 10,
+              padding: "8px 10px",
+              fontSize: "0.92rem",
+              marginBottom: 10,
+            }}>
+              <div>1. If the temp is +5°C or more / Check product temperature - corrective action should be taken.</div>
+              <div>2. If the loading area is more than +16°C - corrective action should be taken.</div>
+              <div>3. If the preparation area is more than +10°C - corrective action should be taken.</div>
               <div style={{ marginTop: 6 }}>
                 <b>Corrective action:</b> Transfer the meat to another cold room and call maintenance department to check and solve the problem.
               </div>
             </div>
 
-            {/* جدول القياسات */}
-            <table style={gridTable}>
+            {/* Table */}
+            <table style={gridStyle}>
               <thead>
-                <tr>
+                <tr style={theadRow}>
                   <th style={thCell}>Cooler</th>
                   {times.map((t, i) => (
                     <th key={i} style={thCell}>{t}</th>
@@ -449,7 +392,7 @@ export default function FTR1TemperatureView() {
               </thead>
               <tbody>
                 {coolers.map((c, idx) => (
-                  <tr key={idx}>
+                  <tr key={idx} style={{ background: idx % 2 ? "rgba(237,233,254,0.45)" : "#fff" }}>
                     <td style={tdCellLeft}>{c.__name}</td>
                     {times.map((t, j) => (
                       <td key={j} style={tdCellCenter}>
@@ -462,109 +405,21 @@ export default function FTR1TemperatureView() {
               </tbody>
             </table>
 
-            {/* توقيعات */}
-            <div style={signRow}>
+            {/* Signatures */}
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontWeight: 700, flexWrap: "wrap", gap: 12 }}>
               <SignatureName label="Checked By" name={selectedReport?.payload?.checkedBy} align="start" />
               <SignatureName label="Verified By" name={selectedReport?.payload?.verifiedBy} align="end" />
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }
 
-/* ===== Styles ===== */
-const topTable = {
-  width: "100%",
-  borderCollapse: "collapse",
-  marginBottom: "8px",
-  fontSize: "0.9rem",
-  border: "1px solid #9aa4ae",
-  background: "#f8fbff",
+const metaCell = {
+  border: "1px solid #d1d5db",
+  padding: "7px 10px",
+  fontSize: 14,
+  lineHeight: 1.4,
 };
-
-const tdHeader = {
-  border: "1px solid #9aa4ae",
-  padding: "6px 8px",
-  verticalAlign: "middle",
-};
-
-const band1 = {
-  width: "100%",
-  textAlign: "center",
-  background: "#bfc7cf",
-  color: "#2c3e50",
-  fontWeight: 700,
-  padding: "6px 4px",
-  border: "1px solid #9aa4ae",
-  borderTop: "none",
-};
-
-const band2 = {
-  width: "100%",
-  textAlign: "center",
-  background: "#dde3e9",
-  color: "#2c3e50",
-  fontWeight: 700,
-  padding: "6px 4px",
-  border: "1px solid #9aa4ae",
-  borderTop: "none",
-  marginBottom: "8px",
-};
-
-const rulesBox = {
-  border: "1px solid #9aa4ae",
-  background: "#f1f5f9",
-  padding: "8px 10px",
-  fontSize: "0.92rem",
-  marginBottom: "10px",
-};
-
-const gridTable = {
-  width: "100%",
-  borderCollapse: "collapse",
-  border: "1px solid #9aa4ae",
-  background: "#ffffff",
-};
-
-const thCell = {
-  border: "1px solid #9aa4ae",
-  padding: "6px 8px",
-  textAlign: "center",
-  background: "#e0e6ed",
-  fontWeight: 700,
-  fontSize: "0.9rem",
-  whiteSpace: "nowrap",
-};
-
-const tdCellCenter = {
-  border: "1px solid #9aa4ae",
-  padding: "6px 8px",
-  textAlign: "center",
-  fontWeight: 600,
-  color: "#2c3e50",
-};
-
-const tdCellLeft = {
-  border: "1px solid #9aa4ae",
-  padding: "6px 8px",
-  textAlign: "left",
-};
-
-const signRow = {
-  display: "flex",
-  justifyContent: "space-between",
-  marginTop: "12px",
-  fontWeight: 700,
-};
-
-const btn = (bg) => ({
-  padding: "6px 12px",
-  borderRadius: "6px",
-  background: bg,
-  color: "#fff",
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
-});

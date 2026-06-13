@@ -240,13 +240,9 @@ export default function POS15TraceabilityLogView() {
     try {
       setLoading(true);
 
-      if (rid) {
-        try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" }); }
-        catch (e) { console.warn("DELETE (ignored error):", e); }
-      }
-
-      const postRes = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
+      // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
+      const postRes = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, {
+        method: rid ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }),
       });

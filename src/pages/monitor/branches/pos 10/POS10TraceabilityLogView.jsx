@@ -1,28 +1,21 @@
 // src/pages/monitor/branches/pos 10/POS10TraceabilityLogView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
-
-
+import {
+  safe,
+  getId,
+  btn,
+  formatDMY,
+  isFilledRow,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "./pos10ViewKit";
 
 const TYPE   = "pos10_traceability_log";
 const BRANCH = "POS 10";
-
-const safe  = (v) => (v ?? "");
-const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn   = (bg) => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" });
-
-const formatDMY = (iso) => {
-  if (!iso) return iso;
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
-};
-
-// صف ممتلئ
-const isFilledRow = (r = {}) =>
-  Object.values(r).some((v) => String(v ?? "").trim() !== "");
 
 // نموذج صف
 function emptyRow() {
@@ -63,29 +56,31 @@ export default function POS10TraceabilityLogView() {
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
   const [allDates, setAllDates] = useState([]);
 
-  // Accordion state
-  const [expandedYears, setExpandedYears] = useState({});
-  const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
-
   // Styles
+  // Styles — جدول يملأ الصفحة بتصميم طيفي عصري
   const gridStyle = useMemo(() => ({
-    width: "max-content",
+    width: "100%",
     borderCollapse: "collapse",
-    tableLayout: "fixed",
-    fontSize: 13,
+    fontSize: 15,
+    borderRadius: 12,
+    overflow: "hidden",
+    boxShadow: "0 2px 14px rgba(99,102,241,0.10)",
   }), []);
+  const theadRow = {
+    background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)",
+  };
   const thCell = {
-    border: "1px solid #1f3b70",
-    padding: "8px 6px",
+    border: "1px solid rgba(255,255,255,0.30)",
+    padding: "10px 8px",
     textAlign: "center",
     whiteSpace: "pre-line",
-    fontWeight: 700,
-    background: "#f5f8ff",
-    color: "#0b1f4d",
+    fontWeight: 800,
+    background: "transparent",
+    color: "#fff",
   };
   const tdCell = {
-    border: "1px solid #1f3b70",
-    padding: "8px 6px",
+    border: "1px solid #c7d2fe",
+    padding: "9px 7px",
     textAlign: "center",
     verticalAlign: "middle",
   };
@@ -94,22 +89,8 @@ export default function POS10TraceabilityLogView() {
     border: "1px solid #c7d2fe",
     borderRadius: 6,
     padding: "6px 8px",
+    fontSize: 14,
   };
-
-  // أعمدة الجدول
-  const colDefs = useMemo(() => ([
-    <col key="batchId"       style={{ width: 180 }} />,
-    <col key="rawName"       style={{ width: 260 }} />,
-    <col key="origProdDate"  style={{ width: 140 }} />,
-    <col key="origExpDate"   style={{ width: 140 }} />,
-    <col key="openedDate"    style={{ width: 120 }} />,
-    <col key="bestBefore"    style={{ width: 140 }} />,
-    <col key="rawWeight"     style={{ width: 120 }} />,
-    <col key="finalName"     style={{ width: 260 }} />,
-    <col key="finalProdDate" style={{ width: 160 }} />,
-    <col key="finalExpDate"  style={{ width: 160 }} />,
-    <col key="finalWeight"   style={{ width: 120 }} />,
-  ]), []);
 
   /* ===== Fetch dates ===== */
   async function fetchAllDates() {
@@ -223,13 +204,9 @@ export default function POS10TraceabilityLogView() {
     try {
       setLoading(true);
 
-      if (rid) {
-        try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" }); }
-        catch (e) { console.warn("DELETE (ignored error):", e); }
-      }
-
-      const postRes = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
+      // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
+      const postRes = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, {
+        method: rid ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "pos10", type: TYPE, payload }),
       });
@@ -467,6 +444,12 @@ export default function POS10TraceabilityLogView() {
   async function exportPDF() {
     if (!reportRef.current) return;
 
+    // تحميل ديناميكي — يخفّف حجم الصفحة عند الفتح
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
+
     const node = reportRef.current;
     const canvas = await html2canvas(node, {
       scale: 2,
@@ -534,36 +517,18 @@ export default function POS10TraceabilityLogView() {
     return groups;
   }, [record]);
 
-  /* ===== Date tree ===== */
-  const groupedDates = useMemo(() => {
-    const out = {};
-    for (const d of allDates) {
-      const [y, m] = d.split("-");
-      (out[y] ||= {});
-      (out[y][m] ||= []).push(d);
-    }
-    for (const y of Object.keys(out))
-      out[y] = Object.fromEntries(
-        Object.entries(out[y])
-          .sort(([a],[b]) => Number(b) - Number(a))
-          .map(([m, arr]) => [m, arr.sort((a,b)=>b.localeCompare(a))])
-      );
-    return Object.fromEntries(Object.entries(out).sort(([a],[b]) => Number(b) - Number(a)));
-  }, [allDates]);
-
-  const toggleYear  = (y)    => setExpandedYears((p)  => ({ ...p, [y]: !p[y] }));
-  const toggleMonth = (y, m) => setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
+  /* ===== عناصر شجرة التاريخ (للمكوّن المشترك) ===== */
+  const treeItems = useMemo(
+    () => allDates.map((d) => ({ key: d, dateISO: d, label: formatDMY(d) })),
+    [allDates]
+  );
 
   return (
-    <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d", direction:"ltr" }}>
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-        <div style={{ fontWeight:800, fontSize:18 }}>
-          Traceability Log — View (POS 10)
-        </div>
-
-        {/* Actions */}
-        <div style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+    <GlassShell
+      icon="🧬"
+      title="Traceability Log — View (POS 10)"
+      actions={
+        <>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
             {editing ? "Cancel Edit" : "Edit (password)"}
           </button>
@@ -591,111 +556,50 @@ export default function POS10TraceabilityLogView() {
               style={{ display:"none" }}
             />
           </label>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {/* Layout: Date tree + content */}
-      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
-        {/* Date tree */}
-        <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
-          <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
-          <div style={{ maxHeight:380, overflowY:"auto" }}>
-            {Object.keys(groupedDates).length ? (
-              Object.entries(groupedDates).map(([year, months]) => {
-                const yOpen = !!expandedYears[year];
-                return (
-                  <div key={year} style={{ marginBottom:8 }}>
-                    <button
-                      onClick={()=>toggleYear(year)}
-                      style={{
-                        display:"flex", alignItems:"center", justifyContent:"space-between",
-                        width:"100%", padding:"6px 10px", borderRadius:8,
-                        border:"1px solid #d1d5db", background:"#fff", cursor:"pointer", fontWeight:800
-                      }}
-                      title={yOpen ? "Collapse" : "Expand"}
-                    >
-                      <span>Year {year}</span>
-                      <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
-                    </button>
-
-                    {yOpen && Object.entries(months).map(([month, days]) => {
-                      const key = `${year}-${month}`;
-                      const mOpen = !!expandedMonths[key];
-                      return (
-                        <div key={key} style={{ marginTop:6, marginLeft:8 }}>
-                          <button
-                            onClick={()=>toggleMonth(year, month)}
-                            style={{
-                              display:"flex", alignItems:"center", justifyContent:"space-between",
-                              width:"100%", padding:"6px 10px", borderRadius:8,
-                              border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", fontWeight:700
-                            }}
-                            title={mOpen ? "Collapse" : "Expand"}
-                          >
-                            <span>Month {month}</span>
-                            <span aria-hidden="true">{mOpen ? "▾" : "▸"}</span>
-                          </button>
-
-                          {mOpen && (
-                            <div style={{ padding:"6px 2px 0 2px" }}>
-                              <ul style={{ listStyle:"none", padding:0, margin:0 }}>
-                                {days.map((d)=>(
-                                  <li key={d} style={{ marginBottom:6 }}>
-                                    <button
-                                      onClick={()=>setDate(d)}
-                                      style={{
-                                        width:"100%", textAlign:"left", padding:"8px 10px",
-                                        borderRadius:8, border:"1px solid #d1d5db",
-                                        background: d===date ? "#2563eb" : "#fff",
-                                        color: d===date ? "#fff" : "#111827",
-                                        fontWeight:700, cursor:"pointer"
-                                      }}
-                                      title={formatDMY(d)}
-                                    >
-                                      {formatDMY(d)}
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })
-            ) : (
-              <div style={{ color:"#6b7280" }}>No available dates.</div>
-            )}
-          </div>
-        </div>
-
-        {/* Report content */}
-        <div style={{ minWidth: 0 }}>
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            items={treeItems}
+            activeKey={date}
+            onPick={(it) => setDate(it.key)}
+            loading={loading && !allDates.length}
+          />
+        }
+      >
           {loading && <p>Loading…</p>}
           {err && <p style={{ color:"#b91c1c" }}>{err}</p>}
 
-          {!loading && !err && !record && (
-            <div style={{ padding:12, border:"1px dashed #9ca3af", borderRadius:8, textAlign:"center" }}>
-              No report for this date.
-            </div>
-          )}
+          {!loading && !err && !record && <EmptyState />}
 
           {record && (
             <div style={{ overflowX:"auto", overflowY:"hidden" }}>
-              <div ref={reportRef} style={{ width: "max-content" }}>
-                {/* Meta */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(2, 1fr)", gap:8, marginBottom:8, fontSize:12, minWidth: 1300 }}>
-                  <div><strong>Branch:</strong> {safe(record.payload?.branch)}</div>
-                  <div><strong>Report Date:</strong> {safe(record.payload?.reportDate)}</div>
+              <div ref={reportRef} style={{ width: "100%", minWidth: 0 }}>
+                {/* Meta — شارات زجاجية */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:8, marginBottom:10, fontSize:14.5 }}>
+                  {[
+                    ["Branch", safe(record.payload?.branch)],
+                    ["Report Date", safe(record.payload?.reportDate)],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{
+                      background: "linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
+                      border: "1px solid rgba(139,92,246,0.25)",
+                      borderRadius: 10,
+                      padding: "7px 12px",
+                    }}>
+                      <strong style={{ color: "#5b21b6" }}>{k}:</strong> {v || "—"}
+                    </div>
+                  ))}
                 </div>
 
                 {/* Table */}
                 <table style={gridStyle}>
-                  <colgroup>{colDefs}</colgroup>
                   <thead>
-                    <tr>
+                    <tr style={theadRow}>
                       <th style={thCell}>Batch / Lot ID</th>
                       <th style={thCell}>Name of Raw Material Used for Preparation</th>
                       <th style={thCell}>Original Production Date</th>
@@ -723,17 +627,18 @@ export default function POS10TraceabilityLogView() {
 
                         return (
                           <React.Fragment key={`g-${gi}`}>
-                            {/* عنوان الباتش */}
+                            {/* عنوان الباتش — شريط طيفي */}
                             <tr>
                               <td colSpan={11} style={{
-                                background: "#eef2ff",
-                                color: "#1e3a8a",
+                                background: "linear-gradient(90deg,#ede9fe,#cffafe,#d1fae5)",
+                                color: "#4c1d95",
                                 fontWeight: 800,
+                                fontSize: 15,
                                 textAlign: "left",
-                                border: "1px solid #1f3b70",
-                                padding: "8px 10px"
+                                border: "1px solid #c7d2fe",
+                                padding: "9px 12px"
                               }}>
-                                Batch / Lot: {batchId} — {rows.length} row(s)
+                                🧬 Batch / Lot: {batchId} — {rows.length} row(s)
                               </td>
                             </tr>
 
@@ -838,13 +743,14 @@ export default function POS10TraceabilityLogView() {
                 {/* Note */}
                 <div
                   style={{
-                    marginTop: 10,
-                    paddingTop: 8,
-                    borderTop: "2px solid #1f3b70",
-                    fontSize: 12,
+                    marginTop: 12,
+                    fontSize: 14,
                     color: "#0b1f4d",
-                    lineHeight: 1.6,
-                    width: "max-content",
+                    lineHeight: 1.7,
+                    background: "rgba(255,255,255,0.6)",
+                    border: "1px solid #e0e7ff",
+                    borderRadius: 10,
+                    padding: "10px 14px",
                   }}
                 >
                   <strong style={{ color: "#0b1f4d" }}>Note:</strong>
@@ -864,7 +770,7 @@ export default function POS10TraceabilityLogView() {
                     gap: 16,
                     flexWrap: "wrap",
                     alignItems: "center",
-                    fontSize: 12,
+                    fontSize: 14,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 320px", minWidth: 300 }}>
@@ -900,8 +806,7 @@ export default function POS10TraceabilityLogView() {
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }

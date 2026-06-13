@@ -481,6 +481,45 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+// ⏳ مؤشر تحميل فوري لصفحات الفروع الثقيلة
+// مع v7_startTransition يبقى React على الصفحة القديمة حتى يكتمل تحميل chunk الفرع،
+// فيبدو أن الضغط على الفرع "علّق". حدود Suspense جديدة لكل مسار تُظهر اللودر فوراً.
+function BranchLoader() {
+  return (
+    <div
+      style={{
+        minHeight: "60vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 14,
+        fontFamily: "Cairo, system-ui, sans-serif",
+        background: "linear-gradient(135deg,#f5f3ff,#eff6ff,#ecfdf5)",
+      }}
+    >
+      <style>{`@keyframes branchSpin { to { transform: rotate(360deg); } }`}</style>
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          border: "4px solid rgba(139,92,246,0.25)",
+          borderTopColor: "#8b5cf6",
+          borderRadius: "50%",
+          animation: "branchSpin .8s linear infinite",
+        }}
+      />
+      <div style={{ fontWeight: 800, color: "#5b21b6" }}>
+        جارٍ فتح صفحة الفرع… / Opening branch page…
+      </div>
+    </div>
+  );
+}
+
+function BranchSuspense({ children }) {
+  return <Suspense fallback={<BranchLoader />}>{children}</Suspense>;
+}
+
 // صفحة مؤقتة لأي فرع /monitor/:slug
 function BranchMonitorPage() {
   const { slug } = useParams();
@@ -853,12 +892,12 @@ export default function App() {
           />
         </Route>
 
-        {/* admin/* */}
+        {/* admin/* — كل صفحات الفروع ملفوفة بـ BranchSuspense ليظهر اللودر فوراً عند الضغط */}
         <Route
           path="/admin/ftr1"
           element={
             <ProtectedRoute>
-              <FTR1ReportView />
+              <BranchSuspense><FTR1ReportView /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -866,7 +905,7 @@ export default function App() {
           path="/admin/ftr2"
           element={
             <ProtectedRoute>
-              <FTR2ReportView />
+              <BranchSuspense><FTR2ReportView /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -874,7 +913,7 @@ export default function App() {
           path="/admin/production"
           element={
             <ProtectedRoute>
-              <PRDReportsView />
+              <BranchSuspense><PRDReportsView /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -882,7 +921,7 @@ export default function App() {
           path="/admin/pos15"
           element={
             <ProtectedRoute>
-              <POS15ReportsView />
+              <BranchSuspense><POS15ReportsView /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -892,7 +931,7 @@ export default function App() {
           path="/admin/pos19"
           element={
             <ProtectedRoute>
-              <POS19DailyView />
+              <BranchSuspense><POS19DailyView /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -902,7 +941,7 @@ export default function App() {
           path="/admin/pos11"
           element={
             <ProtectedRoute>
-              <POS11ReportsViewLayout />
+              <BranchSuspense><POS11ReportsViewLayout /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -912,7 +951,7 @@ export default function App() {
           path="/admin/pos10"
           element={
             <ProtectedRoute>
-              <POS10ReportsView />
+              <BranchSuspense><POS10ReportsView /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -922,7 +961,7 @@ export default function App() {
           path="/admin/monitor/branches/qcs/fresh-chicken-reports"
           element={
             <ProtectedRoute>
-              <FreshChickenReportsView />
+              <BranchSuspense><FreshChickenReportsView /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -932,7 +971,7 @@ export default function App() {
           path="/admin/monitor/branches/qcs/reports"
           element={
             <ProtectedRoute>
-              <QCSReportsView />
+              <BranchSuspense><QCSReportsView /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -945,7 +984,7 @@ export default function App() {
           path="/admin/monitor/qcs"
           element={
             <ProtectedRoute>
-              <QCSReportsView />
+              <BranchSuspense><QCSReportsView /></BranchSuspense>
             </ProtectedRoute>
           }
         />
@@ -953,7 +992,7 @@ export default function App() {
           path="/admin/qcs"
           element={
             <ProtectedRoute>
-              <QCSReportsView />
+              <BranchSuspense><QCSReportsView /></BranchSuspense>
             </ProtectedRoute>
           }
         />

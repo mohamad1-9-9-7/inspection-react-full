@@ -29,7 +29,10 @@ const IS_SAME_ORIGIN = (() => {
 
 /* ---- Fallbacks ---- */
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
-const TYPE = "qcs_non_conformance";
+const DEFAULT_TYPE = "qcs_non_conformance";
+const DEFAULT_REPORTER = "qcs";
+const DEFAULT_HEADER_LINE = "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS";
+const DEFAULT_LOCATION_PLACEHOLDER = "e.g., QCS - Al Qusais";
 const MAX_EVIDENCE_IMAGES = 10;
 
 /* =========================
@@ -80,7 +83,7 @@ function RowKV({ label, value }) {
 }
 
 /* ======= Header ======= */
-function NCEntryHeader({ header, date, logoUrl }) {
+function NCEntryHeader({ header, date, logoUrl, headerLine }) {
   const h = header;
   return (
     <div style={{ border: "1px solid #000", borderRadius: 14, overflow: "hidden", marginBottom: 12 }}>
@@ -129,7 +132,7 @@ function NCEntryHeader({ header, date, logoUrl }) {
             letterSpacing: 0.2,
           }}
         >
-          TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS
+          {headerLine || DEFAULT_HEADER_LINE}
         </div>
 
         <div
@@ -275,8 +278,8 @@ async function listReportsByType(type) {
   const json = await res.json().catch(() => null);
   return Array.isArray(json) ? json : json?.data || [];
 }
-async function fetchExistingNCByDate(dateStr) {
-  const rows = await listReportsByType(TYPE);
+async function fetchExistingNCByDate(dateStr, type) {
+  const rows = await listReportsByType(type || DEFAULT_TYPE);
   const found = rows.find((r) => String(r?.payload?.headRow?.reportDate || r?.payload?.reportDate || "") === String(dateStr));
   return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
 }
@@ -285,7 +288,18 @@ async function fetchExistingNCByDate(dateStr) {
    Component
 ========================= */
 export default function NonConformanceReportInput(props) {
-  const { logoUrl } = props || {};
+  const {
+    logoUrl,
+    type: typeProp,
+    reporter: reporterProp,
+    headerLine,
+    locationPlaceholder,
+  } = props || {};
+  const TYPE = typeProp || DEFAULT_TYPE;
+  const REPORTER = reporterProp || DEFAULT_REPORTER;
+  const HEADER_LINE = headerLine || DEFAULT_HEADER_LINE;
+  const LOC_PH = locationPlaceholder || DEFAULT_LOCATION_PLACEHOLDER;
+
   const evidenceInputRef = useRef(null);
 
   const [header] = useState({
@@ -477,9 +491,9 @@ export default function NonConformanceReportInput(props) {
 
     try {
       setOpMsg("Saving…");
-      const existing = await fetchExistingNCByDate(dateISO);
+      const existing = await fetchExistingNCByDate(dateISO, TYPE);
 
-      const body = { reporter: "qcs", type: TYPE, payload };
+      const body = { reporter: REPORTER, type: TYPE, payload };
 
       if (existing?.id) {
         const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existing.id)}`, {
@@ -560,7 +574,7 @@ export default function NonConformanceReportInput(props) {
         </div>
 
         <div style={sheet}>
-          <NCEntryHeader header={header} date={dateISO} logoUrl={logoUrl} />
+          <NCEntryHeader header={header} date={dateISO} logoUrl={logoUrl} headerLine={HEADER_LINE} />
 
           {/* Location */}
           <table style={table}>
@@ -568,7 +582,7 @@ export default function NonConformanceReportInput(props) {
               <tr>
                 <td style={{ ...labelCell, width: 180 }}>Location</td>
                 <td style={cell}>
-                  <input style={inputInline} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g., QCS - Al Qusais" />
+                  <input style={inputInline} value={location} onChange={(e) => setLocation(e.target.value)} placeholder={LOC_PH} />
                 </td>
               </tr>
             </tbody>

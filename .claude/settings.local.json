@@ -221,7 +221,32 @@
       "Bash(curl -s -o /dev/null -w \"google: HTTP %{http_code}\\\\n\" \"https://www.google.com\")",
       "Bash(curl -s -o /dev/null -w \"render: HTTP %{http_code}\\\\n\" \"https://inspection-server-4nvj.onrender.com/\")",
       "Bash(git rm *)",
-      "Bash(node -e \"const fs=require\\('fs'\\);const src=fs.readFileSync\\('src/pages/training/TrainingSessionsList.jsx','utf8'\\);require\\('@babel/parser'\\).parse\\(src,{sourceType:'module',plugins:['jsx']}\\);console.log\\('parsed ok'\\)\")"
+      "Bash(node -e \"const fs=require\\('fs'\\);const src=fs.readFileSync\\('src/pages/training/TrainingSessionsList.jsx','utf8'\\);require\\('@babel/parser'\\).parse\\(src,{sourceType:'module',plugins:['jsx']}\\);console.log\\('parsed ok'\\)\")",
+      "Bash(wc -l \"D:\\\\inspection-react-full\\\\src\\\\pages\\\\monitor\\\\branches\\\\pos19\\\\view pos 19\"\\\\\\\\*.jsx)",
+      "Bash(npx --no-install eslint \"src/pages/monitor/branches/pos19/pos19_inputs/FinishedProductMonitoringInput.jsx\" \"src/pages/monitor/branches/pos19/view pos 19/FinishedProductMonitoringView.jsx\" \"src/pages/monitor/branches/pos19/POS19Layout.jsx\" \"src/pages/monitor/branches/pos19/POS19DailyView.jsx\")",
+      "Bash(pandoc --track-changes=all \"C:\\\\Users\\\\moham\\\\Downloads\\\\Veg Sanitation.docx\" -o /tmp/veg_sanitation.md)",
+      "PowerShell(if \\(-not \\(Test-Path \"$env:TEMP\\\\veg_unpacked\"\\)\\) { New-Item -ItemType Directory -Path \"$env:TEMP\\\\veg_unpacked\" | Out-Null }; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory\\(\"C:\\\\Users\\\\moham\\\\Downloads\\\\Veg Sanitation.docx\", \"$env:TEMP\\\\veg_unpacked\", $true\\); Get-ChildItem \"$env:TEMP\\\\veg_unpacked\\\\word\" | Select-Object Name)",
+      "PowerShell(if \\(Test-Path \"$env:TEMP\\\\veg_unpacked\"\\) { Remove-Item -Recurse -Force \"$env:TEMP\\\\veg_unpacked\" }; Expand-Archive -Path \"C:\\\\Users\\\\moham\\\\Downloads\\\\Veg Sanitation.docx\" -DestinationPath \"$env:TEMP\\\\veg_unpacked\"; Get-ChildItem \"$env:TEMP\\\\veg_unpacked\\\\word\" | Select-Object Name)",
+      "Bash(grep -oE '<w:t[^>]*>[^<]*</w:t>' \"/c/Users/moham/AppData/Local/Temp/veg_unpacked/word/document.xml\" | sed -E 's/<w:t[^>]*>//; s/<\\\\/w:t>//' | head -200)",
+      "Bash(npx --no-install eslint \"src/pages/monitor/branches/pos19/pos19_inputs/VegSanitationInput.jsx\" \"src/pages/monitor/branches/pos19/view pos 19/VegSanitationView.jsx\" \"src/pages/monitor/branches/pos19/POS19Layout.jsx\" \"src/pages/monitor/branches/pos19/POS19DailyView.jsx\")",
+      "Bash(npx --no-install eslint \"src/pages/monitor/branches/pos19/pos19_inputs/BlastFreezerInput.jsx\" \"src/pages/monitor/branches/pos19/view pos 19/BlastFreezerView.jsx\" \"src/pages/monitor/branches/pos19/POS19Layout.jsx\" \"src/pages/monitor/branches/pos19/POS19DailyView.jsx\")",
+      "Bash(xargs -I{} sh -c 'echo \"--- {} ---\"; grep -oE \"<w:t[^>]*>[^<]*</w:t>\" \"{}\" | sed -E \"s/<w:t[^>]*>//; s/<\\\\/w:t>//\"')",
+      "Bash(echo \"=== COOLING DOC ===\"; grep -oE '<w:t[^>]*>[^<]*</w:t>' \"/c/Users/moham/AppData/Local/Temp/cool_unpacked/word/document.xml\" 2>/dev/null | sed -E 's/<w:t[^>]*>//; s/<\\\\/w:t>//' | head -80; echo; echo \"=== COOL HEADERS ===\"; ls /c/Users/moham/AppData/Local/Temp/cool_unpacked/word/header*.xml 2>/dev/null | xargs -I{} sh -c 'echo \"--- {} ---\"; grep -oE \"<w:t[^>]*>[^<]*</w:t>\" \"{}\" | sed -E \"s/<w:t[^>]*>//; s/<\\\\/w:t>//\"')",
+      "Bash(npx --no-install eslint \"src/pages/monitor/branches/pos19/pos19_inputs/DryStoreTempHumidityInput.jsx\" \"src/pages/monitor/branches/pos19/view pos 19/DryStoreTempHumidityView.jsx\" \"src/pages/monitor/branches/pos19/POS19Layout.jsx\" \"src/pages/monitor/branches/pos19/POS19DailyView.jsx\" \"src/pages/monitor/branches/pos19/pos19_inputs/BlastFreezerInput.jsx\" \"src/pages/monitor/branches/pos19/view pos 19/BlastFreezerView.jsx\")",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
+      "PowerShell(npm run build)",
+      "PowerShell($env:NODE_OPTIONS = \"--max-old-space-size=8192\"; npm run build)",
+      "PowerShell(\\(Get-Content \"src/pages/monitor/branches/pos19/view pos 19/TraceabilityLogView.jsx\" | Measure-Object -Line\\).Lines)",
+      "PowerShell(npx eslint \".\\\\src\\\\pages\\\\monitor\\\\branches\\\\pos19\\\\POS19Layout.jsx\" --format compact; \"exit=$LASTEXITCODE\")",
+      "PowerShell(foreach \\($f in @\\(\"src\\\\pages\\\\monitor\\\\branches\\\\pos 10\\\\POS10TraceabilityLogView.jsx\", \"src\\\\pages\\\\monitor\\\\branches\\\\POS 11\\\\POS11TraceabilityLogView.jsx\", \"src\\\\pages\\\\monitor\\\\branches\\\\pos15\\\\POS15TraceabilityLogView.jsx\"\\)\\) { Select-String -Path $f -Pattern 'method: \"DELETE\" \\\\}\\\\\\); \\\\}' -Context 4,10 | ForEach-Object { \"=== $f ===\"; $_.Context.PreContext; $_.Line; $_.Context.PostContext } })",
+      "PowerShell($r = Invoke-WebRequest -Uri \"https://inspection-server-4nvj.onrender.com/api/reports?type=qcs_meat_waste_disposal\" -TimeoutSec 60; $body = $r.Content; Write-Output \\(\"Length: \" + $body.Length\\); Write-Output \\($body.Substring\\(0, [Math]::Min\\(800, $body.Length\\)\\)\\))",
+      "PowerShell(node \"D:\\\\inspection-react-full\\\\.tmp_audit_pdf\\\\generate.cjs\")",
+      "PowerShell($j = Get-Content \"D:\\\\inspection-react-full\\\\.tmp_audit_pdf\\\\pos19_cleaning_programme_schedule.json\" -Raw -Encoding UTF8 | ConvertFrom-Json; $j.data | ForEach-Object { Write-Output \\(\"id={0} reportDate={1} date={2} branch={3} entries={4}\" -f $_.id, $_.payload.reportDate, $_.payload.date, $_.payload.branch, @\\($_.payload.entries\\).Count\\) })",
+      "PowerShell(npx eslint \"src/pages/haccp and iso/MockRecall/MockRecallInput.jsx\" \"src/pages/haccp and iso/MockRecall/MockRecallView.jsx\" \"src/pages/haccp and iso/MockRecall/LinkedReportPopup.jsx\" \"src/pages/haccp and iso/MockRecall/i18n.js\" --no-eslintrc --parser-options=ecmaVersion:2022,sourceType:module,ecmaFeatures:{jsx:true} --rule \"{\\\\\"no-undef\\\\\":\\\\\"error\\\\\",\\\\\"no-unused-vars\\\\\":\\\\\"warn\\\\\",\\\\\"no-dupe-keys\\\\\":\\\\\"error\\\\\"}\" --env browser,es2022)",
+      "PowerShell(npx eslint \"src/pages/haccp and iso/MockRecall\" --ext .js,.jsx)",
+      "Read(//c/Users/moham/.claude/projects/D--inspection-react-full/memory/**)",
+      "Bash(echo \"- [POS10 view kit + branch nav fix]\\(project_pos10_view_kit.md\\) — glassy spectral DateTree kit; replicate for other branches; dynamic-import html2canvas/jspdf; BranchSuspense in App.jsx.\")",
+      "Bash(powershell -Command \"[System.IO.File]::ReadAllBytes\\('src/pages/monitor/branches/POS 11/POS11TraceabilityLogView.jsx'\\)[0..2] -join ','\")"
     ]
   }
 }

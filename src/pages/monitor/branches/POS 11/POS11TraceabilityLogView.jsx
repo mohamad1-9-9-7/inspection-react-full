@@ -1,30 +1,23 @@
 // src/pages/monitor/branches/POS 11/POS11TraceabilityLogView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
-
-
+import {
+  safe,
+  getId,
+  btn,
+  formatDMY,
+  isFilledRow,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "../_shared/branchViewKit";
 
 const TYPE   = "pos11_traceability_log";
 const BRANCH = "POS 11";
 
-const safe  = (v) => (v ?? "");
-const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn   = (bg) => ({ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" });
-
-const formatDMY = (iso) => {
-  if (!iso) return iso;
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
-};
-
-// صف ممتلئ
-const isFilledRow = (r = {}) =>
-  Object.values(r).some((v) => String(v ?? "").trim() !== "");
-
-// نموذج صف
+// ط¸â€ ط¸â€¦ط¸ث†ط·آ°ط·آ¬ ط·آµط¸ظ¾
 function emptyRow() {
   return {
     batchId: "",
@@ -35,7 +28,7 @@ function emptyRow() {
   };
 }
 
-// مساواة الحقول عبر مجموعة صفوف
+// ط¸â€¦ط·آ³ط·آ§ط¸ث†ط·آ§ط·آ© ط·آ§ط¸â€‍ط·آ­ط¸â€ڑط¸ث†ط¸â€‍ ط·آ¹ط·آ¨ط·آ± ط¸â€¦ط·آ¬ط¸â€¦ط¸ث†ط·آ¹ط·آ© ط·آµط¸ظ¾ط¸ث†ط¸ظ¾
 const equalAcross = (rows, keys) => {
   if (!rows.length) return false;
   const f = rows[0];
@@ -52,8 +45,6 @@ export default function POS11TraceabilityLogView() {
   }, []);
 
   const [date, setDate] = useState(todayDubai);
-  theadHeightFix();
-
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [record, setRecord] = useState(null);
@@ -65,72 +56,41 @@ export default function POS11TraceabilityLogView() {
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
   const [allDates, setAllDates] = useState([]);
 
-  // Accordion state
-  const [expandedYears, setExpandedYears] = useState({});
-  const [expandedMonths, setExpandedMonths] = useState({}); // key: YYYY-MM -> boolean
-
   // Styles
+  // Styles أ¢â‚¬â€‌ ط·آ¬ط·آ¯ط¸ث†ط¸â€‍ ط¸ظ¹ط¸â€¦ط¸â€‍ط·آ£ ط·آ§ط¸â€‍ط·آµط¸ظ¾ط·آ­ط·آ© ط·آ¨ط·ع¾ط·آµط¸â€¦ط¸ظ¹ط¸â€¦ ط·آ·ط¸ظ¹ط¸ظ¾ط¸ظ¹ ط·آ¹ط·آµط·آ±ط¸ظ¹
   const gridStyle = useMemo(() => ({
-    width: "max-content",
+    width: "100%",
     borderCollapse: "collapse",
-    tableLayout: "fixed",
-    fontSize: 13,
+    fontSize: 15,
+    borderRadius: 12,
+    overflow: "hidden",
+    boxShadow: "0 2px 14px rgba(99,102,241,0.10)",
   }), []);
+  const theadRow = {
+    background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)",
+  };
   const thCell = {
-    border: "1px solid #1f3b70",
-    padding: "8px 6px",
+    border: "1px solid rgba(255,255,255,0.30)",
+    padding: "10px 8px",
     textAlign: "center",
     whiteSpace: "pre-line",
-    fontWeight: 700,
-    background: "#f5f8ff",
-    color: "#0b1f4d",
+    fontWeight: 800,
+    background: "transparent",
+    color: "#fff",
   };
   const tdCell = {
-    border: "1px solid #1f3b70",
-    padding: "8px 6px",
+    border: "1px solid #c7d2fe",
+    padding: "9px 7px",
     textAlign: "center",
     verticalAlign: "middle",
-  };
-  // ترويسة (مطابقة لملف الإدخال)
-  const tdHeader = {
-    border: "1px solid #c5d0e6",
-    padding: "6px 10px",
-    fontSize: 12,
-    lineHeight: 1.4,
-    background: "#f7fbff",
-  };
-  const tdHeaderLogo = {
-    border: "1px solid #c5d0e6",
-    textAlign: "center",
-    width: 140,
-    minWidth: 140,
-    fontWeight: 800,
-    color: "#a40000",
-    background: "#fff",
-    lineHeight: 1.15,
-    padding: "12px 4px",
   };
   const inputStyle = {
     width: "100%",
     border: "1px solid #c7d2fe",
     borderRadius: 6,
     padding: "6px 8px",
+    fontSize: 14,
   };
-
-  // أعمدة الجدول
-  const colDefs = useMemo(() => ([
-    <col key="batchId"       style={{ width: 180 }} />,
-    <col key="rawName"       style={{ width: 260 }} />,
-    <col key="origProdDate"  style={{ width: 140 }} />,
-    <col key="origExpDate"   style={{ width: 140 }} />,
-    <col key="openedDate"    style={{ width: 120 }} />,
-    <col key="bestBefore"    style={{ width: 140 }} />,
-    <col key="rawWeight"     style={{ width: 120 }} />,
-    <col key="finalName"     style={{ width: 260 }} />,
-    <col key="finalProdDate" style={{ width: 160 }} />,
-    <col key="finalExpDate"  style={{ width: 160 }} />,
-    <col key="finalWeight"   style={{ width: 120 }} />,
-  ]), []);
 
   /* ===== Fetch dates ===== */
   async function fetchAllDates() {
@@ -216,16 +176,16 @@ export default function POS11TraceabilityLogView() {
       setEditing(false);
       return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
+    if (!askPass("Enable edit mode")) return alert("أ¢â€Œإ’ Wrong password");
     setEditing(true);
   }
 
   async function saveEdit() {
-    if (!askPass("Save changes")) return alert("❌ Wrong password");
+    if (!askPass("Save changes")) return alert("أ¢â€Œإ’ Wrong password");
     if (!record) return;
 
     if (!editRows.some(isFilledRow)) {
-      return alert("⚠️ Please fill at least one row before saving.");
+      return alert("أ¢ع‘آ أ¯آ¸عˆ Please fill at least one row before saving.");
     }
 
     const rid = getId(record);
@@ -235,7 +195,7 @@ export default function POS11TraceabilityLogView() {
       ...(record?.payload || {}),
       branch: BRANCH,
       reportDate: record?.payload?.reportDate,
-      entries: cleaned,
+      entries: cleaned, // ط¸ظ¹ط·آ­ط·ع¾ط¸ث†ط¸ظ¹ ط·آ¹ط¸â€‍ط¸â€° batchId ط¸ث† ط·آ§ط¸â€‍ط·آ£ط¸ث†ط·آ²ط·آ§ط¸â€ 
       checkedBy: editCheckedBy,
       verifiedBy: editVerifiedBy,
       savedAt: Date.now(),
@@ -244,25 +204,21 @@ export default function POS11TraceabilityLogView() {
     try {
       setLoading(true);
 
-      if (rid) {
-        try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" }); }
-        catch (e) { console.warn("DELETE (ignored error):", e); }
-      }
-
-      const postRes = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
+      // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
+      const postRes = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, {
+        method: rid ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "pos11", type: TYPE, payload }),
       });
       if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
 
-      alert("✅ Changes saved");
+      alert("أ¢إ“â€¦ Changes saved");
       setEditing(false);
       await fetchRecord(payload.reportDate);
       await fetchAllDates();
     } catch (e) {
       console.error(e);
-      alert("❌ Saving failed.\n" + String(e?.message || e));
+      alert("أ¢â€Œإ’ Saving failed.\n" + String(e?.message || e));
     } finally {
       setLoading(false);
     }
@@ -270,23 +226,23 @@ export default function POS11TraceabilityLogView() {
 
   async function handleDelete() {
     if (!record) return;
-    if (!askPass("Delete confirmation")) return alert("❌ Wrong password");
+    if (!askPass("Delete confirmation")) return alert("أ¢â€Œإ’ Wrong password");
     if (!window.confirm("Are you sure you want to delete this report?")) return;
 
     const rid = getId(record);
-    if (!rid) return alert("⚠️ Missing record id.");
+    if (!rid) return alert("أ¢ع‘آ أ¯آ¸عˆ Missing record id.");
 
     try {
       setLoading(true);
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("✅ Deleted");
+      alert("أ¢إ“â€¦ Deleted");
       await fetchAllDates();
       const next = allDates.find((d) => d !== record?.payload?.reportDate) || todayDubai;
       setDate(next);
     } catch (e) {
       console.error(e);
-      alert("❌ Delete failed.");
+      alert("أ¢â€Œإ’ Delete failed.");
     } finally {
       setLoading(false);
     }
@@ -305,7 +261,7 @@ export default function POS11TraceabilityLogView() {
     URL.revokeObjectURL(url);
   }
 
-  // CSV (مع الأوزان)
+  // CSV (ط¸â€¦ط·آ¹ ط·آ§ط¸â€‍ط·آ£ط¸ث†ط·آ²ط·آ§ط¸â€ )
   function fallbackCSV(p) {
     const headers = [
       "Batch / Lot ID",
@@ -367,7 +323,7 @@ export default function POS11TraceabilityLogView() {
       const headBlue = "DCE6F1";
       const borderThin = { style: "thin", color: { argb: "1F3B70" } };
 
-      // Title (11 عمود)
+      // Title (11 ط·آ¹ط¸â€¦ط¸ث†ط·آ¯)
       ws.mergeCells(1,1,1,11);
       const r1 = ws.getCell(1,1);
       r1.value = "POS 11 | Traceability Log";
@@ -376,9 +332,9 @@ export default function POS11TraceabilityLogView() {
       r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
       ws.getRow(1).height = 26;
 
-      // Meta (يمين)
+      // Meta (ط¸ظ¹ط¸â€¦ط¸ظ¹ط¸â€ )
       const meta = [
-        ["Branch:",     p.branch     || BRANCH],
+        ["Branch:",     p.branch     || "POS 11"],
         ["Report Date:",p.reportDate || ""],
         ["Checked by:", p.checkedBy  || ""],
         ["Verified by:",p.verifiedBy || ""],
@@ -448,9 +404,9 @@ export default function POS11TraceabilityLogView() {
       try {
         const p = record?.payload || {};
         fallbackCSV(p);
-        alert("⚠️ XLSX export failed, CSV exported instead.\n" + (err?.message || err));
+        alert("أ¢ع‘آ أ¯آ¸عˆ XLSX export failed, CSV exported instead.\n" + (err?.message || err));
       } catch (e2) {
-        alert("⚠️ XLSX and CSV export both failed.\n" + (err?.message || err));
+        alert("أ¢ع‘آ أ¯آ¸عˆ XLSX and CSV export both failed.\n" + (err?.message || err));
       }
     }
   }
@@ -471,13 +427,13 @@ export default function POS11TraceabilityLogView() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      alert("✅ Imported and saved");
+      alert("أ¢إ“â€¦ Imported and saved");
       setDate(payload.reportDate);
       await fetchAllDates();
       await fetchRecord(payload.reportDate);
     } catch (e) {
       console.error(e);
-      alert("❌ Invalid JSON or save failed");
+      alert("أ¢â€Œإ’ Invalid JSON or save failed");
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
       setLoading(false);
@@ -487,6 +443,12 @@ export default function POS11TraceabilityLogView() {
   /* ===== PDF export ===== */
   async function exportPDF() {
     if (!reportRef.current) return;
+
+    // ط·ع¾ط·آ­ط¸â€¦ط¸ظ¹ط¸â€‍ ط·آ¯ط¸ظ¹ط¸â€ ط·آ§ط¸â€¦ط¸ظ¹ط¸ئ’ط¸ظ¹ أ¢â‚¬â€‌ ط¸ظ¹ط·آ®ط¸ظ¾ط¸â€کط¸ظ¾ ط·آ­ط·آ¬ط¸â€¦ ط·آ§ط¸â€‍ط·آµط¸ظ¾ط·آ­ط·آ© ط·آ¹ط¸â€ ط·آ¯ ط·آ§ط¸â€‍ط¸ظ¾ط·ع¾ط·آ­
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
 
     const node = reportRef.current;
     const canvas = await html2canvas(node, {
@@ -548,43 +510,25 @@ export default function POS11TraceabilityLogView() {
     const entries = record?.payload?.entries || [];
     const groups = new Map();
     for (const e of entries) {
-      const key = (e?.batchId ?? "").trim() || "—";
+      const key = (e?.batchId ?? "").trim() || "أ¢â‚¬â€‌";
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(e);
     }
     return groups;
   }, [record]);
 
-  /* ===== Date tree ===== */
-  const groupedDates = useMemo(() => {
-    const out = {};
-    for (const d of allDates) {
-      const [y, m] = d.split("-");
-      (out[y] ||= {});
-      (out[y][m] ||= []).push(d);
-    }
-    for (const y of Object.keys(out))
-      out[y] = Object.fromEntries(
-        Object.entries(out[y])
-          .sort(([a],[b]) => Number(b) - Number(a))
-          .map(([m, arr]) => [m, arr.sort((a,b)=>b.localeCompare(a))])
-      );
-    return Object.fromEntries(Object.entries(out).sort(([a],[b]) => Number(b) - Number(a)));
-  }, [allDates]);
-
-  const toggleYear  = (y)    => setExpandedYears((p)  => ({ ...p, [y]: !p[y] }));
-  const toggleMonth = (y, m) => setExpandedMonths((p) => ({ ...p, [`${y}-${m}`]: !p[`${y}-${m}`] }));
+  /* ===== ط·آ¹ط¸â€ ط·آ§ط·آµط·آ± ط·آ´ط·آ¬ط·آ±ط·آ© ط·آ§ط¸â€‍ط·ع¾ط·آ§ط·آ±ط¸ظ¹ط·آ® (ط¸â€‍ط¸â€‍ط¸â€¦ط¸ئ’ط¸ث†ط¸â€کط¸â€  ط·آ§ط¸â€‍ط¸â€¦ط·آ´ط·ع¾ط·آ±ط¸ئ’) ===== */
+  const treeItems = useMemo(
+    () => allDates.map((d) => ({ key: d, dateISO: d, label: formatDMY(d) })),
+    [allDates]
+  );
 
   return (
-    <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d", direction:"ltr" }}>
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-        <div style={{ fontWeight:800, fontSize:18 }}>
-          Traceability Log — View ({BRANCH})
-        </div>
-
-        {/* Actions */}
-        <div style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+    <GlassShell
+      icon="ظ‹ع؛آ§آ¬"
+      title="Traceability Log أ¢â‚¬â€‌ View (POS 11)"
+      actions={
+        <>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
             {editing ? "Cancel Edit" : "Edit (password)"}
           </button>
@@ -612,154 +556,50 @@ export default function POS11TraceabilityLogView() {
               style={{ display:"none" }}
             />
           </label>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {/* Layout: Date tree + content */}
-      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
-        {/* Date tree */}
-        <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
-          <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
-          <div style={{ maxHeight:380, overflowY:"auto" }}>
-            {Object.keys(groupedDates).length ? (
-              Object.entries(groupedDates).map(([year, months]) => {
-                const yOpen = !!expandedYears[year];
-                return (
-                  <div key={year} style={{ marginBottom:8 }}>
-                    <button
-                      onClick={()=>toggleYear(year)}
-                      style={{
-                        display:"flex", alignItems:"center", justifyContent:"space-between",
-                        width:"100%", padding:"6px 10px", borderRadius:8,
-                        border:"1px solid #d1d5db", background:"#fff", cursor:"pointer", fontWeight:800
-                      }}
-                      title={yOpen ? "Collapse" : "Expand"}
-                    >
-                      <span>Year {year}</span>
-                      <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
-                    </button>
-
-                    {yOpen && Object.entries(months).map(([month, days]) => {
-                      const key = `${year}-${month}`;
-                      const mOpen = !!expandedMonths[key];
-                      return (
-                        <div key={key} style={{ marginTop:6, marginLeft:8 }}>
-                          <button
-                            onClick={()=>toggleMonth(year, month)}
-                            style={{
-                              display:"flex", alignItems:"center", justifyContent:"space-between",
-                              width:"100%", padding:"6px 10px", borderRadius:8,
-                              border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", fontWeight:700
-                            }}
-                            title={mOpen ? "Collapse" : "Expand"}
-                          >
-                            <span>Month {month}</span>
-                            <span aria-hidden="true">{mOpen ? "▾" : "▸"}</span>
-                          </button>
-
-                          {mOpen && (
-                            <div style={{ padding:"6px 2px 0 2px" }}>
-                              <ul style={{ listStyle:"none", padding:0, margin:0 }}>
-                                {days.map((d)=>(
-                                  <li key={d} style={{ marginBottom:6 }}>
-                                    <button
-                                      onClick={()=>setDate(d)}
-                                      style={{
-                                        width:"100%", textAlign:"left", padding:"8px 10px",
-                                        borderRadius:8, border:"1px solid #d1d5db",
-                                        background: d===date ? "#2563eb" : "#fff",
-                                        color: d===date ? "#fff" : "#111827",
-                                        fontWeight:700, cursor:"pointer"
-                                      }}
-                                      title={formatDMY(d)}
-                                    >
-                                      {formatDMY(d)}
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })
-            ) : (
-              <div style={{ color:"#6b7280" }}>No available dates.</div>
-            )}
-          </div>
-        </div>
-
-        {/* Report content */}
-        <div style={{ minWidth: 0 }}>
-          {loading && <p>Loading…</p>}
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            items={treeItems}
+            activeKey={date}
+            onPick={(it) => setDate(it.key)}
+            loading={loading && !allDates.length}
+          />
+        }
+      >
+          {loading && <p>Loadingأ¢â‚¬آ¦</p>}
           {err && <p style={{ color:"#b91c1c" }}>{err}</p>}
 
-          {!loading && !err && !record && (
-            <div style={{ padding:12, border:"1px dashed #9ca3af", borderRadius:8, textAlign:"center" }}>
-              No report for this date.
-            </div>
-          )}
+          {!loading && !err && !record && <EmptyState />}
 
           {record && (
             <div style={{ overflowX:"auto", overflowY:"hidden" }}>
-              <div ref={reportRef} style={{ width: "max-content" }}>
-                {/* ===== Input-like Header ===== */}
-                <div style={{ minWidth: 1200, marginBottom: 8 }}>
-                  <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                    <tbody>
-                      <tr>
-                        {/* Logo box (مطابق للمدخل) */}
-                        <td rowSpan={3} style={tdHeaderLogo}>
-                          AL<br/>MAWASHI
-                        </td>
-                        <td style={tdHeader}>
-                          <strong>Document Title:</strong> Traceability Log
-                        </td>
-                        <td style={tdHeader}>
-                          <strong>Document No:</strong> FS-QM/REC/TL
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style={tdHeader}>
-                          <strong>Issue Date:</strong> 05/02/2020
-                        </td>
-                        <td style={tdHeader}>
-                          <strong>Revision No:</strong> 0
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style={tdHeader} colSpan={2}>
-                          <strong>Area:</strong> {BRANCH}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  {/* Title strip */}
-                  <div
-                    style={{
-                      textAlign: "center",
-                      background: "#e5ebf7",
-                      border: "1px solid #1f3b70",
-                      padding: "6px",
-                      fontWeight: 800,
-                      color: "#0b1f4d",
-                      marginTop: 6,
-                      marginBottom: 10,
-                    }}
-                  >
-                    TRACEABILITY LOG — {BRANCH}
-                  </div>
+              <div ref={reportRef} style={{ width: "100%", minWidth: 0 }}>
+                {/* Meta أ¢â‚¬â€‌ ط·آ´ط·آ§ط·آ±ط·آ§ط·ع¾ ط·آ²ط·آ¬ط·آ§ط·آ¬ط¸ظ¹ط·آ© */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:8, marginBottom:10, fontSize:14.5 }}>
+                  {[
+                    ["Branch", safe(record.payload?.branch)],
+                    ["Report Date", safe(record.payload?.reportDate)],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{
+                      background: "linear-gradient(135deg, rgba(237,233,254,0.6), rgba(224,242,254,0.5))",
+                      border: "1px solid rgba(139,92,246,0.25)",
+                      borderRadius: 10,
+                      padding: "7px 12px",
+                    }}>
+                      <strong style={{ color: "#5b21b6" }}>{k}:</strong> {v || "أ¢â‚¬â€‌"}
+                    </div>
+                  ))}
                 </div>
 
                 {/* Table */}
                 <table style={gridStyle}>
-                  <colgroup>{colDefs}</colgroup>
                   <thead>
-                    <tr>
+                    <tr style={theadRow}>
                       <th style={thCell}>Batch / Lot ID</th>
                       <th style={thCell}>Name of Raw Material Used for Preparation</th>
                       <th style={thCell}>Original Production Date</th>
@@ -776,7 +616,7 @@ export default function POS11TraceabilityLogView() {
 
                   <tbody>
                     {!editing ? (
-                      // === عرض مع دمج خلايا عند تكرار جانب واحد (raw أو final) + دمج batchId ===
+                      // === ط·آ¹ط·آ±ط·آ¶ ط¸â€¦ط·آ¹ ط·آ¯ط¸â€¦ط·آ¬ ط·آ®ط¸â€‍ط·آ§ط¸ظ¹ط·آ§ ط·آ¹ط¸â€ ط·آ¯ ط·ع¾ط¸ئ’ط·آ±ط·آ§ط·آ± ط·آ¬ط·آ§ط¸â€ ط·آ¨ ط¸ث†ط·آ§ط·آ­ط·آ¯ (raw ط·آ£ط¸ث† final) + ط·آ¯ط¸â€¦ط·آ¬ batchId ===
                       Array.from(grouped.entries()).map(([batchId, allRows], gi) => {
                         const rows = allRows.filter(isFilledRow);
                         if (!rows.length) return null;
@@ -787,23 +627,24 @@ export default function POS11TraceabilityLogView() {
 
                         return (
                           <React.Fragment key={`g-${gi}`}>
-                            {/* عنوان الباتش */}
+                            {/* ط·آ¹ط¸â€ ط¸ث†ط·آ§ط¸â€  ط·آ§ط¸â€‍ط·آ¨ط·آ§ط·ع¾ط·آ´ أ¢â‚¬â€‌ ط·آ´ط·آ±ط¸ظ¹ط·آ· ط·آ·ط¸ظ¹ط¸ظ¾ط¸ظ¹ */}
                             <tr>
                               <td colSpan={11} style={{
-                                background: "#eef2ff",
-                                color: "#1e3a8a",
+                                background: "linear-gradient(90deg,#ede9fe,#cffafe,#d1fae5)",
+                                color: "#4c1d95",
                                 fontWeight: 800,
+                                fontSize: 15,
                                 textAlign: "left",
-                                border: "1px solid #1f3b70",
-                                padding: "8px 10px"
+                                border: "1px solid #c7d2fe",
+                                padding: "9px 12px"
                               }}>
-                                Batch / Lot: {batchId} — {rows.length} row(s)
+                                ظ‹ع؛آ§آ¬ Batch / Lot: {batchId} أ¢â‚¬â€‌ {rows.length} row(s)
                               </td>
                             </tr>
 
                             {rows.map((r, idx) => (
                               <tr key={`${gi}-${idx}`}>
-                                {/* ✅ Batch id — خلية مدموجة مرة واحدة */}
+                                {/* أ¢إ“â€¦ Batch id أ¢â‚¬â€‌ ط·آ®ط¸â€‍ط¸ظ¹ط·آ© ط¸â€¦ط·آ¯ط¸â€¦ط¸ث†ط·آ¬ط·آ© ط¸â€¦ط·آ±ط·آ© ط¸ث†ط·آ§ط·آ­ط·آ¯ط·آ© */}
                                 {idx === 0 && (
                                   <td style={tdCell} rowSpan={span}>
                                     {safe(batchId)}
@@ -857,7 +698,7 @@ export default function POS11TraceabilityLogView() {
                         );
                       })
                     ) : (
-                      // === وضع التعديل (يشمل batchId و الأوزان) ===
+                      // === ط¸ث†ط·آ¶ط·آ¹ ط·آ§ط¸â€‍ط·ع¾ط·آ¹ط·آ¯ط¸ظ¹ط¸â€‍ (ط¸ظ¹ط·آ´ط¸â€¦ط¸â€‍ batchId ط¸ث† ط·آ§ط¸â€‍ط·آ£ط¸ث†ط·آ²ط·آ§ط¸â€ ) ===
                       editRows.map((r, idx) => (
                         <tr key={idx}>
                           <td style={tdCell}>
@@ -902,19 +743,20 @@ export default function POS11TraceabilityLogView() {
                 {/* Note */}
                 <div
                   style={{
-                    marginTop: 10,
-                    paddingTop: 8,
-                    borderTop: "2px solid #1f3b70",
-                    fontSize: 12,
+                    marginTop: 12,
+                    fontSize: 14,
                     color: "#0b1f4d",
-                    lineHeight: 1.6,
-                    width: "max-content",
+                    lineHeight: 1.7,
+                    background: "rgba(255,255,255,0.6)",
+                    border: "1px solid #e0e7ff",
+                    borderRadius: 10,
+                    padding: "10px 14px",
                   }}
                 >
                   <strong style={{ color: "#0b1f4d" }}>Note:</strong>
                   <span style={{ marginInlineStart: 4 }}>
                     The raw materials used for the preparation and the final product details should be recorded in the
-                    <span style={{ fontWeight: 800 }}> “Traceability Record Form”</span>.
+                    <span style={{ fontWeight: 800 }}> أ¢â‚¬إ“Traceability Record Formأ¢â‚¬â€Œ</span>.
                   </span>
                 </div>
 
@@ -928,7 +770,7 @@ export default function POS11TraceabilityLogView() {
                     gap: 16,
                     flexWrap: "wrap",
                     alignItems: "center",
-                    fontSize: 12,
+                    fontSize: 14,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 320px", minWidth: 300 }}>
@@ -964,19 +806,7 @@ export default function POS11TraceabilityLogView() {
               </div>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* أدوات التحكم أسفل (اختياري) */}
-      <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
-        <button onClick={()=>fetchAllDates()} style={btn("#1f2937")}>Refresh Dates</button>
-        <button onClick={()=>date && fetchRecord(date)} style={btn("#111827")}>Refresh Record</button>
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
-}
-
-/* ====== Fix for some browsers that cut thead on wide tables ====== */
-function theadHeightFix(){
-  // no-op placeholder for future DOM fixes if needed
 }
