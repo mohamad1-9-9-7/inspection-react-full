@@ -1,423 +1,293 @@
 // src/pages/monitor/branches/pos15/POS15DailyCleaningView.jsx
-import React, { useEffect, useState, useRef } from "react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
-import SignatureName from "../../../shared/SignatureName";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import API_BASE from "../../../../config/api";
+import {
+  btn,
+  formatDMY,
+  GlassShell,
+  DateTreeSidebar,
+  SidebarLayout,
+  EmptyState,
+} from "../_shared/branchViewKit";
 
-const API_BASE =
-  process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+const TYPE = "pos15_daily_cleanliness";
+
+function normYMD(dateStr) {
+  const s = String(dateStr || "").trim();
+  if (!s) return null;
+  const iso = /^\d{4}-\d{2}$/.test(s) ? `${s}-01` : s;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = String(d.getFullYear());
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return { y, m, d: dd, iso: `${y}-${m}-${dd}` };
+}
+function getKey(r) {
+  if (!r) return "";
+  if (r._id) return r._id;
+  const n = normYMD(r.payload?.reportDate || r.createdAt);
+  return n?.iso || "";
+}
+
+const gridStyle = { width: "100%", borderCollapse: "collapse", fontSize: 20, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 14px rgba(99,102,241,0.10)" };
+const theadRow = { background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" };
+const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "10px 8px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" };
+const tdCell = { border: "1px solid #c7d2fe", padding: "9px 7px", textAlign: "center", verticalAlign: "middle" };
+const zebra = (i) => ({ background: i % 2 ? "rgba(237,233,254,0.45)" : "#fff" });
 
 export default function POS15DailyCleaningView() {
   const [reports, setReports] = useState([]);
-  const [selectedReport, setSelectedReport] = useState(null);
+  const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
-  const reportRef = useRef();
-  const fileInputRef = useRef(null);
+  const [importing, setImporting] = useState(false);
+  const sheetRef = useRef(null);
+  const fileRef = useRef(null);
 
-  const getId = (r) => r?.id || r?._id;
-
-  // ===== Fetch (أقدم ← أحدث)
-  async function fetchReports() {
+  async function load() {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=pos15_daily_cleanliness`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
+      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort(
-        (a, b) =>
-          new Date(a.payload?.reportDate || 0) -
-          new Date(b.payload?.reportDate || 0)
-      );
+      arr.forEach((r) => (r.__dateStr = r.payload?.reportDate || r.createdAt || ""));
+      arr.sort((a, b) => new Date(a.__dateStr || 0) - new Date(b.__dateStr || 0));
       setReports(arr);
-      setSelectedReport(arr[0] || null);
-    } catch (e) {
-      console.error(e);
-      alert("⚠️ Failed to fetch data.");
+      setSelected(arr[arr.length - 1] || null);
     } finally {
       setLoading(false);
     }
   }
+  useEffect(() => { load(); }, []);
 
-  useEffect(() => { fetchReports(); }, []);
+  const selectedKey = getKey(selected);
 
-  // ===== PDF
-  const handleExportPDF = async () => {
-    if (!reportRef.current) return;
-    const buttons = reportRef.current.querySelector(".action-buttons");
-    if (buttons) buttons.style.display = "none";
-
-    const canvas = await html2canvas(reportRef.current, {
-      scale: 4,
-      windowWidth: reportRef.current.scrollWidth,
-      windowHeight: reportRef.current.scrollHeight,
-    });
-
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF("p", "pt", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-
-    let imgWidth = pageWidth;
-    let imgHeight = (canvas.height * imgWidth) / canvas.width;
-    if (imgHeight > pageHeight) {
-      imgHeight = pageHeight;
-      imgWidth = (canvas.width * imgHeight) / canvas.height;
+  const treeItems = useMemo(() => {
+    const seen = new Map();
+    for (const r of reports) {
+      const k = getKey(r);
+      if (!k || seen.has(k)) continue;
+      const pick = r.payload?.reportDate || r.createdAt || "";
+      const n = normYMD(pick);
+      if (!n) continue;
+      seen.set(k, { key: k, dateISO: n.iso, label: formatDMY(n.iso), data: r });
     }
+    return Array.from(seen.values());
+  }, [reports]);
 
-    const x = (pageWidth - imgWidth) / 2;
-    const y = 20;
-    pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
-    pdf.save(`POS15_Cleanliness_${selectedReport?.payload?.reportDate || "report"}.pdf`);
+  function exportPDF() {
+    if (!sheetRef.current || !selected) return;
+    const titleDate = selected?.payload?.reportDate || "";
+    const PRINT_CSS = `
+      @page { size: A4 landscape; margin: 10mm; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      body { margin:0; font-family: Inter, Arial, sans-serif; color:#0f172a; }
+      table { border-collapse: collapse; width:100%; }
+      th, td { border:1.5px solid #94a3b8; padding:8px; font-size:12px; }
+      thead th { background:#e2e8f0; font-weight:900; }
+      tbody tr:nth-child(2n) td { background:#f8fafc; }
+    `;
+    const html = `<html><head><meta charset="utf-8"/><title>POS 15 Cleaning - ${titleDate}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(() => { w.focus(); w.print(); }, 100);
+  }
 
-    if (buttons) buttons.style.display = "flex";
-  };
+  function exportJSONAll() {
+    const dump = { meta: { type: TYPE, exportedAt: new Date().toISOString(), count: reports.length }, items: reports.map((r) => ({ type: TYPE, payload: r.payload })) };
+    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${TYPE}-all-${new Date().toISOString().slice(0,19).replace(/[-:T]/g,"")}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
 
-  // ===== Delete
-  const handleDelete = async (report) => {
-    if (!window.confirm("⚠️ Delete this report?")) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/reports/${getId(report)}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete");
-      alert("✅ Report deleted.");
-      fetchReports();
-    } catch (e) {
-      console.error(e);
-      alert("❌ Failed to delete.");
-    }
-  };
-
-  // ===== Export JSON (كل التقارير)
-  const handleExportJSON = () => {
-    try {
-      const payloads = reports.map((r) => r?.payload ?? r);
-      const bundle = {
-        type: "pos15_daily_cleanliness",
-        exportedAt: new Date().toISOString(),
-        count: payloads.length,
-        items: payloads,
-      };
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      const ts = new Date().toISOString().replace(/[:.]/g, "-");
-      a.href = url;
-      a.download = `POS15_Cleanliness_ALL_${ts}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      alert("❌ Failed to export JSON.");
-    }
-  };
-
-  // ===== Import JSON (رفع للسيرفر)
-  const triggerImport = () => fileInputRef.current?.click();
-
-  const handleImportJSON = async (e) => {
+  function triggerImport() { fileRef.current?.click(); }
+  async function handleImportFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      setLoading(true);
+      setImporting(true);
       const text = await file.text();
-      const json = JSON.parse(text);
-
-      const itemsRaw =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.data) ? json.data : [];
-
-      if (!itemsRaw.length) {
-        alert("⚠️ ملف JSON لا يحتوي عناصر قابلة للاستيراد.");
-        return;
-      }
-
+      const parsed = JSON.parse(text);
+      const items = Array.isArray(parsed) ? parsed : parsed.items ?? parsed.data ?? parsed.reports ?? [];
+      if (!Array.isArray(items) || items.length === 0) { alert("الملف لا يحتوي عناصر صالحة."); return; }
       let ok = 0, fail = 0;
-      for (const item of itemsRaw) {
-        const payload = item?.payload ?? item;
-        if (!payload || typeof payload !== "object") { fail++; continue; }
-
+      for (const raw of items) {
+        const payload = raw?.payload ?? raw;
+        const type = raw?.type ?? TYPE;
         try {
-          const res = await fetch(`${API_BASE}/api/reports`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "pos15_daily_cleanliness",
-              payload,
-            }),
-          });
+          const res = await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, payload }) });
           if (res.ok) ok++; else fail++;
-        } catch {
-          fail++;
-        }
+        } catch { fail++; }
       }
-
-      alert(`✅ Imported: ${ok}  ${fail ? `| ❌ Failed: ${fail}` : ""}`);
-      await fetchReports();
-    } catch (e) {
-      console.error(e);
-      alert("❌ Invalid JSON file.");
+      await load();
+      alert(`تم الاستيراد: ${ok} ناجحة / ${fail} فاشلة`);
+    } catch (err) {
+      alert("ملف JSON غير صالح: " + (err?.message || String(err)));
     } finally {
-      setLoading(false);
-      if (e?.target) e.target.value = "";
+      setImporting(false);
+      e.target.value = "";
     }
-  };
+  }
 
-  // ===== Group by Year > Month > Day
-  const groupedReports = reports.reduce((acc, r) => {
-    const date = new Date(r.payload?.reportDate);
-    if (isNaN(date)) return acc;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    if (!acc[year]) acc[year] = {};
-    if (!acc[year][month]) acc[year][month] = [];
-    acc[year][month].push({ ...r, day, _dt: date.getTime() });
-    return acc;
-  }, {});
+  async function handleDelete() {
+    if (!selected) return;
+    const reportDateIso = normYMD(selected.payload?.reportDate || selected.createdAt)?.iso;
+    if (!reportDateIso) return alert("لا يوجد تاريخ صالح للحذف.");
+    if (!window.confirm("هل تريد حذف هذا التقرير نهائيًا؟")) return;
+    setLoading(true);
+    let ok = false, errText = "";
+    const tries = [
+      { url: `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(reportDateIso)}`, method: "DELETE" },
+      { url: `${API_BASE}/api/reports/delete`, method: "POST", body: JSON.stringify({ type: TYPE, reportDate: reportDateIso }) },
+    ];
+    for (const t of tries) {
+      try {
+        const res = await fetch(t.url, { method: t.method, headers: t.body ? { "Content-Type": "application/json" } : undefined, body: t.body });
+        if (res.ok) { ok = true; break; }
+        errText = `HTTP ${res.status}`;
+      } catch (e) { errText = e.message || String(e); }
+    }
+    setLoading(false);
+    if (!ok) return alert("تعذّر الحذف: " + (errText || "Unknown error"));
+    const next = reports.filter((r) => getKey(r) !== selectedKey);
+    setReports(next);
+    setSelected(next[next.length - 1] || null);
+    alert("تم الحذف بنجاح ✓");
+  }
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      {/* Sidebar */}
-      <div
-        style={{
-          minWidth: "260px",
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: "10px",
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
+    <GlassShell
+      icon="🧹"
+      title="Daily Cleaning Checklist — View (POS 15)"
+      actions={
+        <>
+          <button onClick={load} style={btn("#7c3aed")}>Refresh</button>
+          <button onClick={exportPDF} style={btn("#374151")} disabled={!selected}>Export PDF</button>
+          <button onClick={exportJSONAll} style={btn("#0284c7")}>Export JSON (all)</button>
+          <button onClick={triggerImport} style={btn("#059669")} disabled={importing}>
+            {importing ? "Importing…" : "Import JSON"}
+          </button>
+          <input ref={fileRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportFile} />
+          <button onClick={handleDelete} style={btn("#dc2626")} disabled={!selected || loading} data-delete-action="true">Delete</button>
+        </>
+      }
+    >
+      <SidebarLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            items={treeItems}
+            activeKey={selectedKey}
+            onPick={(it) => setSelected(it.data)}
+            loading={loading && !reports.length}
+          />
+        }
       >
-        <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
-          🗓️ Saved Reports
-        </h4>
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(groupedReports).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          <div>
-            {Object.entries(groupedReports)
-              .sort(([a], [b]) => Number(b) - Number(a))
-              .map(([year, months]) => (
-                <details key={year}>
-                  <summary style={{ fontWeight: "bold" }}>📅 Year {year}</summary>
-                  {Object.entries(months)
-                    .sort(([a], [b]) => Number(b) - Number(a))
-                    .map(([month, days]) => {
-                      const daysSorted = [...days].sort((x, y) => y._dt - x._dt);
-                      return (
-                        <details key={month} style={{ marginLeft: "1rem" }}>
-                          <summary style={{ fontWeight: "500" }}>📅 Month {month}</summary>
-                          <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                            {daysSorted.map((r, i) => {
-                              const isActive =
-                                selectedReport && getId(selectedReport) === getId(r);
-                              return (
-                                <li
-                                  key={i}
-                                  onClick={() => setSelectedReport(r)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: "4px",
-                                    borderRadius: "6px",
-                                    cursor: "pointer",
-                                    background: isActive ? "#6d28d9" : "#ecf0f1",
-                                    color: isActive ? "#fff" : "#333",
-                                    fontWeight: 600,
-                                    textAlign: "center",
-                                    borderLeft: isActive
-                                      ? "4px solid #4c1d95"
-                                      : "4px solid transparent",
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    gap: 8,
-                                  }}
-                                  title={isActive ? "Currently open" : "Open report"}
-                                >
-                                  <span>{`${r.day}/${month}/${year}`}</span>
-                                  {isActive ? <span>✔️</span> : <span style={{ opacity: 0.5 }}>•</span>}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </details>
-                      );
-                    })}
-                </details>
-              ))}
+        {loading && <p>Loading…</p>}
+        {!loading && !selected && <EmptyState text="No report selected" />}
+        {selected && (
+          <div style={{ overflowX: "auto" }}>
+            <ReportSheet ref={sheetRef} data={selected.payload} />
           </div>
         )}
-      </div>
-
-      {/* Report display */}
-      <div
-        style={{
-          flex: 1,
-          background: "#fff",
-          padding: "1.5rem",
-          borderRadius: "14px",
-          boxShadow: "0 4px 18px #d2b4de44",
-        }}
-      >
-        {!selectedReport ? (
-          <p>❌ No report selected.</p>
-        ) : (
-          <div ref={reportRef} style={{ paddingBottom: "100px" }}>
-            {/* Header with actions */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "1rem",
-              }}
-            >
-              <h3 style={{ color: "#2980b9" }}>
-                🧹 Report: {selectedReport.payload?.reportDate}
-              </h3>
-              <div className="action-buttons" style={{ display: "flex", gap: "0.6rem" }}>
-                <button onClick={handleExportPDF} style={btnExport}>⬇ Export PDF</button>
-                <button onClick={handleExportJSON} style={btnJson}>⬇ Export JSON</button>
-                <button onClick={triggerImport} style={btnImport}>⬆ Import JSON</button>
-                <button onClick={() => handleDelete(selectedReport)} style={btnDelete} data-delete-action="true">🗑 Delete</button>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json"
-                style={{ display: "none" }}
-                onChange={handleImportJSON}
-              />
-            </div>
-
-            {/* شعار */}
-            <div style={{ textAlign: "right", marginBottom: "1rem" }}>
-              <h2 style={{ margin: 0, color: "darkred" }}>AL MAWASHI</h2>
-              <div style={{ fontSize: "0.95rem", color: "#333" }}>
-                Trans Emirates Livestock Trading L.L.C.
-              </div>
-            </div>
-
-            {/* الترويسة */}
-            <table
-              style={{
-                width: "100%",
-                border: "1px solid #ccc",
-                marginBottom: "1rem",
-                fontSize: "0.9rem",
-                borderCollapse: "collapse",
-              }}
-            >
-              <tbody>
-                <tr>
-                  <td style={tdStyle}><b>Document Title:</b> Cleaning Checklist</td>
-                  <td style={tdStyle}><b>Document No:</b> FF-QM/REC/CC</td>
-                </tr>
-                <tr>
-                  <td style={tdStyle}><b>Issue Date:</b> 05/02/2020</td>
-                  <td style={tdStyle}><b>Revision No:</b> 0</td>
-                </tr>
-                <tr>
-                  <td style={tdStyle}><b>Area:</b> QA</td>
-                  <td style={tdStyle}><b>Issued By:</b> MOHAMAD ABDULLAH</td>
-                </tr>
-                <tr>
-                  <td style={tdStyle}><b>Controlling Officer:</b> Quality Controller</td>
-                  <td style={tdStyle}><b>Approved By:</b> Hussam O.Sarhan</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <h3
-              style={{
-                textAlign: "center",
-                background: "#e5e7eb",
-                padding: "6px",
-                marginBottom: "1rem",
-              }}
-            >
-              TRANS EMIRATES LIVESTOCK (AL BARSHA BUTCHRY) <br />
-              CLEANING CHECKLIST – POS 15
-            </h3>
-
-            {/* جدول العرض */}
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "#2980b9", color: "#fff" }}>
-                  <th style={thStyle}>Sl-No</th>
-                  <th style={thStyle}>General Cleaning</th>
-                  <th style={thStyle}>C / NC</th>
-                  <th style={thStyle}>Observation</th>
-                  <th style={thStyle}>Informed To</th>
-                  <th style={thStyle}>Remarks & CA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedReport.payload?.entries?.map((entry, i) => (
-                  <tr key={i}>
-                    <td style={tdStyle}>
-                      {entry.isSection ? entry.secNo : entry.subLetter}
-                    </td>
-                    <td style={{ ...tdStyle, fontWeight: entry.isSection ? 700 : 400 }}>
-                      {entry.section || entry.item}
-                    </td>
-                    <td style={tdStyle}>{entry.isSection ? "—" : entry.status || ""}</td>
-                    <td style={tdStyle}>{entry.isSection ? "—" : entry.observation || ""}</td>
-                    <td style={tdStyle}>{entry.isSection ? "—" : entry.informed || ""}</td>
-                    <td style={tdStyle}>{entry.isSection ? "—" : entry.remarks || ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Checked/Verified */}
-            <div
-              style={{
-                marginTop: "1.5rem",
-                display: "flex",
-                justifyContent: "space-between",
-                fontWeight: 600,
-                padding: "0 1rem",
-              }}
-            >
-              <SignatureName label="Checked By" name={selectedReport.payload?.checkedBy} align="start" />
-              <SignatureName label="Verified By" name={selectedReport.payload?.verifiedBy} align="end" />
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      </SidebarLayout>
+    </GlassShell>
   );
 }
 
-const thStyle = {
-  padding: "8px",
-  border: "1px solid #ccc",
-  textAlign: "center",
-  fontSize: "0.9rem",
-};
-const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
+const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
+  const rows = data?.entries || [];
 
-const btnBase = {
-  padding: "8px 14px",
-  borderRadius: "6px",
-  color: "#fff",
-  fontWeight: "600",
-  border: "none",
-  cursor: "pointer",
-};
+  const metaBadge = {
+    display: "inline-block",
+    background: "rgba(255,255,255,0.6)",
+    border: "1px solid #c7d2fe",
+    borderRadius: 10,
+    padding: "6px 12px",
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#0b1f4d",
+    marginRight: 8,
+    marginBottom: 6,
+  };
 
-const btnExport = { ...btnBase, background: "#27ae60" };
-const btnJson   = { ...btnBase, background: "#16a085" };
-const btnImport = { ...btnBase, background: "#f39c12" };
-const btnDelete = { ...btnBase, background: "#c0392b" };
+  return (
+    <div ref={ref}>
+      <div style={{ padding: 6 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+          <span style={metaBadge}><strong>Document Title:</strong> Cleaning Checklist</span>
+          <span style={metaBadge}><strong>Document No:</strong> FF-QM/REC/CC</span>
+          <span style={metaBadge}><strong>Issue Date:</strong> 05/02/2020</span>
+          <span style={metaBadge}><strong>Revision No:</strong> 0</span>
+          <span style={metaBadge}><strong>Area:</strong> POS 15</span>
+          <span style={metaBadge}><strong>Issued By:</strong> MOHAMAD ABDULLAH</span>
+          <span style={metaBadge}><strong>Controlling Officer:</strong> Quality Controller</span>
+          <span style={metaBadge}><strong>Approved By:</strong> Hussam O.Sarhan</span>
+        </div>
+
+        <div style={{
+          textAlign: "center",
+          background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)",
+          border: "1px solid #c7d2fe",
+          borderRadius: 10,
+          padding: "9px 6px",
+          fontWeight: 800,
+          fontSize: 16,
+          color: "#0b1f4d",
+          marginBottom: 10,
+        }}>
+          🧹 CLEANING CHECKLIST — POS 15
+        </div>
+
+        <div style={{ marginBottom: 8, fontWeight: 900 }}>Date: {data?.reportDate || "—"}</div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={gridStyle}>
+            <thead>
+              <tr style={theadRow}>
+                <th style={{ ...thCell, width: 70 }}>Sl-No</th>
+                <th style={{ ...thCell, minWidth: 320 }}>General Cleaning</th>
+                <th style={{ ...thCell, width: 90 }}>C / NC</th>
+                <th style={{ ...thCell, minWidth: 180 }}>Observation</th>
+                <th style={{ ...thCell, minWidth: 160 }}>Informed To</th>
+                <th style={{ ...thCell, minWidth: 220 }}>Remarks &amp; CA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={6} style={{ ...tdCell, textAlign: "center", color: "#64748b", fontWeight: 800 }}>No entries</td></tr>
+              ) : rows.map((r, i) => r.isSection ? (
+                <tr key={"sec-"+i} style={{ background: "rgba(237,233,254,0.55)", fontWeight: 800 }}>
+                  <td style={tdCell}>{r.secNo}</td>
+                  <td style={tdCell}>{r.section}</td>
+                  <td colSpan={4} style={{ ...tdCell, textAlign: "center" }}>—</td>
+                </tr>
+              ) : (
+                <tr key={i} style={zebra(i)}>
+                  <td style={tdCell}>{r.subLetter || "—"}</td>
+                  <td style={{ ...tdCell, textAlign: "left" }}>{r.item || ""}</td>
+                  <td style={tdCell}>{r.status || ""}</td>
+                  <td style={{ ...tdCell, textAlign: "left" }}>{r.observation || ""}</td>
+                  <td style={{ ...tdCell, textAlign: "left" }}>{r.informed || ""}</td>
+                  <td style={{ ...tdCell, textAlign: "left" }}>{r.remarks || ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ marginTop: 10, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>CHECKED BY: {data?.checkedBy || "—"}</div>
+          <div>VERIFIED BY: {data?.verifiedBy || "—"}</div>
+        </div>
+        <div style={{ marginTop: 6, fontSize: ".9rem", fontWeight: 800 }}>
+          Remark: Frequency — Daily &nbsp;&nbsp; (C = Conform, N/C = Non Conform)
+        </div>
+      </div>
+    </div>
+  );
+});

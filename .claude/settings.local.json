@@ -246,7 +246,26 @@
       "PowerShell(npx eslint \"src/pages/haccp and iso/MockRecall\" --ext .js,.jsx)",
       "Read(//c/Users/moham/.claude/projects/D--inspection-react-full/memory/**)",
       "Bash(echo \"- [POS10 view kit + branch nav fix]\\(project_pos10_view_kit.md\\) — glassy spectral DateTree kit; replicate for other branches; dynamic-import html2canvas/jspdf; BranchSuspense in App.jsx.\")",
-      "Bash(powershell -Command \"[System.IO.File]::ReadAllBytes\\('src/pages/monitor/branches/POS 11/POS11TraceabilityLogView.jsx'\\)[0..2] -join ','\")"
+      "Bash(powershell -Command \"[System.IO.File]::ReadAllBytes\\('src/pages/monitor/branches/POS 11/POS11TraceabilityLogView.jsx'\\)[0..2] -join ','\")",
+      "Bash(node -e \"require\\('pptxgenjs'\\); console.log\\('OK'\\)\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('pptxgenjs'\\); console.log\\('pptxgenjs ready'\\)\")",
+      "Bash(npm root *)",
+      "Bash(node -e \"const path = require\\('path'\\); const m = require\\('module'\\); console.log\\(m.globalPaths\\);\")",
+      "Bash(node pitch_deck.js)",
+      "Bash(where soffice *)",
+      "Bash(where pdftoppm *)",
+      "Bash(py --version)",
+      "Bash(where /R \"C:\\\\Program Files\" soffice.exe)",
+      "Bash(where /R \"C:\\\\Program Files \\(x86\\)\" soffice.exe)",
+      "Bash(Get-ChildItem \"C:\\\\Program Files\" -Recurse -Filter \"soffice.exe\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -First 3 FullName)",
+      "Bash(py -m pip install \"markitdown[pptx]\" --quiet --index-url https://pypi.org/simple/)",
+      "PowerShell(Start-Process \"C:\\\\Program Files\\\\Microsoft Office\\\\Root\\\\Office16\\\\POWERPNT.EXE\" -ArgumentList \"D:\\\\inspection-react-full\\\\InspectPro_QMS_Pitch.pptx\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(cd \"D:\\\\inspection-react-full\" && mkdir -p .claude)",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_in_Chrome__list_connected_browsers"
     ]
   }
 }

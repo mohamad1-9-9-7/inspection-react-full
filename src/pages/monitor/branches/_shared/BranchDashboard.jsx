@@ -14,6 +14,31 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
 
+/* ─── Module-level cache (5-minute TTL) ─── */
+const _cache = new Map(); // key → { data, ts }
+const CACHE_TTL = 5 * 60 * 1000; // 5 min
+
+function getCached(key) {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) { _cache.delete(key); return null; }
+  return entry.data;
+}
+function setCached(key, data) { _cache.set(key, { data, ts: Date.now() }); }
+
+/* ─── Concurrency-limited fetcher (max 4 at a time) ─── */
+async function fetchAllLimited(tasks, limit = 4) {
+  const results = new Array(tasks.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < tasks.length) {
+      const i = idx++;
+      results[i] = await tasks[i]();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results;
+}
 
 /* ─── Helpers ─── */
 const today = () => {
@@ -85,20 +110,39 @@ export default function BranchDashboard({
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  function handleRefresh() {
+    // Bust cache so the effect re-fetches fresh data
+    reportTypes.forEach((rt) => _cache.delete(rt.type));
+    setRefreshKey((k) => k + 1);
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all(
-      reportTypes.map(async (rt) => {
-        try {
-          const res = await fetch(`${API_BASE}/api/reports?type=${rt.type}`, { cache: "no-store" });
-          if (!res.ok) return [rt.type, []];
-          const json = await res.json();
-          const arr = Array.isArray(json) ? json : json?.data ?? [];
-          return [rt.type, arr];
-        } catch { return [rt.type, []]; }
-      })
-    ).then((results) => {
+
+    // Seed from cache immediately so UI renders before network finishes
+    const seedMap = {};
+    reportTypes.forEach((rt) => {
+      const cached = getCached(rt.type);
+      if (cached) seedMap[rt.type] = cached;
+    });
+    if (Object.keys(seedMap).length) setData(seedMap);
+
+    const tasks = reportTypes.map((rt) => async () => {
+      // Return cache hit without a network round-trip
+      const cached = getCached(rt.type);
+      if (cached) return [rt.type, cached];
+      try {
+        const res = await fetch(`${API_BASE}/api/reports?type=${rt.type}`);
+        if (!res.ok) return [rt.type, []];
+        const json = await res.json();
+        const arr = Array.isArray(json) ? json : json?.data ?? [];
+        setCached(rt.type, arr);
+        return [rt.type, arr];
+      } catch { return [rt.type, []]; }
+    });
+
+    fetchAllLimited(tasks, 4).then((results) => {
       if (cancelled) return;
       const map = {};
       results.forEach(([type, arr]) => { map[type] = arr; });
@@ -175,7 +219,7 @@ export default function BranchDashboard({
         </div>
         <button
           className="bdash-refresh"
-          onClick={() => setRefreshKey((k) => k + 1)}
+          onClick={handleRefresh}
           disabled={loading}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"

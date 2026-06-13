@@ -5,6 +5,27 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useLang } from "./_shared/i18n";
 import API_BASE from "../../../../config/api";
 
+/* ─── Module-level cache (5-minute TTL) ─── */
+const _cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000;
+function getCached(key) {
+  const e = _cache.get(key);
+  if (!e) return null;
+  if (Date.now() - e.ts > CACHE_TTL) { _cache.delete(key); return null; }
+  return e.data;
+}
+function setCached(key, data) { _cache.set(key, { data, ts: Date.now() }); }
+
+async function fetchAllLimited(tasks, limit = 4) {
+  const results = new Array(tasks.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < tasks.length) { const i = idx++; results[i] = await tasks[i](); }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results;
+}
+
 
 /* ─── Report types with metadata ─── */
 const REPORT_TYPES = [
@@ -85,20 +106,34 @@ export default function ProductionDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  function handleRefresh() {
+    REPORT_TYPES.forEach((rt) => _cache.delete(rt.type));
+    setRefreshKey((k) => k + 1);
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all(
-      REPORT_TYPES.map(async (rt) => {
-        try {
-          const res = await fetch(`${API_BASE}/api/reports?type=${rt.type}`, { cache: "no-store" });
-          if (!res.ok) return [rt.type, []];
-          const json = await res.json();
-          const arr = Array.isArray(json) ? json : json?.data ?? [];
-          return [rt.type, arr];
-        } catch { return [rt.type, []]; }
-      })
-    ).then((results) => {
+
+    // Seed from cache immediately for instant first render
+    const seedMap = {};
+    REPORT_TYPES.forEach((rt) => { const c = getCached(rt.type); if (c) seedMap[rt.type] = c; });
+    if (Object.keys(seedMap).length) setData(seedMap);
+
+    const tasks = REPORT_TYPES.map((rt) => async () => {
+      const cached = getCached(rt.type);
+      if (cached) return [rt.type, cached];
+      try {
+        const res = await fetch(`${API_BASE}/api/reports?type=${rt.type}`);
+        if (!res.ok) return [rt.type, []];
+        const json = await res.json();
+        const arr = Array.isArray(json) ? json : json?.data ?? [];
+        setCached(rt.type, arr);
+        return [rt.type, arr];
+      } catch { return [rt.type, []]; }
+    });
+
+    fetchAllLimited(tasks, 4).then((results) => {
       if (cancelled) return;
       const map = {};
       results.forEach(([type, arr]) => { map[type] = arr; });
@@ -175,7 +210,7 @@ export default function ProductionDashboard() {
         </div>
         <button
           className="pdb-refresh"
-          onClick={() => setRefreshKey((k) => k + 1)}
+          onClick={handleRefresh}
           disabled={loading}
           title={t("db_refresh")}
         >

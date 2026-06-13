@@ -1,17 +1,9 @@
 // Login.jsx — simple username + password login page
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './Login.css';
 import logo from '../assets/almawashi-logo.jpg';
 import API_BASE from '../config/api';
-
-/* ─── Theme palettes ─── */
-const LIGHT_THEME = {
-  bgFrom: '#0ea5e9', bgMid: '#7c3aed', bgTo: '#111827',
-};
-const DARK_THEME = {
-  bgFrom: '#020617', bgMid: '#1e1b4b', bgTo: '#000000',
-};
 
 /* ═══════════════════════════════════════════════════
    LOGIN PAGE
@@ -25,17 +17,6 @@ function Login() {
   const [error,    setError]    = useState("");
   const [loading,  setLoading]  = useState(false);
   const [showPass, setShowPass] = useState(false);
-
-  /* 🌓 Theme */
-  const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem("theme") || "light"; } catch { return "light"; }
-  });
-  const isDark = theme === "dark";
-  const t = isDark ? DARK_THEME : LIGHT_THEME;
-  useEffect(() => {
-    try { localStorage.setItem("theme", theme); } catch {}
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
 
   if (location.pathname !== "/") return null;
 
@@ -88,7 +69,7 @@ function Login() {
     setLoading(false);
   };
 
-  const bg = `linear-gradient(135deg, ${t.bgFrom} 0%, ${t.bgMid} 55%, ${t.bgTo} 100%)`;
+  const bg = `linear-gradient(135deg, #0ea5e9 0%, #7c3aed 55%, #111827 100%)`;
 
   return (
     <div style={{
@@ -144,20 +125,50 @@ function Login() {
         border: "1px solid rgba(255,255,255,.72)",
       }}>
 
-        {/* Logo + heading */}
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
+        {/* Logo + InspectPro-style two-tone wordmark */}
+        <div style={{ textAlign: "center", marginBottom: 30 }}>
           <img
             src={logo}
             alt="Al Mawashi"
             style={{
-              width: 80, height: 80, borderRadius: "50%",
-              objectFit: "cover", marginBottom: 14,
-              boxShadow: "0 8px 28px rgba(0,0,0,.18)",
+              width: 84, height: 84, borderRadius: "50%",
+              objectFit: "cover", marginBottom: 16,
+              boxShadow: "0 8px 28px rgba(10,22,40,.22)",
+              border: "3px solid #00C2CB",
             }}
           />
-          <div style={{ fontWeight: 1000, fontSize: 22, color: "#0f172a", marginBottom: 4 }}>
-            Al Mawashi Quality System
+
+          {/* Stacked wordmark — "Inspect" (navy) + "Pro" (teal) */}
+          <div style={{ lineHeight: 0.98 }}>
+            <div style={{
+              fontWeight: 1000, fontSize: 40, color: "#0A1628",
+              letterSpacing: "-1px",
+            }}>
+              Inspect
+            </div>
+            <div style={{
+              fontWeight: 1000, fontSize: 40, color: "#00C2CB",
+              letterSpacing: "-1px",
+            }}>
+              Pro
+            </div>
           </div>
+
+          {/* Gold accent flanking the QMS tag */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            gap: 10, marginTop: 10, marginBottom: 10,
+          }}>
+            <span style={{ width: 26, height: 3, background: "#FFB400", borderRadius: 2 }} />
+            <span style={{
+              fontSize: 12, fontWeight: 900, color: "#94a3b8",
+              letterSpacing: "5px",
+            }}>
+              QMS
+            </span>
+            <span style={{ width: 26, height: 3, background: "#FFB400", borderRadius: 2 }} />
+          </div>
+
           <div style={{ fontSize: 15, color: "#64748b", fontWeight: 700 }}>
             Sign in to your account
           </div>
@@ -243,19 +254,6 @@ function Login() {
           </button>
         </form>
 
-        {/* Theme toggle */}
-        <div style={{ textAlign: "center", marginTop: 22 }}>
-          <button
-            onClick={() => setTheme(prev => prev === "dark" ? "light" : "dark")}
-            style={{
-              background: "none", border: "none",
-              color: "#94a3b8", fontSize: 13,
-              cursor: "pointer", fontFamily: "inherit", fontWeight: 700,
-            }}
-          >
-            {isDark ? "☀️ Light Mode" : "🌙 Dark Mode"}
-          </button>
-        </div>
       </div>
 
       {/* Footer */}

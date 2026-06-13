@@ -1,7 +1,8 @@
 // src/pages/settings/tools/AppearanceAndLanguage.jsx
-// 🎨 Theme + 🌐 Language preferences — central control for the entire app.
+// 🌐 Language preferences — central control for the entire app.
 
 import React, { useState } from "react";
+// ThemeCard removed — app now uses a fixed light theme only.
 
 // All language-related localStorage keys used across the app
 const LANG_KEYS = [
@@ -21,10 +22,6 @@ const LANG_KEYS = [
 ];
 
 export default function AppearanceAndLanguage() {
-  const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem("theme") || "light"; } catch { return "light"; }
-  });
-
   const [statuses, setStatuses] = useState(() => {
     const out = {};
     for (const { key } of LANG_KEYS) {
@@ -35,15 +32,6 @@ export default function AppearanceAndLanguage() {
 
   const [msg, setMsg] = useState("");
   const flash = (t) => { setMsg(t); setTimeout(() => setMsg(""), 2500); };
-
-  function applyTheme(t) {
-    setTheme(t);
-    try {
-      localStorage.setItem("theme", t);
-      document.documentElement.setAttribute("data-theme", t);
-    } catch {}
-    flash(`✅ Theme set to ${t}`);
-  }
 
   function setLangAll(lang) {
     if (!window.confirm(`Set language to "${lang}" across ALL modules (${LANG_KEYS.length} apps)?`)) return;
@@ -80,9 +68,9 @@ export default function AppearanceAndLanguage() {
     <div>
       <div style={s.header}>
         <div>
-          <h2 style={s.h2}>🎨 Appearance & 🌐 Language</h2>
+          <h2 style={s.h2}>🌐 Language</h2>
           <p style={s.intro}>
-            Control the visual theme and the language used by each module of the app.
+            Control the language used by each module of the app.
           </p>
         </div>
       </div>
@@ -94,23 +82,6 @@ export default function AppearanceAndLanguage() {
           color: msg.startsWith("❌") ? "#7f1d1d" : "#166534",
         }}>{msg}</div>
       )}
-
-      {/* THEME */}
-      <section style={s.section}>
-        <div style={s.sectionHead}>🎨 Theme</div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <ThemeCard active={theme === "light"} onClick={() => applyTheme("light")}
-            label="Light" emoji="☀️" gradient="linear-gradient(135deg,#fff,#f1f5f9)" />
-          <ThemeCard active={theme === "dark"} onClick={() => applyTheme("dark")}
-            label="Dark" emoji="🌙" gradient="linear-gradient(135deg,#0b1220,#1e293b)" />
-          <ThemeCard active={theme === "auto"} onClick={() => applyTheme("auto")}
-            label="Auto (System)" emoji="🌓" gradient="linear-gradient(135deg,#0b1220 50%,#fff 50%)" />
-        </div>
-        <p style={s.note}>
-          Theme switching requires CSS variables. Some pages have their own hard-coded colors and
-          won't follow this setting.
-        </p>
-      </section>
 
       {/* LANGUAGE — global */}
       <section style={s.section}>
@@ -171,29 +142,6 @@ export default function AppearanceAndLanguage() {
         </p>
       </section>
     </div>
-  );
-}
-
-function ThemeCard({ active, onClick, label, emoji, gradient }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: 1, minWidth: 160, padding: "18px 16px",
-        background: gradient,
-        border: `2px solid ${active ? "#2563eb" : "#e2e8f0"}`,
-        borderRadius: 14, cursor: "pointer",
-        textAlign: "center", fontFamily: "inherit",
-        boxShadow: active ? "0 12px 26px rgba(37,99,235,.25)" : "0 4px 10px rgba(2,6,23,.05)",
-        transition: "all .15s",
-        color: gradient.includes("#0b1220") ? "#fff" : "#0f172a",
-      }}
-    >
-      <div style={{ fontSize: 32, marginBottom: 6 }}>{emoji}</div>
-      <div style={{ fontWeight: 1000, fontSize: 13 }}>{label}</div>
-      {active && <div style={{ fontSize: 10, color: "#2563eb", marginTop: 4, fontWeight: 900 }}>✓ active</div>}
-    </button>
   );
 }
 

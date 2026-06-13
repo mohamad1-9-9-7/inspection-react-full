@@ -1,6 +1,6 @@
 /* ============================================================
    Design System — المصدر الموحد لكل قيم التصميم
-   استخدم هذه المتغيرات في كل مكان بدل الأرقام المكتوبة يدوياً
+   ثيم ثابت فاتح: خلفيات ناعمة، حدود داكنة، نص أسود
    ============================================================ */
 
 :root {
@@ -24,22 +24,22 @@
   --color-info:           #3b82f6;
   --color-info-light:     #dbeafe;
 
-  /* ── الخلفيات ────────────────────────────────── */
-  --bg-page:              #f0f2f5;
+  /* ── الخلفيات (فاتحة ثابتة) ─────────────────── */
+  --bg-page:              #f0f4f8;
   --bg-card:              #ffffff;
   --bg-card-hover:        #f8fafc;
   --bg-input:             #ffffff;
   --bg-overlay:           rgba(17, 24, 39, 0.45);
 
-  /* ── الحدود ──────────────────────────────────── */
-  --border-color:         #e2e8f0;
+  /* ── الحدود (داكنة كالمطلوب) ────────────────── */
+  --border-color:         #1e293b;
   --border-color-focus:   #0ea5e9;
   --border-width:         1px;
 
-  /* ── النصوص ──────────────────────────────────── */
+  /* ── النصوص (أسود) ──────────────────────────── */
   --text-primary:         #0f172a;
-  --text-secondary:       #475569;
-  --text-muted:           #94a3b8;
+  --text-secondary:       #334155;
+  --text-muted:           #64748b;
   --text-inverse:         #ffffff;
   --text-link:            #0ea5e9;
 
@@ -98,80 +98,3 @@
   --content-max-width: 1280px;
 }
 
-/* ============================================================
-   Dark Mode — [data-theme="dark"] على <html>
-   ============================================================ */
-[data-theme="dark"] {
-  /* ── الخلفيات ── */
-  --bg-page:          #0d1117;
-  --bg-card:          #161b22;
-  --bg-card-hover:    #1f2937;
-  --bg-input:         #161b22;
-  --bg-overlay:       rgba(0, 0, 0, 0.70);
-
-  /* ── الحدود ── */
-  --border-color:         #30363d;
-  --border-color-focus:   #58a6ff;
-
-  /* ── النصوص ── */
-  --text-primary:     #e6edf3;
-  --text-secondary:   #8b949e;
-  --text-muted:       #6e7681;
-  --text-inverse:     #0d1117;
-  --text-link:        #58a6ff;
-
-  /* ── الألوان الأساسية ── */
-  --color-primary:        #58a6ff;
-  --color-primary-dark:   #1f6feb;
-  --color-primary-light:  #79c0ff;
-
-  --color-success:        #3fb950;
-  --color-success-light:  #0d2a12;
-  --color-warning:        #d29922;
-  --color-warning-light:  #2d1f00;
-  --color-danger:         #f85149;
-  --color-danger-light:   #2d0d0b;
-  --color-info:           #58a6ff;
-  --color-info-light:     #0c1f3f;
-
-  /* ── الظلال ── */
-  --shadow-sm:   0 1px 4px rgba(0, 0, 0, 0.50);
-  --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.60);
-  --shadow-lg:   0 8px 24px rgba(0, 0, 0, 0.70);
-  --shadow-xl:   0 16px 40px rgba(0, 0, 0, 0.80);
-  --shadow-focus: 0 0 0 3px rgba(88, 166, 255, 0.40);
-}
-
-/* ── Auto: يتبع نظام الجهاز ── */
-@media (prefers-color-scheme: dark) {
-  [data-theme="auto"] {
-    --bg-page:          #0d1117;
-    --bg-card:          #161b22;
-    --bg-card-hover:    #1f2937;
-    --bg-input:         #161b22;
-    --bg-overlay:       rgba(0, 0, 0, 0.70);
-    --border-color:         #30363d;
-    --border-color-focus:   #58a6ff;
-    --text-primary:     #e6edf3;
-    --text-secondary:   #8b949e;
-    --text-muted:       #6e7681;
-    --text-inverse:     #0d1117;
-    --text-link:        #58a6ff;
-    --color-primary:        #58a6ff;
-    --color-primary-dark:   #1f6feb;
-    --color-primary-light:  #79c0ff;
-    --color-success:        #3fb950;
-    --color-success-light:  #0d2a12;
-    --color-warning:        #d29922;
-    --color-warning-light:  #2d1f00;
-    --color-danger:         #f85149;
-    --color-danger-light:   #2d0d0b;
-    --color-info:           #58a6ff;
-    --color-info-light:     #0c1f3f;
-    --shadow-sm:   0 1px 4px rgba(0, 0, 0, 0.50);
-    --shadow-md:   0 4px 12px rgba(0, 0, 0, 0.60);
-    --shadow-lg:   0 8px 24px rgba(0, 0, 0, 0.70);
-    --shadow-xl:   0 16px 40px rgba(0, 0, 0, 0.80);
-    --shadow-focus: 0 0 0 3px rgba(88, 166, 255, 0.40);
-  }
-}

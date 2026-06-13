@@ -493,7 +493,7 @@ export default function TrainingAdmin() {
   const navigate = useNavigate();
 
   const [lang, setLang] = useGlobalLang();
-  const [theme, setTheme] = useState(() => localStorage.getItem("training_admin_theme") || "light");
+  const theme = "light";
   const [section, setSection] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -575,7 +575,6 @@ export default function TrainingAdmin() {
   }
 
   useEffect(() => { loadAll(); }, []);
-  useEffect(() => { localStorage.setItem("training_admin_theme", theme); }, [theme]);
 
   useEffect(() => {
     function onKey(e) {
@@ -993,9 +992,6 @@ export default function TrainingAdmin() {
               🌐 {isAr ? "EN" : "ع"}
             </button>
             <button onClick={loadAll} style={btnStyle(theme)} title={tt("btn_refresh")}>{loading ? "⏳" : "🔄"}</button>
-            <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} style={btnStyle(theme)}>
-              {theme === "light" ? "🌙" : "☀️"}
-            </button>
             <button onClick={() => navigate("/training")} style={btnStyle(theme, "ghost")}>{tt("btn_back")}</button>
           </div>
         </div>

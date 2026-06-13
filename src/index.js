@@ -4,12 +4,6 @@ import App from './App';
 import { BrowserRouter, HashRouter } from 'react-router-dom';
 import './styles/globals.css';
 
-// ── تطبيق الـ Theme المحفوظ قبل ما React يرسم (بيمنع وميض الـ Light لحظة الفتح) ──
-try {
-  const saved = localStorage.getItem("theme") || "light";
-  document.documentElement.setAttribute("data-theme", saved);
-} catch { /* ignore — private browsing or blocked storage */ }
-
 // لما نشتغل داخل Electron (file://) لازم HashRouter لأن BrowserRouter بيكسر
 const isElectron =
   (typeof window !== 'undefined' &&
