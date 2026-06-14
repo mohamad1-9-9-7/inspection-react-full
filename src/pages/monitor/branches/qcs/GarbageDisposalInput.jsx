@@ -14,14 +14,14 @@ const TYPE = "qcs_garbage_disposal";
 const MAX_EXTRA_IMAGES = 8;
 
 const WASTE_TYPES = [
-  "General Waste / نفايات عامة",
-  "Organic / عضوي",
-  "Packaging / تعبئة وتغليف",
-  "Cardboard / كرتون",
-  "Plastic / بلاستيك",
-  "Metal / معدن",
-  "Hazardous / خطرة",
-  "Other / أخرى",
+  "General Waste",
+  "Organic",
+  "Packaging",
+  "Cardboard",
+  "Plastic",
+  "Metal",
+  "Hazardous",
+  "Other",
 ];
 
 const UNITS = ["kg", "bag", "ton", "container", "trip"];
@@ -38,7 +38,7 @@ const LOCATIONS = [
   "FTR 2 • Mamzar Park",
   "Production (PRD)",
   "OHC",
-  "Other / أخرى",
+  "Other",
 ];
 
 async function uploadImage(file) {
@@ -125,7 +125,7 @@ export default function GarbageDisposalInput() {
   async function pickInvoiceImage(file) {
     if (!file) return;
     if (!String(file.type || "").startsWith("image/")) {
-      showMsg("err", "الملف لازم يكون صورة");
+      showMsg("err", "File must be an image");
       return;
     }
     try {
@@ -133,9 +133,9 @@ export default function GarbageDisposalInput() {
       if (invoiceImage) await deleteImage(invoiceImage);
       const url = await uploadImage(file);
       setInvoiceImage(url);
-      showMsg("ok", "✅ تم رفع صورة الفاتورة");
+      showMsg("ok", "✅ Invoice image uploaded");
     } catch (e) {
-      showMsg("err", "فشل رفع الفاتورة: " + (e?.message || e));
+      showMsg("err", "Failed to upload invoice: " + (e?.message || e));
     } finally {
       setBusy(false);
       if (invoiceRef.current) invoiceRef.current.value = "";
@@ -153,7 +153,7 @@ export default function GarbageDisposalInput() {
     const files = Array.from(fileList || []).filter((f) => String(f.type || "").startsWith("image/"));
     if (!files.length) return;
     const remaining = MAX_EXTRA_IMAGES - extraImages.length;
-    if (remaining <= 0) { showMsg("err", `الحد الأقصى ${MAX_EXTRA_IMAGES} صور`); return; }
+    if (remaining <= 0) { showMsg("err", `Maximum ${MAX_EXTRA_IMAGES} images`); return; }
     try {
       setBusy(true);
       const urls = [];
@@ -162,9 +162,9 @@ export default function GarbageDisposalInput() {
       }
       if (urls.length) {
         setExtraImages((prev) => [...prev, ...urls].slice(0, MAX_EXTRA_IMAGES));
-        showMsg("ok", `✅ تم رفع ${urls.length} صورة`);
+        showMsg("ok", `✅ Uploaded ${urls.length} image(s)`);
       } else {
-        showMsg("err", "ما تم رفع أي صورة");
+        showMsg("err", "No images uploaded");
       }
     } finally {
       setBusy(false);
@@ -195,9 +195,9 @@ export default function GarbageDisposalInput() {
   }
 
   async function save() {
-    if (!date) { showMsg("err", "اختر التاريخ"); return; }
-    if (!quantity) { showMsg("err", "أدخل الكمية"); return; }
-    if (!disposedBy.trim()) { showMsg("err", "أدخل اسم الشخص الذي قام بالتخلص"); return; }
+    if (!date) { showMsg("err", "Select date"); return; }
+    if (!quantity) { showMsg("err", "Enter quantity"); return; }
+    if (!disposedBy.trim()) { showMsg("err", "Enter disposal person name"); return; }
 
     const payload = {
       reportDate: date,
@@ -215,7 +215,7 @@ export default function GarbageDisposalInput() {
 
     try {
       setBusy(true);
-      showMsg("info", "جاري الحفظ...");
+      showMsg("info", "Saving...");
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -223,10 +223,10 @@ export default function GarbageDisposalInput() {
         body: JSON.stringify({ reporter: "qcs", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      showMsg("ok", "✅ تم حفظ السجل بنجاح");
+      showMsg("ok", "✅ Record saved successfully");
       resetForm();
     } catch (e) {
-      showMsg("err", "❌ فشل الحفظ: " + (e?.message || e));
+      showMsg("err", "❌ Save failed: " + (e?.message || e));
     } finally {
       setBusy(false);
     }
@@ -235,22 +235,22 @@ export default function GarbageDisposalInput() {
   return (
     <div style={S.page}>
       <div style={S.card}>
-        <h2 style={S.title}>🗑️ سجل التخلص من النفايات / Garbage Disposal Log</h2>
-        <div style={S.sub}>أدخل بيانات عملية التخلص من النفايات + صورة الفاتورة</div>
+        <h2 style={S.title}>🗑️ Garbage Disposal Log</h2>
+        <div style={S.sub}>Enter garbage disposal details + invoice image</div>
 
         <div style={S.row3}>
           <div>
-            <label style={S.label}>التاريخ / Date *</label>
+            <label style={S.label}>Date *</label>
             <input type="date" style={S.input} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div>
-            <label style={S.label}>الموقع / Location</label>
+            <label style={S.label}>Location</label>
             <select style={S.input} value={location} onChange={(e) => setLocation(e.target.value)}>
               {LOCATIONS.map((loc) => <option key={loc} value={loc}>{loc}</option>)}
             </select>
           </div>
           <div>
-            <label style={S.label}>نوع النفايات / Waste Type</label>
+            <label style={S.label}>Waste Type</label>
             <select style={S.input} value={wasteType} onChange={(e) => setWasteType(e.target.value)}>
               {WASTE_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
             </select>
@@ -259,40 +259,40 @@ export default function GarbageDisposalInput() {
 
         <div style={S.row3}>
           <div>
-            <label style={S.label}>الكمية / Quantity *</label>
+            <label style={S.label}>Quantity *</label>
             <input type="number" min="0" step="0.01" style={S.input} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </div>
           <div>
-            <label style={S.label}>الوحدة / Unit</label>
+            <label style={S.label}>Unit</label>
             <select style={S.input} value={unit} onChange={(e) => setUnit(e.target.value)}>
               {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
           <div>
-            <label style={S.label}>اسم الشركة / Vendor Name</label>
+            <label style={S.label}>Vendor Name</label>
             <input style={S.input} value={vendorName} onChange={(e) => setVendorName(e.target.value)} placeholder="شركة جمع النفايات..." />
           </div>
         </div>
 
         <div style={S.row3}>
           <div>
-            <label style={S.label}>رقم الفاتورة / Invoice No.</label>
+            <label style={S.label}>Invoice No.</label>
             <input style={S.input} value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="INV-..." />
           </div>
           <div>
-            <label style={S.label}>قيمة الفاتورة / Invoice Amount (AED)</label>
+            <label style={S.label}>Invoice Amount (AED)</label>
             <input type="number" min="0" step="0.01" style={S.input} value={invoiceAmount} onChange={(e) => setInvoiceAmount(e.target.value)} />
           </div>
           <div>
-            <label style={S.label}>قام بالتخلص / Disposed By *</label>
+            <label style={S.label}>Disposed By *</label>
             <input style={S.input} value={disposedBy} onChange={(e) => setDisposedBy(e.target.value)} placeholder="اسم الموظف" />
           </div>
         </div>
 
-        <label style={S.label}>المشرف / Supervisor</label>
+        <label style={S.label}>Supervisor</label>
         <input style={S.input} value={supervisor} onChange={(e) => setSupervisor(e.target.value)} placeholder="اسم المشرف" />
 
-        <label style={S.label}>ملاحظات / Notes</label>
+        <label style={S.label}>Notes</label>
         <textarea style={S.textarea} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="ملاحظات إضافية..." />
       </div>
 

@@ -129,8 +129,8 @@ const brandRow   = { display:"flex", justifyContent:"flex-end" };
 const brandBox   = { textAlign:"right", lineHeight:1.1 };
 const brandTitle = { margin:0, fontSize:18, fontWeight:900, color:"#7b001c", letterSpacing:.3 };
 const brandSub   = { margin:0, fontSize:12, color:"#111827" };
-const metaTable  = { width:"100%", borderCollapse:"collapse", marginTop:8, fontSize:13 };
-const cell       = { border:`1px solid ${COLORS.border}`, padding:"6px 8px" };
+const metaTable  = { width:"100%", borderCollapse:"collapse", marginTop:8, fontSize:17 };
+const cell       = { border:`1px solid ${COLORS.border}`, padding:"8px 10px", fontSize:17 };
 const metaLabel  = { ...cell, fontWeight:800, width:"24%" };
 const metaValue  = { ...cell, width:"26%" };
 const strip      = { background:"#eceff3", borderRadius:4, marginTop:10, padding:"8px 10px", textAlign:"center" };
@@ -184,7 +184,7 @@ const th = {
 };
 const td = { border:"1px solid #e2e8f0", padding:"9px 8px", textAlign:"center", verticalAlign:"top", color:COLORS.ink };
 const tdAttr = { ...td, fontWeight:900, textAlign:"left", background:COLORS.softBg, position:"sticky", left:0, zIndex:1 };
-const gridTbl = { width:"100%", borderCollapse:"separate", borderSpacing:0, tableLayout:"fixed", fontSize:13 };
+const gridTbl = { width:"100%", borderCollapse:"separate", borderSpacing:0, tableLayout:"fixed", fontSize:18 };
 const baseInput = { width:"100%", boxSizing:"border-box", border:`1px solid ${COLORS.border}`, borderRadius:8, padding:"6px 8px", minWidth:0 };
 
 /* ==== صور (معاينات) ==== */

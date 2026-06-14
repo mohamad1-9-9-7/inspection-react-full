@@ -546,6 +546,156 @@ export function SidebarLayout({ sidebar, children, sidebarWidth = 330 }) {
 }
 
 /* =========================================================
+   🖼️ Lightbox — عرض الصور بنافذة منبثقة
+   الاستخدام:
+     const { openImage, lightbox } = useLightbox();
+     <img ... style={{ cursor: "zoom-in" }} onClick={() => openImage(src)} />
+     {lightbox}  // ضعه مرة واحدة في الجذر
+   ========================================================= */
+export function useLightbox() {
+  const [items, setItems] = useState(null); // [src,...] | null
+  const [idx, setIdx] = useState(0);
+
+  const openImage = (src, gallery) => {
+    if (!src) return;
+    const list = Array.isArray(gallery) && gallery.length ? gallery : [src];
+    const start = Math.max(0, list.indexOf(src));
+    setItems(list);
+    setIdx(start === -1 ? 0 : start);
+  };
+  const close = () => setItems(null);
+
+  useEffect(() => {
+    if (!items) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") close();
+      else if (e.key === "ArrowRight") setIdx((i) => Math.min(items.length - 1, i + 1));
+      else if (e.key === "ArrowLeft") setIdx((i) => Math.max(0, i - 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [items]);
+
+  const navBtn = (extra) => ({
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 48,
+    height: 48,
+    borderRadius: "50%",
+    border: "none",
+    background: "rgba(255,255,255,0.92)",
+    color: "#0f172a",
+    fontSize: 26,
+    fontWeight: 900,
+    cursor: "pointer",
+    boxShadow: "0 4px 14px rgba(0,0,0,0.3)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    ...extra,
+  });
+
+  const lightbox = items ? (
+    <div
+      onClick={close}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 99999,
+        background: "rgba(15,23,42,0.88)",
+        backdropFilter: "blur(5px)",
+        WebkitBackdropFilter: "blur(5px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        cursor: "zoom-out",
+      }}
+    >
+      <button
+        onClick={close}
+        title="Close (Esc)"
+        style={{
+          position: "absolute",
+          top: 18,
+          right: 22,
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          border: "none",
+          background: "rgba(255,255,255,0.92)",
+          color: "#0f172a",
+          fontSize: 24,
+          fontWeight: 900,
+          cursor: "pointer",
+          boxShadow: "0 4px 14px rgba(0,0,0,0.3)",
+        }}
+      >
+        ×
+      </button>
+
+      {items.length > 1 && idx > 0 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setIdx((i) => Math.max(0, i - 1)); }}
+          style={navBtn({ left: 22 })}
+          title="Previous (←)"
+        >
+          ‹
+        </button>
+      )}
+
+      <img
+        src={items[idx]}
+        alt="preview"
+        crossOrigin="anonymous"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: "92vw",
+          maxHeight: "90vh",
+          objectFit: "contain",
+          borderRadius: 12,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+          cursor: "default",
+          background: "#fff",
+        }}
+      />
+
+      {items.length > 1 && idx < items.length - 1 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setIdx((i) => Math.min(items.length - 1, i + 1)); }}
+          style={navBtn({ right: 22 })}
+          title="Next (→)"
+        >
+          ›
+        </button>
+      )}
+
+      {items.length > 1 && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 20,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(255,255,255,0.9)",
+            color: "#0f172a",
+            borderRadius: 999,
+            padding: "5px 14px",
+            fontWeight: 800,
+            fontSize: 14,
+          }}
+        >
+          {idx + 1} / {items.length}
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  return { openImage, lightbox };
+}
+
+/* =========================================================
    حالات عرض جاهزة
    ========================================================= */
 export function EmptyState({ text = "No report for this date." }) {

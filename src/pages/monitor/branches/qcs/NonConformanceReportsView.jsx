@@ -4,158 +4,55 @@ import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx-js-style";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn, useLightbox } from "../_shared/branchViewKit";
 
 /* ===== API base ===== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const CRA =
-  (typeof process !== "undefined" &&
-    process.env &&
-    process.env.REACT_APP_API_URL) ||
-  undefined;
+  (typeof process !== "undefined" && process.env && process.env.REACT_APP_API_URL) || undefined;
 let VITE;
-try {
-  VITE = import.meta.env?.VITE_API_URL;
-} catch {}
+try { VITE = import.meta.env?.VITE_API_URL; } catch {}
 const API_BASE = (VITE || CRA || API_BASE_DEFAULT).replace(/\/$/, "");
 const IS_SAME_ORIGIN = (() => {
-  try {
-    return new URL(API_BASE).origin === window.location.origin;
-  } catch {
-    return false;
-  }
+  try { return new URL(API_BASE).origin === window.location.origin; } catch { return false; }
 })();
 
 const DEFAULT_TYPE = "qcs_non_conformance";
 const DEFAULT_HEADER_LINE = "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS";
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 
-/* ===== Header view ===== */
-function RowKV({ label, value }) {
+/* ===== Document card helpers ===== */
+function NCSection({ color, title, children }) {
   return (
-    <div style={{ display: "flex", borderBottom: "1px solid #000" }}>
-      <div
-        style={{
-          padding: "6px 8px",
-          borderInlineEnd: "1px solid #000",
-          minWidth: 170,
-          fontWeight: 700,
-        }}
-      >
-        {label}
+    <div style={{ margin: "0 14px 12px", borderRadius: 8, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+      <div style={{ background: color, padding: "7px 16px", color: "#fff", fontWeight: 800, fontSize: 14, letterSpacing: 0.5, textTransform: "uppercase" }}>
+        {title}
       </div>
-      <div style={{ padding: "6px 8px", flex: 1 }}>{value || "\u00A0"}</div>
+      {children}
     </div>
   );
 }
-
-function NCHeaderView({ header, date, logoUrl, headerLine }) {
-  const h = header || {};
+function NCRow({ items }) {
+  const template = items.map((i) => `${i.colSpan || 1}fr`).join(" ");
   return (
-    <div style={{ border: "1px solid #000", marginBottom: 8 }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "180px 1fr 1fr",
-          alignItems: "stretch",
-        }}
-      >
-        <div
-          style={{
-            borderInlineEnd: "1px solid #000",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 8,
-          }}
-        >
-          <img
-            src={logoUrl || LOGO_FALLBACK}
-            alt="Al Mawashi"
-            crossOrigin="anonymous"
-            style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }}
-          />
+    <div style={{ display: "grid", gridTemplateColumns: template }}>
+      {items.map((it, i) => (
+        <div key={i} style={{ padding: "9px 16px", borderRight: i < items.length - 1 ? "1px solid #e2e8f0" : undefined, borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: 0.3 }}>{it.label}</div>
+          <div style={{ fontSize: 20, color: "#0f172a" }}>{it.value || " "}</div>
         </div>
-        <div style={{ borderInlineEnd: "1px solid #000" }}>
-          <RowKV label="Document Title:" value={h.documentTitle} />
-          <RowKV label="Issue Date:" value={h.issueDate} />
-          <RowKV label="Area:" value={h.area} />
-          <RowKV label="Controlling Officer:" value={h.controllingOfficer} />
-        </div>
-        <div>
-          <RowKV label="Document No:" value={h.documentNo} />
-          <RowKV label="Revision No:" value={h.revisionNo} />
-          <RowKV label="Issued By:" value={h.issuedBy} />
-          <RowKV label="Approved By:" value={h.approvedBy} />
-        </div>
-      </div>
-      <div style={{ borderTop: "1px solid #000" }}>
-        <div
-          style={{
-            background: "#c0c0c0",
-            textAlign: "center",
-            fontWeight: 900,
-            padding: "6px 8px",
-            borderBottom: "1px solid #000",
-          }}
-        >
-          {headerLine || DEFAULT_HEADER_LINE}
-        </div>
-        <div
-          style={{
-            background: "#d6d6d6",
-            textAlign: "center",
-            fontWeight: 900,
-            padding: "6px 8px",
-            borderBottom: "1px solid #000",
-          }}
-        >
-          NON-CONFORMANCE REPORT
-        </div>
-        {date ? (
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              padding: "6px 8px",
-            }}
-          >
-            <span style={{ fontWeight: 900, textDecoration: "underline" }}>
-              Date:
-            </span>
-            <span>{date}</span>
-          </div>
-        ) : null}
-      </div>
+      ))}
     </div>
   );
 }
-
-/* ===== Styles ===== */
-const sheet = {
-  width: "210mm",
-  margin: "0 auto",
-  background: "#fff",
-  color: "#000",
-  border: "1px solid #d1d5db",
-  boxShadow: "0 4px 14px rgba(0,0,0,.08)",
-  fontFamily: "Arial,'Segoe UI',Tahoma,sans-serif",
-  fontSize: 12,
-  padding: "8mm",
-};
-const table = { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" };
-const cell = {
-  border: "1px solid #000",
-  padding: "6px 8px",
-  verticalAlign: "middle",
-};
-
-const sectionTitle = {
-  marginTop: 8,
-  marginBottom: 4,
-  fontWeight: 900,
-  fontSize: 12,
-};
+function NCText({ label, value }) {
+  return (
+    <div style={{ padding: "10px 16px", borderBottom: "1px solid #e2e8f0" }}>
+      {label && <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 5, letterSpacing: 0.3 }}>{label}</div>}
+      <div style={{ fontSize: 20, color: "#0f172a", whiteSpace: "pre-wrap", minHeight: 24, lineHeight: 1.5 }}>{value || " "}</div>
+    </div>
+  );
+}
 
 /* ===== Server helpers ===== */
 async function listReports(type) {
@@ -180,7 +77,6 @@ async function deleteReport(anyId) {
   return res.ok;
 }
 
-/* ===== Grouping yyyy-mm => days ===== */
 function groupByMonth(reports) {
   const map = {};
   for (const r of reports) {
@@ -201,14 +97,10 @@ function groupByMonth(reports) {
     ]);
 }
 
-/* ===== Edit route guesser (fix Page not found) ===== */
 function guessInputPathFromCurrentPath() {
   const p = String(window.location.pathname || "/").replace(/\/$/, "");
-  // common endings we might have for viewer
   const replaced = p.replace(/(reports|report|view|browse|archive)$/i, "input");
   if (replaced !== p) return replaced;
-
-  // if your viewer is .../non-conformance, then input becomes .../non-conformance/input
   return `${p}/input`;
 }
 
@@ -220,10 +112,10 @@ export default function NonConformanceReportsView(props) {
   const navigate = useNavigate();
 
   const [data, setData] = useState([]);
-  const [activeMonth, setActiveMonth] = useState("");
   const [activeId, setActiveId] = useState("");
   const [busy, setBusy] = useState(false);
   const sheetRef = useRef(null);
+  const { openImage, lightbox } = useLightbox();
 
   const current = useMemo(
     () => data.find((r) => r.id === activeId) || null,
@@ -237,10 +129,7 @@ export default function NonConformanceReportsView(props) {
       const rows = await listReports(TYPE);
       setData(rows);
       const g = groupByMonth(rows);
-      if (g.length) {
-        setActiveMonth(g[0][0]);
-        if (g[0][1]?.length) setActiveId(g[0][1][0].id);
-      }
+      if (g.length && g[0][1]?.length) setActiveId(g[0][1][0].id);
     })();
   }, [TYPE]);
 
@@ -249,7 +138,6 @@ export default function NonConformanceReportsView(props) {
     setData(rows);
   }
 
-  /* ===== actions ===== */
   async function onDelete() {
     if (!safeRouteId) return;
     if (!window.confirm("حذف التقرير نهائيًا؟")) return;
@@ -265,18 +153,13 @@ export default function NonConformanceReportsView(props) {
     if (!view?.headRow?.reportDate) return alert("ما في تاريخ للتقرير.");
     const date = String(view.headRow.reportDate);
     const inputPath = guessInputPathFromCurrentPath();
-
-    // ✅ يفتح صفحة الإدخال مع التاريخ
     navigate(`${inputPath}?date=${encodeURIComponent(date)}`);
   }
 
   function exportXlsx() {
     if (!view) return;
     const p = view;
-
-    const evidenceImgs =
-      p?.correctiveActionExtras?.evidence?.images || [];
-
+    const evidenceImgs = p?.correctiveActionExtras?.evidence?.images || [];
     const aoa = [
       ["NON-CONFORMANCE REPORT"],
       [],
@@ -289,14 +172,7 @@ export default function NonConformanceReportsView(props) {
       ["Date", p?.headRow?.reportDate || "", "NC No.", p?.headRow?.ncNo || ""],
       ["Issued to", p?.headRow?.issuedTo || "", "Issued by", p?.headRow?.issuedBy || ""],
       [],
-      [
-        "Reference",
-        `${p?.reference?.inhouseQC ? "In-house QC; " : ""}${
-          p?.reference?.customerComplaint ? "Customer Complaint; " : ""
-        }${p?.reference?.internalAudit ? "Internal Audit; " : ""}${
-          p?.reference?.externalAudit ? "External Audit" : ""
-        }`,
-      ],
+      ["Reference", `${p?.reference?.inhouseQC ? "In-house QC; " : ""}${p?.reference?.customerComplaint ? "Customer Complaint; " : ""}${p?.reference?.internalAudit ? "Internal Audit; " : ""}${p?.reference?.externalAudit ? "External Audit" : ""}`],
       [],
       ["Nonconformance/Report Details", p?.detailsBlock || ""],
       ["Corrective Action", p?.correctiveAction || ""],
@@ -321,7 +197,6 @@ export default function NonConformanceReportsView(props) {
       ["Signature", p?.signature?.signature || "", "Date", p?.signature?.date || ""],
       ["Responsible Person", p?.signature?.responsiblePerson || "", "Signature", p?.signature?.responsibleSignature || ""],
     ];
-
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["A1"].s = { font: { bold: true, sz: 14 } };
@@ -343,420 +218,183 @@ export default function NonConformanceReportsView(props) {
     const imgW = (canvas.width * 25.4) / 96;
     const imgH = (canvas.height * 25.4) / 96;
     const ratio = Math.min(pageW / imgW, pageH / imgH);
-    pdf.addImage(
-      imgData,
-      "PNG",
-      (pageW - imgW * ratio) / 2,
-      5,
-      imgW * ratio,
-      imgH * ratio,
-      undefined,
-      "FAST"
-    );
+    pdf.addImage(imgData, "PNG", (pageW - imgW * ratio) / 2, 5, imgW * ratio, imgH * ratio, undefined, "FAST");
     pdf.save(`${view?.headRow?.reportDate || "NC_Report"}.pdf`);
   }
 
-  const grouped = useMemo(() => groupByMonth(data), [data]);
+  const treeItems = useMemo(() =>
+    data.map((r) => ({
+      key: r.id,
+      dateISO: r?.payload?.headRow?.reportDate || "",
+      label: (() => {
+        const d = r?.payload?.headRow?.reportDate || "";
+        if (!d) return r?.payload?.headRow?.ncNo || "NC";
+        const [y, m, day] = d.split("-");
+        return day ? `${day}/${m}/${y}` : d;
+      })(),
+    })),
+  [data]);
 
   const evidenceImgs = view?.correctiveActionExtras?.evidence?.images || [];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16 }}>
-      {/* left tree */}
-      <div
-        style={{
-          background: "#fafafa",
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: 12,
-        }}
-      >
-        <h4 style={{ marginTop: 0 }}>📂 Non-Conformance • Archive</h4>
-        {grouped.length === 0 && (
-          <div style={{ color: "#64748b" }}>لا توجد تقارير.</div>
-        )}
-        {grouped.map(([month, items]) => (
-          <div key={month} style={{ marginBottom: 10 }}>
-            <button
-              onClick={() =>
-                setActiveMonth(activeMonth === month ? "" : month)
-              }
-              style={{
-                width: "100%",
-                textAlign: "left",
-                padding: "8px 10px",
-                border: "1px solid #e5e7eb",
-                borderRadius: 8,
-                background: "#fff",
-                fontWeight: 800,
-                marginBottom: 6,
-              }}
-            >
-              {month} ({items.length})
-            </button>
-            {activeMonth === month && (
-              <div style={{ paddingInlineStart: 8 }}>
-                {items.map((r) => {
-                  const d = r?.payload?.headRow?.reportDate || "";
-                  const label = d || "No date";
-                  return (
-                    <div
-                      key={r.id}
-                      style={{ display: "flex", gap: 8, margin: "6px 0" }}
-                    >
-                      <button
-                        onClick={() => setActiveId(r.id)}
-                        style={{
-                          flex: 1,
-                          textAlign: "left",
-                          padding: "6px 8px",
-                          border:
-                            "1px solid " +
-                            (activeId === r.id ? "#0b132b" : "#e5e7eb"),
-                          borderRadius: 8,
-                          background: activeId === r.id ? "#0b132b" : "#fff",
-                          color: activeId === r.id ? "#fff" : "#0b132b",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {label} — {r?.payload?.headRow?.ncNo || "NC"}
-                      </button>
-                    </div>
-                  );
-                })}
+    <GlassShell icon="⚠️" title="Non-Conformance Reports">
+      <div style={{ display: "grid", gridTemplateColumns: "285px 1fr", gap: 12 }}>
+        <DateTreeSidebar
+          items={treeItems}
+          activeKey={activeId}
+          onPick={(it) => setActiveId(it.key)}
+          title="📂 NC Archive"
+          loading={busy && data.length === 0}
+          maxHeight="calc(100vh - 220px)"
+        />
+
+        <div style={{ ...GLASS.content, overflowY: "auto" }}>
+          {!view ? (
+            <EmptyState text="اختر تقريرًا من الشجرة." />
+          ) : (
+            <>
+              {/* toolbar */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <button disabled={busy} onClick={onEdit} style={btn("#0ea5e9")}>✏️ Edit</button>
+                <button disabled={busy} onClick={exportXlsx} style={btn("#059669")}>📄 Export XLSX</button>
+                <button disabled={busy} onClick={exportPdf} style={btn("#7c3aed")}>🖨️ Export PDF</button>
+                <button disabled={busy} onClick={onDelete} style={{ ...btn("#ef4444"), marginInlineStart: "auto" }} data-delete-action="true">🗑️ Delete</button>
               </div>
-            )}
-          </div>
-        ))}
-      </div>
 
-      {/* right pane */}
-      <div>
-        {!view ? (
-          <div style={{ color: "#64748b" }}>اختر تقريرًا من الشجرة.</div>
-        ) : (
-          <>
-            {/* toolbar */}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              <button
-                disabled={busy}
-                onClick={onEdit}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #0ea5e9",
-                  background: "#fff",
-                  fontWeight: 900,
-                  color: "#0ea5e9",
-                }}
-              >
-                ✏️ Edit
-              </button>
+              {/* Modern full-width document */}
+              <div ref={sheetRef} style={{ background: "#fff", borderRadius: 12, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+                {/* Header Banner */}
+                <div style={{ background: "linear-gradient(135deg, #1e293b 0%, #1e3a8a 100%)", padding: "14px 20px", display: "flex", alignItems: "center", gap: 14, color: "#fff" }}>
+                  <img src={view?.logoUrl || LOGO_FALLBACK} crossOrigin="anonymous" alt="Al Mawashi"
+                    style={{ maxHeight: 60, maxWidth: 100, objectFit: "contain", background: "rgba(255,255,255,0.9)", borderRadius: 8, padding: 4, flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 3 }}>{HEADER_LINE}</div>
+                    <div style={{ fontSize: 18, fontWeight: 900 }}>NON-CONFORMANCE REPORT</div>
+                  </div>
+                  <div style={{ fontSize: 11, display: "grid", gridTemplateColumns: "auto auto", gap: "2px 10px", textAlign: "right", flexShrink: 0 }}>
+                    {[
+                      ["Doc No", view?.headerTop?.documentNo],
+                      ["Issue Date", view?.headerTop?.issueDate],
+                      ["Revision", view?.headerTop?.revisionNo],
+                      ["Area", view?.headerTop?.area],
+                      ["Issued By", view?.headerTop?.issuedBy],
+                      ["Approved By", view?.headerTop?.approvedBy],
+                    ].map(([k, v], i) => (
+                      <React.Fragment key={i}>
+                        <span style={{ opacity: 0.6 }}>{k}:</span>
+                        <span style={{ fontWeight: 600 }}>{v || "—"}</span>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
 
-              <button
-                disabled={busy}
-                onClick={exportXlsx}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                  fontWeight: 800,
-                }}
-              >
-                📄 Export XLSX
-              </button>
-              <button
-                disabled={busy}
-                onClick={exportPdf}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                  fontWeight: 800,
-                }}
-              >
-                🖨️ Export PDF
-              </button>
-              <button
-                disabled={busy}
-                onClick={onDelete}
-                style={{
-                  marginLeft: "auto",
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #ef4444",
-                  background: "#fff",
-                  color: "#ef4444",
-                  fontWeight: 800,
-                }}
-               data-delete-action="true">
-                🗑️ Delete
-              </button>
-            </div>
+                <div style={{ paddingTop: 14, paddingBottom: 6 }}>
+                  <NCSection color="#3b82f6" title="Report Information">
+                    <NCRow items={[
+                      { label: "Report Date", value: view?.headRow?.reportDate },
+                      { label: "NC No.", value: view?.headRow?.ncNo },
+                      { label: "Issued to", value: view?.headRow?.issuedTo },
+                      { label: "Issued by", value: view?.headRow?.issuedBy },
+                    ]} />
+                    <NCRow items={[{ label: "Location", value: view?.location, colSpan: 4 }]} />
+                  </NCSection>
 
-            <div ref={sheetRef} style={{ ...sheet }}>
-              <NCHeaderView
-                header={view?.headerTop}
-                date={view?.headRow?.reportDate}
-                logoUrl={view?.logoUrl}
-                headerLine={HEADER_LINE}
-              />
+                  <NCSection color="#8b5cf6" title="Reference">
+                    <div style={{ padding: "8px 14px", display: "flex", gap: 10, flexWrap: "wrap", borderBottom: "1px solid #e2e8f0" }}>
+                      {[
+                        ["inhouseQC", "In-house QC"],
+                        ["customerComplaint", "Customer Complaint"],
+                        ["internalAudit", "Internal Audit"],
+                        ["externalAudit", "External Audit"],
+                      ].map(([key, lbl]) => {
+                        const chk = view?.reference?.[key];
+                        return (
+                          <span key={key} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 20, fontSize: 16, fontWeight: 700, background: chk ? "#8b5cf6" : "#f1f5f9", color: chk ? "#fff" : "#64748b", border: `1px solid ${chk ? "#7c3aed" : "#e2e8f0"}` }}>
+                            {chk ? "☑" : "□"} {lbl}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </NCSection>
 
-              {/* Location */}
-              <table style={table}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "22mm" }}>
-                      <b>Location:</b>
-                    </td>
-                    <td style={cell}>{view?.location || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  <NCSection color="#0ea5e9" title="Nonconformance Details">
+                    <NCText value={view?.detailsBlock} />
+                  </NCSection>
 
-              {/* Date | NC No | Issued to/by */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <colgroup>
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "38%" }} />
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "38%" }} />
-                </colgroup>
-                <tbody>
-                  <tr>
-                    <td style={cell}><b>Date:</b></td>
-                    <td style={cell}>{view?.headRow?.reportDate || "\u00A0"}</td>
-                    <td style={cell}><b>NC No.:</b></td>
-                    <td style={cell}>{view?.headRow?.ncNo || "\u00A0"}</td>
-                  </tr>
-                  <tr>
-                    <td style={cell}><b>Issued to:</b></td>
-                    <td style={cell}>{view?.headRow?.issuedTo || "\u00A0"}</td>
-                    <td style={cell}><b>Issued by:</b></td>
-                    <td style={cell}>{view?.headRow?.issuedBy || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  <NCSection color="#f59e0b" title="Corrective Action">
+                    <NCText value={view?.correctiveAction} />
+                  </NCSection>
 
-              {/* Reference */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "22mm" }}><b>Reference</b></td>
-                    <td style={cell}>
-                      {(view?.reference?.inhouseQC ? "☑ In-house QC  " : "□ In-house QC  ")}
-                      {(view?.reference?.customerComplaint ? "☑ Customer Complaint  " : "□ Customer Complaint  ")}
-                      {(view?.reference?.internalAudit ? "☑ Internal Audit  " : "□ Internal Audit  ")}
-                      {(view?.reference?.externalAudit ? "☑ External Audit" : "□ External Audit")}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                  <NCSection color="#10b981" title="Corrective Action — Tracking">
+                    <NCRow items={[
+                      { label: "Implementation Owner", value: view?.correctiveActionExtras?.implementationOwner },
+                      { label: "Target Completion Date", value: view?.correctiveActionExtras?.targetCompletionDateISO },
+                      { label: "Status", value: view?.correctiveActionExtras?.status },
+                    ]} />
+                  </NCSection>
 
-              {/* Details */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "60mm" }}><b>Nonconformance/Report Details</b></td>
-                    <td style={cell}>{view?.detailsBlock || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* Corrective Action */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "60mm" }}><b>Corrective Action</b></td>
-                    <td style={cell}>{view?.correctiveAction || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* NEW: Owner/Target/Status */}
-              <div style={sectionTitle}>Corrective Action – Tracking</div>
-              <table style={table}>
-                <colgroup>
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                </colgroup>
-                <tbody>
-                  <tr>
-                    <td style={cell}><b>Implementation Owner</b></td>
-                    <td style={cell}>{view?.correctiveActionExtras?.implementationOwner || "\u00A0"}</td>
-                    <td style={cell}><b>Target Completion Date</b></td>
-                    <td style={cell}>{view?.correctiveActionExtras?.targetCompletionDateISO || "\u00A0"}</td>
-                  </tr>
-                  <tr>
-                    <td style={cell}><b>Status</b></td>
-                    <td style={cell} colSpan={3}>{view?.correctiveActionExtras?.status || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* NEW: Evidence images */}
-              <div style={sectionTitle}>Evidence / Attachments (Images)</div>
-              <table style={table}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "60mm" }}><b>Images</b></td>
-                    <td style={cell}>
+                  <NCSection color="#6366f1" title="Evidence / Attachments">
+                    <div style={{ padding: "10px 14px", borderBottom: "1px solid #e2e8f0" }}>
                       {evidenceImgs.length === 0 ? (
-                        <span>{"\u00A0"}</span>
+                        <span style={{ color: "#94a3b8", fontSize: 16 }}>No images attached.</span>
                       ) : (
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                           {evidenceImgs.slice(0, 10).map((src, i) => (
-                            <img
-                              key={src + i}
-                              src={src}
-                              crossOrigin="anonymous"
-                              alt={`evidence-${i}`}
-                              style={{
-                                width: 90,
-                                height: 60,
-                                objectFit: "cover",
-                                border: "1px solid #000",
-                              }}
-                            />
+                            <img key={src + i} src={src} crossOrigin="anonymous" alt={`evidence-${i}`}
+                              onClick={() => openImage(src, evidenceImgs)}
+                              style={{ width: 130, height: 95, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e8f0", cursor: "zoom-in" }} />
                           ))}
                         </div>
                       )}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                    </div>
+                  </NCSection>
 
-              {/* Performed by / Department */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <colgroup>
-                  <col style={{ width: "17%" }} />
-                  <col style={{ width: "33%" }} />
-                  <col style={{ width: "17%" }} />
-                  <col style={{ width: "33%" }} />
-                </colgroup>
-                <tbody>
-                  <tr>
-                    <td style={cell}><b>Performed by:</b></td>
-                    <td style={cell}>{view?.performedBy || "\u00A0"}</td>
-                    <td style={cell}><b>Department:</b></td>
-                    <td style={cell}>{view?.department || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  <NCSection color="#64748b" title="Performed By / Verification">
+                    <NCRow items={[
+                      { label: "Performed by", value: view?.performedBy },
+                      { label: "Department", value: view?.department },
+                    ]} />
+                    <NCText label="Verification of Corrective Action" value={view?.verificationOfCorrectiveAction} />
+                  </NCSection>
 
-              {/* Verification */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "60mm" }}><b>Verification of Corrective Action:</b></td>
-                    <td style={cell}>{view?.verificationOfCorrectiveAction || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  <NCSection color="#7c3aed" title="QA Verification">
+                    <NCRow items={[
+                      { label: "Verified by (QA)", value: view?.qaVerification?.verifiedByQA },
+                      { label: "Date", value: view?.qaVerification?.dateISO },
+                      { label: "Result", value: view?.qaVerification?.result },
+                      { label: "Closure Date", value: view?.qaVerification?.closureDateISO },
+                    ]} />
+                    <NCRow items={[
+                      { label: "Follow-up Actions Required", value: view?.qaVerification?.followupActionsRequired, colSpan: 2 },
+                      { label: "Follow-up Responsible", value: view?.qaVerification?.followupResponsible },
+                      { label: "Target Date", value: view?.qaVerification?.followupTargetDateISO },
+                    ]} />
+                  </NCSection>
 
-              {/* NEW: QA Verification */}
-              <div style={sectionTitle}>QA Verification</div>
-              <table style={table}>
-                <colgroup>
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                </colgroup>
-                <tbody>
-                  <tr>
-                    <td style={cell}><b>Verified by (QA)</b></td>
-                    <td style={cell}>{view?.qaVerification?.verifiedByQA || "\u00A0"}</td>
-                    <td style={cell}><b>Date</b></td>
-                    <td style={cell}>{view?.qaVerification?.dateISO || "\u00A0"}</td>
-                  </tr>
-                  <tr>
-                    <td style={cell}><b>Result</b></td>
-                    <td style={cell}>{view?.qaVerification?.result || "\u00A0"}</td>
-                    <td style={cell}><b>Closure Date</b></td>
-                    <td style={cell}>{view?.qaVerification?.closureDateISO || "\u00A0"}</td>
-                  </tr>
-                  <tr>
-                    <td style={cell}><b>Follow-up Actions Required</b></td>
-                    <td style={cell} colSpan={3}>{view?.qaVerification?.followupActionsRequired || "\u00A0"}</td>
-                  </tr>
-                  <tr>
-                    <td style={cell}><b>Follow-up Responsible</b></td>
-                    <td style={cell}>{view?.qaVerification?.followupResponsible || "\u00A0"}</td>
-                    <td style={cell}><b>Target Date</b></td>
-                    <td style={cell}>{view?.qaVerification?.followupTargetDateISO || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  <NCSection color="#059669" title="Final QA Closure">
+                    <NCRow items={[
+                      { label: "Name", value: view?.finalQaClosure?.name },
+                      { label: "Date", value: view?.finalQaClosure?.dateISO },
+                      { label: "Approved", value: view?.finalQaClosure?.approved ? "✅ YES" : "NO" },
+                    ]} />
+                  </NCSection>
 
-              {/* NEW: Final QA Closure */}
-              <div style={sectionTitle}>Final QA Closure</div>
-              <table style={table}>
-                <colgroup>
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                  <col style={{ width: "25%" }} />
-                </colgroup>
-                <tbody>
-                  <tr>
-                    <td style={cell}><b>Name</b></td>
-                    <td style={cell}>{view?.finalQaClosure?.name || "\u00A0"}</td>
-                    <td style={cell}><b>Date</b></td>
-                    <td style={cell}>{view?.finalQaClosure?.dateISO || "\u00A0"}</td>
-                  </tr>
-                  <tr>
-                    <td style={cell}><b>Approved</b></td>
-                    <td style={cell} colSpan={3}>
-                      {view?.finalQaClosure?.approved ? "YES" : "NO"}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* Signature + Date */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <colgroup>
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "38%" }} />
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "38%" }} />
-                </colgroup>
-                <tbody>
-                  <tr>
-                    <td style={cell}><b>Signature:</b></td>
-                    <td style={cell}>{view?.signature?.signature || "\u00A0"}</td>
-                    <td style={cell}><b>Date:</b></td>
-                    <td style={cell}>{view?.signature?.date || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* Responsible Person | Signature */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <colgroup>
-                  <col style={{ width: "20%" }} />
-                  <col style={{ width: "30%" }} />
-                  <col style={{ width: "20%" }} />
-                  <col style={{ width: "30%" }} />
-                </colgroup>
-                <tbody>
-                  <tr>
-                    <td style={cell}><b>Responsible Person:</b></td>
-                    <td style={cell}>{view?.signature?.responsiblePerson || "\u00A0"}</td>
-                    <td style={cell}><b>Signature:</b></td>
-                    <td style={cell}>{view?.signature?.responsibleSignature || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+                  <NCSection color="#dc2626" title="Signature">
+                    <NCRow items={[
+                      { label: "Signature", value: view?.signature?.signature },
+                      { label: "Date", value: view?.signature?.date },
+                      { label: "Responsible Person", value: view?.signature?.responsiblePerson },
+                      { label: "Signature (Resp.)", value: view?.signature?.responsibleSignature },
+                    ]} />
+                  </NCSection>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+      {lightbox}
+    </GlassShell>
   );
 }

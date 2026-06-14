@@ -3,14 +3,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx-js-style";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn } from "../_shared/branchViewKit";
 
-/* ===== API base (مطابق لملف NC) ===== */
+/* ===== API base ===== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const CRA =
-  (typeof process !== "undefined" &&
-    process.env &&
-    process.env.REACT_APP_API_URL) ||
-  undefined;
+  (typeof process !== "undefined" && process.env && process.env.REACT_APP_API_URL) || undefined;
 let VITE;
 try { VITE = import.meta.env?.VITE_API_URL; } catch {}
 const API_BASE = (VITE || CRA || API_BASE_DEFAULT).replace(/\/$/, "");
@@ -18,12 +16,10 @@ const IS_SAME_ORIGIN = (() => {
   try { return new URL(API_BASE).origin === window.location.origin; } catch { return false; }
 })();
 
-/* ===== Constants ===== */
 const DEFAULT_TYPE = "qcs_corrective_action";
 const DEFAULT_HEADER_LINE = "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS";
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 
-/* ===== Helpers ===== */
 const pad2 = (v) => String(v || "").padStart(2, "0");
 const toYMD = (d) => {
   if (!d) return "";
@@ -32,59 +28,40 @@ const toYMD = (d) => {
   return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`;
 };
 
-/* ===== Styles ===== */
-const sheet = {
-  width: "210mm",
-  margin: "0 auto",
-  background: "#fff",
-  color: "#000",
-  border: "1px solid #d1d5db",
-  boxShadow: "0 4px 14px rgba(0,0,0,.08)",
-  fontFamily: "Arial,'Segoe UI',Tahoma,sans-serif",
-  fontSize: 12,
-  padding: "8mm",
-};
-const table = { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" };
-const cell = { border: "1px solid #000", padding: "6px 8px", verticalAlign: "middle" };
-
-/* ===== Small view row ===== */
-function RowKV({ label, value }) {
+/* ===== Document card helpers ===== */
+function CarSection({ color, title, children }) {
   return (
-    <tr>
-      <td style={{ ...cell, width: "38mm" }}><b>{label}</b></td>
-      <td style={cell}>{value || "\u00A0"}</td>
-    </tr>
+    <div style={{ margin: "0 14px 12px", borderRadius: 8, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+      <div style={{ background: color, padding: "7px 16px", color: "#fff", fontWeight: 800, fontSize: 14, letterSpacing: 0.5, textTransform: "uppercase" }}>
+        {title}
+      </div>
+      {children}
+    </div>
   );
 }
-
-/* ===== Header band (بسيط) ===== */
-function CARHeaderView({ date, logoUrl, headerLine }) {
+function CarRow({ items }) {
+  const template = items.map((i) => `${i.colSpan || 1}fr`).join(" ");
   return (
-    <div style={{ border: "1px solid #000", marginBottom: 8 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", alignItems: "stretch" }}>
-        <div style={{ borderInlineEnd: "1px solid #000", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}>
-          <img src={logoUrl || LOGO_FALLBACK} alt="Al Mawashi" style={{ maxWidth: "100%", maxHeight: 80, objectFit: "contain" }} />
+    <div style={{ display: "grid", gridTemplateColumns: template }}>
+      {items.map((it, i) => (
+        <div key={i} style={{ padding: "9px 16px", borderRight: i < items.length - 1 ? "1px solid #e2e8f0" : undefined, borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 4, letterSpacing: 0.3 }}>{it.label}</div>
+          <div style={{ fontSize: 20, color: "#0f172a" }}>{it.value || " "}</div>
         </div>
-        <div>
-          <div style={{ background: "#c0c0c0", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
-            {headerLine || DEFAULT_HEADER_LINE}
-          </div>
-          <div style={{ background: "#d6d6d6", textAlign: "center", fontWeight: 900, padding: "6px 8px", borderBottom: "1px solid #000" }}>
-            CORRECTIVE ACTION REPORT
-          </div>
-          {date ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 8px" }}>
-              <span style={{ fontWeight: 900, textDecoration: "underline" }}>Report Date:</span>
-              <span>{date}</span>
-            </div>
-          ) : null}
-        </div>
-      </div>
+      ))}
+    </div>
+  );
+}
+function CarText({ label, value }) {
+  return (
+    <div style={{ padding: "10px 16px", borderBottom: "1px solid #e2e8f0" }}>
+      {label && <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 5, letterSpacing: 0.3 }}>{label}</div>}
+      <div style={{ fontSize: 20, color: "#0f172a", whiteSpace: "pre-wrap", minHeight: 24, lineHeight: 1.5 }}>{value || " "}</div>
     </div>
   );
 }
 
-/* ===== Server helpers (مطابقة لنهج NC) ===== */
+/* ===== Server helpers ===== */
 async function listReports(type) {
   const res = await fetch(
     `${API_BASE}/api/reports?type=${encodeURIComponent(type || DEFAULT_TYPE)}`,
@@ -106,7 +83,6 @@ async function deleteReport(anyId) {
   return res.ok;
 }
 
-/* ===== Grouping: yyyy-mm => items (من dateIssued) ===== */
 function groupByMonth(reports) {
   const map = {};
   for (const r of reports) {
@@ -133,7 +109,6 @@ export default function CorrectiveActionReportsView(props) {
   const TYPE = typeProp || DEFAULT_TYPE;
   const HEADER_LINE = headerLine || DEFAULT_HEADER_LINE;
   const [data, setData] = useState([]);
-  const [activeMonth, setActiveMonth] = useState("");
   const [activeId, setActiveId] = useState("");
   const [busy, setBusy] = useState(false);
   const sheetRef = useRef(null);
@@ -150,14 +125,10 @@ export default function CorrectiveActionReportsView(props) {
       const rows = await listReports(TYPE);
       setData(rows);
       const g = groupByMonth(rows);
-      if (g.length) {
-        setActiveMonth(g[0][0]);
-        if (g[0][1]?.length) setActiveId(g[0][1][0].id);
-      }
+      if (g.length && g[0][1]?.length) setActiveId(g[0][1][0].id);
     })();
   }, [TYPE]);
 
-  /* ===== actions ===== */
   async function onDelete() {
     if (!safeRouteId) return;
     if (!window.confirm("حذف التقرير نهائيًا؟")) return;
@@ -209,171 +180,97 @@ export default function CorrectiveActionReportsView(props) {
     pdf.save(`${h?.dateIssued || "CAR_Report"}.pdf`);
   }
 
-  const grouped = useMemo(() => groupByMonth(data), [data]);
+  const treeItems = useMemo(() =>
+    data.map((r) => ({
+      key: r.id,
+      dateISO: r?.payload?.header?.dateIssued || "",
+      label: (() => {
+        const d = toYMD(r?.payload?.header?.dateIssued || "");
+        if (!d) return r?.payload?.header?.departmentInvolved || "CAR";
+        const [y, m, day] = d.split("-");
+        return day ? `${day}/${m}/${y}` : d;
+      })(),
+    })),
+  [data]);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16 }}>
-      {/* left tree (شهر ← أيام) */}
-      <div style={{ background: "#fafafa", border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-        <h4 style={{ marginTop: 0 }}>📂 Corrective Action • Archive</h4>
-        {grouped.length === 0 && <div style={{ color: "#64748b" }}>لا توجد تقارير.</div>}
-        {grouped.map(([month, items]) => (
-          <div key={month} style={{ marginBottom: 10 }}>
-            <button
-              onClick={() => setActiveMonth(activeMonth === month ? "" : month)}
-              style={{
-                width: "100%", textAlign: "left", padding: "8px 10px",
-                border: "1px solid #e5e7eb", borderRadius: 8, background: "#fff",
-                fontWeight: 800, marginBottom: 6,
-              }}
-            >
-              {month} ({items.length})
-            </button>
-            {activeMonth === month && (
-              <div style={{ paddingInlineStart: 8 }}>
-                {items
-                  .sort((a, b) =>
-                    String(b?.payload?.header?.dateIssued || "").localeCompare(
-                      String(a?.payload?.header?.dateIssued || "")
-                    )
-                  )
-                  .map((r) => {
-                    const d = toYMD(r?.payload?.header?.dateIssued || "");
-                    const label = d || "No date";
-                    const dept = r?.payload?.header?.departmentInvolved || "";
-                    return (
-                      <div key={r.id} style={{ display: "flex", gap: 8, margin: "6px 0" }}>
-                        <button
-                          onClick={() => setActiveId(r.id)}
-                          style={{
-                            flex: 1,
-                            textAlign: "left",
-                            padding: "6px 8px",
-                            border: "1px solid " + (activeId === r.id ? "#0b132b" : "#e5e7eb"),
-                            borderRadius: 8,
-                            background: activeId === r.id ? "#0b132b" : "#fff",
-                            color: activeId === r.id ? "#fff" : "#0b132b",
-                            fontWeight: 700,
-                          }}
-                          title={dept}
-                        >
-                          {label}{dept ? ` — ${dept}` : ""}
-                        </button>
-                      </div>
-                    );
-                  })}
+    <GlassShell icon="✅" title="Corrective Action Reports">
+      <div style={{ display: "grid", gridTemplateColumns: "285px 1fr", gap: 12 }}>
+        <DateTreeSidebar
+          items={treeItems}
+          activeKey={activeId}
+          onPick={(it) => setActiveId(it.key)}
+          title="📂 CAR Archive"
+          loading={busy && data.length === 0}
+          maxHeight="calc(100vh - 220px)"
+        />
+
+        <div style={{ ...GLASS.content, overflowY: "auto" }}>
+          {!p ? (
+            <EmptyState text="اختر تقريرًا من الشجرة." />
+          ) : (
+            <>
+              {/* toolbar */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <button disabled={busy} onClick={exportXlsx} style={btn("#059669")}>📄 Export XLSX</button>
+                <button disabled={busy} onClick={exportPdf} style={btn("#7c3aed")}>🖨️ Export PDF</button>
+                <button disabled={busy} onClick={async () => { await onDelete(); }} style={{ ...btn("#ef4444"), marginInlineStart: "auto" }} data-delete-action="true">🗑️ Delete</button>
               </div>
-            )}
-          </div>
-        ))}
+
+              {/* Modern full-width document */}
+              <div ref={sheetRef} style={{ background: "#fff", borderRadius: 12, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+                {/* Header Banner */}
+                <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #065f46 100%)", padding: "14px 20px", display: "flex", alignItems: "center", gap: 14, color: "#fff" }}>
+                  <img src={p?.logoUrl || LOGO_FALLBACK} crossOrigin="anonymous" alt="Al Mawashi"
+                    style={{ maxHeight: 60, maxWidth: 100, objectFit: "contain", background: "rgba(255,255,255,0.9)", borderRadius: 8, padding: 4, flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 3 }}>{HEADER_LINE}</div>
+                    <div style={{ fontSize: 18, fontWeight: 900 }}>CORRECTIVE ACTION REPORT</div>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.9, textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, opacity: 0.65, marginBottom: 2 }}>REPORT DATE</div>
+                    {h?.dateIssued || "—"}
+                  </div>
+                </div>
+
+                <div style={{ paddingTop: 14, paddingBottom: 6 }}>
+                  <CarSection color="#0284c7" title="Report Information">
+                    <CarRow items={[
+                      { label: "Department Involved", value: h?.departmentInvolved },
+                      { label: "Initiated By", value: h?.initiatedBy },
+                      { label: "Origin of Non-Conformity", value: h?.originOfNonConformity },
+                      { label: "CAR Completed Date", value: h?.carCompletedDate },
+                    ]} />
+                  </CarSection>
+
+                  <CarSection color="#dc2626" title="Details of Non-Conformity">
+                    <CarText value={b?.detailsOfNC} />
+                  </CarSection>
+
+                  <CarSection color="#f59e0b" title="Root Cause(s) of Nonconformance">
+                    <CarText value={b?.rootCause} />
+                  </CarSection>
+
+                  <CarSection color="#10b981" title="Corrective Action">
+                    <CarText value={b?.correctiveAction} />
+                  </CarSection>
+
+                  <CarSection color="#8b5cf6" title="Action Taken to Prevent Recurrence">
+                    <CarText value={b?.preventiveAction} />
+                  </CarSection>
+
+                  <CarSection color="#475569" title="Sign-off">
+                    <CarRow items={[
+                      { label: "Signed QA", value: f?.signedQA },
+                      { label: "Date Closed Out", value: f?.dateClosedOut },
+                    ]} />
+                  </CarSection>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-
-      {/* right pane */}
-      <div>
-        {!p ? (
-          <div style={{ color: "#64748b" }}>اختر تقريرًا من الشجرة.</div>
-        ) : (
-          <>
-            {/* toolbar */}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              <button
-                disabled={busy}
-                onClick={exportXlsx}
-                style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", fontWeight: 800 }}
-              >
-                📄 Export XLSX
-              </button>
-              <button
-                disabled={busy}
-                onClick={exportPdf}
-                style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", fontWeight: 800 }}
-              >
-                🖨️ Export PDF
-              </button>
-              <button
-                disabled={busy}
-                onClick={async () => { await onDelete(); }}
-                style={{ marginLeft: "auto", padding: "10px 14px", borderRadius: 10, border: "1px solid #ef4444", background: "#fff", color: "#ef4444", fontWeight: 800 }}
-               data-delete-action="true">
-                🗑️ Delete
-              </button>
-            </div>
-
-            {/* printable sheet */}
-            <div ref={sheetRef} style={{ ...sheet }}>
-              <CARHeaderView date={h?.dateIssued} logoUrl={p?.logoUrl} headerLine={HEADER_LINE} />
-
-              {/* Meta */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <RowKV label="Department involved" value={h?.departmentInvolved} />
-                  <RowKV label="Initiated by" value={h?.initiatedBy} />
-                  <RowKV label="Origin of non-conformity" value={h?.originOfNonConformity} />
-                  <RowKV label="CAR Completed date" value={h?.carCompletedDate} />
-                </tbody>
-              </table>
-
-              {/* Details */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "60mm" }}><b>Details of Non-Conformity</b></td>
-                    <td style={cell}>{b?.detailsOfNC || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* Root Cause */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "60mm" }}><b>Root Cause(s) of Nonconformance</b></td>
-                    <td style={cell}>{b?.rootCause || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* Corrective */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "60mm" }}><b>Corrective Action</b></td>
-                    <td style={cell}>{b?.correctiveAction || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* Preventive */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <tbody>
-                  <tr>
-                    <td style={{ ...cell, width: "60mm" }}><b>Action taken to prevent recurrence</b></td>
-                    <td style={cell}>{b?.preventiveAction || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* Sign-off */}
-              <table style={{ ...table, marginTop: 6 }}>
-                <colgroup>
-                  <col style={{ width: "20%" }} />
-                  <col style={{ width: "30%" }} />
-                  <col style={{ width: "20%" }} />
-                  <col style={{ width: "30%" }} />
-                </colgroup>
-                <tbody>
-                  <tr>
-                    <td style={cell}><b>Signed QA</b></td>
-                    <td style={cell}>{f?.signedQA || "\u00A0"}</td>
-                    <td style={cell}><b>Date Closed out</b></td>
-                    <td style={cell}>{f?.dateClosedOut || "\u00A0"}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+    </GlassShell>
   );
 }

@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 import SignatureName from "../../../shared/SignatureName";
+import { useLightbox } from "../_shared/branchViewKit";
 
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const CRA = (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) || undefined;
@@ -32,15 +33,15 @@ const S = {
   kpi: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, textAlign: "center" },
   kpiLabel: { fontSize: 11, fontWeight: 900, color: "#64748b", textTransform: "uppercase" },
   kpiValue: { fontSize: 26, fontWeight: 950, marginTop: 4 },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 13, background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" },
-  th: { padding: "10px 12px", background: "linear-gradient(180deg,#0ea5e9,#0284c7)", color: "#fff", textAlign: "start", fontWeight: 900, fontSize: 12.5 },
-  td: { padding: "9px 12px", borderTop: "1px solid #e2e8f0", fontWeight: 700, verticalAlign: "middle" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 18, background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" },
+  th: { padding: "12px 14px", background: "linear-gradient(180deg,#0ea5e9,#0284c7)", color: "#fff", textAlign: "start", fontWeight: 900, fontSize: 15 },
+  td: { padding: "11px 14px", borderTop: "1px solid #e2e8f0", fontWeight: 700, verticalAlign: "middle", fontSize: 18 },
   empty: { textAlign: "center", padding: 40, color: "#64748b", fontWeight: 800 },
   badge: (color) => ({ display: "inline-block", padding: "3px 10px", borderRadius: 999, background: `${color}22`, color, fontWeight: 900, fontSize: 11 }),
   modalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 },
   modal: { background: "#fff", borderRadius: 14, padding: 16, maxWidth: 900, width: "100%", maxHeight: "85vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" },
-  itemRow: { padding: "8px 10px", borderTop: "1px solid #e2e8f0", display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr 80px", gap: 8, fontSize: 12, fontWeight: 700 },
-  itemHead: { padding: "8px 10px", background: "#f1f5f9", display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr 80px", gap: 8, fontSize: 11, fontWeight: 900, color: "#475569", textTransform: "uppercase" },
+  itemRow: { padding: "10px 12px", borderTop: "1px solid #e2e8f0", display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr 80px", gap: 8, fontSize: 16, fontWeight: 700 },
+  itemHead: { padding: "10px 12px", background: "#f1f5f9", display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr 80px", gap: 8, fontSize: 13, fontWeight: 900, color: "#475569", textTransform: "uppercase" },
 };
 
 function fmtDate(s) { if (!s) return "—"; try { const d = new Date(s); if (isNaN(d.getTime())) return s; return d.toLocaleDateString(); } catch { return s; } }
@@ -53,6 +54,7 @@ export default function StockRotationView() {
   const [locationFilter, setLocationFilter] = useState("all");
   const [complianceFilter, setComplianceFilter] = useState("all");
   const [detail, setDetail] = useState(null);
+  const { openImage, lightbox } = useLightbox();
 
   async function load() {
     setLoading(true);
@@ -265,9 +267,9 @@ export default function StockRotationView() {
                   <h4 style={{ margin: "0 0 6px", fontWeight: 900 }}>الصور</h4>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8 }}>
                     {p.images.extras.map((u, i) => (
-                      <a key={i} href={u} target="_blank" rel="noreferrer">
-                        <img src={u} alt={`Audit attachment ${i + 1}`} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 8 }} />
-                      </a>
+                      <img key={i} src={u} alt={`Audit attachment ${i + 1}`}
+                        onClick={() => openImage(u, p.images.extras)}
+                        style={{ width: "100%", height: 110, objectFit: "cover", borderRadius: 8, cursor: "zoom-in", border: "1px solid #e2e8f0" }} />
                     ))}
                   </div>
                 </div>
@@ -276,6 +278,7 @@ export default function StockRotationView() {
           </div>
         );
       })()}
+      {lightbox}
     </div>
   );
 }

@@ -371,8 +371,8 @@ function DetailsPanel({ record, onDelete, deleting }) {
             background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10,
             padding: "10px 14px", gridColumn: m.wide ? "1 / -1" : "auto",
           }}>
-            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".05em" }}>{m.label}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{m.value || "—"}</p>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".05em" }}>{m.label}</p>
+            <p style={{ margin: "4px 0 0", fontSize: 19, fontWeight: 700, color: "#0f172a" }}>{m.value || "—"}</p>
           </div>
         ))}
       </div>
@@ -406,7 +406,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
             }}>
               {q.checked ? "✓" : ""}
             </span>
-            <span style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.5 }}>{q.text}</span>
+            <span style={{ fontSize: 18, color: "#0f172a", lineHeight: 1.5 }}>{q.text}</span>
           </div>
         ))}
       </div>
@@ -502,7 +502,7 @@ function SymptomsView({ items, keyName }) {
         <tbody>
           {items.map((it, i) => (
             <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-              <td style={{ padding: "8px 12px", fontSize: 13, color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{it[keyName]}</td>
+              <td style={{ padding: "8px 12px", fontSize: 18, color: "#0f172a", borderBottom: "1px solid #f1f5f9" }}>{it[keyName]}</td>
               <td style={{ padding: "8px 12px", textAlign: "center", borderBottom: "1px solid #f1f5f9" }}>
                 <YesNoChip value={it.answer} />
               </td>
@@ -529,8 +529,8 @@ function Field({ label, value, wide, chip }) {
       padding: "10px 14px",
       gridColumn: wide ? "1 / -1" : "auto",
     }}>
-      <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</p>
-      <p style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+      <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</p>
+      <p style={{ margin: "4px 0 0", fontSize: 19, fontWeight: 700, color: "#0f172a" }}>
         {chip ? <YesNoChip value={value} /> : (value || "—")}
       </p>
     </div>

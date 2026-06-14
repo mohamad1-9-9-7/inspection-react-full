@@ -561,7 +561,7 @@ export default function CoolersView() {
             borderCollapse: "collapse",
             textAlign: "center",
             border: "1px solid #000",
-            fontSize: "12px",
+            fontSize: "18px",
             tableLayout: "fixed",
             wordBreak: "word-break",
           }}

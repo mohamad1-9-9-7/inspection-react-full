@@ -1,9 +1,10 @@
 // src/pages/monitor/branches/qcs/PersonalHygieneVIEW.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import { DateTreeSidebar } from "../_shared/branchViewKit";
 
 /* ===== API base (أسلوب موحّد) ===== */
 
@@ -208,76 +209,31 @@ export default function PersonalHygieneVIEW() {
     if (btns) btns.style.display = "flex";
   };
 
+  const treeItems = useMemo(() =>
+    reports.map((r) => ({
+      key: getId(r) || r?.payload?.reportDate,
+      dateISO: r?.payload?.reportDate || "",
+      label: r?.payload?.reportDate
+        ? new Date(r.payload.reportDate).toLocaleDateString("en-GB")
+        : "—",
+    })),
+  [reports]);
+
   return (
     <div style={{ display: "flex", gap: "1rem" }}>
       {/* الشجرة الجانبية */}
-      <div
-        style={{
-          minWidth: 260,
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: 10,
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
-      >
-        <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
-          🗓️ Saved Reports
-        </h4>
-
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(grouped).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          Object.entries(grouped)
-            .sort(([a],[b]) => Number(b) - Number(a))
-            .map(([Y, months]) => (
-              <details key={Y}>
-                <summary style={{ fontWeight: 700 }}>📅 Year {Y}</summary>
-                {Object.entries(months)
-                  .sort(([a],[b]) => Number(b) - Number(a))
-                  .map(([M, days]) => {
-                    const sorted = [...days].sort((x,y) => y._dt - x._dt);
-                    return (
-                      <details key={M} style={{ marginLeft: "1rem" }}>
-                        <summary style={{ fontWeight: 500 }}>📅 Month {M}</summary>
-                        <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                          {sorted.map((r,i) => {
-                            const active = selectedReport && getId(selectedReport) === getId(r);
-                            return (
-                              <li
-                                key={i}
-                                onClick={() => setSelectedReport(r)}
-                                style={{
-                                  padding: "6px 10px",
-                                  marginBottom: 4,
-                                  borderRadius: 6,
-                                  cursor: "pointer",
-                                  background: active ? "#6d28d9" : "#ecf0f1",
-                                  color: active ? "#fff" : "#333",
-                                  fontWeight: 600,
-                                  textAlign: "center",
-                                  borderLeft: active ? "4px solid #4c1d95" : "4px solid transparent",
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  gap: 8,
-                                }}
-                                title={active ? "Currently open" : "Open report"}
-                              >
-                                <span>{`${r._day}/${M}/${Y}`}</span>
-                                {active ? <span>✔️</span> : <span style={{ opacity: .5 }}>•</span>}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </details>
-                    );
-                  })}
-              </details>
-            ))
-        )}
+      <div style={{ width: 285, flexShrink: 0 }}>
+        <DateTreeSidebar
+          items={treeItems}
+          activeKey={getId(selectedReport)}
+          onPick={(it) => {
+            const r = reports.find((x) => getId(x) === it.key);
+            if (r) setSelectedReport(r);
+          }}
+          title="📅 Saved Reports"
+          loading={loading && reports.length === 0}
+          maxHeight="calc(100vh - 200px)"
+        />
       </div>
 
       {/* مساحة العرض */}
@@ -346,7 +302,7 @@ export default function PersonalHygieneVIEW() {
             </h3>
 
             {/* جدول النظافة الشخصية */}
-            <table style={{ width:"100%", borderCollapse:"collapse", textAlign:"center", border:"1px solid #000", tableLayout:"fixed", wordBreak:"break-word" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", textAlign:"center", border:"1px solid #000", tableLayout:"fixed", wordBreak:"break-word", fontSize:18 }}>
               <thead>
                 <tr style={{ background:"#d9d9d9", color:"#000" }}>
                   {[

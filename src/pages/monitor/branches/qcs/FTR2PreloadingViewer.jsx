@@ -175,8 +175,8 @@ const brandBox = { textAlign: "right", lineHeight: 1.1 };
 const brandTitle = { margin: 0, fontSize: 18, fontWeight: 900, color: "#7b001c", letterSpacing: .3 };
 const brandSub = { margin: 0, fontSize: 12, color: "#111827" };
 
-const metaTable = { width: "100%", borderCollapse: "collapse", marginTop: 8, fontSize: 13 };
-const cell = { border: `1px solid ${COLORS.border}`, padding: "6px 8px" };
+const metaTable = { width: "100%", borderCollapse: "collapse", marginTop: 8, fontSize: 17 };
+const cell = { border: `1px solid ${COLORS.border}`, padding: "8px 10px", fontSize: 17 };
 const metaLabel = { ...cell, fontWeight: 800, width: "24%" };
 const metaValue = { ...cell, width: "26%" };
 
@@ -232,7 +232,7 @@ const tdAttr = {
   zIndex: 1,
   borderRight: "2px solid #94a3b8"
 };
-const grid = { width: "100%", borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed", fontSize: 13 };
+const grid = { width: "100%", borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed", fontSize: 18 };
 const baseInput = { width: "100%", boxSizing: "border-box", border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "7px 10px", minWidth: 0, background: "#fff" };
 
 /* صور */

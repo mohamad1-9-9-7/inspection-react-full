@@ -1,9 +1,10 @@
 // src/pages/monitor/branches/qcs/DailyCleanlinessView.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import { DateTreeSidebar } from "../_shared/branchViewKit";
 
 /* ===== API base (نفس أسلوب مشروعك) ===== */
 
@@ -12,8 +13,8 @@ import SignatureName from "../../../shared/SignatureName";
 const TYPE = "qcs-clean";
 
 /* ===== أدوات عرض بسيطة ===== */
-const thStyle = { padding: "8px", border: "1px solid #ccc", textAlign: "center", fontSize: ".9rem" };
-const tdStyle = { padding: "6px", border: "1px solid #ccc", textAlign: "left" };
+const thStyle = { padding: "10px", border: "1px solid #ccc", textAlign: "center", fontSize: "1.1rem" };
+const tdStyle = { padding: "9px", border: "1px solid #ccc", textAlign: "left", fontSize: "1.15rem" };
 
 const btnBase = {
   padding: "8px 14px",
@@ -205,76 +206,31 @@ export default function DailyCleanlinessView() {
     return Array.isArray(raw) ? raw : [];
   })();
 
+  const treeItems = useMemo(() =>
+    reports.map((r) => ({
+      key: getId(r) || r?.payload?.reportDate,
+      dateISO: r?.payload?.reportDate || "",
+      label: r?.payload?.reportDate
+        ? new Date(r.payload.reportDate).toLocaleDateString("en-GB")
+        : "—",
+    })),
+  [reports]);
+
   return (
     <div style={{ display: "flex", gap: "1rem" }}>
       {/* الشجرة الجانبية */}
-      <div
-        style={{
-          minWidth: 260,
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: 10,
-          boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-          height: "fit-content",
-        }}
-      >
-        <h4 style={{ marginBottom: "1rem", color: "#6d28d9", textAlign: "center" }}>
-          🗓️ Saved Reports
-        </h4>
-
-        {loading ? (
-          <p>⏳ Loading...</p>
-        ) : Object.keys(grouped).length === 0 ? (
-          <p>❌ No reports</p>
-        ) : (
-          Object.entries(grouped)
-            .sort(([a],[b]) => Number(b) - Number(a))
-            .map(([Y, months]) => (
-              <details key={Y}>
-                <summary style={{ fontWeight: 700 }}>📅 Year {Y}</summary>
-                {Object.entries(months)
-                  .sort(([a],[b]) => Number(b) - Number(a))
-                  .map(([M, days]) => {
-                    const sorted = [...days].sort((x,y) => y._dt - x._dt);
-                    return (
-                      <details key={M} style={{ marginLeft: "1rem" }}>
-                        <summary style={{ fontWeight: 500 }}>📅 Month {M}</summary>
-                        <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
-                          {sorted.map((r,i) => {
-                            const active = selectedReport && getId(selectedReport) === getId(r);
-                            return (
-                              <li
-                                key={i}
-                                onClick={() => setSelectedReport(r)}
-                                style={{
-                                  padding: "6px 10px",
-                                  marginBottom: 4,
-                                  borderRadius: 6,
-                                  cursor: "pointer",
-                                  background: active ? "#6d28d9" : "#ecf0f1",
-                                  color: active ? "#fff" : "#333",
-                                  fontWeight: 600,
-                                  textAlign: "center",
-                                  borderLeft: active ? "4px solid #4c1d95" : "4px solid transparent",
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  gap: 8,
-                                }}
-                                title={active ? "Currently open" : "Open report"}
-                              >
-                                <span>{`${r._day}/${M}/${Y}`}</span>
-                                {active ? <span>✔️</span> : <span style={{ opacity: .5 }}>•</span>}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </details>
-                    );
-                  })}
-              </details>
-            ))
-        )}
+      <div style={{ width: 285, flexShrink: 0 }}>
+        <DateTreeSidebar
+          items={treeItems}
+          activeKey={getId(selectedReport)}
+          onPick={(it) => {
+            const r = reports.find((x) => getId(x) === it.key);
+            if (r) setSelectedReport(r);
+          }}
+          title="📅 Saved Reports"
+          loading={loading && reports.length === 0}
+          maxHeight="calc(100vh - 200px)"
+        />
       </div>
 
       {/* مساحة العرض */}
@@ -316,7 +272,7 @@ export default function DailyCleanlinessView() {
             </div>
 
             {/* ترويسة المستند */}
-            <table style={{ width:"100%", border:"1px solid #ccc", marginBottom:"1rem", fontSize:".9rem", borderCollapse:"collapse" }}>
+            <table style={{ width:"100%", border:"1px solid #ccc", marginBottom:"1rem", fontSize:"1.15rem", borderCollapse:"collapse" }}>
               <tbody>
                 <tr>
                   <td style={tdStyle}><b>Document Title:</b> {hdr.documentTitle || DEFAULT_HEADER.documentTitle}</td>
@@ -343,7 +299,7 @@ export default function DailyCleanlinessView() {
             </h3>
 
             {/* جدول النظافة */}
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:"1.15rem" }}>
               <thead>
                 <tr style={{ background:"#2980b9", color:"#fff" }}>
                   <th style={thStyle}>SI-No</th>

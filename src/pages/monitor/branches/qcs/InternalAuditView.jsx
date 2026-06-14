@@ -303,7 +303,7 @@ export default function InternalAuditView() {
       {/* Back */}
       <button
         onClick={() => setSelected(null)}
-        style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 16px", fontWeight: 700, cursor: "pointer", marginBottom: 20, fontSize: 13, color: "#374151" }}
+        style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 16px", fontWeight: 700, cursor: "pointer", marginBottom: 20, fontSize: 18, color: "#374151" }}
       >
         ← Back to Records
       </button>
@@ -370,7 +370,7 @@ export default function InternalAuditView() {
         ].map(m => (
           <div key={m.label} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px" }}>
             <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>{m.label}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{m.value || "—"}</p>
+            <p style={{ margin: "4px 0 0", fontSize: 19, fontWeight: 700, color: "#0f172a" }}>{m.value || "—"}</p>
           </div>
         ))}
       </div>
@@ -402,7 +402,7 @@ export default function InternalAuditView() {
                 display: "flex", justifyContent: "space-between", alignItems: "center",
               }}
             >
-              <span style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>{g.title}</span>
+              <span style={{ fontWeight: 800, fontSize: 18, color: "#0f172a" }}>{g.title}</span>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {groupNo > 0 && (
                   <span style={{ background: "#fee2e2", color: "#dc2626", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>
@@ -438,11 +438,11 @@ export default function InternalAuditView() {
                     {g.items.map((it, ii) => (
                       <tr key={`${gi}-${it.code}`} style={{ background: ii % 2 === 0 ? "#fff" : "#fafafa" }}> {/* ✅ key فريد */}
                         <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 12, fontWeight: 700, color: "#64748b", verticalAlign: "top" }}>{it.code}</td>
-                        <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, color: "#374151", whiteSpace: "pre-wrap", verticalAlign: "top" }}>{it.text}</td>
+                        <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", whiteSpace: "pre-wrap", verticalAlign: "top" }}>{it.text}</td>
                         <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", verticalAlign: "top" }}>
                           <StatusBadge value={it.status} />
                         </td>
-                        <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, color: "#374151", verticalAlign: "top" }}>
+                        <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", verticalAlign: "top" }}>
                           {it.remarks || <span style={{ color: "#cbd5e1" }}>—</span>}
                         </td>
                       </tr>
@@ -459,7 +459,7 @@ export default function InternalAuditView() {
       {recs.length > 0 && (
         <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 14, marginTop: 16, overflow: "hidden" }}>
           <div style={{ background: "#f8fafc", padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>
-            <span style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>📌 Audit Recommendations</span>
+            <span style={{ fontWeight: 800, fontSize: 18, color: "#0f172a" }}>📌 Audit Recommendations</span>
             <span style={{ marginLeft: 8, fontSize: 12, color: "#64748b" }}>{recs.length} item{recs.length > 1 ? "s" : ""}</span>
           </div>
           <div style={{ overflowX: "auto" }}>
@@ -475,11 +475,11 @@ export default function InternalAuditView() {
                 {recs.map((r, i) => (
                   <tr key={`rec-${i}`} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}> {/* ✅ key محدد */}
                     <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, fontWeight: 700, color: "#64748b", verticalAlign: "top" }}>{i + 1}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, color: "#374151", whiteSpace: "pre-wrap", verticalAlign: "top", minWidth: 180 }}>{r.finding || "—"}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, color: "#374151", verticalAlign: "top", whiteSpace: "nowrap" }}>{r.type || "—"}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, color: "#374151", whiteSpace: "pre-wrap", verticalAlign: "top", minWidth: 160 }}>{r.action || "—"}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, color: "#374151", verticalAlign: "top", whiteSpace: "nowrap" }}>{r.resp || "—"}</td>
-                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, color: "#374151", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmt(r.targetDate)}</td>
+                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", whiteSpace: "pre-wrap", verticalAlign: "top", minWidth: 180 }}>{r.finding || "—"}</td>
+                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", verticalAlign: "top", whiteSpace: "nowrap" }}>{r.type || "—"}</td>
+                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", whiteSpace: "pre-wrap", verticalAlign: "top", minWidth: 160 }}>{r.action || "—"}</td>
+                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", verticalAlign: "top", whiteSpace: "nowrap" }}>{r.resp || "—"}</td>
+                    <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 18, color: "#374151", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmt(r.targetDate)}</td>
                     <td style={{ border: "1px solid #e2e8f0", padding: "8px 10px", verticalAlign: "top" }}>
                       <FindingBadge value={r.status} />
                     </td>

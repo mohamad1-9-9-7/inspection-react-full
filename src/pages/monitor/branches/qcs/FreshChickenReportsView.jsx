@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import SignatureName from "../../../shared/SignatureName";
+import { useLightbox } from "../_shared/branchViewKit";
 
 /* ================= API base (متطابق مع FreshChickenInter) ================= */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -135,12 +136,12 @@ const btnGhost = {
 };
 
 const tableWrap = { overflowX: "auto", border: `1px solid ${COLORS.line}`, borderRadius: 12, background: COLORS.card };
-const table = { width: "100%", borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed", fontSize: 14 };
+const table = { width: "100%", borderCollapse: "separate", borderSpacing: 0, tableLayout: "fixed", fontSize: 19 };
 const th = { background: COLORS.gridHeader, borderBottom: `1px solid ${COLORS.line}`, borderRight: `1px solid ${COLORS.line}`, textAlign: "left", padding: 10, fontWeight: 900, position: "sticky", top: 0, zIndex: 1, whiteSpace: "nowrap" };
 const td = { borderTop: `1px solid ${COLORS.line}`, borderRight: `1px solid ${COLORS.line}`, padding: 8, verticalAlign: "top", whiteSpace: "pre-wrap", wordBreak: "break-word" };
 const tdAttr = { ...td, fontWeight: 900, background: "#fff", position: "sticky", left: 0, zIndex: 2, minWidth: 220 };
 
-const chip = { display: "inline-block", padding: "6px 10px", borderRadius: 999, background: "#e5e7eb", color: COLORS.chip, fontWeight: 900, fontSize: 12 };
+const chip = { display: "inline-block", padding: "6px 12px", borderRadius: 999, background: "#e5e7eb", color: COLORS.chip, fontWeight: 900, fontSize: 15 };
 
 /* ============== ترويسة كلاسيكية مع Document No (مثل النمط المطلوب) ============== */
 const CLASSIC_HEADER_BORDER = "1px solid #cbd5e1";
@@ -643,21 +644,23 @@ export default function FreshChickenReportsView() {
 function KV({ label, value, style }) {
   return (
     <div style={style}>
-      <div style={{ fontWeight: 900, fontSize: 12, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontWeight: 800, border: "1px solid #cbd5e1", borderRadius: 10, padding: "8px 10px", background: "#fff", minHeight: 38 }}>
+      <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontWeight: 800, fontSize: 19, border: "1px solid #cbd5e1", borderRadius: 10, padding: "9px 12px", background: "#fff", minHeight: 40 }}>
         {value || "—"}
       </div>
     </div>
   );
 }
 function ThumbGrid({ items = [], docMode = false }) {
+  const { openImage, lightbox } = useLightbox();
   const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10, marginTop: 8 };
   const cell = { border: "1px solid #cbd5e1", borderRadius: 12, background: "#fff", overflow: "hidden", position: "relative", minHeight: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: 6 };
-  const nameTag = { position: "absolute", bottom: 0, right: 0, left: 0, background: "rgba(255,255,255,.9)", borderTop: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "ltr" };
+  const nameTag = { position: "absolute", bottom: 0, right: 0, left: 0, background: "rgba(255,255,255,.9)", borderTop: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 13, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", direction: "ltr" };
 
   if (!Array.isArray(items) || items.length === 0) {
-    return <div style={{ color: "#6b7280", marginTop: 6 }}>No attachments.</div>;
+    return <div style={{ color: "#6b7280", marginTop: 6, fontSize: 16 }}>No attachments.</div>;
   }
+  const gallery = items.filter((x) => !docMode && x?.url).map((x) => x.url);
   return (
     <div style={grid}>
       {items.map((it, i) => (
@@ -667,11 +670,14 @@ function ThumbGrid({ items = [], docMode = false }) {
               Open document
             </a>
           ) : (
-            <img src={it.url} alt={it.name || `img-${i}`} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+            <img src={it.url} alt={it.name || `img-${i}`}
+              onClick={() => openImage(it.url, gallery)}
+              style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", cursor: "zoom-in" }} />
           )}
           <div style={nameTag} title={it.name || ""}>{it.name || ""}</div>
         </div>
       ))}
+      {lightbox}
     </div>
   );
 }

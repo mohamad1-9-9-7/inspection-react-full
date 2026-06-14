@@ -23,12 +23,12 @@ const S = {
   kpi: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, textAlign: "center" },
   kpiLabel: { fontSize: 11, fontWeight: 900, color: "#64748b", textTransform: "uppercase" },
   kpiValue: { fontSize: 26, fontWeight: 950, marginTop: 4 },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 13, background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" },
-  th: { padding: "10px 12px", background: "linear-gradient(180deg,#7c3aed,#6d28d9)", color: "#fff", textAlign: "start", fontWeight: 900, fontSize: 12.5 },
-  td: { padding: "9px 12px", borderTop: "1px solid #e2e8f0", fontWeight: 700, verticalAlign: "middle" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 18, background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" },
+  th: { padding: "12px 14px", background: "linear-gradient(180deg,#7c3aed,#6d28d9)", color: "#fff", textAlign: "start", fontWeight: 900, fontSize: 15 },
+  td: { padding: "11px 14px", borderTop: "1px solid #e2e8f0", fontWeight: 700, verticalAlign: "middle", fontSize: 18 },
   empty: { textAlign: "center", padding: 40, color: "#64748b", fontWeight: 800 },
-  imgThumb: { width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e8f0", cursor: "zoom-in" },
-  pillTag: (color) => ({ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: `${color}22`, color, fontWeight: 800, fontSize: 11, marginInlineEnd: 4, marginBottom: 2 }),
+  imgThumb: { width: 70, height: 70, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e8f0", cursor: "zoom-in" },
+  pillTag: (color) => ({ display: "inline-block", padding: "3px 10px", borderRadius: 999, background: `${color}22`, color, fontWeight: 800, fontSize: 14, marginInlineEnd: 4, marginBottom: 2 }),
 };
 
 function fmtDate(s) { if (!s) return "—"; try { const d = new Date(s); if (isNaN(d.getTime())) return s; return d.toLocaleDateString(); } catch { return s; } }

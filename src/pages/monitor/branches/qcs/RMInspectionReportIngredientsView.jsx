@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn } from "../_shared/branchViewKit";
 
 
 
@@ -314,7 +315,7 @@ export default function RMInspectionReportIngredientsView() {
   }, {});
 
   /* ================= Styles (خطوط سوداء مثل الإدخال) ================= */
-  const tdHeader = { border: "1.5px solid #000", padding: "6px 8px", fontSize: 12 };
+  const tdHeader = { border: "1.5px solid #000", padding: "8px 10px", fontSize: 17 };
   const topTable = { width: "100%", borderCollapse: "collapse", marginBottom: 8 };
   const band = (bg) => ({
     background: bg,
@@ -325,7 +326,7 @@ export default function RMInspectionReportIngredientsView() {
     border: "1.5px solid #000",
   });
 
-  const gridStyle = { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12 };
+  const gridStyle = { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 17 };
   const thCell = { border: "1.5px solid #000", padding: "6px 4px", background: "#f5f5f5" };
   const tdCell = { border: "1.5px solid #000", padding: "6px 4px", textAlign: "center", background: "#fff" };
 
@@ -349,117 +350,58 @@ export default function RMInspectionReportIngredientsView() {
     cursor: "pointer",
   });
 
+  const treeItems = useMemo(() =>
+    reports.map((r) => ({
+      key: getId(r),
+      dateISO: (() => {
+        const d = getReportDate(r);
+        return isNaN(d) ? "" : d.toISOString().slice(0, 10);
+      })(),
+      label: (() => {
+        const d = getReportDate(r);
+        if (isNaN(d)) return "—";
+        return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+      })(),
+    })),
+  [reports]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
-      <aside
-        style={{
-          minWidth: 260,
-          background: "#f9f9f9",
-          padding: "1rem",
-          borderRadius: 10,
-          boxShadow: "0 3px 10px rgba(0,0,0,.1)",
-        }}
-      >
-        <h4 style={{ textAlign: "center", marginBottom: 10 }}>🗓️ Saved Reports</h4>
-        {loading ? (
-          "⏳ Loading..."
-        ) : Object.keys(grouped).length === 0 ? (
-          "❌ No reports"
-        ) : (
-          Object.entries(grouped)
-            .sort(([a], [b]) => Number(b) - Number(a))
-            .map(([y, months]) => (
-              <details key={y}>
-                <summary style={{ fontWeight: 800 }}>📅 Year {y}</summary>
-                {Object.entries(months)
-                  .sort(([a], [b]) => Number(b) - Number(a))
-                  .map(([m, arr]) => {
-                    const days = [...arr].sort((a, b) => b._dt - a._dt);
-                    return (
-                      <details key={m} style={{ marginLeft: 12 }}>
-                        <summary style={{ fontWeight: 600 }}>📅 Month {m}</summary>
-                        <ul style={{ listStyle: "none", paddingLeft: 12 }}>
-                          {days.map((r, i) => {
-                            const active = getId(selected) && getId(selected) === getId(r);
-                            const d = new Date(r?._dt || 0);
-                            const label = isNaN(d)
-                              ? "-"
-                              : `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(
-                                  2,
-                                  "0"
-                                )}/${d.getFullYear()}`;
-                            return (
-                              <li
-                                key={i}
-                                onClick={() => setSelected(r)}
-                                style={{
-                                  padding: "6px 10px",
-                                  margin: "4px 0",
-                                  borderRadius: 6,
-                                  cursor: "pointer",
-                                  textAlign: "center",
-                                  background: active ? "#0b132b" : "#ecf0f1",
-                                  color: active ? "#fff" : "#333",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {label}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </details>
-                    );
-                  })}
-              </details>
-            ))
-        )}
-      </aside>
+    <GlassShell icon="🧪" title="RM Inspection — Ingredients">
+      <div style={{ display: "grid", gridTemplateColumns: "285px 1fr", gap: 12 }}>
+        <DateTreeSidebar
+          items={treeItems}
+          activeKey={getId(selected)}
+          onPick={(it) => {
+            const r = reports.find((x) => getId(x) === it.key);
+            if (r) setSelected(r);
+          }}
+          title="🗓️ Saved Reports"
+          loading={loading && reports.length === 0}
+          maxHeight="calc(100vh - 220px)"
+        />
 
-      <main
-        style={{
-          flex: 1,
-          background: "linear-gradient(120deg, #f6f8fa 65%, #e8daef 100%)",
-          padding: "1rem",
-          borderRadius: 14,
-          boxShadow: "0 4px 18px #d2b4de44",
-        }}
-      >
-        {!selected ? (
-          <p>❌ No report selected.</p>
-        ) : (
-          <>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-              {!editMode ? (
-                <button onClick={startEdit} style={miniBtn("#2563eb")}>
-                  ✏️ Edit
-                </button>
-              ) : (
-                <>
-                  <button onClick={handleUpdate} disabled={savingEdit} style={miniBtn(savingEdit ? "#64748b" : "#0f766e")}>
-                    {savingEdit ? "Saving..." : "✅ Save Changes"}
-                  </button>
-                  <button onClick={cancelEdit} disabled={savingEdit} style={miniBtn("#475569")}>
-                    ↩ Cancel
-                  </button>
-                </>
-              )}
-
-              <button onClick={handleExportPDF} style={miniBtn("#27ae60")}>
-                ⬇ Export PDF
-              </button>
-              <button onClick={handleExportJSON} style={miniBtn("#16a085")}>
-                ⬇ Export JSON
-              </button>
-              <button
-                onClick={() => handleDelete(selected)}
-                disabled={editMode}
-                title={editMode ? "Exit edit mode first" : "Delete"}
-                style={miniBtn(editMode ? "#9ca3af" : "#c0392b")}
-               data-delete-action="true">
-                🗑 Delete
-              </button>
-            </div>
+        <div style={{ ...GLASS.content, overflowY: "auto" }}>
+          {!selected ? (
+            <EmptyState text="No report selected. Pick a date from the sidebar." />
+          ) : (
+            <>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                {!editMode ? (
+                  <button onClick={startEdit} style={miniBtn("#2563eb")}>✏️ Edit</button>
+                ) : (
+                  <>
+                    <button onClick={handleUpdate} disabled={savingEdit} style={miniBtn(savingEdit ? "#64748b" : "#0f766e")}>
+                      {savingEdit ? "Saving..." : "✅ Save Changes"}
+                    </button>
+                    <button onClick={cancelEdit} disabled={savingEdit} style={miniBtn("#475569")}>↩ Cancel</button>
+                  </>
+                )}
+                <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
+                <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
+                <button onClick={() => handleDelete(selected)} disabled={editMode}
+                  title={editMode ? "Exit edit mode first" : "Delete"}
+                  style={btn(editMode ? "#9ca3af" : "#c0392b")} data-delete-action="true">🗑 Delete</button>
+              </div>
 
             {/* العارض */}
             <div ref={ref} style={{ background: "#fff", border: "1.5px solid #000", borderRadius: 12, padding: 16 }}>
@@ -695,7 +637,8 @@ export default function RMInspectionReportIngredientsView() {
             </div>
           </>
         )}
-      </main>
-    </div>
+        </div>
+      </div>
+    </GlassShell>
   );
 }
