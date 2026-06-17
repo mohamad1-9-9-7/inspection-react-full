@@ -104,6 +104,13 @@ const sections = [
     route: "/haccp-iso/document-register/view",
   },
 
+  {
+    id: "legal-register",
+    title: "Legal Register",
+    subtitle: "Live statutory, regulatory, ISO and customer requirements register with ownership, review dates and compliance evidence",
+    route: "/haccp-iso/legal-register/view",
+  },
+
   // 🪟 Glass & Brittle Plastic Register (Policy 2 + ISO 8.2 PRP)
   {
     id: "glass-register",
@@ -393,7 +400,7 @@ const arrowStyle = {
   opacity: 0.6,
 };
 
-export default function HaccpIsoMenu() {
+function LegacyHaccpIsoMenu() {
   const navigate = useNavigate();
   const [hoverId, setHoverId] = useState(null);
 
@@ -467,7 +474,10 @@ export default function HaccpIsoMenu() {
         {/* Cards — filtered by per-user ISO permissions */}
         <section aria-label="ISO & HACCP sections">
           <div style={gridStyle}>
-            {sections.filter(item => isItemAllowed("iso", item.id)).map((item) => {
+            {sections.filter(item => item.id === "product-details"
+              ? isItemAllowed("iso", "product-details.entry") || isItemAllowed("iso", "product-details.view")
+              : isItemAllowed("iso", item.id)
+            ).map((item) => {
               const isHover = hoverId === item.id;
               return (
                 <button
@@ -555,6 +565,428 @@ export default function HaccpIsoMenu() {
         >
           © Al Mawashi — Quality & Food Safety System
         </div>
+      </div>
+    </main>
+  );
+}
+
+const categoryFilters = [
+  { id: "all", label: "All" },
+  { id: "governance", label: "Governance" },
+  { id: "operations", label: "Operations" },
+  { id: "records", label: "Records" },
+  { id: "performance", label: "Performance" },
+];
+
+const categoryById = {
+  "haccp-manual": "governance",
+  "food-safety-policy": "governance",
+  "risk-register": "governance",
+  "opportunity-register": "governance",
+  "change-management": "governance",
+  "haccp-dashboard": "performance",
+  "product-details": "operations",
+  "licenses-contracts": "governance",
+  "dm-inspection": "records",
+  "supplier-evaluation": "operations",
+  "sop-ssop": "operations",
+  "document-register": "governance",
+  "legal-register": "governance",
+  "glass-register": "operations",
+  "mock-recall": "records",
+  "real-recall": "records",
+  "ccp-monitoring": "operations",
+  objectives: "performance",
+  "customer-complaints": "records",
+  "continual-improvement": "performance",
+  mrm: "performance",
+  "internal-audit": "records",
+  calibration: "operations",
+  "internal-calibration": "operations",
+};
+
+const categoryLabel = {
+  governance: "Governance",
+  operations: "Operations",
+  records: "Records",
+  performance: "Performance",
+};
+
+const modern = {
+  shell: {
+    minHeight: "100vh",
+    padding: "24px clamp(18px, 3vw, 48px) 48px",
+    background: "linear-gradient(180deg, #f8fafc 0%, #eef7f4 44%, #f8fafc 100%)",
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    color: "#0f172a",
+  },
+  layout: {
+    width: "min(1760px, 100%)",
+    margin: "0 auto",
+  },
+  hero: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 8,
+    padding: "28px clamp(22px, 4vw, 56px)",
+    background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,118,110,0.94) 52%, rgba(8,145,178,0.92))",
+    color: "#fff",
+    border: "1px solid rgba(255,255,255,0.20)",
+    boxShadow: "0 24px 64px rgba(15,23,42,0.22)",
+  },
+  heroInner: {
+    position: "relative",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    alignItems: "center",
+    gap: 24,
+  },
+  brand: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    minWidth: 0,
+  },
+  logo: {
+    width: 76,
+    height: 76,
+    borderRadius: 8,
+    objectFit: "cover",
+    border: "1px solid rgba(255,255,255,0.34)",
+    background: "#fff",
+    boxShadow: "0 16px 30px rgba(0,0,0,0.25)",
+    flexShrink: 0,
+  },
+  eyebrow: {
+    margin: 0,
+    fontWeight: 900,
+    color: "rgba(255,255,255,0.78)",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+  },
+  title: {
+    margin: "8px 0 0",
+    fontWeight: 1000,
+    lineHeight: 1.05,
+    letterSpacing: 0,
+  },
+  subtitle: {
+    margin: "12px 0 0",
+    maxWidth: 980,
+    color: "rgba(255,255,255,0.82)",
+    lineHeight: 1.45,
+    fontWeight: 700,
+  },
+  heroStats: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(150px, 1fr))",
+    gap: 12,
+    minWidth: 340,
+  },
+  stat: {
+    borderRadius: 8,
+    padding: "16px 18px",
+    background: "rgba(255,255,255,0.12)",
+    border: "1px solid rgba(255,255,255,0.22)",
+    backdropFilter: "blur(12px)",
+  },
+  statValue: {
+    fontWeight: 1000,
+    lineHeight: 1,
+  },
+  statLabel: {
+    marginTop: 8,
+    color: "rgba(255,255,255,0.76)",
+    fontWeight: 800,
+  },
+  toolbar: {
+    margin: "22px 0",
+    display: "grid",
+    gridTemplateColumns: "minmax(280px, 1fr) auto",
+    gap: 14,
+    alignItems: "center",
+  },
+  searchWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 16px",
+    borderRadius: 8,
+    background: "#fff",
+    border: "1px solid rgba(15,23,42,0.13)",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
+  },
+  searchInput: {
+    width: "100%",
+    minWidth: 0,
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    color: "#0f172a",
+    fontWeight: 800,
+    fontFamily: "inherit",
+  },
+  filters: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  filterButton: (active) => ({
+    minHeight: 52,
+    padding: "10px 18px",
+    borderRadius: 8,
+    border: active ? "1px solid #0f766e" : "1px solid rgba(15,23,42,0.14)",
+    background: active ? "#0f766e" : "#fff",
+    color: active ? "#fff" : "#334155",
+    fontWeight: 950,
+    cursor: "pointer",
+    boxShadow: active ? "0 14px 28px rgba(15,118,110,0.22)" : "0 10px 20px rgba(15,23,42,0.07)",
+  }),
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 390px), 1fr))",
+    gap: 18,
+  },
+  card: (isHover, highlight) => ({
+    position: "relative",
+    minHeight: 220,
+    display: "grid",
+    gridTemplateRows: "auto 1fr auto",
+    gap: 18,
+    padding: "24px 24px 22px",
+    borderRadius: 8,
+    border: highlight ? "2px solid rgba(245,158,11,0.56)" : isHover ? "1px solid rgba(15,118,110,0.48)" : "1px solid rgba(15,23,42,0.12)",
+    background: highlight ? "linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)" : "#ffffff",
+    color: "#0f172a",
+    cursor: "pointer",
+    textAlign: "left",
+    boxShadow: isHover ? "0 24px 52px rgba(15,23,42,0.16)" : "0 12px 30px rgba(15,23,42,0.08)",
+    transform: isHover ? "translateY(-3px)" : "translateY(0)",
+    transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease",
+    overflow: "hidden",
+    fontFamily: "inherit",
+  }),
+  cardTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+  },
+  iconWrap: (highlight) => ({
+    width: 58,
+    height: 58,
+    borderRadius: 8,
+    display: "grid",
+    placeItems: "center",
+    color: highlight ? "#b45309" : "#0f766e",
+    background: highlight ? "#ffedd5" : "#ccfbf1",
+    border: highlight ? "1px solid #fed7aa" : "1px solid #99f6e4",
+    flexShrink: 0,
+  }),
+  pill: (highlight) => ({
+    padding: "7px 12px",
+    borderRadius: 999,
+    background: highlight ? "#ffedd5" : "#f1f5f9",
+    color: highlight ? "#9a3412" : "#475569",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  }),
+  cardTitle: {
+    margin: 0,
+    lineHeight: 1.22,
+    fontWeight: 1000,
+    color: "#0f172a",
+  },
+  cardSub: {
+    marginTop: 10,
+    lineHeight: 1.5,
+    fontWeight: 700,
+    color: "#475569",
+  },
+  cardBottom: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+    paddingTop: 16,
+    borderTop: "1px solid rgba(15,23,42,0.09)",
+    fontWeight: 950,
+    color: "#0f766e",
+  },
+  empty: {
+    padding: 28,
+    borderRadius: 8,
+    background: "#fff",
+    border: "1px solid rgba(15,23,42,0.12)",
+    color: "#64748b",
+    fontWeight: 800,
+    textAlign: "center",
+  },
+  footer: {
+    marginTop: 26,
+    textAlign: "center",
+    color: "#64748b",
+    fontWeight: 800,
+  },
+};
+
+export default function HaccpIsoMenu() {
+  const navigate = useNavigate();
+  const [hoverId, setHoverId] = useState(null);
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("all");
+
+  const allowedSections = useMemo(
+    () => sections.filter((item) =>
+      item.id === "product-details"
+        ? isItemAllowed("iso", "product-details.entry") || isItemAllowed("iso", "product-details.view")
+        : isItemAllowed("iso", item.id)
+    ),
+    []
+  );
+
+  const filteredSections = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return allowedSections.filter((item) => {
+      const category = categoryById[item.id] || "records";
+      const matchesCategory = activeCategory === "all" || category === activeCategory;
+      const text = `${item.title} ${item.subtitle}`.toLowerCase();
+      return matchesCategory && (!q || text.includes(q));
+    });
+  }, [activeCategory, allowedSections, query]);
+
+  const handleOpen = (item) => {
+    if (item.route) navigate(item.route);
+  };
+
+  return (
+    <main style={modern.shell}>
+      <FloatingSettingsButton />
+      <style>{`
+        @media (max-width: 980px) {
+          .haccp-hero-inner,
+          .haccp-toolbar {
+            grid-template-columns: 1fr !important;
+          }
+          .haccp-hero-stats,
+          .haccp-filters {
+            min-width: 0 !important;
+            justify-content: flex-start !important;
+          }
+        }
+      `}</style>
+
+      <div style={modern.layout}>
+        <section style={modern.hero}>
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "radial-gradient(820px 260px at 12% 0%, rgba(45,212,191,0.28), transparent 62%)," +
+                "radial-gradient(760px 300px at 90% 20%, rgba(125,211,252,0.22), transparent 60%)",
+            }}
+          />
+
+          <div className="haccp-hero-inner" style={modern.heroInner}>
+            <div style={modern.brand}>
+              <img src={mawashiLogo} alt="Al Mawashi Logo" style={modern.logo} />
+              <div style={{ minWidth: 0 }}>
+                <p style={modern.eyebrow}>TRANS EMIRATES LIVESTOCK TRADING L.L.C.</p>
+                <h1 style={modern.title}>ISO 22000 & HACCP Command Center</h1>
+                <p style={modern.subtitle}>
+                  A clean operational hub for food safety documents, records, inspections, product files, and performance tracking.
+                </p>
+              </div>
+            </div>
+
+            <div className="haccp-hero-stats" style={modern.heroStats}>
+              <div style={modern.stat}>
+                <div style={modern.statValue}>{allowedSections.length}</div>
+                <div style={modern.statLabel}>Modules</div>
+              </div>
+              <div style={modern.stat}>
+                <div style={modern.statValue}>ISO</div>
+                <div style={modern.statLabel}>22000 / HACCP</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="haccp-toolbar" style={modern.toolbar}>
+          <label style={modern.searchWrap}>
+            <span aria-hidden="true">Search</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Find a module..."
+              style={modern.searchInput}
+            />
+          </label>
+
+          <div className="haccp-filters" style={modern.filters}>
+            {categoryFilters.map((filter) => (
+              <button
+                key={filter.id}
+                type="button"
+                onClick={() => setActiveCategory(filter.id)}
+                style={modern.filterButton(activeCategory === filter.id)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section aria-label="ISO & HACCP sections">
+          {filteredSections.length ? (
+            <div style={modern.grid}>
+              {filteredSections.map((item) => {
+                const isHover = hoverId === item.id;
+                const category = categoryById[item.id] || "records";
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    style={modern.card(isHover, item.highlight)}
+                    onClick={() => handleOpen(item)}
+                    onMouseEnter={() => setHoverId(item.id)}
+                    onMouseLeave={() => setHoverId(null)}
+                    onFocus={() => setHoverId(item.id)}
+                    onBlur={() => setHoverId(null)}
+                    title={item.title}
+                  >
+                    <div style={modern.cardTop}>
+                      <div style={modern.iconWrap(item.highlight)}>
+                        <IconFolder />
+                      </div>
+                      <span style={modern.pill(item.highlight)}>
+                        {item.highlight ? "Master" : categoryLabel[category]}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h2 style={modern.cardTitle}>{item.title}</h2>
+                      <div style={modern.cardSub}>{item.subtitle}</div>
+                    </div>
+
+                    <div style={modern.cardBottom}>
+                      <span>Open module</span>
+                      <span aria-hidden="true">→</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={modern.empty}>No matching HACCP / ISO modules found.</div>
+          )}
+        </section>
+
+        <div style={modern.footer}>© Al Mawashi — Quality & Food Safety System</div>
       </div>
     </main>
   );

@@ -11,6 +11,8 @@ export default function POS19NonConformanceReportsView(props) {
       {...props}
       type="pos19_non_conformance"
       headerLine="TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - POS 19 (AL WARQA KITCHEN)"
+      inputPath="/monitor/pos19"
+      inputTab="nonConformance"
     />
   );
 }

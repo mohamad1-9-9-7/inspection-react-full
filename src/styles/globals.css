@@ -55,9 +55,25 @@ table td textarea {
 }
 
 html {
-  font-size: 18px;
+  font-size: 14px;
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+}
+
+html,
+body,
+#root,
+#root *,
+#root *::before,
+#root *::after {
+  font-size: 14px !important;
+}
+
+#root table,
+#root table *,
+#root .qms-table,
+#root .qms-table * {
+  font-size: 12px !important;
 }
 
 body {
@@ -240,13 +256,13 @@ body {
   select,
   textarea,
   .qms-input {
-    font-size: 16px !important;
+    font-size: 14px !important;
   }
 }
 
 /* ── Tablet (≤ 768px) ──────────────────────────────────── */
 @media (max-width: 768px) {
-  html { font-size: 18px; }
+  html { font-size: 14px; }
 
   .qms-card {
     padding: var(--space-4);
@@ -264,7 +280,7 @@ body {
 
 /* ── Mobile (≤ 480px) ──────────────────────────────────── */
 @media (max-width: 480px) {
-  html { font-size: 18px; }
+  html { font-size: 14px; }
 
   .qms-card {
     padding: var(--space-3) var(--space-4);
@@ -295,14 +311,14 @@ body {
   }
 
   .qms-badge {
-    font-size: 10px;
+    font-size: 12px;
     padding: 3px 8px;
   }
 }
 
 /* ── Small phones (≤ 360px) ────────────────────────────── */
 @media (max-width: 360px) {
-  html { font-size: 18px; }
+  html { font-size: 14px; }
 
   .qms-card {
     padding: var(--space-3);

@@ -460,6 +460,9 @@ export default function ProductDetailsInput() {
         .pd-secondary { transition: background .15s, border-color .15s; }
         .pd-secondary:hover { background: #dbeafe !important; border-color: #60a5fa !important; }
         .pd-ingrow:hover { background: #f8fafc; border-radius: 10px; }
+        @media (max-width: 980px) {
+          .pd-form-layout { grid-template-columns: 1fr !important; }
+        }
         .pd-ingrow { transition: background .1s; }
         .pd-file-label { transition: background .15s, border-color .15s; }
         .pd-file-label:hover { background: #dbeafe !important; border-color: #3b82f6 !important; }
@@ -511,7 +514,7 @@ export default function ProductDetailsInput() {
           </div>
         )}
 
-        <div style={{ maxWidth: 1180, margin: "0 auto", padding: "28px 20px 48px" }}>
+        <div style={{ width: "100%", maxWidth: 1720, margin: "0 auto", padding: "28px clamp(14px, 2.4vw, 36px) 48px", boxSizing: "border-box" }}>
 
           {/* ── Header banner ── */}
           <div style={{
@@ -571,7 +574,7 @@ export default function ProductDetailsInput() {
           )}
 
           {/* ── Two-column layout ── */}
-          <form onSubmit={handleSubmit} style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20, alignItems: "flex-start" }}>
+          <form className="pd-form-layout" onSubmit={handleSubmit} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 20, alignItems: "flex-start" }}>
 
             {/* ══ LEFT: form sections ══ */}
             <div>

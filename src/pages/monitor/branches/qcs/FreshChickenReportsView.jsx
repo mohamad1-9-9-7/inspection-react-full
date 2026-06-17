@@ -2,55 +2,26 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import SignatureName from "../../../shared/SignatureName";
-import { useLightbox } from "../_shared/branchViewKit";
+import {
+  DateTreeSidebar,
+  GlassShell,
+  ReportActions,
+  ResponsiveReportLayout,
+  ResponsiveTableWrap,
+  useLightbox,
+} from "../_shared/branchViewKit";
+import {
+  deleteReport,
+  downloadReportsJson,
+  listReports,
+  payloadOf,
+  reportId,
+} from "../_shared/reportApi";
 
-/* ================= API base (متطابق مع FreshChickenInter) ================= */
-const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const fromWindow = typeof window !== "undefined" ? window.__QCS_API__ : undefined;
-const fromProcess =
-  typeof process !== "undefined"
-    ? (process.env?.REACT_APP_API_URL ||
-       process.env?.VITE_API_URL ||
-       process.env?.RENDER_EXTERNAL_URL)
-    : undefined;
-let fromVite;
-try { fromVite = import.meta.env && (import.meta.env.VITE_API_URL || import.meta.env.RENDER_EXTERNAL_URL); }
-catch { fromVite = undefined; }
-const API_BASE = String(fromWindow || fromProcess || fromVite || API_ROOT_DEFAULT).replace(/\/$/, "");
-const REPORTS_URL = `${API_BASE}/api/reports`;
 const REPORT_TYPE_KEY = "pos_al_qusais_fresh_chicken_receiving";
 
 /* ===== وثائق ===== */
 const DOC_NO = "FS-QM/REC/FC-001";
-
-/* ================= Helpers ================= */
-const IS_SAME_ORIGIN = (() => {
-  try { return new URL(API_BASE).origin === window.location.origin; }
-  catch { return false; }
-})();
-
-async function listReportsByType(type) {
-  const res = await fetch(`${REPORTS_URL}?type=${encodeURIComponent(type)}`, {
-    method: "GET",
-    cache: "no-store",
-    credentials: IS_SAME_ORIGIN ? "include" : "omit",
-    headers: { Accept: "application/json" },
-  });
-  if (!res.ok) throw new Error(`Failed to list reports for ${type}`);
-  const json = await res.json().catch(() => null);
-  const rows = Array.isArray(json) ? json : json?.data || [];
-  return rows.map((r) => ({ id: r?._id || r?.id, payload: r?.payload || r })); // {id, payload}
-}
-
-async function deleteReportById(id) {
-  if (!id) return false;
-  const res = await fetch(`${REPORTS_URL}/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    credentials: IS_SAME_ORIGIN ? "include" : "omit",
-  });
-  return res.ok || res.status === 404;
-}
 
 function toDMY(iso) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return iso || "";
@@ -75,21 +46,6 @@ function fmtDate(iso) {
   if (!iso) return "—";
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return `${toDMY(iso)} (${iso})`;
   return iso;
-}
-
-/* ============= تجميع التواريخ: Year → Month → [Day => ids] ============= */
-function groupByDateTree(rows) {
-  const acc = {};
-  for (const r of rows) {
-    const iso = getEntryDate(r.payload);
-    if (!iso) continue;
-    const [Y, M, D] = iso.split("-");
-    acc[Y] ??= {};
-    acc[Y][M] ??= {};
-    acc[Y][M][D] ??= [];
-    acc[Y][M][D].push(r);
-  }
-  return acc; // {2025:{10:{28:[row,row]}}}
 }
 
 /* ================= ألوان/ستايل خفيف (بدون fullscreen) ================= */
@@ -228,39 +184,39 @@ export default function FreshChickenReportsView() {
   const [exportingPDF, setExportingPDF] = useState(false);
   const printRef = useRef(null);
 
+  async function loadReports() {
+    try {
+      setLoading(true);
+      const rows = (await listReports(REPORT_TYPE_KEY)).map((r) => ({
+        id: reportId(r),
+        payload: payloadOf(r),
+      }));
+
+      // ترتيب تنازلي حسب تاريخ الإدخال + createdAt
+      rows.sort((a, b) => {
+        const da = String(getEntryDate(a.payload));
+        const db = String(getEntryDate(b.payload));
+        if (da !== db) return db.localeCompare(da);
+        const ca = String(a.payload?.meta?.createdAt || "");
+        const cb = String(b.payload?.meta?.createdAt || "");
+        return cb.localeCompare(ca);
+      });
+
+      setAllRows(rows);
+
+      // اختيار أحدث يوم تلقائياً
+      const days = uniqueDates(rows);
+      if (days.length) setSelectedDate((prev) => prev || days[0]);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to fetch Fresh Chicken reports.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   /* ===== تحميل كل تقارير هذا النوع ===== */
-  useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        const rows = await listReportsByType(REPORT_TYPE_KEY);
-
-        // ترتيب تنازلي حسب تاريخ الإدخال + createdAt
-        rows.sort((a, b) => {
-          const da = String(getEntryDate(a.payload));
-          const db = String(getEntryDate(b.payload));
-          if (da !== db) return db.localeCompare(da);
-          const ca = String(a.payload?.meta?.createdAt || "");
-          const cb = String(b.payload?.meta?.createdAt || "");
-          return cb.localeCompare(ca);
-        });
-
-        setAllRows(rows);
-
-        // اختيار أحدث يوم تلقائياً
-        const days = uniqueDates(rows);
-        if (days.length) setSelectedDate(days[0]);
-      } catch (e) {
-        console.error(e);
-        alert("Failed to fetch Fresh Chicken reports.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  // شجرة مجمعة
-  const grouped = useMemo(() => groupByDateTree(allRows), [allRows]);
+  useEffect(() => { loadReports(); }, []);
 
   // كل التقارير ضمن اليوم
   const rowsForSelectedDate = useMemo(() => {
@@ -293,6 +249,17 @@ export default function FreshChickenReportsView() {
     const match = rowsForSelectedDate.find((r) => r?.payload?.reportVariant === variantId);
     if (match) setActiveId(match.id);
   };
+
+  const treeItems = useMemo(() => {
+    return uniqueDates(allRows).map((dateISO) => {
+      const count = allRows.filter((r) => getEntryDate(r.payload) === dateISO).length;
+      return {
+        key: dateISO,
+        dateISO,
+        label: `${toDMY(dateISO)}${count > 1 ? ` (${count})` : ""}`,
+      };
+    });
+  }, [allRows]);
 
   /* ===== طباعة / تصدير PDF ===== */
   const onPrint = () => {
@@ -346,8 +313,7 @@ export default function FreshChickenReportsView() {
     if (!row) return;
     if (!window.confirm("Delete this report permanently?")) return;
     try {
-      const ok = await deleteReportById(row.id);
-      if (!ok) throw new Error("Delete failed");
+      await deleteReport(row.id);
       const next = allRows.filter((r) => r.id !== row.id);
       setAllRows(next);
       const remainingSameDate = next.filter((r) => getEntryDate(r.payload) === selectedDate);
@@ -363,11 +329,32 @@ export default function FreshChickenReportsView() {
     }
   };
 
+  const onExportJSON = () => {
+    downloadReportsJson(REPORT_TYPE_KEY, allRows, "QCS_FreshChicken_ALL");
+  };
+
   /* ====================== UI ====================== */
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16 }}>
-      {/* ===== Sidebar: شجرة التاريخ + إجراءات ===== */}
-      <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+    <GlassShell
+      icon="🍗"
+      title="Fresh Chicken Reports"
+      actions={
+        <ReportActions
+          onPdf={onExportPDF}
+          onJson={onExportJSON}
+          onRefresh={loadReports}
+          onDelete={onDeleteActive}
+          exportingPdf={exportingPDF}
+          refreshing={loading}
+          pdfDisabled={!activeReport}
+          jsonDisabled={allRows.length === 0}
+          deleteDisabled={!activeReport}
+        />
+      }
+    >
+    <ResponsiveReportLayout
+      sidebar={
+        <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
         <div style={section}>
           <div style={sectionBar(COLORS.headerA)} />
           <h3 style={{ margin: 0, fontWeight: 900 }}>Fresh Chicken Reports</h3>
@@ -376,60 +363,15 @@ export default function FreshChickenReportsView() {
           </div>
         </div>
 
-        <div style={section}>
-          <h4 style={{ margin: "0 0 8px", fontWeight: 900 }}>History</h4>
-          {loading ? (
-            <div style={{ fontStyle: "italic" }}>Loading…</div>
-          ) : Object.keys(grouped).length === 0 ? (
-            <div style={{ color: "#6b7280" }}>No reports found.</div>
-          ) : (
-            Object.entries(grouped)
-              .sort(([a],[b]) => Number(b) - Number(a)) // أحدث سنة أولاً
-              .map(([Y, months]) => (
-                <details key={Y} style={{ marginBottom: 6 }}>
-                  {/* افتراضيًا مغلق */}
-                  <summary style={{ fontWeight: 800, cursor: "pointer" }}>📅 Year {Y}</summary>
-                  {Object.entries(months)
-                    .sort(([a],[b]) => Number(b) - Number(a)) // أحدث شهر
-                    .map(([M, daysObj]) => (
-                      <details key={M} style={{ margin: "6px 0 6px 12px" }}>
-                        <summary style={{ fontWeight: 700, cursor: "pointer" }}>📅 Month {M}</summary>
-                        <ul style={{ listStyle: "none", paddingLeft: 12 }}>
-                          {Object.entries(daysObj)
-                            .sort(([a],[b]) => Number(b) - Number(a)) // أحدث يوم
-                            .map(([D, arr]) => {
-                              const iso = `${Y}-${M}-${D}`;
-                              const active = selectedDate === iso;
-                              return (
-                                <li
-                                  key={iso}
-                                  onClick={() => setSelectedDate(iso)}
-                                  style={{
-                                    padding: "6px 10px",
-                                    marginBottom: 4,
-                                    borderRadius: 8,
-                                    cursor: "pointer",
-                                    background: active ? "#0b132b" : "#eef2f7",
-                                    color: active ? "#fff" : "#0b132b",
-                                    fontWeight: 700,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                  }}
-                                  title={active ? "Current day" : "Open day"}
-                                >
-                                  <span>{`${D}/${M}/${Y}`}</span>
-                                  <span style={{ opacity: .8, fontWeight: 800 }}>{arr.length}</span>
-                                </li>
-                              );
-                            })}
-                        </ul>
-                      </details>
-                    ))}
-                </details>
-              ))
-          )}
-        </div>
+        <DateTreeSidebar
+          items={treeItems}
+          activeKey={selectedDate}
+          onPick={(it) => setSelectedDate(it.dateISO)}
+          title="History"
+          loading={loading}
+          emptyText="No reports found."
+          maxHeight="calc(100vh - 360px)"
+        />
 
         <div style={section}>
           <h4 style={{ margin: "0 0 8px", fontWeight: 900 }}>Variants (day)</h4>
@@ -458,28 +400,12 @@ export default function FreshChickenReportsView() {
           )}
         </div>
 
-        <div style={section}>
-          <h4 style={{ margin: "0 0 8px", fontWeight: 900 }}>Actions</h4>
-          <div style={{ display: "grid", gap: 8 }}>
-            <button type="button" onClick={onPrint} style={btnGhost}>🖨️ Print</button>
-            <button type="button" onClick={onExportPDF} disabled={exportingPDF} style={btnBase}>
-              {exportingPDF ? "… Exporting PDF" : "📄 Export PDF"}
-            </button>
-            {activeReport && (
-              <button
-                type="button"
-                onClick={onDeleteActive}
-                style={{ ...btnGhost, borderColor: "#dc2626", color: "#dc2626" }}
-               data-delete-action="true">
-                🗑️ Delete this report
-              </button>
-            )}
-          </div>
-        </div>
       </aside>
+      }
+    >
 
       {/* ===== Main Viewer ===== */}
-      <main>
+      <main style={{ minWidth: 0 }}>
         <div ref={printRef} className="print-area" style={{ display: "grid", gap: 12 }}>
           {/* === Header (Classic) === */}
           <FCHeaderClassic
@@ -524,7 +450,7 @@ export default function FreshChickenReportsView() {
             <div style={section}>
               <div style={sectionBar(COLORS.headerA)} />
               <h3 style={{ margin: "0 0 10px", fontWeight: 900 }}>Samples</h3>
-              <div style={tableWrap}>
+              <ResponsiveTableWrap style={tableWrap}>
                 <table style={table}>
                   <colgroup>
                     <col style={{ width: 240 }} />
@@ -553,7 +479,7 @@ export default function FreshChickenReportsView() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ResponsiveTableWrap>
             </div>
           )}
 
@@ -562,7 +488,7 @@ export default function FreshChickenReportsView() {
             <div style={sectionBar(COLORS.headerB)} />
             <h3 style={{ margin: "0 0 10px", fontWeight: 900 }}>Break Up</h3>
             {Array.isArray(activeReport?.breakup) && activeReport.breakup.length ? (
-              <div style={tableWrap}>
+              <ResponsiveTableWrap style={tableWrap}>
                 <table style={table}>
                   <colgroup>
                     <col style={{ width: 420 }} />
@@ -586,7 +512,7 @@ export default function FreshChickenReportsView() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </ResponsiveTableWrap>
             ) : (
               <div style={{ color: "#6b7280" }}>No breakup rows.</div>
             )}
@@ -636,7 +562,8 @@ export default function FreshChickenReportsView() {
         }
         `}
       </style>
-    </div>
+      </ResponsiveReportLayout>
+    </GlassShell>
   );
 }
 

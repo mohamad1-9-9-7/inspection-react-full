@@ -19,6 +19,8 @@ const IS_SAME_ORIGIN = (() => {
 
 const DEFAULT_TYPE = "qcs_non_conformance";
 const DEFAULT_HEADER_LINE = "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSAIS";
+const DEFAULT_INPUT_PATH = "/monitor/qcs";
+const DEFAULT_INPUT_TAB = "nonConformance";
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 
 /* ===== Document card helpers ===== */
@@ -97,18 +99,22 @@ function groupByMonth(reports) {
     ]);
 }
 
-function guessInputPathFromCurrentPath() {
-  const p = String(window.location.pathname || "/").replace(/\/$/, "");
-  const replaced = p.replace(/(reports|report|view|browse|archive)$/i, "input");
-  if (replaced !== p) return replaced;
-  return `${p}/input`;
+function buildEditPath(inputPath, date, tab, reportId) {
+  const [path, query = ""] = String(inputPath || DEFAULT_INPUT_PATH).split("?");
+  const params = new URLSearchParams(query);
+  if (tab) params.set("tab", tab);
+  params.set("date", date);
+  if (reportId) params.set("reportId", reportId);
+  return `${path}?${params.toString()}`;
 }
 
 /* ===== Component ===== */
 export default function NonConformanceReportsView(props) {
-  const { type: typeProp, headerLine } = props || {};
+  const { type: typeProp, headerLine, inputPath, inputTab } = props || {};
   const TYPE = typeProp || DEFAULT_TYPE;
   const HEADER_LINE = headerLine || DEFAULT_HEADER_LINE;
+  const INPUT_PATH = inputPath || DEFAULT_INPUT_PATH;
+  const INPUT_TAB = inputTab || DEFAULT_INPUT_TAB;
   const navigate = useNavigate();
 
   const [data, setData] = useState([]);
@@ -152,8 +158,7 @@ export default function NonConformanceReportsView(props) {
   function onEdit() {
     if (!view?.headRow?.reportDate) return alert("ما في تاريخ للتقرير.");
     const date = String(view.headRow.reportDate);
-    const inputPath = guessInputPathFromCurrentPath();
-    navigate(`${inputPath}?date=${encodeURIComponent(date)}`);
+    navigate(buildEditPath(INPUT_PATH, date, INPUT_TAB, safeRouteId));
   }
 
   function exportXlsx() {

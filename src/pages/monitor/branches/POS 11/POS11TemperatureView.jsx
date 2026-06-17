@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import TemperatureMatchingReport from "../_shared/TemperatureMatchingReport";
 import {
   safe,
   getId,
@@ -209,34 +210,6 @@ export default function POS11TemperatureView() {
     }
   };
 
-  /* ===== Spectral table styles ===== */
-  const gridStyle = useMemo(() => ({
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: 15,
-    borderRadius: 12,
-    overflow: "hidden",
-    boxShadow: "0 2px 14px rgba(99,102,241,0.10)",
-  }), []);
-  const theadRow = {
-    background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)",
-  };
-  const thCell = {
-    border: "1px solid rgba(255,255,255,0.30)",
-    padding: "10px 8px",
-    textAlign: "center",
-    whiteSpace: "pre-line",
-    fontWeight: 800,
-    background: "transparent",
-    color: "#fff",
-  };
-  const tdCell = {
-    border: "1px solid #c7d2fe",
-    padding: "9px 7px",
-    textAlign: "center",
-    verticalAlign: "middle",
-  };
-
   const dateStr = payload?.date ? formatDMY(payload.date) : "—";
 
   return (
@@ -321,33 +294,13 @@ export default function POS11TemperatureView() {
               </div>
             </div>
 
-            {/* Data table */}
-            <table style={gridStyle}>
-              <thead>
-                <tr style={theadRow}>
-                  <th style={thCell}>Cooler/Freezer</th>
-                  {times.map((t) => (
-                    <th key={t} style={thCell}>{t}</th>
-                  ))}
-                  <th style={thCell}>Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={i}>
-                    <td style={{ ...tdCell, textAlign: "left" }}>
-                      <b>{safe(r.name)}</b>
-                    </td>
-                    {times.map((t) => (
-                      <td key={t} style={tdCell}>{safe(r?.temps?.[t])}</td>
-                    ))}
-                    <td style={{ ...tdCell, textAlign: "left" }}>
-                      {safe(r?.remarks || r?.temps?.["Corrective Action"])}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Temperatures + integrated product matching */}
+            <TemperatureMatchingReport
+              units={rows}
+              times={times}
+              productVerifications={payload?.productVerifications || []}
+              readOnly
+            />
 
             {/* KPI */}
             <div style={{ marginTop: 10, fontWeight: 800, fontSize: 14 }}>

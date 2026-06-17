@@ -5,12 +5,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { addFullPageImage, pdfSafeText } from "./pdfImageUtils";
-
-const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const CRA = (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) || undefined;
-let VITE; try { VITE = import.meta.env?.VITE_API_URL; } catch {}
-const API_BASE = String(VITE || CRA || API_BASE_DEFAULT).replace(/\/$/, "");
-const IS_SAME_ORIGIN = (() => { try { return new URL(API_BASE).origin === window.location.origin; } catch { return false; } })();
+import { GlassShell, KpiGrid, ReportActions } from "../_shared/branchViewKit";
+import { deleteReport, downloadReportsJson, listReports, reportId } from "../_shared/reportApi";
 
 const TYPE = "qcs_meat_waste_disposal";
 
@@ -233,9 +229,7 @@ export default function MeatWasteDisposalView() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" });
-      const json = await res.json().catch(() => null);
-      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+      const arr = await listReports(TYPE);
       arr.sort((a, b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
       setItems(arr);
     } catch { setItems([]); }
@@ -247,8 +241,7 @@ export default function MeatWasteDisposalView() {
   async function del(id) {
     if (!window.confirm("Delete this record permanently?")) return;
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "DELETE", credentials: IS_SAME_ORIGIN ? "include" : "omit" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await deleteReport(id);
       load();
     } catch (e) { alert("Delete failed: " + (e?.message || e)); }
   }
@@ -313,32 +306,30 @@ export default function MeatWasteDisposalView() {
     }
   }
 
-  return (
-    <div style={{ padding: 4 }}>
-      <div style={S.topbar}>
-        <h2 style={S.title}>Meat Waste Disposal Records</h2>
-        <div style={S.topActions}>
-          <button style={S.btnPdf} onClick={() => setExportModal(m => ({ ...m, open: true }))}>
-            Export PDF
-          </button>
-          <button style={S.btn} onClick={load} disabled={loading}>{loading ? "Loading..." : "Refresh"}</button>
-        </div>
-      </div>
+  const exportJSON = () => downloadReportsJson(TYPE, filtered, "QCS_MeatWaste_Disposal");
 
-      <div style={S.kpiRow}>
-        <div style={S.kpi}>
-          <div style={S.kpiLabel}>Total Records</div>
-          <div style={{ ...S.kpiValue, color: "#0369a1" }}>{kpis.records}</div>
-        </div>
-        <div style={S.kpi}>
-          <div style={S.kpiLabel}>Total Entries</div>
-          <div style={{ ...S.kpiValue, color: "#9333ea" }}>{kpis.totalEntries}</div>
-        </div>
-        <div style={S.kpi}>
-          <div style={S.kpiLabel}>Total Quantity (kg)</div>
-          <div style={{ ...S.kpiValue, color: "#dc2626" }}>{kpis.totalKg}</div>
-        </div>
-      </div>
+  return (
+    <GlassShell
+      icon="🥩"
+      title="Meat Waste Disposal Records"
+      actions={
+        <ReportActions
+          onPdf={() => setExportModal(m => ({ ...m, open: true }))}
+          onJson={exportJSON}
+          onRefresh={load}
+          refreshing={loading}
+          jsonDisabled={filtered.length === 0}
+        />
+      }
+    >
+
+      <KpiGrid
+        items={[
+          { label: "Total Records", value: kpis.records, color: "#0369a1" },
+          { label: "Total Entries", value: kpis.totalEntries, color: "#9333ea" },
+          { label: "Total Quantity (kg)", value: kpis.totalKg, color: "#dc2626" },
+        ]}
+      />
 
       <div style={S.filters}>
         <input style={S.input} placeholder="Search by meat, reason, batch, name..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -362,7 +353,7 @@ export default function MeatWasteDisposalView() {
         const entries = p.entries || [];
         const totalKg = Number(p.totals?.totalKg) || entries.reduce((s, e) => s + (Number(e.quantityKg) || 0), 0);
         return (
-          <div key={rec.id || i} style={S.recordCard}>
+          <div key={reportId(rec) || i} style={S.recordCard}>
             <div style={S.recordHeader}>
               <div>
                 <div style={{ fontSize: 20, fontWeight: 950, color: "#0f172a" }}>
@@ -378,7 +369,7 @@ export default function MeatWasteDisposalView() {
                   <span style={S.pill("#9333ea", "#f3e8ff")}>{entries.length} entries</span>
                 </div>
               </div>
-              <button style={S.btnDanger} onClick={() => del(rec.id)} data-delete-action="true">Delete Record</button>
+              <button style={S.btnDanger} onClick={() => del(reportId(rec))} data-delete-action="true">Delete Record</button>
             </div>
 
             {p.generalNotes && (
@@ -501,6 +492,6 @@ export default function MeatWasteDisposalView() {
           </div>
         </div>
       )}
-    </div>
+    </GlassShell>
   );
 }

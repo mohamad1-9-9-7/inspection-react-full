@@ -273,7 +273,7 @@ function greeting() {
   return "Good evening";
 }
 
-export default function NamedDashboard() {
+function LegacyNamedDashboard() {
   const navigate    = useNavigate();
   const [hovered, setHovered] = useState(null);
   const [time, setTime]       = useState(new Date());
@@ -725,3 +725,581 @@ const s = {
     marginTop: 20, zIndex: 2,
   },
 };
+
+const nd = {
+  page: {
+    minHeight: "100vh",
+    padding: "24px clamp(18px, 3vw, 48px) 38px",
+    background: "linear-gradient(180deg, #f8fafc 0%, #eef7f4 44%, #f8fafc 100%)",
+    color: "#0f172a",
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  },
+  layout: {
+    width: "min(1760px, 100%)",
+    margin: "0 auto",
+  },
+  hero: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 8,
+    padding: "26px clamp(22px, 4vw, 54px)",
+    background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(15,118,110,0.94) 52%, rgba(8,145,178,0.92))",
+    color: "#fff",
+    border: "1px solid rgba(255,255,255,0.20)",
+    boxShadow: "0 24px 64px rgba(15,23,42,0.22)",
+  },
+  heroInner: {
+    position: "relative",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 24,
+    alignItems: "center",
+  },
+  brand: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    minWidth: 0,
+  },
+  logo: {
+    width: 76,
+    height: 76,
+    borderRadius: 8,
+    objectFit: "cover",
+    border: "1px solid rgba(255,255,255,0.34)",
+    background: "#fff",
+    boxShadow: "0 16px 30px rgba(0,0,0,0.25)",
+    flexShrink: 0,
+  },
+  eyebrow: {
+    margin: 0,
+    fontWeight: 900,
+    color: "rgba(255,255,255,0.78)",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+  },
+  title: {
+    margin: "8px 0 0",
+    fontWeight: 1000,
+    lineHeight: 1.05,
+    letterSpacing: 0,
+  },
+  subtitle: {
+    margin: "12px 0 0",
+    maxWidth: 980,
+    color: "rgba(255,255,255,0.82)",
+    lineHeight: 1.45,
+    fontWeight: 700,
+  },
+  homeBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 44,
+    padding: "8px 14px",
+    marginTop: 18,
+    borderRadius: 8,
+    color: "#ecfeff",
+    background: "rgba(14,165,233,0.18)",
+    border: "1px solid rgba(125,211,252,0.34)",
+    fontWeight: 950,
+    boxShadow: "0 12px 30px rgba(8,145,178,0.18)",
+  },
+  homePulse: {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    background: "#22c55e",
+    boxShadow: "0 0 18px rgba(34,197,94,0.82)",
+  },
+  heroActions: {
+    display: "grid",
+    gap: 12,
+    minWidth: 360,
+  },
+  userPanel: {
+    borderRadius: 8,
+    padding: "16px 18px",
+    background: "rgba(255,255,255,0.12)",
+    border: "1px solid rgba(255,255,255,0.22)",
+    backdropFilter: "blur(12px)",
+  },
+  userTop: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(255,255,255,0.18)",
+    border: "1px solid rgba(255,255,255,0.24)",
+    color: "#fff",
+    fontWeight: 1000,
+    flexShrink: 0,
+  },
+  userMeta: {
+    color: "rgba(255,255,255,0.74)",
+    fontWeight: 800,
+    lineHeight: 1.3,
+  },
+  userName: {
+    marginTop: 4,
+    color: "#fff",
+    fontWeight: 1000,
+    lineHeight: 1.2,
+  },
+  actionRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  heroButton: (tone = "ghost") => ({
+    minHeight: 52,
+    padding: "10px 18px",
+    borderRadius: 8,
+    border: tone === "danger" ? "1px solid rgba(254,202,202,0.35)" : "1px solid rgba(255,255,255,0.24)",
+    background: tone === "danger" ? "rgba(220,38,38,0.34)" : "rgba(255,255,255,0.13)",
+    color: "#fff",
+    fontWeight: 950,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  }),
+  toolbar: {
+    margin: "22px 0",
+    display: "grid",
+    gridTemplateColumns: "minmax(280px, 1fr) auto",
+    gap: 14,
+    alignItems: "center",
+  },
+  searchWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 16px",
+    borderRadius: 8,
+    background: "#fff",
+    border: "1px solid rgba(15,23,42,0.13)",
+    boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
+  },
+  searchInput: {
+    width: "100%",
+    minWidth: 0,
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    color: "#0f172a",
+    fontWeight: 800,
+    fontFamily: "inherit",
+  },
+  summary: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  chip: {
+    minHeight: 52,
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "8px 16px",
+    borderRadius: 8,
+    background: "#fff",
+    color: "#334155",
+    border: "1px solid rgba(15,23,42,0.12)",
+    boxShadow: "0 10px 20px rgba(15,23,42,0.07)",
+    fontWeight: 950,
+  },
+  notice: {
+    marginBottom: 16,
+    padding: "14px 18px",
+    borderRadius: 8,
+    background: "#fffbeb",
+    color: "#92400e",
+    border: "1px solid #fde68a",
+    fontWeight: 900,
+    textAlign: "center",
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 330px), 1fr))",
+    gap: 18,
+  },
+  card: (isHover, role) => ({
+    position: "relative",
+    minHeight: 210,
+    display: "grid",
+    gridTemplateRows: "auto 1fr auto",
+    gap: 18,
+    padding: "24px 24px 22px",
+    borderRadius: 8,
+    border: isHover ? "1px solid rgba(15,118,110,0.48)" : "1px solid rgba(15,23,42,0.12)",
+    background: "#fff",
+    color: "#0f172a",
+    cursor: "pointer",
+    textAlign: "left",
+    boxShadow: isHover ? `0 24px 52px ${role.glow}` : "0 12px 30px rgba(15,23,42,0.08)",
+    transform: isHover ? "translateY(-3px)" : "translateY(0)",
+    transition: "transform .16s ease, box-shadow .16s ease, border-color .16s ease",
+    overflow: "hidden",
+    fontFamily: "inherit",
+    animation: "namedCardIn .36s ease both",
+  }),
+  cardTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+  },
+  iconWrap: (role) => ({
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    display: "grid",
+    placeItems: "center",
+    color: "#fff",
+    background: role.grad,
+    boxShadow: `0 14px 26px ${role.glow}`,
+    flexShrink: 0,
+  }),
+  icon: {
+    lineHeight: 1,
+  },
+  roleTag: {
+    padding: "7px 12px",
+    borderRadius: 999,
+    background: "#f1f5f9",
+    color: "#475569",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  },
+  cardTitle: {
+    margin: 0,
+    lineHeight: 1.2,
+    fontWeight: 1000,
+    color: "#0f172a",
+  },
+  cardSub: {
+    marginTop: 10,
+    lineHeight: 1.45,
+    fontWeight: 700,
+    color: "#64748b",
+  },
+  cardBottom: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+    paddingTop: 16,
+    borderTop: "1px solid rgba(15,23,42,0.09)",
+    color: "#0f766e",
+    fontWeight: 950,
+  },
+  empty: {
+    padding: 34,
+    borderRadius: 8,
+    background: "#fff",
+    border: "1px solid rgba(15,23,42,0.12)",
+    boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
+    textAlign: "center",
+    color: "#64748b",
+    fontWeight: 850,
+  },
+  footer: {
+    marginTop: 26,
+    textAlign: "center",
+    color: "#64748b",
+    fontWeight: 800,
+  },
+};
+
+export default function NamedDashboard() {
+  const navigate = useNavigate();
+  const [hovered, setHovered] = useState(null);
+  const [time, setTime] = useState(new Date());
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const id = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const currentUser = (() => {
+    try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
+  })();
+
+  const displayName = currentUser.displayName || currentUser.username || "User";
+  const permissions = currentUser.permissions || [];
+  const isFullAccess = permissions.includes("*") || permissions.length === 0;
+  const isAdmin = !!currentUser.isAdmin;
+  const employees = currentUser.employees || [];
+
+  const visibleRoles = isFullAccess
+    ? ALL_ROLES
+    : ALL_ROLES.filter((r) => permissions.includes(r.id));
+
+  const sessionKey = `operator_${currentUser.username}`;
+  const [operator, setOperator] = useState(() => {
+    if (isAdmin) return displayName;
+    return sessionStorage.getItem(sessionKey) || null;
+  });
+  const [showPicker, setShowPicker] = useState(() => {
+    if (isAdmin) return false;
+    return !sessionStorage.getItem(sessionKey);
+  });
+
+  const handleOperatorConfirm = async (name) => {
+    sessionStorage.setItem(sessionKey, name);
+    setOperator(name);
+    setShowPicker(false);
+    try {
+      await fetch(`${API_BASE}/api/auth/operator-start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: currentUser.username, operator: name }),
+      }).catch(() => {});
+    } catch {}
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: currentUser.username, operator }),
+      });
+    } catch {}
+    sessionStorage.removeItem(sessionKey);
+    localStorage.removeItem("currentUser");
+    navigate("/", { replace: true });
+  };
+
+  const q = query.trim().toLowerCase();
+  const filteredRoles = visibleRoles.filter((role) => !q || role.label.toLowerCase().includes(q));
+  const timeStr = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const dateStr = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+
+  const sessionNotice = (() => {
+    const loginAt = currentUser.loginAt || 0;
+    const elapsed = Date.now() - loginAt;
+    const remaining = 8 * 60 * 60 * 1000 - elapsed;
+    const minsLeft = Math.floor((remaining % 3600000) / 60000);
+    const hoursLeft = Math.floor(remaining / 3600000);
+    return hoursLeft < 1 && minsLeft < 30 && minsLeft > 0
+      ? `Session expires in ${minsLeft} minute${minsLeft !== 1 ? "s" : ""} - please save your work`
+      : "";
+  })();
+
+  return (
+    <main style={nd.page}>
+      {showPicker && (
+        <OperatorPicker
+          employees={employees}
+          accountName={displayName}
+          onConfirm={handleOperatorConfirm}
+        />
+      )}
+
+      <style>{`
+        @keyframes namedSweep {
+          0% { transform: translateX(-18%); opacity: .45; }
+          50% { opacity: .95; }
+          100% { transform: translateX(118%); opacity: .45; }
+        }
+        @keyframes namedPulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(.72); opacity: .48; }
+        }
+        @keyframes namedCardIn {
+          from { opacity: 0; filter: saturate(.72); }
+          to { opacity: 1; filter: saturate(1); }
+        }
+        @keyframes namedGlowLine {
+          0%, 100% { opacity: .38; transform: translateY(0); }
+          50% { opacity: .92; transform: translateY(6px); }
+        }
+        .named-home-pulse {
+          animation: namedPulse 2.1s ease-in-out infinite;
+        }
+        .named-card:nth-child(2n) {
+          animation-delay: .04s;
+        }
+        .named-card:nth-child(3n) {
+          animation-delay: .08s;
+        }
+        @media (max-width: 980px) {
+          .named-hero-inner,
+          .named-toolbar {
+            grid-template-columns: 1fr !important;
+          }
+          .named-hero-actions,
+          .named-summary {
+            min-width: 0 !important;
+            justify-content: flex-start !important;
+          }
+        }
+      `}</style>
+
+      <div style={nd.layout}>
+        <section style={nd.hero}>
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "radial-gradient(820px 260px at 12% 0%, rgba(45,212,191,0.28), transparent 62%)," +
+                "radial-gradient(760px 300px at 90% 20%, rgba(125,211,252,0.22), transparent 60%)",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: "-22%",
+              top: 0,
+              width: "42%",
+              height: 5,
+              background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)",
+              animation: "namedSweep 5.8s ease-in-out infinite",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: 0,
+              bottom: 0,
+              width: "100%",
+              height: 6,
+              background: "linear-gradient(90deg, #22c55e, #06b6d4, #f59e0b, #22c55e)",
+              backgroundSize: "220% 100%",
+              opacity: .86,
+              animation: "namedGlowLine 2.8s ease-in-out infinite",
+            }}
+          />
+
+          <div className="named-hero-inner" style={nd.heroInner}>
+            <div style={nd.brand}>
+              <img src={logo} alt="Al Mawashi" style={nd.logo} />
+              <div style={{ minWidth: 0 }}>
+                <p style={nd.eyebrow}>Al Mawashi QMS</p>
+                <h1 style={nd.title}>{greeting()}, {operator || displayName}</h1>
+                <p style={nd.subtitle}>
+                  Central access to your assigned inspection, ISO, HACCP, operations, training, and administration modules.
+                </p>
+                <div style={nd.homeBadge}>
+                  <span className="named-home-pulse" style={nd.homePulse} />
+                  <span>Dashboard Home - module selector</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="named-hero-actions" style={nd.heroActions}>
+              <div style={nd.userPanel}>
+                <div style={nd.userTop}>
+                  <div style={nd.avatar}>{(operator || displayName)[0]?.toUpperCase() || "U"}</div>
+                  <div>
+                    <div style={nd.userMeta}>Account: {displayName}</div>
+                    <div style={nd.userName}>{operator || displayName}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={nd.actionRow}>
+                <button type="button" style={nd.heroButton()} title={dateStr}>
+                  {timeStr}
+                </button>
+                {operator && !isAdmin && (
+                  <button
+                    type="button"
+                    style={nd.heroButton()}
+                    onClick={() => { sessionStorage.removeItem(sessionKey); setOperator(null); setShowPicker(true); }}
+                  >
+                    Change Operator
+                  </button>
+                )}
+                {(currentUser.isAdmin || permissions.includes("settings") || isFullAccess) && (
+                  <button type="button" style={nd.heroButton()} onClick={() => navigate("/settings")}>
+                    Settings
+                  </button>
+                )}
+                <button type="button" style={nd.heroButton("danger")} onClick={handleLogout}>
+                  Back to Login
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="named-toolbar" style={nd.toolbar}>
+          <label style={nd.searchWrap}>
+            <span aria-hidden="true">Search</span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Find a dashboard section..."
+              style={nd.searchInput}
+            />
+          </label>
+
+          <div className="named-summary" style={nd.summary}>
+            <div style={nd.chip}>{isFullAccess ? "Full Access" : "Limited Access"}</div>
+            <div style={nd.chip}>{visibleRoles.length} Sections</div>
+            {isAdmin && <div style={nd.chip}>Admin</div>}
+          </div>
+        </section>
+
+        {sessionNotice && <div style={nd.notice}>{sessionNotice}</div>}
+
+        {filteredRoles.length === 0 ? (
+          <div style={nd.empty}>
+            <div style={{ fontWeight: 1000, marginBottom: 8 }}>No sections found</div>
+            <div>{visibleRoles.length === 0 ? "Contact your administrator." : "Try another search term."}</div>
+          </div>
+        ) : (
+          <section aria-label="Dashboard sections" style={nd.grid}>
+            {filteredRoles.map((role) => {
+              const isHover = hovered === role.id;
+              return (
+                <button
+                  key={role.id}
+                  className="named-card"
+                  type="button"
+                  onClick={() => navigate(role.route)}
+                  onMouseEnter={() => setHovered(role.id)}
+                  onMouseLeave={() => setHovered(null)}
+                  onFocus={() => setHovered(role.id)}
+                  onBlur={() => setHovered(null)}
+                  style={nd.card(isHover, role)}
+                >
+                  <div style={nd.cardTop}>
+                    <div style={nd.iconWrap(role)}>
+                      <span style={nd.icon}>{role.icon}</span>
+                    </div>
+                    <span style={nd.roleTag}>Module</span>
+                  </div>
+
+                  <div>
+                    <h2 style={nd.cardTitle}>{role.label}</h2>
+                    <div style={nd.cardSub}>Open your assigned {role.label} workspace.</div>
+                  </div>
+
+                  <div style={nd.cardBottom}>
+                    <span>Open module</span>
+                    <span aria-hidden="true">→</span>
+                  </div>
+                </button>
+              );
+            })}
+          </section>
+        )}
+
+        <footer style={nd.footer}>Built by Eng. Mohammed Abdullah</footer>
+      </div>
+    </main>
+  );
+}

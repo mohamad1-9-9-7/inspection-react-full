@@ -1,7 +1,8 @@
 // src/pages/monitor/branches/pos19/POS19Layout.jsx
 // POS 19 — Input Tabs ONLY.
 
-import React, { useState, Suspense, lazy } from "react";
+import React, { useEffect, useState, Suspense, lazy } from "react";
+import { useSearchParams } from "react-router-dom";
 
 /* ✅ بقية تبويبات الإدخال (سننشئها لاحقاً داخل: src/pages/monitor/branches/pos19/pos19_inputs/)
    - CleaningProgrammeScheduleInput.jsx
@@ -89,6 +90,7 @@ const DryStoreTempHumidityInput = lazy(() =>
 );
 
 export default function POS19Layout() {
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("cleaningProgramme");
 
   const tabs = [
@@ -116,6 +118,13 @@ export default function POS19Layout() {
     { key: "blastFreezer", label: "🥶 Blast Freezer / Chiller Log (CCP)" },
     { key: "dryStore", label: "📦 Dry Store Temp & Humidity" },
   ];
+
+  const requestedTab = searchParams.get("tab");
+  useEffect(() => {
+    if (requestedTab && tabs.some((tab) => tab.key === requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [requestedTab]);
 
   const panelStyle = {
     background: "#fafafa",

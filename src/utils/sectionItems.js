@@ -7,9 +7,8 @@
 //   - PAGES    (cards on the hub page like "Browse Meat Daily")
 //   - NONE     (the section is a single page — no inner restriction)
 //
-// The same item IDs are used in two places:
-//   1) Settings → Accounts Management → save into allowedBranches[section] = [id, ...]
-//   2) Hub pages (OHCHub, ReturnsMenu, …) → filter cards by checking the id
+// Items can have a `subItems` array — shown as a popup modal when clicked in the BranchSelector.
+// The stored allowedBranches values are always the sub-item IDs (leaf nodes), never the parent.
 
 export const SECTION_ITEMS = {
   // ── branch-based ──
@@ -20,25 +19,36 @@ export const SECTION_ITEMS = {
   returns: {
     kind: "pages",
     items: [
-      // Browse (left column on ReturnsMenu)
-      { id: "returns.browse",         icon: "📂", label: "Browse Returns Reports" },
-      { id: "meatDaily.browse",       icon: "📊", label: "Browse Meat Daily" },
-      { id: "customerReturns.browse", icon: "👤", label: "Browse Customer Returns" },
-      { id: "inventory.browse",       icon: "📦", label: "Browse Inventory Daily" },
-      { id: "enoc.browse",            icon: "⛽", label: "Browse ENOC Returns" },
-      // Create (right column on ReturnsMenu)
-      { id: "returns.create",         icon: "📝", label: "Create Returns Report" },
-      { id: "meatDaily.create",       icon: "🧾", label: "Create Meat Daily Report" },
-      { id: "customerReturns.create", icon: "✍️", label: "Create Customer Returns" },
-      { id: "inventory.create",       icon: "🧮", label: "Create Inventory Daily Report" },
-      { id: "enoc.create",            icon: "⛽", label: "Create ENOC Returns Report" },
+      { id: "returns",         icon: "📂", label: "Returns Reports", subItems: [
+        { id: "returns.browse",  icon: "📂", label: "Browse" },
+        { id: "returns.create",  icon: "📝", label: "Create" },
+      ]},
+      { id: "meatDaily",       icon: "📊", label: "Meat Daily", subItems: [
+        { id: "meatDaily.browse",  icon: "📊", label: "Browse" },
+        { id: "meatDaily.create",  icon: "🧾", label: "Create" },
+      ]},
+      { id: "customerReturns", icon: "👤", label: "Customer Returns", subItems: [
+        { id: "customerReturns.browse",  icon: "👤", label: "Browse" },
+        { id: "customerReturns.create",  icon: "✍️", label: "Create" },
+      ]},
+      { id: "inventory",       icon: "📦", label: "Inventory Daily", subItems: [
+        { id: "inventory.browse",  icon: "📦", label: "Browse" },
+        { id: "inventory.create",  icon: "🧮", label: "Create" },
+      ]},
+      { id: "enoc",            icon: "⛽", label: "ENOC Returns", subItems: [
+        { id: "enoc.browse",  icon: "⛽", label: "Browse" },
+        { id: "enoc.create",  icon: "⛽", label: "Create" },
+      ]},
     ],
   },
+
   ohc: {
     kind: "pages",
     items: [
-      { id: "ohc.upload", icon: "📥", label: "Upload New Certificate" },
-      { id: "ohc.view",   icon: "📋", label: "View / Browse Certificates" },
+      { id: "ohc", icon: "🩺", label: "OHC Certificates", subItems: [
+        { id: "ohc.upload", icon: "📥", label: "Upload New Certificate" },
+        { id: "ohc.view",   icon: "📋", label: "View / Browse Certificates" },
+      ]},
     ],
   },
 
@@ -49,14 +59,19 @@ export const SECTION_ITEMS = {
   cars:             { kind: "none" },
   maintenance:      { kind: "none" },
   qcsView:          { kind: "none" },
+
   training: {
     kind: "pages",
     items: [
-      { id: "training.upload", icon: "📥", label: "Upload / Add Certificate" },
-      { id: "training.view",   icon: "📋", label: "View / Browse Certificates" },
+      { id: "training", icon: "🎓", label: "Training Certificates", subItems: [
+        { id: "training.upload", icon: "📥", label: "Upload / Add Certificate" },
+        { id: "training.view",   icon: "📋", label: "View / Browse Certificates" },
+      ]},
     ],
   },
+
   internalTraining: { kind: "none" },
+
   iso: {
     kind: "pages",
     items: [
@@ -66,12 +81,16 @@ export const SECTION_ITEMS = {
       { id: "opportunity-register",  icon: "💡", label: "Opportunity Register" },
       { id: "change-management",     icon: "🔄", label: "Change Management Log" },
       { id: "haccp-dashboard",       icon: "📊", label: "HACCP Dashboard" },
-      { id: "product-details",       icon: "📦", label: "Product Details" },
+      { id: "product-details",       icon: "📦", label: "Product Details", subItems: [
+        { id: "product-details.entry", icon: "📝", label: "Product Entry" },
+        { id: "product-details.view",  icon: "📋", label: "View Products" },
+      ]},
       { id: "licenses-contracts",    icon: "📋", label: "Licenses & Contracts" },
       { id: "dm-inspection",         icon: "🔍", label: "DM Inspection" },
       { id: "supplier-evaluation",   icon: "✅", label: "Supplier Evaluation" },
       { id: "sop-ssop",              icon: "📘", label: "SOP & sSOP" },
       { id: "document-register",     icon: "📚", label: "Document Register" },
+      { id: "legal-register",        icon: "🏛️", label: "Legal Register" },
       { id: "glass-register",        icon: "🪟", label: "Glass & Brittle Register" },
       { id: "mock-recall",           icon: "🔄", label: "Mock Recall" },
       { id: "real-recall",           icon: "🚨", label: "Real Product Recall" },
@@ -85,7 +104,9 @@ export const SECTION_ITEMS = {
       { id: "internal-calibration",  icon: "🌡",  label: "Internal Calibration" },
     ],
   },
-  halalAudit:       { kind: "none" },
+
+  halalAudit: { kind: "none" },
+
   hse: {
     kind: "pages",
     items: [
@@ -115,7 +136,8 @@ export const SECTION_ITEMS = {
       { id: "licenses",              icon: "🪪", label: "Licenses & Certifications" },
     ],
   },
-  settings:         { kind: "none" },
+
+  settings: { kind: "none" },
 };
 
 /**

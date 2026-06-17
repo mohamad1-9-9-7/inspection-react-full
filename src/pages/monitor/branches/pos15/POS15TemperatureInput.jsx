@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/pos15/POS15TemperatureInput.jsx
 import React, { useMemo, useState, useEffect } from "react";
+import TemperatureMatchingReport, { makePV, countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -15,7 +16,7 @@ const loadDraft = () => {
   }
 };
 
-// الأوقات (نرسل "Corrective Action" في الـpayload للعرض، لكن لا نعرضه كعمود)
+// Times ("Corrective Action" kept in payload for compatibility, not shown as a column)
 const times = [
   "8:00 AM",
   "11:00 AM",
@@ -26,8 +27,9 @@ const times = [
   "Corrective Action",
 ];
 const gridTimes = times.filter((t) => t !== "Corrective Action");
+const DEFAULT_MATCH_TIME = gridTimes[Math.floor(gridTimes.length / 2)] || gridTimes[0];
 
-// 7 مبردات + 2 فريزر
+// 7 coolers + 2 freezers
 const defaultRows = [
   "Cooler 1",
   "Cooler 2",
@@ -40,15 +42,14 @@ const defaultRows = [
   "Freezer 2",
 ];
 
-// هل الصف فريزر؟
 const isFreezer = (name = "") => /^freezer/i.test(String(name).trim());
 
-// KPI helper (للمبردات فقط 0–5°C)
+// KPI helper (coolers only, 0–5°C)
 function calculateKPI(coolers) {
   const all = [];
   let out = 0;
   for (const c of coolers) {
-    if (isFreezer(c.name)) continue; // استثناء الفريزر من KPI
+    if (isFreezer(c.name)) continue;
     for (const [key, v] of Object.entries(c.temps || {})) {
       if (key === "Corrective Action") continue;
       const n = Number(v);
@@ -64,17 +65,16 @@ function calculateKPI(coolers) {
   return { avg, min, max, out };
 }
 
-/* ===== Helpers للتاريخ ===== */
+/* ===== Date helpers ===== */
 const toISODate = (s) => {
-  // نضمن صيغة YYYY-MM-DD فقط
   try {
     if (!s) return "";
-    // لو كانت قيمة كاملة ISO نقطع اليوم فقط
     const m = String(s).match(/^(\d{4}-\d{2}-\d{2})/);
     return m ? m[1] : "";
-  } catch { return ""; }
+  } catch {
+    return "";
+  }
 };
-
 const sameDay = (a, b) => toISODate(a) === toISODate(b);
 
 export default function POS15TemperatureInput() {
@@ -82,21 +82,21 @@ export default function POS15TemperatureInput() {
     const d = loadDraft();
     return Array.isArray(d.coolers) && d.coolers.length
       ? d.coolers
-      : Array.from({ length: defaultRows.length }, (_, i) => ({
-          name: defaultRows[i],
-          temps: {},
-          remarks: "",
-        }));
+      : Array.from({ length: defaultRows.length }, (_, i) => ({ name: defaultRows[i], temps: {}, remarks: "" }));
+  });
+  const [productVerifications, setProductVerifications] = useState(() => {
+    const d = loadDraft();
+    return Array.isArray(d.productVerifications) ? d.productVerifications : [];
   });
   const [reportDate, setReportDate] = useState(() => loadDraft().reportDate || "");
   const [checkedBy, setCheckedBy] = useState(() => loadDraft().checkedBy || "");
   const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
   const [opMsg, setOpMsg] = useState("");
 
-  // حالة فحص التكرار
-  const [dateBusy, setDateBusy] = useState(false);      // جاري الفحص
-  const [dateTaken, setDateTaken] = useState(false);    // اليوم مأخوذ؟
-  const [dateError, setDateError] = useState("");       // رسالة خطأ
+  // Duplicate-day check state
+  const [dateBusy, setDateBusy] = useState(false);
+  const [dateTaken, setDateTaken] = useState(false);
+  const [dateError, setDateError] = useState("");
 
   const kpi = useMemo(() => calculateKPI(coolers), [coolers]);
 
@@ -105,43 +105,10 @@ export default function POS15TemperatureInput() {
     try {
       localStorage.setItem(
         DRAFT_KEY,
-        JSON.stringify({ coolers, reportDate, checkedBy, verifiedBy, ts: Date.now() })
+        JSON.stringify({ coolers, productVerifications, reportDate, checkedBy, verifiedBy, ts: Date.now() })
       );
     } catch {}
-  }, [coolers, reportDate, checkedBy, verifiedBy]);
-
-  const baseInput = {
-    width: "63px",
-    padding: "6px 8px",
-    borderRadius: "8px",
-    border: "1.7px solid #2980b9",
-    textAlign: "center",
-    fontWeight: "600",
-    color: "#2c3e50",
-    fontSize: "1em",
-    background: "#fafbff",
-    transition: "all .18s",
-  };
-
-  // تلوين حسب نوع الصف: المبرد 0–5°C، الفريزر -25 إلى -12°C
-  const tempInputStyle = (val, rowName) => {
-    const t = Number(val);
-    if (val === "" || isNaN(t)) return baseInput;
-
-    if (isFreezer(rowName)) {
-      // نطاق الفريزر المقبول: -25 إلى -12
-      if (t < -25 || t > -12)
-        return { ...baseInput, background: "#fdecea", borderColor: "#e74c3c", color: "#c0392b", fontWeight: 700 };
-      return { ...baseInput, background: "#eaf6fb", borderColor: "#3498db", color: "#2471a3" };
-    } else {
-      // نطاق المبرد المقبول: 0 إلى 5
-      if (t > 5 || t < 0)
-        return { ...baseInput, background: "#fdecea", borderColor: "#e74c3c", color: "#c0392b", fontWeight: 700 };
-      if (t >= 3)
-        return { ...baseInput, background: "#eaf6fb", borderColor: "#3498db", color: "#2471a3" };
-      return baseInput;
-    }
-  };
+  }, [coolers, productVerifications, reportDate, checkedBy, verifiedBy]);
 
   const setTemp = (rowIdx, time, value) => {
     setCoolers((prev) => {
@@ -153,79 +120,77 @@ export default function POS15TemperatureInput() {
   const setRemarks = (rowIdx, value) => {
     setCoolers((prev) => {
       const next = [...prev];
-      next[rowIdx] = {
-        ...next[rowIdx],
-        remarks: value,
-        temps: { ...next[rowIdx].temps, ["Corrective Action"]: value },
-      };
+      next[rowIdx] = { ...next[rowIdx], remarks: value, temps: { ...next[rowIdx].temps, ["Corrective Action"]: value } };
       return next;
     });
   };
 
-  /* ===================== منع تكرار اليوم =====================
-     - عند تغيير التاريخ نفحص السيرفر إذا فيه تقرير بنفس اليوم
-     - إذا موجود: نمنع الحفظ ونظهر رسالة
-  ============================================================ */
+  /* ---- Product matching handlers ---- */
+  const addPV = (storageKey) => setProductVerifications((prev) => [...prev, makePV(storageKey, DEFAULT_MATCH_TIME)]);
+  const updatePV = (idx, key, value) =>
+    setProductVerifications((prev) =>
+      prev.map((r, i) => {
+        if (i !== idx) return r;
+        if (key === "__product") return { ...r, productName: value.description, itemCode: value.item_code };
+        return { ...r, [key]: value };
+      })
+    );
+  const removePV = (idx) => setProductVerifications((prev) => prev.filter((_, i) => i !== idx));
+
+  /* ===================== Duplicate-day prevention ===================== */
   useEffect(() => {
     let abort = false;
-
     async function checkDuplicate() {
       const d = toISODate(reportDate);
       setDateError("");
       setDateTaken(false);
       if (!d) return;
-
       setDateBusy(true);
       try {
-        // نجلب تقارير هذا النوع ثم نفلتر محليًا (توافقًا مع API الحالي)
         const res = await fetch(`${API_BASE}/api/reports?type=pos15_temperature`, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         const arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
-
         const exists = arr.some((r) => {
           const p = r?.payload ?? r;
           const b = (p?.branch || "").toLowerCase().trim();
           const pd = p?.date || p?.reportDate || r?.created_at;
-          return b === "pos 15".toLowerCase() && sameDay(pd, d);
+          return b === "pos 15" && sameDay(pd, d);
         });
-
         if (!abort) setDateTaken(exists);
       } catch (e) {
         if (!abort) {
-          setDateError("⚠️ فشل التحقق من وجود تقرير لهذا اليوم. حاول لاحقًا.");
-          setDateTaken(false); // لا نمنع الحفظ إذا فشل الفحص، لكن نعرض التحذير
+          setDateError("⚠️ Failed to check for an existing report for this day. Try again later.");
+          setDateTaken(false);
         }
       } finally {
         if (!abort) setDateBusy(false);
       }
     }
-
     checkDuplicate();
     return () => { abort = true; };
   }, [reportDate]);
 
   const handleSave = async () => {
-    if (!reportDate) return alert("⚠️ الرجاء اختيار تاريخ التقرير أولًا");
-    if (!checkedBy.trim() || !verifiedBy.trim())
-      return alert("⚠️ Checked By and Verified By are required");
-
-    // تأكيد عدم وجود تقرير في نفس اليوم
+    if (!reportDate) return alert("⚠️ Please choose the report date first.");
+    if (!checkedBy.trim() || !verifiedBy.trim()) return alert("⚠️ Checked By and Verified By are required");
+    const matchCount = countValidMatches(productVerifications);
+    if (matchCount < MIN_MATCHES)
+      return alert(`⚠️ At least ${MIN_MATCHES} product matches (product + temperature) are required before saving. You currently have ${matchCount}.`);
     if (dateTaken) {
-      return alert("⛔ غير مسموح بحفظ أكثر من تقرير ليوم واحد لنفس الفرع.\nاختر تاريخًا آخر أو عدّل التقرير السابق.");
+      return alert("⛔ Only one report per day is allowed for this branch.\nChoose another date or edit the existing report.");
     }
-
     try {
       setOpMsg("⏳ Saving...");
       const payload = {
         branch: "POS 15",
         coolers,
-        times, // نرسل القائمة الكاملة للتوافق مع العرض
+        productVerifications,
+        times,
         date: toISODate(reportDate),
         checkedBy,
         verifiedBy,
         savedAt: Date.now(),
-        // مفتاح فريد اختياري (لو السيرفر يدعمه) لمنع التكرار من الخلفية
         unique_key: `pos15_temperature_${toISODate(reportDate)}`,
       };
       const res = await fetch(`${API_BASE}/api/reports`, {
@@ -234,10 +199,7 @@ export default function POS15TemperatureInput() {
         body: JSON.stringify({ reporter: "pos15", type: "pos15_temperature", payload }),
       });
       if (!res.ok) {
-        if (res.status === 409) {
-          // في حال السيرفر أعاد تعارض
-          throw new Error("⛔ يوجد تقرير محفوظ لنفس اليوم (409 Conflict).");
-        }
+        if (res.status === 409) throw new Error("⛔ A report already exists for this day (409 Conflict).");
         throw new Error(`HTTP ${res.status}`);
       }
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -252,14 +214,12 @@ export default function POS15TemperatureInput() {
 
   return (
     <div style={{ background: "linear-gradient(120deg, #f6f8fa 65%, #e8daef 100%)", padding: "1.5rem", borderRadius: "14px", boxShadow: "0 4px 18px #d2b4de44" }}>
-      {/* ترويسة المستند */}
+      {/* Document header */}
       <table style={topTable}>
         <tbody>
           <tr>
             <td rowSpan={4} style={{ ...tdHeader, width: 140, textAlign: "center" }}>
-              <div style={{ fontWeight: 900, color: "#a00", fontSize: 14, lineHeight: 1.2 }}>
-                AL<br />MAWASHI
-              </div>
+              <div style={{ fontWeight: 900, color: "#a00", fontSize: 14, lineHeight: 1.2 }}>AL<br />MAWASHI</div>
             </td>
             <td style={tdHeader}><b>Document Title:</b> Temperature Control Record</td>
             <td style={tdHeader}><b>Document No:</b> FS-QM/REC/TMP</td>
@@ -282,97 +242,49 @@ export default function POS15TemperatureInput() {
       <div style={band1}>TRANS EMIRATES LIVESTOCK MEAT TRADING LLC</div>
       <div style={band2}>TEMPERATURE CONTROL CHECKLIST (CCP)</div>
 
-      {/* التاريخ */}
+      {/* Date */}
       <div style={{ margin: "8px 0 10px", display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <label style={{ fontWeight: 600 }}>📅 Date:</label>
-        <input
-          type="date"
-          value={reportDate}
-          onChange={(e) => setReportDate(e.target.value)}
-          style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #9aa4ae", background: "#fff" }}
-        />
-        {/* حالة التحقق */}
+        <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #9aa4ae", background: "#fff" }} />
         {reportDate && (
           <>
-            {dateBusy && <span style={{ color: "#6b7280", fontWeight: 600 }}>جارٍ التحقق…</span>}
-            {!dateBusy && dateTaken && (
-              <span style={{ color: "#b91c1c", fontWeight: 700 }}>⛔ يوجد تقرير محفوظ لهذا اليوم</span>
-            )}
-            {!dateBusy && !dateTaken && !dateError && (
-              <span style={{ color: "#065f46", fontWeight: 700 }}>✅ التاريخ متاح</span>
-            )}
+            {dateBusy && <span style={{ color: "#6b7280", fontWeight: 600 }}>Checking…</span>}
+            {!dateBusy && dateTaken && <span style={{ color: "#b91c1c", fontWeight: 700 }}>⛔ A report already exists for this day</span>}
+            {!dateBusy && !dateTaken && !dateError && <span style={{ color: "#065f46", fontWeight: 700 }}>✅ Date available</span>}
             {dateError && <span style={{ color: "#b45309", fontWeight: 700 }}>{dateError}</span>}
           </>
         )}
       </div>
 
-      {/* تعليمات */}
+      {/* Instructions */}
       <div style={rulesBox}>
         <div>1. If the cooler temp is +5°C or more – corrective action should be taken.</div>
         <div>2. If the loading area is more than +16°C – corrective action should be taken.</div>
         <div>3. If the preparation area is more than +10°C – corrective action should be taken.</div>
-        <div style={{ marginTop: 6 }}>
-          <b>Note (Freezers):</b> acceptable range -25°C to -12°C.
-        </div>
-        <div style={{ marginTop: 6 }}>
-          <b>Corrective action:</b> Transfer the meat to another cold room and call maintenance department to check and solve the problem.
-        </div>
+        <div style={{ marginTop: 6 }}><b>Note (Freezers):</b> acceptable range -25°C to -12°C.</div>
+        <div style={{ marginTop: 6 }}><b>Corrective action:</b> Transfer the meat to another cold room and call maintenance department to check and solve the problem.</div>
       </div>
 
-      {/* جدول الإدخال بالأوقات */}
-      <table style={gridTable}>
-        <thead>
-          <tr>
-            <th style={thCell}>Cooler/Freezer</th>
-            {gridTimes.map((t) => (
-              <th key={t} style={thCell}>{t}</th>
-            ))}
-            <th style={thCell}>Remarks</th>
-          </tr>
-        </thead>
-        <tbody>
-          {coolers.map((c, row) => (
-            <tr key={row}>
-              <td style={tdCellLeft}>
-                <span style={{ fontWeight: 600 }}>{c.name}</span>
-              </td>
-
-              {gridTimes.map((t) => (
-                <td key={t} style={tdCellCenter}>
-                  <input
-                    type="number"
-                    value={c.temps?.[t] ?? ""}
-                    onChange={(e) => setTemp(row, t, e.target.value)}
-                    style={tempInputStyle(c.temps?.[t], c.name)}
-                    placeholder="°C"
-                    min="-40"
-                    max="50"
-                    step="0.1"
-                  />
-                </td>
-              ))}
-
-              <td style={tdCellLeft}>
-                <input
-                  type="text"
-                  value={c.remarks}
-                  onChange={(e) => setRemarks(row, e.target.value)}
-                  placeholder="Write action / notes"
-                  style={{ border: "1px solid #29b97dff", borderRadius: 8, padding: "6px 8px", minWidth: 220, fontWeight: 600 }}
-                />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* Cards: temperatures + integrated product matching */}
+      <div style={{ marginTop: 6 }}>
+        <h4 style={{ color: "#2980b9", margin: "0 0 4px", fontWeight: 900, textAlign: "center" }}>Temperatures & Product Matching</h4>
+        <TemperatureMatchingReport
+          units={coolers}
+          times={gridTimes}
+          productVerifications={productVerifications}
+          onTemp={setTemp}
+          onRemarks={setRemarks}
+          onAddPV={addPV}
+          onUpdatePV={updatePV}
+          onRemovePV={removePV}
+        />
+      </div>
 
       {/* KPI + Checked/Verified + Save */}
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ fontWeight: 700 }}>
           KPI — Avg: {kpi.avg}°C | Min: {kpi.min}°C | Max: {kpi.max}°C | Out-of-range: {kpi.out}
-          <span style={{ marginInlineStart: 10, fontWeight: 600, color: "#374151" }}>
-            (Coolers only)
-          </span>
+          <span style={{ marginInlineStart: 10, fontWeight: 600, color: "#374151" }}>(Coolers only)</span>
         </div>
 
         <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
@@ -384,20 +296,14 @@ export default function POS15TemperatureInput() {
             <span style={{ fontWeight: 700 }}>Verified By:-</span>
             <input value={verifiedBy} onChange={(e) => setVerifiedBy(e.target.value)} placeholder="Enter name" style={miniInput} />
           </div>
-          <button
-            onClick={handleSave}
-            style={{ ...saveBtn, opacity: dateTaken ? 0.6 : 1, pointerEvents: dateTaken ? "none" : "auto" }}
-            title={dateTaken ? "غير مسموح بحفظ أكثر من تقرير لنفس اليوم" : "Save to Server"}
-          >
+          <button onClick={handleSave} style={{ ...saveBtn, opacity: dateTaken ? 0.6 : 1, pointerEvents: dateTaken ? "none" : "auto" }} title={dateTaken ? "Only one report per day is allowed" : "Save to Server"}>
             💾 Save to Server
           </button>
         </div>
       </div>
 
       {opMsg && (
-        <div style={{ marginTop: 10, fontWeight: 700, color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46" }}>
-          {opMsg}
-        </div>
+        <div style={{ marginTop: 10, fontWeight: 700, color: opMsg.startsWith("❌") ? "#b91c1c" : "#065f46" }}>{opMsg}</div>
       )}
     </div>
   );
@@ -409,9 +315,5 @@ const tdHeader = { border: "1px solid #9aa4ae", padding: "6px 8px", verticalAlig
 const band1 = { width: "100%", textAlign: "center", background: "#bfc7cf", color: "#2c3e50", fontWeight: 700, padding: "6px 4px", border: "1px solid #9aa4ae", borderTop: "none" };
 const band2 = { width: "100%", textAlign: "center", background: "#dde3e9", color: "#2c3e50", fontWeight: 700, padding: "6px 4px", border: "1px solid #9aa4ae", borderTop: "none", marginBottom: "8px" };
 const rulesBox = { border: "1px solid #9aa4ae", background: "#f1f5f9", padding: "8px 10px", fontSize: "0.92rem", marginBottom: "10px" };
-const gridTable = { width: "100%", borderCollapse: "collapse", border: "1px solid #9aa4ae", background: "#ffffff" };
-const thCell = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "center", background: "#e0e6ed", fontWeight: 700, fontSize: "0.9rem", whiteSpace: "nowrap" };
-const tdCellCenter = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "center" };
-const tdCellLeft = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "left" };
 const miniInput = { border: "1px solid #aaa", borderRadius: 6, padding: "4px 8px", minWidth: 160, background: "#fff" };
 const saveBtn = { background: "linear-gradient(180deg,#10b981,#059669)", color: "#fff", border: "none", padding: "10px 18px", borderRadius: 10, cursor: "pointer", fontWeight: 800, fontSize: "0.95rem", boxShadow: "0 6px 14px rgba(16,185,129,.3)" };

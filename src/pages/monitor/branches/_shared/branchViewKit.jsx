@@ -186,6 +186,197 @@ export function GlassShell({ icon = "📄", title, actions, children }) {
   );
 }
 
+export const ACTION_COLORS = {
+  refresh: "#2563eb",
+  pdf: "#dc2626",
+  json: "#0f766e",
+  import: "#d97706",
+  delete: "#dc2626",
+  edit: "#4f46e5",
+  save: "#16a34a",
+  cancel: "#64748b",
+};
+
+export function ActionButton({
+  children,
+  onClick,
+  disabled = false,
+  tone = "refresh",
+  title,
+  type = "button",
+  danger = false,
+  style,
+  ...rest
+}) {
+  const color = danger ? ACTION_COLORS.delete : ACTION_COLORS[tone] || ACTION_COLORS.refresh;
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: 38,
+        padding: "8px 14px",
+        borderRadius: 10,
+        border: `1px solid ${disabled ? "#cbd5e1" : color}`,
+        background: disabled ? "#f1f5f9" : color,
+        color: disabled ? "#94a3b8" : "#fff",
+        fontWeight: 850,
+        fontSize: 13.5,
+        fontFamily: "inherit",
+        cursor: disabled ? "not-allowed" : "pointer",
+        whiteSpace: "nowrap",
+        boxShadow: disabled ? "none" : "0 2px 8px rgba(15,23,42,0.12)",
+        ...style,
+      }}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function ActionBar({ children, style }) {
+  return (
+    <div
+      className="no-print"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: 8,
+        flexWrap: "wrap",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function ReportActions({
+  onRefresh,
+  onPdf,
+  onJson,
+  onImport,
+  onDelete,
+  refreshing = false,
+  exportingPdf = false,
+  deleteDisabled = false,
+  jsonDisabled = false,
+  importDisabled = false,
+  pdfDisabled = false,
+}) {
+  return (
+    <ActionBar>
+      {onPdf && (
+        <ActionButton tone="pdf" onClick={onPdf} disabled={exportingPdf || pdfDisabled}>
+          {exportingPdf ? "Exporting PDF..." : "PDF"}
+        </ActionButton>
+      )}
+      {onJson && (
+        <ActionButton tone="json" onClick={onJson} disabled={jsonDisabled}>
+          JSON
+        </ActionButton>
+      )}
+      {onImport && (
+        <ActionButton tone="import" onClick={onImport} disabled={importDisabled}>
+          Import
+        </ActionButton>
+      )}
+      {onRefresh && (
+        <ActionButton tone="refresh" onClick={onRefresh} disabled={refreshing}>
+          {refreshing ? "Loading..." : "Refresh"}
+        </ActionButton>
+      )}
+      {onDelete && (
+        <ActionButton tone="delete" onClick={onDelete} disabled={deleteDisabled} data-delete-action="true">
+          Delete
+        </ActionButton>
+      )}
+    </ActionBar>
+  );
+}
+
+export function ResponsiveReportLayout({ sidebar, children, sidebarWidth = 300 }) {
+  return (
+    <div
+      className="qcs-responsive-report-layout"
+      style={{
+        display: "grid",
+        gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr)`,
+        gap: 14,
+        alignItems: "start",
+        direction: "ltr",
+      }}
+    >
+      <style>{`
+        @media (max-width: 980px) {
+          .qcs-responsive-report-layout {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+      <div style={{ minWidth: 0 }}>{sidebar}</div>
+      <div style={{ minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}
+
+export function ResponsiveTableWrap({ children, maxHeight, style }) {
+  return (
+    <div
+      style={{
+        width: "100%",
+        overflowX: "auto",
+        overflowY: maxHeight ? "auto" : "visible",
+        maxHeight,
+        borderRadius: 12,
+        WebkitOverflowScrolling: "touch",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function KpiGrid({ items = [] }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+        gap: 10,
+        marginBottom: 12,
+      }}
+    >
+      {items.map((item) => (
+        <div
+          key={item.label}
+          style={{
+            ...GLASS.card,
+            background: "rgba(255,255,255,0.82)",
+            padding: 12,
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", textTransform: "uppercase" }}>
+            {item.label}
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 950, marginTop: 4, color: item.color || "#0f172a" }}>
+            {item.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* =========================================================
    🔍 SearchBar — شريط بحث زجاجي موحّد
    ========================================================= */
@@ -362,20 +553,6 @@ export function DateTreeSidebar({
     return out;
   }, [items]);
 
-  // كشف موقع العنصر النشط تلقائياً (يفتح سنته وشهره)
-  const activeISO = useMemo(() => {
-    const it = items.find((x) => x.key === activeKey);
-    return it?.dateISO || "";
-  }, [items, activeKey]);
-
-  useEffect(() => {
-    const m = String(activeISO).match(/^(\d{4})-(\d{2})/);
-    if (!m) return;
-    const [, y, mo] = m;
-    setOpenYears((p) => (p[y] ? p : { ...p, [y]: true }));
-    setOpenMonths((p) => (p[`${y}-${mo}`] ? p : { ...p, [`${y}-${mo}`]: true }));
-  }, [activeISO]);
-
   const toggleYear = (y) => setOpenYears((p) => ({ ...p, [y]: !p[y] }));
   const toggleMonth = (y, mo) =>
     setOpenMonths((p) => ({ ...p, [`${y}-${mo}`]: !p[`${y}-${mo}`] }));
@@ -538,7 +715,7 @@ export function DateTreeSidebar({
    ========================================================= */
 export function SidebarLayout({ sidebar, children, sidebarWidth = 330 }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: `${sidebarWidth}px 1fr`, gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: `${sidebarWidth}px 1fr`, gap: 12, direction: "ltr" }}>
       {sidebar}
       <div style={GLASS.content}>{children}</div>
     </div>

@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/QCSReport.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import QCSRawMaterialInspection from "./shipment_recc/QCSRawMaterialInspection";
 import PersonalHygieneTab from "./qcs/PersonalHygieneTab";
 import DailyCleanlinessTab from "./qcs/DailyCleanlinessTab";
@@ -47,8 +48,43 @@ import EmployeeReturnToWorkInput from "./qcs/EmployeeReturnToWorkInput";
 // 🆕 Product Rejection — Input
 import ProductRejectionInput from "./qcs/ProductRejectionInput";
 
+const QCS_TAB_IDS = new Set([
+  "shipment",
+  "coolers",
+  "personalHygiene",
+  "dailyCleanliness",
+  "qusaisFreshChicken",
+  "meatInspectionMamzar",
+  "meatInspectionMushrif",
+  "physical_ing",
+  "physical_pack",
+  "nonConformance",
+  "car",
+  "internalAudit",
+  "garbageDisposal",
+  "meatWasteDisposal",
+  "pestControl",
+  "stockRotation",
+  "visitorChecklist",
+  "staffSickness",
+  "returnToWork",
+  "productRejection",
+]);
+
+function validQcsTab(tab) {
+  return QCS_TAB_IDS.has(tab) ? tab : "shipment";
+}
+
 export default function QCSReport() {
-  const [activeTab, setActiveTab] = useState("shipment");
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState(() => validQcsTab(requestedTab));
+
+  useEffect(() => {
+    if (requestedTab && QCS_TAB_IDS.has(requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [requestedTab]);
 
   const COLORS = {
     ink: "#0f172a",

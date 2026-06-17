@@ -2,12 +2,11 @@
 // QCS — Pest Control Log — Records list (with month filter, search, KPIs)
 
 import React, { useEffect, useMemo, useState } from "react";
-
-const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const CRA = (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) || undefined;
-let VITE; try { VITE = import.meta.env?.VITE_API_URL; } catch {}
-const API_BASE = String(VITE || CRA || API_BASE_DEFAULT).replace(/\/$/, "");
-const IS_SAME_ORIGIN = (() => { try { return new URL(API_BASE).origin === window.location.origin; } catch { return false; } })();
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { GlassShell, KpiGrid, ReportActions, ResponsiveTableWrap } from "../_shared/branchViewKit";
+import { deleteReport, downloadReportsJson, listReports, reportId } from "../_shared/reportApi";
+import { pdfSafeText } from "./pdfImageUtils";
 
 const TYPE = "qcs_pest_control";
 
@@ -33,6 +32,51 @@ const S = {
 
 function fmtDate(s) { if (!s) return "—"; try { const d = new Date(s); if (isNaN(d.getTime())) return s; return d.toLocaleDateString(); } catch { return s; } }
 
+function buildPestPDF(records) {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pw = doc.internal.pageSize.getWidth();
+  const M = 12;
+
+  doc.setFillColor(109, 40, 217);
+  doc.rect(0, 0, pw, 24, "F");
+  doc.setTextColor(255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("Pest Control Log", pw / 2, 10, { align: "center" });
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.text(`QCS | Generated: ${new Date().toLocaleString("en-GB")} | Records: ${records.length}`, pw / 2, 17, { align: "center" });
+
+  autoTable(doc, {
+    startY: 30,
+    head: [["#", "Date", "Location", "Company", "Technician", "Visit Type", "Targeted", "Stations", "Inspector", "Next Visit"]],
+    body: records.map((row, index) => {
+      const p = row?.payload || {};
+      const targeted = Array.isArray(p.pestsTargeted) ? p.pestsTargeted.map((x) => String(x).split("/")[0].trim()).join(", ") : "";
+      const stations = Array.isArray(p.stations) ? p.stations.length : 0;
+      return [
+        index + 1,
+        fmtDate(p.reportDate),
+        pdfSafeText(p.location),
+        pdfSafeText(p.company?.name),
+        pdfSafeText(p.technician),
+        pdfSafeText(p.visitType),
+        pdfSafeText(targeted),
+        stations,
+        pdfSafeText(p.inspector),
+        fmtDate(p.nextVisitDate),
+      ];
+    }),
+    theme: "grid",
+    styles: { fontSize: 7.5, cellPadding: 3, font: "helvetica", overflow: "linebreak" },
+    headStyles: { fillColor: [109, 40, 217], textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [245, 243, 255] },
+    margin: { left: M, right: M },
+  });
+
+  return doc;
+}
+
 export default function PestControlView() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,13 +84,12 @@ export default function PestControlView() {
   const [month, setMonth] = useState(""); // YYYY-MM
   const [locationFilter, setLocationFilter] = useState("all");
   const [preview, setPreview] = useState({ open: false, src: "" });
+  const [exportingPDF, setExportingPDF] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" });
-      const json = await res.json().catch(() => null);
-      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+      const arr = await listReports(TYPE);
       arr.sort((a, b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
       setItems(arr);
     } catch (e) {
@@ -63,8 +106,7 @@ export default function PestControlView() {
     if (!id) return;
     if (!window.confirm("هل أنت متأكد من حذف هذا السجل؟")) return;
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${id}`, { method: "DELETE", credentials: IS_SAME_ORIGIN ? "include" : "omit" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await deleteReport(id);
       await load();
     } catch (e) {
       alert("فشل الحذف: " + (e?.message || e));
@@ -110,12 +152,36 @@ export default function PestControlView() {
     return stations.some((st) => /captur|نشاط|صيد/i.test(String(st?.status || ""))) || /نشاط|capture|rodent|fly|pest/i.test(String(r?.payload?.findings || ""));
   }).length, [filtered]);
 
+  const exportJSON = () => downloadReportsJson(TYPE, filtered, "QCS_Pest_Control");
+  const exportPDF = async () => {
+    if (!filtered.length) return;
+    setExportingPDF(true);
+    try {
+      const doc = buildPestPDF(filtered);
+      doc.save(`Pest_Control_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (e) {
+      alert("PDF export failed: " + (e?.message || e));
+    } finally {
+      setExportingPDF(false);
+    }
+  };
+
   return (
-    <div>
-      <div style={S.topbar}>
-        <h2 style={S.title}>🐀 سجل مكافحة الحشرات / Pest Control Log</h2>
-        <button style={S.btn} onClick={load} disabled={loading}>{loading ? "⏳ تحديث..." : "🔄 تحديث"}</button>
-      </div>
+    <GlassShell
+      icon="🛡️"
+      title="Pest Control Log"
+      actions={
+        <ReportActions
+          onPdf={exportPDF}
+          onJson={exportJSON}
+          onRefresh={load}
+          exportingPdf={exportingPDF}
+          refreshing={loading}
+          pdfDisabled={filtered.length === 0}
+          jsonDisabled={filtered.length === 0}
+        />
+      }
+    >
 
       {/* Filters */}
       <div style={S.card}>
@@ -139,12 +205,14 @@ export default function PestControlView() {
       </div>
 
       {/* KPIs */}
-      <div style={S.kpiRow}>
-        <div style={S.kpi}><div style={S.kpiLabel}>إجمالي الزيارات</div><div style={{ ...S.kpiValue, color: "#7c3aed" }}>{totalVisits}</div></div>
-        <div style={S.kpi}><div style={S.kpiLabel}>هذا الشهر</div><div style={{ ...S.kpiValue, color: "#0ea5e9" }}>{thisMonth}</div></div>
-        <div style={S.kpi}><div style={S.kpiLabel}>محطات الطعم</div><div style={{ ...S.kpiValue, color: "#16a34a" }}>{totalStations}</div></div>
-        <div style={S.kpi}><div style={S.kpiLabel}>زيارات بنشاط</div><div style={{ ...S.kpiValue, color: "#dc2626" }}>{activitySpotted}</div></div>
-      </div>
+      <KpiGrid
+        items={[
+          { label: "إجمالي الزيارات", value: totalVisits, color: "#7c3aed" },
+          { label: "هذا الشهر", value: thisMonth, color: "#0ea5e9" },
+          { label: "محطات الطعم", value: totalStations, color: "#16a34a" },
+          { label: "زيارات بنشاط", value: activitySpotted, color: "#dc2626" },
+        ]}
+      />
 
       {/* Records table */}
       {loading ? (
@@ -152,7 +220,7 @@ export default function PestControlView() {
       ) : filtered.length === 0 ? (
         <div style={S.empty}>لا توجد سجلات.</div>
       ) : (
-        <div style={{ overflowX: "auto" }}>
+        <ResponsiveTableWrap>
           <table style={S.table}>
             <thead>
               <tr>
@@ -175,7 +243,7 @@ export default function PestControlView() {
                 const stations = Array.isArray(p.stations) ? p.stations : [];
                 const pests = Array.isArray(p.pestsTargeted) ? p.pestsTargeted : [];
                 return (
-                  <tr key={r._id || r.id || `${p.savedAt}-${p.reportDate}`}>
+                  <tr key={reportId(r) || `${p.savedAt}-${p.reportDate}`}>
                     <td style={S.td}>{fmtDate(p.reportDate)}</td>
                     <td style={S.td}>{p.location || "—"}</td>
                     <td style={S.td}>
@@ -201,14 +269,14 @@ export default function PestControlView() {
                     </td>
                     <td style={S.td}>{fmtDate(p.nextVisitDate)}</td>
                     <td style={S.td}>
-                      <button style={S.btnDanger} onClick={() => deleteRecord(r._id || r.id)} data-delete-action="true">حذف</button>
+                      <button style={S.btnDanger} onClick={() => deleteRecord(reportId(r))} data-delete-action="true">حذف</button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTableWrap>
       )}
 
       {/* Preview modal */}
@@ -220,6 +288,6 @@ export default function PestControlView() {
           <img src={preview.src} alt="Preview" style={{ maxWidth: "90vw", maxHeight: "90vh", borderRadius: 12 }} />
         </div>
       )}
-    </div>
+    </GlassShell>
   );
 }

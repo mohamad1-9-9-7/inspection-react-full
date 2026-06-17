@@ -305,25 +305,109 @@ function EmployeesList({ employees, onChange }) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   SUB-ITEM MODAL — popup when clicking a chip with subItems
+═══════════════════════════════════════════════════════ */
+function SubItemModal({ item, selected, theme, onSave, onClose }) {
+  const [local, setLocal] = useState(
+    () => item.subItems.filter(s => selected.includes(s.id)).map(s => s.id)
+  );
+  const toggle = (id) =>
+    setLocal(l => l.includes(id) ? l.filter(x => x !== id) : [...l, id]);
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+        display: "grid", placeItems: "center", zIndex: 10000,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#fff", borderRadius: 16, padding: "28px 32px",
+          minWidth: 320, maxWidth: 420, width: "90vw",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.28)",
+          border: `2px solid ${theme.border}`,
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ fontWeight: 1000, fontSize: 17, color: theme.accent, marginBottom: 20 }}>
+          {item.icon} {item.label}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+          {item.subItems.map(sub => {
+            const checked = local.includes(sub.id);
+            return (
+              <label key={sub.id} style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "13px 16px", borderRadius: 10, cursor: "pointer",
+                background: checked ? theme.chipOn : "#f8fafc",
+                border: `1.5px solid ${checked ? theme.accent : "#e2e8f0"}`,
+                fontWeight: checked ? 900 : 700,
+                color: checked ? theme.chipOnText : "#475569",
+                transition: "all .12s", userSelect: "none",
+              }}>
+                <input type="checkbox" checked={checked} onChange={() => toggle(sub.id)}
+                  style={{ width: 18, height: 18, accentColor: theme.accent, flexShrink: 0 }} />
+                <span style={{ fontSize: 22 }}>{sub.icon}</span>
+                <span style={{ fontSize: 15 }}>{sub.label}</span>
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="button" onClick={() => onSave(local)} style={{
+            flex: 1, padding: "11px 0", borderRadius: 10, border: "none",
+            background: theme.accent, color: "#fff", fontWeight: 900, fontSize: 15,
+            cursor: "pointer", fontFamily: "inherit",
+          }}>
+            ✅ Save
+          </button>
+          <button type="button" onClick={onClose} style={{
+            flex: 1, padding: "11px 0", borderRadius: 10,
+            border: "1px solid #e2e8f0", background: "#f8fafc",
+            color: "#475569", fontWeight: 900, fontSize: 15,
+            cursor: "pointer", fontFamily: "inherit",
+          }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
    BRANCH / PAGE SELECTOR (light — inside form card)
 ═══════════════════════════════════════════════════════ */
 function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind = "branches" }) {
   const { t } = useSettingsLang();
+  const [modalItem, setModalItem] = useState(null);
   const list = Array.isArray(items) && items.length > 0 ? items : MASTER_BRANCHES;
   const isRestricted = selected.length > 0;
   const noun  = kind === "pages" ? t("amPageWord") : t("amBranchWord");
   const nounP = kind === "pages" ? t("amPagesWord") : t("amBranchesWord");
   const toggle = (id) =>
     onChange(selected.includes(id) ? selected.filter(b => b !== id) : [...selected, id]);
+  const handleSubSave = (parentItem, chosenIds) => {
+    const withoutOld = selected.filter(id => !parentItem.subItems.some(s => s.id === id));
+    onChange([...withoutOld, ...chosenIds]);
+    setModalItem(null);
+  };
 
   return (
+    <>
     <div style={{ border:`1.5px solid ${theme.border}`, borderRadius:14, padding:"16px 18px", marginBottom:14, background:theme.bg }}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap", marginBottom:8 }}>
         <div style={{ fontWeight:900, fontSize:16, color:theme.accent }}>
           {sectionLabel || `${theme.icon} ${theme.title}`} — {kind === "pages" ? t("amPageAccess") : t("amBranchAccess")}
         </div>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-          <button type="button" onClick={() => onChange(list.map(b => b.id))}
+          <button type="button" onClick={() => {
+              const all = [];
+              list.forEach(b => b.subItems ? b.subItems.forEach(s => all.push(s.id)) : all.push(b.id));
+              onChange(all);
+            }}
             style={{ fontSize:12, fontWeight:900, color:theme.accent, background:"#fff", border:`1px solid ${theme.border}`, borderRadius:8, cursor:"pointer", padding:"5px 11px", fontFamily:"inherit" }}>
             ☑️ {t("amSelectAll")}
           </button>
@@ -352,6 +436,34 @@ function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind =
         gap:6,
       }}>
         {list.map(b => {
+          if (b.subItems) {
+            const checkedSubs = b.subItems.filter(s => selected.includes(s.id));
+            const checked = checkedSubs.length > 0;
+            return (
+              <div key={b.id} role="button" tabIndex={0}
+                onClick={() => setModalItem(b)}
+                onKeyDown={e => e.key === "Enter" && setModalItem(b)}
+                style={{
+                  display:"flex", alignItems:"center", gap:6,
+                  padding:"7px 10px", borderRadius:8, cursor:"pointer",
+                  background: checked ? theme.chipOn : "#fff",
+                  border:`1.5px solid ${checked ? theme.accent : "#e2e8f0"}`,
+                  fontWeight: checked ? 900 : 700,
+                  fontSize:13,
+                  color: checked ? theme.chipOnText : "#64748b",
+                  transition:"all .12s", userSelect:"none",
+                }}>
+                <span style={{ fontSize:13 }}>{checked ? "☑" : "☐"}</span>
+                {b.label}
+                {checked && (
+                  <span style={{ fontSize:11, opacity:0.75, marginLeft:2 }}>
+                    ({checkedSubs.length}/{b.subItems.length})
+                  </span>
+                )}
+                <span style={{ fontSize:10, opacity:0.4, marginLeft:"auto" }}>▼</span>
+              </div>
+            );
+          }
           const checked = selected.includes(b.id);
           return (
             <label key={b.id} style={{
@@ -380,6 +492,16 @@ function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind =
         </div>
       )}
     </div>
+    {modalItem && (
+      <SubItemModal
+        item={modalItem}
+        selected={selected}
+        theme={theme}
+        onSave={ids => handleSubSave(modalItem, ids)}
+        onClose={() => setModalItem(null)}
+      />
+    )}
+    </>
   );
 }
 

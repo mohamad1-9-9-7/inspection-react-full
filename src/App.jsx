@@ -261,6 +261,9 @@ const ObjectivesView  = lazy(() => import("./pages/haccp and iso/Objectives/Obje
 const DocumentRegisterInput = lazy(() => import("./pages/haccp and iso/DocumentRegister/DocumentRegisterInput"));
 const DocumentRegisterView  = lazy(() => import("./pages/haccp and iso/DocumentRegister/DocumentRegisterView"));
 
+const LegalRegisterInput = lazy(() => import("./pages/haccp and iso/LegalRegister/LegalRegisterInput"));
+const LegalRegisterView  = lazy(() => import("./pages/haccp and iso/LegalRegister/LegalRegisterView"));
+
 // 📜 Food Safety Policy (ISO 5.2)
 const FoodSafetyPolicyView = lazy(() => import("./pages/haccp and iso/FoodSafetyPolicy/FoodSafetyPolicyView"));
 
@@ -286,6 +289,10 @@ const OpportunityRegisterView = lazy(() => import("./pages/haccp and iso/Opportu
 const ChangeManagementLogView = lazy(() => import("./pages/haccp and iso/ChangeManagementLog/ChangeManagementLogView"));
 
 // 🆕 📦 Product Details Input
+const ProductDetailsHub = lazy(() =>
+  import("./pages/haccp and iso/ProductDetailsHub")
+);
+
 const ProductDetailsInput = lazy(() =>
   import("./pages/haccp and iso/ProductDetailsInput")
 );
@@ -1381,6 +1388,23 @@ export default function App() {
 
         {/* 📜 Food Safety Policy (ISO 5.2) */}
         <Route
+          path="/haccp-iso/legal-register"
+          element={
+            <ProtectedRoute>
+              <LegalRegisterInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/legal-register/view"
+          element={
+            <ProtectedRoute>
+              <LegalRegisterView />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/haccp-iso/food-safety-policy"
           element={
             <ProtectedRoute>
@@ -1500,6 +1524,14 @@ export default function App() {
         {/* 🆕 Product Details */}
         <Route
           path="/haccp-iso/product-details"
+          element={
+            <ProtectedRoute>
+              <ProductDetailsHub />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/product-details/input"
           element={
             <ProtectedRoute>
               <ProductDetailsInput />

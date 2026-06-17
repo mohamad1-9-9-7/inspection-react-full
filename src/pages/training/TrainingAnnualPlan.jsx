@@ -681,9 +681,13 @@ export default function TrainingAnnualPlan() {
   };
 
   const monthIsCurrent = (mi) => mi === new Date().getMonth() + 1 && Number(year) === currentYear;
+  const branchColWidth = 200;
+  const monthColWidth = 112;
+  const planRowHeight = 96;
+  const tableMinWidth = branchColWidth + MONTHS.length * monthColWidth;
 
   return (
-    <div style={pageStyle}>
+    <div className="training-annual-plan" style={pageStyle}>
       {/* ========= Print CSS ========= */}
       <style>{`
         @media print {
@@ -699,6 +703,38 @@ export default function TrainingAnnualPlan() {
           outline: 2px solid rgba(56,189,248,0.55);
           outline-offset: -3px;
           filter: brightness(1.02);
+        }
+        .plan-table th,
+        .plan-table td {
+          box-sizing: border-box;
+        }
+        #root .training-annual-plan,
+        #root .training-annual-plan * {
+          font-size: 14px !important;
+        }
+        #root .training-annual-plan .annual-plan-title {
+          font-size: 16px !important;
+        }
+        #root .training-annual-plan .annual-plan-panel-title {
+          font-size: 14px !important;
+        }
+        #root .training-annual-plan .annual-plan-icon {
+          font-size: 18px !important;
+        }
+        #root .training-annual-plan .annual-plan-branch-icon {
+          font-size: 14px !important;
+        }
+        #root .training-annual-plan .annual-plan-stat-value {
+          font-size: 14px !important;
+        }
+        #root .training-annual-plan .plan-table {
+          font-size: 12px !important;
+        }
+        #root .training-annual-plan .plan-table th,
+        #root .training-annual-plan .plan-table td,
+        #root .training-annual-plan .plan-table span,
+        #root .training-annual-plan .plan-table button {
+          font-size: 12px !important;
         }
       `}</style>
 
@@ -716,14 +752,14 @@ export default function TrainingAnnualPlan() {
         color: "#fff",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
+          <div className="annual-plan-icon" style={{
             width: 44, height: 44, borderRadius: 12,
             background: "linear-gradient(135deg,#06b6d4,#6366f1)",
             display: "grid", placeItems: "center", fontSize: 22,
             boxShadow: "0 8px 20px rgba(99,102,241,0.45)",
           }}>📅</div>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 1000, letterSpacing: 0.3 }}>
+            <div className="annual-plan-title" style={{ fontSize: 18, fontWeight: 1000, letterSpacing: 0.3 }}>
               Annual Training Plan
             </div>
             <div style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 700 }}>
@@ -948,7 +984,7 @@ export default function TrainingAnnualPlan() {
           flexWrap: "wrap",
           borderBottom: `1px solid ${C.line}`,
         }}>
-          <div style={{ fontWeight: 1000, fontSize: 15, letterSpacing: 0.3 }}>
+          <div className="annual-plan-panel-title" style={{ fontWeight: 1000, fontSize: 15, letterSpacing: 0.3 }}>
             Annual Training Plan
           </div>
           <div style={{ fontSize: 13, color: "#cbd5e1", fontWeight: 800 }}>· {year}</div>
@@ -963,15 +999,16 @@ export default function TrainingAnnualPlan() {
         <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
           <table className="plan-table" style={{
             width: "100%",
+            minWidth: tableMinWidth,
             height: "100%",
             borderCollapse: "separate",
             borderSpacing: 0,
             tableLayout: "fixed",
           }}>
             <colgroup>
-              <col style={{ width: 200 }} />
+              <col style={{ width: branchColWidth }} />
               {MONTHS.map((mo) => (
-                <col key={mo.i} />
+                <col key={mo.i} style={{ width: monthColWidth }} />
               ))}
             </colgroup>
             <thead>
@@ -1024,7 +1061,7 @@ export default function TrainingAnnualPlan() {
                 <tr
                   key={b.key}
                   className="row-hover"
-                  style={{ background: idx % 2 ? C.band : "#fff" }}
+                  style={{ background: idx % 2 ? C.band : "#fff", height: planRowHeight }}
                 >
                   <td style={{
                     ...tdBase,
@@ -1033,11 +1070,13 @@ export default function TrainingAnnualPlan() {
                     background: idx % 2 ? C.band2 : "#fff",
                     borderRight: `2px solid ${C.line2}`,
                     zIndex: 2,
-                    minWidth: 200,
+                    width: branchColWidth,
+                    minWidth: branchColWidth,
+                    height: planRowHeight,
                   }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        <div style={{
+                        <div className="annual-plan-branch-icon" style={{
                           width: 32, height: 32, borderRadius: 10,
                           background: "linear-gradient(135deg,#0ea5e9,#6366f1)",
                           display: "grid", placeItems: "center", color: "#fff", fontSize: 16,
@@ -1105,7 +1144,13 @@ export default function TrainingAnnualPlan() {
                     if (isEditing) statusBorder = `2px solid ${C.blue}`;
 
                     return (
-                      <td key={mo.i} style={{ ...tdBase, padding: 4, background: isCurrent ? "rgba(59,130,246,0.04)" : "transparent" }}>
+                      <td key={mo.i} style={{
+                        ...tdBase,
+                        width: monthColWidth,
+                        height: planRowHeight,
+                        padding: 4,
+                        background: isCurrent ? "rgba(59,130,246,0.04)" : "transparent",
+                      }}>
                         <button
                           className="cell-btn"
                           onClick={() => setEditor({ branch: b.key, month: mo.i })}
@@ -1113,7 +1158,9 @@ export default function TrainingAnnualPlan() {
                             position: "relative",
                             width: "100%",
                             height: "100%",
-                            minHeight: 80,
+                            minHeight: planRowHeight - 10,
+                            boxSizing: "border-box",
+                            overflow: "hidden",
                             display: "flex",
                             flexDirection: "column",
                             alignItems: "stretch",
@@ -1156,7 +1203,7 @@ export default function TrainingAnnualPlan() {
                               + click to add
                             </span>
                           ) : (
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 3, minWidth: 0, overflow: "hidden" }}>
                               {cell.map((m) => {
                                 const delivered = showActual && st.delivered.some((d) => normalizeModule(d) === normalizeModule(m));
                                 return (
@@ -1592,7 +1639,7 @@ function StatBlock({ label, value, color, highlight }) {
       background: highlight ? "rgba(220,38,38,0.18)" : "transparent",
       minWidth: 64,
     }}>
-      <span style={{ fontSize: 16, fontWeight: 1000, color, lineHeight: 1.1 }}>{value}</span>
+      <span className="annual-plan-stat-value" style={{ fontSize: 16, fontWeight: 1000, color, lineHeight: 1.1 }}>{value}</span>
       <span style={{ fontSize: 9, fontWeight: 800, color: "#cbd5e1", letterSpacing: 0.4, textTransform: "uppercase", marginTop: 2 }}>
         {label}
       </span>

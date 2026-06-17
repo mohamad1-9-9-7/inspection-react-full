@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import SignatureName from "../../../shared/SignatureName";
 import API_BASE from "../../../../config/api";
+import TemperatureMatchingReport from "../_shared/TemperatureMatchingReport";
 import {
   btn,
   formatDMY,
@@ -54,12 +55,6 @@ function getKey(r) {
   const n = normYMD(pick);
   return n?.iso || "";
 }
-
-const gridStyle = { width: "100%", borderCollapse: "collapse", fontSize: 20, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 14px rgba(99,102,241,0.10)" };
-const theadRow = { background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" };
-const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "10px 8px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" };
-const tdCell = { border: "1px solid #c7d2fe", padding: "9px 7px", textAlign: "center", verticalAlign: "middle" };
-const zebra = (i) => ({ background: i % 2 ? "rgba(237,233,254,0.45)" : "#fff" });
 
 export default function POS15TemperatureView() {
   const [reports, setReports] = useState([]);
@@ -140,7 +135,7 @@ export default function POS15TemperatureView() {
       const text = await file.text();
       const parsed = JSON.parse(text);
       const items = Array.isArray(parsed) ? parsed : parsed.items ?? parsed.data ?? parsed.reports ?? [];
-      if (!Array.isArray(items) || items.length === 0) { alert("الملف لا يحتوي عناصر صالحة."); return; }
+      if (!Array.isArray(items) || items.length === 0) { alert("The file has no valid items."); return; }
       let ok = 0, fail = 0;
       for (const raw of items) {
         const payload = raw?.payload ?? raw;
@@ -151,9 +146,9 @@ export default function POS15TemperatureView() {
         } catch { fail++; }
       }
       await load();
-      alert(`تم الاستيراد: ${ok} ناجحة / ${fail} فاشلة`);
+      alert(`Imported: ${ok} succeeded / ${fail} failed`);
     } catch (err) {
-      alert("ملف JSON غير صالح: " + (err?.message || String(err)));
+      alert("Invalid JSON file: " + (err?.message || String(err)));
     } finally {
       setImporting(false);
       e.target.value = "";
@@ -164,7 +159,7 @@ export default function POS15TemperatureView() {
     if (!selected) return;
     const rid = selected?._id || selected?.id;
     if (!rid) return alert("⚠️ Missing report ID.");
-    if (!window.confirm("هل تريد حذف هذا التقرير نهائيًا؟")) return;
+    if (!window.confirm("Delete this report permanently?")) return;
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
@@ -172,9 +167,9 @@ export default function POS15TemperatureView() {
       const next = reports.filter((r) => getKey(r) !== selectedKey);
       setReports(next);
       setSelected(next[next.length - 1] || null);
-      alert("تم الحذف بنجاح ✓");
+      alert("Deleted successfully ✓");
     } catch (e) {
-      alert("تعذّر الحذف: " + (e?.message || String(e)));
+      alert("Failed to delete: " + (e?.message || String(e)));
     } finally {
       setLoading(false);
     }
@@ -268,30 +263,13 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data, kpi }, ref) {
 
         <div style={{ marginBottom: 8, fontWeight: 900 }}>Date: {date}</div>
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={gridStyle}>
-            <thead>
-              <tr style={theadRow}>
-                <th style={{ ...thCell, minWidth: 180 }}>Cooler / Freezer</th>
-                {GRID_TIMES.map((t) => (<th key={t} style={{ ...thCell, minWidth: 90 }}>{t}</th>))}
-                <th style={{ ...thCell, minWidth: 200 }}>Remarks</th>
-              </tr>
-            </thead>
-            <tbody>
-              {coolers.length === 0 ? (
-                <tr><td colSpan={GRID_TIMES.length + 2} style={{ ...tdCell, textAlign: "center", color: "#64748b", fontWeight: 800 }}>No data</td></tr>
-              ) : coolers.map((c, i) => (
-                <tr key={i} style={zebra(i)}>
-                  <td style={{ ...tdCell, textAlign: "left", fontWeight: 700 }}>{c.name || ""}</td>
-                  {GRID_TIMES.map((t) => (
-                    <td key={t} style={tdCell}>{c.temps?.[t] ?? "—"}</td>
-                  ))}
-                  <td style={{ ...tdCell, textAlign: "left" }}>{c.remarks || ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {/* Temperatures + integrated product matching */}
+        <TemperatureMatchingReport
+          units={coolers}
+          times={GRID_TIMES}
+          productVerifications={data?.productVerifications || []}
+          readOnly
+        />
 
         {kpi && (
           <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(237,233,254,0.45)", border: "1px solid #c7d2fe", borderRadius: 10, fontWeight: 700, fontSize: 13, color: "#0b1f4d" }}>

@@ -2,6 +2,11 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  fetchServerItems,
+  loadCustomItems,
+  saveCustomItems,
+} from "./monitor/branches/_shared/ProductPicker";
 
 /* ========= API BASE ========= */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -645,27 +650,36 @@ export default function Returns() {
   }, []);
 
   /* ===== Custom Items ===== */
-  const CUSTOM_ITEMS_KEY = "returns_custom_items_v1";
-  const [customItems, setCustomItems] = useState([]);
+  const [customItems, setCustomItems] = useState(() => loadCustomItems());
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [addItemError, setAddItemError] = useState("");
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CUSTOM_ITEMS_KEY);
-      const j = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(j)) setCustomItems(j);
-    } catch {
-      // ignore
-    }
+    let cancelled = false;
+
+    (async () => {
+      const server = await fetchServerItems();
+      if (!cancelled && Array.isArray(server) && server.length > 0) {
+        setCustomItems((prev) => {
+          const mergedByCode = new Map();
+          safeArr(prev).forEach((it) => {
+            const key = normalize(it?.item_code ?? it?.itemCode);
+            if (key) mergedByCode.set(key, it);
+          });
+          server.forEach((it) => {
+            const key = normalize(it?.item_code ?? it?.itemCode);
+            if (key) mergedByCode.set(key, it);
+          });
+          return Array.from(mergedByCode.values());
+        });
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(CUSTOM_ITEMS_KEY, JSON.stringify(customItems));
-    } catch {
-      // ignore
-    }
+    saveCustomItems(customItems);
   }, [customItems]);
 
   const normalize = (v) =>

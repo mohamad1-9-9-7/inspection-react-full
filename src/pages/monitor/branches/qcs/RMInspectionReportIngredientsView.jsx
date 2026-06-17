@@ -113,7 +113,7 @@ export default function RMInspectionReportIngredientsView() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     const arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
-    arr.sort((a, b) => getReportDate(a) - getReportDate(b)); // الأقدم أولاً
+    arr.sort((a, b) => getReportDate(b) - getReportDate(a)); // الأحدث أولاً
     return arr;
   }
 

@@ -5,12 +5,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { addFullPageImage, pdfSafeText } from "./pdfImageUtils";
-
-const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const CRA = (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) || undefined;
-let VITE; try { VITE = import.meta.env?.VITE_API_URL; } catch {}
-const API_BASE = String(VITE || CRA || API_BASE_DEFAULT).replace(/\/$/, "");
-const IS_SAME_ORIGIN = (() => { try { return new URL(API_BASE).origin === window.location.origin; } catch { return false; } })();
+import { GlassShell, KpiGrid, ReportActions, ResponsiveTableWrap } from "../_shared/branchViewKit";
+import { deleteReport, downloadReportsJson, listReports, reportId } from "../_shared/reportApi";
 
 const TYPE = "qcs_garbage_disposal";
 
@@ -221,9 +217,7 @@ export default function GarbageDisposalView() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" });
-      const json = await res.json().catch(() => null);
-      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+      const arr = await listReports(TYPE);
       arr.sort((a, b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
       setItems(arr);
     } catch { setItems([]); }
@@ -235,8 +229,7 @@ export default function GarbageDisposalView() {
   async function del(id) {
     if (!window.confirm("Delete this record permanently?")) return;
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "DELETE", credentials: IS_SAME_ORIGIN ? "include" : "omit" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await deleteReport(id);
       load();
     } catch (e) { alert("Delete failed: " + (e?.message || e)); }
   }
@@ -302,32 +295,30 @@ export default function GarbageDisposalView() {
     }
   }
 
-  return (
-    <div style={{ padding: 4 }}>
-      <div style={S.topbar}>
-        <h2 style={S.title}>Garbage Disposal Records</h2>
-        <div style={S.topActions}>
-          <button style={S.btnPdf} onClick={() => setExportModal(m => ({ ...m, open: true }))}>
-            Export PDF
-          </button>
-          <button style={S.btn} onClick={load} disabled={loading}>{loading ? "Loading..." : "Refresh"}</button>
-        </div>
-      </div>
+  const exportJSON = () => downloadReportsJson(TYPE, filtered, "QCS_Garbage_Disposal");
 
-      <div style={S.kpiRow}>
-        <div style={S.kpi}>
-          <div style={S.kpiLabel}>Total Records</div>
-          <div style={{ ...S.kpiValue, color: "#0369a1" }}>{kpis.total}</div>
-        </div>
-        <div style={S.kpi}>
-          <div style={S.kpiLabel}>Total Quantity (kg)</div>
-          <div style={{ ...S.kpiValue, color: "#16a34a" }}>{kpis.totalKg}</div>
-        </div>
-        <div style={S.kpi}>
-          <div style={S.kpiLabel}>Total Invoices (AED)</div>
-          <div style={{ ...S.kpiValue, color: "#a16207" }}>{kpis.totalAmount}</div>
-        </div>
-      </div>
+  return (
+    <GlassShell
+      icon="🗑️"
+      title="Garbage Disposal Records"
+      actions={
+        <ReportActions
+          onPdf={() => setExportModal(m => ({ ...m, open: true }))}
+          onJson={exportJSON}
+          onRefresh={load}
+          refreshing={loading}
+          jsonDisabled={filtered.length === 0}
+        />
+      }
+    >
+
+      <KpiGrid
+        items={[
+          { label: "Total Records", value: kpis.total, color: "#0369a1" },
+          { label: "Total Quantity (kg)", value: kpis.totalKg, color: "#16a34a" },
+          { label: "Total Invoices (AED)", value: kpis.totalAmount, color: "#a16207" },
+        ]}
+      />
 
       <div style={S.filters}>
         <input style={S.input} placeholder="Search by company, location, name, invoice..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -347,7 +338,7 @@ export default function GarbageDisposalView() {
       )}
 
       {filtered.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
+        <ResponsiveTableWrap>
           <table style={S.table}>
             <thead>
               <tr>
@@ -370,7 +361,7 @@ export default function GarbageDisposalView() {
                 const inv = p?.images?.invoice;
                 const extras = p?.images?.extras || [];
                 return (
-                  <tr key={rec.id || i} style={{ background: i % 2 ? "#f8fafc" : "#fff" }}>
+                  <tr key={reportId(rec) || i} style={{ background: i % 2 ? "#f8fafc" : "#fff" }}>
                     <td style={S.td}>{fmtDate(p.reportDate)}</td>
                     <td style={S.td}>{p.location || "—"}</td>
                     <td style={S.td}>{p.wasteType || "—"}</td>
@@ -395,14 +386,14 @@ export default function GarbageDisposalView() {
                       )}
                     </td>
                     <td style={S.td}>
-                      <button style={S.btnDanger} onClick={() => del(rec.id)} data-delete-action="true">Delete</button>
+                      <button style={S.btnDanger} onClick={() => del(reportId(rec))} data-delete-action="true">Delete</button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTableWrap>
       )}
 
       {/* Image Lightbox */}
@@ -493,6 +484,6 @@ export default function GarbageDisposalView() {
           </div>
         </div>
       )}
-    </div>
+    </GlassShell>
   );
 }

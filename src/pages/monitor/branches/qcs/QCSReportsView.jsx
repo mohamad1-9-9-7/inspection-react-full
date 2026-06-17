@@ -51,9 +51,10 @@ const CC_HEADER = {
 
 /* Report type list for the Dashboard (overview tab) */
 const DASH_TYPES = [
-  { type: "qcs_coolers",            key: "coolers",        icon: "🧊",  titleEn: "Coolers",            titleAr: "البرادات",            accent: "#06b6d4" },
+  { type: "qcs-coolers",            key: "coolers",        icon: "🧊",  titleEn: "Coolers",            titleAr: "البرادات",            accent: "#06b6d4" },
   { type: "qcs-ph",                 key: "ph",             icon: "🧼",  titleEn: "Personal Hygiene",   titleAr: "النظافة الشخصية",     accent: "#0ea5e9" },
   { type: "qcs-clean",              key: "clean",          icon: "🧹",  titleEn: "Daily Cleanliness",  titleAr: "النظافة اليومية",     accent: "#22c55e" },
+  { type: "pos_al_qusais_fresh_chicken_receiving", key: "fresh", icon: "🍗", titleEn: "Fresh Chicken", titleAr: "الدجاج الطازج", accent: "#ef4444" },
   { type: "ftr1_preloading_inspection", key: "ftr1_preload", icon: "🚚", titleEn: "FTR 1 Preloading",  titleAr: "تحميل FTR 1",        accent: "#f59e0b" },
   { type: "ftr2_preloading_inspection", key: "ftr2_preload", icon: "🚚", titleEn: "FTR 2 Preloading",  titleAr: "تحميل FTR 2",        accent: "#f97316" },
   { type: "qcs_rm_ingredients",     key: "rm_ing",         icon: "🧪",  titleEn: "RM — Ingredients",   titleAr: "المكونات",            accent: "#8b5cf6" },

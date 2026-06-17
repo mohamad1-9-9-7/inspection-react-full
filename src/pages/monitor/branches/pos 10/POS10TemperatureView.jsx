@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos 10/POS10TemperatureView.jsx
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import SignatureName from "../../../shared/SignatureName";
+import TemperatureMatchingReport from "../_shared/TemperatureMatchingReport";
 import {
   getId,
   btn,
@@ -14,7 +15,7 @@ import {
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
-// نفس أوقات الإدخال
+// Same times as the input
 const times = [
   "8:00 AM",
   "11:00 AM",
@@ -26,10 +27,10 @@ const times = [
 ];
 const gridTimes = times.filter((t) => t !== "Corrective Action");
 
-// هل الصف فريزر؟
+// Is the row a freezer?
 const isFreezer = (name = "") => /^freezer/i.test(String(name).trim());
 
-// KPI helper (فقط للمبردات 0–5°C)
+// KPI helper (coolers only, 0–5°C)
 function calculateKPI(coolers = []) {
   const all = [];
   let out = 0;
@@ -56,11 +57,11 @@ export default function POS10TemperatureView() {
   const [loading, setLoading] = useState(false);
   const reportRef = useRef();
 
-  // 🔐 مطالبة كلمة السر (9999)
+  // 🔐 Password prompt (9999)
   const askPass = (label = "") =>
     (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
-  // يلتقط تاريخ الحقل الصحيح: payload.date (من الإدخال) أو created_at
+  // Pick the correct date field: payload.date (from input) or created_at
   const getReportDate = (r) => {
     const d =
       (r?.payload?.date && new Date(r.payload.date)) ||
@@ -82,12 +83,12 @@ export default function POS10TemperatureView() {
       if (!res.ok) throw new Error("Failed to fetch");
       const json = await res.json();
       let arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
-      // استبعد العناصر بدون تاريخ صالح، ثم رتب من الأحدث إلى الأقدم
+      // Exclude items without a valid date, then sort newest -> oldest
       arr = arr
         .filter((r) => !isNaN(getReportDate(r)))
         .sort((a, b) => getReportDate(b) - getReportDate(a));
       setReports(arr);
-      setSelectedReport(arr[0] || null); // الأحدث افتراضيًا
+      setSelectedReport(arr[0] || null); // newest by default
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");
@@ -98,7 +99,7 @@ export default function POS10TemperatureView() {
 
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
-    // تحميل ديناميكي — يخفّف حجم الصفحة عند الفتح
+    // Dynamic import — lightens the page on open
     const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
       import("html2canvas"),
       import("jspdf"),
@@ -125,7 +126,7 @@ export default function POS10TemperatureView() {
     pdf.save(`POS10_Temperature_${fileDate}.pdf`);
   };
 
-  // 📌 حذف التقرير (يتطلب كلمة سر 9999 + تأكيد)
+  // 📌 Delete report (requires password 9999 + confirm)
   const handleDelete = async (report) => {
     if (!askPass("Delete confirmation")) {
       alert("❌ Wrong password");
@@ -146,7 +147,7 @@ export default function POS10TemperatureView() {
     }
   };
 
-  // -------- عناصر شجرة التاريخ الموحّدة --------
+  // -------- Unified date-tree items --------
   const treeItems = useMemo(
     () =>
       reports.map((r, i) => {
@@ -253,35 +254,13 @@ export default function POS10TemperatureView() {
                 "—"}
             </div>
 
-            {/* جدول القيم */}
-            <table style={gridTable}>
-              <thead>
-                <tr>
-                  <th style={thCell}>Cooler/Freezer</th>
-                  {gridTimes.map((t) => (
-                    <th key={t} style={thCell}>
-                      {t}
-                    </th>
-                  ))}
-                  <th style={thCell}>Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedReport?.payload?.coolers?.map((c, idx) => (
-                  <tr key={idx}>
-                    <td style={tdCellLeft}>
-                      <b>{c.name}</b>
-                    </td>
-                    {gridTimes.map((t) => (
-                      <td key={t} style={tdCellCenter}>
-                        {c.temps?.[t] ?? "—"}
-                      </td>
-                    ))}
-                    <td style={tdCellLeft}>{c.remarks || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Temperatures + integrated product matching */}
+            <TemperatureMatchingReport
+              units={selectedReport?.payload?.coolers || []}
+              times={gridTimes}
+              productVerifications={selectedReport?.payload?.productVerifications || []}
+              readOnly
+            />
 
             {/* KPI */}
             <div style={{ marginTop: 12, fontWeight: 700 }}>
@@ -327,13 +306,3 @@ const band2 = {
   borderTop: "none",
   marginBottom: 8,
 };
-const gridTable = { width: "100%", borderCollapse: "collapse", border: "1px solid #9aa4ae" };
-const thCell = {
-  border: "1px solid #9aa4ae",
-  padding: "6px 8px",
-  background: "#e0e6ed",
-  fontWeight: 700,
-  textAlign: "center",
-};
-const tdCellCenter = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "center" };
-const tdCellLeft = { border: "1px solid #9aa4ae", padding: "6px 8px", textAlign: "left" };

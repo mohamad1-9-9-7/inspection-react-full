@@ -38,6 +38,7 @@ const getBadge = (branch, type) => {
 
 export default function DailyReportsTab({
   dailyReports = [],
+  totalReportsCount,
   setDailyReports,
   onOpenQCSReport,
   onOpenPOS19Report,
@@ -73,6 +74,9 @@ export default function DailyReportsTab({
   const visibleBranches = (isNamedAccount && adminAllowed.length > 0)
     ? branches.filter(b => adminAllowed.includes(aliasForMatch(b)))
     : branches;
+  const displayReportCount = Number.isFinite(totalReportsCount)
+    ? totalReportsCount
+    : dailyReports.length;
 
   const openBranchAfterAuth = (branch) => {
     if (branch==="QCS")                  { onOpenQCSReport        ? onOpenQCSReport()        : navigate("/admin/monitor/branches/qcs/reports"); }
@@ -97,7 +101,7 @@ export default function DailyReportsTab({
 
         {/* Header */}
         <header className="dr-header">
-          <div>
+          <div className="dr-header-copy">
             <div className="dr-pulse-row">
               <div className="dr-pulse-dot"/>
               <span className="dr-pulse-label">Admin Panel — Live</span>
@@ -105,9 +109,15 @@ export default function DailyReportsTab({
             <div className="dr-h-title">Browse Daily Reports</div>
             <div className="dr-h-date">{dateStr}</div>
           </div>
-          <div className="dr-brand">
-            <div className="dr-brand-name">AL MAWASHI</div>
-            <div className="dr-brand-sub">Trans Emirates Livestock Trading L.L.C.</div>
+          <div className="dr-metrics">
+            <div className="dr-metric">
+              <span>Total Reports</span>
+              <strong>{displayReportCount}</strong>
+            </div>
+            <div className="dr-metric">
+              <span>Branches</span>
+              <strong>{visibleBranches.length}</strong>
+            </div>
           </div>
         </header>
 
@@ -115,12 +125,12 @@ export default function DailyReportsTab({
         <div className="dr-topbar">
           <div className="dr-section">
             {isNamedAccount && adminAllowed.length > 0
-              ? `الفروع المخصّصة لك (${visibleBranches.length}) / Your assigned branches`
-              : "اختر الفرع"}
+              ? `Your assigned branches (${visibleBranches.length})`
+              : "Select a branch"}
           </div>
           <div className="dr-count">
             <div className="dr-count-dot"/>
-            عدد التقارير: {dailyReports.length}
+            Reports: {displayReportCount}
           </div>
         </div>
 
@@ -150,12 +160,8 @@ export default function DailyReportsTab({
           })}
 
           {visibleBranches.length === 0 && (
-            <div style={{
-              gridColumn: "1/-1", textAlign: "center",
-              padding: "40px 16px", color: "#64748b",
-              fontWeight: 700, fontSize: 15,
-            }}>
-              🔒 لا توجد فروع مخصّصة لهذا الحساب — راجع الإدارة
+            <div className="dr-empty">
+              No branches are assigned to this account. Please contact administration.
             </div>
           )}
         </div>

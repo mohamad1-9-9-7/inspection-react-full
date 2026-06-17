@@ -1,5 +1,6 @@
 // src/pages/monitor/branches/qcs/NonConformanceReportInput.jsx
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 /* =========================
    API base (CRA + Vite safe)
@@ -283,6 +284,25 @@ async function fetchExistingNCByDate(dateStr, type) {
   const found = rows.find((r) => String(r?.payload?.headRow?.reportDate || r?.payload?.reportDate || "") === String(dateStr));
   return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
 }
+async function fetchExistingNCById(reportId, type) {
+  if (!reportId) return null;
+  const rows = await listReportsByType(type || DEFAULT_TYPE);
+  const found = rows.find((r) => String(r?._id || r?.id || "") === String(reportId));
+  return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
+}
+
+function todayDubaiISO() {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+  } catch {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+}
+
+function isISODate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
 
 /* =========================
    Component
@@ -299,6 +319,9 @@ export default function NonConformanceReportInput(props) {
   const REPORTER = reporterProp || DEFAULT_REPORTER;
   const HEADER_LINE = headerLine || DEFAULT_HEADER_LINE;
   const LOC_PH = locationPlaceholder || DEFAULT_LOCATION_PLACEHOLDER;
+  const [searchParams] = useSearchParams();
+  const queryDate = searchParams.get("date");
+  const queryReportId = searchParams.get("reportId");
 
   const evidenceInputRef = useRef(null);
 
@@ -314,12 +337,7 @@ export default function NonConformanceReportInput(props) {
   });
 
   const [dateISO, setDateISO] = useState(() => {
-    try {
-      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
-    } catch {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
+    return isISODate(queryDate) ? queryDate : todayDubaiISO();
   });
 
   const [location, setLocation] = useState("");
@@ -367,6 +385,80 @@ export default function NonConformanceReportInput(props) {
   const [responsibleSignature, setResponsibleSignature] = useState("");
 
   const [opMsg, setOpMsg] = useState("");
+  const [editingReportId, setEditingReportId] = useState(queryReportId || "");
+
+  useEffect(() => {
+    if (isISODate(queryDate)) setDateISO(queryDate);
+  }, [queryDate]);
+
+  useEffect(() => {
+    setEditingReportId(queryReportId || "");
+  }, [queryReportId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    function applyPayload(payload = {}) {
+      const head = payload.headRow || {};
+      const reference = payload.reference || {};
+      const extras = payload.correctiveActionExtras || {};
+      const evidence = extras.evidence || {};
+      const qa = payload.qaVerification || {};
+      const finalQa = payload.finalQaClosure || {};
+      const sig = payload.signature || {};
+
+      setLocation(payload.location || "");
+      setNcNo(head.ncNo || "");
+      setIssuedTo(head.issuedTo || "");
+      setIssuedBy(head.issuedBy || "");
+      setRefInhouse(!!reference.inhouseQC);
+      setRefCustComplaint(!!reference.customerComplaint);
+      setRefInternalAudit(!!reference.internalAudit);
+      setRefExternalAudit(!!reference.externalAudit);
+      setDetails(payload.detailsBlock || "");
+      setCorrectiveAction(payload.correctiveAction || "");
+      setImplementationOwner(extras.implementationOwner || "");
+      setTargetCompletionDateISO(extras.targetCompletionDateISO || "");
+      setStatus(extras.status || "Open");
+      setEvidenceImages(Array.isArray(evidence.images) ? evidence.images.slice(0, MAX_EVIDENCE_IMAGES) : []);
+      setPerformedBy(payload.performedBy || "");
+      setDepartment(payload.department || "");
+      setVerification(payload.verificationOfCorrectiveAction || "Satisfactory");
+      setVerifiedByQA(qa.verifiedByQA || "");
+      setVerifiedByQADateISO(qa.dateISO || "");
+      setQaVerificationResult(qa.result || "Satisfactory");
+      setFollowupActionsRequired(qa.followupActionsRequired || "");
+      setFollowupResponsible(qa.followupResponsible || "");
+      setFollowupTargetDateISO(qa.followupTargetDateISO || "");
+      setClosureDateISO(qa.closureDateISO || "");
+      setFinalQaName(finalQa.name || "");
+      setFinalQaDateISO(finalQa.dateISO || "");
+      setFinalQaApproved(!!finalQa.approved);
+      setSignature(sig.signature || "");
+      setSignatureDate(sig.date || "");
+      setResponsiblePerson(sig.responsiblePerson || "");
+      setResponsibleSignature(sig.responsibleSignature || "");
+    }
+
+    (async () => {
+      if (!dateISO) return;
+      if (editingReportId && dateISO !== queryDate) return;
+      const existing = editingReportId
+        ? await fetchExistingNCById(editingReportId, TYPE)
+        : await fetchExistingNCByDate(dateISO, TYPE);
+      if (cancelled) return;
+      applyPayload(existing?.payload || {});
+      if (existing?.id) {
+        setEditingReportId(existing.id);
+        setOpMsg(`Loaded existing report for ${dateISO}.`);
+        setTimeout(() => setOpMsg(""), 2500);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dateISO, TYPE, editingReportId, queryDate]);
 
   const monthText = useMemo(() => {
     const m = String(dateISO || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
@@ -491,7 +583,9 @@ export default function NonConformanceReportInput(props) {
 
     try {
       setOpMsg("Saving…");
-      const existing = await fetchExistingNCByDate(dateISO, TYPE);
+      const existing = editingReportId
+        ? { id: editingReportId }
+        : await fetchExistingNCByDate(dateISO, TYPE);
 
       const body = { reporter: REPORTER, type: TYPE, payload };
 
@@ -511,6 +605,9 @@ export default function NonConformanceReportInput(props) {
           body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create NC report");
+        const created = await res.json().catch(() => null);
+        const createdId = created?._id || created?.id || created?.data?._id || created?.data?.id;
+        if (createdId) setEditingReportId(createdId);
       }
 
       setOpMsg(`Saved for ${dateISO}.`);

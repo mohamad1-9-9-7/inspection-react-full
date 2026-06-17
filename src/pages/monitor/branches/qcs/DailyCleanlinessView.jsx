@@ -53,7 +53,7 @@ export default function DailyCleanlinessView() {
   const reportRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  /* ===== جلب التقارير (أقدم ← أحدث) ===== */
+  /* ===== جلب التقارير (أحدث ← أقدم) ===== */
   async function fetchReports() {
     setLoading(true);
     try {
@@ -61,7 +61,7 @@ export default function DailyCleanlinessView() {
       if (!res.ok) throw new Error("Failed to fetch data");
       const json = await res.json();
       const arr = Array.isArray(json) ? json : (json?.data ?? []);
-      arr.sort((a,b) => new Date(a?.payload?.reportDate || 0) - new Date(b?.payload?.reportDate || 0));
+      arr.sort((a,b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
       setReports(arr);
       setSelectedReport(arr[0] || null);
     } catch (e) {
@@ -217,7 +217,7 @@ export default function DailyCleanlinessView() {
   [reports]);
 
   return (
-    <div style={{ display: "flex", gap: "1rem" }}>
+    <div style={{ display: "flex", gap: "1rem", direction: "ltr" }}>
       {/* الشجرة الجانبية */}
       <div style={{ width: 285, flexShrink: 0 }}>
         <DateTreeSidebar

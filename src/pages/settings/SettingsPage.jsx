@@ -7,6 +7,7 @@ import logo from "../../assets/almawashi-logo.jpg";
 
 import BackupTab from "./BackupTab";
 import ExcelBackupTab from "./ExcelBackupTab";
+import ProductsTab from "./ProductsTab";
 import NotificationsTab from "./NotificationsTab";
 import DataInventory from "./tools/DataInventory";
 import ServerHealth from "./tools/ServerHealth";
@@ -48,6 +49,8 @@ const SECTIONS = [
         grad: "linear-gradient(135deg,#0891b2,#0e7490)", glow: "rgba(8,145,178,.45)" },
       { id: "excel-backup",  icon: "📑", title: "Excel Backup",       desc: "All branches → ZIP + Excel", tk: "tExcelBackup", dk: "tExcelBackupD",
         grad: "linear-gradient(135deg,#84cc16,#65a30d)", glow: "rgba(132,204,22,.45)" },
+      { id: "products",      icon: "🏷️", title: "Products Catalog",   desc: "Add/edit products & barcodes", tk: "tProducts", dk: "tProductsD",
+        grad: "linear-gradient(135deg,#14b8a6,#0d9488)", glow: "rgba(20,184,166,.45)" },
     ],
   },
   {
@@ -284,6 +287,7 @@ export default function SettingsPage() {
                   {active === "export"            && <BulkExport />}
                   {active === "backup"            && <BackupTab />}
                   {active === "excel-backup"      && <ExcelBackupTab />}
+                  {active === "products"          && <ProductsTab />}
                   {active === "image-migration"   && <ImageMigration />}
                   {active === "complaint-numbers" && <ComplaintNumberBackfill />}
                   {active === "server-health"     && <ServerHealth />}

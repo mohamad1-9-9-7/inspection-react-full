@@ -48,13 +48,13 @@
   --font-english:         'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
   --font-mono:            'IBM Plex Mono', monospace;
 
-  --font-size-xs:         11px;
-  --font-size-sm:         13px;
-  --font-size-base:       18px;
-  --font-size-md:         17px;
-  --font-size-lg:         20px;
-  --font-size-xl:         24px;
-  --font-size-2xl:        28px;
+  --font-size-xs:         12px;
+  --font-size-sm:         12px;
+  --font-size-base:       14px;
+  --font-size-md:         14px;
+  --font-size-lg:         16px;
+  --font-size-xl:         18px;
+  --font-size-2xl:        20px;
 
   --font-weight-normal:   400;
   --font-weight-medium:   600;
@@ -97,4 +97,3 @@
   --sidebar-width: 240px;
   --content-max-width: 1280px;
 }
-

@@ -369,7 +369,11 @@ export default function BranchDailyView({
       }
     };
     window.addEventListener("prd:switch-tab", handler);
-    return () => window.removeEventListener("prd:switch-tab", handler);
+    window.addEventListener("branch:switch-tab", handler);
+    return () => {
+      window.removeEventListener("prd:switch-tab", handler);
+      window.removeEventListener("branch:switch-tab", handler);
+    };
   }, [tabs]);
 
   const activeTab = useMemo(

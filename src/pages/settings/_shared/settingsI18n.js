@@ -53,6 +53,8 @@ export const ST = {
   tBackupD:         { en: "Full local backup",     ar: "نسخة احتياطية محلية كاملة" },
   tExcelBackup:     { en: "Excel Backup",          ar: "نسخة Excel" },
   tExcelBackupD:    { en: "All branches → ZIP + Excel", ar: "كل الفروع → ZIP + Excel" },
+  tProducts:        { en: "Products Catalog",      ar: "كتالوج المنتجات" },
+  tProductsD:       { en: "Add / edit products & barcodes for dropdowns", ar: "إضافة / تعديل المنتجات والباركود للقوائم" },
   tAccounts:        { en: "Account Management",    ar: "إدارة الحسابات" },
   tAccountsD:       { en: "Users · permissions · activity log", ar: "المستخدمون · الصلاحيات · سجل النشاط" },
   tSubscription:    { en: "Subscription",          ar: "الاشتراك" },

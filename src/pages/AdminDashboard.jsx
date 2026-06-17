@@ -261,6 +261,7 @@ export default function AdminDashboard() {
       {activeView === "dailyReports" && (
         <DailyReportsTab
           dailyReports={dailyReports} setDailyReports={setDailyReports}
+          totalReportsCount={stats.daily}
           onOpenQCSReport={()          => navigate("/admin/monitor/branches/qcs/reports")}
           onOpenPOS19Report={()        => navigate("/admin/pos19")}
           onOpenPOS10Report={()        => navigate("/admin/pos10")}

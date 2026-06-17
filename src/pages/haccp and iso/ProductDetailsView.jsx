@@ -1187,7 +1187,7 @@ export default function ProductDetailsView() {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <Chip tone={loading ? "warn" : "ok"}>{loading ? "Loading…" : `${sortedRows.length} record(s)`}</Chip>
 
-            <Button tone="primary" type="button" onClick={() => navigate("/haccp-iso/product-details")}>
+            <Button tone="primary" type="button" onClick={() => navigate("/haccp-iso/product-details/input")}>
               ← Back to product entry
             </Button>
           </div>
