@@ -171,6 +171,25 @@ function uid() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function normalizeSearchValue(value) {
+  return String(value ?? "").trim().toLocaleLowerCase();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatDisplayDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("en-GB");
+}
+
 /* =========================
    ✨ Luxury UI (styles)
    ========================= */
@@ -861,6 +880,13 @@ export default function ProductDetailsView() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [countryFilter, setCountryFilter] = useState("all");
+  const [dmFilter, setDmFilter] = useState("all");
+  const [imageFilter, setImageFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   /* ✅ inline edit state */
   const [editingId, setEditingId] = useState(null);
@@ -938,6 +964,93 @@ export default function ProductDetailsView() {
       return String(b.createdAt).localeCompare(String(a.createdAt));
     });
   }, [rows]);
+
+  const filterOptions = useMemo(() => {
+    const unique = (key) => [...new Set(rows.map((row) => String(row.payload?.[key] || "").trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    return { types: unique("productType"), countries: unique("countryOfOrigin") };
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    const query = normalizeSearchValue(searchQuery);
+    const matches = sortedRows.filter((row) => {
+      const p = row.payload || {};
+      const ingredients = Array.isArray(p.ingredients)
+        ? p.ingredients.map((item) => `${item?.name || ""} ${item?.amount || ""}`).join(" ")
+        : "";
+      const searchable = normalizeSearchValue([
+        p.productName, p.brand, p.productCode, p.productType, p.countryOfOrigin,
+        p.storageCondition, p.dmRegisteredStatus, p.dmRegistrationNo, p.allergens,
+        p.instructionsForUse, ingredients,
+      ].join(" "));
+      const hasImages = filterImageList(p.productImageUrls).length > 0;
+
+      return (!query || searchable.includes(query))
+        && (typeFilter === "all" || p.productType === typeFilter)
+        && (countryFilter === "all" || p.countryOfOrigin === countryFilter)
+        && (dmFilter === "all" || normalizeSearchValue(p.dmRegisteredStatus).includes(dmFilter))
+        && (imageFilter === "all" || (imageFilter === "with" ? hasImages : !hasImages));
+    });
+
+    return [...matches].sort((a, b) => {
+      const pa = a.payload || {};
+      const pb = b.payload || {};
+      if (sortBy === "name-asc") return String(pa.productName || "").localeCompare(String(pb.productName || ""));
+      if (sortBy === "name-desc") return String(pb.productName || "").localeCompare(String(pa.productName || ""));
+      if (sortBy === "oldest") return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+      return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    });
+  }, [sortedRows, searchQuery, typeFilter, countryFilter, dmFilter, imageFilter, sortBy]);
+
+  const activeFilterCount = [searchQuery, typeFilter !== "all", countryFilter !== "all", dmFilter !== "all", imageFilter !== "all"]
+    .filter(Boolean).length;
+
+  const resetFilters = () => {
+    setSearchQuery("");
+    setTypeFilter("all");
+    setCountryFilter("all");
+    setDmFilter("all");
+    setImageFilter("all");
+    setSortBy("newest");
+  };
+
+  const exportFilteredPdf = () => {
+    if (!filteredRows.length) {
+      alert("No products match the current filters.");
+      return;
+    }
+
+    const popup = window.open("", "_blank", "width=1100,height=800");
+    if (!popup) {
+      alert("Please allow pop-ups to export the PDF.");
+      return;
+    }
+    popup.opener = null;
+
+    const productSections = filteredRows.map((row, index) => {
+      const p = row.payload || {};
+      const shelfLife = p.shelfLifeValue && p.shelfLifeUnit
+        ? `${p.shelfLifeValue} ${p.shelfLifeUnit}` : p.shelfLife || "-";
+      const ingredients = Array.isArray(p.ingredients) && p.ingredients.length
+        ? p.ingredients.map((item) => `${item?.name || "-"}${item?.amount ? ` (${item.amount})` : ""}`).join(", ")
+        : "-";
+      const cells = [
+        ["Product code / SKU", p.productCode], ["Product type", p.productType],
+        ["Country of origin", p.countryOfOrigin], ["Storage condition", p.storageCondition],
+        ["Shelf life", shelfLife], ["DM status", p.dmRegisteredStatus],
+        ["DM registration no.", p.dmRegistrationNo], ["Assessment certificate", p.assessmentCertNo],
+        ["Halal certificate", p.halalCertNo], ["Halal expiry", p.halalCertExpiry],
+        ["Allergens", p.allergens], ["Ingredients", ingredients],
+        ["Instructions", p.instructionsForUse], ["Created", formatDisplayDate(row.createdAt)],
+      ];
+      return `<section class="product"><div class="product-head"><span class="number">${index + 1}</span><div><h2>${escapeHtml(p.productName || "Unnamed product")}</h2><p>${escapeHtml(p.brand || "No brand")}</p></div></div><table><tbody>${cells.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value || "-")}</td></tr>`).join("")}</tbody></table></section>`;
+    }).join("");
+
+    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Products Report</title><style>
+      @page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:Arial,"Segoe UI",Tahoma,sans-serif;color:#0f172a;margin:0;background:#fff;direction:ltr}.report-head{border-bottom:3px solid #2563eb;padding-bottom:14px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end}.report-head h1{margin:0;color:#1d4ed8;font-size:25px}.report-head p{margin:5px 0 0;color:#64748b;font-size:12px}.summary{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;font-weight:700;color:#1e3a8a}.product{break-inside:avoid;margin:0 0 16px;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden}.product-head{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f1f5f9;border-bottom:1px solid #cbd5e1}.number{width:30px;height:30px;border-radius:8px;background:#2563eb;color:#fff;display:grid;place-items:center;font-weight:800}.product h2{margin:0;font-size:16px}.product p{margin:3px 0 0;color:#64748b;font-size:11px}table{width:100%;border-collapse:collapse;font-size:10.5px}th,td{padding:6px 9px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top;white-space:pre-wrap}th{width:31%;color:#334155;background:#f8fafc}tr:last-child th,tr:last-child td{border-bottom:0}.footer{margin-top:18px;text-align:center;color:#94a3b8;font-size:10px}@media print{.no-print{display:none!important}}
+    </style></head><body><header class="report-head"><div><h1>Product Details Report</h1><p>Filtered product catalogue / تقرير تفاصيل المنتجات</p></div><div class="summary">${filteredRows.length} product(s)</div></header>${productSections}<div class="footer">Generated ${escapeHtml(new Date().toLocaleString("en-GB"))}</div><script>window.onload=()=>setTimeout(()=>window.print(),250);<\/script></body></html>`);
+    popup.document.close();
+  };
 
   const handleToggleExpand = (id) => {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -1151,6 +1264,9 @@ export default function ProductDetailsView() {
         }
         .lux-thumb:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 18px 36px rgba(2,6,23,0.14); }
         .lux-card:hover { transform: translateY(-1px); box-shadow: 0 22px 50px rgba(2,6,23,0.12); }
+        @media (max-width: 760px) {
+          .product-search-row { grid-template-columns: 1fr !important; }
+        }
       `}</style>
 
       <div style={{ maxWidth: 1720, margin: "0 auto" }}>
@@ -1185,7 +1301,7 @@ export default function ProductDetailsView() {
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <Chip tone={loading ? "warn" : "ok"}>{loading ? "Loading…" : `${sortedRows.length} record(s)`}</Chip>
+            <Chip tone={loading ? "warn" : "ok"}>{loading ? "Loading…" : `${filteredRows.length} / ${rows.length} record(s)`}</Chip>
 
             <Button tone="primary" type="button" onClick={() => navigate("/haccp-iso/product-details/input")}>
               ← Back to product entry
@@ -1209,7 +1325,63 @@ export default function ProductDetailsView() {
           <span style={{ color: "#2563eb" }}>●</span> <span style={{ marginLeft: 6 }}>{statusMessage}</span>
         </div>
 
-        {!loading && sortedRows.length === 0 && (
+        <section
+          aria-label="Product search and filters"
+          style={{ marginBottom: 16, padding: 14, borderRadius: 22, background: UI.glass, border: `1px solid ${UI.border}`, boxShadow: UI.shadowSoft }}
+        >
+          <div className="product-search-row" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1fr) auto auto", gap: 10 }}>
+            <label style={{ position: "relative", display: "block" }}>
+              <span style={{ position: "absolute", left: 14, top: 11, fontSize: 17 }} aria-hidden="true">⌕</span>
+              <input
+                className="lux-input"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search name, SKU, brand, country, allergen... / ابحث عن منتج"
+                aria-label="Search products"
+                style={{ width: "100%", height: 44, padding: "0 42px", borderRadius: 15, border: `1.5px solid ${UI.detailBorderSoft}`, background: "rgba(255,255,255,.9)", color: UI.ink, fontSize: 13, fontWeight: 750, outline: "none" }}
+              />
+              {searchQuery && (
+                <button type="button" onClick={() => setSearchQuery("")} aria-label="Clear search" style={{ position: "absolute", right: 9, top: 8, border: 0, background: "transparent", cursor: "pointer", fontSize: 18, color: UI.muted }}>×</button>
+              )}
+            </label>
+            <Button type="button" onClick={() => setShowAdvancedFilters((value) => !value)}>
+              ⚙ Filters {activeFilterCount > 0 ? `(${activeFilterCount})` : ""}
+            </Button>
+            <Button tone="primary" type="button" onClick={exportFilteredPdf} disabled={!filteredRows.length}>
+              تصدير PDF
+            </Button>
+          </div>
+
+          {showAdvancedFilters && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${UI.border}`, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+              <select className="lux-input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Filter by product type" style={{ height: 42, borderRadius: 14, border: `1.5px solid ${UI.detailBorderSoft}`, padding: "0 11px", background: "#fff", fontWeight: 750 }}>
+                <option value="all">All product types</option>
+                {filterOptions.types.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select className="lux-input" value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} aria-label="Filter by country" style={{ height: 42, borderRadius: 14, border: `1.5px solid ${UI.detailBorderSoft}`, padding: "0 11px", background: "#fff", fontWeight: 750 }}>
+                <option value="all">All countries</option>
+                {filterOptions.countries.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <select className="lux-input" value={dmFilter} onChange={(e) => setDmFilter(e.target.value)} aria-label="Filter by DM status" style={{ height: 42, borderRadius: 14, border: `1.5px solid ${UI.detailBorderSoft}`, padding: "0 11px", background: "#fff", fontWeight: 750 }}>
+                <option value="all">All DM statuses</option><option value="yes">DM registered</option><option value="no">Not DM registered</option>
+              </select>
+              <select className="lux-input" value={imageFilter} onChange={(e) => setImageFilter(e.target.value)} aria-label="Filter by product images" style={{ height: 42, borderRadius: 14, border: `1.5px solid ${UI.detailBorderSoft}`, padding: "0 11px", background: "#fff", fontWeight: 750 }}>
+                <option value="all">With or without images</option><option value="with">With product images</option><option value="without">Without product images</option>
+              </select>
+              <select className="lux-input" value={sortBy} onChange={(e) => setSortBy(e.target.value)} aria-label="Sort products" style={{ height: 42, borderRadius: 14, border: `1.5px solid ${UI.detailBorderSoft}`, padding: "0 11px", background: "#fff", fontWeight: 750 }}>
+                <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="name-asc">Name A-Z</option><option value="name-desc">Name Z-A</option>
+              </select>
+              <Button type="button" onClick={resetFilters} disabled={!activeFilterCount && sortBy === "newest"}>Reset filters</Button>
+            </div>
+          )}
+
+          <div style={{ marginTop: 10, fontSize: 12, color: UI.muted, fontWeight: 800 }} aria-live="polite">
+            Showing <span style={{ color: "#1d4ed8" }}>{filteredRows.length}</span> of {rows.length} products. PDF export uses the current filtered results.
+          </div>
+        </section>
+
+        {!loading && rows.length === 0 && (
           <div
             style={{
               padding: 18,
@@ -1225,8 +1397,14 @@ export default function ProductDetailsView() {
           </div>
         )}
 
+        {!loading && rows.length > 0 && filteredRows.length === 0 && (
+          <div style={{ padding: 20, marginBottom: 14, borderRadius: 18, textAlign: "center", background: UI.glass, border: `1px solid ${UI.border}`, boxShadow: UI.shadowSoft, color: UI.muted, fontWeight: 850 }}>
+            No products match these filters. <button type="button" onClick={resetFilters} style={{ border: 0, background: "transparent", color: "#2563eb", fontWeight: 950, cursor: "pointer" }}>Clear filters</button>
+          </div>
+        )}
+
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {sortedRows.map((row, idx) => {
+          {filteredRows.map((row, idx) => {
             const p = row.payload || {};
             const isExpanded = expandedId === row.id;
             const isEditing = editingId === row.id;

@@ -180,7 +180,6 @@ export default function EquipmentInspectionSanitizingLogView() {
       setEditRows(record?.payload?.entries ? JSON.parse(JSON.stringify(record.payload.entries)) : [emptyRow()]);
       return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
     setEditRows(record?.payload?.entries ? JSON.parse(JSON.stringify(record.payload.entries)) : [emptyRow()]);
     setEditing(true);
   }

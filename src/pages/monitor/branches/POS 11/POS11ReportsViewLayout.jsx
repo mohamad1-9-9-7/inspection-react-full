@@ -12,6 +12,8 @@ const POS11TraceabilityLogView = lazy(() => import("./POS11TraceabilityLogView")
 const POS11ReceivingLogView    = lazy(() => import("./POS11ReceivingLogView"));
 const POS11PestControlView     = lazy(() => import("./POS11PestControlView"));
 const POS11CalibrationView     = lazy(() => import("./POS11CalibrationView"));
+const POS11SanitizerView       = lazy(() => import("./POS11SanitizerConcentrationView"));
+const EquipmentInspectionView = lazy(() => import("../pos15/POS15EquipmentInspectionSanitizingLogView"));
 
 const DASH_TYPES = [
   { type: "pos11_personal_hygiene",       key: "hygiene",      icon: "🧑‍🔬", titleEn: "Personal Hygiene",  titleAr: "النظافة الشخصية",     accent: "#0ea5e9" },
@@ -21,6 +23,8 @@ const DASH_TYPES = [
   { type: "pos11_receiving_log_butchery", key: "receiving",    icon: "📥",     titleEn: "Receiving Log",     titleAr: "سجل الاستلام",         accent: "#a855f7" },
   { type: "pos11_pest_control",           key: "pest",         icon: "🪲",     titleEn: "Pest Control",      titleAr: "مكافحة الآفات",        accent: "#b45309" },
   { type: "pos11_calibration_log",        key: "calibration",  icon: "🧰",     titleEn: "Calibration Log",   titleAr: "سجل المعايرة",         accent: "#64748b" },
+  { type: "pos11_sanitizer_concentration", key: "sanitizer", icon: "🧴", titleEn: "Sanitizer Concentration", titleAr: "تركيز المعقم", accent: "#0891b2" },
+  { type: "pos11_equipment_inspection", key: "equipment", icon: "🧪", titleEn: "Equipment Inspection & Sanitizing", titleAr: "فحص وتعقيم المعدات", accent: "#f59e0b" },
 ];
 
 const TABS = [
@@ -34,6 +38,8 @@ const TABS = [
   { key: "receiving",    icon: "📥",     label: "Receiving Log",        element: <POS11ReceivingLogView /> },
   { key: "pest",         icon: "🪲",     label: "Pest Control",         element: <POS11PestControlView /> },
   { key: "calibration",  icon: "🧰",     label: "Calibration Log",      element: <POS11CalibrationView /> },
+  { key: "sanitizer",    icon: "🧴",     label: "Sanitizer Concentration", element: <POS11SanitizerView /> },
+  { key: "equipment", icon: "🧪", label: "Equipment Inspection & Sanitizing", element: <EquipmentInspectionView reportType="pos11_equipment_inspection" branch="POS 11" reporter="pos11" /> },
 ];
 
 export default function POS11ReportsViewLayout() {

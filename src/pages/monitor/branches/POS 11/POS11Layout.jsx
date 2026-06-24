@@ -15,6 +15,8 @@ const POS11TraceabilityLogInput = lazy(() => import("./TraceabilityLogInput"));
 const POS11ReceivingLogInput    = lazy(() => import("./POS11ReceivingLogInput"));
 const POS11PestControlInput     = lazy(() => import("./POS11PestControlInput"));
 const POS11CalibrationInput     = lazy(() => import("./POS11CalibrationInput"));
+const POS11SanitizerInput       = lazy(() => import("./POS11SanitizerConcentrationInput"));
+const EquipmentInspectionInput = lazy(() => import("../pos15/POS15EquipmentInspectionSanitizingLogInput"));
 
 const config = {
   branch: "POS 11",
@@ -32,6 +34,8 @@ const config = {
     { key: "receiving",    label: "📥 Receiving Log",      Component: POS11ReceivingLogInput,      loadingText: "Loading Receiving Log…" },
     { key: "pest",         label: "🪲 Pest Control",       Component: POS11PestControlInput,       loadingText: "Loading Pest Control…" },
     { key: "calibration",  label: "🧰 Calibration",        Component: POS11CalibrationInput,       loadingText: "Loading Calibration…" },
+    { key: "sanitizer",    label: "🧴 Sanitizer Concentration", Component: POS11SanitizerInput,     loadingText: "Loading Sanitizer Concentration…" },
+    { key: "equipment", label: "🧪 Equipment Inspection & Sanitizing", Component: () => <EquipmentInspectionInput reportType="pos11_equipment_inspection" branch="POS 11" reporter="pos11" />, loadingText: "Loading Equipment Inspection…" },
   ],
 };
 

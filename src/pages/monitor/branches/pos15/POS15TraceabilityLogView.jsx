@@ -129,7 +129,7 @@ export default function POS15TraceabilityLogView() {
       const rows = Array.from({ length: 12 }, (_, i) => { const e = record?.payload?.entries?.[i]; return e ? { batchId: e.batchId ?? "", rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "", openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "", rawWeight: e.rawWeight ?? "", finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "", finalWeight: e.finalWeight ?? "" } : emptyRow(); });
       setEditRows(rows); setEditCheckedBy(record?.payload?.checkedBy || ""); setEditVerifiedBy(record?.payload?.verifiedBy || ""); setEditReportDate(record?.payload?.reportDate || ""); setEditing(false); return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
+
     setEditing(true);
   }
 
@@ -258,7 +258,7 @@ export default function POS15TraceabilityLogView() {
       title="Traceability Log — View (POS 15)"
       actions={
         <>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit (password)"}</button>
+          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit"}</button>
           {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
           <button onClick={handleDelete} style={btn("#dc2626")} disabled={!record} data-delete-action="true">Delete</button>
           <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>Export XLSX</button>

@@ -3,9 +3,9 @@ import React, { useMemo, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
 
-const TYPE     = "pos19_veg_sanitation_ccp";
-const BRANCH   = "POS 19";
-const FORM_REF = "TELT/CK/QA/SR/1";
+const DEFAULT_TYPE     = "pos19_veg_sanitation_ccp";
+const DEFAULT_BRANCH   = "POS 19";
+const DEFAULT_FORM_REF = "TELT/CK/QA/SR/1";
 
 const DOC_META = {
   documentTitle: "Sanitation Record",
@@ -37,7 +37,21 @@ function emptyRow() {
   };
 }
 
-export default function VegSanitationInput() {
+export default function VegSanitationInput({
+  reportType = DEFAULT_TYPE,
+  branch = DEFAULT_BRANCH,
+  formRef = DEFAULT_FORM_REF,
+  reporter = "pos19",
+  docMeta = null,
+  areaLabel = "Central Kitchen",
+  showEntryDateTime = false,
+  initialRowCount = 1,
+  allowRowDelete = true,
+} = {}) {
+  const TYPE = reportType;
+  const BRANCH = branch;
+  const FORM_REF = formRef;
+  const RESOLVED_DOC_META = { ...DOC_META, ...(docMeta || {}), documentNo: formRef };
   const [reportDate, setReportDate] = useState(() => {
     try {
       return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
@@ -47,8 +61,7 @@ export default function VegSanitationInput() {
     }
   });
 
-  const ROW_COUNT = 12;
-  const [rows, setRows] = useState(() => Array.from({ length: ROW_COUNT }, () => emptyRow()));
+  const [rows, setRows] = useState(() => Array.from({ length: initialRowCount }, () => emptyRow()));
   const [saving, setSaving] = useState(false);
 
   const monthText = useMemo(() => {
@@ -83,15 +96,18 @@ export default function VegSanitationInput() {
 
   const colDefs = useMemo(() => ([
     <col key="sl"    style={{ width: 50 }} />,
-    <col key="date"  style={{ width: 120 }} />,
-    <col key="time"  style={{ width: 100 }} />,
+    ...(showEntryDateTime ? [
+      <col key="date" style={{ width: 120 }} />,
+      <col key="time" style={{ width: 100 }} />,
+    ] : []),
     <col key="prod"  style={{ width: 220 }} />,
     <col key="qty"   style={{ width: 130 }} />,
     <col key="ct"    style={{ width: 110 }} />,
     <col key="conc"  style={{ width: 130 }} />,
     <col key="rem"   style={{ width: 180 }} />,
     <col key="ver"   style={{ width: 150 }} />,
-  ]), []);
+    ...(allowRowDelete ? [<col key="del" style={{ width: 70 }} />] : []),
+  ]), [showEntryDateTime, allowRowDelete]);
 
   function updateRow(idx, key, val) {
     setRows((prev) => {
@@ -105,6 +121,10 @@ export default function VegSanitationInput() {
     setRows((prev) => [...prev, emptyRow()]);
   }
 
+  function removeRow(index) {
+    setRows((prev) => prev.length === 1 ? prev : prev.filter((_, rowIndex) => rowIndex !== index));
+  }
+
   async function handleSave() {
     const entries = rows.filter((r) =>
       Object.values(r).some((v) => String(v || "").trim() !== "")
@@ -116,7 +136,7 @@ export default function VegSanitationInput() {
     const payload = {
       branch: BRANCH,
       formRef: FORM_REF,
-      docMeta: DOC_META,
+      docMeta: RESOLVED_DOC_META,
       methodologyNote: METHODOLOGY_NOTE,
       reportDate,
       month: monthText,
@@ -128,7 +148,7 @@ export default function VegSanitationInput() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
+        body: JSON.stringify({ reporter, type: TYPE, payload }),
       });
       if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّل التقرير من شاشة العرض (View) أو غيّر التاريخ."); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -145,14 +165,14 @@ export default function VegSanitationInput() {
     <div style={{ background: "#fff", border: "1px solid #dbe3f4", borderRadius: 12, padding: 16, color: "#0b1f4d" }}>
       <ReportHeader
         title="Sanitation Record (CCP)"
-        subtitle="Fruits & Vegetables — Central Kitchen"
+        subtitle={`Fruits & Vegetables — ${areaLabel}`}
         fields={[
-          { label: "Document No", value: DOC_META.documentNo },
-          { label: "Issue Date", value: DOC_META.issueDate },
-          { label: "Revision No", value: DOC_META.revisionNo },
-          { label: "Area", value: DOC_META.area },
-          { label: "Controlling Officer", value: DOC_META.controllingOfficer },
-          { label: "Approved By", value: DOC_META.approvedBy },
+          { label: "Document No", value: RESOLVED_DOC_META.documentNo },
+          { label: "Issue Date", value: RESOLVED_DOC_META.issueDate },
+          { label: "Revision No", value: RESOLVED_DOC_META.revisionNo },
+          { label: "Area", value: RESOLVED_DOC_META.area },
+          { label: "Controlling Officer", value: RESOLVED_DOC_META.controllingOfficer },
+          { label: "Approved By", value: RESOLVED_DOC_META.approvedBy },
           { label: "Branch", value: BRANCH },
           { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate },
         ]}
@@ -164,8 +184,8 @@ export default function VegSanitationInput() {
         background: "#1e3a5f", color: "#fff", borderRadius: 8,
         fontWeight: 800, letterSpacing: 0.3,
       }}>
-        <div style={{ fontSize: 13 }}>{DOC_META.companyLine}</div>
-        <div style={{ fontSize: 15, marginTop: 4 }}>{DOC_META.title}</div>
+        <div style={{ fontSize: 13 }}>{RESOLVED_DOC_META.companyLine}</div>
+        <div style={{ fontSize: 15, marginTop: 4 }}>{RESOLVED_DOC_META.title}</div>
       </div>
 
       {/* CCP critical limit banner */}
@@ -177,7 +197,8 @@ export default function VegSanitationInput() {
       }}>
         <div style={{ fontSize: 18, lineHeight: 1 }}>⚠️</div>
         <div>
-          <strong>CCP — Critical Limit:</strong> Peratek concentration must follow manufacturer instructions.
+          <strong>CCP — Critical Limit:</strong> Peratek concentration must be between <b>60–80 ppm</b>.
+          <span dir="rtl"> يجب أن تكون القراءة بين <b>60–80 ppm</b>.</span>
           Contact times: <b>hard-skin 90 sec</b>, <b>soft-skin 60 sec</b>, <b>leafy 3 min</b>.
           Any deviation requires re-sanitizing and a Corrective Action.
         </div>
@@ -190,22 +211,23 @@ export default function VegSanitationInput() {
           <thead>
             <tr>
               <th style={thCell}>SL NO</th>
-              <th style={thCell}>Date</th>
-              <th style={thCell}>Time</th>
+              {showEntryDateTime && <th style={thCell}>Date</th>}
+              {showEntryDateTime && <th style={thCell}>Time</th>}
               <th style={thCell}>RM / Product Details</th>
               <th style={thCell}>Quantity Sanitized</th>
               <th style={thCell}>Contact Time</th>
               <th style={thCell}>Conc. of Peratek (ppm)</th>
               <th style={thCell}>Remarks / CA</th>
               <th style={thCell}>Verified By / Signature</th>
+              {allowRowDelete && <th style={thCell}>Action</th>}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, idx) => (
               <tr key={idx}>
                 <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{idx + 1}</td>
-                <td style={tdCell}><input type="date" value={r.date} onChange={(e) => updateRow(idx, "date", e.target.value)} style={inputStyle} /></td>
-                <td style={tdCell}><input type="time" value={r.time} onChange={(e) => updateRow(idx, "time", e.target.value)} style={inputStyle} /></td>
+                {showEntryDateTime && <td style={tdCell}><input type="date" value={r.date} onChange={(e) => updateRow(idx, "date", e.target.value)} style={inputStyle} /></td>}
+                {showEntryDateTime && <td style={tdCell}><input type="time" value={r.time} onChange={(e) => updateRow(idx, "time", e.target.value)} style={inputStyle} /></td>}
                 <td style={tdCell}><input type="text" value={r.productDetails} onChange={(e) => updateRow(idx, "productDetails", e.target.value)} style={inputStyle} placeholder="e.g., Lettuce, Tomato" /></td>
                 <td style={tdCell}><input type="text" value={r.quantitySanitized} onChange={(e) => updateRow(idx, "quantitySanitized", e.target.value)} style={inputStyle} placeholder="kg / pcs" /></td>
                 <td style={tdCell}>
@@ -219,6 +241,7 @@ export default function VegSanitationInput() {
                 <td style={tdCell}><input type="number" step="1" value={r.peratekConc} onChange={(e) => updateRow(idx, "peratekConc", e.target.value)} style={inputStyle} placeholder="ppm" /></td>
                 <td style={tdCell}><input type="text" value={r.remarks} onChange={(e) => updateRow(idx, "remarks", e.target.value)} style={inputStyle} /></td>
                 <td style={tdCell}><input type="text" value={r.verifiedBy} onChange={(e) => updateRow(idx, "verifiedBy", e.target.value)} style={inputStyle} /></td>
+                {allowRowDelete && <td style={tdCell}><button type="button" onClick={() => removeRow(idx)} disabled={rows.length === 1} style={{ ...btn("#dc2626"), padding: "6px 9px", opacity: rows.length === 1 ? 0.5 : 1, cursor: rows.length === 1 ? "not-allowed" : "pointer" }}>Delete</button></td>}
               </tr>
             ))}
           </tbody>

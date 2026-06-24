@@ -27,7 +27,7 @@ const TICK_COLS = [
   { key: "handlerHygiene", label: "Food handler hygiene" },
   { key: "appearanceOK", label: "Appearance" },
   { key: "firmnessOK", label: "Firmness" },
-  { key: "smellOK", label: "Smell" },
+  { key: "smellOK", label: "Bad Smell" },
   { key: "packagingGood", label: "Packaging good/undamaged/clean/no pests" },
 ];
 
@@ -307,7 +307,7 @@ export default function POS10ReceivingLogView() {
       setEditing(false);
       return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
+
     setEditing(true);
   }
 
@@ -444,7 +444,7 @@ export default function POS10ReceivingLogView() {
       "Food handler hygiene",
       "Appearance",
       "Firmness",
-      "Smell",
+      "Bad Smell",
       "Packaging good/undamaged/clean/no pests",
       "Country of origin",
       "Production Date",
@@ -548,7 +548,7 @@ export default function POS10ReceivingLogView() {
         "Food handler hygiene",
         "Appearance",
         "Firmness",
-        "Smell",
+        "Bad Smell",
         "Packaging of food is good and undamaged, clean and no signs of pest infestation",
         "Country of origin",
         "Production Date",
@@ -797,7 +797,7 @@ export default function POS10ReceivingLogView() {
       actions={
         <>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
-            {editing ? "Cancel Edit" : "Edit (password)"}
+            {editing ? "Cancel Edit" : "Edit"}
           </button>
           {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
           <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
@@ -911,7 +911,7 @@ export default function POS10ReceivingLogView() {
                       <th style={thCell}>Food handler hygiene</th>
                       <th style={thCell}>Appearance</th>
                       <th style={thCell}>Firmness</th>
-                      <th style={thCell}>Smell</th>
+                      <th style={thCell}>Bad Smell</th>
                       <th style={thCell}>
                         Packaging of food is good and undamaged, clean and no signs of pest infestation
                       </th>

@@ -154,7 +154,6 @@ export default function DailyCleaningChecklistView() {
       setEditEntries(record?.payload?.entries?.length ? JSON.parse(JSON.stringify(record.payload.entries)) : [emptyEntry()]);
       return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
     setEditEntries(record?.payload?.entries?.length ? JSON.parse(JSON.stringify(record.payload.entries)) : [emptyEntry()]);
     setEditing(true);
   }

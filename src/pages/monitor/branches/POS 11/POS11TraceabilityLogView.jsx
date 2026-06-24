@@ -176,7 +176,7 @@ export default function POS11TraceabilityLogView() {
       setEditing(false);
       return;
     }
-    if (!askPass("Enable edit mode")) return alert("أ¢â€Œإ’ Wrong password");
+
     setEditing(true);
   }
 
@@ -530,7 +530,7 @@ export default function POS11TraceabilityLogView() {
       actions={
         <>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
-            {editing ? "Cancel Edit" : "Edit (password)"}
+            {editing ? "Cancel Edit" : "Edit"}
           </button>
           {editing && (
             <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>

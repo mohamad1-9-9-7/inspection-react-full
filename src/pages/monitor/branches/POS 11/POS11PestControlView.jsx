@@ -159,7 +159,7 @@ export default function POS11PestControlView() {
       setEditing(false);
       return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
+
     setEditing(true);
   }
 
@@ -485,7 +485,7 @@ export default function POS11PestControlView() {
 
         <div style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
-            {editing ? "Cancel Edit" : "Edit (password)"}
+            {editing ? "Cancel Edit" : "Edit"}
           </button>
           {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
           <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>

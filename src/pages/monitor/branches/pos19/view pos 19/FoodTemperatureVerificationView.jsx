@@ -156,7 +156,6 @@ export default function FoodTemperatureVerificationView() {
       setEditRows(Array.isArray(entries)&&entries.length ? JSON.parse(JSON.stringify(entries)) : [emptyRow()]);
       setEditing(false); return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
     const entries = record?.payload?.entries;
     setEditRows(Array.isArray(entries)&&entries.length ? JSON.parse(JSON.stringify(entries)) : [emptyRow()]);
     setEditing(true);

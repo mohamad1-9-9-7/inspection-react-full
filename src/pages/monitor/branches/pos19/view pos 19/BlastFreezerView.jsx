@@ -116,7 +116,7 @@ export default function BlastFreezerView() {
       setEditing(false);
       return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
+
     setEditing(true);
   }
 
@@ -334,7 +334,7 @@ export default function BlastFreezerView() {
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <div style={{ fontWeight: 800, fontSize: 18 }}>Blast Freezer / Chiller Log (CCP) — View (POS 19)</div>
         <div style={{ marginInlineStart: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit (password)"}</button>
+          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit"}</button>
           {editing && (
             <>
               <button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button>

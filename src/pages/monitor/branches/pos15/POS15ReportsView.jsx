@@ -11,6 +11,7 @@ const POS15ReceivingLogView                   = lazy(() => import("./POS15Receiv
 const POS15TraceabilityLogView                = lazy(() => import("./POS15TraceabilityLogView"));
 const POS15EquipmentInspectionSanitizingView  = lazy(() => import("./POS15EquipmentInspectionSanitizingLogView"));
 const POS15PestControlView                    = lazy(() => import("./POS15PestControlView"));
+const POS15SanitizerView                      = lazy(() => import("./POS15SanitizerConcentrationView"));
 
 const DASH_TYPES = [
   { type: "pos15_daily_cleanliness",      key: "cleanliness",  icon: "🧹",     titleEn: "Daily Cleaning",          titleAr: "التنظيف اليومي",      accent: "#22c55e" },
@@ -20,6 +21,7 @@ const DASH_TYPES = [
   { type: "pos15_traceability_log",       key: "traceability", icon: "🧬",     titleEn: "Traceability Log",        titleAr: "سجل التتبع",           accent: "#8b5cf6" },
   { type: "pos15_equipment_inspection",   key: "equip_sanit",  icon: "🧪",     titleEn: "Equipment Inspection",    titleAr: "فحص المعدات",          accent: "#f59e0b" },
   { type: "pos15_pest_control",           key: "pest",         icon: "🪲",     titleEn: "Pest Control",            titleAr: "مكافحة الآفات",        accent: "#b45309" },
+  { type: "pos15_sanitizer_concentration", key: "sanitizer", icon: "🧴", titleEn: "Sanitizer Concentration", titleAr: "تركيز المعقم", accent: "#0891b2" },
 ];
 
 const TABS = [
@@ -33,6 +35,7 @@ const TABS = [
   { key: "traceability", icon: "🧬",     label: "Traceability Log",                     element: <POS15TraceabilityLogView /> },
   { key: "equip_sanit",  icon: "🧪",     label: "Equipment Inspection & Sanitizing",    element: <POS15EquipmentInspectionSanitizingView /> },
   { key: "pest",         icon: "🪲",     label: "Pest Control",                         element: <POS15PestControlView /> },
+  { key: "sanitizer",    icon: "🧴",     label: "Sanitizer Concentration",               element: <POS15SanitizerView /> },
 ];
 
 export default function POS15ReportsView() {

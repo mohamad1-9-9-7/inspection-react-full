@@ -160,7 +160,7 @@ export default function POS11CalibrationView() {
       setEditing(false);
       return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
+
     setEditing(true);
   }
 
@@ -462,7 +462,7 @@ export default function POS11CalibrationView() {
       actions={
         <>
           <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
-            {editing ? "Cancel Edit" : "Edit (password)"}
+            {editing ? "Cancel Edit" : "Edit"}
           </button>
           {editing && (
             <>

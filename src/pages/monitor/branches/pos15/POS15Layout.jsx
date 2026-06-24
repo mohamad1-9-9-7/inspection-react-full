@@ -26,6 +26,7 @@ const POS15PestControlInput            = lazy(() =>
     default: m.default || m.POS15PestControlInput || m.PestControlInput,
   }))
 );
+const POS15SanitizerInput              = lazy(() => import("./POS15SanitizerConcentrationInput"));
 
 const config = {
   branch: "POS 15",
@@ -43,6 +44,7 @@ const config = {
     { key: "traceability", label: "🧬 Traceability Log",                     Component: POS15TraceabilityLogInput,       loadingText: "Loading Traceability Log…" },
     { key: "equip_sanit",  label: "🧪 Equipment Inspection & Sanitizing",   Component: POS15EquipInspectSanitizingInput, loadingText: "Loading Equipment Inspection & Sanitizing…" },
     { key: "pest",         label: "🪲 Pest Control",                         Component: POS15PestControlInput,           loadingText: "Loading Pest Control…" },
+    { key: "sanitizer",    label: "🧴 Sanitizer Concentration",               Component: POS15SanitizerInput,             loadingText: "Loading Sanitizer Concentration…" },
   ],
 };
 

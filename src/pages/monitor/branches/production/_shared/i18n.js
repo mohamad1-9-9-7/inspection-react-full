@@ -37,6 +37,14 @@ export const STR = {
   tab_dashboard:      { en: "Overview",                  ar: "نظرة عامة" },
   tab_dashboard_sub:  { en: "Daily status across reports",ar: "الحالة اليومية لكل التقارير" },
 
+  tab_veg_sanitation: { en: "Veg/Fruits Sanitation", ar: "تعقيم الخضار والفواكه" },
+  tab_veg_sanitation_sub: { en: "CCP sanitation record", ar: "سجل التعقيم - نقطة تحكم حرجة" },
+  tab_sanitizer: { en: "Sanitizer Concentration", ar: "تركيز المعقم" },
+  tab_sanitizer_sub: { en: "PH 30 verification log", ar: "سجل التحقق من PH 30" },
+
+  tab_equipment: { en: "Equipment Inspection & Sanitizing", ar: "فحص وتعقيم المعدات" },
+  tab_equipment_sub: { en: "Equipment condition and sanitation log", ar: "سجل حالة المعدات وتعقيمها" },
+
   // Dashboard
   db_title:           { en: "Production Dashboard",      ar: "لوحة الإنتاج" },
   db_subtitle:        { en: "Today's status & recent activity across all reports", ar: "الحالة اليومية والنشاط الأخير لكل التقارير" },

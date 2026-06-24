@@ -4,15 +4,13 @@ import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
 
 
-const TYPE     = "pos19_sanitizer_concentration";
-const BRANCH   = "POS 19";
-const FORM_REF = "FS-HACCP/POS19/SAN/08";
+const DEFAULT_TYPE     = "pos19_sanitizer_concentration";
+const DEFAULT_BRANCH   = "POS 19";
+const DEFAULT_FORM_REF = "FS-HACCP/POS19/SAN/08";
 
 function emptyRow() {
   return {
-    date: "",
-    time: "",
-    sanitizerType: "",
+    sanitizerType: "PH 30",
     location: "",
     targetConc: "200 ppm",
     actualConc: "",
@@ -30,13 +28,21 @@ function btnStyle(bg) {
   };
 }
 
-export default function SanitizerConcentrationVerificationInput() {
+export default function SanitizerConcentrationVerificationInput({
+  reportType = DEFAULT_TYPE,
+  branch = DEFAULT_BRANCH,
+  formRef = DEFAULT_FORM_REF,
+  reporter = "pos19",
+} = {}) {
+  const TYPE = reportType;
+  const BRANCH = branch;
+  const FORM_REF = formRef;
   const [reportDate, setReportDate] = useState(() => {
     try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
     catch { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
   });
   const [section, setSection]       = useState("");
-  const [rows, setRows]             = useState(() => Array.from({ length: 5 }, () => emptyRow()));
+  const [rows, setRows]             = useState(() => [emptyRow()]);
   const [verifiedBy, setVerifiedBy] = useState("");
   const [checkedBy, setCheckedBy]   = useState("");
   const [revDate, setRevDate]       = useState("");
@@ -66,11 +72,9 @@ export default function SanitizerConcentrationVerificationInput() {
     });
   }
   function addRow()    { setRows(prev => [...prev, emptyRow()]); }
-  function removeRow(i){ setRows(prev => prev.filter((_, idx) => idx !== i)); }
+  function removeRow(i){ setRows(prev => prev.length === 1 ? prev : prev.filter((_, idx) => idx !== i)); }
 
   const colDefs = useMemo(() => ([
-    <col key="date"    style={{ width: 110 }} />,
-    <col key="time"    style={{ width: 90 }} />,
     <col key="type"    style={{ width: 160 }} />,
     <col key="loc"     style={{ width: 160 }} />,
     <col key="target"  style={{ width: 110 }} />,
@@ -83,7 +87,8 @@ export default function SanitizerConcentrationVerificationInput() {
 
   async function handleSave() {
     if (!reportDate) { alert("الرجاء تحديد التاريخ"); return; }
-    const entries = rows.filter(r => r.sanitizerType.trim() !== "" || r.location.trim() !== "");
+    const entries = rows.filter(r => [r.location, r.actualConc, r.result, r.correctiveAction, r.checkedBy]
+      .some(value => String(value || "").trim() !== ""));
     if (!entries.length) { alert("أضف على الأقل صفًا واحدًا"); return; }
 
     // تحقق: Fail يستلزم corrective action
@@ -104,7 +109,7 @@ export default function SanitizerConcentrationVerificationInput() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
+      body: JSON.stringify({ reporter, type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ تم الحفظ بنجاح!");
@@ -130,13 +135,13 @@ export default function SanitizerConcentrationVerificationInput() {
       {/* Critical info banner */}
       <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
         <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
-        <div><strong>Critical Limit (CCP):</strong> Chlorine sanitizer <b>100–200 ppm</b> &nbsp;|&nbsp; QAC <b>200–400 ppm</b>. Verify concentration with <b>test strips before each use</b> and after refill. Minimum contact time <b>1 minute</b> on food-contact surfaces. Out-of-range solution must be discarded and remade — never adjust by topping up.</div>
+        <div><strong>Sanitizer / اسم المعقم: PH 30.</strong> &nbsp; <strong>Required reading / القراءة المطلوبة:</strong> The concentration must be between <b>200–400 ppm</b>. يجب أن تكون القراءة بين <b>200–400 ppm</b>. Verify the reading with <b>test strips before each use</b> and after refill. Any reading below 200 ppm or above 400 ppm is out of range and requires corrective action.</div>
       </div>
 
       {/* Note strip */}
       <div style={{ border:"1px solid #1f3b70", borderBottom:"none" }}>
         <div style={{ ...thCell, background:"#e9f0ff" }}>
-          Target Concentration: 200 ppm — Acceptable Range: 100–400 ppm
+          Sanitizer: PH 30 — Actual reading must be within 200–400 ppm — يجب أن تكون القراءة بين 200–400 ppm
         </div>
       </div>
 
@@ -146,8 +151,6 @@ export default function SanitizerConcentrationVerificationInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Date</th>
-              <th style={thCell}>Time</th>
               <th style={thCell}>Sanitizer{"\n"}Type</th>
               <th style={thCell}>Location /{ "\n"}Area</th>
               <th style={thCell}>Target{"\n"}Conc. (ppm)</th>
@@ -161,9 +164,7 @@ export default function SanitizerConcentrationVerificationInput() {
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
-                <td style={tdCell}><input type="date" value={r.date} onChange={e=>updateRow(i,"date",e.target.value)} style={inputStyle} /></td>
-                <td style={tdCell}><input type="time" value={r.time} onChange={e=>updateRow(i,"time",e.target.value)} style={inputStyle} /></td>
-                <td style={tdCell}><input type="text" value={r.sanitizerType} onChange={e=>updateRow(i,"sanitizerType",e.target.value)} style={inputStyle} placeholder="e.g., Chlorine" /></td>
+                <td style={tdCell}><input type="text" value={r.sanitizerType} onChange={e=>updateRow(i,"sanitizerType",e.target.value)} style={inputStyle} placeholder="PH 30" /></td>
                 <td style={tdCell}><input type="text" value={r.location} onChange={e=>updateRow(i,"location",e.target.value)} style={inputStyle} placeholder="Area" /></td>
                 <td style={tdCell}><input type="text" value={r.targetConc} onChange={e=>updateRow(i,"targetConc",e.target.value)} style={inputStyle} /></td>
                 <td style={tdCell}>
@@ -186,7 +187,7 @@ export default function SanitizerConcentrationVerificationInput() {
                   <input type="text" value={r.correctiveAction} onChange={e=>updateRow(i,"correctiveAction",e.target.value)} style={{ ...inputStyle, background: r.result==="Fail" ? "#fff7ed" : "#fff" }} placeholder={r.result==="Fail" ? "Required" : "If any"} />
                 </td>
                 <td style={tdCell}><input type="text" value={r.checkedBy} onChange={e=>updateRow(i,"checkedBy",e.target.value)} style={inputStyle} /></td>
-                <td style={tdCell}><button onClick={()=>removeRow(i)} style={btnStyle("#dc2626")} data-delete-action="true">Del</button></td>
+                <td style={tdCell}><button onClick={()=>removeRow(i)} disabled={rows.length === 1} style={{...btnStyle("#dc2626"),opacity:rows.length===1?0.5:1,cursor:rows.length===1?"not-allowed":"pointer"}}>Del</button></td>
               </tr>
             ))}
           </tbody>

@@ -6,9 +6,9 @@ import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
 import SignatureName from "../../../../shared/SignatureName";
 
-const TYPE     = "pos19_veg_sanitation_ccp";
-const BRANCH   = "POS 19";
-const FORM_REF = "TELT/CK/QA/SR/1";
+const DEFAULT_TYPE     = "pos19_veg_sanitation_ccp";
+const DEFAULT_BRANCH   = "POS 19";
+const DEFAULT_FORM_REF = "TELT/CK/QA/SR/1";
 
 const safe = (v) => (v == null ? "" : v);
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
@@ -23,7 +23,19 @@ function emptyRow() {
   };
 }
 
-export default function VegSanitationView() {
+export default function VegSanitationView({
+  reportType = DEFAULT_TYPE,
+  branch = DEFAULT_BRANCH,
+  formRef = DEFAULT_FORM_REF,
+  reporter = "pos19",
+  exportPrefix = "POS19_VegSanitation",
+  branchLabel = "POS 19",
+  areaLabel = "Central Kitchen",
+  showEntryDateTime = false,
+} = {}) {
+  const TYPE = reportType;
+  const BRANCH = branch;
+  const FORM_REF = formRef;
   const reportRef    = useRef(null);
   const fileInputRef = useRef(null);
   const todayDubai = useMemo(() => {
@@ -85,7 +97,7 @@ export default function VegSanitationView() {
       setEditing(false);
       return;
     }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
+
     setEditing(true);
   }
 
@@ -110,7 +122,7 @@ export default function VegSanitationView() {
       // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
       const r = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, {
         method: rid ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
+        body: JSON.stringify({ reporter, type: TYPE, payload }),
       });
       if (!r.ok) throw new Error();
       alert("✅ Changes saved");
@@ -142,7 +154,7 @@ export default function VegSanitationView() {
     if (!record) return;
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([JSON.stringify({ type: TYPE, payload: record.payload }, null, 2)], { type: "application/json" }));
-    a.download = `POS19_VegSanitation_${record?.payload?.reportDate || date}.json`;
+    a.download = `${exportPrefix}_${record?.payload?.reportDate || date}.json`;
     a.click(); URL.revokeObjectURL(a.href);
   }
 
@@ -154,17 +166,17 @@ export default function VegSanitationView() {
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("VegSanitation");
       const border = { top: { style: "thin", color: { argb: "1F3B70" } }, left: { style: "thin", color: { argb: "1F3B70" } }, bottom: { style: "thin", color: { argb: "1F3B70" } }, right: { style: "thin", color: { argb: "1F3B70" } } };
-      const COL_HEADERS = ["SL No", "Date", "Time", "RM / Product Details", "Quantity Sanitized", "Contact Time", "Conc. of Peratek (ppm)", "Remarks / CA", "Verified By / Signature"];
-      ws.columns = [{ width: 6 }, { width: 12 }, { width: 10 }, { width: 24 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 22 }, { width: 20 }];
+      const COL_HEADERS = ["SL No", ...(showEntryDateTime ? ["Date", "Time"] : []), "RM / Product Details", "Quantity Sanitized", "Contact Time", "Conc. of Peratek (ppm)", "Remarks / CA", "Verified By / Signature"];
+      ws.columns = [{ width: 6 }, ...(showEntryDateTime ? [{ width: 12 }, { width: 10 }] : []), { width: 24 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 22 }, { width: 20 }];
       ws.mergeCells(1, 1, 1, COL_HEADERS.length);
       const r1 = ws.getCell(1, 1);
-      r1.value = `AL MAWASHI BRAAI RESTAURANT LLC | SANITATION RECORD (CCP) – CENTRAL KITCHEN`;
+      r1.value = `AL MAWASHI BRAAI RESTAURANT LLC | SANITATION RECORD (CCP) – ${String(areaLabel).toUpperCase()}`;
       r1.alignment = { horizontal: "center", vertical: "middle" };
       r1.font = { size: 13, bold: true };
       r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "E9F0FF" } };
       ws.getRow(1).height = 22;
       ws.mergeCells(2, 1, 2, COL_HEADERS.length);
-      ws.getCell(2, 1).value = `Branch: ${BRANCH} | Form Ref: ${FORM_REF} | Date: ${safe(p.reportDate)}`;
+      ws.getCell(2, 1).value = `Branch: ${BRANCH} | Form Ref: ${FORM_REF} | Date: ${safe(p.reportDate)} | Required Peratek concentration: 60–80 ppm`;
       ws.getCell(2, 1).alignment = { horizontal: "center" };
       ws.getRow(2).height = 18;
       const hr = ws.getRow(4);
@@ -179,7 +191,7 @@ export default function VegSanitationView() {
       let rIdx = 5;
       rows.forEach((e, i) => {
         ws.getRow(rIdx).values = [
-          i + 1, safe(e.date), safe(e.time), safe(e.productDetails),
+          i + 1, ...(showEntryDateTime ? [safe(e.date), safe(e.time)] : []), safe(e.productDetails),
           safe(e.quantitySanitized), safe(e.contactTime), safe(e.peratekConc),
           safe(e.remarks), safe(e.verifiedBy),
         ];
@@ -201,7 +213,7 @@ export default function VegSanitationView() {
       const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-      a.download = `POS19_VegSanitation_${p.reportDate || date}.xlsx`;
+      a.download = `${exportPrefix}_${p.reportDate || date}.xlsx`;
       a.click(); URL.revokeObjectURL(a.href);
     } catch (e) { console.error(e); alert("⚠️ XLSX export failed."); }
   }
@@ -219,7 +231,7 @@ export default function VegSanitationView() {
       pdf.rect(0, 0, pageW, headerH, "F");
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(13);
-      pdf.text(`POS 19 | Sanitation Record (CCP) — ${record?.payload?.reportDate || date}`, pageW / 2, 28, { align: "center" });
+      pdf.text(`${branchLabel} | Sanitation Record (CCP) — ${record?.payload?.reportDate || date}`, pageW / 2, 28, { align: "center" });
     };
     drawH();
     const usableW = pageW - margin * 2;
@@ -235,7 +247,7 @@ export default function VegSanitationView() {
       ypx += sliceH;
       if (ypx < canvas.height) { pdf.addPage("a4", "l"); drawH(); }
     }
-    pdf.save(`POS19_VegSanitation_${record?.payload?.reportDate || date}.pdf`);
+    pdf.save(`${exportPrefix}_${record?.payload?.reportDate || date}.pdf`);
   }
 
   async function importJSON(file) {
@@ -248,7 +260,7 @@ export default function VegSanitationView() {
       setLoading(true);
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
+        body: JSON.stringify({ reporter, type: TYPE, payload }),
       });
       if (!res.ok) throw new Error();
       alert("✅ Imported");
@@ -283,9 +295,9 @@ export default function VegSanitationView() {
   return (
     <div style={{ background: "#fff", border: "1px solid #dbe3f4", borderRadius: 12, padding: 16, color: "#0b1f4d", direction: "ltr" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <div style={{ fontWeight: 800, fontSize: 18 }}>Sanitation Record (CCP) — View (POS 19)</div>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>Sanitation Record (CCP) — View ({branchLabel})</div>
         <div style={{ marginInlineStart: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit (password)"}</button>
+          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit"}</button>
           {editing && (
             <>
               <button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button>
@@ -356,7 +368,7 @@ export default function VegSanitationView() {
             <div ref={reportRef}>
               <ReportHeader
                 title="Sanitation Record (CCP)"
-                subtitle="Fruits & Vegetables — Central Kitchen"
+                subtitle={`Fruits & Vegetables — ${areaLabel}`}
                 fields={[
                   { label: "Report Date", value: safe(record.payload?.reportDate) },
                   { label: "Branch",      value: safe(record.payload?.branch) },
@@ -370,15 +382,20 @@ export default function VegSanitationView() {
                 fontWeight: 800, letterSpacing: 0.3,
               }}>
                 <div style={{ fontSize: 13 }}>AL MAWASHI BRAAI RESTAURANT LLC</div>
-                <div style={{ fontSize: 15, marginTop: 4 }}>SANITATION RECORD (CCP) – CENTRAL KITCHEN</div>
+                <div style={{ fontSize: 15, marginTop: 4 }}>SANITATION RECORD (CCP) – {String(areaLabel).toUpperCase()}</div>
+              </div>
+
+              <div style={{display:"flex",gap:10,alignItems:"center",padding:"11px 14px",marginBottom:10,background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:8,color:"#78350f",fontSize:13,fontWeight:700}}>
+                <span style={{fontSize:18}}>⚠️</span>
+                <span>Required Peratek concentration: <strong>60–80 ppm</strong>. <span dir="rtl">يجب أن تكون القراءة بين <strong>60–80 ppm</strong>.</span></span>
               </div>
 
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12 }}>
                   <colgroup>
                     <col style={{ width: 50 }} />
-                    <col style={{ width: 120 }} />
-                    <col style={{ width: 100 }} />
+                    {showEntryDateTime && <col style={{ width: 120 }} />}
+                    {showEntryDateTime && <col style={{ width: 100 }} />}
                     <col style={{ width: 220 }} />
                     <col style={{ width: 130 }} />
                     <col style={{ width: 110 }} />
@@ -390,8 +407,8 @@ export default function VegSanitationView() {
                   <thead>
                     <tr>
                       <th style={thCell}>SL NO</th>
-                      <th style={thCell}>Date</th>
-                      <th style={thCell}>Time</th>
+                      {showEntryDateTime && <th style={thCell}>Date</th>}
+                      {showEntryDateTime && <th style={thCell}>Time</th>}
                       <th style={thCell}>RM / Product Details</th>
                       <th style={thCell}>Quantity Sanitized</th>
                       <th style={thCell}>Contact Time</th>
@@ -406,8 +423,8 @@ export default function VegSanitationView() {
                       rows.filter(isFilledRow).map((r, idx) => (
                         <tr key={idx}>
                           <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{idx + 1}</td>
-                          <td style={tdCell}>{safe(r.date)}</td>
-                          <td style={tdCell}>{safe(r.time)}</td>
+                          {showEntryDateTime && <td style={tdCell}>{safe(r.date)}</td>}
+                          {showEntryDateTime && <td style={tdCell}>{safe(r.time)}</td>}
                           <td style={tdCell}>{safe(r.productDetails)}</td>
                           <td style={tdCell}>{safe(r.quantitySanitized)}</td>
                           <td style={tdCell}>{safe(r.contactTime)}</td>
@@ -422,8 +439,8 @@ export default function VegSanitationView() {
                       editRows.map((r, i) => (
                         <tr key={i}>
                           <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{i + 1}</td>
-                          <td style={tdCell}><input type="date" value={r.date || ""} onChange={(e) => upd(i, "date", e.target.value)} style={inputStyle} /></td>
-                          <td style={tdCell}><input type="time" value={r.time || ""} onChange={(e) => upd(i, "time", e.target.value)} style={inputStyle} /></td>
+                          {showEntryDateTime && <td style={tdCell}><input type="date" value={r.date || ""} onChange={(e) => upd(i, "date", e.target.value)} style={inputStyle} /></td>}
+                          {showEntryDateTime && <td style={tdCell}><input type="time" value={r.time || ""} onChange={(e) => upd(i, "time", e.target.value)} style={inputStyle} /></td>}
                           <td style={tdCell}><input value={r.productDetails || ""} onChange={(e) => upd(i, "productDetails", e.target.value)} style={inputStyle} /></td>
                           <td style={tdCell}><input value={r.quantitySanitized || ""} onChange={(e) => upd(i, "quantitySanitized", e.target.value)} style={inputStyle} /></td>
                           <td style={tdCell}>
@@ -437,7 +454,7 @@ export default function VegSanitationView() {
                           <td style={tdCell}><input type="number" step="1" value={r.peratekConc || ""} onChange={(e) => upd(i, "peratekConc", e.target.value)} style={inputStyle} placeholder="ppm" /></td>
                           <td style={tdCell}><input value={r.remarks || ""} onChange={(e) => upd(i, "remarks", e.target.value)} style={inputStyle} /></td>
                           <td style={tdCell}><input value={r.verifiedBy || ""} onChange={(e) => upd(i, "verifiedBy", e.target.value)} style={inputStyle} /></td>
-                          <td style={tdCell}><button onClick={() => delRow(i)} style={btn("#dc2626")} data-delete-action="true">Del</button></td>
+                          <td style={tdCell}><button onClick={() => delRow(i)} style={btn("#dc2626")}>Del</button></td>
                         </tr>
                       ))
                     )}

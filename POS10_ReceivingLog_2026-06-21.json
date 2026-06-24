@@ -1,0 +1,83 @@
+{
+  "type": "pos10_receiving_log_butchery",
+  "payload": {
+    "month": "06/2026",
+    "branch": "POS 10",
+    "entries": [
+      {
+        "remarks": "",
+        "smellOK": "C",
+        "foodItem": "RED SHISH",
+        "foodTemp": "2.1",
+        "quantity": "2.3",
+        "supplier": "TRANS",
+        "expiryDate": "2026-06-23",
+        "firmnessOK": "C",
+        "vehicleTemp": "2.1",
+        "appearanceOK": "C",
+        "vehicleClean": "C",
+        "packagingGood": "",
+        "handlerHygiene": "C",
+        "productionDate": "2026-06-21",
+        "countryOfOrigin": ""
+      },
+      {
+        "remarks": "",
+        "smellOK": "C",
+        "foodItem": "veall",
+        "foodTemp": "2.1",
+        "quantity": "42.2",
+        "supplier": "HLAND",
+        "expiryDate": "2026-07-08",
+        "firmnessOK": "C",
+        "vehicleTemp": "2.1",
+        "appearanceOK": "C",
+        "vehicleClean": "C",
+        "packagingGood": "",
+        "handlerHygiene": "C",
+        "productionDate": "2026-06-18",
+        "countryOfOrigin": ""
+      },
+      {
+        "remarks": "",
+        "smellOK": "C",
+        "foodItem": "LAMB",
+        "foodTemp": "2.1",
+        "quantity": "303.6",
+        "supplier": "AUS",
+        "expiryDate": "2026-06-25",
+        "firmnessOK": "C",
+        "vehicleTemp": "2.1",
+        "appearanceOK": "C",
+        "vehicleClean": "C",
+        "packagingGood": "",
+        "handlerHygiene": "C",
+        "productionDate": "2026-06-12",
+        "countryOfOrigin": ""
+      },
+      {
+        "remarks": "",
+        "smellOK": "C",
+        "foodItem": "WHOLE CHICKEN",
+        "foodTemp": "2.1",
+        "quantity": "6",
+        "supplier": "TRANS",
+        "expiryDate": "2026-06-23",
+        "firmnessOK": "C",
+        "vehicleTemp": "2.1",
+        "appearanceOK": "C",
+        "vehicleClean": "C",
+        "packagingGood": "",
+        "handlerHygiene": "C",
+        "productionDate": "2026-06-21",
+        "countryOfOrigin": ""
+      }
+    ],
+    "formRef": "FSMS/BR/F01A",
+    "savedAt": 1782106881125,
+    "invoiceNo": "19483",
+    "receivedBy": "AHMED",
+    "reportDate": "2026-06-21",
+    "verifiedBy": "MOHAMED"
+  }
+}

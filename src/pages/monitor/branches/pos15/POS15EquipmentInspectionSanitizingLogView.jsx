@@ -11,8 +11,8 @@ import {
   EmptyState,
 } from "../_shared/branchViewKit";
 
-const TYPE     = "pos15_equipment_inspection";
-const BRANCH   = "POS 15";
+const DEFAULT_TYPE   = "pos15_equipment_inspection";
+const DEFAULT_BRANCH = "POS 15";
 const FORM_REF = "FSMS/BR/F17";
 
 const SLOTS = [
@@ -49,7 +49,11 @@ const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "6px 4px",
 const tdCell = { border: "1px solid #c7d2fe", padding: "6px 4px", textAlign: "center", verticalAlign: "middle" };
 const gridStyle = { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 20 };
 
-export default function POS15EquipmentInspectionSanitizingLogView() {
+export default function POS15EquipmentInspectionSanitizingLogView({
+  reportType = DEFAULT_TYPE,
+  branch = DEFAULT_BRANCH,
+  reporter = "pos15",
+} = {}) {
   const sheetRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -68,11 +72,11 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
 
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/reports?type=${reportType}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data?.data ?? [];
-      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
+      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === branch && p.reportDate);
       const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
       setAllDates(uniq);
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
@@ -82,11 +86,11 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
   async function fetchRecord(d = date) {
     setLoading(true); setErr(""); setRecord(null); setEditRows([]);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/reports?type=${reportType}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const list = Array.isArray(data) ? data : data?.data ?? [];
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = list.find((r) => r?.payload?.branch === branch && r?.payload?.reportDate === d) || null;
       if (match?.payload) match.payload.formRef = FORM_REF;
       setRecord(match);
       const rows = match?.payload?.entries ?? [];
@@ -110,7 +114,7 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
 
   function toggleEdit() {
     if (editing) { setEditing(false); setEditRows(record?.payload?.entries || []); return; }
-    if (!askPass("Enable edit mode")) return alert("❌ Wrong password");
+
     setEditRows(record?.payload?.entries ? JSON.parse(JSON.stringify(record.payload.entries)) : [emptyRow()]);
     setEditing(true);
   }
@@ -123,11 +127,11 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
       if (risky && !String(r.correctiveAction || "").trim()) { alert("هناك صف به (✗ أو No) بدون Corrective Action."); return; }
     }
     const rid = getId(record);
-    const payload = { ...(record?.payload || {}), formRef: FORM_REF, branch: BRANCH, reportDate: record?.payload?.reportDate, entries: editRows, savedAt: Date.now() };
+    const payload = { ...(record?.payload || {}), formRef: FORM_REF, branch, reportDate: record?.payload?.reportDate, entries: editRows, savedAt: Date.now() };
     try {
       setLoading(true);
       if (rid) { try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" }); } catch (e) { console.warn("DELETE ignored:", e); } }
-      const postRes = await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }) });
+      const postRes = await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter, type: reportType, payload }) });
       if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
       alert("✅ Changes saved"); setEditing(false); await fetchRecord(payload.reportDate); await fetchAllDates();
     } catch (e) { console.error(e); alert("❌ Saving failed.\n" + String(e?.message || e)); }
@@ -153,7 +157,7 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
 
   function exportJSON() {
     if (!record) return;
-    const out = { type: TYPE, payload: { ...record.payload, formRef: FORM_REF } };
+    const out = { type: reportType, payload: { ...record.payload, formRef: FORM_REF } };
     const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = `POS15_EquipmentInspection_${record?.payload?.reportDate || date}.json`; a.click(); URL.revokeObjectURL(a.href);
@@ -169,11 +173,11 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
       const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet("Equipment Log", { views: [{ showGridLines: false }], pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1 } });
       ws.columns = [{ width: 40 }, { width: 18 }, { width: 32 }, ...SLOTS.map(() => ({ width: 10 })), { width: 28 }, { width: 14 }];
       ws.getRow(1).height = 26; ws.getRow(2).height = 26; ws.getRow(3).height = 24;
-      ws.getCell(1, 9).value = `Form Ref: ${FORM_REF}`; ws.getCell(1, 10).value = `Branch: ${safe(p.branch || BRANCH)}`;
+      ws.getCell(1, 9).value = `Form Ref: ${FORM_REF}`; ws.getCell(1, 10).value = `Branch: ${safe(p.branch || branch)}`;
       [ws.getCell(1, 9), ws.getCell(1, 10)].forEach((c) => { c.font = { bold: true, size: 11 }; c.alignment = { vertical: "middle" }; });
       ws.getCell(3, 9).value = `Section: ${safe(p.section || "")}`; ws.getCell(3, 10).value = `Date: ${safe(reportDate)}`;
       [ws.getCell(3, 9), ws.getCell(3, 10)].forEach((c) => { c.font = { bold: true, size: 11 }; c.alignment = { vertical: "middle" }; });
-      ws.mergeCells(4, 1, 4, lastCol); const title = ws.getCell(4, 1); title.value = "AL MAWASHI — POS 15 | Equipment Inspection & Sanitizing Log"; title.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; title.font = { bold: true, size: 14, color: { argb: BLACK } };
+      ws.mergeCells(4, 1, 4, lastCol); const title = ws.getCell(4, 1); title.value = `AL MAWASHI — ${branch} | Equipment Inspection & Sanitizing Log`; title.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; title.font = { bold: true, size: 14, color: { argb: BLACK } };
       ws.mergeCells(5, 1, 5, lastCol); const band = ws.getCell(5, 1); band.value = "Sanitize every 4 hours"; band.alignment = { horizontal: "center", vertical: "middle" }; band.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SKY } }; band.font = { bold: true, color: { argb: BLUE } }; band.border = thinBorder;
       ws.mergeCells(6, 1, 6, lastCol); const legend = ws.getCell(6, 1); legend.value = "(LEGEND: (√) – For Satisfactory & (✗) – For Needs Improvement)"; legend.alignment = { horizontal: "center", vertical: "middle" }; legend.font = { size: 11 }; legend.border = thinBorder;
       const headerRowIdx = 7; HEADERS.forEach((txt, i) => { const cell = ws.getCell(headerRowIdx, i + 1); cell.value = txt; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.font = { bold: true, color: { argb: BLUE } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEAD } }; cell.border = thinBorder; ws.getRow(headerRowIdx).height = 28; });
@@ -195,7 +199,7 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
       const text = await file.text(); const parsed = JSON.parse(text); const payload = parsed?.payload || parsed;
       if (!payload?.reportDate) throw new Error("Invalid payload: missing reportDate");
       payload.formRef = FORM_REF; setLoading(true);
-      const res = await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }) });
+      const res = await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter, type: reportType, payload }) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Imported and saved"); setDate(payload.reportDate); await fetchAllDates(); await fetchRecord(payload.reportDate);
     } catch (e) { console.error(e); alert("❌ Invalid JSON or save failed"); }
@@ -214,7 +218,7 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
       thead th { background:#e2e8f0; font-weight:900; }
       tbody tr:nth-child(2n) td { background:#f8fafc; }
     `;
-    const html = `<html><head><meta charset="utf-8"/><title>POS 15 Equipment Inspection - ${titleDate}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
+    const html = `<html><head><meta charset="utf-8"/><title>${branch} Equipment Inspection - ${titleDate}</title><style>${PRINT_CSS}</style></head><body>${sheetRef.current.outerHTML}</body></html>`;
     const w = window.open("", "_blank");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();
@@ -226,10 +230,10 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
   return (
     <GlassShell
       icon="🧪"
-      title={`Equipment Inspection & Sanitizing Log — View (${BRANCH})`}
+      title={`Equipment Inspection & Sanitizing Log — View (${branch})`}
       actions={
         <>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit (password)"}</button>
+          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit"}</button>
           {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
           <button onClick={handleDelete} style={btn("#dc2626")} disabled={!record} data-delete-action="true">Delete</button>
           <button onClick={exportXLSX} disabled={!record?.payload?.entries?.length} style={btn("#0ea5e9")}>Export XLSX</button>
@@ -264,11 +268,11 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
                 <span style={metaBadge}><strong>Date:</strong> {safe(record.payload?.reportDate)}</span>
                 <span style={metaBadge}><strong>Section:</strong> {safe(record.payload?.section)}</span>
                 <span style={metaBadge}><strong>Form Ref:</strong> {FORM_REF}</span>
-                <span style={metaBadge}><strong>Branch:</strong> {BRANCH}</span>
+                <span style={metaBadge}><strong>Branch:</strong> {branch}</span>
               </div>
 
               <div style={{ textAlign: "center", background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)", border: "1px solid #c7d2fe", borderRadius: 10, padding: "9px 6px", fontWeight: 800, fontSize: 16, color: "#0b1f4d", marginBottom: 6 }}>
-                🧪 EQUIPMENT INSPECTION & SANITIZING LOG — POS 15
+                🧪 EQUIPMENT INSPECTION & SANITIZING LOG — {branch}
               </div>
               <div style={{ textAlign: "center", background: "rgba(237,233,254,0.45)", border: "1px solid #c7d2fe", borderRadius: 8, padding: "5px 0", fontWeight: 700, fontSize: 13, color: "#0b1f4d", marginBottom: 4 }}>
                 Sanitize every 4 hours
@@ -353,7 +357,7 @@ export default function POS15EquipmentInspectionSanitizingLogView() {
                 <div><strong>Checked by:</strong> <SignatureName name={safe(record.payload?.checkedBy)} underline={false} /></div>
                 <div><strong>Verified by:</strong> <SignatureName name={safe(record.payload?.verifiedBy)} underline={false} /></div>
                 <div><strong>Date:</strong> {safe(record.payload?.reportDate)}</div>
-                <div><strong>Branch:</strong> {BRANCH}</div>
+                <div><strong>Branch:</strong> {branch}</div>
               </div>
             </div>
           </div>

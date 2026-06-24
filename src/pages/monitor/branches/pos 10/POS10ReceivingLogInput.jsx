@@ -14,7 +14,7 @@ const TICK_COLS = [
   { key: "handlerHygiene", label: "Food handler hygiene" },
   { key: "appearanceOK", label: "Appearance" },
   { key: "firmnessOK", label: "Firmness" },
-  { key: "smellOK", label: "Smell" },
+  { key: "smellOK", label: "Bad Smell" },
   {
     key: "packagingGood",
     label:
@@ -533,7 +533,7 @@ export default function POS10ReceivingLogInput() {
               <th style={thCell}>Food handler hygiene</th>
               <th style={thCell}>Appearance</th>
               <th style={thCell}>Firmness</th>
-              <th style={thCell}>Smell</th>
+              <th style={thCell}>Bad Smell</th>
               <th style={thCell}>
                 Packaging of food is good and undamaged, clean and no
                 signs of pest infestation

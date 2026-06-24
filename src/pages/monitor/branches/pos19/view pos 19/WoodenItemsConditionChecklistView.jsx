@@ -74,7 +74,7 @@ export default function WoodenItemsConditionChecklistView() {
 
   function toggleEdit(){
     if(editing){setEditRows(Array.from({length:5},(_,i)=>record?.payload?.entries?.[i]||emptyRow()));setFooter({verifiedBy:record?.payload?.verifiedBy||"",revDate:record?.payload?.revDate||"",revNo:record?.payload?.revNo||""});setEditing(false);return;}
-    if(!askPass("Enable edit mode"))return alert("❌ Wrong password");setEditing(true);
+    setEditing(true);
   }
 
   async function saveEdit(){
@@ -132,7 +132,7 @@ export default function WoodenItemsConditionChecklistView() {
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
         <div style={{fontWeight:800,fontSize:18}}>Wooden Items Condition Monitoring Checklist (Weekly) — View (POS 19)</div>
         <div style={{marginInlineStart:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={toggleEdit} style={btn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"Edit (password)"}</button>
+          <button onClick={toggleEdit} style={btn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"Edit"}</button>
           {editing&&<button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
           <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
           <button onClick={exportXLSX} disabled={!record?.payload?.entries?.length} style={btn("#0ea5e9")}>Export XLSX</button>

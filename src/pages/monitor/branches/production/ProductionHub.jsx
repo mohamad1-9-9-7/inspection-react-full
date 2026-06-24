@@ -12,6 +12,9 @@ const PRDDefrostingRecordInput   = lazy(() => import("./PRDDefrostingRecordInput
 const PRDTraceabilityLogInput    = lazy(() => import("./PRDTraceabilityLogInput"));
 const OnlineCuttingRecordInput   = lazy(() => import("./OnlineCuttingRecordInput"));
 const DriedMeatProcessInput      = lazy(() => import("./DriedMeatProcessInput"));
+const PRDVegSanitationInput      = lazy(() => import("./PRDVegSanitationInput"));
+const PRDSanitizerInput          = lazy(() => import("./PRDSanitizerConcentrationInput"));
+const EquipmentInspectionInput  = lazy(() => import("../pos15/POS15EquipmentInspectionSanitizingLogInput"));
 
 /* ===== Icons (modern stroke icons) ===== */
 const Icon = ({ children, size = 20 }) => (
@@ -27,6 +30,9 @@ const IconTrace      = (p) => <Icon {...p}><path d="M7 3h10l4 4v10l-4 4H7l-4-4V7
 const IconFactory    = (p) => <Icon {...p}><path d="M2 21V9l7 4V9l7 4V5l5 3v13z" /><path d="M7 17h2" /><path d="M12 17h2" /><path d="M17 17h2" /></Icon>;
 const IconScissors   = (p) => <Icon {...p}><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M20 4L8.12 15.88" /><path d="M14.47 14.48L20 20" /><path d="M8.12 8.12L12 12" /></Icon>;
 const IconDried      = (p) => <Icon {...p}><path d="M4 5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v3a6 6 0 0 1-2 4.47V17a5 5 0 0 1-10 0v-4.53A6 6 0 0 1 4 8z" /><path d="M9 17v2" /><path d="M15 17v2" /></Icon>;
+const IconLeaf       = (p) => <Icon {...p}><path d="M20 4C12 4 6 8 5 16c4 1 9 0 12-3s3-9 3-9Z" /><path d="M4 20c3-5 7-8 12-10" /></Icon>;
+const IconDrop       = (p) => <Icon {...p}><path d="M12 2S5 10 5 15a7 7 0 0 0 14 0c0-5-7-13-7-13Z" /><path d="M9 16a3 3 0 0 0 3 2" /></Icon>;
+const IconEquipment  = (p) => <Icon {...p}><path d="M9 3h6l1 4 3 2v6l-3 2-1 4H9l-1-4-3-2V9l3-2z" /><circle cx="12" cy="12" r="3" /></Icon>;
 
 const TABS = [
   {
@@ -76,6 +82,30 @@ const TABS = [
     Icon: IconDried,
     accent: "#b45309",
     Comp: DriedMeatProcessInput,
+  },
+  {
+    key: "vegSanitation",
+    titleKey: "tab_veg_sanitation",
+    subtitleKey: "tab_veg_sanitation_sub",
+    Icon: IconLeaf,
+    accent: "#16a34a",
+    Comp: PRDVegSanitationInput,
+  },
+  {
+    key: "sanitizer",
+    titleKey: "tab_sanitizer",
+    subtitleKey: "tab_sanitizer_sub",
+    Icon: IconDrop,
+    accent: "#0891b2",
+    Comp: PRDSanitizerInput,
+  },
+  {
+    key: "equipment",
+    titleKey: "tab_equipment",
+    subtitleKey: "tab_equipment_sub",
+    Icon: IconEquipment,
+    accent: "#f59e0b",
+    Comp: () => <EquipmentInspectionInput reportType="prod_equipment_inspection" branch="Production" reporter="production" />,
   },
 ];
 

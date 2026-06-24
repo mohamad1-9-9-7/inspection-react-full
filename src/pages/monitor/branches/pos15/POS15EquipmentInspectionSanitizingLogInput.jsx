@@ -6,8 +6,8 @@ import API_BASE from "../../../../config/api";
 
 
 /* ===== ثابت التقرير ===== */
-const TYPE = "pos15_equipment_inspection";
-const BRANCH = "POS 15";
+const DEFAULT_TYPE = "pos15_equipment_inspection";
+const DEFAULT_BRANCH = "POS 15";
 
 /* ===== نوافذ التعقيم الافتراضية (يمكن تعديلها لاحقًا) ===== */
 const SLOTS = [
@@ -47,7 +47,11 @@ function isRowFilled(r = {}) {
   return Object.values(r).some((v) => String(v ?? "").trim() !== "");
 }
 
-export default function POS15EquipmentInspectionSanitizingLogInput() {
+export default function POS15EquipmentInspectionSanitizingLogInput({
+  reportType = DEFAULT_TYPE,
+  branch = DEFAULT_BRANCH,
+  reporter = "pos15",
+} = {}) {
   /* Header fields */
   const [formRef, setFormRef] = useState("FSMS/BR/F17");
 
@@ -176,7 +180,7 @@ export default function POS15EquipmentInspectionSanitizingLogInput() {
 
   async function hasDuplicateForDate(d) {
     try {
-      const q = new URLSearchParams({ type: TYPE });
+      const q = new URLSearchParams({ type: reportType });
       const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, {
         cache: "no-store",
       });
@@ -188,7 +192,7 @@ export default function POS15EquipmentInspectionSanitizingLogInput() {
         const p = r?.payload || {};
         const recBranch = p?.branch || r?.branch;
         const recDate = p?.reportDate || p?.header?.reportDate; // احتياط
-        return String(recBranch) === BRANCH && String(recDate) === String(d);
+        return String(recBranch) === branch && String(recDate) === String(d);
       });
     } catch (e) {
       console.warn("Duplicate check failed:", e);
@@ -270,11 +274,11 @@ export default function POS15EquipmentInspectionSanitizingLogInput() {
       }
     }
 
-    const uniqueKey = `${TYPE}__${BRANCH}__${date}`;
+    const uniqueKey = `${reportType}__${branch}__${date}`;
 
     const payload = {
       uniqueKey,
-      branch: BRANCH,
+      branch,
       formRef,
       section,
       reportDate: date,
@@ -289,7 +293,7 @@ export default function POS15EquipmentInspectionSanitizingLogInput() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }),
+        body: JSON.stringify({ reporter, type: reportType, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ تم الحفظ بنجاح!");
@@ -349,7 +353,7 @@ export default function POS15EquipmentInspectionSanitizingLogInput() {
           </tr>
           <tr>
             <td style={tdHeader}>
-              <b>Area:</b> {BRANCH}
+              <b>Area:</b> {branch}
             </td>
             <td style={tdHeader}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

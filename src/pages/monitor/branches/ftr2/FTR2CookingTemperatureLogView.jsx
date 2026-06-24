@@ -212,10 +212,9 @@ export default function FTR2CookingTemperatureLogView() {
     } catch (e) { console.error(e); alert("⚠️ Failed to delete report."); }
   };
 
-  /* ===== Edit (password) ===== */
+  /* ===== Edit ===== */
   const startEdit = () => {
     if (!selectedReport) return;
-    if (!requirePassword("edit this report")) return;
     setDraft({
       ...(selectedReport.payload || {}),
       documentNo: selectedReport?.payload?.documentNo || DOC_NO,

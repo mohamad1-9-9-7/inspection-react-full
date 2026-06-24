@@ -73,7 +73,7 @@ export default function TemperatureMonitoringLogView() {
 
   function toggleEdit(){
     if(editing){const rows=record?.payload?.entries??[];setEditRows(rows.length?JSON.parse(JSON.stringify(rows)):[emptyRow()]);setEditing(false);return;}
-    if(!askPass("Enable edit mode"))return alert("❌ Wrong password");setEditing(true);
+    setEditing(true);
   }
 
   function upd(i,key,val){setEditRows(p=>{const n=[...p];if(key==="unitType"){const found=UNIT_TYPES.find(u=>u.value===val);n[i]={...n[i],[key]:val,targetTemp:found?found.limit:""};}else{n[i]={...n[i],[key]:val};}return n;});}
@@ -139,7 +139,7 @@ export default function TemperatureMonitoringLogView() {
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
         <div style={{fontWeight:800,fontSize:18}}>Temperature Monitoring Log — View (POS 19)</div>
         <div style={{marginInlineStart:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={toggleEdit} style={btn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"Edit (password)"}</button>
+          <button onClick={toggleEdit} style={btn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"Edit"}</button>
           {editing&&<><button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button><button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button></>}
           <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
           <button onClick={exportXLSX} disabled={!rows.filter(isFilledRow).length} style={btn("#0ea5e9")}>Export XLSX</button>

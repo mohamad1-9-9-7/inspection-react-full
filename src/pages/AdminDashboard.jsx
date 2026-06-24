@@ -278,116 +278,89 @@ export default function AdminDashboard() {
   );
 
   return (
-    <>
-      <div className="ad-root">
-
-        {/* Header */}
-        <header className="ad-header">
+    <div className="ad2-shell">
+      <aside className="ad2-sidebar">
+        <div className="ad2-brand">
+          <div className="ad2-brand-mark">Q</div>
           <div>
-            <div className="ad-header-title">📊 Admin Dashboard</div>
-            <div className="ad-header-sub">{dateStr} · Central QMS Control Panel</div>
+            <strong>QMS Admin</strong>
+            <span>Control Center</span>
           </div>
-          <div className="ad-header-right">
-            <div className="ad-sync-info">
-              <div className="ad-sync-text">Last sync: {formatDateTime(lastSync)}</div>
-              {loading && <div className="ad-sync-loading">⏳ Loading…</div>}
-              {serverStatus && (
-                <div style={{
-                  background: "#fffbeb",
-                  color: "#92400e",
-                  border: "1px solid #fde68a",
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  marginTop: 4,
-                }}>
-                  {serverStatus}
-                </div>
-              )}
-              {opMsg   && <div className={`ad-sync-msg ${isErr?"err":"ok"}`}>{opMsg}</div>}
-            </div>
+        </div>
+
+        <div className="ad2-nav-label">Workspace</div>
+        <nav className="ad2-nav" aria-label="Admin workspace">
+          {TABS.map((tab) => (
             <button
-              className="ad-hbtn"
-              onClick={() => navigate("/ai-assistant")}
-              style={{
-                background: "linear-gradient(135deg, #7c3aed, #2563eb)",
-                color: "#fff",
-                fontWeight: 900,
-                boxShadow: "0 8px 18px rgba(124,58,237,.30)",
-              }}
-              title="AI Assistant"
-            >🤖 AI Assistant</button>
-            <button className="ad-hbtn ad-hbtn-refresh" onClick={reloadFromServer}>🔄 Refresh</button>
-            <button className="ad-hbtn ad-hbtn-logout"  onClick={()=>navigate("/")}>🚪 Logout</button>
+              key={tab.key}
+              className={`ad2-nav-item ${activeView === tab.key ? "active" : ""}`}
+              onClick={() => openTabView(tab)}
+            >
+              <span className="ad2-nav-icon">{tab.icon}</span>
+              <span>{tab.label}</span>
+              <span className="ad2-nav-arrow">›</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="ad2-nav-label ad2-data-label">Data management</div>
+        <div className="ad2-data-tools">
+          <button onClick={handleExportAll}>⬇ Export all data</button>
+          <button onClick={() => fileInputRef.current?.click()}>⬆ Import backup</button>
+          <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImport} hidden />
+        </div>
+
+        <div className="ad2-sidebar-foot">
+          <span className={`ad2-status-dot ${loading ? "busy" : ""}`} />
+          <div><strong>{loading ? "Synchronizing" : "System online"}</strong><span>Quality Management System</span></div>
+        </div>
+      </aside>
+
+      <main className="ad2-main">
+        <header className="ad2-topbar">
+          <div className="ad2-page-copy">
+            <span className="ad2-eyebrow">ADMINISTRATION</span>
+            <h1>{openTab?.label || "Admin Dashboard"}</h1>
+            <p>{dateStr} · Central QMS Control Panel</p>
+          </div>
+          <div className="ad2-top-actions">
+            <div className="ad2-sync"><span>Last sync</span><strong>{formatDateTime(lastSync)}</strong></div>
+            <button className="ad2-action ai" onClick={() => navigate("/ai-assistant")}>🤖 AI Assistant</button>
+            <button className="ad2-action" onClick={reloadFromServer}>↻ Refresh</button>
+            <button className="ad2-action logout" onClick={() => navigate("/")}>Logout</button>
           </div>
         </header>
 
-        {/* Stats */}
-        <div className="ad-stats">
-          <div className="ad-stat">
-            <div className="ad-stat-label">Daily Reports</div>
-            <div className="ad-stat-val">{stats.daily}</div>
-            <div className="ad-stat-sub">POS · QCS · FTR · Production</div>
+        {(serverStatus || opMsg) && (
+          <div className={`ad2-notice ${isErr ? "error" : ""}`}>
+            <span>{isErr ? "!" : loading ? "…" : "✓"}</span>
+            {serverStatus || opMsg}
           </div>
-          <div className="ad-stat">
-            <div className="ad-stat-label">Master Reports</div>
-            <div className="ad-stat-val">{stats.master}</div>
-            <div className="ad-stat-sub">Consolidated / summary types</div>
-          </div>
-          <div className="ad-stat ad-stat-green">
-            <div className="ad-stat-label">Total Records</div>
-            <div className="ad-stat-val">{stats.total}</div>
-            <div className="ad-stat-sub">All records currently loaded</div>
-          </div>
-        </div>
+        )}
 
-        {/* ⏰ Expiry Widget — ملخّص تواريخ الانتهاء + رابط للتفاصيل */}
-        <ExpiryWidget />
+        <section className="ad2-metrics" aria-label="Report statistics">
+          <article><div className="ad2-metric-icon teal">🗓️</div><div><span>Daily Reports</span><strong>{stats.daily}</strong><small>POS · QCS · FTR · Production</small></div></article>
+          <article><div className="ad2-metric-icon blue">📑</div><div><span>Master Reports</span><strong>{stats.master}</strong><small>Consolidated and summary records</small></div></article>
+          <article><div className="ad2-metric-icon green">✓</div><div><span>Total Records</span><strong>{stats.total}</strong><small>All records currently loaded</small></div></article>
+        </section>
 
-        {/* Tabs */}
-        <div className="ad-tabs">
-          {TABS.map(t => (
-            <button
-              key={t.key}
-              className={`ad-tab ${activeView === t.key ? "active" : ""}`}
-              onClick={() => openTabView(t)}
-            >
-              <span>{t.icon}</span><span>{t.label}</span>
-            </button>
-          ))}
-        </div>
+        <section className="ad2-expiry"><ExpiryWidget /></section>
 
-        {/* Tools */}
-        <div className="ad-tools">
-          <div className="ad-tools-btns">
-            <button className="ad-tool-btn ad-tool-btn-export" onClick={handleExportAll}>⬇️ Export JSON (All)</button>
-            <button className="ad-tool-btn ad-tool-btn-import" onClick={()=>fileInputRef.current?.click()}>⬆️ Import JSON</button>
-            <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImport} style={{display:"none"}}/>
-          </div>
-          <div className="ad-tools-hint">Use <b>Export</b> for full backups and <b>Import</b> to restore or migrate data.</div>
-        </div>
-
-        <div className="ad-footer">All rights reserved © Quality Management System</div>
-      </div>
-
-      {/* Full-Screen Tab Overlay */}
-      {openTab && (
-        <div className="ad-panel-overlay">
-          <div className="ad-panel-topbar">
-            <div className="ad-panel-topbar-title">
-              <span>{openTab.icon}</span>
-              <span>{openTab.label}</span>
+        <section className="ad2-workspace">
+          <div className="ad2-workspace-head">
+            <div>
+              <span>ACTIVE WORKSPACE</span>
+              <h2>{openTab?.icon} {openTab?.label || "Daily Reports"}</h2>
             </div>
-            <button className="ad-panel-close" onClick={closeTabView}>
-              ✕ Close
-            </button>
+            {(activeView === "ftr1" || activeView === "ftr2") && (
+              <button onClick={() => openTabView(DEFAULT_TAB)}>← Back to Daily Reports</button>
+            )}
           </div>
-          <div className="ad-panel-body">
-            {tabContent}
-          </div>
-        </div>
-      )}
-    </>
+          <div className="ad2-workspace-body">{tabContent}</div>
+        </section>
+
+        <footer className="ad2-footer">Quality Management System · Admin Control Center</footer>
+      </main>
+    </div>
   );
 }
