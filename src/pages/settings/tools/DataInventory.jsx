@@ -22,7 +22,7 @@ const KNOWN_TYPES = [
   "internal_calibration_record", "internal_audit_record", "fsms_objective",
   "fsms_opportunity_register_item", "fsms_change_management_log_item",
   "glass_register_item", "mock_recall_drill", "mock_recall_config",
-  "real_recall", "mrm_record", "customer_complaint", "continual_improvement",
+  "real_recall", "mrm_record", "fsms_communication_log", "customer_complaint", "continual_improvement",
   "licenses_contracts", "municipality_inspection", "haccp_manual_overrides",
   // QCS / branches
   "qcs_internal_audit", "qcs_raw_material_inspection",

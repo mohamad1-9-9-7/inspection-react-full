@@ -222,6 +222,7 @@ export const ST = {
   /* ═══ Account Management tab ═══ */
   // Section / module names
   amSecAdmin:            { en: "Admin",             ar: "مدير" },
+  amSecKpi:              { en: "KPI Dashboard",     ar: "لوحة مؤشرات الأداء" },
   amSecInspector:        { en: "Inspector",         ar: "مفتّش" },
   amSecSupervisor:       { en: "Supervisor",        ar: "مشرف" },
   amSecDaily:            { en: "Daily Monitor",     ar: "المراقبة اليومية" },

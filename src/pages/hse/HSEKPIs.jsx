@@ -80,6 +80,17 @@ const T = {
   target: { ar: "المستهدف:", en: "Target:" },
 };
 
+const HSE_KPI_TYPES = {
+  incidents: "incident_reports",
+  trainings: "training_records",
+  licenses: "licenses_certs",
+  risks: "risk_register",
+  forklift: "forklift_inspections",
+  fireEquipment: "fire_equipment_inspections",
+  evacuation: "evacuation_drills",
+  capa: "capa_tracker",
+};
+
 export default function HSEKPIs() {
   const navigate = useNavigate();
   const { lang, toggle, dir, pick } = useHSELang();
@@ -108,14 +119,14 @@ export default function HSEKPIs() {
       const [
         inc, tr, lic, rsk, fl, fe, ev, cp,
       ] = await Promise.all([
-        apiList("incident_reports"),
-        apiList("training_records"),
-        apiList("licenses_certs"),
-        apiList("risk_register"),
-        apiList("forklift_inspection"),
-        apiList("fire_equipment"),
-        apiList("evacuation_drills"),
-        apiList("capa_actions"),
+        apiList(HSE_KPI_TYPES.incidents),
+        apiList(HSE_KPI_TYPES.trainings),
+        apiList(HSE_KPI_TYPES.licenses),
+        apiList(HSE_KPI_TYPES.risks),
+        apiList(HSE_KPI_TYPES.forklift),
+        apiList(HSE_KPI_TYPES.fireEquipment),
+        apiList(HSE_KPI_TYPES.evacuation),
+        apiList(HSE_KPI_TYPES.capa),
       ]);
       setIncidents(inc);
       setTrainings(tr);
@@ -209,8 +220,8 @@ export default function HSEKPIs() {
     today.setHours(0, 0, 0, 0);
     const capaOverdue = capa.filter((c) => {
       if (c.status === "closed") return false;
-      if (!c.deadline) return false;
-      return new Date(c.deadline) < today;
+      if (!c.targetDate) return false;
+      return new Date(c.targetDate) < today;
     }).length;
 
     return {

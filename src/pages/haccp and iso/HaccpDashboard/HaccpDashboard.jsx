@@ -20,6 +20,7 @@ const TYPES = {
   licenses:   "licenses_contracts",
   // 🆕 New modules (Customer Complaints, FSMS Objectives, Document Register,
   //                Food Safety Policy Acks, Real Recall, Continual Improvement, Glass Register)
+  communication:    "fsms_communication_log",
   complaint:        "customer_complaint",
   objective:        "fsms_objective",
   docMeta:          "document_metadata",
@@ -191,7 +192,7 @@ export default function HaccpDashboard() {
   const [data, setData] = useState({
     ccp: [], mockRecall: [], supplier: [], product: [], dm: [],
     mrm: [], audit: [], calib: [], licenses: [],
-    complaint: [], objective: [], docMeta: [], policyAck: [],
+    communication: [], complaint: [], objective: [], docMeta: [], policyAck: [],
     realRecall: [], improvement: [], glassReg: [],
   });
   const [loading, setLoading] = useState(true);
@@ -295,6 +296,16 @@ export default function HaccpDashboard() {
     return { total: list.length, open, criticalOpen };
   }, [data.complaint]);
 
+  const communicationStats = useMemo(() => {
+    const list = data.communication || [];
+    const open = list.filter((r) => (r?.payload?.status || "Open") !== "Closed").length;
+    const escalated = list.filter((r) => {
+      const p = r?.payload || {};
+      return p.status === "Escalated" || p.escalation === "Yes";
+    }).length;
+    return { total: list.length, open, escalated };
+  }, [data.communication]);
+
   const objectiveStats = useMemo(() => {
     const list = data.objective || [];
     const onTrack = list.filter((r) => (r?.payload?.status || "OnTrack") === "OnTrack").length;
@@ -364,6 +375,7 @@ export default function HaccpDashboard() {
   const linkage = [
     { clauses: ["5.2"],         module: "📜 " + (lang === "ar" ? "سياسة سلامة الغذاء" : "Food Safety Policy"),         count: policyAckStats.total,   status: "ok", route: "/haccp-iso/food-safety-policy" },
     { clauses: ["6.2"],         module: "🎯 " + (lang === "ar" ? "أهداف FSMS" : "FSMS Objectives"),                    count: objectiveStats.total,   status: objectiveStats.offTrack > 0 ? "bad" : (objectiveStats.atRisk > 0 ? "warn" : "ok"), route: "/haccp-iso/objectives/view" },
+    { clauses: ["7.4"],         module: "📢 " + (lang === "ar" ? "سجل ومصفوفة التواصل" : "Communication Matrix / Log"), count: communicationStats.total, status: communicationStats.escalated > 0 ? "bad" : (communicationStats.open > 0 ? "warn" : "ok"), route: "/haccp-iso/communication-log/view" },
     { clauses: ["7.4", "9.1.2"], module: "📞 " + (lang === "ar" ? "شكاوى العملاء" : "Customer Complaints"),             count: complaintStats.total,   status: complaintStats.criticalOpen > 0 ? "bad" : (complaintStats.open > 0 ? "warn" : "ok"), route: "/haccp-iso/customer-complaints/view" },
     { clauses: ["7.5"],         module: "📚 " + (lang === "ar" ? "السجل الرئيسي للوثائق" : "Document Master Register"), count: docMetaStats.total,     status: "ok", route: "/haccp-iso/document-register/view" },
     { clauses: ["8.5", "8.6"],  module: "🎯 " + (lang === "ar" ? "مراقبة CCP" : "CCP Monitoring"),                  count: ccpStats.total,         status: ccpStats.deviations > 0 ? "warn" : "ok",  route: "/haccp-iso/ccp-monitoring/view" },
@@ -486,6 +498,19 @@ export default function HaccpDashboard() {
             }
             accent={objectiveStats.offTrack > 0 ? "#b91c1c" : (objectiveStats.atRisk > 0 ? "#a16207" : "#15803d")}
             clauses={["6.2"]} onClauseClick={go}
+          />
+          <KPI
+            icon="📢" label={lang === "ar" ? "سجل ومصفوفة التواصل" : "Communication Log"}
+            value={communicationStats.total}
+            sub={
+              communicationStats.escalated > 0
+                ? (lang === "ar" ? `🔴 ${communicationStats.escalated} مصعّدة` : `🔴 ${communicationStats.escalated} escalated`)
+                : communicationStats.open > 0
+                ? (lang === "ar" ? `🟠 ${communicationStats.open} مفتوحة` : `🟠 ${communicationStats.open} open`)
+                : (lang === "ar" ? "✅ كل التواصل مغلق" : "✅ all closed")
+            }
+            accent={communicationStats.escalated > 0 ? "#b91c1c" : (communicationStats.open > 0 ? "#a16207" : "#15803d")}
+            clauses={["7.4"]} onClauseClick={go}
           />
           <KPI
             icon="📞" label={lang === "ar" ? "شكاوى العملاء" : "Customer Complaints"}

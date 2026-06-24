@@ -83,6 +83,53 @@ function sessionTitle(r) {
 function normalizeModule(s) {
   return String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
+const MODULE_MATCH_ALIASES = new Map([
+  ["personal hygiene", "Personnel Hygiene"],
+  ["personnel hygiene", "Personnel Hygiene"],
+  ["hygiene", "Personnel Hygiene"],
+  ["p hygiene", "Personnel Hygiene"],
+  ["ghp", "GHP / Cleaning & Sanitation"],
+  ["cleaning", "GHP / Cleaning & Sanitation"],
+  ["cleaning & sanitation", "GHP / Cleaning & Sanitation"],
+  ["cleaning and sanitation", "GHP / Cleaning & Sanitation"],
+  ["receiving", "Receiving"],
+  ["storage", "Storage"],
+  ["temperature", "Time & Temperature / CCP"],
+  ["time temperature", "Time & Temperature / CCP"],
+  ["time & temperature", "Time & Temperature / CCP"],
+  ["ccp", "Time & Temperature / CCP"],
+  ["haccp", "HACCP Basics"],
+  ["haccp basics", "HACCP Basics"],
+  ["allergen", "Allergen Control"],
+  ["allergen control", "Allergen Control"],
+  ["cross contamination", "Cross Contamination Control"],
+  ["cross contamination control", "Cross Contamination Control"],
+  ["chemical", "Chemical Safety (Food + OHS)"],
+  ["chemical safety", "Chemical Safety (Food + OHS)"],
+  ["pest control", "Pest Control Awareness"],
+  ["waste", "Waste Management"],
+  ["waste management", "Waste Management"],
+  ["ppe", "OHS: PPE & Safe Work"],
+  ["ohs ppe", "OHS: PPE & Safe Work"],
+  ["safe work", "OHS: PPE & Safe Work"],
+  ["knife", "OHS: Knife Safety"],
+  ["knife safety", "OHS: Knife Safety"],
+  ["manual handling", "OHS: Manual Handling"],
+  ["fire", "OHS: Fire Safety & Emergency"],
+  ["fire safety", "OHS: Fire Safety & Emergency"],
+  ["first aid", "OHS: First Aid & Incident Reporting"],
+  ["incident reporting", "OHS: First Aid & Incident Reporting"],
+  ["testo", "TESTO OIL — Oil Quality Test"],
+  ["testo oil", "TESTO OIL — Oil Quality Test"],
+  ["oil quality test", "TESTO OIL — Oil Quality Test"],
+  ["quality system", "Quality System Usage"],
+  ["quality system usage", "Quality System Usage"],
+  ["system usage", "Quality System Usage"],
+]);
+function moduleMatchKey(s) {
+  const n = normalizeModule(s).replace(/[—–-]/g, " ").replace(/[^\w\s/&()+]/g, " ").replace(/\s+/g, " ").trim();
+  return normalizeModule(MODULE_MATCH_ALIASES.get(n) || s);
+}
 function normalizeBranch(s) {
   return String(s || "").toUpperCase().replace(/\s+/g, " ").trim();
 }
@@ -147,6 +194,8 @@ const MODULES = [
   "OHS: Manual Handling",
   "OHS: Fire Safety & Emergency",
   "OHS: First Aid & Incident Reporting",
+  "TESTO OIL — Oil Quality Test",
+  "Quality System Usage",
 ];
 
 /* ✅ الأفرع الحقيقية فقط */
@@ -160,6 +209,44 @@ const BRANCHES = [
   { key: "FTR 1 - MUSHRIF food truck",  label: "FTR 1 — Mushrif",      icon: "🚚", aliases: ["FTR 1", "FTR1", "MUSHRIF", "FTR 1 MUSHRIF", "FOOD TRUCK 1"] },
   { key: "FTR 2 - Mamzar food truck",   label: "FTR 2 — Mamzar",       icon: "🚚", aliases: ["FTR 2", "FTR2", "MAMZAR", "AL MAMZAR", "FTR 2 MAMZAR", "FOOD TRUCK 2"] },
 ];
+
+function branchAliases(branch) {
+  return [branch?.key, branch?.label, ...(branch?.aliases || [])].filter(Boolean);
+}
+function matchBranchFromList(rawBranch, branches = BRANCHES) {
+  const n = normalizeBranch(rawBranch);
+  if (!n) return null;
+  for (const b of branches) {
+    for (const alias of branchAliases(b)) {
+      const a = normalizeBranch(alias);
+      if (!a) continue;
+      if (n === a) return b.key;
+      if (n.startsWith(a + " ") || n.startsWith(a + "-")) return b.key;
+      if (a.startsWith(n + " ") || a.startsWith(n + "-")) return b.key;
+      if ((n.includes(" " + a + " ") || n.includes(a)) && a.length >= 4) return b.key;
+    }
+  }
+  return null;
+}
+function dynamicBranchIcon(name) {
+  const n = normalizeBranch(name);
+  if (n.startsWith("FTR") || n.includes("FOOD TRUCK")) return "🚚";
+  if (n.includes("KITCHEN")) return "🍳";
+  if (n.startsWith("POS")) return "🥩";
+  if (n.includes("PROD")) return "🏭";
+  return "🏢";
+}
+function makeDynamicBranch(rawBranch) {
+  const label = String(rawBranch || "").trim();
+  const compact = label.replace(/\s+/g, "");
+  return {
+    key: label,
+    label,
+    icon: dynamicBranchIcon(label),
+    aliases: compact && compact !== label ? [label, compact] : [label],
+    dynamic: true,
+  };
+}
 
 const MONTHS = [
   { i: 1,  short: "Jan", full: "January"   },
@@ -325,6 +412,14 @@ export default function TrainingAnnualPlan() {
               }
             }
           }
+          for (const [branchKey, months] of Object.entries(m)) {
+            if (merged[branchKey] || !months || typeof months !== "object") continue;
+            merged[branchKey] = {};
+            for (const mo of MONTHS) {
+              const v = months?.[mo.i] ?? months?.[String(mo.i)];
+              merged[branchKey][mo.i] = Array.isArray(v) ? v.filter(Boolean) : [];
+            }
+          }
           setMatrix(merged);
           setPlanId(getId(r));
           const ts = planTimestamp(r);
@@ -426,18 +521,32 @@ export default function TrainingAnnualPlan() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
 
+  const displayBranches = useMemo(() => {
+    const byKey = new Map(BRANCHES.map((b) => [b.key, b]));
+    const addBranch = (rawBranch) => {
+      const name = String(rawBranch || "").trim();
+      if (!name) return;
+      const existingKey = matchBranchFromList(name, Array.from(byKey.values()));
+      if (existingKey) return;
+      byKey.set(name, makeDynamicBranch(name));
+    };
+
+    for (const key of Object.keys(matrix || {})) addBranch(key);
+    for (const s of sessions || []) addBranch(sessionBranch(s));
+    return Array.from(byKey.values());
+  }, [matrix, sessions]);
+
   /* ---------- Build delivery index from actual sessions ---------- *
    * Index: { [branchKey]: { [month]: { delivered: Map<moduleNorm, sessions[]>, all: sessions[] } } }
    * --------------------------------------------------------------- */
-  const branchKeys = useMemo(() => BRANCHES.map((b) => b.key), []);
+  const branchKeys = useMemo(() => displayBranches.map((b) => b.key), [displayBranches]);
   const branchKeyByLower = useMemo(() => {
     const m = new Map();
-    for (const b of BRANCHES) {
-      m.set(normalizeBranch(b.key), b.key);
-      for (const a of b.aliases || []) m.set(normalizeBranch(a), b.key);
+    for (const b of displayBranches) {
+      for (const a of branchAliases(b)) m.set(normalizeBranch(a), b.key);
     }
     return m;
-  }, []);
+  }, [displayBranches]);
 
   function matchBranchKey(rawBranch) {
     const n = normalizeBranch(rawBranch);
@@ -475,7 +584,7 @@ export default function TrainingAnnualPlan() {
       const mod = sessionModule(s);
       const cell = idx[matchedKey][month];
       cell.all.push(s);
-      const key = normalizeModule(mod);
+      const key = moduleMatchKey(mod);
       if (!cell.byModule.has(key)) cell.byModule.set(key, []);
       cell.byModule.get(key).push(s);
     }
@@ -490,9 +599,9 @@ export default function TrainingAnnualPlan() {
     const planned = matrix?.[branchKey]?.[month] || [];
     const actual = deliveryIndex?.[branchKey]?.[month] || { all: [], byModule: new Map() };
     const deliveredKeys = new Set(actual.byModule.keys());
-    const plannedKeys = new Set(planned.map(normalizeModule));
-    const delivered = planned.filter((p) => deliveredKeys.has(normalizeModule(p)));
-    const missing = planned.filter((p) => !deliveredKeys.has(normalizeModule(p)));
+    const plannedKeys = new Set(planned.map(moduleMatchKey));
+    const delivered = planned.filter((p) => deliveredKeys.has(moduleMatchKey(p)));
+    const missing = planned.filter((p) => !deliveredKeys.has(moduleMatchKey(p)));
     const extras = [];
     for (const [k, list] of actual.byModule.entries()) {
       if (!plannedKeys.has(k) && list[0]) {
@@ -534,6 +643,16 @@ export default function TrainingAnnualPlan() {
   }
 
   /* ---------- Cell ops ---------- */
+  function buildDisplayMatrix(withDefaults = false) {
+    const next = {};
+    for (const b of displayBranches) {
+      next[b.key] = {};
+      for (const mo of MONTHS) {
+        next[b.key][mo.i] = withDefaults ? [...(DEFAULT_MONTHLY_FOCUS[mo.i] || [])] : [];
+      }
+    }
+    return next;
+  }
   function setCellModules(branch, month, modules) {
     setMatrix((prev) => {
       const next = { ...prev };
@@ -550,17 +669,17 @@ export default function TrainingAnnualPlan() {
   function clearCell(branch, month) { setCellModules(branch, month, []); }
   function clearAll() {
     if (!window.confirm("Clear ALL cells in the matrix?")) return;
-    setMatrix(buildEmptyMatrix());
+    setMatrix(buildDisplayMatrix(false));
   }
   function applyDefault() {
     if (!window.confirm("Apply default monthly focus to ALL branches? This overwrites the current plan.")) return;
-    setMatrix(buildDefaultMatrix());
+    setMatrix(buildDisplayMatrix(true));
   }
   function fillEmptyWithDefault() {
     let changed = 0;
     setMatrix((prev) => {
       const next = {};
-      for (const b of BRANCHES) {
+      for (const b of displayBranches) {
         next[b.key] = {};
         for (const mo of MONTHS) {
           const cur = prev?.[b.key]?.[mo.i];
@@ -577,14 +696,14 @@ export default function TrainingAnnualPlan() {
     setInfo(`Filled ${changed} empty cell(s) with default modules — click Save to persist.`);
   }
   function copyMonthDown(month) {
-    const opts = BRANCHES.map((b, i) => `${i + 1}) ${b.label}`).join("\n");
+    const opts = displayBranches.map((b, i) => `${i + 1}) ${b.label}`).join("\n");
     const ans = window.prompt(`Copy ${MONTHS[month - 1].full} from which branch number?\n\n${opts}`, "1");
     const idx = Number(ans) - 1;
-    if (!Number.isFinite(idx) || idx < 0 || idx >= BRANCHES.length) return;
-    const src = matrix?.[BRANCHES[idx].key]?.[month] || [];
+    if (!Number.isFinite(idx) || idx < 0 || idx >= displayBranches.length) return;
+    const src = matrix?.[displayBranches[idx].key]?.[month] || [];
     setMatrix((prev) => {
       const next = { ...prev };
-      for (const b of BRANCHES) {
+      for (const b of displayBranches) {
         next[b.key] = { ...(prev[b.key] || {}) };
         next[b.key][month] = [...src];
       }
@@ -616,7 +735,7 @@ export default function TrainingAnnualPlan() {
     const now = new Date();
     const isThisYear = Number(year) === now.getFullYear();
 
-    for (const b of BRANCHES) {
+    for (const b of displayBranches) {
       for (const mo of MONTHS) {
         cellsTotal += 1;
         const planned = matrix?.[b.key]?.[mo.i] || [];
@@ -640,7 +759,7 @@ export default function TrainingAnnualPlan() {
       coverage,
       sessionsCount: sessions.length,
     };
-  }, [matrix, deliveryIndex, sessions, year]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [matrix, deliveryIndex, sessions, year, displayBranches]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ===================== Styles ===================== */
   const pageStyle = {
@@ -1057,7 +1176,7 @@ export default function TrainingAnnualPlan() {
               </tr>
             </thead>
             <tbody>
-              {BRANCHES.map((b, idx) => (
+              {displayBranches.map((b, idx) => (
                 <tr
                   key={b.key}
                   className="row-hover"
@@ -1205,7 +1324,7 @@ export default function TrainingAnnualPlan() {
                           ) : (
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 3, minWidth: 0, overflow: "hidden" }}>
                               {cell.map((m) => {
-                                const delivered = showActual && st.delivered.some((d) => normalizeModule(d) === normalizeModule(m));
+                                const delivered = showActual && st.delivered.some((d) => moduleMatchKey(d) === moduleMatchKey(m));
                                 return (
                                   <span
                                     key={m}
@@ -1213,13 +1332,13 @@ export default function TrainingAnnualPlan() {
                                       ...cellModuleChip(m),
                                       ...(showActual && delivered
                                         ? { background: "#dcfce7", color: "#14532d", borderColor: "#86efac" }
-                                        : showActual && st.missing.some((mm) => normalizeModule(mm) === normalizeModule(m)) && monthIsPastOrCurrent
+                                        : showActual && st.missing.some((mm) => moduleMatchKey(mm) === moduleMatchKey(m)) && monthIsPastOrCurrent
                                         ? { background: "#fee2e2", color: "#7f1d1d", borderColor: "#fca5a5", textDecoration: "line-through dotted" }
                                         : {}),
                                     }}
                                     title={
                                       delivered ? `${m} — delivered ✓`
-                                      : showActual && st.missing.some((mm) => normalizeModule(mm) === normalizeModule(m)) && monthIsPastOrCurrent
+                                      : showActual && st.missing.some((mm) => moduleMatchKey(mm) === moduleMatchKey(m)) && monthIsPastOrCurrent
                                       ? `${m} — planned, NOT delivered`
                                       : m
                                     }
@@ -1325,7 +1444,7 @@ export default function TrainingAnnualPlan() {
                   Edit Cell
                 </div>
                 <div style={{ fontWeight: 1000, fontSize: 16, marginTop: 2 }}>
-                  {BRANCHES.find((x) => x.key === editor.branch)?.label || editor.branch}
+                  {displayBranches.find((x) => x.key === editor.branch)?.label || editor.branch}
                 </div>
                 <div style={{ fontSize: 13, color: "#cbd5e1", fontWeight: 800, marginTop: 1 }}>
                   {MONTHS[editor.month - 1].full} · {year}
@@ -1392,7 +1511,7 @@ export default function TrainingAnnualPlan() {
                         const mod = sessionModule(s) || "(unspecified)";
                         const ttl = sessionTitle(s);
                         const d = sessionDate(s);
-                        const inPlan = st.planned.some((p) => normalizeModule(p) === normalizeModule(mod));
+                        const inPlan = st.planned.some((p) => moduleMatchKey(p) === moduleMatchKey(mod));
                         return (
                           <div key={getId(s) || i} style={{
                             border: `1px solid ${inPlan ? "#86efac" : "#c7d2fe"}`,
@@ -1443,7 +1562,7 @@ export default function TrainingAnnualPlan() {
                   const checked = (matrix?.[editor.branch]?.[editor.month] || []).includes(m);
                   const isOHS = m.startsWith("OHS:");
                   const stMod = cellStatus(editor.branch, editor.month);
-                  const wasDelivered = stMod.sessionsByModule.has(normalizeModule(m));
+                  const wasDelivered = stMod.sessionsByModule.has(moduleMatchKey(m));
                   return (
                     <label
                       key={m}
@@ -1543,7 +1662,7 @@ export default function TrainingAnnualPlan() {
 
             <div style={{ padding: "14px 18px", flex: 1, overflow: "auto" }}>
               <div style={{ fontSize: 12, color: C.sub, fontWeight: 700, marginBottom: 10 }}>
-                These trainings were saved with a branch name that doesn't match any of the 8 branches in this table.
+                These trainings were saved with a branch name that doesn't match any branch currently shown in this table.
                 Either edit the session in the Training Library, or tell me the exact name and I'll add it as an alias.
               </div>
               <div style={{ display: "grid", gap: 8 }}>

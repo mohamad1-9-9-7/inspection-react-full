@@ -627,6 +627,7 @@ export default function InternalAuditReportsView() {
         "Evidence (images count)",
         "Closed Evidence (images count)",
         "Risk Category",
+        "Risk Notes",
         "Status",
       ];
 
@@ -642,6 +643,7 @@ export default function InternalAuditReportsView() {
           ? line.closedEvidenceImgs.length
           : 0,
         line.risk || "",
+        line.riskNotes || "",
         line.status || "",
       ]);
 
@@ -1460,7 +1462,7 @@ export default function InternalAuditReportsView() {
                                     <div style={th}>
                                       Closed Evidence
                                     </div>
-                                    <div style={th}>Risk Category</div>
+                                    <div style={th}>Risk Category / Notes</div>
                                     <div style={th}>Status</div>
                                     {isEditing && <div style={th} />}
                                   </div>
@@ -1579,24 +1581,45 @@ export default function InternalAuditReportsView() {
                                           )}
                                         </div>
 
-                                        <div style={tdFixed(140)}>
+                                        <div style={tdFixed(180)}>
                                           {isEditing ? (
-                                            <select
-                                              style={selectCell}
-                                              value={row.risk || ""}
-                                              onChange={(e) =>
-                                                editRow(ridx, {
-                                                  risk: e.target.value,
-                                                })
-                                              }
-                                            >
-                                              <option value="">--</option>
-                                              <option>Low</option>
-                                              <option>Medium</option>
-                                              <option>High</option>
-                                            </select>
+                                            <>
+                                              <select
+                                                style={selectCell}
+                                                value={row.risk || ""}
+                                                onChange={(e) =>
+                                                  editRow(ridx, {
+                                                    risk: e.target.value,
+                                                  })
+                                                }
+                                              >
+                                                <option value="">--</option>
+                                                <option>Low</option>
+                                                <option>Medium</option>
+                                                <option>High</option>
+                                              </select>
+                                              <textarea
+                                                style={riskNotesArea}
+                                                value={row.riskNotes || ""}
+                                                onChange={(e) =>
+                                                  editRow(ridx, {
+                                                    riskNotes: e.target.value,
+                                                  })
+                                                }
+                                                placeholder="Risk notes..."
+                                              />
+                                            </>
                                           ) : (
-                                            row.risk || "-"
+                                            <>
+                                              <div style={{ fontWeight: 700 }}>
+                                                {row.risk || "-"}
+                                              </div>
+                                              {row.riskNotes && (
+                                                <div style={riskNotesText}>
+                                                  {row.riskNotes}
+                                                </div>
+                                              )}
+                                            </>
                                           )}
                                         </div>
 
@@ -1902,7 +1925,7 @@ function Lightbox({ src, onClose }) {
 /* ===== Styles ===== */
 const BORDER = C.border;
 const BORDER_STRONG = C.borderStrong;
-const COLS = "1.2fr 1fr 1.2fr 1.1fr 1.1fr 140px 120px";
+const COLS = "1.2fr 1fr 1.2fr 1.1fr 1.1fr 180px 120px";
 
 const asideStyle = {
   background: "#fff",
@@ -2020,6 +2043,15 @@ const cellTextArea = {
   borderRadius: 6,
   background: "#fff",
   boxSizing: "border-box",
+};
+const riskNotesArea = { ...cellTextArea, minHeight: 64, marginTop: 8 };
+const riskNotesText = {
+  marginTop: 6,
+  paddingTop: 6,
+  borderTop: `1px dashed ${BORDER}`,
+  fontSize: 12,
+  color: "#475569",
+  whiteSpace: "pre-wrap",
 };
 const selectCell = {
   width: "100%",

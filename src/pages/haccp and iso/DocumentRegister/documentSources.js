@@ -19,6 +19,7 @@ export const CATEGORY_TO_CLAUSE = {
   Suppliers: "7.1.6 External providers",
   Maintenance: "8.2(e) Equipment maintenance",
   Policy: "5.2 Food safety policy",
+  External: "7.5 Documented information / 7.1.6 External providers",
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -40,6 +41,65 @@ export const DOC_STATUS_META = {
   Obsolete:  { color: "#64748b", bg: "#f1f5f9", i18nKey: "drStatusObsolete"  },
   Draft:     { color: "#7c3aed", bg: "#ede9fe", i18nKey: "drStatusDraft"     },
 };
+
+export const EXTERNAL_DOCUMENTS = [
+  {
+    _src: "auto-external",
+    docNo: "TELT-FSMS-EXT-ML-01",
+    title: "Master List of External Documents",
+    titleAr: "القائمة الرئيسية للمستندات الخارجية",
+    type: "Other",
+    category: "External",
+    isoClause: "ISO 22000:2018 7.5 / External documented information control",
+    owner: "Food Safety Team Leader",
+    issueDate: "2026-06-24",
+    revision: "01",
+    facility: "All Sites",
+    sourceAuthority: "External authorities, standards bodies, customers, suppliers",
+    storage: "Server / FSMS Folder / External Documents",
+    distribution: "QA / HACCP Team / Relevant Department Owners",
+    retentionYears: 5,
+    status: "Active",
+    notes:
+      "Controlled index for external documents such as laws, regulations, standards, customer specifications, supplier certificates, approved external references and authority guidance.",
+  },
+  {
+    _src: "auto-external",
+    docNo: "EXT-ISO-22000-2018",
+    title: "ISO 22000:2018 Food Safety Management Systems Standard",
+    titleAr: "مواصفة ISO 22000:2018 لنظام إدارة سلامة الغذاء",
+    type: "Other",
+    category: "External",
+    isoClause: "ISO 22000:2018 full standard",
+    owner: "Food Safety Team Leader",
+    issueDate: "2018-06-01",
+    revision: "2018",
+    facility: "All Sites",
+    sourceAuthority: "ISO",
+    storage: "Controlled external standards folder",
+    distribution: "QA / HACCP Team",
+    retentionYears: 5,
+    status: "Active",
+  },
+  {
+    _src: "auto-external",
+    docNo: "EXT-CODEX-CXC-1-1969",
+    title: "Codex General Principles of Food Hygiene",
+    titleAr: "المبادئ العامة لنظافة الغذاء - كودكس",
+    type: "Other",
+    category: "External",
+    isoClause: "PRP / HACCP reference",
+    owner: "Food Safety Team Leader",
+    issueDate: "1969-01-01",
+    revision: "Latest controlled copy",
+    facility: "All Sites",
+    sourceAuthority: "Codex Alimentarius",
+    storage: "Controlled external standards folder",
+    distribution: "QA / HACCP Team",
+    retentionYears: 5,
+    status: "Active",
+  },
+];
 
 /* ─────────────────────────────────────────────────────────────
    Date helpers
@@ -176,7 +236,15 @@ export function getAutoImportedDocs() {
     sopNumber: "Manual",
   });
 
+  for (const d of EXTERNAL_DOCUMENTS) {
+    out.push({ ...d });
+  }
+
   return out;
+}
+
+export function getExternalDocumentDocs(metaRecords = []) {
+  return mergeDocs(EXTERNAL_DOCUMENTS, metaRecords).filter((d) => d.category === "External");
 }
 
 /* ─────────────────────────────────────────────────────────────

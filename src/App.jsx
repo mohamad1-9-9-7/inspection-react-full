@@ -111,7 +111,6 @@ const ENOCReturnsBrowseMenuView = lazy(() =>
   import("./pages/ENOC/ENOCReturnsBrowseMenuView")
 );
 
-const LoginKPI = lazy(() => import("./pages/LoginKPI"));
 const KPIDashboard = lazy(() => import("./pages/KPIDashboard"));
 
 // ✅ تم الإبقاء فقط على الإدخال والتقارير
@@ -253,6 +252,10 @@ const InternalCalibrationView  = lazy(() => import("./pages/haccp and iso/Intern
 const CustomerComplaintInput = lazy(() => import("./pages/haccp and iso/CustomerComplaints/CustomerComplaintInput"));
 const CustomerComplaintView  = lazy(() => import("./pages/haccp and iso/CustomerComplaints/CustomerComplaintView"));
 
+// 📢 FSMS Communication Matrix / Log (ISO 7.4)
+const CommunicationLogInput = lazy(() => import("./pages/haccp and iso/CommunicationLog/CommunicationLogInput"));
+const CommunicationLogView  = lazy(() => import("./pages/haccp and iso/CommunicationLog/CommunicationLogView"));
+
 // 🎯 FSMS Objectives (ISO 6.2)
 const ObjectivesInput = lazy(() => import("./pages/haccp and iso/Objectives/ObjectivesInput"));
 const ObjectivesView  = lazy(() => import("./pages/haccp and iso/Objectives/ObjectivesView"));
@@ -263,6 +266,7 @@ const DocumentRegisterView  = lazy(() => import("./pages/haccp and iso/DocumentR
 
 const LegalRegisterInput = lazy(() => import("./pages/haccp and iso/LegalRegister/LegalRegisterInput"));
 const LegalRegisterView  = lazy(() => import("./pages/haccp and iso/LegalRegister/LegalRegisterView"));
+const ExternalDocumentsView = lazy(() => import("./pages/haccp and iso/ExternalDocuments/ExternalDocumentsView"));
 
 // 📜 Food Safety Policy (ISO 5.2)
 const FoodSafetyPolicyView = lazy(() => import("./pages/haccp and iso/FoodSafetyPolicy/FoodSafetyPolicyView"));
@@ -1350,6 +1354,24 @@ export default function App() {
           }
         />
 
+        {/* 📢 FSMS Communication Matrix / Log (ISO 7.4) */}
+        <Route
+          path="/haccp-iso/communication-log"
+          element={
+            <ProtectedRoute>
+              <CommunicationLogInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/communication-log/view"
+          element={
+            <ProtectedRoute>
+              <CommunicationLogView />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 🎯 FSMS Objectives (ISO 6.2) */}
         <Route
           path="/haccp-iso/objectives"
@@ -1400,6 +1422,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <LegalRegisterView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/external-documents/view"
+          element={
+            <ProtectedRoute>
+              <ExternalDocumentsView />
             </ProtectedRoute>
           }
         />
@@ -1718,7 +1748,7 @@ export default function App() {
         />
 
         {/* KPI */}
-        <Route path="/kpi-login" element={<LoginKPI />} />
+        <Route path="/kpi-login" element={<Navigate to="/kpi" replace />} />
         <Route
           path="/kpi"
           element={

@@ -138,6 +138,7 @@ const BRANCHES = [
       ["mock_recall_drill",                "Mock Recall Drill"],
       ["real_recall",                      "Real Recall"],
       ["mrm_record",                       "MRM Record"],
+      ["fsms_communication_log",           "FSMS Communication Log"],
       ["customer_complaint",               "Customer Complaint"],
       ["internal_audit_record",            "Internal Audit"],
       ["continual_improvement",            "Continual Improvement"],

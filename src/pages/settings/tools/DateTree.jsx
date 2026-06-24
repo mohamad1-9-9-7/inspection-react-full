@@ -9,7 +9,7 @@ const KNOWN_TYPES = [
   "hse_incident_reports", "hse_work_permits", "hse_evacuation_drills",
   "hse_toolbox_meeting", "hse_fire_equipment", "hse_forklift_inspection",
   "car_approvals", "cars_loading_inspection", "truck_daily_cleaning",
-  "ohc_certificate", "customer_complaint", "internal_audit_record",
+  "ohc_certificate", "fsms_communication_log", "customer_complaint", "internal_audit_record",
   "ccp_monitoring_record", "calibration_record", "mock_recall_drill",
 ];
 
@@ -19,7 +19,7 @@ function extractDate(rec) {
   const p = rec?.payload || {};
   // Try common date fields in order of preference
   const candidates = [
-    p.reportDate, p.date, p.visitDate, p.inspectionDate,
+    p.communicationDate, p.reportDate, p.date, p.visitDate, p.inspectionDate,
     p.issueDate, p.expiryDate, p.createdAt,
     rec.createdAt, rec.updatedAt, p.savedAt,
   ];

@@ -57,6 +57,7 @@ const REPORT_GROUPS = {
     "calibration_record", "internal_calibration_record",
     "mock_recall_drill", "real_recall",
     "mrm_record",
+    "fsms_communication_log",
     "customer_complaint",
     "glass_register_item",
     "fsms_risk_register_item", "fsms_opportunity_register_item",

@@ -184,6 +184,11 @@ const ALL_ROLES = [
     glow: "rgba(245,158,11,.45)",
   },
   {
+    id: "kpi", label: "KPI Dashboard", route: "/kpi", icon: "📈",
+    grad: "linear-gradient(135deg,#0f766e,#14b8a6)",
+    glow: "rgba(20,184,166,.45)",
+  },
+  {
     id: "inspector", label: "Inspector", route: "/inspection", icon: "🔍",
     grad: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
     glow: "rgba(59,130,246,.45)",

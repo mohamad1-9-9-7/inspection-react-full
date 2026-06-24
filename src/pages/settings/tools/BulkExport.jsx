@@ -9,7 +9,7 @@ const KNOWN_TYPES = [
   "hse_incident_reports", "hse_work_permits", "hse_risk_register",
   "hse_licenses_certs", "hse_ppe_log",
   "car_approvals", "cars_loading_inspection", "truck_daily_cleaning",
-  "ohc_certificate", "customer_complaint", "internal_audit_record",
+  "ohc_certificate", "fsms_communication_log", "customer_complaint", "internal_audit_record",
   "ccp_monitoring_record", "calibration_record",
 ];
 

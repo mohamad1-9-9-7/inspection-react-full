@@ -176,6 +176,7 @@ export default function Inspection() {
       evidenceImgs: [],       // Cloudinary URLs (max 5)
       closedEvidenceImgs: [], // Cloudinary URLs (max 5)
       risk: "",
+      riskNotes: "",
       status: ""
     };
   }
@@ -640,6 +641,12 @@ export default function Inspection() {
                   <option value="">--</option>
                   {RISK_OPTIONS.map(x=> <option key={x.v} value={x.v}>{isAr ? x.ar : x.en}</option>)}
                 </select>
+                <textarea
+                  value={r.riskNotes || ""}
+                  onChange={e=>updateRow(idx,{riskNotes:e.target.value})}
+                  style={riskNotesArea}
+                  placeholder={tt("Risk notes...", "ملاحظات الخطر...")}
+                />
               </div>
 
               <div style={tdFixed(130)}>
@@ -807,7 +814,7 @@ function KpiTile({ icon, label, value, color, bg }) {
 /* ===== Styles ===== */
 const BORDER        = "#cbd5e1";
 const BORDER_STRONG = "#64748b";
-const COLS = "1.2fr 1fr 1.2fr 1.1fr 1.1fr 140px 130px 120px";
+const COLS = "1.2fr 1fr 1.2fr 1.1fr 1.1fr 180px 130px 120px";
 
 const pageWrap   = {
   padding:"18px",
@@ -899,6 +906,7 @@ const th = { padding:"12px 10px", borderRight:`1px solid rgba(255,255,255,.10)`,
 const td = { padding:8, borderRight:`1px solid ${BORDER}`, boxSizing:"border-box" };
 const tdFixed = (w, extra={}) => ({ padding:8, borderRight:`1px solid ${BORDER}`, width:w, boxSizing:"border-box", ...extra });
 const cellTextArea = { width:"100%", minHeight:84, resize:"vertical", padding:10, border:`1px solid ${BORDER}`, borderRadius:10, background:"#fff", boxSizing:"border-box", fontFamily:"inherit", fontSize:13 };
+const riskNotesArea = { ...cellTextArea, minHeight:58, marginTop:8, fontSize:12 };
 const selectCell   = { width:"100%", padding:"9px 10px", border:`1px solid ${BORDER}`, borderRadius:10, background:"#fff", boxSizing:"border-box", fontFamily:"inherit", fontSize:13, cursor:"pointer" };
 const iconBtn    = { width:28, height:28, border:`1px solid ${BORDER}`, background:"#fff", borderRadius:6, cursor:"pointer" };
 const iconBtnSm  = { width:30, height:30, border:`1px solid ${BORDER}`, background:"#fff", borderRadius:8, cursor:"pointer", fontSize:14, fontFamily:"inherit", display:"inline-flex", alignItems:"center", justifyContent:"center" };

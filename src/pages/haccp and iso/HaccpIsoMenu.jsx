@@ -111,6 +111,13 @@ const sections = [
     route: "/haccp-iso/legal-register/view",
   },
 
+  {
+    id: "external-documents",
+    title: "Master List of External Documents",
+    subtitle: "Controlled list of external standards, regulations, customer specifications and authority references",
+    route: "/haccp-iso/external-documents/view",
+  },
+
   // 🪟 Glass & Brittle Plastic Register (Policy 2 + ISO 8.2 PRP)
   {
     id: "glass-register",
@@ -157,6 +164,14 @@ const sections = [
     title: "📞 Customer Complaints",
     subtitle: "Complaint logging, root cause (5-Whys), CAPA & bi-yearly trend analysis",
     route: "/haccp-iso/customer-complaints/view",
+  },
+
+  // 📢 FSMS Communication Matrix / Log (ISO 7.4)
+  {
+    id: "communication-log",
+    title: "📢 FSMS Communication Matrix / Log",
+    subtitle: "ISO 7.4 — internal & external communication matrix, 13 mandatory topics, follow-up and linkage records",
+    route: "/haccp-iso/communication-log/view",
   },
 
   // 🌱 Continual Improvement Log (ISO 10.2)
@@ -592,12 +607,14 @@ const categoryById = {
   "sop-ssop": "operations",
   "document-register": "governance",
   "legal-register": "governance",
+  "external-documents": "governance",
   "glass-register": "operations",
   "mock-recall": "records",
   "real-recall": "records",
   "ccp-monitoring": "operations",
   objectives: "performance",
   "customer-complaints": "records",
+  "communication-log": "records",
   "continual-improvement": "performance",
   mrm: "performance",
   "internal-audit": "records",
