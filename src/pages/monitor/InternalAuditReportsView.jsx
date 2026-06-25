@@ -26,6 +26,58 @@ const API_BASE = String(
 const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE_KEY = "internal_multi_audit";
 
+function makePublicToken(len = 30) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = new Uint8Array(len);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(bytes);
+  else for (let i = 0; i < len; i++) bytes[i] = Math.floor(Math.random() * 256);
+  let out = "";
+  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}
+
+function getPublicOrigin() {
+  return String(
+    (typeof window !== "undefined" && window.__QCS_PUBLIC_ORIGIN__) ||
+      (typeof import.meta !== "undefined" && import.meta.env?.VITE_PUBLIC_ORIGIN) ||
+      (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
+      (typeof window !== "undefined" && window.location ? window.location.origin : "")
+  ).replace(/\/$/, "");
+}
+
+function buildEvidencePublic(publicInfo = {}) {
+  const token = publicInfo.token || makePublicToken();
+  return {
+    mode: "INSPECTION_CLOSED_EVIDENCE_ONLY",
+    token,
+    url: `${getPublicOrigin()}/inspection/evidence/${encodeURIComponent(token)}`,
+    createdAt: publicInfo.createdAt || new Date().toISOString(),
+    submittedAt: publicInfo.submittedAt || null,
+    status: publicInfo.status || "pending_evidence",
+  };
+}
+
+function getBranchEvidenceUpdates(payload = {}) {
+  return payload?.public?.submission?.closedEvidenceUpdates || payload?.closedEvidenceUpdates || [];
+}
+
+function getBranchEvidenceForRow(payload = {}, rowIndex) {
+  const updates = getBranchEvidenceUpdates(payload);
+  const found = updates.find((x) => Number(x?.rowIndex) === Number(rowIndex));
+  return Array.isArray(found?.images) ? found.images.map((img) => img?.url || img).filter(Boolean) : [];
+}
+
+function mergeBranchEvidenceIntoPayload(payload = {}) {
+  const table = Array.isArray(payload.table) ? payload.table : [];
+  const nextTable = table.map((row, idx) => {
+    const existing = Array.isArray(row?.closedEvidenceImgs) ? row.closedEvidenceImgs : [];
+    const incoming = getBranchEvidenceForRow(payload, idx);
+    const merged = Array.from(new Set([...existing, ...incoming])).slice(0, 5);
+    return merged.length === existing.length ? row : { ...(row || {}), closedEvidenceImgs: merged };
+  });
+  return { ...payload, table: nextTable };
+}
+
 /* Debug viewer */
 const SHOW_DEBUG = false;
 
@@ -434,11 +486,47 @@ export default function InternalAuditReportsView() {
 
   const handleEdit = (r) => {
     setEditId(r.id);
-    setDraft(JSON.parse(JSON.stringify(r._raw)));
+    const next = JSON.parse(JSON.stringify(r._raw));
+    next.payload = mergeBranchEvidenceIntoPayload(next.payload || {});
+    setDraft(next);
   };
   const handleCancel = () => {
     setEditId(null);
     setDraft(null);
+  };
+
+  const saveRawReport = async (raw) => {
+    const id = raw?.id || raw?._id;
+    if (!id) throw new Error("Missing id");
+    const res = await fetch(`${REPORTS_URL}/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(raw),
+    });
+    if (!res.ok) throw new Error(`PUT failed with status ${res.status}`);
+    return res;
+  };
+
+  const copyEvidenceLink = async (r) => {
+    try {
+      const raw = JSON.parse(JSON.stringify(r._raw || {}));
+      raw.payload = raw.payload || {};
+      raw.payload.public = buildEvidencePublic(raw.payload.public || {});
+      if (!r._raw?.payload?.public?.token) {
+        await saveRawReport(raw);
+        await refresh();
+      }
+      const url = raw.payload.public.url;
+      try {
+        await navigator.clipboard.writeText(url);
+        alert("Branch evidence link copied.");
+      } catch {
+        window.prompt("Copy branch evidence link:", url);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Failed to create/copy evidence link.");
+    }
   };
 
   const syncClosedKPI = (doc) => {
@@ -1154,6 +1242,10 @@ export default function InternalAuditReportsView() {
                       const header = p.header || {};
                       const footer = p.footer || {};
                       const table = Array.isArray(p.table) ? p.table : [];
+                      const branchEvidenceCount = getBranchEvidenceUpdates(p).reduce(
+                        (sum, item) => sum + (Array.isArray(item?.images) ? item.images.length : 0),
+                        0
+                      );
 
                       return (
                         <div
@@ -1262,6 +1354,11 @@ export default function InternalAuditReportsView() {
                                     Closed Items:{" "}
                                     {calcClosedPct(table)}%
                                   </div>
+                                  {branchEvidenceCount > 0 && (
+                                    <div style={{ marginTop: 6, fontWeight: 800, color: "#166534" }}>
+                                      Branch evidence: {branchEvidenceCount} image(s)
+                                    </div>
+                                  )}
                                 </>
                               ) : (
                                 <>
@@ -1397,6 +1494,15 @@ export default function InternalAuditReportsView() {
                                   style={smallBtn}
                                 >
                                   Export JSON
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyEvidenceLink(r);
+                                  }}
+                                  style={smallBtn}
+                                >
+                                  Copy Branch Link
                                 </button>
                                 <button
                                   onClick={(e) => {
@@ -1575,7 +1681,10 @@ export default function InternalAuditReportsView() {
                                             />
                                           ) : (
                                             <Thumbs
-                                              list={row.closedEvidenceImgs}
+                                              list={Array.from(new Set([
+                                                ...(Array.isArray(row.closedEvidenceImgs) ? row.closedEvidenceImgs : []),
+                                                ...getBranchEvidenceForRow(p, ridx),
+                                              ]))}
                                               onView={setViewerSrc}
                                             />
                                           )}

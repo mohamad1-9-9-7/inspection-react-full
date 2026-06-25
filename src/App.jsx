@@ -13,6 +13,7 @@ const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
 const Login = lazy(() => import("./pages/Login"));
 const NamedDashboard = lazy(() => import("./pages/NamedDashboard"));
 const Inspection = lazy(() => import("./pages/Inspection"));
+const InspectionEvidencePublic = lazy(() => import("./pages/InspectionEvidencePublic"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 
@@ -613,6 +614,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/inspection/evidence/:token" element={<InspectionEvidencePublic />} />
         <Route
           path="/admin"
           element={

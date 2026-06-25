@@ -81,6 +81,38 @@ const STATUS_OPTIONS = [
 
 const DRAFT_KEY = "inspection_draft_v1";
 
+function makePublicToken(len = 30) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = new Uint8Array(len);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(bytes);
+  else for (let i = 0; i < len; i++) bytes[i] = Math.floor(Math.random() * 256);
+  let out = "";
+  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}
+
+function getPublicOrigin() {
+  return String(
+    (typeof window !== "undefined" && window.__QCS_PUBLIC_ORIGIN__) ||
+      (typeof import.meta !== "undefined" && import.meta.env?.VITE_PUBLIC_ORIGIN) ||
+      (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
+      (typeof window !== "undefined" && window.location ? window.location.origin : "")
+  ).replace(/\/$/, "");
+}
+
+function buildEvidencePublicLink() {
+  const token = makePublicToken();
+  const path = `/inspection/evidence/${encodeURIComponent(token)}`;
+  return {
+    mode: "INSPECTION_CLOSED_EVIDENCE_ONLY",
+    token,
+    url: `${getPublicOrigin()}${path}`,
+    createdAt: new Date().toISOString(),
+    submittedAt: null,
+    status: "pending_evidence",
+  };
+}
+
 export default function Inspection() {
   const navigate = useNavigate();
 
@@ -283,6 +315,7 @@ export default function Inspection() {
         nextAudit,
         reviewedAndVerifiedBy: reviewedBy
       },
+      public: buildEvidencePublicLink(),
       kpis: { percentageClosed },
       createdAt: new Date().toISOString()
     };
