@@ -57,19 +57,160 @@ function buildEvidencePublic(publicInfo = {}) {
   };
 }
 
+function getImageUrl(img) {
+  if (!img) return "";
+  if (typeof img === "string") return img;
+  if (typeof img === "object") {
+    return (
+      img.url ||
+      img.optimized_url ||
+      img.optimizedUrl ||
+      img.secure_url ||
+      img.secureUrl ||
+      img.originalUrl ||
+      img.original_url ||
+      img.src ||
+      img.href ||
+      img.path ||
+      getImageUrl(img.image) ||
+      getImageUrl(img.file) ||
+      ""
+    );
+  }
+  return "";
+}
+
+function collectImageUrls(source) {
+  if (!source) return [];
+  if (Array.isArray(source)) return source.flatMap(collectImageUrls);
+  const direct = getImageUrl(source);
+  if (direct) return [direct];
+  if (typeof source !== "object") return [];
+  const buckets = [
+    source.images,
+    source.closedEvidenceImgs,
+    source.closedEvidenceImages,
+    source.closedEvidence,
+    source.evidenceImgs,
+    source.attachments,
+    source.fieldAttachments,
+    source.files,
+    source.urls,
+    source.imageUrls,
+    source.photoUrls,
+    source.photos,
+    source.image,
+    source.file,
+    source.attachment,
+  ];
+  return buckets.flatMap(collectImageUrls);
+}
+
+function inferRowIndex(source, fallbackKey = "") {
+  const direct =
+    source?.rowIndex ??
+    source?.rowIdx ??
+    source?.ridx ??
+    source?.index ??
+    source?.itemIndex ??
+    source?.findingIndex;
+  const n = Number(direct);
+  if (Number.isInteger(n) && n >= 0) return n;
+  const text = [
+    fallbackKey,
+    source?.key,
+    source?.name,
+    source?.field,
+    source?.fieldName,
+    source?.id,
+  ].filter(Boolean).join(" ");
+  const match = /(?:row|item|finding|closedEvidence|closedEvidenceImgs|closed|evidence)[^\d]*(\d+)/i.exec(text);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function collectLegacyEvidenceItems(container) {
+  if (!container || typeof container !== "object") return [];
+  const out = [];
+  const scan = (value, key = "") => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach((item, idx) => {
+        if (/(closedEvidenceImgs|closedEvidenceImages|closedEvidence|closed|closure|corrective)/i.test(key) && collectImageUrls(item).length) {
+          out.push({ rowIndex: idx, images: collectImageUrls(item), note: "" });
+        } else {
+          scan(item, `${key}.${idx}`);
+        }
+      });
+      return;
+    }
+    if (typeof value !== "object") return;
+    const rowIndex = inferRowIndex(value, key);
+    const images = collectImageUrls(value);
+    if (Number.isInteger(rowIndex) && images.length) {
+      out.push({ rowIndex, images, note: String(value.note || value.notes || value.comment || "") });
+    }
+    Object.entries(value).forEach(([childKey, childValue]) => {
+      const joined = key ? `${key}.${childKey}` : childKey;
+      if (/(closed|corrective|closure|evidence|attachment|image|photo|url)/i.test(joined)) scan(childValue, joined);
+    });
+  };
+  [
+    ["fieldAttachments", container.fieldAttachments],
+    ["attachments", container.attachments],
+    ["closedEvidenceAttachments", container.closedEvidenceAttachments],
+    ["closedEvidenceImgs", container.closedEvidenceImgs],
+    ["closedEvidenceImages", container.closedEvidenceImages],
+    ["closedEvidence", container.closedEvidence],
+    ["closedEvidenceUpdates", container.closedEvidenceUpdates],
+  ].forEach(([key, value]) => scan(value, key));
+  return out;
+}
+
 function getBranchEvidenceUpdates(payload = {}) {
-  return (
-    payload?.public?.submission?.closedEvidenceUpdates ||
-    payload?.fields?.closedEvidenceUpdates ||
-    payload?.closedEvidenceUpdates ||
-    []
-  );
+  const sources = [
+    payload?.public?.submission?.closedEvidenceUpdates,
+    payload?.fields?.closedEvidenceUpdates,
+    payload?.closedEvidenceUpdates,
+  ].filter(Array.isArray);
+  const legacySources = [
+    payload?.fields,
+    payload?.public?.submission,
+    payload?.public,
+    payload,
+  ].flatMap(collectLegacyEvidenceItems);
+  const byRow = new Map();
+  [...sources.flat(), ...legacySources].forEach((item) => {
+    const rowIndex = Number(item?.rowIndex);
+    if (!Number.isInteger(rowIndex)) return;
+    const existing = byRow.get(rowIndex) || { rowIndex, images: [], note: "" };
+    const normalizedImages = collectImageUrls(item);
+    byRow.set(rowIndex, {
+      rowIndex,
+      images: Array.from(new Set([...existing.images, ...normalizedImages])).filter(Boolean),
+      note: String(item?.note || existing.note || ""),
+    });
+  });
+  return Array.from(byRow.values());
 }
 
 function getBranchEvidenceForRow(payload = {}, rowIndex) {
   const updates = getBranchEvidenceUpdates(payload);
   const found = updates.find((x) => Number(x?.rowIndex) === Number(rowIndex));
-  return Array.isArray(found?.images) ? found.images.map((img) => img?.url || img).filter(Boolean) : [];
+  return Array.isArray(found?.images) ? found.images.map((img) => getImageUrl(img)).filter(Boolean) : [];
+}
+
+function getRowClosedEvidenceImages(row = {}) {
+  return collectImageUrls({
+    closedEvidenceImgs: row?.closedEvidenceImgs,
+    closedEvidenceImages: row?.closedEvidenceImages,
+    closedEvidence: row?.closedEvidence,
+    closureEvidence: row?.closureEvidence,
+    correctiveEvidence: row?.correctiveEvidence,
+    correctiveEvidenceImgs: row?.correctiveEvidenceImgs,
+    closedAttachments: row?.closedAttachments,
+  });
 }
 
 function getBranchEvidenceNoteForRow(payload = {}, rowIndex) {
@@ -86,10 +227,23 @@ function getBranchEvidenceUploadedBy(payload = {}) {
   ).trim();
 }
 
+function getBranchEvidenceStatus(payload = {}) {
+  const table = Array.isArray(payload.table) ? payload.table : [];
+  const allClosed = table.length > 0 && table.every((row) => String(row?.status || "").toLowerCase() === "closed");
+  if (allClosed) return { label: "Closed by QA", bg: "#dcfce7", color: "#166534" };
+  if (payload?.fields?.closedEvidenceSubmittedAt || payload?.public?.status === "evidence_submitted") {
+    return { label: "Evidence Submitted", bg: "#dbeafe", color: "#1d4ed8" };
+  }
+  if (payload?.fields?.closedEvidenceProgressSavedAt || payload?.public?.status === "evidence_in_progress" || getBranchEvidenceUpdates(payload).length > 0) {
+    return { label: "Evidence In Progress", bg: "#fef3c7", color: "#92400e" };
+  }
+  return { label: "Pending Evidence", bg: "#fee2e2", color: "#991b1b" };
+}
+
 function mergeBranchEvidenceIntoPayload(payload = {}) {
   const table = Array.isArray(payload.table) ? payload.table : [];
   const nextTable = table.map((row, idx) => {
-    const existing = Array.isArray(row?.closedEvidenceImgs) ? row.closedEvidenceImgs : [];
+    const existing = getRowClosedEvidenceImages(row);
     const incoming = getBranchEvidenceForRow(payload, idx);
     const merged = Array.from(new Set([...existing, ...incoming])).slice(0, 5);
     const note = getBranchEvidenceNoteForRow(payload, idx);
@@ -1274,10 +1428,11 @@ export default function InternalAuditReportsView() {
                       const footer = p.footer || {};
                       const table = Array.isArray(p.table) ? p.table : [];
                       const branchEvidenceCount = getBranchEvidenceUpdates(p).reduce(
-                        (sum, item) => sum + (Array.isArray(item?.images) ? item.images.length : 0),
+                        (sum, item) => sum + (Array.isArray(item?.images) ? item.images.map(getImageUrl).filter(Boolean).length : 0),
                         0
                       );
                       const branchEvidenceUploadedBy = getBranchEvidenceUploadedBy(p);
+                      const branchEvidenceStatus = getBranchEvidenceStatus(p);
 
                       return (
                         <div
@@ -1385,6 +1540,19 @@ export default function InternalAuditReportsView() {
                                   >
                                     Closed Items:{" "}
                                     {calcClosedPct(table)}%
+                                  </div>
+                                  <div
+                                    style={{
+                                      marginTop: 6,
+                                      display: "inline-block",
+                                      padding: "3px 9px",
+                                      borderRadius: 999,
+                                      background: branchEvidenceStatus.bg,
+                                      color: branchEvidenceStatus.color,
+                                      fontWeight: 900,
+                                    }}
+                                  >
+                                    {branchEvidenceStatus.label}
                                   </div>
                                   {branchEvidenceCount > 0 && (
                                     <div style={{ marginTop: 6, fontWeight: 800, color: "#166534" }}>
@@ -1751,7 +1919,7 @@ export default function InternalAuditReportsView() {
                                             <>
                                               <Thumbs
                                                 list={Array.from(new Set([
-                                                  ...(Array.isArray(row.closedEvidenceImgs) ? row.closedEvidenceImgs : []),
+                                                  ...getRowClosedEvidenceImages(row),
                                                   ...getBranchEvidenceForRow(p, ridx),
                                                 ]))}
                                                 onView={setViewerSrc}
@@ -1980,7 +2148,7 @@ export default function InternalAuditReportsView() {
 
 /* ===== Small components ===== */
 function Thumbs({ list, onView }) {
-  const arr = Array.isArray(list) ? list : [];
+  const arr = (Array.isArray(list) ? list : []).map(getImageUrl).filter(Boolean);
   if (!arr.length) return <span style={{ opacity: 0.6 }}>-</span>;
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -2011,12 +2179,13 @@ function Thumbs({ list, onView }) {
 }
 
 function ImageField({ list, onAdd, onRemove, onView }) {
-  const count = (list || []).length;
+  const normalizedList = (Array.isArray(list) ? list : []).map(getImageUrl).filter(Boolean);
+  const count = normalizedList.length;
   const canAdd = count < 5;
   return (
     <div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {(list || []).map((src, i) => (
+        {normalizedList.map((src, i) => (
           <div
             key={i}
             style={{

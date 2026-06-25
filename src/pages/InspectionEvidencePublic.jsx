@@ -50,24 +50,33 @@ function safe(v, fallback = "-") {
 }
 
 function submittedEvidenceMap(payload) {
-  const updates =
-    payload?.public?.submission?.closedEvidenceUpdates ||
-    payload?.fields?.closedEvidenceUpdates ||
-    payload?.closedEvidenceUpdates ||
-    [];
-  return updates.reduce((acc, item) => {
+  const updates = [
+    payload?.public?.submission?.closedEvidenceUpdates,
+    payload?.fields?.closedEvidenceUpdates,
+    payload?.closedEvidenceUpdates,
+  ].filter(Array.isArray).flat();
+  const legacyUpdates = [
+    payload?.fields,
+    payload?.public?.submission,
+    payload?.public,
+    payload,
+  ].flatMap(collectLegacyEvidenceItems);
+  return [...updates, ...legacyUpdates].reduce((acc, item) => {
     const idx = Number(item?.rowIndex);
-    if (Number.isInteger(idx)) acc[idx] = Array.isArray(item.images) ? item.images : [];
+    if (Number.isInteger(idx)) {
+      const existing = acc[idx] || [];
+      acc[idx] = Array.from(new Set([...existing, ...collectImageSrcs(item)].filter(Boolean)));
+    }
     return acc;
   }, {});
 }
 
 function submittedNoteMap(payload) {
-  const updates =
-    payload?.public?.submission?.closedEvidenceUpdates ||
-    payload?.fields?.closedEvidenceUpdates ||
-    payload?.closedEvidenceUpdates ||
-    [];
+  const updates = [
+    payload?.public?.submission?.closedEvidenceUpdates,
+    payload?.fields?.closedEvidenceUpdates,
+    payload?.closedEvidenceUpdates,
+  ].filter(Array.isArray).flat();
   return updates.reduce((acc, item) => {
     const idx = Number(item?.rowIndex);
     if (Number.isInteger(idx)) acc[idx] = String(item?.note || "");
@@ -77,6 +86,124 @@ function submittedNoteMap(payload) {
 
 function submittedByName(payload) {
   return String(payload?.fields?.closedEvidenceUploadedBy || payload?.public?.submission?.closedEvidenceUploadedBy || "").trim();
+}
+
+function imageSrc(img) {
+  if (!img) return "";
+  if (typeof img === "string") return img;
+  return (
+    img.previewUrl ||
+    img.url ||
+    img.optimized_url ||
+    img.optimizedUrl ||
+    img.secure_url ||
+    img.secureUrl ||
+    img.originalUrl ||
+    img.original_url ||
+    img.src ||
+    img.href ||
+    img.path ||
+    imageSrc(img.image) ||
+    imageSrc(img.file) ||
+    ""
+  );
+}
+
+function normalizeEvidenceImage(img) {
+  const url = imageSrc(img);
+  if (!url) return null;
+  if (typeof img === "object" && !img.previewUrl && !img.pending && !img.file) {
+    return { ...img, url: img.url || url };
+  }
+  return { url };
+}
+
+function collectImageSrcs(source) {
+  if (!source) return [];
+  if (Array.isArray(source)) return source.flatMap(collectImageSrcs);
+  const direct = imageSrc(source);
+  if (direct) return [direct];
+  if (typeof source !== "object") return [];
+  const buckets = [
+    source.images,
+    source.closedEvidenceImgs,
+    source.closedEvidenceImages,
+    source.closedEvidence,
+    source.evidenceImgs,
+    source.attachments,
+    source.fieldAttachments,
+    source.files,
+    source.urls,
+    source.imageUrls,
+    source.photoUrls,
+    source.photos,
+    source.image,
+    source.file,
+    source.attachment,
+  ];
+  return buckets.flatMap(collectImageSrcs);
+}
+
+function inferRowIndex(source, fallbackKey = "") {
+  const direct =
+    source?.rowIndex ??
+    source?.rowIdx ??
+    source?.ridx ??
+    source?.index ??
+    source?.itemIndex ??
+    source?.findingIndex;
+  const n = Number(direct);
+  if (Number.isInteger(n) && n >= 0) return n;
+  const text = [
+    fallbackKey,
+    source?.key,
+    source?.name,
+    source?.field,
+    source?.fieldName,
+    source?.id,
+  ].filter(Boolean).join(" ");
+  const match = /(?:row|item|finding|closedEvidence|closedEvidenceImgs|closed|evidence)[^\d]*(\d+)/i.exec(text);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function collectLegacyEvidenceItems(container) {
+  if (!container || typeof container !== "object") return [];
+  const out = [];
+  const scan = (value, key = "") => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach((item, idx) => {
+        if (/(closedEvidenceImgs|closedEvidenceImages|closedEvidence|closed|closure|corrective)/i.test(key) && collectImageSrcs(item).length) {
+          out.push({ rowIndex: idx, images: collectImageSrcs(item), note: "" });
+        } else {
+          scan(item, `${key}.${idx}`);
+        }
+      });
+      return;
+    }
+    if (typeof value !== "object") return;
+    const rowIndex = inferRowIndex(value, key);
+    const images = collectImageSrcs(value);
+    if (Number.isInteger(rowIndex) && images.length) {
+      out.push({ rowIndex, images, note: String(value.note || value.notes || value.comment || "") });
+    }
+    Object.entries(value).forEach(([childKey, childValue]) => {
+      const joined = key ? `${key}.${childKey}` : childKey;
+      if (/(closed|corrective|closure|evidence|attachment|image|photo|url)/i.test(joined)) scan(childValue, joined);
+    });
+  };
+  [
+    ["fieldAttachments", container.fieldAttachments],
+    ["attachments", container.attachments],
+    ["closedEvidenceAttachments", container.closedEvidenceAttachments],
+    ["closedEvidenceImgs", container.closedEvidenceImgs],
+    ["closedEvidenceImages", container.closedEvidenceImages],
+    ["closedEvidence", container.closedEvidence],
+    ["closedEvidenceUpdates", container.closedEvidenceUpdates],
+  ].forEach(([key, value]) => scan(value, key));
+  return out;
 }
 
 const S = {
@@ -113,12 +240,16 @@ const S = {
   textarea: { width: "100%", minHeight: 74, padding: 10, border: "1.5px solid #cbd5e1", borderRadius: 8, resize: "vertical", fontFamily: "inherit", fontSize: 14, lineHeight: 1.45, background: "#fff" },
   thumbs: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(150px, 100%), 1fr))", gap: 8, marginTop: 8 },
   thumb: { width: "100%", height: "clamp(90px, 9vw, 150px)", objectFit: "cover", borderRadius: 8, border: "1px solid #cbd5e1" },
+  thumbBox: { position: "relative", minWidth: 0 },
+  removeThumb: { position: "absolute", top: 6, right: 6, width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(15,23,42,.18)", background: "rgba(255,255,255,.94)", color: "#b91c1c", fontWeight: 1000, cursor: "pointer", boxShadow: "0 4px 12px rgba(15,23,42,.18)" },
+  pendingTag: { position: "absolute", left: 6, bottom: 6, padding: "3px 7px", borderRadius: 999, background: "rgba(15,118,110,.94)", color: "#fff", fontSize: 12, fontWeight: 950 },
   btn: { background: "#006b63", color: "#fff", border: "1px solid #00584f", borderRadius: 5, padding: "10px 14px", fontWeight: 950, cursor: "pointer" },
   amberBtn: { background: "#2aa8c4", color: "#fff", border: "1px solid #1789a2", borderRadius: 5, padding: "10px 14px", fontWeight: 950, cursor: "pointer" },
   ghost: { background: "#fff", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 5, padding: "10px 14px", fontWeight: 900 },
   msg: { padding: 12, borderRadius: 8, background: "#ecfeff", border: "1px solid #a5f3fc", color: "#155e75", fontWeight: 800, marginBottom: 12 },
   err: { padding: 12, borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontWeight: 800, marginBottom: 12 },
   hint: { padding: 10, borderRadius: 6, background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", fontSize: 14, fontWeight: 850, marginTop: 8 },
+  missing: { padding: 10, borderRadius: 6, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontSize: 14, fontWeight: 850, marginTop: 8 },
   actions: { position: "sticky", bottom: 0, display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 0 4px", background: "linear-gradient(180deg,rgba(244,248,247,0),#f4f8f7 36%)", flexWrap: "wrap" },
 };
 
@@ -176,48 +307,83 @@ export default function InspectionEvidencePublic() {
     return previous.length + ready.length > 0;
   });
   const completedOpenRows = openRowIndexes.filter((idx) => (previousEvidence[idx] || []).length + (uploads[idx] || []).length > 0).length;
+  const missingOpenRows = openRowIndexes.filter((idx) => (previousEvidence[idx] || []).length + (uploads[idx] || []).length === 0);
+  const missingMessage = missingOpenRows.length
+    ? `Missing Closed Evidence for item(s): ${missingOpenRows.map((idx) => idx + 1).join(", ")}. / البنود التي ما زالت تحتاج صور إغلاق: ${missingOpenRows.map((idx) => idx + 1).join(", ")}`
+    : "";
   const hasPendingChanges =
     Object.values(uploads).some((images) => Array.isArray(images) && images.length > 0) ||
-    Object.keys(notes).some((idx) => String(notes[idx] || "") !== String(submittedNoteMap(payload)[idx] || ""));
+    Object.keys(notes).some((idx) => String(notes[idx] || "") !== String(submittedNoteMap(payload)[idx] || "")) ||
+    uploadedBy.trim() !== submittedByName(payload);
 
   async function handleFiles(rowIndex, files) {
     const list = Array.from(files || []);
     if (!list.length) return;
     setErr("");
     setMsg("");
-    setSaving(true);
     try {
-      const uploaded = [];
-      for (const file of list) uploaded.push(await uploadImage(file));
-      setUploads((prev) => ({ ...prev, [rowIndex]: [...(prev[rowIndex] || []), ...uploaded] }));
-      setMsg("Images uploaded. Press Send Evidence when ready.");
+      const staged = list.map((file) => {
+        if (!file.type?.startsWith("image/")) throw new Error("Only image files are allowed.");
+        if (file.size > MAX_IMAGE_BYTES) throw new Error(`${file.name} is larger than 15 MB.`);
+        return {
+          file,
+          previewUrl: URL.createObjectURL(file),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          pending: true,
+        };
+      });
+      setUploads((prev) => ({ ...prev, [rowIndex]: [...(prev[rowIndex] || []), ...staged] }));
+      setMsg("Images selected only. They will be saved when you press Save Progress or Send Evidence. / تم اختيار الصور فقط، وسيتم حفظها عند الضغط على حفظ التقدم أو الإرسال.");
     } catch (e) {
-      setErr(e?.message || "Upload failed");
-    } finally {
-      setSaving(false);
+      setErr(e?.message || "Image selection failed");
     }
   }
 
-  function buildClosedEvidenceUpdates() {
+  function removePendingImage(rowIndex, imageIndex) {
+    setUploads((prev) => {
+      const rowImages = prev[rowIndex] || [];
+      const removed = rowImages[imageIndex];
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      const nextImages = rowImages.filter((_, idx) => idx !== imageIndex);
+      const next = { ...prev };
+      if (nextImages.length) next[rowIndex] = nextImages;
+      else delete next[rowIndex];
+      return next;
+    });
+  }
+
+  async function buildClosedEvidenceUpdates() {
     const indexes = Array.from(new Set([
       ...Object.keys(previousEvidence).map(Number),
       ...Object.keys(uploads).map(Number),
       ...Object.keys(notes).map(Number),
     ])).filter((idx) => Number.isInteger(idx));
 
-    return indexes.map((rowIndex) => {
+    const updates = [];
+    for (const rowIndex of indexes) {
       const previous = previousEvidence[rowIndex] || [];
       const ready = uploads[rowIndex] || [];
-      const images = [...previous, ...ready].map((img) => typeof img === "string" ? { url: img } : img);
-      return { rowIndex, images, note: String(notes[rowIndex] || "") };
-    }).filter((item) => item.images.length || item.note.trim());
+      const savedReady = [];
+      for (const img of ready) {
+        savedReady.push(img?.pending && img.file ? await uploadImage(img.file) : img);
+      }
+      const images = [...previous, ...savedReady].map(normalizeEvidenceImage).filter(Boolean);
+      const item = { rowIndex, images, note: String(notes[rowIndex] || "") };
+      if (item.images.length || item.note.trim()) updates.push(item);
+    }
+    return updates;
   }
 
   async function saveEvidence({ final = false } = {}) {
     const reportId = record?.id || record?._id;
-    const closedEvidenceUpdates = buildClosedEvidenceUpdates();
     const savedAt = new Date().toISOString();
-    if (!closedEvidenceUpdates.length) {
+    const hasAnythingToSave =
+      Object.values(previousEvidence).some((images) => Array.isArray(images) && images.length > 0) ||
+      Object.values(uploads).some((images) => Array.isArray(images) && images.length > 0) ||
+      Object.values(notes).some((note) => String(note || "").trim());
+    if (!hasAnythingToSave) {
       setErr("Please upload at least one Closed Evidence image or write a note before saving.");
       return;
     }
@@ -226,7 +392,7 @@ export default function InspectionEvidencePublic() {
       return;
     }
     if (final && !allOpenRowsHaveEvidence) {
-      setErr("Final submission requires Closed Evidence photos for every open item.");
+      setErr(missingMessage || "Final submission requires Closed Evidence photos for every open item.");
       return;
     }
     if (!reportId) {
@@ -237,9 +403,23 @@ export default function InspectionEvidencePublic() {
     setErr("");
     setMsg("");
     try {
+      const closedEvidenceUpdates = await buildClosedEvidenceUpdates();
       const existingFields = payload.fields && typeof payload.fields === "object" ? payload.fields : {};
+      const nextTable = Array.isArray(payload.table) ? payload.table.map((row, idx) => {
+        const update = closedEvidenceUpdates.find((item) => Number(item.rowIndex) === idx);
+        if (!update) return row;
+        const existingImgs = collectImageSrcs(row?.closedEvidenceImgs);
+        const incomingImgs = collectImageSrcs(update.images);
+        const mergedImgs = Array.from(new Set([...existingImgs, ...incomingImgs]));
+        return {
+          ...(row || {}),
+          closedEvidenceImgs: mergedImgs,
+          ...(String(update.note || "").trim() ? { closedEvidenceNote: update.note } : {}),
+        };
+      }) : payload.table;
       const nextPayload = {
         ...payload,
+        table: nextTable,
         fields: {
           ...existingFields,
           closedEvidenceUpdates,
@@ -265,6 +445,9 @@ export default function InspectionEvidencePublic() {
         }),
       });
       setRecord((prev) => ({ ...(prev || {}), payload: nextPayload }));
+      Object.values(uploads).flat().forEach((img) => {
+        if (img?.previewUrl) URL.revokeObjectURL(img.previewUrl);
+      });
       setUploads({});
       setDone(final);
       setMsg(final ? "Closed Evidence sent successfully. QA will review and close the status." : "Progress saved. You can use the same link later to add remaining photos.");
@@ -349,6 +532,7 @@ export default function InspectionEvidencePublic() {
                   Save Progress keeps current photos and notes. Final Send opens only when every open item has a Closed Evidence photo. / حفظ التقدم يحفظ الصور والملاحظات، وزر الإرسال النهائي لا يعمل إلا بعد رفع صورة إغلاق لكل بند مفتوح.
                 </div>
               )}
+              {!done && missingMessage && <div style={S.missing}>{missingMessage}</div>}
               {table.length === 0 && <div style={S.readonly}>No rows found in this report.</div>}
               {table.map((row, idx) => {
                   const ready = uploads[idx] || [];
@@ -391,8 +575,15 @@ export default function InspectionEvidencePublic() {
                     )}
                     {(ready.length > 0 || previous.length > 0) && (
                       <div style={S.thumbs}>
-                        {[...previous, ...ready].map((img, imgIdx) => (
-                          <img key={`${img.url || img}-${imgIdx}`} src={img.url || img} alt={img.name || "Closed evidence"} style={S.thumb} />
+                        {previous.map((img, imgIdx) => (
+                          <img key={`${imageSrc(img)}-${imgIdx}`} src={imageSrc(img)} alt={img.name || "Saved closed evidence"} style={S.thumb} />
+                        ))}
+                        {ready.map((img, imgIdx) => (
+                          <div key={`${imageSrc(img)}-${imgIdx}`} style={S.thumbBox}>
+                            <img src={imageSrc(img)} alt={img.name || "Selected closed evidence"} style={S.thumb} />
+                            <button type="button" style={S.removeThumb} onClick={() => removePendingImage(idx, imgIdx)} title="Remove selected image">x</button>
+                            <span style={S.pendingTag}>Selected</span>
+                          </div>
                         ))}
                       </div>
                     )}
