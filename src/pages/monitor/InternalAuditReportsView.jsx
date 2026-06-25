@@ -136,13 +136,7 @@ function collectLegacyEvidenceItems(container) {
   const scan = (value, key = "") => {
     if (!value) return;
     if (Array.isArray(value)) {
-      value.forEach((item, idx) => {
-        if (/(closedEvidenceImgs|closedEvidenceImages|closedEvidence|closed|closure|corrective)/i.test(key) && collectImageUrls(item).length) {
-          out.push({ rowIndex: idx, images: collectImageUrls(item), note: "" });
-        } else {
-          scan(item, `${key}.${idx}`);
-        }
-      });
+      value.forEach((item, idx) => scan(item, `${key}.${idx}`));
       return;
     }
     if (typeof value !== "object") return;
