@@ -58,7 +58,12 @@ function buildEvidencePublic(publicInfo = {}) {
 }
 
 function getBranchEvidenceUpdates(payload = {}) {
-  return payload?.public?.submission?.closedEvidenceUpdates || payload?.closedEvidenceUpdates || [];
+  return (
+    payload?.public?.submission?.closedEvidenceUpdates ||
+    payload?.fields?.closedEvidenceUpdates ||
+    payload?.closedEvidenceUpdates ||
+    []
+  );
 }
 
 function getBranchEvidenceForRow(payload = {}, rowIndex) {
@@ -67,15 +72,41 @@ function getBranchEvidenceForRow(payload = {}, rowIndex) {
   return Array.isArray(found?.images) ? found.images.map((img) => img?.url || img).filter(Boolean) : [];
 }
 
+function getBranchEvidenceNoteForRow(payload = {}, rowIndex) {
+  const updates = getBranchEvidenceUpdates(payload);
+  const found = updates.find((x) => Number(x?.rowIndex) === Number(rowIndex));
+  return String(found?.note || "");
+}
+
+function getBranchEvidenceUploadedBy(payload = {}) {
+  return String(
+    payload?.fields?.closedEvidenceUploadedBy ||
+      payload?.public?.submission?.closedEvidenceUploadedBy ||
+      ""
+  ).trim();
+}
+
 function mergeBranchEvidenceIntoPayload(payload = {}) {
   const table = Array.isArray(payload.table) ? payload.table : [];
   const nextTable = table.map((row, idx) => {
     const existing = Array.isArray(row?.closedEvidenceImgs) ? row.closedEvidenceImgs : [];
     const incoming = getBranchEvidenceForRow(payload, idx);
     const merged = Array.from(new Set([...existing, ...incoming])).slice(0, 5);
-    return merged.length === existing.length ? row : { ...(row || {}), closedEvidenceImgs: merged };
+    const note = getBranchEvidenceNoteForRow(payload, idx);
+    const nextRow = {
+      ...(row || {}),
+      ...(merged.length !== existing.length ? { closedEvidenceImgs: merged } : {}),
+      ...(note ? { closedEvidenceNote: note } : {}),
+    };
+    return nextRow;
   });
-  return { ...payload, table: nextTable };
+  const nextFields = payload.fields && typeof payload.fields === "object"
+    ? { ...payload.fields, closedEvidenceUpdates: [] }
+    : payload.fields;
+  const nextPublic = payload.public && typeof payload.public === "object"
+    ? { ...payload.public, submission: { ...(payload.public.submission || {}), closedEvidenceUpdates: [] } }
+    : payload.public;
+  return { ...payload, table: nextTable, fields: nextFields, public: nextPublic, closedEvidenceUpdates: [] };
 }
 
 /* Debug viewer */
@@ -1246,6 +1277,7 @@ export default function InternalAuditReportsView() {
                         (sum, item) => sum + (Array.isArray(item?.images) ? item.images.length : 0),
                         0
                       );
+                      const branchEvidenceUploadedBy = getBranchEvidenceUploadedBy(p);
 
                       return (
                         <div
@@ -1359,6 +1391,11 @@ export default function InternalAuditReportsView() {
                                       Branch evidence: {branchEvidenceCount} image(s)
                                     </div>
                                   )}
+                                  {branchEvidenceUploadedBy && (
+                                    <div style={{ marginTop: 4, fontWeight: 800, color: "#0f766e" }}>
+                                      Uploaded by: {branchEvidenceUploadedBy}
+                                    </div>
+                                  )}
                                 </>
                               ) : (
                                 <>
@@ -1453,6 +1490,25 @@ export default function InternalAuditReportsView() {
                                 />
                               ) : (
                                 r.nextAudit || "-"
+                              )}
+                            </div>
+                            <div>
+                              <b>Closed Evidence Uploaded By:</b>{" "}
+                              {isEditing ? (
+                                <input
+                                  style={inputInline}
+                                  onClick={(e) => e.stopPropagation()}
+                                  value={getBranchEvidenceUploadedBy(p)}
+                                  onChange={(e) => {
+                                    p.fields = p.fields && typeof p.fields === "object" ? p.fields : {};
+                                    p.fields.closedEvidenceUploadedBy = e.target.value;
+                                    draft.payload = p;
+                                    setDraft({ ...draft });
+                                  }}
+                                  placeholder="Supervisor name"
+                                />
+                              ) : (
+                                branchEvidenceUploadedBy || "-"
                               )}
                             </div>
                           </div>
@@ -1661,32 +1717,51 @@ export default function InternalAuditReportsView() {
 
                                         <div style={td}>
                                           {isEditing ? (
-                                            <ImageField
-                                              list={row.closedEvidenceImgs}
-                                              onAdd={(files) =>
-                                                addImages(
-                                                  ridx,
-                                                  "closedEvidenceImgs",
-                                                  files
-                                                )
-                                              }
-                                              onRemove={(i) =>
-                                                removeImage(
-                                                  ridx,
-                                                  "closedEvidenceImgs",
-                                                  i
-                                                )
-                                              }
-                                              onView={setViewerSrc}
-                                            />
+                                            <>
+                                              <ImageField
+                                                list={row.closedEvidenceImgs}
+                                                onAdd={(files) =>
+                                                  addImages(
+                                                    ridx,
+                                                    "closedEvidenceImgs",
+                                                    files
+                                                  )
+                                                }
+                                                onRemove={(i) =>
+                                                  removeImage(
+                                                    ridx,
+                                                    "closedEvidenceImgs",
+                                                    i
+                                                  )
+                                                }
+                                                onView={setViewerSrc}
+                                              />
+                                              <textarea
+                                                style={{ ...riskNotesArea, marginTop: 8, minHeight: 56 }}
+                                                value={row.closedEvidenceNote || ""}
+                                                onChange={(e) =>
+                                                  editRow(ridx, {
+                                                    closedEvidenceNote: e.target.value,
+                                                  })
+                                                }
+                                                placeholder="Branch notes..."
+                                              />
+                                            </>
                                           ) : (
-                                            <Thumbs
-                                              list={Array.from(new Set([
-                                                ...(Array.isArray(row.closedEvidenceImgs) ? row.closedEvidenceImgs : []),
-                                                ...getBranchEvidenceForRow(p, ridx),
-                                              ]))}
-                                              onView={setViewerSrc}
-                                            />
+                                            <>
+                                              <Thumbs
+                                                list={Array.from(new Set([
+                                                  ...(Array.isArray(row.closedEvidenceImgs) ? row.closedEvidenceImgs : []),
+                                                  ...getBranchEvidenceForRow(p, ridx),
+                                                ]))}
+                                                onView={setViewerSrc}
+                                              />
+                                              {(row.closedEvidenceNote || getBranchEvidenceNoteForRow(p, ridx)) && (
+                                                <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 12, fontWeight: 700, color: "#854d0e", whiteSpace: "pre-wrap" }}>
+                                                  <b>Branch Notes:</b> {row.closedEvidenceNote || getBranchEvidenceNoteForRow(p, ridx)}
+                                                </div>
+                                              )}
+                                            </>
                                           )}
                                         </div>
 
@@ -2255,12 +2330,12 @@ function KpiTile({ icon, label, value, color, bg, smaller }) {
 
 const modernHeader = {
   card: {
-    background: "linear-gradient(180deg, #ffffff, #fafbff)",
-    border: "1px solid #e2e8f0",
-    borderRadius: 18,
-    padding: "16px 18px",
+    background: "linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%)",
+    border: "1px solid rgba(255,255,255,.18)",
+    borderRadius: 6,
+    padding: "22px 28px",
     marginBottom: 14,
-    boxShadow: "0 12px 32px rgba(2,6,23,.08)",
+    boxShadow: "0 22px 50px rgba(15,23,42,.18)",
   },
   row: {
     display: "flex",
@@ -2272,28 +2347,29 @@ const modernHeader = {
   },
   brandWrap: { display: "flex", alignItems: "center", gap: 12 },
   brandIco: {
-    width: 44, height: 44, borderRadius: 12,
-    background: "linear-gradient(135deg, #2563eb, #7c3aed)", color: "#fff",
+    width: 44, height: 44, borderRadius: 6,
+    background: "rgba(255,255,255,.16)", color: "#fff",
     display: "grid", placeItems: "center", fontSize: 22,
-    boxShadow: "0 10px 22px rgba(37,99,235,.30)",
+    border: "1px solid rgba(255,255,255,.24)",
+    boxShadow: "0 10px 22px rgba(2,6,23,.18)",
   },
-  title: { margin: 0, fontSize: 20, fontWeight: 1000, color: "#0f172a", lineHeight: 1.2 },
-  subtitle: { fontSize: 12, color: "#64748b", fontWeight: 800, marginTop: 4 },
+  title: { margin: 0, fontSize: 18, fontWeight: 1000, color: "#fff", lineHeight: 1.2 },
+  subtitle: { fontSize: 12, color: "#e0f2fe", fontWeight: 800, marginTop: 4 },
   toolbar: { display: "flex", gap: 8, flexWrap: "wrap" },
   toolBtn: {
-    padding: "8px 14px", borderRadius: 12,
-    background: "linear-gradient(180deg,#fff,#f8fafc)",
-    color: "#0f172a", border: "1px solid #cbd5e1",
+    padding: "8px 14px", borderRadius: 5,
+    background: "rgba(255,255,255,.14)",
+    color: "#fff", border: "1px solid rgba(255,255,255,.25)",
     fontWeight: 900, fontSize: 12, cursor: "pointer",
     fontFamily: "inherit",
-    boxShadow: "0 4px 10px rgba(2,6,23,.04)",
+    boxShadow: "0 4px 10px rgba(2,6,23,.08)",
   },
   aiBtn: {
-    padding: "8px 14px", borderRadius: 12,
-    background: "linear-gradient(135deg,#7c3aed,#2563eb)", color: "#fff",
-    border: "none", fontWeight: 1000, fontSize: 12, cursor: "pointer",
+    padding: "8px 14px", borderRadius: 5,
+    background: "rgba(15,23,42,.28)", color: "#fff",
+    border: "1px solid rgba(255,255,255,.18)", fontWeight: 1000, fontSize: 12, cursor: "pointer",
     fontFamily: "inherit",
-    boxShadow: "0 8px 18px rgba(124,58,237,.30)",
+    boxShadow: "0 8px 18px rgba(2,6,23,.18)",
   },
   kpiRow: {
     display: "grid",

@@ -50,7 +50,11 @@ function safe(v, fallback = "-") {
 }
 
 function submittedEvidenceMap(payload) {
-  const updates = payload?.public?.submission?.closedEvidenceUpdates || payload?.closedEvidenceUpdates || [];
+  const updates =
+    payload?.public?.submission?.closedEvidenceUpdates ||
+    payload?.fields?.closedEvidenceUpdates ||
+    payload?.closedEvidenceUpdates ||
+    [];
   return updates.reduce((acc, item) => {
     const idx = Number(item?.rowIndex);
     if (Number.isInteger(idx)) acc[idx] = Array.isArray(item.images) ? item.images : [];
@@ -58,25 +62,64 @@ function submittedEvidenceMap(payload) {
   }, {});
 }
 
+function submittedNoteMap(payload) {
+  const updates =
+    payload?.public?.submission?.closedEvidenceUpdates ||
+    payload?.fields?.closedEvidenceUpdates ||
+    payload?.closedEvidenceUpdates ||
+    [];
+  return updates.reduce((acc, item) => {
+    const idx = Number(item?.rowIndex);
+    if (Number.isInteger(idx)) acc[idx] = String(item?.note || "");
+    return acc;
+  }, {});
+}
+
+function submittedByName(payload) {
+  return String(payload?.fields?.closedEvidenceUploadedBy || payload?.public?.submission?.closedEvidenceUploadedBy || "").trim();
+}
+
 const S = {
-  page: { minHeight: "100vh", padding: 18, background: "#f8fafc", color: "#0f172a", fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif' },
-  wrap: { width: "100%", margin: "0 auto" },
-  head: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 12 },
-  title: { fontSize: 24, fontWeight: 950 },
-  sub: { marginTop: 4, color: "#475569", fontSize: 13, fontWeight: 700 },
-  card: { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: 14, marginBottom: 12, boxShadow: "0 8px 20px rgba(15,23,42,0.06)" },
-  meta: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, color: "#475569", fontSize: 12, fontWeight: 800 },
-  row: { border: "1px solid #e2e8f0", borderRadius: 8, padding: 12, marginTop: 10, background: "#fff" },
-  label: { display: "block", marginTop: 8, marginBottom: 4, fontSize: 12, fontWeight: 950, color: "#334155" },
-  readonly: { padding: 10, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" },
-  badge: (bg, fg = "#fff") => ({ display: "inline-flex", padding: "3px 9px", borderRadius: 999, background: bg, color: fg, fontSize: 11, fontWeight: 950 }),
+  page: { minHeight: "100vh", padding: "clamp(10px, 1.4vw, 22px)", background: "#f4f8f7", color: "#0f172a", fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif', boxSizing: "border-box" },
+  wrap: { width: "100%", maxWidth: "none", margin: 0 },
+  head: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 18, flexWrap: "wrap", marginBottom: 16, padding: "clamp(16px, 1.8vw, 28px)", borderRadius: 6, background: "linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%)", color: "#fff", boxShadow: "0 22px 50px rgba(15,23,42,.18)" },
+  brand: { display: "flex", alignItems: "center", gap: 14, minWidth: "min(260px, 100%)", flex: "1 1 520px" },
+  logo: { width: 52, height: 52, objectFit: "contain", borderRadius: 6, background: "#fff", padding: 4 },
+  title: { fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: 0 },
+  sub: { marginTop: 5, color: "#e0f2fe", fontSize: 14, fontWeight: 800, maxWidth: 640 },
+  topActions: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", flex: "1 1 260px" },
+  account: { display: "flex", alignItems: "center", gap: 10, minHeight: 48, padding: "9px 12px", borderRadius: 6, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.22)" },
+  accountMark: { width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 5, background: "rgba(255,255,255,.18)", fontWeight: 1000 },
+  accountText: { fontSize: 14, fontWeight: 900, lineHeight: 1.25 },
+  infoBand: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, alignItems: "center", marginBottom: 12 },
+  searchLike: { minHeight: 42, display: "flex", alignItems: "center", padding: "0 14px", borderRadius: 6, background: "#fff", border: "1px solid #dbe4e2", boxShadow: "0 8px 18px rgba(15,23,42,.06)", fontSize: 14, fontWeight: 850, color: "#334155" },
+  statChip: { minHeight: 42, display: "grid", placeItems: "center", padding: "0 14px", borderRadius: 6, background: "#fff", border: "1px solid #dbe4e2", boxShadow: "0 8px 18px rgba(15,23,42,.06)", fontSize: 14, fontWeight: 950, color: "#0f172a", whiteSpace: "nowrap" },
+  card: { background: "#fff", border: "1px solid #dbe4e2", borderRadius: 6, padding: "clamp(12px, 1.2vw, 18px)", marginBottom: 12, boxShadow: "0 12px 28px rgba(15,23,42,.07)" },
+  reportCard: { background: "#fff", border: "1px solid #dbe4e2", borderRadius: 6, padding: "clamp(12px, 1.2vw, 18px)", marginBottom: 12, boxShadow: "0 12px 28px rgba(15,23,42,.07)" },
+  meta: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, color: "#475569", fontSize: 14, fontWeight: 800 },
+  sectionHead: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 4 },
+  sectionTitle: { fontSize: 16, fontWeight: 1000, color: "#0f172a" },
+  row: { border: "1px solid #dbe4e2", borderRadius: 6, padding: "clamp(12px, 1.1vw, 18px)", marginTop: 10, background: "#fff" },
+  rowTop: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 8 },
+  rowIdentity: { display: "flex", gap: 10, alignItems: "center", minWidth: 0 },
+  rowIcon: (closed) => ({ width: 38, height: 38, borderRadius: 6, display: "grid", placeItems: "center", flex: "0 0 auto", background: closed ? "linear-gradient(135deg,#16a34a,#0f766e)" : "linear-gradient(135deg,#f97316,#dc2626)", color: "#fff", fontWeight: 1000, boxShadow: closed ? "0 8px 18px rgba(22,163,74,.22)" : "0 8px 18px rgba(249,115,22,.22)" }),
+  rowTitle: { fontSize: 16, fontWeight: 1000, color: "#0f172a" },
+  rowSub: { marginTop: 2, fontSize: 14, fontWeight: 850, color: "#64748b" },
+  label: { display: "block", marginTop: 8, marginBottom: 4, fontSize: 14, fontWeight: 950, color: "#334155" },
+  readonly: { padding: 10, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap" },
+  badge: (bg, fg = "#fff") => ({ display: "inline-flex", padding: "3px 9px", borderRadius: 999, background: bg, color: fg, fontSize: 14, fontWeight: 950 }),
   file: { width: "100%", padding: 10, border: "1px dashed #94a3b8", borderRadius: 8, background: "#f8fafc" },
-  thumbs: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8, marginTop: 8 },
-  thumb: { width: "100%", height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid #cbd5e1" },
-  btn: { background: "#16a34a", color: "#fff", border: "1px solid #15803d", borderRadius: 8, padding: "10px 14px", fontWeight: 950, cursor: "pointer" },
-  ghost: { background: "#fff", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 8, padding: "10px 14px", fontWeight: 900 },
+  input: { width: "100%", minHeight: 42, padding: "8px 10px", border: "1.5px solid #cbd5e1", borderRadius: 8, fontFamily: "inherit", fontSize: 14, background: "#fff" },
+  textarea: { width: "100%", minHeight: 74, padding: 10, border: "1.5px solid #cbd5e1", borderRadius: 8, resize: "vertical", fontFamily: "inherit", fontSize: 14, lineHeight: 1.45, background: "#fff" },
+  thumbs: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(150px, 100%), 1fr))", gap: 8, marginTop: 8 },
+  thumb: { width: "100%", height: "clamp(90px, 9vw, 150px)", objectFit: "cover", borderRadius: 8, border: "1px solid #cbd5e1" },
+  btn: { background: "#006b63", color: "#fff", border: "1px solid #00584f", borderRadius: 5, padding: "10px 14px", fontWeight: 950, cursor: "pointer" },
+  amberBtn: { background: "#2aa8c4", color: "#fff", border: "1px solid #1789a2", borderRadius: 5, padding: "10px 14px", fontWeight: 950, cursor: "pointer" },
+  ghost: { background: "#fff", color: "#0f172a", border: "1px solid #cbd5e1", borderRadius: 5, padding: "10px 14px", fontWeight: 900 },
   msg: { padding: 12, borderRadius: 8, background: "#ecfeff", border: "1px solid #a5f3fc", color: "#155e75", fontWeight: 800, marginBottom: 12 },
   err: { padding: 12, borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontWeight: 800, marginBottom: 12 },
+  hint: { padding: 10, borderRadius: 6, background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", fontSize: 14, fontWeight: 850, marginTop: 8 },
+  actions: { position: "sticky", bottom: 0, display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 0 4px", background: "linear-gradient(180deg,rgba(244,248,247,0),#f4f8f7 36%)", flexWrap: "wrap" },
 };
 
 export default function InspectionEvidencePublic() {
@@ -85,6 +128,8 @@ export default function InspectionEvidencePublic() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploads, setUploads] = useState({});
+  const [notes, setNotes] = useState({});
+  const [uploadedBy, setUploadedBy] = useState("");
   const [done, setDone] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -100,7 +145,13 @@ export default function InspectionEvidencePublic() {
         if (!alive) return;
         setRecord(rep);
         const p = rep?.payload || {};
-        setDone(!!p?.public?.submittedAt || !!p?.public?.submission?.closedEvidenceSubmittedAt);
+        setNotes(submittedNoteMap(p));
+        setUploadedBy(submittedByName(p));
+        setDone(
+          !!p?.public?.submission?.closedEvidenceSubmittedAt ||
+          !!p?.fields?.closedEvidenceSubmittedAt ||
+          p?.public?.status === "evidence_submitted"
+        );
       } catch (e) {
         if (alive) setErr(e?.message || "Failed to load report");
       } finally {
@@ -115,6 +166,19 @@ export default function InspectionEvidencePublic() {
   const header = payload.header || {};
   const table = useMemo(() => Array.isArray(payload.table) ? payload.table : [], [payload.table]);
   const previousEvidence = submittedEvidenceMap(payload);
+  const openRowIndexes = useMemo(
+    () => table.map((row, idx) => ({ row, idx })).filter(({ row }) => String(row?.status || "").toLowerCase() !== "closed").map(({ idx }) => idx),
+    [table]
+  );
+  const allOpenRowsHaveEvidence = openRowIndexes.length > 0 && openRowIndexes.every((idx) => {
+    const previous = previousEvidence[idx] || [];
+    const ready = uploads[idx] || [];
+    return previous.length + ready.length > 0;
+  });
+  const completedOpenRows = openRowIndexes.filter((idx) => (previousEvidence[idx] || []).length + (uploads[idx] || []).length > 0).length;
+  const hasPendingChanges =
+    Object.values(uploads).some((images) => Array.isArray(images) && images.length > 0) ||
+    Object.keys(notes).some((idx) => String(notes[idx] || "") !== String(submittedNoteMap(payload)[idx] || ""));
 
   async function handleFiles(rowIndex, files) {
     const list = Array.from(files || []);
@@ -134,31 +198,78 @@ export default function InspectionEvidencePublic() {
     }
   }
 
-  async function submit() {
-    const closedEvidenceUpdates = Object.entries(uploads)
-      .filter(([, images]) => Array.isArray(images) && images.length)
-      .map(([rowIndex, images]) => ({ rowIndex: Number(rowIndex), images }));
+  function buildClosedEvidenceUpdates() {
+    const indexes = Array.from(new Set([
+      ...Object.keys(previousEvidence).map(Number),
+      ...Object.keys(uploads).map(Number),
+      ...Object.keys(notes).map(Number),
+    ])).filter((idx) => Number.isInteger(idx));
+
+    return indexes.map((rowIndex) => {
+      const previous = previousEvidence[rowIndex] || [];
+      const ready = uploads[rowIndex] || [];
+      const images = [...previous, ...ready].map((img) => typeof img === "string" ? { url: img } : img);
+      return { rowIndex, images, note: String(notes[rowIndex] || "") };
+    }).filter((item) => item.images.length || item.note.trim());
+  }
+
+  async function saveEvidence({ final = false } = {}) {
+    const reportId = record?.id || record?._id;
+    const closedEvidenceUpdates = buildClosedEvidenceUpdates();
+    const savedAt = new Date().toISOString();
     if (!closedEvidenceUpdates.length) {
-      setErr("Please upload at least one Closed Evidence image before sending.");
+      setErr("Please upload at least one Closed Evidence image or write a note before saving.");
+      return;
+    }
+    if (!uploadedBy.trim()) {
+      setErr("Please write the supervisor name before saving. / الرجاء كتابة اسم الشخص الذي رفع الصور قبل الحفظ.");
+      return;
+    }
+    if (final && !allOpenRowsHaveEvidence) {
+      setErr("Final submission requires Closed Evidence photos for every open item.");
+      return;
+    }
+    if (!reportId) {
+      setErr("Report ID is missing. Please refresh the link and try again.");
       return;
     }
     setSaving(true);
     setErr("");
     setMsg("");
     try {
-      await fetchJson(`${API_BASE}/api/reports/public/${encodeURIComponent(token || "")}/submit`, {
-        method: "POST",
-        body: JSON.stringify({
-          submissionType: "inspection_closed_evidence",
+      const existingFields = payload.fields && typeof payload.fields === "object" ? payload.fields : {};
+      const nextPayload = {
+        ...payload,
+        fields: {
+          ...existingFields,
           closedEvidenceUpdates,
-          closedEvidenceSubmittedAt: new Date().toISOString(),
+          closedEvidenceProgressSavedAt: savedAt,
+          closedEvidenceSubmittedAt: final ? savedAt : existingFields.closedEvidenceSubmittedAt || null,
+          closedEvidenceUploadedBy: uploadedBy.trim(),
           submittedBy: safe(header.location || record?.branch, "branch"),
+          submissionType: "inspection_closed_evidence",
+        },
+        public: {
+          ...(payload.public && typeof payload.public === "object" ? payload.public : {}),
+          token,
+          submittedAt: final ? savedAt : payload.public?.submittedAt || null,
+          status: final ? "evidence_submitted" : "evidence_in_progress",
+        },
+      };
+
+      await fetchJson(`${API_BASE}/api/reports/${encodeURIComponent(reportId)}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          type: record?.type || "internal_multi_audit",
+          payload: nextPayload,
         }),
       });
-      setDone(true);
-      setMsg("Closed Evidence sent successfully. QA will review and close the status.");
+      setRecord((prev) => ({ ...(prev || {}), payload: nextPayload }));
+      setUploads({});
+      setDone(final);
+      setMsg(final ? "Closed Evidence sent successfully. QA will review and close the status." : "Progress saved. You can use the same link later to add remaining photos.");
     } catch (e) {
-      setErr(e?.message || "Submit failed");
+      setErr(e?.message || "Save failed");
     } finally {
       setSaving(false);
     }
@@ -168,11 +279,26 @@ export default function InspectionEvidencePublic() {
     <main style={S.page}>
       <div style={S.wrap}>
         <div style={S.head}>
-          <div>
-            <div style={S.title}>Closed Evidence Upload</div>
-            <div style={S.sub}>This report is read-only. You can add corrective closure photos only.</div>
+          <div style={S.brand}>
+            <img src="/assets/almawashi-logo.jpg" alt="Al Mawashi" style={S.logo} />
+            <div>
+              <div style={S.title}>AL MAWASHI QMS</div>
+              <div style={{ fontSize: 16, fontWeight: 950, marginTop: 4 }}>Corrective Evidence Portal / بوابة الصور التصحيحية</div>
+              <div style={S.sub}>Read-only report. Add closed evidence photos and notes for every open item. / التقرير للعرض فقط، أضف صور الإغلاق والملاحظات.</div>
+            </div>
           </div>
-          <span style={S.badge(done ? "#16a34a" : "#d97706")}>{done ? "Submitted" : "Pending"}</span>
+          <div style={S.topActions}>
+            <div style={S.account}>
+              <div style={S.accountMark}>{done ? "OK" : allOpenRowsHaveEvidence ? "R" : "P"}</div>
+              <div style={S.accountText}>
+                <div>Status / الحالة</div>
+                <div>{done ? "Submitted / تم الإرسال" : allOpenRowsHaveEvidence ? "Ready / جاهز" : "Pending / قيد الانتظار"}</div>
+              </div>
+            </div>
+            <span style={S.badge(done ? "#16a34a" : allOpenRowsHaveEvidence ? "#15803d" : "#d97706")}>
+              {completedOpenRows}/{openRowIndexes.length}
+            </span>
+          </div>
         </div>
 
         {loading && <div style={S.card}>Loading...</div>}
@@ -181,8 +307,15 @@ export default function InspectionEvidencePublic() {
 
         {!loading && record && (
           <>
-            <section style={S.card}>
-              <div style={{ fontSize: 18, fontWeight: 950, marginBottom: 8 }}>
+            <div style={S.infoBand}>
+              <div style={S.searchLike}>Evidence link / رابط الصور: {safe(record.branch || header.location, "selected branch")}</div>
+              <div style={S.statChip}>{table.length} Items / بنود</div>
+              <div style={S.statChip}>{openRowIndexes.length} Open / مفتوح</div>
+              <div style={S.statChip}>{completedOpenRows} Ready / جاهز</div>
+            </div>
+
+            <section style={S.reportCard}>
+              <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 8 }}>
                 {safe(payload.title, "Internal Audit Report")}
               </div>
               <div style={S.meta}>
@@ -191,28 +324,56 @@ export default function InspectionEvidencePublic() {
                 <div>Report No: {safe(header.reportNo)}</div>
                 <div>Audited By: {safe(header.auditConductedBy)}</div>
               </div>
+              <label style={S.label}>Uploaded By / اسم الشخص الذي قام برفع الصور</label>
+              {done ? (
+                <div style={S.readonly}>{safe(uploadedBy, "-")}</div>
+              ) : (
+                <input
+                  style={S.input}
+                  value={uploadedBy}
+                  onChange={(e) => setUploadedBy(e.target.value)}
+                  placeholder="Supervisor name / اسم المشرف"
+                />
+              )}
             </section>
 
             <section style={S.card}>
-              <div style={{ fontSize: 16, fontWeight: 950 }}>Report Findings</div>
+              <div style={S.sectionHead}>
+                <div style={S.sectionTitle}>Report Findings</div>
+                <span style={S.badge(allOpenRowsHaveEvidence ? "#15803d" : "#d97706")}>
+                  {allOpenRowsHaveEvidence ? "Ready to send" : "Evidence required"}
+                </span>
+              </div>
+              {!done && (
+                <div style={S.hint}>
+                  Save Progress keeps current photos and notes. Final Send opens only when every open item has a Closed Evidence photo. / حفظ التقدم يحفظ الصور والملاحظات، وزر الإرسال النهائي لا يعمل إلا بعد رفع صورة إغلاق لكل بند مفتوح.
+                </div>
+              )}
               {table.length === 0 && <div style={S.readonly}>No rows found in this report.</div>}
               {table.map((row, idx) => {
-                const ready = uploads[idx] || [];
-                const previous = previousEvidence[idx] || [];
-                const isClosed = String(row.status || "").toLowerCase() === "closed";
+                  const ready = uploads[idx] || [];
+                  const previous = previousEvidence[idx] || [];
+                  const isClosed = String(row.status || "").toLowerCase() === "closed";
+                  const hasEvidence = previous.length + ready.length > 0;
                 return (
                   <div key={idx} style={S.row}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                      <b>Row #{idx + 1}</b>
-                      <span style={S.badge(isClosed ? "#16a34a" : "#d97706")}>{safe(row.status, "Open")}</span>
+                    <div style={S.rowTop}>
+                      <div style={S.rowIdentity}>
+                        <div style={S.rowIcon(isClosed)}>{idx + 1}</div>
+                        <div>
+                          <div style={S.rowTitle}>Finding #{idx + 1} / البند #{idx + 1}</div>
+                          <div style={S.rowSub}>{hasEvidence ? "Closed evidence attached / تم إرفاق صور الإغلاق" : isClosed ? "Already closed / مغلق مسبقاً" : "Waiting for branch evidence / بانتظار صور الفرع"}</div>
+                        </div>
+                      </div>
+                      <span style={S.badge(isClosed ? "#16a34a" : hasEvidence ? "#15803d" : "#d97706")}>{safe(row.status, "Open")}</span>
                     </div>
-                    <label style={S.label}>Non-Conformance</label>
+                    <label style={S.label}>Non-Conformance / عدم المطابقة</label>
                     <div style={S.readonly}>{safe(row.nonConformance)}</div>
-                    <label style={S.label}>Corrective / Preventive Action</label>
+                    <label style={S.label}>Corrective / Preventive Action / الإجراء التصحيحي والوقائي</label>
                     <div style={S.readonly}>{safe(row.corrective)}</div>
                     {Array.isArray(row.evidenceImgs) && row.evidenceImgs.length > 0 && (
                       <>
-                        <label style={S.label}>Original Evidence Photos</label>
+                        <label style={S.label}>Original Evidence Photos / الصور الأصلية للمشكلة</label>
                         <div style={S.thumbs}>
                           {row.evidenceImgs.map((src, imgIdx) => (
                             <a key={`${src}-${imgIdx}`} href={src} target="_blank" rel="noreferrer">
@@ -222,7 +383,7 @@ export default function InspectionEvidencePublic() {
                         </div>
                       </>
                     )}
-                    <label style={S.label}>Closed Evidence Photos</label>
+                    <label style={S.label}>Closed Evidence Photos / صور الإجراء التصحيحي</label>
                     {done ? (
                       <div style={S.readonly}>Evidence already submitted for this link.</div>
                     ) : (
@@ -235,14 +396,36 @@ export default function InspectionEvidencePublic() {
                         ))}
                       </div>
                     )}
+                    <label style={S.label}>Branch Notes / ملاحظات الفرع</label>
+                    {done || isClosed ? (
+                      <div style={S.readonly}>{safe(notes[idx], "-")}</div>
+                    ) : (
+                      <textarea
+                        style={S.textarea}
+                        value={notes[idx] || ""}
+                        onChange={(e) => setNotes((prev) => ({ ...prev, [idx]: e.target.value }))}
+                        placeholder="Write any notes about the corrective evidence... / اكتب أي ملاحظات توضيحية للمشرف"
+                      />
+                    )}
                   </div>
                 );
               })}
             </section>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 24 }}>
-              <button style={S.ghost} disabled>{Object.values(uploads).flat().length} image(s) ready</button>
-              {!done && <button style={S.btn} onClick={submit} disabled={saving}>{saving ? "Working..." : "Send Evidence"}</button>}
+            <div style={S.actions}>
+              <button style={S.ghost} disabled>
+                {completedOpenRows}/{openRowIndexes.length} open item(s) with evidence
+              </button>
+              {!done && (
+                <button style={{ ...S.amberBtn, opacity: saving || !hasPendingChanges ? 0.55 : 1 }} onClick={() => saveEvidence({ final: false })} disabled={saving || !hasPendingChanges}>
+                  {saving ? "Working..." : "Save Progress"}
+                </button>
+              )}
+              {!done && (
+                <button style={{ ...S.btn, opacity: saving || !allOpenRowsHaveEvidence ? 0.55 : 1 }} onClick={() => saveEvidence({ final: true })} disabled={saving || !allOpenRowsHaveEvidence}>
+                  {saving ? "Working..." : "Send Evidence"}
+                </button>
+              )}
             </div>
           </>
         )}
