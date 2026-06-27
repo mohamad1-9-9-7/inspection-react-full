@@ -410,14 +410,14 @@ function blankModuleMeta() {
 /* ===================== Themes ===================== */
 const THEMES = {
   light: {
-    pageBg: "linear-gradient(135deg,#eef2ff 0%,#f0f9ff 45%,#fdf4ff 100%)",
-    sidebarBg: "linear-gradient(180deg,#1e293b,#0f172a)",
+    pageBg: "linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)",
+    sidebarBg: "linear-gradient(180deg,#123a49 0%,#0f766e 70%,#0f172a 100%)",
     sidebarText: "#e2e8f0", sidebarTextActive: "#fff",
-    sidebarItemActive: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-    cardBg: "#ffffff", cardBorder: "#e5e7eb", cardShadow: "0 4px 16px rgba(15,23,42,0.06)",
+    sidebarItemActive: "linear-gradient(135deg,#0f766e,#2aa8c4)",
+    cardBg: "#ffffff", cardBorder: "#dbe4e2", cardShadow: "0 12px 30px rgba(15,23,42,.06)",
     text: "#0f172a", textMuted: "#64748b", textSubtle: "#94a3b8",
-    accent: "#6366f1", success: "#059669", danger: "#dc2626", warning: "#d97706",
-    inputBg: "#ffffff", inputBorder: "#d1d5db", sectionBg: "#f8fafc", chip: "#f1f5f9",
+    accent: "#0f766e", success: "#059669", danger: "#dc2626", warning: "#d97706",
+    inputBg: "#ffffff", inputBorder: "#dbe4e2", sectionBg: "#f4f8f7", chip: "#edf5f3",
   },
   dark: {
     pageBg: "linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%)",

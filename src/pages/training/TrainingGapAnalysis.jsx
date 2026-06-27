@@ -97,7 +97,7 @@ function buildEmployeeMap(rows) {
 
 /* ─── Theme ─── */
 const THEME = {
-  headerBg: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #312e81 100%)',
+  headerBg: 'linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%)',
 };
 
 /* ===================================================================
@@ -158,10 +158,10 @@ export default function TrainingGapAnalysis() {
 
   /* ── Render ── */
   return (
-    <div style={{ minHeight:'100vh', background:'#f8fafc', fontFamily:"'Inter','Segoe UI',system-ui,sans-serif" }}>
+    <div style={{ minHeight:'100vh', background:'linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)', fontFamily:"Cairo,Arial,sans-serif" }}>
 
       {/* ─── Header ─── */}
-      <div style={{ background: THEME.headerBg, padding:'20px 24px 22px' }}>
+      <div style={{ background: THEME.headerBg, padding:'20px 24px 22px', boxShadow:'0 22px 50px rgba(15,23,42,.16)' }}>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:6 }}>
           <button
             onClick={() => nav('/training/sessions')}

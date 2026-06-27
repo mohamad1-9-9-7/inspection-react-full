@@ -336,26 +336,26 @@ export default function TrainingQuizLink() {
 
   const page = {
     minHeight: "100vh",
-    background: "linear-gradient(135deg, #0ea5e9 0%, #7c3aed 55%, #111827 100%)",
-    padding: 16,
-    fontFamily: "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+    background: "linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)",
+    padding: "14px clamp(12px,2.4vw,28px) 22px",
+    fontFamily: "Cairo, Arial, sans-serif",
   };
 
   const card = {
     maxWidth: 900,
     margin: "0 auto",
-    background: "rgba(255,255,255,0.95)",
-    border: "1px solid rgba(255,255,255,0.65)",
-    borderRadius: 18,
-    boxShadow: "0 20px 60px rgba(15,23,42,0.18)",
+    background: "#fff",
+    border: "1px solid #dbe4e2",
+    borderRadius: 6,
+    boxShadow: "0 12px 30px rgba(15,23,42,.06)",
     padding: 16,
   };
 
   const btn = (active) => ({
     padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid #e5e7eb",
-    background: active ? "#111827" : "#fff",
+    borderRadius: 5,
+    border: "1px solid #dbe4e2",
+    background: active ? "#0f766e" : "#fff",
     color: active ? "#fff" : "#111827",
     cursor: "pointer",
     fontWeight: 900,
@@ -364,11 +364,11 @@ export default function TrainingQuizLink() {
   const inputStyle = {
     width: "100%",
     padding: 12,
-    borderRadius: 14,
-    border: "1px solid #e5e7eb",
+    borderRadius: 6,
+    border: "1px solid #dbe4e2",
     outline: "none",
     fontWeight: 900,
-    background: "linear-gradient(180deg,#ffffff,#f8fafc)",
+    background: "#fff",
   };
 
   // ✅ tiny translator for quiz UI

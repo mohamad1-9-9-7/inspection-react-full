@@ -1,6 +1,8 @@
 // src/pages/training/TrainingSessionCreate.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FiArrowLeft, FiBookOpen, FiSave } from "react-icons/fi";
+import logo from "../../assets/almawashi-logo.jpg";
 import TrainingReferenceModal, { MODULE_DETAILS_BI } from './TrainingReferenceModal';
 
 /* ===================== API base ===================== */
@@ -48,7 +50,7 @@ async function createReport(body) {
 
 /* ===================== الخارق 1 Design Tokens ===================== */
 const C = {
-  navy:      "#4338ca",
+  navy:      "#0f172a",
   navyLight: "#6366f1",
   accent:    "#4f46e5",
   accentBg:  "#eef2ff",
@@ -67,20 +69,41 @@ const C = {
   border:    "#eceef3",
 };
 
+const pageShell = {
+  minHeight: "100vh",
+  width: "100%",
+  background: "linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)",
+  padding: "14px clamp(12px,2.4vw,28px) 22px",
+  boxSizing: "border-box",
+  fontFamily: "Cairo, Arial, sans-serif",
+  color: "#0f172a",
+  direction: "ltr",
+};
+
+const glassPanel = {
+  background: "#fff",
+  border: "1px solid #dbe4e2",
+  borderRadius: 6,
+  boxShadow: "0 12px 30px rgba(15,23,42,.06)",
+};
+
 const actionBtn = (bg, disabled = false) => ({
   background: disabled ? C.gray200 : bg,
   color: disabled ? C.gray400 : C.white,
-  border: "none", borderRadius: 10, padding: "9px 16px",
-  fontWeight: 700, fontSize: 13, letterSpacing: "0.01em",
+  border: "none", borderRadius: 5, padding: "9px 12px",
+  fontWeight: 900, fontSize: 13, letterSpacing: 0,
   cursor: disabled ? "not-allowed" : "pointer",
   whiteSpace: "nowrap",
-  boxShadow: disabled ? "none" : "0 1px 2px rgba(16,24,40,.06)",
+  boxShadow: disabled ? "none" : "0 10px 20px rgba(15,23,42,.14)",
   transition: "transform .12s ease, filter .12s ease",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
 });
 
 const inputSt = {
   width: "100%", boxSizing: "border-box",
-  border: `1px solid #dfe3ea`, borderRadius: 10,
+  border: `1px solid #dbe4e2`, borderRadius: 6,
   padding: "10px 14px", fontSize: 14, color: C.gray700,
   background: C.white, outline: "none",
   fontFamily: "inherit",
@@ -168,6 +191,72 @@ export const LEVELS = [
 /* ===================== Training Details Templates ===================== */
 function getDetailsTemplate(moduleName) {
   return MODULE_DETAILS_BI[moduleName] || MODULE_DETAILS_BI.__DEFAULT__;
+}
+
+function normalizeReports(data) {
+  if (Array.isArray(data)) return data;
+  const candidates = [data?.items, data?.reports, data?.data, data?.result, data?.rows];
+  for (const c of candidates) if (Array.isArray(c)) return c;
+  return [];
+}
+
+function uniqueStrings(list) {
+  const seen = new Set();
+  const out = [];
+  for (const item of Array.isArray(list) ? list : []) {
+    const value = String(item || "").trim();
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+function questionsToBilingualPack(questions) {
+  const arr = Array.isArray(questions) ? questions : [];
+  return {
+    en: arr.map((q) => ({
+      q: q?.q_en || q?.q || "",
+      options: Array.isArray(q?.options_en) ? q.options_en : (Array.isArray(q?.options) ? q.options : []),
+      correct: Number.isFinite(Number(q?.correct)) ? Number(q.correct) : 0,
+      difficulty: q?.difficulty || "",
+    })),
+    ar: arr.map((q) => ({
+      q: q?.q_ar || q?.q || "",
+      options: Array.isArray(q?.options_ar) ? q.options_ar : (Array.isArray(q?.options) ? q.options : []),
+      correct: Number.isFinite(Number(q?.correct)) ? Number(q.correct) : 0,
+      difficulty: q?.difficulty || "",
+    })),
+  };
+}
+
+async function loadAdminTrainingConfig() {
+  const [configData, questionsData, refsData] = await Promise.all([
+    listReportsByType("training_config").catch(() => []),
+    listReportsByType("training_questions").catch(() => []),
+    listReportsByType("training_reference").catch(() => []),
+  ]);
+
+  const config = normalizeReports(configData)[0]?.payload || {};
+  const modules = uniqueStrings([...(config.modules || []), ...MODULES]);
+
+  const questionBank = {};
+  normalizeReports(questionsData).forEach((rec) => {
+    const mod = String(rec?.payload?.module || "").trim();
+    const qs = rec?.payload?.questions;
+    if (mod && Array.isArray(qs) && qs.length) questionBank[mod] = questionsToBilingualPack(qs);
+  });
+
+  const detailsByModule = {};
+  normalizeReports(refsData).forEach((rec) => {
+    const payload = rec?.payload || {};
+    const mod = String(payload.module || "").trim();
+    const content = String(payload.content || "").trim();
+    if (mod && content && !detailsByModule[mod]) detailsByModule[mod] = content;
+  });
+
+  return { modules: modules.length ? modules : MODULES, questionBank, detailsByModule };
 }
 
 /* ===================== Question Bank ===================== */
@@ -378,8 +467,8 @@ export const QUESTION_BANK = {
   },
 };
 
-function pickQuestionsForModule(moduleName) {
-  const pack = QUESTION_BANK[moduleName];
+function pickQuestionsForModule(moduleName, liveBank = {}) {
+  const pack = liveBank[moduleName] || QUESTION_BANK[moduleName];
   if (pack?.en?.length) return pack;
   return {
     en: [{ q: "This training module requires QA-defined questions.", options: ["OK"], correct: 0 }],
@@ -391,31 +480,35 @@ function pickQuestionsForModule(moduleName) {
 
 /* ===================== Sub-components (defined OUTSIDE to preserve focus) ===================== */
 const InfoCard = ({ label, value, children }) => (
-  <div style={{ background:"#eff6ff", border:"1px solid #dbeafe", borderRadius:10, padding:"10px 14px" }}>
-    <div style={{ fontSize:10, color:"#3b82f6", fontWeight:700, letterSpacing:.5, textTransform:"uppercase", marginBottom:4 }}>{label}</div>
+  <div style={{ background:"#fff", border:"1px solid #dbe4e2", borderRadius:6, padding:"12px 14px", boxShadow:"0 12px 30px rgba(15,23,42,.06)" }}>
+    <div style={{ fontSize:10, color:"#0f766e", fontWeight:1000, letterSpacing:.5, textTransform:"uppercase", marginBottom:5 }}>{label}</div>
     {children || <div style={{ fontSize:13, fontWeight:700, color:"#1e3a5f" }}>{value || "—"}</div>}
   </div>
 );
 
 const Section = ({ children, style = {} }) => (
-  <div style={{ background:"#ffffff", border:"1px solid #dbeafe", borderRadius:10, padding:18, ...style }}>
+  <div style={{ background:"#ffffff", border:"1px solid #dbe4e2", borderRadius:6, padding:18, boxShadow:"0 12px 30px rgba(15,23,42,.06)", ...style }}>
     {children}
   </div>
 );
 
 const SectionTitle = ({ children }) => (
-  <div style={{ fontWeight:800, fontSize:15, color:"#1e3a5f", marginBottom:12, letterSpacing:.2 }}>{children}</div>
+  <div style={{ fontWeight:1000, fontSize:15, color:"#0f172a", marginBottom:12, letterSpacing:.2 }}>{children}</div>
 );
 
 const FieldLabel = ({ children }) => (
-  <div style={{ fontSize:12, fontWeight:700, color:"#1e3a5f", marginBottom:5, letterSpacing:.3, textTransform:"uppercase" }}>{children}</div>
+  <div style={{ fontSize:12, fontWeight:900, color:"#334155", marginBottom:5, letterSpacing:.3, textTransform:"uppercase" }}>{children}</div>
 );
 
 /* ===================== Component ===================== */
 export default function TrainingSessionCreate() {
   const nav = useNavigate();
   const [saving, setSaving] = useState(false);
+  const [loadingConfig, setLoadingConfig] = useState(false);
   const [showReference, setShowReference] = useState(false);
+  const [availableModules, setAvailableModules] = useState(MODULES);
+  const [liveQuestionBank, setLiveQuestionBank] = useState({});
+  const [liveDetailsByModule, setLiveDetailsByModule] = useState({});
 
   const DEFAULT_MODULE = "Personnel Hygiene";
 
@@ -429,7 +522,34 @@ export default function TrainingSessionCreate() {
   const [objectives, setObjectives]           = useState(DEFAULT_OBJECTIVES);
   const [conductedBy, setConductedBy]         = useState("");
   const [verifiedBy, setVerifiedBy]           = useState("");
-  const [level, setLevel]                     = useState(""); // ✅ "" = All Levels; else Easy/Medium/Hard
+  const [level, setLevel]                     = useState(""); // all levels unless a difficulty is selected
+
+  useEffect(() => {
+    let alive = true;
+    setLoadingConfig(true);
+    loadAdminTrainingConfig()
+      .then(({ modules, questionBank, detailsByModule }) => {
+        if (!alive) return;
+        setAvailableModules(modules);
+        setLiveQuestionBank(questionBank);
+        setLiveDetailsByModule(detailsByModule);
+
+        if (!modules.some((m) => m === moduleName)) {
+          const next = modules[0] || DEFAULT_MODULE;
+          setModuleName(next);
+          if (!detailsTouched) setDetails(detailsByModule[next] || getDetailsTemplate(next));
+        } else if (!detailsTouched && detailsByModule[moduleName]) {
+          setDetails(detailsByModule[moduleName]);
+        }
+      })
+      .catch((e) => console.warn("Failed to load training admin config", e))
+      .finally(() => {
+        if (alive) setLoadingConfig(false);
+      });
+    return () => { alive = false; };
+    // Load once; do not overwrite user edits after the initial sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const effectiveModule = useCustomModule && customModule.trim()
     ? customModule.trim()
@@ -444,8 +564,8 @@ export default function TrainingSessionCreate() {
     [effectiveModule, branch, date]
   );
   const questionsPack = useMemo(
-    () => pickQuestionsForModule(effectiveModule),
-    [effectiveModule]
+    () => pickQuestionsForModule(effectiveModule, liveQuestionBank),
+    [effectiveModule, liveQuestionBank]
   );
 
   const validate = () => {
@@ -494,27 +614,31 @@ export default function TrainingSessionCreate() {
   };
 
   return (
-    <div style={{ background:"radial-gradient(1000px 480px at 100% -8%, #eef2ff 0%, transparent 55%), #f6f7fb", minHeight:"100vh", fontFamily:"'Inter','Segoe UI',system-ui,sans-serif", color:C.gray700, direction:"ltr", padding:"28px 20px 36px", boxSizing:"border-box" }}>
+    <div style={pageShell}>
 
       {/* ── Top bar ── */}
-      <div style={{ maxWidth:1080, margin:"0 auto", background:`linear-gradient(135deg,${C.navy} 0%,${C.accent} 50%,${C.navyLight} 100%)`, padding:"20px 24px", display:"flex", alignItems:"center", gap:12, borderRadius:"18px 18px 0 0", flexWrap:"wrap", boxShadow:"0 12px 30px rgba(79,70,229,.26)" }}>
-        <div>
-          <div style={{ color:C.white, fontWeight:800, fontSize:18, letterSpacing:"-0.01em" }}>➕ Create Training Session</div>
-          <div style={{ color:"rgba(255,255,255,.85)", fontSize:12.5, marginTop:4, fontWeight:500 }}>
-            Select module → fill details → save. Question bank attached automatically.
+      <div style={{ maxWidth:1180, margin:"0 auto", padding:"18px clamp(16px,2vw,26px)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:18, flexWrap:"wrap", borderRadius:6, background:"linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%)", color:"#fff", boxShadow:"0 22px 50px rgba(15,23,42,.16)" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:14, minWidth:0 }}>
+          <img src={logo} alt="Al Mawashi" style={{ width:58, height:58, objectFit:"cover", borderRadius:6, border:"1px solid rgba(255,255,255,.5)", background:"#fff", flex:"0 0 auto" }} />
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:12, lineHeight:1.3, fontWeight:900, opacity:.85, marginBottom:4 }}>AL MAWASHI QMS</div>
+            <h1 style={{ margin:0, color:"#fff", fontWeight:1000, fontSize:16, lineHeight:1.35 }}>Create Training Session</h1>
+            <div style={{ color:"rgba(255,255,255,.88)", fontSize:14, marginTop:4, fontWeight:700, lineHeight:1.45 }}>
+              {loadingConfig ? "Loading Training Admin modules..." : "Training modules, question banks, references, and session records"}
+            </div>
           </div>
         </div>
-        <div style={{ marginLeft:"auto", display:"flex", gap:7, flexWrap:"wrap", alignItems:"center" }}>
-          <button onClick={() => nav("/training")} style={actionBtn(C.gray700)}>↩ Back</button>
-          <button onClick={() => setShowReference(true)} style={actionBtn("#7c3aed")}>📖 مرجع التدريب</button>
+        <div style={{ marginLeft:"auto", display:"flex", gap:8, flexWrap:"wrap", alignItems:"stretch", justifyContent:"flex-end" }}>
+          <button onClick={() => nav("/training")} style={{ ...actionBtn("rgba(255,255,255,.12)"), border:"1px solid rgba(255,255,255,.26)", boxShadow:"none" }}><FiArrowLeft size={15} /> Back</button>
+          <button onClick={() => setShowReference(true)} style={{ ...actionBtn("rgba(255,255,255,.12)"), border:"1px solid rgba(255,255,255,.26)", boxShadow:"none" }}><FiBookOpen size={15} /> Reference</button>
           <button onClick={onSave} disabled={saving} style={actionBtn(saving ? C.gray400 : "#10b981", saving)}>
-            {saving ? "Saving…" : "💾 Save Session"}
+            <><FiSave size={15} /> {saving ? "Saving..." : "Save Session"}</>
           </button>
         </div>
       </div>
 
       {/* ── Body ── */}
-      <div style={{ maxWidth:1080, margin:"0 auto", border:`1px solid ${C.border}`, borderTop:"none", borderRadius:"0 0 18px 18px", background:C.white, padding:24, display:"grid", gap:16, boxShadow:"0 14px 34px rgba(16,24,40,.07)" }}>
+      <div style={{ ...glassPanel, maxWidth:1180, margin:"14px auto 0", padding:18, display:"grid", gap:16 }}>
 
         {/* ── KPI cards ── */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))", gap:10 }}>
@@ -552,11 +676,11 @@ export default function TrainingSessionCreate() {
                   onChange={e => {
                     const next = e.target.value;
                     setModuleName(next);
-                    if (!detailsTouched) setDetails(getDetailsTemplate(next));
+                    if (!detailsTouched) setDetails(liveDetailsByModule[next] || getDetailsTemplate(next));
                   }}
                   style={inputSt}
                 >
-                  {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
+                  {availableModules.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               ) : (
                 <input
@@ -573,7 +697,7 @@ export default function TrainingSessionCreate() {
                 onClick={() => {
                   setUseCustomModule(p => !p);
                   setCustomModule("");
-                  if (!detailsTouched) setDetails(getDetailsTemplate(moduleName));
+                  if (!detailsTouched) setDetails(liveDetailsByModule[moduleName] || getDetailsTemplate(moduleName));
                 }}
                 style={{
                   marginTop:8, padding:"7px 12px", borderRadius:8,
@@ -632,7 +756,7 @@ export default function TrainingSessionCreate() {
               </span>
               <button
                 onClick={() => {
-                  setDetails(getDetailsTemplate(useCustomModule ? "__DEFAULT__" : moduleName));
+                  setDetails(useCustomModule ? getDetailsTemplate("__DEFAULT__") : (liveDetailsByModule[moduleName] || getDetailsTemplate(moduleName)));
                   setDetailsTouched(false);
                 }}
                 style={{ padding:"6px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.gray50, color:C.navy, fontWeight:700, fontSize:12, cursor:"pointer" }}
@@ -689,9 +813,9 @@ export default function TrainingSessionCreate() {
             <button onClick={() => nav("/training")} style={{ ...actionBtn(C.gray700), background:"transparent", color:C.gray700, border:`1px solid ${C.gray200}` }}>
               Cancel
             </button>
-            <button onClick={() => setShowReference(true)} style={actionBtn("#7c3aed")}>📖 مرجع التدريب</button>
+            <button onClick={() => setShowReference(true)} style={{ ...actionBtn("#0f766e"), boxShadow:"0 10px 20px rgba(15,118,110,.18)" }}><FiBookOpen size={15} /> Reference</button>
             <button onClick={onSave} disabled={saving} style={actionBtn(saving ? C.gray400 : "#10b981", saving)}>
-              {saving ? "Saving…" : "💾 Save Session"}
+              <><FiSave size={15} /> {saving ? "Saving..." : "Save Session"}</>
             </button>
           </div>
         </div>
@@ -707,7 +831,7 @@ export default function TrainingSessionCreate() {
         details={details}
         objectives={objectives}
         conductedBy={conductedBy}
-        quickCheckQuestions={(QUESTION_BANK[effectiveModule]?.en || []).slice(0, 5).map(q => ({
+        quickCheckQuestions={((liveQuestionBank[effectiveModule] || QUESTION_BANK[effectiveModule])?.en || []).slice(0, 5).map(q => ({
           q_en: q.q, options_en: q.options, correct: q.correct,
         }))}
       />

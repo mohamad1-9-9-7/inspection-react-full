@@ -38,7 +38,7 @@ export default function TrainingCertVerify() {
   if (!certNo && !name) {
     return (
       <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center',
-        background:'#f8fafc', fontFamily:"'Inter','Segoe UI',system-ui,sans-serif" }}>
+        background:'linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)', fontFamily:"Cairo,Arial,sans-serif" }}>
         <div style={{ textAlign:'center', color:'#94a3b8' }}>
           <div style={{ fontSize:48, marginBottom:12 }}>🔗</div>
           <div style={{ fontSize:16 }}>Invalid or missing certificate link.</div>
@@ -50,19 +50,19 @@ export default function TrainingCertVerify() {
   return (
     <div style={{
       minHeight:'100vh',
-      background:'linear-gradient(135deg,#0f172a 0%,#1e3a8a 40%,#312e81 100%)',
+      background:'linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)',
       display:'flex', alignItems:'center', justifyContent:'center',
       padding:'24px 16px',
-      fontFamily:"'Inter','Segoe UI',system-ui,sans-serif",
+      fontFamily:"Cairo,Arial,sans-serif",
     }}>
       <div style={{
-        background:'#fff', borderRadius:20, maxWidth:640, width:'100%',
-        boxShadow:'0 40px 100px rgba(0,0,0,.5)', overflow:'hidden',
+        background:'#fff', borderRadius:6, maxWidth:640, width:'100%',
+        boxShadow:'0 12px 30px rgba(15,23,42,.12)', overflow:'hidden',
       }}>
 
         {/* Header stripe */}
         <div style={{
-          background:'linear-gradient(90deg,#1e3a8a,#4338ca)',
+          background:'linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%)',
           padding:'18px 28px',
           display:'flex', alignItems:'center', justifyContent:'space-between',
         }}>

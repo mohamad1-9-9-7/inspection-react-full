@@ -274,6 +274,67 @@ function rowStats(r) {
   return { total, pass, rate };
 }
 
+function sessionParticipants(r, overrideList) {
+  const list = Array.isArray(overrideList) ? overrideList : r?.payload?.participants;
+  return Array.isArray(list) ? list : [];
+}
+
+function namedParticipants(r, overrideList) {
+  return sessionParticipants(r, overrideList).filter((p) => String(p?.name || "").trim());
+}
+
+function missingEmployeeIdParticipants(r, overrideList) {
+  return namedParticipants(r, overrideList).filter((p) => !String(p?.employeeId || "").trim());
+}
+
+function hasAnyQuestionSource(r, bank) {
+  if (hasQuiz(r?.payload)) return true;
+  const moduleName = safeModule(r);
+  const live = lookupBank(bank, moduleName);
+  if (live.length) return true;
+  return lookupBank(QUIZ_BANK, moduleName).length > 0;
+}
+
+function dataQualityIssuesForSession(r, bank, participantOverride) {
+  if (!r) return [];
+  const issues = [];
+  const valid = namedParticipants(r, participantOverride);
+  const missingIds = missingEmployeeIdParticipants(r, participantOverride);
+
+  if (!hasAnyQuestionSource(r, bank)) {
+    issues.push({
+      key: "no_questions",
+      label: "No Questions",
+      detail: "Training has no question bank.",
+      tone: "red",
+    });
+  }
+  if (!valid.length) {
+    issues.push({
+      key: "no_participants",
+      label: "No Participants",
+      detail: "Session has no participants.",
+      tone: "amber",
+    });
+  }
+  if (missingIds.length) {
+    issues.push({
+      key: "missing_employee_id",
+      label: `${missingIds.length} Missing ID`,
+      detail: "Participant(s) missing Employee ID.",
+      tone: "amber",
+    });
+  }
+  return issues;
+}
+
+function issueTone(issue) {
+  if (issue?.tone === "red") {
+    return { bg: "#fef2f2", bd: "#fecaca", fg: "#991b1b" };
+  }
+  return { bg: "#fffbeb", bd: "#fde68a", fg: "#92400e" };
+}
+
 /* ===================== Constants ===================== */
 const TOTAL_MODULES = 16; // total required training modules per branch
 
@@ -655,6 +716,7 @@ export default function TrainingSessionsList() {
   const [refOpen, setRefOpen] = useState(false);
   const [certData, setCertData] = useState(null);
   const [complianceOpen, setComplianceOpen] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(true);
   const [quizOpen, setQuizOpen] = useState(false);
   const [quizIndex, setQuizIndex] = useState(-1);
   const [quizAnswers, setQuizAnswers] = useState({});
@@ -725,6 +787,11 @@ export default function TrainingSessionsList() {
 
     return { total, pass, fail, avg, rate };
   }, [selected, participants]);
+
+  const selectedQualityIssues = useMemo(
+    () => dataQualityIssuesForSession(selected, liveQuizBank, participants),
+    [selected, liveQuizBank, participants]
+  );
 
   const load = async () => {
     setLoading(true);
@@ -859,6 +926,23 @@ export default function TrainingSessionsList() {
     }
     return arr;
   }, [filtered, sortBy]);
+
+  const dataQuality = useMemo(() => {
+    const sessions = rows
+      .map((r) => ({
+        row: r,
+        issues: dataQualityIssuesForSession(r, liveQuizBank),
+        missingIds: missingEmployeeIdParticipants(r).length,
+      }))
+      .filter((x) => x.issues.length);
+
+    return {
+      sessions,
+      noQuestions: sessions.filter((x) => x.issues.some((i) => i.key === "no_questions")).length,
+      noParticipants: sessions.filter((x) => x.issues.some((i) => i.key === "no_participants")).length,
+      missingEmployeeId: sessions.reduce((sum, x) => sum + x.missingIds, 0),
+    };
+  }, [rows, liveQuizBank]);
 
   const activeFilterCount =
     (q.trim() ? 1 : 0) +
@@ -1348,61 +1432,58 @@ export default function TrainingSessionsList() {
     textStrong: "#1e293b",
     muted: "#64748b",
     muted2: "#94a3b8",
-    line: "#e8eef6",
-    lineStrong: "#dbe3ef",
+    line: "#e5ecea",
+    lineStrong: "#dbe4e2",
     glassBg: "#ffffff",
-    glassBd: "#e6ecf5",
-    glassShadow: "0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.05)",
+    glassBd: "#dbe4e2",
+    glassShadow: "0 12px 30px rgba(15,23,42,.06)",
     surfaceBg: "#ffffff",
-    surfaceBd: "#e6ecf5",
-    surfaceShadow: "0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.05)",
+    surfaceBd: "#dbe4e2",
+    surfaceShadow: "0 12px 30px rgba(15,23,42,.06)",
     inputBg: "#ffffff",
-    inputBd: "#d6e0ef",
+    inputBd: "#dbe4e2",
     inputPh: "#94a3b8",
     // ✅ Soft Sky header — light gradient, slate-blue text (no harsh dark)
-    headerBg: "linear-gradient(135deg,#eef4ff 0%,#e3edff 50%,#dbeafe 100%)",
-    headerText: "#1e3a8a",
-    headerSub: "#496397",
-    headerLine: "#cdddf5",
+    headerBg: "linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%)",
+    headerText: "#ffffff",
+    headerSub: "rgba(255,255,255,.88)",
+    headerLine: "rgba(255,255,255,.25)",
     // ✅ soft sub-surface tints (replace old dark navy fills)
-    subBg: "#f6f9ff",
-    subBg2: "#eef4fc",
-    tableHeadBg: "#eef4fc",
+    subBg: "#f4f8f7",
+    subBg2: "#edf5f3",
+    tableHeadBg: "#edf5f3",
   };
 
   const pageStyle = {
     minHeight: "100vh",
     width: "100%",
-    padding: "22px 20px 32px",
-    background:
-      "radial-gradient(1100px 520px at 100% -8%, #eaf1ff 0%, transparent 55%)," +
-      "radial-gradient(900px 480px at -5% 0%, #eef6ff 0%, transparent 50%)," +
-      "#f7f9fc",
+    padding: "14px clamp(12px,2.4vw,28px) 22px",
+    background: "linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)",
     boxSizing: "border-box",
     direction: "ltr",
-    fontFamily: "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
+    fontFamily: "Cairo, Arial, sans-serif",
     color: THEME.text,
   };
 
   const glass = {
     background: THEME.glassBg,
     border: `1px solid ${THEME.glassBd}`,
-    borderRadius: 16,
+    borderRadius: 6,
     boxShadow: THEME.glassShadow,
   };
 
   const surface = {
     background: THEME.surfaceBg,
     border: `1px solid ${THEME.surfaceBd}`,
-    borderRadius: 16,
+    borderRadius: 6,
     boxShadow: THEME.surfaceShadow,
   };
 
   const btn = (kind = "light") => {
     const m = {
-      dark:    { bg: "#3b82f6",                fg: "#fff",    bd: "transparent" },
-      light:   { bg: "#ffffff",                fg: "#1e3a8a", bd: "#cdddf5" },
-      blue:    { bg: "#3b82f6",                fg: "#fff",    bd: "transparent" },
+      dark:    { bg: "#0f766e",                fg: "#fff",    bd: "transparent" },
+      light:   { bg: "#ffffff",                fg: "#0f766e", bd: "#dbe4e2" },
+      blue:    { bg: "#0f766e",                fg: "#fff",    bd: "transparent" },
       red:     { bg: "#fef2f2",                fg: "#b91c1c", bd: "#fecaca" },
       violet:  { bg: "#f5f3ff",                fg: "#6d28d9", bd: "#e9d5ff" },
       green:   { bg: "#16a34a",                fg: "#fff",    bd: "transparent" },
@@ -1626,6 +1707,14 @@ export default function TrainingSessionsList() {
         <KPICardLocal icon="📚" label="Modules Covered" value={kpis.modules} sub="distinct modules" accent="#7c3aed" />
         <KPICardLocal icon="📝" label="With Quiz" value={`${kpis.withQuiz}/${kpis.total || 0}`} sub={kpis.total ? `${Math.round((kpis.withQuiz / kpis.total) * 100)}% have quiz` : "—"} accent="#15803d" />
         <KPICardLocal
+          icon="!"
+          label="Data Quality"
+          value={dataQuality.sessions.length}
+          sub={`${dataQuality.noQuestions} no questions · ${dataQuality.noParticipants} no participants · ${dataQuality.missingEmployeeId} missing IDs`}
+          accent="#0f766e"
+          bad={dataQuality.sessions.length > 0}
+        />
+        <KPICardLocal
           icon={kpis.daysSinceLast !== null && kpis.daysSinceLast > 60 ? "⏳" : "📅"}
           label="Since Last Training"
           value={kpis.daysSinceLast !== null ? `${kpis.daysSinceLast} days` : "—"}
@@ -1634,6 +1723,91 @@ export default function TrainingSessionsList() {
           bad={kpis.daysSinceLast !== null && kpis.daysSinceLast > 90}
         />
       </div>
+
+      {dataQuality.sessions.length > 0 && (
+        <div style={{
+          background:'#fff', border:'1.5px solid #fde68a', borderRadius:6,
+          marginBottom:14, overflow:'hidden',
+          boxShadow:'0 8px 20px rgba(146,64,14,.08)',
+        }}>
+          <button
+            onClick={() => setQualityOpen(p => !p)}
+            style={{
+              width:'100%', background:'transparent', border:'none', cursor:'pointer',
+              padding:'12px 18px', display:'flex', alignItems:'center', gap:10,
+              justifyContent:'space-between',
+            }}
+          >
+            <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+              <span style={{ fontSize:16, fontWeight:1000, color:'#92400e' }}>!</span>
+              <span style={{ fontWeight:900, color:'#111827', fontSize:13 }}>Smart Data Quality Checks</span>
+              <span style={{
+                fontSize:10, fontWeight:800, color:'#92400e',
+                background:'#fffbeb', borderRadius:999, padding:'2px 8px',
+                border:'1px solid #fde68a',
+              }}>{dataQuality.sessions.length} session(s)</span>
+            </div>
+            <span style={{ color:'#92400e', fontSize:12, transition:'transform .2s',
+              display:'inline-block', transform: qualityOpen ? 'rotate(180deg)' : 'none' }}>▼</span>
+          </button>
+
+          {qualityOpen && (
+            <div style={{ padding:'4px 14px 16px', borderTop:'1px solid #fef3c7' }}>
+              <div style={{
+                display:'grid',
+                gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))',
+                gap:10,
+              }}>
+                {dataQuality.sessions.slice(0, 12).map(({ row, issues }) => (
+                  <button
+                    key={getId(row) || `${safeTitle(row)}-${safeDate(row)}`}
+                    onClick={() => openSession(row)}
+                    style={{
+                      textAlign:'left',
+                      background:'#fffdf7',
+                      border:'1px solid #fde68a',
+                      borderRadius:6,
+                      padding:'10px 12px',
+                      cursor:'pointer',
+                      color:'#111827',
+                    }}
+                  >
+                    <div style={{ fontWeight:900, fontSize:12, marginBottom:6 }}>
+                      {safeTitle(row) || "Training Session"}
+                    </div>
+                    <div style={{ color:'#64748b', fontSize:11, fontWeight:800, marginBottom:8 }}>
+                      {safeDate(row) || "-"} · {safeBranch(row) || "-"} · {getModuleName(safeModule(row), globalLang) || "-"}
+                    </div>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                      {issues.map((issue) => {
+                        const tone = issueTone(issue);
+                        return (
+                          <span key={issue.key} title={issue.detail} style={{
+                            fontSize:10,
+                            fontWeight:900,
+                            color:tone.fg,
+                            background:tone.bg,
+                            border:`1px solid ${tone.bd}`,
+                            borderRadius:999,
+                            padding:'3px 8px',
+                          }}>
+                            {issue.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {dataQuality.sessions.length > 12 && (
+                <div style={{ marginTop:10, color:'#92400e', fontSize:11, fontWeight:800 }}>
+                  Showing first 12 of {dataQuality.sessions.length} flagged sessions. Use filters to narrow the list.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ========= BRANCH COMPLIANCE ========= */}
       <div style={{
@@ -2208,6 +2382,29 @@ export default function TrainingSessionsList() {
                             🏢 {safeBranch(r) || "—"}
                           </span>
                         </div>
+                        {(() => {
+                          const issues = dataQualityIssuesForSession(r, liveQuizBank);
+                          return issues.length ? (
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                              {issues.map((issue) => {
+                                const tone = issueTone(issue);
+                                return (
+                                  <span key={issue.key} title={issue.detail} style={{
+                                    fontSize: 10,
+                                    fontWeight: 900,
+                                    color: tone.fg,
+                                    background: tone.bg,
+                                    padding: "3px 8px",
+                                    borderRadius: 999,
+                                    border: `1px solid ${tone.bd}`,
+                                  }}>
+                                    {issue.label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : null;
+                        })()}
                       </button>
                     );
                   })
@@ -2649,6 +2846,40 @@ export default function TrainingSessionsList() {
                   <KPI label="FAIL" value={sessionStats.fail} tone="red" />
                   <KPI label="Pass Rate" value={`${sessionStats.rate}%`} tone="blue" />
                   <KPI label="Average Score" value={`${sessionStats.avg}%`} tone="gray" />
+                </div>
+              )}
+
+              {selectedQualityIssues.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 6,
+                    border: "1.5px solid #fde68a",
+                    background: "#fffdf7",
+                  }}
+                >
+                  <div style={{ fontWeight: 1000, color: "#111827", fontSize: 13, marginBottom: 8 }}>
+                    Smart Data Quality Checks
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {selectedQualityIssues.map((issue) => {
+                      const tone = issueTone(issue);
+                      return (
+                        <span key={issue.key} title={issue.detail} style={{
+                          fontSize: 11,
+                          fontWeight: 900,
+                          color: tone.fg,
+                          background: tone.bg,
+                          border: `1px solid ${tone.bd}`,
+                          borderRadius: 999,
+                          padding: "4px 10px",
+                        }}>
+                          {issue.label}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

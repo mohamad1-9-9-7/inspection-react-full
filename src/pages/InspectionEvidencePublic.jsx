@@ -118,6 +118,42 @@ function normalizeEvidenceImage(img) {
   return { url };
 }
 
+function mergeClosedEvidenceIntoPayload(payload, closedEvidenceUpdates, token, final, uploadedBy, savedAt) {
+  const existingFields = payload.fields && typeof payload.fields === "object" ? payload.fields : {};
+  const nextTable = Array.isArray(payload.table) ? payload.table.map((row, idx) => {
+    const update = closedEvidenceUpdates.find((item) => Number(item.rowIndex) === idx);
+    if (!update) return row;
+    const existingImgs = collectImageSrcs(row?.closedEvidenceImgs);
+    const incomingImgs = collectImageSrcs(update.images);
+    const mergedImgs = Array.from(new Set([...existingImgs, ...incomingImgs]));
+    return {
+      ...(row || {}),
+      closedEvidenceImgs: mergedImgs,
+      ...(String(update.note || "").trim() ? { closedEvidenceNote: update.note } : {}),
+    };
+  }) : payload.table;
+
+  return {
+    ...payload,
+    table: nextTable,
+    fields: {
+      ...existingFields,
+      closedEvidenceUpdates,
+      closedEvidenceProgressSavedAt: savedAt,
+      closedEvidenceSubmittedAt: final ? savedAt : existingFields.closedEvidenceSubmittedAt || null,
+      closedEvidenceUploadedBy: uploadedBy.trim(),
+      submittedBy: safe(payload?.header?.location, "branch"),
+      submissionType: "inspection_closed_evidence",
+    },
+    public: {
+      ...(payload.public && typeof payload.public === "object" ? payload.public : {}),
+      token,
+      submittedAt: final ? savedAt : payload.public?.submittedAt || null,
+      status: final ? "evidence_submitted" : "evidence_in_progress",
+    },
+  };
+}
+
 function collectImageSrcs(source) {
   if (!source) return [];
   if (Array.isArray(source)) return source.flatMap(collectImageSrcs);
@@ -398,46 +434,16 @@ export default function InspectionEvidencePublic() {
     setMsg("");
     try {
       const closedEvidenceUpdates = await buildClosedEvidenceUpdates();
-      const existingFields = payload.fields && typeof payload.fields === "object" ? payload.fields : {};
-      const nextTable = Array.isArray(payload.table) ? payload.table.map((row, idx) => {
-        const update = closedEvidenceUpdates.find((item) => Number(item.rowIndex) === idx);
-        if (!update) return row;
-        const existingImgs = collectImageSrcs(row?.closedEvidenceImgs);
-        const incomingImgs = collectImageSrcs(update.images);
-        const mergedImgs = Array.from(new Set([...existingImgs, ...incomingImgs]));
-        return {
-          ...(row || {}),
-          closedEvidenceImgs: mergedImgs,
-          ...(String(update.note || "").trim() ? { closedEvidenceNote: update.note } : {}),
-        };
-      }) : payload.table;
-      const nextPayload = {
-        ...payload,
-        table: nextTable,
-        fields: {
-          ...existingFields,
-          closedEvidenceUpdates,
-          closedEvidenceProgressSavedAt: savedAt,
-          closedEvidenceSubmittedAt: final ? savedAt : existingFields.closedEvidenceSubmittedAt || null,
-          closedEvidenceUploadedBy: uploadedBy.trim(),
-          submittedBy: safe(header.location || record?.branch, "branch"),
-          submissionType: "inspection_closed_evidence",
-        },
-        public: {
-          ...(payload.public && typeof payload.public === "object" ? payload.public : {}),
-          token,
-          submittedAt: final ? savedAt : payload.public?.submittedAt || null,
-          status: final ? "evidence_submitted" : "evidence_in_progress",
-        },
-      };
-
-      await fetchJson(`${API_BASE}/api/reports/${encodeURIComponent(reportId)}`, {
-        method: "PUT",
+      const data = await fetchJson(`${API_BASE}/api/reports/public/${encodeURIComponent(token || "")}/submit`, {
+        method: "POST",
         body: JSON.stringify({
-          type: record?.type || "internal_multi_audit",
-          payload: nextPayload,
+          submissionType: "inspection_closed_evidence",
+          closedEvidenceUpdates,
+          uploadedBy: uploadedBy.trim(),
+          final,
         }),
       });
+      const nextPayload = data?.report?.payload || mergeClosedEvidenceIntoPayload(payload, closedEvidenceUpdates, token, final, uploadedBy, savedAt);
       setRecord((prev) => ({ ...(prev || {}), payload: nextPayload }));
       Object.values(uploads).flat().forEach((img) => {
         if (img?.previewUrl) URL.revokeObjectURL(img.previewUrl);

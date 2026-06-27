@@ -766,13 +766,11 @@ export default function TrainingAnnualPlan() {
     minHeight: "100vh",
     width: "100vw",
     maxWidth: "100%",
-    background: `radial-gradient(1200px 600px at 10% -10%, rgba(99,102,241,0.35), transparent 60%),
-                 radial-gradient(900px 500px at 110% 10%, rgba(14,165,233,0.30), transparent 60%),
-                 linear-gradient(180deg, ${C.bg0} 0%, ${C.bg2} 100%)`,
-    padding: "12px 14px 18px",
+    background: "linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)",
+    padding: "14px clamp(12px,2.4vw,28px) 22px",
     boxSizing: "border-box",
     direction: "ltr",
-    fontFamily: "Cairo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+    fontFamily: "Cairo, Arial, sans-serif",
     display: "flex",
     flexDirection: "column",
     gap: 12,
@@ -859,11 +857,11 @@ export default function TrainingAnnualPlan() {
 
       {/* ========= TOP BAR (full width) ========= */}
       <div className="no-print" style={{
-        background: "rgba(255,255,255,0.06)",
-        border: "1px solid rgba(255,255,255,0.10)",
-        borderRadius: 16,
+        background: "linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%)",
+        border: "1px solid rgba(255,255,255,.25)",
+        borderRadius: 6,
         padding: "10px 14px",
-        backdropFilter: "blur(10px)",
+        boxShadow: "0 22px 50px rgba(15,23,42,.16)",
         display: "flex",
         gap: 12,
         alignItems: "center",
@@ -993,18 +991,18 @@ export default function TrainingAnnualPlan() {
       {/* Save location hint */}
       <div className="no-print" style={{
         fontSize: 10,
-        color: "rgba(255,255,255,0.55)",
+        color: "#000",
         fontWeight: 700,
         marginTop: -6,
         paddingLeft: 4,
       }}>
         💾 Saved online to{" "}
-        <code style={{ background: "rgba(255,255,255,0.10)", padding: "1px 6px", borderRadius: 4, color: "#a5b4fc" }}>
+        <code style={{ background: "rgba(255,255,255,0.75)", padding: "1px 6px", borderRadius: 4, color: "#000" }}>
           {API_BASE}/api/reports
         </code>{" "}
-        · type <code style={{ color: "#fcd34d" }}>{TYPE}</code>{" "}
-        · year <code style={{ color: "#86efac" }}>{year}</code>
-        {planId && <> · plan id <code style={{ color: "#fda4af" }}>{String(planId).slice(0, 8)}…</code></>}
+        · type <code style={{ color: "#000" }}>{TYPE}</code>{" "}
+        · year <code style={{ color: "#000" }}>{year}</code>
+        {planId && <> · plan id <code style={{ color: "#000" }}>{String(planId).slice(0, 8)}…</code></>}
       </div>
 
       {/* ========= Status line ========= */}
@@ -1737,7 +1735,7 @@ export default function TrainingAnnualPlan() {
 function statusPill(bg, color) {
   return {
     background: bg,
-    color,
+    color: "#000",
     border: `1px solid ${color}40`,
     padding: "6px 12px",
     borderRadius: 999,
