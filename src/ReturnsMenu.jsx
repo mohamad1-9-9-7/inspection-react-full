@@ -1,150 +1,443 @@
 // src/ReturnsMenu.jsx
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  FiArchive,
+  FiArrowRight,
+  FiBarChart2,
+  FiClipboard,
+  FiFilePlus,
+  FiFolder,
+  FiHome,
+  FiPackage,
+  FiSearch,
+  FiTruck,
+  FiUser,
+} from "react-icons/fi";
+import logo from "./assets/almawashi-logo.jpg";
 import { isItemAllowed } from "./utils/sectionItems";
 
-/* Each button is tagged with a perm id matching SECTION_ITEMS.returns.items[].id */
+/* Design name: Al Mawashi Teal Dashboard */
 const browseLinks = [
-  { perm: "returns.browse",         to: "/returns/browse",            icon: "📂", label: "Browse Returns Reports" },
-  { perm: "meatDaily.browse",       to: "/meat-daily/browse",         icon: "📊", label: "Browse Meat Daily" },
-  { perm: "customerReturns.browse", to: "/returns-customers/browse",  icon: "👤", label: "Browse Customer Returns" },
-  { perm: "inventory.browse",       to: "/inventory-daily/browse",    icon: "📦", label: "Browse Inventory Daily" },
-  { perm: "enoc.browse",            to: "/enoc-returns/browse-view",  icon: "⛽", label: "Browse ENOC Returns" },
+  { perm: "returns.browse", to: "/returns/browse", Icon: FiFolder, label: "Browse Returns Reports", ar: "عرض تقارير المرتجعات", tone: "teal" },
+  { perm: "meatDaily.browse", to: "/meat-daily/browse", Icon: FiBarChart2, label: "Browse Meat Daily", ar: "عرض حالة اللحوم اليومية", tone: "blue" },
+  { perm: "customerReturns.browse", to: "/returns-customers/browse", Icon: FiUser, label: "Browse Customer Returns", ar: "عرض مرتجعات العملاء", tone: "green" },
+  { perm: "inventory.browse", to: "/inventory-daily/browse", Icon: FiPackage, label: "Browse Inventory Daily", ar: "عرض المخزون اليومي", tone: "cyan" },
+  { perm: "enoc.browse", to: "/enoc-returns/browse-view", Icon: FiTruck, label: "Browse ENOC Returns", ar: "عرض مرتجعات ENOC", tone: "orange" },
 ];
+
 const createLinks = [
-  { perm: "returns.create",         to: "/returns",                   icon: "📝", label: "Create Returns Report",        aria: "Create returns report" },
-  { perm: "meatDaily.create",       to: "/meat-daily/input",          icon: "🧾", label: "Create Meat Daily Report",     aria: "Create meat daily report" },
-  { perm: "customerReturns.create", to: "/returns-customers/new",     icon: "✍️", label: "Create Customer Returns",      aria: "Create customer returns report" },
-  { perm: "inventory.create",       to: "/inventory-daily/input",     icon: "🧮", label: "Create Inventory Daily Report", aria: "Create inventory daily report" },
-  { perm: "enoc.create",            to: "/enoc-returns/input",        icon: "⛽", label: "Create ENOC Returns Report",   aria: "Create ENOC returns report" },
+  { perm: "returns.create", to: "/returns", Icon: FiFilePlus, label: "Create Returns Report", ar: "إنشاء تقرير مرتجعات", aria: "Create returns report", tone: "orange" },
+  { perm: "meatDaily.create", to: "/meat-daily/input", Icon: FiClipboard, label: "Create Meat Daily Report", ar: "إنشاء حالة لحوم يومية", aria: "Create meat daily report", tone: "blue" },
+  { perm: "customerReturns.create", to: "/returns-customers/new", Icon: FiUser, label: "Create Customer Returns", ar: "إنشاء مرتجعات عملاء", aria: "Create customer returns report", tone: "green" },
+  { perm: "inventory.create", to: "/inventory-daily/input", Icon: FiArchive, label: "Create Inventory Daily Report", ar: "إنشاء مخزون يومي", aria: "Create inventory daily report", tone: "cyan" },
+  { perm: "enoc.create", to: "/enoc-returns/input", Icon: FiTruck, label: "Create ENOC Returns Report", ar: "إنشاء تقرير ENOC", aria: "Create ENOC returns report", tone: "teal" },
 ];
+
+function getCurrentUser() {
+  try {
+    return JSON.parse(localStorage.getItem("currentUser") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function ModuleCard({ item, action }) {
+  const Icon = item.Icon;
+  return (
+    <Link to={item.to} className="rm-card" aria-label={item.aria || item.label}>
+      <div className={`rm-cardIcon rm-tone-${item.tone}`}>
+        <Icon size={18} />
+      </div>
+      <div className="rm-cardBody">
+        <div className="rm-cardTop">
+          <span className="rm-chip">{action}</span>
+        </div>
+        <h3>{item.label}</h3>
+        <p dir="rtl">{item.ar}</p>
+      </div>
+      <div className="rm-cardFoot">
+        <span>{action === "Create" ? "Open form" : "Open reports"}</span>
+        <FiArrowRight size={14} />
+      </div>
+    </Link>
+  );
+}
 
 export default function ReturnsMenu() {
-  const visibleBrowse = browseLinks.filter(l => isItemAllowed("returns", l.perm));
-  const visibleCreate = createLinks.filter(l => isItemAllowed("returns", l.perm));
+  const [query, setQuery] = useState("");
+  const currentUser = getCurrentUser();
+  const displayName = currentUser.displayName || currentUser.username || "User";
+  const isAdmin = !!currentUser.isAdmin;
+
+  const visibleBrowse = useMemo(
+    () => browseLinks.filter((l) => isItemAllowed("returns", l.perm)),
+    []
+  );
+  const visibleCreate = useMemo(
+    () => createLinks.filter((l) => isItemAllowed("returns", l.perm)),
+    []
+  );
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filterItems = (items) =>
+    !normalizedQuery
+      ? items
+      : items.filter((item) =>
+          `${item.label} ${item.ar}`.toLowerCase().includes(normalizedQuery)
+        );
+
+  const browseItems = filterItems(visibleBrowse);
+  const createItems = filterItems(visibleCreate);
+  const totalVisible = visibleBrowse.length + visibleCreate.length;
+  const totalFiltered = browseItems.length + createItems.length;
 
   return (
-    <div
-      className="ret-page"
-      dir="ltr"
-      style={{ fontFamily: "Cairo, sans-serif" }}
-    >
+    <main className="rm-page">
       <style>{`
-        .ret-page{
-          min-height:100vh; color:#fff;
-          background:
-            radial-gradient(900px 500px at 100% -10%, rgba(34,211,238,.25), transparent 60%),
-            radial-gradient(700px 400px at -5% 105%, rgba(186,230,253,.22), transparent 60%),
-            linear-gradient(135deg,#5b21b6 0%,#6d28d9 30%,#3b82f6 70%,#22d3ee 100%);
-          display:grid; place-items:center; padding:5rem 1.2rem 2rem; position:relative; overflow:hidden;
+        .rm-page{
+          min-height:100vh;
+          padding:14px clamp(12px,2.4vw,28px) 22px;
+          background:linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%);
+          color:#0f172a;
+          font-family:Cairo,Arial,sans-serif;
+          box-sizing:border-box;
         }
-        .brand{position:fixed; top:10px; right:16px; text-align:right; z-index:20; pointer-events:none;}
-        .brand__title{font-weight:900; letter-spacing:1px; font-size:18px; color:#fef2f2; text-shadow:0 1px 0 rgba(0,0,0,.15);}
-        .brand__sub{font-weight:600; font-size:11px; color:#e5e7eb; opacity:.95; text-shadow:0 1px 0 rgba(0,0,0,.18);}
-        .hero{
-          width:min(980px,100%); aspect-ratio:16/9; border-radius:22px; position:relative;
-          background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.06));
-          box-shadow:0 24px 60px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.15);
-          overflow:hidden; backdrop-filter:blur(6px); animation:fadeIn .5s ease both;
+        .rm-shell{
+          width:min(1180px,100%);
+          margin:0 auto;
         }
-        @keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:translateY(0)}}
-        .wave{position:absolute; left:0; right:0; width:100%}
-        .wave--top{top:-6%; opacity:.55} .wave--mid{top:10%; opacity:.45} .wave--bottom{bottom:-8%; opacity:.35}
-        .content{position:absolute; inset:0; display:grid; place-items:center; padding:clamp(1rem,3vw,2rem); text-align:center;}
-        .title{font-weight:900; font-size:clamp(1.2rem,3.8vw,2.1rem); text-shadow:0 2px 10px rgba(0,0,0,.25); margin:0;}
-        .actions{display:flex; gap:1rem; flex-wrap:wrap; justify-content:center; margin-top:1rem;}
-        .btn{
-          appearance:none; border:none; padding:1rem 1.8rem; border-radius:999px; font-weight:800; font-size:1rem; cursor:pointer;
-          text-decoration:none; color:#0b1021; background:#fff; box-shadow:0 10px 24px rgba(0,0,0,.22);
-          transition:transform .18s ease, box-shadow .18s ease, filter .18s ease; display:inline-flex; align-items:center; justify-content:center; gap:.6rem;
+        .rm-hero{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:18px;
+          padding:18px clamp(16px,2vw,26px);
+          border-radius:6px;
+          background:linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%);
+          color:#fff;
+          box-shadow:0 22px 50px rgba(15,23,42,.16);
         }
-        .btn:hover{transform:translateY(-3px); box-shadow:0 16px 34px rgba(0,0,0,.28)}
-        .btn--primary{color:#111827; background:linear-gradient(90deg,#fce7f3,#fde68a); border:1px solid rgba(255,255,255,.65)}
-        .btn--ghost{color:#fff; background:linear-gradient(90deg,rgba(255,255,255,.12),rgba(255,255,255,.08)); border:1px solid rgba(255,255,255,.45); backdrop-filter:blur(4px)}
-        .btn__icon{font-size:1.8rem; line-height:1; transform:translateY(-1px)}
+        .rm-brand{
+          display:flex;
+          align-items:center;
+          gap:14px;
+          min-width:0;
+        }
+        .rm-logo{
+          width:58px;
+          height:58px;
+          object-fit:cover;
+          border-radius:6px;
+          border:1px solid rgba(255,255,255,.5);
+          background:#fff;
+          flex:0 0 auto;
+        }
+        .rm-titleBlock{min-width:0}
+        .rm-kicker{
+          font-size:12px;
+          line-height:1.3;
+          font-weight:900;
+          opacity:.85;
+          margin-bottom:4px;
+        }
+        .rm-title{
+          margin:0;
+          font-size:16px;
+          line-height:1.35;
+          font-weight:1000;
+        }
+        .rm-sub{
+          margin:4px 0 0;
+          color:rgba(255,255,255,.88);
+          font-size:14px;
+          line-height:1.45;
+          font-weight:700;
+        }
+        .rm-userPanel{
+          display:flex;
+          gap:8px;
+          align-items:stretch;
+          flex-wrap:wrap;
+          justify-content:flex-end;
+        }
+        .rm-userBox,.rm-topLink{
+          min-height:38px;
+          border:1px solid rgba(255,255,255,.26);
+          background:rgba(255,255,255,.12);
+          color:#fff;
+          border-radius:5px;
+          display:flex;
+          align-items:center;
+          gap:8px;
+          padding:8px 10px;
+          font-size:14px;
+          font-weight:900;
+          text-decoration:none;
+          box-sizing:border-box;
+        }
+        .rm-avatar{
+          width:30px;
+          height:30px;
+          border-radius:5px;
+          display:grid;
+          place-items:center;
+          background:rgba(255,255,255,.18);
+          border:1px solid rgba(255,255,255,.25);
+          font-weight:1000;
+        }
+        .rm-toolbar{
+          margin:14px 0;
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto auto;
+          gap:10px;
+          align-items:center;
+        }
+        .rm-search{
+          display:flex;
+          align-items:center;
+          gap:8px;
+          background:#fff;
+          border:1px solid #dbe4e2;
+          border-radius:6px;
+          padding:9px 12px;
+          box-shadow:0 10px 24px rgba(15,23,42,.05);
+        }
+        .rm-search input{
+          width:100%;
+          min-width:0;
+          border:0;
+          outline:0;
+          font-family:inherit;
+          font-size:14px;
+          color:#0f172a;
+          background:transparent;
+        }
+        .rm-stat{
+          min-height:38px;
+          border:1px solid #dbe4e2;
+          background:#fff;
+          border-radius:6px;
+          padding:9px 12px;
+          font-size:14px;
+          font-weight:900;
+          box-shadow:0 10px 24px rgba(15,23,42,.05);
+          white-space:nowrap;
+        }
+        .rm-section{
+          margin-top:14px;
+        }
+        .rm-sectionHead{
+          display:flex;
+          align-items:flex-end;
+          justify-content:space-between;
+          gap:10px;
+          margin:0 0 10px;
+        }
+        .rm-sectionHead h2{
+          margin:0;
+          font-size:16px;
+          line-height:1.35;
+          font-weight:1000;
+          color:#0f172a;
+        }
+        .rm-sectionHead span{
+          color:#64748b;
+          font-size:14px;
+          font-weight:800;
+        }
+        .rm-grid{
+          display:grid;
+          grid-template-columns:repeat(3,minmax(0,1fr));
+          gap:12px;
+        }
+        .rm-card{
+          min-height:156px;
+          display:flex;
+          flex-direction:column;
+          gap:12px;
+          padding:14px;
+          border:1px solid #dbe4e2;
+          background:#fff;
+          border-radius:6px;
+          text-decoration:none;
+          color:#0f172a;
+          box-shadow:0 12px 30px rgba(15,23,42,.06);
+          transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+        }
+        .rm-card:hover{
+          transform:translateY(-2px);
+          border-color:#93c5bd;
+          box-shadow:0 18px 36px rgba(15,23,42,.1);
+        }
+        .rm-cardIcon{
+          width:38px;
+          height:38px;
+          border-radius:6px;
+          display:grid;
+          place-items:center;
+          color:#fff;
+          box-shadow:0 10px 20px rgba(15,23,42,.14);
+        }
+        .rm-tone-teal{background:linear-gradient(135deg,#0f766e,#14b8a6)}
+        .rm-tone-blue{background:linear-gradient(135deg,#2563eb,#1d4ed8)}
+        .rm-tone-green{background:linear-gradient(135deg,#10b981,#059669)}
+        .rm-tone-cyan{background:linear-gradient(135deg,#0891b2,#06b6d4)}
+        .rm-tone-orange{background:linear-gradient(135deg,#f97316,#ea580c)}
+        .rm-cardBody{flex:1}
+        .rm-cardTop{
+          display:flex;
+          justify-content:flex-end;
+          margin-top:-42px;
+          pointer-events:none;
+        }
+        .rm-chip{
+          background:#f1f5f9;
+          color:#334155;
+          border-radius:999px;
+          padding:5px 9px;
+          font-size:12px;
+          line-height:1;
+          font-weight:1000;
+        }
+        .rm-card h3{
+          margin:10px 0 6px;
+          font-size:16px;
+          line-height:1.35;
+          font-weight:1000;
+          color:#0f172a;
+        }
+        .rm-card p{
+          margin:0;
+          color:#475569;
+          font-size:14px;
+          line-height:1.5;
+          font-weight:700;
+        }
+        .rm-cardFoot{
+          border-top:1px solid #e5ecea;
+          padding-top:10px;
+          display:flex;
+          justify-content:space-between;
+          align-items:center;
+          gap:8px;
+          color:#0f766e;
+          font-size:14px;
+          font-weight:1000;
+        }
+        .rm-empty{
+          background:#fff;
+          border:1px dashed #cbd5e1;
+          border-radius:6px;
+          padding:18px;
+          color:#475569;
+          font-size:14px;
+          font-weight:800;
+          text-align:center;
+        }
+        .rm-footer{
+          margin:18px 0 0;
+          text-align:center;
+          color:#64748b;
+          font-size:12px;
+          font-weight:800;
+        }
+        @media (max-width:900px){
+          .rm-hero{align-items:flex-start; flex-direction:column}
+          .rm-userPanel{justify-content:flex-start}
+          .rm-toolbar{grid-template-columns:1fr 1fr}
+          .rm-search{grid-column:1 / -1}
+          .rm-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        }
+        @media (max-width:560px){
+          .rm-page{padding:10px 10px 18px}
+          .rm-brand{align-items:flex-start}
+          .rm-logo{width:48px;height:48px}
+          .rm-userPanel,.rm-userBox,.rm-topLink{width:100%}
+          .rm-toolbar{grid-template-columns:1fr}
+          .rm-stat{white-space:normal}
+          .rm-sectionHead{align-items:flex-start; flex-direction:column}
+          .rm-grid{grid-template-columns:1fr}
+          .rm-card{min-height:142px}
+        }
       `}</style>
 
-      {/* Brand */}
-      <div className="brand">
-        <div className="brand__title">AL MAWASHI</div>
-        <div className="brand__sub">Trans Emirates Livestock Trading L.L.C.</div>
-      </div>
-
-      {/* Hero */}
-      <section className="hero" aria-label="Returns menu">
-        {/* Waves */}
-        <svg
-          className="wave wave--top"
-          viewBox="0 0 1440 320"
-          preserveAspectRatio="none"
-        >
-          <path
-            fill="#a78bfa"
-            d="M0,96L40,85.3C80,75,160,53,240,80C320,107,400,181,480,202.7C560,224,640,192,720,165.3C800,139,880,117,960,122.7C1040,128,1120,160,1200,181.3C1280,203,1360,213,1400,218.7L1440,224L1440,0L1400,0C1360,0,1280,0,1200,0C1120,0,1040,0,960,0C880,0,800,0,720,0C640,0,560,0,480,0,400,0,320,0,240,0,160,0,80,0,40,0L0,0Z"
-          />
-        </svg>
-        <svg
-          className="wave wave--mid"
-          viewBox="0 0 1440 320"
-          preserveAspectRatio="none"
-        >
-          <path
-            fill="#7dd3fc"
-            d="M0,160L80,165.3C160,171,320,181,480,165.3C640,149,800,107,960,106.7C1120,107,1280,149,1360,170.7L1440,192L1440,0L1360,0C1280,0,1120,0,960,0C800,0,640,0,480,0C320,0,160,0,80,0L0,0Z"
-          />
-        </svg>
-        <svg
-          className="wave wave--bottom"
-          viewBox="0 0 1440 320"
-          preserveAspectRatio="none"
-        >
-          <path
-            fill="#60a5fa"
-            d="M0,288L60,272C120,256,240,224,360,213.3C480,203,600,213,720,197.3C840,181,960,139,1080,106.7C1200,75,1320,53,1380,42.7L1440,32L1440,320L1380,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z"
-          />
-        </svg>
-
-        {/* Content */}
-        <div className="content">
-          <h1 className="title">Returns & Daily Meat Status</h1>
-
-          <div className="actions" role="group" aria-label="Actions">
-            {/* LEFT: Browse (filtered by per-user permissions) */}
-            {visibleBrowse.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                {visibleBrowse.map(l => (
-                  <Link key={l.perm} to={l.to} className="btn btn--ghost">
-                    <span className="btn__icon">{l.icon}</span>
-                    <span>{l.label}</span>
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {/* RIGHT: Create (filtered by per-user permissions) */}
-            {visibleCreate.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                {visibleCreate.map(l => (
-                  <Link key={l.perm} to={l.to} className="btn btn--primary" aria-label={l.aria}>
-                    <span className="btn__icon">{l.icon}</span>
-                    <span>{l.label}</span>
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {/* Empty state — no buttons granted */}
-            {visibleBrowse.length === 0 && visibleCreate.length === 0 && (
-              <div style={{
-                padding: "30px 16px", textAlign: "center",
-                color: "rgba(255,255,255,.85)", fontWeight: 700,
-              }}>
-                🔒 No pages assigned to your account in this section — contact your administrator
-              </div>
-            )}
+      <div className="rm-shell">
+        <header className="rm-hero">
+          <div className="rm-brand">
+            <img className="rm-logo" src={logo} alt="Al Mawashi" />
+            <div className="rm-titleBlock">
+              <div className="rm-kicker">AL MAWASHI QMS</div>
+              <h1 className="rm-title">Returns & Daily Status</h1>
+              <p className="rm-sub">Returns, customer returns, meat status, inventory, and ENOC reports</p>
+            </div>
           </div>
+
+          <div className="rm-userPanel">
+            <div className="rm-userBox">
+              <span className="rm-avatar">{String(displayName || "U").slice(0, 1).toUpperCase()}</span>
+              <span>{displayName}{isAdmin ? " · Admin" : ""}</span>
+            </div>
+            <Link className="rm-topLink" to="/named-dashboard">
+              <FiHome size={15} />
+              <span>Dashboard Home</span>
+            </Link>
+          </div>
+        </header>
+
+        <div className="rm-toolbar">
+          <label className="rm-search">
+            <FiSearch size={16} color="#64748b" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Find a returns section..."
+            />
+          </label>
+          <div className="rm-stat">{totalVisible} Sections</div>
+          <div className="rm-stat">{isAdmin ? "Admin" : "Assigned Access"}</div>
         </div>
-      </section>
-    </div>
+
+        {totalVisible === 0 ? (
+          <div className="rm-empty">
+            No pages assigned to your account in this section. Contact your administrator.
+          </div>
+        ) : totalFiltered === 0 ? (
+          <div className="rm-empty">No matching returns section found.</div>
+        ) : (
+          <>
+            {browseItems.length > 0 && (
+              <section className="rm-section" aria-label="Browse reports">
+                <div className="rm-sectionHead">
+                  <h2>Browse Reports</h2>
+                  <span dir="rtl">عرض التقارير المحفوظة</span>
+                </div>
+                <div className="rm-grid">
+                  {browseItems.map((item) => (
+                    <ModuleCard key={item.perm} item={item} action="Browse" />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {createItems.length > 0 && (
+              <section className="rm-section" aria-label="Create reports">
+                <div className="rm-sectionHead">
+                  <h2>Create Reports</h2>
+                  <span dir="rtl">إنشاء تقارير جديدة</span>
+                </div>
+                <div className="rm-grid">
+                  {createItems.map((item) => (
+                    <ModuleCard key={item.perm} item={item} action="Create" />
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
+        <div className="rm-footer">Built by Eng. Mohammed Abdullah</div>
+      </div>
+    </main>
   );
 }

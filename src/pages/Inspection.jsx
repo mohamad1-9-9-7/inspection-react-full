@@ -1,6 +1,7 @@
 // src/pages/Inspection.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { buildInspectionEvidencePublic } from "../utils/inspectionPublicLink";
 
 /* ===== Routing ===== */
 const REPORTS_ROUTE = "/monitor/internal-audit";
@@ -41,8 +42,8 @@ const BRANCH_LIST = [
   { code: "POS 6",       en: "POS 6 — Sharjah Butchery",         ar: "POS 6 — ملحمة الشارقة" },
   { code: "POS 7",       en: "POS 7 — Abu Dhabi Store",          ar: "POS 7 — مخزن أبوظبي" },
   { code: "POS 10",      en: "POS 10 — Abu Dhabi Butchery",      ar: "POS 10 — ملحمة أبوظبي" },
-  { code: "POS 11",      en: "POS 11 — Al Ain Market",           ar: "POS 11 — سوق العين" },
-  { code: "POS 14",      en: "POS 14 — Al Ain Butchery",         ar: "POS 14 — ملحمة العين" },
+  { code: "POS 11",      en: "POS 11 — Al Ain Butchery",         ar: "POS 11 — ملحمة العين" },
+  { code: "POS 14",      en: "POS 14 — Al Ain Market",           ar: "POS 14 — سوق العين" },
   { code: "POS 15",      en: "POS 15 — Al Barsha Butchery",      ar: "POS 15 — ملحمة البرشا" },
   { code: "POS 16",      en: "POS 16 — AFCOP Maqta Mall",         ar: "POS 16 — AFCOP مول المقطع" },
   { code: "POS 17",      en: "POS 17 — Mushrif Coop",            ar: "POS 17 — تعاونية المشرف" },
@@ -80,38 +81,6 @@ const STATUS_OPTIONS = [
 ];
 
 const DRAFT_KEY = "inspection_draft_v1";
-
-function makePublicToken(len = 30) {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  const bytes = new Uint8Array(len);
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(bytes);
-  else for (let i = 0; i < len; i++) bytes[i] = Math.floor(Math.random() * 256);
-  let out = "";
-  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
-  return out;
-}
-
-function getPublicOrigin() {
-  return String(
-    (typeof window !== "undefined" && window.__QCS_PUBLIC_ORIGIN__) ||
-      (typeof import.meta !== "undefined" && import.meta.env?.VITE_PUBLIC_ORIGIN) ||
-      (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
-      (typeof window !== "undefined" && window.location ? window.location.origin : "")
-  ).replace(/\/$/, "");
-}
-
-function buildEvidencePublicLink() {
-  const token = makePublicToken();
-  const path = `/inspection/evidence/${encodeURIComponent(token)}`;
-  return {
-    mode: "INSPECTION_CLOSED_EVIDENCE_ONLY",
-    token,
-    url: `${getPublicOrigin()}${path}`,
-    createdAt: new Date().toISOString(),
-    submittedAt: null,
-    status: "pending_evidence",
-  };
-}
 
 export default function Inspection() {
   const navigate = useNavigate();
@@ -315,7 +284,7 @@ export default function Inspection() {
         nextAudit,
         reviewedAndVerifiedBy: reviewedBy
       },
-      public: buildEvidencePublicLink(),
+      public: buildInspectionEvidencePublic(),
       kpis: { percentageClosed },
       createdAt: new Date().toISOString()
     };

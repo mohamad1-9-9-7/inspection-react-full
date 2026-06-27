@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import SignatureName from "../shared/SignatureName";
+import { buildInspectionEvidencePublic } from "../../utils/inspectionPublicLink";
 
 /* ===== API base (aligned with your project) ===== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -25,37 +26,6 @@ const API_BASE = String(
 ).replace(/\/$/, "");
 const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE_KEY = "internal_multi_audit";
-
-function makePublicToken(len = 30) {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  const bytes = new Uint8Array(len);
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(bytes);
-  else for (let i = 0; i < len; i++) bytes[i] = Math.floor(Math.random() * 256);
-  let out = "";
-  for (let i = 0; i < len; i++) out += alphabet[bytes[i] % alphabet.length];
-  return out;
-}
-
-function getPublicOrigin() {
-  return String(
-    (typeof window !== "undefined" && window.__QCS_PUBLIC_ORIGIN__) ||
-      (typeof import.meta !== "undefined" && import.meta.env?.VITE_PUBLIC_ORIGIN) ||
-      (typeof process !== "undefined" && process.env?.REACT_APP_PUBLIC_ORIGIN) ||
-      (typeof window !== "undefined" && window.location ? window.location.origin : "")
-  ).replace(/\/$/, "");
-}
-
-function buildEvidencePublic(publicInfo = {}) {
-  const token = publicInfo.token || makePublicToken();
-  return {
-    mode: "INSPECTION_CLOSED_EVIDENCE_ONLY",
-    token,
-    url: `${getPublicOrigin()}/inspection/evidence/${encodeURIComponent(token)}`,
-    createdAt: publicInfo.createdAt || new Date().toISOString(),
-    submittedAt: publicInfo.submittedAt || null,
-    status: publicInfo.status || "pending_evidence",
-  };
-}
 
 function getImageUrl(img) {
   if (!img) return "";
@@ -290,8 +260,8 @@ const BRANCHES = [
   { code: "POS 16",      labelEn: "POS 16 — AFCOP Maqta Mall",        labelAr: "POS 16 — AFCOP مول المقطع",   aliases: ["POS 16","POS16","AFCOP","MAQTA MALL","المقطع"] },
   // 🔥 Aliased branches (Arabic names + butchery name):
   { code: "POS 15",      labelEn: "POS 15 — Al Barsha Butchery",     labelAr: "POS 15 — ملحمة البرشا",        aliases: ["POS 15","POS15","ALBARSHA","AL BARSHA","ملحمة البرشا","البرشا","BARSHA"] },
-  { code: "POS 14",      labelEn: "POS 14 — Al Ain Butchery",        labelAr: "POS 14 — ملحمة العين",        aliases: ["POS 14","POS14","AL AIN BUTCHERY","ملحمة العين","AL AIN","العين"] },
-  { code: "POS 11",      labelEn: "POS 11 — Al Ain Market",          labelAr: "POS 11 — سوق العين",          aliases: ["POS 11","POS11","AL AIN MARKET","سوق العين"] },
+  { code: "POS 14",      labelEn: "POS 14 — Al Ain Market",          labelAr: "POS 14 — سوق العين",          aliases: ["POS 14","POS14","AL AIN MARKET","سوق العين"] },
+  { code: "POS 11",      labelEn: "POS 11 — Al Ain Butchery",        labelAr: "POS 11 — ملحمة العين",        aliases: ["POS 11","POS11","AL AIN BUTCHERY","ملحمة العين","AL AIN","العين"] },
   { code: "POS 10",      labelEn: "POS 10 — Abu Dhabi Butchery",     labelAr: "POS 10 — ملحمة أبوظبي",        aliases: ["POS 10","POS10","ABU DHABI BUTCHERY","ملحمة أبوظبي","ملحمة ابوظبي","ABU DHABI","ABUDHABI","أبوظبي","ابوظبي"] },
   { code: "POS 7",       labelEn: "POS 7",                           labelAr: "POS 7",                        aliases: ["POS 7","POS7"] },
   { code: "POS 6",       labelEn: "POS 6 — Sharjah Butchery",        labelAr: "POS 6 — ملحمة الشارقة",        aliases: ["POS 6","POS6","SHARJAH BUTCHERY","ملحمة الشارقة","الشارقة"] },
@@ -475,6 +445,7 @@ export default function InternalAuditReportsView() {
 
   // فتح/إغلاق لكل تقرير بشكل منفصل
   const [openCards, setOpenCards] = useState(() => new Set());
+  const [selectedId, setSelectedId] = useState(null);
 
   // refs لكروت التقارير (لاستخراج PDF من نفس التصميم)
   const cardRefs = useRef({});
@@ -690,8 +661,10 @@ export default function InternalAuditReportsView() {
     try {
       const raw = JSON.parse(JSON.stringify(r._raw || {}));
       raw.payload = raw.payload || {};
-      raw.payload.public = buildEvidencePublic(raw.payload.public || {});
-      if (!r._raw?.payload?.public?.token) {
+      const previousPublic = JSON.stringify(raw.payload.public || {});
+      raw.payload.public = buildInspectionEvidencePublic(raw.payload.public || {});
+      const publicChanged = JSON.stringify(raw.payload.public || {}) !== previousPublic;
+      if (publicChanged) {
         await saveRawReport(raw);
         await refresh();
       }
@@ -1130,12 +1103,23 @@ export default function InternalAuditReportsView() {
   }, [rows]);
 
   useEffect(() => {
+    if (!rows.length) {
+      setSelectedId(null);
+      return;
+    }
+    if (!selectedId || !rows.some((r) => r.id === selectedId)) {
+      setSelectedId(rows[0].id);
+      setOpenCards(new Set());
+    }
+  }, [rows, selectedId]);
+
+  useEffect(() => {
     if (!collapsedInit && groups.length) {
-      setCollapsed(new Set(groups.map(([k]) => k)));
+      setCollapsed(new Set());
       setCollapsedInit(true);
       setOpenCards(new Set());
     }
-  }, [groups, collapsedInit]);
+  }, [groups, collapsedInit, rows]);
 
   const toggleMonth = (key) => {
     setCollapsed((prev) => {
@@ -1154,6 +1138,11 @@ export default function InternalAuditReportsView() {
     });
   };
 
+  const selectReport = (id) => {
+    setSelectedId(id);
+    setOpenCards(new Set());
+  };
+
   const monthName = (m) =>
     new Date(Date.UTC(2000, m - 1, 1)).toLocaleString("en", {
       month: "long",
@@ -1161,9 +1150,10 @@ export default function InternalAuditReportsView() {
 
   return (
     <div
+      className="ia-shell ia-page"
       style={{
         display: "grid",
-        gridTemplateColumns: "260px 1fr",
+        gridTemplateColumns: "280px minmax(0, 1fr)",
         gap: 16,
         padding: 16,
         fontFamily: "Arial, sans-serif",
@@ -1177,9 +1167,20 @@ export default function InternalAuditReportsView() {
           .ia-no-print { display: none !important; }
           body { background: #fff !important; }
         }
+        @media (max-width: 1180px) {
+          .ia-shell { grid-template-columns: 1fr !important; }
+          .ia-date-tree { position: relative !important; top: auto !important; max-height: none !important; }
+          .ia-workspace { grid-template-columns: 1fr !important; }
+          .ia-report-rail { position: relative !important; top: auto !important; max-height: none !important; }
+        }
+        @media (max-width: 720px) {
+          .ia-page { padding: 10px !important; }
+          .ia-title-row { align-items: flex-start !important; }
+          .ia-tools { border-radius: 10px !important; }
+        }
       `}</style>
       {/* ====== Modern Date Tree Sidebar ====== */}
-      <aside style={treeAside} className="ia-no-print">
+      <aside style={treeAside} className="ia-no-print ia-date-tree">
         <div style={treeHeader}>
           <span style={{ fontSize: 16 }}>🗂️</span>
           <span style={{ fontWeight: 1000, fontSize: 13 }}>{tt("Date Tree", "شجرة التواريخ")}</span>
@@ -1269,7 +1270,7 @@ export default function InternalAuditReportsView() {
       <main>
         {/* ====== Modern Header ====== */}
         <div style={modernHeader.card} dir={isAr ? "rtl" : "ltr"}>
-          <div style={modernHeader.row}>
+          <div style={modernHeader.row} className="ia-title-row">
             <div style={modernHeader.brandWrap}>
               <div style={modernHeader.brandIco}>📋</div>
               <div>
@@ -1321,7 +1322,7 @@ export default function InternalAuditReportsView() {
         </div>
 
         {/* ====== Tools bar (filter / search / sort) ====== */}
-        <div style={toolsBar.row} className="ia-no-print" dir={isAr ? "rtl" : "ltr"}>
+        <div style={toolsBar.row} className="ia-no-print ia-tools" dir={isAr ? "rtl" : "ltr"}>
           <div style={toolsBar.searchWrap}>
             <span style={toolsBar.searchIcon}>🔍</span>
             <input
@@ -1366,23 +1367,61 @@ export default function InternalAuditReportsView() {
         {!loading && !error && groups.length === 0 && <p>No reports found.</p>}
 
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr",
-            gap: 14,
-          }}
+          className="ia-workspace"
+          style={auditWorkspace}
         >
+          <section style={reportRail} className="ia-no-print ia-report-rail" dir={isAr ? "rtl" : "ltr"}>
+            <div style={railHeader}>
+              <div>
+                <div style={railTitle}>{tt("Report Queue", "قائمة التقارير")}</div>
+                <div style={railSub}>{tt("Select one report to review, export, or update", "اختر تقريراً للمراجعة أو التصدير أو التحديث")}</div>
+              </div>
+              <span style={railCount}>{rows.length}</span>
+            </div>
+            <div style={railList}>
+              {rows.map((r) => {
+                const active = selectedId === r.id;
+                const evidenceStatus = getBranchEvidenceStatus(r._raw?.payload || {});
+                return (
+                  <button
+                    type="button"
+                    key={r.id}
+                    onClick={() => selectReport(r.id)}
+                    style={reportListItem(active)}
+                  >
+                    <span style={reportListTop}>
+                      <span style={reportBranch}>{r.branch ? getBranchLabel(r.branch, pageLang) : "-"}</span>
+                      <span style={reportDate}>{r.date || "-"}</span>
+                    </span>
+                    <span style={reportMetaLine}>
+                      <b>{r.reportNo || "-"}</b>
+                      <span>{r.auditBy || "-"}</span>
+                    </span>
+                    <span style={reportProgressTrack}>
+                      <span style={reportProgressFill(calcClosedPct(r.table || []))} />
+                    </span>
+                    <span style={reportFooterLine}>
+                      <span>{tt("Closed", "مغلق")} {calcClosedPct(r.table || [])}%</span>
+                      <span style={{ ...miniStatus, background: evidenceStatus.bg, color: evidenceStatus.color }}>
+                        {evidenceStatus.label}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section style={detailStage}>
           {groups.map(([key, list]) => {
             const [yy, mm] = key.split("-");
             const isClosed = collapsed.has(key);
+            const visibleList = list.filter((r) => r.id === selectedId);
+            if (!visibleList.length) return null;
             return (
               <div
                 key={key}
-                style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 12,
-                  background: "#fff",
-                }}
+                style={monthDetailShell}
               >
                 <div
                   onClick={() => toggleMonth(key)}
@@ -1393,6 +1432,7 @@ export default function InternalAuditReportsView() {
                     justifyContent: "space-between",
                     alignItems: "center",
                     background: `linear-gradient(90deg, ${C.headerGradFrom}, ${C.headerGradTo})`,
+                    borderBottom: `1px solid ${C.border}`,
                   }}
                 >
                   <div style={{ fontWeight: 700 }}>
@@ -1412,7 +1452,7 @@ export default function InternalAuditReportsView() {
                       gap: 14,
                     }}
                   >
-                    {list.map((r, idx) => {
+                    {visibleList.map((r, idx) => {
                       const isEditing = editId === r.id;
                       const open = openCards.has(r.id);
                       const p = isEditing
@@ -2130,6 +2170,7 @@ export default function InternalAuditReportsView() {
               </div>
             );
           })}
+          </section>
         </div>
 
         {viewerSrc && (
@@ -2336,9 +2377,170 @@ const dangerBtn = {
 const cardStyle = {
   background: "#fff",
   border: "1px solid #e5e7eb",
-  borderRadius: 12,
+  borderRadius: 8,
   padding: 14,
-  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+  boxShadow: "0 14px 34px rgba(15,23,42,0.08)",
+};
+
+const auditWorkspace = {
+  display: "grid",
+  gridTemplateColumns: "360px minmax(0, 1fr)",
+  gap: 14,
+  alignItems: "start",
+};
+
+const reportRail = {
+  position: "sticky",
+  top: 12,
+  maxHeight: "calc(100vh - 24px)",
+  overflow: "hidden",
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 8,
+  boxShadow: "0 10px 26px rgba(2,6,23,.07)",
+};
+
+const railHeader = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "14px 14px 12px",
+  background: `linear-gradient(90deg, ${C.headerGradFrom}, ${C.headerGradTo})`,
+  borderBottom: "1px solid #dbe4f0",
+};
+
+const railTitle = {
+  fontSize: 14,
+  fontWeight: 1000,
+  color: "#0f172a",
+};
+
+const railSub = {
+  marginTop: 3,
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#64748b",
+  lineHeight: 1.35,
+};
+
+const railCount = {
+  minWidth: 34,
+  height: 28,
+  borderRadius: 6,
+  display: "grid",
+  placeItems: "center",
+  background: "#0f172a",
+  color: "#fff",
+  fontWeight: 1000,
+  fontSize: 12,
+};
+
+const railList = {
+  display: "grid",
+  gap: 8,
+  padding: 10,
+  overflow: "auto",
+  maxHeight: "calc(100vh - 110px)",
+};
+
+const reportListItem = (active) => ({
+  width: "100%",
+  textAlign: "start",
+  border: `1px solid ${active ? C.borderStrong : "#e2e8f0"}`,
+  borderLeft: `4px solid ${active ? C.badgeTo : "transparent"}`,
+  background: active ? "#f8fafc" : "#fff",
+  borderRadius: 8,
+  padding: "10px 11px",
+  cursor: "pointer",
+  color: "#0f172a",
+  fontFamily: "inherit",
+  boxShadow: active ? "0 10px 22px rgba(96,165,250,.16)" : "0 1px 2px rgba(15,23,42,.03)",
+});
+
+const reportListTop = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 8,
+};
+
+const reportBranch = {
+  fontSize: 13,
+  fontWeight: 1000,
+  lineHeight: 1.25,
+};
+
+const reportDate = {
+  flexShrink: 0,
+  fontSize: 11,
+  fontWeight: 900,
+  color: "#64748b",
+  background: C.bandSilver,
+  border: "1px solid #e2e8f0",
+  borderRadius: 6,
+  padding: "2px 6px",
+};
+
+const reportMetaLine = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  marginTop: 7,
+  color: "#475569",
+  fontSize: 11,
+  fontWeight: 800,
+};
+
+const reportProgressTrack = {
+  display: "block",
+  height: 6,
+  marginTop: 9,
+  borderRadius: 99,
+  overflow: "hidden",
+  background: "#e2e8f0",
+};
+
+const reportProgressFill = (pct) => ({
+  display: "block",
+  width: `${Math.max(0, Math.min(100, Number(pct) || 0))}%`,
+  height: "100%",
+  background: `linear-gradient(90deg, ${C.badgeFrom}, ${C.badgeTo})`,
+});
+
+const reportFooterLine = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  marginTop: 8,
+  fontSize: 11,
+  fontWeight: 900,
+  color: "#334155",
+};
+
+const miniStatus = {
+  maxWidth: 150,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  borderRadius: 999,
+  padding: "2px 7px",
+  fontSize: 10,
+  fontWeight: 1000,
+};
+
+const detailStage = {
+  minWidth: 0,
+};
+
+const monthDetailShell = {
+  border: "1px solid #dbe4f0",
+  borderRadius: 8,
+  background: "#fff",
+  overflow: "hidden",
+  boxShadow: "0 10px 26px rgba(2,6,23,.06)",
 };
 
 const tableScroll = { overflowX: "auto", marginTop: 8 };

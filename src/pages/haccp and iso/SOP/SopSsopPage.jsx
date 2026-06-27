@@ -1,9 +1,130 @@
 // src/pages/haccp and iso/SOP/SopSsopPage.jsx
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 import { sopsData, ssopsData, policiesData } from "./sopData";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
+import API_BASE from "../../../config/api";
+import SignaturePad from "../../../components/SignaturePad";
+
+const TYPE_DOC_META = "document_metadata";
+const TYPE_CHANGE_LOG = "fsms_change_management_log_item";
+const TYPE_ACK = "sop_employee_acknowledgement";
+const TYPE_TRAINING = "sop_training_evidence";
+const TYPE_IMPLEMENTATION = "sop_implementation_evidence";
+
+function toISODate(value) {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return value;
+  const parts = String(value).split("/");
+  if (parts.length === 3) {
+    const [d, m, y] = parts;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  const dt = new Date(value);
+  return Number.isNaN(dt.getTime()) ? "" : dt.toISOString().slice(0, 10);
+}
+
+function addYearsISO(value, years = 1) {
+  const iso = toISODate(value);
+  if (!iso) return "";
+  const dt = new Date(iso);
+  dt.setFullYear(dt.getFullYear() + years);
+  return dt.toISOString().slice(0, 10);
+}
+
+function daysTo(value) {
+  const iso = toISODate(value);
+  if (!iso) return null;
+  const target = new Date(`${iso}T00:00:00`);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
+}
+
+function reviewInfoFor(sop, meta) {
+  const nextReview = meta?.nextReviewDate || addYearsISO(meta?.issueDate || sop.issueDate, 1);
+  const diff = daysTo(nextReview);
+  if (diff == null) return { nextReview, status: "active", label: "Review date not set" };
+  if (diff < 0) return { nextReview, status: "overdue", label: `Overdue ${Math.abs(diff)} days` };
+  if (diff <= 30) return { nextReview, status: "due", label: `Due in ${diff} days` };
+  return { nextReview, status: "active", label: `Review ${nextReview}` };
+}
+
+async function fetchReportsByType(type) {
+  try {
+    const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const json = await res.json().catch(() => null);
+    return Array.isArray(json) ? json : json?.data || json?.items || [];
+  } catch {
+    return [];
+  }
+}
+
+function reportId(rec) {
+  return rec?.id || rec?._id || rec?.recordId || rec?.payload?._recordId || "";
+}
+
+async function deleteReportById(id) {
+  const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res;
+}
+
+async function postReport(type, payload, reporter = "admin") {
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reporter, type, payload: { ...payload, savedAt: Date.now() } }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res;
+}
+
+async function putOrPostMetadata(existingId, payload, reporter = "admin") {
+  const url = existingId ? `${API_BASE}/api/reports/${encodeURIComponent(existingId)}` : `${API_BASE}/api/reports`;
+  const method = existingId ? "PUT" : "POST";
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reporter, type: TYPE_DOC_META, payload: { ...payload, savedAt: Date.now() } }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res;
+}
+
+async function nextChangeLogNo() {
+  const arr = await fetchReportsByType(TYPE_CHANGE_LOG);
+  return arr.reduce((max, rec) => Math.max(max, Number(rec?.payload?.logNo) || 0), 0) + 1;
+}
+
+function evidenceLinksFor(sop) {
+  const links = [];
+  const cat = sop.category;
+  const title = `${sop.title} ${sop.number}`.toLowerCase();
+  if (cat === "Hygiene" || cat === "Sanitation" || cat === "Pest Control" || cat === "Quality") {
+    links.push(["Internal audit evidence", "/haccp-iso/internal-audit/view"]);
+  }
+  if (cat === "Temperature") links.push(["CCP monitoring", "/haccp-iso/ccp-monitoring/view"]);
+  if (cat === "Recall" || cat === "Traceability" || title.includes("trace")) {
+    links.push(["Mock recall / traceability", "/haccp-iso/mock-recall/view"]);
+    links.push(["Real recall records", "/haccp-iso/real-recall/view"]);
+  }
+  if (cat === "Suppliers") links.push(["Supplier evaluation", "/haccp-iso/supplier-evaluation/results"]);
+  if (cat === "Maintenance") {
+    links.push(["Calibration records", "/haccp-iso/calibration/view"]);
+    links.push(["Internal calibration", "/haccp-iso/internal-calibration/view"]);
+  }
+  if (cat === "Allergens") links.push(["Customer complaints / CAPA", "/haccp-iso/customer-complaints/view"]);
+  if (!links.some(([, route]) => route === "/haccp-iso/internal-audit/view")) {
+    links.push(["Internal audit evidence", "/haccp-iso/internal-audit/view"]);
+  }
+  links.push(["Document register", "/haccp-iso/document-register/view"]);
+  return links;
+}
 
 // ─── Category colours ─────────────────────────────────────────────────────────
 const categoryColors = {
@@ -116,10 +237,385 @@ function IconClose() {
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
-function SopModal({ sop, onClose, lang }) {
+const auditInput = {
+  width: "100%",
+  padding: "9px 11px",
+  borderRadius: 8,
+  border: "1px solid #cbd5e1",
+  fontSize: 13,
+  fontWeight: 700,
+  fontFamily: "inherit",
+  boxSizing: "border-box",
+};
+
+const auditTextarea = {
+  ...auditInput,
+  minHeight: 76,
+  resize: "vertical",
+  lineHeight: 1.5,
+};
+
+function auditButton(kind = "primary") {
+  const secondary = kind === "secondary";
+  const danger = kind === "danger";
+  return {
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: danger ? "1px solid #ef4444" : secondary ? "1px solid #cbd5e1" : "1px solid #0f766e",
+    background: danger ? "#fff" : secondary ? "#fff" : "#0f766e",
+    color: danger ? "#b91c1c" : secondary ? "#334155" : "#fff",
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+}
+
+function AuditPanel({ title, children, actionLabel, onAction }) {
+  return (
+    <section style={{ border: "1px solid #dbe4e2", borderRadius: 10, padding: 14, marginTop: 18, background: "#ffffff" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 950, color: "#0f766e" }}>{title}</h3>
+        <button type="button" onClick={onAction} style={auditButton("primary")}>{actionLabel}</button>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function AuditGrid({ children }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+      {children}
+    </div>
+  );
+}
+
+function AuditField({ label, children, wide }) {
+  return (
+    <label style={{ display: "block", gridColumn: wide ? "1 / -1" : "auto" }}>
+      <div style={{ fontSize: 11, fontWeight: 950, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+        {label}
+      </div>
+      {children}
+    </label>
+  );
+}
+
+function AuditInput({ label, value, onChange, type = "text" }) {
+  return (
+    <AuditField label={label}>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        lang={type === "date" ? "en-CA" : undefined}
+        dir={type === "date" ? "ltr" : undefined}
+        style={auditInput}
+      />
+    </AuditField>
+  );
+}
+
+function MiniList({ records, render, onDelete, deletingId, emptyText = "No saved records yet." }) {
+  if (!records.length) {
+    return <div style={{ marginTop: 10, fontSize: 12, color: "#64748b", fontWeight: 800 }}>{emptyText}</div>;
+  }
+  return (
+    <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+      {records.slice(0, 8).map((rec) => {
+        const rid = reportId(rec);
+        const isDeleting = deletingId && deletingId === rid;
+        return (
+          <div key={rid || rec?.payload?.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12, fontWeight: 800, color: "#334155" }}>
+            <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{render(rec.payload || {})}</span>
+            {onDelete && rid && (
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => onDelete(rec)}
+                style={{ ...auditButton("danger"), padding: "5px 9px", flexShrink: 0, opacity: isDeleting ? 0.55 : 1 }}
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SopModal({ sop, onClose, lang, navigate, onAuditChanged }) {
   const t = UI[lang];
   const isAr = lang === "ar";
   const catColor = categoryColors[sop.category] || categoryColors.Hygiene;
+  const [loadingAudit, setLoadingAudit] = useState(true);
+  const [metaRecord, setMetaRecord] = useState(null);
+  const [ackRecords, setAckRecords] = useState([]);
+  const [trainingRecords, setTrainingRecords] = useState([]);
+  const [implementationRecords, setImplementationRecords] = useState([]);
+  const [changeRecords, setChangeRecords] = useState([]);
+  const [saving, setSaving] = useState("");
+  const [deletingId, setDeletingId] = useState("");
+  const modalBodyRef = useRef(null);
+  const [revisionForm, setRevisionForm] = useState({
+    reason: "",
+    revisionBefore: sop.revision || "",
+    revisionAfter: "",
+    preparedBy: sop.preparedBy || "QA",
+    reviewedBy: "Food Safety Team Leader",
+    approvedBy: "Top Management",
+    effectiveDate: new Date().toISOString().slice(0, 10),
+    nextReviewDate: addYearsISO(new Date().toISOString().slice(0, 10), 1),
+  });
+  const [ackForm, setAckForm] = useState({
+    employeeName: "",
+    position: "",
+    date: new Date().toISOString().slice(0, 10),
+    signature: "",
+  });
+  const [trainingForm, setTrainingForm] = useState({
+    trainingTitle: sop.title,
+    trainer: "",
+    date: new Date().toISOString().slice(0, 10),
+    participants: "",
+    result: "Completed",
+    nextRefreshDate: addYearsISO(new Date().toISOString().slice(0, 10), 1),
+  });
+  const [implementationForm, setImplementationForm] = useState({
+    evidenceType: "Internal audit / record review",
+    evidenceRef: "",
+    verifiedBy: "",
+    date: new Date().toISOString().slice(0, 10),
+    result: "Effective",
+    notes: "",
+  });
+
+  async function loadAuditData() {
+    setLoadingAudit(true);
+    try {
+      const [meta, ack, training, implementation, changes] = await Promise.all([
+        fetchReportsByType(TYPE_DOC_META),
+        fetchReportsByType(TYPE_ACK),
+        fetchReportsByType(TYPE_TRAINING),
+        fetchReportsByType(TYPE_IMPLEMENTATION),
+        fetchReportsByType(TYPE_CHANGE_LOG),
+      ]);
+      const metaHit = meta.find((r) => r?.payload?.docNo === sop.docNo) || null;
+      setMetaRecord(metaHit);
+      setAckRecords(ack.filter((r) => r?.payload?.docNo === sop.docNo));
+      setTrainingRecords(training.filter((r) => r?.payload?.docNo === sop.docNo));
+      setImplementationRecords(implementation.filter((r) => r?.payload?.docNo === sop.docNo));
+      setChangeRecords(changes.filter((r) => (
+        r?.payload?.documentNo === sop.docNo ||
+        r?.payload?.docNo === sop.docNo ||
+        (r?.payload?.sourceModule === "SOP & sSOP" && String(r?.payload?.description || "").includes(sop.number))
+      )));
+      if (metaHit?.payload) {
+        setRevisionForm((prev) => ({
+          ...prev,
+          revisionBefore: metaHit.payload.revision || sop.revision || prev.revisionBefore,
+          nextReviewDate: metaHit.payload.nextReviewDate || prev.nextReviewDate,
+          approvedBy: metaHit.payload.approvedBy || prev.approvedBy,
+        }));
+      }
+    } catch {
+      setMetaRecord(null);
+      setAckRecords([]);
+      setTrainingRecords([]);
+      setImplementationRecords([]);
+      setChangeRecords([]);
+    } finally {
+      setLoadingAudit(false);
+    }
+  }
+
+  useEffect(() => { loadAuditData(); }, [sop.docNo]); // eslint-disable-line
+
+  async function deleteAuditRecord(rec, label) {
+    const id = reportId(rec);
+    if (!id) {
+      alert("Cannot delete this record because its server id is missing.");
+      return;
+    }
+    if (!window.confirm(`Delete this ${label}?`)) return;
+    setDeletingId(id);
+    try {
+      await deleteReportById(id);
+      await loadAuditData();
+      onAuditChanged?.();
+    } catch (e) {
+      alert("Delete error: " + (e?.message || e));
+    } finally {
+      setDeletingId("");
+    }
+  }
+
+  async function saveRevisionTrail() {
+    if (!revisionForm.reason.trim() || !revisionForm.revisionAfter.trim() || !revisionForm.approvedBy.trim()) {
+      alert("Reason, revision after, and approved by are required.");
+      return;
+    }
+    setSaving("revision");
+    try {
+      const metadataPayload = {
+        ...(metaRecord?.payload || {}),
+        docNo: sop.docNo,
+        title: sop.title,
+        titleAr: sop.titleAr,
+        type: sop.id?.startsWith("ssop") ? "sSOP" : sop.category === "Policy" ? "Policy" : "SOP",
+        category: sop.category,
+        owner: sop.preparedBy,
+        issueDate: revisionForm.effectiveDate,
+        revision: revisionForm.revisionAfter,
+        facility: sop.facility,
+        status: "Active",
+        nextReviewDate: revisionForm.nextReviewDate,
+        approvedBy: revisionForm.approvedBy,
+        storage: "FSMS portal / SOP & sSOP module / controlled PDF export",
+        distribution: "QA / HACCP Team / Relevant Department Owners",
+        retentionYears: 2,
+        notes: `Revision updated from ${revisionForm.revisionBefore} to ${revisionForm.revisionAfter}. Reason: ${revisionForm.reason}`,
+      };
+      await putOrPostMetadata(reportId(metaRecord), metadataPayload, revisionForm.approvedBy);
+      await postReport(TYPE_CHANGE_LOG, {
+        id: `chg_sop_${Date.now()}`,
+        logNo: await nextChangeLogNo(),
+        date: revisionForm.effectiveDate,
+        description: `${sop.number} ${sop.title} revision updated`,
+        reason: revisionForm.reason,
+        impact: `Controlled SOP/sSOP document update. Document ${sop.docNo}; revision ${revisionForm.revisionBefore} to ${revisionForm.revisionAfter}. Training/acknowledgement evidence to be retained where applicable.`,
+        approvedBy: revisionForm.approvedBy,
+        implementationDate: revisionForm.effectiveDate,
+        verification: `Revision trail saved in SOP & sSOP module. Next review date: ${revisionForm.nextReviewDate}.`,
+        status: "verified",
+        sourceModule: "SOP & sSOP",
+        documentNo: sop.docNo,
+        revisionBefore: revisionForm.revisionBefore,
+        revisionAfter: revisionForm.revisionAfter,
+      }, revisionForm.approvedBy);
+      await loadAuditData();
+      onAuditChanged?.();
+      alert("Revision trail saved and linked to Change Management Log.");
+    } catch (e) {
+      alert("Save error: " + (e?.message || e));
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function saveAcknowledgement() {
+    if (!ackForm.employeeName.trim() || !ackForm.position.trim() || !ackForm.date || !ackForm.signature) {
+      alert("Employee name, position, date, and signature are required.");
+      return;
+    }
+    setSaving("ack");
+    try {
+      await postReport(TYPE_ACK, {
+        id: `sop_ack_${Date.now()}`,
+        sopId: sop.id,
+        docNo: sop.docNo,
+        sopTitle: sop.title,
+        revision: metaRecord?.payload?.revision || sop.revision,
+        employeeName: ackForm.employeeName.trim(),
+        position: ackForm.position.trim(),
+        date: ackForm.date,
+        signature: ackForm.signature,
+        statement: "Employee read and understood this SOP/sSOP and acknowledges responsibility to follow it.",
+      }, ackForm.employeeName);
+      setAckForm({ employeeName: "", position: "", date: new Date().toISOString().slice(0, 10), signature: "" });
+      await loadAuditData();
+    } catch (e) {
+      alert("Save error: " + (e?.message || e));
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function saveTrainingEvidence() {
+    if (!trainingForm.trainingTitle.trim() || !trainingForm.trainer.trim() || !trainingForm.date) {
+      alert("Training title, trainer, and date are required.");
+      return;
+    }
+    setSaving("training");
+    try {
+      await postReport(TYPE_TRAINING, {
+        id: `sop_training_${Date.now()}`,
+        sopId: sop.id,
+        docNo: sop.docNo,
+        sopTitle: sop.title,
+        revision: metaRecord?.payload?.revision || sop.revision,
+        ...trainingForm,
+      }, trainingForm.trainer);
+      setTrainingForm((prev) => ({ ...prev, trainer: "", participants: "" }));
+      await loadAuditData();
+    } catch (e) {
+      alert("Save error: " + (e?.message || e));
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function saveImplementationEvidence() {
+    if (!implementationForm.evidenceRef.trim() || !implementationForm.verifiedBy.trim() || !implementationForm.date) {
+      alert("Evidence reference, verified by, and date are required.");
+      return;
+    }
+    setSaving("implementation");
+    try {
+      await postReport(TYPE_IMPLEMENTATION, {
+        id: `sop_impl_${Date.now()}`,
+        sopId: sop.id,
+        docNo: sop.docNo,
+        sopTitle: sop.title,
+        revision: metaRecord?.payload?.revision || sop.revision,
+        ...implementationForm,
+      }, implementationForm.verifiedBy);
+      setImplementationForm((prev) => ({ ...prev, evidenceRef: "", notes: "" }));
+      await loadAuditData();
+    } catch (e) {
+      alert("Save error: " + (e?.message || e));
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function exportControlledPdf() {
+    setSaving("pdf");
+    try {
+      const node = modalBodyRef.current;
+      if (!node) throw new Error("PDF content not ready.");
+      const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+      const pdf = new jsPDF("p", "pt", "a4");
+      const margin = 26;
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW - margin * 2;
+      const ratio = imgW / canvas.width;
+      const sliceH = Math.floor((pageH - margin * 2) / ratio);
+      let y = 0;
+      let first = true;
+      while (y < canvas.height) {
+        const h = Math.min(sliceH, canvas.height - y);
+        const slice = document.createElement("canvas");
+        slice.width = canvas.width;
+        slice.height = h;
+        const ctx = slice.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, slice.width, slice.height);
+        ctx.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+        if (!first) pdf.addPage("a4", "p");
+        pdf.addImage(slice.toDataURL("image/jpeg", 0.96), "JPEG", margin, margin, imgW, h * ratio);
+        first = false;
+        y += h;
+      }
+      pdf.save(`${sop.docNo.replace(/[^\w-]+/g, "_")}_Rev_${metaRecord?.payload?.revision || sop.revision}.pdf`);
+    } catch (e) {
+      alert("PDF export error: " + (e?.message || e));
+    } finally {
+      setSaving("");
+    }
+  }
 
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
@@ -215,10 +711,24 @@ function SopModal({ sop, onClose, lang }) {
         </div>
 
         {/* Body */}
-        <div style={{
+        <div ref={modalBodyRef} data-sop-modal-body={sop.id} style={{
           overflowY: "auto", padding: "28px 40px 40px", flex: 1,
           maxWidth: "1100px", width: "100%", alignSelf: "center", boxSizing: "border-box",
         }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginBottom: 18 }}>
+            {[
+              ["Review status", reviewInfoFor(sop, metaRecord?.payload).label],
+              ["Acknowledgements", ackRecords.length],
+              ["Training evidence", trainingRecords.length],
+              ["Implementation evidence", implementationRecords.length],
+            ].map(([label, value]) => (
+              <div key={label} style={{ border: "1px solid #dbeafe", borderRadius: 8, padding: 10, background: "#f8fafc" }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 900, textTransform: "uppercase" }}>{label}</div>
+                <div style={{ fontSize: 18, color: "#0f172a", fontWeight: 950 }}>{loadingAudit ? "..." : value}</div>
+              </div>
+            ))}
+          </div>
+
           {sop.sections.map((sec, i) => (
             <div key={i} style={{ marginBottom: "24px" }}>
               <div style={{
@@ -242,6 +752,124 @@ function SopModal({ sop, onClose, lang }) {
               </div>
             </div>
           ))}
+
+          <AuditPanel
+            title="Approval & Revision Trail"
+            actionLabel={saving === "revision" ? "Saving..." : "Save revision trail"}
+            onAction={saveRevisionTrail}
+          >
+            <AuditGrid>
+              <AuditField label="Reason for amendment" wide>
+                <textarea value={revisionForm.reason} onChange={(e) => setRevisionForm((p) => ({ ...p, reason: e.target.value }))} style={auditTextarea} />
+              </AuditField>
+              <AuditInput label="Revision before" value={revisionForm.revisionBefore} onChange={(v) => setRevisionForm((p) => ({ ...p, revisionBefore: v }))} />
+              <AuditInput label="Revision after" value={revisionForm.revisionAfter} onChange={(v) => setRevisionForm((p) => ({ ...p, revisionAfter: v }))} />
+              <AuditInput label="Prepared by" value={revisionForm.preparedBy} onChange={(v) => setRevisionForm((p) => ({ ...p, preparedBy: v }))} />
+              <AuditInput label="Reviewed by" value={revisionForm.reviewedBy} onChange={(v) => setRevisionForm((p) => ({ ...p, reviewedBy: v }))} />
+              <AuditInput label="Approved by" value={revisionForm.approvedBy} onChange={(v) => setRevisionForm((p) => ({ ...p, approvedBy: v }))} />
+              <AuditInput label="Effective date" type="date" value={revisionForm.effectiveDate} onChange={(v) => setRevisionForm((p) => ({ ...p, effectiveDate: v }))} />
+              <AuditInput label="Next review date" type="date" value={revisionForm.nextReviewDate} onChange={(v) => setRevisionForm((p) => ({ ...p, nextReviewDate: v }))} />
+            </AuditGrid>
+            <div style={{ marginTop: 12, fontSize: 11, fontWeight: 950, color: "#475569", textTransform: "uppercase" }}>Saved Document Register metadata</div>
+            <MiniList
+              records={metaRecord ? [metaRecord] : []}
+              render={(p) => `Document Register - Rev ${p.revision || "-"} - Next review ${p.nextReviewDate || "-"}`}
+              onDelete={(rec) => deleteAuditRecord(rec, "Document Register metadata record")}
+              deletingId={deletingId}
+              emptyText="No saved Document Register metadata for this SOP."
+            />
+            <div style={{ marginTop: 12, fontSize: 11, fontWeight: 950, color: "#475569", textTransform: "uppercase" }}>Saved Change Management entries</div>
+            <MiniList
+              records={changeRecords}
+              render={(p) => `Change #${p.logNo || "-"} - ${p.date || "-"} - ${p.revisionBefore || "-"} to ${p.revisionAfter || "-"}`}
+              onDelete={(rec) => deleteAuditRecord(rec, "Change Management entry")}
+              deletingId={deletingId}
+              emptyText="No saved Change Management entry for this SOP."
+            />
+          </AuditPanel>
+
+          <AuditPanel
+            title="Employee Acknowledgment"
+            actionLabel={saving === "ack" ? "Saving..." : "Save acknowledgment"}
+            onAction={saveAcknowledgement}
+          >
+            <AuditGrid>
+              <AuditInput label="Employee name" value={ackForm.employeeName} onChange={(v) => setAckForm((p) => ({ ...p, employeeName: v }))} />
+              <AuditInput label="Position" value={ackForm.position} onChange={(v) => setAckForm((p) => ({ ...p, position: v }))} />
+              <AuditInput label="Date" type="date" value={ackForm.date} onChange={(v) => setAckForm((p) => ({ ...p, date: v }))} />
+              <AuditField label="Signature" wide>
+                <SignaturePad value={ackForm.signature} onChange={(v) => setAckForm((p) => ({ ...p, signature: v }))} width={420} height={110} label="Employee signature" />
+              </AuditField>
+            </AuditGrid>
+            <MiniList
+              records={ackRecords}
+              render={(p) => `${p.employeeName} - ${p.position} - ${p.date}`}
+              onDelete={(rec) => deleteAuditRecord(rec, "employee acknowledgment")}
+              deletingId={deletingId}
+              emptyText="No employee acknowledgments saved yet."
+            />
+          </AuditPanel>
+
+          <AuditPanel
+            title="Training Evidence Link"
+            actionLabel={saving === "training" ? "Saving..." : "Save training evidence"}
+            onAction={saveTrainingEvidence}
+          >
+            <AuditGrid>
+              <AuditInput label="Training title" value={trainingForm.trainingTitle} onChange={(v) => setTrainingForm((p) => ({ ...p, trainingTitle: v }))} />
+              <AuditInput label="Trainer" value={trainingForm.trainer} onChange={(v) => setTrainingForm((p) => ({ ...p, trainer: v }))} />
+              <AuditInput label="Date" type="date" value={trainingForm.date} onChange={(v) => setTrainingForm((p) => ({ ...p, date: v }))} />
+              <AuditInput label="Participants / count" value={trainingForm.participants} onChange={(v) => setTrainingForm((p) => ({ ...p, participants: v }))} />
+              <AuditInput label="Result" value={trainingForm.result} onChange={(v) => setTrainingForm((p) => ({ ...p, result: v }))} />
+              <AuditInput label="Next refresh date" type="date" value={trainingForm.nextRefreshDate} onChange={(v) => setTrainingForm((p) => ({ ...p, nextRefreshDate: v }))} />
+            </AuditGrid>
+            <MiniList
+              records={trainingRecords}
+              render={(p) => `${p.trainingTitle} - ${p.trainer} - ${p.date} - ${p.result}`}
+              onDelete={(rec) => deleteAuditRecord(rec, "training evidence")}
+              deletingId={deletingId}
+              emptyText="No training evidence saved yet."
+            />
+          </AuditPanel>
+
+          <AuditPanel
+            title="Implementation Evidence"
+            actionLabel={saving === "implementation" ? "Saving..." : "Save implementation evidence"}
+            onAction={saveImplementationEvidence}
+          >
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              {evidenceLinksFor(sop).map(([label, route]) => (
+                <button
+                  key={route}
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    navigate(route);
+                  }}
+                  style={auditButton("secondary")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <AuditGrid>
+              <AuditInput label="Evidence type" value={implementationForm.evidenceType} onChange={(v) => setImplementationForm((p) => ({ ...p, evidenceType: v }))} />
+              <AuditInput label="Evidence reference" value={implementationForm.evidenceRef} onChange={(v) => setImplementationForm((p) => ({ ...p, evidenceRef: v }))} />
+              <AuditInput label="Verified by" value={implementationForm.verifiedBy} onChange={(v) => setImplementationForm((p) => ({ ...p, verifiedBy: v }))} />
+              <AuditInput label="Date" type="date" value={implementationForm.date} onChange={(v) => setImplementationForm((p) => ({ ...p, date: v }))} />
+              <AuditInput label="Result" value={implementationForm.result} onChange={(v) => setImplementationForm((p) => ({ ...p, result: v }))} />
+              <AuditField label="Notes" wide>
+                <textarea value={implementationForm.notes} onChange={(e) => setImplementationForm((p) => ({ ...p, notes: e.target.value }))} style={auditTextarea} />
+              </AuditField>
+            </AuditGrid>
+            <MiniList
+              records={implementationRecords}
+              render={(p) => `${p.evidenceType} - ${p.evidenceRef} - ${p.result} - ${p.date}`}
+              onDelete={(rec) => deleteAuditRecord(rec, "implementation evidence")}
+              deletingId={deletingId}
+              emptyText="No implementation evidence saved yet."
+            />
+          </AuditPanel>
         </div>
 
         {/* Footer */}
@@ -249,6 +877,12 @@ function SopModal({ sop, onClose, lang }) {
           padding: "12px 40px", borderTop: "1px solid rgba(15,23,42,0.08)",
           background: "rgba(248,250,252,0.95)", display: "flex", justifyContent: "flex-end", flexShrink: 0,
         }}>
+          <button onClick={exportControlledPdf} style={{
+            padding: "9px 18px", borderRadius: "12px", fontSize: "14px", fontWeight: 900,
+            background: "#0f766e", border: "1px solid #0f766e", color: "#fff", cursor: "pointer", marginInlineEnd: 8,
+          }}>
+            {saving === "pdf" ? "Exporting..." : "Controlled PDF"}
+          </button>
           <button onClick={onClose} style={{
             padding: "9px 28px", borderRadius: "12px", fontSize: "14px", fontWeight: 900,
             background: "linear-gradient(135deg,rgba(34,211,238,0.18),rgba(34,197,94,0.12))",
@@ -263,9 +897,15 @@ function SopModal({ sop, onClose, lang }) {
 }
 
 // ─── Reusable Card ────────────────────────────────────────────────────────────
-function SopCard({ sop, isAr, t, hoverId, setHoverId, setSelectedSop, accent }) {
+function SopCard({ sop, isAr, t, hoverId, setHoverId, setSelectedSop, accent, meta }) {
   const isHover = hoverId === sop.id;
   const catColor = categoryColors[sop.category] || categoryColors.Hygiene;
+  const review = reviewInfoFor(sop, meta);
+  const reviewStyle = review.status === "overdue"
+    ? { bg: "#fee2e2", color: "#991b1b", border: "#fecaca" }
+    : review.status === "due"
+    ? { bg: "#fef3c7", color: "#92400e", border: "#fde68a" }
+    : { bg: "#dcfce7", color: "#166534", border: "#bbf7d0" };
   const hoverGlow = accent === "green"
     ? "0 20px 50px rgba(34,197,94,0.22)"
     : accent === "purple"
@@ -342,6 +982,22 @@ function SopCard({ sop, isAr, t, hoverId, setHoverId, setSelectedSop, accent }) 
         </span>
       </div>
 
+      <div style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "4px 9px",
+        borderRadius: 999,
+        background: reviewStyle.bg,
+        color: reviewStyle.color,
+        border: `1px solid ${reviewStyle.border}`,
+        fontSize: 10,
+        fontWeight: 950,
+        marginBottom: 10,
+        position: "relative",
+      }}>
+        {review.label}
+      </div>
+
       <div style={{ fontSize: "12px", color: "#475569", lineHeight: 1.5, marginBottom: "12px", position: "relative" }}>
         {isAr ? (sop.subtitleAr || sop.subtitle) : sop.subtitle}
       </div>
@@ -388,9 +1044,23 @@ export default function SopSsopPage() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [hoverId, setHoverId] = useState(null);
   const [selectedSop, setSelectedSop] = useState(null);
+  const [docMeta, setDocMeta] = useState({});
 
   const t = UI[lang];
   const isAr = lang === "ar";
+
+  const refreshDocMeta = useCallback(async () => {
+    const records = await fetchReportsByType(TYPE_DOC_META);
+    const map = {};
+    records.forEach((r) => {
+      if (r?.payload?.docNo) map[r.payload.docNo] = r.payload;
+    });
+    setDocMeta(map);
+  }, []);
+
+  useEffect(() => {
+    refreshDocMeta();
+  }, [refreshDocMeta]);
 
   const filtered = useMemo(() => {
     return sopsData.filter((s) => {
@@ -418,7 +1088,7 @@ export default function SopSsopPage() {
       fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
       color: "#071b2d", direction: t.dir,
     }}>
-      {selectedSop && <SopModal sop={selectedSop} onClose={() => setSelectedSop(null)} lang={lang} />}
+      {selectedSop && <SopModal sop={selectedSop} onClose={() => setSelectedSop(null)} lang={lang} navigate={navigate} onAuditChanged={refreshDocMeta} />}
 
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         {/* Top Bar */}
@@ -583,7 +1253,7 @@ export default function SopSsopPage() {
             <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b", fontWeight: 800 }}>{t.noMatch}</div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "14px", marginBottom: "36px" }}>
-              {filtered.map((sop) => <SopCard key={sop.id} sop={sop} isAr={isAr} t={t} hoverId={hoverId} setHoverId={setHoverId} setSelectedSop={setSelectedSop} />)}
+              {filtered.map((sop) => <SopCard key={sop.id} sop={sop} isAr={isAr} t={t} hoverId={hoverId} setHoverId={setHoverId} setSelectedSop={setSelectedSop} meta={docMeta[sop.docNo]} />)}
             </div>
           )}
         </section>
@@ -610,7 +1280,7 @@ export default function SopSsopPage() {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "14px", marginBottom: "12px" }}>
-            {ssopsData.map((sop) => <SopCard key={sop.id} sop={sop} isAr={isAr} t={t} hoverId={hoverId} setHoverId={setHoverId} setSelectedSop={setSelectedSop} accent="green" />)}
+            {ssopsData.map((sop) => <SopCard key={sop.id} sop={sop} isAr={isAr} t={t} hoverId={hoverId} setHoverId={setHoverId} setSelectedSop={setSelectedSop} accent="green" meta={docMeta[sop.docNo]} />)}
           </div>
         </section>
 
@@ -636,7 +1306,7 @@ export default function SopSsopPage() {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "14px", marginBottom: "12px" }}>
-            {policiesData.map((sop) => <SopCard key={sop.id} sop={sop} isAr={isAr} t={t} hoverId={hoverId} setHoverId={setHoverId} setSelectedSop={setSelectedSop} accent="purple" />)}
+            {policiesData.map((sop) => <SopCard key={sop.id} sop={sop} isAr={isAr} t={t} hoverId={hoverId} setHoverId={setHoverId} setSelectedSop={setSelectedSop} accent="purple" meta={docMeta[sop.docNo]} />)}
           </div>
         </section>
 

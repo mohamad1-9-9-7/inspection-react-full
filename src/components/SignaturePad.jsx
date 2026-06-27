@@ -26,24 +26,43 @@ export default function SignaturePad({
   background = "#fff",
   disabled = false,
 }) {
+  const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
+  const strokeRef = useRef(false);
   const lastPointRef = useRef(null);
   const [hasContent, setHasContent] = useState(!!value);
+  const [drawingWidth, setDrawingWidth] = useState(width);
+
+  useEffect(() => {
+    function measure() {
+      const parent = containerRef.current?.parentElement;
+      const available = parent?.clientWidth || width + 8;
+      setDrawingWidth(Math.max(120, Math.min(width, available - 8)));
+    }
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const ro = new ResizeObserver(measure);
+    if (containerRef.current?.parentElement) ro.observe(containerRef.current.parentElement);
+    return () => ro.disconnect();
+  }, [width]);
 
   /* ====== تهيئة الـ canvas مع دعم DPR للحصول على دقة عالية ====== */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    canvas.width = width * dpr;
+    canvas.width = drawingWidth * dpr;
     canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
+    canvas.style.width = `${drawingWidth}px`;
     canvas.style.height = `${height}px`;
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
     ctx.fillStyle = background;
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, drawingWidth, height);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.strokeStyle = penColor;
@@ -52,30 +71,15 @@ export default function SignaturePad({
     // إذا كان هناك value سابق، ارسمه
     if (value) {
       const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0, width, height);
+      img.onload = () => ctx.drawImage(img, 0, 0, drawingWidth, height);
       img.src = value;
       setHasContent(true);
     } else {
       setHasContent(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, height]);
+  }, [drawingWidth, height, value, background, penColor]);
 
   // إعادة الرسم عند تغيير value من الخارج (مثلاً تحميل سجل قديم)
-  useEffect(() => {
-    if (!value) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = background;
-    ctx.fillRect(0, 0, width, height);
-    const img = new Image();
-    img.onload = () => ctx.drawImage(img, 0, 0, width, height);
-    img.src = value;
-    setHasContent(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-
   function getPos(e) {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -90,6 +94,7 @@ export default function SignaturePad({
     e.preventDefault();
     canvasRef.current.setPointerCapture?.(e.pointerId);
     drawingRef.current = true;
+    strokeRef.current = false;
     lastPointRef.current = getPos(e);
   }
 
@@ -104,6 +109,7 @@ export default function SignaturePad({
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
     lastPointRef.current = pos;
+    strokeRef.current = true;
     if (!hasContent) setHasContent(true);
   }
 
@@ -113,7 +119,7 @@ export default function SignaturePad({
     lastPointRef.current = null;
     try { canvasRef.current.releasePointerCapture?.(e.pointerId); } catch {}
     // إخراج Base64 وتمريره للأب
-    if (typeof onChange === "function") {
+    if (typeof onChange === "function" && (strokeRef.current || hasContent)) {
       const dataUrl = canvasRef.current.toDataURL("image/png");
       onChange(dataUrl);
     }
@@ -124,13 +130,14 @@ export default function SignaturePad({
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = background;
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, drawingWidth, height);
+    strokeRef.current = false;
     setHasContent(false);
     if (typeof onChange === "function") onChange("");
   }
 
   return (
-    <div style={{ display: "inline-block" }}>
+    <div ref={containerRef} style={{ display: "block", width: "100%", maxWidth: width + 8 }}>
       {label && (
         <div
           style={{
@@ -149,7 +156,9 @@ export default function SignaturePad({
           borderRadius: 10,
           background: "#f8fafc",
           padding: 4,
-          width: width + 8,
+          width: "100%",
+          maxWidth: drawingWidth + 8,
+          boxSizing: "border-box",
           position: "relative",
         }}
       >
@@ -183,7 +192,7 @@ export default function SignaturePad({
               fontStyle: "italic",
             }}
           >
-            ✍️ وقّع هنا / Sign here
+            Sign here
           </div>
         )}
       </div>
@@ -203,7 +212,7 @@ export default function SignaturePad({
             fontSize: "0.85rem",
           }}
         >
-          🗑️ Clear
+          Clear
         </button>
         {hasContent && (
           <span
@@ -214,7 +223,7 @@ export default function SignaturePad({
               fontWeight: 700,
             }}
           >
-            ✅ Signed
+            Signed
           </span>
         )}
       </div>
