@@ -14,6 +14,7 @@ import {
   deleteServerItem,
   normalizeCode,
 } from "../monitor/branches/_shared/ProductPicker";
+import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 
 const normKeyOf = (it) => normalizeCode(it?.item_code ?? it?.itemCode ?? "");
 
@@ -28,6 +29,7 @@ export default function ProductsTab() {
   const [err, setErr] = useState("");
   const [serverOnline, setServerOnline] = useState(false);
   const [form, setForm] = useState({ code: "", name: "", editingKey: null, oldCode: "", codeLocked: false });
+  const [confirmRemove, setConfirmRemove] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,24 +178,29 @@ export default function ProductsTab() {
     return flash(synced ? "✅ Product updated." : "⚠️ Product saved locally only.");
   };
 
-  const removeRow = async (row) => {
+  const requestRemoveRow = (row) => {
     if (row.source === "base") return; // base master items can't be removed
-    if (!window.confirm(`Remove "${row.name}" (${row.code}) from the catalog?`)) return;
+    setConfirmRemove(row);
+  };
+
+  const removeRow = async () => {
+    const row = confirmRemove;
+    if (!row) return;
     const next = custom.filter((it) => normKeyOf(it) !== row.key);
     const synced = await commitCustom(next, null, { deleteCode: row.code });
     if (form.editingKey === row.key) resetForm();
     flash(synced ? (row.source === "edited" ? "✅ Reverted to master value." : "✅ Removed.") : "⚠️ Removed locally only.");
+    setConfirmRemove(null);
   };
 
   /* ---- styles ---- */
-  const card = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16, marginBottom: 16 };
-  const label = { fontSize: 12, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 6, display: "block" };
-  const input = { width: "100%", padding: "9px 11px", borderRadius: 9, border: "1.5px solid #cbd5e1", fontWeight: 700, color: "#0f172a", boxSizing: "border-box" };
-  const btn = (bg) => ({ padding: "9px 16px", borderRadius: 10, border: "none", background: bg, color: "#fff", fontWeight: 800, cursor: "pointer" });
-  const ghost = { padding: "9px 16px", borderRadius: 10, border: "1px solid #cbd5e1", background: "#fff", color: "#0f172a", fontWeight: 800, cursor: "pointer" };
+  const card = ui.subtleCard;
+  const label = ui.label;
+  const input = ui.input;
+  const ghost = { ...ui.input, width: "auto", cursor: "pointer" };
   const chip = (bg, color) => ({ display: "inline-block", padding: "2px 9px", borderRadius: 999, background: bg, color, fontWeight: 800, fontSize: 11 });
-  const th = { textAlign: "left", padding: "8px 10px", fontSize: 12, fontWeight: 800, color: "#475569", borderBottom: "2px solid #e2e8f0", textTransform: "uppercase", letterSpacing: ".3px" };
-  const td = { padding: "8px 10px", borderBottom: "1px solid #f1f5f9", verticalAlign: "middle" };
+  const th = ui.th;
+  const td = ui.td;
 
   const sourceChip = (src) =>
     src === "base"
@@ -203,29 +210,28 @@ export default function ProductsTab() {
         : <span style={chip("#dcfce7", "#065f46")}>Custom</span>;
 
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#0f172a" }}>🏷️ Products Catalog</h2>
-          <div style={{ color: "#64748b", fontWeight: 600, marginTop: 4 }}>
-            These products feed every product dropdown (temperature matching, Returns…). Add a barcode + name, or edit existing ones.
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <div style={ui.page}>
+      <PageHeader
+        eyebrow="Catalog"
+        title="Products Catalog"
+        subtitle="These products feed every product dropdown. Add a barcode and name, or edit existing catalog entries."
+        actions={
+          <>
           <span style={chip("#eef2ff", "#3730a3")}>Total: {stats.total}</span>
           <span style={chip("#f1f5f9", "#334155")}>Master: {stats.base}</span>
           <span style={chip("#dcfce7", "#065f46")}>Added/Edited: {stats.custom}</span>
           <span style={chip(serverOnline ? "#dcfce7" : "#fee2e2", serverOnline ? "#065f46" : "#991b1b")}>
             {serverOnline ? "Server sync" : "Local fallback"}
           </span>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Add / Edit form */}
       <div style={card}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
           <strong style={{ color: "#0f172a", fontSize: 15 }}>{form.editingKey ? "✏️ Edit product" : "➕ Add product"}</strong>
-          {form.editingKey && <button onClick={startAdd} style={ghost}>+ New instead</button>}
+          {form.editingKey && <Button onClick={startAdd} tone="secondary">+ New instead</Button>}
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div style={{ width: 200 }}>
@@ -249,8 +255,8 @@ export default function ProductsTab() {
               onKeyDown={(e) => { if (e.key === "Enter") upsert(); }}
             />
           </div>
-          <button onClick={upsert} style={btn("#2563eb")}>{form.editingKey ? "Save changes" : "Add product"}</button>
-          {form.editingKey && <button onClick={resetForm} style={ghost}>Cancel</button>}
+          <Button onClick={upsert} tone="primary">{form.editingKey ? "Save changes" : "Add product"}</Button>
+          {form.editingKey && <Button onClick={resetForm} tone="secondary">Cancel</Button>}
         </div>
         {err && <div style={{ color: "#b91c1c", fontWeight: 800, marginTop: 10 }}>{err}</div>}
         {form.codeLocked && (
@@ -272,9 +278,9 @@ export default function ProductsTab() {
       </div>
 
       {/* Table */}
-      <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+      <div style={ui.tableWrap}>
         <div style={{ maxHeight: "52vh", overflowY: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
+          <table style={ui.table}>
             <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
               <tr>
                 <th style={{ ...th, width: 160 }}>Barcode</th>
@@ -295,15 +301,16 @@ export default function ProductsTab() {
                     <td style={{ ...td, color: "#334155" }}>{row.name}</td>
                     <td style={td}>{sourceChip(row.source)}</td>
                     <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button onClick={() => startEdit(row)} style={{ ...ghost, padding: "5px 12px", marginInlineEnd: 6 }}>Edit</button>
+                      <Button onClick={() => startEdit(row)} tone="secondary" style={{ minHeight: 32, padding: "5px 12px", marginInlineEnd: 6 }}>Edit</Button>
                       {row.source !== "base" && (
-                        <button
-                          onClick={() => removeRow(row)}
-                          style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #fecaca", background: "#fff", color: "#dc2626", fontWeight: 800, cursor: "pointer" }}
+                        <Button
+                          onClick={() => requestRemoveRow(row)}
+                          tone="danger"
+                          style={{ minHeight: 32, padding: "5px 12px" }}
                           title={row.source === "edited" ? "Revert to master value" : "Remove product"}
                         >
                           {row.source === "edited" ? "Revert" : "Remove"}
-                        </button>
+                        </Button>
                       )}
                     </td>
                   </tr>
@@ -322,6 +329,17 @@ export default function ProductsTab() {
       <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 12, lineHeight: 1.6 }}>
         Note: changes sync to the server and apply to the dropdowns immediately. If the server is unavailable, this device keeps a local fallback. Master products come from the bundled catalog file and can be renamed as an override, but not deleted.
       </div>
+
+      <StatusMessage message={err ? { kind: "err", text: err } : null} />
+      <ConfirmModal
+        open={!!confirmRemove}
+        title={confirmRemove?.source === "edited" ? "Revert catalog override?" : "Remove product?"}
+        body={confirmRemove ? `${confirmRemove.name} (${confirmRemove.code})` : ""}
+        confirmText={confirmRemove?.source === "edited" ? "Revert" : "Remove"}
+        cancelText="Cancel"
+        onConfirm={removeRow}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   );
 }

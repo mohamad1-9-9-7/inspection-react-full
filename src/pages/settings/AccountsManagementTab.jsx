@@ -644,7 +644,7 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   ACCOUNT CARD (dark — accounts grid)
+   ACCOUNT CARD
 ═══════════════════════════════════════════════════════ */
 /* Days-since-login helper for staleness badge */
 function daysSince(iso) {
@@ -679,13 +679,12 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        background:   hover ? "rgba(255,255,255,.085)" : "rgba(255,255,255,.04)",
-        border:       `1.5px solid ${hover ? "rgba(96,165,250,.5)" : "rgba(255,255,255,.08)"}`,
-        borderRadius: 16,
+        background:   hover ? "#f8fafc" : "#fff",
+        border:       `1.5px solid ${hover ? "#14b8a6" : "#e2e8f0"}`,
+        borderRadius: 8,
         padding:      "14px 16px",
-        backdropFilter: "blur(12px)",
         transition:   "all .15s ease",
-        boxShadow:    hover ? "0 10px 28px rgba(0,0,0,.32)" : "0 2px 8px rgba(0,0,0,.18)",
+        boxShadow:    hover ? "0 10px 28px rgba(15,23,42,.12)" : "0 2px 8px rgba(15,23,42,.05)",
         opacity:      user.is_active ? 1 : 0.55,
         display:      "grid",
         gridTemplateColumns: "auto 1fr auto auto",
@@ -698,8 +697,8 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
         width:52, height:52, borderRadius:14, background:grad,
         display:"grid", placeItems:"center",
         fontSize:22, fontWeight:1000, color:"#fff", flexShrink:0,
-        boxShadow:"0 4px 12px rgba(0,0,0,.4)",
-        border:"1.5px solid rgba(255,255,255,.18)",
+        boxShadow:"0 4px 12px rgba(15,23,42,.18)",
+        border:"1.5px solid rgba(255,255,255,.6)",
       }}>
         {initial}
       </div>
@@ -707,11 +706,11 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
       {/* Main info column: name + meta row */}
       <div style={{ minWidth:0 }}>
         <div style={{ display:"flex", alignItems:"baseline", gap:10, flexWrap:"wrap" }}>
-          <span style={{ fontWeight:1000, fontSize:17, color:"#f1f5f9",
+          <span style={{ fontWeight:1000, fontSize:17, color:"#0f172a",
             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
             {user.display_name || user.username}
           </span>
-          <span style={{ fontSize:13, color:"rgba(255,255,255,.5)", fontWeight:700 }}>
+          <span style={{ fontSize:13, color:"#64748b", fontWeight:700 }}>
             @{user.username}
           </span>
         </div>
@@ -755,14 +754,14 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
       <div style={{ display:"flex", gap:5, flexShrink:0 }}>
         <button className="acm-actbtn" onClick={onEdit} style={{
           ...ac.actBtn,
-          background:"rgba(59,130,246,.2)", color:"#93c5fd",
-          border:"1.5px solid rgba(59,130,246,.35)",
+            background:"#dbeafe", color:"#1d4ed8",
+            border:"1.5px solid #bfdbfe",
         }} title={t("amEditAccountTip")}>✏️</button>
         {onResetPw && (
           <button className="acm-actbtn" onClick={onResetPw} style={{
             ...ac.actBtn,
-            background:"rgba(167,139,250,.18)", color:"#c4b5fd",
-            border:"1.5px solid rgba(167,139,250,.35)",
+            background:"#f5f3ff", color:"#6d28d9",
+            border:"1.5px solid #ddd6fe",
           }} title={t("amResetPwTip")}>🔑</button>
         )}
         <button className={canToggle ? "acm-actbtn" : ""} onClick={canToggle ? onToggle : undefined} disabled={!canToggle} style={{
@@ -1632,11 +1631,11 @@ export default function AccountsManagementTab({ onClose }) {
   return (
     <div style={p.shell} dir={dir}>
       <style>{`
-        .acm-tab:hover{background:rgba(255,255,255,.1) !important; color:#fff !important;}
-        .acm-actbtn:hover{filter:brightness(1.15); transform:translateY(-1px);}
+        .acm-tab:hover{background:#f1f5f9 !important; color:#0f172a !important;}
+        .acm-actbtn:hover{filter:brightness(1.02); transform:translateY(-1px);}
         .acm-actbtn{transition:all .15s;}
-        .acm-searchinput:focus{border-color:rgba(96,165,250,.6) !important; outline:none;}
-        .acm-searchinput::placeholder{color:rgba(255,255,255,.3);}
+        .acm-searchinput:focus{border-color:#14b8a6 !important; box-shadow:0 0 0 3px rgba(20,184,166,.12); outline:none;}
+        .acm-searchinput::placeholder{color:#94a3b8;}
       `}</style>
 
       {/* ══════════════ COMPACT TOOLBAR ══════════════ */}
@@ -1646,7 +1645,7 @@ export default function AccountsManagementTab({ onClose }) {
           {stats.map(s => (
             <div key={s.label} style={{ ...p.statChipInline, background:s.bg, border:`1px solid ${s.color}44` }}>
               <span style={{ color:s.color, fontWeight:1000, fontSize:18, lineHeight:1 }}>{s.val}</span>
-              <span style={{ color:"rgba(255,255,255,.65)", fontSize:14, fontWeight:800 }}>{s.label}</span>
+              <span style={{ color:"#475569", fontSize:14, fontWeight:800 }}>{s.label}</span>
             </div>
           ))}
         </div>
@@ -1661,7 +1660,7 @@ export default function AccountsManagementTab({ onClose }) {
         </button>
         {onClose && (
           <button className="acm-actbtn" onClick={onClose}
-            style={{ ...p.btnToolbar, background:"rgba(255,255,255,.08)", color:"#e2e8f0", border:"1px solid rgba(255,255,255,.18)" }}>
+            style={{ ...p.btnToolbar, background:"#f8fafc", color:"#0f172a", border:"1px solid #cbd5e1" }}>
             ✕
           </button>
         )}
@@ -1679,9 +1678,9 @@ export default function AccountsManagementTab({ onClose }) {
               }}
               style={{
                 ...p.tab,
-                background: isActive ? "rgba(96,165,250,.18)" : "transparent",
-                color:      isActive ? "#93c5fd" : "rgba(255,255,255,.55)",
-                borderBottom: `2px solid ${isActive ? "#60a5fa" : "transparent"}`,
+                background: isActive ? "#ccfbf1" : "transparent",
+                color:      isActive ? "#0f766e" : "#64748b",
+                borderBottom: `2px solid ${isActive ? "#0f766e" : "transparent"}`,
               }}
             >
               <span style={{ fontSize:20 }}>{n.icon}</span>
@@ -1702,12 +1701,12 @@ export default function AccountsManagementTab({ onClose }) {
           <div style={{
             marginLeft:"auto", display:"flex", alignItems:"center", gap:8,
             padding:"6px 12px", borderRadius:9,
-            background:"rgba(167,139,250,.15)", border:"1px solid rgba(167,139,250,.3)",
-            fontSize:15, fontWeight:800, color:"#c4b5fd",
+            background:"#f5f3ff", border:"1px solid #ddd6fe",
+            fontSize:15, fontWeight:800, color:"#6d28d9",
           }}>
             ✏️ {t("amEditing")} <strong>{editUser.username}</strong>
             <button onClick={() => { setView("list"); setEditUser(null); }}
-              style={{ background:"none", border:"none", cursor:"pointer", color:"#c4b5fd",
+              style={{ background:"none", border:"none", cursor:"pointer", color:"#6d28d9",
                 fontWeight:900, fontSize:18, padding:"0 2px", lineHeight:1 }}>×</button>
           </div>
         )}
@@ -1767,7 +1766,7 @@ export default function AccountsManagementTab({ onClose }) {
                 </button>
                 <button className="acm-actbtn"
                   onClick={() => { setEditUser(null); setView("form"); }}
-                  style={{ ...p.btnRefresh, background:"rgba(59,130,246,.22)", color:"#93c5fd", border:"1px solid rgba(59,130,246,.4)" }}>
+                  style={{ ...p.btnRefresh, background:"#dbeafe", color:"#1d4ed8", border:"1px solid #bfdbfe" }}>
                   ➕ {t("amNavAdd")}
                 </button>
               </div>
@@ -1840,11 +1839,11 @@ export default function AccountsManagementTab({ onClose }) {
       {confirmDel && (
         <div style={p.overlay}>
           <div style={p.modal}>
-            <div style={{ fontWeight:1000, fontSize:20, marginBottom:10, color:"#f1f5f9" }}>
+            <div style={{ fontWeight:1000, fontSize:20, marginBottom:10, color:"#0f172a" }}>
               🗑️ {t("amDeleteAccountTitle")}
             </div>
-            <p style={{ color:"rgba(255,255,255,.7)", marginBottom:20, fontSize:15, lineHeight:1.65 }}>
-              {t("amDeleteConfirm1")} <strong style={{ color:"#f1f5f9" }}>{confirmDel.username}</strong>?<br/>
+            <p style={{ color:"#475569", marginBottom:20, fontSize:15, lineHeight:1.65 }}>
+              {t("amDeleteConfirm1")} <strong style={{ color:"#0f172a" }}>{confirmDel.username}</strong>?<br/>
               {t("amDeleteConfirm2")}
             </p>
             <div style={{ display:"flex", gap:10 }}>
@@ -1854,8 +1853,8 @@ export default function AccountsManagementTab({ onClose }) {
               }} data-delete-action="true">🗑️ {t("delete")}</button>
               <button onClick={() => setConfirmDel(null)} style={{
                 flex:1, padding:"13px",
-                background:"rgba(255,255,255,.1)", color:"#e2e8f0",
-                border:"1px solid rgba(255,255,255,.18)", borderRadius:10,
+                background:"#f8fafc", color:"#334155",
+                border:"1px solid #cbd5e1", borderRadius:10,
                 fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
               }}>{t("cancel")}</button>
             </div>
@@ -1867,32 +1866,33 @@ export default function AccountsManagementTab({ onClose }) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   DARK PANEL STYLES
+   SETTINGS PANEL STYLES
 ═══════════════════════════════════════════════════════ */
 const p = {
   /* Compact shell — no min-height, sizes to its content. Sits inside parent. */
   shell: {
-    background:"linear-gradient(140deg,rgba(15,23,42,.98) 0%,rgba(30,27,75,.96) 50%,rgba(15,23,42,.98) 100%)",
+    background:"#fff",
     display:"flex", flexDirection:"column",
     fontFamily:"Cairo,'Segoe UI',system-ui,sans-serif",
-    borderRadius:16,
-    border:"1px solid rgba(255,255,255,.08)",
+    borderRadius:8,
+    border:"1px solid rgba(15,23,42,.12)",
     overflow:"hidden",
     position:"relative",
+    boxShadow:"0 14px 34px rgba(15,23,42,.08)",
   },
   /* Toolbar row: stats + actions */
   toolbar: {
     display:"flex", alignItems:"center", gap:12, flexWrap:"wrap",
     padding:"14px 18px",
-    background:"rgba(255,255,255,.03)",
-    borderBottom:"1px solid rgba(255,255,255,.06)",
+    background:"#f8fafc",
+    borderBottom:"1px solid rgba(15,23,42,.1)",
   },
   statChipInline: {
     display:"inline-flex", alignItems:"baseline", gap:6,
-    padding:"7px 14px", borderRadius:999,
+    padding:"7px 14px", borderRadius:8,
   },
   btnToolbar: {
-    padding:"10px 18px", borderRadius:10,
+    padding:"10px 18px", borderRadius:8,
     fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit",
     whiteSpace:"nowrap",
   },
@@ -1900,13 +1900,13 @@ const p = {
   tabsBar: {
     display:"flex", alignItems:"center", gap:4, flexWrap:"wrap",
     padding:"6px 14px 0",
-    background:"rgba(255,255,255,.02)",
-    borderBottom:"1px solid rgba(255,255,255,.07)",
+    background:"#fff",
+    borderBottom:"1px solid rgba(15,23,42,.1)",
   },
   tab: {
     display:"inline-flex", alignItems:"center", gap:8,
     padding:"12px 18px",
-    border:"none", borderRadius:"10px 10px 0 0",
+    border:"none", borderRadius:"8px 8px 0 0",
     cursor:"pointer", fontFamily:"inherit",
     fontWeight:800, fontSize:18,
     transition:"all .15s",
@@ -1915,41 +1915,40 @@ const p = {
   /* Content area: auto-sized, padding only */
   mainContent: { padding:"18px 20px" },
   searchInput: {
-    padding:"11px 14px", borderRadius:11,
-    background:"rgba(255,255,255,.06)",
-    border:"1px solid rgba(255,255,255,.12)",
-    color:"#f1f5f9", fontSize:18,
+    padding:"11px 14px", borderRadius:8,
+    background:"#fff",
+    border:"1px solid #cbd5e1",
+    color:"#0f172a", fontSize:18,
     fontFamily:"Cairo,'Segoe UI',sans-serif",
     fontWeight:700,
   },
   btnRefresh: {
-    padding:"11px 18px", borderRadius:11,
-    background:"rgba(255,255,255,.06)", color:"#e2e8f0",
-    border:"1px solid rgba(255,255,255,.13)",
+    padding:"11px 18px", borderRadius:8,
+    background:"#f8fafc", color:"#334155",
+    border:"1px solid #cbd5e1",
     fontWeight:900, fontSize:15, cursor:"pointer",
     fontFamily:"Cairo,'Segoe UI',sans-serif",
     whiteSpace:"nowrap",
   },
   cardsGrid: { display:"flex", flexDirection:"column", gap:10 },
-  empty: { textAlign:"center", padding:"30px 20px", color:"rgba(255,255,255,.35)", fontWeight:700, fontSize:16 },
+  empty: { textAlign:"center", padding:"30px 20px", color:"#64748b", fontWeight:700, fontSize:16 },
   overlay: {
     position:"fixed", inset:0,
-    background:"rgba(0,0,0,.65)",
+    background:"rgba(15,23,42,.45)",
     display:"flex", alignItems:"center", justifyContent:"center",
     zIndex:9999, backdropFilter:"blur(6px)",
   },
   modal: {
-    background:"rgba(15,23,42,.96)",
-    border:"1px solid rgba(255,255,255,.16)",
-    borderRadius:18, padding:"24px 28px",
+    background:"#fff",
+    border:"1px solid rgba(15,23,42,.12)",
+    borderRadius:8, padding:"24px 28px",
     width:"min(420px,92vw)",
-    backdropFilter:"blur(24px)",
-    boxShadow:"0 28px 64px rgba(0,0,0,.55)",
+    boxShadow:"0 24px 64px rgba(15,23,42,.24)",
   },
   pwIconBtn: {
-    padding:"0 13px", borderRadius:10,
-    background:"rgba(255,255,255,.08)", color:"#e2e8f0",
-    border:"1px solid rgba(255,255,255,.16)",
+    padding:"0 13px", borderRadius:8,
+    background:"#f8fafc", color:"#334155",
+    border:"1px solid #cbd5e1",
     fontSize:17, cursor:"pointer", fontFamily:"inherit", flexShrink:0,
   },
 };

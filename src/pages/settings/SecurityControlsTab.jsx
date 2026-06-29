@@ -4,6 +4,7 @@
 import React, { useState, useMemo } from "react";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 import { BRANCHES, BRANCH_TYPE_META } from "../../config/branches";
+import { Button, ConfirmModal } from "./_shared/SettingsUIKit";
 
 const STORAGE_KEY = "appSecuritySettings";
 
@@ -91,6 +92,7 @@ export default function SecurityControlsTab() {
   const [saved, setSaved] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
   const [branchQuery, setBranchQuery] = useState("");
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const toggle = (key) => { setS(p => ({ ...p, [key]: !p[key] })); setSaved(false); };
   const pick   = (key, val) => { setS(p => ({ ...p, [key]: val })); setSaved(false); };
@@ -143,9 +145,13 @@ export default function SecurityControlsTab() {
   };
 
   const handleReset = () => {
-    if (!window.confirm(t("secResetConfirm"))) return;
+    setConfirmReset(true);
+  };
+
+  const doReset = () => {
     setS({ ...SEC_DEFAULTS });
     saveSecuritySettings({ ...SEC_DEFAULTS });
+    setConfirmReset(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -348,12 +354,21 @@ export default function SecurityControlsTab() {
 
       {/* ── Actions ── */}
       <div style={rs.actions}>
-        <button onClick={handleReset} style={rs.btnReset}>↺ {t("secResetDefaults")}</button>
-        <button onClick={handleSave}  style={{ ...rs.btnSave, background: saved ? "#15803d" : "#0284c7" }}>
+        <Button onClick={handleReset} tone="danger">↺ {t("secResetDefaults")}</Button>
+        <Button onClick={handleSave} tone="primary" style={{ background: saved ? "#15803d" : "#0f766e" }}>
           {saved ? `✅ ${t("secSaved")}` : `💾 ${t("secSave")}`}
-        </button>
+        </Button>
       </div>
 
+      <ConfirmModal
+        open={confirmReset}
+        title={t("secResetDefaults")}
+        body={t("secResetConfirm")}
+        confirmText={t("secResetDefaults")}
+        cancelText={t("cancel")}
+        onConfirm={doReset}
+        onCancel={() => setConfirmReset(false)}
+      />
     </div>
   );
 }

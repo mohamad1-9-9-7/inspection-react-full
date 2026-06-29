@@ -635,7 +635,6 @@ const FORM = [
             key: "att_vehicle_dm_card",
             label: "Vehicle Registration / Dubai Municipality (DM) Card — if you deliver by your own vehicle",
             kind: "attachment",
-            required: true,
           },
           {
             key: "att_msds",
@@ -1551,7 +1550,7 @@ export default function SupplierEvaluationPublic() {
 
     // Vehicle DM Card — required attachment
     const dmFiles = Array.isArray(fieldAttachments?.att_vehicle_dm_card) ? fieldAttachments.att_vehicle_dm_card : [];
-    if (dmFiles.length === 0) {
+    if (false && dmFiles.length === 0) {
       errs.push(
         L
           ? "إرفاق تسجيل المركبة / بطاقة بلدية دبي (DM Card) مطلوب"

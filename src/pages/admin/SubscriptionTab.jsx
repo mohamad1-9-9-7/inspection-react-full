@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import API_BASE from "../../config/api";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
+import { ui } from "../settings/_shared/SettingsUIKit";
 import InvoicesSection from "./InvoicesSection";
 
 /* الخطط الحقيقية تُجلب من /api/plans (تبويب Plans). الألوان دوّارة لأن الجدول لا يخزّن لوناً. */
@@ -73,7 +74,7 @@ export default function SubscriptionTab() {
   const [form,    setForm]    = useState({});
 
   const user        = getUser();
-  const isSuperAdmin = user.isSuperAdmin || false;
+  const isSuperAdmin = user.isSuperAdmin || user.isAdmin || false;
 
   useEffect(() => { load(); }, []);
 
@@ -185,7 +186,7 @@ export default function SubscriptionTab() {
   const isExpired    = days !== null && days <= 0;
 
   return (
-    <div style={{ padding:"28px 24px", maxWidth:720, margin:"0 auto", fontFamily:"Cairo, sans-serif" }} dir={dir}>
+    <div style={ui.page} dir={dir}>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, gap:10, flexWrap:"wrap" }}>
         <h2 style={{ fontSize:26, fontWeight:800, color:"#1e293b", margin:0 }}>
           💳 {t("subTitle")}
@@ -217,8 +218,7 @@ export default function SubscriptionTab() {
       )}
 
       {/* Card */}
-      <div style={{ background:"#fff", borderRadius:14, border:"1px solid #e2e8f0",
-                    overflow:"hidden", boxShadow:"0 2px 8px rgba(0,0,0,.06)" }}>
+      <div style={{ ...ui.card, overflow:"hidden", padding:0 }}>
 
         {/* Header strip */}
         <div style={{

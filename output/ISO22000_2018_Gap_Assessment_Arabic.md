@@ -1,4 +1,4 @@
-# تقرير فحص فجوات ISO 22000:2018 مقابل نظام Al Mawashi Inspection
+n# تقرير فحص فجوات ISO 22000:2018 مقابل نظام Al Mawashi Inspection
 
 تاريخ الفحص: 2026-06-24  
 مرجع المواصفة المستخدم: ISO 22000:2018(E), Second edition 2018-06، ملف `C:\Users\moham\Downloads\ISO_22000_2018.pdf`  

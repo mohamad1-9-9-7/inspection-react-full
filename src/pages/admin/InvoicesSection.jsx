@@ -36,8 +36,8 @@ function addYear(d) {
 /* ── shared styles (light card inside dark/light contexts) ── */
 const ui = {
   card: {
-    background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0",
-    overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,.06)",
+    background: "#fff", borderRadius: 8, border: "1px solid rgba(15,23,42,.12)",
+    overflow: "hidden", boxShadow: "0 10px 26px rgba(15,23,42,.07)",
   },
   cardHeader: {
     padding: "18px 22px", borderBottom: "1px solid #e2e8f0",
@@ -47,7 +47,7 @@ const ui = {
   h3: { margin: 0, fontWeight: 800, fontSize: 19, color: "#1e293b" },
   desc: { fontSize: 13, color: "#64748b", margin: "4px 0 0" },
   btnPrimary: {
-    background: "#3b82f6", color: "#fff", border: "none", borderRadius: 8,
+    background: "#0f766e", color: "#fff", border: "none", borderRadius: 8,
     padding: "9px 18px", fontWeight: 700, fontSize: 15, cursor: "pointer",
     fontFamily: "inherit",
   },
@@ -58,8 +58,8 @@ const ui = {
     fontFamily: "inherit",
   },
   btnGhost: {
-    background: "transparent", color: "#3b82f6",
-    border: "1.5px solid #bfdbfe", borderRadius: 8,
+    background: "#f8fafc", color: "#0f766e",
+    border: "1.5px solid #99f6e4", borderRadius: 8,
     padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer",
     fontFamily: "inherit",
   },
@@ -84,7 +84,7 @@ const ui = {
     zIndex: 9000, padding: 16, backdropFilter: "blur(6px)",
   },
   modal: {
-    background: "#fff", borderRadius: 16, padding: "24px 28px",
+    background: "#fff", borderRadius: 8, padding: "24px 28px",
     width: "min(640px, 96vw)", maxHeight: "92vh", overflowY: "auto",
     fontFamily: "Cairo, sans-serif", boxShadow: "0 28px 64px rgba(0,0,0,.35)",
   },

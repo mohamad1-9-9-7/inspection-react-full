@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import API_BASE from "../../config/api";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
+import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 
 const emptyForm = {
   name:"", contact_name:"", contact_email:"", contact_phone:"",
@@ -110,39 +111,37 @@ export default function CompaniesTab() {
   }
 
   return (
-    <div style={{ padding:"24px", fontFamily:"Cairo, sans-serif", maxWidth:900, margin:"0 auto" }} dir={dir}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22, flexWrap:"wrap", gap:10 }}>
-        <h2 style={{ fontSize:24, fontWeight:800, color:"#1e293b", margin:0 }}>🏢 {t("companiesTitle")}</h2>
-        <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+    <div style={ui.page} dir={dir}>
+      <PageHeader
+        eyebrow="Billing"
+        title={t("companiesTitle")}
+        subtitle="Connect companies to plans, contacts, status, and subscription dates."
+        actions={
+        <>
           <LangToggle lang={lang} toggle={toggleLang} style={{ background:"#0b1220", border:"1px solid #1e293b" }} />
           {isSuperAdmin && (
-            <button onClick={openNew} style={btnStyle("#059669")}>+ {t("newCompany")}</button>
+            <Button onClick={openNew} tone="primary">+ {t("newCompany")}</Button>
           )}
-        </div>
-      </div>
+        </>
+        }
+      />
 
-      {msg && <div style={msgStyle(msg)}>{msg}</div>}
+      <StatusMessage message={msg ? { kind: msg.startsWith("âœ…") ? "ok" : "err", text: msg } : null} />
 
       {/* Delete modal */}
-      {confirm && (
-        <div style={overlayStyle}>
-          <div style={modalStyle}>
-            <div style={{ fontSize:18, fontWeight:800, color:"#1e293b", marginBottom:10 }}>{t("deleteCompanyQ")}</div>
-            <div style={{ fontSize:14, color:"#64748b", marginBottom:20 }}>
-              {t("deleteCompanyD")}
-            </div>
-            <div style={{ display:"flex", gap:10 }}>
-              <button onClick={() => deleteCompany(confirm)} style={btnStyle("#dc2626")}>{t("delete")}</button>
-              <button onClick={() => setConfirm(null)} style={btnStyle("#64748b")}>{t("cancel")}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        open={!!confirm}
+        title={t("deleteCompanyQ")}
+        body={t("deleteCompanyD")}
+        confirmText={t("delete")}
+        cancelText={t("cancel")}
+        onConfirm={() => deleteCompany(confirm)}
+        onCancel={() => setConfirm(null)}
+      />
 
       {/* Edit form */}
       {editing && (
-        <div style={{ background:"#f8fafc", border:"1.5px solid #e2e8f0", borderRadius:14,
-                      padding:"22px 24px", marginBottom:22 }}>
+        <div style={ui.subtleCard}>
           <h3 style={{ fontSize:20, fontWeight:700, color:"#1e293b", marginBottom:18 }}>
             {editing === "new" ? t("newCompany") : `${t("edit")} — ${editing.name}`}
           </h3>
@@ -193,10 +192,10 @@ export default function CompaniesTab() {
             </Field>
           </div>
           <div style={{ display:"flex", gap:10, marginTop:18 }}>
-            <button onClick={save} disabled={saving} style={btnStyle("#059669")}>
+            <Button onClick={save} disabled={saving} tone="primary">
               {saving ? t("saving") : "✅ " + t("saveCompany")}
-            </button>
-            <button onClick={() => setEditing(null)} style={btnStyle("#94a3b8")}>{t("cancel")}</button>
+            </Button>
+            <Button onClick={() => setEditing(null)} tone="secondary">{t("cancel")}</Button>
           </div>
         </div>
       )}
@@ -216,10 +215,7 @@ export default function CompaniesTab() {
             const expiring = days !== null && days > 0 && days <= 14;
             const expired  = days !== null && days <= 0;
             return (
-              <div key={c.id} style={{
-                background:"#fff", border:"1px solid #e2e8f0", borderRadius:12,
-                padding:"16px 20px", boxShadow:"0 1px 4px rgba(0,0,0,.05)",
-              }}>
+              <div key={c.id} style={{ ...ui.card, padding:"16px 20px" }}>
                 <div style={{ display:"flex", alignItems:"flex-start", gap:16 }}>
                   {/* Avatar */}
                   <div style={{
@@ -272,8 +268,8 @@ export default function CompaniesTab() {
                   {/* Actions */}
                   {isSuperAdmin && (
                     <div style={{ display:"flex", gap:8, flexShrink:0 }}>
-                      <button onClick={() => openEdit(c)} style={btnSmall("#3b82f6")}>{t("edit")}</button>
-                      <button onClick={() => setConfirm(c.id)} style={btnSmall("#dc2626")}>{t("delete")}</button>
+                      <Button onClick={() => openEdit(c)} tone="secondary" style={{ minHeight:36 }}>{t("edit")}</Button>
+                      <Button onClick={() => setConfirm(c.id)} tone="danger" style={{ minHeight:36 }}>{t("delete")}</Button>
                     </div>
                   )}
                 </div>

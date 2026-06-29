@@ -2,6 +2,7 @@
 // 🌐 Language preferences — central control for the entire app.
 
 import React, { useState } from "react";
+import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "../_shared/SettingsUIKit";
 // ThemeCard removed — app now uses a fixed light theme only.
 
 // All language-related localStorage keys used across the app
@@ -31,10 +32,10 @@ export default function AppearanceAndLanguage() {
   });
 
   const [msg, setMsg] = useState("");
+  const [confirmAction, setConfirmAction] = useState(null);
   const flash = (t) => { setMsg(t); setTimeout(() => setMsg(""), 2500); };
 
-  function setLangAll(lang) {
-    if (!window.confirm(`Set language to "${lang}" across ALL modules (${LANG_KEYS.length} apps)?`)) return;
+  function applyLangAll(lang) {
     const out = {};
     for (const { key } of LANG_KEYS) {
       try {
@@ -44,16 +45,37 @@ export default function AppearanceAndLanguage() {
     }
     setStatuses(out);
     flash(`✅ Set language to "${lang}" everywhere. Refresh pages to see the change.`);
+    setConfirmAction(null);
   }
 
-  function resetAllLang() {
-    if (!window.confirm("Clear ALL saved language preferences? The app will fall back to its built-in defaults (English).")) return;
+  function setLangAll(lang) {
+    setConfirmAction({
+      title: `Set all modules to ${lang.toUpperCase()}?`,
+      body: `This updates ${LANG_KEYS.length} saved language preferences. Re-open affected modules to see the change.`,
+      confirmText: `Set ${lang.toUpperCase()}`,
+      tone: "primary",
+      onConfirm: () => applyLangAll(lang),
+    });
+  }
+
+  function applyResetAllLang() {
     const out = {};
     for (const { key } of LANG_KEYS) {
       try { localStorage.removeItem(key); out[key] = ""; } catch {}
     }
     setStatuses(out);
     flash("✅ All language preferences cleared.");
+    setConfirmAction(null);
+  }
+
+  function resetAllLang() {
+    setConfirmAction({
+      title: "Clear all language preferences?",
+      body: "The app will fall back to its built-in defaults, usually English, until each module is set again.",
+      confirmText: "Clear all",
+      tone: "danger",
+      onConfirm: applyResetAllLang,
+    });
   }
 
   function setOneLang(key, lang) {
@@ -65,51 +87,42 @@ export default function AppearanceAndLanguage() {
   }
 
   return (
-    <div>
-      <div style={s.header}>
-        <div>
-          <h2 style={s.h2}>🌐 Language</h2>
-          <p style={s.intro}>
-            Control the language used by each module of the app.
-          </p>
-        </div>
-      </div>
+    <div style={ui.page}>
+      <PageHeader
+        eyebrow="Preferences"
+        title="Language"
+        subtitle="Control the saved language preference for each major module in the app."
+      />
 
-      {msg && (
-        <div style={{
-          ...s.msgBox,
-          background: msg.startsWith("❌") ? "#fee2e2" : "#dcfce7",
-          color: msg.startsWith("❌") ? "#7f1d1d" : "#166534",
-        }}>{msg}</div>
-      )}
+      <StatusMessage message={msg ? { kind: msg.startsWith("❌") ? "err" : "ok", text: msg } : null} />
 
       {/* LANGUAGE — global */}
-      <section style={s.section}>
+      <section style={ui.card}>
         <div style={s.sectionHead}>🌐 Language — apply to all modules</div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button type="button" onClick={() => setLangAll("en")} style={s.btnLang("#0f172a", "linear-gradient(135deg,#dbeafe,#eff6ff)")}>
+          <Button type="button" onClick={() => setLangAll("en")} tone="secondary">
             🇬🇧 Set all to English
-          </button>
-          <button type="button" onClick={() => setLangAll("ar")} style={s.btnLang("#7c2d12", "linear-gradient(135deg,#fed7aa,#fff7ed)")}>
+          </Button>
+          <Button type="button" onClick={() => setLangAll("ar")} tone="warning">
             🇸🇦 العربية للجميع
-          </button>
-          <button type="button" onClick={resetAllLang} style={s.btnDanger}>
+          </Button>
+          <Button type="button" onClick={resetAllLang} tone="danger">
             🗑️ Clear all (use defaults)
-          </button>
+          </Button>
         </div>
       </section>
 
       {/* LANGUAGE — per module */}
-      <section style={s.section}>
+      <section style={ui.card}>
         <div style={s.sectionHead}>🔧 Per-module language</div>
-        <div style={s.tableWrap}>
-          <table style={s.table}>
+        <div style={ui.tableWrap}>
+          <table style={ui.table}>
             <thead>
               <tr>
-                <th style={s.th}>Module</th>
-                <th style={s.th}>Storage key</th>
-                <th style={s.th}>Current</th>
-                <th style={s.th}>Actions</th>
+                <th style={ui.th}>Module</th>
+                <th style={ui.th}>Storage key</th>
+                <th style={ui.th}>Current</th>
+                <th style={ui.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -117,14 +130,14 @@ export default function AppearanceAndLanguage() {
                 const val = statuses[key] || "";
                 return (
                   <tr key={key}>
-                    <td style={s.td}><strong>{label}</strong></td>
-                    <td style={{ ...s.td, fontFamily: "monospace", fontSize: 11, color: "#64748b" }}>{key}</td>
-                    <td style={s.td}>
+                    <td style={ui.td}><strong>{label}</strong></td>
+                    <td style={{ ...ui.td, fontFamily: "monospace", fontSize: 11, color: "#64748b" }}>{key}</td>
+                    <td style={ui.td}>
                       {val === "en" && <span style={s.badge("#1e40af", "#dbeafe")}>🇬🇧 EN</span>}
                       {val === "ar" && <span style={s.badge("#7c2d12", "#fed7aa")}>🇸🇦 AR</span>}
                       {!val && <span style={s.badge("#475569", "#f1f5f9")}>default</span>}
                     </td>
-                    <td style={s.td}>
+                    <td style={ui.td}>
                       <div style={{ display: "flex", gap: 4 }}>
                         <button type="button" onClick={() => setOneLang(key, "en")} style={s.pillBtn}>EN</button>
                         <button type="button" onClick={() => setOneLang(key, "ar")} style={s.pillBtn}>AR</button>
@@ -141,42 +154,23 @@ export default function AppearanceAndLanguage() {
           Changes take effect when you re-open the affected module (or refresh).
         </p>
       </section>
+      <ConfirmModal
+        open={!!confirmAction}
+        title={confirmAction?.title}
+        body={confirmAction?.body}
+        confirmText={confirmAction?.confirmText}
+        cancelText="Cancel"
+        tone={confirmAction?.tone}
+        onConfirm={confirmAction?.onConfirm}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }
 
 const s = {
-  header: { marginBottom: 16 },
-  h2: { fontSize: 20, fontWeight: 1000, color: "#0f172a", margin: 0 },
-  intro: { fontSize: 12, color: "#64748b", fontWeight: 700, marginTop: 4, lineHeight: 1.6 },
-  section: {
-    marginBottom: 22, padding: 18,
-    background: "#fff", borderRadius: 14,
-    border: "1px solid #e2e8f0", boxShadow: "0 8px 18px rgba(2,6,23,.06)",
-  },
   sectionHead: { fontSize: 14, fontWeight: 1000, color: "#0f172a", marginBottom: 12 },
   note: { fontSize: 11, color: "#64748b", marginTop: 10, lineHeight: 1.5, fontWeight: 700 },
-  btnLang: (color, bg) => ({
-    padding: "10px 18px", borderRadius: 12,
-    background: bg, color, border: "1px solid rgba(2,6,23,.10)",
-    fontWeight: 1000, fontSize: 13, cursor: "pointer",
-    fontFamily: "inherit",
-  }),
-  btnDanger: {
-    padding: "10px 16px", borderRadius: 12,
-    background: "linear-gradient(135deg,#fee2e2,#fef2f2)",
-    color: "#991b1b", border: "1px solid #fecaca",
-    fontWeight: 1000, fontSize: 13, cursor: "pointer",
-    fontFamily: "inherit",
-  },
-  msgBox: {
-    padding: "10px 14px", borderRadius: 10, marginBottom: 14,
-    fontWeight: 800, fontSize: 13,
-  },
-  tableWrap: { overflow: "auto", borderRadius: 10, border: "1px solid #e2e8f0" },
-  table: { width: "100%", borderCollapse: "separate", borderSpacing: 0 },
-  th: { background: "#0b1220", color: "#fff", padding: "9px 12px", textAlign: "left", fontWeight: 1000, fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" },
-  td: { padding: "8px 12px", borderTop: "1px solid #f1f5f9", fontSize: 13, color: "#0f172a", fontWeight: 700 },
   badge: (color, bg) => ({ display: "inline-block", padding: "2px 10px", borderRadius: 999, background: bg, color, fontWeight: 1000, fontSize: 11 }),
   pillBtn: { padding: "4px 10px", borderRadius: 999, background: "#0b1220", color: "#fff", border: "none", fontWeight: 1000, fontSize: 11, cursor: "pointer" },
   pillBtnGhost: { padding: "4px 10px", borderRadius: 999, background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", fontWeight: 1000, fontSize: 11, cursor: "pointer" },

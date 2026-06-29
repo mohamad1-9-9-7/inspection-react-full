@@ -1,6 +1,7 @@
 // src/pages/settings/BackupTab.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
+import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 
 
 /* ============================================================
@@ -204,6 +205,8 @@ export default function BackupTab() {
   const [progress, setProgress] = useState({ current: 0, total: 0, label: "" });
   const [estimate, setEstimate] = useState(null); // {types: {...}, totalCount, sizeBytes}
   const [msg, setMsg] = useState({ kind: "", text: "" });
+  const [confirmRestore, setConfirmRestore] = useState(false);
+  const [confirmReload, setConfirmReload] = useState(false);
 
   /* --- localStorage live preview --- */
   const localPreview = useMemo(() => {
@@ -441,17 +444,15 @@ export default function BackupTab() {
   /* ===== استرجاع: تنفيذ ===== */
   async function handleRestore() {
     if (!restorePreview) return;
+    setConfirmRestore(true);
+  }
+
+  async function doRestore() {
+    if (!restorePreview) return;
     const { data } = restorePreview;
 
-    const confirmMsg =
-      `⚠️ سيتم استبدال بيانات localStorage الحالية ببيانات النسخة الاحتياطية.\n` +
-      (restoreServerToo
-        ? `وسيتم رفع ${data.serverReports?.length || 0} تقرير للسيرفر (قد ينتج تقارير مكرّرة).\n`
-        : `لن يتم رفع التقارير للسيرفر (الخيار غير مفعّل).\n`) +
-      `\nهل أنت متأكد؟`;
-    if (!window.confirm(confirmMsg)) return;
-
     setBusy(true);
+    setConfirmRestore(false);
     setMsg({ kind: "info", text: "⏳ جارٍ الاسترجاع..." });
 
     try {
@@ -496,12 +497,7 @@ export default function BackupTab() {
             : ""),
       });
       setRestorePreview(null);
-
-      setTimeout(() => {
-        if (window.confirm("هل تريد إعادة تحميل الصفحة الآن لتفعيل البيانات المسترجعة؟")) {
-          window.location.reload();
-        }
-      }, 500);
+      setTimeout(() => setConfirmReload(true), 500);
     } catch (e) {
       setMsg({ kind: "err", text: `❌ فشل الاسترجاع: ${e?.message || e}` });
     } finally {
@@ -511,13 +507,7 @@ export default function BackupTab() {
   }
 
   /* ===== UI styles ===== */
-  const card = {
-    background: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    padding: "1.1rem",
-    marginBottom: 14,
-  };
+  const card = ui.card;
   const btnPrimary = {
     background: "linear-gradient(180deg,#1e3a5f,#2d5a8e)",
     color: "#fff",
@@ -558,7 +548,12 @@ export default function BackupTab() {
   const noTypesOn = selectedTypes.size === 0;
 
   return (
-    <div>
+    <div style={ui.page}>
+      <PageHeader
+        eyebrow="Backup"
+        title="Backup & Restore"
+        subtitle="Choose exactly what to export: server reports, local drafts, browser settings, and date-limited backups."
+      />
       {/* مقدمة */}
       <div style={{ ...card, background: "linear-gradient(135deg,#eff6ff,#f0f9ff)", borderColor: "#bfdbfe" }}>
         <div style={{ fontWeight: 800, color: "#1e3a5f", marginBottom: 6 }}>
@@ -573,12 +568,12 @@ export default function BackupTab() {
       <div style={card}>
         <div style={{ fontWeight: 800, marginBottom: 10, color: "#0b1f4d" }}>⚡ خيارات سريعة</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={() => applyPreset("full")} style={presetBtn}>📦 نسخة كاملة</button>
-          <button onClick={() => applyPreset("server-only")} style={presetBtn}>🗄️ تقارير السيرفر فقط</button>
-          <button onClick={() => applyPreset("drafts-only")} style={presetBtn}>📝 المسودّات فقط</button>
-          <button onClick={() => applyPreset("last-30")} style={presetBtn}>📅 آخر 30 يوم</button>
-          <button onClick={() => applyPreset("last-90")} style={presetBtn}>📅 آخر 90 يوم</button>
-          <button onClick={() => applyPreset("this-year")} style={presetBtn}>📅 السنة الحالية</button>
+          <Button onClick={() => applyPreset("full")} tone="secondary">📦 نسخة كاملة</Button>
+          <Button onClick={() => applyPreset("server-only")} tone="secondary">🗄️ تقارير السيرفر فقط</Button>
+          <Button onClick={() => applyPreset("drafts-only")} tone="secondary">📝 المسودّات فقط</Button>
+          <Button onClick={() => applyPreset("last-30")} tone="secondary">📅 آخر 30 يوم</Button>
+          <Button onClick={() => applyPreset("last-90")} tone="secondary">📅 آخر 90 يوم</Button>
+          <Button onClick={() => applyPreset("this-year")} tone="secondary">📅 السنة الحالية</Button>
         </div>
       </div>
 
@@ -635,9 +630,9 @@ export default function BackupTab() {
               />
             </label>
             {(dateFrom || dateTo) && (
-              <button onClick={() => { setDateFrom(""); setDateTo(""); }} style={btnSecondary}>
+              <Button onClick={() => { setDateFrom(""); setDateTo(""); }} tone="secondary">
                 مسح
-              </button>
+              </Button>
             )}
           </div>
           <div style={{ fontSize: "0.83rem", color: "#6b7280", marginTop: 8 }}>
@@ -654,8 +649,8 @@ export default function BackupTab() {
               📋 أنواع التقارير ({selectedTypes.size}/{ALL_TYPES.length})
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => selectAllTypes(true)} disabled={allTypesOn} style={btnSecondary}>تحديد الكل</button>
-              <button onClick={() => selectAllTypes(false)} disabled={noTypesOn} style={btnSecondary}>إلغاء الكل</button>
+              <Button onClick={() => selectAllTypes(true)} disabled={allTypesOn} tone="secondary">تحديد الكل</Button>
+              <Button onClick={() => selectAllTypes(false)} disabled={noTypesOn} tone="secondary">إلغاء الكل</Button>
             </div>
           </div>
 
@@ -764,14 +759,14 @@ export default function BackupTab() {
       {/* ========== أزرار التصدير ========== */}
       <div style={card}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button onClick={handleEstimate} disabled={busy} style={btnSecondary}>
+          <Button onClick={handleEstimate} disabled={busy} tone="secondary">
             🔍 تقدير الحجم قبل التصدير
-          </button>
-          <button onClick={handleExport} disabled={busy} style={btnPrimary}>
+          </Button>
+          <Button onClick={handleExport} disabled={busy} tone="primary">
             {busy && progress.total > 0
               ? `⏳ ${progress.current}/${progress.total}`
               : "⬇️ تحميل النسخة الاحتياطية"}
-          </button>
+          </Button>
         </div>
         {busy && progress.label && (
           <div style={{ marginTop: 10, fontSize: "0.83rem", color: "#6b7280" }}>
@@ -856,12 +851,12 @@ export default function BackupTab() {
             </label>
 
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={handleRestore} disabled={busy} style={btnDanger}>
+              <Button onClick={handleRestore} disabled={busy} tone="danger">
                 {busy ? "⏳ جارٍ الاسترجاع..." : "♻️ تأكيد الاسترجاع"}
-              </button>
-              <button onClick={() => setRestorePreview(null)} disabled={busy} style={btnSecondary}>
+              </Button>
+              <Button onClick={() => setRestorePreview(null)} disabled={busy} tone="secondary">
                 إلغاء
-              </button>
+              </Button>
             </div>
             {busy && progress.total > 0 && (
               <div style={{ marginTop: 10, fontSize: "0.83rem", color: "#6b7280" }}>
@@ -873,20 +868,34 @@ export default function BackupTab() {
       </div>
 
       {/* رسالة */}
-      {msg.text && (
-        <div
-          style={{
-            ...card,
-            marginBottom: 0,
-            background: msg.kind === "ok" ? "#ecfdf5" : msg.kind === "err" ? "#fef2f2" : "#eff6ff",
-            borderColor: msg.kind === "ok" ? "#86efac" : msg.kind === "err" ? "#fca5a5" : "#bfdbfe",
-            color: msg.kind === "ok" ? "#065f46" : msg.kind === "err" ? "#991b1b" : "#1e40af",
-            fontWeight: 600,
-          }}
-        >
-          {msg.text}
-        </div>
-      )}
+      <StatusMessage message={msg.text ? msg : null} />
+      <ConfirmModal
+        open={confirmRestore}
+        title="تأكيد الاسترجاع"
+        body={
+          restorePreview
+            ? `سيتم استبدال بيانات localStorage الحالية ببيانات النسخة الاحتياطية. ${
+                restoreServerToo
+                  ? `وسيتم رفع ${restorePreview.data.serverReports?.length || 0} تقرير للسيرفر، وقد ينتج عنها تكرار.`
+                  : "لن يتم رفع التقارير للسيرفر لأن الخيار غير مفعّل."
+              }`
+            : ""
+        }
+        confirmText="تأكيد الاسترجاع"
+        cancelText="إلغاء"
+        onConfirm={doRestore}
+        onCancel={() => setConfirmRestore(false)}
+      />
+      <ConfirmModal
+        open={confirmReload}
+        title="إعادة تحميل الصفحة؟"
+        body="إعادة التحميل تساعد على تفعيل البيانات المسترجعة فوراً."
+        confirmText="إعادة تحميل"
+        cancelText="لاحقاً"
+        tone="primary"
+        onConfirm={() => window.location.reload()}
+        onCancel={() => setConfirmReload(false)}
+      />
     </div>
   );
 }
