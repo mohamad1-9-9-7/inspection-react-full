@@ -62,11 +62,11 @@ function POS19Overview() {
 
   useEffect(() => {
     let saved; try { saved = JSON.parse(localStorage.getItem("pos19_reports") || "[]") || []; } catch { saved = []; }
-    saved.sort((a,b) => String(a?.date||"").localeCompare(String(b?.date||"")));
+    saved.sort((a,b) => String(b?.date||"").localeCompare(String(a?.date||"")));
     setReports(saved);
     const todayRep = saved.find(r => r?.date === todayDubai);
     if (todayRep) setSelectedDate(todayDubai);
-    else if (saved.length > 0) setSelectedDate(saved[saved.length-1]?.date || "");
+    else if (saved.length > 0) setSelectedDate(saved[0]?.date || "");
   }, [todayDubai]);
 
   const selectedReport = useMemo(

@@ -4,7 +4,7 @@ import { Suspense, lazy, useEffect } from "react";
 import NotificationManager from "./components/NotificationManager";
 import API_BASE from "./config/api";
 import { branchIdFromPath } from "./config/branches";
-import { isDeleteAllowedForBranch } from "./pages/settings/SecurityControlsTab";
+import { getSecuritySettings, isDeleteAllowedForBranch } from "./pages/settings/SecurityControlsTab";
 
 const SubscriptionExpired = lazy(() => import("./pages/SubscriptionExpired"));
 const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
@@ -433,8 +433,7 @@ function TokenRedirect({ to }) {
   return <Navigate to={`${to}/${encodeURIComponent(token || "")}`} replace />;
 }
 
-/* Session valid for 8 hours from loginAt */
-const SESSION_MAX_MS = 8 * 60 * 60 * 1000;
+const DEFAULT_SESSION_MAX_MS = 8 * 60 * 60 * 1000;
 
 /* Fetch subscription once on app init and cache it */
 function useSubscriptionFetch() {
@@ -470,6 +469,24 @@ function isSubscriptionExpired() {
   }
 }
 
+function getSessionMaxMs() {
+  try {
+    const hours = Number(getSecuritySettings().sessionTimeoutHours);
+    if (!Number.isFinite(hours) || hours <= 0) return DEFAULT_SESSION_MAX_MS;
+    return Math.min(Math.max(hours, 1), 24) * 60 * 60 * 1000;
+  } catch {
+    return DEFAULT_SESSION_MAX_MS;
+  }
+}
+
+function getCurrentUser() {
+  try {
+    return JSON.parse(localStorage.getItem("currentUser") || "{}");
+  } catch {
+    return {};
+  }
+}
+
 function ProtectedRoute({ children }) {
   let isAuthed = false;
   let isSuperAdmin = false;
@@ -478,7 +495,7 @@ function ProtectedRoute({ children }) {
     if (raw) {
       const user = JSON.parse(raw);
       const age  = Date.now() - (user?.loginAt || 0);
-      if (user && age < SESSION_MAX_MS) {
+      if (user && age < getSessionMaxMs()) {
         isAuthed     = true;
         isSuperAdmin = user.isSuperAdmin || false;
       } else {
@@ -570,28 +587,96 @@ function NotFound() {
   );
 }
 
-function useDeleteGuard() {
+function useSecurityGuard() {
   const location = useLocation();
   useEffect(() => {
     const sync = () => {
       try {
         // Route-aware: branch pages use their per-branch override; everywhere
         // else falls back to the master switch (branchId = null).
+        const settings = getSecuritySettings();
+        const user = getCurrentUser();
+        const readOnlyActive = !!settings.readOnlyMode && !user.isAdmin && !user.isSuperAdmin;
         const branchId = branchIdFromPath(location.pathname);
         const allowed = isDeleteAllowedForBranch(branchId);
         document.body.classList.toggle("sec-delete-allowed", allowed);
+        document.body.classList.toggle("sec-readonly-mode", readOnlyActive);
       } catch {
         document.body.classList.remove("sec-delete-allowed");
+        document.body.classList.remove("sec-readonly-mode");
       }
     };
     sync();
     window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
+    window.addEventListener("app:security-settings-changed", sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("app:security-settings-changed", sync);
+    };
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const shouldBlock = () => {
+      if (location.pathname === "/" || location.pathname.startsWith("/settings")) return false;
+      const settings = getSecuritySettings();
+      const user = getCurrentUser();
+      return !!settings.readOnlyMode && !user.isAdmin && !user.isSuperAdmin;
+    };
+
+    const blockSubmit = (event) => {
+      if (!shouldBlock()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      alert("Read-only mode is active. Create/edit actions are disabled.");
+    };
+
+    const blockWriteClick = (event) => {
+      if (!shouldBlock()) return;
+      const el = event.target?.closest?.("[data-write-action], [data-delete-action]");
+      if (!el) return;
+      event.preventDefault();
+      event.stopPropagation();
+      alert("Read-only mode is active. Create/edit/delete actions are disabled.");
+    };
+
+    document.addEventListener("submit", blockSubmit, true);
+    document.addEventListener("click", blockWriteClick, true);
+    return () => {
+      document.removeEventListener("submit", blockSubmit, true);
+      document.removeEventListener("click", blockWriteClick, true);
+    };
+  }, [location.pathname]);
+
+  useEffect(() => {
+    let timer = null;
+    const clear = () => { if (timer) window.clearTimeout(timer); timer = null; };
+    const arm = () => {
+      clear();
+      const settings = getSecuritySettings();
+      const minutes = Number(settings.lockScreenMinutes || 0);
+      if (!minutes || minutes <= 0 || location.pathname === "/") return;
+      timer = window.setTimeout(() => {
+        try { localStorage.removeItem("currentUser"); } catch {}
+        try { sessionStorage.setItem("session_expired_reason", "idle_lock"); } catch {}
+        window.location.href = "/";
+      }, minutes * 60 * 1000);
+    };
+    const events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
+    arm();
+    events.forEach((eventName) => window.addEventListener(eventName, arm, { passive: true }));
+    window.addEventListener("storage", arm);
+    window.addEventListener("app:security-settings-changed", arm);
+    return () => {
+      clear();
+      events.forEach((eventName) => window.removeEventListener(eventName, arm));
+      window.removeEventListener("storage", arm);
+      window.removeEventListener("app:security-settings-changed", arm);
+    };
   }, [location.pathname]);
 }
 
 export default function App() {
-  useDeleteGuard();
+  useSecurityGuard();
   useSubscriptionFetch();
   return (
     <Suspense

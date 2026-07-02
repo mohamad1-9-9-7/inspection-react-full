@@ -1,6 +1,8 @@
 // src/pages/CustomerReturnView.js
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../config/api";
+import { normalizeCode, useProductCatalog } from "./monitor/branches/_shared/ProductPicker";
+import { mergeCustomerOptions } from "./shared/customerReturnsCustomers";
 
 /* ========== Fetch (type=returns_customers) ========== */
 async function fetchReports() {
@@ -211,9 +213,9 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
       <div style={galleryCard} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
           <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
-            🖼️ Product Images {row?.productName ? `— ${row.productName}` : ""}
+            Product Images {row?.productName ? `- ${row.productName}` : ""}
           </div>
-          <button onClick={onClose} style={galleryClose}>✕</button>
+          <button onClick={onClose} style={galleryClose}>X</button>
         </div>
 
         {previewSrc && (
@@ -224,7 +226,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 }}>
           <button onClick={handlePick} style={btnBlue} disabled={remaining === 0}>
-            ⬆️ Upload images ({remaining} left)
+            Upload images ({remaining} left)
           </button>
           <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleFiles} style={{ display: "none" }} />
           <div style={{ fontSize: 13, color: "#334155" }}>Max {MAX_IMAGES_PER_PRODUCT} images per product. (auto-compressed)</div>
@@ -237,7 +239,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
             row.images.map((src, i) => (
               <div key={i} style={thumbTile} title={`Image ${i + 1}`}>
                 <img src={src} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
-                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>✕</button>
+                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>X</button>
               </div>
             ))
           )}
@@ -250,6 +252,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
 /* ========== Page ========== */
 export default function CustomerReturnView() {
   const [reports, setReports] = useState([]);
+  const { allItems: productCatalog } = useProductCatalog();
 
   // Date filters
   const [filterFrom, setFilterFrom] = useState("");
@@ -341,6 +344,13 @@ export default function CustomerReturnView() {
   const selectedReport =
     selectedReportIndex >= 0 ? filteredReports[selectedReportIndex] : null;
 
+  const customerOptions = useMemo(() => {
+    const names = reports.flatMap((rep) =>
+      (rep.items || []).map((item) => item?.customerName || "")
+    );
+    return mergeCustomerOptions(names);
+  }, [reports]);
+
   // KPIs
   const kpi = useMemo(() => {
     let totalItems = 0;
@@ -367,12 +377,12 @@ export default function CustomerReturnView() {
   const showAlert = kpi.totalQty > 50 || filteredReports.length > 50;
   const alertMsg =
     kpi.totalQty > 50
-      ? "⚠️ The total quantity of returns is very high!"
+      ? "The total quantity of returns is very high!"
       : filteredReports.length > 50
-      ? "⚠️ A large number of return reports in this period!"
+      ? "A large number of return reports in this period!"
       : "";
 
-  // Hierarchical year → month → day
+  // Hierarchical year -> month -> day
   const hierarchy = useMemo(() => {
     const years = new Map();
     filteredReports.forEach((rep) => {
@@ -401,6 +411,7 @@ export default function CustomerReturnView() {
 
   /* ========== Row add/edit/delete logic ========== */
   const blankRow = {
+    itemCode: "",
     productName: "",
     origin: "",
     customerName: "",
@@ -425,6 +436,26 @@ export default function CustomerReturnView() {
     "Other...",
   ];
 
+  const handleEditItemCodeChange = (value) => {
+    const code = String(value || "");
+    const hit = productCatalog.find((item) => normalizeCode(item.item_code) === normalizeCode(code));
+    setEditRowData((row) => ({
+      ...row,
+      itemCode: code,
+      productName: hit ? hit.description : row.productName,
+    }));
+  };
+
+  const handleEditProductNameChange = (value) => {
+    const name = String(value || "");
+    const hit = productCatalog.find((item) => normalizeCode(item.description) === normalizeCode(name));
+    setEditRowData((row) => ({
+      ...row,
+      productName: name,
+      itemCode: hit ? hit.item_code : row.itemCode,
+    }));
+  };
+
   const startAddRow = () => {
     if (!selectedReport) return;
     setAddingRow(true);
@@ -438,6 +469,7 @@ export default function CustomerReturnView() {
     setAddingRow(false);
     setEditRowIdx(i);
     setEditRowData({
+      itemCode: row.itemCode || "",
       productName: row.productName || "",
       origin: row.origin || "",
       customerName: row.customerName || "",
@@ -463,6 +495,7 @@ export default function CustomerReturnView() {
   const prepareRowForSave = (row, existingImages = []) => {
     const qtyNum = Number(row.quantity);
     return {
+      itemCode: (row.itemCode || "").trim(),
       productName: (row.productName || "").trim(),
       origin: (row.origin || "").trim(),
       customerName: (row.customerName || "").trim(),
@@ -483,18 +516,18 @@ export default function CustomerReturnView() {
     if (!selectedReport || editRowIdx === null || !editRowData) return;
 
     if (!editRowData.productName?.trim()) {
-      setOpMsg("❌ Enter product name.");
+      setOpMsg("Enter product name.");
       setTimeout(() => setOpMsg(""), 3000);
       return;
     }
     const qtyNum = Number(editRowData.quantity);
     if (!Number.isFinite(qtyNum) || qtyNum <= 0) {
-      setOpMsg("❌ Enter a valid quantity (> 0).");
+      setOpMsg("Enter a valid quantity (> 0).");
       setTimeout(() => setOpMsg(""), 3000);
       return;
     }
     if (!editRowData.customerName?.trim()) {
-      setOpMsg("❌ Enter customer name.");
+      setOpMsg("Enter customer name.");
       setTimeout(() => setOpMsg(""), 3500);
       return;
     }
@@ -504,7 +537,7 @@ export default function CustomerReturnView() {
     const prepared = prepareRowForSave(editRowData, existingImages);
 
     try {
-      setOpMsg("⏳ Saving to server…");
+      setOpMsg("Saving to server...");
 
       // Action-change log if changed
       let changedAction = false;
@@ -533,10 +566,10 @@ export default function CustomerReturnView() {
 
       await reloadFromServer();
       cancelEditRow();
-      setOpMsg("✅ Saved.");
+      setOpMsg("Saved.");
     } catch (e) {
       console.error(e);
-      setOpMsg("❌ Failed to save.");
+      setOpMsg("Failed to save.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -548,16 +581,16 @@ export default function CustomerReturnView() {
     if (!sure) return;
 
     try {
-      setOpMsg("⏳ Deleting row…");
+      setOpMsg("Deleting row...");
       const currentItems = selectedReport.items || [];
       const newItems = currentItems.filter((_, idx) => idx !== i);
       await saveReportToServer(selectedReport.reportDate, newItems);
       await reloadFromServer();
       if (editRowIdx === i) cancelEditRow();
-      setOpMsg("✅ Row deleted.");
+      setOpMsg("Row deleted.");
     } catch (e) {
       console.error(e);
-      setOpMsg("❌ Failed to delete row.");
+      setOpMsg("Failed to delete row.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -575,13 +608,13 @@ export default function CustomerReturnView() {
       const cur = Array.isArray(row.images) ? row.images : [];
       const merged = [...cur, ...b64s].slice(0, MAX_IMAGES_PER_PRODUCT);
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: merged } : r));
-      setOpMsg("⏳ Updating images…");
+      setOpMsg("Updating images...");
       await saveReportToServer(selectedReport.reportDate, newItems);
       await reloadFromServer();
-      setOpMsg("✅ Images updated.");
+      setOpMsg("Images updated.");
     } catch (e) {
       console.error(e);
-      setOpMsg("❌ Failed to update images.");
+      setOpMsg("Failed to update images.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -595,13 +628,13 @@ export default function CustomerReturnView() {
       const cur = Array.isArray(row.images) ? [...row.images] : [];
       cur.splice(imgIndex, 1);
       const newItems = items.map((r, i) => (i === imageRowIndex ? { ...r, images: cur } : r));
-      setOpMsg("⏳ Removing image…");
+      setOpMsg("Removing image...");
       await saveReportToServer(selectedReport.reportDate, newItems);
       await reloadFromServer();
-      setOpMsg("✅ Image removed.");
+      setOpMsg("Image removed.");
     } catch (e) {
       console.error(e);
-      setOpMsg("❌ Failed to remove image.");
+      setOpMsg("Failed to remove image.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -615,7 +648,7 @@ export default function CustomerReturnView() {
     if (!sure) return;
 
     try {
-      setOpMsg("⏳ Deleting report from server…");
+      setOpMsg("Deleting report from server...");
       const res = await fetch(
         `${API_BASE}/api/reports?type=returns_customers&reportDate=${encodeURIComponent(d)}`,
         { method: "DELETE" }
@@ -626,15 +659,15 @@ export default function CustomerReturnView() {
         throw new Error(json?.error || res.statusText);
       }
       if (json?.deleted === 0) {
-        setOpMsg("ℹ️ Nothing to delete (it may already be deleted).");
+        setOpMsg("Nothing to delete (it may already be deleted).");
       } else {
         await reloadFromServer();
         setSelectedDate("");
-        setOpMsg("✅ Deleted this day's report from server.");
+        setOpMsg("Deleted this day report from server.");
       }
     } catch (e) {
       console.error(e);
-      setOpMsg("❌ Failed to delete report.");
+      setOpMsg("Failed to delete report.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -656,7 +689,7 @@ export default function CustomerReturnView() {
   const handleExportPDF = async () => {
     if (!selectedReport) return;
     try {
-      setOpMsg("⏳ Creating PDF…");
+      setOpMsg("Creating PDF...");
       const JsPDF = await ensureJsPDF();
       const doc = new JsPDF({ unit: "pt", format: "a4" });
 
@@ -674,6 +707,7 @@ export default function CustomerReturnView() {
 
       const headers = [
         "SL",
+        "CODE",
         "PRODUCT",
         "ORIGIN",
         "CUSTOMER",
@@ -685,7 +719,7 @@ export default function CustomerReturnView() {
         "REMARKS",
         "ACTION",
       ];
-      const colWidths = [22, 95, 55, 95, 60, 80, 38, 55, 55, 95, 78];
+      const colWidths = [18, 34, 62, 34, 58, 42, 50, 26, 38, 42, 65, 46];
       const tableX = marginX;
       const rowH = 18;
 
@@ -711,6 +745,7 @@ export default function CustomerReturnView() {
         }
         const vals = [
           String(i + 1),
+          row.itemCode || "",
           row.productName || "",
           row.origin || "",
           row.customerName || "",
@@ -737,10 +772,10 @@ export default function CustomerReturnView() {
 
       const fileName = `customer_returns_${selectedReport.reportDate}.pdf`;
       doc.save(fileName);
-      setOpMsg("✅ PDF created.");
+      setOpMsg("PDF created.");
     } catch (e) {
       console.error(e);
-      setOpMsg("❌ Failed to create PDF (check connection).");
+      setOpMsg("Failed to create PDF (check connection).");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -757,10 +792,10 @@ export default function CustomerReturnView() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      setOpMsg("✅ JSON exported.");
+      setOpMsg("JSON exported.");
     } catch (e) {
       console.error(e);
-      setOpMsg("❌ Failed to export JSON.");
+      setOpMsg("Failed to export JSON.");
     } finally {
       setTimeout(() => setOpMsg(""), 3000);
     }
@@ -782,17 +817,17 @@ export default function CustomerReturnView() {
           await saveReportToServer(d, items);
         }
         await reloadFromServer();
-        setOpMsg("✅ Imported and saved to server.");
+        setOpMsg("Imported and saved to server.");
       } catch (err) {
         console.error(err);
-        setOpMsg("❌ Failed to import JSON.");
+        setOpMsg("Failed to import JSON.");
       } finally {
         e.target.value = "";
         setTimeout(() => setOpMsg(""), 3000);
       }
     };
     reader.onerror = () => {
-      setOpMsg("❌ Failed to read file.");
+      setOpMsg("Failed to read file.");
       e.target.value = "";
       setTimeout(() => setOpMsg(""), 3000);
     };
@@ -802,6 +837,7 @@ export default function CustomerReturnView() {
   // itemKey
   function itemKey(row) {
     return [
+      (row?.itemCode || "").trim().toLowerCase(),
       (row?.productName || "").trim().toLowerCase(),
       (row?.origin || "").trim().toLowerCase(),
       (row?.customerName || "").trim().toLowerCase(),
@@ -812,6 +848,7 @@ export default function CustomerReturnView() {
   // Column width helpers for clearer layout
   const col = {
     sl: { width: 56, minWidth: 56, textAlign: "center" },
+    itemCode: { width: 100, minWidth: 100, textAlign: "center" },
     product: { width: 180, minWidth: 180 },
     origin: { width: 110, minWidth: 110 },
     customer: { width: 160, minWidth: 160 },
@@ -827,13 +864,28 @@ export default function CustomerReturnView() {
   };
 
   return (
-    <div style={{ fontFamily: "Cairo, sans-serif", direction: "rtl", padding: 16 }}>
+    <div style={{ fontFamily: "Cairo, sans-serif", direction: "ltr", padding: 16 }}>
+      <datalist id="customer-return-view-customer-list">
+        {customerOptions.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <datalist id="customer-return-view-product-list">
+        {productCatalog.map((item) => (
+          <option
+            key={`${item.item_code || ""}-${item.description}`}
+            value={item.description}
+            label={item.item_code || ""}
+          />
+        ))}
+      </datalist>
+
       <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ fontWeight: 900, fontSize: "1.2rem", color: "#111827" }}>👤 Customer Returns</div>
+        <div style={{ fontWeight: 900, fontSize: "1.2rem", color: "#111827" }}>Customer Returns</div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={handleExportJSON} style={btnGray}>⬇️ Export JSON (all)</button>
-          <button onClick={() => importInputRef.current?.click()} style={btnGray}>⬆️ Import JSON (save to server)</button>
-          <button onClick={handleExportPDF} style={btnBlue}>🧾 Export PDF (selected day)</button>
+          <button onClick={handleExportJSON} style={btnGray}>Export JSON (all)</button>
+          <button onClick={() => importInputRef.current?.click()} style={btnGray}>Import JSON (save to server)</button>
+          <button onClick={handleExportPDF} style={btnBlue}>Export PDF (selected day)</button>
         </div>
         <input type="file" accept="application/json" ref={importInputRef} style={{ display: "none" }} onChange={handleImportJSON} />
       </div>
@@ -844,7 +896,7 @@ export default function CustomerReturnView() {
         <div>To:</div>
         <input type="date" value={filterTo} onChange={(e)=>setFilterTo(e.target.value)} style={dateInp}/>
         <div style={{ marginInlineStart: "auto", fontSize: 13, color: "#334155" }}>
-          {loadingServer ? "⏳ Loading…" : serverErr ? serverErr : opMsg}
+          {loadingServer ? "Loading..." : serverErr ? serverErr : opMsg}
         </div>
       </div>
 
@@ -854,7 +906,7 @@ export default function CustomerReturnView() {
           {hierarchy.map((y) => (
             <div key={y.year} style={treeSection}>
               <div style={treeYear} onClick={()=>setOpenYears(p=>({...p,[y.year]:!p[y.year]}))}>
-                <span>{openYears[y.year] ? "▼" : "▶"}</span>
+                <span>{openYears[y.year] ? "v" : ">"}</span>
                 <b style={{ marginInlineStart: 6 }}>{y.year}</b>
               </div>
               {openYears[y.year] && (
@@ -864,7 +916,7 @@ export default function CustomerReturnView() {
                     return (
                       <div key={ym} style={{ marginInlineStart: 18 }}>
                         <div style={treeMonth} onClick={()=>setOpenMonths(p=>({...p,[ym]:!p[ym]}))}>
-                          <span>{openMonths[ym] ? "▼" : "▶"}</span>
+                          <span>{openMonths[ym] ? "v" : ">"}</span>
                           <span style={{ marginInlineStart: 6 }}>{m.month}</span>
                         </div>
                         {openMonths[ym] && (
@@ -904,8 +956,8 @@ export default function CustomerReturnView() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <div style={{ fontWeight: 900, color: "#0f172a" }}>Date: {selectedReport.reportDate}</div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={startAddRow} style={btnBlue} disabled={!selectedReport}>➕ Add Row</button>
-                  <button onClick={handleDeleteDay} style={btnDanger} data-delete-action="true">🗑️ Delete this day's report from server</button>
+                  <button onClick={startAddRow} style={btnBlue} disabled={!selectedReport}>Add Row</button>
+                  <button onClick={handleDeleteDay} style={btnDanger} data-delete-action="true">Delete this day report from server</button>
                 </div>
               </div>
 
@@ -914,11 +966,12 @@ export default function CustomerReturnView() {
                   <thead>
                     <tr>
                       <th style={{...th2, ...col.sl}}>SL</th>
+                      <th style={{...th2, ...col.itemCode}}>ITEM CODE</th>
                       <th style={{...th2, ...col.product}}>PRODUCT</th>
                       <th style={{...th2, ...col.origin}}>ORIGIN</th>
                       <th style={{...th2, ...col.customer}}>CUSTOMER</th>
-                      <th style={{...th2, ...col.car}}>🚚 CAR NO.</th>
-                      <th style={{...th2, ...col.driver}}>👨‍✈️ DRIVER</th>
+                      <th style={{...th2, ...col.car}}>CAR NO.</th>
+                      <th style={{...th2, ...col.driver}}>DRIVER</th>
                       <th style={{...th2, ...col.qty}}>QTY</th>
                       <th style={{...th2, ...col.qtyType}}>QTY TYPE</th>
                       <th style={{...th2, ...col.expiry}}>EXPIRY</th>
@@ -934,6 +987,7 @@ export default function CustomerReturnView() {
                       return (
                         <tr key={i} style={{ background: rowBg }}>
                           <td style={{...tdNum, ...col.sl}}>{i + 1}</td>
+                          <td style={{...tdNum, ...col.itemCode}}>{row.itemCode || "-"}</td>
                           <td style={{...td2, ...col.product}} title={row.productName}>{row.productName}</td>
                           <td style={{...td2, ...col.origin}}>{row.origin}</td>
                           <td style={{...td2, ...col.customer}}>{row.customerName}</td>
@@ -943,14 +997,14 @@ export default function CustomerReturnView() {
                               padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700,
                               background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a",
                               fontFamily: "ui-monospace, monospace",
-                            }}>🚚 {row.carNumber}</span> : <span style={{color: "#94a3b8"}}>—</span>}
+                            }}>{row.carNumber}</span> : <span style={{color: "#94a3b8"}}>-</span>}
                           </td>
                           <td style={{...td2, ...col.driver}} title={row.driverName || ""}>
                             {row.driverName ? (
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                👨‍✈️ <span style={{ fontWeight: 600 }}>{row.driverName}</span>
+                                <span style={{ fontWeight: 600 }}>{row.driverName}</span>
                               </span>
-                            ) : <span style={{color: "#94a3b8"}}>—</span>}
+                            ) : <span style={{color: "#94a3b8"}}>-</span>}
                           </td>
                           <td style={{...tdNum, ...col.qty}} title={String(row.quantity)}>{row.quantity}</td>
                           <td style={{...td2, ...col.qtyType}}>
@@ -967,8 +1021,8 @@ export default function CustomerReturnView() {
                             </button>
                           </td>
                           <td style={{...td2, ...col.ops, borderRight: "none"}}>
-                            <button onClick={()=>startEditRow(i)} style={btnGraySm}>✏️</button>
-                            <button onClick={()=>deleteRow(i)} style={btnDangerSm} data-delete-action="true">🗑️</button>
+                            <button onClick={()=>startEditRow(i)} style={btnGraySm}>Edit</button>
+                            <button onClick={()=>deleteRow(i)} style={btnDangerSm} data-delete-action="true">Delete</button>
                           </td>
                         </tr>
                       );
@@ -981,14 +1035,15 @@ export default function CustomerReturnView() {
               {editRowData && (
                 <div style={editCard}>
                   <div style={{ fontWeight: 900, marginBottom: 8 }}>
-                    {addingRow ? "➕ Add Row" : "✏️ Edit Row"}
+                    {addingRow ? "Add Row" : "Edit Row"}
                   </div>
                   <div style={formGrid}>
-                    <input style={inp} placeholder="PRODUCT NAME" value={editRowData.productName} onChange={e=>setEditRowData(d=>({...d, productName:e.target.value}))}/>
+                    <input style={inp} placeholder="ITEM CODE" value={editRowData.itemCode || ""} onChange={e=>handleEditItemCodeChange(e.target.value)}/>
+                    <input style={inp} list="customer-return-view-product-list" placeholder="PRODUCT NAME" value={editRowData.productName} onChange={e=>handleEditProductNameChange(e.target.value)}/>
                     <input style={inp} placeholder="ORIGIN" value={editRowData.origin} onChange={e=>setEditRowData(d=>({...d, origin:e.target.value}))}/>
-                    <input style={inp} placeholder="CUSTOMER" value={editRowData.customerName} onChange={e=>setEditRowData(d=>({...d, customerName:e.target.value}))}/>
-                    <input style={inp} placeholder="🚚 CAR NUMBER" value={editRowData.carNumber || ""} onChange={e=>setEditRowData(d=>({...d, carNumber:e.target.value}))}/>
-                    <input style={inp} placeholder="👨‍✈️ DRIVER NAME" value={editRowData.driverName || ""} onChange={e=>setEditRowData(d=>({...d, driverName:e.target.value}))}/>
+                    <input style={inp} list="customer-return-view-customer-list" placeholder="CUSTOMER" value={editRowData.customerName} onChange={e=>setEditRowData(d=>({...d, customerName:e.target.value}))}/>
+                    <input style={inp} placeholder="CAR NUMBER" value={editRowData.carNumber || ""} onChange={e=>setEditRowData(d=>({...d, carNumber:e.target.value}))}/>
+                    <input style={inp} placeholder="DRIVER NAME" value={editRowData.driverName || ""} onChange={e=>setEditRowData(d=>({...d, driverName:e.target.value}))}/>
                     <input style={inp} placeholder="QUANTITY" inputMode="decimal" value={editRowData.quantity} onChange={e=>setEditRowData(d=>({...d, quantity:e.target.value.replace(/[^0-9.]/g,"")}))}/>
                     <input style={inp} placeholder="QTY TYPE (e.g., KG/PCS)" value={editRowData.qtyType} onChange={e=>setEditRowData(d=>({...d, qtyType:e.target.value}))}/>
                     <input style={inp} type="date" placeholder="EXPIRY" value={editRowData.expiry} onChange={e=>setEditRowData(d=>({...d, expiry:e.target.value}))}/>
@@ -999,8 +1054,8 @@ export default function CustomerReturnView() {
                     )}
                   </div>
                   <div style={{ display:"flex", gap:8, marginTop:8 }}>
-                    <button onClick={saveRow} style={btnBlue}>💾 Save</button>
-                    <button onClick={cancelEditRow} style={btnGray}>✖ Cancel</button>
+                    <button onClick={saveRow} style={btnBlue}>Save</button>
+                    <button onClick={cancelEditRow} style={btnGray}>Cancel</button>
                   </div>
                 </div>
               )}

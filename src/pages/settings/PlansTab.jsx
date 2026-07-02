@@ -1,8 +1,9 @@
 // src/pages/settings/PlansTab.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import API_BASE from "../../config/api";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
+import { logSettingsAudit } from "../../utils/settingsAudit";
 
 const CURRENCIES = ["USD", "AED", "EUR", "GBP", "SAR"];
 
@@ -19,12 +20,15 @@ export default function PlansTab() {
     false: { bg: "#f3f4f6", text: "#6b7280", label: t("inactive") },
   };
   const [plans,   setPlans]   = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null | "new" | plan object
   const [form,    setForm]    = useState(emptyForm);
   const [saving,  setSaving]  = useState(false);
   const [msg,     setMsg]     = useState("");
   const [confirm, setConfirm] = useState(null); // plan id to delete
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const u = getUser();
   const isSuperAdmin = u.isSuperAdmin || u.isAdmin || false;
@@ -34,9 +38,12 @@ export default function PlansTab() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch(`${API_BASE}/api/plans`);
-      const d = await r.json();
-      if (d.ok) setPlans(d.plans);
+      const [planRes, companyRes] = await Promise.all([
+        fetch(`${API_BASE}/api/plans`).then(r => r.json()).catch(() => ({})),
+        fetch(`${API_BASE}/api/companies`).then(r => r.json()).catch(() => ({})),
+      ]);
+      if (planRes.ok) setPlans(Array.isArray(planRes.plans) ? planRes.plans : []);
+      if (companyRes.ok) setCompanies(Array.isArray(companyRes.companies) ? companyRes.companies : []);
     } catch { }
     setLoading(false);
   }
@@ -63,6 +70,9 @@ export default function PlansTab() {
 
   async function save() {
     if (!form.name.trim()) { setMsg("❌ " + t("planNameReq")); return; }
+    if (Number(form.price || 0) < 0) { setMsg("❌ Price cannot be negative"); return; }
+    if (form.max_branches !== "" && Number(form.max_branches) < 0) { setMsg("❌ Branch limit cannot be negative"); return; }
+    if (form.max_users !== "" && Number(form.max_users) < 0) { setMsg("❌ User limit cannot be negative"); return; }
     setSaving(true); setMsg("");
     const body = {
       name:         form.name.trim(),
@@ -80,6 +90,14 @@ export default function PlansTab() {
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json();
       if (d.ok) {
+        await logSettingsAudit({
+          area: "plans",
+          action: isNew ? "create_plan" : "update_plan",
+          target: body.name,
+          before: isNew ? null : editing,
+          after: d.plan || body,
+          reason: isNew ? "Plan created" : "Plan updated",
+        });
         setEditing(null);
         setMsg(`✅ "${body.name}" ${t("planSaved")}`);
         load();
@@ -93,11 +111,44 @@ export default function PlansTab() {
 
   async function deletePlan(id) {
     try {
+      const plan = plans.find((p) => p.id === id) || { id };
       await fetch(`${API_BASE}/api/plans/${id}`, { method: "DELETE" });
+      await logSettingsAudit({
+        area: "plans",
+        action: "delete_plan",
+        target: plan.name || String(id),
+        before: plan,
+        after: null,
+        reason: "Plan deleted",
+      });
       setConfirm(null); setMsg("✅ " + t("planDeleted")); load();
       setTimeout(() => setMsg(""), 3000);
     } catch { setMsg("❌ " + t("failDelete")); }
   }
+
+  const planRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return plans
+      .map((plan) => {
+        const assigned = companies.filter((company) => {
+          const byName = String(company.plan_name || "").toLowerCase() === String(plan.name || "").toLowerCase();
+          const byId = String(company.plan_id || "") === String(plan.id || "");
+          return byName || byId;
+        });
+        const activeAssigned = assigned.filter((company) => String(company.status || "active").toLowerCase() === "active");
+        const mrr = activeAssigned.reduce((sum, company) => sum + Number(company.plan_price || plan.price || 0), 0);
+        return { ...plan, assignedCount: assigned.length, activeAssignedCount: activeAssigned.length, mrr };
+      })
+      .filter((plan) => statusFilter === "all" || (statusFilter === "active" ? plan.is_active : !plan.is_active))
+      .filter((plan) => !q || [plan.name, plan.description, plan.currency].join(" ").toLowerCase().includes(q));
+  }, [plans, companies, query, statusFilter]);
+
+  const totals = useMemo(() => {
+    const activePlans = plans.filter((plan) => plan.is_active).length;
+    const mrr = planRows.reduce((sum, plan) => sum + Number(plan.mrr || 0), 0);
+    const assigned = planRows.reduce((sum, plan) => sum + Number(plan.assignedCount || 0), 0);
+    return { activePlans, mrr, assigned };
+  }, [plans, planRows]);
 
   return (
     <div style={ui.page} dir={dir}>
@@ -116,6 +167,31 @@ export default function PlansTab() {
       />
 
       <StatusMessage message={msg ? { kind: msg.startsWith("✅") ? "ok" : "err", text: msg } : null} />
+
+      <div style={kpiGridStyle}>
+        <MetricCard label="Total plans" value={plans.length} />
+        <MetricCard label="Active plans" value={totals.activePlans} />
+        <MetricCard label="Assigned companies" value={totals.assigned} />
+        <MetricCard label="MRR estimate" value={totals.mrr.toLocaleString()} />
+      </div>
+
+      <div style={toolbarStyle}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search plans"
+          style={{ ...inputStyle, flex: "1 1 260px", minWidth: 0, fontSize: 16 }}
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ ...inputStyle, width: 170, fontSize: 16 }}
+        >
+          <option value="all">All statuses</option>
+          <option value="active">Active only</option>
+          <option value="inactive">Inactive only</option>
+        </select>
+      </div>
 
       {/* Delete confirm modal */}
       <ConfirmModal
@@ -180,9 +256,11 @@ export default function PlansTab() {
         <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>Loading…</div>
       ) : plans.length === 0 ? (
         <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>{t("noPlans")}</div>
+      ) : planRows.length === 0 ? (
+        <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>No plans match the current filters.</div>
       ) : (
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-          {plans.map(plan => {
+          {planRows.map(plan => {
             const sc = STATUS_COLORS[String(plan.is_active)];
             return (
               <div key={plan.id} style={{
@@ -215,6 +293,8 @@ export default function PlansTab() {
                   <div style={{ display:"flex", gap:18, marginTop:8 }}>
                     <LimitChip icon="🏪" label={t("branches")} val={plan.max_branches} />
                     <LimitChip icon="👤" label={t("users")}    val={plan.max_users}    />
+                    <LimitChip icon="Companies" label="Assigned" val={`${plan.activeAssignedCount}/${plan.assignedCount}`} />
+                    <LimitChip icon="MRR" label="Revenue" val={`${plan.mrr} ${plan.currency || "USD"}`} />
                   </div>
                 </div>
 
@@ -243,6 +323,15 @@ function LimitChip({ icon, label, val }) {
   );
 }
 
+function MetricCard({ label, value }) {
+  return (
+    <div style={{ ...ui.card, marginBottom: 0, padding: "14px 16px" }}>
+      <div style={{ color:"#64748b", fontSize:12, fontWeight:900, textTransform:"uppercase", letterSpacing:"0.04em" }}>{label}</div>
+      <div style={{ color:"#0f172a", fontSize:26, fontWeight:950, marginTop:4 }}>{value}</div>
+    </div>
+  );
+}
+
 function Field({ label, children, style }) {
   return (
     <div style={style}>
@@ -256,6 +345,19 @@ const inputStyle = {
   width:"100%", border:"1.5px solid #e2e8f0", borderRadius:8,
   padding:"11px 14px", fontSize:18, color:"#1e293b",
   fontFamily:"Cairo, sans-serif", boxSizing:"border-box", background:"#fff",
+};
+const kpiGridStyle = {
+  display:"grid",
+  gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))",
+  gap:12,
+  marginBottom:14,
+};
+const toolbarStyle = {
+  display:"flex",
+  flexWrap:"wrap",
+  alignItems:"center",
+  gap:10,
+  marginBottom:16,
 };
 const btnStyle = (bg) => ({
   background:bg, color:"#fff", border:"none", borderRadius:8,

@@ -36,6 +36,22 @@ function saveCollapsed(key, set) {
   } catch {}
 }
 
+function buildDefaultCollapsed(groupedNav) {
+  const initial = new Set();
+  for (const yearNode of groupedNav || []) {
+    if (!yearNode?.year) continue;
+    initial.add(`y:${yearNode.year}`);
+    for (const monthNode of yearNode.months || []) {
+      const monthKey = monthNode.ym || monthNode.month;
+      if (monthKey) initial.add(`m:${monthKey}`);
+      for (const dayNode of monthNode.days || []) {
+        if (dayNode?.date) initial.add(`d:${dayNode.date}`);
+      }
+    }
+  }
+  return initial;
+}
+
 export default function CollapsibleDateTree({
   groupedNav = [],
   activeId,
@@ -54,9 +70,10 @@ export default function CollapsibleDateTree({
   useEffect(() => {
     if (!groupedNav.length) return;
     const saved = loadCollapsed(storageKey);
+    setCollapsed(saved.size ? saved : buildDefaultCollapsed(groupedNav));
     if (saved.size) return; // المستخدم سبق وحفظ تفضيلاته
     if (!groupedNav[0]) return;
-    const initial = new Set();
+    const initial = buildDefaultCollapsed(groupedNav);
     // اطوِ كل السنوات ما عدا الأولى (الأحدث)
     for (let i = 1; i < groupedNav.length; i++) {
       initial.add(`y:${groupedNav[i].year}`);
@@ -70,7 +87,7 @@ export default function CollapsibleDateTree({
     }
     setCollapsed(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupedNav.length]);
+  }, [groupedNav.length, storageKey]);
 
   function toggle(key) {
     setCollapsed((prev) => {

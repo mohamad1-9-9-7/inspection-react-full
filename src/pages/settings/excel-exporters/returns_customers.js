@@ -8,6 +8,7 @@ import {
 
 const COLS = [
   { key: "sl",           label: "#",             width: 6  },
+  { key: "itemCode",     label: "Item Code",     width: 14 },
   { key: "productName",  label: "Product Name",  width: 26 },
   { key: "origin",       label: "Origin",        width: 14 },
   { key: "customerName", label: "Customer",      width: 22 },
@@ -88,6 +89,7 @@ export default async function build(wb, record, ctx) {
       const action = safeAction(item);
       const vals   = [
         ri + 1,
+        item?.itemCode     || "",
         item?.productName  || "",
         item?.origin       || "",
         item?.customerName || "",
@@ -105,8 +107,8 @@ export default async function build(wb, record, ctx) {
         c.alignment = (ci === NC - 1) ? { ...left, wrapText: true } : center;
         c.border    = BORDER_BLACK;
 
-        /* Action column (col index 7) coloring */
-        if (ci === 7) {
+        /* Action column (col index 8) coloring */
+        if (ci === 8) {
           if (/condemn/i.test(action)) {
             c.font = { bold: true, color: { argb: COLORS.RED },   size: 10 };
             c.fill = fillSolid(COLORS.RED_BG);

@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import API_BASE from "../../config/api";
 import { SECTION_ITEMS } from "../../utils/sectionItems";
 import { useSettingsLang } from "./_shared/settingsI18n";
+import { logSettingsAudit } from "../../utils/settingsAudit";
 
 /* ═══════════════════════════════════════════════════════ CONSTANTS */
 
@@ -679,26 +680,26 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        background:   hover ? "#f8fafc" : "#fff",
-        border:       `1.5px solid ${hover ? "#14b8a6" : "#e2e8f0"}`,
+        background:   "#fff",
+        border:       `1px solid ${hover ? "rgba(15,118,110,.45)" : "rgba(15,23,42,.12)"}`,
         borderRadius: 8,
         padding:      "14px 16px",
         transition:   "all .15s ease",
-        boxShadow:    hover ? "0 10px 28px rgba(15,23,42,.12)" : "0 2px 8px rgba(15,23,42,.05)",
+        boxShadow:    hover ? "0 12px 28px rgba(15,23,42,.10)" : "0 8px 22px rgba(15,23,42,.05)",
         opacity:      user.is_active ? 1 : 0.55,
         display:      "grid",
-        gridTemplateColumns: "auto 1fr auto auto",
+        gridTemplateColumns: "auto minmax(0,1fr) auto auto",
         alignItems:   "center",
         gap:          14,
       }}
     >
       {/* Avatar */}
       <div style={{
-        width:52, height:52, borderRadius:14, background:grad,
+        width:48, height:48, borderRadius:8, background:grad,
         display:"grid", placeItems:"center",
-        fontSize:22, fontWeight:1000, color:"#fff", flexShrink:0,
-        boxShadow:"0 4px 12px rgba(15,23,42,.18)",
-        border:"1.5px solid rgba(255,255,255,.6)",
+        fontSize:20, fontWeight:1000, color:"#fff", flexShrink:0,
+        boxShadow:"0 8px 18px rgba(15,23,42,.14)",
+        border:"1px solid rgba(255,255,255,.7)",
       }}>
         {initial}
       </div>
@@ -714,20 +715,20 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
             @{user.username}
           </span>
         </div>
-        <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:6, alignItems:"center" }}>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:7, alignItems:"center" }}>
           {user.is_admin && (
-            <span style={ac.chip("#fbbf24","rgba(251,191,36,.16)")}>👑 {t("adminTag")}</span>
+            <span style={ac.chip("#92400e","#fffbeb")}>{t("adminTag")}</span>
           )}
           {isFullAcc ? (
-            <span style={ac.chip("#a78bfa","rgba(167,139,250,.16)")}>⭐ {t("amFullAccessShort")}</span>
+            <span style={ac.chip("#5b21b6","#f5f3ff")}>{t("amFullAccessShort")}</span>
           ) : (
-            <span style={ac.chip("#60a5fa","rgba(96,165,250,.16)")}>
-              🔐 {sections.length} {sections.length !== 1 ? t("amSectionsWord") : t("amSectionWord")}
+            <span style={ac.chip("#1d4ed8","#eff6ff")}>
+              {sections.length} {sections.length !== 1 ? t("amSectionsWord") : t("amSectionWord")}
             </span>
           )}
           {Array.isArray(user.employees) && user.employees.length > 0 && (
-            <span style={ac.chip("#34d399","rgba(52,211,153,.16)")}>
-              👷 {user.employees.length}
+            <span style={ac.chip("#0f766e","#ecfdf5")}>
+              {user.employees.length}
             </span>
           )}
           <span style={{ fontSize:12, fontWeight:800, color:freshness.color,
@@ -735,7 +736,7 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
             background:`${freshness.color}1f`, border:`1px solid ${freshness.color}55`,
             whiteSpace:"nowrap" }}
             title={`${t("amLastLogin")}: ${fmt(user.last_login)}`}>
-            🕐 {freshness.label}
+            {freshness.label}
           </span>
         </div>
       </div>
@@ -743,32 +744,32 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
       {/* Status pill */}
       <div style={{
         padding:"5px 12px", borderRadius:999, fontSize:12, fontWeight:900, flexShrink:0,
-        background: user.is_active ? "rgba(52,211,153,.18)" : "rgba(248,113,113,.18)",
-        color:      user.is_active ? "#34d399" : "#f87171",
-        border:    `1px solid ${user.is_active ? "rgba(52,211,153,.3)" : "rgba(248,113,113,.3)"}`,
+        background: user.is_active ? "#f0fdf4" : "#fef2f2",
+        color:      user.is_active ? "#166534" : "#991b1b",
+        border:    `1px solid ${user.is_active ? "#bbf7d0" : "#fecaca"}`,
       }}>
         {user.is_active ? `● ${t("amActive")}` : `● ${t("amOff")}`}
       </div>
 
       {/* Action buttons */}
-      <div style={{ display:"flex", gap:5, flexShrink:0 }}>
+      <div style={{ display:"flex", gap:6, flexShrink:0 }}>
         <button className="acm-actbtn" onClick={onEdit} style={{
           ...ac.actBtn,
-            background:"#dbeafe", color:"#1d4ed8",
-            border:"1.5px solid #bfdbfe",
+            background:"#eff6ff", color:"#1d4ed8",
+            border:"1px solid #bfdbfe",
         }} title={t("amEditAccountTip")}>✏️</button>
         {onResetPw && (
           <button className="acm-actbtn" onClick={onResetPw} style={{
             ...ac.actBtn,
             background:"#f5f3ff", color:"#6d28d9",
-            border:"1.5px solid #ddd6fe",
+            border:"1px solid #ddd6fe",
           }} title={t("amResetPwTip")}>🔑</button>
         )}
         <button className={canToggle ? "acm-actbtn" : ""} onClick={canToggle ? onToggle : undefined} disabled={!canToggle} style={{
           ...ac.actBtn,
-          background: user.is_active ? "rgba(251,191,36,.18)" : "rgba(52,211,153,.18)",
-          color:      user.is_active ? "#fbbf24" : "#34d399",
-          border:    `1.5px solid ${user.is_active ? "rgba(251,191,36,.3)" : "rgba(52,211,153,.3)"}`,
+          background: user.is_active ? "#fffbeb" : "#f0fdf4",
+          color:      user.is_active ? "#92400e" : "#166534",
+          border:    `1px solid ${user.is_active ? "#fde68a" : "#bbf7d0"}`,
           opacity:    canToggle ? 1 : 0.45,
           cursor:     canToggle ? "pointer" : "not-allowed",
         }} title={
@@ -781,8 +782,8 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
         {canDelete && (
           <button className="acm-actbtn" onClick={onDelete} style={{
             ...ac.actBtn,
-            background:"rgba(248,113,113,.18)", color:"#f87171",
-            border:"1.5px solid rgba(248,113,113,.3)",
+            background:"#fef2f2", color:"#991b1b",
+            border:"1px solid #fecaca",
           }} title={t("amDeleteAccountTip")} data-delete-action="true">🗑️</button>
         )}
       </div>
@@ -792,16 +793,19 @@ function AccountCard({ user, onEdit, onToggle, onDelete, onResetPw, currentUsern
 
 const ac = {
   chip: (color, bg) => ({
-    padding:"3px 9px", borderRadius:999,
+    padding:"4px 9px", borderRadius:999,
     fontSize:12, fontWeight:900, color, background:bg,
-    border:`1px solid ${color}55`, whiteSpace:"nowrap",
+    border:`1px solid ${color}33`, whiteSpace:"nowrap",
   }),
   actBtn: {
-    padding:"8px 11px", borderRadius:10,
+    width:36, height:36, padding:0, borderRadius:8,
     fontSize:15, fontWeight:900, cursor:"pointer",
     fontFamily:"Cairo,'Segoe UI',sans-serif",
     transition:"filter .15s, transform .12s",
     textAlign:"center",
+    display:"inline-flex",
+    alignItems:"center",
+    justifyContent:"center",
   },
 };
 
@@ -1052,7 +1056,7 @@ function FailedLoginsTab() {
     return (
       <div style={{ padding:"16px 20px", borderRadius:12,
         background:"rgba(251,191,36,.14)", border:"1px solid rgba(251,191,36,.4)",
-        color:"#fbbf24", fontWeight:800 }}>
+        color:"#111827", fontWeight:800 }}>
         ⚠️ {t("amFailedNotFound")}
       </div>
     );
@@ -1061,7 +1065,7 @@ function FailedLoginsTab() {
   return (
     <div>
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18, flexWrap:"wrap" }}>
-        <h3 style={{ margin:0, fontWeight:1000, fontSize:18, color:"#f1f5f9" }}>
+        <h3 style={{ margin:0, fontWeight:1000, fontSize:18, color:"#0f172a" }}>
           🛡️ {t("amFailedTitle")}
         </h3>
         <button className="acm-actbtn" onClick={load} style={p.btnRefresh}>🔄 {t("amRefresh")}</button>
@@ -1071,29 +1075,30 @@ function FailedLoginsTab() {
       {data.byIpLastHour.filter(x => x.attempts >= 5).length > 0 && (
         <div style={{
           padding:"14px 18px", borderRadius:12, marginBottom:18,
-          background:"rgba(248,113,113,.13)", border:"1px solid rgba(248,113,113,.45)",
-          color:"#fca5a5",
+          background:"#fef2f2", border:"1px solid #fecaca",
+          color:"#111827",
         }}>
-          <div style={{ fontWeight:1000, fontSize:15, marginBottom:8, color:"#f87171" }}>
+          <div style={{ fontWeight:1000, fontSize:15, marginBottom:8, color:"#991b1b" }}>
             🚨 {t("amSuspicious")}
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
             {data.byIpLastHour.filter(x => x.attempts >= 5).map(x => (
               <div key={x.ip_addr} style={{
                 display:"flex", gap:10, alignItems:"center", flexWrap:"wrap",
-                background:"rgba(0,0,0,.25)", padding:"8px 12px", borderRadius:8,
+                background:"#fff", padding:"8px 12px", borderRadius:8,
+                border:"1px solid #fecaca",
                 fontSize:13, fontWeight:700,
               }}>
-                <span style={{ fontWeight:1000, color:"#fff", fontSize:14 }}>{x.ip_addr || "unknown"}</span>
-                <span style={{ background:"rgba(248,113,113,.3)", color:"#fff",
+                <span style={{ fontWeight:1000, color:"#111827", fontSize:14 }}>{x.ip_addr || "unknown"}</span>
+                <span style={{ background:"#fee2e2", color:"#991b1b",
                   padding:"2px 9px", borderRadius:999, fontWeight:900 }}>
                   {x.attempts} {t("amAttempts")}
                 </span>
-                <span style={{ color:"rgba(255,255,255,.6)" }}>
+                <span style={{ color:"#111827" }}>
                   {t("amTried")}: {(x.usernames || []).slice(0,3).join(", ") || "—"}
                   {(x.usernames?.length || 0) > 3 && ` +${x.usernames.length - 3}`}
                 </span>
-                <span style={{ marginLeft:"auto", color:"rgba(255,255,255,.5)", fontSize:12 }}>
+                <span style={{ marginLeft:"auto", color:"#334155", fontSize:12 }}>
                   {t("amLast")}: {fmt(x.last_at)}
                 </span>
               </div>
@@ -1105,10 +1110,10 @@ function FailedLoginsTab() {
       {/* Stats row */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",
         gap:12, marginBottom:18 }}>
-        <FailStat color="#f87171" bg="rgba(248,113,113,.14)" label={t("amTotalRecent")} val={data.recent.length} />
-        <FailStat color="#fbbf24" bg="rgba(251,191,36,.14)" label={t("amLastHour")}
+        <FailStat color="#991b1b" bg="#fef2f2" label={t("amTotalRecent")} val={data.recent.length} />
+        <FailStat color="#92400e" bg="#fffbeb" label={t("amLastHour")}
           val={data.byIpLastHour.reduce((a,b)=>a + (b.attempts||0), 0)} />
-        <FailStat color="#a78bfa" bg="rgba(167,139,250,.14)" label={t("amUniqueIps")}
+        <FailStat color="#5b21b6" bg="#f5f3ff" label={t("amUniqueIps")}
           val={data.byIpLastHour.length} />
       </div>
 
@@ -1121,16 +1126,16 @@ function FailedLoginsTab() {
           {t("amNoFailed")}
         </div>
       ) : (
-        <div style={{ overflowX:"auto" }}>
+        <div style={{ overflowX:"auto", background:"#fff", border:"1px solid rgba(15,23,42,.12)", borderRadius:8 }}>
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
               <tr>
                 {[t("amColTime"), t("amUsername"), t("amColReason"), t("amColIp")].map(h => (
                   <th key={h} style={{
                     padding:"14px 16px", fontSize:14, fontWeight:900,
-                    color:"rgba(255,255,255,.6)", textAlign:"left",
-                    borderBottom:"1px solid rgba(255,255,255,.1)",
-                    background:"rgba(255,255,255,.04)",
+                    color:"#111827", textAlign:"left",
+                    borderBottom:"1px solid rgba(15,23,42,.10)",
+                    background:"#f8fafc",
                     whiteSpace:"nowrap", letterSpacing:".06em", textTransform:"uppercase",
                   }}>{h}</th>
                 ))}
@@ -1141,15 +1146,15 @@ function FailedLoginsTab() {
                 const reason = reasonMap[r.detail?.reason] || { label: r.detail?.reason || "—", icon: "⚠️" };
                 return (
                   <tr key={r.id} style={{
-                    borderBottom:"1px solid rgba(255,255,255,.06)",
-                    background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,.025)",
+                    borderBottom:"1px solid rgba(15,23,42,.07)",
+                    background: i % 2 === 0 ? "#fff" : "#f8fafc",
                   }}>
                     <td style={al.td}>{fmt(r.created_at)}</td>
-                    <td style={{ ...al.td, fontWeight:900, color:"#e2e8f0" }}>{r.username || "—"}</td>
-                    <td style={{ ...al.td, fontWeight:800, color:"#fbbf24" }}>
+                    <td style={{ ...al.td, fontWeight:900, color:"#111827" }}>{r.username || "—"}</td>
+                    <td style={{ ...al.td, fontWeight:800, color:"#111827" }}>
                       {reason.icon} {reason.label}
                     </td>
-                    <td style={{ ...al.td, fontSize:14, color:"rgba(255,255,255,.5)" }}>{r.ip_addr || "—"}</td>
+                    <td style={{ ...al.td, fontSize:14, color:"#111827" }}>{r.ip_addr || "—"}</td>
                   </tr>
                 );
               })}
@@ -1165,11 +1170,11 @@ function FailStat({ color, bg, label, val }) {
   return (
     <div style={{
       padding:"12px 16px", borderRadius:12,
-      background: bg, border: `1px solid ${color}44`,
+      background: bg, border: `1px solid ${color}33`,
       display:"flex", flexDirection:"column", gap:2,
     }}>
       <span style={{ fontSize:24, fontWeight:1000, color, lineHeight:1 }}>{val}</span>
-      <span style={{ fontSize:12, color:"rgba(255,255,255,.6)", fontWeight:800,
+      <span style={{ fontSize:12, color:"#111827", fontWeight:900,
         textTransform:"uppercase", letterSpacing:".05em" }}>{label}</span>
     </div>
   );
@@ -1254,9 +1259,9 @@ function ActivityLogTab() {
 
       {/* Summary line */}
       {!loading && groups.length > 0 && (
-        <div style={{ fontSize:14, color:"rgba(255,255,255,.55)", fontWeight:700, marginBottom:12 }}>
-          📊 {t("amShowing")} <strong style={{ color:"#e2e8f0" }}>{groups.length}</strong> {t("amAccountsWord")}
-          {" · "}<strong style={{ color:"#e2e8f0" }}>{logs.length}</strong> {t("amTotalEvents")}
+        <div style={{ fontSize:14, color:"#334155", fontWeight:800, marginBottom:12 }}>
+          📊 {t("amShowing")} <strong style={{ color:"#111827" }}>{groups.length}</strong> {t("amAccountsWord")}
+          {" · "}<strong style={{ color:"#111827" }}>{logs.length}</strong> {t("amTotalEvents")}
           {filter && <> · {t("amFilteredBy")} "{filter}"</>}
         </div>
       )}
@@ -1274,16 +1279,17 @@ function ActivityLogTab() {
             const isOpen = expanded.has(g.username);
             const lastAction = g.last?.action;
             const lastColor =
-              lastAction === "login"        ? "#34d399" :
-              lastAction === "logout"       ? "#f87171" :
-              lastAction === "login_failed" ? "#fbbf24" : "#94a3b8";
+              lastAction === "login"        ? "#166534" :
+              lastAction === "logout"       ? "#991b1b" :
+              lastAction === "login_failed" ? "#92400e" : "#334155";
             return (
               <div key={g.username} style={{
-                background:"rgba(255,255,255,.04)",
-                border:`1px solid ${isOpen ? "rgba(96,165,250,.4)" : "rgba(255,255,255,.08)"}`,
-                borderRadius:12,
+                background:"#fff",
+                border:`1px solid ${isOpen ? "rgba(15,118,110,.35)" : "rgba(15,23,42,.12)"}`,
+                borderRadius:8,
                 overflow:"hidden",
                 transition:"border-color .15s",
+                boxShadow:"0 8px 22px rgba(15,23,42,.05)",
               }}>
                 {/* ─── Group header (clickable to toggle) ─── */}
                 <button onClick={() => toggle(g.username)} style={{
@@ -1292,8 +1298,8 @@ function ActivityLogTab() {
                   gridTemplateColumns:"auto 1fr auto auto",
                   alignItems:"center", gap:14,
                   padding:"12px 16px",
-                  background: isOpen ? "rgba(96,165,250,.08)" : "transparent",
-                  color:"#f1f5f9", textAlign:"left",
+                  background: isOpen ? "#f0fdfa" : "#fff",
+                  color:"#111827", textAlign:"left",
                   transition:"background .15s",
                 }}>
                   {/* Avatar */}
@@ -1301,18 +1307,18 @@ function ActivityLogTab() {
                     width:44, height:44, borderRadius:12, background:avatarGrad(g.username),
                     display:"grid", placeItems:"center",
                     fontSize:20, fontWeight:1000, color:"#fff",
-                    boxShadow:"0 4px 10px rgba(0,0,0,.4)",
-                    border:"1.5px solid rgba(255,255,255,.18)",
+                    boxShadow:"0 8px 18px rgba(15,23,42,.14)",
+                    border:"1px solid rgba(255,255,255,.7)",
                   }}>
                     {g.username[0]?.toUpperCase() || "?"}
                   </div>
 
                   {/* Name + meta */}
                   <div style={{ minWidth:0 }}>
-                    <div style={{ fontWeight:1000, fontSize:18, color:"#f1f5f9", lineHeight:1.2 }}>
+                    <div style={{ fontWeight:1000, fontSize:18, color:"#111827", lineHeight:1.2 }}>
                       {g.username}
                     </div>
-                    <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:4, fontSize:13, color:"rgba(255,255,255,.55)", fontWeight:700 }}>
+                    <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginTop:4, fontSize:13, color:"#475569", fontWeight:800 }}>
                       <span>🕐 {t("amLast")}: <span style={{ color:lastColor, fontWeight:900 }}>{fmt(g.last?.created_at)}</span></span>
                       {g.uniqueIps > 1 && <span>🌐 {g.uniqueIps} IPs</span>}
                     </div>
@@ -1335,12 +1341,12 @@ function ActivityLogTab() {
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                     <span style={{
                       padding:"3px 11px", borderRadius:999,
-                      background:"rgba(96,165,250,.18)", color:"#93c5fd",
+                      background:"#eff6ff", color:"#1d4ed8",
                       fontSize:13, fontWeight:900,
-                      border:"1px solid rgba(96,165,250,.3)",
+                      border:"1px solid #bfdbfe",
                     }}>{g.total}</span>
                     <span style={{
-                      fontSize:20, color:"rgba(255,255,255,.45)",
+                      fontSize:20, color:"#475569",
                       transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
                       transition:"transform .15s",
                       lineHeight:1,
@@ -1351,8 +1357,8 @@ function ActivityLogTab() {
                 {/* ─── Expanded body: full event list ─── */}
                 {isOpen && (
                   <div style={{
-                    borderTop:"1px solid rgba(255,255,255,.07)",
-                    background:"rgba(0,0,0,.18)",
+                    borderTop:"1px solid rgba(15,23,42,.10)",
+                    background:"#fff",
                   }}>
                     <table style={{ width:"100%", borderCollapse:"collapse" }}>
                       <thead>
@@ -1369,21 +1375,21 @@ function ActivityLogTab() {
                           const isLogin   = log.action === "login";
                           const isLogout  = log.action === "logout";
                           const isFailed  = log.action === "login_failed";
-                          const color = isLogin ? "#34d399" : isLogout ? "#f87171" : isFailed ? "#fbbf24" : "#e2e8f0";
+                          const color = isLogin ? "#166534" : isLogout ? "#991b1b" : isFailed ? "#92400e" : "#111827";
                           return (
                             <tr key={log.id} style={{
-                              borderBottom:"1px solid rgba(255,255,255,.05)",
-                              background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,.02)",
+                              borderBottom:"1px solid rgba(15,23,42,.07)",
+                              background: i % 2 === 0 ? "#fff" : "#f8fafc",
                             }}>
                               <td style={al.td}>{fmt(log.created_at)}</td>
-                              <td style={{ ...al.td, color:"rgba(255,255,255,.6)" }}>{op}</td>
+                              <td style={{ ...al.td, color:"#111827" }}>{op}</td>
                               <td style={{ ...al.td, fontWeight:900, color }}>
                                 {isLogin  ? `🟢 ${t("amActionLogin")}`
                                  : isLogout ? `🔴 ${t("amActionLogout")}`
                                  : isFailed ? `⚠️ ${t("amActionFailed")}${reason ? ` (${reason})` : ""}`
                                  : log.action}
                               </td>
-                              <td style={{ ...al.td, fontSize:14, color:"rgba(255,255,255,.45)" }}>
+                              <td style={{ ...al.td, fontSize:14, color:"#111827" }}>
                                 {log.ip_addr || "—"}
                               </td>
                             </tr>
@@ -1403,11 +1409,12 @@ function ActivityLogTab() {
 }
 
 const al = {
-  td: { padding:"11px 14px", fontSize:15, color:"rgba(255,255,255,.8)", verticalAlign:"middle" },
+  td: { padding:"11px 14px", fontSize:15, color:"#111827", verticalAlign:"middle" },
   subTh: {
     padding:"10px 14px", fontSize:12, fontWeight:900,
-    color:"rgba(255,255,255,.5)", textAlign:"left",
-    borderBottom:"1px solid rgba(255,255,255,.08)",
+    color:"#111827", textAlign:"left",
+    background:"#f8fafc",
+    borderBottom:"1px solid rgba(15,23,42,.10)",
     whiteSpace:"nowrap", letterSpacing:".06em", textTransform:"uppercase",
   },
   miniChip: (color, bg) => ({
@@ -1476,6 +1483,14 @@ export default function AccountsManagementTab({ onClose }) {
       if (!d.ok) {
         showMsg("err", d.error === "username_taken" ? t("amUsernameTaken") : (d.error || t("amServerError")));
       } else {
+        await logSettingsAudit({
+          area: "accounts",
+          action: isEdit ? "update_user" : "create_user",
+          target: body.username,
+          before: isEdit ? editUser : null,
+          after: d.user || body,
+          reason: isEdit ? "User account updated" : "User account created",
+        });
         showMsg("ok", isEdit ? `${t("amAccountUpdated")} ✅` : `${t("amAccountCreated")} ✅`);
         setView("list"); setEditUser(null); loadUsers();
       }
@@ -1506,6 +1521,14 @@ export default function AccountsManagementTab({ onClose }) {
       });
       const d = await r.json();
       if (d.ok) {
+        await logSettingsAudit({
+          area: "accounts",
+          action: user.is_active ? "disable_user" : "enable_user",
+          target: user.username,
+          before: user,
+          after: d.user || { ...user, is_active: !user.is_active },
+          reason: user.is_active ? "User account disabled" : "User account enabled",
+        });
         setUsers(prev => prev.map(u => u.id === user.id ? d.user : u));
         showMsg("ok", user.is_active ? t("amAccountDisabled") : t("amAccountEnabled"));
       } else {
@@ -1536,6 +1559,14 @@ export default function AccountsManagementTab({ onClose }) {
       const r = await fetch(`${API_BASE}/api/app-users/${user.id}`, { method:"DELETE" });
       const d = await r.json();
       if (d.ok) {
+        await logSettingsAudit({
+          area: "accounts",
+          action: "delete_user",
+          target: user.username,
+          before: user,
+          after: null,
+          reason: "User account deleted",
+        });
         setUsers(prev => prev.filter(u => u.id !== user.id));
         showMsg("ok", `${t("amDeleted")} "${user.username}"`);
       } else {
@@ -1556,6 +1587,14 @@ export default function AccountsManagementTab({ onClose }) {
       });
       const d = await r.json();
       if (d.ok) {
+        await logSettingsAudit({
+          area: "accounts",
+          action: "reset_user_password",
+          target: resetPwUser.username,
+          before: { username: resetPwUser.username, passwordChanged: false },
+          after: { username: resetPwUser.username, passwordChanged: true },
+          reason: "User password reset",
+        });
         showMsg("ok", `${t("amResetPwDone")} — @${resetPwUser.username} ✅`);
         setResetPwUser(null);
       } else {
@@ -1599,13 +1638,6 @@ export default function AccountsManagementTab({ onClose }) {
   })();
   const adminCount = users.filter(u => u.is_admin && u.is_active).length;
 
-  const stats = [
-    { label:t("amStatTotal"),    val:users.length,                              color:"#60a5fa", bg:"rgba(96,165,250,.15)"  },
-    { label:t("amStatActive"),   val:users.filter(u => u.is_active).length,    color:"#34d399", bg:"rgba(52,211,153,.15)"  },
-    { label:t("amStatDisabled"), val:users.filter(u => !u.is_active).length,   color:"#f87171", bg:"rgba(248,113,113,.15)" },
-    { label:t("amStatAdmins"),   val:users.filter(u => u.is_admin).length,     color:"#fbbf24", bg:"rgba(251,191,36,.15)"  },
-  ];
-
   /* active nav key */
   const activeNav =
     view === "form" && !editUser ? "new" :
@@ -1628,6 +1660,14 @@ export default function AccountsManagementTab({ onClose }) {
     { id:"activity", icon:"📜", label:t("amNavActivity") },
   ];
 
+  const stats = [
+    { label:t("amStatTotal"),    val:users.length,                              tone:"#2563eb" },
+    { label:t("amStatActive"),   val:users.filter(u => u.is_active).length,    tone:"#0f766e" },
+    { label:t("amStatDisabled"), val:users.filter(u => !u.is_active).length,   tone:"#b91c1c" },
+    { label:t("amStatAdmins"),   val:users.filter(u => u.is_admin).length,     tone:"#7c3aed" },
+    { label:t("amNavDormant"),   val:dormantCount,                             tone:"#b45309" },
+  ];
+
   return (
     <div style={p.shell} dir={dir}>
       <style>{`
@@ -1638,32 +1678,13 @@ export default function AccountsManagementTab({ onClose }) {
         .acm-searchinput::placeholder{color:#94a3b8;}
       `}</style>
 
-      {/* ══════════════ COMPACT TOOLBAR ══════════════ */}
-      <div style={p.toolbar}>
-        {/* Stats inline */}
-        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-          {stats.map(s => (
-            <div key={s.label} style={{ ...p.statChipInline, background:s.bg, border:`1px solid ${s.color}44` }}>
-              <span style={{ color:s.color, fontWeight:1000, fontSize:18, lineHeight:1 }}>{s.val}</span>
-              <span style={{ color:"#475569", fontSize:14, fontWeight:800 }}>{s.label}</span>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ flex:1 }} />
-
-        {/* Action buttons */}
-        <button className="acm-actbtn" onClick={exportCSV}
-          style={{ ...p.btnToolbar, background:"rgba(16,185,129,.18)", color:"#34d399", border:"1px solid rgba(16,185,129,.35)" }}
-          title={t("amExportCsvTip")}>
-          📥 CSV
-        </button>
-        {onClose && (
-          <button className="acm-actbtn" onClick={onClose}
-            style={{ ...p.btnToolbar, background:"#f8fafc", color:"#0f172a", border:"1px solid #cbd5e1" }}>
-            ✕
-          </button>
-        )}
+      <div style={p.kpiGrid}>
+        {stats.map(s => (
+          <div key={s.label} style={{ ...p.kpiCard, borderTop:`4px solid ${s.tone}` }}>
+            <div style={p.kpiLabel}>{s.label}</div>
+            <div style={{ ...p.kpiValue, color:s.tone }}>{s.val}</div>
+          </div>
+        ))}
       </div>
 
       {/* ══════════════ HORIZONTAL TABS ══════════════ */}
@@ -1678,18 +1699,19 @@ export default function AccountsManagementTab({ onClose }) {
               }}
               style={{
                 ...p.tab,
-                background: isActive ? "#ccfbf1" : "transparent",
+                background: isActive ? "#fff" : "transparent",
                 color:      isActive ? "#0f766e" : "#64748b",
-                borderBottom: `2px solid ${isActive ? "#0f766e" : "transparent"}`,
+                border:     `1px solid ${isActive ? "#0f766e" : "transparent"}`,
+                boxShadow:  isActive ? "0 8px 18px rgba(15,23,42,.08)" : "none",
               }}
             >
-              <span style={{ fontSize:20 }}>{n.icon}</span>
+              <span style={{ fontSize:16 }}>{n.icon}</span>
               <span>{n.label}</span>
               {n.badge !== undefined && (
                 <span style={{
                   fontSize:13, fontWeight:900,
                   background: n.badgeColor === "warn" ? "rgba(251,191,36,.25)" : "rgba(96,165,250,.2)",
-                  color:      n.badgeColor === "warn" ? "#fbbf24" : "#93c5fd",
+                  color:      n.badgeColor === "warn" ? "#92400e" : "#1d4ed8",
                   padding:"2px 9px", borderRadius:999,
                   border: `1px solid ${n.badgeColor === "warn" ? "rgba(251,191,36,.4)" : "rgba(96,165,250,.3)"}`,
                 }}>{n.badge}</span>
@@ -1750,7 +1772,7 @@ export default function AccountsManagementTab({ onClose }) {
           {view === "list" && (
             <div>
               {/* Search + refresh */}
-              <div style={{ display:"flex", gap:10, marginBottom:14, flexWrap:"wrap" }}>
+              <div style={p.listToolbar}>
                 <div style={{ flex:1, minWidth:240, position:"relative" }}>
                   <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:16, pointerEvents:"none" }}>🔍</span>
                   <input
@@ -1764,11 +1786,19 @@ export default function AccountsManagementTab({ onClose }) {
                 <button className="acm-actbtn" onClick={loadUsers} style={p.btnRefresh}>
                   🔄 {t("amRefresh")}
                 </button>
+                <button className="acm-actbtn" onClick={exportCSV} style={p.btnRefresh} title={t("amExportCsvTip")}>
+                  CSV
+                </button>
                 <button className="acm-actbtn"
                   onClick={() => { setEditUser(null); setView("form"); }}
-                  style={{ ...p.btnRefresh, background:"#dbeafe", color:"#1d4ed8", border:"1px solid #bfdbfe" }}>
+                  style={{ ...p.btnRefresh, background:"#0f766e", color:"#fff", border:"1px solid #0f766e" }}>
                   ➕ {t("amNavAdd")}
                 </button>
+                {onClose && (
+                  <button className="acm-actbtn" onClick={onClose} style={p.btnRefresh}>
+                    ✕
+                  </button>
+                )}
               </div>
 
               {/* Content */}
@@ -1871,25 +1901,41 @@ export default function AccountsManagementTab({ onClose }) {
 const p = {
   /* Compact shell — no min-height, sizes to its content. Sits inside parent. */
   shell: {
-    background:"#fff",
+    background:"transparent",
     display:"flex", flexDirection:"column",
     fontFamily:"Cairo,'Segoe UI',system-ui,sans-serif",
-    borderRadius:8,
-    border:"1px solid rgba(15,23,42,.12)",
-    overflow:"hidden",
+    borderRadius:0,
+    border:"none",
+    overflow:"visible",
     position:"relative",
-    boxShadow:"0 14px 34px rgba(15,23,42,.08)",
+    boxShadow:"none",
   },
-  /* Toolbar row: stats + actions */
-  toolbar: {
-    display:"flex", alignItems:"center", gap:12, flexWrap:"wrap",
-    padding:"14px 18px",
-    background:"#f8fafc",
-    borderBottom:"1px solid rgba(15,23,42,.1)",
+  kpiGrid: {
+    display:"grid",
+    gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))",
+    gap:12,
+    marginBottom:14,
   },
-  statChipInline: {
-    display:"inline-flex", alignItems:"baseline", gap:6,
-    padding:"7px 14px", borderRadius:8,
+  kpiCard: {
+    background:"#fff",
+    border:"1px solid rgba(15,23,42,.12)",
+    borderRadius:8,
+    padding:"13px 15px",
+    boxShadow:"0 10px 24px rgba(15,23,42,.06)",
+    minHeight:72,
+  },
+  kpiLabel: {
+    color:"#64748b",
+    fontSize:12,
+    fontWeight:950,
+    textTransform:"uppercase",
+    letterSpacing:"0.04em",
+  },
+  kpiValue: {
+    marginTop:5,
+    fontSize:27,
+    fontWeight:1000,
+    lineHeight:1,
   },
   btnToolbar: {
     padding:"10px 18px", borderRadius:8,
@@ -1899,39 +1945,56 @@ const p = {
   /* Horizontal tab strip */
   tabsBar: {
     display:"flex", alignItems:"center", gap:4, flexWrap:"wrap",
-    padding:"6px 14px 0",
-    background:"#fff",
-    borderBottom:"1px solid rgba(15,23,42,.1)",
+    padding:6,
+    marginBottom:16,
+    background:"#f8fafc",
+    border:"1px solid rgba(15,23,42,.10)",
+    borderRadius:8,
   },
   tab: {
     display:"inline-flex", alignItems:"center", gap:8,
-    padding:"12px 18px",
-    border:"none", borderRadius:"8px 8px 0 0",
+    minHeight:42,
+    padding:"9px 14px",
+    border:"1px solid transparent", borderRadius:8,
     cursor:"pointer", fontFamily:"inherit",
-    fontWeight:800, fontSize:18,
+    fontWeight:950, fontSize:15,
     transition:"all .15s",
     whiteSpace:"nowrap",
   },
   /* Content area: auto-sized, padding only */
-  mainContent: { padding:"18px 20px" },
-  searchInput: {
-    padding:"11px 14px", borderRadius:8,
+  mainContent: { padding:0 },
+  listToolbar: {
+    display:"flex",
+    alignItems:"center",
+    gap:10,
+    marginBottom:14,
+    flexWrap:"wrap",
+    padding:14,
     background:"#fff",
-    border:"1px solid #cbd5e1",
-    color:"#0f172a", fontSize:18,
+    border:"1px solid rgba(15,23,42,.12)",
+    borderRadius:8,
+    boxShadow:"0 10px 24px rgba(15,23,42,.05)",
+  },
+  searchInput: {
+    minHeight:42,
+    padding:"10px 14px", borderRadius:8,
+    background:"#fff",
+    border:"1px solid rgba(15,23,42,.16)",
+    color:"#0f172a", fontSize:16,
     fontFamily:"Cairo,'Segoe UI',sans-serif",
-    fontWeight:700,
+    fontWeight:800,
   },
   btnRefresh: {
-    padding:"11px 18px", borderRadius:8,
+    minHeight:42,
+    padding:"9px 15px", borderRadius:8,
     background:"#f8fafc", color:"#334155",
-    border:"1px solid #cbd5e1",
-    fontWeight:900, fontSize:15, cursor:"pointer",
+    border:"1px solid rgba(15,23,42,.14)",
+    fontWeight:950, fontSize:14, cursor:"pointer",
     fontFamily:"Cairo,'Segoe UI',sans-serif",
     whiteSpace:"nowrap",
   },
   cardsGrid: { display:"flex", flexDirection:"column", gap:10 },
-  empty: { textAlign:"center", padding:"30px 20px", color:"#64748b", fontWeight:700, fontSize:16 },
+  empty: { background:"#fff", border:"1px solid rgba(15,23,42,.12)", borderRadius:8, textAlign:"center", padding:"30px 20px", color:"#64748b", fontWeight:800, fontSize:16 },
   overlay: {
     position:"fixed", inset:0,
     background:"rgba(15,23,42,.45)",

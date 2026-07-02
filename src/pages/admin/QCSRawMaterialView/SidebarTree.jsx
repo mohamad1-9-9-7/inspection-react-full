@@ -1,5 +1,5 @@
 // SidebarTree.jsx
-import React, { useMemo, useRef, useEffect } from "react";
+import React, { useMemo, useRef } from "react";
 import { monthNames } from "./viewUtils";
 import "./QCSRawMaterialView.css";
 
@@ -46,14 +46,6 @@ export default function SidebarTree({
     () => Object.keys(tree).sort((a, b) => b.localeCompare(a)),
     [tree]
   );
-
-  // Auto-expand latest year on first load
-  const autoExpanded = useRef(false);
-  useEffect(() => {
-    if (autoExpanded.current || yearsSorted.length === 0) return;
-    setOpenYears((p) => ({ ...p, [yearsSorted[0]]: true }));
-    autoExpanded.current = true;
-  }, [yearsSorted]);
 
   const countMonth = (year, m) => {
     const days = tree?.[year]?.[m] || {};

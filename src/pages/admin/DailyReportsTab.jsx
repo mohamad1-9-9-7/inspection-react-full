@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Button from "../../components/Button";
+import BranchHealthScore from "./BranchHealthScore";
 import "./DailyReportsTab.css";
 
 const branches = [
@@ -120,6 +121,8 @@ export default function DailyReportsTab({
             </div>
           </div>
         </header>
+
+        <BranchHealthScore visibleBranches={visibleBranches} />
 
         {/* Topbar */}
         <div className="dr-topbar">

@@ -1,0 +1,121 @@
+.ftr2-receiving-view {
+  font-size: 16px;
+  direction: ltr;
+  text-align: left;
+}
+
+.ftr2-receiving-rail > h4 {
+  display: none;
+}
+
+.ftr2-receiving-rail .ftr2-rail-head {
+  background: linear-gradient(135deg, #3b0764, #7e22ce 58%, #0891b2);
+}
+
+.ftr2-receiving-view .ftr2-tree-year > summary {
+  font-size: 15px;
+  padding: 10px 12px;
+}
+
+.ftr2-receiving-view .ftr2-tree-month > summary {
+  font-size: 14px;
+  padding: 9px 11px;
+}
+
+.ftr2-receiving-view .ftr2-tree-list button {
+  min-height: 54px;
+  font-size: 14px;
+}
+
+.ftr2-receiving-view .ftr2-tree-list button span {
+  font-size: 14px;
+}
+
+.ftr2-receiving-view .ftr2-tree-list button small {
+  font-size: 12px;
+}
+
+.ftr2-receiving-view .ftr2-refresh,
+.ftr2-receiving-view .ftr2-empty {
+  font-size: 14px;
+}
+
+.ftr2-receiving-card {
+  background: #fff;
+}
+
+.ftr2-receiving-body {
+  padding: 18px;
+  overflow-x: auto;
+}
+
+.ftr2-receiving-body button,
+.ftr2-receiving-body input {
+  font-size: 14px;
+}
+
+.ftr2-receiving-body table {
+  font-size: 16px;
+}
+
+.ftr2-receiving-body td,
+.ftr2-receiving-body th {
+  font-size: 16px !important;
+}
+
+.ftr2-receiving-body input[type="text"],
+.ftr2-receiving-body input[type="date"] {
+  min-height: 36px;
+  font-size: 15px !important;
+}
+
+.ftr2-receiving-body .ftr2-receiving-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 760px) {
+  .ftr2-receiving-body {
+    padding: 12px;
+  }
+}
+
+/* Keep Receiving Log readable and English-flow even with legacy inline report styles. */
+.ftr2-receiving-view,
+.ftr2-receiving-view * {
+  direction: ltr;
+}
+
+.ftr2-receiving-view .ftr2-tree-year > summary {
+  font-size: 17px !important;
+}
+
+.ftr2-receiving-view .ftr2-tree-month > summary,
+.ftr2-receiving-view .ftr2-tree-list button,
+.ftr2-receiving-view .ftr2-tree-list button span {
+  font-size: 16px !important;
+}
+
+.ftr2-receiving-view .ftr2-tree-list button small {
+  font-size: 14px !important;
+}
+
+.ftr2-receiving-body,
+.ftr2-receiving-body button,
+.ftr2-receiving-body input {
+  font-size: 16px !important;
+}
+
+.ftr2-receiving-body td,
+.ftr2-receiving-body th {
+  font-size: 17px !important;
+  line-height: 1.5 !important;
+}
+
+.ftr2-receiving-body input[type="text"],
+.ftr2-receiving-body input[type="date"] {
+  font-size: 16px !important;
+}

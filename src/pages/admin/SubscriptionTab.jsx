@@ -4,6 +4,7 @@ import API_BASE from "../../config/api";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { ui } from "../settings/_shared/SettingsUIKit";
 import InvoicesSection from "./InvoicesSection";
+import { logSettingsAudit } from "../../utils/settingsAudit";
 
 /* الخطط الحقيقية تُجلب من /api/plans (تبويب Plans). الألوان دوّارة لأن الجدول لا يخزّن لوناً. */
 const PLAN_COLORS = ["#64748b", "#3b82f6", "#7c3aed", "#0891b2", "#059669", "#db2777"];
@@ -124,6 +125,14 @@ export default function SubscriptionTab() {
   }
 
   async function save() {
+    if (form.start_date && form.end_date && new Date(form.end_date) < new Date(form.start_date)) {
+      setMsg("❌ End date cannot be before start date");
+      return;
+    }
+    if (Number(form.price || 0) < 0) {
+      setMsg("❌ Subscription price cannot be negative");
+      return;
+    }
     setSaving(true); setMsg("");
     try {
       const res  = await fetch(`${API_BASE}/api/subscription`, {
@@ -133,6 +142,14 @@ export default function SubscriptionTab() {
       });
       const data = await res.json();
       if (data.ok) {
+        await logSettingsAudit({
+          area: "subscription",
+          action: "update_subscription",
+          target: form.plan || sub?.plan || "subscription",
+          before: sub,
+          after: data.subscription,
+          reason: "Subscription updated",
+        });
         setSub(data.subscription);
         setEditing(false);
         setMsg("✅ " + t("subUpdated"));

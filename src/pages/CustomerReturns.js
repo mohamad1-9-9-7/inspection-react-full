@@ -2,6 +2,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../config/api";
+import { normalizeCode, useProductCatalog } from "./monitor/branches/_shared/ProductPicker";
+import { mergeCustomerOptions } from "./shared/customerReturnsCustomers";
 
 // Actions (English only, for storage/consistency)
 const ACTIONS = [
@@ -13,13 +15,14 @@ const ACTIONS = [
   "Other..."
 ];
 
-const QTY_TYPES = ["KG", "PCS", "أخرى / Other"];
+const QTY_TYPES = ["KG", "PCS", "Other"];
 
-// Password gate validated server-side — no hardcoded credentials in client
+// Password gate validated server-side - no hardcoded credentials in client
 
 // Draft (local autosave) keys
 const DRAFT_KEY = "customer_returns_draft_v1";
 const DRAFT_DATE_KEY = "customer_returns_draft_date_v1";
+const CUSTOMER_QTY_TYPES = ["KG", "PCS", "Other"];
 
 function getToday() {
   return new Date().toISOString().slice(0, 10);
@@ -27,7 +30,7 @@ function getToday() {
 
 function makeEmptyRow() {
   return {
-    productName: "", origin: "", customerName: "",
+    itemCode: "", productName: "", origin: "", customerName: "",
     carNumber: "", driverName: "",
     quantity: "",
     qtyType: "KG", customQtyType: "", expiry: "", remarks: "",
@@ -83,7 +86,7 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
     <div style={{
       position: "fixed", inset: 0, width: "100vw", height: "100vh",
       background: "rgba(44,62,80,0.24)", display: "flex",
-      alignItems: "center", justifyContent: "center", zIndex: 2000, direction: "rtl",
+      alignItems: "center", justifyContent: "center", zIndex: 2000, direction: "ltr",
     }}>
       <div style={{
         background: "#fff", padding: "2.2rem 2.5rem", borderRadius: "17px",
@@ -93,10 +96,10 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
         <button onClick={onClose} style={{
           position: "absolute", top: 10, left: 15, fontSize: 22,
           background: "transparent", border: "none", color: "#c0392b", cursor: "pointer",
-        }}>✖</button>
+        }}>X</button>
 
         <div style={{ fontWeight: "bold", fontSize: "1.18em", color: "#2980b9", marginBottom: 14 }}>
-          🔒 كلمة سر إنشاء مرتجعات الزبائن / Password required
+          Password required
         </div>
 
         <form onSubmit={(e) => { e.preventDefault(); onSubmit(password); }}>
@@ -107,7 +110,7 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
             spellCheck={false}
             autoCapitalize="off"
             autoFocus
-            placeholder="أدخل كلمة مرور حسابك / Your login password"
+            placeholder="Your login password"
             style={{
               width: "90%", padding: "11px", fontSize: "1.1em",
               border: "1.8px solid #b2babb", borderRadius: "10px",
@@ -123,7 +126,7 @@ function PasswordModal({ show, onSubmit, onClose, error }) {
             fontSize: "1.13rem", marginBottom: 10, cursor: "pointer",
             boxShadow: "0 2px 12px #d2b4de",
           }}>
-            دخول / Sign in
+            Sign in
           </button>
           {error && <div style={{ color: "#c0392b", fontWeight: "bold", marginTop: 5 }}>{error}</div>}
         </form>
@@ -165,9 +168,9 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
       <div style={galleryCard} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
           <div style={{ fontWeight: 900, fontSize: "1.05rem", color: "#0f172a" }}>
-            🖼️ Product Images {row?.productName ? `— ${row.productName}` : ""}
+            Product Images {row?.productName ? `- ${row.productName}` : ""}
           </div>
-          <button onClick={onClose} style={galleryClose}>✕</button>
+          <button onClick={onClose} style={galleryClose}>X</button>
         </div>
 
         {previewSrc && (
@@ -177,7 +180,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, marginBottom: 8 }}>
-          <button onClick={pick} style={btnBlueModal}>⬆️ Upload images</button>
+          <button onClick={pick} style={btnBlueModal}>Upload images</button>
           <input
             ref={inputRef}
             type="file" accept="image/*" multiple
@@ -193,7 +196,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
             row.images.map((src, i) => (
               <div key={i} style={thumbTile} title={`Image ${i + 1}`}>
                 <img src={src} alt={`img-${i}`} style={thumbImg} onClick={() => setPreviewSrc(src)} />
-                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>✕</button>
+                <button title="Remove" onClick={() => onRemoveImage(i)} style={thumbRemove}>X</button>
               </div>
             ))
           )}
@@ -205,6 +208,7 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
 
 export default function CustomerReturns() {
   const navigate = useNavigate();
+  const { allItems: productCatalog } = useProductCatalog();
 
   // Password gate
   const [modalOpen, setModalOpen] = useState(false); // password gate removed
@@ -223,10 +227,10 @@ export default function CustomerReturns() {
         setModalOpen(false);
         setModalError("");
       } else {
-        setModalError("❌ كلمة السر غير صحيحة! / Wrong password!");
+        setModalError("Wrong password.");
       }
     } catch {
-      setModalError("❌ تعذر التحقق — تأكد من الاتصال / Verification failed");
+      setModalError("Verification failed. Check your connection.");
     }
   };
   const handleCloseModal = () => {
@@ -235,7 +239,7 @@ export default function CustomerReturns() {
 
   // ========= Page content (after password) =========
 
-  // ✅ Restore draft date from localStorage (fallback to today)
+  //  Restore draft date from localStorage (fallback to today)
   const [reportDate, setReportDate] = useState(() => {
     try {
       return localStorage.getItem(DRAFT_DATE_KEY) || getToday();
@@ -244,7 +248,7 @@ export default function CustomerReturns() {
     }
   });
 
-  // ✅ Restore draft rows from localStorage
+  //  Restore draft rows from localStorage
   const [rows, setRows] = useState(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -258,12 +262,12 @@ export default function CustomerReturns() {
 
   const [saveMsg, setSaveMsg] = useState("");
 
-  // ✅ Track whether there are unsaved changes
+  //  Track whether there are unsaved changes
   const [isDirty, setIsDirty] = useState(false);
   const savedRowsRef = useRef(null); // snapshot of last-saved rows
 
-  // ✅ Existing customer names (auto-suggest from past records)
-  const [existingCustomers, setExistingCustomers] = useState([]);
+  //  Existing customer names (auto-suggest from past records)
+  const [existingCustomers, setExistingCustomers] = useState(() => mergeCustomerOptions());
   useEffect(() => {
     let cancelled = false;
     async function loadCustomers() {
@@ -272,8 +276,8 @@ export default function CustomerReturns() {
         if (!res.ok) return;
         const json = await res.json().catch(() => null);
         const arr = Array.isArray(json) ? json : json?.data || [];
-        // Build canonical-label map: aggressive key (no spaces, uppercase) → most common spelling
-        // This merges "Zou Zou" + "ZOU ZOU" + "ZOUZOU" into ONE entry — the most common one
+        // Build canonical-label map: aggressive key (no spaces, uppercase) -> most common spelling
+        // This merges "Zou Zou" + "ZOU ZOU" + "ZOUZOU" into ONE entry - the most common one
         const labelCounts = {};
         for (const rec of arr) {
           const items = rec?.payload?.items || [];
@@ -292,16 +296,16 @@ export default function CustomerReturns() {
           const best = Object.entries(spellings).sort((a, b) => b[1] - a[1])[0][0];
           return best;
         }).sort((a, b) => a.localeCompare(b));
-        if (!cancelled) setExistingCustomers(canonical);
+        if (!cancelled) setExistingCustomers(mergeCustomerOptions(canonical));
       } catch {
-        // ignore — autocomplete is optional
+        // ignore - autocomplete is optional
       }
     }
     loadCustomers();
     return () => { cancelled = true; };
   }, []);
 
-  // ✅ Auto-save draft to localStorage on every rows/date change
+  //  Auto-save draft to localStorage on every rows/date change
   useEffect(() => {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(rows));
@@ -314,14 +318,14 @@ export default function CustomerReturns() {
     } else {
       // If we restored a draft on first mount, mark as dirty so user knows
       const hasContent = rows.some((r) =>
-        r.productName || r.origin || r.customerName || r.carNumber || r.driverName ||
+        r.itemCode || r.productName || r.origin || r.customerName || r.carNumber || r.driverName ||
         r.quantity || r.expiry || r.remarks || r.action || r.customAction || (r.images && r.images.length)
       );
       if (hasContent) setIsDirty(true);
     }
   }, [rows, reportDate]);
 
-  // ✅ Warn before leaving page if unsaved changes
+  //  Warn before leaving page if unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (isDirty) {
@@ -343,7 +347,7 @@ export default function CustomerReturns() {
 
   // Manual: clear the local draft
   const clearDraft = () => {
-    if (!window.confirm("هل تريد مسح المسودة المحفوظة محلياً؟ / Clear the locally-saved draft?")) return;
+    if (!window.confirm("Clear the locally-saved draft?")) return;
     try {
       localStorage.removeItem(DRAFT_KEY);
       localStorage.removeItem(DRAFT_DATE_KEY);
@@ -352,7 +356,7 @@ export default function CustomerReturns() {
     setReportDate(getToday());
     savedRowsRef.current = null;
     setIsDirty(false);
-    setSaveMsg("✅ تم مسح المسودة. / Draft cleared.");
+    setSaveMsg("Draft cleared.");
     setTimeout(() => setSaveMsg(""), 2000);
   };
   const removeRow = (index) => setRows(rows.filter((_, idx) => idx !== index));
@@ -360,9 +364,41 @@ export default function CustomerReturns() {
   const handleChange = (idx, field, value) => {
     const updated = [...rows];
     updated[idx][field] = value;
-    if (field === "qtyType" && value !== "أخرى / Other") updated[idx].customQtyType = "";
+    if (field === "qtyType" && value !== "Other") updated[idx].customQtyType = "";
     if (field === "action" && value !== "Other...") updated[idx].customAction = "";
     setRows(updated);
+  };
+
+  const handleProductNameChange = (idx, value) => {
+    const text = String(value || "");
+    const hit = productCatalog.find((item) => normalizeCode(item.description) === normalizeCode(text));
+    setRows((prev) =>
+      prev.map((row, rowIdx) =>
+        rowIdx === idx
+          ? {
+              ...row,
+              productName: text,
+              itemCode: hit ? hit.item_code : row.itemCode,
+            }
+          : row
+      )
+    );
+  };
+
+  const handleItemCodeChange = (idx, value) => {
+    const code = String(value || "");
+    const hit = productCatalog.find((item) => normalizeCode(item.item_code) === normalizeCode(code));
+    setRows((prev) =>
+      prev.map((row, rowIdx) =>
+        rowIdx === idx
+          ? {
+              ...row,
+              itemCode: code,
+              productName: hit ? hit.description : row.productName,
+            }
+          : row
+      )
+    );
   };
 
   // Images handlers
@@ -373,7 +409,7 @@ export default function CustomerReturns() {
     setRows((prev) => prev.map((r, i) =>
       i === imageRowIndex ? { ...r, images: [...(r.images || []), ...urls] } : r
     ));
-    setSaveMsg("✅ Images added.");
+    setSaveMsg("Images added.");
     setTimeout(() => setSaveMsg(""), 2000);
   };
   const removeImageFromRow = async (imgIndex) => {
@@ -387,10 +423,10 @@ export default function CustomerReturns() {
         next.splice(imgIndex, 1);
         return { ...r, images: next };
       }));
-      setSaveMsg("✅ Image removed.");
+      setSaveMsg("Image removed.");
     } catch (e) {
       console.error(e);
-      setSaveMsg("❌ Failed to remove image.");
+      setSaveMsg("Failed to remove image.");
     } finally {
       setTimeout(() => setSaveMsg(""), 2000);
     }
@@ -400,6 +436,7 @@ export default function CustomerReturns() {
     const filtered = rows
       .map((r) => ({
         ...r,
+        itemCode: (r.itemCode || "").trim(),
         productName: (r.productName || "").trim(),
         origin: (r.origin || "").trim(),
         customerName: (r.customerName || "").trim(),
@@ -412,37 +449,37 @@ export default function CustomerReturns() {
         remarks: (r.remarks || "").trim(),
         action: (r.action || "").trim(),
         customAction: (r.customAction || "").trim(),
-        images: Array.isArray(r.images) ? r.images : [], // ✅ save images
+        images: Array.isArray(r.images) ? r.images : [], //  save images
       }))
       .filter(
         r =>
-          r.productName || r.origin || r.customerName || r.carNumber || r.driverName || r.quantity ||
+          r.itemCode || r.productName || r.origin || r.customerName || r.carNumber || r.driverName || r.quantity ||
           r.expiry || r.remarks || r.action || r.customAction || (r.images && r.images.length)
       );
 
     if (!filtered.length) {
-      setSaveMsg("يجب إضافة بيانات على الأقل! / Please add at least one row.");
+      setSaveMsg("Please add at least one row.");
       setTimeout(() => setSaveMsg(""), 1700);
       return;
     }
 
     try {
-      setSaveMsg("⏳ جاري الحفظ على السيرفر… / Saving to server…");
+      setSaveMsg("Saving to server...");
       await sendOneToServer({ reportDate, items: filtered });
 
-      // ✅ Mark as saved → clear dirty flag
+      //  Mark as saved -> clear dirty flag
       savedRowsRef.current = JSON.parse(JSON.stringify(rows));
       setIsDirty(false);
 
-      // ✅ Clear draft from localStorage after successful server save
+      //  Clear draft from localStorage after successful server save
       try {
         localStorage.removeItem(DRAFT_KEY);
         localStorage.removeItem(DRAFT_DATE_KEY);
       } catch { /* ignore */ }
 
-      setSaveMsg("✅ تم الحفظ على السيرفر بنجاح! / Saved successfully.");
+      setSaveMsg("Saved successfully.");
     } catch (err) {
-      setSaveMsg("❌ فشل الحفظ على السيرفر. المسودة محفوظة محلياً. / Save failed. Draft is kept locally.");
+      setSaveMsg("Save failed. Draft is kept locally.");
       console.error(err);
     } finally {
       setTimeout(() => setSaveMsg(""), 3500);
@@ -457,13 +494,22 @@ export default function CustomerReturns() {
         background:
           "radial-gradient(1200px 600px at 100% -10%, #f5d0fe 0%, transparent 60%), linear-gradient(135deg, #f8f5ff 0%, #f0f4ff 50%, #fdf4ff 100%)",
         minHeight: "100vh",
-        direction: "rtl"
+        direction: "ltr"
       }}
     >
       {/* Shared datalist for customer name autocomplete */}
       <datalist id="customer-names-list">
         {existingCustomers.map((name) => (
           <option key={name} value={name} />
+        ))}
+      </datalist>
+      <datalist id="customer-product-list">
+        {productCatalog.map((item) => (
+          <option
+            key={`${item.item_code || ""}-${item.description}`}
+            value={item.description}
+            label={item.item_code || ""}
+          />
         ))}
       </datalist>
 
@@ -489,17 +535,17 @@ export default function CustomerReturns() {
             display: "grid", placeItems: "center",
             boxShadow: "0 6px 18px rgba(136, 78, 160, .35)",
             fontSize: 24,
-          }}>👤</div>
+          }}>CR</div>
           <div>
             <div style={{
               fontWeight: 900, fontSize: "1.35rem",
               background: "linear-gradient(90deg, #512e5f, #884ea0)",
               WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
             }}>
-              سجل مرتجعات الزبائن
+              Customer Returns
             </div>
             <div style={{ fontSize: 13, color: "#64748b", fontWeight: 600, marginTop: 2 }}>
-              Customer Returns — record returned items per customer & delivery
+              Customer Returns - record returned items per customer and delivery
             </div>
           </div>
         </div>
@@ -509,7 +555,7 @@ export default function CustomerReturns() {
         </div>
       </div>
 
-      {/* ✅ Unsaved-changes banner */}
+      {/*  Unsaved-changes banner */}
       {isDirty && (
         <div
           style={{
@@ -530,10 +576,7 @@ export default function CustomerReturns() {
           }}
         >
           <span>
-            ⚠️ يوجد تغييرات غير محفوظة — المسودة محفوظة محلياً تلقائياً
-            <span style={{ marginInlineStart: 10, opacity: 0.85, fontSize: 12, fontWeight: 600 }}>
-              (Unsaved changes — draft auto-saved locally)
-            </span>
+            Unsaved changes - draft auto-saved locally.
           </span>
           <button
             onClick={clearDraft}
@@ -548,9 +591,7 @@ export default function CustomerReturns() {
               fontSize: 12,
               boxShadow: "0 2px 6px rgba(250,204,21,.25)",
             }}
-            title="مسح المسودة المحفوظة محلياً"
-          >
-            🧹 مسح المسودة / Clear draft
+            title="Clear local draft">Clear draft
           </button>
         </div>
       )}
@@ -575,8 +616,7 @@ export default function CustomerReturns() {
           gap: 9,
           fontWeight: "bold",
         }}>
-          <span role="img" aria-label="calendar" style={{ fontSize: 22 }}>📅</span>
-          تاريخ إعداد التقرير / Report Date:
+          Report Date:
           <input
             type="date"
             value={reportDate}
@@ -612,11 +652,8 @@ export default function CustomerReturns() {
             padding: "10px 28px",
             cursor: "pointer",
             boxShadow: "0 6px 18px rgba(34,197,94,.35)",
-            transition: "transform .15s, box-shadow .15s",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
-        >💾 حفظ / Save</button>
+        >Save</button>
         <button onClick={() => navigate("/returns-customers/view")}
           style={{
             background: "linear-gradient(135deg, #884ea0, #a855f7)",
@@ -628,19 +665,16 @@ export default function CustomerReturns() {
             padding: "10px 28px",
             cursor: "pointer",
             boxShadow: "0 6px 18px rgba(136,78,160,.35)",
-            transition: "transform .15s, box-shadow .15s",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
-        >📋 عرض التقارير / View Reports</button>
+        >View Reports</button>
         {saveMsg && (
           <span style={{
             marginRight: 12, fontWeight: "bold",
             padding: "8px 14px", borderRadius: 12,
-            background: saveMsg.startsWith("✅") ? "#dcfce7" : (saveMsg.startsWith("⏳") ? "#ede9fe" : "#fee2e2"),
-            color: saveMsg.startsWith("✅") ? "#166534" : (saveMsg.startsWith("⏳") ? "#5b21b6" : "#991b1b"),
+            background: "#eef2ff",
+            color: "#334155",
             fontSize: "0.95em",
-            border: `1px solid ${saveMsg.startsWith("✅") ? "#86efac" : (saveMsg.startsWith("⏳") ? "#c4b5fd" : "#fecaca")}`,
+            border: "1px solid #cbd5e1",
           }}>{saveMsg}</span>
         )}
       </div>
@@ -661,22 +695,23 @@ export default function CustomerReturns() {
           borderRadius: 14,
           overflow: "hidden",
           borderCollapse: "collapse",
-          minWidth: 1600
+          minWidth: 1760
         }}>
           <thead>
             <tr style={{ background: "linear-gradient(180deg, #f3e8ff, #e9d5ff)", color: "#512e5f" }}>
-              <th style={th}>التسلسل / SL.NO</th>
-              <th style={th}>اسم المنتج / PRODUCT NAME</th>
-              <th style={th}>المنشأ / ORIGIN</th>
-              <th style={th}>الزبون / CUSTOMER</th>
-              <th style={th}>🚚 رقم السيارة / CAR NUMBER</th>
-              <th style={th}>👨‍✈️ اسم السائق / DRIVER NAME</th>
-              <th style={th}>الكمية / QUANTITY</th>
-              <th style={th}>نوع الكمية / QTY TYPE</th>
-              <th style={th}>تاريخ الانتهاء / EXPIRY DATE</th>
-              <th style={th}>ملاحظات / REMARKS</th>
-              <th style={th}>الإجراء / ACTION</th>
-              <th style={th}>الصور / IMAGES</th> {/* ✅ */}
+              <th style={th}>SL.NO</th>
+              <th style={th}>ITEM CODE</th>
+              <th style={th}>PRODUCT NAME</th>
+              <th style={th}>ORIGIN</th>
+              <th style={th}>CUSTOMER</th>
+              <th style={th}>CAR NUMBER</th>
+              <th style={th}>DRIVER NAME</th>
+              <th style={th}>QUANTITY</th>
+              <th style={th}>QTY TYPE</th>
+              <th style={th}>EXPIRY DATE</th>
+              <th style={th}>REMARKS</th>
+              <th style={th}>ACTION</th>
+              <th style={th}>IMAGES</th>
               <th style={th}></th>
             </tr>
           </thead>
@@ -686,40 +721,47 @@ export default function CustomerReturns() {
                 <td style={td}>{idx + 1}</td>
                 <td style={td}>
                   <input style={input}
-                    placeholder="اكتب اسم المنتج / Enter product name"
-                    value={row.productName}
-                    onChange={e => handleChange(idx, "productName", e.target.value)} />
+                    placeholder="Item code"
+                    value={row.itemCode || ""}
+                    onChange={e => handleItemCodeChange(idx, e.target.value)} />
                 </td>
                 <td style={td}>
                   <input style={input}
-                    placeholder="المنشأ / Origin"
+                    placeholder="Product name"
+                    list="customer-product-list"
+                    value={row.productName}
+                    onChange={e => handleProductNameChange(idx, e.target.value)} />
+                </td>
+                <td style={td}>
+                  <input style={input}
+                    placeholder="Origin"
                     value={row.origin}
                     onChange={e => handleChange(idx, "origin", e.target.value)} />
                 </td>
                 <td style={td}>
                   <input style={input}
                     list="customer-names-list"
-                    placeholder="اسم الزبون / Customer name"
+                    placeholder="Customer name"
                     value={row.customerName}
                     onChange={e => handleChange(idx, "customerName", e.target.value)}
-                    title={existingCustomers.length > 0 ? `📋 ${existingCustomers.length} زبون مسجّل سابقاً — ابدأ بالكتابة لاختيار من القائمة` : ""}
+                    title={existingCustomers.length > 0 ? `${existingCustomers.length} saved customer names available` : ""}
                     autoComplete="off" />
                 </td>
                 <td style={td}>
                   <input style={input}
-                    placeholder="رقم السيارة / Car number"
+                    placeholder="Car number"
                     value={row.carNumber || ""}
                     onChange={e => handleChange(idx, "carNumber", e.target.value)} />
                 </td>
                 <td style={td}>
                   <input style={input}
-                    placeholder="اسم السائق / Driver name"
+                    placeholder="Driver name"
                     value={row.driverName || ""}
                     onChange={e => handleChange(idx, "driverName", e.target.value)} />
                 </td>
                 <td style={td}>
                   <input style={input}
-                    placeholder="الكمية / Quantity"
+                    placeholder="Quantity"
                     inputMode="decimal"
                     value={row.quantity}
                     onChange={e => handleChange(idx, "quantity", e.target.value.replace(/[^0-9.]/g, ""))} />
@@ -728,13 +770,13 @@ export default function CustomerReturns() {
                   <select style={input}
                     value={row.qtyType}
                     onChange={e => handleChange(idx, "qtyType", e.target.value)}>
-                    {QTY_TYPES.map((t) => (
+                    {CUSTOMER_QTY_TYPES.map((t) => (
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
-                  {row.qtyType === "أخرى / Other" && (
+                  {row.qtyType === "Other" && (
                     <input style={{...input, marginTop: 6}}
-                      placeholder="حدد النوع / Specify type"
+                      placeholder="Specify type"
                       value={row.customQtyType}
                       onChange={e => handleChange(idx, "customQtyType", e.target.value)} />
                   )}
@@ -746,7 +788,7 @@ export default function CustomerReturns() {
                 </td>
                 <td style={td}>
                   <input style={input}
-                    placeholder="ملاحظات / Remarks"
+                    placeholder="Remarks"
                     value={row.remarks}
                     onChange={e => handleChange(idx, "remarks", e.target.value)} />
                 </td>
@@ -754,7 +796,7 @@ export default function CustomerReturns() {
                   <select style={input}
                     value={row.action}
                     onChange={e => handleChange(idx, "action", e.target.value)}>
-                    <option value="">—</option>
+                    <option value="">-</option>
                     {ACTIONS.map((a) => (
                       <option key={a} value={a}>{a}</option>
                     ))}
@@ -767,19 +809,18 @@ export default function CustomerReturns() {
                   )}
                 </td>
 
-                {/* ✅ Images cell */}
                 <td style={td}>
                   <button
                     onClick={() => openImagesFor(idx)}
                     style={btnImg}
                     title="Manage images"
                   >
-                    🖼️ Images ({Array.isArray(row.images) ? row.images.length : 0})
+                    Images ({Array.isArray(row.images) ? row.images.length : 0})
                   </button>
                 </td>
 
                 <td style={td}>
-                  <button onClick={() => removeRow(idx)} style={btnDel} data-delete-action="true">🗑️</button>
+                  <button onClick={() => removeRow(idx)} style={btnDel} data-delete-action="true">Delete</button>
                 </td>
               </tr>
             ))}
@@ -788,7 +829,7 @@ export default function CustomerReturns() {
       </div>
 
       <div style={rowActions}>
-        <button onClick={addRow} style={btnAdd}>➕ إضافة صف / Add row</button>
+        <button onClick={addRow} style={btnAdd}>Add row</button>
       </div>
 
       {/* Images Modal */}
@@ -884,3 +925,4 @@ const thumbRemove = {
   color: "#fff", border: "none", borderRadius: 8, padding: "2px 8px",
   fontWeight: 800, cursor: "pointer",
 };
+

@@ -13,6 +13,7 @@ import API_BASE from "../../config/api";
 import { useSettingsLang } from "../settings/_shared/settingsI18n";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { logSettingsAudit } from "../../utils/settingsAudit";
 
 /* ── helpers ── */
 function getUser() {
@@ -203,7 +204,17 @@ function BillingSettingsModal({ profile, onClose, onSaved }) {
         body: JSON.stringify(form),
       });
       const d = await r.json();
-      if (d.ok) onSaved(d.profile);
+      if (d.ok) {
+        await logSettingsAudit({
+          area: "billing_profile",
+          action: "update_billing_profile",
+          target: form.company_name || "billing profile",
+          before: profile,
+          after: d.profile || form,
+          reason: "Billing profile updated",
+        });
+        onSaved(d.profile);
+      }
       else setErr(t("invBpSaveFail"));
     } catch {
       setErr(t("invBpSaveFail"));
@@ -296,6 +307,14 @@ function IssueInvoiceModal({ profile, subscription, accountsCount, branchesCount
       setErr(t("invCompanyNameReq"));
       return;
     }
+    if (Number(form.amount || 0) < 0) {
+      setErr("Invoice amount cannot be negative");
+      return;
+    }
+    if (form.period_start && form.period_end && new Date(form.period_end) < new Date(form.period_start)) {
+      setErr("Invoice period end cannot be before period start");
+      return;
+    }
     setSaving(true); setErr("");
     try {
       const body = {
@@ -314,7 +333,17 @@ function IssueInvoiceModal({ profile, subscription, accountsCount, branchesCount
         body: JSON.stringify(body),
       });
       const d = await r.json();
-      if (d.ok) onIssued(d.invoice);
+      if (d.ok) {
+        await logSettingsAudit({
+          area: "invoices",
+          action: "issue_invoice",
+          target: d.invoice?.invoice_number || body.company_name,
+          before: null,
+          after: d.invoice || body,
+          reason: "Invoice issued",
+        });
+        onIssued(d.invoice);
+      }
       else setErr(t("invIssueFail"));
     } catch {
       setErr(t("invIssueFail"));

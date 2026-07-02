@@ -1,0 +1,721 @@
+.ftr2-report-view {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 14px;
+  color: #0f172a;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  direction: ltr;
+  text-align: left;
+  font-size: 16px;
+}
+
+.ftr2-report-rail,
+.ftr2-report-card {
+  border: 1px solid #dbe4e7;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.07);
+}
+
+/* Readability pass for FTR 2 report viewers: English/LTR flow and 16-18px data text. */
+.ftr2-report-view,
+.ftr2-report-view * {
+  letter-spacing: 0;
+}
+
+.ftr2-report-view .ftr2-rail-head span {
+  font-size: 13px;
+}
+
+.ftr2-report-view .ftr2-rail-head h3 {
+  font-size: 22px;
+}
+
+.ftr2-report-view .ftr2-rail-head p,
+.ftr2-report-view .ftr2-refresh,
+.ftr2-report-view .ftr2-empty,
+.ftr2-report-view .ftr2-message {
+  font-size: 16px;
+}
+
+.ftr2-report-view .ftr2-tree-year > summary,
+.ftr2-report-view .ftr2-tree-month > summary {
+  direction: ltr;
+  text-align: left;
+}
+
+.ftr2-report-view .ftr2-tree-year > summary {
+  font-size: 17px;
+  min-height: 46px;
+  padding: 11px 13px;
+}
+
+.ftr2-report-view .ftr2-tree-month > summary {
+  font-size: 16px;
+  min-height: 42px;
+  padding: 10px 12px;
+}
+
+.ftr2-report-view .ftr2-tree-year b,
+.ftr2-report-view .ftr2-tree-month b {
+  font-size: 14px;
+}
+
+.ftr2-report-view .ftr2-tree-list button {
+  min-height: 58px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.ftr2-report-view .ftr2-tree-list button span {
+  font-size: 16px;
+}
+
+.ftr2-report-view .ftr2-tree-list button small {
+  font-size: 14px;
+}
+
+.ftr2-report-view .ftr2-eyebrow {
+  font-size: 13px;
+}
+
+.ftr2-report-view .ftr2-report-head h3 {
+  font-size: 24px;
+}
+
+.ftr2-report-view .ftr2-report-head p,
+.ftr2-report-view .ftr2-report-actions button {
+  font-size: 16px;
+}
+
+.ftr2-report-view .ftr2-doc-strip span,
+.ftr2-report-view .ftr2-summary-grid span {
+  font-size: 14px;
+}
+
+.ftr2-report-view .ftr2-doc-strip strong,
+.ftr2-report-view .ftr2-summary-grid strong,
+.ftr2-report-view .ftr2-nested-card > strong {
+  font-size: 17px;
+}
+
+.ftr2-report-view .ftr2-block-head h4 {
+  font-size: 18px;
+}
+
+.ftr2-report-view .ftr2-block-head span,
+.ftr2-report-view .ftr2-nested-card span,
+.ftr2-report-view .ftr2-nested-card b {
+  font-size: 16px;
+}
+
+.ftr2-report-view .ftr2-data-table th,
+.ftr2-report-view .ftr2-data-table td {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.ftr2-report-rail {
+  min-width: 0;
+  align-self: start;
+  overflow: hidden;
+  position: sticky;
+  top: 10px;
+}
+
+.ftr2-rail-head {
+  padding: 18px;
+  color: #fff;
+  background: linear-gradient(135deg, #12343b, #0f766e 58%, #0891b2);
+}
+
+.ftr2-rail-head span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #dffdf8;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ftr2-rail-head h3 {
+  margin: 12px 0 5px;
+  color: #fff;
+  font-size: 19px;
+  line-height: 1.1;
+  font-weight: 1000;
+  letter-spacing: 0;
+}
+
+.ftr2-rail-head p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.ftr2-refresh {
+  width: calc(100% - 24px);
+  min-height: 38px;
+  margin: 12px;
+  border: 1px solid #99f6e4;
+  border-radius: 8px;
+  background: #f0fdfa;
+  color: #0f766e;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.ftr2-refresh:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.ftr2-date-tree {
+  max-height: min(680px, 68vh);
+  overflow-y: auto;
+  padding: 0 12px 14px;
+}
+
+.ftr2-date-tree::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ftr2-date-tree::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.ftr2-tree-year,
+.ftr2-tree-month {
+  margin: 6px 0;
+}
+
+.ftr2-tree-year > summary,
+.ftr2-tree-month > summary {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ftr2-tree-year > summary::-webkit-details-marker,
+.ftr2-tree-month > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ftr2-tree-year > summary {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.ftr2-tree-month > summary {
+  margin-inline-start: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ftr2-tree-year b,
+.ftr2-tree-month b {
+  min-width: 26px;
+  min-height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 10px;
+  font-weight: 1000;
+}
+
+.ftr2-tree-list {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 10px 18px;
+}
+
+.ftr2-tree-list button {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.ftr2-tree-list button:hover,
+.ftr2-tree-list button.active {
+  border-color: var(--ftr2-accent, #0f766e);
+  background: #f0fdfa;
+  transform: translateY(-1px);
+}
+
+.ftr2-tree-list button span {
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.ftr2-tree-list button small {
+  min-width: 0;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftr2-empty {
+  padding: 20px 10px;
+  color: #64748b;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ftr2-report-main {
+  min-width: 0;
+}
+
+.ftr2-report-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ftr2-report-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(90deg, #ffffff, #f0fdfa 55%, #f0f9ff);
+}
+
+.ftr2-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: #0f766e;
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.ftr2-report-head h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 21px;
+  line-height: 1.15;
+  font-weight: 1000;
+  letter-spacing: 0;
+}
+
+.ftr2-report-head p {
+  margin: 7px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 750;
+}
+
+.ftr2-report-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ftr2-report-actions button {
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ftr2-report-actions button:hover {
+  border-color: #5eead4;
+  color: #0f766e;
+}
+
+.ftr2-report-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ftr2-report-actions button.danger {
+  border-color: #fecaca;
+  background: #fff7f7;
+  color: #b91c1c;
+}
+
+.ftr2-message {
+  margin: 14px 18px 0;
+  padding: 10px 12px;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  background: #f0f9ff;
+  color: #075985;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ftr2-select-empty {
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 28px;
+  text-align: center;
+}
+
+.ftr2-select-empty strong {
+  color: #0f172a;
+  font-size: 18px;
+  font-weight: 1000;
+}
+
+.ftr2-select-empty span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.ftr2-doc-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 18px;
+}
+
+.ftr2-doc-strip div,
+.ftr2-summary-grid div,
+.ftr2-nested-card {
+  min-width: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.ftr2-doc-strip div {
+  padding: 12px;
+}
+
+.ftr2-doc-strip span,
+.ftr2-summary-grid span {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.ftr2-doc-strip strong,
+.ftr2-summary-grid strong {
+  display: block;
+  min-width: 0;
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.ftr2-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  padding: 0 18px 18px;
+}
+
+.ftr2-summary-grid div {
+  padding: 12px;
+  background: #fff;
+}
+
+.ftr2-block {
+  padding: 0 18px 18px;
+}
+
+.ftr2-block-head {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ftr2-block-head h4 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 1000;
+}
+
+.ftr2-block-head span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ftr2-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.ftr2-data-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.ftr2-data-table th {
+  padding: 10px 11px;
+  border-bottom: 1px solid #dbe4e7;
+  background: #f1f5f9;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 1000;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ftr2-data-table td {
+  max-width: 260px;
+  padding: 10px 11px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 700;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.ftr2-data-table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.ftr2-file-link {
+  color: #0f766e;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.ftr2-file-link:hover {
+  text-decoration: underline;
+}
+
+.ftr2-empty-mark {
+  color: #94a3b8;
+  font-weight: 850;
+}
+
+.ftr2-nested-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.ftr2-nested-card {
+  padding: 12px;
+}
+
+.ftr2-nested-card > strong {
+  display: block;
+  margin-bottom: 9px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 1000;
+}
+
+.ftr2-nested-card div {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.6fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.ftr2-nested-card span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.ftr2-nested-card b {
+  min-width: 0;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .ftr2-report-view {
+    grid-template-columns: 1fr;
+  }
+
+  .ftr2-report-rail {
+    position: static;
+  }
+
+  .ftr2-date-tree {
+    max-height: 420px;
+  }
+}
+
+@media (max-width: 760px) {
+  .ftr2-report-head,
+  .ftr2-report-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ftr2-report-actions button {
+    width: 100%;
+  }
+
+  .ftr2-doc-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Final FTR 2 readability overrides. Keep these last so older report CSS cannot shrink text. */
+.ftr2-report-view {
+  direction: ltr !important;
+  text-align: left !important;
+  font-size: 16px !important;
+}
+
+.ftr2-report-view .ftr2-report-rail,
+.ftr2-report-view .ftr2-report-main,
+.ftr2-report-view .ftr2-report-card,
+.ftr2-report-view .ftr2-date-tree {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+.ftr2-report-view .ftr2-rail-head span,
+.ftr2-report-view .ftr2-eyebrow {
+  font-size: 14px !important;
+}
+
+.ftr2-report-view .ftr2-rail-head h3 {
+  font-size: 23px !important;
+}
+
+.ftr2-report-view .ftr2-report-head h3 {
+  font-size: 25px !important;
+}
+
+.ftr2-report-view .ftr2-rail-head p,
+.ftr2-report-view .ftr2-refresh,
+.ftr2-report-view .ftr2-empty,
+.ftr2-report-view .ftr2-message,
+.ftr2-report-view .ftr2-report-head p,
+.ftr2-report-view .ftr2-report-actions button {
+  font-size: 16px !important;
+}
+
+.ftr2-report-view .ftr2-tree-year > summary {
+  min-height: 48px !important;
+  padding: 12px 14px !important;
+  font-size: 17px !important;
+}
+
+.ftr2-report-view .ftr2-tree-month > summary {
+  min-height: 44px !important;
+  padding: 10px 12px !important;
+  font-size: 16px !important;
+}
+
+.ftr2-report-view .ftr2-tree-year b,
+.ftr2-report-view .ftr2-tree-month b {
+  font-size: 14px !important;
+}
+
+.ftr2-report-view .ftr2-tree-list button {
+  min-height: 60px !important;
+  padding: 11px 13px !important;
+  text-align: left !important;
+}
+
+.ftr2-report-view .ftr2-tree-list button span {
+  font-size: 16px !important;
+}
+
+.ftr2-report-view .ftr2-tree-list button small {
+  font-size: 14px !important;
+}
+
+.ftr2-report-view .ftr2-doc-strip span,
+.ftr2-report-view .ftr2-summary-grid span {
+  font-size: 14px !important;
+}
+
+.ftr2-report-view .ftr2-doc-strip strong,
+.ftr2-report-view .ftr2-summary-grid strong,
+.ftr2-report-view .ftr2-nested-card > strong {
+  font-size: 17px !important;
+}
+
+.ftr2-report-view .ftr2-block-head h4 {
+  font-size: 18px !important;
+}
+
+.ftr2-report-view .ftr2-block-head span,
+.ftr2-report-view .ftr2-nested-card span,
+.ftr2-report-view .ftr2-nested-card b,
+.ftr2-report-view .ftr2-file-link,
+.ftr2-report-view .ftr2-empty-mark {
+  font-size: 16px !important;
+}
+
+.ftr2-report-view .ftr2-data-table th,
+.ftr2-report-view .ftr2-data-table td {
+  font-size: 16px !important;
+  line-height: 1.5 !important;
+  text-align: left !important;
+}

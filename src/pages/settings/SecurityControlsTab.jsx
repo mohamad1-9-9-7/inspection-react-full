@@ -5,6 +5,7 @@ import React, { useState, useMemo } from "react";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 import { BRANCHES, BRANCH_TYPE_META } from "../../config/branches";
 import { Button, ConfirmModal } from "./_shared/SettingsUIKit";
+import { logSettingsAudit } from "../../utils/settingsAudit";
 
 const STORAGE_KEY = "appSecuritySettings";
 
@@ -47,6 +48,7 @@ export function isDeleteAllowedForBranch(branchId) {
 
 function saveSecuritySettings(settings) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
+  try { window.dispatchEvent(new CustomEvent("app:security-settings-changed", { detail: settings })); } catch { /* ignore */ }
 }
 
 /* ── small helpers ── */
@@ -138,8 +140,17 @@ export default function SecurityControlsTab() {
 
   const overrideCount = Object.keys(s.deleteBranchOverrides || {}).length;
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    const before = getSecuritySettings();
     saveSecuritySettings(s);
+    await logSettingsAudit({
+      area: "security",
+      action: "update_security_controls",
+      target: "appSecuritySettings",
+      before,
+      after: s,
+      reason: "Saved from Security Controls",
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -148,9 +159,18 @@ export default function SecurityControlsTab() {
     setConfirmReset(true);
   };
 
-  const doReset = () => {
+  const doReset = async () => {
+    const before = getSecuritySettings();
     setS({ ...SEC_DEFAULTS });
     saveSecuritySettings({ ...SEC_DEFAULTS });
+    await logSettingsAudit({
+      area: "security",
+      action: "reset_security_controls",
+      target: "appSecuritySettings",
+      before,
+      after: SEC_DEFAULTS,
+      reason: "Reset security controls to defaults",
+    });
     setConfirmReset(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);

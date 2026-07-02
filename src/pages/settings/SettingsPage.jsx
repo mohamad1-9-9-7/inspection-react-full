@@ -8,7 +8,6 @@ import {
   FiArrowLeft,
   FiBell,
   FiBox,
-  FiBriefcase,
   FiCalendar,
   FiCreditCard,
   FiDatabase,
@@ -17,7 +16,6 @@ import {
   FiHardDrive,
   FiHeart,
   FiImage,
-  FiLayers,
   FiSearch,
   FiShield,
   FiSliders,
@@ -37,10 +35,8 @@ import AppearanceAndLanguage from "./tools/AppearanceAndLanguage";
 import ImageMigration from "../admin/ImageMigration";
 import ComplaintNumberBackfill from "../admin/ComplaintNumberBackfill";
 import AccountsManagementTab from "./AccountsManagementTab";
-import SecurityControlsTab from "./SecurityControlsTab";
-import SubscriptionTab from "../admin/SubscriptionTab";
-import PlansTab from "./PlansTab";
-import CompaniesTab from "./CompaniesTab";
+import SecurityControlsTab, { getSecuritySettings } from "./SecurityControlsTab";
+import BillingPlansTab from "./BillingPlansTab";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 
 const SECTIONS = [
@@ -161,34 +157,14 @@ const SECTIONS = [
     lk: "secBilling",
     items: [
       {
-        id: "subscription",
+        id: "billing-plans",
         Icon: FiCreditCard,
-        title: "Subscription",
-        desc: "Current plan, activation, expiry",
-        tk: "tSubscription",
-        dk: "tSubscriptionD",
+        title: "Billing & Plans",
+        desc: "Overview, subscription, plans, companies",
+        tk: "billingPlansHub",
+        dk: "billingPlansHubD",
         grad: "linear-gradient(135deg,#059669,#065f46)",
         glow: "rgba(5,150,105,.30)",
-      },
-      {
-        id: "plans",
-        Icon: FiLayers,
-        title: "Plans",
-        desc: "Create, edit, price, limits",
-        tk: "tPlans",
-        dk: "tPlansD",
-        grad: "linear-gradient(135deg,#0891b2,#0e7490)",
-        glow: "rgba(8,145,178,.30)",
-      },
-      {
-        id: "companies",
-        Icon: FiBriefcase,
-        title: "Companies",
-        desc: "Clients, assign plans, track",
-        tk: "tCompanies",
-        dk: "tCompaniesD",
-        grad: "linear-gradient(135deg,#3b82f6,#1d4ed8)",
-        glow: "rgba(59,130,246,.30)",
       },
     ],
   },
@@ -248,12 +224,6 @@ const SECTIONS = [
   },
 ];
 
-const ALL_ITEMS = SECTIONS.flatMap((section) =>
-  section.items.map((item) => ({ ...item, sectionId: section.id, sectionLabel: section.label, sectionKey: section.lk }))
-);
-
-const findItem = (id) => ALL_ITEMS.find((item) => item.id === id);
-
 function greetingKey() {
   const h = new Date().getHours();
   if (h < 12) return "goodMorning";
@@ -285,14 +255,10 @@ function toolComponent(active) {
       return <ComplaintNumberBackfill />;
     case "server-health":
       return <ServerHealth />;
+    case "billing-plans":
+      return <BillingPlansTab />;
     case "security-controls":
       return <SecurityControlsTab />;
-    case "subscription":
-      return <SubscriptionTab />;
-    case "plans":
-      return <PlansTab />;
-    case "companies":
-      return <CompaniesTab />;
     default:
       return null;
   }
@@ -321,18 +287,43 @@ export default function SettingsPage() {
 
   const displayName = currentUser.displayName || currentUser.username || "User";
   const isAdmin = !!currentUser.isAdmin;
+  const isSuperAdmin = !!currentUser.isSuperAdmin;
   const permissions = currentUser.permissions || [];
-  const isFullAccess = permissions.includes("*") || permissions.length === 0;
-  const canOpenSettings = isAdmin || isFullAccess || permissions.includes("settings");
-  const activeItem = active ? findItem(active) : null;
+  const isFullAccess = permissions.includes("*");
+  const securitySettings = getSecuritySettings();
+  const canOpenSettings = securitySettings.adminOnlySettings
+    ? (isAdmin || isSuperAdmin)
+    : (isAdmin || isSuperAdmin || isFullAccess || permissions.includes("settings"));
   const timeStr = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const dateStr = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
-  const filteredSections = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return SECTIONS;
+  const visibleSections = useMemo(() => {
+    const canAccessItem = (item) => {
+      if (isAdmin || isSuperAdmin || isFullAccess) return true;
+      if (!permissions.includes("settings")) return false;
+      return ["general", "data"].includes(item.sectionId);
+    };
 
     return SECTIONS.map((section) => ({
+      ...section,
+      items: section.items
+        .map((item) => ({ ...item, sectionId: section.id, sectionLabel: section.label, sectionKey: section.lk }))
+        .filter(canAccessItem),
+    })).filter((section) => section.items.length > 0);
+  }, [isAdmin, isSuperAdmin, isFullAccess, permissions]);
+
+  const accessibleItems = useMemo(() => visibleSections.flatMap((section) => section.items), [visibleSections]);
+  const activeItem = active ? accessibleItems.find((item) => item.id === active) : null;
+
+  useEffect(() => {
+    if (active && !activeItem) setActive(null);
+  }, [active, activeItem]);
+
+  const filteredSections = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return visibleSections;
+
+    return visibleSections.map((section) => ({
       ...section,
       items: section.items.filter((item) => {
         const haystack = [
@@ -346,7 +337,7 @@ export default function SettingsPage() {
         return haystack.includes(q);
       }),
     })).filter((section) => section.items.length > 0);
-  }, [query, t]);
+  }, [query, t, visibleSections]);
 
   const filteredCount = filteredSections.reduce((sum, section) => sum + section.items.length, 0);
 
@@ -435,7 +426,7 @@ export default function SettingsPage() {
                 <p style={styles.eyebrow}>Al Mawashi QMS</p>
                 <h1 style={styles.title}>{t("settingsTitle")}</h1>
                 <p className="settings-hero-subtitle" style={styles.subtitle}>
-                  {ALL_ITEMS.length} {t(ALL_ITEMS.length !== 1 ? "settingsSubPlural" : "settingsSub")} - {t("clickToOpen")}
+                  {accessibleItems.length} {t(accessibleItems.length !== 1 ? "settingsSubPlural" : "settingsSub")} - {t("clickToOpen")}
                 </p>
               </div>
             </div>
@@ -484,7 +475,7 @@ export default function SettingsPage() {
 
               <div className="settings-summary" style={styles.summary}>
                 <div style={styles.chip}>{filteredCount} {t(filteredCount !== 1 ? "settingsSubPlural" : "settingsSub")}</div>
-                <div style={styles.chip}>{SECTIONS.length} {lang === "ar" ? "مجموعات" : "Groups"}</div>
+                <div style={styles.chip}>{visibleSections.length} {lang === "ar" ? "مجموعات" : "Groups"}</div>
                 {isAdmin && <div style={styles.chip}>{t("adminTag")}</div>}
               </div>
             </section>

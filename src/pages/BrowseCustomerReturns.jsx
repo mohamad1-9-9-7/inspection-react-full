@@ -30,7 +30,7 @@ async function fetchByType(type) {
 }
 
 /* ============================================================
-   Helpers — date / branch / action / qty
+   Helpers - date / branch / action / qty
    ============================================================ */
 function toTs(x) {
   if (!x) return null;
@@ -67,16 +67,16 @@ function normalizeReturns(raw) {
 }
 
 /**
- * Aggressive customer key — used for grouping.
+ * Aggressive customer key - used for grouping.
  * Removes ALL whitespace + uppercases. So:
- *   "Zou Zou", "ZOU ZOU", "ZOUZOU", " ZouZou " → all become "ZOUZOU"
+ *   "Zou Zou", "ZOU ZOU", "ZOUZOU", " ZouZou " -> all become "ZOUZOU"
  */
 function customerKey(name) {
   return (name || "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
 /**
- * Module-level canonical-label map (key → most common original spelling).
+ * Module-level canonical-label map (key -> most common original spelling).
  * Populated by the component during render via a useMemo.
  * Pre-populated as empty; falls back to a simple uppercase normalization until built.
  */
@@ -97,12 +97,13 @@ function customerOf(row) {
   return _canonicalCustomerMap[aggKey] || raw.toUpperCase().replace(/\s+/g, " ");
 }
 function actionText(row) {
-  return row?.action === "إجراء آخر..." || row?.action === "Other..."
+  return row?.action === "ط¥ط¬ط±ط§ط، ط¢ط®ط±..." || row?.action === "Other..."
     ? row?.customAction || ""
     : row?.action || "";
 }
 function itemKey(row) {
   return [
+    (row?.itemCode || "").trim().toLowerCase(),
     (row?.productName || "").trim().toLowerCase(),
     (row?.origin || "").trim().toLowerCase(),
     (customerOf(row) || "").trim().toLowerCase(),
@@ -135,11 +136,11 @@ function isDisposed(s) {
 }
 function isKgType(t) {
   const s = (t || "").toString().toLowerCase();
-  return s.includes("kg") || s.includes("كيلو") || s.includes("كجم");
+  return s.includes("kg") || s.includes("ظƒظٹظ„ظˆ") || s.includes("ظƒط¬ظ…");
 }
 function isPcsType(t) {
   const s = (t || "").toString().toLowerCase();
-  return s.includes("pcs") || s.includes("قطعة") || s.includes("حبة") || s.includes("pc");
+  return s.includes("pcs") || s.includes("ظ‚ط·ط¹ط©") || s.includes("ط­ط¨ط©") || s.includes("pc");
 }
 function qtyKind(row) {
   if (isKgType(row?.qtyType)) return "kg";
@@ -157,7 +158,7 @@ function fmtPct(n) {
 }
 
 /* ============================================================
-   Power search — parse key:value tokens with quotes
+   Power search - parse key:value tokens with quotes
    Supported keys (aliases in parens):
      code (itemcode)            substring match on itemCode
      name (product, productname) substring match on productName
@@ -166,7 +167,7 @@ function fmtPct(n) {
      action                     substring match on action
      expiry                     substring match on expiry
      remarks                    substring match on remarks
-     qty / quantity             numeric — supports >N, <N, >=N, <=N, =N
+     qty / quantity             numeric - supports >N, <N, >=N, <=N, =N
      qtytype / type             "kg" | "pcs"
      images                     "yes" | "no"
    Plain words are matched as substrings across all fields.
@@ -208,14 +209,14 @@ const KEY_ALIASES = {
 function rowMatchesPower(row, parsed) {
   if (!parsed) return true;
   const { filters, terms } = parsed;
-  // Free text terms — all must match somewhere
+  // Free text terms - all must match somewhere
   for (const t of terms) {
     const needle = t.toLowerCase();
     const hay = [
       row.itemCode, row.productName, row.origin, customerOf(row),
       row.carNumber, row.driverName,
       String(row.quantity ?? ""),
-      (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
+      (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
       row.expiry, row.remarks, actionText(row),
     ].some((v) => (v ?? "").toString().toLowerCase().includes(needle));
     if (!hay) return false;
@@ -555,7 +556,7 @@ function MultiSelect({ label, options = [], selected = [], onChange, placeholder
                 background: checked ? T.primaryS : "transparent",
               }}>
                 <input type="checkbox" checked={checked} onChange={() => toggle(opt)} style={{ accentColor: T.primary }} />
-                <span style={{ fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={opt}>{opt || "—"}</span>
+                <span style={{ fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={opt}>{opt || "-"}</span>
               </label>
             );
           })}
@@ -703,7 +704,7 @@ function MiniDonut({ percent = 0, label = "", color = T.primary, size = 80, coun
 }
 
 /* ============================================================
-   Product DNA fingerprint — radial spider chart
+   Product DNA fingerprint - radial spider chart
    axes: condemn%, useProd%, posSpread, originSpread, volume, recency
    Each axis 0-100. Optional second product overlay for comparison.
    ============================================================ */
@@ -787,7 +788,7 @@ function ProductDNA({ primary, secondary, size = 280 }) {
 }
 
 /* ============================================================
-   Sankey diagram — 3 columns (Origin → POS → Action) with curved links
+   Sankey diagram - 3 columns (Origin -> POS -> Action) with curved links
    Width = flow count. Hover highlights connected paths.
    ============================================================ */
 function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
@@ -917,7 +918,7 @@ function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
               strokeOpacity={hoverNode ? (high ? 0.5 : 0.08) : 0.22}
               style={{ transition: "stroke-opacity .15s" }}
             >
-              <title>{`${l.src.key} → ${l.dst.key}: ${l.value}`}</title>
+              <title>{`${l.src.key} -> ${l.dst.key}: ${l.value}`}</title>
             </path>
           );
         })}
@@ -937,7 +938,7 @@ function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
                 y={n.y + n.h / 2 + 3}
                 textAnchor={ci === 0 ? "end" : "start"}
                 style={{ fontSize: 11, fill: T.text, fontWeight: 600, pointerEvents: "none" }}>
-                {(n.key || "—").length > 18 ? (n.key || "—").slice(0, 18) + "…" : (n.key || "—")}
+                {(n.key || "-").length > 18 ? (n.key || "-").slice(0, 18) + "..." : (n.key || "-")}
                 <tspan dx={6} style={{ fill: T.textS, fontWeight: 800 }}>{n.value}</tspan>
               </text>
             </g>
@@ -949,7 +950,7 @@ function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
 }
 
 /* ============================================================
-   Pareto chart — vertical bars + cumulative %
+   Pareto chart - vertical bars + cumulative %
    ============================================================ */
 function ParetoChart({ items = [], color = T.primary, formatLabel = (s) => s, topN = 12 }) {
   if (!items || items.length === 0) {
@@ -1064,7 +1065,7 @@ function DayOfWeekBars({ daily }) {
           return (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%", gap: 4 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: isPeak ? T.danger : T.textM }} title={`${counts[i]} day(s)`}>
-                {v ? v.toFixed(1) : "—"}
+                {v ? v.toFixed(1) : "-"}
               </div>
               <div style={{
                 width: "70%", height: `${h}%`, minHeight: v > 0 ? 4 : 0,
@@ -1188,7 +1189,7 @@ function CalendarHeatmap({ daily, mode = "items", onPickDay, anomalies = new Set
                   onClick={() => data && onPickDay && onPickDay(ds)}
                 >
                   <title>
-                    {ds}{data ? `\n${data.items} items · ${data.condCount} cond · ${data.kg} kg${isAnom ? "\n⚠ anomaly" : ""}` : "\nNo report"}
+                    {ds}{data ? `\n${data.items} items - ${data.condCount} cond - ${data.kg} kg${isAnom ? "\n anomaly" : ""}` : "\nNo report"}
                   </title>
                 </rect>
               </g>
@@ -1219,9 +1220,9 @@ function AuditTrailModalInner({ open, onClose, item, trail }) {
   return (
     <ModalShell open={open} onClose={onClose} title="Audit trail" width={620}>
       <div style={{ marginBottom: 14, padding: "10px 12px", background: T.cardAlt, borderRadius: 8, border: `1px solid ${T.border}` }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: T.text }}>{item.productName || "—"}</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: T.text }}>{item.productName || "-"}</div>
         <div style={{ ...sx.mutedS, marginTop: 4 }}>
-          {[item.itemCode, item.origin, customerOf(item), item.expiry ? `Exp: ${item.expiry}` : null].filter(Boolean).join(" · ") || "—"}
+          {[item.itemCode, item.origin, customerOf(item), item.expiry ? `Exp: ${item.expiry}` : null].filter(Boolean).join(" - ") || "-"}
         </div>
       </div>
       {all.length === 0 ? (
@@ -1250,7 +1251,7 @@ function AuditTrailModalInner({ open, onClose, item, trail }) {
                 </div>
                 <div style={{ fontSize: 13, lineHeight: 1.5 }}>
                   <span style={{ color: T.textM, textDecoration: "line-through" }}>{ch.from || "(empty)"}</span>
-                  <span style={{ margin: "0 8px", color: T.primary, fontWeight: 700 }}>→</span>
+                  <span style={{ margin: "0 8px", color: T.primary, fontWeight: 700 }}>-></span>
                   <span style={{ fontWeight: 700, color: T.text }}>{ch.to || "(empty)"}</span>
                 </div>
               </div>
@@ -1263,7 +1264,7 @@ function AuditTrailModalInner({ open, onClose, item, trail }) {
 }
 
 /* ============================================================
-   Product Insights modal — full 360° view of a single product
+   Product Insights modal - full 360 deg view of a single product
    ============================================================ */
 function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate, auditTrailByKey, initialCode, initialName }) {
   const [query, setQuery] = useState("");
@@ -1370,8 +1371,8 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           disposed += 1;
           if (isKgType(it.qtyType)) disposedKg += q;
         }
-        const pos = customerOf(it) || "—";
-        const origin = it.origin || "—";
+        const pos = customerOf(it) || "-";
+        const origin = it.origin || "-";
         customerMap[pos] = (customerMap[pos] || 0) + 1;
         originMap[origin] = (originMap[origin] || 0) + 1;
         if (it.expiry) expiryMap[it.expiry] = (expiryMap[it.expiry] || 0) + 1;
@@ -1448,8 +1449,8 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
         const k = `${c}||${n}`;
         const e = stats.get(k) || { vol: 0, pos: new Set(), origin: new Set() };
         e.vol += 1;
-        e.pos.add(customerOf(it) || "—");
-        e.origin.add(it.origin || "—");
+        e.pos.add(customerOf(it) || "-");
+        e.origin.add(it.origin || "-");
         stats.set(k, e);
       }
     }
@@ -1501,8 +1502,8 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
         const act = ch?.to ?? actionText(it);
         if (isCondemnation(act)) condCount += 1;
         if ((act || "").toLowerCase() === "use in production") useProd += 1;
-        customerSet.add(customerOf(it) || "—");
-        originSet.add(it.origin || "—");
+        customerSet.add(customerOf(it) || "-");
+        originSet.add(it.origin || "-");
         if (!lastSeen || date > lastSeen) lastSeen = date;
       }
     }
@@ -1527,13 +1528,13 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
 
   function exportProductCSV() {
     if (!insights || !selected) return;
-    const head = ["DATE", "PRODUCT", "ORIGIN", "CUSTOMER", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "CURRENT ACTION"];
+    const head = ["DATE", "ITEM CODE", "PRODUCT", "ORIGIN", "CUSTOMER", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "CURRENT ACTION"];
     const rows = insights.occurrences.map((r) => [
       r.date, r.itemCode || "", r.productName || "", r.origin || "", customerOf(r) || "",
-      r.quantity ?? "", (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || ""),
+      r.quantity ?? "", (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? (r.customQtyType || "") : (r.qtyType || ""),
       r.expiry || "", r.remarks || "", r.currentAction || "",
     ]);
-    const csv = "﻿" + [head, ...rows].map((row) => row.map((v) => {
+    const csv = "\uFEFF" + [head, ...rows].map((row) => row.map((v) => {
       const s = v == null ? "" : String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     }).join(",")).join("\r\n");
@@ -1554,9 +1555,9 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
         <input
           ref={inputRef}
           type="text"
-          value={selected ? `${selected.code ? selected.code + " · " : ""}${selected.name}` : query}
+          value={selected ? `${selected.code ? selected.code + " - " : ""}${selected.name}` : query}
           onChange={(e) => { setQuery(e.target.value); setSelected(null); }}
-          placeholder="Search by item code or product name…"
+          placeholder="Search by item code or product name..."
           style={{ ...sx.input, paddingLeft: 36, paddingRight: 80, width: "100%", fontSize: 14 }}
           readOnly={!!selected}
         />
@@ -1581,7 +1582,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                  onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {m.name || "—"}
+                    {m.name || "-"}
                   </div>
                   <div style={{ ...sx.mutedS, marginTop: 2 }}>
                     {m.code ? <code style={{ fontFamily: "ui-monospace, monospace", color: T.primary }}>{m.code}</code> : <span style={{ color: T.textS }}>no code</span>}
@@ -1611,7 +1612,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                   <button key={i} onClick={() => setSelected({ code: p.code, name: p.name })} style={{
                     ...sx.btn, justifyContent: "space-between", padding: "8px 12px", textAlign: "left",
                   }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 360 }}>{p.name || p.code || "—"}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 360 }}>{p.name || p.code || "-"}</span>
                     <span style={{ ...sx.mutedS, fontWeight: 700 }}>{p.count}</span>
                   </button>
                 ))}
@@ -1645,7 +1646,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{selected.name || "—"}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{selected.name || "-"}</div>
                 <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                   {selected.code && (
                     <span style={{ ...sx.pill, background: T.primaryS, color: T.primary, borderColor: "#c7d2fe" }}>
@@ -1653,10 +1654,10 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                     </span>
                   )}
                   <span style={{ ...sx.pill }}>
-                    {isRangeActive ? "First (range): " : "First: "}{insights.firstSeen || "—"}
+                    {isRangeActive ? "First (range): " : "First: "}{insights.firstSeen || "-"}
                   </span>
                   <span style={{ ...sx.pill }}>
-                    {isRangeActive ? "Last (range): " : "Last: "}{insights.lastSeen || "—"}
+                    {isRangeActive ? "Last (range): " : "Last: "}{insights.lastSeen || "-"}
                   </span>
                   <span style={{ ...sx.pill }}>
                     {insights.uniqueDates} day{insights.uniqueDates !== 1 ? "s" : ""}
@@ -1674,7 +1675,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
             </div>
           </div>
 
-          {/* ✅ Date range filter for this product */}
+          {/*  Date range filter for this product */}
           <div style={{
             ...sx.card, padding: "10px 14px", marginBottom: 14,
             display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
@@ -1688,7 +1689,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
               type="date" value={pFrom} onChange={(e) => setPFrom(e.target.value)}
               style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }}
             />
-            <span style={{ color: T.textS }}>→</span>
+            <span style={{ color: T.textS }}>-></span>
             <input
               type="date" value={pTo} onChange={(e) => setPTo(e.target.value)}
               style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }}
@@ -1713,7 +1714,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           {/* Stat strip */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
             <StatChip icon={FiPackage} label="Total returns" value={insights.returnsCount}
-              sub={`${insights.totalKg} kg · ${insights.totalPcs} pcs`} />
+              sub={`${insights.totalKg} kg - ${insights.totalPcs} pcs`} />
             <StatChip icon={FiAlertTriangle} label="Condemned" value={insights.condCount}
               sub={`${insights.condKg} kg`} color={T.danger} bg={T.dangerS} />
             <StatChip icon={FiZap} label="Use in prod" value={insights.useProd}
@@ -1748,7 +1749,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                       type="text"
                       value={compareQuery}
                       onChange={(e) => setCompareQuery(e.target.value)}
-                      placeholder="Compare with…"
+                      placeholder="Compare with..."
                       style={{ ...sx.input, padding: "6px 10px", fontSize: 12, width: 200 }}
                     />
                     {compareMatches.length > 0 && (
@@ -1765,7 +1766,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                           }} onMouseOver={(e) => e.currentTarget.style.background = T.bgAlt}
                              onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
-                              {m.name || m.code || "—"}
+                              {m.name || m.code || "-"}
                             </span>
                             <span style={{ ...sx.mutedS, flexShrink: 0 }}>{m.count}</span>
                           </button>
@@ -1823,7 +1824,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                           {d.condCount > 0 && <>
                             <span style={{ color: "#fca5a5" }}>Condemned</span>
                             <span style={{ fontWeight: 700, textAlign: "right", color: "#fca5a5" }}>
-                              {d.condCount}{d.condKg > 0 ? ` · ${fmtNum(d.condKg)} kg` : ""}
+                              {d.condCount}{d.condKg > 0 ? ` - ${fmtNum(d.condKg)} kg` : ""}
                             </span>
                           </>}
                           {d.posList && d.posList.length > 0 && <>
@@ -1867,7 +1868,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           {insights.audit.length > 0 && (
             <div style={{ ...sx.card, padding: 14, marginBottom: 12 }}>
               <div style={{ ...sx.h3, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                <FiClock size={13} /> Audit trail · {insights.audit.length} change{insights.audit.length !== 1 ? "s" : ""}
+                <FiClock size={13} /> Audit trail - {insights.audit.length} change{insights.audit.length !== 1 ? "s" : ""}
               </div>
               <div style={{ position: "relative", paddingLeft: 22, maxHeight: 260, overflow: "auto" }}>
                 <div style={{ position: "absolute", left: 8, top: 8, bottom: 8, width: 2, background: T.border }} />
@@ -1889,7 +1890,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                       </div>
                       <div>
                         <span style={{ color: T.textM, textDecoration: "line-through" }}>{ch.from || "(empty)"}</span>
-                        <span style={{ margin: "0 6px", color: T.primary, fontWeight: 700 }}>→</span>
+                        <span style={{ margin: "0 6px", color: T.primary, fontWeight: 700 }}>-></span>
                         <span style={{ fontWeight: 700, color: T.text }}>{ch.to || "(empty)"}</span>
                       </div>
                     </div>
@@ -1901,7 +1902,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
 
           {/* Occurrences table */}
           <div style={{ ...sx.card, padding: 14 }}>
-            <div style={{ ...sx.h3, marginBottom: 10 }}>All occurrences · {insights.occurrences.length}</div>
+            <div style={{ ...sx.h3, marginBottom: 10 }}>All occurrences - {insights.occurrences.length}</div>
             <div style={{ overflow: "auto", maxHeight: 360 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
@@ -1918,18 +1919,18 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                 </thead>
                 <tbody>
                   {insights.occurrences.map((r, i) => {
-                    const qtyType = (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
+                    const qtyType = (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? (r.customQtyType || "") : (r.qtyType || "");
                     return (
                       <tr key={i}>
                         <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, fontWeight: 600 }}>{r.date}</td>
-                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{customerOf(r) || "—"}</td>
-                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{r.origin || "—"}</td>
+                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{customerOf(r) || "-"}</td>
+                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{r.origin || "-"}</td>
                         <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, textAlign: "right", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{r.quantity ?? ""}</td>
                         <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{qtyType}</td>
-                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textM }}>{r.expiry || "—"}</td>
-                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textM, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.remarks}>{r.remarks || "—"}</td>
+                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textM }}>{r.expiry || "-"}</td>
+                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textM, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.remarks}>{r.remarks || "-"}</td>
                         <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, fontWeight: 600 }}>
-                          {r.currentAction || "—"}
+                          {r.currentAction || "-"}
                           {r.hasChange && <span style={{ ...sx.pill, background: T.successS, color: T.success, borderColor: "#a7f3d0", marginLeft: 6, fontSize: 10 }}>changed</span>}
                         </td>
                       </tr>
@@ -1992,7 +1993,7 @@ function PasswordModal({ show, onSubmit, onCancel, title = "Enter Password" }) {
           type="password" autoFocus value={val}
           onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onSubmit(val, setErr); }}
-          placeholder="Enter password…"
+          placeholder="Enter password..."
           style={{ ...sx.input, padding: "10px 14px" }}
         />
         {err && <div style={{ color: T.danger, fontSize: 13, fontWeight: 600 }}>{err}</div>}
@@ -2009,7 +2010,7 @@ function ImageViewerModal({ open, images = [], title = "", onClose }) {
   const [preview, setPreview] = useState(images[0] || "");
   useEffect(() => { if (open) setPreview(images[0] || ""); }, [open, images]);
   return (
-    <ModalShell open={open} onClose={onClose} title={`Images${title ? ` — ${title}` : ""}`} width={1100}>
+    <ModalShell open={open} onClose={onClose} title={`Images${title ? ` - ${title}` : ""}`} width={1100}>
       {preview ? (
         <div style={{ marginBottom: 12 }}>
           <img src={preview} alt="preview" style={{
@@ -2046,7 +2047,7 @@ function PresetsModal({ open, onClose, presets, onApply, onDelete, onSave, curre
           <div style={{ display: "flex", gap: 8 }}>
             <input
               value={name} onChange={(e) => setName(e.target.value)}
-              placeholder="Preset name (e.g. Last 7 days · Customer Zaid)"
+              placeholder="Preset name (e.g. Last 7 days - Customer Zaid)"
               style={{ ...sx.input, flex: 1 }}
             />
             <PrimaryBtn icon={FiSave} onClick={() => { if (!name.trim()) return; onSave(name.trim(), currentSnapshot); setName(""); }}>
@@ -2070,11 +2071,11 @@ function PresetsModal({ open, onClose, presets, onApply, onDelete, onSave, curre
                     <div style={{ fontWeight: 700, color: T.text, fontSize: 14 }}>{p.name}</div>
                     <div style={{ ...sx.mutedS, marginTop: 2 }}>
                       {[
-                        p.from || p.to ? `${p.from || "…"} → ${p.to || "…"}` : null,
+                        p.from || p.to ? `${p.from || "..."} -> ${p.to || "..."}` : null,
                         p.customerSel?.length ? `POS: ${p.customerSel.length}` : null,
                         p.originSel?.length ? `Origin: ${p.originSel.length}` : null,
                         p.actionSel?.length ? `Action: ${p.actionSel.length}` : null,
-                      ].filter(Boolean).join(" · ") || "Empty"}
+                      ].filter(Boolean).join(" - ") || "Empty"}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -2091,7 +2092,7 @@ function PresetsModal({ open, onClose, presets, onApply, onDelete, onSave, curre
   );
 }
 
-/* Inline toast — minimal */
+/* Inline toast - minimal */
 function useToast() {
   const [items, setItems] = useState([]);
   const push = useCallback((msg, kind = "ok") => {
@@ -2132,6 +2133,7 @@ function useToast() {
    ============================================================ */
 const ALL_COLUMNS = [
   { key: "sl",          label: "SL", sortable: false, always: true, width: 50 },
+  { key: "itemCode",    label: "ITEM CODE", sortable: true, width: 110 },
   { key: "productName", label: "PRODUCT NAME", sortable: true, width: 220 },
   { key: "origin",      label: "ORIGIN", sortable: true, width: 110 },
   { key: "pos",         label: "CUSTOMER", sortable: true, width: 130 },
@@ -2294,7 +2296,7 @@ export default function BrowseReturns() {
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, []);
 
   /* ============================================================
-     URL state sync — read on mount, write on filter change
+     URL state sync - read on mount, write on filter change
      ============================================================ */
   const urlReadDone = useRef(false);
   useEffect(() => {
@@ -2410,7 +2412,7 @@ export default function BrowseReturns() {
       if (c.key === "carNumber") return r.carNumber || "";
       if (c.key === "driverName") return r.driverName || "";
       if (c.key === "quantity") return r.quantity ?? "";
-      if (c.key === "qtyType") return (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
+      if (c.key === "qtyType") return (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? (r.customQtyType || "") : (r.qtyType || "");
       if (c.key === "expiry") return r.expiry || "";
       if (c.key === "remarks") return r.remarks || "";
       if (c.key === "action") return actionText(r) || "";
@@ -2445,19 +2447,19 @@ export default function BrowseReturns() {
       if (c.key === "carNumber") return r.carNumber || "";
       if (c.key === "driverName") return r.driverName || "";
       if (c.key === "quantity") return r.quantity ?? "";
-      if (c.key === "qtyType") return (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
+      if (c.key === "qtyType") return (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? (r.customQtyType || "") : (r.qtyType || "");
       if (c.key === "expiry") return r.expiry || "";
       if (c.key === "remarks") return r.remarks || "";
       if (c.key === "action") return actionText(r) || "";
       return "";
     }));
-    const csv = "﻿" + [head, ...body].map((row) => row.map(csvEscape).join(",")).join("\r\n");
+    const csv = "\uFEFF" + [head, ...body].map((row) => row.map(csvEscape).join(",")).join("\r\n");
     downloadFile(`customer_returns_${selectedReport.reportDate}_selection.csv`, csv);
     toast(`${rows.length} rows exported`, "ok");
   }
 
   /* ============================================================
-     Auto-refresh polling — silently fetch every 5min
+     Auto-refresh polling - silently fetch every 5min
      ============================================================ */
   useEffect(() => {
     try { localStorage.setItem("bcr:autoRefresh", autoRefresh ? "1" : "0"); } catch {}
@@ -2512,8 +2514,8 @@ export default function BrowseReturns() {
 
   /* ============================================================
      Canonical customer-name map (case + whitespace-insensitive merge)
-     Builds a mapping: aggressiveKey → most-common original spelling.
-     E.g. "Zou Zou" (20) + "ZOU ZOU" (21) + "ZOUZOU" (12) → all map to "ZOU ZOU".
+     Builds a mapping: aggressiveKey -> most-common original spelling.
+     E.g. "Zou Zou" (20) + "ZOU ZOU" (21) + "ZOUZOU" (12) -> all map to "ZOU ZOU".
      Side-effect mirror to module-level _canonicalCustomerMap so customerOf() reads it.
      ============================================================ */
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2563,7 +2565,7 @@ export default function BrowseReturns() {
     return map;
   }, [changesData]);
 
-  /* Full audit trail per item key — across all dates */
+  /* Full audit trail per item key - across all dates */
   const auditTrailByKey = useMemo(() => {
     const map = new Map();
     for (const rec of changesData) {
@@ -2665,9 +2667,9 @@ export default function BrowseReturns() {
     const customerSet = new Set(), originSet = new Set(), actionSet = new Set();
     for (const rep of filteredReportsAsc)
       for (const it of (rep.items || [])) {
-        customerSet.add(customerOf(it) || "—");
-        originSet.add(it.origin || "—");
-        actionSet.add(actionText(it) || "—");
+        customerSet.add(customerOf(it) || "-");
+        originSet.add(it.origin || "-");
+        actionSet.add(actionText(it) || "-");
       }
     const sortFn = (a, b) => String(a || "").localeCompare(String(b || ""), undefined, { sensitivity: "base" });
     return {
@@ -2678,9 +2680,9 @@ export default function BrowseReturns() {
   }, [filteredReportsAsc]);
 
   function rowPassesAdvanced(row) {
-    const pos = customerOf(row) || "—";
-    const origin = row.origin || "—";
-    const action = actionText(row) || "—";
+    const pos = customerOf(row) || "-";
+    const origin = row.origin || "-";
+    const action = actionText(row) || "-";
     if (customerSel.length && !customerSel.includes(pos)) return false;
     if (originSel.length && !originSel.includes(origin)) return false;
     if (actionSel.length && !actionSel.includes(action)) return false;
@@ -2737,8 +2739,8 @@ export default function BrowseReturns() {
         if (!rowPassesAdvanced(it)) return;
         totalItems += 1;
         const q = Number(it.quantity || 0);
-        const pos = customerOf(it) || "—";
-        const origin = it.origin || "—";
+        const pos = customerOf(it) || "-";
+        const origin = it.origin || "-";
         customerCountItems[pos] = (customerCountItems[pos] || 0) + 1;
         originCountItems[origin] = (originCountItems[origin] || 0) + 1;
         if (isKgType(it.qtyType)) { customerKg[pos] = (customerKg[pos] || 0) + q; totalQtyKg += q; }
@@ -2749,7 +2751,7 @@ export default function BrowseReturns() {
         if (isCondemnation(act)) {
           condemnationCount += 1;
           if (isKgType(it.qtyType)) condemnationKg += q;
-          condemnationNames[(it.productName || "—").trim()] = (condemnationNames[(it.productName || "—").trim()] || 0) + 1;
+          condemnationNames[(it.productName || "-").trim()] = (condemnationNames[(it.productName || "-").trim()] || 0) + 1;
         }
         if ((act || "").toLowerCase() === "use in production") useProdCount += 1;
         if ((act || "").toLowerCase() === "separated expired shelf") sepExpiredCount += 1;
@@ -2759,7 +2761,7 @@ export default function BrowseReturns() {
     });
 
     const pickMax = (obj) => {
-      let bestK = "—", bestV = -Infinity;
+      let bestK = "-", bestV = -Infinity;
       for (const [k, v] of Object.entries(obj)) if (v > bestV) { bestV = v; bestK = k; }
       return { key: bestK, value: bestV > 0 ? bestV : 0 };
     };
@@ -2793,7 +2795,7 @@ export default function BrowseReturns() {
   }, [filteredReportsAsc, changeMapByDate, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   /* ============================================================
-     Daily metrics — items + condemnation per day (used by heatmap, sparkline, anomalies)
+     Daily metrics - items + condemnation per day (used by heatmap, sparkline, anomalies)
      ============================================================ */
   const dailyMetrics = useMemo(() => {
     return filteredReportsAsc.map((rep) => {
@@ -2827,7 +2829,7 @@ export default function BrowseReturns() {
   }, [dailyMetrics]);
 
   /* ============================================================
-     Pareto data — by Product / by POS / by Origin
+     Pareto data - by Product / by POS / by Origin
      ============================================================ */
   const paretoData = useMemo(() => {
     const productMap = new Map();
@@ -2835,9 +2837,9 @@ export default function BrowseReturns() {
     filteredReportsAsc.forEach((rep) => {
       (rep.items || []).forEach((it) => {
         if (!rowPassesAdvanced(it)) return;
-        const name = (it.productName || "—").trim();
+        const name = (it.productName || "-").trim();
         productMap.set(name, (productMap.get(name) || 0) + 1);
-        const pos = customerOf(it) || "—";
+        const pos = customerOf(it) || "-";
         customerMap.set(pos, (customerMap.get(pos) || 0) + 1);
       });
     });
@@ -2849,7 +2851,7 @@ export default function BrowseReturns() {
   }, [filteredReportsAsc, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   /* ============================================================
-     Sankey flows — Origin → POS → Action triplets
+     Sankey flows - Origin -> POS -> Action triplets
      ============================================================ */
   const sankeyFlows = useMemo(() => {
     const m = new Map();
@@ -2858,23 +2860,23 @@ export default function BrowseReturns() {
       const inner = changeMapByDate.get(date) || new Map();
       (rep.items || []).forEach((it) => {
         if (!rowPassesAdvanced(it)) return;
-        const origin = it.origin || "—";
-        const pos = customerOf(it) || "—";
+        const origin = it.origin || "-";
+        const pos = customerOf(it) || "-";
         const ch = inner.get(itemKey(it));
-        const action = ch?.to ?? actionText(it) ?? "—";
+        const action = ch?.to ?? actionText(it) ?? "-";
         const key = `${origin}|||${pos}|||${action}`;
         m.set(key, (m.get(key) || 0) + 1);
       });
     });
     return Array.from(m.entries()).map(([k, count]) => {
       const [origin, pos, action] = k.split("|||");
-      return { origin, pos, action: action || "—", count };
+      return { origin, pos, action: action || "-", count };
     });
     // eslint-disable-next-line
   }, [filteredReportsAsc, changeMapByDate, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   /* ============================================================
-     Auto data-quality issues — detects suspicious rows
+     Auto data-quality issues - detects suspicious rows
      ============================================================ */
   const dataQualityIssues = useMemo(() => {
     const issues = {
@@ -2904,7 +2906,7 @@ export default function BrowseReturns() {
         else seenInDay.set(k, ref);
         const act = actionText(it);
         if (isCondemnation(act) && q === 0) issues.condemnNoQty.push(ref);
-        if ((it.action === "إجراء آخر..." || it.action === "Other...") && (!it.customAction || !it.customAction.trim()))
+        if ((it.action === "ط¥ط¬ط±ط§ط، ط¢ط®ط±..." || it.action === "Other...") && (!it.customAction || !it.customAction.trim()))
           issues.otherActionEmpty.push(ref);
       });
     });
@@ -2913,7 +2915,7 @@ export default function BrowseReturns() {
   }, [filteredReportsAsc]);
 
   /* ============================================================
-     Anomaly detection — flag days where items or condemnation > μ + 2σ
+     Anomaly detection - flag days where items or condemnation > mean + 2sigma
      ============================================================ */
   const anomalies = useMemo(() => {
     const n = dailyMetrics.length;
@@ -2969,7 +2971,7 @@ export default function BrowseReturns() {
   function normalizeField(row, key) {
     if (key === "butchery") return customerOf(row);
     if (key === "qtyType")
-      return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+      return (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
     if (key === "action") return actionText(row);
     return row?.[key];
   }
@@ -3008,7 +3010,7 @@ export default function BrowseReturns() {
       row.itemCode, row.productName, row.origin, customerOf(row),
       row.carNumber, row.driverName,
       String(row.quantity ?? ""),
-      (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
+      (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
       row.expiry, row.remarks, actionText(row),
     ].some((v) => (v ?? "").toString().toLowerCase().includes(needle));
   }
@@ -3029,7 +3031,7 @@ export default function BrowseReturns() {
       case "carNumber":   return row.carNumber || "";
       case "driverName":  return row.driverName || "";
       case "quantity":    return Number(row.quantity || 0);
-      case "qtyType":     return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+      case "qtyType":     return (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
       case "expiry":      return row.expiry || "";
       case "remarks":     return row.remarks || "";
       case "action":      return actionText(row) || "";
@@ -3078,10 +3080,10 @@ export default function BrowseReturns() {
     const groups = new Map();
     sortedRows.forEach((row) => {
       let key;
-      if (groupBy === "pos") key = customerOf(row) || "—";
-      else if (groupBy === "origin") key = row.origin || "—";
-      else if (groupBy === "action") key = actionText(row) || "—";
-      else key = "—";
+      if (groupBy === "pos") key = customerOf(row) || "-";
+      else if (groupBy === "origin") key = row.origin || "-";
+      else if (groupBy === "action") key = actionText(row) || "-";
+      else key = "-";
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(row);
     });
@@ -3127,7 +3129,7 @@ export default function BrowseReturns() {
   }, [globalResults, resPage]);
 
   /* ============================================================
-     Compare data — period A vs B
+     Compare data - period A vs B
      ============================================================ */
   function statsForRange(from, to) {
     let items = 0, kg = 0, pcs = 0, condCount = 0, condKg = 0, days = 0;
@@ -3145,7 +3147,7 @@ export default function BrowseReturns() {
         const q = Number(it.quantity || 0);
         if (isKgType(it.qtyType)) kg += q;
         else if (isPcsType(it.qtyType)) pcs += q;
-        const pos = customerOf(it) || "—";
+        const pos = customerOf(it) || "-";
         const inner = changeMapByDate.get(d) || new Map();
         const ch = inner.get(itemKey(it));
         const act = ch?.to ?? actionText(it);
@@ -3239,7 +3241,7 @@ export default function BrowseReturns() {
   }, []);
 
   const buildCustomerReturnsHtml = useCallback((rep, opts = {}) => {
-    const date = rep?.reportDate || "—";
+    const date = rep?.reportDate || "-";
     const note = opts.note;
     const attCount = opts.attachmentsCount;
     const includeTable = !!opts.includeTable;
@@ -3252,10 +3254,10 @@ export default function BrowseReturns() {
     const actionColor = (a) => {
       const s = String(a || "").toLowerCase();
       if (!s) return { bg: "#f1f5f9", fg: "#64748b" };
-      if (s.includes("condemn") || s.includes("إتلاف") || s.includes("اتلاف")) return { bg: "#fee2e2", fg: "#991b1b" };
-      if (s.includes("production") || s.includes("إنتاج") || s.includes("انتاج")) return { bg: "#dcfce7", fg: "#166534" };
-      if (s.includes("supplier") || s.includes("مورد"))                          return { bg: "#fef3c7", fg: "#92400e" };
-      if (s.includes("separat") || s.includes("فصل"))                            return { bg: "#dbeafe", fg: "#1e40af" };
+      if (s.includes("condemn") || s.includes("ط¥طھظ„ط§ظپ") || s.includes("ط§طھظ„ط§ظپ")) return { bg: "#fee2e2", fg: "#991b1b" };
+      if (s.includes("production") || s.includes("ط¥ظ†طھط§ط¬") || s.includes("ط§ظ†طھط§ط¬")) return { bg: "#dcfce7", fg: "#166534" };
+      if (s.includes("supplier") || s.includes("ظ…ظˆط±ط¯"))                          return { bg: "#fef3c7", fg: "#92400e" };
+      if (s.includes("separat") || s.includes("ظپطµظ„"))                            return { bg: "#dbeafe", fg: "#1e40af" };
       return { bg: "#ede9fe", fg: "#5b21b6" };
     };
 
@@ -3266,16 +3268,17 @@ export default function BrowseReturns() {
       const ac = actionColor(action);
       return `<tr style="background:${stripe};">
         <td style="padding:10px 10px;text-align:center;font-weight:700;color:#94a3b8;font-size:12px;border-bottom:1px solid #f1f5f9;">${i + 1}</td>
-        <td style="padding:10px 10px;font-weight:600;color:#0f172a;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.productName || "—")}</td>
-        <td style="padding:10px 10px;color:#475569;border-bottom:1px solid #f1f5f9;"><span style="display:inline-block;padding:2px 8px;background:#f1f5f9;border-radius:999px;font-size:11px;font-weight:700;">${escapeHtml(row.origin || "—")}</span></td>
+        <td style="padding:10px 10px;color:#475569;font-weight:700;font-variant-numeric:tabular-nums;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.itemCode || "-")}</td>
+        <td style="padding:10px 10px;font-weight:600;color:#0f172a;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.productName || "-")}</td>
+        <td style="padding:10px 10px;color:#475569;border-bottom:1px solid #f1f5f9;"><span style="display:inline-block;padding:2px 8px;background:#f1f5f9;border-radius:999px;font-size:11px;font-weight:700;">${escapeHtml(row.origin || "-")}</span></td>
         <td style="padding:10px 10px;color:#0f172a;font-weight:600;border-bottom:1px solid #f1f5f9;">${escapeHtml(customer)}</td>
         <td style="padding:10px 10px;color:#475569;font-variant-numeric:tabular-nums;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.carNumber || "")}</td>
         <td style="padding:10px 10px;color:#475569;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.driverName || "")}</td>
         <td style="padding:10px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.quantity ?? "")}</td>
         <td style="padding:10px 10px;color:#64748b;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.qtyType || "")}</td>
-        <td style="padding:10px 10px;color:#475569;font-variant-numeric:tabular-nums;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.expiry || "—")}</td>
+        <td style="padding:10px 10px;color:#475569;font-variant-numeric:tabular-nums;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.expiry || "-")}</td>
         <td style="padding:10px 10px;color:#475569;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.remarks || "")}</td>
-        <td style="padding:10px 10px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-block;padding:3px 10px;background:${ac.bg};color:${ac.fg};border-radius:6px;font-size:11px;font-weight:800;">${escapeHtml(action) || "—"}</span></td>
+        <td style="padding:10px 10px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-block;padding:3px 10px;background:${ac.bg};color:${ac.fg};border-radius:6px;font-size:11px;font-weight:800;">${escapeHtml(action) || "-"}</span></td>
       </tr>`;
     };
 
@@ -3284,7 +3287,7 @@ export default function BrowseReturns() {
       ? groups.map((g) => {
           const groupHeader = `<tr style="background:linear-gradient(90deg,#312e81 0%,#1e40af 100%);color:#ffffff;">
             <td colspan="11" style="padding:10px 14px;font-size:12px;font-weight:900;letter-spacing:1px;text-transform:uppercase;">
-              📂 ${escapeHtml(g.label)} <span style="background:rgba(255,255,255,.18);padding:2px 9px;border-radius:999px;font-size:11px;margin-inline-start:8px;">${g.items.length}</span>
+               ${escapeHtml(g.label)} <span style="background:rgba(255,255,255,.18);padding:2px 9px;border-radius:999px;font-size:11px;margin-inline-start:8px;">${g.items.length}</span>
             </td>
           </tr>`;
           const groupRows = g.items.map((row) => renderRow(row, runningIdx++)).join("");
@@ -3294,13 +3297,13 @@ export default function BrowseReturns() {
 
     const noteHtml = note && String(note).trim()
       ? `<div style="margin:18px 0;padding:14px 16px;background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);border-left:4px solid #f59e0b;border-radius:10px;color:#78350f;">
-          <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">📝 Note from Inspector</div>
+          <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;"> Note from Inspector</div>
           <div style="font-size:14px;line-height:1.6;">${escapeHtml(note).replace(/\n/g, "<br/>")}</div>
         </div>`
       : "";
 
     const attInfo = attCount
-      ? `<div style="display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:10px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a8a;font-weight:700;">📎 <b>${attCount}</b> file(s) attached</div>`
+      ? `<div style="display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:10px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a8a;font-weight:700;"> <b>${attCount}</b> file(s) attached</div>`
       : "";
 
     return `
@@ -3342,8 +3345,8 @@ export default function BrowseReturns() {
                       <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Total Items</div>
                       <div style="font-size:13px;color:#0f172a;font-weight:700;margin-top:1px;">Customer returns</div>
                     </div>
-                    ${isGrouped ? `<div style="margin-inline-start:10px;padding:5px 12px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:8px;font-size:11px;font-weight:800;">📂 Grouped by ${escapeHtml(GROUP_LABEL[groupBy]?.en || groupBy)} · ${groups.length} groups</div>` : ""}
-                    ${sortBy !== "default" ? `<div style="margin-inline-start:6px;padding:5px 12px;background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:8px;font-size:11px;font-weight:800;">↕️ Sorted by ${escapeHtml(sortBy)}</div>` : ""}
+                    ${isGrouped ? `<div style="margin-inline-start:10px;padding:5px 12px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:8px;font-size:11px;font-weight:800;"> Grouped by ${escapeHtml(GROUP_LABEL[groupBy]?.en || groupBy)} - ${groups.length} groups</div>` : ""}
+                    ${sortBy !== "default" ? `<div style="margin-inline-start:6px;padding:5px 12px;background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:8px;font-size:11px;font-weight:800;"> Sorted by ${escapeHtml(sortBy)}</div>` : ""}
                   </div>
                 </td>
                 <td style="text-align:right;vertical-align:middle;">${attInfo}</td>
@@ -3361,6 +3364,7 @@ export default function BrowseReturns() {
                 <thead>
                   <tr style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#ffffff;">
                     <th style="padding:12px 10px;text-align:center;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">#</th>
+                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Code</th>
                     <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Product</th>
                     <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Origin</th>
                     <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Customer</th>
@@ -3377,9 +3381,9 @@ export default function BrowseReturns() {
               </table>
             </div>` : `
             <div style="margin-top:8px;padding:24px;background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%);border:2px dashed #cbd5e1;border-radius:14px;text-align:center;">
-              <div style="font-size:36px;line-height:1;">📄</div>
-              <div style="margin-top:10px;color:#334155;font-weight:800;font-size:14px;">جدول مرتجعات العملاء الكامل في ملف الـ PDF المرفق</div>
-              <div style="margin-top:4px;color:#64748b;font-size:12px;">${totalCount} item(s) · Full details enclosed</div>
+              <div style="font-size:36px;line-height:1;"></div>
+              <div style="margin-top:10px;color:#334155;font-weight:800;font-size:14px;">The full customer returns table is attached as a PDF.</div>
+              <div style="margin-top:4px;color:#64748b;font-size:12px;">${totalCount} item(s) - Full details enclosed</div>
             </div>`}
           </div>
 
@@ -3388,10 +3392,10 @@ export default function BrowseReturns() {
             <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
               <tr>
                 <td style="vertical-align:middle;font-size:11px;color:#64748b;font-weight:700;">
-                  ⚙️ Generated by Al Mawashi QCS System
+                   Generated by Al Mawashi QCS System
                 </td>
                 <td style="vertical-align:middle;text-align:right;font-size:10px;color:#94a3b8;letter-spacing:.5px;">
-                  Quality · Safety · Trust
+                  Quality - Safety - Trust
                 </td>
               </tr>
             </table>
@@ -3401,15 +3405,15 @@ export default function BrowseReturns() {
   }, []);
 
   const buildCustomerReturnsText = useCallback((rep, opts = {}) => {
-    const date = rep?.reportDate || "—";
+    const date = rep?.reportDate || "-";
     const includeTable = !!opts.includeTable;
     const sortBy  = opts.sortBy  || "default";
     const groupBy = opts.groupBy || "none";
     const { groups, totalCount } = arrangeItems(rep?.items || [], { sortBy, groupBy });
     const isGrouped = groupBy !== "none";
     const lines = [];
-    lines.push("AL MAWASHI — CUSTOMER RETURNS REPORT");
-    lines.push("════════════════════════════════════");
+    lines.push("AL MAWASHI - CUSTOMER RETURNS REPORT");
+    lines.push("====================================");
     lines.push(`Date: ${date}    Items: ${totalCount}`);
     if (sortBy !== "default") lines.push(`Sorted by: ${sortBy}`);
     if (isGrouped) lines.push(`Grouped by: ${groupBy}`);
@@ -3418,39 +3422,39 @@ export default function BrowseReturns() {
       let n = 0;
       groups.forEach((g) => {
         if (isGrouped) {
-          lines.push(`📂 ${g.label} (${g.items.length})`);
-          lines.push("─".repeat(40));
+          lines.push(` ${g.label} (${g.items.length})`);
+          lines.push("-".repeat(40));
         }
         g.items.forEach((row) => {
           n++;
           const customer = (typeof customerOf === "function" ? customerOf(row) : (row.customer || row.pos || ""));
-          lines.push(`${n}. ${row.productName || "—"}`);
-          lines.push(`   Customer: ${customer || "—"}  |  Car: ${row.carNumber || "—"}  |  Driver: ${row.driverName || "—"}`);
-          lines.push(`   Origin: ${row.origin || "—"}  |  Qty: ${row.quantity ?? "—"} ${row.qtyType || ""}  |  Expiry: ${row.expiry || "—"}`);
+          lines.push(`${n}. ${row.productName || "-"}`);
+          lines.push(`   Customer: ${customer || "-"}  |  Car: ${row.carNumber || "-"}  |  Driver: ${row.driverName || "-"}`);
+          lines.push(`   Origin: ${row.origin || "-"}  |  Qty: ${row.quantity ?? "-"} ${row.qtyType || ""}  |  Expiry: ${row.expiry || "-"}`);
           if (row.remarks) lines.push(`   Remarks: ${row.remarks}`);
           if (row.action) lines.push(`   Action: ${row.action}`);
           lines.push("");
         });
       });
     } else {
-      lines.push(`📄 جدول مرتجعات العملاء الكامل (${totalCount} صنف) في ملف الـ PDF المرفق.`);
+      lines.push(`The full customer returns table (${totalCount} item${totalCount === 1 ? "" : "s"}) is attached as a PDF.`);
       lines.push("");
     }
     if (opts.note) { lines.push("Note:", String(opts.note).trim(), ""); }
-    if (opts.pdfUrl) { lines.push("📎 Full PDF:", opts.pdfUrl); }
+    if (opts.pdfUrl) { lines.push(" Full PDF:", opts.pdfUrl); }
     lines.push("");
     lines.push("Generated by Al Mawashi QCS System");
     return lines.join("\n");
   }, []);
 
-  /* NOT memoized on purpose — generatePdf must see the latest handleExportPDF
+  /* NOT memoized on purpose - generatePdf must see the latest handleExportPDF
      (which closes over the current selectedReport). Memoizing this object
      froze it to the first render where selectedReport was null, so
      generatePdf returned undefined and EmailSendModal crashed on destructure. */
   const emailConfig = {
     reportTitle: "Customer Returns Report",
     reportType:  "customer_returns",
-    getSubject: (rep) => `[Customer Returns] Report — ${rep?.reportDate || "—"}`,
+    getSubject: (rep) => `[Customer Returns] Report - ${rep?.reportDate || "-"}`,
     generatePdf: async (rep, pdfOpts = {}) => {
       const target = rep || selectedReport;
       if (!target) throw new Error("No report selected to email");
@@ -3470,7 +3474,7 @@ export default function BrowseReturns() {
     getCertificate: () => null,
     getSummary: (rep) => ({
       fields: [
-        { label: "Date", value: rep?.reportDate || "—" },
+        { label: "Date", value: rep?.reportDate || "-" },
         { label: "Items", value: String(rep?.items?.length || 0) },
       ],
     }),
@@ -3488,7 +3492,7 @@ export default function BrowseReturns() {
     try {
       const JsPDF = await ensureJsPDF();
       await ensureAutoTable();
-      const isOther = (v) => v === "إجراء آخر..." || v === "Other...";
+      const isOther = (v) => v === "ط¥ط¬ط±ط§ط، ط¢ط®ط±..." || v === "Other...";
       const actionTextSafe = (row) => isOther(row?.action) ? row?.customAction || "" : row?.action || "";
       const doc = new JsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
       const marginL = 20, marginR = 20, marginTop = 80;
@@ -3538,7 +3542,7 @@ export default function BrowseReturns() {
 
       const buildBody = (rows, startIdx = 0) => rows.map((row, i) => {
         const pos = customerOf(row);
-        const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType || "" : row.qtyType || "";
+        const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? row.customQtyType || "" : row.qtyType || "";
         const curr = actionTextSafe(row);
         let actionCell = curr || "";
         const k = itemKey(row);
@@ -3547,9 +3551,9 @@ export default function BrowseReturns() {
           const dateTxt = formatChangeDatePDF(ch);
           actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? `\n${dateTxt}` : ""}`;
         }
-        return [String(startIdx + i + 1), row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", String(row.quantity ?? ""), qtyType, row.expiry || "", row.remarks || "", actionCell];
+        return [String(startIdx + i + 1), row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", String(row.quantity ?? ""), qtyType, row.expiry || "", row.remarks || "", actionCell];
       });
-      const frac = [0.04, 0.16, 0.08, 0.10, 0.08, 0.10, 0.05, 0.07, 0.07, 0.13, 0.12];
+      const frac = [0.04, 0.08, 0.14, 0.07, 0.09, 0.08, 0.09, 0.05, 0.06, 0.06, 0.12, 0.12];
       const columnStyles = {};
       frac.forEach((f, idx) => (columnStyles[idx] = { cellWidth: Math.floor(avail * f) }));
       columnStyles[0].halign = "center"; columnStyles[4].halign = "center"; columnStyles[6].halign = "center"; columnStyles[8].halign = "center";
@@ -3570,11 +3574,11 @@ export default function BrowseReturns() {
             ...baseTableOpts,
             head: [
               [{
-                content: `📂 ${g.label}  (${g.items.length})`,
-                colSpan: 11,
+                content: ` ${g.label}  (${g.items.length})`,
+                colSpan: 12,
                 styles: { fillColor: [49, 46, 129], textColor: 255, halign: "left", fontStyle: "bold", fontSize: 11 },
               }],
-              ["SL", "PRODUCT", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"],
+              ["SL", "CODE", "PRODUCT", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"],
             ],
             body: buildBody(g.items, runningStart),
             startY: gIdx === 0 ? undefined : (doc.lastAutoTable?.finalY || 0) + 8,
@@ -3583,7 +3587,7 @@ export default function BrowseReturns() {
         });
       } else {
       doc.autoTable({
-        head: [["SL", "PRODUCT", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"]],
+        head: [["SL", "CODE", "PRODUCT", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"]],
         body: buildBody(pdfGroups[0]?.items || rowsForPdf), margin: { top: marginTop, left: marginL, right: marginR }, tableWidth: avail,
         styles: { font: "helvetica", fontSize: 10, cellPadding: 4, lineColor: [226, 232, 240], lineWidth: 0.5, halign: "left", valign: "middle", overflow: "linebreak", wordBreak: "break-word", minCellHeight: 16 },
         headStyles: { fillColor: [238, 242, 255], textColor: [15, 23, 42], fontStyle: "bold", halign: "center" },
@@ -3607,16 +3611,16 @@ export default function BrowseReturns() {
     }
   };
 
-  const PDF_XLSX_COLS = ["SL.NO", "PRODUCT NAME", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QUANTITY", "QTY TYPE", "EXPIRY DATE", "REMARKS", "ACTION"];
+  const PDF_XLSX_COLS = ["SL.NO", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QUANTITY", "QTY TYPE", "EXPIRY DATE", "REMARKS", "ACTION"];
 
   function buildRowsForReport(rep, useFiltered = false) {
     const changeMap = changeMapByDate.get(rep?.reportDate || "") || new Map();
-    const isOther = (v) => v === "إجراء آخر..." || v === "Other...";
+    const isOther = (v) => v === "ط¥ط¬ط±ط§ط، ط¢ط®ط±..." || v === "Other...";
     const actionTextSafe = (row) => isOther(row?.action) ? row?.customAction || "" : row?.action || "";
     const items = useFiltered ? sortedRows : (rep.items || []).filter(rowPassesAdvanced);
     return items.map((row, i) => {
       const pos = customerOf(row);
-      const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType || "" : row.qtyType || "";
+      const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? row.customQtyType || "" : row.qtyType || "";
       const curr = actionTextSafe(row);
       const k = itemKey(row);
       const ch = changeMap.get(k);
@@ -3625,7 +3629,7 @@ export default function BrowseReturns() {
         const dateTxt = formatChangeDatePDF(ch);
         actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? ` (${dateTxt})` : ""}`;
       }
-      return [i + 1, row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionCell];
+      return [i + 1, row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionCell];
     });
   }
 
@@ -3694,20 +3698,20 @@ export default function BrowseReturns() {
   const handleExportCSV = () => {
     if (!selectedReport) { toast("Select a date first", "err"); return; }
     const rows = [PDF_XLSX_COLS, ...buildRowsForReport(selectedReport, true)];
-    const csv = "﻿" + rows.map((r) => r.map(csvEscape).join(",")).join("\r\n");
+    const csv = "\uFEFF" + rows.map((r) => r.map(csvEscape).join(",")).join("\r\n");
     downloadFile(`customer_returns_${selectedReport.reportDate}${search ? "_filtered" : ""}.csv`, csv);
     toast("CSV exported", "ok");
   };
   const handleExportSearchCSV = () => {
     if (!globalResults.length) { toast("No results to export", "err"); return; }
-    const head = ["SL.NO", "DATE", "PRODUCT NAME", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
+    const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
     const rows = globalResults.map((r, i) => {
       const row = r.row;
       const pos = customerOf(row);
-      const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
-      return [i + 1, r.date, row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
+      const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+      return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
     });
-    const csv = "﻿" + [head, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
+    const csv = "\uFEFF" + [head, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
     downloadFile(`customer_returns_search.csv`, csv);
     toast("Search CSV exported", "ok");
   };
@@ -3718,12 +3722,12 @@ export default function BrowseReturns() {
       try {
         const XLSX = await ensureXLSX();
         const wb = XLSX.utils.book_new();
-        const head = ["SL.NO", "DATE", "PRODUCT NAME", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
+        const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
         const rows = globalResults.map((r, i) => {
           const row = r.row;
           const pos = customerOf(row);
-          const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
-          return [i + 1, r.date, row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
+          const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+          return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
         });
         const data = [head, ...rows];
         const ws = XLSX.utils.aoa_to_sheet(data);
@@ -3800,7 +3804,7 @@ export default function BrowseReturns() {
     const bg = same ? T.bgAlt : up ? T.dangerS : T.successS;
     return (
       <span style={{ ...sx.pill, background: bg, color, borderColor: bg }}>
-        {same ? "—" : up ? <FiTrendingUp size={12} /> : <FiTrendingDown size={12} />}
+        {same ? "-" : up ? <FiTrendingUp size={12} /> : <FiTrendingDown size={12} />}
         {same ? "No change" : `${diff > 0 ? "+" : ""}${fmtNum(diff)}${suffix}${pct != null ? ` (${pct > 0 ? "+" : ""}${pct}%)` : ""}`}
       </span>
     );
@@ -3859,7 +3863,7 @@ export default function BrowseReturns() {
               <div>
                 <h1 style={sx.h1}>Customer Returns Browser</h1>
                 <div style={sx.muted}>
-                  Quick KPIs · charts · advanced filters · global search across reports
+                  Quick KPIs - charts - advanced filters - global search across reports
                 </div>
               </div>
             </div>
@@ -3887,7 +3891,7 @@ export default function BrowseReturns() {
             </IconBtn>
             <IconBtn icon={FiCopy} onClick={copyShareLink} title="Copy current view URL">Share</IconBtn>
             <IconBtn icon={FiRefreshCw} onClick={reload} disabled={loadingServer}>
-              {loadingServer ? "Loading…" : "Refresh"}
+              {loadingServer ? "Loading..." : "Refresh"}
             </IconBtn>
           </div>
         </div>
@@ -3910,7 +3914,7 @@ export default function BrowseReturns() {
               <FiCalendar size={14} color={T.textM} />
               <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)}
                 style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
-              <span style={{ color: T.textS }}>→</span>
+              <span style={{ color: T.textS }}>-></span>
               <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)}
                 style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
             </div>
@@ -4018,7 +4022,7 @@ export default function BrowseReturns() {
                 onClick={() => setTmPlaying((p) => !p)}
                 title={tmPlaying ? "Pause" : "Play forward"}
                 style={{ ...sx.btn, padding: "6px 10px", fontSize: 12 }}
-              >{tmPlaying ? "⏸ Pause" : "▶ Play"}</button>
+              >{tmPlaying ? " Pause" : " Play"}</button>
             )}
             {asOfDate && (
               <button
@@ -4048,15 +4052,15 @@ export default function BrowseReturns() {
             {/* Stat strip */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 12 }}>
               <StatChip icon={FiFileText} label="Reports" value={kpi.totalReports}
-                sub={filterFrom || filterTo ? `${filterFrom || "…"} → ${filterTo || "…"}` : "All time"} />
+                sub={filterFrom || filterTo ? `${filterFrom || "..."} -> ${filterTo || "..."}` : "All time"} />
               <StatChip icon={FiPackage} label="Total items" value={fmtNum(kpi.totalItems, 0)}
-                sub={`${fmtNum(kpi.totalQtyKg)} kg · ${fmtNum(kpi.totalQtyPcs, 0)} pcs`} color={T.info} bg={T.infoS} />
+                sub={`${fmtNum(kpi.totalQtyKg)} kg - ${fmtNum(kpi.totalQtyPcs, 0)} pcs`} color={T.info} bg={T.infoS} />
               <StatChip icon={FiAlertTriangle} label="Condemnation" value={`${kpi.condemnation.count} (${fmtPct(kpi.condemnation.percent)})`}
                 sub={`${fmtNum(kpi.condemnation.kg)} kg`} color={T.danger} bg={T.dangerS} />
               <StatChip icon={FiZap} label="Use in production" value={`${kpi.useProd.count} (${fmtPct(kpi.useProd.percent)})`}
                 sub="Latest action" color={T.purple} bg={T.purpleS} />
-              <StatChip icon={FiLayers} label="Top Customer" value={kpi.topCustomer.key || "—"}
-                sub={`${kpi.topCustomer.value} items · ${kpi.topCustomerByKg.kg} kg`} color={T.warning} bg={T.warningS} />
+              <StatChip icon={FiLayers} label="Top Customer" value={kpi.topCustomer.key || "-"}
+                sub={`${kpi.topCustomer.value} items - ${kpi.topCustomerByKg.kg} kg`} color={T.warning} bg={T.warningS} />
             </div>
 
             {/* Heatmap + Anomalies */}
@@ -4101,22 +4105,22 @@ export default function BrowseReturns() {
                 </div>
                 {anomalies.stats && (
                   <div style={{ ...sx.mutedS, marginBottom: 8 }}>
-                    Items μ {anomalies.stats.itemsMean} · threshold {anomalies.stats.itemsThreshold}
-                    {" · "}Cond μ {anomalies.stats.condMean} · threshold {anomalies.stats.condThreshold}
+                    Items mean {anomalies.stats.itemsMean} - threshold {anomalies.stats.itemsThreshold}
+                    {" - "}Cond mean {anomalies.stats.condMean} - threshold {anomalies.stats.condThreshold}
                   </div>
                 )}
                 {anomalies.top.length === 0 ? (
                   <div style={{ ...sx.muted, textAlign: "center", padding: 16 }}>
-                    {dailyMetrics.length < 4 ? "Need ≥4 days of data." : "No anomalies — within 2σ."}
+                    {dailyMetrics.length < 4 ? "Need >=4 days of data." : "No anomalies - within 2sigma."}
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflow: "auto" }}>
                     {anomalies.top.map((a, i) => {
                       const reasonLabels = a.reasons.map((r) =>
                         r.kind === "items"
-                          ? `${r.value} items (${r.sigma.toFixed(1)}σ)`
-                          : `${r.value} cond (${r.sigma.toFixed(1)}σ)`
-                      ).join(" · ");
+                          ? `${r.value} items (${r.sigma.toFixed(1)}sigma)`
+                          : `${r.value} cond (${r.sigma.toFixed(1)}sigma)`
+                      ).join(" - ");
                       return (
                         <button key={i} onClick={() => { setSelectedDate(a.date); setTab("browse"); const y=a.date.slice(0,4),m=a.date.slice(5,7); setOpenYears(p=>({...p,[y]:true})); setOpenMonths(p=>({...p,[`${y}-${m}`]:true})); }} style={{
                           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -4176,8 +4180,8 @@ export default function BrowseReturns() {
                             display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center",
                           }}>
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              <strong>{it.row.itemCode || it.row.productName || "—"}</strong>
-                              {it.reason ? ` · ${it.reason}` : ""}
+                              <strong>{it.row.itemCode || it.row.productName || "-"}</strong>
+                              {it.reason ? ` - ${it.reason}` : ""}
                             </span>
                             <span style={sx.mutedS}>{it.date}</span>
                           </button>
@@ -4219,7 +4223,7 @@ export default function BrowseReturns() {
                               <FiCalendar size={11} /> {d.label}
                               {isAnom && (
                                 <span style={{ background: T.danger, color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 800 }}>
-                                  ⚠ anomaly
+                                   anomaly
                                 </span>
                               )}
                             </div>
@@ -4237,7 +4241,7 @@ export default function BrowseReturns() {
                               {d.condCount > 0 && <>
                                 <span style={{ color: "#fca5a5" }}>Condemned</span>
                                 <span style={{ fontWeight: 700, textAlign: "right", color: "#fca5a5" }}>
-                                  {d.condCount}{d.condKg > 0 ? ` · ${fmtNum(d.condKg)} kg` : ""}
+                                  {d.condCount}{d.condKg > 0 ? ` - ${fmtNum(d.condKg)} kg` : ""}
                                 </span>
                               </>}
                             </div>
@@ -4298,7 +4302,7 @@ export default function BrowseReturns() {
             <div style={{ ...sx.card, padding: 16, marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                 <FiActivity size={16} color={T.primary} />
-                <h2 style={sx.h2}>Flow: Origin → Customer → Action</h2>
+                <h2 style={sx.h2}>Flow: Origin -> Customer -> Action</h2>
                 <span style={sx.mutedS}>Hover any node to highlight its paths</span>
               </div>
               {sankeyFlows.length === 0 ? (
@@ -4312,14 +4316,14 @@ export default function BrowseReturns() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div style={{ ...sx.card, padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <h2 style={sx.h2}>Pareto — by Product</h2>
+                  <h2 style={sx.h2}>Pareto - by Product</h2>
                   <span style={{ ...sx.pill, fontSize: 11 }}>80/20 rule</span>
                 </div>
                 <ParetoChart items={paretoData.byProduct} color={T.primary} />
               </div>
               <div style={{ ...sx.card, padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <h2 style={sx.h2}>Pareto — by Customer</h2>
+                  <h2 style={sx.h2}>Pareto - by Customer</h2>
                   <span style={{ ...sx.pill, fontSize: 11 }}>80/20 rule</span>
                 </div>
                 <ParetoChart items={paretoData.byPos} color={T.warning} />
@@ -4340,7 +4344,7 @@ export default function BrowseReturns() {
                       <MiniDonut
                         key={a.label}
                         percent={a.percent}
-                        label={a.label || "—"}
+                        label={a.label || "-"}
                         color={color}
                         count={`${a.value} items`}
                       />
@@ -4365,7 +4369,7 @@ export default function BrowseReturns() {
                   <input
                     ref={searchInputRef}
                     type="text" value={search} onChange={(e) => { setSearch(e.target.value); setResPage(1); }}
-                    placeholder={searchScope === "day" ? "Search… or use customer:Zaid action:condemnation qty:>10" : "Search ALL reports… or customer:X action:Y qty:>5"}
+                    placeholder={searchScope === "day" ? "Search... or use customer:Zaid action:condemnation qty:>10" : "Search ALL reports... or customer:X action:Y qty:>5"}
                     style={{ ...sx.input, paddingLeft: 36, paddingRight: 60, width: "100%", fontSize: 14 }}
                   />
                   {search && (
@@ -4445,7 +4449,7 @@ export default function BrowseReturns() {
             {searchScope === "all" && search.trim() && (
               <div style={{ ...sx.card, padding: 16, marginBottom: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
-                  <h2 style={sx.h2}>Search results · {globalResults.length}</h2>
+                  <h2 style={sx.h2}>Search results - {globalResults.length}</h2>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     {totalPages > 1 && (
                       <>
@@ -4477,7 +4481,7 @@ export default function BrowseReturns() {
                       ) : pagedResults.map((r, i) => {
                         const row = r.row;
                         const pos = customerOf(row);
-                        const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+                        const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
                         return (
                           <tr key={`${r.date}-${r.idx}-${i}`} className="br-tbl-row">
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textS }}>{(resPage - 1) * RES_PAGE_SIZE + i + 1}</td>
@@ -4494,16 +4498,16 @@ export default function BrowseReturns() {
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{highlight(row.origin || "", search)}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{highlight(pos || "", search)}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>
-                              {row.carNumber ? <span style={{ ...sx.pill, fontSize: 11, fontWeight: 700, background: T.warningS, color: T.warning, borderColor: "#fde68a", fontFamily: "ui-monospace, monospace" }}>🚚 {highlight(row.carNumber, search)}</span> : <span style={{ color: T.textS }}>—</span>}
+                              {row.carNumber ? <span style={{ ...sx.pill, fontSize: 11, fontWeight: 700, background: T.warningS, color: T.warning, borderColor: "#fde68a", fontFamily: "ui-monospace, monospace" }}> {highlight(row.carNumber, search)}</span> : <span style={{ color: T.textS }}>-</span>}
                             </td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>
-                              {row.driverName ? <>👨‍✈️ {highlight(row.driverName, search)}</> : <span style={{ color: T.textS }}>—</span>}
+                              {row.driverName ? <> {highlight(row.driverName, search)}</> : <span style={{ color: T.textS }}>-</span>}
                             </td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, textAlign: "right" }}>{row.quantity ?? ""}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{qtyType}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{row.expiry || ""}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{highlight(actionText(row) || "", search)}</td>
-                            <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, ...sx.mutedS }}>{r.hits.join(", ") || "—"}</td>
+                            <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, ...sx.mutedS }}>{r.hits.join(", ") || "-"}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, fontWeight: 700, color: T.primary }}>{r.score}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>
                               <IconBtn icon={FiArrowRight} onClick={() => jumpToDay(r.date)}>Open</IconBtn>
@@ -4775,7 +4779,7 @@ export default function BrowseReturns() {
                   <div style={{ ...sx.h3, marginBottom: 8, color: T.primary }}>Period A</div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <input type="date" value={cmpAFrom} onChange={(e) => setCmpAFrom(e.target.value)} style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
-                    <span style={{ color: T.textS }}>→</span>
+                    <span style={{ color: T.textS }}>-></span>
                     <input type="date" value={cmpATo} onChange={(e) => setCmpATo(e.target.value)} style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
                   </div>
                 </div>
@@ -4783,7 +4787,7 @@ export default function BrowseReturns() {
                   <div style={{ ...sx.h3, marginBottom: 8, color: T.success }}>Period B</div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <input type="date" value={cmpBFrom} onChange={(e) => setCmpBFrom(e.target.value)} style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
-                    <span style={{ color: T.textS }}>→</span>
+                    <span style={{ color: T.textS }}>-></span>
                     <input type="date" value={cmpBTo} onChange={(e) => setCmpBTo(e.target.value)} style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
                   </div>
                 </div>
@@ -4824,7 +4828,7 @@ export default function BrowseReturns() {
 
                 {/* Diff strip */}
                 <div style={{ ...sx.card, padding: 16, marginBottom: 12 }}>
-                  <h2 style={{ ...sx.h2, marginBottom: 10 }}>B vs A — Δ</h2>
+                  <h2 style={{ ...sx.h2, marginBottom: 10 }}>B vs A - Delta</h2>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
                     <div><div style={sx.mutedS}>Items</div>{diffPill(cmpA.items, cmpB.items)}</div>
                     <div><div style={sx.mutedS}>Avg / day</div>{diffPill(cmpA.avgPerDay, cmpB.avgPerDay)}</div>
@@ -4838,14 +4842,14 @@ export default function BrowseReturns() {
                 {/* Top breakdowns */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div style={{ ...sx.card, padding: 16 }}>
-                    <h2 style={{ ...sx.h2, marginBottom: 10 }}>Top Customer — A vs B</h2>
+                    <h2 style={{ ...sx.h2, marginBottom: 10 }}>Top Customer - A vs B</h2>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                       <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.primary }}>A</div><HBarList items={cmpA.topCustomer} color={T.primary} /></div>
                       <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.success }}>B</div><HBarList items={cmpB.topCustomer} color={T.success} /></div>
                     </div>
                   </div>
                   <div style={{ ...sx.card, padding: 16 }}>
-                    <h2 style={{ ...sx.h2, marginBottom: 10 }}>Top Action — A vs B</h2>
+                    <h2 style={{ ...sx.h2, marginBottom: 10 }}>Top Action - A vs B</h2>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                       <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.primary }}>A</div><HBarList items={cmpA.topAct} color={T.primary} /></div>
                       <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.success }}>B</div><HBarList items={cmpB.topAct} color={T.success} /></div>
@@ -4864,7 +4868,7 @@ export default function BrowseReturns() {
               <div>
                 <h2 style={{ ...sx.h2 }}>Review queue</h2>
                 <div style={{ ...sx.mutedS, marginTop: 4 }}>
-                  Items flagged by QC for follow-up · {reviewsArr.length} total · {reviewsPending} pending
+                  Items flagged by QC for follow-up - {reviewsArr.length} total - {reviewsPending} pending
                 </div>
               </div>
               {reviewsArr.length > 0 && (
@@ -4889,7 +4893,7 @@ export default function BrowseReturns() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: T.bgAlt }}>
-                      {["Status", "Date", "Item", "Customer · Origin", "Qty", "Action", "Notes", ""].map((h) => (
+                      {["Status", "Date", "Item", "Customer - Origin", "Qty", "Action", "Notes", ""].map((h) => (
                         <th key={h} style={{
                           padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 700,
                           color: T.textM, textTransform: "uppercase", letterSpacing: ".04em",
@@ -4900,7 +4904,7 @@ export default function BrowseReturns() {
                   </thead>
                   <tbody>
                     {reviewsArr.map((r) => {
-                      const qtyType = (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? "" : (r.qtyType || "");
+                      const qtyType = (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? "" : (r.qtyType || "");
                       return (
                         <tr key={r.key} style={{ background: r.status === "done" ? T.successS : "transparent", opacity: r.status === "done" ? 0.7 : 1 }}>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top" }}>
@@ -4910,7 +4914,7 @@ export default function BrowseReturns() {
                               color: r.status === "done" ? "#fff" : T.warning,
                               borderColor: r.status === "done" ? T.success : "#fde68a",
                             }}>
-                              {r.status === "done" ? <><FiCheck size={11} /> Done</> : <>⏳ Pending</>}
+                              {r.status === "done" ? <><FiCheck size={11} /> Done</> : <> Pending</>}
                             </button>
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", fontWeight: 700, fontSize: 12 }}>
@@ -4930,23 +4934,23 @@ export default function BrowseReturns() {
                               ...sx.btnGhost, padding: 0, color: T.text, cursor: "pointer", textAlign: "left",
                               fontWeight: 700, textDecoration: "underline", textDecorationStyle: "dotted",
                               textUnderlineOffset: 2, textDecorationColor: T.textS,
-                            }}>{r.productName || "—"}</button>
+                            }}>{r.productName || "-"}</button>
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", fontSize: 12, color: T.textM }}>
-                            {r.pos || "—"}
-                            <div style={{ ...sx.mutedS }}>{r.origin || "—"}</div>
+                            {r.pos || "-"}
+                            <div style={{ ...sx.mutedS }}>{r.origin || "-"}</div>
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", textAlign: "right", fontWeight: 700 }}>
-                            {r.quantity ?? "—"} <span style={{ ...sx.mutedS }}>{qtyType}</span>
+                            {r.quantity ?? "-"} <span style={{ ...sx.mutedS }}>{qtyType}</span>
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", fontSize: 12 }}>
-                            {r.action || "—"}
+                            {r.action || "-"}
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", minWidth: 220 }}>
                             <textarea
                               value={r.notes || ""}
                               onChange={(e) => updateReview(r.key, { notes: e.target.value })}
-                              placeholder="Add notes…"
+                              placeholder="Add notes..."
                               rows={2}
                               style={{
                                 ...sx.input, width: "100%", fontSize: 12, padding: "6px 8px",
@@ -5053,7 +5057,7 @@ export default function BrowseReturns() {
 }
 
 /* ============================================================
-   DataTable — used by Browse tab
+   DataTable - used by Browse tab
    ============================================================ */
 function DataTable({ rows, columns, changeMap, search, highlight, openViewer, rowPad, sort, toggleSort, showHeader, auditTrailByKey, onOpenAudit, selectedRows, onToggleSelect, onToggleAll, onRangeSelect, onOpenProduct, onMarkReview, reviewedSet, currentDate }) {
   const allChecked = showHeader && rows.length > 0 && rows.every((r) => selectedRows?.has(r.__i));
@@ -5094,7 +5098,7 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                     display: "inline-flex", alignItems: "center", gap: 4, textTransform: "uppercase", letterSpacing: ".04em",
                   }}>
                     {c.label}
-                    {sort.key === c.key && (sort.dir === "asc" ? "▲" : "▼")}
+                    {sort.key === c.key && (sort.dir === "asc" ? "^" : "v")}
                   </button>
                 ) : c.label}
               </th>
@@ -5170,22 +5174,22 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                         ...sx.pill, fontSize: 11, fontWeight: 700,
                         background: T.warningS, color: T.warning, borderColor: "#fde68a",
                         fontFamily: "ui-monospace, monospace",
-                      }}>🚚 {search ? highlight(row.carNumber, search) : row.carNumber}</span>
-                    ) : <span style={{ color: T.textS }}>—</span>}
+                      }}> {search ? highlight(row.carNumber, search) : row.carNumber}</span>
+                    ) : <span style={{ color: T.textS }}>-</span>}
                   </td>
                 );
                 if (c.key === "driverName") return (
                   <td key={c.key} style={tdStyle}>
                     {row.driverName ? (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        👨‍✈️ <span style={{ fontWeight: 600 }}>{search ? highlight(row.driverName, search) : row.driverName}</span>
+                         <span style={{ fontWeight: 600 }}>{search ? highlight(row.driverName, search) : row.driverName}</span>
                       </span>
-                    ) : <span style={{ color: T.textS }}>—</span>}
+                    ) : <span style={{ color: T.textS }}>-</span>}
                   </td>
                 );
                 if (c.key === "quantity") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{row.quantity}</td>;
                 if (c.key === "qtyType") return <td key={c.key} style={tdStyle}>
-                  <span style={{ ...sx.pill, fontSize: 11 }}>{(row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType : row.qtyType || ""}</span>
+                  <span style={{ ...sx.pill, fontSize: 11 }}>{(row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? row.customQtyType : row.qtyType || ""}</span>
                 </td>;
                 if (c.key === "expiry") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: T.textM }}>{row.expiry}</td>;
                 if (c.key === "remarks") return <td key={c.key} style={{ ...tdStyle, color: T.textM, fontSize: 12 }}>{search ? highlight(row.remarks || "", search) : row.remarks}</td>;
@@ -5207,7 +5211,7 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         <div style={{ fontSize: 12 }}>
                           <span style={{ color: T.textM, textDecoration: "line-through" }}>{ch.from}</span>
-                          <span style={{ margin: "0 6px", color: T.textS }}>→</span>
+                          <span style={{ margin: "0 6px", color: T.textS }}>-></span>
                           <span style={{ fontWeight: 700, color: T.text }}>{ch.to}</span>
                         </div>
                         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>

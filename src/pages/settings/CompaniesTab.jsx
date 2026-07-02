@@ -1,8 +1,9 @@
 // src/pages/settings/CompaniesTab.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import API_BASE from "../../config/api";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
+import { logSettingsAudit } from "../../utils/settingsAudit";
 
 const emptyForm = {
   name:"", contact_name:"", contact_email:"", contact_phone:"",
@@ -36,6 +37,9 @@ export default function CompaniesTab() {
   const [saving,    setSaving]    = useState(false);
   const [msg,       setMsg]       = useState("");
   const [confirm,   setConfirm]   = useState(null);
+  const [query,     setQuery]     = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [planFilter, setPlanFilter] = useState("all");
 
   const u = getUser();
   const isSuperAdmin = u.isSuperAdmin || u.isAdmin || false;
@@ -80,6 +84,10 @@ export default function CompaniesTab() {
 
   async function save() {
     if (!form.name.trim()) { setMsg("❌ " + t("companyNameReq")); return; }
+    if (form.start_date && form.end_date && new Date(form.end_date) < new Date(form.start_date)) {
+      setMsg("❌ End date cannot be before start date");
+      return;
+    }
     setSaving(true); setMsg("");
     const body = {
       ...form,
@@ -95,6 +103,14 @@ export default function CompaniesTab() {
         headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
       const d = await r.json();
       if (d.ok) {
+        await logSettingsAudit({
+          area: "companies",
+          action: isNew ? "create_company" : "update_company",
+          target: body.name,
+          before: isNew ? null : editing,
+          after: d.company || body,
+          reason: isNew ? "Company created" : "Company updated",
+        });
         setEditing(null); setMsg(`✅ "${body.name}" ${t("companySaved")}`);
         load(); setTimeout(() => setMsg(""), 3000);
       } else setMsg("❌ " + t("failSave"));
@@ -104,11 +120,61 @@ export default function CompaniesTab() {
 
   async function deleteCompany(id) {
     try {
+      const company = companies.find((c) => c.id === id) || { id };
       await fetch(`${API_BASE}/api/companies/${id}`, { method:"DELETE" });
+      await logSettingsAudit({
+        area: "companies",
+        action: "delete_company",
+        target: company.name || String(id),
+        before: company,
+        after: null,
+        reason: "Company deleted",
+      });
       setConfirm(null); setMsg("✅ " + t("companyDeleted")); load();
       setTimeout(() => setMsg(""), 3000);
     } catch { setMsg("❌ " + t("failDelete")); }
   }
+
+  const enrichedCompanies = useMemo(() => companies.map((company) => {
+    const days = daysLeft(company.end_date);
+    const status = String(company.status || "active").toLowerCase();
+    const plan = plans.find((p) =>
+      String(p.id || "") === String(company.plan_id || "") ||
+      String(p.name || "").toLowerCase() === String(company.plan_name || "").toLowerCase()
+    );
+    return {
+      ...company,
+      days,
+      status,
+      planDisplay: company.plan_name || plan?.name || "",
+      planKey: String(company.plan_id || plan?.id || company.plan_name || ""),
+      monthlyValue: Number(company.plan_price || plan?.price || 0),
+      risk: days !== null && days <= 14,
+    };
+  }), [companies, plans]);
+
+  const visibleCompanies = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return enrichedCompanies
+      .filter((company) => statusFilter === "all" || company.status === statusFilter)
+      .filter((company) => planFilter === "all" || company.planKey === planFilter)
+      .filter((company) => !q || [
+        company.name,
+        company.contact_name,
+        company.contact_email,
+        company.contact_phone,
+        company.planDisplay,
+      ].join(" ").toLowerCase().includes(q));
+  }, [enrichedCompanies, query, statusFilter, planFilter]);
+
+  const companyStats = useMemo(() => {
+    const active = enrichedCompanies.filter((company) => company.status === "active");
+    const trial = enrichedCompanies.filter((company) => company.status === "trial");
+    const renewalRisk = enrichedCompanies.filter((company) => company.risk);
+    const withoutPlan = enrichedCompanies.filter((company) => !company.plan_id && !company.planDisplay);
+    const mrr = active.reduce((sum, company) => sum + Number(company.monthlyValue || 0), 0);
+    return { active: active.length, trial: trial.length, renewalRisk: renewalRisk.length, withoutPlan: withoutPlan.length, mrr };
+  }, [enrichedCompanies]);
 
   return (
     <div style={ui.page} dir={dir}>
@@ -126,7 +192,35 @@ export default function CompaniesTab() {
         }
       />
 
-      <StatusMessage message={msg ? { kind: msg.startsWith("âœ…") ? "ok" : "err", text: msg } : null} />
+      <StatusMessage message={msg ? { kind: msg.startsWith("✅") ? "ok" : "err", text: msg } : null} />
+
+      <div style={kpiGridStyle}>
+        <MetricCard label="Active companies" value={companyStats.active} />
+        <MetricCard label="Trial" value={companyStats.trial} />
+        <MetricCard label="Renewal risk" value={companyStats.renewalRisk} />
+        <MetricCard label="No plan" value={companyStats.withoutPlan} />
+        <MetricCard label="MRR estimate" value={companyStats.mrr.toLocaleString()} />
+      </div>
+
+      <div style={toolbarStyle}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search companies"
+          style={{ ...inputStyle, flex: "1 1 260px", minWidth: 0, fontSize: 16 }}
+        />
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...inputStyle, width: 170, fontSize: 16 }}>
+          <option value="all">All statuses</option>
+          <option value="active">{t("stActive")}</option>
+          <option value="trial">{t("stTrial")}</option>
+          <option value="expired">{t("stExpired")}</option>
+          <option value="suspended">{t("stSuspended")}</option>
+        </select>
+        <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} style={{ ...inputStyle, width: 190, fontSize: 16 }}>
+          <option value="all">All plans</option>
+          {plans.map((plan) => <option key={plan.id} value={String(plan.id)}>{plan.name}</option>)}
+        </select>
+      </div>
 
       {/* Delete modal */}
       <ConfirmModal
@@ -207,11 +301,15 @@ export default function CompaniesTab() {
         <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>
           {t("noCompanies")}
         </div>
+      ) : visibleCompanies.length === 0 ? (
+        <div style={{ textAlign:"center", color:"#94a3b8", padding:32 }}>
+          No companies match the current filters.
+        </div>
       ) : (
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-          {companies.map(c => {
+          {visibleCompanies.map(c => {
             const sc   = STATUS_META[c.status] || STATUS_META.active;
-            const days = daysLeft(c.end_date);
+            const days = c.days;
             const expiring = days !== null && days > 0 && days <= 14;
             const expired  = days !== null && days <= 0;
             return (
@@ -291,10 +389,32 @@ function Field({ label, children, style }) {
   );
 }
 
+function MetricCard({ label, value }) {
+  return (
+    <div style={{ ...ui.card, marginBottom: 0, padding: "14px 16px" }}>
+      <div style={{ color:"#64748b", fontSize:12, fontWeight:900, textTransform:"uppercase", letterSpacing:"0.04em" }}>{label}</div>
+      <div style={{ color:"#0f172a", fontSize:26, fontWeight:950, marginTop:4 }}>{value}</div>
+    </div>
+  );
+}
+
 const inputStyle = {
   width:"100%", border:"1.5px solid #e2e8f0", borderRadius:8,
   padding:"11px 14px", fontSize:18, color:"#1e293b",
   fontFamily:"Cairo, sans-serif", boxSizing:"border-box", background:"#fff",
+};
+const kpiGridStyle = {
+  display:"grid",
+  gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))",
+  gap:12,
+  marginBottom:14,
+};
+const toolbarStyle = {
+  display:"flex",
+  flexWrap:"wrap",
+  alignItems:"center",
+  gap:10,
+  marginBottom:16,
 };
 const btnStyle = (bg) => ({
   background:bg, color:"#fff", border:"none", borderRadius:8,

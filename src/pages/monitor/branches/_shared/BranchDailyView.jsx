@@ -34,6 +34,18 @@ const STYLES = `
     overflow: hidden;
   }
 
+  .bdv-root--ltr {
+    direction: ltr;
+    text-align: left;
+  }
+
+  .bdv-root--ltr .bdv-header-actions,
+  .bdv-root--ltr .bdv-connected-badge,
+  .bdv-root--ltr .bdv-coming-badge {
+    margin-left: auto;
+    margin-right: 0;
+  }
+
   /* ── Header (dark) ── */
   .bdv-header {
     background: var(--ink);
@@ -357,6 +369,7 @@ export default function BranchDailyView({
   accent,
   tabs = [],
   defaultTabKey,
+  direction = "rtl",
 }) {
   const [activeKey, setActiveKey] = useState(defaultTabKey || tabs[0]?.key);
 
@@ -413,7 +426,7 @@ export default function BranchDailyView({
     <>
       <style>{STYLES}</style>
       <PrintStyles />
-      <div className="bdv-root" style={rootStyle}>
+      <div className={`bdv-root ${direction === "ltr" ? "bdv-root--ltr" : ""}`} style={rootStyle} dir={direction}>
 
         {/* ── Header (dark) ── */}
         <header className="bdv-header">

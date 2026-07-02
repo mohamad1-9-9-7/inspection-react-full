@@ -11,6 +11,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 import SignatureName from "../../../shared/SignatureName";
+import "./FTR2UnifiedReportView.css";
+import "./FTR2ReceivingLogView.css";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -338,9 +340,7 @@ export default function FTR2ReceivingLogView() {
   [reportList]);
 
   /* ===== Styles ===== */
-  const shell    = { display: "flex", gap: "1rem" };
-  const sidebar  = { minWidth: 260, background: "#fbfbfc", padding: "1rem", borderRadius: 12, boxShadow: "0 4px 14px rgba(0,0,0,0.06)", border: "1px solid #eef0f4", height: "fit-content" };
-  const main     = { flex: 1, minWidth: 0, background: "linear-gradient(120deg,#f7f9fc 60%,#efe7f9 100%)", padding: "1.25rem", borderRadius: 14, boxShadow: "0 6px 22px rgba(95,61,196,0.12)", border: "1px solid #ececf5", overflowX: "auto", fontSize: 16 };
+  const main     = { minWidth: 0, fontSize: 16 };
   const hCell    = { border: `1.4px solid ${GRID_COLOR}`, padding: "10px 12px", fontSize: 16, background: HEADER_BG, fontWeight: 700, color: "#1e293b" };
   const baseCell = { padding: "10px 12px", border: `1.2px solid ${GRID_COLOR}`, verticalAlign: "middle", fontSize: 16, lineHeight: 1.55, wordBreak: "break-word", whiteSpace: "normal", background: "#fff" };
   const thStyle  = { ...baseCell, background: HEADER_BG, color: "#0f172a", fontWeight: 800, border: `1.5px solid ${HEADER_BORDER}`, position: "sticky", top: 0, zIndex: 1, textAlign: "center" };
@@ -356,10 +356,10 @@ export default function FTR2ReceivingLogView() {
     return (Array.isArray(raw) ? raw : raw ? [raw] : []).filter(Boolean);
   };
 
-  const viewBtnStyle = { marginLeft: 8, padding: "4px 8px", borderRadius: 6, border: "1px solid #94a3b8", background: "#fff", color: "#0f172a", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", whiteSpace: "nowrap" };
+  const viewBtnStyle = { marginLeft: 8, padding: "6px 10px", borderRadius: 8, border: "1px solid #a78bfa", background: "#faf5ff", color: "#6b21a8", fontWeight: 900, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" };
 
   const EditableCell = ({ value, onChange, type = "text", align = "center" }) => {
-    const s = { width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 6, border: "1px solid #cfd6e6", fontSize: "0.92rem", textAlign: align, background: "#fff" };
+    const s = { width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 8, border: "1px solid #cfd6e6", fontSize: 15, textAlign: align, background: "#fff" };
     if (type === "date") return <input type="date" value={value ? new Date(value).toISOString().slice(0,10) : ""} onChange={e => onChange(e.target.value)} style={s} />;
     return <input type="text" value={value ?? ""} onChange={e => onChange(e.target.value)} style={s} />;
   };
@@ -368,16 +368,25 @@ export default function FTR2ReceivingLogView() {
 
   const Btn = ({ label, onClick, color, disabled }) => (
     <button onClick={onClick} disabled={disabled}
-      style={{ padding: "8px 14px", borderRadius: 8, background: disabled ? "#d1d5db" : color, color: "#fff", fontWeight: 700, border: "none", cursor: disabled ? "not-allowed" : "pointer" }}>
+      style={{ minHeight: 38, padding: "8px 14px", borderRadius: 8, background: disabled ? "#d1d5db" : color, color: "#fff", fontWeight: 900, fontSize: 14, border: "none", cursor: disabled ? "not-allowed" : "pointer" }}>
       {label}
     </button>
   );
 
   return (
-    <div style={shell}>
+    <div className="ftr2-report-view ftr2-receiving-view" style={{ "--ftr2-accent": "#a855f7" }}>
 
       {/* ===== Sidebar ===== */}
-      <div style={sidebar}>
+      <aside className="ftr2-report-rail ftr2-receiving-rail">
+        <div className="ftr2-rail-head">
+          <span>FTR 2</span>
+          <h3>Receiving Log</h3>
+          <p>{reportList.length} saved report{reportList.length === 1 ? "" : "s"}</p>
+        </div>
+
+        <button className="ftr2-refresh" type="button" onClick={fetchList} disabled={loadingList}>
+          {loadingList ? "Refreshing..." : "Refresh list"}
+        </button>
         <h4 style={{ marginBottom: "1rem", color: "#5b21b6", textAlign: "center" }}>🗓️ Saved Reports</h4>
 
         {/* ── Non-blocking error banner ── */}
@@ -435,43 +444,66 @@ export default function FTR2ReceivingLogView() {
           </div>
         )}
 
-        {loadingList ? <p>⏳ Loading list…</p>
+        <div className="ftr2-date-tree">
+        {loadingList ? <div className="ftr2-empty">Loading list...</div>
           : Object.keys(groupedReports).length === 0 ? (
-            fetchError ? null : <p>❌ No reports</p>
+            fetchError ? null : <div className="ftr2-empty">No reports saved yet.</div>
           )
           : Object.entries(groupedReports)
               .sort(([a],[b]) => Number(b)-Number(a))
               .map(([year, months]) => (
                 // ✅ بدون open — الشجرة مغلقة افتراضياً
-                <details key={year}>
-                  <summary style={{ fontWeight: 700, marginBottom: 6, cursor: "pointer" }}>📅 {year}</summary>
+                <details key={year} className="ftr2-tree-year">
+                  <summary>
+                    <span>{year}</span>
+                    <b>{Object.values(months).reduce((sum, days) => sum + days.length, 0)}</b>
+                  </summary>
                   {Object.entries(months)
                     .sort(([a],[b]) => Number(b)-Number(a))
                     .map(([month, days]) => (
-                      <details key={month} style={{ marginLeft: "1rem" }}>
-                        <summary style={{ fontWeight: 600, cursor: "pointer" }}>📅 {year}/{month}</summary>
-                        <ul style={{ listStyle: "none", paddingLeft: "1rem" }}>
+                      <details key={month} className="ftr2-tree-month">
+                        <summary>
+                          <span>{new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</span>
+                          <b>{days.length}</b>
+                        </summary>
+                        <div className="ftr2-tree-list">
                           {[...days].sort((a,b) => b._dt-a._dt).map((r, i) => {
                             const isActive = getId(selectedReport) && getId(selectedReport) === getId(r);
                             const d = getReportDate(r);
                             const label = `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
                             return (
-                              <li key={i} onClick={() => fetchFullReport(r)}
-                                style={{ padding: "6px 10px", marginBottom: 4, borderRadius: 8, cursor: loadingReport ? "wait" : "pointer", background: isActive ? "#5b21b6" : "#eef1f7", color: isActive ? "#fff" : "#263042", fontWeight: 700, textAlign: "center" }}>
-                                {label}
-                              </li>
+                              <button
+                                key={getId(r) || `${label}-${i}`}
+                                type="button"
+                                className={isActive ? "active" : ""}
+                                onClick={() => fetchFullReport(r)}
+                                disabled={loadingReport}
+                              >
+                                <span>{label}</span>
+                                <small>{r?.payload?.invoiceNo || r?.invoiceNo || "Saved report"}</small>
+                              </button>
                             );
                           })}
-                        </ul>
+                        </div>
                       </details>
                     ))}
                 </details>
               ))
         }
-      </div>
+        </div>
+      </aside>
 
       {/* ===== Main ===== */}
-      <div style={main}>
+      <main className="ftr2-report-main" style={main}>
+        <div className="ftr2-report-card ftr2-receiving-card">
+          <header className="ftr2-report-head">
+            <div>
+              <span className="ftr2-eyebrow">Report viewer</span>
+              <h3>Receiving Log - Butchery</h3>
+              <p>Specialized receiving view with row photos, preview, export tools, and clear date navigation.</p>
+            </div>
+          </header>
+          <div className="ftr2-receiving-body">
         {loadingReport ? (
           <div style={{ textAlign: "center", padding: "4rem", color: "#5b21b6", fontSize: 18, fontWeight: 700 }}>
             ⏳ Loading report...
@@ -483,7 +515,7 @@ export default function FTR2ReceivingLogView() {
         ) : (
           <>
             {/* Actions */}
-            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
+            <div className="ftr2-receiving-actions">
               {!isEditing ? (
                 <>
                   <Btn label="✏ Edit"        onClick={startEdit}                          color="#2563eb" disabled={busy} />
@@ -613,7 +645,9 @@ export default function FTR2ReceivingLogView() {
             </div>
           </>
         )}
-      </div>
+          </div>
+        </div>
+      </main>
 
       {/* Preview Modal */}
       {preview.open && (

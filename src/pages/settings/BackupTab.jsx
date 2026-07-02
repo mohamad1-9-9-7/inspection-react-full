@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
+import { logSettingsAudit } from "../../utils/settingsAudit";
 
 
 /* ============================================================
@@ -85,6 +86,12 @@ const REPORT_GROUPS = {
 };
 
 const ALL_TYPES = Object.values(REPORT_GROUPS).flat();
+
+const RESTORE_PROTECTED_LOCAL_KEYS = new Set(["currentUser", "subscription_cache"]);
+
+function defaultLocalCategories() {
+  return LOCAL_CATEGORIES.map((c) => c.id).filter((id) => id !== "user");
+}
 
 /* ============================================================
    تصنيف مفاتيح localStorage
@@ -190,7 +197,7 @@ function daysAgoISO(n) {
 export default function BackupTab() {
   /* --- خيارات الاختيار --- */
   const [selectedTypes, setSelectedTypes] = useState(() => new Set(ALL_TYPES));
-  const [selectedLocalCats, setSelectedLocalCats] = useState(() => new Set(LOCAL_CATEGORIES.map((c) => c.id)));
+  const [selectedLocalCats, setSelectedLocalCats] = useState(() => new Set(defaultLocalCategories()));
   const [includeServerReports, setIncludeServerReports] = useState(true);
   const [includeLocalData, setIncludeLocalData] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
@@ -199,6 +206,7 @@ export default function BackupTab() {
   /* --- استرجاع --- */
   const [restorePreview, setRestorePreview] = useState(null);
   const [restoreServerToo, setRestoreServerToo] = useState(false);
+  const [restoreReason, setRestoreReason] = useState("");
 
   /* --- حالة --- */
   const [busy, setBusy] = useState(false);
@@ -251,7 +259,7 @@ export default function BackupTab() {
       setIncludeServerReports(true);
       setIncludeLocalData(true);
       setSelectedTypes(new Set(ALL_TYPES));
-      setSelectedLocalCats(new Set(LOCAL_CATEGORIES.map((c) => c.id)));
+      setSelectedLocalCats(new Set(defaultLocalCategories()));
       setDateFrom(""); setDateTo("");
     } else if (id === "drafts-only") {
       setIncludeServerReports(false);
@@ -399,6 +407,16 @@ export default function BackupTab() {
 
       downloadJSON(`inspection-backup-${suffix}-${ts}.json`, backup);
 
+      await logSettingsAudit({
+        area: "backup_restore",
+        action: "export_backup",
+        target: `inspection-backup-${suffix}`,
+        before: null,
+        after: backup.counts,
+        reason: "Backup exported",
+        meta: backup.scope,
+      });
+
       setMsg({
         kind: "ok",
         text: `✅ تم إنشاء النسخة الاحتياطية. ${reports.length} تقرير + ${Object.keys(localData).length} مفتاح محلي.`,
@@ -432,9 +450,11 @@ export default function BackupTab() {
         exportedBy: json.exportedBy || "—",
         scope: json.scope || null,
         localCount: Object.keys(json.localStorage || {}).length,
+        protectedLocalCount: Object.keys(json.localStorage || {}).filter((key) => RESTORE_PROTECTED_LOCAL_KEYS.has(key)).length,
         reportsCount: (json.serverReports || []).length,
         data: json,
       });
+      setRestoreReason("");
     } catch (err) {
       setMsg({ kind: "err", text: `❌ فشل قراءة الملف: ${err?.message || err}` });
       setRestorePreview(null);
@@ -449,6 +469,11 @@ export default function BackupTab() {
 
   async function doRestore() {
     if (!restorePreview) return;
+    if (restoreReason.trim().length < 8) {
+      setConfirmRestore(false);
+      setMsg({ kind: "err", text: "Please enter a clear restore reason before continuing." });
+      return;
+    }
     const { data } = restorePreview;
 
     setBusy(true);
@@ -456,10 +481,17 @@ export default function BackupTab() {
     setMsg({ kind: "info", text: "⏳ جارٍ الاسترجاع..." });
 
     try {
+      const beforeLocalKeys = readAllLocalStorage();
+      let restoredLocal = 0;
+      let skippedProtected = 0;
       if (data.localStorage && typeof data.localStorage === "object") {
-        try { localStorage.clear(); } catch {}
         Object.entries(data.localStorage).forEach(([k, v]) => {
+          if (RESTORE_PROTECTED_LOCAL_KEYS.has(k)) {
+            skippedProtected++;
+            return;
+          }
           try { localStorage.setItem(k, String(v)); } catch {}
+          restoredLocal++;
         });
       }
 
@@ -491,12 +523,35 @@ export default function BackupTab() {
         kind: "ok",
         text:
           `✅ اكتمل الاسترجاع. ` +
-          `تم استرجاع ${Object.keys(data.localStorage || {}).length} مفتاح محلي. ` +
+          `تم استرجاع ${restoredLocal} مفتاح محلي. ` +
+          (skippedProtected ? `تم تجاهل ${skippedProtected} مفتاح محمي. ` : "") +
           (restoreServerToo
             ? `تم رفع ${uploaded} تقرير${failed ? ` (${failed} فشل)` : ""}.`
             : ""),
       });
+      await logSettingsAudit({
+        area: "backup_restore",
+        action: "restore_backup",
+        target: restorePreview.file,
+        before: {
+          localStorageKeys: Object.keys(beforeLocalKeys).length,
+          serverUploadRequested: restoreServerToo,
+        },
+        after: {
+          restoredLocal,
+          skippedProtected,
+          uploaded,
+          failed,
+        },
+        reason: restoreReason,
+        meta: {
+          exportedAt: restorePreview.exportedAt,
+          exportedBy: restorePreview.exportedBy,
+          reportsCount: restorePreview.reportsCount,
+        },
+      });
       setRestorePreview(null);
+      setRestoreReason("");
       setTimeout(() => setConfirmReload(true), 500);
     } catch (e) {
       setMsg({ kind: "err", text: `❌ فشل الاسترجاع: ${e?.message || e}` });
@@ -822,6 +877,11 @@ export default function BackupTab() {
             <div>🕒 <strong>تاريخ الإنشاء:</strong> {restorePreview.exportedAt}</div>
             <div>👤 <strong>أُنشئ بواسطة:</strong> {restorePreview.exportedBy}</div>
             <div>💾 <strong>عناصر محلية:</strong> {restorePreview.localCount}</div>
+            {restorePreview.protectedLocalCount > 0 && (
+              <div style={{ color: "#92400e" }}>
+                🔒 <strong>مفاتيح محمية لن يتم استبدالها:</strong> {restorePreview.protectedLocalCount}
+              </div>
+            )}
             <div>🗄️ <strong>تقارير السيرفر:</strong> {restorePreview.reportsCount}</div>
             {restorePreview.scope && (
               <div style={{ marginTop: 8, fontSize: "0.82rem", color: "#6b7280" }}>
@@ -831,6 +891,26 @@ export default function BackupTab() {
                 {restorePreview.scope.dateTo && ` إلى ${restorePreview.scope.dateTo}`}
               </div>
             )}
+
+            <label style={{ display: "block", marginTop: 12 }}>
+              <span style={{ display: "block", fontWeight: 800, color: "#0b1f4d", marginBottom: 6 }}>
+                Restore reason / سبب الاسترجاع *
+              </span>
+              <textarea
+                value={restoreReason}
+                onChange={(e) => setRestoreReason(e.target.value)}
+                rows={2}
+                placeholder="Example: Recover settings after accidental change"
+                style={{
+                  width: "100%",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                }}
+              />
+            </label>
 
             <label
               style={{
@@ -851,7 +931,7 @@ export default function BackupTab() {
             </label>
 
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button onClick={handleRestore} disabled={busy} tone="danger">
+              <Button onClick={handleRestore} disabled={busy || restoreReason.trim().length < 8} tone="danger">
                 {busy ? "⏳ جارٍ الاسترجاع..." : "♻️ تأكيد الاسترجاع"}
               </Button>
               <Button onClick={() => setRestorePreview(null)} disabled={busy} tone="secondary">
@@ -874,7 +954,7 @@ export default function BackupTab() {
         title="تأكيد الاسترجاع"
         body={
           restorePreview
-            ? `سيتم استبدال بيانات localStorage الحالية ببيانات النسخة الاحتياطية. ${
+            ? `سيتم دمج مفاتيح النسخة الاحتياطية مع بيانات المتصفح الحالية. لن يتم استبدال مفاتيح الجلسة المحمية مثل currentUser. السبب: ${restoreReason.trim()}. ${
                 restoreServerToo
                   ? `وسيتم رفع ${restorePreview.data.serverReports?.length || 0} تقرير للسيرفر، وقد ينتج عنها تكرار.`
                   : "لن يتم رفع التقارير للسيرفر لأن الخيار غير مفعّل."

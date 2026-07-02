@@ -8,6 +8,12 @@ body:not(.sec-delete-allowed) [data-delete-action] {
   display: none !important;
 }
 
+body.sec-readonly-mode [data-write-action],
+body.sec-readonly-mode form button[type="submit"],
+body.sec-readonly-mode form input[type="submit"] {
+  display: none !important;
+}
+
 @import './variables.css';
 
 /* ── Reset أساسي ────────────────────────────────────────── */
