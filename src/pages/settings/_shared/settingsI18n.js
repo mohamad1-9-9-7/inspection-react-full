@@ -289,6 +289,8 @@ export const ST = {
   amUsername:         { en: "Username", ar: "اسم المستخدم" },
   amUsernameReq:      { en: "Username is required", ar: "اسم المستخدم مطلوب" },
   amDisplayName:      { en: "Display Name", ar: "الاسم الظاهر" },
+  amCompany:          { en: "Company", ar: "الشركة" },
+  amPlatformLevel:    { en: "Platform-level (no company)", ar: "على مستوى المنصة (بدون شركة)" },
   amUsernamePh:       { en: "e.g. mohamad", ar: "مثال: mohamad" },
   amDisplayNamePh:    { en: "e.g. Mohammed Abdullah", ar: "مثال: محمد عبدالله" },
   amNewPassword:      { en: "New Password (blank = no change)", ar: "كلمة مرور جديدة (فارغ = بدون تغيير)" },

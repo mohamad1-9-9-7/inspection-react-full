@@ -60,6 +60,7 @@ const CRUD_OPS = [
 const EMPTY_FORM = {
   username: "", displayName: "", password: "", confirmPassword: "",
   isAdmin: false, isFullAccess: false, crudPerms: {}, employees: [], allowedBranches: {},
+  companyId: "",
 };
 
 const BRANCH_THEMES = {
@@ -150,6 +151,7 @@ function formStateFromUser(u) {
     crudPerms,
     employees:       Array.isArray(u.employees) ? u.employees : [],
     allowedBranches: normalizeBranches(u.allowed_branches),
+    companyId:       u.company_id != null ? String(u.company_id) : "",
   };
 }
 
@@ -511,7 +513,7 @@ function BranchSelector({ selected, onChange, theme, sectionLabel, items, kind =
 /* ═══════════════════════════════════════════════════════
    ACCOUNT FORM (white card — inside dark panel)
 ═══════════════════════════════════════════════════════ */
-function AccountForm({ initial, onSave, onCancel, saving }) {
+function AccountForm({ initial, onSave, onCancel, saving, isSuperAdmin, companies }) {
   const { t } = useSettingsLang();
   const [form, setForm] = useState(initial || EMPTY_FORM);
   const [err, setErr]   = useState("");
@@ -551,6 +553,19 @@ function AccountForm({ initial, onSave, onCancel, saving }) {
             placeholder={t("amDisplayNamePh")} />
         </label>
       </div>
+
+      {isSuperAdmin && (
+        <label style={{ ...fs.field, marginBottom: 18 }}>
+          <span style={fs.label}>🏢 {t("amCompany")}</span>
+          <select style={fs.input} value={form.companyId}
+            onChange={e => set("companyId", e.target.value)}>
+            <option value="">— {t("amPlatformLevel")} —</option>
+            {companies.map(c => (
+              <option key={c.id} value={String(c.id)}>{c.name}</option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <div style={fs.row}>
         <div style={fs.field}>
@@ -1439,6 +1454,19 @@ export default function AccountsManagementTab({ onClose }) {
   const [confirmDel, setConfirmDel] = useState(null);
   const [resetPwUser, setResetPwUser] = useState(null);
   const [search, setSearch]     = useState("");
+  const [companies, setCompanies] = useState([]);
+
+  const isSuperAdmin = (() => {
+    try { return !!JSON.parse(localStorage.getItem("currentUser") || "{}").isSuperAdmin; }
+    catch { return false; }
+  })();
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    fetch(`${API_BASE}/api/companies`).then(r => r.json())
+      .then(d => { if (d.ok) setCompanies(d.companies || []); })
+      .catch(() => {});
+  }, [isSuperAdmin]);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -1478,6 +1506,7 @@ export default function AccountsManagementTab({ onClose }) {
         isAdmin:         form.isAdmin,
       };
       if (form.password) body.password = form.password;
+      if (isSuperAdmin) body.companyId = form.companyId !== "" ? Number(form.companyId) : null;
       const r = await fetch(url, { method, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) });
       const d = await r.json();
       if (!d.ok) {
@@ -1832,6 +1861,8 @@ export default function AccountsManagementTab({ onClose }) {
               onSave={handleSave}
               onCancel={() => { setView("list"); setEditUser(null); }}
               saving={saving}
+              isSuperAdmin={isSuperAdmin}
+              companies={companies}
             />
           )}
 
