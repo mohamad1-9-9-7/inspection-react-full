@@ -31,12 +31,18 @@ export default function NotificationManager() {
     let scanRunning = false;
 
     /* ===== جلب الإعدادات العامّة (مرة الآن + دوريًا) ===== */
+    /* التابات المخفية ما تعمل استعلامات — كل نداء بيصحّي داتابيس Neon من النوم
+       وبيرفع فاتورة الـ compute. لما يرجع التاب ظاهر منحدّث فورًا. */
     const refreshGlobal = () => {
-      if (cancelled) return;
+      if (cancelled || document.hidden) return;
       fetchGlobalSettings().catch(() => {});
     };
     refreshGlobal();
     const refreshId = setInterval(refreshGlobal, GLOBAL_REFRESH_MS);
+    const onVisible = () => {
+      if (!document.hidden) refreshGlobal();
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     /* ===== فحص التذكير اليومي ===== */
     const tick = () => {
@@ -52,8 +58,10 @@ export default function NotificationManager() {
       } catch {}
 
       /* ===== 🆕 فحص دوري لانحرافات CCP ===== */
+      /* بس لما التاب ظاهر — ما منعلّم markCCPCheckRan عند التخطي،
+         فأول tick بعد رجوع التاب بيفحص فورًا. */
       try {
-        if (shouldRunCCPCheck()) {
+        if (!document.hidden && shouldRunCCPCheck()) {
           markCCPCheckRan();
           fetch(`${API_BASE}/api/reports?type=ccp_monitoring_record`, { cache: "no-store" })
             .then((r) => r.ok ? r.json() : [])
@@ -143,6 +151,7 @@ export default function NotificationManager() {
       cancelled = true;
       clearInterval(refreshId);
       clearInterval(tickId);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

@@ -22,7 +22,6 @@ const API_BASE = normalizeApiRoot(
 );
 
 const TYPE = "supplier_self_assessment_form";
-const POLL_MS = 30000; // poll every 30s for new submissions
 const SEEN_SUBMITTED_KEY = "supplier_tracker_seen_submitted_v1";
 
 const SUPPLIER_TYPE_LABEL = {
@@ -181,7 +180,6 @@ export default function SupplierSentLinks() {
   const [selected, setSelected] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const seenIdsRef = useRef(null);
-  const pollRef = useRef(null);
 
   /* ===== Load seen-submitted IDs (for browser-notification dedupe) ===== */
   useEffect(() => {
@@ -234,10 +232,18 @@ export default function SupplierSentLinks() {
 
   useEffect(() => { load(); }, []);
 
-  /* ===== Polling for new submissions ===== */
+  /* ===== Refresh on open/return instead of periodic polling =====
+     كان يعمل poll كل 30 ثانية = يمنع Neon من النوم طول ما الصفحة مفتوحة.
+     الآن يحدّث فقط لحظة فتح/الرجوع للتاب — الشاشة المتروكة لا تضرب السيرفر. */
   useEffect(() => {
-    pollRef.current = setInterval(() => load(true), POLL_MS);
-    return () => clearInterval(pollRef.current);
+    const onFocus = () => { if (!document.hidden) load(true); };
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("focus", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ===== Browser notifications ===== */

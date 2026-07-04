@@ -2484,8 +2484,15 @@ export default function BrowseReturns() {
         }
       } catch {}
     };
-    const id = setInterval(tick, 5 * 60 * 1000);
-    return () => { alive = false; clearInterval(id); };
+    // بدل poll كل 5 دقائق (يمنع Neon من النوم) — نفحص لحظة فتح/الرجوع للتاب فقط
+    const onFocus = () => { if (!document.hidden) tick(); };
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      alive = false;
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [autoRefresh, returnsData]);
 
   function applyPendingFetch() {
