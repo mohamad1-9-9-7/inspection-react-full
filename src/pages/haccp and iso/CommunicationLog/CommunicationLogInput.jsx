@@ -226,6 +226,10 @@ export default function CommunicationLogInput() {
       alert(t("requiredField"));
       return;
     }
+    if (form.responseRequired === "Yes" && form.dueDate && form.dueDate <= form.communicationDate) {
+      alert(t("dateEndAfterCommunication"));
+      return;
+    }
     setSaving(true);
     try {
       const url = editId ? `${API_BASE}/api/reports/${encodeURIComponent(editId)}` : `${API_BASE}/api/reports`;

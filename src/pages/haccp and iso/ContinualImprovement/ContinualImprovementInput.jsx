@@ -155,6 +155,10 @@ export default function ContinualImprovementInput() {
       alert(t("requiredField"));
       return;
     }
+    if (form.startDate && form.actualEndDate && form.actualEndDate <= form.startDate) {
+      alert(t("dateEndAfterStart"));
+      return;
+    }
     setSaving(true);
     try {
       const url = editId

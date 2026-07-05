@@ -91,6 +91,13 @@ export default function InternalAuditInput() {
 
   async function save() {
     if (!form.auditDate) { alert(t("requiredField")); return; }
+    for (let i = 0; i < form.findings.length; i++) {
+      const f = form.findings[i];
+      if (f.dueDate && f.dueDate <= form.auditDate) {
+        alert(`(${i + 1}): ${t("dateEndAfterAudit")}`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const url = editId ? `${API_BASE}/api/reports/${encodeURIComponent(editId)}` : `${API_BASE}/api/reports`;

@@ -96,6 +96,10 @@ export default function ObjectivesInput() {
       alert(t("requiredField"));
       return;
     }
+    if (form.startDate && form.endDate && form.endDate <= form.startDate) {
+      alert(t("dateEndAfterStart"));
+      return;
+    }
     setSaving(true);
     try {
       const url = editId
