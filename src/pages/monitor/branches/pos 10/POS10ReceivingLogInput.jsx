@@ -308,6 +308,15 @@ export default function POS10ReceivingLogInput() {
       return;
     }
 
+    // التحقق من التواريخ: تاريخ الانتهاء > تاريخ الإنتاج
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (e.productionDate && e.expiryDate && e.expiryDate <= e.productionDate) {
+        setSaveMsg(`⚠️ الصف ${i + 1}: تاريخ الصلاحية يجب أن يكون أكبر من تاريخ الإنتاج.`);
+        return;
+      }
+    }
+
     const payload = {
       branch: BRANCH,
       formRef,

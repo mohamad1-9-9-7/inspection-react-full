@@ -773,6 +773,25 @@ export default function TraceabilityLogInput() {
         finalExpDate: (x.finalExpDate || "").trim(),
         finalWeight: (x.finalWeight || "").toString().trim(),
       }));
+
+      // التحقق من صحة التواريخ
+      for (let i = 0; i < inputs.length; i++) {
+        const inp = inputs[i];
+        if (inp.origProdDate && inp.origExpDate && inp.origExpDate <= inp.origProdDate) {
+          setSaving(false);
+          alert(`⚠️ الدفعة "${batchId}" - المادة الخام ${i + 1}: تاريخ الصلاحية يجب أن يكون أكبر من تاريخ الإنتاج.`);
+          return;
+        }
+      }
+      for (let i = 0; i < outputs.length; i++) {
+        const out = outputs[i];
+        if (out.finalProdDate && out.finalExpDate && out.finalExpDate <= out.finalProdDate) {
+          setSaving(false);
+          alert(`⚠️ الدفعة "${batchId}" - المنتج النهائي ${i + 1}: تاريخ الصلاحية يجب أن يكون أكبر من تاريخ الإنتاج.`);
+          return;
+        }
+      }
+
       const hasInputs = inputs.some((inp) =>
         Object.values(inp).some((v) => v !== "")
       );

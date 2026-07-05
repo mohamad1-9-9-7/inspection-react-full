@@ -102,6 +102,15 @@ export default function POS15ReceivingLogInput() {
     const entries = rows.filter((r) => Object.values(r).some((v) => String(v || "").trim() !== ""));
     if (entries.length === 0) { alert("لا يوجد بيانات للحفظ."); return; }
 
+    // التحقق من التواريخ: تاريخ الانتهاء > تاريخ الإنتاج
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (e.productionDate && e.expiryDate && e.expiryDate <= e.productionDate) {
+        alert(`⚠️ الصف ${i + 1}: تاريخ الصلاحية يجب أن يكون أكبر من تاريخ الإنتاج.`);
+        return;
+      }
+    }
+
     const payload = {
       branch: BRANCH, formRef, classification, reportDate, month: monthText,
       entries, verifiedBy, savedAt: Date.now(),
