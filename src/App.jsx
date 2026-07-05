@@ -5,6 +5,7 @@ import NotificationManager from "./components/NotificationManager";
 import API_BASE from "./config/api";
 import { branchIdFromPath } from "./config/branches";
 import { getSecuritySettings, isDeleteAllowedForBranch } from "./pages/settings/SecurityControlsTab";
+import { clearAppSession } from "./utils/authFetch";
 
 const SubscriptionExpired = lazy(() => import("./pages/SubscriptionExpired"));
 const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
@@ -499,7 +500,7 @@ function ProtectedRoute({ children }) {
         isAuthed     = true;
         isSuperAdmin = user.isSuperAdmin || false;
       } else {
-        localStorage.removeItem("currentUser");
+        clearAppSession();
       }
     }
   } catch {
@@ -656,7 +657,7 @@ function useSecurityGuard() {
       const minutes = Number(settings.lockScreenMinutes || 0);
       if (!minutes || minutes <= 0 || location.pathname === "/") return;
       timer = window.setTimeout(() => {
-        try { localStorage.removeItem("currentUser"); } catch {}
+        clearAppSession();
         try { sessionStorage.setItem("session_expired_reason", "idle_lock"); } catch {}
         window.location.href = "/";
       }, minutes * 60 * 1000);

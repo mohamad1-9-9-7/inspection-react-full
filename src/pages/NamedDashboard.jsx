@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import logo from "../assets/almawashi-logo.jpg";
 import API_BASE from "../config/api";
+import { clearAppSession } from "../utils/authFetch";
 
 /* ══════════════════════════════════════════
    OPERATOR PICKER — who is working now?
@@ -337,8 +338,7 @@ function LegacyNamedDashboard() {
         body: JSON.stringify({ username: currentUser.username, operator }),
       });
     } catch { /* ignore */ }
-    sessionStorage.removeItem(sessionKey);
-    localStorage.removeItem("currentUser");
+    clearAppSession();
     navigate("/", { replace: true });
   };
 
@@ -1077,8 +1077,7 @@ export default function NamedDashboard() {
         body: JSON.stringify({ username: currentUser.username, operator }),
       });
     } catch {}
-    sessionStorage.removeItem(sessionKey);
-    localStorage.removeItem("currentUser");
+    clearAppSession();
     navigate("/", { replace: true });
   };
 

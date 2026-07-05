@@ -584,6 +584,7 @@ export const T = {
     ciListTitle: "🌱 مبادرات التحسين المستمر",
     ciSubtitle: "البند 10.2 من ISO 22000 — Continual Improvement of FSMS",
     ciInputTitle: "💡 مبادرة تحسين جديدة",
+    ciEditTitle: "✏️ تعديل مبادرة التحسين",
 
     /* Section 1 — Idea */
     ciIdeaSection: "💡 الفكرة الأولية",
@@ -1362,6 +1363,7 @@ export const T = {
     ciListTitle: "🌱 Continual Improvement Initiatives",
     ciSubtitle: "ISO 22000 Clause 10.2 — Continual Improvement of FSMS",
     ciInputTitle: "💡 New Improvement Initiative",
+    ciEditTitle: "✏️ Edit Improvement Initiative",
 
     /* Section 1 — Idea */
     ciIdeaSection: "💡 Initial Idea",

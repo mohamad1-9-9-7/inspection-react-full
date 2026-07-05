@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { BrowserRouter, HashRouter } from 'react-router-dom';
 import './styles/globals.css';
+import './utils/authFetch';
 
 // لما نشتغل داخل Electron (file://) لازم HashRouter لأن BrowserRouter بيكسر
 const isElectron =

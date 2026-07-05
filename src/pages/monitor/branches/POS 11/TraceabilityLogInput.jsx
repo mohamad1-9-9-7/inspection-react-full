@@ -229,7 +229,7 @@ function normalizeRawForIndex(doc) {
 
 /* ===== جلب وبناء فهرس RAW ===== */
 async function fetchRawIndex({ signal } = {}) {
-  const q = `${REPORTS_URL}?type=${encodeURIComponent("qcs_raw_material")}&limit=500`;
+  const q = `${REPORTS_URL}?type=${encodeURIComponent("qcs_raw_material")}&limit=50`;
   const { ok, data } = await jsonFetch(q, { signal });
   if (!ok) return [];
   const items = Array.isArray(data) ? data : (data && (data.data || data.items || data.reports)) || [];
@@ -259,6 +259,43 @@ export default function POS11TraceabilityLogInput() {
   const [checkedBy, setCheckedBy]   = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [saving, setSaving] = useState(false);
+
+  /* ===== فحص وجود تقرير محفوظ لنفس اليوم (نفس الفرع/النوع) ===== */
+  const [hasExistingForDate, setHasExistingForDate] = useState(false);
+  const [checkingExisting, setCheckingExisting] = useState(false);
+
+  useEffect(() => {
+    let abort = false;
+    async function checkExisting() {
+      if (!date) { setHasExistingForDate(false); return; }
+      setCheckingExisting(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+          { cache: "no-store", headers: { Accept: "application/json" } }
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let json = null;
+        try { json = await res.json(); } catch { json = null; }
+        const arr = Array.isArray(json)
+          ? json
+          : json?.data || json?.items || json?.reports || json?.rows || [];
+        const exists = (arr || []).some((r) => {
+          const p = r?.payload ?? r;
+          const rd = p?.reportDate || p?.date || r?.created_at;
+          return String(rd || "").slice(0, 10) === date;
+        });
+        if (!abort) setHasExistingForDate(exists);
+      } catch (e) {
+        console.error("Failed to check existing traceability log", e);
+        if (!abort) setHasExistingForDate(false);
+      } finally {
+        if (!abort) setCheckingExisting(false);
+      }
+    }
+    checkExisting();
+    return () => { abort = true; };
+  }, [date]);
 
   /* ===== RAW index ===== */
   const [rawIndex, setRawIndex] = useState([]);
@@ -437,6 +474,15 @@ export default function POS11TraceabilityLogInput() {
   async function handleSave() {
     if (!date) { alert("الرجاء تحديد التاريخ."); return; }
 
+    if (hasExistingForDate) {
+      alert(
+        "⚠️ يوجد تقرير محفوظ لنفس التاريخ لهذا الفرع.\n" +
+        "A report is already saved for this date for this branch.\n" +
+        "لا يمكن حفظ تقرير جديد لنفس اليوم. غيّر التاريخ أو راجع التقرير من شاشة التقارير."
+      );
+      return;
+    }
+
     const hasAnyData = batches.some(b =>
       (b.inputs ?? []).some(inp => Object.values(inp).some(v => String(v||"").trim() !== "")) ||
       (b.outputs ?? []).some(out => Object.values(out).some(v => String(v||"").trim() !== ""))
@@ -562,6 +608,12 @@ export default function POS11TraceabilityLogInput() {
           <input type="date" value={date} onChange={(e)=>setDate(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
         </div>
       </div>
+
+      {hasExistingForDate && (
+        <div style={{ marginBottom: 12, fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>
+          ⚠️ يوجد تقرير محفوظ لنفس التاريخ لهذا الفرع. لا يمكن حفظ تقرير جديد لنفس اليوم.
+        </div>
+      )}
 
       {/* Table */}
       <div style={{ overflowX:"auto" }}>
@@ -717,8 +769,12 @@ export default function POS11TraceabilityLogInput() {
       {/* Controls */}
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button onClick={addBatch} style={btnStyle("#10b981")}>+ Add Batch (one-row)</button>
-        <button onClick={handleSave} disabled={saving} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : "Save Log"}
+        <button
+          onClick={handleSave}
+          disabled={saving || hasExistingForDate || checkingExisting}
+          style={btnStyle("#2563eb")}
+        >
+          {hasExistingForDate ? "Report exists for this date" : saving ? "Saving…" : "Save Log"}
         </button>
       </div>
 

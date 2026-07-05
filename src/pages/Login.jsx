@@ -43,6 +43,7 @@ function Login() {
       const data = await res.json();
 
       if (data.ok && data.user) {
+        if (data.token) localStorage.setItem("authToken", data.token);
         localStorage.setItem(
           "currentUser",
           JSON.stringify({

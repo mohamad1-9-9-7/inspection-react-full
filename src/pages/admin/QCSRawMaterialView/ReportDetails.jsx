@@ -11,6 +11,7 @@ import {
   upsertReportOnServer, // ✅ الحفظ على السيرفر (UPSERT)
 } from "./viewUtils";
 import EmailSendModal from "../../shared/EmailSendModal";
+import EditReportModal from "./EditReportModal";
 import { qcsEmailConfig } from "../../monitor/branches/shipment_recc/qcsEmailConfig";
 import { isDeleteAllowedForBranch } from "../../settings/SecurityControlsTab";
 
@@ -94,14 +95,13 @@ const isBase64Image = (u) => typeof u === "string" && u.startsWith("data:image/"
 /* ================= Helper: نحفظ ونثبت serverId ================= */
 async function commitToServer(nextReport, updateSelectedReport) {
   const saved = await upsertReportOnServer(nextReport);
-  const srv = saved?.data || saved || {};
-  const dbId =
-    srv?._id || srv?.id || srv?.data?._id || nextReport?.serverId || undefined;
-  const payload = srv?.payload || null;
+  // السيرفر يرجّع { ok, report: row } — نلتقط id الصف حتى الحفظات التالية
+  // تحدّث نفس الصف (PUT) بدل إنشاء نسخة جديدة (POST).
+  const rep = saved?.report || saved?.data || saved || {};
+  const dbIdRaw = rep?.id ?? rep?._id ?? nextReport?.serverId ?? undefined;
+  const dbId = dbIdRaw != null && dbIdRaw !== "" ? String(dbIdRaw) : undefined;
 
-  const merged = payload
-    ? { ...nextReport, ...payload, serverId: dbId }
-    : { ...nextReport, serverId: dbId };
+  const merged = { ...nextReport, serverId: dbId };
 
   updateSelectedReport(() => merged);
   return merged;
@@ -301,7 +301,13 @@ export default function ReportDetails({
   const [showAttachments, setShowAttachments] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [selectedImages, setSelectedImages] = useState(new Set());
+
+  // حفظ التعديلات على السيرفر (نفس مسار الصور/الشهادات)
+  const handleSaveEdits = async (nextReport) => {
+    await commitToServer(nextReport, updateSelectedReport);
+  };
 
   // Normalize selectedReport for EmailSendModal (it expects shipmentStatus + entrySequence)
   const emailPayload = useMemo(() => {
@@ -1041,6 +1047,16 @@ export default function ReportDetails({
             <div className="no-print no-pdf" style={{ display: "flex", gap: 6, flexWrap: "wrap", flexShrink: 0 }}>
               <button
                 className="qcs-action-btn-sm"
+                onClick={() => setEditOpen(true)}
+                disabled={!selectedReport}
+                style={{ background: "#4f46e5", color: "#fff", borderColor: "#4338ca" }}
+                title="Edit report"
+              >
+                ✏️ Edit
+              </button>
+
+              <button
+                className="qcs-action-btn-sm"
                 onClick={() => setEmailOpen(true)}
                 disabled={!selectedReport}
                 style={{ background: "#7c3aed", color: "#fff", borderColor: "#6d28d9" }}
@@ -1565,6 +1581,14 @@ export default function ReportDetails({
         payload={emailPayload}
         config={qcsEmailConfig}
       />
+
+      {editOpen && selectedReport && (
+        <EditReportModal
+          report={selectedReport}
+          onClose={() => setEditOpen(false)}
+          onSave={handleSaveEdits}
+        />
+      )}
     </div>
   );
 }

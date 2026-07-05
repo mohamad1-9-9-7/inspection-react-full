@@ -105,8 +105,11 @@ export default function QCSRawMaterialView() {
     setReports((prev) => {
       const idx = prev.findIndex((r) => r.id === selectedReportId);
       if (idx < 0) return prev;
-      const updated = { ...prev[idx] };
-      mutateFn(updated);
+      const base = { ...prev[idx] };
+      // supports both styles: mutate-in-place OR return a new object
+      const returned = mutateFn(base);
+      const updated =
+        returned && typeof returned === "object" ? returned : base;
       const newList = [...prev];
       newList[idx] = updated;
       saveToLocal(newList);

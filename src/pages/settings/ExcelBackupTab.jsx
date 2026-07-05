@@ -150,6 +150,33 @@ const BRANCHES = [
     ],
   },
   {
+    id: "HSE", label: "HSE", emoji: "HSE", accent: "#ea580c",
+    types: [
+      ["hse_incident_reports",             "F-01 Incident / Near-Miss"],
+      ["hse_risk_register",                "F-02 Risk Register"],
+      ["hse_work_permits",                 "F-07 Work Permits"],
+      ["hse_cleaning_log",                 "F-10 Cleaning & Sanitation"],
+      ["hse_microbiological_swabs",        "F-11 Microbiological Swabs"],
+      ["hse_pest_control_log",             "F-12 Pest Control"],
+      ["hse_equipment_maintenance",        "F-13/F-18 Equipment Maintenance"],
+      ["hse_fire_equipment_inspections",   "F-14 Fire Equipment"],
+      ["hse_forklift_inspections",         "F-15 Forklift Inspections"],
+      ["hse_toolbox_meetings",             "F-16 Toolbox Meetings"],
+      ["hse_evacuation_drills",            "F-17 Evacuation Drills"],
+      ["hse_waste_disposal_log",           "F-19 Waste Disposal"],
+      ["hse_capa_tracker",                 "F-20 CAPA Tracker"],
+      ["hse_monthly_safety_reports",       "F-21 Monthly Safety Reports"],
+      ["hse_ncr_reports",                  "F-26 NCR Reports"],
+      ["hse_licenses_certs",               "Licenses & Certificates"],
+      ["hse_policies_status",              "Policies Status"],
+      ["hse_sops_status",                  "SOPs Status"],
+      ["hse_training_records",             "Training Records"],
+      ["hse_ppe_issue_log",                "PPE Issue Log"],
+      ["hse_emergency_contacts",           "Emergency Contacts"],
+      ["hse_welfare_checks",               "Worker Welfare Checks"],
+    ],
+  },
+  {
     id: "OHC", label: "OHC", emoji: "🩺", accent: "#0d9488",
     types: [
       ["ohc_certificate",            "OHC Certificates"],
@@ -207,22 +234,42 @@ async function fetchType(type) {
 /* ═══════════════════════════════════════════════════════════════
    WORKBOOK BUILDER
    ═══════════════════════════════════════════════════════════════ */
+function addEmptySheet(wb, typeLabel) {
+  const ws = wb.addWorksheet("لا بيانات", { views: [{ showGridLines: false }] });
+  ws.columns = [{ width: 60 }];
+  ws.getCell("A1").value = `لا توجد بيانات لـ ${typeLabel}`;
+  ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+  ws.getCell("A1").font = { size: 13, color: { argb: "9CA3AF" } };
+  ws.getRow(1).height = 36;
+}
+
 async function buildWorkbook(ExcelJS, branchLabel, typeKey, typeLabel, records) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Al Mawashi — Excel Backup";
   wb.created = new Date();
 
-  if (!records.length) {
-    const ws = wb.addWorksheet("لا بيانات", { views: [{ showGridLines: false }] });
-    ws.columns = [{ width: 60 }];
-    ws.getCell("A1").value = `لا توجد بيانات لـ ${typeLabel}`;
-    ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
-    ws.getCell("A1").font = { size: 13, color: { argb: "9CA3AF" } };
-    ws.getRow(1).height = 36;
+  const exporter = getExporter(typeKey);
+
+  // Collection exporters (registers/logs) render ALL records into ONE sheet
+  // that mirrors the on-screen table — call once with the full array.
+  if (exporter.collection) {
+    if (!records.length) { addEmptySheet(wb, typeLabel); return wb; }
+    try {
+      await exporter(wb, records, { branchLabel, typeKey, typeLabel });
+    } catch (e) {
+      console.error(`Collection exporter failed for ${typeKey}:`, e);
+      const ws = wb.addWorksheet(sanitizeSheetName(typeLabel), { views: [{ showGridLines: false }] });
+      ws.getCell("A1").value = `⚠️ Failed to render this register: ${e?.message || e}`;
+      ws.getCell("A1").font = { color: { argb: "B91C1C" } };
+    }
     return wb;
   }
 
-  const exporter = getExporter(typeKey);
+  if (!records.length) {
+    addEmptySheet(wb, typeLabel);
+    return wb;
+  }
+
   const usedNames = new Map();
   for (let i = 0; i < records.length; i++) {
     const rec = records[i];

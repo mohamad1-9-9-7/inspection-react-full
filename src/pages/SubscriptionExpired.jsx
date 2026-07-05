@@ -2,6 +2,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsLang } from "./settings/_shared/settingsI18n";
+import { clearAppSession } from "../utils/authFetch";
 
 function getUser() {
   try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
@@ -27,8 +28,7 @@ export default function SubscriptionExpired() {
   const support          = getSupportContact();
 
   function handleLogout() {
-    localStorage.removeItem("currentUser");
-    localStorage.removeItem("subscription_cache");
+    clearAppSession();
     navigate("/");
   }
 

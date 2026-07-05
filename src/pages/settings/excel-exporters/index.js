@@ -20,6 +20,11 @@ import qcs_rm_ingredients    from "./qcs_rm_ingredients";
 import qcs_garbage_disposal  from "./qcs_garbage_disposal";
 import qcs_meat_waste_disposal from "./qcs_meat_waste_disposal";
 import qcs_pest_control      from "./qcs_pest_control";
+import qcs_stock_rotation    from "./qcs_stock_rotation";
+import qcs_visitor_checklist from "./qcs_visitor_checklist";
+import qcs_staff_sickness    from "./qcs_staff_sickness";
+import qcs_employee_return_to_work from "./qcs_employee_return_to_work";
+import qcs_product_rejection from "./qcs_product_rejection";
 import ftr1_preloading       from "./ftr1_preloading";
 import ftr2_preloading       from "./ftr2_preloading";
 
@@ -86,10 +91,37 @@ import prod_cleaning_checklist  from "./prod_cleaning_checklist";
 import prod_personal_hygiene    from "./prod_personal_hygiene";
 import prod_defrosting_record   from "./prod_defrosting_record";
 import prd_traceability_log     from "./prd_traceability_log";
+import prod_online_cutting      from "./prod_online_cutting";
+import prod_dried_meat          from "./prod_dried_meat";
 
-/* ─── HACCP & ISO (2 custom + 12 generic) ─── */
+/* ─── HACCP & ISO (2 forms + 5 register collections + 7 generic) ─── */
 import ccp_monitoring_record    from "./ccp_monitoring_record";
 import customer_complaint       from "./customer_complaint";
+import fsms_risk_register_item        from "./fsms_risk_register_item";
+import fsms_opportunity_register_item from "./fsms_opportunity_register_item";
+import fsms_change_management_log_item from "./fsms_change_management_log_item";
+import fsms_objective                 from "./fsms_objective";
+import glass_register_item            from "./glass_register_item";
+import calibration_record             from "./calibration_record";
+import internal_calibration_record    from "./internal_calibration_record";
+import fsms_communication_log         from "./fsms_communication_log";
+import continual_improvement          from "./continual_improvement";
+import mrm_record                     from "./mrm_record";
+import internal_audit_record          from "./internal_audit_record";
+import real_recall                    from "./real_recall";
+import mock_recall_drill              from "./mock_recall_drill";
+
+/* ─── OHC + Training ─── */
+import ohc_certificate               from "./ohc_certificate";
+import training_certificate          from "./training_certificate";
+import training_session              from "./training_session";
+
+/* ─── Inspection + Fleet ─── */
+import municipality_inspection       from "./municipality_inspection";
+import car_approvals                 from "./car_approvals";
+import cars_loading_inspection       from "./cars_loading_inspection";
+import truck_daily_cleaning          from "./truck_daily_cleaning";
+import maintenance                   from "./maintenance";
 
 /* ─── Returns branch (5) ─── */
 import returns               from "./returns";
@@ -114,6 +146,11 @@ const CUSTOM = {
   "qcs_garbage_disposal":                   qcs_garbage_disposal,
   "qcs_meat_waste_disposal":                qcs_meat_waste_disposal,
   "qcs_pest_control":                       qcs_pest_control,
+  "qcs_stock_rotation":                     qcs_stock_rotation,
+  "qcs_visitor_checklist":                  qcs_visitor_checklist,
+  "qcs_staff_sickness":                     qcs_staff_sickness,
+  "qcs_employee_return_to_work":            qcs_employee_return_to_work,
+  "qcs_product_rejection":                  qcs_product_rejection,
 
   /* FTR 1 / FTR 2 */
   "ftr1_temperature":                       ftr1_temperature,
@@ -178,16 +215,41 @@ const CUSTOM = {
   "prod_personal_hygiene":                  prod_personal_hygiene,
   "prod_defrosting_record":                 prod_defrosting_record,
   "prd_traceability_log":                   prd_traceability_log,
-  // prod_online_cutting → generic
-  // prod_dried_meat → generic
+  "prod_online_cutting":                    prod_online_cutting,
+  "prod_dried_meat":                        prod_dried_meat,
 
   /* HACCP & ISO */
   "ccp_monitoring_record":                  ccp_monitoring_record,
   "customer_complaint":                     customer_complaint,
-  // calibration_record, internal_calibration_record, mock_recall_drill,
-  // real_recall, mrm_record, internal_audit_record, continual_improvement,
-  // glass_register_item, fsms_risk_register_item, fsms_opportunity_register_item,
-  // fsms_change_management_log_item, fsms_objective  →  generic
+  // Register collections — one sheet aggregating all records (see _register.js)
+  "fsms_risk_register_item":                fsms_risk_register_item,
+  "fsms_opportunity_register_item":         fsms_opportunity_register_item,
+  "fsms_change_management_log_item":        fsms_change_management_log_item,
+  "fsms_objective":                         fsms_objective,
+  "glass_register_item":                    glass_register_item,
+  "calibration_record":                     calibration_record,
+  "internal_calibration_record":            internal_calibration_record,
+  "fsms_communication_log":                 fsms_communication_log,
+  "continual_improvement":                  continual_improvement,
+  // Single-record document forms (each report = one detailed sheet)
+  "mrm_record":                             mrm_record,
+  "internal_audit_record":                  internal_audit_record,
+  "real_recall":                            real_recall,
+  "mock_recall_drill":                      mock_recall_drill,
+
+  /* OHC + Training */
+  "ohc_certificate":                        ohc_certificate,
+  "training_certificate":                   training_certificate,
+  "training_session":                       training_session,
+  // training_quiz → no producer in the app (quiz data is embedded in
+  // training_session.questionsBank/participants); left on generic.
+
+  /* Inspection + Fleet */
+  "municipality_inspection":                municipality_inspection,
+  "car_approvals":                          car_approvals,
+  "cars_loading_inspection":                cars_loading_inspection,
+  "truck_daily_cleaning":                   truck_daily_cleaning,
+  "maintenance":                            maintenance,
 
   /* Returns branch */
   "returns":                                returns,

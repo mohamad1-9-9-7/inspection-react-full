@@ -1,6 +1,7 @@
 // src/pages/DailyMonitorDashboard.js
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { branchAllowed } from "../../utils/perms";
 
 const branches = [
   { id: "QCS",        label: "QCS",               type: "qcs"     },
@@ -678,25 +679,10 @@ export default function DailyMonitorDashboard() {
     return () => clearInterval(t);
   }, []);
 
-  /* ── Named-account branch access control (per-icon: Daily Monitor) ── */
-  const currentUser = (() => {
-    try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
-  })();
-  const isNamedAccount = currentUser.type === "named";
-
-  /* allowedBranches may be:
-     - { daily: [...], admin: [...] }   ← new per-icon format
-     - [...]                            ← legacy flat array (applies to both)
-     - undefined                        ← no restriction */
-  const ab = currentUser.allowedBranches;
-  const dailyAllowed = Array.isArray(ab)
-    ? ab                                    // legacy
-    : (ab && Array.isArray(ab.daily) ? ab.daily : []);
-
-  /* Filter branch cards for restricted accounts */
-  const visibleBranches = (isNamedAccount && dailyAllowed.length > 0)
-    ? branches.filter(b => dailyAllowed.includes(b.id))
-    : branches;
+  /* Filter branch cards for restricted accounts (perms.js is the single
+     source of truth for allowedBranches — see src/utils/perms.js) */
+  const visibleBranches = branches.filter(b => branchAllowed("daily", b.id));
+  const isRestrictedToBranches = visibleBranches.length < branches.length;
 
   /* Dynamic stats based on visible branches */
   const stats = [
@@ -754,7 +740,7 @@ export default function DailyMonitorDashboard() {
 
         {/* Section label */}
         <div className="d-section">
-          {isNamedAccount && dailyAllowed.length > 0
+          {isRestrictedToBranches
             ? `Your assigned branches (${visibleBranches.length})`
             : "Select a branch to view reports"}
         </div>

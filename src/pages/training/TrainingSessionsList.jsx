@@ -806,10 +806,12 @@ export default function TrainingSessionsList() {
       // Build live question bank map: { [moduleName]: questions[] }
       const qArr = normalizeToArray(qData);
       const bankMap = {};
+      // Rows arrive newest-first. If duplicate records exist for a module,
+      // keep the NEWEST one (skip once set) so freshly added questions win.
       qArr.forEach((rec) => {
         const mod = rec?.payload?.module;
         const qs = rec?.payload?.questions;
-        if (mod && Array.isArray(qs) && qs.length > 0) {
+        if (mod && Array.isArray(qs) && qs.length > 0 && !bankMap[mod]) {
           bankMap[mod] = qs;
         }
       });

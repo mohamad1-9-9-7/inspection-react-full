@@ -3,27 +3,8 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import SignatureName from "../shared/SignatureName";
 import { buildInspectionEvidencePublic } from "../../utils/inspectionPublicLink";
+import API_BASE from "../../config/api";
 
-/* ===== API base (aligned with your project) ===== */
-const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-const fromWindow = typeof window !== "undefined" ? window.__QCS_API__ : undefined;
-const fromProcess =
-  typeof process !== "undefined"
-    ? (process.env?.REACT_APP_API_URL ||
-       process.env?.VITE_API_URL ||
-       process.env?.RENDER_EXTERNAL_URL)
-    : undefined;
-let fromVite;
-try {
-  fromVite =
-    import.meta.env &&
-    (import.meta.env.VITE_API_URL || import.meta.env.RENDER_EXTERNAL_URL);
-} catch {
-  fromVite = undefined;
-}
-const API_BASE = String(
-  fromWindow || fromProcess || fromVite || API_ROOT_DEFAULT
-).replace(/\/$/, "");
 const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE_KEY = "internal_multi_audit";
 

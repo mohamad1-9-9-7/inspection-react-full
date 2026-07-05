@@ -279,8 +279,11 @@ export const normalizeServerRecord = (rec) => {
   const p = rec?.payload || rec || {};
   const payloadId = p.id || p.payloadId || undefined;
 
-  // نترك serverId إن وُجد لكن لن نعتمد عليه في الدمج
-  const dbId = rec?._id || undefined;
+  // معرّف صف قاعدة البيانات: Postgres يستخدم `id` (رقم)، مونغو يستخدم `_id`.
+  // كان الكود يقرأ `_id` فقط → serverId يبقى undefined دائمًا → كل حفظ يعمل POST
+  // (نسخة مكررة). نقرأ الآن `id` أيضًا حتى يتم التحديث بنفس الصف.
+  const dbIdRaw = rec?.id ?? rec?._id ?? undefined;
+  const dbId = dbIdRaw != null && dbIdRaw !== "" ? String(dbIdRaw) : undefined;
 
   const createdAt =
     p.createdAt ||
@@ -384,8 +387,9 @@ export async function upsertReportOnServer(record) {
   // لا نستخدم أي id محلي في عنوان الطلب
   const { id, localId, serverId, ...clean } = record || {};
 
-  // إبقاء منطق PUT/POST كما هو — لكن الدمج لا يعتمد على serverId
-  const hasServerId = isMongoId(serverId);
+  // نقبل معرّف مونغو (24 hex) أو معرّف Postgres الرقمي — كلاهما صالح للتحديث بالـ id
+  const sid = serverId != null ? String(serverId) : "";
+  const hasServerId = isMongoId(sid) || /^\d+$/.test(sid);
 
   const putUrl  = `${API_BASE}/api/reports/${encodeURIComponent(serverId || "")}?type=${encodeURIComponent(type)}`;
   const postUrl = `${API_BASE}/api/reports`;

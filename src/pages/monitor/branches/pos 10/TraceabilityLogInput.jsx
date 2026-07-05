@@ -393,7 +393,7 @@ function normalizeRawForIndex(doc) {
 async function fetchRawIndex({ signal } = {}) {
   const q = `${REPORTS_URL}?type=${encodeURIComponent(
     "qcs_raw_material"
-  )}&limit=500`;
+  )}&limit=50`;
   const { ok, data } = await jsonFetch(q, { signal });
   if (!ok) return [];
   const items = Array.isArray(data)

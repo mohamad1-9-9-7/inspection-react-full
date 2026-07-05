@@ -364,7 +364,9 @@ async function apiPost(type, payload) {
     body: JSON.stringify({ reporter: "admin", type, payload }),
   });
   if (!res.ok) throw new Error((await res.text().catch(() => "")) || `HTTP ${res.status}`);
-  return res.json().catch(() => ({}));
+  // Server returns { ok, report }. Callers read `.id`, so unwrap to the row.
+  const data = await res.json().catch(() => ({}));
+  return data?.report || data;
 }
 async function apiPut(id, type, payload) {
   const res = await fetch(`${REPORTS_URL}/${id}`, {
@@ -372,7 +374,9 @@ async function apiPut(id, type, payload) {
     body: JSON.stringify({ reporter: "admin", type, payload }),
   });
   if (!res.ok) throw new Error((await res.text().catch(() => "")) || `HTTP ${res.status}`);
-  return res.json().catch(() => ({}));
+  // Server returns { ok, report }. Callers read `.id`, so unwrap to the row.
+  const data = await res.json().catch(() => ({}));
+  return data?.report || data;
 }
 async function apiDel(id) {
   const res = await fetch(`${REPORTS_URL}/${id}`, { method: "DELETE" });
@@ -638,7 +642,9 @@ export default function TrainingAdmin() {
   /* QUESTIONS */
   function getQuestionsForModule(mod) {
     const rec = questionsRecords.find((r) => r?.payload?.module === mod);
-    if (rec?.payload?.questions?.length) return { id: rec.id, questions: rec.payload.questions };
+    // Reuse the existing record's id even when its questions array is empty,
+    // so the next save updates that row (PUT) instead of creating a duplicate.
+    if (rec) return { id: rec.id, questions: rec.payload?.questions?.length ? rec.payload.questions : normalizeCanonQuestions(mod) };
     return { id: null, questions: normalizeCanonQuestions(mod) };
   }
   async function persistQuestions(mod, questions, existingId) {

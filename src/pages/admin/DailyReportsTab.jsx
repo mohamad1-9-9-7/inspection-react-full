@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Button from "../../components/Button";
 import BranchHealthScore from "./BranchHealthScore";
+import { branchAllowed } from "../../utils/perms";
 import "./DailyReportsTab.css";
 
 const branches = [
@@ -59,22 +60,12 @@ export default function DailyReportsTab({
     fmt(); const t=setInterval(fmt,30_000); return ()=>clearInterval(t);
   }, []);
 
-  /* ── Named-account branch access control (per-icon: Admin) ──
-     allowedBranches may be { daily:[...], admin:[...] } (new) or [...] (legacy)
-     "Al Warqa Kitchen" in this list is the same physical branch as "POS 19" in the selector. */
-  const currentUser = (() => {
-    try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); } catch { return {}; }
-  })();
-  const isNamedAccount = currentUser.type === "named";
-  const ab = currentUser.allowedBranches;
-  const adminAllowed = Array.isArray(ab)
-    ? ab
-    : (ab && Array.isArray(ab.admin) ? ab.admin : []);
-
+  /* Branch access control (perms.js is the single source of truth for
+     allowedBranches — see src/utils/perms.js). "Al Warqa Kitchen" in this
+     list is the same physical branch as "POS 19" in the selector. */
   const aliasForMatch = (b) => (b === "Al Warqa Kitchen" ? "POS 19" : b);
-  const visibleBranches = (isNamedAccount && adminAllowed.length > 0)
-    ? branches.filter(b => adminAllowed.includes(aliasForMatch(b)))
-    : branches;
+  const visibleBranches = branches.filter(b => branchAllowed("admin", aliasForMatch(b)));
+  const isRestrictedToBranches = visibleBranches.length < branches.length;
   const displayReportCount = Number.isFinite(totalReportsCount)
     ? totalReportsCount
     : dailyReports.length;
@@ -127,7 +118,7 @@ export default function DailyReportsTab({
         {/* Topbar */}
         <div className="dr-topbar">
           <div className="dr-section">
-            {isNamedAccount && adminAllowed.length > 0
+            {isRestrictedToBranches
               ? `Your assigned branches (${visibleBranches.length})`
               : "Select a branch"}
           </div>

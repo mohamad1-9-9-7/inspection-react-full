@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import EditContinualImprovementModal from "./EditContinualImprovementModal";
 
 const TYPE = "continual_improvement";
 
@@ -171,6 +172,7 @@ export default function ContinualImprovementView() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [editingRecord, setEditingRecord] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -346,7 +348,7 @@ export default function ContinualImprovementView() {
                   <button style={S.btn("secondary")} onClick={() => setOpenId(isOpen ? null : rec.id)}>
                     {isOpen ? t("collapse") : t("expand")}
                   </button>
-                  <button style={S.btn("secondary")} onClick={() => navigate(`/haccp-iso/continual-improvement?edit=${rec.id}`)}>
+                  <button style={S.btn("secondary")} onClick={() => setEditingRecord(rec)}>
                     {t("edit")}
                   </button>
                   <button style={S.btn("danger")} onClick={() => del(rec.id)} data-delete-action="true">{t("del")}</button>
@@ -453,6 +455,15 @@ export default function ContinualImprovementView() {
             </div>
           );
         })}
+
+        {editingRecord && (
+          <EditContinualImprovementModal
+            record={editingRecord}
+            onClose={() => setEditingRecord(null)}
+            onSave={load}
+            t={t}
+          />
+        )}
       </div>
     </main>
   );

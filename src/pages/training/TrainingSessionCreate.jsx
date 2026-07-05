@@ -242,10 +242,14 @@ async function loadAdminTrainingConfig() {
   const modules = uniqueStrings([...(config.modules || []), ...MODULES]);
 
   const questionBank = {};
+  // Rows arrive newest-first; keep the NEWEST record per module so that any
+  // duplicate rows don't shadow freshly added questions.
   normalizeReports(questionsData).forEach((rec) => {
     const mod = String(rec?.payload?.module || "").trim();
     const qs = rec?.payload?.questions;
-    if (mod && Array.isArray(qs) && qs.length) questionBank[mod] = questionsToBilingualPack(qs);
+    if (mod && Array.isArray(qs) && qs.length && !questionBank[mod]) {
+      questionBank[mod] = questionsToBilingualPack(qs);
+    }
   });
 
   const detailsByModule = {};
