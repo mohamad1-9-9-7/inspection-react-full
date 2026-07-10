@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 
 
@@ -107,13 +108,7 @@ export default function DailyCleaningChecklistView() {
   /* ── Fetch ── */
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?${new URLSearchParams({type:TYPE})}`, { cache:"no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const uniq = Array.from(new Set(
-        list.map(r=>r?.payload).filter(p=>p&&p.branch===BRANCH&&p.reportDate).map(p=>p.reportDate)
-      )).sort((a,b)=>b.localeCompare(a));
+      const uniq = await listReportDates(TYPE);
       setAllDates(uniq);
       // Tree stays collapsed by default.
       if (uniq.length && !uniq.includes(date)) setDate(uniq[0]);
@@ -123,11 +118,7 @@ export default function DailyCleaningChecklistView() {
   async function fetchRecord(d = date) {
     setLoading(true); setErr(""); setRecord(null); setEditEntries([emptyEntry()]);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?${new URLSearchParams({type:TYPE})}`, { cache:"no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const match = list.find(r=>r?.payload?.branch===BRANCH&&r?.payload?.reportDate===d) || null;
+      const match = await getReportByDate(TYPE, d);
       setRecord(match);
       const entries = match?.payload?.entries?.length ? JSON.parse(JSON.stringify(match.payload.entries)) : [emptyEntry()];
       setEditEntries(entries);
@@ -146,7 +137,6 @@ export default function DailyCleaningChecklistView() {
   const removeEditRow = (index) => setEditEntries(prev => prev.length===1 ? prev : prev.filter((_,i)=>i!==index));
 
   /* ── Edit / Save / Delete ── */
-  const askPass = (label="") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   function toggleEdit() {
     if (editing) {
@@ -159,24 +149,21 @@ export default function DailyCleaningChecklistView() {
   }
 
   async function saveEdit() {
-    if (!askPass("Save changes")) return alert("❌ Wrong password");
     if (!record) return;
     const rid = getId(record);
     const payload = { ...(record?.payload||{}), branch:BRANCH, reportDate:record?.payload?.reportDate, entries:editEntries, savedAt:Date.now() };
     try {
       setLoading(true);
-      if (rid) { try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"}); } catch {} }
-      const res = await fetch(`${API_BASE}/api/reports`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({reporter:"pos19",type:TYPE,payload}) });
+      const res = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, { method: rid ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({reporter:"pos19",type:TYPE,payload}) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Changes saved"); setEditing(false);
-      await fetchRecord(payload.reportDate); await fetchAllDates();
+      await fetchRecord(payload.reportDate); invalidateReportDates(TYPE); await fetchAllDates();
     } catch(e) { alert("❌ Saving failed.\n"+String(e?.message||e)); }
     finally { setLoading(false); }
   }
 
   async function handleDelete() {
     if (!record) return;
-    if (!askPass("Delete confirmation")) return alert("❌ Wrong password");
     if (!window.confirm("Are you sure you want to delete this report?")) return;
     const rid = getId(record);
     if (!rid) return alert("⚠️ Missing record id.");
@@ -184,7 +171,7 @@ export default function DailyCleaningChecklistView() {
       setLoading(true);
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"});
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      alert("✅ Deleted"); await fetchAllDates();
+      alert("✅ Deleted"); invalidateReportDates(TYPE); await fetchAllDates();
       setDate(allDates.find(d=>d!==record?.payload?.reportDate) || todayDubai);
     } catch(e) { alert("❌ Delete failed."); }
     finally { setLoading(false); }
@@ -282,7 +269,7 @@ export default function DailyCleaningChecklistView() {
       const res = await fetch(`${API_BASE}/api/reports`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({reporter:"pos19",type:TYPE,payload}) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Imported and saved"); setDate(payload.reportDate);
-      await fetchAllDates(); await fetchRecord(payload.reportDate);
+      invalidateReportDates(TYPE); await fetchAllDates(); await fetchRecord(payload.reportDate);
     } catch(e) { alert("❌ Invalid JSON or save failed"); }
     finally { if(fileInputRef.current) fileInputRef.current.value=""; setLoading(false); }
   }

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../../config/api";
+import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 
 
@@ -37,34 +38,32 @@ export default function CalibrationLogView() {
   const inputStyle = { width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"6px 8px" };
   const gridStyle  = { width:"max-content", borderCollapse:"collapse", tableLayout:"fixed", fontSize:13 };
 
-  async function fetchAllDates() { try { const res=await fetch(`${API_BASE}/api/reports?type=${TYPE}`,{cache:"no-store"}); const data=await res.json(); const list=Array.isArray(data)?data:data?.data??[]; const uniq=Array.from(new Set(list.map(r=>r?.payload).filter(p=>p&&p.branch===BRANCH&&p.reportDate).map(p=>p.reportDate))).sort((a,b)=>b.localeCompare(a)); setAllDates(uniq); if (!uniq.includes(date) && uniq.length) setDate(uniq[0]); } catch(e) { console.warn(e); } }
-  async function fetchRecord(d=date) { setLoading(true); setErr(""); setRecord(null); setEditRows([]); try { const res=await fetch(`${API_BASE}/api/reports?type=${TYPE}`,{cache:"no-store"}); const data=await res.json(); const list=Array.isArray(data)?data:data?.data??[]; const match=list.find(r=>r?.payload?.branch===BRANCH&&r?.payload?.reportDate===d)||null; setRecord(match); const rows=match?.payload?.entries??[]; setEditRows(rows.length?JSON.parse(JSON.stringify(rows)):[]); setEditing(false); } catch(e) { console.error(e); setErr("Failed to fetch data."); } finally { setLoading(false); } }
+  async function fetchAllDates() { try { const uniq = await listReportDates(TYPE); setAllDates(uniq); if (!uniq.includes(date) && uniq.length) setDate(uniq[0]); } catch(e) { console.warn(e); } }
+  async function fetchRecord(d=date) { setLoading(true); setErr(""); setRecord(null); setEditRows([]); try { const match = await getReportByDate(TYPE, d); setRecord(match); const rows=match?.payload?.entries??[]; setEditRows(rows.length?JSON.parse(JSON.stringify(rows)):[]); setEditing(false); } catch(e) { console.error(e); setErr("Failed to fetch data."); } finally { setLoading(false); } }
 
   useEffect(()=>{ fetchAllDates(); }, []);
   useEffect(()=>{ if (date) fetchRecord(date); }, [date]);
 
-  const askPass = (label="") => (window.prompt(`${label}\nEnter password:`)||"")==="9999";
   function toggleEdit() { if (editing) { const rows=record?.payload?.entries??[]; setEditRows(rows.length?JSON.parse(JSON.stringify(rows)):[]); setEditing(false); return; }  setEditing(true); }
   function upd(i,key,val) { setEditRows(p=>{const n=[...p]; n[i]={...n[i],[key]:val}; if (key==="reading"||key==="referenceTemp"){const a=parseFloat(n[i].reading),b=parseFloat(n[i].referenceTemp); n[i].status=(isNaN(a)||isNaN(b))?"":(Math.abs(a-b)<=1?"Pass":"Fail");} return n;}); }
   function addRow() { setEditRows(p=>[...p, emptyRow()]); }
   function delRow(i) { setEditRows(p=>p.length===1?p:p.filter((_,idx)=>idx!==i)); }
 
   async function saveEdit() {
-    if (!askPass("Save changes")) return alert("❌ Wrong password"); if (!record) return;
+    if (!record) return;
     const rid = getId(record); const cleaned = editRows.filter(isFilledRow);
     const payload = {...(record?.payload||{}), branch:BRANCH, reportDate:record?.payload?.reportDate, entries:cleaned, savedAt:Date.now()};
-    try { setLoading(true); if (rid) { try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"}); } catch {} }
-      const r = await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})}); if (!r.ok) throw new Error(); alert("✅ Changes saved"); setEditing(false); await fetchRecord(payload.reportDate); await fetchAllDates();
+    try { setLoading(true); const r = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, { method: rid ? "PUT" : "POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})}); if (!r.ok) throw new Error(); alert("✅ Changes saved"); setEditing(false); await fetchRecord(payload.reportDate); invalidateReportDates(TYPE); await fetchAllDates();
     } catch(e) { alert("❌ Saving failed."); } finally { setLoading(false); }
   }
   async function handleDelete() {
-    if (!record) return; if (!askPass("Delete confirmation")) return alert("❌ Wrong password"); if (!window.confirm("Are you sure?")) return;
+    if (!record) return; if (!window.confirm("Are you sure?")) return;
     const rid = getId(record); if (!rid) return alert("⚠️ Missing id.");
-    try { setLoading(true); const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"}); if (!res.ok) throw new Error(); alert("✅ Deleted"); await fetchAllDates(); setDate(allDates.find(d=>d!==record?.payload?.reportDate)||todayDubai); } catch(e) { alert("❌ Delete failed."); } finally { setLoading(false); }
+    try { setLoading(true); const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"}); if (!res.ok) throw new Error(); alert("✅ Deleted"); invalidateReportDates(TYPE); await fetchAllDates(); setDate(allDates.find(d=>d!==record?.payload?.reportDate)||todayDubai); } catch(e) { alert("❌ Delete failed."); } finally { setLoading(false); }
   }
 
   function exportJSON() { if (!record) return; const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify({type:TYPE,payload:record.payload},null,2)],{type:"application/json"})); a.download=`POS19_Calibration_${record?.payload?.reportDate||date}.json`; a.click(); URL.revokeObjectURL(a.href); }
-  async function importJSON(file) { if (!file) return; try { const txt=await file.text(); const parsed=JSON.parse(txt); const payload=parsed?.payload||parsed; if (!payload?.reportDate) throw new Error(); setLoading(true); const res=await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})}); if (!res.ok) throw new Error(); alert("✅ Imported"); setDate(payload.reportDate); await fetchAllDates(); await fetchRecord(payload.reportDate); } catch(e) { alert("❌ Invalid JSON or save failed"); } finally { if (fileInputRef.current) fileInputRef.current.value=""; setLoading(false); } }
+  async function importJSON(file) { if (!file) return; try { const txt=await file.text(); const parsed=JSON.parse(txt); const payload=parsed?.payload||parsed; if (!payload?.reportDate) throw new Error(); setLoading(true); const res=await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})}); if (!res.ok) throw new Error(); alert("✅ Imported"); setDate(payload.reportDate); invalidateReportDates(TYPE); await fetchAllDates(); await fetchRecord(payload.reportDate); } catch(e) { alert("❌ Invalid JSON or save failed"); } finally { if (fileInputRef.current) fileInputRef.current.value=""; setLoading(false); } }
 
   async function exportXLSX() {
     try {

@@ -3,13 +3,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import {
-  btn,
   formatDMY,
-  GlassShell,
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 
 const TYPE   = "pos15_receiving_log_butchery";
 const BRANCH = "POS 15";
@@ -49,12 +48,48 @@ function emptyRow() {
   };
 }
 
-const gridStyle = { width: "max-content", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 20 };
-const theadRow = { background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" };
+const gridStyle = { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12 };
+const theadRow = { background: "#0ea5e9" };
 const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "6px 4px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" };
-const tdCell = { border: "1px solid #c7d2fe", padding: "6px 4px", textAlign: "center", verticalAlign: "middle" };
-const inputStyle = { width: "100%", border: "1px solid #c7d2fe", borderRadius: 6, padding: "4px 6px" };
-const advancedSelectStyle = { width: "100%", height: 39, border: "1px solid #c7d2fe", borderRadius: 10, padding: "0 10px", background: "#fff", color: "#0f172a", fontSize: 12, fontWeight: 700, outline: "none" };
+const tdCell = { border: "1px solid #e2e8f0", padding: "6px 4px", textAlign: "center", verticalAlign: "middle" };
+const inputStyle = { width: "100%", border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 6px" };
+const advancedSelectStyle = { width: "100%", height: 39, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 10px", background: "#fff", color: "#0f172a", fontSize: 12, fontWeight: 700, outline: "none" };
+
+/* 🎨 نمط تصميم صفحة ISO & HACCP (خلفية متدرّجة فاتحة + شريط علوي أبيض + أزرار حبوب) */
+const ISO = {
+  shell: {
+    minHeight: "100vh",
+    padding: "20px 16px",
+    background:
+      "radial-gradient(circle at 12% 10%, rgba(34,211,238,0.18) 0, rgba(255,255,255,1) 42%, rgba(255,255,255,1) 100%)," +
+      "radial-gradient(circle at 88% 12%, rgba(34,197,94,0.14) 0, rgba(255,255,255,0) 55%)",
+    fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+    color: "#071b2d",
+  },
+  topBar: {
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+    padding: "12px 14px", borderRadius: 14, background: "rgba(255,255,255,0.92)",
+    border: "1px solid rgba(15,23,42,0.16)", boxShadow: "0 12px 32px rgba(2,132,199,0.10)",
+    flexWrap: "wrap", marginBottom: 14,
+  },
+  title: { fontSize: 22, fontWeight: 950, lineHeight: 1.15 },
+  subtitle: { fontSize: 12, fontWeight: 700, opacity: 0.78 },
+  btn: (kind = "secondary", disabled = false) => {
+    const map = {
+      primary:   { bg: "linear-gradient(180deg,#0ea5e9,#06b6d4)", color: "#fff", border: "#0284c7" },
+      secondary: { bg: "#fff", color: "#0c4a6e", border: "#cbd5e1" },
+      success:   { bg: "linear-gradient(180deg,#22c55e,#16a34a)", color: "#fff", border: "#15803d" },
+      danger:    { bg: "linear-gradient(180deg,#ef4444,#dc2626)", color: "#fff", border: "#b91c1c" },
+      violet:    { bg: "linear-gradient(180deg,#8b5cf6,#7c3aed)", color: "#fff", border: "#6d28d9" },
+    };
+    const c = map[kind] || map.secondary;
+    return {
+      background: c.bg, color: c.color, border: `1.5px solid ${c.border}`,
+      padding: "8px 15px", borderRadius: 999, cursor: disabled ? "not-allowed" : "pointer",
+      fontWeight: 900, fontSize: 13, whiteSpace: "nowrap", opacity: disabled ? 0.5 : 1,
+    };
+  },
+};
 
 export default function POS15ReceivingLogView() {
   const sheetRef = useRef(null);
@@ -341,27 +376,32 @@ export default function POS15ReceivingLogView() {
     setTimeout(() => { w.focus(); w.print(); }, 100);
   }
 
-  const metaBadge = { display: "inline-block", background: "rgba(255,255,255,0.6)", border: "1px solid #c7d2fe", borderRadius: 10, padding: "6px 12px", fontSize: 13, fontWeight: 700, color: "#0b1f4d", marginRight: 8, marginBottom: 6 };
+  const metaBadge = { display: "inline-block", background: "#fff", border: "1px solid rgba(15,23,42,0.14)", borderRadius: 10, padding: "6px 12px", fontSize: 13, fontWeight: 700, color: "#0c4a6e", marginRight: 8, marginBottom: 6, boxShadow: "0 4px 12px rgba(2,132,199,0.06)" };
 
   return (
-    <GlassShell
-      icon="📥"
-      title="Receiving Log (Butchery) — View (POS 15)"
-      actions={
-        <>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit"}</button>
-          {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
-          <button onClick={handleDelete} style={btn("#dc2626")} disabled={!record} data-delete-action="true">Delete</button>
-          <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>Export XLSX</button>
-          <button onClick={exportPDF} disabled={!record} style={btn("#374151")}>Export PDF</button>
-          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
-          <label style={{ ...btn("#059669"), display: "inline-block", cursor: "pointer" }}>
+    <main style={ISO.shell}>
+      <div style={ISO.topBar}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <img src={mawashiLogo} alt="logo" style={{ width: 46, height: 46, borderRadius: 10, objectFit: "cover" }} />
+          <div>
+            <div style={ISO.title}>📥 Receiving Log (Butchery) — POS 15</div>
+            <div style={ISO.subtitle}>View, search and export saved receiving records</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button onClick={toggleEdit} style={ISO.btn(editing ? "secondary" : "violet")}>{editing ? "Cancel Edit" : "Edit"}</button>
+          {editing && <button onClick={saveEdit} style={ISO.btn("success")}>Save Changes</button>}
+          <button onClick={handleDelete} style={ISO.btn("danger", !record)} disabled={!record} data-delete-action="true">Delete</button>
+          <button onClick={exportXLSX} disabled={!record} style={ISO.btn("primary", !record)}>Export XLSX</button>
+          <button onClick={exportPDF} disabled={!record} style={ISO.btn("secondary", !record)}>Export PDF</button>
+          <button onClick={exportJSON} disabled={!record} style={ISO.btn("secondary", !record)}>Export JSON</button>
+          <label style={{ ...ISO.btn("success"), display: "inline-block" }}>
             Import JSON
             <input ref={fileInputRef} type="file" accept="application/json" onChange={(e) => importJSON(e.target.files?.[0])} style={{ display: "none" }} />
           </label>
-        </>
-      }
-    >
+        </div>
+      </div>
+
       <SidebarLayout
         sidebarWidth={280}
         sidebar={
@@ -382,9 +422,9 @@ export default function POS15ReceivingLogView() {
             <div
               style={{
                 display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-                marginBottom: 12, padding: 12, border: "1px solid #c7d2fe",
-                borderRadius: 14, background: "linear-gradient(135deg,rgba(237,233,254,.82),rgba(224,242,254,.72))",
-                boxShadow: "0 8px 22px rgba(30,64,175,.08)",
+                marginBottom: 12, padding: 12, border: "1px solid rgba(15,23,42,0.14)",
+                borderRadius: 14, background: "rgba(255,255,255,0.92)",
+                boxShadow: "0 8px 22px rgba(2,132,199,0.08)",
               }}
             >
               <label style={{ position: "relative", flex: "1 1 320px" }}>
@@ -397,7 +437,7 @@ export default function POS15ReceivingLogView() {
                   placeholder="Search every old report: supplier, item, invoice, country... / بحث شامل"
                   aria-label="Search receiving log entries"
                   style={{
-                    width: "100%", height: 40, border: "1.5px solid #a5b4fc", borderRadius: 11,
+                    width: "100%", height: 40, border: "1.5px solid #7dd3fc", borderRadius: 11,
                     padding: "0 42px", outline: "none", background: editing ? "#f1f5f9" : "#fff",
                     color: "#0f172a", fontSize: 13, fontWeight: 650,
                   }}
@@ -412,7 +452,7 @@ export default function POS15ReceivingLogView() {
                   >×</button>
                 )}
               </label>
-              <span style={{ padding: "7px 11px", borderRadius: 999, background: "#fff", border: "1px solid #c7d2fe", color: "#4338ca", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }} aria-live="polite">
+              <span style={{ padding: "7px 11px", borderRadius: 999, background: "#fff", border: "1px solid #bae6fd", color: "#0369a1", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }} aria-live="polite">
                 {editing ? `${editRows.filter(isFilledRow).length} rows` : `${filteredEntries.length} of ${isHistoricalSearch ? historicalEntries.length : filledEntries.length} rows`}
               </span>
               {!editing && (
@@ -427,7 +467,7 @@ export default function POS15ReceivingLogView() {
                 onClick={() => setShowAdvancedSearch((value) => !value)}
                 disabled={editing}
                 aria-expanded={showAdvancedSearch}
-                style={{ height: 38, padding: "0 13px", border: "1px solid #a5b4fc", borderRadius: 10, background: showAdvancedSearch ? "#4f46e5" : "#fff", color: showAdvancedSearch ? "#fff" : "#4338ca", fontSize: 12, fontWeight: 850, cursor: editing ? "not-allowed" : "pointer" }}
+                style={{ height: 38, padding: "0 13px", border: "1px solid #7dd3fc", borderRadius: 10, background: showAdvancedSearch ? "#0ea5e9" : "#fff", color: showAdvancedSearch ? "#fff" : "#0369a1", fontSize: 12, fontWeight: 850, cursor: editing ? "not-allowed" : "pointer" }}
               >
                 ⚙ Advanced {activeSearchFilters ? `(${activeSearchFilters})` : ""}
               </button>
@@ -435,7 +475,7 @@ export default function POS15ReceivingLogView() {
             </div>
 
             {showAdvancedSearch && !editing && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 9, margin: "-4px 0 12px", padding: 12, border: "1px solid #c7d2fe", borderRadius: 13, background: "rgba(255,255,255,.82)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 9, margin: "-4px 0 12px", padding: 12, border: "1px solid #bae6fd", borderRadius: 13, background: "rgba(255,255,255,.92)" }}>
                 <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)} aria-label="Filter by supplier" style={advancedSelectStyle}>
                   <option value="all">All suppliers</option>
                   {searchOptions.suppliers.map((value) => <option key={value} value={value}>{value}</option>)}
@@ -462,15 +502,15 @@ export default function POS15ReceivingLogView() {
                   <option value="supplier">Supplier A-Z</option>
                   <option value="item">Food item A-Z</option>
                 </select>
-                <button type="button" onClick={resetAdvancedSearch} disabled={!activeSearchFilters} style={{ ...advancedSelectStyle, cursor: activeSearchFilters ? "pointer" : "not-allowed", color: "#4338ca", fontWeight: 850, opacity: activeSearchFilters ? 1 : .55 }}>
+                <button type="button" onClick={resetAdvancedSearch} disabled={!activeSearchFilters} style={{ ...advancedSelectStyle, cursor: activeSearchFilters ? "pointer" : "not-allowed", color: "#0369a1", fontWeight: 850, opacity: activeSearchFilters ? 1 : .55 }}>
                   Reset all filters
                 </button>
               </div>
             )}
 
             {!editing && activeSearchFilters > 0 && filteredEntries.length === 0 && (
-              <div style={{ marginBottom: 12, padding: 14, borderRadius: 12, textAlign: "center", border: "1px dashed #a5b4fc", background: "rgba(255,255,255,.75)", color: "#64748b", fontWeight: 750 }}>
-                No matching entries. <button type="button" onClick={resetAdvancedSearch} style={{ border: 0, background: "transparent", color: "#4f46e5", fontWeight: 850, cursor: "pointer" }}>Clear all filters</button>
+              <div style={{ marginBottom: 12, padding: 14, borderRadius: 12, textAlign: "center", border: "1px dashed #7dd3fc", background: "rgba(255,255,255,.85)", color: "#64748b", fontWeight: 750 }}>
+                No matching entries. <button type="button" onClick={resetAdvancedSearch} style={{ border: 0, background: "transparent", color: "#0ea5e9", fontWeight: 850, cursor: "pointer" }}>Clear all filters</button>
               </div>
             )}
 
@@ -482,7 +522,7 @@ export default function POS15ReceivingLogView() {
                 <span style={metaBadge}><strong>Classification:</strong> {safe(record.payload?.classification || "Official")}</span>
               </div>
 
-              <div style={{ textAlign: "center", background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)", border: "1px solid #c7d2fe", borderRadius: 10, padding: "9px 6px", fontWeight: 800, fontSize: 16, color: "#0b1f4d", marginBottom: 10 }}>
+              <div style={{ textAlign: "center", background: "#e0f2fe", border: "1px solid rgba(15,23,42,0.14)", borderRadius: 10, padding: "9px 6px", fontWeight: 800, fontSize: 16, color: "#0c4a6e", marginBottom: 10 }}>
                 📥 {isHistoricalSearch ? "HISTORICAL SEARCH RESULTS" : "RECEIVING LOG (BUTCHERY)"} — POS 15
               </div>
 
@@ -493,7 +533,7 @@ export default function POS15ReceivingLogView() {
                     <col style={{ width: 160 }} /><col style={{ width: 110 }} /><col style={{ width: 90 }} />
                     <col style={{ width: 90 }} /><col style={{ width: 120 }} /><col style={{ width: 140 }} />
                     <col style={{ width: 120 }} /><col style={{ width: 110 }} /><col style={{ width: 110 }} />
-                    <col style={{ width: 220 }} /><col style={{ width: 120 }} /><col style={{ width: 120 }} />
+                    <col style={{ width: 130 }} /><col style={{ width: 120 }} /><col style={{ width: 120 }} />
                     <col style={{ width: 120 }} /><col style={{ width: 120 }} /><col style={{ width: 180 }} />
                     <col style={{ width: 120 }} />
                   </colgroup>
@@ -514,7 +554,7 @@ export default function POS15ReceivingLogView() {
                   <tbody>
                     {!editing ? (
                       filteredEntries.map((r, idx) => (
-                        <tr key={r.__historyKey || idx} style={{ background: idx % 2 ? "rgba(237,233,254,0.45)" : "#fff" }}>
+                        <tr key={r.__historyKey || idx} style={{ background: idx % 2 ? "#f0f9ff" : "#fff" }}>
                           <td style={tdCell}>{formatDMY(safe(r.date || r.__reportDate))}</td><td style={tdCell}>{safe(r.time)}</td>
                           <td style={tdCell}>{safe(r.supplier)}</td><td style={tdCell}>{safe(r.foodItem)}</td>
                           <td style={tdCell}>{safe(r.netWeight)}</td><td style={tdCell}>{safe(r.vehicleTemp)}</td>
@@ -558,7 +598,7 @@ export default function POS15ReceivingLogView() {
               </div>
 
               <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700 }}>
-                Legend: (C) – Conform &nbsp; (NC) – Non-Conform
+                LEGEND: (C) – Conform &nbsp;&nbsp; / &nbsp;&nbsp; (NC) – Non-Conform
               </div>
 
               <div style={{ marginTop: 10, fontSize: 11, color: "#0b1f4d" }}>
@@ -567,9 +607,10 @@ export default function POS15ReceivingLogView() {
                 <div>Firmness: Firm rather than soft.</div>
                 <div>Smell: Normal smell (No rancid or strange smell)</div>
                 <div style={{ marginTop: 8 }}>
-                  <strong>Note:</strong> For Chilled Food: Target ≤ 5°C; Critical Limit: 5°C.&nbsp;
-                  For Frozen Food: Target ≤ -18°C.&nbsp;For Hot Food: Target ≥ 60°C.&nbsp;
-                  Dry food, Low Risk: Receive cool/dry or ≤ 25°C.
+                  <strong>Note:</strong> For Chilled Food: Target ≤ 5°C (Critical Limit: 5°C; short deviations up to 15 minutes during transfer).&nbsp;
+                  For Frozen Food: Target ≤ -18°C (Critical limits: RTE Frozen ≤ -18°C, Raw Frozen ≤ -10°C).&nbsp;
+                  For Hot Food: Target ≥ 60°C (Critical Limit: 60°C).&nbsp;
+                  Dry food, Low Risk: Receive at cool, dry condition or ≤ 25°C, or as per product requirement.
                 </div>
               </div>
 
@@ -585,6 +626,6 @@ export default function POS15ReceivingLogView() {
           </div>
         )}
       </SidebarLayout>
-    </GlassShell>
+    </main>
   );
 }

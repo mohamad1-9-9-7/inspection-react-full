@@ -3,9 +3,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import SignatureName from "../../../shared/SignatureName";
 import API_BASE from "../../../../config/api";
 import {
-  btn,
   formatDMY,
-  GlassShell,
+  IsoShell,
+  ISO_UI,
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
@@ -40,11 +40,11 @@ function getKey(r) {
   return n?.iso || "";
 }
 
-const gridStyle = { width: "100%", borderCollapse: "collapse", fontSize: 20, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 14px rgba(99,102,241,0.10)" };
-const theadRow = { background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" };
+const gridStyle = { width: "100%", borderCollapse: "collapse", fontSize: 14, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 14px rgba(2,132,199,0.10)" };
+const theadRow = { background: "#0ea5e9" };
 const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "10px 8px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" };
-const tdCell = { border: "1px solid #c7d2fe", padding: "9px 7px", textAlign: "center", verticalAlign: "middle" };
-const zebra = (i) => ({ background: i % 2 ? "rgba(237,233,254,0.45)" : "#fff" });
+const tdCell = { border: "1px solid #e2e8f0", padding: "9px 7px", textAlign: "center", verticalAlign: "middle" };
+const zebra = (i) => ({ background: i % 2 ? "#f0f9ff" : "#fff" });
 
 export default function POS15PersonalHygieneView() {
   const [reports, setReports] = useState([]);
@@ -170,19 +170,20 @@ export default function POS15PersonalHygieneView() {
   }
 
   return (
-    <GlassShell
+    <IsoShell
       icon="🧑‍🔬"
-      title="Personal Hygiene Checklist — View (POS 15)"
+      title="Personal Hygiene Checklist — POS 15"
+      subtitle="View, export and manage personal hygiene records"
       actions={
         <>
-          <button onClick={load} style={btn("#7c3aed")}>Refresh</button>
-          <button onClick={exportPDF} style={btn("#374151")} disabled={!selected}>Export PDF</button>
-          <button onClick={exportJSONAll} style={btn("#0284c7")}>Export JSON (all)</button>
-          <button onClick={triggerImport} style={btn("#059669")} disabled={importing}>
+          <button onClick={load} style={ISO_UI.btn("violet")}>Refresh</button>
+          <button onClick={exportPDF} style={ISO_UI.btn("secondary", !selected)} disabled={!selected}>Export PDF</button>
+          <button onClick={exportJSONAll} style={ISO_UI.btn("secondary")}>Export JSON (all)</button>
+          <button onClick={triggerImport} style={ISO_UI.btn("success", importing)} disabled={importing}>
             {importing ? "Importing…" : "Import JSON"}
           </button>
           <input ref={fileRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportFile} />
-          <button onClick={handleDelete} style={btn("#dc2626")} disabled={!selected || loading} data-delete-action="true">Delete</button>
+          <button onClick={handleDelete} style={ISO_UI.btn("danger", !selected || loading)} disabled={!selected || loading} data-delete-action="true">Delete</button>
         </>
       }
     >
@@ -205,7 +206,7 @@ export default function POS15PersonalHygieneView() {
           </div>
         )}
       </SidebarLayout>
-    </GlassShell>
+    </IsoShell>
   );
 }
 
@@ -215,18 +216,7 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
   const checkedBy = data?.checkedBy || "—";
   const verifiedBy = data?.verifiedBy || "—";
 
-  const metaBadge = {
-    display: "inline-block",
-    background: "rgba(255,255,255,0.6)",
-    border: "1px solid #c7d2fe",
-    borderRadius: 10,
-    padding: "6px 12px",
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#0b1f4d",
-    marginRight: 8,
-    marginBottom: 6,
-  };
+  const metaBadge = ISO_UI.metaBadge;
 
   return (
     <div ref={ref}>
@@ -242,17 +232,7 @@ const ReportSheet = React.forwardRef(function ReportSheet({ data }, ref) {
           <span style={metaBadge}><strong>Approved By:</strong> Hussam.O.Sarhan</span>
         </div>
 
-        <div style={{
-          textAlign: "center",
-          background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)",
-          border: "1px solid #c7d2fe",
-          borderRadius: 10,
-          padding: "9px 6px",
-          fontWeight: 800,
-          fontSize: 16,
-          color: "#0b1f4d",
-          marginBottom: 10,
-        }}>
+        <div style={ISO_UI.band}>
           🧑‍🔬 PERSONAL HYGIENE CHECKLIST — POS 15
         </div>
 

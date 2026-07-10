@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import RealRecallTrendReportModal from "./RealRecallTrendReport";
 
 const TYPE = "real_recall";
 
@@ -116,6 +117,7 @@ export default function RealRecallView() {
   const [openId, setOpenId] = useState(null);
   const [classFilter, setClassFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [trendOpen, setTrendOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -179,6 +181,9 @@ export default function RealRecallView() {
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <HaccpLangToggle lang={lang} toggle={toggle} />
+            <button style={S.btn("secondary")} onClick={() => setTrendOpen(true)} disabled={!items.length}>
+              📈 {isAr ? "تحليل الاتجاهات" : "Trend Analysis"}
+            </button>
             <button style={S.btn("secondary")} onClick={load} disabled={loading}>{loading ? "⏳" : t("refresh")}</button>
             <button style={S.btn("primary")} onClick={() => navigate("/haccp-iso/real-recall")}>{t("new")}</button>
             <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
@@ -227,6 +232,11 @@ export default function RealRecallView() {
             {filtered.length} / {stats.total}
           </div>
         </div>
+
+        {/* Trend Analysis modal */}
+        {trendOpen && (
+          <RealRecallTrendReportModal items={items} lang={lang} onClose={() => setTrendOpen(false)} />
+        )}
 
         {loading && <div style={S.empty}>{t("loading")}</div>}
         {!loading && filtered.length === 0 && <div style={S.empty}>{t("noRecords")}</div>}

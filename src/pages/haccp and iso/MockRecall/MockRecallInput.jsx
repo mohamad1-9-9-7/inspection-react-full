@@ -165,6 +165,10 @@ export default function MockRecallInput() {
       truckCleaning: null,   // { id, date, truckNo, rowsCount }
       branchTraceability: null, // 🆕 { id, type, date, branch, rowsCount }
       branchReceiving: null,    // 🆕 { id, type, date, branch, rowsCount, invoiceNo }
+      // 🆕 تقارير الإنتاج (عرض فقط)
+      prodDefrost: null, // { id, date, rowsCount, ... }
+      prodCutting: null, // { id, date, rowsCount, batchCode }
+      prodDried: null,   // { id, date, batchId, productName }
     },
 
     // 📎 مرفقات وصور (Base64) — فواتير/تحويلات/فواتير استرجاع/...
@@ -421,6 +425,50 @@ export default function MockRecallInput() {
     };
     setForm((s) => ({ ...s, linked: { ...s.linked, branchReceiving: info } }));
     setViewPopup({ open: true, kind: "branchReceiving", summary: info });
+  }
+
+  /* 🆕 Production: Defrosting picker (view only) */
+  function pickProdDefrost(item) {
+    const p = item?.payload || {};
+    const h = p?.header || {};
+    const info = {
+      id: item?.id || item?._id || null,
+      date: h.reportDate || h.month || p.reportDate || "",
+      rowsCount: (Array.isArray(p.entries) ? p.entries : []).filter((r) =>
+        Object.values(r || {}).some((v) => String(v ?? "").trim() !== "")
+      ).length,
+      checkedBy: p?.signatures?.checkedBy || "",
+    };
+    setForm((s) => ({ ...s, linked: { ...s.linked, prodDefrost: info } }));
+    setViewPopup({ open: true, kind: "prodDefrost", summary: info });
+  }
+
+  /* 🆕 Production: On-Line Cutting picker (view only) */
+  function pickProdCutting(item) {
+    const p = item?.payload || {};
+    const info = {
+      id: item?.id || item?._id || null,
+      date: p.reportDate || "",
+      rowsCount: (Array.isArray(p.products) ? p.products : []).length,
+      batchCode: p.batchCode || "",
+      recordedBy: p.recordedBy || "",
+    };
+    setForm((s) => ({ ...s, linked: { ...s.linked, prodCutting: info } }));
+    setViewPopup({ open: true, kind: "prodCutting", summary: info });
+  }
+
+  /* 🆕 Production: Dried Meat picker (view only) */
+  function pickProdDried(item) {
+    const p = item?.payload || {};
+    const f = p?.form || {};
+    const info = {
+      id: item?.id || item?._id || null,
+      date: p.reportDate || "",
+      batchId: f.batchId || "",
+      productName: f.productName || "",
+    };
+    setForm((s) => ({ ...s, linked: { ...s.linked, prodDried: info } }));
+    setViewPopup({ open: true, kind: "prodDried", summary: info });
   }
 
   /* ====== setters ====== */
@@ -843,6 +891,87 @@ export default function MockRecallInput() {
                 <>
                   <div><b>{t("truckNo")}:</b> {d.truckNo || "—"}</div>
                   <div><b>{t("drillDate")}:</b> {String(d.date || "").slice(0, 10)}</div>
+                </>
+              )}
+            />
+
+            {/* 🆕 Production: Defrosting Record (view only) */}
+            <LinkCard
+              icon="❄️"
+              title={t("prodDefrostTitle")}
+              subtitle={t("prodDefrostHint")}
+              pickHere={t("pickHere")}
+              linkedLabel={t("linked")}
+              unlinkLabel={t("unlink")}
+              picked={form.linked.prodDefrost}
+              onPick={() => setLookupKind("prodDefrost")}
+              onUnlink={() => unlink("prodDefrost")}
+              renderPicked={(d) => (
+                <>
+                  <div><b>{t("drillDate")}:</b> {String(d.date || "").slice(0, 10)}</div>
+                  <div><b>{t("items").replace(/[📦]/g, "").trim()}:</b> {d.rowsCount}</div>
+                  {d.checkedBy && <div><b>{t("checkedBy") || "Checked"}:</b> {d.checkedBy}</div>}
+                  <button
+                    type="button"
+                    onClick={() => setViewPopup({ open: true, kind: "prodDefrost", summary: d })}
+                    style={S.btnViewFile}
+                  >
+                    {t("viewFile")}
+                  </button>
+                </>
+              )}
+            />
+
+            {/* 🆕 Production: On-Line Cutting Record (view only) */}
+            <LinkCard
+              icon="✂️"
+              title={t("prodCuttingTitle")}
+              subtitle={t("prodCuttingHint")}
+              pickHere={t("pickHere")}
+              linkedLabel={t("linked")}
+              unlinkLabel={t("unlink")}
+              picked={form.linked.prodCutting}
+              onPick={() => setLookupKind("prodCutting")}
+              onUnlink={() => unlink("prodCutting")}
+              renderPicked={(d) => (
+                <>
+                  <div><b>{t("drillDate")}:</b> {String(d.date || "").slice(0, 10)}</div>
+                  <div><b>{t("items").replace(/[📦]/g, "").trim()}:</b> {d.rowsCount}</div>
+                  {d.batchCode && <div><b>{t("batchNo")}:</b> {d.batchCode}</div>}
+                  <button
+                    type="button"
+                    onClick={() => setViewPopup({ open: true, kind: "prodCutting", summary: d })}
+                    style={S.btnViewFile}
+                  >
+                    {t("viewFile")}
+                  </button>
+                </>
+              )}
+            />
+
+            {/* 🆕 Production: Dried Meat Process (view only) */}
+            <LinkCard
+              icon="🥓"
+              title={t("prodDriedTitle")}
+              subtitle={t("prodDriedHint")}
+              pickHere={t("pickHere")}
+              linkedLabel={t("linked")}
+              unlinkLabel={t("unlink")}
+              picked={form.linked.prodDried}
+              onPick={() => setLookupKind("prodDried")}
+              onUnlink={() => unlink("prodDried")}
+              renderPicked={(d) => (
+                <>
+                  <div><b>{t("drillDate")}:</b> {String(d.date || "").slice(0, 10)}</div>
+                  {d.batchId && <div><b>{t("batchNo")}:</b> {d.batchId}</div>}
+                  {d.productName && <div><b>{t("productName").replace(" *","")}:</b> {d.productName}</div>}
+                  <button
+                    type="button"
+                    onClick={() => setViewPopup({ open: true, kind: "prodDried", summary: d })}
+                    style={S.btnViewFile}
+                  >
+                    {t("viewFile")}
+                  </button>
                 </>
               )}
             />
@@ -1498,6 +1627,102 @@ export default function MockRecallInput() {
               sub?.checkedBy ? `✍ ${sub.checkedBy}` : null,
             ].filter(Boolean),
           })}
+        />
+
+        {/* 🆕 Production: Defrosting Lookup (view only) */}
+        <ReportLookupModal
+          open={lookupKind === "prodDefrost"}
+          onClose={closeLookup}
+          onPick={pickProdDefrost}
+          type="prod_defrosting_record"
+          title={t("popupProdDefrost")}
+          searchPlaceholder={lang === "ar" ? "تاريخ / مادة خام / مُدقّق" : "Date / Raw Material / Inspector"}
+          treeMode={true}
+          getDate={(p) => p?.header?.reportDate || p?.header?.month || p?.reportDate || ""}
+          searchFields={(p) => [
+            p?.header?.reportDate, p?.header?.month, p?.signatures?.checkedBy,
+            ...(Array.isArray(p?.entries) ? p.entries.map((r) => r?.rawMaterial) : []),
+            ...(Array.isArray(p?.entries) ? p.entries.map((r) => r?.brand) : []),
+          ]}
+          displayItem={(p) => {
+            const entries = (Array.isArray(p?.entries) ? p.entries : []).filter((r) =>
+              Object.values(r || {}).some((v) => String(v ?? "").trim() !== "")
+            );
+            return {
+              primary: `❄️ ${String(p?.header?.reportDate || p?.header?.month || p?.reportDate || "—").slice(0, 10)}`,
+              secondary: `${entries.length} ${lang === "ar" ? "سجل إذابة" : "defrost entries"}`,
+              chips: [
+                p?.signatures?.checkedBy ? `✍ ${p.signatures.checkedBy}` : null,
+                p?.header?.area ? `📍 ${p.header.area}` : null,
+              ].filter(Boolean),
+            };
+          }}
+          emptyText={lang === "ar"
+            ? "لا توجد سجلات ديفروستينج محفوظة في الإنتاج."
+            : "No production defrosting records saved."}
+        />
+
+        {/* 🆕 Production: On-Line Cutting Lookup (view only) */}
+        <ReportLookupModal
+          open={lookupKind === "prodCutting"}
+          onClose={closeLookup}
+          onPick={pickProdCutting}
+          type="prod_online_cutting"
+          title={t("popupProdCutting")}
+          searchPlaceholder={lang === "ar" ? "تاريخ / منتج / كود دفعة" : "Date / Product / Batch Code"}
+          treeMode={true}
+          getDate={(p) => p?.reportDate || ""}
+          searchFields={(p) => [
+            p?.reportDate, p?.batchCode, p?.recordedBy, p?.verifiedBy,
+            ...(Array.isArray(p?.products) ? p.products.map((r) => r?.productName) : []),
+            ...(Array.isArray(p?.products) ? p.products.map((r) => r?.batchNo) : []),
+          ]}
+          displayItem={(p) => {
+            const products = Array.isArray(p?.products) ? p.products : [];
+            const names = products.map((r) => r?.productName).filter(Boolean).slice(0, 2).join(", ");
+            return {
+              primary: `✂️ ${String(p?.reportDate || "—").slice(0, 10)}${names ? ` — ${names}` : ""}`,
+              secondary: `${products.length} ${lang === "ar" ? "منتج" : "products"}`,
+              chips: [
+                p?.batchCode ? `🏷️ ${p.batchCode}` : null,
+                p?.recordedBy ? `✍ ${p.recordedBy}` : null,
+              ].filter(Boolean),
+            };
+          }}
+          emptyText={lang === "ar"
+            ? "لا توجد سجلات تقطيع مباشر محفوظة في الإنتاج."
+            : "No production on-line cutting records saved."}
+        />
+
+        {/* 🆕 Production: Dried Meat Lookup (view only) */}
+        <ReportLookupModal
+          open={lookupKind === "prodDried"}
+          onClose={closeLookup}
+          onPick={pickProdDried}
+          type="prod_dried_meat"
+          title={t("popupProdDried")}
+          searchPlaceholder={lang === "ar" ? "تاريخ / منتج / رقم دفعة" : "Date / Product / Batch ID"}
+          treeMode={true}
+          getDate={(p) => p?.reportDate || ""}
+          searchFields={(p) => [
+            p?.reportDate, p?.form?.batchId, p?.form?.productName, p?.form?.productType,
+            p?.form?.rawMeatType, p?.form?.checkedBy, p?.form?.verifiedBy,
+          ]}
+          displayItem={(p) => {
+            const f = p?.form || {};
+            return {
+              primary: `🥓 ${String(p?.reportDate || "—").slice(0, 10)}${f.productName ? ` — ${f.productName}` : ""}`,
+              secondary: f.batchId ? `${lang === "ar" ? "دفعة" : "Batch"}: ${f.batchId}` : (lang === "ar" ? "سجل تصنيع" : "process record"),
+              chips: [
+                f.waterActivity ? `💧 aw ${f.waterActivity}` : null,
+                f.ph ? `⚗️ pH ${f.ph}` : null,
+                f.checkedBy ? `✍ ${f.checkedBy}` : null,
+              ].filter(Boolean),
+            };
+          }}
+          emptyText={lang === "ar"
+            ? "لا توجد سجلات لحم مجفف محفوظة في الإنتاج."
+            : "No production dried meat records saved."}
         />
       </div>
     </div>

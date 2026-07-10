@@ -64,6 +64,13 @@ const sections = [
     route: "/haccp-iso/supplier-evaluation/results",
     badge: "VIEW",
   },
+  {
+    id: "performance",
+    title: "Supplier Performance",
+    subtitle: "Scorecard, grades and quarterly trend analysis across approved suppliers",
+    route: "/haccp-iso/supplier-evaluation/performance",
+    badge: "TRACK",
+  },
 ];
 
 /* ===== Simple Icon ===== */

@@ -13,6 +13,7 @@ import { useCCPCatalog } from "./useCCPCatalog";
 import AttachmentsSection from "../MockRecall/AttachmentsSection";
 import { generateMonthlyCCPReport } from "./generateMonthlyPDF";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
+import CCPTrendReportModal from "./CCPTrendReport";
 
 const TYPE = "ccp_monitoring_record";
 
@@ -31,6 +32,7 @@ export default function CCPView() {
 
   // 🆕 popup للتقرير الشهري
   const [pdfDialog, setPdfDialog] = useState(false);
+  const [trendOpen, setTrendOpen] = useState(false);
   const now = new Date();
   const [pdfMonth, setPdfMonth] = useState(now.getMonth() + 1);
   const [pdfYear, setPdfYear] = useState(now.getFullYear());
@@ -134,6 +136,9 @@ export default function CCPView() {
           <button style={S.btnSecondary} onClick={() => setPdfDialog(true)}>
             📄 {lang === "ar" ? "تقرير شهري PDF" : "Monthly PDF"}
           </button>
+          <button style={S.btnSecondary} onClick={() => setTrendOpen(true)} disabled={!items.length}>
+            📈 {lang === "ar" ? "تحليل الاتجاهات" : "Trend Analysis"}
+          </button>
           <button style={S.btnSecondary} onClick={() => navigate("/haccp-iso/ccp-monitoring/settings")}>
             {t("settings")}
           </button>
@@ -183,6 +188,11 @@ export default function CCPView() {
       </div>
 
       {err && <div style={S.errBox}>❌ {err}</div>}
+
+      {/* 🆕 Trend Analysis report modal */}
+      {trendOpen && (
+        <CCPTrendReportModal items={items} ccps={ccps} lang={lang} onClose={() => setTrendOpen(false)} />
+      )}
 
       {/* 🆕 Monthly PDF Dialog */}
       {pdfDialog && (

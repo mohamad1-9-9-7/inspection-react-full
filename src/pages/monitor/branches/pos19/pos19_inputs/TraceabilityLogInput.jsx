@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { REPORTS_URL } from "../../shipment_recc/qcsRawApi";
 import API_BASE from "../../../../../config/api";
+import useReportDateStatus from "../_shared/useReportDateStatus";
 
 /* ===== ثابت التقرير ===== */
 const TYPE   = "pos19_traceability_log";
@@ -99,7 +100,6 @@ const toISODate = (s) => {
     return "";
   }
 };
-const sameDay = (a, b) => toISODate(a) === toISODate(b);
 
 /* ===== Date extraction for RAW ===== */
 const MONTH_RE_1 = /^(\d{4})[\/\-](\d{1,2})$/;
@@ -432,65 +432,9 @@ export default function TraceabilityLogInput() {
   const [saving, setSaving] = useState(false);
 
   /* ===== حالة التحقق من وجود تقرير لنفس اليوم ===== */
-  const [hasExistingForDate, setHasExistingForDate] = useState(false);
-  const [checkingExisting, setCheckingExisting] = useState(false);
-
-  useEffect(() => {
-    let abort = false;
-
-    async function checkExisting() {
-      if (!date) {
-        setHasExistingForDate(false);
-        return;
-      }
-      setCheckingExisting(true);
-      try {
-        // نجلب كل تقارير هذا النوع ثم نفلتر محليًا حسب الفرع والتاريخ
-        const res = await fetch(
-          `${API_BASE}/api/reports?type=${encodeURIComponent(
-            TYPE
-          )}`,
-          { cache: "no-store", headers: { Accept: "application/json" } }
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        let json = null;
-        try {
-          json = await res.json();
-        } catch {
-          json = null;
-        }
-        const arr = Array.isArray(json)
-          ? json
-          : json?.data || json?.items || json?.reports || json?.rows || [];
-
-        const exists = (arr || []).some((r) => {
-          const p = r?.payload ?? r;
-          const branch = String(p?.branch || "")
-            .toLowerCase()
-            .trim();
-          const rd = p?.reportDate || p?.date || r?.created_at;
-          return (
-            branch === BRANCH.toLowerCase() && sameDay(rd, date)
-          );
-        });
-
-        if (!abort) setHasExistingForDate(exists);
-      } catch (e) {
-        console.error(
-          "Failed to check existing traceability log",
-          e
-        );
-        if (!abort) setHasExistingForDate(false);
-      } finally {
-        if (!abort) setCheckingExisting(false);
-      }
-    }
-
-    checkExisting();
-    return () => {
-      abort = true;
-    };
-  }, [date]);
+  const dateStatus = useReportDateStatus(TYPE, date);
+  const hasExistingForDate = dateStatus.taken;
+  const checkingExisting = dateStatus.checking;
 
   /* ===== RAW Index للربط ===== */
   const [rawIndex, setRawIndex] = useState([]);
@@ -863,8 +807,14 @@ export default function TraceabilityLogInput() {
           payload,
         }),
       });
+      if (res.status === 409) {
+        alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View).");
+        dateStatus.refresh();
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ تم الحفظ بنجاح");
+      dateStatus.refresh();
     } catch (e) {
       console.error(e);
       alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
@@ -970,15 +920,29 @@ export default function TraceabilityLogInput() {
             }}
           />
           <div>Date :</div>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={{
-              ...inputStyle,
-              borderColor: "#1f3b70",
-            }}
-          />
+          <div>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              style={{
+                ...inputStyle,
+                borderColor: "#1f3b70",
+              }}
+            />
+            <div
+              style={{
+                marginTop: 3,
+                fontSize: 10.5,
+                fontWeight: 700,
+                direction: "rtl",
+                textAlign: "right",
+                color: dateStatus.blocked ? "#991b1b" : "#166534",
+              }}
+            >
+              {dateStatus.note.text}
+            </div>
+          </div>
         </div>
       </div>
 

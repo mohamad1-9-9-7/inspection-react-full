@@ -161,7 +161,10 @@ export default function CleaningProgrammeScheduleView() {
     setLoading(true);
     setError("");
     try {
-      const q = new URLSearchParams({ type: TYPE });
+      // This form is keyed by month, not reportDate, so it still reads the set —
+      // but an explicit limit keeps the server's default LIMIT 200 from silently
+      // hiding older months.
+      const q = new URLSearchParams({ type: TYPE, limit: "5000" });
       const res = await fetch(
         `${API_BASE}/api/reports?${q.toString()}`,
         { cache: "no-store" }

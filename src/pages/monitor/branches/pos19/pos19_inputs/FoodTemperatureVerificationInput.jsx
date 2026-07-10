@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/FoodTemperatureVerificationInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
 /* ===== Draft (localStorage) ===== */
@@ -91,6 +92,7 @@ export default function FoodTemperatureVerificationInput() {
   const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
   const [checkedBy, setCheckedBy]   = useState(() => loadDraft().checkedBy || "");
   const [saving, setSaving]         = useState(false);
+  const dateStatus = useReportDateStatus(TYPE, reportDate);
 
   /* ✅ Auto-save draft */
   useEffect(() => {
@@ -158,9 +160,11 @@ export default function FoodTemperatureVerificationInput() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
       });
+      if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
       alert("✅ تم الحفظ بنجاح!");
+      dateStatus.refresh();
     } catch (e) {
       console.error(e);
       alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
@@ -177,7 +181,7 @@ export default function FoodTemperatureVerificationInput() {
           { label: "Form Ref", value: FORM_REF },
           { label: "Branch", value: BRANCH },
           { label: "Classification", value: "Official" },
-          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate },
+          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate, note: dateStatus.note },
           { label: "Section", value: section, onChange: setSection, placeholder: "e.g. Butchery" },
         ]}
       />
@@ -191,8 +195,8 @@ export default function FoodTemperatureVerificationInput() {
       {/* ── Action buttons ── */}
       <div style={{ display:"flex", gap:8, padding:"0 0 10px", justifyContent:"flex-end" }}>
         <button onClick={addRow} style={actionBtn("#0ea5e9")}>+ Add Row</button>
-        <button onClick={handleSave} disabled={saving} style={actionBtn(saving?"#6b7280":"#10b981")}>
-          {saving ? "Saving…" : "💾 Save"}
+        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={actionBtn(saving?"#6b7280":"#10b981")}>
+          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "💾 Save"}
         </button>
       </div>
 

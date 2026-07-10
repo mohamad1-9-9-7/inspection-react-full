@@ -16,6 +16,8 @@ import {
   FSMS_MODULE_LINKS,
 } from "./fsmsContent";
 import { FSMS_HACCP_SECTIONS } from "./fsmsHaccp";
+import ProcessFlowGallery from "./ProcessFlowDiagram";
+import { sopsData } from "../SOP/sopData";
 import { useLang, LangToggle } from "./i18n";
 
 /* Combined sections (clauses + HACCP-related) */
@@ -135,7 +137,9 @@ function HighlightedText({ text, query }) {
 /* ==================== STYLES ==================== */
 const shellStyle = {
   minHeight: "100vh",
-  background: "linear-gradient(180deg,#f4f8f7 0%,#edf5f3 100%)",
+  background:
+    "radial-gradient(1100px 380px at 100% -8%, rgba(15,118,110,0.07), transparent 60%)," +
+    "linear-gradient(180deg,#f7f9fb 0%,#eef2f6 100%)",
   fontFamily: 'Cairo, Arial, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Tajawal", sans-serif',
   color: "#0f172a",
 };
@@ -152,22 +156,24 @@ const topBarStyle = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: 18,
-  padding: "18px clamp(16px,2vw,26px)",
-  borderRadius: 6,
-  background: "linear-gradient(135deg,#123a49 0%,#0f766e 48%,#2aa8c4 100%)",
+  padding: "20px clamp(18px,2vw,28px)",
+  borderRadius: 18,
+  background: "linear-gradient(135deg,#0b2a30 0%,#0f766e 52%,#0891b2 100%)",
   color: "#fff",
-  border: "0",
-  boxShadow: "0 22px 50px rgba(15,23,42,.16)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  boxShadow: "0 22px 48px rgba(11,42,48,.30)",
   flexWrap: "wrap",
   marginBottom: 14,
+  position: "relative",
+  overflow: "hidden",
 };
 
-const titleStyle = { fontSize: 18, fontWeight: 1000, lineHeight: 1.25, color: "#fff" };
-const subStyle = { fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,.88)", marginTop: 4, lineHeight: 1.45 };
+const titleStyle = { fontSize: 20, fontWeight: 1000, lineHeight: 1.2, color: "#fff", letterSpacing: ".01em" };
+const subStyle = { fontSize: 13.5, fontWeight: 700, color: "rgba(255,255,255,.82)", marginTop: 5, lineHeight: 1.45 };
 
 const docMetaStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
   gap: 10,
   padding: 0,
   borderRadius: 0,
@@ -176,43 +182,44 @@ const docMetaStyle = {
   marginBottom: 14,
 };
 
-const metaItem = { fontSize: 11, fontWeight: 1000, color: "#0f766e", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 3 };
-const metaVal = { fontSize: 14, fontWeight: 1000, color: "#0f172a" };
+const metaItem = { fontSize: 10, fontWeight: 900, color: "#0f766e", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 };
+const metaVal = { fontSize: 13.5, fontWeight: 1000, color: "#0f172a" };
 
 const containerStyle = {
   display: "grid",
-  gridTemplateColumns: "minmax(280px, 330px) minmax(0, 1fr)",
-  gap: 12,
+  gridTemplateColumns: "minmax(290px, 340px) minmax(0, 1fr)",
+  gap: 16,
   alignItems: "start",
 };
 
 const sidebarStyle = {
   background: "#fff",
-  border: "1px solid #dbe4e2",
-  borderRadius: 6,
+  border: "1px solid #e6ebf1",
+  borderRadius: 16,
   padding: 12,
   position: "sticky",
   top: 14,
-  height: "calc(100vh - 200px)",
+  height: "calc(100vh - 190px)",
   overflowY: "auto",
   boxShadow: "0 12px 30px rgba(15,23,42,.06)",
 };
 
 const searchInputStyle = {
   width: "100%",
-  padding: "9px 12px",
-  borderRadius: 6,
-  border: "1px solid #dbe4e2",
-  fontSize: 14,
+  padding: "11px 14px",
+  borderRadius: 12,
+  border: "1px solid #e2e8f0",
+  background: "#f8fafc",
+  fontSize: 13.5,
   fontWeight: 700,
   outline: "none",
-  marginBottom: 10,
-  boxShadow: "0 10px 24px rgba(15,23,42,.05)",
+  marginBottom: 12,
+  boxSizing: "border-box",
 };
 
 const chapterStyle = (active) => ({
-  padding: "9px 10px",
-  borderRadius: 6,
+  padding: "10px 10px",
+  borderRadius: 10,
   fontSize: 13,
   fontWeight: 1000,
   color: active ? "#0f766e" : "#0f172a",
@@ -221,26 +228,55 @@ const chapterStyle = (active) => ({
   display: "flex",
   alignItems: "center",
   gap: 8,
-  marginTop: 2,
+  marginTop: 4,
 });
 
+const chapterCountStyle = {
+  fontSize: 10.5,
+  fontWeight: 900,
+  color: "#64748b",
+  background: "#f1f5f9",
+  border: "1px solid #e2e8f0",
+  borderRadius: 999,
+  padding: "1px 8px",
+  minWidth: 22,
+  textAlign: "center",
+};
+
 const sectionItemStyle = (active) => ({
-  padding: "7px 10px 7px 24px",
-  borderRadius: 6,
-  fontSize: 12,
-  fontWeight: 850,
-  color: active ? "#fff" : "#475569",
-  background: active ? "linear-gradient(135deg,#0f766e,#14b8a6)" : "transparent",
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "8px 10px 8px 12px",
+  borderRadius: 10,
+  fontSize: 12.5,
+  fontWeight: 800,
+  color: active ? "#0f766e" : "#475569",
+  background: active ? "#ecfdf8" : "transparent",
+  boxShadow: active ? "inset 3px 0 0 #0f766e" : "none",
   cursor: "pointer",
-  marginTop: 1,
-  transition: "background .15s ease",
+  marginTop: 2,
+  transition: "background .15s ease, color .15s ease",
+});
+
+const clauseChipStyle = (active) => ({
+  fontSize: 10.5,
+  fontWeight: 900,
+  color: active ? "#0f766e" : "#64748b",
+  background: active ? "#ccfbf1" : "#f1f5f9",
+  border: `1px solid ${active ? "#99f6e4" : "#e2e8f0"}`,
+  borderRadius: 7,
+  padding: "2px 6px",
+  minWidth: 34,
+  textAlign: "center",
+  flexShrink: 0,
 });
 
 const contentStyle = {
   background: "#fff",
-  border: "1px solid #dbe4e2",
-  borderRadius: 6,
-  padding: 22,
+  border: "1px solid #e6ebf1",
+  borderRadius: 16,
+  padding: "26px clamp(20px,2.4vw,38px)",
   minHeight: 600,
   minWidth: 0,
   display: "flex",
@@ -248,11 +284,11 @@ const contentStyle = {
   boxShadow: "0 12px 30px rgba(15,23,42,.06)",
 };
 
-const sectionTitleStyle = { fontSize: 22, fontWeight: 1000, color: "#0f172a", marginBottom: 6, lineHeight: 1.25 };
+const sectionTitleStyle = { fontSize: 25, fontWeight: 1000, color: "#0f172a", marginBottom: 6, lineHeight: 1.22, letterSpacing: "-.01em" };
 const clauseBadgeStyle = {
   display: "inline-block",
-  padding: "4px 10px",
-  borderRadius: 999,
+  padding: "4px 11px",
+  borderRadius: 8,
   fontSize: 11,
   fontWeight: 1000,
   color: "#0f766e",
@@ -262,14 +298,16 @@ const clauseBadgeStyle = {
 };
 
 const linkedBadgeStyle = {
-  display: "inline-block",
-  padding: "4px 10px",
-  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  padding: "4px 11px",
+  borderRadius: 8,
   fontSize: 11,
   fontWeight: 1000,
-  color: "#0f766e",
-  background: "#ecfeff",
-  border: "1px solid #a5f3fc",
+  color: "#b45309",
+  background: "linear-gradient(180deg,#fffbeb,#fef3c7)",
+  border: "1px solid #fcd34d",
   marginRight: 8,
   textDecoration: "none",
   cursor: "pointer",
@@ -277,8 +315,8 @@ const linkedBadgeStyle = {
 
 const editedBadgeStyle = {
   display: "inline-block",
-  padding: "4px 10px",
-  borderRadius: 999,
+  padding: "4px 11px",
+  borderRadius: 8,
   fontSize: 11,
   fontWeight: 1000,
   color: "#854d0e",
@@ -289,11 +327,41 @@ const editedBadgeStyle = {
 
 const bodyTextStyle = {
   whiteSpace: "pre-wrap",
-  fontSize: 14,
-  lineHeight: 1.75,
+  fontSize: 15,
+  lineHeight: 1.85,
   color: "#334155",
-  marginTop: 12,
+  marginTop: 18,
+  maxWidth: 960,
+  fontWeight: 500,
 };
+
+const navStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "stretch",
+  gap: 12,
+  marginTop: 26,
+  paddingTop: 18,
+  borderTop: "1px solid #eef2f6",
+};
+
+const navBtnStyle = (align) => ({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: align === "next" ? "flex-end" : "flex-start",
+  gap: 3,
+  flex: "1 1 0",
+  maxWidth: "48%",
+  padding: "11px 16px",
+  borderRadius: 12,
+  border: "1px solid #e6ebf1",
+  background: "#f8fafc",
+  color: "#0f172a",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  textAlign: align === "next" ? "right" : "left",
+  minWidth: 0,
+});
 
 const tableWrap = { overflowX: "auto", marginTop: 14 };
 const tableStyle = { width: "100%", borderCollapse: "collapse", fontSize: 13 };
@@ -376,12 +444,13 @@ const labelStyle = {
 
 function MetaBox({ t }) {
   const box = {
-    minHeight: 38,
-    border: "1px solid #dbe4e2",
+    minHeight: 40,
+    border: "1px solid #e6ebf1",
     background: "#fff",
-    borderRadius: 6,
-    padding: "9px 12px",
-    boxShadow: "0 10px 24px rgba(15,23,42,.05)",
+    borderRadius: 12,
+    padding: "10px 14px",
+    boxShadow: "0 6px 16px rgba(15,23,42,.05)",
+    borderTop: "2px solid #0f766e",
   };
   return (
     <div style={docMetaStyle}>
@@ -417,14 +486,7 @@ function Sidebar({ activeId, onSelect, t, search, setSearch, bookmarks, lang }) 
   const filtered = useMemo(() => {
     if (!search.trim()) return ALL_SECTIONS;
     const q = search.toLowerCase();
-    return ALL_SECTIONS.filter(
-      (s) =>
-        (s.title || "").toLowerCase().includes(q) ||
-        (s.titleAr || "").toLowerCase().includes(q) ||
-        (s.clause || "").toLowerCase().includes(q) ||
-        (s.body || "").toLowerCase().includes(q) ||
-        (s.bodyAr || "").toLowerCase().includes(q)
-    );
+    return ALL_SECTIONS.filter((s) => sectionSearchText(s).includes(q));
   }, [search]);
 
   function toggleChapter(id) {
@@ -492,21 +554,36 @@ function Sidebar({ activeId, onSelect, t, search, setSearch, bookmarks, lang }) 
             <div style={chapterStyle(false)} onClick={() => toggleChapter(chap.id)}>
               <span style={{ fontSize: 14 }}>{chap.icon}</span>
               <span style={{ flex: 1 }}>{chapTitle}</span>
-              <span style={{ opacity: 0.5, fontSize: 10 }}>{isOpen ? "▼" : "▶"}</span>
+              <span style={chapterCountStyle}>{items.length}</span>
+              <span style={{ opacity: 0.45, fontSize: 10 }}>{isOpen ? "▼" : "▶"}</span>
             </div>
             {isOpen &&
-              items.map((s) => {
+              items.map((s, si) => {
+                const active = activeId === s.id;
                 const itemTitle = (lang === "ar" && s.titleAr) ? s.titleAr : s.title;
+                const cl = s.clause || "";
+                const chapAnnex = chap.annex ? (lang === "ar" ? chap.annexAr : chap.annex) : "";
+                let label = itemTitle;
+                if (cl && label.startsWith(cl)) {
+                  label = label.slice(cl.length).replace(/^\s*[—-]?\s*/, "");
+                }
+                const shortLabel = label.length > 34 ? label.slice(0, 32) + "…" : label;
                 return (
                   <div
                     key={s.id}
                     onClick={() => onSelect(s.id)}
-                    style={sectionItemStyle(activeId === s.id)}
+                    style={sectionItemStyle(active)}
                     title={itemTitle}
                   >
-                    {bookmarks.includes(s.id) && <span style={{ marginInlineEnd: 4, color: "#d97706" }}>⭐</span>}
-                    {s.clause ? `${s.clause} — ` : ""}
-                    {itemTitle.length > 42 ? itemTitle.slice(0, 40) + "…" : itemTitle}
+                    {cl ? (
+                      <span style={clauseChipStyle(active)}>{cl.length > 6 ? cl.slice(0, 6) : cl}</span>
+                    ) : chapAnnex ? (
+                      <span style={{ ...clauseChipStyle(active), minWidth: 34 }}>{chapAnnex}{si + 1}</span>
+                    ) : (
+                      <span style={{ ...clauseChipStyle(active), minWidth: 34 }}>§</span>
+                    )}
+                    {bookmarks.includes(s.id) && <span style={{ color: "#d97706", flexShrink: 0 }}>⭐</span>}
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shortLabel}</span>
                   </div>
                 );
               })}
@@ -520,6 +597,136 @@ function Sidebar({ activeId, onSelect, t, search, setSearch, bookmarks, lang }) 
         </div>
       )}
     </aside>
+  );
+}
+
+/* Build a searchable text blob for a section (title, body, table cells,
+   definitions, and the dynamic PRP/SOP list) so search covers table content. */
+function tableSearchText(t) {
+  if (!t) return "";
+  const heads = Array.isArray(t.headers) ? t.headers.join(" ") : "";
+  const rows = Array.isArray(t.rows) ? t.rows.map((r) => (Array.isArray(r) ? r.join(" ") : "")).join(" ") : "";
+  return heads + " " + rows;
+}
+function sectionSearchText(s) {
+  const parts = [s.title, s.titleAr, s.clause, s.body, s.bodyAr, tableSearchText(s.table), tableSearchText(s.tableAr)];
+  if (Array.isArray(s.items)) parts.push(s.items.map((it) => (Array.isArray(it) ? it.join(" ") : "")).join(" "));
+  if (Array.isArray(s.itemsAr)) parts.push(s.itemsAr.map((it) => (Array.isArray(it) ? it.join(" ") : "")).join(" "));
+  if (s.prpSopTable) parts.push(sopsData.map((x) => `${x.number} ${x.title} ${x.titleAr || ""} ${x.docNo || ""}`).join(" "));
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
+const sopBtnStyle = {
+  background: "linear-gradient(90deg,#0ea5e9,#0284c7)", color: "#fff",
+  border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 12,
+  fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap",
+};
+const sopModalOverlay = {
+  position: "fixed", inset: 0, background: "rgba(7,27,45,0.6)", backdropFilter: "blur(2px)",
+  display: "flex", alignItems: "center", justifyContent: "center", zIndex: 99999, padding: 20,
+};
+const sopModalBox = {
+  background: "#fff", borderRadius: 12, width: "min(760px, 96vw)", maxHeight: "88vh",
+  display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 70px rgba(2,32,54,0.45)",
+};
+const sopModalHeader = {
+  background: "linear-gradient(90deg,#0f766e,#0e7490)", color: "#fff", padding: "14px 18px",
+  display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12,
+};
+const sopModalClose = {
+  background: "rgba(255,255,255,0.18)", color: "#fff", border: "none", borderRadius: 6,
+  width: 30, height: 30, fontWeight: 1000, cursor: "pointer", flexShrink: 0, fontSize: 13,
+};
+const sopModalBody = { padding: "16px 20px", overflowY: "auto" };
+const sopMetaRow = { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 };
+const sopMetaChip = {
+  background: "#f1f5f9", color: "#334155", borderRadius: 20, padding: "3px 10px",
+  fontSize: 12, fontWeight: 800,
+};
+
+function SopModal({ sop, lang, onClose }) {
+  const ar = lang === "ar";
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div onClick={onClose} style={sopModalOverlay}>
+      <div onClick={(e) => e.stopPropagation()} dir={ar ? "rtl" : "ltr"} style={sopModalBox}>
+        <div style={sopModalHeader}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.9 }}>
+              {sop.number}{sop.docNo ? ` · ${sop.docNo}` : ""}
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 1000, marginTop: 2 }}>
+              {ar && sop.titleAr ? sop.titleAr : sop.title}
+            </div>
+            {(sop.subtitle || sop.subtitleAr) && (
+              <div style={{ fontSize: 12, opacity: 0.9, marginTop: 3 }}>
+                {ar && sop.subtitleAr ? sop.subtitleAr : sop.subtitle}
+              </div>
+            )}
+          </div>
+          <button onClick={onClose} style={sopModalClose} aria-label="Close">✖</button>
+        </div>
+        <div style={sopModalBody}>
+          <div style={sopMetaRow}>
+            {sop.facility && <span style={sopMetaChip}>🏭 {ar && sop.facilityAr ? sop.facilityAr : sop.facility}</span>}
+            {sop.revision && <span style={sopMetaChip}>Rev {sop.revision}</span>}
+            {sop.issueDate && <span style={sopMetaChip}>📅 {sop.issueDate}</span>}
+            {sop.category && <span style={sopMetaChip}>{ar && sop.categoryAr ? sop.categoryAr : sop.category}</span>}
+          </div>
+          {(sop.sections || []).map((sec, i) => (
+            <div key={i} style={{ marginBottom: 12 }}>
+              <div style={{ fontWeight: 1000, color: "#0f766e", fontSize: 13, marginBottom: 4 }}>
+                {ar && sec.headingAr ? sec.headingAr : sec.heading}
+              </div>
+              <div style={{ fontSize: 13, color: "#1e293b", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                {ar && sec.contentAr ? sec.contentAr : sec.content}
+              </div>
+            </div>
+          ))}
+          {!(sop.sections && sop.sections.length) && (
+            <div style={{ fontSize: 13, color: "#64748b" }}>{ar ? "لا يوجد محتوى تفصيلي لهذا الإجراء." : "No detailed content available for this SOP."}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PrpSopTable({ lang }) {
+  const [openSop, setOpenSop] = useState(null);
+  const ar = lang === "ar";
+  return (
+    <div style={tableWrap}>
+      <table style={tableStyle}>
+        <thead>
+          <tr>
+            <th style={thStyle}>SOP</th>
+            <th style={thStyle}>{ar ? "الإجراء" : "Procedure"}</th>
+            <th style={thStyle}>{ar ? "رقم الوثيقة" : "Document No."}</th>
+            <th style={thStyle}>{ar ? "الإجراء المرجعي" : "SOP"}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sopsData.map((sop, i) => (
+            <tr key={sop.id} style={{ background: i % 2 ? "#f8fafc" : "#fff" }}>
+              <td style={{ ...tdStyle, fontWeight: 900, whiteSpace: "nowrap" }}>{sop.number}</td>
+              <td style={tdStyle}>{ar && sop.titleAr ? sop.titleAr : sop.title}</td>
+              <td style={{ ...tdStyle, whiteSpace: "nowrap", color: "#64748b", fontSize: 12 }}>{sop.docNo || "—"}</td>
+              <td style={{ ...tdStyle, textAlign: "center" }}>
+                <button onClick={() => setOpenSop(sop)} style={sopBtnStyle} title={ar ? "افتح الإجراء في نافذة" : "Open SOP in a popup"}>
+                  📄 {ar ? "افتح" : "Open"}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {openSop && <SopModal sop={openSop} lang={lang} onClose={() => setOpenSop(null)} />}
+    </div>
   );
 }
 
@@ -619,11 +826,12 @@ function ImageGallery({ images, lang }) {
   );
 }
 
-function DefinitionsList({ items }) {
-  if (!items?.length) return null;
+function DefinitionsList({ items, itemsAr, lang }) {
+  const list = (lang === "ar" && Array.isArray(itemsAr) && itemsAr.length) ? itemsAr : items;
+  if (!list?.length) return null;
   return (
     <dl style={{ marginTop: 14, display: "grid", gap: 10 }}>
-      {items.map(([term, def], i) => (
+      {list.map(([term, def], i) => (
         <div key={i} style={{
           padding: "10px 14px",
           background: "#f8fafc",
@@ -975,9 +1183,14 @@ function EditModal({ section, onClose, onSave, onReset, t }) {
   );
 }
 
-function SectionView({ section, override, onEdit, t, lang, search, isBookmarked, onToggleBookmark }) {
+function SectionView({ section, override, onEdit, t, lang, search, isBookmarked, onToggleBookmark, onNavigate }) {
   const navigate = useNavigate();
   const isEdited = !!override;
+
+  const idx = ALL_SECTIONS.findIndex((s) => s.id === section.id);
+  const prevSection = idx > 0 ? ALL_SECTIONS[idx - 1] : null;
+  const nextSection = idx >= 0 && idx < ALL_SECTIONS.length - 1 ? ALL_SECTIONS[idx + 1] : null;
+  const navLabel = (s) => (lang === "ar" && s.titleAr ? s.titleAr : s.title);
 
   // Pick the right body for the chosen language
   const defaultBody = (lang === "ar" && section.bodyAr) ? section.bodyAr : (section.body || "");
@@ -993,7 +1206,7 @@ function SectionView({ section, override, onEdit, t, lang, search, isBookmarked,
   return (
     <article style={contentStyle}>
       {/* Title row */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap", paddingBottom: 18, borderBottom: "1px solid #eef2f6", marginBottom: 2 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={sectionTitleStyle}>
             <HighlightedText text={display.title} query={search} />
@@ -1002,6 +1215,15 @@ function SectionView({ section, override, onEdit, t, lang, search, isBookmarked,
             {section.clause && (
               <span style={clauseBadgeStyle}>{t("clause")} {section.clause}</span>
             )}
+            {!section.clause && (() => {
+              const ch = FSMS_CHAPTERS.find((c) => c.id === section.chapter);
+              if (!ch?.annex) return null;
+              return (
+                <span style={clauseBadgeStyle}>
+                  {lang === "ar" ? `ملحق ${ch.annexAr}` : `Annex ${ch.annex}`}
+                </span>
+              );
+            })()}
             {link && (
               <span
                 style={linkedBadgeStyle}
@@ -1039,10 +1261,33 @@ function SectionView({ section, override, onEdit, t, lang, search, isBookmarked,
       )}
 
       {/* Type-specific renders */}
-      {section.type === "definitions" && <DefinitionsList items={section.items} />}
+      {section.type === "definitions" && <DefinitionsList items={section.items} itemsAr={section.itemsAr} lang={lang} />}
       {section.table && <SectionTable table={section.table} tableAr={section.tableAr} lang={lang} />}
+      {section.prpSopTable && <PrpSopTable lang={lang} />}
+      {section.processFlows && <ProcessFlowGallery flows={section.processFlows} lang={lang} />}
       {section.images && <ImageGallery images={section.images} lang={lang} />}
       <SignatureBlocks signatures={display.signatures} pinnedBottom />
+
+      {onNavigate && (prevSection || nextSection) && (
+        <nav style={navStyle}>
+          {prevSection ? (
+            <button type="button" style={navBtnStyle("prev")} onClick={() => onNavigate(prevSection.id)} title={navLabel(prevSection)}>
+              <span style={{ fontSize: 11, fontWeight: 900, color: "#0f766e" }}>← {lang === "ar" ? "السابق" : "Previous"}</span>
+              <span style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+                {prevSection.clause ? `${prevSection.clause} · ` : ""}{navLabel(prevSection)}
+              </span>
+            </button>
+          ) : <span />}
+          {nextSection ? (
+            <button type="button" style={navBtnStyle("next")} onClick={() => onNavigate(nextSection.id)} title={navLabel(nextSection)}>
+              <span style={{ fontSize: 11, fontWeight: 900, color: "#0f766e" }}>{lang === "ar" ? "التالي" : "Next"} →</span>
+              <span style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+                {nextSection.clause ? `${nextSection.clause} · ` : ""}{navLabel(nextSection)}
+              </span>
+            </button>
+          ) : <span />}
+        </nav>
+      )}
     </article>
   );
 }
@@ -1119,8 +1364,10 @@ function ExportSection({ section, override, lang }) {
           {display.body}
         </div>
       )}
-      {section.type === "definitions" && <DefinitionsList items={section.items} />}
+      {section.type === "definitions" && <DefinitionsList items={section.items} itemsAr={section.itemsAr} lang={lang} />}
       {section.table && <SectionTable table={section.table} tableAr={section.tableAr} lang={lang} />}
+      {section.prpSopTable && <PrpSopTable lang={lang} />}
+      {section.processFlows && <ProcessFlowGallery flows={section.processFlows} lang={lang} printMode />}
       {section.images?.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginTop: 14 }}>
           {section.images.map((img, i) => (
@@ -1445,6 +1692,7 @@ export default function FSMSManualView() {
               search={search}
               isBookmarked={bookmarks.includes(activeSection.id)}
               onToggleBookmark={toggleBookmark}
+              onNavigate={handleSelect}
             />
           ) : (
             <div style={contentStyle}>{t("selectSection")}</div>

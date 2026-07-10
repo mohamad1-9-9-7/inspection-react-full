@@ -3,6 +3,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 
 
@@ -138,13 +139,7 @@ export default function EquipmentInspectionSanitizingLogView() {
   /* ── Fetch ── */
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?${new URLSearchParams({ type: TYPE })}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const uniq = Array.from(new Set(
-        list.map(r => r?.payload).filter(p => p?.branch === BRANCH && p?.reportDate).map(p => p.reportDate)
-      )).sort((a, b) => b.localeCompare(a));
+      const uniq = await listReportDates(TYPE);
       setAllDates(uniq);
       // Tree stays collapsed by default.
       if (uniq.length && !uniq.includes(date)) setDate(uniq[0]);
@@ -154,11 +149,7 @@ export default function EquipmentInspectionSanitizingLogView() {
   async function fetchRecord(d = date) {
     setLoading(true); setErr(""); setRecord(null); setEditRows([]);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?${new URLSearchParams({ type: TYPE })}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const match = list.find(r => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportByDate(TYPE, d);
       if (match?.payload) match.payload.formRef = FORM_REF;
       setRecord(match);
       const rows = match?.payload?.entries ?? [];
@@ -172,7 +163,6 @@ export default function EquipmentInspectionSanitizingLogView() {
   useEffect(() => { if (date) fetchRecord(date); }, [date]);
 
   /* ── Edit / Save / Delete ── */
-  const askPass = (label = "") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   function toggleEdit() {
     if (editing) {
@@ -185,7 +175,6 @@ export default function EquipmentInspectionSanitizingLogView() {
   }
 
   async function saveEdit() {
-    if (!askPass("Save changes")) return alert("❌ Wrong password");
     if (!record) return;
     for (const r of editRows) {
       const risky = r.freeFromDamage === "No" || r.freeFromBrokenPieces === "No" || SLOTS.some(s => r[s.key] === "✗");
@@ -201,14 +190,13 @@ export default function EquipmentInspectionSanitizingLogView() {
       alert("✅ Changes saved");
       setEditing(false);
       await fetchRecord(payload.reportDate);
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
     } catch (e) { alert("❌ Saving failed.\n" + String(e?.message || e)); }
     finally { setLoading(false); }
   }
 
   async function handleDelete() {
     if (!record) return;
-    if (!askPass("Delete confirmation")) return alert("❌ Wrong password");
     if (!window.confirm("Are you sure?")) return;
     const rid = getId(record);
     if (!rid) return alert("⚠️ Missing record id.");
@@ -217,7 +205,7 @@ export default function EquipmentInspectionSanitizingLogView() {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Deleted");
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
       setDate(allDates.find(d => d !== record?.payload?.reportDate) || todayDubai);
     } catch (e) { alert("❌ Delete failed."); }
     finally { setLoading(false); }
@@ -317,7 +305,7 @@ export default function EquipmentInspectionSanitizingLogView() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Imported");
       setDate(payload.reportDate);
-      await fetchAllDates(); await fetchRecord(payload.reportDate);
+      invalidateReportDates(TYPE); await fetchAllDates(); await fetchRecord(payload.reportDate);
     } catch(e) { alert("❌ Invalid JSON or save failed"); }
     finally { if(fileInputRef.current) fileInputRef.current.value=""; setLoading(false); }
   }

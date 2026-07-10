@@ -5,6 +5,7 @@
 // تُستخدم من كل ملفات العرض السبعة لتوحيد شجرة التاريخ والإطار العام.
 
 import React, { useEffect, useMemo, useState } from "react";
+import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 
 /* =========================================================
    Helpers مشتركة
@@ -183,6 +184,72 @@ export function GlassShell({ icon = "📄", title, actions, children }) {
       </div>
       {children}
     </div>
+  );
+}
+
+/* =========================================================
+   🌤️ ISO/HACCP look — إطار وأزرار بنمط صفحة ISO & HACCP
+   (تصدير جديد لا يؤثر على GlassShell أو بقية الفروع)
+   ========================================================= */
+export const ISO_UI = {
+  shell: {
+    minHeight: "100vh",
+    padding: "20px 16px",
+    background:
+      "radial-gradient(circle at 12% 10%, rgba(34,211,238,0.18) 0, rgba(255,255,255,1) 42%, rgba(255,255,255,1) 100%)," +
+      "radial-gradient(circle at 88% 12%, rgba(34,197,94,0.14) 0, rgba(255,255,255,0) 55%)",
+    fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+    color: "#071b2d",
+  },
+  topBar: {
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+    padding: "12px 14px", borderRadius: 14, background: "rgba(255,255,255,0.92)",
+    border: "1px solid rgba(15,23,42,0.16)", boxShadow: "0 12px 32px rgba(2,132,199,0.10)",
+    flexWrap: "wrap", marginBottom: 14,
+  },
+  title: { fontSize: 22, fontWeight: 950, lineHeight: 1.15 },
+  subtitle: { fontSize: 12, fontWeight: 700, opacity: 0.78 },
+  theadRow: { background: "#0ea5e9" },
+  thCell: { border: "1px solid rgba(255,255,255,0.30)", padding: "6px 4px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" },
+  tdCell: { border: "1px solid #e2e8f0", padding: "6px 4px", textAlign: "center", verticalAlign: "middle" },
+  metaBadge: { display: "inline-block", background: "#fff", border: "1px solid rgba(15,23,42,0.14)", borderRadius: 10, padding: "6px 12px", fontSize: 13, fontWeight: 700, color: "#0c4a6e", marginRight: 8, marginBottom: 6, boxShadow: "0 4px 12px rgba(2,132,199,0.06)" },
+  band: { textAlign: "center", background: "#e0f2fe", border: "1px solid rgba(15,23,42,0.14)", borderRadius: 10, padding: "9px 6px", fontWeight: 800, fontSize: 16, color: "#0c4a6e", marginBottom: 10 },
+  btn: (kind = "secondary", disabled = false) => {
+    const map = {
+      primary:   { bg: "linear-gradient(180deg,#0ea5e9,#06b6d4)", color: "#fff", border: "#0284c7" },
+      secondary: { bg: "#fff", color: "#0c4a6e", border: "#cbd5e1" },
+      success:   { bg: "linear-gradient(180deg,#22c55e,#16a34a)", color: "#fff", border: "#15803d" },
+      danger:    { bg: "linear-gradient(180deg,#ef4444,#dc2626)", color: "#fff", border: "#b91c1c" },
+      violet:    { bg: "linear-gradient(180deg,#8b5cf6,#7c3aed)", color: "#fff", border: "#6d28d9" },
+    };
+    const c = map[kind] || map.secondary;
+    return {
+      background: c.bg, color: c.color, border: `1.5px solid ${c.border}`,
+      padding: "8px 15px", borderRadius: 999, cursor: disabled ? "not-allowed" : "pointer",
+      fontWeight: 900, fontSize: 13, whiteSpace: "nowrap", opacity: disabled ? 0.5 : 1,
+    };
+  },
+};
+
+export function IsoShell({ icon = "📄", title, subtitle, logo = mawashiLogo, actions, children }) {
+  return (
+    <main style={ISO_UI.shell}>
+      <div style={ISO_UI.topBar}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {logo && <img src={logo} alt="logo" style={{ width: 46, height: 46, borderRadius: 10, objectFit: "cover" }} />}
+          <div>
+            <div style={ISO_UI.title}>{icon} {title}</div>
+            {subtitle && <div style={ISO_UI.subtitle}>{subtitle}</div>}
+          </div>
+        </div>
+        {actions && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {actions}
+          </div>
+        )}
+      </div>
+      {children}
+    </main>
   );
 }
 

@@ -5,6 +5,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 
 
@@ -125,19 +126,7 @@ export default function PersonalHygieneChecklistView() {
   // fetch helpers
   async function fetchAllDates() {
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const filtered = list
-        .map((r) => r?.payload)
-        .filter((p) => p && p.branch === BRANCH && p.reportDate);
-
-      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) =>
-        b.localeCompare(a)
-      );
+      const uniq = await listReportDates(TYPE);
       setAllDates(uniq);
 
       // Tree stays collapsed by default.
@@ -152,14 +141,7 @@ export default function PersonalHygieneChecklistView() {
     setErr("");
     setRecord(null);
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const match =
-        list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportByDate(TYPE, d);
 
       setRecord(match);
       setEditing(false);
@@ -183,16 +165,9 @@ export default function PersonalHygieneChecklistView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
-  // password = 9999
-  function askPass(label = "") {
-    const p = window.prompt(`${label}\nEnter password:`) || "";
-    return p === "9999";
-  }
-
   // DELETE by id
   async function handleDelete() {
     if (!record) return;
-    if (!askPass("Delete confirmation")) return alert("❌ Wrong password");
     if (!window.confirm("Are you sure you want to delete this report?")) return;
 
     const rid = getId(record);
@@ -205,7 +180,7 @@ export default function PersonalHygieneChecklistView() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Deleted");
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
       const next = allDates.find((d) => d !== record?.payload?.reportDate) || todayDubai;
       setDate(next);
     } catch (e) {
@@ -230,9 +205,8 @@ export default function PersonalHygieneChecklistView() {
     setEditing(true);
   }
 
-  // save edit (PUT by id; fallback POST)
+  // save edit (PUT by id; POST only when the record has no id)
   async function saveEdit() {
-    if (!askPass("Save changes")) return alert("❌ Wrong password");
     if (!record) return;
 
     const rid = getId(record);
@@ -247,29 +221,22 @@ export default function PersonalHygieneChecklistView() {
     try {
       setLoading(true);
 
-      let ok = false;
-      if (rid) {
-        const putRes = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: TYPE, payload }),
-        });
-        ok = putRes.ok;
-      }
-
-      if (!ok) {
-        const postRes = await fetch(`${API_BASE}/api/reports`, {
-          method: "POST",
+      // No POST fallback: reportDate is already taken by this very record, so a
+      // POST would only bounce off the unique index as a 409.
+      const saveRes = await fetch(
+        rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`,
+        {
+          method: rid ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
-        });
-        if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
-      }
+        }
+      );
+      if (!saveRes.ok) throw new Error(`HTTP ${saveRes.status}`);
 
       alert("✅ Changes saved");
       setEditing(false);
       await fetchRecord(payload.reportDate);
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
     } catch (e) {
       console.error(e);
       alert("❌ Saving failed.\n" + String(e?.message || e));
@@ -509,7 +476,7 @@ async function exportXLSX() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Imported and saved");
       setDate(payload.reportDate);
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
       await fetchRecord(payload.reportDate);
     } catch (e) {
       console.error(e);

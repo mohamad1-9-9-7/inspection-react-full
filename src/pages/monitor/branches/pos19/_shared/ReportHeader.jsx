@@ -19,9 +19,19 @@ import React from "react";
  *  - onChange(fn, opt)  — if provided, renders an input; if omitted, renders read-only
  *  - type    (string, opt) — "date" | "text" (default "text")
  *  - placeholder (string, opt)
+ *  - note    (object, opt) — { text, tone } status line under the cell.
+ *                            tone: "ok" | "blocked" | "edit" | "warn" | "muted"
  *
  * Layout: auto 5 columns on desktop, responsive below.
  */
+
+const NOTE_TONES = {
+  ok:      { color: "#166534", background: "#dcfce7", border: "#bbf7d0" },
+  blocked: { color: "#991b1b", background: "#fee2e2", border: "#fecaca" },
+  edit:    { color: "#92400e", background: "#fef3c7", border: "#fde68a" },
+  warn:    { color: "#9a3412", background: "#ffedd5", border: "#fed7aa" },
+  muted:   { color: "#475569", background: "#f1f5f9", border: "#e2e8f0" },
+};
 export default function ReportHeader({
   title,
   subtitle,
@@ -85,22 +95,38 @@ export default function ReportHeader({
           gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
           gap: 10, marginBottom: 14, fontSize: 12,
         }}>
-          {fields.map((f, i) => (
-            <div key={i} style={headerCell}>
-              <div style={headerLabel}>{f.label}</div>
-              {typeof f.onChange === "function" ? (
-                <input
-                  type={f.type || "text"}
-                  value={f.value ?? ""}
-                  onChange={(e) => f.onChange(e.target.value)}
-                  placeholder={f.placeholder || ""}
-                  style={headerInput}
-                />
-              ) : (
-                <div style={headerValueStatic}>{f.value || "—"}</div>
-              )}
-            </div>
-          ))}
+          {fields.map((f, i) => {
+            const tone = f.note ? NOTE_TONES[f.note.tone] || NOTE_TONES.muted : null;
+            return (
+              <div key={i} style={headerCell}>
+                <div style={headerLabel}>{f.label}</div>
+                {typeof f.onChange === "function" ? (
+                  <input
+                    type={f.type || "text"}
+                    value={f.value ?? ""}
+                    onChange={(e) => f.onChange(e.target.value)}
+                    placeholder={f.placeholder || ""}
+                    style={headerInput}
+                  />
+                ) : (
+                  <div style={headerValueStatic}>{f.value || "—"}</div>
+                )}
+                {f.note ? (
+                  <div
+                    style={{
+                      marginTop: 2, padding: "3px 6px", borderRadius: 4,
+                      fontSize: 10.5, fontWeight: 700, lineHeight: 1.4,
+                      direction: "rtl", textAlign: "right",
+                      color: tone.color, background: tone.background,
+                      border: `1px solid ${tone.border}`,
+                    }}
+                  >
+                    {f.note.text}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </>

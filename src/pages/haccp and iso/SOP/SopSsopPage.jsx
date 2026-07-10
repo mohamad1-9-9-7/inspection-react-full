@@ -7,7 +7,9 @@ import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 import { sopsData, ssopsData, policiesData } from "./sopData";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
 import API_BASE from "../../../config/api";
-import SignaturePad from "../../../components/SignaturePad";
+
+// خط انسيابي مموّج يُحاكي شكل التوقيع اليدوي — التوقيع يُحفظ كنص عادي.
+const SIGNATURE_FONT = "'Segoe Script', 'Brush Script MT', 'Lucida Handwriting', 'Comic Sans MS', cursive";
 
 const TYPE_DOC_META = "document_metadata";
 const TYPE_CHANGE_LOG = "fsms_change_management_log_item";
@@ -118,7 +120,7 @@ function evidenceLinksFor(sop) {
     links.push(["Calibration records", "/haccp-iso/calibration/view"]);
     links.push(["Internal calibration", "/haccp-iso/internal-calibration/view"]);
   }
-  if (cat === "Allergens") links.push(["Customer complaints / CAPA", "/haccp-iso/customer-complaints/view"]);
+  if (cat === "Allergens" || title.includes("complaint")) links.push(["Customer complaints / CAPA", "/haccp-iso/customer-complaints/view"]);
   if (!links.some(([, route]) => route === "/haccp-iso/internal-audit/view")) {
     links.push(["Internal audit evidence", "/haccp-iso/internal-audit/view"]);
   }
@@ -149,7 +151,7 @@ const UI = {
     backToHub: "Back to Hub",
     badgeLabel: "📋 SOP & sSOP",
     pageTitle: "SOP & sSOP Documents",
-    pageSubtitle: "Standard Operating Procedures — Document Set SOP 1–SOP 25 · Click any card to view full details",
+    pageSubtitle: "Standard Operating Procedures — Document Set SOP 1–SOP 29 · Click any card to view full details",
     tagline: "Al Mawashi Food Safety Management System · ISO 22000:2018 & HACCP aligned",
     totalSOPs: "Total SOPs",
     showing: "Showing",
@@ -158,7 +160,7 @@ const UI = {
     searchPlaceholder: "Search SOPs…",
     viewFullDetails: "View Full Details",
     noMatch: "No SOPs match your search.",
-    footer: "© Al Mawashi — Quality & Food Safety System · Document Set SOP 1–SOP 25",
+    footer: "© Al Mawashi — Quality & Food Safety System · Document Set SOP 1–SOP 29",
     closeBtn: "Close",
     docNo: "Doc No.",
     facility: "Facility",
@@ -177,7 +179,7 @@ const UI = {
     backToHub: "العودة للرئيسية",
     badgeLabel: "📋 SOP & sSOP",
     pageTitle: "وثائق SOP & sSOP",
-    pageSubtitle: "إجراءات التشغيل الموحدة — مجموعة وثائق SOP 1–SOP 25 · اضغط على أي بطاقة لعرض التفاصيل الكاملة",
+    pageSubtitle: "إجراءات التشغيل الموحدة — مجموعة وثائق SOP 1–SOP 29 · اضغط على أي بطاقة لعرض التفاصيل الكاملة",
     tagline: "نظام إدارة سلامة الأغذية لشركة المواشي · متوافق مع ISO 22000:2018 وHACCP",
     totalSOPs: "إجمالي SOPs",
     showing: "يعرض",
@@ -186,7 +188,7 @@ const UI = {
     searchPlaceholder: "ابحث عن SOPs…",
     viewFullDetails: "عرض التفاصيل الكاملة",
     noMatch: "لا توجد SOPs تطابق بحثك.",
-    footer: "© المواشي — نظام الجودة وسلامة الأغذية · مجموعة وثائق SOP 1–SOP 25",
+    footer: "© المواشي — نظام الجودة وسلامة الأغذية · مجموعة وثائق SOP 1–SOP 29",
     closeBtn: "إغلاق",
     docNo: "رقم الوثيقة",
     facility: "المنشأة",
@@ -505,7 +507,7 @@ function SopModal({ sop, onClose, lang, navigate, onAuditChanged }) {
   }
 
   async function saveAcknowledgement() {
-    if (!ackForm.employeeName.trim() || !ackForm.position.trim() || !ackForm.date || !ackForm.signature) {
+    if (!ackForm.employeeName.trim() || !ackForm.position.trim() || !ackForm.date || !ackForm.signature.trim()) {
       alert("Employee name, position, date, and signature are required.");
       return;
     }
@@ -520,7 +522,7 @@ function SopModal({ sop, onClose, lang, navigate, onAuditChanged }) {
         employeeName: ackForm.employeeName.trim(),
         position: ackForm.position.trim(),
         date: ackForm.date,
-        signature: ackForm.signature,
+        signature: ackForm.signature.trim(),
         statement: "Employee read and understood this SOP/sSOP and acknowledges responsibility to follow it.",
       }, ackForm.employeeName);
       setAckForm({ employeeName: "", position: "", date: new Date().toISOString().slice(0, 10), signature: "" });
@@ -798,12 +800,43 @@ function SopModal({ sop, onClose, lang, navigate, onAuditChanged }) {
               <AuditInput label="Position" value={ackForm.position} onChange={(v) => setAckForm((p) => ({ ...p, position: v }))} />
               <AuditInput label="Date" type="date" value={ackForm.date} onChange={(v) => setAckForm((p) => ({ ...p, date: v }))} />
               <AuditField label="Signature" wide>
-                <SignaturePad value={ackForm.signature} onChange={(v) => setAckForm((p) => ({ ...p, signature: v }))} width={420} height={110} label="Employee signature" />
+                <input
+                  type="text"
+                  value={ackForm.signature}
+                  onChange={(e) => setAckForm((p) => ({ ...p, signature: e.target.value }))}
+                  placeholder="Type signature here"
+                  style={{
+                    ...auditInput,
+                    fontFamily: SIGNATURE_FONT,
+                    fontSize: 26,
+                    fontWeight: 400,
+                    letterSpacing: "0.5px",
+                    color: "#0b1f4d",
+                    padding: "8px 14px",
+                  }}
+                />
               </AuditField>
             </AuditGrid>
             <MiniList
               records={ackRecords}
-              render={(p) => `${p.employeeName} - ${p.position} - ${p.date}`}
+              render={(p) => (
+                <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span>{p.employeeName} - {p.position} - {p.date}</span>
+                  {p.signature && !String(p.signature).startsWith("data:") && !String(p.signature).startsWith("http") && (
+                    <span style={{ fontFamily: SIGNATURE_FONT, fontSize: 20, fontWeight: 400, color: "#0b1f4d" }}>
+                      {p.signature}
+                    </span>
+                  )}
+                  {p.signature && (String(p.signature).startsWith("data:") || String(p.signature).startsWith("http")) && (
+                    <img
+                      src={p.signature}
+                      alt="Employee signature"
+                      crossOrigin="anonymous"
+                      style={{ height: 36, maxWidth: 180, objectFit: "contain", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, padding: 2 }}
+                    />
+                  )}
+                </span>
+              )}
               onDelete={(rec) => deleteAuditRecord(rec, "employee acknowledgment")}
               deletingId={deletingId}
               emptyText="No employee acknowledgments saved yet."

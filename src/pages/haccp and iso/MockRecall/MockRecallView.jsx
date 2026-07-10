@@ -9,6 +9,7 @@ import LinkedReportPopup from "./LinkedReportPopup";
 import { useLang, LangToggle, getDrillShortLabel } from "./i18n";
 import AttachmentsSection from "./AttachmentsSection";
 import HaccpLinkBadge from "../FSMSManual/HaccpLinkBadge";
+import MockRecallTrendReportModal from "./MockRecallTrendReport";
 
 const TYPE = "mock_recall_drill";
 
@@ -46,6 +47,7 @@ export default function MockRecallView() {
   const [yearFilter, setYearFilter] = useState("all");
   const [resultFilter, setResultFilter] = useState("all"); // all | pass | fail | pending
   const [expandedId, setExpandedId] = useState(null);
+  const [trendOpen, setTrendOpen] = useState(false);
 
   // 🆕 popup للتقرير المصدر
   const [popup, setPopup] = useState({ open: false, kind: null, summary: null });
@@ -180,6 +182,9 @@ export default function MockRecallView() {
           <LangToggle lang={lang} toggle={toggle} />
           <button style={S.btnSecondary} onClick={() => navigate("/haccp-iso/mock-recall/settings")}>
             {t("settings")}
+          </button>
+          <button style={S.btnSecondary} onClick={() => setTrendOpen(true)} disabled={!items.length}>
+            📈 {lang === "ar" ? "تحليل الاتجاهات" : "Trend Analysis"}
           </button>
           <button style={S.btnSecondary} onClick={load} disabled={loading}>
             {loading ? t("refreshing") : t("refresh")}
@@ -533,6 +538,55 @@ export default function MockRecallView() {
                               ]}
                             />
                           )}
+
+                          {/* 🆕 Production: Defrosting Record */}
+                          {p.linked.prodDefrost && (
+                            <LinkedSourceCard
+                              icon="❄️"
+                              title={t("prodDefrostTitle")}
+                              accent="#3b82f6"
+                              openLabel={t("openSource")}
+                              onOpen={() => openSource("prodDefrost", p.linked.prodDefrost)}
+                              fields={[
+                                { label: t("drillDate"), value: String(p.linked.prodDefrost.date || "").slice(0, 10), highlight: true },
+                                { label: lang === "ar" ? "عدد السجلات" : "Entries", value: p.linked.prodDefrost.rowsCount },
+                                { label: lang === "ar" ? "دقّقه" : "Checked By", value: p.linked.prodDefrost.checkedBy },
+                              ]}
+                            />
+                          )}
+
+                          {/* 🆕 Production: On-Line Cutting Record */}
+                          {p.linked.prodCutting && (
+                            <LinkedSourceCard
+                              icon="✂️"
+                              title={t("prodCuttingTitle")}
+                              accent="#e11d48"
+                              openLabel={t("openSource")}
+                              onOpen={() => openSource("prodCutting", p.linked.prodCutting)}
+                              fields={[
+                                { label: t("drillDate"), value: String(p.linked.prodCutting.date || "").slice(0, 10), highlight: true },
+                                { label: lang === "ar" ? "عدد المنتجات" : "Products", value: p.linked.prodCutting.rowsCount },
+                                { label: t("batchNo"), value: p.linked.prodCutting.batchCode },
+                                { label: lang === "ar" ? "سجّله" : "Recorded By", value: p.linked.prodCutting.recordedBy },
+                              ]}
+                            />
+                          )}
+
+                          {/* 🆕 Production: Dried Meat Process */}
+                          {p.linked.prodDried && (
+                            <LinkedSourceCard
+                              icon="🥓"
+                              title={t("prodDriedTitle")}
+                              accent="#b45309"
+                              openLabel={t("openSource")}
+                              onOpen={() => openSource("prodDried", p.linked.prodDried)}
+                              fields={[
+                                { label: t("drillDate"), value: String(p.linked.prodDried.date || "").slice(0, 10), highlight: true },
+                                { label: t("batchNo"), value: p.linked.prodDried.batchId },
+                                { label: t("productName").replace(" *",""), value: p.linked.prodDried.productName },
+                              ]}
+                            />
+                          )}
                         </div>
                       </div>
                     )}
@@ -715,6 +769,11 @@ export default function MockRecallView() {
         kind={popup.kind}
         summary={popup.summary}
       />
+
+      {/* 🆕 مودال تحليل الاتجاهات */}
+      {trendOpen && (
+        <MockRecallTrendReportModal items={items} lang={lang} onClose={() => setTrendOpen(false)} />
+      )}
     </div>
   );
 }

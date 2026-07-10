@@ -31,11 +31,11 @@ export const FSMS_CHAPTERS = [
   { id: "clause-8",    icon: "⚙️", title: "8. Operation", titleAr: "8. التشغيل" },
   { id: "clause-9",    icon: "📊", title: "9. Performance Evaluation", titleAr: "9. تقييم الأداء" },
   { id: "clause-10",   icon: "📈", title: "10. Improvement", titleAr: "10. التحسين" },
-  { id: "products",    icon: "🥩", title: "Product Description", titleAr: "وصف المنتجات" },
-  { id: "flow",        icon: "🔄", title: "Process Flow Diagrams", titleAr: "مخططات تدفق العمليات" },
-  { id: "hazard",      icon: "⚠️", title: "Hazard Analysis", titleAr: "تحليل المخاطر" },
-  { id: "ccp",         icon: "🎯", title: "CCP Summary", titleAr: "ملخص نقاط التحكم الحرجة" },
-  { id: "haccp-plan",  icon: "📕", title: "HACCP Plan", titleAr: "خطة HACCP" },
+  { id: "products",    icon: "🥩", title: "Product Description", titleAr: "وصف المنتجات", annex: "A", annexAr: "أ" },
+  { id: "flow",        icon: "🔄", title: "Process Flow Diagrams", titleAr: "مخططات تدفق العمليات", annex: "B", annexAr: "ب" },
+  { id: "hazard",      icon: "⚠️", title: "Hazard Analysis", titleAr: "تحليل المخاطر", annex: "C", annexAr: "ج" },
+  { id: "ccp",         icon: "🎯", title: "CCP Summary", titleAr: "ملخص نقاط التحكم الحرجة", annex: "D", annexAr: "د" },
+  { id: "haccp-plan",  icon: "📕", title: "HACCP Plan", titleAr: "خطة HACCP", annex: "E", annexAr: "هـ" },
 ];
 
 /* ============================================================
@@ -44,7 +44,7 @@ export const FSMS_CHAPTERS = [
 export const FSMS_MODULE_LINKS = {
   "0.5": { route: "/haccp-iso/fsms-manual?section=0.5", label: "Amendment Sheet" },
   "4.2": { route: "/haccp-iso/supplier-evaluation", label: "Supplier Evaluation" },
-  "4.4": { route: "/haccp-iso/licenses-contracts/view", label: "Licenses & Contracts" },
+  "4.3": { route: "/haccp-iso/licenses-contracts/view", label: "Licenses & Contracts" },
   "5.2": { route: "/haccp-iso/food-safety-policy", label: "Food Safety Policy" },
   "6.1": { route: "/haccp-iso/risk-register/view", label: "FSMS Risk Register" },
   "6.1-opp": { route: "/haccp-iso/opportunity-register/view", label: "FSMS Opportunity Register" },
@@ -223,6 +223,8 @@ export const FSMS_SECTIONS = [
         ["23", "QA/QC",   "Quality Assurance / Quality Control"],
         ["24", "COA",     "Certificate of Analysis"],
         ["25", "PPE",     "Personal Protective Equipment"],
+        ["26", "TELT",    "Trans Emirates Livestock Trading L.L.C."],
+        ["27", "PDCA",    "Plan, Do, Check, Act"],
       ],
     },
     tableAr: {
@@ -253,6 +255,8 @@ export const FSMS_SECTIONS = [
         ["23", "QA/QC",   "ضمان الجودة / مراقبة الجودة"],
         ["24", "COA",     "شهادة تحليل"],
         ["25", "PPE",     "معدات الوقاية الشخصية"],
+        ["26", "TELT",    "شركة ترانس إميرتس لتجارة المواشي ذ.م.م."],
+        ["27", "PDCA",    "التخطيط، التنفيذ، الفحص، العمل"],
       ],
     },
   },
@@ -391,6 +395,48 @@ export const FSMS_SECTIONS = [
       ["Top Management", "Person or group of people that directs and controls an organization at the highest level."],
       ["Traceability", "Ability to follow the history, application, movement and location of an object through specified stage(s) of production, processing and trading."],
       ["Verification", "Confirmation, through provision of objective evidence, that specified requirements have been fulfilled."],
+      ["Feed", "Single or multiple product(s) whether processed, semi-processed or raw, which is/are intended to be fed to food-producing animals."],
+      ["Food", "Substance (ingredient), whether processed, semi-processed or raw, which is intended for human consumption; includes drink and any substance used in the manufacture, preparation or treatment of food, but excludes cosmetics, tobacco or substances used only as drugs."],
+      ["Animal Food", "Single or multiple product(s) whether processed, semi-processed or raw, which is/are intended to be fed to non-food-producing animals."],
+      ["Food Chain", "Sequence of the stages in the production, processing, trading, storage and handling of a food and its ingredients, from primary production to consumption."],
+      ["Organization", "Person or group of people that has its own functions with responsibilities, authorities and relationships to achieve its objectives."],
+      ["Performance", "Measurable result; can relate to the management of activities, processes, products, services, systems or organizations."],
+      ["Process", "Set of inter-related or interacting activities which transforms inputs to outputs."],
+      ["Product", "Output that is a result of a process."],
+      ["Requirement", "Need or expectation that is stated, generally implied or obligatory."],
+    ],
+    itemsAr: [
+      ["المستوى المقبول", "مستوى خطر سلامة الغذاء الذي يجب ألا يُتجاوز في المنتج النهائي الذي تقدمه المنظمة."],
+      ["معيار الإجراء", "مواصفة قابلة للقياس أو الملاحظة لمراقبة برنامج مسبق تشغيلي (OPRP)."],
+      ["التدقيق", "عملية منهجية ومستقلة وموثقة للحصول على أدلة التدقيق وتقييمها موضوعياً."],
+      ["الكفاءة", "القدرة على تطبيق المعرفة والمهارات لتحقيق النتائج المرجوة."],
+      ["المطابقة", "الوفاء بمتطلب."],
+      ["التلوث", "إدخال أو حدوث ملوّث بما في ذلك خطر سلامة غذاء في منتج أو بيئة معالجة."],
+      ["التحسين المستمر", "نشاط متكرر لتعزيز الأداء."],
+      ["تدبير التحكم", "إجراء أو نشاط ضروري لمنع خطر جوهري على سلامة الغذاء أو تقليله إلى مستوى مقبول."],
+      ["التصحيح", "إجراء لإزالة حالة عدم مطابقة مكتشفة."],
+      ["الإجراء التصحيحي", "إجراء لإزالة سبب عدم المطابقة ومنع تكرارها."],
+      ["نقطة التحكم الحرجة (CCP)", "خطوة يُطبَّق عندها تدبير/تدابير تحكم لمنع خطر جوهري على سلامة الغذاء أو تقليله إلى مستوى مقبول، بحدود حرجة محددة."],
+      ["المعلومات الموثقة", "معلومات يجب ضبطها والحفاظ عليها من قبل المنظمة والوسط الذي تُحفظ عليه."],
+      ["مخطط التدفق", "عرض تخطيطي ومنهجي لتسلسل وتفاعلات خطوات العملية."],
+      ["سلامة الغذاء", "ضمان أن الغذاء لن يسبب أثراً صحياً ضاراً للمستهلك عند تحضيره و/أو استهلاكه وفق استخدامه المقصود."],
+      ["خطر سلامة الغذاء", "عامل بيولوجي أو كيميائي أو فيزيائي في الغذاء لديه القدرة على التسبب بأثر صحي ضار."],
+      ["المراقبة", "تحديد حالة نظام أو عملية أو نشاط."],
+      ["عدم المطابقة", "عدم الوفاء بمتطلب."],
+      ["الإسناد الخارجي", "ترتيب تقوم فيه منظمة خارجية بجزء من وظيفة أو عملية المنظمة."],
+      ["خطر سلامة الغذاء الجوهري", "خطر سلامة غذاء، مُحدَّد من خلال تقييم المخاطر، يحتاج إلى الضبط بتدابير تحكم."],
+      ["الإدارة العليا", "شخص أو مجموعة أشخاص يوجّهون ويتحكمون في المنظمة على أعلى مستوى."],
+      ["التتبع", "القدرة على تتبع تاريخ وتطبيق وحركة وموقع كائن عبر مراحل محددة من الإنتاج والمعالجة والتجارة."],
+      ["التحقق", "تأكيد، عبر تقديم أدلة موضوعية، بأن المتطلبات المحددة قد استُوفيت."],
+      ["العلف", "منتج واحد أو أكثر، سواء مُصنّع أو نصف مُصنّع أو خام، مُعدّ لإطعام حيوانات منتجة للغذاء."],
+      ["الغذاء", "مادة (مكوّن)، مُصنّعة أو نصف مُصنّعة أو خام، مُعدّة للاستهلاك البشري؛ تشمل الشراب وأي مادة تُستخدم في تصنيع أو تحضير أو معالجة الغذاء، ولا تشمل مستحضرات التجميل أو التبغ أو المواد المستخدمة كأدوية فقط."],
+      ["غذاء الحيوان", "منتج واحد أو أكثر، مُصنّع أو نصف مُصنّع أو خام، مُعدّ لإطعام حيوانات غير منتجة للغذاء."],
+      ["السلسلة الغذائية", "تسلسل مراحل الإنتاج والمعالجة والتجارة والتخزين والتداول للغذاء ومكوّناته، من الإنتاج الأولي حتى الاستهلاك."],
+      ["المنظمة", "شخص أو مجموعة أشخاص لها وظائفها الخاصة بمسؤوليات وصلاحيات وعلاقات لتحقيق أهدافها."],
+      ["الأداء", "نتيجة قابلة للقياس؛ قد تتعلق بإدارة الأنشطة والعمليات والمنتجات والخدمات والأنظمة أو المنظمات."],
+      ["العملية", "مجموعة أنشطة مترابطة أو متفاعلة تحوّل المدخلات إلى مخرجات."],
+      ["المنتج", "مخرَج ناتج عن عملية."],
+      ["المتطلب", "حاجة أو توقع مُعلَن أو ضمني عموماً أو إلزامي."],
     ],
   },
 
@@ -530,9 +576,9 @@ export const FSMS_SECTIONS = [
     },
   },
   {
-    id: "4.3", clause: "4.3", chapter: "clause-4",
-    title: "4.3 Monitoring and Review of Interested Parties",
-    titleAr: "4.3 مراقبة ومراجعة الأطراف المعنية",
+    id: "4.3", clause: "4.2", chapter: "clause-4",
+    title: "4.2 Monitoring & Review of Interested Parties",
+    titleAr: "4.2 مراقبة ومراجعة الأطراف المعنية",
     type: "text",
     body:
       "TELT ensures that:\n• Interested parties and their requirements are reviewed annually\n• Changes (legal, market, supplier issues) are updated regularly\n• Feedback from customers and authorities is analyzed and recorded\n\nThe identified needs and expectations are integrated into the FSMS through:\n• HACCP Plan (food safety hazards control)\n• PRPs (cleaning, hygiene, pest control, maintenance)\n• Supplier Approval Program\n• Training Programs\n• Traceability and Recall System\n• Internal Audit and Management Review",
@@ -540,9 +586,9 @@ export const FSMS_SECTIONS = [
       "تضمن TELT ما يلي:\n• مراجعة الأطراف المعنية ومتطلباتها سنوياً\n• تحديث التغييرات (قانونية، سوقية، قضايا الموردين) بانتظام\n• تحليل وتسجيل ملاحظات العملاء والجهات الرسمية\n\nيتم دمج الاحتياجات والتوقعات المحددة في FSMS من خلال:\n• خطة HACCP (التحكم في مخاطر سلامة الغذاء)\n• البرامج المسبقة PRPs (التنظيف، النظافة، مكافحة الآفات، الصيانة)\n• برنامج اعتماد الموردين\n• برامج التدريب\n• نظام التتبع والاسترجاع\n• التدقيق الداخلي ومراجعة الإدارة",
   },
   {
-    id: "4.4", clause: "4.4", chapter: "clause-4",
-    title: "4.4 Determine the Scope of FSMS",
-    titleAr: "4.4 تحديد نطاق نظام إدارة سلامة الغذاء",
+    id: "4.4", clause: "4.3", chapter: "clause-4",
+    title: "4.3 Determining the Scope of the FSMS",
+    titleAr: "4.3 تحديد نطاق نظام إدارة سلامة الغذاء",
     type: "text",
     body:
       "TELT has developed and implemented a Food Safety Management System to consistently satisfy the needs of its customers and improve the product safety management of the company. The FSMS complies with ISO 22000:2018 and covers all activities related to the handling of meat and meat products, including receiving, storage, processing, cutting, packaging, and distribution.\n\nThe system is implemented at the central processing & distribution warehouse located opposite Zulaikha Hospital, Near Al Kabeer (Al Qusais), Warehouse 2 & 3, with the administrative head office in Deira (opposite Al Qabail), and applies to all departments involved in food handling operations across the Al Qusais warehouse and the three retail butchery outlets in Al Barsha, Abu Dhabi, and Al Ain.\n\nThe FSMS applies to the following products:\n• Fresh chilled meat\n• Frozen meat\n• Meat cuts and portioned products\n• Sausages\n• Dry meat\n• Poultry, etc.\n\nThe following processes are included within the scope:\n• Receiving of raw materials (chilled/frozen meat, poultry, and dry items)\n• Chilled and frozen storage\n• Cutting and processing\n• Packaging and labeling\n• Dispatch and distribution\n\nExclusions from scope (per Top-Management decision and FSMS Change Management Log):\n• Live-animal handling, slaughtering, and feedlot operations are NOT performed by the UAE entity and are NOT covered by this FSMS.\n• Imported chilled/frozen meat is sourced exclusively from approved international slaughterhouses verified by the Supplier Approval programme (halal/HACCP/regulatory certificates required).",
@@ -550,9 +596,9 @@ export const FSMS_SECTIONS = [
       "قامت TELT بتطوير وتطبيق نظام إدارة سلامة الغذاء لتلبية احتياجات عملائها بشكل مستمر وتحسين إدارة سلامة المنتج في الشركة. يتوافق FSMS مع ISO 22000:2018 ويغطي جميع الأنشطة المتعلقة بتداول اللحوم ومنتجات اللحوم، بما في ذلك الاستلام والتخزين والمعالجة والتقطيع والتعبئة والتوزيع.\n\nيتم تطبيق النظام في المستودع المركزي للمعالجة والتوزيع الواقع مقابل مستشفى زليخة، بالقرب من الكبير (القصيص)، المستودع 2 و 3، مع المكتب الإداري الرئيسي في ديرة (مقابل القبائل)، ويُطبق على جميع الأقسام المشاركة في عمليات تداول الغذاء عبر مستودع القصيص وثلاث ملاحم للبيع: البرشاء، أبوظبي، والعين.\n\nيُطبق FSMS على المنتجات التالية:\n• اللحم المبرد الطازج\n• اللحم المجمد\n• قطع اللحم والمنتجات المقسّمة\n• النقانق\n• اللحم المجفّف\n• الدواجن، إلخ.\n\nالعمليات التالية مشمولة في النطاق:\n• استلام المواد الخام (اللحوم المبرّدة/المجمّدة، الدواجن، الأصناف الجافة)\n• التخزين المبرد والمجمد\n• التقطيع والمعالجة\n• التعبئة ووضع الملصقات\n• الإرسال والتوزيع\n\nالاستثناءات من النطاق (وفق قرار الإدارة العليا وسجل إدارة التغييرات في FSMS):\n• لا تقوم TELT في الإمارات بتداول الحيوانات الحية ولا الذبح ولا تربية المواشي (Feedlot)، وهي **ليست** ضمن نطاق هذا النظام.\n• يتم استيراد اللحوم المبرّدة والمجمّدة حصرياً من مسالخ دولية معتمدة تم التحقق منها عبر برنامج اعتماد الموردين (مع اشتراط شهادات الحلال / HACCP / الشهادات التنظيمية).",
   },
   {
-    id: "4.5", clause: "4.5", chapter: "clause-4",
-    title: "4.5 Food Safety Management System",
-    titleAr: "4.5 نظام إدارة سلامة الغذاء",
+    id: "4.5", clause: "4.4", chapter: "clause-4",
+    title: "4.4 Food Safety Management System",
+    titleAr: "4.4 نظام إدارة سلامة الغذاء",
     type: "text",
     body:
       "TELT LLC has established, implemented and maintained an FSMS and continually updates and improves its effectiveness in accordance with the requirements of ISO 22000:2018. TELT LLC has defined the scope of FSMS. The scope specifies the products or product categories that are addressed by the FSMS.",
@@ -720,9 +766,9 @@ export const FSMS_SECTIONS = [
     titleAr: "7.5 المعلومات الموثقة",
     type: "text",
     body:
-      "7.5.1 General:\nTELT LLC FSMS includes:\n• Documented information required by this document\n• Documented information determined by the organization as being necessary for the effectiveness of FSMS\n• Documented information and food safety requirements required by Statutory, regulatory authorities and Customers\n\n7.5.2 Creating and Updating:\nDocuments created by TELT LLC ensure appropriate:\n• Identification and Description (Title, Date, Reference Number)\n• Form (Language, Graphics) and media (Paper, Electronic)\n• Review and approval for suitability and adequacy",
+      "7.5.1 General:\nTELT LLC FSMS includes:\n• Documented information required by this document\n• Documented information determined by the organization as being necessary for the effectiveness of FSMS\n• Documented information and food safety requirements required by Statutory, regulatory authorities and Customers\n\n7.5.2 Creating and Updating:\nDocuments created by TELT LLC ensure appropriate:\n• Identification and Description (Title, Date, Reference Number)\n• Form (Language, Graphics) and media (Paper, Electronic)\n• Review and approval for suitability and adequacy\n\n7.5.3 Control of Documented Information:\nDocumented information required by the FSMS and by ISO 22000:2018 is controlled to ensure it is available and suitable for use where and when needed, and adequately protected (from loss of confidentiality, improper use, or loss of integrity). For its control, TELT LLC addresses the following activities:\n• Distribution, access, retrieval and use — controlled through the Document Master Register (owners, storage location, and access rights defined).\n• Storage and preservation, including preservation of legibility — electronic master version is the controlled reference; controlled printed copies are registered.\n• Control of changes — version/revision control maintained through the Amendment Sheet and a linked record in the Change Management Log.\n• Retention and disposition — retention periods are defined (minimum the shelf life of the product for records), and obsolete documents are withdrawn and clearly marked to prevent unintended use.\nDocumented information of external origin determined to be necessary (e.g. Codex CAC/RCP 1-1969, ISO/TS 22002-1, Dubai Food Code, ADAFSA guidelines, UAE.S 2055-1, customer specifications) is identified and controlled through the Master List of External Documents. Documented information retained as evidence of conformity (records) is protected from unintended alteration.",
     bodyAr:
-      "7.5.1 عام:\nيتضمن FSMS الخاص بـ TELT LLC:\n• المعلومات الموثّقة المطلوبة بموجب هذه الوثيقة\n• المعلومات الموثّقة التي تحددها المنظمة على أنها ضرورية لفعالية FSMS\n• المعلومات الموثّقة ومتطلبات سلامة الغذاء التي تتطلبها الجهات القانونية والتنظيمية والعملاء\n\n7.5.2 الإنشاء والتحديث:\nالوثائق التي تنشئها TELT LLC تضمن المناسب من:\n• التعريف والوصف (العنوان، التاريخ، الرقم المرجعي)\n• الشكل (اللغة، الرسومات) والوسائط (ورقي، إلكتروني)\n• المراجعة والموافقة على الملاءمة والكفاية",
+      "7.5.1 عام:\nيتضمن FSMS الخاص بـ TELT LLC:\n• المعلومات الموثّقة المطلوبة بموجب هذه الوثيقة\n• المعلومات الموثّقة التي تحددها المنظمة على أنها ضرورية لفعالية FSMS\n• المعلومات الموثّقة ومتطلبات سلامة الغذاء التي تتطلبها الجهات القانونية والتنظيمية والعملاء\n\n7.5.2 الإنشاء والتحديث:\nالوثائق التي تنشئها TELT LLC تضمن المناسب من:\n• التعريف والوصف (العنوان، التاريخ، الرقم المرجعي)\n• الشكل (اللغة، الرسومات) والوسائط (ورقي، إلكتروني)\n• المراجعة والموافقة على الملاءمة والكفاية\n\n7.5.3 ضبط المعلومات الموثّقة:\nيتم ضبط المعلومات الموثّقة المطلوبة بموجب FSMS و ISO 22000:2018 لضمان توفرها وملاءمتها للاستخدام أينما ومتى لزم، وحمايتها بشكل كافٍ (من فقدان السرية أو سوء الاستخدام أو فقدان السلامة). ولضبطها تتناول TELT LLC الأنشطة التالية:\n• التوزيع والوصول والاسترجاع والاستخدام — يُضبط عبر سجل الوثائق الرئيسي (تحديد المُلّاك وموقع الحفظ وصلاحيات الوصول).\n• التخزين والحفظ بما في ذلك الحفاظ على القابلية للقراءة — النسخة الإلكترونية الأم هي المرجع المضبوط، والنسخ المطبوعة المضبوطة مُسجّلة.\n• ضبط التغييرات — ضبط الإصدار/المراجعة عبر صفحة التعديلات مع سجل مرتبط في سجل إدارة التغييرات.\n• الاحتفاظ والتخلص — تحديد فترات احتفاظ (كحد أدنى مدة صلاحية المنتج للسجلات)، وسحب الوثائق المُلغاة ووسمها بوضوح لمنع الاستخدام غير المقصود.\nيتم تحديد وضبط المعلومات الموثّقة خارجية المصدر الضرورية (مثل Codex CAC/RCP 1-1969 و ISO/TS 22002-1 و Dubai Food Code وإرشادات ADAFSA و UAE.S 2055-1 ومواصفات العملاء) عبر القائمة الرئيسية للوثائق الخارجية. وتُحمى المعلومات الموثّقة المُحتفَظ بها كدليل على المطابقة (السجلات) من التغيير غير المقصود.",
   },
 
   /* ─────────── CLAUSE 8 ─────────── */
@@ -742,9 +788,10 @@ export const FSMS_SECTIONS = [
     titleAr: "8.2 البرامج المسبقة",
     type: "text",
     body:
-      "The organization establishes, implements, and maintains PRPs to control:\n• Personnel hygiene\n• Cleaning and sanitation\n• Pest control\n• Waste management\n• Equipment maintenance\n• Temperature control\n• Cross-contamination prevention\n\nAll PRPs are documented, implemented, and regularly monitored. PRP procedures are maintained as separate controlled documents.",
+      "The organization establishes, implements, and maintains PRPs to control:\n• Personnel hygiene\n• Cleaning and sanitation\n• Pest control\n• Waste management\n• Equipment maintenance\n• Temperature control\n• Cross-contamination prevention\n\nAll PRPs are documented, implemented, and regularly monitored. PRP procedures are maintained as separate controlled documents.\n\nThe PRP programs implemented by the organization include, but are not limited to:",
     bodyAr:
-      "تنشئ المنظمة وتطبّق وتحافظ على البرامج المسبقة (PRPs) لضبط:\n• النظافة الشخصية للموظفين\n• التنظيف والصرف الصحي\n• مكافحة الآفات\n• إدارة النفايات\n• صيانة المعدات\n• التحكم في درجة الحرارة\n• منع التلوث المتبادل\n\nجميع البرامج المسبقة موثّقة ومطبّقة ومراقَبة بانتظام. يتم الاحتفاظ بإجراءات PRP كوثائق مضبوطة منفصلة.",
+      "تنشئ المنظمة وتطبّق وتحافظ على البرامج المسبقة (PRPs) لضبط:\n• النظافة الشخصية للموظفين\n• التنظيف والصرف الصحي\n• مكافحة الآفات\n• إدارة النفايات\n• صيانة المعدات\n• التحكم في درجة الحرارة\n• منع التلوث المتبادل\n\nجميع البرامج المسبقة موثّقة ومطبّقة ومراقَبة بانتظام. يتم الاحتفاظ بإجراءات PRP كوثائق مضبوطة منفصلة.\n\nتشمل برامج PRP المطبّقة في المنظمة، على سبيل المثال لا الحصر:",
+    prpSopTable: true,
   },
   {
     id: "8.3", clause: "8.3", chapter: "clause-8",
@@ -772,9 +819,9 @@ export const FSMS_SECTIONS = [
     titleAr: "8.5 التحكم في المخاطر",
     type: "text",
     body:
-      "TELT LLC maintains documented information concerning all raw materials, ingredients and product contact materials including:\n• Biological, chemical, physical and allergen characteristics\n• Composition of formulated components, including processing aids\n• Source / Place of Origin\n• Method of Production / Packaging / Delivery\n• Storage Conditions and Shelf Life\n• Preparation and/or handling before use or processing\n• Acceptance criteria related to food safety\n\nFlow Diagrams: Process flow diagrams are accurate, clear and sufficiently detailed, including the sequence and interaction of all steps, outsourced processes, raw material entry points, recycling/reworking, and end-product/by-product/waste removal.\n\nHazard Analysis: All potential biological, chemical, physical and allergen hazards are identified and registered. Acceptable levels are defined per statutory and regulatory requirements.\n\nControl Measures: Selected and categorized as Operational PRPs and/or CCPs (Critical Control Points). Validation is performed prior to implementation.\n\nCritical Limits at CCPs are measurable. Action criteria for OPRPs are measurable or observable.\n\nMonitoring systems are established at each CCP and OPRP. Corrections and corrective actions are specified when limits or criteria are not met to ensure unsafe products are not released, the cause of non-conformity is identified, the parameter is returned within limits, and recurrence is prevented.",
+      "TELT LLC maintains documented information concerning all raw materials, ingredients and product contact materials including:\n• Biological, chemical, physical and allergen characteristics\n• Composition of formulated components, including processing aids\n• Source / Place of Origin\n• Method of Production / Packaging / Delivery\n• Storage Conditions and Shelf Life\n• Preparation and/or handling before use or processing\n• Acceptance criteria related to food safety\n\nFlow Diagrams: Process flow diagrams are accurate, clear and sufficiently detailed, including the sequence and interaction of all steps, outsourced processes, raw material entry points, recycling/reworking, and end-product/by-product/waste removal.\n\nHazard Analysis: All potential biological, chemical, physical and allergen hazards are identified and registered. Acceptable levels are defined per statutory and regulatory requirements.\n\nControl Measures: Selected and categorized as Operational PRPs and/or CCPs (Critical Control Points). Validation is performed prior to implementation.\n\nCritical Limits at CCPs are measurable. Action criteria for OPRPs are measurable or observable.\n\nMonitoring systems are established at each CCP and OPRP. Corrections and corrective actions are specified when limits or criteria are not met to ensure unsafe products are not released, the cause of non-conformity is identified, the parameter is returned within limits, and recurrence is prevented.\n\n8.5.3 Validation of Control Measures:\nPrior to implementation in the hazard control plan, the Food Safety Team validates that each selected control measure (or combination of control measures) is capable of achieving the intended control of the significant food safety hazard. Validation is performed at the time the control-measure combination is designed and is repeated after any change to a control measure, process, raw material, end-product characteristic, method of distribution, or intended use. Evidence of validation includes: scientific and technical references, regulatory critical limits (e.g. Dubai Food Code — chilled 0–5°C, frozen ≤ −18°C), historical monitoring and verification data, and where applicable laboratory results or challenge tests. Where validation shows that a control measure is not capable of achieving the intended control, the Food Safety Team modifies and re-assesses the control measure(s) and/or their combination. The validation methodology and the evidence of capability are maintained as documented information (FSMS Validation / Review Checklist).",
     bodyAr:
-      "تحتفظ TELT LLC بمعلومات موثّقة تخصّ جميع المواد الخام والمكونات والمواد الملامسة للمنتج بما في ذلك:\n• الخصائص البيولوجية والكيميائية والفيزيائية ومسببات الحساسية\n• تركيب المكونات المركّبة، بما في ذلك مساعدات المعالجة\n• المصدر / مكان المنشأ\n• طريقة الإنتاج / التعبئة / التسليم\n• ظروف التخزين ومدة الصلاحية\n• التحضير و/أو التداول قبل الاستخدام أو المعالجة\n• معايير القبول المتعلقة بسلامة الغذاء\n\nمخططات التدفق: مخططات تدفق العمليات دقيقة وواضحة ومفصّلة بما يكفي، بما في ذلك تسلسل وتفاعل جميع الخطوات، والعمليات المُسنَدة لمصادر خارجية، ونقاط دخول المواد الخام، وإعادة التدوير/المعالجة، وإزالة المنتج النهائي/المنتجات الثانوية/النفايات.\n\nتحليل المخاطر: يتم تحديد وتسجيل جميع المخاطر البيولوجية والكيميائية والفيزيائية ومسببات الحساسية المحتملة. يتم تعريف المستويات المقبولة وفقاً للمتطلبات القانونية والتنظيمية.\n\nتدابير التحكم: تم اختيارها وتصنيفها كبرامج مسبقة تشغيلية (OPRPs) و/أو نقاط تحكم حرجة (CCPs). يُجرى التحقق من الصلاحية قبل التنفيذ.\n\nالحدود الحرجة في CCPs قابلة للقياس. معايير الإجراء للـ OPRPs قابلة للقياس أو الملاحظة.\n\nيتم إنشاء أنظمة مراقبة في كل CCP و OPRP. يتم تحديد التصحيحات والإجراءات التصحيحية عندما لا يتم تلبية الحدود أو المعايير لضمان عدم إطلاق المنتجات غير الآمنة، وتحديد سبب عدم المطابقة، وإعادة المعامل ضمن الحدود، ومنع التكرار.",
+      "تحتفظ TELT LLC بمعلومات موثّقة تخصّ جميع المواد الخام والمكونات والمواد الملامسة للمنتج بما في ذلك:\n• الخصائص البيولوجية والكيميائية والفيزيائية ومسببات الحساسية\n• تركيب المكونات المركّبة، بما في ذلك مساعدات المعالجة\n• المصدر / مكان المنشأ\n• طريقة الإنتاج / التعبئة / التسليم\n• ظروف التخزين ومدة الصلاحية\n• التحضير و/أو التداول قبل الاستخدام أو المعالجة\n• معايير القبول المتعلقة بسلامة الغذاء\n\nمخططات التدفق: مخططات تدفق العمليات دقيقة وواضحة ومفصّلة بما يكفي، بما في ذلك تسلسل وتفاعل جميع الخطوات، والعمليات المُسنَدة لمصادر خارجية، ونقاط دخول المواد الخام، وإعادة التدوير/المعالجة، وإزالة المنتج النهائي/المنتجات الثانوية/النفايات.\n\nتحليل المخاطر: يتم تحديد وتسجيل جميع المخاطر البيولوجية والكيميائية والفيزيائية ومسببات الحساسية المحتملة. يتم تعريف المستويات المقبولة وفقاً للمتطلبات القانونية والتنظيمية.\n\nتدابير التحكم: تم اختيارها وتصنيفها كبرامج مسبقة تشغيلية (OPRPs) و/أو نقاط تحكم حرجة (CCPs). يُجرى التحقق من الصلاحية قبل التنفيذ.\n\nالحدود الحرجة في CCPs قابلة للقياس. معايير الإجراء للـ OPRPs قابلة للقياس أو الملاحظة.\n\nيتم إنشاء أنظمة مراقبة في كل CCP و OPRP. يتم تحديد التصحيحات والإجراءات التصحيحية عندما لا يتم تلبية الحدود أو المعايير لضمان عدم إطلاق المنتجات غير الآمنة، وتحديد سبب عدم المطابقة، وإعادة المعامل ضمن الحدود، ومنع التكرار.\n\n8.5.3 التحقق من صلاحية تدابير التحكم:\nقبل التطبيق في خطة التحكم بالمخاطر، يتحقق فريق سلامة الغذاء من أن كل تدبير تحكم مُختار (أو مجموعة تدابير تحكم) قادرٌ على تحقيق التحكم المقصود في خطر سلامة الغذاء الجوهري. يُجرى التحقق عند تصميم مجموعة تدابير التحكم ويُعاد بعد أي تغيير في تدبير تحكم أو عملية أو مادة خام أو خصائص المنتج النهائي أو طريقة التوزيع أو الاستخدام المقصود. تشمل أدلة التحقق: المراجع العلمية والتقنية، والحدود الحرجة التنظيمية (مثل Dubai Food Code — التبريد 0–5°م، التجميد ≤ −18°م)، وبيانات المراقبة والتحقق التاريخية، ونتائج المختبر أو اختبارات التحدي عند الاقتضاء. وإذا أظهر التحقق أن تدبير التحكم غير قادر على تحقيق التحكم المقصود، يقوم فريق سلامة الغذاء بتعديله وإعادة تقييمه و/أو تعديل مجموعته. ويتم الاحتفاظ بمنهجية التحقق ودليل القدرة كمعلومات موثّقة (قائمة التحقق/المراجعة لـ FSMS).",
   },
   {
     id: "8.6", clause: "8.6", chapter: "clause-8",

@@ -1,6 +1,8 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/CalibrationLogInput.jsx
 import React, { useEffect, useRef, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+import { getReportByDate, reportId, invalidateReportDates } from "../_shared/reportsApi";
+import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
 
@@ -55,6 +57,7 @@ export default function CalibrationLogInput() {
   const [existingReport, setExistingReport] = useState(null);
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [loadMsg, setLoadMsg] = useState("");
+  const dateStatus = useReportDateStatus(TYPE, reportDate, { editing: !!existingReport?.id });
   const reqIdRef = useRef(0);
 
   const rowHasData = (r) => Object.values(r).some(v => String(v ?? "").trim() !== "" && v !== "Ice bath" && v !== "0");
@@ -84,20 +87,14 @@ export default function CalibrationLogInput() {
     (async () => {
       setLoadingExisting(true); setLoadMsg("");
       try {
-        const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const arr = Array.isArray(data) ? data : data?.data ?? [];
-        const matches = arr.filter(r => r?.payload?.branch === BRANCH && r?.payload?.reportDate === reportDate);
+        const latest = await getReportByDate(TYPE, reportDate);
         if (myReq !== reqIdRef.current) return;
-        if (matches.length) {
-          matches.sort((a,b) => (b?.payload?.savedAt || 0) - (a?.payload?.savedAt || 0));
-          const latest = matches[0];
+        if (latest) {
           const p = latest?.payload || {};
           setEntries(p.entries?.length ? p.entries.map(r => ({...EMPTY_ROW(), ...r})) : [EMPTY_ROW(), EMPTY_ROW()]);
           setCheckedBy(p.checkedBy || "");
           setVerifiedBy(p.verifiedBy || "");
-          setExistingReport({ id: latest?._id || latest?.id || null, savedAt: p?.savedAt || 0 });
+          setExistingReport({ id: reportId(latest), savedAt: p?.savedAt || 0 });
           setLoadMsg("📝 Loaded existing record — edit mode");
         } else {
           resetToBlank();
@@ -120,9 +117,13 @@ export default function CalibrationLogInput() {
       const payload = { branch: BRANCH, formRef: FORM_REF, reportDate, entries: cleanEntries, checkedBy, verifiedBy, savedAt: Date.now() };
       // PUT on the existing id (never DELETE+POST: a failed POST would lose the report)
       const res = await fetch(existingReport?.id ? `${API_BASE}/api/reports/${encodeURIComponent(existingReport.id)}` : `${API_BASE}/api/reports`, { method: existingReport?.id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }) });
+      if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const saved = await res.json().catch(() => null);
-      setExistingReport({ id: saved?._id || saved?.id || existingReport?.id || null, savedAt: payload.savedAt });
+      const savedId = reportId(saved?.report ?? saved) ?? existingReport?.id ?? null;
+      setExistingReport({ id: savedId, savedAt: payload.savedAt });
+      invalidateReportDates(TYPE);
+      dateStatus.refresh();
       setLoadMsg(existingReport?.id ? "✅ Updated" : "✅ Saved");
       setTimeout(() => setLoadMsg(""), 2500);
     } catch (e) {
@@ -139,7 +140,7 @@ export default function CalibrationLogInput() {
         fields={[
           { label: "Form Ref",   value: FORM_REF },
           { label: "Branch",     value: BRANCH },
-          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate },
+          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate, note: dateStatus.note },
         ]}
       />
 
@@ -160,7 +161,7 @@ export default function CalibrationLogInput() {
         <div style={{flex:1}} />
         {loadingExisting && <span style={S.statusLoad}>Loading…</span>}
         {!loadingExisting && loadMsg && <span style={existingReport?.id ? S.statusEdit : S.statusNew}>{loadMsg}</span>}
-        <button onClick={save} disabled={saving || loadingExisting} style={S.btnPrimary} type="button">
+        <button onClick={save} disabled={saving || loadingExisting || dateStatus.blocked} style={S.btnPrimary} type="button">
           {saving ? "Saving…" : existingReport?.id ? "Update" : "Save"}
         </button>
       </div>

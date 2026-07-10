@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 
 const DEFAULT_TYPE     = "pos19_veg_sanitation_ccp";
@@ -59,12 +60,7 @@ export default function VegSanitationView({
 
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const uniq = Array.from(new Set(
-        list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate).map((p) => p.reportDate)
-      )).sort((a, b) => b.localeCompare(a));
+      const uniq = await listReportDates(TYPE);
       setAllDates(uniq);
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) { console.warn(e); }
@@ -73,10 +69,7 @@ export default function VegSanitationView({
   async function fetchRecord(d = date) {
     setLoading(true); setErr(""); setRecord(null); setEditRows([]);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportByDate(TYPE, d);
       setRecord(match);
       const rows = match?.payload?.entries ?? [];
       setEditRows(rows.length ? JSON.parse(JSON.stringify(rows)) : [emptyRow()]);
@@ -88,7 +81,6 @@ export default function VegSanitationView({
   useEffect(() => { fetchAllDates(); /* eslint-disable-next-line */ }, []);
   useEffect(() => { if (date) fetchRecord(date); /* eslint-disable-next-line */ }, [date]);
 
-  const askPass = (label = "") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   function toggleEdit() {
     if (editing) {
@@ -106,7 +98,6 @@ export default function VegSanitationView({
   function delRow(i) { setEditRows((p) => (p.length === 1 ? p : p.filter((_, idx) => idx !== i))); }
 
   async function saveEdit() {
-    if (!askPass("Save changes")) return alert("❌ Wrong password");
     if (!record) return;
     const rid = getId(record);
     const cleaned = editRows.filter(isFilledRow);
@@ -128,14 +119,13 @@ export default function VegSanitationView({
       alert("✅ Changes saved");
       setEditing(false);
       await fetchRecord(payload.reportDate);
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
     } catch (e) { console.error(e); alert("❌ Saving failed."); }
     finally { setLoading(false); }
   }
 
   async function handleDelete() {
     if (!record) return;
-    if (!askPass("Delete confirmation")) return alert("❌ Wrong password");
     if (!window.confirm("Are you sure?")) return;
     const rid = getId(record);
     if (!rid) return alert("⚠️ Missing id.");
@@ -144,7 +134,7 @@ export default function VegSanitationView({
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       alert("✅ Deleted");
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
       setDate(allDates.find((d) => d !== record?.payload?.reportDate) || todayDubai);
     } catch (e) { alert("❌ Delete failed."); }
     finally { setLoading(false); }
@@ -265,7 +255,7 @@ export default function VegSanitationView({
       if (!res.ok) throw new Error();
       alert("✅ Imported");
       setDate(payload.reportDate);
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
       await fetchRecord(payload.reportDate);
     } catch (e) { console.error(e); alert("❌ Invalid JSON or save failed"); }
     finally { if (fileInputRef.current) fileInputRef.current.value = ""; setLoading(false); }

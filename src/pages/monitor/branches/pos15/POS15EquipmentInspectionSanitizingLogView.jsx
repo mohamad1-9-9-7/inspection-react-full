@@ -3,9 +3,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import {
-  btn,
   formatDMY,
-  GlassShell,
+  IsoShell,
+  ISO_UI,
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
@@ -44,10 +44,10 @@ function emptyRow() {
   return base;
 }
 
-const theadRow = { background: "linear-gradient(90deg,#7c3aed 0%,#0ea5e9 55%,#10b981 100%)" };
+const theadRow = { background: "#0ea5e9" };
 const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "6px 4px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" };
-const tdCell = { border: "1px solid #c7d2fe", padding: "6px 4px", textAlign: "center", verticalAlign: "middle" };
-const gridStyle = { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 20 };
+const tdCell = { border: "1px solid #e2e8f0", padding: "6px 4px", textAlign: "center", verticalAlign: "middle" };
+const gridStyle = { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 };
 
 export default function POS15EquipmentInspectionSanitizingLogView({
   reportType = DEFAULT_TYPE,
@@ -225,21 +225,22 @@ export default function POS15EquipmentInspectionSanitizingLogView({
     setTimeout(() => { w.focus(); w.print(); }, 100);
   }
 
-  const metaBadge = { display: "inline-block", background: "rgba(255,255,255,0.6)", border: "1px solid #c7d2fe", borderRadius: 10, padding: "6px 12px", fontSize: 13, fontWeight: 700, color: "#0b1f4d", marginRight: 8, marginBottom: 6 };
+  const metaBadge = ISO_UI.metaBadge;
 
   return (
-    <GlassShell
+    <IsoShell
       icon="🧪"
-      title={`Equipment Inspection & Sanitizing Log — View (${branch})`}
+      title={`Equipment Inspection & Sanitizing Log — ${branch}`}
+      subtitle="View, search and export equipment inspection records"
       actions={
         <>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit"}</button>
-          {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
-          <button onClick={handleDelete} style={btn("#dc2626")} disabled={!record} data-delete-action="true">Delete</button>
-          <button onClick={exportXLSX} disabled={!record?.payload?.entries?.length} style={btn("#0ea5e9")}>Export XLSX</button>
-          <button onClick={exportPDF} disabled={!record} style={btn("#374151")}>Export PDF</button>
-          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
-          <label style={{ ...btn("#059669"), display: "inline-block", cursor: "pointer" }}>
+          <button onClick={toggleEdit} style={ISO_UI.btn(editing ? "secondary" : "violet")}>{editing ? "Cancel Edit" : "Edit"}</button>
+          {editing && <button onClick={saveEdit} style={ISO_UI.btn("success")}>Save Changes</button>}
+          <button onClick={handleDelete} style={ISO_UI.btn("danger", !record)} disabled={!record} data-delete-action="true">Delete</button>
+          <button onClick={exportXLSX} disabled={!record?.payload?.entries?.length} style={ISO_UI.btn("primary", !record?.payload?.entries?.length)}>Export XLSX</button>
+          <button onClick={exportPDF} disabled={!record} style={ISO_UI.btn("secondary", !record)}>Export PDF</button>
+          <button onClick={exportJSON} disabled={!record} style={ISO_UI.btn("secondary", !record)}>Export JSON</button>
+          <label style={{ ...ISO_UI.btn("success"), display: "inline-block" }}>
             Import JSON
             <input ref={fileInputRef} type="file" accept="application/json" onChange={(e) => importJSON(e.target.files?.[0])} style={{ display: "none" }} />
           </label>
@@ -271,10 +272,10 @@ export default function POS15EquipmentInspectionSanitizingLogView({
                 <span style={metaBadge}><strong>Branch:</strong> {branch}</span>
               </div>
 
-              <div style={{ textAlign: "center", background: "linear-gradient(90deg,#ede9fe,#e0f2fe,#d1fae5)", border: "1px solid #c7d2fe", borderRadius: 10, padding: "9px 6px", fontWeight: 800, fontSize: 16, color: "#0b1f4d", marginBottom: 6 }}>
+              <div style={{ ...ISO_UI.band, marginBottom: 6 }}>
                 🧪 EQUIPMENT INSPECTION & SANITIZING LOG — {branch}
               </div>
-              <div style={{ textAlign: "center", background: "rgba(237,233,254,0.45)", border: "1px solid #c7d2fe", borderRadius: 8, padding: "5px 0", fontWeight: 700, fontSize: 13, color: "#0b1f4d", marginBottom: 4 }}>
+              <div style={{ textAlign: "center", background: "#e0f2fe", border: "1px solid #e2e8f0", borderRadius: 8, padding: "5px 0", fontWeight: 700, fontSize: 13, color: "#0c4a6e", marginBottom: 4 }}>
                 Sanitize every 4 hours
               </div>
               <div style={{ textAlign: "center", fontSize: 12, fontWeight: 600, color: "#334155", marginBottom: 10 }}>
@@ -302,7 +303,7 @@ export default function POS15EquipmentInspectionSanitizingLogView({
                     {!editing ? (
                       record.payload?.entries?.length ? (
                         record.payload.entries.map((r, idx) => (
-                          <tr key={idx} style={{ background: idx % 2 ? "rgba(237,233,254,0.45)" : "#fff" }}>
+                          <tr key={idx} style={{ background: idx % 2 ? "#f0f9ff" : "#fff" }}>
                             <td style={{ ...tdCell, textAlign: "left" }}>{safe(r.equipment)}</td>
                             <td style={tdCell}>{safe(r.freeFromDamage)}</td>
                             <td style={tdCell}>{safe(r.freeFromBrokenPieces)}</td>
@@ -363,6 +364,6 @@ export default function POS15EquipmentInspectionSanitizingLogView({
           </div>
         )}
       </SidebarLayout>
-    </GlassShell>
+    </IsoShell>
   );
 }

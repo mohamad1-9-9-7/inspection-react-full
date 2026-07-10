@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/VegSanitationInput.jsx
 import React, { useMemo, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
 const DEFAULT_TYPE     = "pos19_veg_sanitation_ccp";
@@ -63,6 +64,7 @@ export default function VegSanitationInput({
 
   const [rows, setRows] = useState(() => Array.from({ length: initialRowCount }, () => emptyRow()));
   const [saving, setSaving] = useState(false);
+  const dateStatus = useReportDateStatus(TYPE, reportDate);
 
   const monthText = useMemo(() => {
     const m = String(reportDate || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
@@ -153,6 +155,7 @@ export default function VegSanitationInput({
       if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّل التقرير من شاشة العرض (View) أو غيّر التاريخ."); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ تم الحفظ بنجاح!");
+      dateStatus.refresh();
     } catch (e) {
       console.error(e);
       alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
@@ -174,7 +177,7 @@ export default function VegSanitationInput({
           { label: "Controlling Officer", value: RESOLVED_DOC_META.controllingOfficer },
           { label: "Approved By", value: RESOLVED_DOC_META.approvedBy },
           { label: "Branch", value: BRANCH },
-          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate },
+          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate, note: dateStatus.note },
         ]}
       />
 
@@ -260,8 +263,8 @@ export default function VegSanitationInput({
 
       {/* Save */}
       <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-        <button onClick={handleSave} disabled={saving} style={btn("#2563eb")}>
-          {saving ? "Saving…" : "Save Sanitation Record"}
+        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btn("#2563eb")}>
+          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Sanitation Record"}
         </button>
       </div>
     </div>

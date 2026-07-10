@@ -66,8 +66,12 @@ import pos15_receiving_log_butchery from "./pos15_receiving_log_butchery";
 import pos15_traceability_log      from "./pos15_traceability_log";
 import pos15_equipment_inspection  from "./pos15_equipment_inspection";
 
-/* ─── POS 19 (18) ─── */
+/* ─── POS 19 (23) ─── */
 import pos19_cleaning_programme_schedule   from "./pos19_cleaning_programme_schedule";
+import pos19_blast_freezer_ccp             from "./pos19_blast_freezer_ccp";
+import pos19_veg_sanitation_ccp            from "./pos19_veg_sanitation_ccp";
+import pos19_dry_store_temp_humidity       from "./pos19_dry_store_temp_humidity";
+import pos19_finished_product_monitoring   from "./pos19_finished_product_monitoring";
 import pos19_daily_cleaning                from "./pos19_daily_cleaning";
 import pos19_equipment_inspection          from "./pos19_equipment_inspection";
 import pos19_food_temperature_verification from "./pos19_food_temperature_verification";
@@ -209,6 +213,12 @@ const CUSTOM = {
   "pos19_cooling_log":                      pos19_cooling_log,
   "pos19_reheating_log":                    pos19_reheating_log,
   "pos19_calibration_log":                  pos19_calibration_log,
+  "pos19_blast_freezer_ccp":                pos19_blast_freezer_ccp,
+  "pos19_veg_sanitation_ccp":               pos19_veg_sanitation_ccp,
+  "pos19_dry_store_temp_humidity":          pos19_dry_store_temp_humidity,
+  "pos19_finished_product_monitoring":      pos19_finished_product_monitoring,
+  // Same payload shape as the QCS form it wraps — reuse its sheet builder.
+  "pos19_non_conformance":                  qcs_non_conformance,
 
   /* Production */
   "prod_cleaning_checklist":                prod_cleaning_checklist,

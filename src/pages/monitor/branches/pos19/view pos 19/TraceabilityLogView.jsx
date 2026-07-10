@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../../config/api";
+import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 
 
@@ -56,7 +57,6 @@ export default function TraceabilityLogView() {
   const [err, setErr] = useState("");
   const [record, setRecord] = useState(null);
 
-  // Edit mode (password 9999)
   const [editing, setEditing] = useState(false);
   const [editRows, setEditRows] = useState(Array.from({ length: 12 }, () => emptyRow()));
   const [editCheckedBy, setEditCheckedBy] = useState("");
@@ -114,14 +114,7 @@ export default function TraceabilityLogView() {
   /* ===== Fetch dates ===== */
   async function fetchAllDates() {
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
-      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
+      const uniq = await listReportDates(TYPE);
       setAllDates(uniq);
 
       // Tree stays collapsed by default.
@@ -137,13 +130,7 @@ export default function TraceabilityLogView() {
     setErr("");
     setRecord(null);
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportByDate(TYPE, d);
       setRecord(match);
 
       // Init edit buffers (at least 12 rows, but never fewer than the saved entries)
@@ -235,7 +222,7 @@ export default function TraceabilityLogView() {
       alert("✅ Changes saved");
       setEditing(false);
       await fetchRecord(payload.reportDate);
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
     } catch (e) {
       console.error(e);
       alert("❌ Saving failed.\n" + String(e?.message || e));
@@ -256,7 +243,7 @@ export default function TraceabilityLogView() {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Deleted");
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
       const next = allDates.find((d) => d !== record?.payload?.reportDate) || todayDubai;
       setDate(next);
     } catch (e) {
@@ -448,7 +435,7 @@ export default function TraceabilityLogView() {
 
       alert("✅ Imported and saved");
       setDate(payload.reportDate);
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
       await fetchRecord(payload.reportDate);
     } catch (e) {
       console.error(e);

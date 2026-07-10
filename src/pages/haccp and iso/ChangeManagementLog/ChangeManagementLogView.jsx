@@ -136,7 +136,26 @@ const SEED_CHANGES = [
     verification:       { ar: "تم التحقق",                                  en: "Verified" },
     status: "verified",
   },
+  {
+    id: "chg-10", logNo: 10, date: "2026-07-09",
+    description:        { ar: "إزالة فرعين من نطاق شهادة FSMS: عربة طعام حديقة المشرف وعربة طعام شاطئ الممزر",
+                          en: "Two branches removed from the FSMS certification scope: Al Mushrif Park food truck and Al Mamzar Beach food truck" },
+    reason:             { ar: "قرار الإدارة العليا بتقليص نطاق العمليات وإيقاف تشغيل عربتي الطعام",
+                          en: "Top Management decision to reduce the operational scope and discontinue the two food trucks" },
+    impact:             { ar: "تغيير كبير على النطاق: تحديث بيان نطاق الشهادة؛ إزالة الموقعين من خطة HACCP وجداول المراقبة و PRPs وخطة التدقيق الداخلي وسجل الفروع؛ إخطار جهة المنح (Certification Body) لتعديل الشهادة",
+                          en: "Significant scope change: certification scope statement updated; both sites removed from HACCP plan, monitoring schedules, PRPs, internal audit plan and branch register; Certification Body notified to amend the certificate" },
+    approvedBy:         "Top Management",
+    implementationDate: "2026-07-09",
+    verification:       { ar: "تم التحقق – أُزيل الفرعان من النطاق وكل الوثائق والسجلات ذات الصلة",
+                          en: "Verified – both branches removed from scope and all related documents and records" },
+    status: "verified",
+  },
 ];
+
+/* Canonical entries added AFTER the original 9-row seed. On a populated DB the
+   initial empty-DB seeding no longer runs, so these are backfilled on load
+   (unless the user has deleted them) — see load(). Keeps FSMS-RA-01 complete. */
+const POST_SEED_IDS = ["chg-10"];
 
 /* ─────────────────────────────────────────────────────────────
    UI strings (bilingual)
@@ -204,6 +223,22 @@ const T = {
    Helpers
    ───────────────────────────────────────────────────────────── */
 function todayISO() { return new Date().toISOString().slice(0, 10); }
+
+/* Remember which seed/canonical entries the user deleted, so the load()
+   backfill never resurrects an entry they intentionally removed. */
+const DELETED_SEEDS_KEY = "cml_deleted_seed_ids";
+function getDeletedSeedIds() {
+  try { return JSON.parse(localStorage.getItem(DELETED_SEEDS_KEY) || "[]"); }
+  catch { return []; }
+}
+function markSeedDeleted(id) {
+  if (!id) return;
+  try {
+    const set = new Set(getDeletedSeedIds());
+    set.add(id);
+    localStorage.setItem(DELETED_SEEDS_KEY, JSON.stringify([...set]));
+  } catch { /* ignore storage errors */ }
+}
 
 function txt(v, lang) {
   if (v == null) return "";
@@ -302,35 +337,52 @@ export default function ChangeManagementLogView() {
   const [showForm, setShowForm] = useState(false);
 
   const seededRef = useRef(false);
+  const backfilledRef = useRef(false);
 
-  /* Load from API. If the DB is empty on first load, persist the 9 seed
-     changes once (so they become editable real records). After that,
-     just render whatever's in the DB. */
+  async function fetchItems() {
+    const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
+    const json = await res.json().catch(() => null);
+    const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+    return arr
+      .map((rec) => ({ _recordId: rec.id, ...(rec?.payload || {}) }))
+      .filter((x) => x.id);
+  }
+
+  /* Load from API.
+     • Empty DB → seed the full canonical FSMS-RA-01 history once.
+     • Populated DB → backfill only canonical entries added AFTER that initial
+       seed (POST_SEED_IDS, e.g. the scope-reduction change) so newly-documented
+       changes appear, without re-adding any entry the user deleted. */
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
-      const json = await res.json().catch(() => null);
-      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
-      const fetched = arr
-        .map((rec) => ({ _recordId: rec.id, ...(rec?.payload || {}) }))
-        .filter((x) => x.id);
+      const fetched = await fetchItems();
 
       if (fetched.length === 0 && !seededRef.current) {
         seededRef.current = true;
         for (const seed of SEED_CHANGES) {
           try { await persistItem({ ...seed }); } catch {}
         }
-        const res2 = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
-        const json2 = await res2.json().catch(() => null);
-        const arr2 = Array.isArray(json2) ? json2 : json2?.data || json2?.items || [];
-        const seededItems = arr2
-          .map((rec) => ({ _recordId: rec.id, ...(rec?.payload || {}) }))
-          .filter((x) => x.id);
-        setItems(seededItems.length ? seededItems : SEED_CHANGES);
-      } else {
-        setItems(fetched);
+        const seeded = await fetchItems();
+        setItems(seeded.length ? seeded : SEED_CHANGES);
+        return;
       }
+
+      const deleted = getDeletedSeedIds();
+      const missing = SEED_CHANGES.filter(
+        (s) => POST_SEED_IDS.includes(s.id) && !deleted.includes(s.id) && !fetched.some((f) => f.id === s.id)
+      );
+      if (missing.length && !backfilledRef.current) {
+        backfilledRef.current = true;
+        for (const seed of missing) {
+          try { await persistItem({ ...seed }); } catch {}
+        }
+        const after = await fetchItems();
+        setItems(after.length ? after : [...fetched, ...missing]);
+        return;
+      }
+
+      setItems(fetched);
     } catch {
       setItems(SEED_CHANGES);
     } finally {
@@ -400,6 +452,7 @@ export default function ChangeManagementLogView() {
     if (!window.confirm(pick(T.confirmDel))) return;
     try {
       await deleteItem(it._recordId);
+      markSeedDeleted(it.id); // don't let the backfill resurrect a deleted entry
       setItems((prev) => prev.filter((x) => x.id !== it.id));
     } catch (e) {
       alert("Delete error: " + (e?.message || e));

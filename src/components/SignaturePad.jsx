@@ -31,6 +31,8 @@ export default function SignaturePad({
   const drawingRef = useRef(false);
   const strokeRef = useRef(false);
   const lastPointRef = useRef(null);
+  const valueRef = useRef(value);        // آخر value معروف (للاستخدام داخل effect التهيئة دون إعادة تشغيله)
+  const lastEmittedRef = useRef("");     // آخر dataURL أخرجناه بأنفسنا (لتجاهل تحديثه المرتد)
   const [hasContent, setHasContent] = useState(!!value);
   const [drawingWidth, setDrawingWidth] = useState(width);
 
@@ -50,7 +52,10 @@ export default function SignaturePad({
     return () => ro.disconnect();
   }, [width]);
 
-  /* ====== تهيئة الـ canvas مع دعم DPR للحصول على دقة عالية ====== */
+  /* ====== تهيئة الـ canvas مع دعم DPR للحصول على دقة عالية ======
+     ملاحظة: لا نضع value ضمن اعتماديات هذا الـ effect حتى لا يُعاد ضبط
+     أبعاد الكانفس (وبالتالي مسحه) مع كل خط نرسمه — كان ذلك يسبب وميضاً
+     وفقدان بعض الخطوط أثناء التوقيع السريع. */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -68,7 +73,28 @@ export default function SignaturePad({
     ctx.strokeStyle = penColor;
     ctx.lineWidth = 2.2;
 
-    // إذا كان هناك value سابق، ارسمه
+    // أعِد رسم القيمة الحالية (إن وُجدت) بعد تغيّر الأبعاد
+    const current = valueRef.current;
+    if (current) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, drawingWidth, height);
+      img.src = current;
+      setHasContent(true);
+    } else {
+      setHasContent(false);
+    }
+  }, [drawingWidth, height, background, penColor]);
+
+  // إعادة الرسم فقط عند تغيير value من الخارج (تحميل سجل قديم) —
+  // ونتجاهل التحديث المرتد الناتج عن رسمنا نحن لتفادي الوميض.
+  useEffect(() => {
+    valueRef.current = value;
+    if (value === lastEmittedRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, drawingWidth, height);
     if (value) {
       const img = new Image();
       img.onload = () => ctx.drawImage(img, 0, 0, drawingWidth, height);
@@ -77,9 +103,8 @@ export default function SignaturePad({
     } else {
       setHasContent(false);
     }
-  }, [drawingWidth, height, value, background, penColor]);
+  }, [value, drawingWidth, height, background]);
 
-  // إعادة الرسم عند تغيير value من الخارج (مثلاً تحميل سجل قديم)
   function getPos(e) {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -95,7 +120,16 @@ export default function SignaturePad({
     canvasRef.current.setPointerCapture?.(e.pointerId);
     drawingRef.current = true;
     strokeRef.current = false;
-    lastPointRef.current = getPos(e);
+    const pos = getPos(e);
+    lastPointRef.current = pos;
+    // ارسم نقطة فورًا حتى تُسجَّل النقرة المفردة (إمضاء/توقيع قصير دون تحريك)
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, Math.max(1, ctx.lineWidth / 2), 0, Math.PI * 2);
+    ctx.fillStyle = penColor;
+    ctx.fill();
+    strokeRef.current = true;
+    if (!hasContent) setHasContent(true);
   }
 
   function moveDraw(e) {
@@ -121,6 +155,7 @@ export default function SignaturePad({
     // إخراج Base64 وتمريره للأب
     if (typeof onChange === "function" && (strokeRef.current || hasContent)) {
       const dataUrl = canvasRef.current.toDataURL("image/png");
+      lastEmittedRef.current = dataUrl; // لتجاهل ارتداده في effect الخاص بـ value
       onChange(dataUrl);
     }
   }
@@ -133,6 +168,7 @@ export default function SignaturePad({
     ctx.fillRect(0, 0, drawingWidth, height);
     strokeRef.current = false;
     setHasContent(false);
+    lastEmittedRef.current = "";
     if (typeof onChange === "function") onChange("");
   }
 

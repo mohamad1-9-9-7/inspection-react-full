@@ -142,6 +142,22 @@ const sections = [
     route: "/haccp-iso/real-recall/view",
   },
 
+  // 🚨 Emergency Preparedness Test Log (ISO 8.4)
+  {
+    id: "emergency-preparedness",
+    title: "🚨 Emergency Preparedness Test Log",
+    subtitle: "ISO 8.4 — Emergency drills & incidents (power/cold-chain failure, contamination, fire): response, result, weaknesses & corrective actions",
+    route: "/haccp-iso/emergency-preparedness/view",
+  },
+
+  // 💧 Potable Water & Ice Testing Log (ISO 8.2.4c)
+  {
+    id: "water-testing",
+    title: "💧 Water & Ice Testing Log",
+    subtitle: "ISO 8.2.4(c) — Potable water & ice micro/chemical testing vs. DM/UAE limits with lab results & corrective actions",
+    route: "/haccp-iso/water-testing/view",
+  },
+
   // 🎯 CCP Monitoring
   {
     id: "ccp-monitoring",
@@ -611,6 +627,8 @@ const categoryById = {
   "glass-register": "operations",
   "mock-recall": "records",
   "real-recall": "records",
+  "emergency-preparedness": "operations",
+  "water-testing": "operations",
   "ccp-monitoring": "operations",
   objectives: "performance",
   "customer-complaints": "records",
@@ -892,6 +910,16 @@ export default function HaccpIsoMenu() {
             justify-content: flex-start !important;
           }
         }
+        @media (max-width: 760px) {
+          .haccp-master-card {
+            grid-template-columns: 1fr !important;
+            justify-items: start;
+          }
+          .haccp-master-cta {
+            justify-self: stretch !important;
+            justify-content: center !important;
+          }
+        }
       `}</style>
 
       <div style={modern.layout}>
@@ -963,6 +991,161 @@ export default function HaccpIsoMenu() {
               {filteredSections.map((item) => {
                 const isHover = hoverId === item.id;
                 const category = categoryById[item.id] || "records";
+
+                if (item.highlight) {
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="haccp-master-card"
+                      onClick={() => handleOpen(item)}
+                      onMouseEnter={() => setHoverId(item.id)}
+                      onMouseLeave={() => setHoverId(null)}
+                      onFocus={() => setHoverId(item.id)}
+                      onBlur={() => setHoverId(null)}
+                      title={item.title}
+                      style={{
+                        gridColumn: "1 / -1",
+                        position: "relative",
+                        overflow: "hidden",
+                        display: "grid",
+                        gridTemplateColumns: "auto 1fr auto",
+                        alignItems: "center",
+                        gap: 24,
+                        textAlign: "left",
+                        padding: "26px clamp(22px, 3vw, 42px)",
+                        borderRadius: 12,
+                        cursor: "pointer",
+                        color: "#fff",
+                        fontFamily: "inherit",
+                        border: "1px solid rgba(245,158,11,0.45)",
+                        background:
+                          "linear-gradient(120deg, #0b2a30 0%, #0f766e 46%, #115e59 78%, #0b2a30 100%)",
+                        boxShadow: isHover
+                          ? "0 30px 72px rgba(15,118,110,0.40), inset 0 0 0 1px rgba(245,158,11,0.38)"
+                          : "0 22px 52px rgba(15,23,42,0.30), inset 0 0 0 1px rgba(255,255,255,0.06)",
+                        transform: isHover ? "translateY(-3px)" : "translateY(0)",
+                        transition: "transform .18s ease, box-shadow .18s ease",
+                      }}
+                    >
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          pointerEvents: "none",
+                          background:
+                            "radial-gradient(620px 240px at 6% -10%, rgba(245,158,11,0.22), transparent 60%)," +
+                            "radial-gradient(560px 260px at 104% 120%, rgba(34,211,238,0.16), transparent 60%)",
+                        }}
+                      />
+
+                      <div
+                        style={{
+                          position: "relative",
+                          width: 80,
+                          height: 80,
+                          borderRadius: 18,
+                          display: "grid",
+                          placeItems: "center",
+                          fontSize: 40,
+                          background:
+                            "linear-gradient(160deg, rgba(245,158,11,0.32), rgba(217,119,6,0.16))",
+                          border: "1px solid rgba(245,158,11,0.55)",
+                          boxShadow: "0 16px 32px rgba(217,119,6,0.32)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        📕
+                      </div>
+
+                      <div style={{ position: "relative", minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 950,
+                            letterSpacing: ".14em",
+                            textTransform: "uppercase",
+                            color: "#fcd34d",
+                            marginBottom: 8,
+                          }}
+                        >
+                          ★ Master Controlled Document
+                        </div>
+                        <h2
+                          style={{
+                            margin: 0,
+                            fontSize: "clamp(20px, 2.4vw, 28px)",
+                            fontWeight: 1000,
+                            lineHeight: 1.1,
+                            color: "#fff",
+                          }}
+                        >
+                          HACCP / FSMS Manual
+                        </h2>
+                        <p
+                          style={{
+                            margin: "8px 0 0",
+                            maxWidth: 720,
+                            fontSize: 14,
+                            fontWeight: 650,
+                            lineHeight: 1.5,
+                            color: "rgba(255,255,255,0.82)",
+                          }}
+                        >
+                          Hazard analysis, CCPs &amp; HACCP plan, product descriptions and the
+                          full ISO 22000:2018 clauses (4–10) — bilingual, e-signed and audit-ready.
+                        </p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+                          {["ISO 22000:2018", "Rev 2.1", "Clauses 4–10", "HACCP Plan · 4 CCPs", "EN / العربية"].map((chip) => (
+                            <span
+                              key={chip}
+                              style={{
+                                fontSize: 11.5,
+                                fontWeight: 900,
+                                color: "#e2fbf6",
+                                padding: "5px 11px",
+                                borderRadius: 999,
+                                background: "rgba(255,255,255,0.10)",
+                                border: "1px solid rgba(255,255,255,0.20)",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div
+                        className="haccp-master-cta"
+                        style={{
+                          position: "relative",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "13px 24px",
+                          borderRadius: 999,
+                          fontSize: 14,
+                          fontWeight: 950,
+                          whiteSpace: "nowrap",
+                          color: "#08312c",
+                          background: "linear-gradient(135deg, #fcd34d, #f59e0b)",
+                          border: "1px solid rgba(255,255,255,0.4)",
+                          boxShadow: "0 14px 30px rgba(245,158,11,0.35)",
+                        }}
+                      >
+                        Open Manual
+                        <span
+                          aria-hidden="true"
+                          style={{ transform: isHover ? "translateX(3px)" : "none", transition: "transform .18s ease" }}
+                        >
+                          →
+                        </span>
+                      </div>
+                    </button>
+                  );
+                }
 
                 return (
                   <button

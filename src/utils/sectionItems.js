@@ -96,6 +96,8 @@ export const SECTION_ITEMS = {
       { id: "glass-register",        icon: "🪟", label: "Glass & Brittle Register" },
       { id: "mock-recall",           icon: "🔄", label: "Mock Recall" },
       { id: "real-recall",           icon: "🚨", label: "Real Product Recall" },
+      { id: "emergency-preparedness", icon: "🚨", label: "Emergency Preparedness Test Log" },
+      { id: "water-testing",         icon: "💧", label: "Water & Ice Testing Log" },
       { id: "ccp-monitoring",        icon: "🎯", label: "CCP Monitoring" },
       { id: "objectives",            icon: "🎯", label: "FSMS Objectives" },
       { id: "customer-complaints",   icon: "📞", label: "Customer Complaints" },

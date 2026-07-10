@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 
 
@@ -52,8 +53,7 @@ export default function TemperatureMonitoringLogView() {
   const inputStyle = {width:"100%",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 6px"};
 
   async function fetchAllDates(){
-    try{const res=await fetch(`${API_BASE}/api/reports?type=${TYPE}`,{cache:"no-store"});const data=await res.json();const list=Array.isArray(data)?data:data?.data??[];
-    const uniq=Array.from(new Set(list.map(r=>r?.payload).filter(p=>p&&p.branch===BRANCH&&p.reportDate).map(p=>p.reportDate))).sort((a,b)=>b.localeCompare(a));
+    try{const uniq = await listReportDates(TYPE);
     setAllDates(uniq);
     // Tree stays collapsed by default.
     if(!uniq.includes(date)&&uniq.length)setDate(uniq[0]);}catch(e){console.warn(e);}
@@ -61,15 +61,13 @@ export default function TemperatureMonitoringLogView() {
 
   async function fetchRecord(d=date){
     setLoading(true);setErr("");setRecord(null);setEditRows([]);
-    try{const res=await fetch(`${API_BASE}/api/reports?type=${TYPE}`,{cache:"no-store"});const data=await res.json();const list=Array.isArray(data)?data:data?.data??[];
-    const match=list.find(r=>r?.payload?.branch===BRANCH&&r?.payload?.reportDate===d)||null;setRecord(match);
+    try{const match = await getReportByDate(TYPE, d);setRecord(match);
     const rows=match?.payload?.entries??[];setEditRows(rows.length?JSON.parse(JSON.stringify(rows)):[emptyRow()]);setEditing(false);}
     catch(e){console.error(e);setErr("Failed to fetch data.");}finally{setLoading(false);}
   }
 
   useEffect(()=>{fetchAllDates();},[]);useEffect(()=>{if(date)fetchRecord(date);},[date]);
 
-  const askPass=(label="")=>(window.prompt(`${label}\nEnter password:`)||"")==="9999";
 
   function toggleEdit(){
     if(editing){const rows=record?.payload?.entries??[];setEditRows(rows.length?JSON.parse(JSON.stringify(rows)):[emptyRow()]);setEditing(false);return;}
@@ -81,19 +79,18 @@ export default function TemperatureMonitoringLogView() {
   function delRow(i){setEditRows(p=>p.length===1?p:p.filter((_,idx)=>idx!==i));}
 
   async function saveEdit(){
-    if(!askPass("Save changes"))return alert("❌ Wrong password");if(!record)return;
+    if(!record)return;
     const rid=getId(record);const cleaned=editRows.filter(isFilledRow);
     for(const r of cleaned){const hasBreach=READINGS.some(rd=>isBreach(r.unitType,r[`${rd.key}_temp`]));if(hasBreach&&!String(r.correctiveAction||"").trim()){alert("يوجد صف تجاوز درجة الحرارة بدون Corrective Action.");return;}}
     const payload={...(record?.payload||{}),branch:BRANCH,reportDate:record?.payload?.reportDate,entries:cleaned,savedAt:Date.now()};
-    try{setLoading(true);if(rid){try{await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"});}catch(e){console.warn(e);}}
-    const r=await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})});if(!r.ok)throw new Error();alert("✅ Changes saved");setEditing(false);await fetchRecord(payload.reportDate);await fetchAllDates();}
+    try{setLoading(true);const r = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, { method: rid ? "PUT" : "POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})});if(!r.ok)throw new Error();alert("✅ Changes saved");setEditing(false);await fetchRecord(payload.reportDate);invalidateReportDates(TYPE); await fetchAllDates();}
     catch(e){console.error(e);alert("❌ Saving failed.");}finally{setLoading(false);}
   }
 
   async function handleDelete(){
-    if(!record)return;if(!askPass("Delete confirmation"))return alert("❌ Wrong password");if(!window.confirm("Are you sure?"))return;
+    if(!record)return;if(!window.confirm("Are you sure?"))return;
     const rid=getId(record);if(!rid)return alert("⚠️ Missing id.");
-    try{setLoading(true);const res=await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"});if(!res.ok)throw new Error();alert("✅ Deleted");await fetchAllDates();setDate(allDates.find(d=>d!==record?.payload?.reportDate)||todayDubai);}
+    try{setLoading(true);const res=await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`,{method:"DELETE"});if(!res.ok)throw new Error();alert("✅ Deleted");invalidateReportDates(TYPE); await fetchAllDates();setDate(allDates.find(d=>d!==record?.payload?.reportDate)||todayDubai);}
     catch(e){alert("❌ Delete failed.");}finally{setLoading(false);}
   }
 
@@ -128,7 +125,7 @@ export default function TemperatureMonitoringLogView() {
     pdf.save(`POS19_TempMonitoring_${record?.payload?.reportDate||date}.pdf`);
   }
 
-  async function importJSON(file){if(!file)return;try{const payload=JSON.parse(await file.text())?.payload||JSON.parse(await file.text());if(!payload?.reportDate)throw new Error();setLoading(true);const res=await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})});if(!res.ok)throw new Error();alert("✅ Imported");setDate(payload.reportDate);await fetchAllDates();await fetchRecord(payload.reportDate);}catch(e){console.error(e);alert("❌ Invalid JSON or save failed");}finally{if(fileInputRef.current)fileInputRef.current.value="";setLoading(false);}}
+  async function importJSON(file){if(!file)return;try{const payload=JSON.parse(await file.text())?.payload||JSON.parse(await file.text());if(!payload?.reportDate)throw new Error();setLoading(true);const res=await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})});if(!res.ok)throw new Error();alert("✅ Imported");setDate(payload.reportDate);invalidateReportDates(TYPE); await fetchAllDates();await fetchRecord(payload.reportDate);}catch(e){console.error(e);alert("❌ Invalid JSON or save failed");}finally{if(fileInputRef.current)fileInputRef.current.value="";setLoading(false);}}
 
   const grouped=useMemo(()=>{const out={};for(const d of allDates){const[y,m]=d.split("-");(out[y]||={}); (out[y][m]||=[]).push(d);}for(const y of Object.keys(out))out[y]=Object.fromEntries(Object.entries(out[y]).sort(([a],[b])=>Number(b)-Number(a)).map(([m,arr])=>[m,arr.sort((a,b)=>b.localeCompare(a))]));return Object.fromEntries(Object.entries(out).sort(([a],[b])=>Number(b)-Number(a)));}, [allDates]);
   const toggleYear=(y)=>setExpandedYears(p=>({...p,[y]:!p[y]}));const toggleMonth=(y,m)=>setExpandedMonths(p=>({...p,[`${y}-${m}`]:!p[`${y}-${m}`]}));

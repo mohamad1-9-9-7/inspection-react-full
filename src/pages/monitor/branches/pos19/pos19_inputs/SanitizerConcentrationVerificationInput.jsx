@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/SanitizerConcentrationVerificationInput.jsx
 import React, { useMemo, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
 
@@ -48,6 +49,7 @@ export default function SanitizerConcentrationVerificationInput({
   const [revDate, setRevDate]       = useState("");
   const [revNo, setRevNo]           = useState("");
   const [saving, setSaving]         = useState(false);
+  const dateStatus = useReportDateStatus(TYPE, reportDate);
 
   const thCell = {
     border: "1px solid #1f3b70", padding: "6px 4px",
@@ -111,8 +113,10 @@ export default function SanitizerConcentrationVerificationInput({
         headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reporter, type: TYPE, payload }),
       });
+      if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ تم الحفظ بنجاح!");
+      dateStatus.refresh();
     } catch (e) {
       console.error(e);
       alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
@@ -127,7 +131,7 @@ export default function SanitizerConcentrationVerificationInput({
           { label: "Form Ref", value: FORM_REF },
           { label: "Branch", value: BRANCH },
           { label: "Classification", value: "Official" },
-          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate },
+          { label: "Report Date", type: "date", value: reportDate, onChange: setReportDate, note: dateStatus.note },
           { label: "Section", value: section, onChange: setSection, placeholder: "e.g. Butchery" },
         ]}
       />
@@ -197,8 +201,8 @@ export default function SanitizerConcentrationVerificationInput({
       {/* Controls */}
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button onClick={addRow}      style={btnStyle("#0ea5e9")}>+ Add Row</button>
-        <button onClick={handleSave} disabled={saving} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : "Save Sanitizer Log"}
+        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Sanitizer Log"}
         </button>
       </div>
 

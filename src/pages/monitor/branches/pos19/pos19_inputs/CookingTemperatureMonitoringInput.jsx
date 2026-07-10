@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/CookingTemperatureMonitoringInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
 /* ===== Draft (localStorage) ===== */
@@ -67,6 +68,7 @@ export default function CookingTemperatureMonitoringInput() {
   });
   const [verifiedBy, setVerifiedBy] = useState(() => loadDraft().verifiedBy || "");
   const [saving, setSaving]         = useState(false);
+  const dateStatus = useReportDateStatus(TYPE, reportDate);
 
   /* ✅ Auto-save draft */
   useEffect(() => {
@@ -140,9 +142,11 @@ export default function CookingTemperatureMonitoringInput() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
       });
+      if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
       alert("✅ تم الحفظ بنجاح!");
+      dateStatus.refresh();
     } catch (e) {
       console.error(e);
       alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
@@ -165,7 +169,7 @@ export default function CookingTemperatureMonitoringInput() {
           { label: "Issued By",     value: issuedBy, onChange: setIssuedBy },
           { label: "Controlling Officer", value: controllingOfficer, onChange: setControllingOfficer },
           { label: "Approved By",   value: approvedBy, onChange: setApprovedBy },
-          { label: "Report Date",   type: "date", value: reportDate, onChange: setReportDate },
+          { label: "Report Date",   type: "date", value: reportDate, onChange: setReportDate, note: dateStatus.note },
         ]}
       />
 
@@ -240,8 +244,8 @@ export default function CookingTemperatureMonitoringInput() {
       {/* Controls */}
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
         <button onClick={addRow}      style={btnStyle("#0ea5e9")}>+ Add Row</button>
-        <button onClick={handleSave} disabled={saving} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : "Save Cooking Record"}
+        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Cooking Record"}
         </button>
       </div>
 

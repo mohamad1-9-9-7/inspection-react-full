@@ -285,6 +285,14 @@ const ContinualImprovementView  = lazy(() => import("./pages/haccp and iso/Conti
 const GlassRegisterInput = lazy(() => import("./pages/haccp and iso/GlassRegister/GlassRegisterInput"));
 const GlassRegisterView  = lazy(() => import("./pages/haccp and iso/GlassRegister/GlassRegisterView"));
 
+// 🚨 Emergency Preparedness & Response — Test Log (ISO 8.4)
+const EmergencyPreparednessInput = lazy(() => import("./pages/haccp and iso/EmergencyPreparedness/EmergencyPreparednessInput"));
+const EmergencyPreparednessView  = lazy(() => import("./pages/haccp and iso/EmergencyPreparedness/EmergencyPreparednessView"));
+
+// 💧 Potable Water & Ice Testing Log (ISO 8.2.4c)
+const WaterTestingInput = lazy(() => import("./pages/haccp and iso/WaterTesting/WaterTestingInput"));
+const WaterTestingView  = lazy(() => import("./pages/haccp and iso/WaterTesting/WaterTestingView"));
+
 // 🎯 FSMS Risk Register (ISO 6.1 — closes SGS Stage 2 Major NC #2)
 const RiskRegisterView = lazy(() => import("./pages/haccp and iso/RiskRegister/RiskRegisterView"));
 
@@ -349,6 +357,11 @@ const SupplierEvaluationResults = lazy(() =>
 // ✅🆕 Supplier Sent Links Tracker (sent / submitted / pending)
 const SupplierSentLinks = lazy(() =>
   import("./pages/haccp and iso/Supplier Approval/SupplierSentLinks")
+);
+
+// ✅🆕 Supplier Performance (Scorecard + Trend Analysis)
+const SupplierPerformance = lazy(() =>
+  import("./pages/haccp and iso/Supplier Approval/SupplierPerformance")
 );
 
 // ✅🆕 Public Supplier Page (token)
@@ -1585,6 +1598,42 @@ export default function App() {
           }
         />
 
+        {/* 🚨 Emergency Preparedness & Response — Test Log (ISO 8.4) */}
+        <Route
+          path="/haccp-iso/emergency-preparedness"
+          element={
+            <ProtectedRoute>
+              <EmergencyPreparednessInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/emergency-preparedness/view"
+          element={
+            <ProtectedRoute>
+              <EmergencyPreparednessView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 💧 Potable Water & Ice Testing Log (ISO 8.2.4c) */}
+        <Route
+          path="/haccp-iso/water-testing"
+          element={
+            <ProtectedRoute>
+              <WaterTestingInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/water-testing/view"
+          element={
+            <ProtectedRoute>
+              <WaterTestingView />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 🎯 FSMS Risk Register (ISO 6.1 — closes SGS Stage 2 Major NC #2) */}
         <Route
           path="/haccp-iso/risk-register"
@@ -1793,6 +1842,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <SupplierSentLinks />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅🆕 Supplier Evaluation: PERFORMANCE (Scorecard + Trends) */}
+        <Route
+          path="/haccp-iso/supplier-evaluation/performance"
+          element={
+            <ProtectedRoute>
+              <SupplierPerformance />
             </ProtectedRoute>
           }
         />

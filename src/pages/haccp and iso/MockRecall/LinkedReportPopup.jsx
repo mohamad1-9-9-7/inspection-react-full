@@ -15,6 +15,10 @@ const TYPE_MAP = {
   truckCleaning: "truck_daily_cleaning",
   branchTrace: null,     // 🆕 ديناميكي حسب summary.type
   branchReceiving: null, // 🆕 ديناميكي حسب summary.type
+  // 🆕 تقارير الإنتاج (عرض فقط)
+  prodDefrost: "prod_defrosting_record",
+  prodCutting: "prod_online_cutting",
+  prodDried: "prod_dried_meat",
 };
 
 // الأنواع التي تُحدَّد ديناميكياً من summary.type (حسب الفرع المختار)
@@ -29,6 +33,10 @@ const ACCENT_MAP = {
   truckCleaning: "#9333ea",
   branchTrace: "#8b5cf6",
   branchReceiving: "#d97706",
+  // 🆕 تقارير الإنتاج
+  prodDefrost: "#3b82f6",
+  prodCutting: "#e11d48",
+  prodDried: "#b45309",
 };
 
 function ensureObject(v) {
@@ -52,6 +60,10 @@ export default function LinkedReportPopup({ open, onClose, kind, summary }) {
     truckCleaning: t("popupTruckCleaning"),
     branchTrace: t("popupBranchTrace"),
     branchReceiving: t("popupBranchReceiving"),
+    // 🆕 تقارير الإنتاج
+    prodDefrost: t("popupProdDefrost"),
+    prodCutting: t("popupProdCutting"),
+    prodDried: t("popupProdDried"),
   };
 
   useEffect(() => {
@@ -161,6 +173,9 @@ function ReportRenderer({ kind, report, highlight, accent, t, lang }) {
   if (kind === "truckCleaning") return <TruckCleaningView payload={p} highlight={highlight} accent={accent} t={t} lang={lang} />;
   if (kind === "branchTrace") return <BranchTraceView payload={p} accent={accent} t={t} lang={lang} />;
   if (kind === "branchReceiving") return <BranchReceivingView payload={p} accent={accent} t={t} lang={lang} />;
+  if (kind === "prodDefrost") return <ProdDefrostView payload={p} accent={accent} t={t} lang={lang} />;
+  if (kind === "prodCutting") return <ProdCuttingView payload={p} accent={accent} t={t} lang={lang} />;
+  if (kind === "prodDried") return <ProdDriedView payload={p} accent={accent} t={t} lang={lang} />;
   return <pre style={S.pre}>{JSON.stringify(p, null, 2)}</pre>;
 }
 
@@ -293,6 +308,210 @@ function BranchReceivingView({ payload, accent, t, lang }) {
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ====== 🆕 Production: Defrosting Record Renderer ====== */
+function ProdDefrostView({ payload, accent, t, lang }) {
+  const h = payload?.header || {};
+  const entries = (Array.isArray(payload?.entries) ? payload.entries : []).filter(isFilledRow);
+  const sig = payload?.signatures || {};
+  const L = lang === "ar"
+    ? { date:"التاريخ", area:"المنطقة", docNo:"رقم الوثيقة", issuedBy:"أصدرها", approvedBy:"اعتمدها",
+        checkedBy:"دقّقه", verifiedBy:"اعتمده", entries:"سجل إذابة",
+        rawMaterial:"المادة الخام", quantity:"الكمية", brand:"العلامة", rmProdDate:"إنتاج المادة",
+        rmExpDate:"انتهاء المادة", defStartDate:"بدء الإذابة", defStartTime:"وقت البدء",
+        startTemp:"حرارة البدء", defEndDate:"نهاية الإذابة", defEndTime:"وقت النهاية",
+        endTemp:"حرارة النهاية", defrostTemp:"حرارة الإذابة", remarks:"ملاحظات" }
+    : { date:"Date", area:"Area", docNo:"Document No", issuedBy:"Issued By", approvedBy:"Approved By",
+        checkedBy:"Checked By", verifiedBy:"Verified By", entries:"defrost entries",
+        rawMaterial:"Raw Material", quantity:"Quantity", brand:"Brand", rmProdDate:"RM Prod Date",
+        rmExpDate:"RM Exp Date", defStartDate:"Def Start Date", defStartTime:"Start Time",
+        startTemp:"Start Temp", defEndDate:"Def End Date", defEndTime:"End Time",
+        endTemp:"End Temp", defrostTemp:"Defrost Temp", remarks:"Remarks" };
+
+  const COLS = [
+    ["rawMaterial", L.rawMaterial], ["quantity", L.quantity], ["brand", L.brand],
+    ["rmProdDate", L.rmProdDate], ["rmExpDate", L.rmExpDate],
+    ["defStartDate", L.defStartDate], ["defStartTime", L.defStartTime], ["startTemp", L.startTemp],
+    ["defEndDate", L.defEndDate], ["defEndTime", L.defEndTime], ["endTemp", L.endTemp],
+    ["defrostTemp", L.defrostTemp], ["remarks", L.remarks],
+  ];
+
+  return (
+    <div>
+      <SectionHeader text={t("dayInfo")} accent={accent} />
+      <KV label={L.date} value={String(h.reportDate || h.month || "").slice(0, 10)} highlight />
+      <KV label={L.area} value={h.area} />
+      <KV label={L.docNo} value={h.documentNo} />
+      <KV label={L.issuedBy} value={h.issuedBy} />
+      <KV label={L.approvedBy} value={h.approvedBy} />
+      <KV label={L.checkedBy} value={sig.checkedBy} />
+      <KV label={L.verifiedBy} value={sig.verifiedBy} />
+
+      <SectionHeader text={`❄️ ${entries.length} ${L.entries}`} accent={accent} />
+      {entries.length === 0 ? (
+        <div style={S.empty}>—</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                <th style={S.th}>#</th>
+                {COLS.map(([k, label]) => <th key={k} style={S.th}>{label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((r, i) => (
+                <tr key={i}>
+                  <td style={S.tdC}>{i + 1}</td>
+                  {COLS.map(([k]) => (
+                    <td key={k} style={S.td}>{String(r?.[k] ?? "")}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ====== 🆕 Production: On-Line Cutting Record Renderer ====== */
+function ProdCuttingView({ payload, accent, t, lang }) {
+  const h = payload?.header || {};
+  const products = Array.isArray(payload?.products) ? payload.products : [];
+  const L = lang === "ar"
+    ? { date:"التاريخ", batchCode:"كود الدفعة", docNo:"رقم الوثيقة", recordedBy:"سجّله", verifiedBy:"اعتمده",
+        product:"المنتج", brand:"العلامة", batchNo:"رقم الدفعة", prodDate:"تاريخ الإنتاج", expDate:"تاريخ الانتهاء",
+        pdtTemp:"حرارة المنتج", cuttingW:"وزن التقطيع", marinatedW:"الوزن المتبّل", remarks:"ملاحظات",
+        products:"منتج" }
+    : { date:"Date", batchCode:"Batch Code", docNo:"Document No", recordedBy:"Recorded By", verifiedBy:"Verified By",
+        product:"Product", brand:"Brand", batchNo:"Batch No", prodDate:"Prod Date", expDate:"Exp Date",
+        pdtTemp:"Product Temp", cuttingW:"Cutting Wt", marinatedW:"Marinated Wt", remarks:"Remarks",
+        products:"products" };
+
+  const joinWeights = (arr) => (Array.isArray(arr) ? arr.filter((x) => String(x ?? "").trim() !== "").join(", ") : "");
+
+  return (
+    <div>
+      <SectionHeader text={t("dayInfo")} accent={accent} />
+      <KV label={L.date} value={String(payload?.reportDate || "").slice(0, 10)} highlight />
+      <KV label={L.batchCode} value={payload?.batchCode} />
+      <KV label={L.docNo} value={h.documentNo} />
+      <KV label={L.recordedBy} value={payload?.recordedBy} />
+      <KV label={L.verifiedBy} value={payload?.verifiedBy} />
+
+      <SectionHeader text={`✂️ ${products.length} ${L.products}`} accent={accent} />
+      {products.length === 0 ? (
+        <div style={S.empty}>—</div>
+      ) : (
+        products.map((prod, i) => (
+          <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, marginBottom: 10, background: "#fff" }}>
+            <div style={{ fontWeight: 800, color: accent, fontSize: "1rem", marginBottom: 6 }}>
+              {i + 1}. {prod.productName || "—"}
+            </div>
+            <KV label={L.brand} value={prod.brand} />
+            <KV label={L.batchNo} value={prod.batchNo} />
+            <KV label={L.prodDate} value={prod.prodDate} />
+            <KV label={L.expDate} value={prod.expDate} />
+            <KV label={L.pdtTemp} value={prod.pdtTemp !== "" && prod.pdtTemp !== undefined ? `${prod.pdtTemp}°C` : null} />
+            <KV label={L.cuttingW} value={joinWeights(prod.cuttingWeights)} />
+            <KV label={L.marinatedW} value={joinWeights(prod.marinatedWeights)} />
+          </div>
+        ))
+      )}
+      {payload?.remarks && (
+        <>
+          <SectionHeader text={L.remarks} accent={accent} />
+          <div style={{ ...S.empty, textAlign: "start", color: "#334155" }}>{payload.remarks}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ====== 🆕 Production: Dried Meat Process Renderer ====== */
+function ProdDriedView({ payload, accent, t, lang }) {
+  const f = payload?.form || {};
+  const m = payload?.metrics || {};
+  const dryingLog = Array.isArray(f.dryingLog) ? f.dryingLog.filter(isFilledRow) : [];
+  const L = lang === "ar"
+    ? { date:"التاريخ", batchId:"رقم الدفعة", productName:"المنتج", productType:"النوع",
+        rawType:"نوع اللحم الخام", rawSource:"مصدر الخام", rawLot:"دفعة الخام",
+        rawProd:"إنتاج الخام", rawExp:"انتهاء الخام", initialWeight:"الوزن الابتدائي",
+        finalWeight:"الوزن النهائي", aw:"نشاط الماء aw", ph:"الحموضة pH",
+        weightLoss:"نسبة الفقد", yield:"نسبة الإنتاج", storageTemp:"حرارة التخزين",
+        bestBefore:"يُفضّل قبل", checkedBy:"دقّقه", verifiedBy:"اعتمده", approvedBy:"اعتمده نهائياً",
+        dryingLog:"سجل التجفيف", elapsed:"الساعات", time:"الوقت",
+        temp:"الحرارة", humidity:"الرطوبة", weight:"الوزن", notes:"ملاحظات" }
+    : { date:"Date", batchId:"Batch ID", productName:"Product", productType:"Type",
+        rawType:"Raw Meat Type", rawSource:"Raw Source", rawLot:"Raw Lot",
+        rawProd:"Raw Prod Date", rawExp:"Raw Exp Date", initialWeight:"Initial Weight",
+        finalWeight:"Final Weight", aw:"Water Activity aw", ph:"pH",
+        weightLoss:"Weight Loss", yield:"Yield", storageTemp:"Storage Temp",
+        bestBefore:"Best Before", checkedBy:"Checked By", verifiedBy:"Verified By", approvedBy:"Approved By",
+        dryingLog:"drying readings", elapsed:"Elapsed", time:"Time",
+        temp:"Temp", humidity:"Humidity", weight:"Weight", notes:"Notes" };
+
+  const COLS = [
+    ["elapsedHrs", L.elapsed], ["date", L.date], ["time", L.time],
+    ["temperature", L.temp], ["humidity", L.humidity], ["weight", L.weight], ["notes", L.notes],
+  ];
+
+  return (
+    <div>
+      <SectionHeader text={t("dayInfo")} accent={accent} />
+      <KV label={L.date} value={String(payload?.reportDate || "").slice(0, 10)} highlight />
+      <KV label={L.batchId} value={f.batchId} />
+      <KV label={L.productName} value={f.productName} />
+      <KV label={L.productType} value={f.productType} />
+      <KV label={L.rawType} value={f.rawMeatType} />
+      <KV label={L.rawSource} value={f.rawSource} />
+      <KV label={L.rawLot} value={f.rawLotNo} />
+      <KV label={L.rawProd} value={f.rawProdDate} />
+      <KV label={L.rawExp} value={f.rawExpDate} />
+
+      <SectionHeader text={lang === "ar" ? "النتائج الحرجة والأوزان" : "Critical Results & Weights"} accent={accent} />
+      <KV label={L.aw} value={f.waterActivity} highlight />
+      <KV label={L.ph} value={f.ph} highlight />
+      <KV label={L.initialWeight} value={f.initialWeight} />
+      <KV label={L.finalWeight} value={f.finalWeight} />
+      <KV label={L.weightLoss} value={m.weightLossPct ? `${m.weightLossPct}%` : null} />
+      <KV label={L.yield} value={(m.yieldPct || f.yieldPct) ? `${m.yieldPct || f.yieldPct}%` : null} />
+      <KV label={L.storageTemp} value={f.storageTemp} />
+      <KV label={L.bestBefore} value={f.bestBefore} />
+      <KV label={L.checkedBy} value={f.checkedBy} />
+      <KV label={L.verifiedBy} value={f.verifiedBy} />
+      <KV label={L.approvedBy} value={f.approvedBy} />
+
+      {dryingLog.length > 0 && (
+        <>
+          <SectionHeader text={`🌬️ ${dryingLog.length} ${L.dryingLog}`} accent={accent} />
+          <div style={{ overflowX: "auto" }}>
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  <th style={S.th}>#</th>
+                  {COLS.map(([k, label]) => <th key={k} style={S.th}>{label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {dryingLog.map((r, i) => (
+                  <tr key={i}>
+                    <td style={S.tdC}>{i + 1}</td>
+                    {COLS.map(([k]) => (
+                      <td key={k} style={S.td}>{String(r?.[k] ?? "")}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -906,9 +1125,11 @@ const S = {
   box: {
     background: "#fff",
     borderRadius: 14,
-    width: "100%",
-    maxWidth: 900,
-    maxHeight: "88vh",
+    // النافذة تتّسع لتطابق حجم التقرير — قريبة من عرض الشاشة على الشاشات الكبيرة،
+    // مع سقف 1600px حتى لا تتمدد أكثر من اللازم. السكرول الأفقي يبقى احتياطياً فقط.
+    width: "min(1600px, 97vw)",
+    maxWidth: "97vw",
+    maxHeight: "92vh",
     display: "flex",
     flexDirection: "column",
     boxShadow: "0 20px 50px rgba(0,0,0,0.4)",

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../../config/api";
+import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 
 
@@ -38,10 +39,7 @@ export default function DefrostingRecordView() {
 
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache:"no-store" });
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const uniq = Array.from(new Set(list.map(r=>r?.payload).filter(p=>p&&p.branch===BRANCH&&p.reportDate).map(p=>p.reportDate))).sort((a,b)=>b.localeCompare(a));
+      const uniq = await listReportDates(TYPE);
       setAllDates(uniq);
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch(e) { console.warn(e); }
@@ -49,10 +47,7 @@ export default function DefrostingRecordView() {
   async function fetchRecord(d=date) {
     setLoading(true); setErr(""); setRecord(null); setEditRows([]);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache:"no-store" });
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const match = list.find(r => r?.payload?.branch===BRANCH && r?.payload?.reportDate===d) || null;
+      const match = await getReportByDate(TYPE, d);
       setRecord(match);
       const rows = match?.payload?.entries ?? [];
       setEditRows(rows.length ? JSON.parse(JSON.stringify(rows)) : []);
@@ -64,7 +59,6 @@ export default function DefrostingRecordView() {
   useEffect(() => { fetchAllDates(); }, []);
   useEffect(() => { if (date) fetchRecord(date); }, [date]);
 
-  const askPass = (label="") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
   function toggleEdit() {
     if (editing) {
       const rows = record?.payload?.entries ?? [];
@@ -80,29 +74,26 @@ export default function DefrostingRecordView() {
   function delRow(i) { setEditRows(p => p.length===1 ? p : p.filter((_, idx) => idx !== i)); }
 
   async function saveEdit() {
-    if (!askPass("Save changes")) return alert("❌ Wrong password");
     if (!record) return;
     const rid = getId(record); const cleaned = editRows.filter(isFilledRow);
     const payload = { ...(record?.payload || {}), branch:BRANCH, reportDate:record?.payload?.reportDate, entries:cleaned, savedAt:Date.now() };
     try {
       setLoading(true);
-      if (rid) { try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method:"DELETE" }); } catch {} }
-      const r = await fetch(`${API_BASE}/api/reports`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ reporter:"pos19", type:TYPE, payload }) });
+      const r = await fetch(rid ? `${API_BASE}/api/reports/${encodeURIComponent(rid)}` : `${API_BASE}/api/reports`, { method: rid ? "PUT" : "POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ reporter:"pos19", type:TYPE, payload }) });
       if (!r.ok) throw new Error();
       alert("✅ Changes saved"); setEditing(false);
-      await fetchRecord(payload.reportDate); await fetchAllDates();
+      await fetchRecord(payload.reportDate); invalidateReportDates(TYPE); await fetchAllDates();
     } catch(e) { alert("❌ Saving failed."); } finally { setLoading(false); }
   }
   async function handleDelete() {
     if (!record) return;
-    if (!askPass("Delete confirmation")) return alert("❌ Wrong password");
     if (!window.confirm("Are you sure?")) return;
     const rid = getId(record); if (!rid) return alert("⚠️ Missing id.");
     try {
       setLoading(true);
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method:"DELETE" });
       if (!res.ok) throw new Error();
-      alert("✅ Deleted"); await fetchAllDates();
+      alert("✅ Deleted"); invalidateReportDates(TYPE); await fetchAllDates();
       setDate(allDates.find(d => d !== record?.payload?.reportDate) || todayDubai);
     } catch(e) { alert("❌ Delete failed."); } finally { setLoading(false); }
   }
@@ -122,7 +113,7 @@ export default function DefrostingRecordView() {
       setLoading(true);
       const res = await fetch(`${API_BASE}/api/reports`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ reporter:"pos19", type:TYPE, payload }) });
       if (!res.ok) throw new Error();
-      alert("✅ Imported"); setDate(payload.reportDate); await fetchAllDates(); await fetchRecord(payload.reportDate);
+      alert("✅ Imported"); setDate(payload.reportDate); invalidateReportDates(TYPE); await fetchAllDates(); await fetchRecord(payload.reportDate);
     } catch(e) { alert("❌ Invalid JSON or save failed"); } finally { if (fileInputRef.current) fileInputRef.current.value=""; setLoading(false); }
   }
 

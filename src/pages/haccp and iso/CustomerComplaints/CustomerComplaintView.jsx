@@ -12,6 +12,7 @@ import {
   safeDate, daysBetween,
 } from "./customerComplaintShared";
 import { ImagePreviewModal, ComplaintReportModal } from "./CustomerComplaintModals";
+import ComplaintTrendReportModal from "./CustomerComplaintTrendReport";
 
 const TYPE = "customer_complaint";
 
@@ -159,6 +160,7 @@ export default function CustomerComplaintView() {
   const [loading, setLoading] = useState(true);
   const [detailRec, setDetailRec] = useState(null);
   const [previewSrc, setPreviewSrc] = useState(null);
+  const [trendOpen, setTrendOpen] = useState(false);
 
   /* Filters */
   const [statusFilter, setStatusFilter] = useState("all");
@@ -366,6 +368,9 @@ export default function CustomerComplaintView() {
             <button style={S.btn("ghost")} onClick={exportCSV} disabled={!filtered.length} title={isAr ? "تصدير CSV" : "Export CSV"}>📊 CSV</button>
             <button style={S.btn("ghost")} onClick={exportJSON} disabled={!filtered.length} title={isAr ? "تصدير JSON" : "Export JSON"}>📄 JSON</button>
             <button style={S.btn("ghost")} onClick={printAll} disabled={!filtered.length} title={isAr ? "طباعة" : "Print"}>🖨 {isAr ? "طباعة" : "Print"}</button>
+            <button style={S.btn("success")} onClick={() => setTrendOpen(true)} disabled={!items.length} title={isAr ? "تقرير تحليل الاتجاهات" : "Trend Analysis Report"}>
+              📈 {isAr ? "تحليل الاتجاهات" : "Trend Analysis"}
+            </button>
             <button style={S.btn("primary")} onClick={() => navigate("/haccp-iso/customer-complaints")}>{t("new")}</button>
             <button style={S.btn("secondary")} onClick={() => navigate("/haccp-iso")}>{t("backToHub")}</button>
           </div>
@@ -582,6 +587,11 @@ export default function CustomerComplaintView() {
         <ImagePreviewModal src={previewSrc} onClose={() => setPreviewSrc(null)} S={S} />
       )}
 
+      {/* Trend Analysis report modal */}
+      {trendOpen && (
+        <ComplaintTrendReportModal items={items} onClose={() => setTrendOpen(false)} isAr={isAr} />
+      )}
+
       {/* Print stylesheet */}
       <style>{`
         @media print {
@@ -591,8 +601,25 @@ export default function CustomerComplaintView() {
         }
         @media (max-width: 720px) {
           .cc-trend-row { grid-template-columns: 1fr !important; }
+          .cc-trend-2col { grid-template-columns: 1fr !important; }
         }
       `}</style>
+
+      {/* When the trend report is open, print ONLY the trend report */}
+      {trendOpen && (
+        <style>{`
+          @media print {
+            body * { visibility: hidden !important; }
+            .cc-trend-print, .cc-trend-print * { visibility: visible !important; }
+            .cc-trend-print {
+              position: absolute !important; left: 0 !important; top: 0 !important;
+              width: 100% !important; max-width: none !important;
+              box-shadow: none !important; border: 0 !important; border-radius: 0 !important;
+            }
+            .cc-trend-noprint { display: none !important; }
+          }
+        `}</style>
+      )}
 
       {/* When the report modal is open, print ONLY the report */}
       {detailRec && (

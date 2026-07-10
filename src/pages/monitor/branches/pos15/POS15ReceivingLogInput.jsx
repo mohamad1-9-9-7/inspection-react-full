@@ -85,7 +85,7 @@ export default function POS15ReceivingLogInput() {
     <col key="vehT" style={{ width: 90 }} />, <col key="foodT" style={{ width: 90 }} />,
     <col key="vehClean" style={{ width: 120 }} />, <col key="handler" style={{ width: 140 }} />,
     <col key="appearanceOK" style={{ width: 120 }} />, <col key="firmnessOK" style={{ width: 110 }} />, <col key="smellOK" style={{ width: 110 }} />,
-    <col key="pack" style={{ width: 220 }} />,
+    <col key="pack" style={{ width: 130 }} />,
     <col key="origin" style={{ width: 120 }} />, <col key="prod" style={{ width: 120 }} />, <col key="exp" style={{ width: 120 }} />,
     <col key="inv" style={{ width: 120 }} />, <col key="remarks" style={{ width: 180 }} />, <col key="received" style={{ width: 120 }} />,
   ]), []);

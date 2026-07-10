@@ -5,6 +5,7 @@ import jsPDF from "jspdf";
 import unionLogo from "../../../../../assets/unioncoop-logo.png";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
 
 
@@ -15,20 +16,13 @@ const BRANCH = "POS 19";
 /* ===== Helpers & styles ===== */
 const safe = (v) => (v ?? "");
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({
-  background: bg,
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "8px 12px",
-  fontWeight: 700,
-  cursor: "pointer",
-});
 const formatDMY = (iso) => {
   if (!iso) return iso;
   const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 };
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const monthName = (mm) => MONTH_NAMES[Number(mm) - 1] || `Month ${mm}`;
 async function loadImageDataURL(src) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -95,42 +89,36 @@ export default function OilQualityMonitoringView() {
     fontSize: 12,
   }), []);
   const thCell = {
-    border: "1px solid #1f3b70",
-    padding: "6px 4px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    padding: "11px 10px",
     textAlign: "center",
     whiteSpace: "pre-line",
-    fontWeight: 700,
-    background: "#f5f8ff",
-    color: "#0b1f4d",
+    fontWeight: 800,
+    fontSize: 12.5,
+    letterSpacing: ".02em",
+    background: "linear-gradient(135deg,#1e3a5f,#2d5a8e)",
+    color: "#fff",
   };
   const tdCell = {
-    border: "1px solid #1f3b70",
-    padding: "6px 4px",
+    border: "1px solid #e6ecf7",
+    padding: "9px 10px",
     textAlign: "center",
     verticalAlign: "middle",
+    fontSize: 12.5,
+    color: "#0b1f4d",
   };
 
   const colDefs = useMemo(() => ([
-    <col key="date" style={{ width: 160 }} />,
-    <col key="res"  style={{ width: 420 }} />,
-    <col key="act"  style={{ width: 360 }} />,
-    <col key="chk"  style={{ width: 180 }} />,
+    <col key="date" style={{ width: 140 }} />,
+    <col key="res"  style={{ width: 380 }} />,
+    <col key="act"  style={{ width: 320 }} />,
+    <col key="chk"  style={{ width: 170 }} />,
   ]), []);
 
   /* ===== Fetch dates & records ===== */
   async function fetchAllDates() {
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const filtered = list
-        .map((r) => r?.payload)
-        .filter((p) => p && p.branch === BRANCH && p.reportDate);
-
-      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
+      const uniq = await listReportDates(TYPE);
       setAllDates(uniq);
 
       // Tree stays collapsed by default.
@@ -145,13 +133,7 @@ export default function OilQualityMonitoringView() {
     setErr("");
     setRecord(null);
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportByDate(TYPE, d);
       setRecord(match);
 
       const rows = Array.from({ length: Math.max(1, match?.payload?.entries?.length || 1) },
@@ -174,7 +156,6 @@ export default function OilQualityMonitoringView() {
   useEffect(() => { if (date) fetchRecord(date); }, [date]);
 
   /* ===== Edit / Save / Delete ===== */
-  const askPass = (label="") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   function toggleEdit() {
     if (editing) {
@@ -193,7 +174,6 @@ export default function OilQualityMonitoringView() {
   }
 
   async function saveEdit() {
-    if (!askPass("Save changes")) return alert("❌ Wrong password");
     if (!record) return;
 
     const rid = getId(record);
@@ -224,7 +204,7 @@ export default function OilQualityMonitoringView() {
       alert("✅ Changes saved");
       setEditing(false);
       await fetchRecord(payload.reportDate);
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
     } catch (e) {
       console.error(e);
       alert("❌ Saving failed.\n" + String(e?.message || e));
@@ -235,7 +215,6 @@ export default function OilQualityMonitoringView() {
 
   async function handleDelete() {
     if (!record) return;
-    if (!askPass("Delete confirmation")) return alert("❌ Wrong password");
     if (!window.confirm("Are you sure you want to delete this report?")) return;
 
     const rid = getId(record);
@@ -246,7 +225,7 @@ export default function OilQualityMonitoringView() {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Deleted");
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
       const next = allDates.find((d) => d !== record?.payload?.reportDate) || todayDubai;
       setDate(next);
     } catch (e) {
@@ -405,7 +384,7 @@ export default function OilQualityMonitoringView() {
 
       alert("✅ Imported and saved");
       setDate(payload.reportDate);
-      await fetchAllDates();
+      invalidateReportDates(TYPE); await fetchAllDates();
       await fetchRecord(payload.reportDate);
     } catch (e) {
       console.error(e);
@@ -495,30 +474,66 @@ export default function OilQualityMonitoringView() {
   /* ===== UI ===== */
   const rowsToShow = (record?.payload?.entries || []).filter(hasAnyValue); // ✅ إظهار الممتلئ فقط
 
+  const totalRecords = allDates.length;
+  const tbtn = (bg, { ghost = false, disabled = false } = {}) => ({
+    display: "inline-flex", alignItems: "center", gap: 6,
+    background: ghost ? "#fff" : bg,
+    color: ghost ? bg : "#fff",
+    border: ghost ? `1px solid ${bg}` : "1px solid transparent",
+    borderRadius: 9, padding: "8px 13px",
+    fontWeight: 700, fontSize: 12.5, lineHeight: 1,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    boxShadow: ghost ? "none" : "0 1px 2px rgba(11,31,77,0.14)",
+    transition: "transform .08s ease, box-shadow .12s ease",
+    whiteSpace: "nowrap",
+  });
+
   return (
-    <div style={{ background:"#fff", border:"1px solid #dbe3f4", borderRadius:12, padding:16, color:"#0b1f4d", direction:"ltr" }}>
-      {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
-        <img src={unionLogo} alt="Union Coop" style={{ width:56, height:56, objectFit:"contain" }} />
-        <div style={{ fontWeight:800, fontSize:18 }}>
-          Oil Quality Monitoring — View (POS 19)
+    <div style={{ background:"#f4f7fc", border:"1px solid #dbe3f4", borderRadius:14, padding:16, color:"#0b1f4d", direction:"ltr" }}>
+      {/* ===== Branded banner ===== */}
+      <div style={{
+        display:"flex", alignItems:"center", gap:14, flexWrap:"wrap",
+        padding:"14px 18px", borderRadius:14, marginBottom:14,
+        background:"linear-gradient(135deg,#1e3a5f 0%,#2d5a8e 100%)",
+        color:"#fff", boxShadow:"0 6px 20px rgba(30,58,95,0.28)",
+      }}>
+        <div style={{ width:56, height:56, borderRadius:12, background:"#fff", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 2px 6px rgba(0,0,0,0.15)" }}>
+          <img src={unionLogo} alt="Union Coop" style={{ width:46, height:46, objectFit:"contain" }} />
         </div>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontWeight:900, fontSize:19, letterSpacing:".01em" }}>Oil Quality Monitoring</div>
+          <div style={{ fontSize:12.5, color:"#cbd8ea", marginTop:3, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            <span>🍳 Al Warqa Kitchen · POS 19</span>
+            <span style={{ opacity:0.5 }}>|</span>
+            <span style={{ background:"rgba(255,255,255,0.14)", borderRadius:20, padding:"2px 9px", fontWeight:700 }}>Form Ref: {safe(record?.payload?.formRef || "UC/HACCP/BR/F15")}</span>
+          </div>
+        </div>
+        <div style={{ marginInlineStart:"auto", textAlign:"right", direction:"rtl" }}>
+          <div style={{ fontSize:15, fontWeight:800, color:"#fef3c7" }}>مراقبة جودة الزيت</div>
+          <div style={{ fontSize:12, color:"#cbd8ea", marginTop:2 }}>مطبخ الورقاء</div>
+        </div>
+      </div>
 
-        {/* Actions */}
-        <div style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
-            {editing ? "Cancel Edit" : "Edit"}
-          </button>
-          {editing && (
-            <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
-          )}
-          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+      {/* ===== Action toolbar ===== */}
+      <div style={{
+        display:"flex", alignItems:"center", gap:8, flexWrap:"wrap",
+        padding:"10px 12px", borderRadius:12, marginBottom:14,
+        background:"#fff", border:"1px solid #e5ecf7", boxShadow:"0 1px 3px rgba(11,31,77,0.05)",
+      }}>
+        <button onClick={toggleEdit} style={tbtn(editing ? "#6b7280" : "#7c3aed", { ghost: !editing })}>
+          {editing ? "✕ Cancel" : "✎ Edit"}
+        </button>
+        {editing && <button onClick={saveEdit} style={tbtn("#10b981")}>💾 Save Changes</button>}
+        <button onClick={handleDelete} style={tbtn("#dc2626", { ghost: true })} data-delete-action="true">🗑 Delete</button>
 
-          <button onClick={exportXLSX} disabled={!rowsToShow.length} style={btn("#0ea5e9")}>Export XLSX</button>
-          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
-          <button onClick={exportPDF} style={btn("#374151")}>Export PDF</button>
-          <label style={{ ...btn("#059669"), display:"inline-block" }}>
-            Import JSON
+        <span style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+          <span style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:".05em" }}>Export</span>
+          <button onClick={exportXLSX} disabled={!rowsToShow.length} style={tbtn("#0ea5e9", { disabled: !rowsToShow.length })}>📊 XLSX</button>
+          <button onClick={exportJSON} disabled={!record} style={tbtn("#0284c7", { disabled: !record })}>{"{ } JSON"}</button>
+          <button onClick={exportPDF} style={tbtn("#374151")}>📄 PDF</button>
+          <label style={{ ...tbtn("#059669", { ghost: true }) }}>
+            ⬆ Import
             <input
               ref={fileInputRef}
               type="file"
@@ -527,70 +542,81 @@ export default function OilQualityMonitoringView() {
               style={{ display:"none" }}
             />
           </label>
-        </div>
+        </span>
       </div>
 
       {/* Layout: Date tree + content */}
-      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:12 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"270px 1fr", gap:14 }}>
         {/* Date tree */}
-        <div style={{ border:"1px solid #e5e7eb", borderRadius:10, padding:10, background:"#fafafa" }}>
-          <div style={{ fontWeight:800, marginBottom:8 }}>📅 Date Tree</div>
-          <div style={{ maxHeight:380, overflowY:"auto" }}>
+        <div style={{ border:"1px solid #e5ecf7", borderRadius:12, padding:12, background:"#fff", boxShadow:"0 1px 3px rgba(11,31,77,0.05)", alignSelf:"start" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+            <div style={{ fontWeight:800, fontSize:13.5, color:"#1e3a5f" }}>📅 Records</div>
+            <span style={{ background:"#eff6ff", color:"#2563eb", borderRadius:20, padding:"2px 9px", fontSize:11, fontWeight:800 }}>{totalRecords}</span>
+          </div>
+          <div style={{ maxHeight:420, overflowY:"auto" }}>
             {Object.keys(grouped).length ? (
               Object.entries(grouped).map(([year, months]) => {
                 const yOpen = !!expandedYears[year];
+                const yearCount = Object.values(months).reduce((a, arr) => a + arr.length, 0);
                 return (
                   <div key={year} style={{ marginBottom:8 }}>
                     <button
                       onClick={()=>toggleYear(year)}
                       style={{
-                        display:"flex", alignItems:"center", justifyContent:"space-between",
-                        width:"100%", padding:"6px 10px", borderRadius:8,
-                        border:"1px solid #d1d5db", background:"#fff", cursor:"pointer", fontWeight:800
+                        display:"flex", alignItems:"center", gap:8,
+                        width:"100%", padding:"8px 11px", borderRadius:9,
+                        border:"1px solid #d7e0f0", background: yOpen ? "#eff6ff" : "#f8faff",
+                        cursor:"pointer", fontWeight:800, fontSize:13, color:"#1e3a5f"
                       }}
                     >
-                      <span>Year {year}</span>
-                      <span aria-hidden="true">{yOpen ? "▾" : "▸"}</span>
+                      <span aria-hidden="true" style={{ fontSize:10, color:"#64748b" }}>{yOpen ? "▼" : "▶"}</span>
+                      <span style={{ flex:1, textAlign:"left" }}>Year {year}</span>
+                      <span style={{ background:"#dbeafe", color:"#1e40af", borderRadius:20, padding:"1px 8px", fontSize:11, fontWeight:800 }}>{yearCount}</span>
                     </button>
 
                     {yOpen && Object.entries(months).map(([month, days]) => {
                       const key = `${year}-${month}`;
                       const mOpen = !!expandedMonths[key];
                       return (
-                        <div key={key} style={{ marginTop:6, marginLeft:8 }}>
+                        <div key={key} style={{ marginTop:6, marginLeft:10 }}>
                           <button
                             onClick={()=>toggleMonth(year, month)}
                             style={{
-                              display:"flex", alignItems:"center", justifyContent:"space-between",
-                              width:"100%", padding:"6px 10px", borderRadius:8,
-                              border:"1px solid #e5e7eb", background:"#fff", cursor:"pointer", fontWeight:700
+                              display:"flex", alignItems:"center", gap:8,
+                              width:"100%", padding:"7px 10px", borderRadius:8,
+                              border:"1px solid #e5ecf7", background: mOpen ? "#f8faff" : "#fff",
+                              cursor:"pointer", fontWeight:700, fontSize:12.5, color:"#334155"
                             }}
                           >
-                            <span>Month {month}</span>
-                            <span aria-hidden="true">{mOpen ? "▾" : "▸"}</span>
+                            <span aria-hidden="true" style={{ fontSize:9, color:"#94a3b8" }}>{mOpen ? "▼" : "▶"}</span>
+                            <span style={{ flex:1, textAlign:"left" }}>{monthName(month)}</span>
+                            <span style={{ background:"#eef2f9", color:"#475569", borderRadius:20, padding:"1px 7px", fontSize:10.5, fontWeight:800 }}>{days.length}</span>
                           </button>
 
                           {mOpen && (
-                            <div style={{ padding:"6px 2px 0 2px" }}>
-                              <ul style={{ listStyle:"none", padding:0, margin:0 }}>
-                                {days.map((d)=>(
-                                  <li key={d} style={{ marginBottom:6 }}>
-                                    <button
-                                      onClick={()=>setDate(d)}
-                                      style={{
-                                        width:"100%", textAlign:"left", padding:"8px 10px",
-                                        borderRadius:8, border:"1px solid #d1d5db",
-                                        background: d===date ? "#2563eb" : "#fff",
-                                        color: d===date ? "#fff" : "#111827",
-                                        fontWeight:700, cursor:"pointer"
-                                      }}
-                                      title={formatDMY(d)}
-                                    >
-                                      {formatDMY(d)}
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
+                            <div style={{ padding:"6px 2px 0 4px", display:"grid", gap:5 }}>
+                              {days.map((d)=>{
+                                const activeD = d === date;
+                                return (
+                                  <button
+                                    key={d}
+                                    onClick={()=>setDate(d)}
+                                    style={{
+                                      display:"flex", alignItems:"center", gap:8,
+                                      width:"100%", textAlign:"left", padding:"8px 11px",
+                                      borderRadius:8, border:`1px solid ${activeD ? "#2563eb" : "#e5ecf7"}`,
+                                      background: activeD ? "linear-gradient(135deg,#2563eb,#1d4ed8)" : "#fff",
+                                      color: activeD ? "#fff" : "#334155",
+                                      fontWeight:700, fontSize:12.5, cursor:"pointer",
+                                      boxShadow: activeD ? "0 2px 6px rgba(37,99,235,0.30)" : "none",
+                                    }}
+                                    title={formatDMY(d)}
+                                  >
+                                    <span aria-hidden="true" style={{ opacity: activeD ? 1 : 0.4 }}>{activeD ? "📄" : "•"}</span>
+                                    {formatDMY(d)}
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
@@ -600,24 +626,30 @@ export default function OilQualityMonitoringView() {
                 );
               })
             ) : (
-              <div style={{ color:"#6b7280" }}>No available dates.</div>
+              <div style={{ color:"#94a3b8", fontSize:13, textAlign:"center", padding:"18px 8px" }}>No available dates.</div>
             )}
           </div>
         </div>
 
         {/* Report content */}
         <div style={{ minWidth: 0 }}>
-          {loading && <p>Loading…</p>}
-          {err && <p style={{ color:"#b91c1c" }}>{err}</p>}
+          {loading && (
+            <div style={{ padding:24, textAlign:"center", color:"#64748b", background:"#fff", border:"1px solid #e5ecf7", borderRadius:12 }}>⏳ Loading…</div>
+          )}
+          {err && (
+            <div style={{ padding:14, color:"#b91c1c", background:"#fef2f2", border:"1px solid #fecaca", borderRadius:12 }}>{err}</div>
+          )}
           {!loading && !err && !record && (
-            <div style={{ padding:12, border:"1px dashed #9ca3af", borderRadius:8, textAlign:"center" }}>
-              No report for this date.
+            <div style={{ padding:"32px 16px", border:"1.5px dashed #c7d2e8", borderRadius:12, textAlign:"center", background:"#fff", color:"#64748b" }}>
+              <div style={{ fontSize:30, marginBottom:6 }}>🗂️</div>
+              <div style={{ fontWeight:700, color:"#475569" }}>No report for this date.</div>
+              <div style={{ fontSize:12, marginTop:4 }}>Pick another date from the list on the left.</div>
             </div>
           )}
 
           {record && (
             <div style={{ overflowX:"auto", overflowY:"hidden" }}>
-              <div ref={reportRef} style={{ width: "max-content" }}>
+              <div ref={reportRef} style={{ width: "max-content", background:"#fff", padding:16, borderRadius:12, border:"1px solid #e5ecf7", boxShadow:"0 1px 4px rgba(11,31,77,0.06)" }}>
                 {/* Info band (matches original form header placement) */}
                 <ReportHeader
                   title="Oil Quality Monitoring"
@@ -631,6 +663,7 @@ export default function OilQualityMonitoringView() {
                 />
 
                 {/* Table */}
+                <div style={{ border:"1px solid #dbe3f4", borderRadius:10, overflow:"hidden", boxShadow:"0 1px 3px rgba(11,31,77,0.06)" }}>
                 <table style={gridStyle}>
                   <colgroup>{colDefs}</colgroup>
                   <thead>
@@ -643,14 +676,18 @@ export default function OilQualityMonitoringView() {
                   </thead>
                   <tbody>
                     {!editing ? (
-                      (rowsToShow.length ? rowsToShow : []).map((r, idx) => (
-                        <tr key={idx}>
-                          <td style={tdCell}>{formatDMY(safe(r.date))}</td>
-                          <td style={tdCell}>{safe(r.result)}</td>
-                          <td style={tdCell}>{safe(r.action)}</td>
+                      rowsToShow.length ? rowsToShow.map((r, idx) => (
+                        <tr key={idx} style={{ background: idx % 2 ? "#f7faff" : "#fff" }}>
+                          <td style={{ ...tdCell, fontWeight:700 }}>{formatDMY(safe(r.date))}</td>
+                          <td style={{ ...tdCell, textAlign:"left" }}>{safe(r.result)}</td>
+                          <td style={{ ...tdCell, textAlign:"left" }}>{safe(r.action)}</td>
                           <td style={tdCell}>{safe(r.checkedBy)}</td>
                         </tr>
-                      ))
+                      )) : (
+                        <tr>
+                          <td style={{ ...tdCell, color:"#94a3b8", padding:"18px" }} colSpan={4}>No entries recorded for this date.</td>
+                        </tr>
+                      )
                     ) : (
                       editRows.map((r, idx) => (
                         <tr key={idx}>
@@ -691,6 +728,7 @@ export default function OilQualityMonitoringView() {
                     )}
                   </tbody>
                 </table>
+                </div>
 
                 {/* Footer info */}
                 <div style={{ marginTop:12, width:"max-content" }}>

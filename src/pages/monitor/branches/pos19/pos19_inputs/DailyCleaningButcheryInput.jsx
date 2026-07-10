@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/DailyCleaningChecklistInput.jsx
 import React, { useMemo, useState } from "react";
 import ReportHeader from "../_shared/ReportHeader";
+import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
 
@@ -46,6 +47,8 @@ export default function DailyCleaningChecklistInput() {
     try { return new Date().toLocaleString("en-GB", { month: "long", timeZone: "Asia/Dubai" }); }
     catch { return ""; }
   });
+
+  const dateStatus = useReportDateStatus(TYPE, date);
 
   const gridStyle = useMemo(() => ({
     width: "100%",
@@ -147,8 +150,10 @@ export default function DailyCleaningChecklistInput() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "pos19", type: TYPE, payload }),
       });
+      if (res.status === 409) { alert("⚠️ يوجد تقرير محفوظ لنفس التاريخ. عدّله من شاشة العرض (View)."); dateStatus.refresh(); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ تم الحفظ بنجاح!");
+      dateStatus.refresh();
     } catch (e) {
       console.error(e);
       alert("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
@@ -165,7 +170,7 @@ export default function DailyCleaningChecklistInput() {
           { label: "Form Ref", value: FORM_REF },
           { label: "Branch", value: BRANCH },
           { label: "Classification", value: "Official" },
-          { label: "Report Date", type: "date", value: date, onChange: setDate },
+          { label: "Report Date", type: "date", value: date, onChange: setDate, note: dateStatus.note },
           { label: "Month", value: monthText, onChange: setMonthText },
         ]}
       />
@@ -286,8 +291,8 @@ export default function DailyCleaningChecklistInput() {
 
       {/* Controls */}
       <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
-        <button onClick={handleSave} disabled={saving} style={btnStyle("#2563eb")}>
-          {saving ? "Saving…" : "Save Daily Cleaning"}
+        <button onClick={handleSave} disabled={saving || dateStatus.blocked} style={btnStyle("#2563eb")}>
+          {saving ? "Saving…" : dateStatus.blocked ? "🔒 محفوظ مسبقاً" : "Save Daily Cleaning"}
         </button>
       </div>
 
