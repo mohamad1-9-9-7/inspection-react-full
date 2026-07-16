@@ -36,6 +36,68 @@ const DEFAULT_HEADER_LINE = "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - AL QUSA
 const DEFAULT_LOCATION_PLACEHOLDER = "e.g., QCS - Al Qusais";
 const MAX_EVIDENCE_IMAGES = 10;
 
+const NCR_AR_TERMS = {
+  "Non-Conformance Report": "تقرير عدم المطابقة",
+  Date: "التاريخ",
+  Save: "حفظ",
+  Location: "الموقع",
+  Reference: "المرجع",
+  "In-house QC": "فحص الجودة الداخلي",
+  "Customer Complaint": "شكوى عميل",
+  "Internal Audit": "تدقيق داخلي",
+  "External Audit": "تدقيق خارجي",
+  "Nonconformance / Report Details": "تفاصيل عدم المطابقة / التقرير",
+  "Corrective Action": "الإجراء التصحيحي",
+  "Implementation Owner": "مسؤول التنفيذ",
+  "Target Completion Date": "تاريخ الإنجاز المستهدف",
+  Status: "الحالة",
+  Open: "مفتوح",
+  "In Progress": "قيد التنفيذ",
+  Closed: "مغلق",
+  "Evidence / Attachment": "الدليل / المرفقات",
+  "Images only (max 10)": "صور فقط (الحد الأقصى 10)",
+  "No evidence images yet.": "لا توجد صور أدلة بعد.",
+  "Performed by": "تم التنفيذ بواسطة",
+  Department: "القسم",
+  "Verification of Corrective Action": "التحقق من الإجراء التصحيحي",
+  Satisfactory: "مرضي",
+  "Not Satisfactory": "غير مرضي",
+  "Verified by (QA)": "تحقق بواسطة الجودة",
+  "Verification Result": "نتيجة التحقق",
+  "If Not Satisfactory – Follow-up Actions Required": "إذا كان غير مرضي - إجراءات متابعة مطلوبة",
+  "Follow-up Responsible": "مسؤول المتابعة",
+  "Target Date": "التاريخ المستهدف",
+  "Closure Date": "تاريخ الإغلاق",
+  "Final QA Closure (Sign/Approve)": "الإغلاق النهائي من الجودة (توقيع/اعتماد)",
+  "mandatory before Save": "إجباري قبل الحفظ",
+  Approve: "اعتماد",
+  Signature: "التوقيع",
+  "Responsible Person": "الشخص المسؤول",
+  "NC No.": "رقم عدم المطابقة",
+  "Issued to": "موجه إلى",
+  "Issued by": "أصدر بواسطة",
+  "Document Title:": "عنوان المستند",
+  "Issue Date:": "تاريخ الإصدار",
+  "Area:": "المنطقة",
+  "Controlling Officer:": "المسؤول الرقابي",
+  "Document No:": "رقم المستند",
+  "Revision No:": "رقم المراجعة",
+  "Issued By:": "أصدر بواسطة",
+  "Approved By:": "اعتماد",
+};
+
+const cleanNcrTerm = (value) =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s+:$/, ":");
+
+function getNcrArabicTerm(value) {
+  const raw = cleanNcrTerm(value);
+  if (!raw || /[\u0600-\u06FF]/.test(raw)) return "";
+  return NCR_AR_TERMS[raw] || NCR_AR_TERMS[raw.replace(/:$/, "")] || "";
+}
+
 /* =========================
    Images API (same as Returns.js)
 ========================= */
@@ -84,7 +146,7 @@ function RowKV({ label, value }) {
 }
 
 /* ======= Header ======= */
-function NCEntryHeader({ header, date, logoUrl, headerLine }) {
+function NCEntryHeader({ header, date, logoUrl, headerLine, bilingual }) {
   const h = header;
   return (
     <div style={{ border: "1px solid #000", borderRadius: 14, overflow: "hidden", marginBottom: 12 }}>
@@ -148,6 +210,11 @@ function NCEntryHeader({ header, date, logoUrl, headerLine }) {
           }}
         >
           NON-CONFORMANCE REPORT
+          {bilingual ? (
+            <div style={{ direction: "rtl", marginTop: 4, fontSize: 14 }}>
+              تقرير عدم المطابقة
+            </div>
+          ) : null}
         </div>
 
         {date ? (
@@ -314,6 +381,7 @@ export default function NonConformanceReportInput(props) {
     reporter: reporterProp,
     headerLine,
     locationPlaceholder,
+    bilingual = false,
   } = props || {};
   const TYPE = typeProp || DEFAULT_TYPE;
   const REPORTER = reporterProp || DEFAULT_REPORTER;
@@ -324,6 +392,7 @@ export default function NonConformanceReportInput(props) {
   const queryReportId = searchParams.get("reportId");
 
   const evidenceInputRef = useRef(null);
+  const bilingualRootRef = useRef(null);
 
   const [header] = useState({
     documentTitle: "NC Report",
@@ -394,6 +463,17 @@ export default function NonConformanceReportInput(props) {
   useEffect(() => {
     setEditingReportId(queryReportId || "");
   }, [queryReportId]);
+
+  useEffect(() => {
+    if (!bilingual) return;
+    const root = bilingualRootRef.current;
+    if (!root) return;
+    root.classList.add("ncr-bilingual-scope");
+    root.querySelectorAll("td, label, button, span, div").forEach((el) => {
+      const ar = getNcrArabicTerm(el.textContent);
+      if (ar) el.setAttribute("data-ar", ar);
+    });
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -620,7 +700,21 @@ export default function NonConformanceReportInput(props) {
   }
 
   return (
-    <div style={{ padding: 12 }}>
+    <div ref={bilingualRootRef} style={{ padding: 12 }}>
+      {bilingual ? (
+        <style>{`
+          .ncr-bilingual-scope [data-ar]::after {
+            content: attr(data-ar);
+            display: block;
+            margin-top: 2px;
+            direction: rtl;
+            font-size: 11px;
+            line-height: 1.25;
+            font-weight: 800;
+            color: #475569;
+          }
+        `}</style>
+      ) : null}
       <div style={pageWrap}>
         {/* Top bar */}
         <div
@@ -639,7 +733,14 @@ export default function NonConformanceReportInput(props) {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 20, fontWeight: 1000 }}>🚫 Non-Conformance Report</div>
+            <div style={{ fontSize: 20, fontWeight: 1000 }}>
+              🚫 Non-Conformance Report
+              {bilingual ? (
+                <div style={{ direction: "rtl", fontSize: 13, color: "#475569", marginTop: 2 }}>
+                  تقرير عدم المطابقة
+                </div>
+              ) : null}
+            </div>
             <span style={pill}>Images: {evidenceImages.length}/{MAX_EVIDENCE_IMAGES}</span>
           </div>
 
@@ -671,7 +772,22 @@ export default function NonConformanceReportInput(props) {
         </div>
 
         <div style={sheet}>
-          <NCEntryHeader header={header} date={dateISO} logoUrl={logoUrl} headerLine={HEADER_LINE} />
+          <NCEntryHeader header={header} date={dateISO} logoUrl={logoUrl} headerLine={HEADER_LINE} bilingual={bilingual} />
+
+          {bilingual ? (
+            <div style={{
+              display: "grid", gap: 6, margin: "0 0 14px",
+              padding: "10px 12px", borderRadius: 8,
+              border: "1px solid #fed7aa", background: "#fff7ed",
+              color: "#7c2d12", fontSize: 12, lineHeight: 1.45,
+            }}>
+              <div style={{ fontWeight: 1000 }}>Operational guidance / ملاحظات تشغيلية</div>
+              <div>Describe the nonconformance clearly: what happened, where, date/time, affected product/area, and immediate containment.</div>
+              <div style={{ direction: "rtl", textAlign: "right", fontWeight: 900 }}>اشرح عدم المطابقة بوضوح: ماذا حدث، أين، التاريخ/الوقت، المنتج أو المنطقة المتأثرة، وإجراء الاحتواء الفوري.</div>
+              <div>Corrective action must remove the cause, assign an owner, set a target date, and verify effectiveness before closure.</div>
+              <div style={{ direction: "rtl", textAlign: "right", fontWeight: 900 }}>الإجراء التصحيحي يجب أن يزيل السبب، يحدد المسؤول، يضع تاريخًا مستهدفًا، ويتم التحقق من فعاليته قبل الإغلاق.</div>
+            </div>
+          ) : null}
 
           {/* Location */}
           <table style={table}>

@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/VegSanitationInput.jsx
 import React, { useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
@@ -27,7 +27,6 @@ const METHODOLOGY_NOTE =
 
 function emptyRow() {
   return {
-    date: "",
     time: "",
     productDetails: "",
     quantitySanitized: "",
@@ -99,7 +98,6 @@ export default function VegSanitationInput({
   const colDefs = useMemo(() => ([
     <col key="sl"    style={{ width: 50 }} />,
     ...(showEntryDateTime ? [
-      <col key="date" style={{ width: 120 }} />,
       <col key="time" style={{ width: 100 }} />,
     ] : []),
     <col key="prod"  style={{ width: 220 }} />,
@@ -214,7 +212,6 @@ export default function VegSanitationInput({
           <thead>
             <tr>
               <th style={thCell}>SL NO</th>
-              {showEntryDateTime && <th style={thCell}>Date</th>}
               {showEntryDateTime && <th style={thCell}>Time</th>}
               <th style={thCell}>RM / Product Details</th>
               <th style={thCell}>Quantity Sanitized</th>
@@ -229,7 +226,6 @@ export default function VegSanitationInput({
             {rows.map((r, idx) => (
               <tr key={idx}>
                 <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{idx + 1}</td>
-                {showEntryDateTime && <td style={tdCell}><input type="date" value={r.date} onChange={(e) => updateRow(idx, "date", e.target.value)} style={inputStyle} /></td>}
                 {showEntryDateTime && <td style={tdCell}><input type="time" value={r.time} onChange={(e) => updateRow(idx, "time", e.target.value)} style={inputStyle} /></td>}
                 <td style={tdCell}><input type="text" value={r.productDetails} onChange={(e) => updateRow(idx, "productDetails", e.target.value)} style={inputStyle} placeholder="e.g., Lettuce, Tomato" /></td>
                 <td style={tdCell}><input type="text" value={r.quantitySanitized} onChange={(e) => updateRow(idx, "quantitySanitized", e.target.value)} style={inputStyle} placeholder="kg / pcs" /></td>

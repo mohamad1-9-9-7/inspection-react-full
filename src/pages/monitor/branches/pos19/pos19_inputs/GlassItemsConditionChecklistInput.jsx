@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/GlassItemsConditionChecklistInput.jsx
 import React, { useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
@@ -17,7 +17,6 @@ const LEGEND_COLS = [
 
 function emptyRow() {
   return {
-    date: "",
     glassItem: "",
     section: "",
     inGoodRepair: "",
@@ -93,7 +92,6 @@ export default function GlassItemsConditionChecklistInput() {
   });
 
   const colDefs = useMemo(() => ([
-    <col key="date"    style={{ width: 120 }} />,
     <col key="glass"   style={{ width: 210 }} />,
     <col key="section" style={{ width: 160 }} />,
     ...LEGEND_COLS.map((_, i) => <col key={`lg${i}`} style={{ width: 160 }} />),
@@ -179,7 +177,6 @@ export default function GlassItemsConditionChecklistInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Date</th>
               <th style={thCell}>Glass Item</th>
               <th style={thCell}>Section</th>
               {LEGEND_COLS.map((c) => <th key={c.key} style={thCell}>{c.label}</th>)}
@@ -190,9 +187,6 @@ export default function GlassItemsConditionChecklistInput() {
           <tbody>
             {rows.map((r, idx) => (
               <tr key={idx}>
-                <td style={tdCell}>
-                  <input type="date" value={r.date} onChange={(e)=>updateRow(idx, "date", e.target.value)} style={inputStyle} />
-                </td>
                 <td style={tdCell}>
                   <input type="text" value={r.glassItem} onChange={(e)=>updateRow(idx, "glassItem", e.target.value)} style={inputStyle} placeholder="e.g., Chiller door glass" />
                 </td>

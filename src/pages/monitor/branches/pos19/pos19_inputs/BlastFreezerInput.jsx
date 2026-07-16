@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/BlastFreezerInput.jsx
 import React, { useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 

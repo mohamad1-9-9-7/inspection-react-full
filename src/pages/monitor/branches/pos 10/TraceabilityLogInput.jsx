@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { REPORTS_URL } from "../shipment_recc/qcsRawApi";
 import API_BASE from "../../../../config/api";
+import { RAW_RECIPES, classifyRaw, ALL_FINALS } from "../_shared/traceabilityRecipes";
 
 /* ===== API base ===== */
 
@@ -45,7 +46,7 @@ const emptyOutput = () => ({
 function emptyBatch() {
   return {
     batchId: genBatchId(),
-    inputs: [emptyInput()],
+    inputs: [newInput()],
     outputs: [emptyOutput()],
   };
 }
@@ -60,6 +61,28 @@ const toYMD = (d) => {
     x.getDate()
   )}`;
 };
+
+/* ===== قواعد تلقائية للمادة الخام =====
+   Opened Date = تاريخ اليوم دائماً
+   Best Before = تاريخ الفتح + يومين (صلاحية 3 أيام شاملة، مثال: 18/07 → 20/07) */
+const SHELF_LIFE_DAYS = 2;
+const todayYMD = () => {
+  try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
+  catch { return toYMD(new Date()); }
+};
+const addDays = (ymd, n) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ""))) return "";
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+};
+const newInput = () => {
+  const opened = todayYMD();
+  return { ...emptyInput(), openedDate: opened, bestBefore: addDays(opened, SHELF_LIFE_DAYS) };
+};
+const INPUT_SIGNIFICANT = ["rawName", "origProdDate", "origExpDate", "rawWeight"];
+const inputHasData = (inp) => INPUT_SIGNIFICANT.some((k) => String(inp?.[k] || "").trim() !== "");
 
 async function jsonFetch(url, opts = {}) {
   const { signal, ...rest } = opts || {};
@@ -257,6 +280,34 @@ function deriveSlaughterAndExpiry(payloadIn) {
   };
 }
 
+/* ===== استخراج منتجات الشحنة (اسم + تاريخ إنتاج + تاريخ انتهاء) ===== */
+const isYMD = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
+function extractProducts(payloadIn) {
+  const p = payloadIn || {};
+  const samples = Array.isArray(p.samples) ? p.samples : [];
+  const out = [];
+  samples.forEach((s) => {
+    const name = String(s?.productName || "").trim();
+    const prodDate = normDate(s?.slaughterDate ?? s?.productionDate ?? "");
+    const expDate = normDate(s?.expiryDate ?? s?.bestBefore ?? "");
+    if (!name && !prodDate && !expDate) return;
+    out.push({
+      name,
+      prodDate: isYMD(prodDate) ? prodDate : "",
+      expDate: isYMD(expDate) ? expDate : "",
+    });
+  });
+  if (out.length === 0) {
+    const lines = Array.isArray(p.productLines) ? p.productLines
+                : Array.isArray(p.lines) ? p.lines : [];
+    lines.forEach((l) => {
+      const name = String(l?.name || l?.productName || "").trim();
+      if (name) out.push({ name, prodDate: "", expDate: "" });
+    });
+  }
+  return out;
+}
+
 /* ===== RAW normalize (AWB/Invoice/…) ===== */
 function normalizeRawForIndex(doc) {
   const payload = doc?.payload || doc || {};
@@ -386,6 +437,7 @@ function normalizeRawForIndex(doc) {
     shipment: String(shipment || "").trim(),
     slaughterDate: String(slaughterDate || "").trim(),
     expiryDate: String(expiryDate || "").trim(),
+    products: extractProducts(payload),
   };
 }
 
@@ -500,6 +552,14 @@ export default function TraceabilityLogInput() {
   const [rawQ, setRawQ] = useState("");
   const [showRawModal, setShowRawModal] = useState(false);
   const [activeBatch, setActiveBatch] = useState(null);
+  const [pickShipment, setPickShipment] = useState(null); // الشحنة المختارة لعرض منتجاتها
+
+  /* ===== نافذة المنتجات النهائية المقترحة من المادة الخام ===== */
+  const [recipeBI, setRecipeBI] = useState(null);
+  const [recipeRaw, setRecipeRaw] = useState("");
+  const [recipeCat, setRecipeCat] = useState(null);
+  const [recipeSel, setRecipeSel] = useState(() => new Set());
+  const [recipeSearch, setRecipeSearch] = useState("");
 
   useEffect(() => {
     const ac = new AbortController();
@@ -533,34 +593,139 @@ export default function TraceabilityLogInput() {
   const openRawModal = (bi) => {
     setActiveBatch(bi);
     setRawQ("");
+    setPickShipment(null);
     setShowRawModal(true);
   };
   const closeRawModal = () => {
     setShowRawModal(false);
     setActiveBatch(null);
     setRawQ("");
+    setPickShipment(null);
   };
+
+  // رقم الدفعة من الشحنة (AWB أو Invoice)
+  const shipmentBatchId = (r) => {
+    const awbIsNil = !r.awb || r.awb.trim().toUpperCase() === "NIL";
+    return awbIsNil
+      ? (r.invoice || `${r.shipment || "Shipment"}-${(r.slaughterDate || "").replaceAll(" ", "")}`)
+      : (r.awb || `${r.shipment || "Shipment"}-${(r.slaughterDate || "").replaceAll(" ", "")}`);
+  };
+
+  // ربط الشحنة فقط (رقم الدفعة) — احتياطي عندما لا توجد منتجات
   const chooseRaw = (r) => {
     if (activeBatch === null || activeBatch === undefined) return;
-    const awbIsNil =
-      !r.awb || r.awb.trim().toUpperCase() === "NIL";
-    const val = awbIsNil
-      ? r.invoice ||
-        `${r.shipment || "Shipment"}-${(r.slaughterDate || "")
-          .replaceAll(" ", "")}`
-      : r.awb ||
-        `${r.shipment || "Shipment"}-${(r.slaughterDate || "")
-          .replaceAll(" ", "")}`;
+    const val = shipmentBatchId(r);
     setBatches((prev) => {
       const next = [...prev];
-      next[activeBatch] = {
-        ...next[activeBatch],
-        batchId: val,
-      };
+      next[activeBatch] = { ...next[activeBatch], batchId: val };
       return next;
     });
     closeRawModal();
   };
+
+  // اختيار الشحنة: منتج واحد → تعبئة مباشرة، أكثر → عرض قائمة المنتجات، بدون منتجات → رقم الدفعة فقط
+  const pickRawShipment = (r) => {
+    const products = Array.isArray(r.products) ? r.products : [];
+    if (products.length > 1) { setPickShipment(r); return; }
+    if (products.length === 1) { chooseProduct(r, products[0]); return; }
+    chooseRaw(r);
+  };
+
+  // تعبئة صف مادة خام من منتج داخل شحنة + ضبط رقم الدفعة + فتح نافذة المنتجات النهائية
+  const chooseProduct = (shipment, product) => {
+    if (activeBatch === null || activeBatch === undefined) return;
+    const bi = activeBatch;
+    const rawName = product.name || "";
+    setBatches((prev) => {
+      const next = [...prev];
+      const b = { ...next[bi] };
+      const cur = String(b.batchId || "").trim();
+      if (!cur || /^B-\d{8}-\d{3}$/.test(cur)) b.batchId = shipmentBatchId(shipment);
+      const filled = {
+        ...newInput(),
+        rawName,
+        origProdDate: isYMD(product.prodDate) ? product.prodDate : "",
+        origExpDate: isYMD(product.expDate) ? product.expDate : "",
+      };
+      const inputs = [...b.inputs];
+      const emptyIdx = inputs.findIndex((inp) => !inputHasData(inp));
+      if (emptyIdx >= 0) inputs[emptyIdx] = filled;
+      else inputs.push(filled);
+      b.inputs = inputs;
+      next[bi] = b;
+      return next;
+    });
+    closeRawModal();
+    openRecipe(bi, rawName);
+  };
+
+  /* ===== المنتجات النهائية المقترحة من المادة الخام ===== */
+  const openRecipe = (bi, rawName) => {
+    setRecipeBI(bi);
+    setRecipeRaw(String(rawName || ""));
+    setRecipeCat(classifyRaw(rawName));
+    setRecipeSel(new Set());
+    setRecipeSearch("");
+  };
+  const closeRecipe = () => {
+    setRecipeBI(null);
+    setRecipeRaw("");
+    setRecipeCat(null);
+    setRecipeSel(new Set());
+    setRecipeSearch("");
+  };
+  const toggleRecipeSel = (name) => {
+    setRecipeSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+  const addFinalsToBatch = (bi, names) => {
+    const list = (Array.isArray(names) ? names : [names])
+      .map((n) => String(n || "").trim())
+      .filter(Boolean);
+    if (bi === null || bi === undefined || !list.length) return;
+    const today = todayYMD();
+    const exp = addDays(today, SHELF_LIFE_DAYS);
+    setBatches((prev) => {
+      const next = [...prev];
+      const b = { ...next[bi] };
+      const outputs = [...b.outputs];
+      const existing = new Set(
+        outputs.map((o) => String(o.finalName || "").trim().toLowerCase()).filter(Boolean)
+      );
+      for (const nm of list) {
+        if (existing.has(nm.toLowerCase())) continue;
+        existing.add(nm.toLowerCase());
+        const row = { finalName: nm, finalProdDate: today, finalExpDate: exp, finalWeight: "" };
+        const emptyIdx = outputs.findIndex((o) =>
+          Object.values(o).every((v) => String(v || "").trim() === "")
+        );
+        if (emptyIdx >= 0) outputs[emptyIdx] = row;
+        else outputs.push(row);
+      }
+      b.outputs = outputs;
+      next[bi] = b;
+      return next;
+    });
+  };
+  const confirmRecipe = () => {
+    addFinalsToBatch(recipeBI, [...recipeSel]);
+    closeRecipe();
+  };
+  const recipe = useMemo(
+    () => (recipeCat ? RAW_RECIPES.find((r) => r.id === recipeCat) || null : null),
+    [recipeCat]
+  );
+  const recipeExtra = useMemo(() => {
+    const q = String(recipeSearch || "").toLowerCase().trim();
+    const already = new Set((recipe?.finals || []).map((f) => f.toLowerCase()));
+    return ALL_FINALS.filter(
+      (f) => !already.has(f.toLowerCase()) && (!q || f.toLowerCase().includes(q))
+    ).slice(0, 40);
+  }, [recipe, recipeSearch]);
 
   /* ===== تنسيقات عامة ===== */
   const gridStyle = useMemo(
@@ -598,6 +763,13 @@ export default function TraceabilityLogInput() {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     minWidth: 0,
+  };
+  const lockedStyle = {
+    ...inputStyle,
+    background: "#f1f5f9",
+    borderColor: "#cbd5e1",
+    color: "#334155",
+    cursor: "not-allowed",
   };
 
   const topTable = {
@@ -661,7 +833,7 @@ export default function TraceabilityLogInput() {
       const next = [...prev];
       next[bi] = {
         ...next[bi],
-        inputs: [...next[bi].inputs, emptyInput()],
+        inputs: [...next[bi].inputs, newInput()],
       };
       return next;
     });
@@ -672,7 +844,7 @@ export default function TraceabilityLogInput() {
       arr.splice(ii, 1);
       next[bi] = {
         ...next[bi],
-        inputs: arr.length ? arr : [emptyInput()],
+        inputs: arr.length ? arr : [newInput()],
       };
       return next;
     });
@@ -680,7 +852,11 @@ export default function TraceabilityLogInput() {
     setBatches((prev) => {
       const next = [...prev];
       const arr = [...next[bi].inputs];
-      arr[ii] = { ...arr[ii], [key]: val };
+      const row = { ...arr[ii], [key]: val };
+      if (key === "openedDate") {
+        row.bestBefore = isYMD(val) ? addDays(val, SHELF_LIFE_DAYS) : "";
+      }
+      arr[ii] = row;
       next[bi] = { ...next[bi], inputs: arr };
       return next;
     });
@@ -732,11 +908,7 @@ export default function TraceabilityLogInput() {
 
     const hasAnyData = batches.some(
       (b) =>
-        (b.inputs ?? []).some((inp) =>
-          Object.values(inp).some(
-            (v) => String(v || "").trim() !== ""
-          )
-        ) ||
+        (b.inputs ?? []).some(inputHasData) ||
         (b.outputs ?? []).some((out) =>
           Object.values(out).some(
             (v) => String(v || "").trim() !== ""
@@ -794,18 +966,17 @@ export default function TraceabilityLogInput() {
           return;
         }
       }
-      const hasInputs = inputs.some((inp) =>
-        Object.values(inp).some((v) => v !== "")
-      );
+      const sigInputs = inputs.filter(inputHasData);
+      const hasInputs = sigInputs.length > 0;
       const hasOutputs = outputs.some((out) =>
         Object.values(out).some((v) => v !== "")
       );
       if (hasInputs && hasOutputs) {
-        for (const inp of inputs)
+        for (const inp of sigInputs)
           for (const out of outputs)
             entries.push({ batchId, ...inp, ...out });
       } else if (hasInputs) {
-        for (const inp of inputs)
+        for (const inp of sigInputs)
           entries.push({
             batchId,
             ...inp,
@@ -832,8 +1003,6 @@ export default function TraceabilityLogInput() {
       "rawName",
       "origProdDate",
       "origExpDate",
-      "openedDate",
-      "bestBefore",
       "finalName",
       "finalProdDate",
       "finalExpDate",
@@ -1117,7 +1286,7 @@ export default function TraceabilityLogInput() {
                         borderColor: "#475569",
                         color: "#0f172a",
                       }}
-                      title="Link Batch / Lot ID from RAW shipments"
+                      title="Link from RAW: auto-fill raw material name + production/expiry dates"
                     >
                       Link from RAW
                     </button>
@@ -1157,19 +1326,13 @@ export default function TraceabilityLogInput() {
                             marginBottom: 6,
                           }}
                         >
-                          <label>Name</label>
+                          <label>Name <span style={{ color:"#94a3b8" }}>🔒</span></label>
                           <input
-                            placeholder="Raw material name"
+                            placeholder="يُعبّأ من الربط فقط / Fill via Link from RAW"
                             value={inp.rawName}
-                            onChange={(e) =>
-                              updateInputField(
-                                bi,
-                                ii,
-                                "rawName",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
+                            readOnly
+                            title="يُعبّأ تلقائياً عند الربط من الشحنة"
+                            style={lockedStyle}
                           />
                         </div>
                         <div
@@ -1182,37 +1345,26 @@ export default function TraceabilityLogInput() {
                           }}
                         >
                           <label>
-                            Original Production
-                            Date
+                            Original Production Date <span style={{ color:"#94a3b8" }}>🔒</span>
                           </label>
                           <input
                             type="date"
                             value={inp.origProdDate}
-                            onChange={(e) =>
-                              updateInputField(
-                                bi,
-                                ii,
-                                "origProdDate",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
+                            readOnly
+                            disabled
+                            title="يُعبّأ تلقائياً عند الربط"
+                            style={lockedStyle}
                           />
                           <label>
-                            Original Expiry Date
+                            Original Expiry Date <span style={{ color:"#94a3b8" }}>🔒</span>
                           </label>
                           <input
                             type="date"
                             value={inp.origExpDate}
-                            onChange={(e) =>
-                              updateInputField(
-                                bi,
-                                ii,
-                                "origExpDate",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
+                            readOnly
+                            disabled
+                            title="يُعبّأ تلقائياً عند الربط"
+                            style={lockedStyle}
                           />
                           <label>Opened Date</label>
                           <input
@@ -1265,9 +1417,25 @@ export default function TraceabilityLogInput() {
                         <div
                           style={{
                             marginTop: 6,
-                            textAlign: "right",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 6,
                           }}
                         >
+                          <button
+                            onClick={() =>
+                              openRecipe(bi, inp.rawName)
+                            }
+                            style={{
+                              ...miniBtn,
+                              background: "#ecfeff",
+                              borderColor: "#06b6d4",
+                              color: "#0e7490",
+                            }}
+                            title="اختر المنتجات النهائية التي تُنتَج من هذه المادة الخام"
+                          >
+                            ➜ Final products / المنتجات النهائية
+                          </button>
                           <button
                             onClick={() =>
                               deleteInput(bi, ii)
@@ -1578,15 +1746,20 @@ export default function TraceabilityLogInput() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
+                gap: 8,
               }}
             >
-              <div
-                style={{
-                  fontWeight: 800,
-                  fontSize: 16,
-                }}
-              >
-                Link from RAW
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {pickShipment && (
+                  <button
+                    onClick={() => setPickShipment(null)}
+                    style={{ ...miniBtn, background: "#e2e8f0", borderColor: "#475569", color: "#0f172a" }}
+                    title="Back to shipments"
+                  >← Back</button>
+                )}
+                <div style={{ fontWeight: 800, fontSize: 16 }}>
+                  {pickShipment ? "Select product / اختر المنتج" : "Link from RAW"}
+                </div>
               </div>
               <button
                 onClick={closeRawModal}
@@ -1600,26 +1773,64 @@ export default function TraceabilityLogInput() {
                 Close
               </button>
             </div>
-            <div
-              style={{
-                padding: 12,
-                borderBottom: "1px solid #e2e8f0",
-              }}
-            >
-              <input
-                placeholder="Search AWB / Invoice / Shipment / Slaughter Date / Expiry Date"
-                value={rawQ}
-                onChange={(e) =>
-                  setRawQ(e.target.value)
-                }
+
+            {!pickShipment && (
+              <div
                 style={{
-                  width: "100%",
-                  border: "1px solid #94a3b8",
-                  borderRadius: 8,
-                  padding: "8px 10px",
+                  padding: 12,
+                  borderBottom: "1px solid #e2e8f0",
                 }}
-              />
-            </div>
+              >
+                <input
+                  placeholder="Search AWB / Invoice / Shipment / Slaughter Date / Expiry Date"
+                  value={rawQ}
+                  onChange={(e) =>
+                    setRawQ(e.target.value)
+                  }
+                  style={{
+                    width: "100%",
+                    border: "1px solid #94a3b8",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                  }}
+                />
+              </div>
+            )}
+
+            {pickShipment ? (
+              <div style={{ padding: 12, overflow: "auto" }}>
+                <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>
+                  <b>Shipment:</b> {pickShipment.shipment || "-"}
+                  {"  ·  "}
+                  <b>AWB:</b> {pickShipment.awb || "-"}
+                  {(!pickShipment.awb || pickShipment.awb.trim().toUpperCase() === "NIL") && (
+                    <> {"  ·  "}<b>Invoice:</b> {pickShipment.invoice || "-"}</>
+                  )}
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {(pickShipment.products || []).map((prod, pi) => (
+                    <div
+                      key={pi}
+                      onClick={() => chooseProduct(pickShipment, prod)}
+                      style={{
+                        display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center",
+                        padding: "10px 12px", border: "1px solid #86efac", borderRadius: 8,
+                        background: "#f0fdf4", cursor: "pointer",
+                      }}
+                      title="Click to fill raw material (name + dates)"
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#166534" }}>
+                        {prod.name || "(no name)"}
+                      </div>
+                      <div style={{ fontSize: 12, textAlign: "right", color: "#334155" }}>
+                        <div><b>Prod:</b> {prod.prodDate || "-"}</div>
+                        <div><b>Exp:</b> {prod.expDate || "-"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
             <div
               style={{
                 padding: 12,
@@ -1648,11 +1859,12 @@ export default function TraceabilityLogInput() {
                       r.awb
                         .trim()
                         .toUpperCase() === "NIL";
+                    const nProducts = Array.isArray(r.products) ? r.products.length : 0;
                     return (
                       <div
                         key={r.id || idx}
                         onClick={() =>
-                          chooseRaw(r)
+                          pickRawShipment(r)
                         }
                         style={{
                           display: "grid",
@@ -1667,7 +1879,7 @@ export default function TraceabilityLogInput() {
                           background: "#ffffff",
                           cursor: "pointer",
                         }}
-                        title="Click to fill Batch / Lot ID"
+                        title={nProducts > 1 ? "Click to choose a product from this shipment" : "Click to fill from this shipment"}
                       >
                         <div
                           style={{ fontSize: 12 }}
@@ -1686,6 +1898,13 @@ export default function TraceabilityLogInput() {
                             <b>Shipment:</b>{" "}
                             {r.shipment || "-"}
                           </div>
+                          {nProducts > 0 && (
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{ display: "inline-block", background: "#eef2ff", color: "#3730a3", borderRadius: 12, padding: "1px 8px", fontSize: 11, fontWeight: 700 }}>
+                                {nProducts} product{nProducts > 1 ? "s" : ""} / منتج
+                              </span>
+                            </div>
+                          )}
                         </div>
                         <div
                           style={{
@@ -1701,12 +1920,150 @@ export default function TraceabilityLogInput() {
                             <b>Expiry Date:</b>{" "}
                             {r.expiryDate || "-"}
                           </div>
+                          {nProducts > 1 && (
+                            <div style={{ marginTop: 4, color: "#4f46e5", fontWeight: 700 }}>Choose product →</div>
+                          )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
               )}
+            </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ===== نافذة المنتجات النهائية المقترحة من المادة الخام ===== */}
+      {recipeBI !== null && (
+        <>
+          <div
+            onClick={closeRecipe}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 60 }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: "fixed", top: "50%", left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: "min(680px, 95vw)", maxHeight: "85vh",
+              background: "#fff", borderRadius: 12, border: "1px solid #cbd5e1",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)", zIndex: 61,
+              display: "flex", flexDirection: "column",
+            }}
+          >
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>Final products / المنتجات النهائية</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>
+                  From: <b>{recipeRaw || "—"}</b>
+                  {recipe ? <> · <span style={{ color:"#0e7490" }}>{recipe.label}</span></> : null}
+                </div>
+              </div>
+              <button onClick={closeRecipe} style={{ ...miniBtn, background:"#e2e8f0", borderColor:"#475569", color:"#0f172a" }}>Close</button>
+            </div>
+
+            <div style={{ padding: 12, overflow: "auto" }}>
+              {/* اختيار الصنف يدوياً (مفيد عند خطأ إدخال اسم المادة الخام مثل "PAK LEG") */}
+              <div style={{ fontSize: 12, fontWeight: 700, color:"#475569", marginBottom: 6 }}>
+                Category / الصنف
+              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom: 12 }}>
+                {RAW_RECIPES.map((c) => {
+                  const on = recipeCat === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => { setRecipeCat(c.id); setRecipeSel(new Set()); }}
+                      style={{
+                        ...miniBtn, padding:"5px 10px", fontSize:11,
+                        background: on ? "#0e7490" : "#f1f5f9",
+                        borderColor: on ? "#0e7490" : "#cbd5e1",
+                        color: on ? "#fff" : "#334155",
+                      }}
+                      title={c.label}
+                    >{c.label}</button>
+                  );
+                })}
+              </div>
+
+              {!recipe && (
+                <div style={{ fontSize: 12, color: "#92400e", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:8, padding:"8px 10px", marginBottom:10 }}>
+                  لم يتم التعرّف على المادة الخام تلقائياً. اختر الصنف من الأعلى (مثلاً «عجل») لعرض منتجاته، أو استخدم البحث بالأسفل.
+                </div>
+              )}
+
+              {recipe && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color:"#0e7490", marginBottom: 6 }}>
+                    Suggested (most used first) / المقترحة (الأكثر استخداماً)
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:6, marginBottom: 12 }}>
+                    {recipe.finals.map((f) => {
+                      const on = recipeSel.has(f);
+                      return (
+                        <label
+                          key={f}
+                          style={{
+                            display:"flex", alignItems:"center", gap:8, cursor:"pointer",
+                            padding:"7px 9px", borderRadius:8,
+                            border:`1px solid ${on ? "#06b6d4" : "#cbd5e1"}`,
+                            background: on ? "#ecfeff" : "#fff",
+                          }}
+                        >
+                          <input type="checkbox" checked={on} onChange={()=>toggleRecipeSel(f)} />
+                          <span style={{ fontSize:12, fontWeight:600 }}>{f}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              <div style={{ fontSize: 12, fontWeight: 700, color:"#475569", marginBottom: 6 }}>
+                Add other product / إضافة منتج آخر
+              </div>
+              <input
+                placeholder="Search all products / ابحث في كل المنتجات"
+                value={recipeSearch}
+                onChange={(e)=>setRecipeSearch(e.target.value)}
+                style={{ width:"100%", border:"1px solid #94a3b8", borderRadius:8, padding:"8px 10px", marginBottom: 8 }}
+              />
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:6 }}>
+                {recipeExtra.map((f) => {
+                  const on = recipeSel.has(f);
+                  return (
+                    <label
+                      key={f}
+                      style={{
+                        display:"flex", alignItems:"center", gap:8, cursor:"pointer",
+                        padding:"7px 9px", borderRadius:8,
+                        border:`1px solid ${on ? "#06b6d4" : "#e2e8f0"}`,
+                        background: on ? "#ecfeff" : "#f8fafc",
+                      }}
+                    >
+                      <input type="checkbox" checked={on} onChange={()=>toggleRecipeSel(f)} />
+                      <span style={{ fontSize:12 }}>{f}</span>
+                    </label>
+                  );
+                })}
+                {recipeExtra.length === 0 && (
+                  <div style={{ fontSize:12, color:"#94a3b8" }}>No matches / لا نتائج</div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ padding: 12, borderTop: "1px solid #e2e8f0", display:"flex", justifyContent:"flex-end", gap:8 }}>
+              <button onClick={closeRecipe} style={{ ...miniBtn, background:"#f1f5f9", borderColor:"#94a3b8", color:"#334155", padding:"8px 12px" }}>Cancel / إلغاء</button>
+              <button
+                onClick={confirmRecipe}
+                disabled={recipeSel.size === 0}
+                style={{ ...btnStyle("#06b6d4"), opacity: recipeSel.size === 0 ? 0.5 : 1 }}
+              >
+                Add {recipeSel.size > 0 ? `(${recipeSel.size})` : ""} / إضافة
+              </button>
             </div>
           </div>
         </>

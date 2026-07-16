@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/OilQualityMonitoringInput.jsx
 import React, { useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
@@ -42,7 +42,7 @@ export default function OilQualityMonitoringInput() {
     }
   });
 
-  const [row, setRow]               = useState({ date: "", result: "", action: "", checkedBy: "" });
+  const [row, setRow]               = useState({ result: "", action: "", checkedBy: "" });
   const [section, setSection]       = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
   const [revDate, setRevDate]       = useState("");
@@ -55,7 +55,6 @@ export default function OilQualityMonitoringInput() {
   }), []);
 
   const colDefs = useMemo(() => ([
-    <col key="date" style={{ width: 160 }} />,
     <col key="res"  style={{ width: 420 }} />,
     <col key="act"  style={{ width: 360 }} />,
     <col key="chk"  style={{ width: 180 }} />,
@@ -75,7 +74,6 @@ export default function OilQualityMonitoringInput() {
       section: section || "",
       reportDate,
       entries: [{
-        date:      row.date      || "",
         result:    row.result    || "",
         action:    row.action    || "",
         checkedBy: row.checkedBy || "",
@@ -131,7 +129,6 @@ export default function OilQualityMonitoringInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Date</th>
               <th style={thCell}>Evaluation Results</th>
               <th style={thCell}>Corrective Action</th>
               <th style={thCell}>Checked by</th>
@@ -139,7 +136,6 @@ export default function OilQualityMonitoringInput() {
           </thead>
           <tbody>
             <tr>
-              <td style={tdCell}><input type="date" value={row.date} onChange={(e)=>updateRow("date", e.target.value)} style={inputStyle} /></td>
               <td style={tdCell}><input type="text" placeholder="Evaluation results" value={row.result} onChange={(e)=>updateRow("result", e.target.value)} style={inputStyle} /></td>
               <td style={tdCell}><input type="text" placeholder="Corrective action" value={row.action} onChange={(e)=>updateRow("action", e.target.value)} style={inputStyle} /></td>
               <td style={tdCell}><input type="text" placeholder="Checked by" value={row.checkedBy} onChange={(e)=>updateRow("checkedBy", e.target.value)} style={inputStyle} /></td>

@@ -27,7 +27,7 @@ const isOutOfLimit = (val, kind) => {
 
 function emptyRow() {
   return {
-    date: "", tempAM: "", humidityAM: "", tempPM: "", humidityPM: "",
+    tempAM: "", humidityAM: "", tempPM: "", humidityPM: "",
     stacked: "", properLabel: "", clean: "",
     correctiveAction: "", monitoredBy: "",
   };
@@ -153,8 +153,8 @@ export default function DryStoreTempHumidityView() {
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("DryStore");
       const border = { top: { style: "thin", color: { argb: "1F3B70" } }, left: { style: "thin", color: { argb: "1F3B70" } }, bottom: { style: "thin", color: { argb: "1F3B70" } }, right: { style: "thin", color: { argb: "1F3B70" } } };
-      const COL_HEADERS = ["SL", "Date", "Temp 8AM", "Hum 8AM", "Temp 2PM", "Hum 2PM", "Stacked", "Labelled", "Clean", "Corrective Action", "Monitored By"];
-      ws.columns = [{ width: 4 }, { width: 12 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 22 }, { width: 16 }];
+      const COL_HEADERS = ["SL", "Temp 8AM", "Hum 8AM", "Temp 2PM", "Hum 2PM", "Stacked", "Labelled", "Clean", "Corrective Action", "Monitored By"];
+      ws.columns = [{ width: 4 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 22 }, { width: 16 }];
       ws.mergeCells(1, 1, 1, COL_HEADERS.length);
       const r1 = ws.getCell(1, 1);
       r1.value = `AL MAWASHI BRAAI RESTAURANT LLC | DRY STORE TEMP & HUMIDITY MONITORING RECORD`;
@@ -178,7 +178,7 @@ export default function DryStoreTempHumidityView() {
       let rIdx = 5;
       rows.forEach((e, i) => {
         ws.getRow(rIdx).values = [
-          i + 1, safe(e.date), safe(e.tempAM), safe(e.humidityAM),
+          i + 1, safe(e.tempAM), safe(e.humidityAM),
           safe(e.tempPM), safe(e.humidityPM),
           safe(e.stacked), safe(e.properLabel), safe(e.clean),
           safe(e.correctiveAction), safe(e.monitoredBy),
@@ -380,7 +380,6 @@ export default function DryStoreTempHumidityView() {
                 <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12 }}>
                   <colgroup>
                     <col style={{ width: 40 }} />
-                    <col style={{ width: 120 }} />
                     <col style={{ width: 100 }} />
                     <col style={{ width: 100 }} />
                     <col style={{ width: 100 }} />
@@ -395,7 +394,6 @@ export default function DryStoreTempHumidityView() {
                   <thead>
                     <tr>
                       <th style={thCell} rowSpan={2}>SL</th>
-                      <th style={thCell} rowSpan={2}>Date</th>
                       <th style={thCell} colSpan={2}>8:00 AM</th>
                       <th style={thCell} colSpan={2}>2:00 PM</th>
                       <th style={thCell} rowSpan={2}>Stacked</th>
@@ -424,7 +422,6 @@ export default function DryStoreTempHumidityView() {
                         return (
                           <tr key={idx} style={fail ? { background: "#fef2f2" } : undefined}>
                             <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{idx + 1}</td>
-                            <td style={tdCell}>{safe(r.date)}</td>
                             <td style={{ ...tdCell, background: flagAM_t ? "#fde8e8" : "" }}>{safe(r.tempAM)}</td>
                             <td style={{ ...tdCell, background: flagAM_h ? "#fde8e8" : "" }}>{safe(r.humidityAM)}</td>
                             <td style={{ ...tdCell, background: flagPM_t ? "#fde8e8" : "" }}>{safe(r.tempPM)}</td>
@@ -441,7 +438,6 @@ export default function DryStoreTempHumidityView() {
                       editRows.map((r, i) => (
                         <tr key={i}>
                           <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{i + 1}</td>
-                          <td style={tdCell}><input type="date" value={r.date || ""} onChange={(e) => upd(i, "date", e.target.value)} style={inputStyle} /></td>
                           <td style={tdCell}><input type="number" step="0.1" value={r.tempAM || ""} onChange={(e) => upd(i, "tempAM", e.target.value)} style={inputStyle} /></td>
                           <td style={tdCell}><input type="number" step="0.1" value={r.humidityAM || ""} onChange={(e) => upd(i, "humidityAM", e.target.value)} style={inputStyle} /></td>
                           <td style={tdCell}><input type="number" step="0.1" value={r.tempPM || ""} onChange={(e) => upd(i, "tempPM", e.target.value)} style={inputStyle} /></td>

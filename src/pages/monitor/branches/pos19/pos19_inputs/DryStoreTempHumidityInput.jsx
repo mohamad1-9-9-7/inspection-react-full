@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/DryStoreTempHumidityInput.jsx
 import React, { useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
@@ -28,7 +28,6 @@ const LIMITS = { tempMaxC: 25, humidityMaxPct: 60 };
 
 function emptyRow() {
   return {
-    date: "",
     tempAM: "", humidityAM: "",
     tempPM: "", humidityPM: "",
     stacked: "",       // Yes / No
@@ -161,7 +160,6 @@ export default function DryStoreTempHumidityInput() {
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12 }}>
           <colgroup>
             <col style={{ width: 40 }} />
-            <col style={{ width: 120 }} />
             <col style={{ width: 100 }} />
             <col style={{ width: 100 }} />
             <col style={{ width: 100 }} />
@@ -175,7 +173,6 @@ export default function DryStoreTempHumidityInput() {
           <thead>
             <tr>
               <th style={thCell} rowSpan={2}>SL</th>
-              <th style={thCell} rowSpan={2}>Date</th>
               <th style={thCell} colSpan={2}>8:00 AM</th>
               <th style={thCell} colSpan={2}>2:00 PM</th>
               <th style={thCell} rowSpan={2}>Items Stacked{"\n"}on Shelves</th>
@@ -202,7 +199,6 @@ export default function DryStoreTempHumidityInput() {
               return (
                 <tr key={idx} style={fail ? { background: "#fef2f2" } : undefined}>
                   <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{idx + 1}</td>
-                  <td style={tdCell}><input type="date" value={r.date} onChange={(e) => updateRow(idx, "date", e.target.value)} style={inputStyle} /></td>
                   <td style={{ ...tdCell, background: flagAM_t ? "#fde8e8" : "" }}><input type="number" step="0.1" value={r.tempAM} onChange={(e) => updateRow(idx, "tempAM", e.target.value)} style={inputStyle} placeholder="°C" /></td>
                   <td style={{ ...tdCell, background: flagAM_h ? "#fde8e8" : "" }}><input type="number" step="0.1" value={r.humidityAM} onChange={(e) => updateRow(idx, "humidityAM", e.target.value)} style={inputStyle} placeholder="%" /></td>
                   <td style={{ ...tdCell, background: flagPM_t ? "#fde8e8" : "" }}><input type="number" step="0.1" value={r.tempPM} onChange={(e) => updateRow(idx, "tempPM", e.target.value)} style={inputStyle} placeholder="°C" /></td>

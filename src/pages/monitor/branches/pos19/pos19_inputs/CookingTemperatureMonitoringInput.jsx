@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/CookingTemperatureMonitoringInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
@@ -29,7 +29,6 @@ const PRODUCT_SLOTS = [
 
 function emptyRow() {
   const base = {
-    date: "",
     comment: "",
     monitoredBy: "",
   };
@@ -109,7 +108,7 @@ export default function CookingTemperatureMonitoringInput() {
   function removeRow(i){ setRows(prev => prev.filter((_, idx) => idx !== i)); }
 
   const colDefs = useMemo(() => {
-    const arr = [<col key="date" style={{ width: 110 }} />];
+    const arr = [];
     PRODUCT_SLOTS.forEach((_, i) => {
       arr.push(<col key={`p${i}name`} style={{ width: 150 }} />);
       arr.push(<col key={`p${i}time`} style={{ width: 80 }} />);
@@ -185,7 +184,6 @@ export default function CookingTemperatureMonitoringInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell} rowSpan={2}>Date{"\n"}تاريخ</th>
               {PRODUCT_SLOTS.map(s => (
                 <th key={s.key} style={thCell} colSpan={3}>{s.label}</th>
               ))}
@@ -206,9 +204,6 @@ export default function CookingTemperatureMonitoringInput() {
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
-                <td style={tdCell}>
-                  <input type="date" value={r.date} onChange={e=>updateRow(i,"date",e.target.value)} style={inputStyle} />
-                </td>
                 {PRODUCT_SLOTS.map(s => {
                   const tempVal = r[`${s.key}_temp`];
                   const isLow = tempVal && parseFloat(tempVal) < 75;

@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/DailyCleaningChecklistInput.jsx
 import React, { useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
@@ -10,17 +10,17 @@ const BRANCH = "POS 19";
 const FORM_REF = "FS-HACCP/KITC/CLN/01";
 
 const COLS = [
-  { key: "floorWallsDrains",   label: "FLOOR/\nWALLS /\nDRAINS" },
-  { key: "chillersFreezer",    label: "CHILLERS /\nFREEZER" },
-  { key: "cookingArea",        label: "COOKING\nAREA" },
-  { key: "preparationArea",    label: "PREPARATION\nAREA" },
-  { key: "packingArea",        label: "PACKING\nAREA" },
-  { key: "frontUnderCounters", label: "FRONT\n&UNDER\nCOUNTERS" },
-  { key: "handWashingStation", label: "HAND\nWASHING\nSTATION" },
-  { key: "equipments",         label: "EQUIPMENT\nS" },
-  { key: "utensils",           label: "UTENSILS" },
-  { key: "worktopTables",      label: "WORKTOP\nTABLES" },
-  { key: "kitchenHoodFilters", label: "KITCHEN\nHOOD\nFILTERS" },
+  { key: "floorWallsDrains",   label: "FLOOR / WALLS / DRAINS\nالأرضيات / الجدران / المصارف" },
+  { key: "chillersFreezer",    label: "CHILLERS / FREEZER\nالثلاجات / الفريزر" },
+  { key: "cookingArea",        label: "COOKING AREA\nمنطقة الطبخ" },
+  { key: "preparationArea",    label: "PREPARATION AREA\nمنطقة التحضير" },
+  { key: "packingArea",        label: "PACKING AREA\nمنطقة التعبئة" },
+  { key: "frontUnderCounters", label: "FRONT & UNDER COUNTERS\nأمام وتحت الكاونترات" },
+  { key: "handWashingStation", label: "HAND WASHING STATION\nمحطة غسل اليدين" },
+  { key: "equipments",         label: "EQUIPMENT\nالمعدات" },
+  { key: "utensils",           label: "UTENSILS\nالأدوات" },
+  { key: "worktopTables",      label: "WORKTOP TABLES\nطاولات العمل" },
+  { key: "kitchenHoodFilters", label: "KITCHEN HOOD FILTERS\nفلاتر شفاط المطبخ" },
 ];
 
 function emptyRow() {
@@ -193,10 +193,10 @@ export default function DailyCleaningChecklistInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Cleaner Name</th>
-              <th style={thCell}>Time</th>
+              <th style={thCell}>Cleaner Name{"\n"}اسم عامل التنظيف</th>
+              <th style={thCell}>Time{"\n"}الوقت</th>
               {COLS.map((c) => <th key={c.key} style={thCell}>{c.label}</th>)}
-              <th style={thCell}>CORRECTIVE{"\n"}ACTION</th>
+              <th style={thCell}>CORRECTIVE ACTION{"\n"}الإجراء التصحيحي</th>
               <th style={thCell}></th>
             </tr>
           </thead>

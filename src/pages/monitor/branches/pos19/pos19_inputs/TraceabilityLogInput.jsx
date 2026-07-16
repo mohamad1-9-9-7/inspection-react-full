@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { REPORTS_URL } from "../../shipment_recc/qcsRawApi";
 import API_BASE from "../../../../../config/api";
 import useReportDateStatus from "../_shared/useReportDateStatus";
+import { BilingualGuidance } from "../_shared/ReportHeader";
 
 /* ===== ثابت التقرير ===== */
 const TYPE   = "pos19_traceability_log";
@@ -833,115 +834,42 @@ export default function TraceabilityLogInput() {
         color: "#0b1f4d",
       }}
     >
-      {/* Header */}
       <table style={topTable}>
         <tbody>
           <tr>
-            <td
-              rowSpan={3}
-              style={{
-                ...tdHeader,
-                width: 120,
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: 900,
-                  color: "#a00",
-                  lineHeight: 1.1,
-                }}
-              >
-                AL
-                <br />
-                MAWASHI
-              </div>
+            <td rowSpan={3} style={{ ...tdHeader, width: 120, textAlign: "center" }}>
+              <div style={{ fontWeight: 900, color: "#a00", lineHeight: 1.1 }}>AL<br />MAWASHI</div>
             </td>
-            <td style={tdHeader}>
-              <b>Document Title:</b> Traceability Log
-            </td>
-            <td style={tdHeader}>
-              <b>Document No:</b> FS-QM/REC/TL
-            </td>
+            <td style={tdHeader}><b>Document Title:</b> Traceability Log</td>
+            <td style={tdHeader}><b>Document No:</b> FS-QM/REC/TL</td>
           </tr>
           <tr>
-            <td style={tdHeader}>
-              <b>Issue Date:</b> 05/02/2020
-            </td>
-            <td style={tdHeader}>
-              <b>Revision No:</b> 0
-            </td>
+            <td style={tdHeader}><b>Issue Date:</b> 05/02/2020</td>
+            <td style={tdHeader}><b>Revision No:</b> 0</td>
           </tr>
           <tr>
-            <td style={tdHeader}>
-              <b>Area:</b> {BRANCH}
-            </td>
-            <td style={tdHeader}>
-              <b>Date:</b> {date || "—"}
-            </td>
+            <td style={tdHeader}><b>Area:</b> {BRANCH}</td>
+            <td style={tdHeader}><b>Date:</b> {date || "—"}</td>
           </tr>
         </tbody>
       </table>
       <div style={bandTitle}>
         TRACEABILITY LOG — {BRANCH}
+        <div style={{ direction: "rtl", fontSize: 13, marginTop: 4, color: "#fef3c7" }}>سجل التتبع - {BRANCH} / مطبخ الورقاء</div>
       </div>
 
-      {/* Header (Section + Date) */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-          gap: 12,
-        }}
-      >
-        <div
-          style={{ fontWeight: 800, fontSize: 18 }}
-        >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 12 }}>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>
           Traceability Log – {BRANCH}
+          <div style={{ direction: "rtl", fontSize: 13, color: "#475569", marginTop: 3 }}>سجل التتبع - مطبخ الورقاء</div>
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 180px",
-            gap: 6,
-            alignItems: "center",
-            fontSize: 12,
-          }}
-        >
-          <div>Section :</div>
-          <input
-            value={section}
-            onChange={(e) => setSection(e.target.value)}
-            style={{
-              ...inputStyle,
-              borderColor: "#1f3b70",
-            }}
-          />
-          <div>Date :</div>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 180px", gap: 6, alignItems: "center", fontSize: 12 }}>
+          <div>Section :<br /><span style={{ direction: "rtl", display: "block", color: "#475569", fontWeight: 700 }}>القسم :</span></div>
+          <input value={section} onChange={(e) => setSection(e.target.value)} style={{ ...inputStyle, borderColor: "#1f3b70" }} />
+          <div>Date :<br /><span style={{ direction: "rtl", display: "block", color: "#475569", fontWeight: 700 }}>التاريخ :</span></div>
           <div>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={{
-                ...inputStyle,
-                borderColor: "#1f3b70",
-              }}
-            />
-            <div
-              style={{
-                marginTop: 3,
-                fontSize: 10.5,
-                fontWeight: 700,
-                direction: "rtl",
-                textAlign: "right",
-                color: dateStatus.blocked ? "#991b1b" : "#166534",
-              }}
-            >
-              {dateStatus.note.text}
-            </div>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...inputStyle, borderColor: "#1f3b70" }} />
+            <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 700, direction: "rtl", textAlign: "right", color: dateStatus.blocked ? "#991b1b" : "#166534" }}>{dateStatus.note.text}</div>
           </div>
         </div>
       </div>
@@ -965,286 +893,73 @@ export default function TraceabilityLogInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Actions</th>
-              <th style={thCell}>Batch / Lot ID</th>
-              <th style={thCell}>
-                Inputs (Raw Materials)
-              </th>
-              <th style={thCell}>
-                Outputs (Final Products)
-              </th>
+              <th style={thCell}>Actions{"\n"}الإجراءات</th>
+              <th style={thCell}>Batch / Lot ID{"\n"}رقم التشغيلة / الدفعة</th>
+              <th style={thCell}>Inputs (Raw Materials){"\n"}المدخلات (مواد خام)</th>
+              <th style={thCell}>Outputs (Final Products){"\n"}المخرجات (منتجات نهائية)</th>
             </tr>
           </thead>
           <tbody>
             {batches.map((b, bi) => (
               <tr key={bi}>
                 {/* Actions */}
-                <td
-                  style={{
-                    ...tdCell,
-                    textAlign: "left",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 6,
-                    }}
-                  >
-                    <button
-                      onClick={() => duplicateBatch(bi)}
-                      style={{
-                        ...miniBtn,
-                        background: "#eef2ff",
-                        borderColor: "#4f46e5",
-                        color: "#3730a3",
-                      }}
-                      title="Duplicate batch (new Batch ID)"
-                    >
-                      ⎘ Duplicate batch
+                <td style={{ ...tdCell, textAlign: "left" }}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <button onClick={() => duplicateBatch(bi)} style={{ ...miniBtn, background: "#eef2ff", borderColor: "#4f46e5", color: "#3730a3" }} title="Duplicate batch (new Batch ID)">
+                      ⎘ Duplicate / نسخ
                     </button>
-
-                    <button
-                      onClick={() => addInput(bi)}
-                      style={{
-                        ...miniBtn,
-                        background: "#f0fdf4",
-                        borderColor: "#16a34a",
-                        color: "#166534",
-                      }}
-                      title="Add raw material row to this batch"
-                    >
-                      + Add RAW
+                    <button onClick={() => addInput(bi)} style={{ ...miniBtn, background: "#f0fdf4", borderColor: "#16a34a", color: "#166534" }} title="Add raw material row to this batch">
+                      + Add RAW / خام
                     </button>
-
-                    <button
-                      onClick={() => addOutput(bi)}
-                      style={{
-                        ...miniBtn,
-                        background: "#ecfeff",
-                        borderColor: "#06b6d4",
-                        color: "#0e7490",
-                      }}
-                      title="Add final product row to this batch"
-                    >
-                      + Add FINAL
+                    <button onClick={() => addOutput(bi)} style={{ ...miniBtn, background: "#ecfeff", borderColor: "#06b6d4", color: "#0e7490" }} title="Add final product row to this batch">
+                      + Add FINAL / نهائي
                     </button>
-
-                    <button
-                      onClick={() => deleteBatch(bi)}
-                      style={{
-                        ...miniBtn,
-                        background: "#fef2f2",
-                        borderColor: "#ef4444",
-                        color: "#b91c1c",
-                      }}
-                      title="Delete batch"
-                     data-delete-action="true">
-                      × Delete batch
+                    <button onClick={() => deleteBatch(bi)} style={{ ...miniBtn, background: "#fef2f2", borderColor: "#ef4444", color: "#b91c1c" }} title="Delete batch" data-delete-action="true">
+                      × Delete / حذف
                     </button>
                   </div>
                 </td>
 
-                {/* Batch / Lot ID + زر Link from RAW هنا */}
-                <td
-                  style={{
-                    ...tdCell,
-                    textAlign: "left",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 6,
-                    }}
-                  >
+                {/* Batch / Lot ID + Link from RAW */}
+                <td style={{ ...tdCell, textAlign: "left" }}>
+                  <div style={{ display: "grid", gap: 6 }}>
                     <input
                       type="text"
                       placeholder="e.g., B-YYYYMMDD-001 or AWB"
                       value={b.batchId}
-                      onChange={(e) =>
-                        updateBatchField(
-                          bi,
-                          "batchId",
-                          e.target.value
-                        )
-                      }
+                      onChange={(e) => updateBatchField(bi, "batchId", e.target.value)}
                       style={inputStyle}
                     />
-                    <button
-                      onClick={() => openRawModal(bi)}
-                      style={{
-                        ...miniBtn,
-                        background: "#e2e8f0",
-                        borderColor: "#475569",
-                        color: "#0f172a",
-                      }}
-                      title="Link Batch / Lot ID from RAW shipments"
-                    >
-                      Link from RAW
+                    <button onClick={() => openRawModal(bi)} style={{ ...miniBtn, background: "#e2e8f0", borderColor: "#475569", color: "#0f172a" }} title="Link Batch / Lot ID from RAW shipments">
+                      Link from RAW / ربط
                     </button>
                   </div>
                 </td>
 
                 {/* Inputs */}
-                <td
-                  style={{
-                    ...tdCell,
-                    textAlign: "left",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 8,
-                    }}
-                  >
+                <td style={{ ...tdCell, textAlign: "left" }}>
+                  <div style={{ display: "grid", gap: 8 }}>
                     {b.inputs.map((inp, ii) => (
-                      <div
-                        key={ii}
-                        style={{
-                          border:
-                            "1px dashed #c7d2fe",
-                          borderRadius: 8,
-                          padding: 8,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns:
-                              "160px 1fr",
-                            gap: 6,
-                            alignItems: "center",
-                            marginBottom: 6,
-                          }}
-                        >
-                          <label>Name</label>
-                          <input
-                            placeholder="Raw material name"
-                            value={inp.rawName}
-                            onChange={(e) =>
-                              updateInputField(
-                                bi,
-                                ii,
-                                "rawName",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                          />
+                      <div key={ii} style={{ border: "1px dashed #c7d2fe", borderRadius: 8, padding: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                          <label>Name / الاسم</label>
+                          <input placeholder="Raw material name" value={inp.rawName} onChange={(e) => updateInputField(bi, ii, "rawName", e.target.value)} style={inputStyle} />
                         </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns:
-                              "160px 1fr",
-                            gap: 6,
-                            alignItems: "center",
-                          }}
-                        >
-                          <label>
-                            Original Production
-                            Date
-                          </label>
-                          <input
-                            type="date"
-                            value={inp.origProdDate}
-                            onChange={(e) =>
-                              updateInputField(
-                                bi,
-                                ii,
-                                "origProdDate",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                          />
-                          <label>
-                            Original Expiry Date
-                          </label>
-                          <input
-                            type="date"
-                            value={inp.origExpDate}
-                            onChange={(e) =>
-                              updateInputField(
-                                bi,
-                                ii,
-                                "origExpDate",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                          />
-                          <label>Opened Date</label>
-                          <input
-                            type="date"
-                            value={inp.openedDate}
-                            onChange={(e) =>
-                              updateInputField(
-                                bi,
-                                ii,
-                                "openedDate",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                          />
-                          <label>
-                            Best Before Date
-                          </label>
-                          <input
-                            type="date"
-                            value={inp.bestBefore}
-                            onChange={(e) =>
-                              updateInputField(
-                                bi,
-                                ii,
-                                "bestBefore",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                          />
-                          <label>Weight (kg)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={inp.rawWeight}
-                            onChange={(e) =>
-                              updateInputField(
-                                bi,
-                                ii,
-                                "rawWeight",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                            placeholder="e.g., 2.50"
-                          />
+                        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 6, alignItems: "center" }}>
+                          <label>Original Production Date / تاريخ الإنتاج الأصلي</label>
+                          <input type="date" value={inp.origProdDate} onChange={(e) => updateInputField(bi, ii, "origProdDate", e.target.value)} style={inputStyle} />
+                          <label>Original Expiry Date / تاريخ الانتهاء الأصلي</label>
+                          <input type="date" value={inp.origExpDate} onChange={(e) => updateInputField(bi, ii, "origExpDate", e.target.value)} style={inputStyle} />
+                          <label>Opened Date / تاريخ الفتح</label>
+                          <input type="date" value={inp.openedDate} onChange={(e) => updateInputField(bi, ii, "openedDate", e.target.value)} style={inputStyle} />
+                          <label>Best Before Date / الأفضل قبل</label>
+                          <input type="date" value={inp.bestBefore} onChange={(e) => updateInputField(bi, ii, "bestBefore", e.target.value)} style={inputStyle} />
+                          <label>Weight (kg) / الوزن (كجم)</label>
+                          <input type="number" step="0.01" min="0" value={inp.rawWeight} onChange={(e) => updateInputField(bi, ii, "rawWeight", e.target.value)} style={inputStyle} placeholder="e.g., 2.50" />
                         </div>
-                        <div
-                          style={{
-                            marginTop: 6,
-                            textAlign: "right",
-                          }}
-                        >
-                          <button
-                            onClick={() =>
-                              deleteInput(bi, ii)
-                            }
-                            style={{
-                              ...miniBtn,
-                              background:
-                                "#fff7ed",
-                              borderColor:
-                                "#f97316",
-                              color: "#9a3412",
-                            }}
-                            title="Remove this raw line"
-                           data-delete-action="true">
-                            – Remove RAW
+                        <div style={{ marginTop: 6, textAlign: "right" }}>
+                          <button onClick={() => deleteInput(bi, ii)} style={{ ...miniBtn, background: "#fff7ed", borderColor: "#f97316", color: "#9a3412" }} title="Remove this raw line" data-delete-action="true">
+                            – Remove RAW / حذف الخام
                           </button>
                         </div>
                       </div>
@@ -1253,135 +968,25 @@ export default function TraceabilityLogInput() {
                 </td>
 
                 {/* Outputs */}
-                <td
-                  style={{
-                    ...tdCell,
-                    textAlign: "left",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 8,
-                    }}
-                  >
+                <td style={{ ...tdCell, textAlign: "left" }}>
+                  <div style={{ display: "grid", gap: 8 }}>
                     {b.outputs.map((out, oi) => (
-                      <div
-                        key={oi}
-                        style={{
-                          border:
-                            "1px dashed #bae6fd",
-                          borderRadius: 8,
-                          padding: 8,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns:
-                              "160px 1fr",
-                            gap: 6,
-                            alignItems: "center",
-                            marginBottom: 6,
-                          }}
-                        >
-                          <label>
-                            Final Product Name
-                          </label>
-                          <input
-                            placeholder="Final product name"
-                            value={out.finalName}
-                            onChange={(e) =>
-                              updateOutputField(
-                                bi,
-                                oi,
-                                "finalName",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                          />
+                      <div key={oi} style={{ border: "1px dashed #bae6fd", borderRadius: 8, padding: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                          <label>Final Product Name / اسم المنتج النهائي</label>
+                          <input placeholder="Final product name" value={out.finalName} onChange={(e) => updateOutputField(bi, oi, "finalName", e.target.value)} style={inputStyle} />
                         </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns:
-                              "160px 1fr",
-                            gap: 6,
-                            alignItems: "center",
-                          }}
-                        >
-                          <label>
-                            Production Date
-                          </label>
-                          <input
-                            type="date"
-                            value={out.finalProdDate}
-                            onChange={(e) =>
-                              updateOutputField(
-                                bi,
-                                oi,
-                                "finalProdDate",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                          />
-                          <label>
-                            Expiry Date
-                          </label>
-                          <input
-                            type="date"
-                            value={out.finalExpDate}
-                            onChange={(e) =>
-                              updateOutputField(
-                                bi,
-                                oi,
-                                "finalExpDate",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                          />
-                          <label>Weight (kg)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={out.finalWeight}
-                            onChange={(e) =>
-                              updateOutputField(
-                                bi,
-                                oi,
-                                "finalWeight",
-                                e.target.value
-                              )
-                            }
-                            style={inputStyle}
-                            placeholder="e.g., 1.20"
-                          />
+                        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 6, alignItems: "center" }}>
+                          <label>Production Date / تاريخ الإنتاج</label>
+                          <input type="date" value={out.finalProdDate} onChange={(e) => updateOutputField(bi, oi, "finalProdDate", e.target.value)} style={inputStyle} />
+                          <label>Expiry Date / تاريخ الانتهاء</label>
+                          <input type="date" value={out.finalExpDate} onChange={(e) => updateOutputField(bi, oi, "finalExpDate", e.target.value)} style={inputStyle} />
+                          <label>Weight (kg) / الوزن (كجم)</label>
+                          <input type="number" step="0.01" min="0" value={out.finalWeight} onChange={(e) => updateOutputField(bi, oi, "finalWeight", e.target.value)} style={inputStyle} placeholder="e.g., 1.20" />
                         </div>
-                        <div
-                          style={{
-                            marginTop: 6,
-                            textAlign: "right",
-                          }}
-                        >
-                          <button
-                            onClick={() =>
-                              deleteOutput(bi, oi)
-                            }
-                            style={{
-                              ...miniBtn,
-                              background:
-                                "#fff1f2",
-                              borderColor:
-                                "#fb7185",
-                              color: "#9f1239",
-                            }}
-                            title="Remove this final line"
-                           data-delete-action="true">
-                            – Remove FINAL
+                        <div style={{ marginTop: 6, textAlign: "right" }}>
+                          <button onClick={() => deleteOutput(bi, oi)} style={{ ...miniBtn, background: "#fff1f2", borderColor: "#fb7185", color: "#9f1239" }} title="Remove this final line" data-delete-action="true">
+                            – Remove FINAL / حذف النهائي
                           </button>
                         </div>
                       </div>
@@ -1407,7 +1012,7 @@ export default function TraceabilityLogInput() {
           onClick={addBatch}
           style={btnStyle("#10b981")}
         >
-          + Add Batch (one-row)
+          + Add Batch / إضافة دفعة
         </button>
         <button
           onClick={handleSave}
@@ -1416,13 +1021,13 @@ export default function TraceabilityLogInput() {
             hasExistingForDate ||
             checkingExisting
           }
-          style={btnStyle("#2563eb")}
+          style={{ ...btnStyle("#2563eb"), opacity: saving || hasExistingForDate || checkingExisting ? 0.6 : 1 }}
         >
           {hasExistingForDate
-            ? "Report exists for this date"
+            ? "Report exists / التقرير موجود"
             : saving
-            ? "Saving…"
-            : "Save Log"}
+            ? "Saving… / جارٍ الحفظ"
+            : "Save Log / حفظ السجل"}
         </button>
       </div>
 
@@ -1435,6 +1040,7 @@ export default function TraceabilityLogInput() {
           marginTop: 16,
           gap: 12,
           width: "100%",
+          flexWrap: "wrap",
         }}
       >
         <div
@@ -1445,9 +1051,7 @@ export default function TraceabilityLogInput() {
             minWidth: 260,
           }}
         >
-          <span style={{ fontSize: 12 }}>
-            Checked by:
-          </span>
+          <span style={{ fontSize: 12 }}>Checked by / تم الفحص بواسطة:</span>
           <input
             value={checkedBy}
             onChange={(e) =>
@@ -1465,9 +1069,7 @@ export default function TraceabilityLogInput() {
             minWidth: 260,
           }}
         >
-          <span style={{ fontSize: 12 }}>
-            Verified by:
-          </span>
+          <span style={{ fontSize: 12 }}>Verified by / تم التحقق بواسطة:</span>
           <input
             value={verifiedBy}
             onChange={(e) =>
@@ -1477,28 +1079,6 @@ export default function TraceabilityLogInput() {
             placeholder="Supervisor / QA"
           />
         </div>
-      </div>
-
-      <div
-        style={{
-          marginTop: 12,
-          paddingTop: 8,
-          borderTop: "2px solid #1f3b70",
-          fontSize: 12,
-          color: "#0b1f4d",
-          lineHeight: 1.6,
-        }}
-      >
-        <strong style={{ color: "#0b1f4d" }}>
-          Note:
-        </strong>
-        <span style={{ marginInlineStart: 4 }}>
-          This form uses a single row per{" "}
-          <b>Batch / Lot</b> with dynamic inputs/outputs.
-          Data is flattened to the legacy{" "}
-          <b>entries</b> format on save for backend
-          compatibility.
-        </span>
       </div>
 
       {/* ===== RAW Modal ===== */}
@@ -1682,10 +1262,15 @@ function btnStyle(bg) {
     background: bg,
     color: "#fff",
     border: "none",
-    borderRadius: 10,
-    padding: "10px 14px",
+    borderRadius: 7,
+    padding: "9px 12px",
+    minHeight: 36,
     fontWeight: 700,
+    fontSize: 12,
     cursor: "pointer",
-    boxShadow: "0 4px 12px rgba(0,0,0,.15)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
   };
 }

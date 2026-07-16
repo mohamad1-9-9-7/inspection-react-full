@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
 import API_BASE from "../../../../config/api";
+import { canDelete, canWrite } from "../../../../utils/perms";
 import {
   formatDMY,
   IsoShell,
@@ -156,9 +157,9 @@ export default function POS15PestControlView() {
             <button onClick={fetchReports} style={ISO_UI.btn("violet")}>Refresh</button>
             <button onClick={handleExportPDF} disabled={!selected} style={ISO_UI.btn("secondary", !selected)}>Export PDF</button>
             <button onClick={handleExportJSON} style={ISO_UI.btn("secondary")}>Export JSON (all)</button>
-            <button onClick={triggerImport} style={ISO_UI.btn("success")}>Import JSON</button>
+            {canWrite("daily") && <button onClick={triggerImport} style={ISO_UI.btn("success")}>Import JSON</button>}
             <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportJSON} />
-            <button onClick={() => selected && handleDelete(selected)} disabled={!selected} style={ISO_UI.btn("danger", !selected)} data-delete-action="true">Delete</button>
+            {canDelete("daily") && <button onClick={() => selected && handleDelete(selected)} disabled={!selected} style={ISO_UI.btn("danger", !selected)} data-delete-action="true">Delete</button>}
           </>
         }
       >

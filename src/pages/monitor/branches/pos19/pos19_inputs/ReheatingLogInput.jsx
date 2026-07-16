@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/ReheatingLogInput.jsx
 import React, { useEffect, useRef, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import { getReportByDate, reportId, invalidateReportDates } from "../_shared/reportsApi";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";

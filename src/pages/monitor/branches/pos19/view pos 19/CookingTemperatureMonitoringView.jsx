@@ -22,10 +22,10 @@ const safe = (v) => v ?? "";
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 const btn = (bg) => ({ background:bg,color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer" });
 const formatDMY = (iso) => { if(!iso)return iso; const[y,m,d]=iso.split("-"); return `${d}/${m}/${y}`; };
-const isFilledRow = (r={}) => PRODUCT_SLOTS.some(s => String(r[`${s.key}_name`]||"").trim()!=="") || String(r.comment||"").trim()!=="" || String(r.monitoredBy||"").trim()!=="" || String(r.date||"").trim()!=="";
+const isFilledRow = (r={}) => PRODUCT_SLOTS.some(s => String(r[`${s.key}_name`]||"").trim()!=="") || String(r.comment||"").trim()!=="" || String(r.monitoredBy||"").trim()!=="";
 
 function emptyRow(){
-  const base={date:"",comment:"",monitoredBy:""};
+  const base={comment:"",monitoredBy:""};
   PRODUCT_SLOTS.forEach(s=>{base[`${s.key}_name`]="";base[`${s.key}_time`]="";base[`${s.key}_temp`]="";});
   return base;
 }
@@ -98,15 +98,15 @@ export default function CookingTemperatureMonitoringView() {
       const p=record?.payload||{};const rows=(p.entries||[]).filter(isFilledRow);
       const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet("CookingRecord");
       const border={top:{style:"thin",color:{argb:"1F3B70"}},left:{style:"thin",color:{argb:"1F3B70"}},bottom:{style:"thin",color:{argb:"1F3B70"}},right:{style:"thin",color:{argb:"1F3B70"}}};
-      const COL_HEADERS=["Date",...PRODUCT_SLOTS.flatMap(s=>[`${s.label} Name`,`${s.label} Time`,`${s.label} Temp (°C)`]),"Comment","Monitored By"];
-      ws.columns=[{width:14},...PRODUCT_SLOTS.flatMap(()=>[{width:22},{width:10},{width:12}]),{width:22},{width:18}];
+      const COL_HEADERS=[...PRODUCT_SLOTS.flatMap(s=>[`${s.label} Name`,`${s.label} Time`,`${s.label} Temp (°C)`]),"Comment","Monitored By"];
+      ws.columns=[...PRODUCT_SLOTS.flatMap(()=>[{width:22},{width:10},{width:12}]),{width:22},{width:18}];
       ws.mergeCells(1,1,1,COL_HEADERS.length);const r1=ws.getCell(1,1);r1.value=`POS 19 | Cooking Temperature Monitoring Record — ${FORM_REF}`;r1.alignment={horizontal:"center",vertical:"middle"};r1.font={size:13,bold:true};r1.fill={type:"pattern",pattern:"solid",fgColor:{argb:"E9F0FF"}};ws.getRow(1).height=22;
       ws.mergeCells(2,1,2,COL_HEADERS.length);ws.getCell(2,1).value=`Branch: ${BRANCH} | Area: ${safe(p.area)} | Date: ${safe(p.reportDate)} | Restaurant: Al Mawashi – Braai Restaurant LLC`;ws.getCell(2,1).alignment={horizontal:"center"};ws.getRow(2).height=18;
       const hr=ws.getRow(4);hr.values=COL_HEADERS;hr.eachCell(cell=>{cell.font={bold:true};cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"DCE6F1"}};cell.border=border;});hr.height=28;
       let rIdx=5;rows.forEach(e=>{
-        ws.getRow(rIdx).values=[safe(e.date),...PRODUCT_SLOTS.flatMap(s=>[safe(e[`${s.key}_name`]),safe(e[`${s.key}_time`]),safe(e[`${s.key}_temp`])]),safe(e.comment),safe(e.monitoredBy)];
+        ws.getRow(rIdx).values=[...PRODUCT_SLOTS.flatMap(s=>[safe(e[`${s.key}_name`]),safe(e[`${s.key}_time`]),safe(e[`${s.key}_temp`])]),safe(e.comment),safe(e.monitoredBy)];
         ws.getRow(rIdx).eachCell((cell,col)=>{cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.border=border;
-          const tempCols=PRODUCT_SLOTS.map((_,i)=>4+i*3);if(tempCols.includes(col)){const v=parseFloat(ws.getRow(rIdx).getCell(col).value);if(!isNaN(v)&&v<75)cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FDE8E8"}};}
+          const tempCols=PRODUCT_SLOTS.map((_,i)=>3+i*3);if(tempCols.includes(col)){const v=parseFloat(ws.getRow(rIdx).getCell(col).value);if(!isNaN(v)&&v<75)cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FDE8E8"}};}
         });ws.getRow(rIdx).height=20;rIdx++;
       });
       const buf=await wb.xlsx.writeBuffer({useStyles:true,useSharedStrings:true});const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));a.download=`POS19_CookingRecord_${p.reportDate||date}.xlsx`;a.click();URL.revokeObjectURL(a.href);
@@ -177,7 +177,6 @@ export default function CookingTemperatureMonitoringView() {
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontSize:12}}>
                 <colgroup>
-                  <col style={{width:110}}/>
                   {PRODUCT_SLOTS.flatMap((_,i)=>[
                     <col key={`p${i}n`} style={{width:150}}/>,
                     <col key={`p${i}t`} style={{width:80}}/>,
@@ -188,7 +187,6 @@ export default function CookingTemperatureMonitoringView() {
                 </colgroup>
                 <thead>
                   <tr>
-                    <th style={thCell} rowSpan={2}>Date{"\n"}تاريخ</th>
                     {PRODUCT_SLOTS.map(s=><th key={s.key} style={thCell} colSpan={3}>{s.label}</th>)}
                     <th style={thCell} rowSpan={2}>Comment{"\n"}تعليق</th>
                     <th style={thCell} rowSpan={2}>Monitored By{"\n"}مراقب بواسطة</th>
@@ -204,7 +202,6 @@ export default function CookingTemperatureMonitoringView() {
                 </thead>
                 <tbody>
                   {!editing?(rows.filter(isFilledRow).map((r,idx)=>(<tr key={idx}>
-                    <td style={tdCell}>{safe(r.date)}</td>
                     {PRODUCT_SLOTS.flatMap(s=>{
                       const tempVal=r[`${s.key}_temp`];const isLow=tempVal&&parseFloat(tempVal)<75;
                       return [
@@ -217,7 +214,6 @@ export default function CookingTemperatureMonitoringView() {
                     <td style={tdCell}>{safe(r.monitoredBy)}</td>
                   </tr>))):(
                     editRows.map((r,i)=>(<tr key={i}>
-                      <td style={tdCell}><input type="date" value={r.date||""} onChange={e=>upd(i,"date",e.target.value)} style={inputStyle}/></td>
                       {PRODUCT_SLOTS.flatMap(s=>{
                         const tempVal=r[`${s.key}_temp`];const isLow=tempVal&&parseFloat(tempVal)<75;
                         return [

@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/FoodTemperatureVerificationInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
@@ -30,7 +30,7 @@ const PROCESS_TYPES = [
 
 function emptyRow() {
   return {
-    date: "", time: "", foodItem: "",
+    time: "", foodItem: "",
     processType: "cooking", targetTemp: "≥ 75°C",
     actualTemp: "", result: "",
     correctiveAction: "", checkedBy: "",
@@ -110,7 +110,6 @@ export default function FoodTemperatureVerificationInput() {
   }, [reportDate]);
 
   const colDefs = useMemo(() => ([
-    <col key="date"    style={{ width: 110 }} />,
     <col key="time"    style={{ width: 90  }} />,
     <col key="food"    style={{ width: 180 }} />,
     <col key="process" style={{ width: 130 }} />,
@@ -214,7 +213,6 @@ export default function FoodTemperatureVerificationInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Date</th>
               <th style={thCell}>Time</th>
               <th style={thCell}>Food Item</th>
               <th style={thCell}>Process{"\n"}Type</th>
@@ -233,9 +231,6 @@ export default function FoodTemperatureVerificationInput() {
               const rowBg  = i % 2 === 0 ? C.white : "#f8faff";
               return (
                 <tr key={i}>
-                  <td style={{ ...tdCell, background:rowBg }}>
-                    <input type="date" value={r.date} onChange={e=>updateRow(i,"date",e.target.value)} style={inputStyle} />
-                  </td>
                   <td style={{ ...tdCell, background:rowBg }}>
                     <input type="time" value={r.time} onChange={e=>updateRow(i,"time",e.target.value)} style={inputStyle} />
                   </td>

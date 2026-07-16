@@ -19,7 +19,7 @@ const isFilledRow = (r = {}) => Object.values(r).some((v) => String(v ?? "").tri
 
 function emptyRow() {
   return {
-    date: "", time: "", productDetails: "", quantitySanitized: "",
+    time: "", productDetails: "", quantitySanitized: "",
     contactTime: "", peratekConc: "", remarks: "", verifiedBy: "",
   };
 }
@@ -156,8 +156,8 @@ export default function VegSanitationView({
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("VegSanitation");
       const border = { top: { style: "thin", color: { argb: "1F3B70" } }, left: { style: "thin", color: { argb: "1F3B70" } }, bottom: { style: "thin", color: { argb: "1F3B70" } }, right: { style: "thin", color: { argb: "1F3B70" } } };
-      const COL_HEADERS = ["SL No", ...(showEntryDateTime ? ["Date", "Time"] : []), "RM / Product Details", "Quantity Sanitized", "Contact Time", "Conc. of Peratek (ppm)", "Remarks / CA", "Verified By / Signature"];
-      ws.columns = [{ width: 6 }, ...(showEntryDateTime ? [{ width: 12 }, { width: 10 }] : []), { width: 24 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 22 }, { width: 20 }];
+      const COL_HEADERS = ["SL No", ...(showEntryDateTime ? ["Time"] : []), "RM / Product Details", "Quantity Sanitized", "Contact Time", "Conc. of Peratek (ppm)", "Remarks / CA", "Verified By / Signature"];
+      ws.columns = [{ width: 6 }, ...(showEntryDateTime ? [{ width: 10 }] : []), { width: 24 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 22 }, { width: 20 }];
       ws.mergeCells(1, 1, 1, COL_HEADERS.length);
       const r1 = ws.getCell(1, 1);
       r1.value = `AL MAWASHI BRAAI RESTAURANT LLC | SANITATION RECORD (CCP) – ${String(areaLabel).toUpperCase()}`;
@@ -181,7 +181,7 @@ export default function VegSanitationView({
       let rIdx = 5;
       rows.forEach((e, i) => {
         ws.getRow(rIdx).values = [
-          i + 1, ...(showEntryDateTime ? [safe(e.date), safe(e.time)] : []), safe(e.productDetails),
+          i + 1, ...(showEntryDateTime ? [safe(e.time)] : []), safe(e.productDetails),
           safe(e.quantitySanitized), safe(e.contactTime), safe(e.peratekConc),
           safe(e.remarks), safe(e.verifiedBy),
         ];
@@ -384,7 +384,6 @@ export default function VegSanitationView({
                 <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12 }}>
                   <colgroup>
                     <col style={{ width: 50 }} />
-                    {showEntryDateTime && <col style={{ width: 120 }} />}
                     {showEntryDateTime && <col style={{ width: 100 }} />}
                     <col style={{ width: 220 }} />
                     <col style={{ width: 130 }} />
@@ -397,7 +396,6 @@ export default function VegSanitationView({
                   <thead>
                     <tr>
                       <th style={thCell}>SL NO</th>
-                      {showEntryDateTime && <th style={thCell}>Date</th>}
                       {showEntryDateTime && <th style={thCell}>Time</th>}
                       <th style={thCell}>RM / Product Details</th>
                       <th style={thCell}>Quantity Sanitized</th>
@@ -413,7 +411,6 @@ export default function VegSanitationView({
                       rows.filter(isFilledRow).map((r, idx) => (
                         <tr key={idx}>
                           <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{idx + 1}</td>
-                          {showEntryDateTime && <td style={tdCell}>{safe(r.date)}</td>}
                           {showEntryDateTime && <td style={tdCell}>{safe(r.time)}</td>}
                           <td style={tdCell}>{safe(r.productDetails)}</td>
                           <td style={tdCell}>{safe(r.quantitySanitized)}</td>
@@ -429,7 +426,6 @@ export default function VegSanitationView({
                       editRows.map((r, i) => (
                         <tr key={i}>
                           <td style={{ ...tdCell, fontWeight: 700, background: "#f8fafc" }}>{i + 1}</td>
-                          {showEntryDateTime && <td style={tdCell}><input type="date" value={r.date || ""} onChange={(e) => upd(i, "date", e.target.value)} style={inputStyle} /></td>}
                           {showEntryDateTime && <td style={tdCell}><input type="time" value={r.time || ""} onChange={(e) => upd(i, "time", e.target.value)} style={inputStyle} /></td>}
                           <td style={tdCell}><input value={r.productDetails || ""} onChange={(e) => upd(i, "productDetails", e.target.value)} style={inputStyle} /></td>
                           <td style={tdCell}><input value={r.quantitySanitized || ""} onChange={(e) => upd(i, "quantitySanitized", e.target.value)} style={inputStyle} /></td>

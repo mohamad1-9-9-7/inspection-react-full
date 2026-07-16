@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import SignatureName from "../../../shared/SignatureName";
 import API_BASE from "../../../../config/api";
+import { canDelete, canWrite } from "../../../../utils/perms";
 import {
   formatDMY,
   IsoShell,
@@ -179,11 +180,13 @@ export default function POS15PersonalHygieneView() {
           <button onClick={load} style={ISO_UI.btn("violet")}>Refresh</button>
           <button onClick={exportPDF} style={ISO_UI.btn("secondary", !selected)} disabled={!selected}>Export PDF</button>
           <button onClick={exportJSONAll} style={ISO_UI.btn("secondary")}>Export JSON (all)</button>
-          <button onClick={triggerImport} style={ISO_UI.btn("success", importing)} disabled={importing}>
-            {importing ? "Importing…" : "Import JSON"}
-          </button>
+          {canWrite("daily") && (
+            <button onClick={triggerImport} style={ISO_UI.btn("success", importing)} disabled={importing}>
+              {importing ? "Importing…" : "Import JSON"}
+            </button>
+          )}
           <input ref={fileRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportFile} />
-          <button onClick={handleDelete} style={ISO_UI.btn("danger", !selected || loading)} disabled={!selected || loading} data-delete-action="true">Delete</button>
+          {canDelete("daily") && <button onClick={handleDelete} style={ISO_UI.btn("danger", !selected || loading)} disabled={!selected || loading} data-delete-action="true">Delete</button>}
         </>
       }
     >

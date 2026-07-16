@@ -60,7 +60,6 @@ async function loadImageDataURL(src) {
 
 function emptyRow() {
   return {
-    date: "",
     glassItem: "",
     section: "",
     inGoodRepair: "",
@@ -124,7 +123,6 @@ export default function GlassItemsConditionChecklistView() {
 
   // colgroup (مطابق للإدخال)
   const colDefs = useMemo(() => ([
-    <col key="date" style={{ width: 120 }} />,
     <col key="glass" style={{ width: 210 }} />,
     <col key="section" style={{ width: 160 }} />,
     ...LEGEND_COLS.map((_, i) => <col key={`lg${i}`} style={{ width: 160 }} />),
@@ -341,14 +339,13 @@ export default function GlassItemsConditionChecklistView() {
       const borderThin = { style: "thin", color: { argb: "1F3B70" } };
 
       const COL_HEADERS = [
-        "Date","Glass Item","Section",
+        "Glass Item","Section",
         ...LEGEND_COLS.map(c => c.label),
         "Corrective Action (if any)","Checked by"
       ];
       ws.columns = [
-        { header: COL_HEADERS[0], width: 12 },
-        { header: COL_HEADERS[1], width: 28 },
-        { header: COL_HEADERS[2], width: 18 },
+        { header: COL_HEADERS[0], width: 28 },
+        { header: COL_HEADERS[1], width: 18 },
         ...LEGEND_COLS.map(() => ({ width: 22 })),
         { header: COL_HEADERS[COL_HEADERS.length - 2], width: 28 },
         { header: COL_HEADERS[COL_HEADERS.length - 1], width: 16 },
@@ -423,7 +420,7 @@ export default function GlassItemsConditionChecklistView() {
       let rowIdx = headerRowIdx + 1;
       rows.forEach((e) => {
         ws.getRow(rowIdx).values = [
-          e?.date || "", e?.glassItem || "", e?.section || "",
+          e?.glassItem || "", e?.section || "",
           e?.inGoodRepair || "", e?.noBreakage || "", e?.cleanDry || "",
           e?.correctiveAction || "", e?.checkedBy || "",
         ];
@@ -761,7 +758,6 @@ export default function GlassItemsConditionChecklistView() {
                   <colgroup>{colDefs}</colgroup>
                   <thead>
                     <tr>
-                      <th style={thCell}>Date</th>
                       <th style={thCell}>Glass Item</th>
                       <th style={thCell}>Section</th>
                       {LEGEND_COLS.map((c) => (
@@ -775,7 +771,6 @@ export default function GlassItemsConditionChecklistView() {
                     {!editing ? (
                       (Array.from({ length: 5 }, (_, i) => record.payload?.entries?.[i] || emptyRow())).map((r, idx) => (
                         <tr key={idx}>
-                          <td style={tdCell}>{formatDMY(safe(r.date))}</td>
                           <td style={tdCell}>{safe(r.glassItem)}</td>
                           <td style={tdCell}>{safe(r.section)}</td>
                           <td style={tdCell}>{safe(r.inGoodRepair)}</td>
@@ -788,14 +783,6 @@ export default function GlassItemsConditionChecklistView() {
                     ) : (
                       editRows.map((r, idx) => (
                         <tr key={idx}>
-                          <td style={tdCell}>
-                            <input
-                              type="date"
-                              value={r.date || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], date:e.target.value}; return n; })}
-                              style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
-                            />
-                          </td>
                           <td style={tdCell}>
                             <input
                               type="text"

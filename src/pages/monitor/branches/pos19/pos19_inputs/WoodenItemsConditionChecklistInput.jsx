@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/WoodenItemsConditionChecklistInput.jsx
 import React, { useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
@@ -18,7 +18,6 @@ const CHECK_COLS = [
 
 function emptyRow() {
   return {
-    date: "",
     woodenItem: "",
     section: "",
     noSplinters: "",
@@ -73,7 +72,6 @@ export default function WoodenItemsConditionChecklistInput() {
   };
 
   const colDefs = useMemo(() => ([
-    <col key="date"   style={{ width: 120 }} />,
     <col key="item"   style={{ width: 210 }} />,
     <col key="sec"    style={{ width: 160 }} />,
     ...CHECK_COLS.map((_, i) => <col key={`ck${i}`} style={{ width: 160 }} />),
@@ -150,7 +148,6 @@ export default function WoodenItemsConditionChecklistInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Date</th>
               <th style={thCell}>Wooden Item</th>
               <th style={thCell}>Section</th>
               {CHECK_COLS.map(c => <th key={c.key} style={thCell}>{c.label}</th>)}
@@ -161,7 +158,6 @@ export default function WoodenItemsConditionChecklistInput() {
           <tbody>
             {rows.map((r, idx) => (
               <tr key={idx}>
-                <td style={tdCell}><input type="date" value={r.date} onChange={e=>updateRow(idx,"date",e.target.value)} style={inputStyle} /></td>
                 <td style={tdCell}><input type="text" value={r.woodenItem} onChange={e=>updateRow(idx,"woodenItem",e.target.value)} style={inputStyle} placeholder="e.g., Cutting board" /></td>
                 <td style={tdCell}><input type="text" value={r.section} onChange={e=>updateRow(idx,"section",e.target.value)} style={inputStyle} placeholder="Area/zone" /></td>
                 {CHECK_COLS.map(c => (

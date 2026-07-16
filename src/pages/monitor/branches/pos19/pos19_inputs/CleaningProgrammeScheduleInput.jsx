@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/CleaningProgrammeScheduleInput.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import API_BASE from "../../../../../config/api";
 
 /* ===== API base (aligned) ===== */

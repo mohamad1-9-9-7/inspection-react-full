@@ -24,7 +24,7 @@ const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 const btn = (bg) => ({ background:bg,color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer" });
 const formatDMY = (iso) => { if(!iso)return iso; const m=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?`${m[3]}/${m[2]}/${m[1]}`:iso; };
 
-function emptyRow(){ return {date:"",woodenItem:"",section:"",noSplinters:"",noDiscolouration:"",cleanDry:"",structurallyOK:"",correctiveAction:"",checkedBy:""}; }
+function emptyRow(){ return {woodenItem:"",section:"",noSplinters:"",noDiscolouration:"",cleanDry:"",structurallyOK:"",correctiveAction:"",checkedBy:""}; }
 
 export default function WoodenItemsConditionChecklistView() {
   const reportRef    = useRef(null);
@@ -47,7 +47,7 @@ export default function WoodenItemsConditionChecklistView() {
   const inputStyle = {width:"100%",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 6px"};
 
   const colDefs = useMemo(()=>[
-    <col key="date" style={{width:120}}/>,<col key="item" style={{width:210}}/>,<col key="sec" style={{width:160}}/>,
+    <col key="item" style={{width:210}}/>,<col key="sec" style={{width:160}}/>,
     ...CHECK_COLS.map((_,i)=><col key={`ck${i}`} style={{width:160}}/>),
     <col key="ca" style={{width:220}}/>,<col key="chk" style={{width:140}}/>,
   ],[]);
@@ -98,12 +98,12 @@ export default function WoodenItemsConditionChecklistView() {
       const p=record?.payload||{};const rows=Array.isArray(p.entries)?p.entries:[];
       const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet("WoodenItems");
       const border={top:{style:"thin",color:{argb:"1F3B70"}},left:{style:"thin",color:{argb:"1F3B70"}},bottom:{style:"thin",color:{argb:"1F3B70"}},right:{style:"thin",color:{argb:"1F3B70"}}};
-      const COL_HEADERS=["Date","Wooden Item","Section",...CHECK_COLS.map(c=>c.label),"Corrective Action (if any)","Checked by"];
-      ws.columns=[{width:12},{width:28},{width:18},...CHECK_COLS.map(()=>({width:22})),{width:28},{width:16}];
+      const COL_HEADERS=["Wooden Item","Section",...CHECK_COLS.map(c=>c.label),"Corrective Action (if any)","Checked by"];
+      ws.columns=[{width:28},{width:18},...CHECK_COLS.map(()=>({width:22})),{width:28},{width:16}];
       ws.mergeCells(1,1,1,COL_HEADERS.length);const r1=ws.getCell(1,1);r1.value=`POS 19 | Wooden Items Condition Monitoring Checklist (Weekly) — ${FORM_REF}`;r1.alignment={horizontal:"center",vertical:"middle"};r1.font={size:13,bold:true};r1.fill={type:"pattern",pattern:"solid",fgColor:{argb:"E9F0FF"}};ws.getRow(1).height=22;
       ws.mergeCells(2,1,2,COL_HEADERS.length);ws.getCell(2,1).value=`Branch: ${BRANCH} | Section: ${safe(p.section)} | Date: ${safe(p.reportDate)} | LEGEND: (√) Satisfactory  (✗) Needs Improvement`;ws.getCell(2,1).alignment={horizontal:"center"};ws.getRow(2).height=18;
       const hr=ws.getRow(4);hr.values=COL_HEADERS;hr.eachCell(cell=>{cell.font={bold:true};cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"DCE6F1"}};cell.border=border;});hr.height=28;
-      let rIdx=5;rows.forEach(e=>{ws.getRow(rIdx).values=[safe(e.date),safe(e.woodenItem),safe(e.section),safe(e.noSplinters),safe(e.noDiscolouration),safe(e.cleanDry),safe(e.structurallyOK),safe(e.correctiveAction),safe(e.checkedBy)];ws.getRow(rIdx).eachCell(cell=>{cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.border=border;});ws.getRow(rIdx).height=22;rIdx++;});
+      let rIdx=5;rows.forEach(e=>{ws.getRow(rIdx).values=[safe(e.woodenItem),safe(e.section),safe(e.noSplinters),safe(e.noDiscolouration),safe(e.cleanDry),safe(e.structurallyOK),safe(e.correctiveAction),safe(e.checkedBy)];ws.getRow(rIdx).eachCell(cell=>{cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.border=border;});ws.getRow(rIdx).height=22;rIdx++;});
       const footIdx=rIdx+1;const footPairs=[["Verified by:",p.verifiedBy||""],["Rev.Date:",p.revDate||""],["Rev.No:",p.revNo||""]];
       let colPtr=1;footPairs.forEach(([label,val])=>{const lc=ws.getCell(footIdx,colPtr++);const vc=ws.getCell(footIdx,colPtr++);lc.value=label;lc.font={bold:true};vc.value=val;vc.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FCE4D6"}};lc.border=vc.border=border;});
       const buf=await wb.xlsx.writeBuffer({useStyles:true,useSharedStrings:true});const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));a.download=`POS19_WoodenItems_${p.reportDate||date}.xlsx`;a.click();URL.revokeObjectURL(a.href);
@@ -170,20 +170,19 @@ export default function WoodenItemsConditionChecklistView() {
               <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontSize:12}}>
                 <colgroup>{colDefs}</colgroup>
                 <thead><tr>
-                  <th style={thCell}>Date</th><th style={thCell}>Wooden Item</th><th style={thCell}>Section</th>
+                  <th style={thCell}>Wooden Item</th><th style={thCell}>Section</th>
                   {CHECK_COLS.map(c=><th key={c.key} style={thCell}>{c.label}</th>)}
                   <th style={thCell}>Corrective Action{"\n"}(if any)</th><th style={thCell}>Checked by</th>
                 </tr></thead>
                 <tbody>
                   {!editing?(
                     (Array.from({length:5},(_,i)=>record.payload?.entries?.[i]||emptyRow())).map((r,idx)=>(<tr key={idx}>
-                      <td style={tdCell}>{formatDMY(safe(r.date))}</td><td style={tdCell}>{safe(r.woodenItem)}</td><td style={tdCell}>{safe(r.section)}</td>
+                      <td style={tdCell}>{safe(r.woodenItem)}</td><td style={tdCell}>{safe(r.section)}</td>
                       {CHECK_COLS.map(c=><td key={c.key} style={tdCell}>{safe(r[c.key])}</td>)}
                       <td style={tdCell}>{safe(r.correctiveAction)}</td><td style={tdCell}>{safe(r.checkedBy)}</td>
                     </tr>))
                   ):(
                     editRows.map((r,idx)=>(<tr key={idx}>
-                      <td style={tdCell}><input type="date" value={r.date||""} onChange={e=>{const n=[...editRows];n[idx]={...n[idx],date:e.target.value};setEditRows(n);}} style={inputStyle}/></td>
                       <td style={tdCell}><input type="text" value={r.woodenItem||""} onChange={e=>{const n=[...editRows];n[idx]={...n[idx],woodenItem:e.target.value};setEditRows(n);}} style={inputStyle}/></td>
                       <td style={tdCell}><input type="text" value={r.section||""} onChange={e=>{const n=[...editRows];n[idx]={...n[idx],section:e.target.value};setEditRows(n);}} style={inputStyle}/></td>
                       {CHECK_COLS.map(c=>(

@@ -1,7 +1,7 @@
 // src/pages/settings/SecurityControlsTab.jsx
 // Security & Access Controls — manages appSecuritySettings in localStorage
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { useSettingsLang, LangToggle } from "./_shared/settingsI18n";
 import { BRANCHES, BRANCH_TYPE_META } from "../../config/branches";
 import { Button, ConfirmModal } from "./_shared/SettingsUIKit";
@@ -96,8 +96,29 @@ export default function SecurityControlsTab() {
   const [branchQuery, setBranchQuery] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
 
-  const toggle = (key) => { setS(p => ({ ...p, [key]: !p[key] })); setSaved(false); };
-  const pick   = (key, val) => { setS(p => ({ ...p, [key]: val })); setSaved(false); };
+  const savedTimer = useRef(null);
+
+  // Auto-save: persist to localStorage immediately so every switch/choice
+  // "sticks" the moment it's flipped — no separate Save click needed.
+  const persist = (next, reason) => {
+    const before = getSecuritySettings();
+    setS(next);
+    saveSecuritySettings(next);
+    logSettingsAudit({
+      area: "security",
+      action: "update_security_controls",
+      target: "appSecuritySettings",
+      before,
+      after: next,
+      reason: reason || "Auto-saved from Security Controls",
+    });
+    setSaved(true);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSaved(false), 1800);
+  };
+
+  const toggle = (key)      => persist({ ...s, [key]: !s[key] });
+  const pick   = (key, val) => persist({ ...s, [key]: val });
 
   /* ── per-branch delete override helpers ── */
   // state per branch: "inherit" | "show" | "hide"
@@ -113,22 +134,16 @@ export default function SecurityControlsTab() {
     return s.allowDeleteRecords === true;
   };
   const setBranchState = (id, next) => {
-    setS(p => {
-      const ov = { ...(p.deleteBranchOverrides || {}) };
-      if (next === "inherit") delete ov[id];
-      else ov[id] = (next === "show");
-      return { ...p, deleteBranchOverrides: ov };
-    });
-    setSaved(false);
+    const ov = { ...(s.deleteBranchOverrides || {}) };
+    if (next === "inherit") delete ov[id];
+    else ov[id] = (next === "show");
+    persist({ ...s, deleteBranchOverrides: ov });
   };
   const bulkBranch = (next) => {
-    setS(p => {
-      if (next === "inherit") return { ...p, deleteBranchOverrides: {} };
-      const ov = {};
-      BRANCHES.forEach(b => { ov[b.id] = (next === "show"); });
-      return { ...p, deleteBranchOverrides: ov };
-    });
-    setSaved(false);
+    if (next === "inherit") { persist({ ...s, deleteBranchOverrides: {} }); return; }
+    const ov = {};
+    BRANCHES.forEach(b => { ov[b.id] = (next === "show"); });
+    persist({ ...s, deleteBranchOverrides: ov });
   };
 
   const filteredBranches = useMemo(() => {
@@ -139,21 +154,6 @@ export default function SecurityControlsTab() {
   }, [branchQuery]);
 
   const overrideCount = Object.keys(s.deleteBranchOverrides || {}).length;
-
-  const handleSave = async () => {
-    const before = getSecuritySettings();
-    saveSecuritySettings(s);
-    await logSettingsAudit({
-      area: "security",
-      action: "update_security_controls",
-      target: "appSecuritySettings",
-      before,
-      after: s,
-      reason: "Saved from Security Controls",
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
 
   const handleReset = () => {
     setConfirmReset(true);
@@ -375,9 +375,14 @@ export default function SecurityControlsTab() {
       {/* ── Actions ── */}
       <div style={rs.actions}>
         <Button onClick={handleReset} tone="danger">↺ {t("secResetDefaults")}</Button>
-        <Button onClick={handleSave} tone="primary" style={{ background: saved ? "#15803d" : "#0f766e" }}>
-          {saved ? `✅ ${t("secSaved")}` : `💾 ${t("secSave")}`}
-        </Button>
+        <span style={{
+          display: "flex", alignItems: "center", gap: 6,
+          fontSize: 13, fontWeight: 700,
+          color: saved ? "#15803d" : "#94a3b8",
+          transition: "color .2s",
+        }}>
+          {saved ? "✅" : "☁️"} {lang === "ar" ? "يُحفظ تلقائياً" : "Auto-saved"}
+        </span>
       </div>
 
       <ConfirmModal

@@ -28,7 +28,7 @@ const formatDMY = (iso) => { if (!iso) return iso; const [y,m,d]=iso.split("-");
 
 function emptyRow() {
   return {
-    date: "", time: "", foodItem: "",
+    time: "", foodItem: "",
     processType: "cooking", targetTemp: "≥ 75°C",
     actualTemp: "", result: "",
     correctiveAction: "", checkedBy: "",
@@ -102,7 +102,6 @@ export default function FoodTemperatureVerificationView() {
   const gridStyle = useMemo(() => ({ width:"100%", borderCollapse:"collapse", tableLayout:"fixed", fontSize:12 }), []);
 
   const colDefs = useMemo(() => [
-    <col key="date"    style={{ width: 100 }} />,
     <col key="time"    style={{ width: 80  }} />,
     <col key="food"    style={{ width: 170 }} />,
     <col key="process" style={{ width: 110 }} />,
@@ -216,12 +215,12 @@ export default function FoodTemperatureVerificationView() {
       const entries = Array.isArray(p.entries) ? p.entries : [];
       const NAVY="1E3A5F", SKY="DBEAFE", HEAD="EFF6FF";
       const border = { top:{style:"thin",color:{argb:NAVY}}, left:{style:"thin",color:{argb:NAVY}}, bottom:{style:"thin",color:{argb:NAVY}}, right:{style:"thin",color:{argb:NAVY}} };
-      const HEADERS = ["Date","Time","Food Item","Process Type","Target Temp","Actual Temp (°C)","Result","Corrective Action","Checked by"];
+      const HEADERS = ["Time","Food Item","Process Type","Target Temp","Actual Temp (°C)","Result","Corrective Action","Checked by"];
       const lastCol = HEADERS.length;
 
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("FoodTempLog", { views:[{showGridLines:false}], pageSetup:{paperSize:9,orientation:"landscape",fitToPage:true,fitToWidth:1} });
-      ws.columns = [{width:12},{width:10},{width:22},{width:14},{width:14},{width:14},{width:10},{width:26},{width:14}];
+      ws.columns = [{width:10},{width:22},{width:14},{width:14},{width:14},{width:10},{width:26},{width:14}];
 
       // Title
       ws.mergeCells(1,1,1,lastCol);
@@ -252,7 +251,7 @@ export default function FoodTemperatureVerificationView() {
       } else {
         entries.forEach((e,idx) => {
           const rIdx=5+idx, fill=idx%2===0?"FFFFFF":"F8FAFF";
-          const vals=[e.date||"",e.time||"",e.foodItem||"",e.processType||"",e.targetTemp||"",e.actualTemp||"",e.result||"",e.correctiveAction||"",e.checkedBy||""];
+          const vals=[e.time||"",e.foodItem||"",e.processType||"",e.targetTemp||"",e.actualTemp||"",e.result||"",e.correctiveAction||"",e.checkedBy||""];
           vals.forEach((val,ci) => {
             const cell=ws.getCell(rIdx,ci+1);
             Object.assign(cell,{value:val,alignment:{horizontal:"center",vertical:"middle",wrapText:true},border,fill:{type:"pattern",pattern:"solid",fgColor:{argb:fill}}});
@@ -445,7 +444,6 @@ export default function FoodTemperatureVerificationView() {
                   <colgroup>{colDefs}</colgroup>
                   <thead>
                     <tr>
-                      <th style={thCell}>Date</th>
                       <th style={thCell}>Time</th>
                       <th style={thCell}>Food Item</th>
                       <th style={thCell}>Process{"\n"}Type</th>
@@ -464,7 +462,6 @@ export default function FoodTemperatureVerificationView() {
                         const isPass=r.result==="Pass", isFail=r.result==="Fail";
                         return (
                           <tr key={idx}>
-                            <td style={td}>{safe(r.date)}</td>
                             <td style={td}>{safe(r.time)}</td>
                             <td style={{...td,textAlign:"left",fontWeight:600}}>{safe(r.foodItem)}</td>
                             <td style={td}>{safe(r.processType)}</td>
@@ -487,7 +484,6 @@ export default function FoodTemperatureVerificationView() {
                         const isFail=r.result==="Fail", isPass=r.result==="Pass";
                         return (
                           <tr key={i} style={{background:i%2===0?C.white:"#f8faff"}}>
-                            <td style={tdCell}><input type="date" value={r.date||""} onChange={e=>updateEditRow(i,"date",e.target.value)} style={inputSt}/></td>
                             <td style={tdCell}><input type="time" value={r.time||""} onChange={e=>updateEditRow(i,"time",e.target.value)} style={inputSt}/></td>
                             <td style={tdCell}><input value={r.foodItem||""} onChange={e=>updateEditRow(i,"foodItem",e.target.value)} style={inputSt} placeholder="Food item"/></td>
                             <td style={tdCell}>

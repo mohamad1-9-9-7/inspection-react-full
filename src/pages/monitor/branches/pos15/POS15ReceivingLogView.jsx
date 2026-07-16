@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos15/POS15ReceivingLogView.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { canEdit, canDelete, canWrite } from "../../../../utils/perms";
 import SignatureName from "../../../shared/SignatureName";
 import {
   formatDMY,
@@ -389,16 +390,18 @@ export default function POS15ReceivingLogView() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={toggleEdit} style={ISO.btn(editing ? "secondary" : "violet")}>{editing ? "Cancel Edit" : "Edit"}</button>
-          {editing && <button onClick={saveEdit} style={ISO.btn("success")}>Save Changes</button>}
-          <button onClick={handleDelete} style={ISO.btn("danger", !record)} disabled={!record} data-delete-action="true">Delete</button>
+          {canEdit("daily") && <button onClick={toggleEdit} style={ISO.btn(editing ? "secondary" : "violet")}>{editing ? "Cancel Edit" : "Edit"}</button>}
+          {canEdit("daily") && editing && <button onClick={saveEdit} style={ISO.btn("success")}>Save Changes</button>}
+          {canDelete("daily") && <button onClick={handleDelete} style={ISO.btn("danger", !record)} disabled={!record} data-delete-action="true">Delete</button>}
           <button onClick={exportXLSX} disabled={!record} style={ISO.btn("primary", !record)}>Export XLSX</button>
           <button onClick={exportPDF} disabled={!record} style={ISO.btn("secondary", !record)}>Export PDF</button>
           <button onClick={exportJSON} disabled={!record} style={ISO.btn("secondary", !record)}>Export JSON</button>
-          <label style={{ ...ISO.btn("success"), display: "inline-block" }}>
-            Import JSON
-            <input ref={fileInputRef} type="file" accept="application/json" onChange={(e) => importJSON(e.target.files?.[0])} style={{ display: "none" }} />
-          </label>
+          {canWrite("daily") && (
+            <label style={{ ...ISO.btn("success"), display: "inline-block" }}>
+              Import JSON
+              <input ref={fileInputRef} type="file" accept="application/json" onChange={(e) => importJSON(e.target.files?.[0])} style={{ display: "none" }} />
+            </label>
+          )}
         </div>
       </div>
 

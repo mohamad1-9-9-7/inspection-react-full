@@ -14,6 +14,7 @@ export default function POS19NonConformanceReportInput(props) {
       reporter="pos19"
       headerLine="TRANS EMIRATES LIVESTOCK MEAT TRADING LLC - POS 19 (AL WARQA KITCHEN)"
       locationPlaceholder="e.g., POS 19 - Al Warqa Kitchen"
+      bilingual
     />
   );
 }

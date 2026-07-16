@@ -1,6 +1,6 @@
 // src/pages/monitor/branches/pos19/pos19_inputs/EquipmentInspectionSanitizingLogInput.jsx
 import React, { useMemo, useState } from "react";
-import ReportHeader from "../_shared/ReportHeader";
+import ReportHeader from "../_shared/AlMawashiHeader";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import API_BASE from "../../../../../config/api";
 
@@ -10,11 +10,11 @@ const BRANCH   = "WARQA KITCHEN";
 const FORM_REF = "FS-HACCP/KTCH/EQP/02";
 
 const SLOTS = [
-  { key: "s_8_9_AM",  label: "8-9 AM" },
-  { key: "s_12_1_PM", label: "12-1 PM" },
-  { key: "s_4_5_PM",  label: "4-5 PM" },
-  { key: "s_8_9_PM",  label: "8-9 PM" },
-  { key: "s_12_1_AM", label: "12-1 AM" },
+  { key: "s_8_9_AM",  label: "8-9 AM\n8-9 صباحًا" },
+  { key: "s_12_1_PM", label: "12-1 PM\n12-1 ظهرًا" },
+  { key: "s_4_5_PM",  label: "4-5 PM\n4-5 مساءً" },
+  { key: "s_8_9_PM",  label: "8-9 PM\n8-9 مساءً" },
+  { key: "s_12_1_AM", label: "12-1 AM\n12-1 صباحًا" },
 ];
 
 function emptyRow(name = "") {
@@ -171,7 +171,12 @@ export default function EquipmentInspectionSanitizingLogInput() {
       {/* Critical info banner */}
       <div style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", background:"#fffbeb", border:"1px solid #fde68a", borderLeft:"4px solid #f59e0b", borderRadius:8, color:"#78350f", fontSize:13, lineHeight:1.5, marginBottom:12 }}>
         <div style={{ fontSize:18, lineHeight:1 }}>⚠️</div>
-        <div><strong>Critical Requirement (PRP/CCP):</strong> All food-contact surfaces and equipment must be cleaned and sanitized <b>every 4 hours</b> and <b>after each use / change of food type</b>. Inspect for damage, rust, or wear before each shift. Any deficiency requires immediate corrective action — record it in the corrective-action column.</div>
+        <div>
+          <strong>Critical Requirement (PRP/CCP) / المتطلب الحرج:</strong> All food-contact surfaces and equipment must be cleaned and sanitized <b>every 4 hours</b> and <b>after each use / change of food type</b>. Inspect for damage, rust, or wear before each shift. Any deficiency requires immediate corrective action and must be recorded.
+          <div dir="rtl" style={{ marginTop:4 }}>
+            يجب تنظيف وتعقيم جميع الأسطح والمعدات الملامسة للأغذية <b>كل 4 ساعات</b>، وبعد كل استخدام أو عند تغيير نوع الغذاء. تُفحص المعدات قبل كل وردية للتأكد من عدم وجود تلف أو صدأ أو اهتراء، ويُسجل أي خلل مع الإجراء التصحيحي فورًا.
+          </div>
+        </div>
       </div>
 
       {/* ── Action buttons ── */}
@@ -184,8 +189,8 @@ export default function EquipmentInspectionSanitizingLogInput() {
 
       {/* ── Legend band ── */}
       <div style={{ background:`linear-gradient(90deg,${C.navy},${C.navyLight})`, borderRadius:"8px 8px 0 0", padding:"9px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:6 }}>
-        <span style={{ color:C.white, fontWeight:800, fontSize:13 }}>Sanitize every 4 hours</span>
-        <span style={{ color:"#93c5fd", fontSize:11 }}>✔ Satisfactory &nbsp;|&nbsp; ✗ Needs Improvement</span>
+        <span style={{ color:C.white, fontWeight:800, fontSize:13 }}>Sanitize every 4 hours / التعقيم كل 4 ساعات</span>
+        <span style={{ color:"#93c5fd", fontSize:11 }}>✔ Satisfactory / مرضٍ &nbsp;|&nbsp; ✗ Needs Improvement / يحتاج تحسين</span>
       </div>
 
       {/* ── Table ── */}
@@ -194,12 +199,12 @@ export default function EquipmentInspectionSanitizingLogInput() {
           <colgroup>{colDefs}</colgroup>
           <thead>
             <tr>
-              <th style={thCell}>Equipment's</th>
-              <th style={thCell}>Free from{"\n"}damage{"\n"}(yes/no)</th>
-              <th style={thCell}>Free from{"\n"}broken{"\n"}metal/plastic{"\n"}(yes/no)</th>
+              <th style={thCell}>Equipment{"\n"}المعدات</th>
+              <th style={thCell}>Free from damage (Yes/No){"\n"}خالٍ من التلف (نعم/لا)</th>
+              <th style={thCell}>Free from broken metal/plastic (Yes/No){"\n"}خالٍ من المعدن أو البلاستيك المكسور (نعم/لا)</th>
               {SLOTS.map(s => <th key={s.key} style={thCell}>{s.label}</th>)}
-              <th style={thCell}>Corrective{"\n"}Action{"\n"}(if any)</th>
-              <th style={thCell}>Checked{"\n"}by</th>
+              <th style={thCell}>Corrective Action (if any){"\n"}الإجراء التصحيحي (إن وجد)</th>
+              <th style={thCell}>Checked by{"\n"}تم الفحص بواسطة</th>
               <th style={thCell}>—</th>
             </tr>
           </thead>
@@ -221,8 +226,8 @@ export default function EquipmentInspectionSanitizingLogInput() {
                         fontWeight: r.freeFromDamage ? 700 : 400,
                         background: r.freeFromDamage==="Yes"?"#dcfce7" : r.freeFromDamage==="No"?"#fee2e2" : C.white }}>
                       <option value=""></option>
-                      <option value="Yes">Yes</option>
-                      <option value="No">No</option>
+                      <option value="Yes">Yes / نعم</option>
+                      <option value="No">No / لا</option>
                     </select>
                   </td>
                   <td style={{ ...tdCell, background:rowBg }}>
@@ -231,8 +236,8 @@ export default function EquipmentInspectionSanitizingLogInput() {
                         fontWeight: r.freeFromBrokenPieces ? 700 : 400,
                         background: r.freeFromBrokenPieces==="Yes"?"#dcfce7" : r.freeFromBrokenPieces==="No"?"#fee2e2" : C.white }}>
                       <option value=""></option>
-                      <option value="Yes">Yes</option>
-                      <option value="No">No</option>
+                      <option value="Yes">Yes / نعم</option>
+                      <option value="No">No / لا</option>
                     </select>
                   </td>
                   {SLOTS.map(s => (

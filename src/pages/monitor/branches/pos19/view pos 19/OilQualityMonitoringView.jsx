@@ -44,7 +44,7 @@ async function loadImageDataURL(src) {
   });
 }
 function emptyRow() {
-  return { date: "", result: "", action: "", checkedBy: "" };
+  return { result: "", action: "", checkedBy: "" };
 }
 const hasAnyValue = (o) => Object.values(o || {}).some((v) => String(v || "").trim() !== "");
 
@@ -109,7 +109,6 @@ export default function OilQualityMonitoringView() {
   };
 
   const colDefs = useMemo(() => ([
-    <col key="date" style={{ width: 140 }} />,
     <col key="res"  style={{ width: 380 }} />,
     <col key="act"  style={{ width: 320 }} />,
     <col key="chk"  style={{ width: 170 }} />,
@@ -303,11 +302,10 @@ export default function OilQualityMonitoringView() {
       ws.getCell(5,8).alignment = { horizontal: "right" };
 
       // ===== Table headers — بدون header في ws.columns (لتفادي صف تلقائي) =====
-      const HEADERS = ["Date","Evaluation Results","Corrective Action","Checked by"];
+      const HEADERS = ["Evaluation Results","Corrective Action","Checked by"];
 
       // فقط نحدد العرض باستخدام مفاتيح بدون header
       ws.columns = [
-        { key: "c_date", width: 18 },
         { key: "c_res",  width: 60 },
         { key: "c_act",  width: 46 },
         { key: "c_chk",  width: 22 },
@@ -328,7 +326,7 @@ export default function OilQualityMonitoringView() {
       let rowIdx = 8;
       rows.forEach((e) => {
         ws.getRow(rowIdx).values = [
-          e?.date || "", e?.result || "", e?.action || "", e?.checkedBy || "",
+          e?.result || "", e?.action || "", e?.checkedBy || "",
         ];
         ws.getRow(rowIdx).eachCell((cell)=> {
           cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
@@ -668,7 +666,6 @@ export default function OilQualityMonitoringView() {
                   <colgroup>{colDefs}</colgroup>
                   <thead>
                     <tr>
-                      <th style={thCell}>Date</th>
                       <th style={thCell}>Evaluation Results</th>
                       <th style={thCell}>Corrective Action</th>
                       <th style={thCell}>Checked by</th>
@@ -678,27 +675,18 @@ export default function OilQualityMonitoringView() {
                     {!editing ? (
                       rowsToShow.length ? rowsToShow.map((r, idx) => (
                         <tr key={idx} style={{ background: idx % 2 ? "#f7faff" : "#fff" }}>
-                          <td style={{ ...tdCell, fontWeight:700 }}>{formatDMY(safe(r.date))}</td>
                           <td style={{ ...tdCell, textAlign:"left" }}>{safe(r.result)}</td>
                           <td style={{ ...tdCell, textAlign:"left" }}>{safe(r.action)}</td>
                           <td style={tdCell}>{safe(r.checkedBy)}</td>
                         </tr>
                       )) : (
                         <tr>
-                          <td style={{ ...tdCell, color:"#94a3b8", padding:"18px" }} colSpan={4}>No entries recorded for this date.</td>
+                          <td style={{ ...tdCell, color:"#94a3b8", padding:"18px" }} colSpan={3}>No entries recorded for this date.</td>
                         </tr>
                       )
                     ) : (
                       editRows.map((r, idx) => (
                         <tr key={idx}>
-                          <td style={tdCell}>
-                            <input
-                              type="date"
-                              value={r.date || ""}
-                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], date:e.target.value}; return n; })}
-                              style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
-                            />
-                          </td>
                           <td style={tdCell}>
                             <input
                               type="text"
