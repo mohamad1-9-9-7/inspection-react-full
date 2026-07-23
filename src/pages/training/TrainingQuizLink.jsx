@@ -7,6 +7,7 @@ import {
   getModuleName,
   LANG_STORAGE_KEY,
 } from "./TrainingSessionsList.helpers";
+import { EMPLOYEES } from "../ohc/OHCUpload";
 
 /* ===== API base (same pattern) ===== */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -210,6 +211,16 @@ export default function TrainingQuizLink() {
     [pEmployeeId, pName]
   );
 
+  // ✅ عند إدخال الرقم الوظيفي نبحث في جدول الموظفين ونعبّي الاسم والمسمى تلقائياً (مثل مبدأ OHC)
+  const handleEmployeeIdChange = (v) => {
+    setPEmployeeId(v);
+    const emp = EMPLOYEES[norm(v)];
+    if (emp) {
+      setPName(emp.name || "");
+      setPDesignation(emp.job || "");
+    }
+  };
+
   // ✅ tolerate server shapes
   const quiz = useMemo(() => {
     const q =
@@ -371,6 +382,14 @@ export default function TrainingQuizLink() {
     background: "#fff",
   };
 
+  // للحقول المعبّأة تلقائياً (اسم/مسمى) — للقراءة فقط، غير قابلة للتعديل
+  const readOnlyInputStyle = {
+    ...inputStyle,
+    background: "#f1f5f9",
+    color: "#0f172a",
+    cursor: "not-allowed",
+  };
+
   // ✅ tiny translator for quiz UI
   const tL = (en, ar) => (lang === "AR" ? ar : en);
   const isAr = lang === "AR";
@@ -509,25 +528,26 @@ export default function TrainingQuizLink() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
             <div>
               <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
-                {tL("Name", "الاسم")}
+                {tL("Employee ID", "الرقم الوظيفي")}
               </div>
               <input
-                value={pName}
-                onChange={(e) => setPName(e.target.value)}
-                placeholder={tL("Your name", "اسمك الكامل")}
+                value={pEmployeeId}
+                onChange={(e) => handleEmployeeIdChange(e.target.value)}
+                placeholder={tL("Enter Employee ID", "اكتب الرقم الوظيفي")}
                 style={inputStyle}
               />
             </div>
 
             <div>
               <div style={{ fontWeight: 900, color: "#64748b", fontSize: 12, marginBottom: 6 }}>
-                {tL("Employee ID", "الرقم الوظيفي")}
+                {tL("Name", "الاسم")}
               </div>
               <input
-                value={pEmployeeId}
-                onChange={(e) => setPEmployeeId(e.target.value)}
-                placeholder={tL("Employee ID", "الرقم الوظيفي")}
-                style={inputStyle}
+                value={pName}
+                readOnly
+                tabIndex={-1}
+                placeholder={tL("Auto-filled from Employee ID", "يُعبّأ تلقائياً من الرقم الوظيفي")}
+                style={readOnlyInputStyle}
               />
             </div>
 
@@ -537,9 +557,10 @@ export default function TrainingQuizLink() {
               </div>
               <input
                 value={pDesignation}
-                onChange={(e) => setPDesignation(e.target.value)}
-                placeholder={tL("Designation", "المسمى الوظيفي")}
-                style={inputStyle}
+                readOnly
+                tabIndex={-1}
+                placeholder={tL("Auto-filled from Employee ID", "يُعبّأ تلقائياً من الرقم الوظيفي")}
+                style={readOnlyInputStyle}
               />
             </div>
           </div>

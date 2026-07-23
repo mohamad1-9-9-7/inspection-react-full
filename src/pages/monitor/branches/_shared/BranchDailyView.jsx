@@ -180,6 +180,29 @@ const STYLES = `
 
   .bdv-tab-icon { font-size: 21px; }
 
+  /* ── Bilingual tab labels (EN + AR merged) — same idea as the input hub ── */
+  .bdv-tab-labels {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    line-height: 1.18;
+  }
+  .bdv-tab-label-en { font-size: 15px; font-weight: 800; }
+  .bdv-tab-label-ar {
+    font-size: 13px;
+    font-weight: 700;
+    opacity: .78;
+    font-family: 'Tajawal', sans-serif;
+  }
+  .bdv-panel-name-ar {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--muted);
+    margin: 2px 0 0;
+    font-family: 'Tajawal', sans-serif;
+  }
+
   .bdv-status-dot {
     width: 7px;
     height: 7px;
@@ -327,6 +350,7 @@ const PanelShell = ({ tab, children }) => (
       <div className="bdv-panel-icon">{tab.icon}</div>
       <div>
         <div className="bdv-panel-name">{tab.label}</div>
+        {tab.labelAr ? <div className="bdv-panel-name-ar" dir="rtl">{tab.labelAr}</div> : null}
         <div className="bdv-panel-meta">
           {tab.branchCode} · {new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" })}
         </div>
@@ -463,7 +487,14 @@ export default function BranchDailyView({
               title={tab.label}
             >
               <span className="bdv-tab-icon">{tab.icon}</span>
-              <span>{tab.label}</span>
+              {tab.labelAr ? (
+                <span className="bdv-tab-labels">
+                  <span className="bdv-tab-label-en">{tab.label}</span>
+                  <span className="bdv-tab-label-ar" dir="rtl">{tab.labelAr}</span>
+                </span>
+              ) : (
+                <span>{tab.label}</span>
+              )}
               <span className={`bdv-status-dot ${tab.live === false ? "soon" : "live"}`} />
             </button>
           ))}

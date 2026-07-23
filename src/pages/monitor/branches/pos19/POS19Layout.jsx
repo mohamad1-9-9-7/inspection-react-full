@@ -18,6 +18,7 @@ import {
   FiThermometer,
   FiTool,
   FiTruck,
+  FiUserCheck,
   FiX,
 } from "react-icons/fi";
 
@@ -105,6 +106,13 @@ const BlastFreezerInput = lazy(() =>
 const DryStoreTempHumidityInput = lazy(() =>
   import("./pos19_inputs/DryStoreTempHumidityInput")
 );
+/* ✅ نفس نموذجي QCS: مرض الموظفين / إصابات العمل + عودة الموظف للعمل */
+const StaffSicknessInput = lazy(() =>
+  import("../qcs/StaffSicknessInput")
+);
+const EmployeeReturnToWorkInput = lazy(() =>
+  import("../qcs/EmployeeReturnToWorkInput")
+);
 
 const REPORT_CATEGORIES = [
   { key: "all", label: "All Reports", labelAr: "كل التقارير", color: "#1e3a5f" },
@@ -138,6 +146,8 @@ const REPORTS = [
   { key: "vegSanitation", label: "Sanitation Record (CCP) – Veg/Fruits", labelAr: "سجل تعقيم الخضروات والفواكه", category: "cleaning", cadence: "CCP", cadenceAr: "نقطة تحكم حرجة", icon: FiDroplet },
   { key: "blastFreezer", label: "Blast Freezer / Chiller Log (CCP)", labelAr: "سجل التجميد والتبريد السريع", category: "temperature", cadence: "CCP", cadenceAr: "نقطة تحكم حرجة", icon: FiThermometer },
   { key: "dryStore", label: "Dry Store Temp & Humidity", labelAr: "سجل حرارة ورطوبة المخزن الجاف", category: "temperature", cadence: "Daily", cadenceAr: "يومي", icon: FiArchive },
+  { key: "staffSickness", label: "Staff Sickness / Occupational Injury", labelAr: "مرض الموظفين / إصابات العمل", category: "quality", cadence: "As Needed", cadenceAr: "عند الحاجة", icon: FiActivity },
+  { key: "employeeReturnToWork", label: "Employee Return to Work", labelAr: "عودة الموظف إلى العمل", category: "quality", cadence: "As Needed", cadenceAr: "عند الحاجة", icon: FiUserCheck },
 ];
 
 export default function POS19Layout() {
@@ -360,6 +370,22 @@ export default function POS19Layout() {
           <div style={panelStyle}>
             <Suspense fallback={<Loading text="Loading Dry Store Record…" />}>
               <DryStoreTempHumidityInput />
+            </Suspense>
+          </div>
+        );
+      case "staffSickness":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading text="Loading Staff Sickness form…" />}>
+              <StaffSicknessInput type="pos19_staff_sickness" reporter="pos19" />
+            </Suspense>
+          </div>
+        );
+      case "employeeReturnToWork":
+        return (
+          <div style={panelStyle}>
+            <Suspense fallback={<Loading text="Loading Return to Work form…" />}>
+              <EmployeeReturnToWorkInput type="pos19_employee_return_to_work" reporter="pos19" />
             </Suspense>
           </div>
         );

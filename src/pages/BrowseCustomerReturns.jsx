@@ -32,6 +32,11 @@ async function fetchByType(type) {
 /* ============================================================
    Helpers - date / branch / action / qty
    ============================================================ */
+/* Default opening lines of the emailed report. {date} is resolved by the send
+   modal (EmailSendModal → applyTemplateVars); an email template can replace
+   these lines entirely. */
+const DEFAULT_INTRO = "Dear Team,\n\nPlease find attached the Daily Customer Returns Report for {date}.";
+
 function toTs(x) {
   if (!x) return null;
   if (typeof x === "number") return x;
@@ -3249,6 +3254,10 @@ export default function BrowseReturns() {
 
   const buildCustomerReturnsHtml = useCallback((rep, opts = {}) => {
     const date = rep?.reportDate || "-";
+    /* Greeting line wants DD/MM/YYYY; reportDate is stored as YYYY-MM-DD. */
+    const dateDMY = /^\d{4}-\d{2}-\d{2}$/.test(String(rep?.reportDate || ""))
+      ? String(rep.reportDate).split("-").reverse().join("/")
+      : date;
     const note = opts.note;
     const attCount = opts.attachmentsCount;
     const includeTable = !!opts.includeTable;
@@ -3313,6 +3322,18 @@ export default function BrowseReturns() {
       ? `<div style="display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:10px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a8a;font-weight:700;"> <b>${attCount}</b> file(s) attached</div>`
       : "";
 
+    /* Opening text: whatever the send modal resolved (template + variables),
+       falling back to the built-in greeting. First line stays bold. */
+    const introRaw = String(opts.intro ?? "").trim() || DEFAULT_INTRO.replace("{date}", dateDMY);
+    const introHtml = introRaw
+      .split("\n")
+      .map((line, i) => {
+        if (!line.trim()) return `<div style="height:8px;"></div>`;
+        const weight = i === 0 ? "font-weight:700;" : "margin-top:2px;";
+        return `<div style="${weight}">${escapeHtml(line)}</div>`;
+      })
+      .join("");
+
     return `
       <div style="font-family:'Segoe UI',Inter,Roboto,Arial,sans-serif;background:#f1f5f9;padding:24px 16px;color:#0f172a;">
         <div style="max-width:1080px;margin:auto;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 10px 40px rgba(2,6,23,.08);border:1px solid #e2e8f0;">
@@ -3339,6 +3360,11 @@ export default function BrowseReturns() {
                 </td>
               </tr>
             </table>
+          </div>
+
+          <!-- Greeting: custom opening text from the template, else the default -->
+          <div style="padding:22px 28px 4px;font-size:14px;line-height:1.7;color:#0f172a;">
+            ${introHtml}
           </div>
 
           <!-- Metrics strip -->
@@ -3418,7 +3444,13 @@ export default function BrowseReturns() {
     const groupBy = opts.groupBy || "none";
     const { groups, totalCount } = arrangeItems(rep?.items || [], { sortBy, groupBy });
     const isGrouped = groupBy !== "none";
+    const dateDMY = /^\d{4}-\d{2}-\d{2}$/.test(String(rep?.reportDate || ""))
+      ? String(rep.reportDate).split("-").reverse().join("/")
+      : date;
     const lines = [];
+    const introRaw = String(opts.intro ?? "").trim() || DEFAULT_INTRO.replace("{date}", dateDMY);
+    lines.push(...introRaw.split("\n"));
+    lines.push("");
     lines.push("AL MAWASHI - CUSTOMER RETURNS REPORT");
     lines.push("====================================");
     lines.push(`Date: ${date}    Items: ${totalCount}`);
@@ -3461,7 +3493,12 @@ export default function BrowseReturns() {
   const emailConfig = {
     reportTitle: "Customer Returns Report",
     reportType:  "customer_returns",
+    /* Pilot: this is the only report allowed to send straight from the
+       server's SMTP account. Other reports stay on Outlook/.eml for now. */
+    allowServerSend: true,
     getSubject: (rep) => `[Customer Returns] Report - ${rep?.reportDate || "-"}`,
+    /* Editable in the modal's Content tab; {date} fills itself in on send. */
+    getDefaultIntro: () => DEFAULT_INTRO,
     generatePdf: async (rep, pdfOpts = {}) => {
       const target = rep || selectedReport;
       if (!target) throw new Error("No report selected to email");

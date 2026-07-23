@@ -176,7 +176,7 @@ const NATIONALITIES = [
 
 /* ====== Employees mapping (ID → Name / Branch / Job) ====== */
 /* Employee Name → name, Place Of Work → branch, JOB TITLE → job */
-const EMPLOYEES = {
+export const EMPLOYEES = {
   "859": { name: "MUHAMMAD ARSLAN MUHAMMAD YAR", branch: "AL QUASIS (STORE)", job: "Driver-Light Vehicle" },
   "870": { name: "REFAEY MOHAMED REFAEY MEHASSEB", branch: "MOTOR CITY (POS 19)", job: "Chef Assistant" },
   "868": { name: "MUHAMMAD ARSLAN FRAZ GULFRAZ KHAN TABASSUM", branch: "AL QUASIS (STORE)", job: "Helper" },

@@ -28,6 +28,11 @@ async function fetchMeatDaily() {
 /* ============================================================
    Helpers — date / pos / status / qty
    ============================================================ */
+/* Default opening lines of the emailed report. {date} is resolved by the send
+   modal (EmailSendModal → applyTemplateVars); an email template can replace
+   these lines entirely. */
+const DEFAULT_INTRO = "Dear Team,\n\nPlease find attached the Daily Meat Status Report for {date}.";
+
 function toTs(x) {
   if (!x) return null;
   if (typeof x === "number") return x;
@@ -1393,12 +1398,21 @@ export default function BrowseMeatDaily() {
 
   /* URL state sync */
   const urlReadDone = useRef(false);
+  /* When the input page redirects here after a save (…?email=1&d=…), open the
+     send modal automatically once the saved day's report has loaded. The
+     target date is captured here so the auto-open effect can force-select it. */
+  const wantEmailRef = useRef(false);
+  const pendingEmailDateRef = useRef(""); // capture ?d= for the auto-open effect
   useEffect(() => {
     if (urlReadDone.current) return;
     urlReadDone.current = true;
     try {
       const p = new URLSearchParams(window.location.search);
       const v = (k) => p.get(k);
+      if (v("email") === "1") {
+        wantEmailRef.current = true;
+        pendingEmailDateRef.current = v("d") || "";
+      }
       if (v("from")) setFilterFrom(v("from"));
       if (v("to")) setFilterTo(v("to"));
       if (v("pos")) setPosSel(v("pos").split(",").filter(Boolean));
@@ -1641,6 +1655,25 @@ export default function BrowseMeatDaily() {
   }, [filteredReportsAsc, selectedDate]);
 
   const selectedReport = filteredReportsAsc.find((r) => r.reportDate === selectedDate) || null;
+
+  /* Auto-open the send modal after the input page redirects here (?email=1&d=…).
+     Keyed on returnsData so it waits for the just-saved day to arrive from the
+     server, then forces selection of THAT date (winning over the default
+     oldest-day selection) and opens the modal. One-shot via the guard ref;
+     if the save hasn't propagated yet, the next auto-refresh re-runs this. */
+  useEffect(() => {
+    if (!wantEmailRef.current) return;
+    const target = pendingEmailDateRef.current;
+    const rep = target
+      ? returnsData.find((r) => r.reportDate === target)
+      : null;
+    if (!rep) return;
+    wantEmailRef.current = false;
+    pendingEmailDateRef.current = "";
+    setTab("browse");
+    setSelectedDate(target);
+    setEmailOpen(true);
+  }, [returnsData]);
 
   const hierarchyAsc = useMemo(() => {
     const years = new Map();
@@ -2192,6 +2225,10 @@ export default function BrowseMeatDaily() {
   const buildMeatDailyHtml = useCallback((rep, opts = {}) => {
     const items = rep?.items || [];
     const date = rep?.reportDate || "—";
+    /* Greeting line wants DD/MM/YYYY; reportDate is stored as YYYY-MM-DD. */
+    const dateDMY = /^\d{4}-\d{2}-\d{2}$/.test(String(rep?.reportDate || ""))
+      ? String(rep.reportDate).split("-").reverse().join("/")
+      : date;
     const note = opts.note;
     const attCount = opts.attachmentsCount;
     const includeTable = !!opts.includeTable;
@@ -2215,6 +2252,19 @@ export default function BrowseMeatDaily() {
     const attInfo = attCount
       ? `<div style="margin-top:8px;padding:8px 12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;font-size:12px;color:#1e3a8a;">📎 <b>${attCount} file(s) attached</b></div>`
       : "";
+
+    /* Opening text: whatever the send modal resolved (template + variables),
+       falling back to the built-in greeting. First line stays bold. */
+    const introRaw = String(opts.intro ?? "").trim() || DEFAULT_INTRO.replace("{date}", dateDMY);
+    const introHtml = introRaw
+      .split("\n")
+      .map((line, i) => {
+        if (!line.trim()) return `<div style="height:8px;"></div>`;
+        const weight = i === 0 ? "font-weight:700;" : "margin-top:2px;";
+        return `<div style="${weight}">${escapeHtml(line)}</div>`;
+      })
+      .join("");
+
     return `
       <div style="font-family:Inter,Roboto,Arial,sans-serif;background:#f1f5f9;padding:20px;color:#0f172a;">
         <div style="max-width:900px;margin:auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08);">
@@ -2225,6 +2275,12 @@ export default function BrowseMeatDaily() {
           <div style="padding:18px 22px;">
             <h3 style="margin:0;">Meat Daily Status Report</h3>
             <div style="color:#64748b;font-size:13px;margin-top:4px;">Date: <b>${escapeHtml(date)}</b> · ${items.length} item(s)</div>
+
+            <!-- Greeting: custom opening text from the template, else the default -->
+            <div style="margin-top:14px;font-size:14px;line-height:1.7;color:#0f172a;">
+              ${introHtml}
+            </div>
+
             ${attInfo}
             ${noteHtml}
             ${includeTable ? `
@@ -2256,7 +2312,13 @@ export default function BrowseMeatDaily() {
     const items = rep?.items || [];
     const date = rep?.reportDate || "—";
     const includeTable = !!opts.includeTable;
+    const dateDMY = /^\d{4}-\d{2}-\d{2}$/.test(String(rep?.reportDate || ""))
+      ? String(rep.reportDate).split("-").reverse().join("/")
+      : date;
     const lines = [];
+    const introRaw = String(opts.intro ?? "").trim() || DEFAULT_INTRO.replace("{date}", dateDMY);
+    lines.push(...introRaw.split("\n"));
+    lines.push("");
     lines.push("AL MAWASHI — MEAT DAILY STATUS REPORT");
     lines.push("═════════════════════════════════════");
     lines.push(`Date: ${date}    Items: ${items.length}`);
@@ -2284,18 +2346,33 @@ export default function BrowseMeatDaily() {
 
   const emailConfig = useMemo(() => ({
     reportTitle: "Meat Daily Report",
+    /* Report type drives auto-routing (Settings → per-type To/CC + template)
+       and tags the row written to the email history log. */
+    reportType:  "meat_daily",
+    /* Allowed to send straight from the server's SMTP account, like Customer
+       Returns. The modal still falls back to Outlook/.eml if SMTP is down. */
+    allowServerSend: true,
     getSubject: (rep) => `[Meat Daily] Status Report — ${rep?.reportDate || "—"}`,
+    /* Editable in the modal's Content tab; {date} fills itself in on send. */
+    getDefaultIntro: () => DEFAULT_INTRO,
     generatePdf: async (_rep) => handleExportPDF({ returnBlob: true }),
     buildHtml: buildMeatDailyHtml,
     buildText: buildMeatDailyText,
     getImages: collectReportImages,
     getCertificate: () => null,
-    getSummary: (rep) => ({
-      fields: [
-        { label: "Date", value: rep?.reportDate || "—" },
-        { label: "Items", value: String(rep?.items?.length || 0) },
-      ],
-    }),
+    getSummary: (rep) => {
+      const items = rep?.items || [];
+      const issues = items.filter((r) => isIssueStatus(statusText(r))).length;
+      const expired = items.filter((r) => isExpiredStatus(statusText(r))).length;
+      return {
+        fields: [
+          { label: "Date", value: rep?.reportDate || "—" },
+          { label: "Items", value: String(items.length) },
+          { label: "Issues", value: String(issues) },
+          { label: "Expired", value: String(expired) },
+        ],
+      };
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [buildMeatDailyHtml, buildMeatDailyText, collectReportImages]);
 

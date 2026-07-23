@@ -538,7 +538,7 @@ function Field({ label, value, wide, chip }) {
 }
 
 /* ===== Main ===== */
-export default function EmployeeReturnToWorkView() {
+export default function EmployeeReturnToWorkView({ type = TYPE, reporter = "qcs" } = {}) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState("");
@@ -554,7 +554,7 @@ export default function EmployeeReturnToWorkView() {
       abortRef.current?.abort();
       abortRef.current = new AbortController();
       const res = await fetch(
-        `${API_BASE}/api/reports?reporter=qcs&type=${TYPE}`,
+        `${API_BASE}/api/reports?reporter=${encodeURIComponent(reporter)}&type=${encodeURIComponent(type)}`,
         { cache: "no-store", signal: abortRef.current.signal }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

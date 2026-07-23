@@ -116,6 +116,13 @@ const BRANCHES = [
       ["pos19_cooling_log",                   "Cooling Temperature Log"],
       ["pos19_reheating_log",                 "Reheating Temperature Log"],
       ["pos19_calibration_log",               "Thermometer Calibration Log"],
+      ["pos19_blast_freezer_ccp",             "Blast Freezer / Chiller Log (CCP)"],
+      ["pos19_veg_sanitation_ccp",            "Sanitation Record (CCP) – Veg/Fruits"],
+      ["pos19_dry_store_temp_humidity",       "Dry Store Temp & Humidity"],
+      ["pos19_finished_product_monitoring",   "Finished Product Monitoring"],
+      ["pos19_non_conformance",               "Non-Conformance Report"],
+      ["pos19_staff_sickness",                "Staff Sickness / Occupational Injury"],
+      ["pos19_employee_return_to_work",       "Employee Return to Work"],
     ],
   },
   {

@@ -219,6 +219,10 @@ const CUSTOM = {
   "pos19_finished_product_monitoring":      pos19_finished_product_monitoring,
   // Same payload shape as the QCS form it wraps — reuse its sheet builder.
   "pos19_non_conformance":                  qcs_non_conformance,
+  // POS 19 reuses the QCS Staff Sickness / Return-to-Work forms verbatim,
+  // only the type key + reporter differ — reuse the same sheet builders.
+  "pos19_staff_sickness":                   qcs_staff_sickness,
+  "pos19_employee_return_to_work":          qcs_employee_return_to_work,
 
   /* Production */
   "prod_cleaning_checklist":                prod_cleaning_checklist,

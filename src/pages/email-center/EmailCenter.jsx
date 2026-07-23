@@ -589,14 +589,20 @@ export default function EmailCenter() {
     <div style={ec.page} dir={dir}>
       <div style={ec.wide}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 10, flexWrap: "wrap" }}>
-          <button onClick={() => navigate("/admin")} style={ec.btnSecondary}>← Back</button>
+          <button onClick={() => navigate("/admin")} style={ec.btnSecondary}>
+            {lang === "ar" ? "رجوع →" : "← Back"}
+          </button>
           <LangToggle lang={lang} toggle={toggle}
             style={{ background: "#0b1220", border: "1px solid #1e293b" }} />
         </div>
 
         <div style={ec.hero}>
-          <h1 style={ec.heroTitle}>📨 Email Center</h1>
-          <p style={ec.heroSub}>Settings · Audit trail · Analytics · ISO/BRCGS-ready compliance log</p>
+          <h1 style={ec.heroTitle}>📨 {lang === "ar" ? "مركز البريد الإلكتروني" : "Email Center"}</h1>
+          <p style={ec.heroSub}>
+            {lang === "ar"
+              ? "الإعدادات · سجل التدقيق · التحليلات · سجل امتثال جاهز لـ ISO/BRCGS"
+              : "Settings · Audit trail · Analytics · ISO/BRCGS-ready compliance log"}
+          </p>
         </div>
 
         <div style={ec.card}>

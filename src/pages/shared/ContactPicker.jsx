@@ -4,6 +4,22 @@
 
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import { addEmailContact, isValidEmail, listGroupsFromContacts, expandGroup } from "./emailReportSettings";
+import { useSettingsLang } from "../settings/_shared/settingsI18n";
+
+/* EN/AR strings — `t()` resolves {en,ar} objects inline. */
+const L = {
+  remove:       { en: "Remove",              ar: "إزالة" },
+  groups:       { en: "📁 GROUPS:",          ar: "📁 المجموعات:" },
+  addAll:       { en: "Add all {n} member(s) of {g}", ar: "إضافة كل أعضاء {g} ({n})" },
+  search:       { en: "Search by name or email…", ar: "ابحث بالاسم أو الإيميل…" },
+  noContacts:   { en: "No saved contacts yet", ar: "لا توجد جهات اتصال محفوظة" },
+  noMatches:    { en: "No matching results", ar: "لا توجد نتائج مطابقة" },
+  noName:       { en: "No name",             ar: "بدون اسم" },
+  phName:       { en: "🏷️ Display name (e.g. Ahmad the manager)", ar: "🏷️ الاسم الظاهر (مثال: أحمد المدير)" },
+  add:          { en: "+ Add",               ar: "+ إضافة" },
+  invalidEmail: { en: "Invalid email format", ar: "صيغة الإيميل غير صحيحة" },
+  saveFailed:   { en: "Save failed",         ar: "فشل الحفظ" },
+};
 
 const styles = {
   wrap: { marginTop: 4 },
@@ -22,15 +38,15 @@ const styles = {
   },
   searchBox: { position: "relative" },
   search: {
-    width: "100%", padding: "9px 11px 9px 32px", border: "1px solid #94a3b8",
+    width: "100%", padding: "9px 11px", paddingInlineStart: 32, border: "1px solid #94a3b8",
     borderRadius: 8, outline: "none", fontSize: 13, boxSizing: "border-box", background: "#fff",
   },
   searchIcon: {
-    position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+    position: "absolute", insetInlineStart: 10, top: "50%", transform: "translateY(-50%)",
     fontSize: 14, pointerEvents: "none", color: "#94a3b8",
   },
   dropdown: {
-    position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
+    position: "absolute", top: "100%", insetInlineStart: 0, insetInlineEnd: 0, zIndex: 100,
     background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8,
     marginTop: 4, maxHeight: 240, overflowY: "auto",
     boxShadow: "0 8px 18px rgba(0,0,0,.10)",
@@ -90,6 +106,7 @@ export default function ContactPicker({
   label, value = [], onChange, contacts = [],
   onContactsChange, disabled = false, allowAdd = true,
 }) {
+  const { t } = useSettingsLang();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [focusedIdx, setFocusedIdx] = useState(0);
@@ -201,7 +218,7 @@ export default function ContactPicker({
     const e = newEmail.trim();
     const n = newName.trim();
     setErr("");
-    if (!isValidEmail(e)) { setErr("صيغة الإيميل غير صحيحة"); return; }
+    if (!isValidEmail(e)) { setErr(t(L.invalidEmail)); return; }
     setAdding(true);
     try {
       const saved = await addEmailContact(e, n);
@@ -210,7 +227,7 @@ export default function ContactPicker({
       onContactsChange?.();
       addSelected(saved.email);
     } catch (ex) {
-      setErr(ex?.message || "فشل الحفظ");
+      setErr(ex?.message || t(L.saveFailed));
     } finally {
       setAdding(false);
     }
@@ -240,7 +257,7 @@ export default function ContactPicker({
                   <span style={styles.chipName}>{e}</span>
                 )}
                 <button type="button" style={styles.chipX} disabled={disabled}
-                  onClick={() => removeChip(e)} title="Remove">×</button>
+                  onClick={() => removeChip(e)} title={t(L.remove)}>×</button>
               </span>
             );
           })}
@@ -251,12 +268,12 @@ export default function ContactPicker({
       {allGroups.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 8 }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: ".5px",
-            alignSelf: "center", marginInlineEnd: 4 }}>📁 GROUPS:</span>
+            alignSelf: "center", marginInlineEnd: 4 }}>{t(L.groups)}</span>
           {allGroups.map((g) => {
             const memberCount = expandGroup(g, normContacts).length;
             return (
               <button key={g} type="button" onClick={() => addGroup(g)} disabled={disabled}
-                title={`Add all ${memberCount} member(s) of ${g}`}
+                title={t(L.addAll).replace("{n}", memberCount).replace("{g}", g)}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 5,
                   padding: "4px 10px", borderRadius: 999,
@@ -281,7 +298,7 @@ export default function ContactPicker({
         <input
           style={styles.search}
           disabled={disabled}
-          placeholder="ابحث بالاسم أو الإيميل…"
+          placeholder={t(L.search)}
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
@@ -291,7 +308,7 @@ export default function ContactPicker({
           <div style={styles.dropdown}>
             {available.length === 0 ? (
               <div style={styles.optionEmpty}>
-                {normContacts.length === 0 ? "لا يوجد محفوظين بعد" : "لا نتائج مطابقة"}
+                {normContacts.length === 0 ? t(L.noContacts) : t(L.noMatches)}
               </div>
             ) : (
               available.map((c, idx) => (
@@ -302,7 +319,7 @@ export default function ContactPicker({
                   onMouseDown={(e) => { e.preventDefault(); addSelected(c.email); }}
                 >
                   <div style={styles.optionName}>
-                    {c.name ? highlight(c.name, query) : <span style={{ color: "#94a3b8", fontStyle: "italic" }}>بدون اسم</span>}
+                    {c.name ? highlight(c.name, query) : <span style={{ color: "#94a3b8", fontStyle: "italic" }}>{t(L.noName)}</span>}
                   </div>
                   <div style={styles.optionEmail}>{highlight(c.email, query)}</div>
                 </div>
@@ -317,7 +334,7 @@ export default function ContactPicker({
           <div style={styles.addWrap}>
             <input
               style={styles.input}
-              placeholder="🏷️ الاسم الشائع (مثلاً: أحمد المدير)"
+              placeholder={t(L.phName)}
               value={newName}
               disabled={disabled || adding}
               onChange={(e) => setNewName(e.target.value)}
@@ -325,6 +342,7 @@ export default function ContactPicker({
             />
             <input
               style={styles.input}
+              dir="ltr"
               placeholder="✉️ name@example.com"
               value={newEmail}
               disabled={disabled || adding}
@@ -337,7 +355,7 @@ export default function ContactPicker({
               disabled={disabled || adding || !newEmail.trim()}
               style={{ ...styles.btn, ...(disabled || adding || !newEmail.trim() ? styles.btnDisabled : {}) }}
             >
-              {adding ? "..." : "+ Add"}
+              {adding ? "..." : t(L.add)}
             </button>
           </div>
           {err && <div style={styles.err}>{err}</div>}

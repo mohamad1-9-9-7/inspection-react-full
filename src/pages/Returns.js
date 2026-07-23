@@ -441,6 +441,62 @@ function ConfirmDeleteModal({ show, rowNum, onConfirm, onCancel }) {
   );
 }
 
+/* ===== Post-save prompt: offer to email the report =====
+   "Yes" hands off to the Returns Browser (?email=1) rather than sending from
+   here — the PDF generator and email config live over there, and this way the
+   user still reviews recipients before anything leaves the building. */
+function SendReportPrompt({ show, reportDate, onYes, onNo }) {
+  if (!show) return null;
+  const dmy = /^\d{4}-\d{2}-\d{2}$/.test(String(reportDate || ""))
+    ? String(reportDate).split("-").reverse().join("/")
+    : reportDate;
+  return (
+    <div style={{ ...galleryBack, zIndex: 3000 }}>
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 16,
+          padding: "2rem 2.5rem",
+          minWidth: 320,
+          maxWidth: 440,
+          textAlign: "center",
+          boxShadow: "0 8px 32px rgba(0,0,0,.2)",
+          fontFamily: "Cairo, sans-serif",
+        }}
+      >
+        <div style={{ fontSize: 40, marginBottom: 12 }}>📨</div>
+        <div style={{ fontWeight: 900, fontSize: "1.1em", color: "#0f172a", marginBottom: 8 }}>
+          هل تريد إرسال التقرير بالإيميل؟
+        </div>
+        <div style={{ color: "#64748b", fontSize: 14, marginBottom: 20, lineHeight: 1.7 }}>
+          تقرير المرتجعات بتاريخ <b>{dmy}</b> تم حفظه.
+          <br />
+          "نعم" تفتح نافذة الإرسال لتختار المستلمين.
+        </div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <button onClick={onNo} style={{ ...btnGhost, padding: "10px 24px" }}>
+            لا / No
+          </button>
+          <button
+            onClick={onYes}
+            style={{
+              background: "#2563eb",
+              color: "#fff",
+              border: "none",
+              borderRadius: 12,
+              fontWeight: 900,
+              cursor: "pointer",
+              padding: "10px 24px",
+            }}
+          >
+            نعم، أرسل / Yes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ===== Items Catalog Modal (Add new item code) ===== */
 function AddItemModal({ open, onClose, onAdd, error }) {
   const [code, setCode] = useState("");
@@ -579,6 +635,8 @@ export default function Returns() {
 
   const [saveMsg, setSaveMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  /* Holds the just-saved report date while the "send it now?" prompt is up. */
+  const [sendPromptDate, setSendPromptDate] = useState("");
 
   // ✅ Track whether there are unsaved changes
   const [isDirty, setIsDirty] = useState(false);
@@ -1069,6 +1127,7 @@ export default function Returns() {
       } catch { /* ignore */ }
 
       setSaveMsg(`✅ تم الحفظ بنجاح. رقم المرجع: ${res?.id || res?._id || existingId || "—"}`);
+      setSendPromptDate(reportDate);
     } catch (err) {
       setSaveMsg("❌ فشل الحفظ على السيرفر. حاول مجددًا. / Save failed. Please try again.");
       console.error(err);
@@ -1628,6 +1687,18 @@ export default function Returns() {
         rowNum={confirmDelete.idx + 1}
         onConfirm={confirmRemoveRow}
         onCancel={cancelRemoveRow}
+      />
+
+      {/* ✅ Offer to email the report right after a successful save */}
+      <SendReportPrompt
+        show={!!sendPromptDate}
+        reportDate={sendPromptDate}
+        onNo={() => setSendPromptDate("")}
+        onYes={() => {
+          const d = sendPromptDate;
+          setSendPromptDate("");
+          navigate(`/returns/browse?tab=browse&d=${encodeURIComponent(d)}&email=1`);
+        }}
       />
     </div>
   );

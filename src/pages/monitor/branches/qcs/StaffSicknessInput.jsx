@@ -102,7 +102,7 @@ const delRowBtn = {
 };
 
 /* ===== Component ===== */
-export default function StaffSicknessInput() {
+export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {}) {
   const [headerDate, setHeaderDate] = useState("");
   const [rows, setRows] = useState([
     { staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
@@ -175,7 +175,7 @@ export default function StaffSicknessInput() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "qcs", type: TYPE, payload }),
+        body: JSON.stringify({ reporter, type, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setMsg("✅ Saved successfully");

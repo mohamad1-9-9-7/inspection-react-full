@@ -1307,25 +1307,15 @@ export default function SupplierEvaluationPublic() {
         return;
       }
 
-      // ✅ Best-effort: log first-open timestamp (no-op if it fails)
-      if (!p?.public?.openedAt) {
+      // ✅ Best-effort: log first-open timestamp (no-op if it fails).
+      // Uses the dedicated PUBLIC endpoint (scoped to this token) so the
+      // generic PUT /api/reports/:id can stay behind auth. This page has
+      // no login/token, so it must NOT touch the authenticated routes.
+      if (!p?.public?.openedAt && token) {
         try {
-          const reportId = report?.id || report?._id;
-          if (reportId) {
-            const newPayload = {
-              ...p,
-              public: { ...(p.public || {}), openedAt: new Date().toISOString() },
-            };
-            fetch(`${API_BASE}/api/reports/${encodeURIComponent(reportId)}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                reporter: report?.reporter || "public",
-                type: "supplier_self_assessment_form",
-                payload: newPayload,
-              }),
-            }).catch(() => {});
-          }
+          fetch(`${API_BASE}/api/reports/public/${encodeURIComponent(token)}/opened`, {
+            method: "POST",
+          }).catch(() => {});
         } catch {}
       }
 

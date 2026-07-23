@@ -132,7 +132,7 @@ function YesNoCompact({ value, onChange }) {
 }
 
 /* ===== Component ===== */
-export default function EmployeeReturnToWorkInput() {
+export default function EmployeeReturnToWorkInput({ type = TYPE, reporter = "qcs" } = {}) {
   const initialAnswers = useMemo(() => {
     const obj = {};
     QUESTIONNAIRE.forEach((q) => { obj[q.code] = false; });
@@ -273,7 +273,7 @@ export default function EmployeeReturnToWorkInput() {
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: "qcs", type: TYPE, payload }),
+        body: JSON.stringify({ reporter, type, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setMsg("✅ Saved successfully");

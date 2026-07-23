@@ -1,6 +1,6 @@
 // src/pages/MeatDailyInput.jsx
 import React, { useState, useRef, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 /* ========== API ========== */
 const API_BASE =
@@ -157,9 +157,11 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage }) {
 }
 
 export default function MeatDailyInput() {
+  const navigate = useNavigate();
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [rows, setRows] = useState([baseRow()]);
   const [msg, setMsg] = useState("");
+  const [emailAfterSave, setEmailAfterSave] = useState(true);
 
   /* Authentication handled at app login — no per-page gate */
 
@@ -231,6 +233,13 @@ export default function MeatDailyInput() {
     try {
       setMsg("⏳ Saving…");
       await saveDayToServer(reportDate, cleaned);
+      if (emailAfterSave) {
+        /* Hand off to the Browse page for this day with the send modal open.
+           It owns the full email flow (PDF, template, recipients, send). */
+        setMsg("✅ Saved. Opening email…");
+        navigate(`/meat-daily/browse?tab=browse&d=${encodeURIComponent(reportDate)}&email=1`);
+        return;
+      }
       setMsg("✅ Saved successfully.");
     } catch (e) {
       console.error(e);
@@ -371,8 +380,17 @@ export default function MeatDailyInput() {
       </div>
 
       {/* Bottom actions */}
-      <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <button onClick={handleSave} style={s.btnSave}>💾 Save</button>
+        <label style={s.emailChk} title="After saving, open the email send window for this report">
+          <input
+            type="checkbox"
+            checked={emailAfterSave}
+            onChange={(e) => setEmailAfterSave(e.target.checked)}
+            style={{ width: 16, height: 16, accentColor: "#16a34a" }}
+          />
+          <span>📧 Email after save</span>
+        </label>
         {msg && <div style={s.msg}>{msg}</div>}
       </div>
 
@@ -466,6 +484,12 @@ const styles = {
     boxShadow: "0 1px 6px #bfdbfe",
   },
   msg: { alignSelf: "center", fontWeight: 800 },
+  emailChk: {
+    display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer",
+    fontWeight: 800, color: "#0f172a", background: "rgba(255,255,255,.7)",
+    border: "1px solid #c7d2fe", borderRadius: 999, padding: "8px 14px",
+    userSelect: "none",
+  },
 };
 
 /* ====== Gallery modal styles ====== */

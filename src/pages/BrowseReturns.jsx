@@ -21,7 +21,10 @@ const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
 async function fetchByType(type) {
-  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
+  // The server defaults to LIMIT 200 (most-recent first). Without an explicit
+  // limit, older months (e.g. Sep 2025) get truncated and never reach the page.
+  // 5000 is the server's max clamp — enough for years of daily returns.
+  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}&limit=5000`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error("Failed to fetch " + type);
@@ -32,6 +35,11 @@ async function fetchByType(type) {
 /* ============================================================
    Helpers — date / branch / action / qty
    ============================================================ */
+/* Default opening lines of the emailed report. {date} is resolved by the send
+   modal (EmailSendModal → applyTemplateVars); an email template can replace
+   these lines entirely. */
+const DEFAULT_INTRO = "Dear Team,\n\nPlease find attached the Daily Returns Report for {date}.";
+
 function toTs(x) {
   if (!x) return null;
   if (typeof x === "number") return x;
@@ -142,6 +150,42 @@ function fmtPct(n) {
   if (n == null || isNaN(n)) return "0%";
   return `${Math.round(Number(n))}%`;
 }
+/* "2026-07" → "July 2026" (used by the Periodic Report). */
+function monthLabel(monthKey) {
+  const [y, m] = String(monthKey || "").split("-").map(Number);
+  if (!y || !m) return String(monthKey || "");
+  return new Date(y, m - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+/* Shift a "YYYY-MM" key by `delta` months. */
+function addMonthKey(monthKey, delta) {
+  const [y, m] = String(monthKey || "").split("-").map(Number);
+  const d = new Date(y, (m - 1) + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+/* Human range label: same month → "July 2026"; else "May – Jul 2026" (adds the
+   start year too when the window spans two calendar years). */
+function rangeLabel(fromKey, toKey) {
+  if (fromKey === toKey) return monthLabel(toKey);
+  const [fy, fm] = fromKey.split("-").map(Number);
+  const [ty, tm] = toKey.split("-").map(Number);
+  const optsFrom = { month: "short", ...(fy !== ty ? { year: "numeric" } : {}) };
+  const from = new Date(fy, fm - 1, 1).toLocaleDateString("en-GB", optsFrom);
+  const to = new Date(ty, tm - 1, 1).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+  return `${from} – ${to}`;
+}
+/* Report period presets. `months` = window length ending at the chosen anchor month. */
+const REPORT_PERIODS = [
+  { key: "monthly", months: 1,  en: "Monthly (current)",     reportTitle: "Monthly Returns Report",    cover: "MONTHLY RETURNS",   fileTag: "Monthly" },
+  { key: "quarter", months: 3,  en: "Quarterly (3 months)",  reportTitle: "Quarterly Returns Report",  cover: "QUARTERLY RETURNS", fileTag: "Quarter" },
+  { key: "half",    months: 6,  en: "Half-Year (6 months)",  reportTitle: "Half-Year Returns Report",  cover: "HALF-YEAR RETURNS", fileTag: "HalfYear" },
+  { key: "nine",    months: 9,  en: "Nine-Month (9 months)", reportTitle: "Nine-Month Returns Report", cover: "NINE-MONTH RETURNS", fileTag: "9Month" },
+  { key: "yearly",  months: 12, en: "Annual (12 months)",    reportTitle: "Annual Returns Report",     cover: "ANNUAL RETURNS",    fileTag: "Annual" },
+];
+
+function latestReportDate(reports) {
+  const dates = (reports || []).map((r) => r.reportDate).filter(Boolean).sort();
+  return dates[dates.length - 1] || "";
+}
 
 /* ============================================================
    Power search — parse key:value tokens with quotes
@@ -219,7 +263,10 @@ function rowMatchesPower(row, parsed) {
     } else if (aliased === "action") {
       if (!String(actionText(row) || "").toLowerCase().includes(v)) return false;
     } else if (aliased === "expiry") {
-      if (!String(row.expiry || "").toLowerCase().includes(v)) return false;
+      const expiry = String(row.expiry || "").toLowerCase();
+      if (v === "empty") { if (expiry.trim() !== "") return false; }
+      else if (v === "nonempty") { if (expiry.trim() === "") return false; }
+      else if (!expiry.includes(v)) return false;
     } else if (aliased === "remarks") {
       const r = String(row.remarks || "").toLowerCase();
       if (v === "empty") { if (r.trim() !== "") return false; }
@@ -2123,6 +2170,14 @@ const ALL_COLUMNS = [
   { key: "action",      label: "ACTION", sortable: true, width: 200 },
 ];
 
+const SEARCH_QUICK_ACTIONS = [
+  { label: "Condemnation", query: "action:condemnation" },
+  { label: "Missing expiry", query: "expiry:empty" },
+  { label: "With images", query: "images:yes" },
+  { label: "Qty > 10", query: "qty:>10" },
+  { label: "KG only", query: "type:kg" },
+];
+
 export default function BrowseReturns() {
   /* --- Data --- */
   const [returnsData, setReturnsData] = useState([]);
@@ -2175,8 +2230,16 @@ export default function BrowseReturns() {
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditItem, setAuditItem] = useState(null);
   const [emailOpen, setEmailOpen] = useState(false);
+  /* Report date awaiting an auto-opened email modal ("" = nothing pending). */
+  const [pendingEmailDate, setPendingEmailDate] = useState("");
   const [productOpen, setProductOpen] = useState(false);
   const [productInit, setProductInit] = useState({ code: "", name: "" });
+
+  /* --- Periodic Report (monthly / quarter / half / 9-month / yearly) --- */
+  const [monthlyOpen, setMonthlyOpen] = useState(false);
+  const [monthlyBusy, setMonthlyBusy] = useState(false);
+  const [monthlyMonth, setMonthlyMonth] = useState("");   // anchor = ending month
+  const [periodType, setPeriodType] = useState("monthly");
 
   /* --- Heatmap mode --- */
   const [heatmapMode, setHeatmapMode] = useState("items"); // "items" | "condemn"
@@ -2255,9 +2318,16 @@ export default function BrowseReturns() {
       setChangesData(rawChanges);
 
       if (!selectedDate && normalized.length) {
-        const oldest = [...normalized].map((r) => r.reportDate).sort((a, b) => a.localeCompare(b))[0];
-        setSelectedDate(oldest);
-        const y = oldest.slice(0, 4), m = oldest.slice(5, 7);
+        const requestedDate = (() => {
+          try { return new URLSearchParams(window.location.search).get("d") || ""; }
+          catch { return ""; }
+        })();
+        const availableDates = new Set(normalized.map((r) => r.reportDate).filter(Boolean));
+        const targetDate = requestedDate && availableDates.has(requestedDate)
+          ? requestedDate
+          : latestReportDate(normalized);
+        setSelectedDate(targetDate);
+        const y = targetDate.slice(0, 4), m = targetDate.slice(5, 7);
         setOpenYears((p) => ({ ...p, [y]: true }));
         setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
       }
@@ -2294,6 +2364,12 @@ export default function BrowseReturns() {
       if (v("tab")) setTab(["overview", "browse", "compare"].includes(v("tab")) ? v("tab") : "overview");
       if (v("gb")) setGroupBy(["none", "pos", "origin", "action"].includes(v("gb")) ? v("gb") : "none");
       if (v("d")) setSelectedDate(v("d"));
+      /* ?email=1 — arrived from the input page's "send it now?" prompt.
+         Deferred until that exact report has loaded (see effect below): the
+         modal's generatePdf needs a non-null selectedReport, and the
+         "selected date no longer exists" effect transiently snaps the
+         selection to the latest report while data is still loading. */
+      if (v("email") === "1" && v("d")) setPendingEmailDate(v("d"));
     } catch {}
   }, []);
 
@@ -2329,6 +2405,12 @@ export default function BrowseReturns() {
     } catch (e) {
       toast("Failed to copy", "err");
     }
+  }
+
+  function applySearchQuick(query, scope = searchScope) {
+    setSearch(query);
+    setSearchScope(scope);
+    setResPage(1);
   }
 
   /* --- Bulk selection handlers --- */
@@ -2574,15 +2656,50 @@ export default function BrowseReturns() {
     if (!filteredReportsAsc.length) { setSelectedDate(""); return; }
     const still = filteredReportsAsc.some((r) => r.reportDate === selectedDate);
     if (!still) {
-      setSelectedDate(filteredReportsAsc[0].reportDate);
-      const y = filteredReportsAsc[0].reportDate.slice(0, 4);
-      const m = filteredReportsAsc[0].reportDate.slice(5, 7);
+      const targetDate = latestReportDate(filteredReportsAsc);
+      setSelectedDate(targetDate);
+      const y = targetDate.slice(0, 4);
+      const m = targetDate.slice(5, 7);
       setOpenYears((p) => ({ ...p, [y]: true }));
       setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
     }
   }, [filteredReportsAsc, selectedDate]);
 
   const selectedReport = filteredReportsAsc.find((r) => r.reportDate === selectedDate) || null;
+
+  /* Fire the deferred ?email=1 open — but only once the *requested* report is
+     the selected one, so we never open the composer on the wrong day. */
+  useEffect(() => {
+    if (!pendingEmailDate) return;
+    const target = filteredReportsAsc.find((r) => r.reportDate === pendingEmailDate);
+    if (!target) return;                       // still loading, or filtered out
+    if (selectedDate !== pendingEmailDate) {   // reclaim the selection first
+      setSelectedDate(pendingEmailDate);
+      return;
+    }
+    setPendingEmailDate("");
+    setEmailOpen(true);
+  }, [pendingEmailDate, selectedDate, filteredReportsAsc]);
+
+  /* Distinct "YYYY-MM" months present in the data — newest first. Drives the
+     Monthly Report picker. Uses the raw dataset (unfiltered) so the report
+     always reflects the full month regardless of on-screen filters. */
+  const availableMonths = useMemo(() => {
+    const set = new Set();
+    for (const rep of returnsData) {
+      const mk = (rep.reportDate || "").slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(mk)) set.add(mk);
+    }
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [returnsData]);
+
+  function openMonthlyModal() {
+    const fallback = availableMonths[0] || new Date().toISOString().slice(0, 7);
+    const fromSel = /^\d{4}-\d{2}/.test(selectedDate) ? selectedDate.slice(0, 7) : "";
+    setMonthlyMonth(fromSel && availableMonths.includes(fromSel) ? fromSel : fallback);
+    setPeriodType("monthly");
+    setMonthlyOpen(true);
+  }
 
   /* ============================================================
      Hierarchy (tree)
@@ -3186,6 +3303,10 @@ export default function BrowseReturns() {
 
   const buildReturnsHtml = useCallback((rep, opts = {}) => {
     const date = rep?.reportDate || "—";
+    /* Greeting line wants DD/MM/YYYY; reportDate is stored as YYYY-MM-DD. */
+    const dateDMY = /^\d{4}-\d{2}-\d{2}$/.test(String(rep?.reportDate || ""))
+      ? String(rep.reportDate).split("-").reverse().join("/")
+      : date;
     const note = opts.note;
     const attCount = opts.attachmentsCount;
     const includeTable = !!opts.includeTable;
@@ -3248,6 +3369,18 @@ export default function BrowseReturns() {
         </div>`
       : "";
 
+    /* Opening text: whatever the send modal resolved (template + variables),
+       falling back to the built-in greeting. First line stays bold. */
+    const introRaw = String(opts.intro ?? "").trim() || DEFAULT_INTRO.replace("{date}", dateDMY);
+    const introLines = introRaw.split("\n");
+    const introHtml = introLines
+      .map((line, i) => {
+        if (!line.trim()) return `<div style="height:8px;"></div>`;
+        const weight = i === 0 ? "font-weight:700;" : "margin-top:2px;";
+        return `<div style="${weight}">${escapeHtml(line)}</div>`;
+      })
+      .join("");
+
     const attInfo = attCount
       ? `<div style="display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:10px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a8a;font-weight:700;">📎 <b>${attCount}</b> file(s) attached</div>`
       : "";
@@ -3278,6 +3411,11 @@ export default function BrowseReturns() {
                 </td>
               </tr>
             </table>
+          </div>
+
+          <!-- Greeting: custom opening text from the template, else the default -->
+          <div style="padding:22px 28px 4px;font-size:14px;line-height:1.7;color:#0f172a;">
+            ${introHtml}
           </div>
 
           <!-- Metrics strip -->
@@ -3354,7 +3492,13 @@ export default function BrowseReturns() {
     const groupBy = opts.groupBy || "none";
     const { groups, totalCount } = arrangeItems(rep?.items || [], { sortBy, groupBy });
     const isGrouped = groupBy !== "none";
+    const dateDMY = /^\d{4}-\d{2}-\d{2}$/.test(String(rep?.reportDate || ""))
+      ? String(rep.reportDate).split("-").reverse().join("/")
+      : date;
     const lines = [];
+    const introRaw = String(opts.intro ?? "").trim() || DEFAULT_INTRO.replace("{date}", dateDMY);
+    lines.push(...introRaw.split("\n"));
+    lines.push("");
     lines.push("AL MAWASHI — RETURNS REPORT");
     lines.push("═══════════════════════════");
     lines.push(`Date: ${date}    Items: ${totalCount}`);
@@ -3403,7 +3547,11 @@ export default function BrowseReturns() {
   const emailConfig = {
     reportTitle: "Returns Report",
     reportType:  "returns",
+    /* Direct server-side SMTP send — see BrowseCustomerReturns for the pilot. */
+    allowServerSend: true,
     getSubject: (rep) => `[Returns] Report — ${rep?.reportDate || "—"}`,
+    /* Editable in the modal's Content tab; {date} fills itself in on send. */
+    getDefaultIntro: () => DEFAULT_INTRO,
     generatePdf: async (rep, pdfOpts = {}) => {
       const target = rep || selectedReport;
       if (!target) throw new Error("No report selected to email");
@@ -3698,6 +3846,506 @@ export default function BrowseReturns() {
   const handlePrint = () => { window.print(); };
 
   /* ============================================================
+     Periodic Report — a polished, multi-page executive PDF over a
+     monthly / quarterly / half-year / 9-month / annual window that ENDS at the
+     chosen anchor month. Aggregates the whole window (ignores on-screen filters):
+       • Cover with hero KPIs + highlights
+       • Executive summary metrics + disposition-mix donut
+       • Activity bar chart (per-day for 1 month, per-month otherwise) + register
+       • vs-previous-period comparison + condemnation-rate hotspots
+       • Rankings: top products / POS / origins / condemned items
+     ============================================================ */
+  async function generatePeriodReport() {
+    const anchor = monthlyMonth;
+    if (!/^\d{4}-\d{2}$/.test(anchor)) { toast("Pick a month first", "err"); return; }
+    const period = REPORT_PERIODS.find((p) => p.key === periodType) || REPORT_PERIODS[0];
+    const months = period.months;
+    const fromKey = addMonthKey(anchor, -(months - 1));
+    const toKey = anchor;
+    const inRange = (mk) => /^\d{4}-\d{2}$/.test(mk) && mk >= fromKey && mk <= toKey; // YYYY-MM lexical == chronological
+    const reports = returnsData
+      .filter((r) => inRange((r.reportDate || "").slice(0, 7)))
+      .sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || ""));
+    if (!reports.length) { toast("No data in the selected period", "err"); return; }
+
+    setMonthlyBusy(true);
+    try {
+      const JsPDF = await ensureJsPDF();
+      await ensureAutoTable();
+
+      /* ---------- Aggregate ---------- */
+      const latestActionFor = (date, row) => {
+        const inner = changeMapByDate.get(date) || new Map();
+        const ch = inner.get(itemKey(row));
+        return ch?.to ?? actionText(row);
+      };
+      let totalItems = 0, totalKg = 0, totalPcs = 0;
+      let condCount = 0, condKg = 0, marketKg = 0, disposedCount = 0, disposedKg = 0, useProdCount = 0, sepExpiredCount = 0;
+      const posCount = new Map(), originCount = new Map(), productCount = new Map(), condProduct = new Map(), actionCount = new Map();
+      const posCond = new Map(), originCond = new Map(); // condemned counts per branch/origin (for quality-rate hotspots)
+      const daily = [];
+      for (const rep of reports) {
+        const date = rep.reportDate;
+        let dItems = 0, dKg = 0, dCond = 0;
+        for (const it of (rep.items || [])) {
+          totalItems++; dItems++;
+          const q = Number(it.quantity) || 0; // guard against non-numeric quantity → 0 (never NaN-poison the total)
+          const pos = safeButchery(it) || "—";
+          const origin = it.origin || "—";
+          const prod = (it.productName || "—").trim();
+          posCount.set(pos, (posCount.get(pos) || 0) + 1);
+          originCount.set(origin, (originCount.get(origin) || 0) + 1);
+          productCount.set(prod, (productCount.get(prod) || 0) + 1);
+          if (isKgType(it.qtyType)) { totalKg += q; dKg += q; }
+          else if (isPcsType(it.qtyType)) { totalPcs += q; }
+          /* Only bucket items that actually carry a disposition. This mirrors the
+             Overview KPI (byActionLatest), so Condemnation% here == what the user
+             sees on screen. Items with a blank action are NOT in the denominator. */
+          const act = latestActionFor(date, it) || "";
+          if (act) actionCount.set(act, (actionCount.get(act) || 0) + 1);
+          if (isCondemnation(act)) { condCount++; dCond++; if (isKgType(it.qtyType)) condKg += q; condProduct.set(prod, (condProduct.get(prod) || 0) + 1); posCond.set(pos, (posCond.get(pos) || 0) + 1); originCond.set(origin, (originCond.get(origin) || 0) + 1); }
+          if ((act || "").toLowerCase() === "use in production") useProdCount++;
+          if ((act || "").toLowerCase() === "separated expired shelf") sepExpiredCount++;
+          if (isSendToMarket(act) && isKgType(it.qtyType)) marketKg += q;
+          if (isDisposed(act)) { disposedCount++; if (isKgType(it.qtyType)) disposedKg += q; }
+        }
+        /* store raw dKg — the table foot uses totalKg (= Σ dKg exactly), so the
+           weight column reconciles to its total (display rounds each cell only). */
+        daily.push({ date, items: dItems, kg: dKg, cond: dCond });
+      }
+      const actionTotal = Array.from(actionCount.values()).reduce((a, b) => a + b, 0) || 1;
+      const topN = (m, n) => Array.from(m.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, n);
+      const topProducts = topN(productCount, 8);
+      const topPos = topN(posCount, 8);
+      const topOrigins = topN(originCount, 8);
+      const topCond = topN(condProduct, 8);
+      const actionsSorted = Array.from(actionCount.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+      const activeDays = reports.length;
+      const avgPerDay = totalItems / activeDays;
+      const peakDay = daily.reduce((mx, d) => (d.items > mx.items ? d : mx), { items: -1, date: "" });
+      const condPct = Math.round(condCount * 100 / actionTotal);
+      const rangeLbl = rangeLabel(fromKey, toKey);
+      const mLabel = rangeLbl; // header/footer/pill label reused across pages
+      const genStamp = new Date().toLocaleString("en-GB", { timeZone: "Asia/Dubai" });
+
+      /* ---------- Activity buckets: per-day for a single month, per-month otherwise ---------- */
+      const spanYears = fromKey.slice(0, 4) !== toKey.slice(0, 4);
+      const shortMonth = (mk) => {
+        const [yy, mm] = mk.split("-").map(Number);
+        const s = new Date(yy, mm - 1, 1).toLocaleDateString("en-GB", { month: "short" });
+        return spanYears ? `${s} ${String(yy).slice(2)}` : s;
+      };
+      let buckets, bucketKind;
+      if (months === 1) {
+        bucketKind = "day";
+        buckets = daily.map((d) => ({ label: String(Number(d.date.slice(8, 10))), full: d.date, items: d.items, kg: d.kg, cond: d.cond }));
+      } else {
+        bucketKind = "month";
+        const mMap = new Map();
+        for (const d of daily) {
+          const mk = d.date.slice(0, 7);
+          const b = mMap.get(mk) || { items: 0, kg: 0, cond: 0 };
+          b.items += d.items; b.kg += d.kg; b.cond += d.cond;
+          mMap.set(mk, b);
+        }
+        buckets = Array.from(mMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([mk, b]) => ({ label: shortMonth(mk), full: monthLabel(mk), items: b.items, kg: b.kg, cond: b.cond }));
+      }
+      const peakBucket = buckets.reduce((mx, b) => (b.items > mx.items ? b : mx), { items: -1 });
+
+      /* ---------- Period-over-period (vs the equally-long window immediately before) ---------- */
+      const quickAgg = (reps) => {
+        let items = 0, kg = 0, cond = 0, decided = 0;
+        for (const rep of reps) {
+          for (const it of (rep.items || [])) {
+            items++;
+            if (isKgType(it.qtyType)) kg += Number(it.quantity) || 0;
+            const a = latestActionFor(rep.reportDate, it) || "";
+            if (a) decided++;               // same denominator rule as the current period
+            if (isCondemnation(a)) cond++;
+          }
+        }
+        return { items, kg: Math.round(kg * 100) / 100, cond, condPct: Math.round(cond * 100 / (decided || 1)) };
+      };
+      const prevToKey = addMonthKey(fromKey, -1);
+      const prevFromKey = addMonthKey(prevToKey, -(months - 1));
+      const prevRangeLbl = rangeLabel(prevFromKey, prevToKey);
+      const prevReports = returnsData.filter((r) => {
+        const mk = (r.reportDate || "").slice(0, 7);
+        return /^\d{4}-\d{2}$/.test(mk) && mk >= prevFromKey && mk <= prevToKey;
+      });
+      const prevAgg = prevReports.length ? quickAgg(prevReports) : null;
+      const curAgg = { items: totalItems, kg: Math.round(totalKg * 100) / 100, cond: condCount, condPct };
+      /* pctChange returns { txt, dir } — dir drives arrow + colour */
+      const pctChange = (cur, prev) => {
+        if (prev == null || prev === 0) return { txt: "—", dir: "flat" };
+        const ch = (cur - prev) / prev * 100;
+        const dir = ch > 0.5 ? "up" : ch < -0.5 ? "down" : "flat";
+        return { txt: `${ch > 0 ? "+" : ""}${Math.round(ch)}%`, dir };
+      };
+
+      /* ---------- Quality hotspots — condemnation RATE by branch / origin ---------- */
+      const MIN_SAMPLE = 5; // ignore tiny samples so a 1/1 = 100% doesn't top the list
+      const buildRates = (countMap, condMap) => Array.from(countMap.entries())
+        .map(([label, total]) => ({ label, total, cond: condMap.get(label) || 0, rate: Math.round((condMap.get(label) || 0) * 100 / total) }))
+        .filter((r) => r.total >= MIN_SAMPLE)
+        .sort((a, b) => b.rate - a.rate || b.cond - a.cond)
+        .slice(0, 7);
+      const branchRates = buildRates(posCount, posCond);
+      const originRates = buildRates(originCount, originCond);
+
+      /* ---------- Palette + primitives ---------- */
+      const NAVY = [11, 31, 77], NAVY2 = [30, 58, 95], RED = [176, 0, 0];
+      const SLATE = [71, 85, 105], MUTE = [148, 163, 184], LINE = [226, 232, 240], LIGHT = [241, 245, 249];
+      const GREEN = [5, 150, 105], AMBER = [217, 119, 6], CYAN = [8, 145, 178], PURPLE = [124, 58, 237], BLUE = [37, 99, 235];
+      const PALETTE = [NAVY, BLUE, GREEN, AMBER, RED, PURPLE, CYAN, [100, 116, 139]];
+      const ACTION_COLORS = {
+        "condemnation": RED, "send to market": GREEN, "disposed": AMBER, "desposed": AMBER,
+        "use in production": CYAN, "separated expired shelf": PURPLE,
+      };
+      const colorForAction = (name, i) => ACTION_COLORS[(name || "").toLowerCase()] || PALETTE[i % PALETTE.length];
+      const trunc = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+
+      const doc = new JsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
+      const PW = doc.internal.pageSize.getWidth();
+      const PH = doc.internal.pageSize.getHeight();
+      const M = 40;
+      const CW = PW - M * 2;
+      const setFill = (c) => doc.setFillColor(c[0], c[1], c[2]);
+      const setText = (c) => doc.setTextColor(c[0], c[1], c[2]);
+      const setDraw = (c) => doc.setDrawColor(c[0], c[1], c[2]);
+
+      const footer = () => {
+        const p = doc.getNumberOfPages();
+        setDraw(LINE); doc.setLineWidth(0.5); doc.line(M, PH - 34, PW - M, PH - 34);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); setText(MUTE);
+        doc.text("Al Mawashi · Trans Emirates Livestock Trading L.L.C.", M, PH - 22);
+        doc.text(`${mLabel}  ·  Generated ${genStamp}`, PW / 2, PH - 22, { align: "center" });
+        doc.text(`Page ${p}`, PW - M, PH - 22, { align: "right" });
+      };
+      const contentHeader = (title, sub) => {
+        setFill(NAVY); doc.rect(0, 0, PW, 60, "F");
+        setFill(RED); doc.rect(0, 60, PW, 3, "F");
+        try { doc.addImage(MAWASHI_LOGO_B64, "PNG", M, 12, 36, 36); } catch {}
+        setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+        doc.text(title, M + 46, 28);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9); setText([200, 210, 230]);
+        doc.text(sub, M + 46, 44);
+        setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+        doc.text("AL MAWASHI", PW - M, 26, { align: "right" });
+        doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); setText([200, 210, 230]);
+        doc.text("Monthly Returns Report", PW - M, 40, { align: "right" });
+      };
+      const sectionTitle = (y, text) => {
+        setFill(NAVY); doc.roundedRect(M, y - 11, 4, 15, 2, 2, "F");
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
+        doc.text(text, M + 12, y);
+        return y + 20;
+      };
+      const kpiCard = (x, y, w, h, label, value, sub, accent) => {
+        setFill([255, 255, 255]); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(x, y, w, h, 7, 7, "FD");
+        setFill(accent); doc.roundedRect(x, y, 4, h, 2, 2, "F");
+        setText(SLATE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+        doc.text(String(label).toUpperCase(), x + 14, y + 18);
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+        doc.text(String(value), x + 14, y + 43);
+        if (sub) { doc.setFont("helvetica", "normal"); doc.setFontSize(8); setText(MUTE); doc.text(String(sub), x + 14, y + 58); }
+      };
+      const hbars = (x, y, w, items, accent, fmt) => {
+        const max = Math.max(...items.map((i) => i.value), 1);
+        let yy = y; const rowH = 24;
+        for (const it of items) {
+          setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+          doc.text(trunc(it.label || "—", 30), x, yy);
+          setText(SLATE); doc.setFont("helvetica", "normal");
+          doc.text(fmt ? fmt(it.value) : String(it.value), x + w, yy, { align: "right" });
+          setFill(LIGHT); doc.roundedRect(x, yy + 4, w, 6, 3, 3, "F");
+          const bw = Math.max(2, (it.value / max) * w);
+          setFill(accent); doc.roundedRect(x, yy + 4, bw, 6, 3, 3, "F");
+          yy += rowH;
+        }
+        return yy;
+      };
+      const donut = (cx, cy, rOut, rIn, segs) => {
+        const total = segs.reduce((s, x) => s + x.value, 0) || 1;
+        let start = -Math.PI / 2;
+        segs.forEach((seg) => {
+          const ang = (seg.value / total) * Math.PI * 2;
+          const steps = Math.max(2, Math.ceil(ang / 0.15));
+          setFill(seg.color);
+          for (let s = 0; s < steps; s++) {
+            const a1 = start + (ang * s / steps), a2 = start + (ang * (s + 1) / steps);
+            doc.triangle(cx, cy, cx + Math.cos(a1) * rOut, cy + Math.sin(a1) * rOut, cx + Math.cos(a2) * rOut, cy + Math.sin(a2) * rOut, "F");
+          }
+          start += ang;
+        });
+        setFill([255, 255, 255]); doc.circle(cx, cy, rIn, "F");
+      };
+      /* MoM comparison tile: current value big, a coloured delta badge, and prev value.
+         `semantic` = "cond" flips colours (rising condemnation is bad → red). */
+      const compareTile = (x, y, w, h, label, curStr, deltaObj, prevStr, semantic) => {
+        setFill([255, 255, 255]); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(x, y, w, h, 7, 7, "FD");
+        setText(SLATE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+        doc.text(String(label).toUpperCase(), x + 14, y + 18);
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(19);
+        doc.text(String(curStr), x + 14, y + 42);
+        /* delta badge — arrow drawn as a triangle (WinAnsi core fonts lack ▲▼) */
+        const up = deltaObj.dir === "up", down = deltaObj.dir === "down";
+        let badge = MUTE;
+        if (up) badge = semantic === "cond" ? RED : SLATE;
+        if (down) badge = semantic === "cond" ? GREEN : SLATE;
+        const ax = x + 14, ay = y + 59;
+        setFill(badge);
+        if (up) doc.triangle(ax, ay, ax + 8, ay, ax + 4, ay - 9, "F");
+        else if (down) doc.triangle(ax, ay - 9, ax + 8, ay - 9, ax + 4, ay, "F");
+        else doc.rect(ax, ay - 5, 8, 2, "F");
+        doc.setFont("helvetica", "bold"); doc.setFontSize(9); setText(badge);
+        doc.text(deltaObj.txt, ax + 14, y + 60);
+        setText(MUTE); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+        doc.text(`prev: ${prevStr}`, x + w - 12, y + 60, { align: "right" });
+      };
+      /* Condemnation-rate hotspot bars: label, cond/total, rate% and a red bar (0-100%). */
+      const rateBars = (x, y, w, rows) => {
+        let yy = y; const rowH = 27;
+        if (!rows.length) {
+          setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(9);
+          doc.text("Not enough data", x, yy + 4);
+          return yy + rowH;
+        }
+        for (const r of rows) {
+          setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+          doc.text(trunc(r.label || "—", 26), x, yy);
+          setText(SLATE); doc.setFont("helvetica", "normal");
+          doc.text(`${r.cond}/${r.total}  ·  ${r.rate}%`, x + w, yy, { align: "right" });
+          setFill(LIGHT); doc.roundedRect(x, yy + 4, w, 6, 3, 3, "F");
+          const bw = Math.max(2, (r.rate / 100) * w);
+          setFill(RED); doc.roundedRect(x, yy + 4, bw, 6, 3, 3, "F");
+          yy += rowH;
+        }
+        return yy;
+      };
+
+      /* ---------- PAGE 1 — Cover ---------- */
+      setFill(NAVY); doc.rect(0, 0, PW, 300, "F");
+      setFill(NAVY2); doc.rect(0, 250, PW, 50, "F");
+      setFill(RED); doc.rect(0, 300, PW, 5, "F");
+      try { doc.addImage(MAWASHI_LOGO_B64, "PNG", PW / 2 - 31, 46, 62, 62); } catch {}
+      setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+      doc.text("AL MAWASHI", PW / 2, 130, { align: "center" });
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9); setText([200, 210, 230]);
+      doc.text("Trans Emirates Livestock Trading L.L.C.", PW / 2, 145, { align: "center" });
+      setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(29);
+      doc.text(period.cover, PW / 2, 196, { align: "center" });
+      doc.text("REPORT", PW / 2, 226, { align: "center" });
+      const pillW = 240, pillH = 34, pillX = PW / 2 - pillW / 2, pillY = 258;
+      setFill(RED); doc.roundedRect(pillX, pillY, pillW, pillH, 17, 17, "F");
+      setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+      doc.text(mLabel.toUpperCase(), PW / 2, pillY + 22, { align: "center" });
+
+      /* Hero KPI cards (2×2) */
+      const gx = M, gw = (CW - 15) / 2, gh = 92, gy = 340;
+      kpiCard(gx, gy, gw, gh, "Active Days", String(activeDays), "days with returns filed", BLUE);
+      kpiCard(gx + gw + 15, gy, gw, gh, "Total Entries", fmtNum(totalItems, 0), "returned line items", NAVY);
+      kpiCard(gx, gy + gh + 15, gw, gh, "Total Weight", `${fmtNum(totalKg)} kg`, `+ ${fmtNum(totalPcs, 0)} pcs`, GREEN);
+      kpiCard(gx + gw + 15, gy + gh + 15, gw, gh, "Condemnation", `${condPct}%`, `${fmtNum(condCount, 0)} items · ${fmtNum(condKg)} kg`, RED);
+
+      /* Highlights strip */
+      const hy = gy + gh * 2 + 44;
+      setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
+      doc.roundedRect(M, hy, CW, 96, 8, 8, "FD");
+      setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.text("AT A GLANCE", M + 16, hy + 22);
+      const facts = [
+        ["Busiest day", peakDay.date ? `${peakDay.date}  (${peakDay.items} items)` : "—"],
+        ["Avg per active day", `${fmtNum(avgPerDay, 1)} items`],
+        ["Top branch (POS)", topPos[0] ? `${trunc(topPos[0].label, 22)}  (${topPos[0].value})` : "—"],
+        ["Most returned item", topProducts[0] ? `${trunc(topProducts[0].label, 24)}  (${topProducts[0].value})` : "—"],
+      ];
+      let fy = hy + 42;
+      facts.forEach((f, i) => {
+        const col = i % 2, row = Math.floor(i / 2);
+        const fx = M + 16 + col * (CW / 2);
+        const yy = fy + row * 26;
+        setFill(RED); doc.circle(fx + 2, yy - 3, 2, "F");
+        setText(SLATE); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+        doc.text(`${f[0]}:`, fx + 10, yy);
+        setText(NAVY); doc.setFont("helvetica", "bold");
+        doc.text(String(f[1]), fx + 10 + doc.getTextWidth(`${f[0]}:  `), yy);
+      });
+      footer();
+
+      /* ---------- PAGE 2 — Executive Summary + Disposition Mix ---------- */
+      doc.addPage();
+      contentHeader("Executive Summary", mLabel);
+      let y = sectionTitle(90, "Key Metrics");
+      const metrics = [
+        ["Total Entries", fmtNum(totalItems, 0), "line items", NAVY],
+        ["Total Weight", `${fmtNum(totalKg)} kg`, "kilogram total", GREEN],
+        ["Total Pieces", fmtNum(totalPcs, 0), "pcs total", BLUE],
+        ["Sent to Market", `${fmtNum(marketKg)} kg`, "recovered value", CYAN],
+        ["Disposed", fmtNum(disposedCount, 0), `${fmtNum(disposedKg)} kg`, AMBER],
+        ["Use in Production", fmtNum(useProdCount, 0), "re-processed", PURPLE],
+      ];
+      const mcW = (CW - 24) / 3, mcH = 74;
+      metrics.forEach((mt, i) => {
+        const col = i % 3, row = Math.floor(i / 3);
+        kpiCard(M + col * (mcW + 12), y + row * (mcH + 12), mcW, mcH, mt[0], mt[1], mt[2], mt[3]);
+      });
+      y += mcH * 2 + 12 + 34;
+
+      y = sectionTitle(y, "Disposition Mix");
+      const segs = actionsSorted.slice(0, 7).map((a, i) => ({ ...a, color: colorForAction(a.label, i) }));
+      /* centre count = items that carry a disposition (Σ slices), so the donut
+         reconciles with its own legend. Equals total entries when none are blank. */
+      const decidedItems = actionsSorted.reduce((s, a) => s + a.value, 0);
+      const cx = M + 90, cy = y + 78;
+      donut(cx, cy, 74, 42, segs);
+      setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+      doc.text(fmtNum(decidedItems, 0), cx, cy - 2, { align: "center" });
+      setText(MUTE); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+      doc.text("ITEMS", cx, cy + 10, { align: "center" });
+      /* Legend */
+      let ly = y + 14; const lx = M + 200;
+      segs.forEach((s) => {
+        setFill(s.color); doc.roundedRect(lx, ly - 7, 10, 10, 2, 2, "F");
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+        doc.text(trunc(s.label || "—", 26), lx + 16, ly);
+        setText(SLATE); doc.setFont("helvetica", "normal");
+        const pct = Math.round(s.value * 100 / actionTotal);
+        doc.text(`${s.value}  ·  ${pct}%`, PW - M, ly, { align: "right" });
+        ly += 21;
+      });
+      footer();
+
+      /* ---------- PAGE 3 — Trends & Quality (MoM + condemnation hotspots) ---------- */
+      doc.addPage();
+      contentHeader("Trends & Quality", mLabel);
+      let ty = sectionTitle(90, prevAgg ? `vs Previous Period  ·  ${prevRangeLbl}` : "vs Previous Period");
+      if (!prevAgg) {
+        setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(M, ty + 4, CW, 40, 8, 8, "FD");
+        setText(SLATE); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+        doc.text(`No data for ${prevRangeLbl} — comparison unavailable.`, M + 16, ty + 28);
+        ty += 60;
+      } else {
+        const ctW = (CW - 24) / 3, ctH = 74;
+        compareTile(M, ty + 4, ctW, ctH, "Total Entries", fmtNum(curAgg.items, 0),
+          pctChange(curAgg.items, prevAgg.items), fmtNum(prevAgg.items, 0), "vol");
+        compareTile(M + ctW + 12, ty + 4, ctW, ctH, "Total Weight", `${fmtNum(curAgg.kg)} kg`,
+          pctChange(curAgg.kg, prevAgg.kg), `${fmtNum(prevAgg.kg)} kg`, "vol");
+        compareTile(M + (ctW + 12) * 2, ty + 4, ctW, ctH, "Condemnation %", `${curAgg.condPct}%`,
+          pctChange(curAgg.condPct, prevAgg.condPct), `${prevAgg.condPct}%`, "cond");
+        ty += ctH + 34;
+      }
+
+      /* Quality hotspots — two columns: by branch (left), by origin (right) */
+      const qcW = (CW - 30) / 2;
+      const qTitleY = ty + 8;
+      sectionTitle(qTitleY, "Condemnation Rate — Branch");
+      setFill(RED); doc.roundedRect(M + qcW + 30, qTitleY - 11, 4, 15, 2, 2, "F");
+      setText(RED); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
+      doc.text("Condemnation Rate — Origin", M + qcW + 42, qTitleY);
+      rateBars(M, qTitleY + 24, qcW, branchRates);
+      rateBars(M + qcW + 30, qTitleY + 24, qcW, originRates);
+      setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+      doc.text(`Rate = condemned / total returns. Ranked by rate; only branches/origins with >= ${MIN_SAMPLE} returns shown.`, M, PH - 48);
+      footer();
+
+      /* ---------- PAGE 4 — Activity (per-day for 1 month, per-month otherwise) ---------- */
+      const isDaily = bucketKind === "day";
+      const activityTitle = isDaily ? "Daily Activity" : "Monthly Activity";
+      const axisLabel = isDaily ? "Day of month" : "Month";
+      const firstColHead = isDaily ? "Date" : "Month";
+      doc.addPage();
+      contentHeader(activityTitle, mLabel);
+      y = sectionTitle(90, isDaily ? "Returns per day" : "Returns per month");
+      const chX = M, chY = y + 6, chW = CW, chH = 170;
+      const dMax = Math.max(...buckets.map((b) => b.items), 1);
+      const n = buckets.length;
+      const gap = n > 1 ? Math.min(10, (chW * 0.2) / n) : 0;
+      // cap bar width so a 3-bar quarter chart doesn't stretch into slabs; centre the cluster
+      const bw = Math.min(64, Math.max(3, (chW - gap * (n - 1)) / n));
+      const clusterW = n * bw + (n - 1) * gap;
+      const startX = chX + Math.max(0, (chW - clusterW) / 2);
+      /* gridlines */
+      setDraw(LINE); doc.setLineWidth(0.5); setText(MUTE); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+      [0, 0.25, 0.5, 0.75, 1].forEach((p) => {
+        const yy = chY + chH - p * chH;
+        doc.line(chX, yy, chX + chW, yy);
+        doc.text(String(Math.round(dMax * p)), chX - 6, yy + 2, { align: "right" });
+      });
+      buckets.forEach((b, i) => {
+        const bh = (b.items / dMax) * chH;
+        const bx = startX + i * (bw + gap);
+        const isPeak = b.items === peakBucket.items && b.items > 0;
+        setFill(isPeak ? RED : NAVY2);
+        doc.roundedRect(bx, chY + chH - bh, bw, bh, 1.5, 1.5, "F");
+        // day charts get crowded → label every other; month charts always label
+        if (!isDaily || n <= 20 || i % 2 === 0) {
+          setText(MUTE); doc.setFontSize(isDaily ? 6.5 : 7);
+          doc.text(b.label, bx + bw / 2, chY + chH + 10, { align: "center" });
+        }
+      });
+      setText(MUTE); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+      doc.text(axisLabel, chX + chW / 2, chY + chH + 24, { align: "center" });
+      setFill(RED); doc.roundedRect(chX + chW - 96, chY + 2, 8, 8, 2, 2, "F");
+      setText(SLATE); doc.setFontSize(7.5); doc.text(isDaily ? "Peak day" : "Peak month", chX + chW - 84, chY + 9);
+
+      /* Register table (one row per bucket) */
+      doc.autoTable({
+        startY: chY + chH + 40,
+        margin: { left: M, right: M },
+        head: [[firstColHead, "Entries", "Weight (kg)", "Condemned"]],
+        body: buckets.map((b) => [b.full, String(b.items), fmtNum(b.kg), String(b.cond)]),
+        foot: [["TOTAL", String(totalItems), fmtNum(totalKg), String(condCount)]],
+        styles: { font: "helvetica", fontSize: 9, cellPadding: 5, lineColor: LINE, lineWidth: 0.5, textColor: [30, 41, 59] },
+        headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", halign: "center" },
+        footStyles: { fillColor: LIGHT, textColor: NAVY, fontStyle: "bold", halign: "center" },
+        columnStyles: { 0: { halign: "left" }, 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "center" } },
+        didDrawPage: () => { contentHeader(activityTitle, mLabel); footer(); },
+      });
+      footer();
+
+      /* ---------- PAGE 5 — Rankings ---------- */
+      doc.addPage();
+      contentHeader("Rankings & Hotspots", mLabel);
+      const colW = (CW - 30) / 2;
+      const yL = sectionTitle(90, "Top Returned Products");
+      hbars(M, yL + 8, colW, topProducts.length ? topProducts : [{ label: "—", value: 0 }], NAVY, (v) => String(v));
+      /* Right-column title drawn manually so it aligns on the same row as the left. */
+      setFill(BLUE); doc.roundedRect(M + colW + 30, 90 - 11, 4, 15, 2, 2, "F");
+      setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
+      doc.text("Top Branches (POS)", M + colW + 42, 90);
+      hbars(M + colW + 30, yL + 8, colW, topPos.length ? topPos : [{ label: "—", value: 0 }], BLUE, (v) => String(v));
+
+      const rowY = 90 + 28 + 24 * 8 + 46;
+      const yB = sectionTitle(rowY, "Top Origins");
+      hbars(M, yB + 8, colW, topOrigins.length ? topOrigins : [{ label: "—", value: 0 }], GREEN, (v) => String(v));
+      /* Right-column title drawn manually so it aligns on the same row as the left. */
+      setFill(RED); doc.roundedRect(M + colW + 30, rowY - 11, 4, 15, 2, 2, "F");
+      setText(RED); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
+      doc.text("Most Condemned Items", M + colW + 42, rowY);
+      hbars(M + colW + 30, yB + 8, colW, topCond.length ? topCond : [{ label: "None", value: 0 }], RED, (v) => String(v));
+      footer();
+
+      /* ---------- Page numbers already drawn via footer() ---------- */
+      const filename = months === 1
+        ? `Al_Mawashi_${period.fileTag}_Returns_${toKey}.pdf`
+        : `Al_Mawashi_${period.fileTag}_Returns_${fromKey}_to_${toKey}.pdf`;
+      doc.save(filename);
+      toast(`${period.fileTag} report generated`, "ok");
+      setMonthlyOpen(false);
+    } catch (e) {
+      console.error("[generatePeriodReport] failed:", e);
+      toast("Failed to generate report", "err");
+    } finally {
+      setMonthlyBusy(false);
+    }
+  }
+
+  /* ============================================================
      Image viewer
      ============================================================ */
   function openViewer(row) {
@@ -3834,6 +4482,18 @@ export default function BrowseReturns() {
                 <FiTrendingUp size={13} /> +{newCount} new
               </button>
             )}
+            <button
+              onClick={openMonthlyModal}
+              title="Generate an executive returns report (monthly / quarterly / half-year / 9-month / annual PDF)"
+              style={{
+                ...sx.btn,
+                background: `linear-gradient(135deg, ${T.primary} 0%, ${T.purple} 100%)`,
+                color: "#fff", borderColor: T.primary, fontWeight: 800,
+                boxShadow: "0 6px 16px rgba(79,70,229,.30)",
+              }}
+            >
+              <FiFileText size={14} /> Reports
+            </button>
             <IconBtn icon={FiPackage} onClick={() => { setProductInit({ code: "", name: "" }); setProductOpen(true); }} title="Open product insights">
               Product
             </IconBtn>
@@ -4321,9 +4981,18 @@ export default function BrowseReturns() {
                   <input
                     ref={searchInputRef}
                     type="text" value={search} onChange={(e) => { setSearch(e.target.value); setResPage(1); }}
-                    placeholder={searchScope === "day" ? "Search… or use pos:Abu action:condemnation qty:>10" : "Search ALL reports… or pos:X action:Y qty:>5"}
+                    list="returns-search-suggestions"
+                    placeholder={searchScope === "day" ? "Search this day, e.g. pos:Abu action:condemnation qty:>10" : "Search all days, e.g. pos:X action:Y qty:>5"}
                     style={{ ...sx.input, paddingLeft: 36, paddingRight: 60, width: "100%", fontSize: 14 }}
                   />
+                  <datalist id="returns-search-suggestions">
+                    {SEARCH_QUICK_ACTIONS.map((item) => (
+                      <option key={item.query} value={item.query}>{item.label}</option>
+                    ))}
+                    <option value='name:"ground beef"'>Exact product phrase</option>
+                    <option value="remarks:nonempty">Rows with remarks</option>
+                    <option value="expiry:nonempty">Rows with expiry</option>
+                  </datalist>
                   {search && (
                     <button onClick={() => setSearch("")} style={{
                       position: "absolute", right: 36, top: "50%", transform: "translateY(-50%)",
@@ -4352,7 +5021,7 @@ export default function BrowseReturns() {
                           ["action:condemn", "Action"],
                           ["qty:>10", "Quantity (>, <, >=, <=, =)"],
                           ["type:kg", "kg | pcs"],
-                          ["expiry:2026", "Expiry substring"],
+                          ["expiry:empty", "Missing expiry (also: nonempty or 2026)"],
                           ["remarks:nonempty", "empty | nonempty | text"],
                           ["images:yes", "yes | no"],
                           [`name:"ground beef"`, "Use quotes for spaces"],
@@ -4393,6 +5062,30 @@ export default function BrowseReturns() {
                     {globalResults.length} match(es)
                   </span>
                 )}
+              </div>
+              <div style={{
+                display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
+                marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${T.border}`,
+              }}>
+                <span style={{ ...sx.mutedS, fontWeight: 700, marginRight: 2 }}>Quick search:</span>
+                {SEARCH_QUICK_ACTIONS.map((item) => (
+                  <button
+                    key={item.query}
+                    type="button"
+                    onClick={() => applySearchQuick(item.query)}
+                    title={`Search ${searchScope === "all" ? "all days" : "this day"} for ${item.query}`}
+                    style={{
+                      ...sx.btn,
+                      padding: "4px 9px",
+                      fontSize: 12,
+                      background: search === item.query ? T.primaryS : T.cardAlt,
+                      color: search === item.query ? T.primary : T.textM,
+                      borderColor: search === item.query ? "#c7d2fe" : T.border,
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -4954,6 +5647,113 @@ export default function BrowseReturns() {
           payload={selectedReport}
           config={emailConfig}
         />
+
+        {/* Monthly Report modal */}
+        {monthlyOpen && (
+          <div
+            className="br-noprint"
+            onClick={() => !monthlyBusy && setMonthlyOpen(false)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 1200,
+              background: "rgba(15,23,42,.55)", backdropFilter: "blur(2px)",
+              display: "grid", placeItems: "center", padding: 16,
+            }}
+          >
+            <div onClick={(e) => e.stopPropagation()} style={{
+              ...sx.card, width: "min(460px, 96vw)", overflow: "hidden", padding: 0,
+              boxShadow: "0 24px 60px rgba(15,23,42,.35)",
+            }}>
+              {/* Header band */}
+              <div style={{
+                background: `linear-gradient(135deg, ${T.primary} 0%, ${T.purple} 100%)`,
+                color: "#fff", padding: "18px 20px",
+                display: "flex", alignItems: "center", gap: 12,
+              }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                  background: "rgba(255,255,255,.18)", display: "grid", placeItems: "center",
+                }}><FiFileText size={20} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>Returns Report</div>
+                  <div style={{ fontSize: 12, opacity: .9 }}>Executive PDF · monthly · quarterly · half-year · 9-month · annual</div>
+                </div>
+                <button onClick={() => !monthlyBusy && setMonthlyOpen(false)} style={{
+                  ...sx.btnGhost, color: "#fff", cursor: "pointer", padding: 4,
+                }}><FiX size={18} /></button>
+              </div>
+
+              <div style={{ padding: 20 }}>
+                <label style={{ ...sx.h3, display: "block", marginBottom: 8 }}>Report type</label>
+                <select
+                  value={periodType}
+                  onChange={(e) => setPeriodType(e.target.value)}
+                  disabled={monthlyBusy}
+                  style={{ ...sx.input, width: "100%", fontSize: 15, cursor: "pointer", marginBottom: 16 }}
+                >
+                  {REPORT_PERIODS.map((p) => (
+                    <option key={p.key} value={p.key}>{p.en}</option>
+                  ))}
+                </select>
+
+                <label style={{ ...sx.h3, display: "block", marginBottom: 8 }}>
+                  {periodType === "monthly" ? "Month" : "Ending month"}
+                </label>
+                {availableMonths.length === 0 ? (
+                  <div style={{ ...sx.muted, padding: "10px 0" }}>No returns data available yet.</div>
+                ) : (
+                  <select
+                    value={monthlyMonth}
+                    onChange={(e) => setMonthlyMonth(e.target.value)}
+                    disabled={monthlyBusy}
+                    style={{ ...sx.input, width: "100%", fontSize: 15, cursor: "pointer" }}
+                  >
+                    {availableMonths.map((m) => (
+                      <option key={m} value={m}>{monthLabel(m)}</option>
+                    ))}
+                  </select>
+                )}
+
+                {monthlyMonth && availableMonths.length > 0 && (() => {
+                  const p = REPORT_PERIODS.find((x) => x.key === periodType) || REPORT_PERIODS[0];
+                  const from = addMonthKey(monthlyMonth, -(p.months - 1));
+                  return (
+                    <div style={{ marginTop: 12, fontSize: 13, color: T.textM }}>
+                      Covers <strong style={{ color: T.text }}>{rangeLabel(from, monthlyMonth)}</strong>
+                      {" · "}{p.months} month{p.months > 1 ? "s" : ""}
+                    </div>
+                  );
+                })()}
+
+                <div style={{
+                  marginTop: 14, padding: "12px 14px", borderRadius: 10,
+                  background: T.primaryS, border: `1px solid #c7d2fe`,
+                  fontSize: 12.5, color: T.primaryD, lineHeight: 1.6,
+                }}>
+                  <strong>What's inside:</strong> hero KPIs, disposition-mix donut,
+                  activity chart {periodType === "monthly" ? "(per day)" : "(per month)"} + register,
+                  vs-previous-period comparison, condemnation-rate hotspots, and
+                  top products / branches / origins / condemned items.
+                </div>
+
+                <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+                  <button
+                    onClick={() => !monthlyBusy && setMonthlyOpen(false)}
+                    disabled={monthlyBusy}
+                    style={{ ...sx.btn, flex: "0 0 auto" }}
+                  >Cancel</button>
+                  <PrimaryBtn
+                    icon={FiDownload}
+                    onClick={generatePeriodReport}
+                    disabled={monthlyBusy || availableMonths.length === 0}
+                    style={{ flex: 1, justifyContent: "center", padding: "10px 12px" }}
+                  >
+                    {monthlyBusy ? "Generating…" : "Generate PDF"}
+                  </PrimaryBtn>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Floating bulk action bar */}
         {selectedRows.size > 0 && tab === "browse" && (

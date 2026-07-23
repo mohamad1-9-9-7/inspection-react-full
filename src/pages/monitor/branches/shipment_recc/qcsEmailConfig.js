@@ -4,6 +4,18 @@
 import { generateReportPdf } from "./qcsReportPdf";
 import { escapeHtml } from "../../../shared/emailReportUtils";
 
+/* Default opening lines of the emailed report. {date} is resolved by the send
+   modal (EmailSendModal → applyTemplateVars); an email template can replace
+   these lines entirely. */
+const DEFAULT_INTRO =
+  "Dear Team,\n\nPlease find attached the QCS Incoming Shipment Report for {date}.";
+
+/* `2026-06-28` → `28/06/2026`; anything else passes through untouched. */
+function toDMY(d) {
+  const s = String(d || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.split("-").reverse().join("/") : s;
+}
+
 const ATTR_ROWS = [
   ["temperature",      "Product Temp"],
   ["ph",               "Product PH"],
@@ -33,7 +45,7 @@ function statusKind(status) {
   return "bad";
 }
 
-function buildPlainTextBody(payload, { note, pdfUrl, includeTable = false } = {}) {
+function buildPlainTextBody(payload, { note, pdfUrl, includeTable = false, intro } = {}) {
   const gi = payload?.generalInfo || {};
   const meta = payload?.docMeta || {};
   const samples = Array.isArray(payload?.samples) ? payload.samples : [];
@@ -41,6 +53,13 @@ function buildPlainTextBody(payload, { note, pdfUrl, includeTable = false } = {}
   const v = (x) => (x === null || x === undefined || x === "" ? "—" : String(x));
 
   const out = [];
+  /* Opening text: whatever the send modal resolved (template + variables),
+     falling back to the built-in greeting. */
+  const introRaw =
+    String(intro ?? "").trim() ||
+    DEFAULT_INTRO.replace("{date}", toDMY(payload?.createdDate));
+  out.push(...introRaw.split("\n"));
+  out.push("");
   out.push("═══════════════════════════════════════════════");
   out.push("       QCS INCOMING SHIPMENT REPORT");
   out.push("═══════════════════════════════════════════════");
@@ -130,7 +149,7 @@ function buildPlainTextBody(payload, { note, pdfUrl, includeTable = false } = {}
   return out.join("\n");
 }
 
-function buildHtmlBody(payload, { note, pdfUrl, attachmentsCount, includeTable = false } = {}) {
+function buildHtmlBody(payload, { note, pdfUrl, attachmentsCount, includeTable = false, intro } = {}) {
   const gi = payload?.generalInfo || {};
   const meta = payload?.docMeta || {};
   const samples = Array.isArray(payload?.samples) ? payload.samples : [];
@@ -153,6 +172,20 @@ function buildHtmlBody(payload, { note, pdfUrl, attachmentsCount, includeTable =
   const attachInfo = attachmentsCount
     ? `<div style="margin-top:8px;padding:10px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;font-size:13px;color:#1e3a8a;">📎 <b>${attachmentsCount} file(s) attached</b> — PDF report + images.</div>`
     : "";
+
+  /* Opening text: whatever the send modal resolved (template + variables),
+     falling back to the built-in greeting. First line stays bold. */
+  const introRaw =
+    String(intro ?? "").trim() ||
+    DEFAULT_INTRO.replace("{date}", toDMY(payload?.createdDate));
+  const introHtml = introRaw
+    .split("\n")
+    .map((line, i) => {
+      if (!line.trim()) return `<div style="height:8px;"></div>`;
+      const weight = i === 0 ? "font-weight:700;" : "margin-top:2px;";
+      return `<div style="${weight}">${escapeHtml(line)}</div>`;
+    })
+    .join("");
 
   let samplesTable = "";
   if (includeTable && samples.length) {
@@ -214,6 +247,12 @@ function buildHtmlBody(payload, { note, pdfUrl, attachmentsCount, includeTable =
         <div style="background:${statusColor};color:#fff;padding:8px 16px;border-radius:6px;font-weight:800;font-size:14px;text-align:center;letter-spacing:1px;">
           STATUS: ${safe(payload?.shipmentStatus || payload?.status || "—").toUpperCase()}
         </div>
+
+        <!-- Greeting: custom opening text from the template, else the default -->
+        <div style="margin-top:16px;font-size:14px;line-height:1.7;color:#0f172a;">
+          ${introHtml}
+        </div>
+
         ${attachInfo}
 
         <h4 style="margin:18px 0 8px;color:#0f172a;font-size:14px;border-bottom:2px solid #0f172a;padding-bottom:4px;">Shipment Identification</h4>
@@ -257,6 +296,14 @@ function buildHtmlBody(payload, { note, pdfUrl, attachmentsCount, includeTable =
 /* ===== Exported config ===== */
 export const qcsEmailConfig = {
   reportTitle: "QCS Shipment Report",
+  /* Report type drives auto-routing (Settings → per-type To/CC + template)
+     and tags the row written to the email history log. */
+  reportType: "qcs_raw_material",
+  /* Allowed to send straight from the server's SMTP account, like the other
+     reports. The modal still falls back to Outlook/.eml if SMTP is down. */
+  allowServerSend: true,
+  /* Editable in the modal's Content tab; {date} fills itself in on send. */
+  getDefaultIntro: () => DEFAULT_INTRO,
   getSubject: (payload) => {
     const supplier = payload?.generalInfo?.supplierName || "";
     const inv = payload?.generalInfo?.invoiceNo || "";
