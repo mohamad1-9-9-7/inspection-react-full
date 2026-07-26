@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { getRowVerification, verificationTone } from "../utils/auditVerification";
 
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const API_BASE = String(
@@ -22,9 +23,24 @@ async function fetchJson(url, options) {
     ...options,
   });
   const data = await readJson(res);
-  if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(data?.message || data?.error || `HTTP ${res.status}`);
+    err.code = String(data?.error || "");
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
+
+/* Server-side link states, phrased for the branch supervisor who opened it. */
+const LINK_MESSAGES = {
+  LINK_EXPIRED:
+    "This link has expired. Please ask the QA team to send you a new one. / انتهت صلاحية هذا الرابط، الرجاء طلب رابط جديد من قسم الجودة.",
+  LINK_REVOKED:
+    "This link has been cancelled by the QA team. Please ask for a new one. / تم إلغاء هذا الرابط من قسم الجودة، الرجاء طلب رابط جديد.",
+  LINK_NOT_FOUND:
+    "This link is not valid — the report may have been deleted or the address was mistyped. / هذا الرابط غير صالح، ربما تم حذف التقرير أو أن العنوان غير صحيح.",
+};
 
 async function uploadImage(file) {
   if (!file || !file.type?.startsWith("image/")) throw new Error("Only image files are allowed.");
@@ -120,7 +136,11 @@ function normalizeEvidenceImage(img) {
 
 function mergeClosedEvidenceIntoPayload(payload, closedEvidenceUpdates, token, final, uploadedBy, savedAt) {
   const existingFields = payload.fields && typeof payload.fields === "object" ? payload.fields : {};
-  const nextTable = Array.isArray(payload.table) ? payload.table.map((row, idx) => {
+  const nextTable = Array.isArray(payload.table) ? payload.table.map((row, i) => {
+    /* Rows carry their original position once the server has filtered the
+       closed ones out, so never assume array order matches rowIndex. */
+    const declared = Number(row?.rowIndex);
+    const idx = Number.isInteger(declared) && declared >= 0 ? declared : i;
     const update = closedEvidenceUpdates.find((item) => Number(item.rowIndex) === idx);
     if (!update) return row;
     const existingImgs = collectImageSrcs(row?.closedEvidenceImgs);
@@ -291,15 +311,21 @@ export default function InspectionEvidencePublic() {
   const [uploads, setUploads] = useState({});
   const [notes, setNotes] = useState({});
   const [uploadedBy, setUploadedBy] = useState("");
-  const [done, setDone] = useState(false);
+  /* Legacy lock: reports written before per-finding verification existed only
+     record "the branch pressed Send once". Used as a fallback below. */
+  const [submittedFlag, setSubmittedFlag] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  /* Set when the link itself is unusable (expired / revoked / unknown) —
+     the page then shows an explanation instead of an empty form. */
+  const [deadLink, setDeadLink] = useState("");
 
   useEffect(() => {
     let alive = true;
     async function load() {
       setLoading(true);
       setErr("");
+      setDeadLink("");
       try {
         const data = await fetchJson(`${API_BASE}/api/reports/public/${encodeURIComponent(token || "")}`, { method: "GET" });
         const rep = data?.report || data?.item || data?.data || data;
@@ -308,13 +334,19 @@ export default function InspectionEvidencePublic() {
         const p = rep?.payload || {};
         setNotes(submittedNoteMap(p));
         setUploadedBy(submittedByName(p));
-        setDone(
+        setSubmittedFlag(
           !!p?.public?.submission?.closedEvidenceSubmittedAt ||
           !!p?.fields?.closedEvidenceSubmittedAt ||
           p?.public?.status === "evidence_submitted"
         );
+        /* Best-effort read receipt so QA can see the branch opened the link.
+           Never blocks or fails the page. */
+        fetch(`${API_BASE}/api/reports/public/${encodeURIComponent(token || "")}/opened`, { method: "POST" })
+          .catch(() => {});
       } catch (e) {
-        if (alive) setErr(e?.message || "Failed to load report");
+        if (!alive) return;
+        if (LINK_MESSAGES[e?.code]) setDeadLink(LINK_MESSAGES[e.code]);
+        else setErr(e?.message || "Failed to load report");
       } finally {
         if (alive) setLoading(false);
       }
@@ -326,11 +358,53 @@ export default function InspectionEvidencePublic() {
   const payload = record?.payload || {};
   const header = payload.header || {};
   const table = useMemo(() => Array.isArray(payload.table) ? payload.table : [], [payload.table]);
-  const previousEvidence = submittedEvidenceMap(payload);
-  const openRowIndexes = useMemo(
-    () => table.map((row, idx) => ({ row, idx })).filter(({ row }) => String(row?.status || "").toLowerCase() !== "closed").map(({ idx }) => idx),
+
+  /* Closed findings are not shown to the branch — they are already verified,
+     and listing them only buries the items that still need action.
+     The server normally strips them and stamps each surviving row with its
+     ORIGINAL position as `rowIndex`; the client filter below is the fallback
+     for a server that hasn't been redeployed yet. Every upload, note and
+     submit keys off `idx` (the original position), never the display order,
+     so evidence always lands on the finding QA is looking at. */
+  const visibleRows = useMemo(
+    () => table
+      .map((row, i) => {
+        const declared = Number(row?.rowIndex);
+        return { row, idx: Number.isInteger(declared) && declared >= 0 ? declared : i };
+      })
+      .filter(({ row }) => String(row?.status || "").toLowerCase() !== "closed"),
     [table]
   );
+  const summary = payload.summary || {};
+  const totalFindings = Number(summary.totalFindings) || table.length;
+  const hiddenClosedCount = Number.isFinite(Number(summary.closedFindings))
+    ? Number(summary.closedFindings)
+    : table.length - visibleRows.length;
+
+  const previousEvidence = submittedEvidenceMap(payload);
+
+  /* Per-finding verdicts. A finding the branch already submitted is locked
+     while QA reviews it; a finding QA rejected unlocks again with the reason
+     attached. Previously one final Send froze the whole page for good. */
+  const rowStates = useMemo(
+    () => visibleRows.map(({ row, idx }) => ({ row, idx, v: getRowVerification(row) })),
+    [visibleRows]
+  );
+  const actionableRows = useMemo(
+    () => rowStates.filter(({ v }) => v.state !== "pending" && v.state !== "accepted"),
+    [rowStates]
+  );
+  const awaitingQaCount = rowStates.filter(({ v }) => v.state === "pending").length;
+  const rejectedRows = rowStates.filter(({ v }) => v.state === "rejected");
+  const hasVerdictData = rowStates.some(({ v }) => v.state);
+
+  /* "Done" = nothing left for the branch to do right now. Falls back to the
+     old submitted flag for reports that predate the verification cycle. */
+  const done = hasVerdictData ? actionableRows.length === 0 : submittedFlag;
+
+  const openRowIndexes = useMemo(() => actionableRows.map(({ idx }) => idx), [actionableRows]);
+  /* Nothing to do: every finding is closed (or the report has no findings). */
+  const nothingPending = visibleRows.length === 0;
   const allOpenRowsHaveEvidence = openRowIndexes.length > 0 && openRowIndexes.every((idx) => {
     const previous = previousEvidence[idx] || [];
     const ready = uploads[idx] || [];
@@ -449,10 +523,14 @@ export default function InspectionEvidencePublic() {
         if (img?.previewUrl) URL.revokeObjectURL(img.previewUrl);
       });
       setUploads({});
-      setDone(final);
-      setMsg(final ? "Closed Evidence sent successfully. QA will review and close the status." : "Progress saved. You can use the same link later to add remaining photos.");
+      setSubmittedFlag(final);
+      setMsg(final
+        ? "Evidence sent. QA will review each finding and either close it or send it back with a reason. / تم إرسال الأدلة، ستقوم الجودة بمراجعة كل بند وإغلاقه أو إعادته مع ذكر السبب."
+        : "Progress saved. You can use the same link later to add remaining photos.");
     } catch (e) {
-      setErr(e?.message || "Save failed");
+      /* A link can expire between opening the page and pressing Send. */
+      if (LINK_MESSAGES[e?.code]) setDeadLink(LINK_MESSAGES[e.code]);
+      else setErr(e?.message || "Save failed");
     } finally {
       setSaving(false);
     }
@@ -472,27 +550,40 @@ export default function InspectionEvidencePublic() {
           </div>
           <div style={S.topActions}>
             <div style={S.account}>
-              <div style={S.accountMark}>{done ? "OK" : allOpenRowsHaveEvidence ? "R" : "P"}</div>
+              <div style={S.accountMark}>{done ? "QA" : allOpenRowsHaveEvidence ? "R" : "P"}</div>
               <div style={S.accountText}>
                 <div>Status / الحالة</div>
-                <div>{done ? "Submitted / تم الإرسال" : allOpenRowsHaveEvidence ? "Ready / جاهز" : "Pending / قيد الانتظار"}</div>
+                <div>
+                  {done
+                    ? "Under QA review / قيد مراجعة الجودة"
+                    : allOpenRowsHaveEvidence
+                    ? "Ready / جاهز"
+                    : "Pending / قيد الانتظار"}
+                </div>
               </div>
             </div>
             <span style={S.badge(done ? "#16a34a" : allOpenRowsHaveEvidence ? "#15803d" : "#d97706")}>
-              {completedOpenRows}/{openRowIndexes.length}
+              {done ? `${awaitingQaCount} with QA` : `${completedOpenRows}/${openRowIndexes.length}`}
             </span>
           </div>
         </div>
 
         {loading && <div style={S.card}>Loading...</div>}
+        {deadLink && (
+          <div style={{ ...S.card, textAlign: "center", padding: "clamp(24px, 4vw, 48px)" }}>
+            <div style={{ fontSize: 44, marginBottom: 10 }}>🔒</div>
+            <div style={{ fontSize: 16, fontWeight: 950, marginBottom: 8 }}>Link unavailable / الرابط غير متاح</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#475569", lineHeight: 1.7 }}>{deadLink}</div>
+          </div>
+        )}
         {err && <div style={S.err}>{err}</div>}
         {msg && <div style={S.msg}>{msg}</div>}
 
-        {!loading && record && (
+        {!loading && !deadLink && record && (
           <>
             <div style={S.infoBand}>
               <div style={S.searchLike}>Evidence link / رابط الصور: {safe(record.branch || header.location, "selected branch")}</div>
-              <div style={S.statChip}>{table.length} Items / بنود</div>
+              <div style={S.statChip}>{totalFindings} Items / بنود</div>
               <div style={S.statChip}>{openRowIndexes.length} Open / مفتوح</div>
               <div style={S.statChip}>{completedOpenRows} Ready / جاهز</div>
             </div>
@@ -507,50 +598,120 @@ export default function InspectionEvidencePublic() {
                 <div>Report No: {safe(header.reportNo)}</div>
                 <div>Audited By: {safe(header.auditConductedBy)}</div>
               </div>
-              <label style={S.label}>Uploaded By / اسم الشخص الذي قام برفع الصور</label>
-              {done ? (
-                <div style={S.readonly}>{safe(uploadedBy, "-")}</div>
-              ) : (
-                <input
-                  style={S.input}
-                  value={uploadedBy}
-                  onChange={(e) => setUploadedBy(e.target.value)}
-                  placeholder="Supervisor name / اسم المشرف"
-                />
+              {!nothingPending && (
+                <>
+                  <label style={S.label}>Uploaded By / اسم الشخص الذي قام برفع الصور</label>
+                  {done ? (
+                    <div style={S.readonly}>{safe(uploadedBy, "-")}</div>
+                  ) : (
+                    <input
+                      style={S.input}
+                      value={uploadedBy}
+                      onChange={(e) => setUploadedBy(e.target.value)}
+                      placeholder="Supervisor name / اسم المشرف"
+                    />
+                  )}
+                </>
               )}
             </section>
 
             <section style={S.card}>
               <div style={S.sectionHead}>
-                <div style={S.sectionTitle}>Report Findings</div>
-                <span style={S.badge(allOpenRowsHaveEvidence ? "#15803d" : "#d97706")}>
-                  {allOpenRowsHaveEvidence ? "Ready to send" : "Evidence required"}
+                <div style={S.sectionTitle}>Open Findings / البنود المفتوحة</div>
+                <span style={S.badge(nothingPending || done || allOpenRowsHaveEvidence ? "#15803d" : "#d97706")}>
+                  {nothingPending ? "Nothing pending" : done ? "Under QA review" : allOpenRowsHaveEvidence ? "Ready to send" : "Evidence required"}
                 </span>
               </div>
+
+              {/* Findings QA sent back — this is what the branch must fix now. */}
+              {rejectedRows.length > 0 && (
+                <div style={S.missing}>
+                  ✖ QA returned {rejectedRows.length} finding(s): #{rejectedRows.map(({ idx }) => idx + 1).join(", #")}.
+                  Read the reason on each one and upload new evidence. /
+                  {" "}أعادت الجودة {rejectedRows.length} بند، اقرأ السبب على كل بند وارفع صوراً جديدة.
+                </div>
+              )}
+
+              {awaitingQaCount > 0 && (
+                <div style={{ ...S.hint, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8" }}>
+                  ⏳ {awaitingQaCount} finding(s) are with QA for review — no action needed on those. /
+                  {" "}{awaitingQaCount} بند قيد المراجعة لدى الجودة، لا حاجة لأي إجراء عليها.
+                </div>
+              )}
+
+              {/* Closed findings are deliberately not listed — say so, so the
+                  branch doesn't think items went missing. */}
+              {hiddenClosedCount > 0 && (
+                <div style={{ ...S.hint, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" }}>
+                  ✔ {hiddenClosedCount} closed finding(s) are already verified and are not shown here. /
+                  {" "}تم إغلاق {hiddenClosedCount} بند مسبقاً ولا تظهر هنا.
+                </div>
+              )}
+
+              {nothingPending ? (
+                <div style={{ ...S.readonly, textAlign: "center", padding: 24, fontWeight: 900 }}>
+                  {totalFindings > 0
+                    ? "✔ All findings in this report are closed — nothing to upload. / تم إغلاق جميع البنود، لا حاجة لرفع أي صور."
+                    : "No findings were recorded in this report. / لا توجد بنود مسجلة في هذا التقرير."}
+                </div>
+              ) : (
+                <>
               {!done && (
                 <div style={S.hint}>
                   Save Progress keeps current photos and notes. Final Send opens only when every open item has a Closed Evidence photo. / حفظ التقدم يحفظ الصور والملاحظات، وزر الإرسال النهائي لا يعمل إلا بعد رفع صورة إغلاق لكل بند مفتوح.
                 </div>
               )}
               {!done && missingMessage && <div style={S.missing}>{missingMessage}</div>}
-              {table.length === 0 && <div style={S.readonly}>No rows found in this report.</div>}
-              {table.map((row, idx) => {
+              {rowStates.map(({ row, idx, v }) => {
                   const ready = uploads[idx] || [];
                   const previous = previousEvidence[idx] || [];
                   const isClosed = String(row.status || "").toLowerCase() === "closed";
                   const hasEvidence = previous.length + ready.length > 0;
+                  /* Locked while QA holds it; unlocked the moment QA rejects. */
+                  const locked = v.state === "pending" || v.state === "accepted";
+                  const tone = verificationTone(v.state);
+                  const subLine = v.state === "pending"
+                    ? "With QA for review / قيد المراجعة لدى الجودة"
+                    : v.state === "rejected"
+                    ? "Returned by QA — upload new evidence / أعادته الجودة، ارفع صوراً جديدة"
+                    : hasEvidence
+                    ? "Closed evidence attached / تم إرفاق صور الإغلاق"
+                    : isClosed
+                    ? "Already closed / مغلق مسبقاً"
+                    : "Waiting for branch evidence / بانتظار صور الفرع";
                 return (
-                  <div key={idx} style={S.row}>
+                  <div key={idx} style={{ ...S.row, ...(v.state === "rejected" ? { borderColor: "#fca5a5", borderWidth: 2 } : null) }}>
                     <div style={S.rowTop}>
                       <div style={S.rowIdentity}>
-                        <div style={S.rowIcon(isClosed)}>{idx + 1}</div>
+                        <div style={S.rowIcon(isClosed || v.state === "accepted")}>{idx + 1}</div>
                         <div>
                           <div style={S.rowTitle}>Finding #{idx + 1} / البند #{idx + 1}</div>
-                          <div style={S.rowSub}>{hasEvidence ? "Closed evidence attached / تم إرفاق صور الإغلاق" : isClosed ? "Already closed / مغلق مسبقاً" : "Waiting for branch evidence / بانتظار صور الفرع"}</div>
+                          <div style={S.rowSub}>{subLine}</div>
                         </div>
                       </div>
-                      <span style={S.badge(isClosed ? "#16a34a" : hasEvidence ? "#15803d" : "#d97706")}>{safe(row.status, "Open")}</span>
+                      <span style={S.badge(isClosed ? "#16a34a" : v.state === "pending" ? "#1d4ed8" : v.state === "rejected" ? "#b91c1c" : hasEvidence ? "#15803d" : "#d97706")}>
+                        {safe(row.status, "Open")}
+                      </span>
                     </div>
+
+                    {/* QA's verdict, in the branch's own language. A rejection
+                        without a visible reason is just a silent bounce. */}
+                    {tone && (
+                      <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: 6, background: tone.bg, color: tone.color, fontSize: 14, fontWeight: 850, lineHeight: 1.6 }}>
+                        <div>{tone.label} / {tone.labelAr}</div>
+                        {(v.by || v.at) && (
+                          <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85, marginTop: 2 }}>
+                            {[v.by, v.at ? new Date(v.at).toLocaleString("en-GB") : ""].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
+                        {v.state === "rejected" && v.reason && (
+                          <div style={{ marginTop: 6, fontSize: 14, fontWeight: 900 }}>
+                            Reason / السبب: {v.reason}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <label style={S.label}>Non-Conformance / عدم المطابقة</label>
                     <div style={S.readonly}>{safe(row.nonConformance)}</div>
                     <label style={S.label}>Corrective / Preventive Action / الإجراء التصحيحي والوقائي</label>
@@ -568,8 +729,12 @@ export default function InspectionEvidencePublic() {
                       </>
                     )}
                     <label style={S.label}>Closed Evidence Photos / صور الإجراء التصحيحي</label>
-                    {done ? (
-                      <div style={S.readonly}>Evidence already submitted for this link.</div>
+                    {locked ? (
+                      <div style={S.readonly}>
+                        {v.state === "pending"
+                          ? "Submitted — waiting for the QA verdict. / تم الإرسال، بانتظار قرار الجودة."
+                          : "Verified and closed by QA. / تم التحقق والإغلاق من قبل الجودة."}
+                      </div>
                     ) : (
                       <input type="file" accept="image/*" multiple style={S.file} disabled={saving || isClosed} onChange={(e) => handleFiles(idx, e.target.files)} />
                     )}
@@ -588,7 +753,7 @@ export default function InspectionEvidencePublic() {
                       </div>
                     )}
                     <label style={S.label}>Branch Notes / ملاحظات الفرع</label>
-                    {done || isClosed ? (
+                    {locked || isClosed ? (
                       <div style={S.readonly}>{safe(notes[idx], "-")}</div>
                     ) : (
                       <textarea
@@ -601,18 +766,22 @@ export default function InspectionEvidencePublic() {
                   </div>
                 );
               })}
+                </>
+              )}
             </section>
 
             <div style={S.actions}>
               <button style={S.ghost} disabled>
-                {completedOpenRows}/{openRowIndexes.length} open item(s) with evidence
+                {done && !nothingPending
+                  ? `${awaitingQaCount} finding(s) with QA — nothing to do right now`
+                  : `${completedOpenRows}/${openRowIndexes.length} open item(s) with evidence`}
               </button>
-              {!done && (
+              {!done && !nothingPending && (
                 <button style={{ ...S.amberBtn, opacity: saving || !hasPendingChanges ? 0.55 : 1 }} onClick={() => saveEvidence({ final: false })} disabled={saving || !hasPendingChanges}>
                   {saving ? "Working..." : "Save Progress"}
                 </button>
               )}
-              {!done && (
+              {!done && !nothingPending && (
                 <button style={{ ...S.btn, opacity: saving || !allOpenRowsHaveEvidence ? 0.55 : 1 }} onClick={() => saveEvidence({ final: true })} disabled={saving || !allOpenRowsHaveEvidence}>
                   {saving ? "Working..." : "Send Evidence"}
                 </button>

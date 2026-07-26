@@ -16,11 +16,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invalidateReportDates, isDateTaken } from "./reportsApi";
 
 const NOTES = {
-  checking: { text: "⏳ جارٍ التحقق من التاريخ…", tone: "muted" },
-  available: { text: "✅ متاح الحفظ لهذا التاريخ", tone: "ok" },
-  taken: { text: "🔒 يوجد تقرير محفوظ لهذا التاريخ — عدّله من شاشة العرض", tone: "blocked" },
-  editing: { text: "📝 وضع التعديل — سيتم تحديث التقرير المحفوظ", tone: "edit" },
-  error: { text: "⚠️ تعذّر التحقق من التاريخ", tone: "warn" },
+  checking: { text: "⏳ Checking date…", tone: "muted" },
+  available: { text: "✅ Available — you can save for this date", tone: "ok" },
+  taken: { text: "🔒 A report already exists for this date — edit it from the View screen", tone: "blocked" },
+  editing: { text: "📝 Edit mode — the saved report will be updated", tone: "edit" },
+  error: { text: "⚠️ Could not verify the date", tone: "warn" },
 };
 
 export default function useReportDateStatus(type, reportDate, { editing = false } = {}) {

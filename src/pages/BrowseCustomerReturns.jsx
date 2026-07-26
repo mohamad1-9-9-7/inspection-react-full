@@ -3277,33 +3277,37 @@ export default function BrowseReturns() {
       return { bg: "#ede9fe", fg: "#5b21b6" };
     };
 
+    /* Outlook (Word engine) ignores linear-gradient / border-radius on spans, so
+       rows use solid colors + the `bgcolor` attribute, and the Action pill is
+       painted on the <td> itself rather than an inner <span>. */
+    const cellBase = "padding:9px 10px;border-bottom:1px solid #e6ebf2;border-right:1px solid #eef2f6;font-size:12px;line-height:1.4;";
     const renderRow = (row, i) => {
       const customer = (typeof customerOf === "function" ? customerOf(row) : (row.customer || row.pos || ""));
       const action = row.action || row.customAction || "";
-      const stripe = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+      const stripe = i % 2 === 0 ? "#ffffff" : "#f6f8fb";
       const ac = actionColor(action);
-      return `<tr style="background:${stripe};">
-        <td style="padding:10px 10px;text-align:center;font-weight:700;color:#94a3b8;font-size:12px;border-bottom:1px solid #f1f5f9;">${i + 1}</td>
-        <td style="padding:10px 10px;color:#475569;font-weight:700;font-variant-numeric:tabular-nums;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.itemCode || "-")}</td>
-        <td style="padding:10px 10px;font-weight:600;color:#0f172a;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.productName || "-")}</td>
-        <td style="padding:10px 10px;color:#475569;border-bottom:1px solid #f1f5f9;"><span style="display:inline-block;padding:2px 8px;background:#f1f5f9;border-radius:999px;font-size:11px;font-weight:700;">${escapeHtml(row.origin || "-")}</span></td>
-        <td style="padding:10px 10px;color:#0f172a;font-weight:600;border-bottom:1px solid #f1f5f9;">${escapeHtml(customer)}</td>
-        <td style="padding:10px 10px;color:#475569;font-variant-numeric:tabular-nums;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.carNumber || "")}</td>
-        <td style="padding:10px 10px;color:#475569;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.driverName || "")}</td>
-        <td style="padding:10px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.quantity ?? "")}</td>
-        <td style="padding:10px 10px;color:#64748b;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.qtyType || "")}</td>
-        <td style="padding:10px 10px;color:#475569;font-variant-numeric:tabular-nums;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.expiry || "-")}</td>
-        <td style="padding:10px 10px;color:#475569;font-size:12px;border-bottom:1px solid #f1f5f9;">${escapeHtml(row.remarks || "")}</td>
-        <td style="padding:10px 10px;border-bottom:1px solid #f1f5f9;"><span style="display:inline-block;padding:3px 10px;background:${ac.bg};color:${ac.fg};border-radius:6px;font-size:11px;font-weight:800;">${escapeHtml(action) || "-"}</span></td>
+      return `<tr bgcolor="${stripe}" style="background:${stripe};">
+        <td align="center" bgcolor="${stripe}" style="${cellBase}font-weight:700;color:#94a3b8;">${i + 1}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#475569;font-weight:700;">${escapeHtml(row.itemCode || "-")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}font-weight:700;color:#0f172a;">${escapeHtml(row.productName || "-")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.origin || "-")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#0f172a;font-weight:600;">${escapeHtml(customer)}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.carNumber || "")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.driverName || "")}</td>
+        <td align="right" bgcolor="${stripe}" style="${cellBase}font-weight:700;color:#0f172a;">${escapeHtml(row.quantity ?? "")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#64748b;">${escapeHtml(row.qtyType || "")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.expiry || "-")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.remarks || "")}</td>
+        <td align="center" bgcolor="${ac.bg}" style="padding:9px 10px;border-bottom:1px solid #e6ebf2;font-size:11px;font-weight:800;background:${ac.bg};color:${ac.fg};white-space:nowrap;">${escapeHtml(action) || "-"}</td>
       </tr>`;
     };
 
     let runningIdx = 0;
     const bodyHtml = isGrouped
       ? groups.map((g) => {
-          const groupHeader = `<tr style="background:linear-gradient(90deg,#312e81 0%,#1e40af 100%);color:#ffffff;">
-            <td colspan="11" style="padding:10px 14px;font-size:12px;font-weight:900;letter-spacing:1px;text-transform:uppercase;">
-               ${escapeHtml(g.label)} <span style="background:rgba(255,255,255,.18);padding:2px 9px;border-radius:999px;font-size:11px;margin-inline-start:8px;">${g.items.length}</span>
+          const groupHeader = `<tr bgcolor="#1e40af" style="background:#1e40af;color:#ffffff;">
+            <td colspan="12" bgcolor="#1e40af" style="padding:9px 14px;font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#ffffff;background:#1e40af;">
+               ${escapeHtml(g.label)} &nbsp;<span style="background:#3b5bdb;padding:1px 8px;font-size:11px;color:#ffffff;border-radius:8px;">${g.items.length}</span>
             </td>
           </tr>`;
           const groupRows = g.items.map((row) => renderRow(row, runningIdx++)).join("");
@@ -3312,14 +3316,16 @@ export default function BrowseReturns() {
       : groups[0].items.map((row, i) => renderRow(row, i)).join("");
 
     const noteHtml = note && String(note).trim()
-      ? `<div style="margin:18px 0;padding:14px 16px;background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);border-left:4px solid #f59e0b;border-radius:10px;color:#78350f;">
-          <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;"> Note from Inspector</div>
-          <div style="font-size:14px;line-height:1.6;">${escapeHtml(note).replace(/\n/g, "<br/>")}</div>
-        </div>`
+      ? `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px;border-collapse:collapse;"><tr>
+          <td bgcolor="#fff8e6" style="padding:14px 16px;background:#fff8e6;border-left:4px solid #f59e0b;color:#78350f;">
+            <div style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Note from Inspector</div>
+            <div style="font-size:14px;line-height:1.6;">${escapeHtml(note).replace(/\n/g, "<br/>")}</div>
+          </td>
+        </tr></table>`
       : "";
 
     const attInfo = attCount
-      ? `<div style="display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:10px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a8a;font-weight:700;"> <b>${attCount}</b> file(s) attached</div>`
+      ? `<span style="display:inline-block;padding:8px 16px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;font-size:13px;color:#1e3a8a;font-weight:700;">📎 ${attCount} file(s) attached</span>`
       : "";
 
     /* Opening text: whatever the send modal resolved (template + variables),
@@ -3334,105 +3340,107 @@ export default function BrowseReturns() {
       })
       .join("");
 
-    return `
-      <div style="font-family:'Segoe UI',Inter,Roboto,Arial,sans-serif;background:#f1f5f9;padding:24px 16px;color:#0f172a;">
-        <div style="max-width:1080px;margin:auto;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 10px 40px rgba(2,6,23,.08);border:1px solid #e2e8f0;">
+    /* thead cells share one solid-dark style so the header never vanishes in
+       Outlook the way a gradient background does. */
+    const thBase = "padding:11px 10px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#ffffff;background:#1e293b;border-right:1px solid #334155;";
 
-          <!-- Header band with logo -->
-          <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#312e81 100%);padding:22px 28px;color:#ffffff;">
-            <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
-              <tr>
-                <td style="vertical-align:middle;width:90px;">
-                  <div style="background:#ffffff;border-radius:12px;padding:8px;display:inline-block;box-shadow:0 4px 12px rgba(0,0,0,.25);">
-                    <img src="${MAWASHI_LOGO_B64}" alt="Al Mawashi" width="68" height="68" style="display:block;border-radius:6px;width:68px;height:68px;object-fit:cover;" />
-                  </div>
-                </td>
-                <td style="vertical-align:middle;padding-inline-start:18px;">
-                  <div style="font-size:11px;font-weight:800;letter-spacing:3px;opacity:.7;text-transform:uppercase;">Quality Control System</div>
-                  <div style="font-size:24px;font-weight:900;margin-top:4px;letter-spacing:.5px;">Customer Returns Report</div>
-                  <div style="font-size:12px;opacity:.75;margin-top:4px;">Trans Emirates Livestock Trading L.L.C.</div>
-                </td>
-                <td style="vertical-align:middle;text-align:right;">
-                  <div style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:8px 14px;display:inline-block;">
-                    <div style="font-size:10px;opacity:.8;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Report Date</div>
-                    <div style="font-size:16px;font-weight:900;margin-top:2px;font-variant-numeric:tabular-nums;">${escapeHtml(date)}</div>
-                  </div>
-                </td>
-              </tr>
-            </table>
-          </div>
+    return `
+      <div style="font-family:'Segoe UI',Inter,Roboto,Arial,sans-serif;background:#eef2f7;padding:24px 16px;color:#0f172a;">
+        <div style="max-width:1080px;margin:auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
+
+          <!-- Header band with logo (solid bg so Outlook keeps it dark) -->
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0f172a" style="background:#0f172a;border-collapse:collapse;">
+            <tr>
+              <td style="padding:22px 28px;">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                  <tr>
+                    <td style="vertical-align:middle;width:84px;">
+                      <div style="background:#ffffff;border-radius:12px;padding:8px;display:inline-block;">
+                        <img src="${MAWASHI_LOGO_B64}" alt="Al Mawashi" width="64" height="64" style="display:block;border-radius:6px;width:64px;height:64px;object-fit:cover;" />
+                      </div>
+                    </td>
+                    <td style="vertical-align:middle;padding-inline-start:18px;">
+                      <div style="font-size:11px;font-weight:800;letter-spacing:3px;color:#94a3b8;text-transform:uppercase;">Quality Control System</div>
+                      <div style="font-size:23px;font-weight:900;margin-top:4px;letter-spacing:.5px;color:#ffffff;">Customer Returns Report</div>
+                      <div style="font-size:12px;color:#cbd5e1;margin-top:4px;">Trans Emirates Livestock Trading L.L.C.</div>
+                    </td>
+                    <td style="vertical-align:middle;text-align:right;">
+                      <table cellpadding="0" cellspacing="0" border="0" align="right"><tr>
+                        <td bgcolor="#1e293b" style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:8px 14px;text-align:center;">
+                          <div style="font-size:10px;color:#94a3b8;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Report Date</div>
+                          <div style="font-size:16px;font-weight:900;margin-top:2px;color:#ffffff;">${escapeHtml(date)}</div>
+                        </td>
+                      </tr></table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
 
           <!-- Greeting: custom opening text from the template, else the default -->
-          <div style="padding:22px 28px 4px;font-size:14px;line-height:1.7;color:#0f172a;">
+          <div style="padding:22px 28px 6px;font-size:14px;line-height:1.7;color:#0f172a;">
             ${introHtml}
           </div>
 
-          <!-- Metrics strip -->
-          <div style="padding:18px 28px;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);border-bottom:1px solid #e2e8f0;">
-            <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
-              <tr>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-flex;align-items:center;gap:10px;">
-                    <div style="background:#dbeafe;color:#1e40af;border-radius:10px;padding:8px 14px;font-weight:900;font-size:18px;font-variant-numeric:tabular-nums;">${totalCount}</div>
-                    <div>
-                      <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Total Items</div>
-                      <div style="font-size:13px;color:#0f172a;font-weight:700;margin-top:1px;">Customer returns</div>
-                    </div>
-                    ${isGrouped ? `<div style="margin-inline-start:10px;padding:5px 12px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:8px;font-size:11px;font-weight:800;"> Grouped by ${escapeHtml(GROUP_LABEL[groupBy]?.en || groupBy)} - ${groups.length} groups</div>` : ""}
-                    ${sortBy !== "default" ? `<div style="margin-inline-start:6px;padding:5px 12px;background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:8px;font-size:11px;font-weight:800;"> Sorted by ${escapeHtml(sortBy)}</div>` : ""}
-                  </div>
-                </td>
-                <td style="text-align:right;vertical-align:middle;">${attInfo}</td>
-              </tr>
-            </table>
-          </div>
+          <!-- Metrics strip (solid bg) -->
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f6f8fb" style="background:#f6f8fb;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;border-collapse:collapse;">
+            <tr>
+              <td style="padding:16px 28px;vertical-align:middle;">
+                <table cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td bgcolor="#1e40af" style="background:#1e40af;color:#ffffff;border-radius:10px;padding:8px 15px;font-weight:900;font-size:18px;">${totalCount}</td>
+                  <td style="padding-inline-start:12px;vertical-align:middle;">
+                    <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Total Items</div>
+                    <div style="font-size:13px;color:#0f172a;font-weight:700;margin-top:1px;">Customer returns</div>
+                  </td>
+                  ${isGrouped ? `<td style="padding-inline-start:12px;vertical-align:middle;"><span style="display:inline-block;padding:5px 12px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:8px;font-size:11px;font-weight:800;">Grouped by ${escapeHtml(GROUP_LABEL[groupBy]?.en || groupBy)} · ${groups.length} groups</span></td>` : ""}
+                  ${sortBy !== "default" ? `<td style="padding-inline-start:8px;vertical-align:middle;"><span style="display:inline-block;padding:5px 12px;background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:8px;font-size:11px;font-weight:800;">Sorted by ${escapeHtml(sortBy)}</span></td>` : ""}
+                </tr></table>
+              </td>
+              <td style="padding:16px 28px;text-align:right;vertical-align:middle;">${attInfo}</td>
+            </tr>
+          </table>
 
           <!-- Body -->
           <div style="padding:22px 28px;">
             ${noteHtml}
 
             ${includeTable ? `
-            <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-top:${noteHtml ? 0 : 4}px;">
-              <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;font-size:12px;">
+            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse;border:1px solid #cbd5e1;border-radius:12px;overflow:hidden;font-size:12px;margin-top:${noteHtml ? 0 : 4}px;">
                 <thead>
-                  <tr style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#ffffff;">
-                    <th style="padding:12px 10px;text-align:center;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">#</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Code</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Product</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Origin</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Customer</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Car No.</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Driver</th>
-                    <th style="padding:12px 10px;text-align:right;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Qty</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Unit</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Expiry</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Remarks</th>
-                    <th style="padding:12px 10px;text-align:left;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Action</th>
+                  <tr bgcolor="#1e293b" style="background:#1e293b;">
+                    <th align="center" style="${thBase}">#</th>
+                    <th align="left" style="${thBase}">Code</th>
+                    <th align="left" style="${thBase}">Product</th>
+                    <th align="left" style="${thBase}">Origin</th>
+                    <th align="left" style="${thBase}">Customer</th>
+                    <th align="left" style="${thBase}">Car No.</th>
+                    <th align="left" style="${thBase}">Driver</th>
+                    <th align="right" style="${thBase}">Qty</th>
+                    <th align="left" style="${thBase}">Unit</th>
+                    <th align="left" style="${thBase}">Expiry</th>
+                    <th align="left" style="${thBase}">Remarks</th>
+                    <th align="center" style="${thBase}border-right:none;">Action</th>
                   </tr>
                 </thead>
                 <tbody>${bodyHtml}</tbody>
-              </table>
-            </div>` : `
-            <div style="margin-top:8px;padding:24px;background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%);border:2px dashed #cbd5e1;border-radius:14px;text-align:center;">
-              <div style="font-size:36px;line-height:1;"></div>
-              <div style="margin-top:10px;color:#334155;font-weight:800;font-size:14px;">The full customer returns table is attached as a PDF.</div>
-              <div style="margin-top:4px;color:#64748b;font-size:12px;">${totalCount} item(s) - Full details enclosed</div>
-            </div>`}
+            </table>` : `
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;border-collapse:collapse;"><tr>
+              <td bgcolor="#f6f8fb" align="center" style="padding:24px;background:#f6f8fb;border:2px dashed #cbd5e1;border-radius:12px;">
+                <div style="font-size:32px;line-height:1;">📄</div>
+                <div style="margin-top:10px;color:#334155;font-weight:800;font-size:14px;">The full customer returns table is attached as a PDF.</div>
+                <div style="margin-top:4px;color:#64748b;font-size:12px;">${totalCount} item(s) · Full details enclosed</div>
+              </td>
+            </tr></table>`}
           </div>
 
-          <!-- Footer -->
-          <div style="background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);padding:14px 28px;border-top:1px solid #e2e8f0;">
-            <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
-              <tr>
-                <td style="vertical-align:middle;font-size:11px;color:#64748b;font-weight:700;">
-                   Generated by Al Mawashi QCS System
-                </td>
-                <td style="vertical-align:middle;text-align:right;font-size:10px;color:#94a3b8;letter-spacing:.5px;">
-                  Quality - Safety - Trust
-                </td>
-              </tr>
-            </table>
-          </div>
+          <!-- Footer (solid bg) -->
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f6f8fb" style="background:#f6f8fb;border-top:1px solid #e2e8f0;border-collapse:collapse;">
+            <tr>
+              <td style="padding:14px 28px;vertical-align:middle;font-size:11px;color:#64748b;font-weight:700;">Generated by Al Mawashi QCS System</td>
+              <td style="padding:14px 28px;vertical-align:middle;text-align:right;font-size:10px;color:#94a3b8;letter-spacing:.5px;">Quality · Safety · Trust</td>
+            </tr>
+          </table>
         </div>
       </div>`;
   }, []);

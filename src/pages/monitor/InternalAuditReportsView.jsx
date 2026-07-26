@@ -2,7 +2,24 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import SignatureName from "../shared/SignatureName";
-import { buildInspectionEvidencePublic } from "../../utils/inspectionPublicLink";
+import {
+  buildInspectionEvidencePublic,
+  revokeInspectionEvidencePublic,
+  getEvidenceLinkState,
+  getInspectionPublicOrigin,
+  isShareableEvidenceUrl,
+} from "../../utils/inspectionPublicLink";
+import EmailSendModal from "../shared/EmailSendModal";
+import { internalAuditEmailConfig } from "./internalAuditEmailConfig";
+import {
+  getRowVerification,
+  isAwaitingQa,
+  countAwaitingQa,
+  acceptRowPatch,
+  rejectRowPatch,
+  currentUserName,
+  verificationTone,
+} from "../../utils/auditVerification";
 import API_BASE from "../../config/api";
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
@@ -176,6 +193,16 @@ function getBranchEvidenceStatus(payload = {}) {
   const table = Array.isArray(payload.table) ? payload.table : [];
   const allClosed = table.length > 0 && table.every((row) => String(row?.status || "").toLowerCase() === "closed");
   if (allClosed) return { label: "Closed by QA", bg: "#dcfce7", color: "#166534" };
+  /* Findings waiting on a QA verdict outrank every other state — this is the
+     queue somebody has to work through. */
+  const awaiting = countAwaitingQa(table);
+  if (awaiting > 0) {
+    return { label: `${awaiting} Awaiting QA Verification`, bg: "#dbeafe", color: "#1d4ed8" };
+  }
+  const rejected = table.filter((row) => getRowVerification(row).state === "rejected").length;
+  if (rejected > 0) {
+    return { label: `${rejected} Rejected — resubmit`, bg: "#fee2e2", color: "#991b1b" };
+  }
   if (payload?.fields?.closedEvidenceSubmittedAt || payload?.public?.status === "evidence_submitted") {
     return { label: "Evidence Submitted", bg: "#dbeafe", color: "#1d4ed8" };
   }
@@ -190,7 +217,9 @@ function mergeBranchEvidenceIntoPayload(payload = {}) {
   const nextTable = table.map((row, idx) => {
     const existing = getRowClosedEvidenceImages(row);
     const incoming = getBranchEvidenceForRow(payload, idx);
-    const merged = Array.from(new Set([...existing, ...incoming])).slice(0, 5);
+    /* No cap here on purpose — an earlier .slice(0, 5) silently threw away
+       branch evidence beyond the fifth photo once it was merged back in. */
+    const merged = Array.from(new Set([...existing, ...incoming]));
     const note = getBranchEvidenceNoteForRow(payload, idx);
     const nextRow = {
       ...(row || {}),
@@ -638,27 +667,167 @@ export default function InternalAuditReportsView() {
     return res;
   };
 
-  const copyEvidenceLink = async (r) => {
+  /* Creates the branch evidence link if it doesn't exist yet, refreshes an
+     expired one, and persists the change. Returns the public block so the
+     caller can copy it, e-mail it, or show its state. */
+  const ensureEvidenceLink = async (r, opts = {}) => {
+    const raw = JSON.parse(JSON.stringify(r._raw || {}));
+    raw.payload = raw.payload || {};
+    const before = raw.payload.public || {};
+    const state = getEvidenceLinkState(before);
+    /* Auto-renew a link that is already dead — sending an expired URL to a
+       branch is the single most common way this feature fails in practice. */
+    const renew = opts.renew || state.expired || state.revoked;
+    const next = buildInspectionEvidencePublic(before, { ...opts, renew });
+    raw.payload.public = next;
+    if (JSON.stringify(next) !== JSON.stringify(before)) {
+      await saveRawReport(raw);
+      await refresh();
+    }
+    return next;
+  };
+
+  const localOriginWarning = () =>
+    `⚠️ This link points at ${getInspectionPublicOrigin() || "an unknown origin"}, which a branch outside ` +
+    "this machine/network cannot open.\nSet REACT_APP_PUBLIC_ORIGIN to the public site address, " +
+    "or do this from the deployed app.";
+
+  const copyEvidenceLink = async (r, opts = {}) => {
     try {
-      const raw = JSON.parse(JSON.stringify(r._raw || {}));
-      raw.payload = raw.payload || {};
-      const previousPublic = JSON.stringify(raw.payload.public || {});
-      raw.payload.public = buildInspectionEvidencePublic(raw.payload.public || {});
-      const publicChanged = JSON.stringify(raw.payload.public || {}) !== previousPublic;
-      if (publicChanged) {
-        await saveRawReport(raw);
-        await refresh();
-      }
-      const url = raw.payload.public.url;
+      const pub = await ensureEvidenceLink(r, opts);
+      const url = pub.url;
+      const days = getEvidenceLinkState(pub).daysLeft;
+      const warn = isShareableEvidenceUrl(url) ? "" : `\n\n${localOriginWarning()}`;
       try {
         await navigator.clipboard.writeText(url);
-        alert("Branch evidence link copied.");
+        alert(`Branch evidence link copied.${days != null ? `\nValid for ${days} more day(s).` : ""}${warn}`);
       } catch {
         window.prompt("Copy branch evidence link:", url);
       }
     } catch (e) {
       console.error(e);
       alert("Failed to create/copy evidence link.");
+    }
+  };
+
+  const revokeEvidenceLink = async (r) => {
+    if (!window.confirm("Cancel this branch link? Anyone holding the URL will lose access immediately.")) return;
+    try {
+      const raw = JSON.parse(JSON.stringify(r._raw || {}));
+      raw.payload = raw.payload || {};
+      if (!raw.payload.public?.token) { alert("No link has been created for this report yet."); return; }
+      raw.payload.public = revokeInspectionEvidencePublic(raw.payload.public);
+      await saveRawReport(raw);
+      await refresh();
+      alert("Branch link cancelled.");
+    } catch (e) {
+      console.error(e);
+      alert("Failed to cancel the link.");
+    }
+  };
+
+  /* ===== QA verification of branch evidence =====
+     Rows the branch submitted arrive as "Pending QA Verification". Accepting
+     closes them; rejecting sends them back with a reason AND reopens the
+     branch link, which the old flow had no way to do — once the branch
+     pressed Send the portal was locked forever. */
+  const [verifyBusy, setVerifyBusy] = useState(false);
+
+  const applyVerdicts = async (r, patches, { reopenLink = false } = {}) => {
+    if (!patches.length) return;
+    setVerifyBusy(true);
+    try {
+      const raw = JSON.parse(JSON.stringify(r._raw || {}));
+      raw.payload = raw.payload || {};
+      const table = Array.isArray(raw.payload.table) ? raw.payload.table : [];
+      patches.forEach(({ rowIndex, patch }) => {
+        if (!table[rowIndex]) return;
+        table[rowIndex] = { ...table[rowIndex], ...patch };
+      });
+      raw.payload.table = table;
+
+      if (reopenLink) {
+        /* Un-submit the report so the portal accepts uploads again. */
+        raw.payload.fields = { ...(raw.payload.fields || {}), closedEvidenceSubmittedAt: null };
+        if (raw.payload.public && typeof raw.payload.public === "object") {
+          raw.payload.public = {
+            ...raw.payload.public,
+            submittedAt: null,
+            status: "evidence_in_progress",
+          };
+        }
+      }
+
+      syncClosedKPI(raw);
+      await saveRawReport(raw);
+      await refresh();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to save the verification result.");
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  const acceptFinding = (r, rowIndex) =>
+    applyVerdicts(r, [{ rowIndex, patch: acceptRowPatch(currentUserName()) }]);
+
+  const rejectFinding = (r, rowIndex) => {
+    const reason = window.prompt(
+      `Reject the evidence for finding #${rowIndex + 1}?\n\n` +
+      "Write the reason — the branch sees this text and must upload again:"
+    );
+    if (reason === null) return;
+    if (!String(reason).trim()) {
+      alert("A reason is required so the branch knows what to fix.");
+      return;
+    }
+    return applyVerdicts(
+      r,
+      [{ rowIndex, patch: rejectRowPatch(currentUserName(), reason) }],
+      { reopenLink: true }
+    );
+  };
+
+  const acceptAllPending = (r) => {
+    const table = Array.isArray(r._raw?.payload?.table) ? r._raw.payload.table : [];
+    const patches = table
+      .map((row, rowIndex) => ({ row, rowIndex }))
+      .filter(({ row }) => isAwaitingQa(row))
+      .map(({ rowIndex }) => ({ rowIndex, patch: acceptRowPatch(currentUserName()) }));
+    if (!patches.length) return;
+    if (!window.confirm(`Verify and close ${patches.length} finding(s) awaiting review?`)) return;
+    return applyVerdicts(r, patches);
+  };
+
+  /* ===== Email ===== */
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailPayload, setEmailPayload] = useState(null);
+
+  const openEmail = async (r) => {
+    try {
+      /* The e-mail body carries the evidence link, so make sure a live one
+         exists before the composer opens. */
+      const pub = await ensureEvidenceLink(r);
+      const p = r._raw?.payload || {};
+      /* A link nobody outside this machine can open is worse than no link —
+         leave it out rather than mail a dead URL to a branch. */
+      const shareable = isShareableEvidenceUrl(pub.url);
+      setEmailPayload({
+        ...p,
+        id: r.id,
+        branch: r.branch ? getBranchLabel(r.branch, pageLang) : (r.branchRaw || ""),
+        reportDate: p?.header?.date || r.date || "",
+        evidenceUrl: shareable ? pub.url : "",
+        evidenceExpiresAt: pub.expiresAt || null,
+      });
+      setEmailOpen(true);
+      if (!shareable) {
+        alert(`The evidence link was left out of this e-mail.\n\n${localOriginWarning()}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Failed to prepare the e-mail.");
     }
   };
 
@@ -1696,6 +1865,34 @@ export default function InternalAuditReportsView() {
                             </div>
                           </div>
 
+                          {/* Branch-link health: whether it exists, is still
+                              valid, and whether the branch ever opened it. */}
+                          {(() => {
+                            const pub = p?.public || {};
+                            if (!pub.token) return null;
+                            const st = getEvidenceLinkState(pub);
+                            const tone = st.revoked
+                              ? { bg: "#fee2e2", color: "#991b1b", text: "Link cancelled" }
+                              : st.expired
+                              ? { bg: "#fee2e2", color: "#991b1b", text: "Link expired" }
+                              : st.daysLeft != null && st.daysLeft <= 7
+                              ? { bg: "#fef3c7", color: "#92400e", text: `Link expires in ${st.daysLeft} day(s)` }
+                              : { bg: "#dcfce7", color: "#166534", text: st.daysLeft != null ? `Link valid — ${st.daysLeft} day(s) left` : "Link active" };
+                            return (
+                              <div
+                                className="pdf-no-print"
+                                style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8, fontSize: 12 }}
+                              >
+                                <span style={{ ...miniStatus, background: tone.bg, color: tone.color }}>🔗 {tone.text}</span>
+                                <span style={{ ...miniStatus, background: pub.openedAt ? "#dbeafe" : "#f1f5f9", color: pub.openedAt ? "#1d4ed8" : "#475569" }}>
+                                  {pub.openedAt
+                                    ? `Opened by branch: ${new Date(pub.openedAt).toLocaleString("en-GB")}`
+                                    : "Not opened yet"}
+                                </span>
+                              </div>
+                            );
+                          })()}
+
                           <div
                             className="pdf-no-print"
                             style={{
@@ -1707,6 +1904,19 @@ export default function InternalAuditReportsView() {
                           >
                             {!isEditing ? (
                               <>
+                                {countAwaitingQa(table) > 0 && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      acceptAllPending(r);
+                                    }}
+                                    disabled={verifyBusy}
+                                    style={{ ...smallBtn, background: "#166534", color: "#fff", borderColor: "#166534" }}
+                                    title="Accept every finding currently awaiting verification"
+                                  >
+                                    ✔ Verify all ({countAwaitingQa(table)})
+                                  </button>
+                                )}
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1737,12 +1947,53 @@ export default function InternalAuditReportsView() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    openEmail(r);
+                                  }}
+                                  style={{ ...smallBtn, background: "#0f766e", color: "#fff", borderColor: "#0f766e" }}
+                                  title="Compose an e-mail with the PDF and the branch evidence link"
+                                >
+                                  ✉️ Send Email
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     copyEvidenceLink(r);
                                   }}
                                   style={smallBtn}
                                 >
                                   Copy Branch Link
                                 </button>
+                                {(() => {
+                                  /* Renew / cancel only make sense once a link exists. */
+                                  if (!p?.public?.token) return null;
+                                  const linkState = getEvidenceLinkState(p.public);
+                                  return (
+                                    <>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          copyEvidenceLink(r, { renew: true });
+                                        }}
+                                        style={smallBtn}
+                                        title="Extend the link's validity and copy it"
+                                      >
+                                        ↻ Renew Link
+                                      </button>
+                                      {!linkState.revoked && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            revokeEvidenceLink(r);
+                                          }}
+                                          style={smallBtn}
+                                          title="Cancel the link so the URL stops working"
+                                        >
+                                          ⛔ Cancel Link
+                                        </button>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -2004,10 +2255,19 @@ export default function InternalAuditReportsView() {
                                               <option value="">--</option>
                                               <option>Open</option>
                                               <option>In Progress</option>
+                                              <option>Pending QA Verification</option>
                                               <option>Closed</option>
                                             </select>
                                           ) : (
-                                            row.status || "-"
+                                            <>
+                                              <div style={{ fontWeight: 700 }}>{row.status || "-"}</div>
+                                              <VerdictCell
+                                                row={row}
+                                                busy={verifyBusy}
+                                                onAccept={() => acceptFinding(r, ridx)}
+                                                onReject={() => rejectFinding(r, ridx)}
+                                              />
+                                            </>
                                           )}
                                         </div>
 
@@ -2157,12 +2417,67 @@ export default function InternalAuditReportsView() {
         {viewerSrc && (
           <Lightbox src={viewerSrc} onClose={() => setViewerSrc(null)} />
         )}
+
+        <EmailSendModal
+          open={emailOpen}
+          onClose={() => setEmailOpen(false)}
+          payload={emailPayload}
+          config={internalAuditEmailConfig}
+        />
       </main>
     </div>
   );
 }
 
 /* ===== Small components ===== */
+
+/* Verdict chip + Accept/Reject controls, shown under the status of a finding.
+   Only renders when there is something to act on or a recorded verdict. */
+function VerdictCell({ row, busy, onAccept, onReject }) {
+  const v = getRowVerification(row);
+  if (!v.state) return null;
+  /* A plain closed row with no recorded verdict says nothing the Status
+     column above doesn't already say — don't repeat it. */
+  if (v.state === "accepted" && !v.by && !v.at) return null;
+  const tone = verificationTone(v.state);
+  const stamp = v.at ? new Date(v.at).toLocaleDateString("en-GB") : "";
+  const awaiting = isAwaitingQa(row);
+
+  return (
+    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={{ ...miniStatus, background: tone.bg, color: tone.color }}>{tone.label}</span>
+      {(v.by || stamp) && (
+        <span style={{ fontSize: 10, color: "#64748b" }}>
+          {[v.by, stamp].filter(Boolean).join(" · ")}
+        </span>
+      )}
+      {v.state === "rejected" && v.reason && (
+        <span style={{ fontSize: 11, color: "#991b1b", lineHeight: 1.4 }}>“{v.reason}”</span>
+      )}
+      {awaiting && (
+        <div className="pdf-no-print" style={{ display: "flex", gap: 4 }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onAccept(); }}
+            disabled={busy}
+            style={verdictBtn("#166534")}
+            title="Evidence is acceptable — close this finding"
+          >
+            ✔ Accept
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onReject(); }}
+            disabled={busy}
+            style={verdictBtn("#991b1b")}
+            title="Send back to the branch with a reason"
+          >
+            ✖ Reject
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Thumbs({ list, onView }) {
   const arr = (Array.isArray(list) ? list : []).map(getImageUrl).filter(Boolean);
   if (!arr.length) return <span style={{ opacity: 0.6 }}>-</span>;
@@ -2500,6 +2815,19 @@ const reportFooterLine = {
   fontWeight: 900,
   color: "#334155",
 };
+
+const verdictBtn = (color) => ({
+  flex: 1,
+  padding: "4px 6px",
+  fontSize: 11,
+  fontWeight: 900,
+  color: "#fff",
+  background: color,
+  border: `1px solid ${color}`,
+  borderRadius: 5,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+});
 
 const miniStatus = {
   maxWidth: 150,

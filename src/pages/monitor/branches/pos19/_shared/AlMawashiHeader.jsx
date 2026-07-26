@@ -8,7 +8,7 @@
 // every <th>/<label>/<strong> in the surrounding form with an Arabic twin.
 
 import React, { useEffect, useRef } from "react";
-import { BilingualGuidance, FIELD_AR, TITLE_AR, TERM_AR } from "./ReportHeader";
+import { BilingualGuidance, TERM_AR } from "./ReportHeader";
 
 const NOTE_TONES = {
   ok:      { color: "#166534", background: "#dcfce7", border: "#bbf7d0" },
@@ -32,7 +32,6 @@ const bandTitle = {
   marginBottom: 10, color: "#0b1f4d",
 };
 const cellLabel = { fontWeight: 800 };
-const cellLabelAr = { direction: "rtl", fontWeight: 700, color: "#475569", fontSize: 11 };
 const cellInput = {
   fontSize: 13, fontWeight: 600, color: "#0b1f4d", background: "#fff",
   border: "1px solid #1f3b70", borderRadius: 4, padding: "3px 6px",
@@ -54,8 +53,7 @@ function getArabicTerm(value) {
 
 function HeaderCell({ cell }) {
   if (!cell) return <td style={tdHeader} />;
-  const { label, value, onChange, type, placeholder, note, labelAr } = cell;
-  const ar = labelAr || FIELD_AR[label] || "";
+  const { label, value, onChange, type, placeholder, note } = cell;
   const tone = note ? NOTE_TONES[note.tone] || NOTE_TONES.muted : null;
   const editable = typeof onChange === "function";
   return (
@@ -63,7 +61,6 @@ function HeaderCell({ cell }) {
       {editable ? (
         <>
           <b style={cellLabel}>{label}:</b>
-          {ar ? <span style={{ ...cellLabelAr, marginInlineStart: 6 }}>{ar}</span> : null}
           <input
             type={type || "text"}
             value={value ?? ""}
@@ -75,14 +72,13 @@ function HeaderCell({ cell }) {
       ) : (
         <>
           <b style={cellLabel}>{label}:</b> <span>{value || "—"}</span>
-          {ar ? <span style={{ ...cellLabelAr, marginInlineStart: 6 }}>{ar}</span> : null}
         </>
       )}
       {note ? (
         <div style={{
           marginTop: 3, padding: "3px 6px", borderRadius: 4,
           fontSize: 10.5, fontWeight: 700, lineHeight: 1.4,
-          direction: "rtl", textAlign: "right",
+          direction: "ltr", textAlign: "left",
           color: tone.color, background: tone.background,
           border: `1px solid ${tone.border}`,
         }}>
@@ -93,9 +89,8 @@ function HeaderCell({ cell }) {
   );
 }
 
-export default function AlMawashiHeader({ title, subtitle, titleAr, fields = [] }) {
+export default function AlMawashiHeader({ title, subtitle, fields = [] }) {
   const rootRef = useRef(null);
-  const resolvedTitleAr = titleAr || TITLE_AR[title] || "";
 
   // Decorate the surrounding form's headers/labels with their Arabic twin
   // (same behaviour the previous gradient ReportHeader provided).
@@ -156,16 +151,11 @@ export default function AlMawashiHeader({ title, subtitle, titleAr, fields = [] 
         </tbody>
       </table>
 
-      {/* Title band (EN + AR) */}
+      {/* Title band (English only) */}
       <div style={bandTitle}>
         {String(title || "").toUpperCase()}
         {subtitle ? (
           <div style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginTop: 2 }}>{subtitle}</div>
-        ) : null}
-        {resolvedTitleAr ? (
-          <div style={{ direction: "rtl", fontSize: 13, marginTop: 4, color: "#475569", fontWeight: 700 }}>
-            {resolvedTitleAr}
-          </div>
         ) : null}
       </div>
 
