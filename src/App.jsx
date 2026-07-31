@@ -14,6 +14,8 @@ const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
 const Login = lazy(() => import("./pages/Login"));
 const NamedDashboard = lazy(() => import("./pages/NamedDashboard"));
 const Inspection = lazy(() => import("./pages/Inspection"));
+const InspectionHub = lazy(() => import("./pages/inspection/InspectionHub"));
+const InspectionAnnualPlan = lazy(() => import("./pages/inspection/InspectionAnnualPlan"));
 const InspectionEvidencePublic = lazy(() => import("./pages/InspectionEvidencePublic"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
@@ -112,6 +114,10 @@ const ENOCReturnsBrowse = lazy(() => import("./pages/ENOC/ENOCReturnsBrowse"));
 const ENOCReturnsBrowseMenuView = lazy(() =>
   import("./pages/ENOC/ENOCReturnsBrowseMenuView")
 );
+
+// ✅🆕 Destroyed Materials / سجل إعدام المواد (Input + Browse)
+const DestructionInput = lazy(() => import("./pages/Destruction/DestructionInput"));
+const DestructionBrowse = lazy(() => import("./pages/Destruction/DestructionBrowse"));
 
 const KPIDashboard = lazy(() => import("./pages/KPIDashboard"));
 
@@ -303,6 +309,21 @@ const OpportunityRegisterView = lazy(() => import("./pages/haccp and iso/Opportu
 const ChangeManagementLogView = lazy(() => import("./pages/haccp and iso/ChangeManagementLog/ChangeManagementLogView"));
 
 // 🆕 📦 Product Details Input
+/* 🍽️ Kitchen (المطبخ) — sub-hub inside HACCP / ISO */
+const KitchenHub = lazy(() => import("./pages/haccp and iso/Kitchen/KitchenHub"));
+const MenuNutritionHub = lazy(() =>
+  import("./pages/haccp and iso/Kitchen/MenuNutrition/MenuNutritionHub")
+);
+const MenuNutritionInput = lazy(() =>
+  import("./pages/haccp and iso/Kitchen/MenuNutrition/MenuNutritionInput")
+);
+const MenuNutritionView = lazy(() =>
+  import("./pages/haccp and iso/Kitchen/MenuNutrition/MenuNutritionView")
+);
+const MenuBookletPublic = lazy(() =>
+  import("./pages/haccp and iso/Kitchen/MenuNutrition/MenuBookletPublic")
+);
+
 const ProductDetailsHub = lazy(() =>
   import("./pages/haccp and iso/ProductDetailsHub")
 );
@@ -705,11 +726,28 @@ export default function App() {
         {/* الجذر */}
         <Route path="/" element={<Login />} />
         <Route path="/subscription-expired" element={<SubscriptionExpired />} />
+        {/* 🔍 Inspection module — the icon opens a hub, not the form directly */}
         <Route
           path="/inspection"
           element={
             <ProtectedRoute>
+              <InspectionHub />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inspection/new"
+          element={
+            <ProtectedRoute>
               <Inspection />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inspection/annual-plan"
+          element={
+            <ProtectedRoute>
+              <InspectionAnnualPlan />
             </ProtectedRoute>
           }
         />
@@ -1253,6 +1291,26 @@ export default function App() {
           />
         </Route>
 
+        {/* ✅✅✅ Destroyed Materials routes / سجل إعدام المواد */}
+        <Route path="/destruction">
+          <Route
+            path="input"
+            element={
+              <ProtectedRoute>
+                <DestructionInput />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="browse"
+            element={
+              <ProtectedRoute>
+                <DestructionBrowse />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
         {/* returns-customers/* */}
         <Route path="/returns-customers">
           <Route
@@ -1688,6 +1746,40 @@ export default function App() {
           }
         />
 
+        {/* 🍽️ Kitchen (المطبخ) */}
+        <Route
+          path="/haccp-iso/kitchen"
+          element={
+            <ProtectedRoute>
+              <KitchenHub />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/kitchen/menu-nutrition"
+          element={
+            <ProtectedRoute>
+              <MenuNutritionHub />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/kitchen/menu-nutrition/input"
+          element={
+            <ProtectedRoute>
+              <MenuNutritionInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/kitchen/menu-nutrition/view"
+          element={
+            <ProtectedRoute>
+              <MenuNutritionView />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 🆕 Product Details */}
         <Route
           path="/haccp-iso/product-details"
@@ -1855,6 +1947,9 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* 🍽️ PUBLIC menu nutrition booklet (QR target — NO login) */}
+        <Route path="/menu-nutrition" element={<MenuBookletPublic />} />
 
         {/* ✅✅✅ PUBLIC SUPPLIER LINK (NO login) */}
         <Route

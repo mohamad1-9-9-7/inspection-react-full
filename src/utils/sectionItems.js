@@ -39,6 +39,10 @@ export const SECTION_ITEMS = {
         { id: "enoc.browse",  icon: "⛽", label: "Browse" },
         { id: "enoc.create",  icon: "⛽", label: "Create" },
       ]},
+      { id: "destruction",     icon: "🗑️", label: "Condemnation & Disposal", subItems: [
+        { id: "destruction.browse",  icon: "🗑️", label: "Browse" },
+        { id: "destruction.create",  icon: "📝", label: "Create" },
+      ]},
     ],
   },
 
@@ -85,6 +89,9 @@ export const SECTION_ITEMS = {
       { id: "product-details",       icon: "📦", label: "Product Details", subItems: [
         { id: "product-details.entry", icon: "📝", label: "Product Entry" },
         { id: "product-details.view",  icon: "📋", label: "View Products" },
+      ]},
+      { id: "kitchen",               icon: "🍽️", label: "Kitchen (المطبخ)", subItems: [
+        { id: "kitchen.menu-nutrition", icon: "🔥", label: "Menu Calories & Nutrition" },
       ]},
       { id: "licenses-contracts",    icon: "📋", label: "Licenses & Contracts" },
       { id: "dm-inspection",         icon: "🔍", label: "DM Inspection" },

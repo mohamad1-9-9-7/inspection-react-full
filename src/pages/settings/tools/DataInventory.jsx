@@ -32,7 +32,7 @@ const KNOWN_TYPES = [
   // Misc
   "internal_multi_audit", "ohc_certificate", "training_certificate",
   "supervisor_corrective_action", "admin_notification_config",
-  "finished_products_report", "enoc_returns",
+  "finished_products_report", "enoc_returns", "destruction_record",
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

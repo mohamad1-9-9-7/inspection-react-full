@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildInspectionEvidencePublic } from "../utils/inspectionPublicLink";
+import { canonicalInspectionBranch } from "./inspection/inspectionBranches";
 
 /* ===== Routing ===== */
 const REPORTS_ROUTE = "/monitor/internal-audit";
@@ -252,56 +253,102 @@ export default function Inspection() {
   };
 
   /* ===== Save to server ===== */
-  const confirmSave = async () => {
-    if (isSaving) return; // منع double-submit
-    if (!branch || !date) {
-      alert("Please select Branch and Date.");
-      return;
-    }
-
-    if (uploadingCell) {
-      alert("يرجى الانتظار حتى تنتهي رفع الصور.");
-      return;
-    }
-
+  const buildBody = () => {
     const reportName = `${branch} - ${date}`;
-    const payload = {
-      template: "capa_v1",
-      title: reportName,
-      header: {
-        documentNumber: "FS-QM/REC/CA/1",
-        revisionNo: "00",
-        issuedBy,
-        approvedBy,
-        date,
-        reportNo,
-        auditConductedBy: auditBy,
-        location: location || branch
-      },
-      table: rows,
-      footer: {
-        commentForNextAudit: commentNextAudit,
-        nextAudit,
-        reviewedAndVerifiedBy: reviewedBy
-      },
-      public: buildInspectionEvidencePublic(),
-      kpis: { percentageClosed },
-      createdAt: new Date().toISOString()
+    return {
+      type: "internal_multi_audit",
+      branch,
+      payload: {
+        template: "capa_v1",
+        title: reportName,
+        /* ⚠️ The server does NOT persist the top-level `branch` column for this
+           endpoint, so the selected branch MUST live inside the payload —
+           otherwise the only trace left is the free-text Location field. */
+        branch,
+        header: {
+          documentNumber: "FS-QM/REC/CA/1",
+          revisionNo: "00",
+          issuedBy,
+          approvedBy,
+          date,
+          reportNo,
+          branch,
+          auditConductedBy: auditBy,
+          location: location || branch
+        },
+        table: rows,
+        footer: {
+          commentForNextAudit: commentNextAudit,
+          nextAudit,
+          reviewedAndVerifiedBy: reviewedBy
+        },
+        public: buildInspectionEvidencePublic(),
+        kpis: { percentageClosed },
+        createdAt: new Date().toISOString()
+      }
     };
+  };
 
-    const body = { type: "internal_multi_audit", branch, payload };
+  /* Look for a report already saved for the same branch + same date. */
+  const findExistingReport = async () => {
+    try {
+      const res = await fetch(`${REPORTS_URL}?type=internal_multi_audit`, {
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const list = Array.isArray(data) ? data
+        : Array.isArray(data?.items) ? data.items
+        : Array.isArray(data?.data) ? data.data
+        : Array.isArray(data?.reports) ? data.reports : [];
+      const wanted = canonicalInspectionBranch(branch);
+      return list.find((r) => {
+        const h = r?.payload?.header || {};
+        if ((h.date || r?.reportDate || "") !== date) return false;
+        const raw = r?.payload?.branch || h.branch || r?.branch || h.location || "";
+        return canonicalInspectionBranch(raw) === wanted;
+      }) || null;
+    } catch {
+      return null; // never block saving because the duplicate check failed
+    }
+  };
 
-    setModal({ open: true, stage: "saving", message: "جاري الحفظ..." });
+  const performSave = async (existingId) => {
+    const body = buildBody();
+    setModal({ open: true, stage: "saving", message: tt("Saving…", "جاري الحفظ...") });
 
     try {
-      const res = await fetch(REPORTS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
+      let res;
+      if (existingId) {
+        // ✅ update by id — the generic PUT /api/reports upserts by date
+        res = await fetch(`${REPORTS_URL}/${encodeURIComponent(existingId)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) {
+          res = await fetch(`${REPORTS_URL}/${encodeURIComponent(existingId)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          });
+        }
+      } else {
+        res = await fetch(REPORTS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+      }
       if (!res.ok) throw new Error("HTTP " + res.status);
 
-      setModal({ open: true, stage: "success", message: tt("Saved successfully ✅", "تم الحفظ بنجاح ✅") });
+      setModal({
+        open: true,
+        stage: "success",
+        message: existingId
+          ? tt("Report updated ✅", "تم تحديث التقرير ✅")
+          : tt("Saved successfully ✅", "تم الحفظ بنجاح ✅"),
+      });
       // Clear draft so the form doesn't reload the same data after a successful save
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
 
@@ -316,6 +363,39 @@ export default function Inspection() {
     } catch (e) {
       setModal({ open: true, stage: "error", message: "فشل الحفظ ❌" });
     }
+  };
+
+  const confirmSave = async () => {
+    if (isSaving) return; // منع double-submit
+    if (!branch || !date) {
+      alert("Please select Branch and Date.");
+      return;
+    }
+
+    if (uploadingCell) {
+      alert("يرجى الانتظار حتى تنتهي رفع الصور.");
+      return;
+    }
+
+    setModal({ open: true, stage: "saving", message: tt("Checking for duplicates…", "جارٍ التحقق من التكرار...") });
+    const existing = await findExistingReport();
+
+    if (existing) {
+      const h = existing?.payload?.header || {};
+      setModal({
+        open: true,
+        stage: "duplicate",
+        message: "",
+        dup: {
+          id: existing.id || existing._id,
+          reportNo: h.reportNo || "",
+          findings: Array.isArray(existing?.payload?.table) ? existing.payload.table.length : 0,
+        },
+      });
+      return;
+    }
+
+    performSave(null);
   };
 
   /* ===== UI ===== */
@@ -504,6 +584,7 @@ export default function Inspection() {
             </div>
           </div>
           <div style={{display:"flex", gap:8, flexWrap:"wrap"}} className="ins-no-print">
+            <button onClick={()=>navigate("/inspection")} style={toolBtn} title={tt("Inspection sections","أقسام التفتيش")}>🏠 {tt("Sections","الأقسام")}</button>
             <button onClick={toggleLang} style={toolBtn} title="Toggle language">🌐 {isAr ? "EN" : "AR"}</button>
             <button onClick={()=>window.print()} style={toolBtn} title="Print">🖨️ {tt("Print", "طباعة")}</button>
             <button onClick={()=>navigate("/ai-assistant")} style={aiBtn} title="AI Assistant">🤖 AI</button>
@@ -731,15 +812,69 @@ export default function Inspection() {
       {/* Modal */}
       {modal.open && (
         <div style={modalBackdrop} onClick={()=> modal.stage!=="saving" && setModal({open:false, stage:"idle", message:""})}>
-          <div style={modalCard} onClick={(e)=>e.stopPropagation()}>
+          <div
+            style={{...modalCard, width: modal.stage === "duplicate" ? 420 : modalCard.width}}
+            onClick={(e)=>e.stopPropagation()}
+            dir={isAr ? "rtl" : "ltr"}
+          >
             {modal.stage === "saving" && <div style={spinner}/>}
-            <div style={{fontSize:16, fontWeight:800, marginTop: modal.stage==="saving" ? 10 : 0, textAlign:"center"}}>
-              {modal.message || (modal.stage==="saving" ? "جاري الحفظ..." : "")}
-            </div>
-            {modal.stage === "error" && (
-              <button onClick={()=>setModal({open:false,stage:"idle",message:""})} style={{...smallBtn, marginTop:12}}>
-                إغلاق
-              </button>
+
+            {modal.stage === "duplicate" ? (
+              <>
+                <div style={{fontSize:34, lineHeight:1}}>⚠️</div>
+                <div style={{fontSize:16, fontWeight:1000, marginTop:8, color:"#92400e"}}>
+                  {tt("A report already exists", "يوجد تقرير محفوظ مسبقاً")}
+                </div>
+                <div style={{fontSize:13, fontWeight:700, color:"#475569", marginTop:8, lineHeight:1.6}}>
+                  {tt(
+                    `There is already a report for ${branch} on ${date}`,
+                    `يوجد تقرير لنفس الفرع ${branch} بنفس التاريخ ${date}`
+                  )}
+                  {modal.dup?.reportNo ? ` · #${modal.dup.reportNo}` : ""}
+                  {` · ${modal.dup?.findings ?? 0} ${tt("finding(s)", "ملاحظة")}`}
+                  <br/>
+                  {tt(
+                    "Saving again creates a second report and inflates the annual schedule.",
+                    "الحفظ مرة ثانية بينشئ تقريراً مكرراً وبيضخّم أرقام الجدول السنوي."
+                  )}
+                </div>
+                <div style={{display:"flex", flexDirection:"column", gap:8, marginTop:14}}>
+                  <button
+                    onClick={()=>performSave(modal.dup?.id)}
+                    disabled={!modal.dup?.id}
+                    style={{
+                      ...saveBtnBig, padding:"11px 16px", fontSize:13,
+                      opacity: modal.dup?.id ? 1 : .5,
+                      cursor: modal.dup?.id ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    ♻ {tt("Update the existing report", "تحديث التقرير الموجود")}
+                  </button>
+                  <button
+                    onClick={()=>performSave(null)}
+                    style={{...smallBtn, padding:"10px 14px", fontWeight:900, background:"#fef3c7", borderColor:"#fbbf24", color:"#92400e"}}
+                  >
+                    ➕ {tt("Save as a separate report", "حفظ كتقرير منفصل")}
+                  </button>
+                  <button
+                    onClick={()=>setModal({open:false,stage:"idle",message:""})}
+                    style={{...smallBtn, padding:"10px 14px", fontWeight:900}}
+                  >
+                    ✕ {tt("Cancel", "إلغاء")}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{fontSize:16, fontWeight:800, marginTop: modal.stage==="saving" ? 10 : 0, textAlign:"center"}}>
+                  {modal.message || (modal.stage==="saving" ? "جاري الحفظ..." : "")}
+                </div>
+                {modal.stage === "error" && (
+                  <button onClick={()=>setModal({open:false,stage:"idle",message:""})} style={{...smallBtn, marginTop:12}}>
+                    إغلاق
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>

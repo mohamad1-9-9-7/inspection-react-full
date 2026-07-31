@@ -1,8 +1,8 @@
 // src/pages/training/TrainingSessionsList.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { QRCodeSVG } from 'qrcode.react';
-import TrainingReferenceModal, { MODULE_DETAILS_BI } from './TrainingReferenceModal';
+import { QRCodeCanvas } from 'qrcode.react';
+import TrainingReferenceModal, { MODULE_DETAILS_BI, parseRefSections, LETTER_PALETTE } from './TrainingReferenceModal';
 
 import {
   REPORTS_URL,
@@ -337,16 +337,40 @@ function issueTone(issue) {
 
 /* ===================== Constants ===================== */
 const TOTAL_MODULES = 16; // total required training modules per branch
+// Default QA signatory (same as the training record's "Approved By" in TrainingSessionCreate)
+const DEFAULT_QA_MANAGER = "Hussam O.Sarhan";
+const TRAINING_DOC_NO = "FS-QM/REC/TR/1";
 
-/* ===================== Certificate Modal ===================== */
-function CertificateModal({ open, onClose, participant, moduleName, branch, date, conductedBy, lang = "en" }) {
-  if (!open || !participant) return null;
+/* ===================== Certificate card (shared by the modal and the PDF export) ===================== */
+function CertificateCard({ participant, session, moduleName, branch, date, conductedBy, verifiedBy, withPrintIds = false }) {
+  if (!participant) return null;
 
   const name     = String(participant.name        || '').trim();
   const empId    = String(participant.employeeId  || '').trim();
   const desig    = String(participant.designation || '').trim();
   const scoreNum = parseInt(String(participant.score || '0').replace('%',''), 10) || 0;
   const certNo   = `AM-FS-${(date||'').replace(/-/g,'')}-${String(participant.slNo||'01').padStart(3,'0')}`;
+  const qaName   = String(verifiedBy || session?.payload?.verifiedBy || DEFAULT_QA_MANAGER || '').trim();
+
+  // ── Key training points (A–L) — from the session's own details, else the module reference
+  const detailsText =
+    String(session?.payload?.details || '').trim() ||
+    MODULE_DETAILS_BI[moduleName] ||
+    MODULE_DETAILS_BI.__DEFAULT__ ||
+    '';
+  const headline = (s) => {
+    const t = String(s || '').split(/—|–|:/)[0].replace(/\.\s*$/, '').trim();
+    return t.length > 52 ? `${t.slice(0, 50)}…` : t;
+  };
+  const topics = parseRefSections(detailsText)
+    .slice(0, 8)
+    .map(s => ({ letter: s.letter, en: headline(s.en) }))
+    .filter(s => !!s.en);
+
+  // ── Assessment summary (from the saved quiz attempt, when there is one)
+  const answers  = participant?.quizAttempt?.answers || [];
+  const qTotal   = answers.length;
+  const qCorrect = answers.filter(a => a && a.chosen === a.correct).length;
 
   // Expiry = training date + 1 year
   const expiryDate = (() => {
@@ -374,111 +398,27 @@ function CertificateModal({ open, onClose, participant, moduleName, branch, date
       `date=${encodeURIComponent(date||'')}`,
       `score=${scoreNum}`,
       `by=${encodeURIComponent(conductedBy||'')}`,
+      `qa=${encodeURIComponent(qaName||'')}`,
       `branch=${encodeURIComponent(branch||'')}`,
       `exp=${encodeURIComponent(expiryDate)}`,
     ].join('&');
     return `${base}?${qs}`;
   })();
 
-  const doPrint = () => {
-    // Set filename: browser uses document.title as the PDF filename
-    const safeName = name.replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_') || 'Participant';
-    const prevTitle = document.title;
-    document.title = `Training_Certificate_${safeName}`;
-
-    const s = document.createElement('style');
-    s.id = '_cert_ps_';
-    s.textContent = `
-      @media print {
-        @page { size: A4 landscape; margin: 0; }
-        body > * { display: none !important; }
-        body > #root { display: block !important; }
-        #cert-overlay {
-          display: flex !important;
-          position: fixed !important; inset: 0 !important;
-          background: #fff !important;
-          backdrop-filter: none !important;
-          align-items: flex-start !important;
-          justify-content: center !important;
-          padding: 0 !important;
-          overflow: visible !important;
-        }
-        .cert-noprint { display: none !important; }
-        #cert-print {
-          display: flex !important;
-          width: 100% !important;
-          max-width: none !important;
-          min-height: 100vh !important;
-          border-radius: 0 !important;
-          box-shadow: none !important;
-          margin: 0 !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-          color-adjust: exact !important;
-        }
-        #cert-print * {
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-          color-adjust: exact !important;
-        }
-        #cert-left-panel {
-          background: linear-gradient(160deg,#0f172a 0%,#1e3a8a 55%,#312e81 100%) !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-      }
-    `;
-    document.head.appendChild(s);
-    window.print();
-    setTimeout(() => {
-      document.getElementById('_cert_ps_')?.remove();
-      document.title = prevTitle;
-    }, 1500);
-  };
-
   return (
-    <div
-      id="cert-overlay"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      style={{
-        position:'fixed', inset:0, zIndex:10000,
-        background:'rgba(6,9,22,0.92)', backdropFilter:'blur(14px)',
-        display:'flex', alignItems:'center', justifyContent:'center',
-        padding:'20px 16px', overflowY:'auto',
-      }}
-    >
-      {/* Floating action bar */}
-      <div className="cert-noprint" style={{
-        position:'fixed', top:20, right:20,
-        display:'flex', gap:10, zIndex:1,
-      }}>
-        <button onClick={doPrint} style={{
-          background:'linear-gradient(135deg,#4338ca,#6366f1)',
-          color:'#fff', border:'none', borderRadius:12,
-          padding:'11px 22px', fontWeight:700, fontSize:13, cursor:'pointer',
-          boxShadow:'0 4px 18px rgba(99,102,241,.5)',
-          display:'flex', alignItems:'center', gap:7,
-        }}>🖨️ Print / طباعة</button>
-        <button onClick={onClose} style={{
-          background:'rgba(255,255,255,.08)', color:'#fff',
-          border:'1px solid rgba(255,255,255,.18)',
-          borderRadius:12, padding:'11px 15px', fontWeight:700, fontSize:14, cursor:'pointer',
-        }}>✕</button>
-      </div>
-
-      {/* ── Certificate Card — split layout (×1.5 larger) ── */}
-      <div id="cert-print" style={{
-        width:'100%', maxWidth:1500,
-        display:'flex', minHeight:880,
-        borderRadius:24,
-        boxShadow:'0 50px 140px rgba(0,0,0,.8)',
-        overflow:'hidden',
-        fontFamily:"'Inter','Segoe UI',system-ui,sans-serif",
-      }}>
+    /* ── Certificate Card — exact A4 landscape ratio (297×210mm → 1123×794px @96dpi) ── */
+    <div id={withPrintIds ? 'cert-print' : undefined} style={{
+      width:'100%', maxWidth:1123,
+      display:'flex', minHeight:794,
+      borderRadius:18,
+      boxShadow: withPrintIds ? '0 50px 140px rgba(0,0,0,.8)' : 'none',
+      overflow:'hidden',
+      fontFamily:"'Inter','Segoe UI',system-ui,sans-serif",
+    }}>
 
         {/* ── LEFT PANEL (dark gradient) ── */}
-        <div id="cert-left-panel" style={{
-          width:420, flexShrink:0,
+        <div id={withPrintIds ? 'cert-left-panel' : undefined} style={{
+          width:376, flexShrink:0,
           background:'linear-gradient(160deg,#0f172a 0%,#1e3a8a 55%,#312e81 100%)',
           display:'flex', flexDirection:'column', alignItems:'center',
           justifyContent:'space-between', padding:'36px 26px 22px', position:'relative',
@@ -509,13 +449,13 @@ function CertificateModal({ open, onClose, participant, moduleName, branch, date
             {/* Company */}
             <div style={{ textAlign:'center', marginBottom:30 }}>
               <div style={{ color:'rgba(255,255,255,.5)', fontSize:11, letterSpacing:2.5, textTransform:'uppercase', marginBottom:6 }}>
-                شركة المواشي
+                Trans Emirates Livestock
               </div>
               <div style={{ color:'rgba(255,255,255,.9)', fontSize:15, fontWeight:700, letterSpacing:.5 }}>
                 Al Mawashi Company
               </div>
               <div style={{ color:'rgba(255,255,255,.5)', fontSize:12, marginTop:5 }}>
-                قسم الجودة
+                Quality Department
               </div>
             </div>
 
@@ -546,7 +486,7 @@ function CertificateModal({ open, onClose, participant, moduleName, branch, date
               boxShadow:'0 5px 20px rgba(22,163,74,.5)',
               marginBottom:9,
             }}>PASSED ✓</div>
-            <div style={{ color:'rgba(255,255,255,.55)', fontSize:13, letterSpacing:.5 }}>نجح — اجتاز التقييم</div>
+            <div style={{ color:'rgba(255,255,255,.55)', fontSize:13, letterSpacing:.5 }}>Assessment successfully completed</div>
           </div>
 
           {/* ── BOTTOM GROUP: QR + cert number ── */}
@@ -555,7 +495,8 @@ function CertificateModal({ open, onClose, participant, moduleName, branch, date
               background:'#fff', borderRadius:10, padding:6,
               boxShadow:'0 4px 16px rgba(0,0,0,.4)',
             }}>
-              <QRCodeSVG value={verifyUrl} size={112} level="M" />
+              {/* Canvas (not SVG) so it survives html2canvas; oversized then scaled down for crisp print */}
+              <QRCodeCanvas value={verifyUrl} size={336} level="M" style={{ width:112, height:112, display:'block' }} />
             </div>
             <div style={{ color:'rgba(255,255,255,.3)', fontSize:9, letterSpacing:1.8, textTransform:'uppercase', marginTop:2 }}>
               Scan to Verify
@@ -568,124 +509,373 @@ function CertificateModal({ open, onClose, participant, moduleName, branch, date
         <div style={{
           flex:1, background:'#ffffff',
           display:'flex', flexDirection:'column',
-          padding:'38px 48px 28px',
+          padding:'34px 48px 26px',
         }}>
           {/* Header label */}
-          <div style={{ marginBottom:22 }}>
+          <div style={{ marginBottom:18 }}>
             <div style={{
-              fontSize:13, fontWeight:800, letterSpacing:5,
-              color:'#6366f1', textTransform:'uppercase', marginBottom:6,
+              fontSize:13.5, fontWeight:800, letterSpacing:6,
+              color:'#6366f1', textTransform:'uppercase', marginBottom:8,
             }}>Certificate of Achievement</div>
             <div style={{
-              fontSize:28, fontWeight:900, color:'#0f172a', letterSpacing:'-0.03em', lineHeight:1.1,
-            }}>شهادة إتمام التدريب بنجاح</div>
-            <div style={{ height:4, width:72, background:'linear-gradient(90deg,#4338ca,#6366f1)', borderRadius:99, marginTop:11 }}/>
+              fontFamily:"Georgia,'Times New Roman',serif",
+              fontSize:28, fontWeight:700, color:'#0f172a', letterSpacing:'-0.01em', lineHeight:1.15,
+            }}>Food Safety &amp; Quality Training</div>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:11 }}>
+              <div style={{ height:4, width:84, background:'linear-gradient(90deg,#4338ca,#6366f1)', borderRadius:99 }}/>
+              <div style={{ height:4, width:16, background:'#c7d2fe', borderRadius:99 }}/>
+            </div>
           </div>
 
           {/* Intro */}
-          <div style={{ fontSize:15, color:'#94a3b8', marginBottom:9, fontStyle:'italic' }}>
-            This is to certify that — يُشهد بأن
+          <div style={{ fontSize:15.5, color:'#94a3b8', marginBottom:8, fontStyle:'italic' }}>
+            This is to certify that
           </div>
 
-          {/* Name */}
+          {/* Name — main focal point of the certificate */}
           <div style={{
-            fontSize:42, fontWeight:900, color:'#0f172a',
-            letterSpacing:'-0.03em', lineHeight:1.1, marginBottom:12,
+            fontFamily:"Georgia,'Times New Roman',serif",
+            fontSize:26, fontWeight:700, color:'#0f172a',
+            letterSpacing:2, lineHeight:1.2, marginBottom:10,
+            textTransform:'uppercase', wordBreak:'break-word',
           }}>{name || '— —'}</div>
 
           {/* ID + Designation chips */}
-          <div style={{ display:'flex', gap:10, marginBottom:20, flexWrap:'wrap' }}>
+          <div style={{ display:'flex', gap:11, marginBottom:12, flexWrap:'wrap' }}>
             {empId && (
               <span style={{
-                fontSize:14, fontWeight:700, color:'#4338ca',
+                fontSize:14.5, fontWeight:700, color:'#4338ca',
                 background:'#eef2ff', border:'1px solid #c7d2fe',
-                padding:'6px 18px', borderRadius:999,
+                padding:'7px 20px', borderRadius:999,
               }}>ID: {empId}</span>
             )}
             {desig && (
               <span style={{
-                fontSize:14, fontWeight:600, color:'#475569',
+                fontSize:14.5, fontWeight:600, color:'#475569',
                 background:'#f8fafc', border:'1px solid #e2e8f0',
-                padding:'6px 18px', borderRadius:999,
+                padding:'7px 20px', borderRadius:999,
               }}>{desig}</span>
             )}
           </div>
 
+          {/* Hairline rule under the identity block */}
+          <div style={{ height:1, background:'#e2e8f0', marginBottom:14 }}/>
+
           {/* Statement */}
-          <div style={{ fontSize:15, color:'#475569', marginBottom:14, lineHeight:1.7 }}>
+          <div style={{ fontSize:15.5, color:'#475569', marginBottom:10, lineHeight:1.6 }}>
             has successfully completed and <span style={{ fontWeight:700, color:'#15803d' }}>PASSED</span> the training module:
-            <br/>
-            <span style={{ fontSize:14, color:'#92400e' }}>أتمّ بنجاح وحدة التدريب التالية واجتاز التقييم بتفوق</span>
           </div>
 
           {/* Module name */}
           <div style={{
             background:'linear-gradient(135deg,#eef2ff,#e0e7ff)',
             border:'2px solid #c7d2fe',
-            borderLeft:'5px solid #4338ca',
-            borderRadius:13, padding:'16px 24px',
-            fontSize:20, fontWeight:800, color:'#1e3a8a',
-            marginBottom:22, letterSpacing:'-0.01em',
-          }}>{getModuleName(moduleName, lang)}</div>
+            borderLeft:'6px solid #4338ca',
+            borderRadius:13, padding:'15px 24px',
+            fontSize:22, fontWeight:800, color:'#1e3a8a',
+            marginBottom:16, letterSpacing:'-0.01em',
+          }}>{getModuleName(moduleName, 'en')}</div>
 
-          {/* Meta row */}
+          {/* ── Key training points covered ── */}
+          {topics.length > 0 && (
+            <div style={{ marginBottom:12 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:11 }}>
+                <div style={{
+                  fontSize:12, fontWeight:800, letterSpacing:2.8,
+                  color:'#4338ca', textTransform:'uppercase', whiteSpace:'nowrap',
+                }}>Key Training Points Covered</div>
+                <div style={{ flex:1, height:1, background:'#e2e8f0' }}/>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'9px 24px' }}>
+                {topics.map((t, i) => (
+                  <div key={t.letter || i} style={{ display:'flex', gap:11, alignItems:'flex-start' }}>
+                    <span style={{
+                      width:22, height:22, borderRadius:7, flexShrink:0, marginTop:1,
+                      background: LETTER_PALETTE[i % LETTER_PALETTE.length],
+                      color:'#fff', fontSize:11.5, fontWeight:800,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                    }}>{t.letter}</span>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:14, fontWeight:700, color:'#1e293b', lineHeight:1.45 }}>{t.en}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Meta strip — record details */}
           <div style={{
-            display:'flex', gap:22, flexWrap:'wrap',
-            fontSize:14, color:'#64748b', marginBottom:'auto', paddingBottom:16,
+            marginTop:'auto', marginBottom:14,
+            border:'1px solid #e2e8f0', borderRadius:12,
+            background:'#f8fafc',
+            display:'grid', gridTemplateColumns:`repeat(${qTotal > 0 ? 5 : 4}, 1fr)`,
+            overflow:'hidden',
           }}>
-            <span>📅 <strong style={{color:'#0f172a'}}>{date || '—'}</strong></span>
-            <span>🏢 <strong style={{color:'#0f172a'}}>{branch || '—'}</strong></span>
-            <span>Pass mark: <strong style={{color:'#15803d'}}>80%</strong></span>
-            {expiryDate && (
-              <span>⏳ Valid until: <strong style={{color: expiryColor}}>{expiryDate}</strong>
-                {daysLeft !== null && daysLeft < 60 && (
-                  <span style={{fontSize:12, color:expiryColor, marginLeft:5}}>
-                    ({daysLeft < 0 ? 'EXPIRED' : `${daysLeft}d left`})
-                  </span>
+            {[
+              ['Date of Training', date || '—', '#0f172a'],
+              ['Branch / Location', branch || '—', '#0f172a'],
+              ['Pass Mark', '80%', '#15803d'],
+              ...(qTotal > 0 ? [['Assessment', `${qCorrect} / ${qTotal} correct`, '#0f172a']] : []),
+              ['Valid Until', expiryDate || '—', expiryColor],
+            ].map(([label, value, color], i) => (
+              <div key={label} style={{
+                padding:'10px 15px',
+                borderLeft: i === 0 ? 'none' : '1px solid #e2e8f0',
+              }}>
+                <div style={{
+                  fontSize:9.5, fontWeight:700, letterSpacing:1.2,
+                  color:'#94a3b8', textTransform:'uppercase', marginBottom:5,
+                }}>{label}</div>
+                <div style={{ fontSize:14, fontWeight:800, color }}>{value}</div>
+                {label === 'Valid Until' && daysLeft !== null && daysLeft < 60 && (
+                  <div style={{ fontSize:10.5, color:expiryColor, marginTop:2, fontWeight:600 }}>
+                    {daysLeft < 0 ? 'EXPIRED' : `${daysLeft} days left`}
+                  </div>
                 )}
-              </span>
-            )}
+              </div>
+            ))}
           </div>
 
-          {/* Divider */}
-          <div style={{ height:1, background:'#f1f5f9', margin:'12px 0' }}/>
-
           {/* Signature row */}
-          <div style={{ display:'flex', gap:30, justifyContent:'space-between' }}>
+          <div style={{ display:'flex', gap:56, justifyContent:'space-between' }}>
             {/* Trainer */}
             <div style={{ flex:1 }}>
               <div style={{
-                height:36, borderBottom:'1.5px solid #334155',
-                marginBottom:6, display:'flex', alignItems:'flex-end',
-                paddingBottom:5,
+                height:44, borderBottom:'1.5px solid #334155',
+                marginBottom:7, display:'flex', alignItems:'flex-end',
+                paddingBottom:6,
               }}>
                 {conductedBy && (
-                  <span style={{ fontSize:14, fontWeight:700, color:'#1e293b' }}>{conductedBy}</span>
+                  <span style={{ fontSize:15, fontWeight:700, color:'#1e293b' }}>{conductedBy}</span>
                 )}
               </div>
-              <div style={{ fontSize:11, color:'#94a3b8', fontWeight:600 }}>Trainer / المدرب</div>
+              <div style={{
+                fontSize:10.5, color:'#64748b', fontWeight:700,
+                letterSpacing:1.4, textTransform:'uppercase',
+              }}>Trainer</div>
+              <div style={{ fontSize:10, color:'#cbd5e1', marginTop:3 }}>Conducted the training session</div>
             </div>
 
             {/* QA Manager */}
             <div style={{ flex:1 }}>
               <div style={{
-                height:36, borderBottom:'1.5px solid #334155', marginBottom:6,
-              }}/>
-              <div style={{ fontSize:11, color:'#94a3b8', fontWeight:600 }}>Quality Manager / مدير الجودة</div>
-              <div style={{ fontSize:10, color:'#cbd5e1', marginTop:3 }}>شركة المواشي — قسم الجودة</div>
+                height:44, borderBottom:'1.5px solid #334155', marginBottom:7,
+                display:'flex', alignItems:'flex-end', paddingBottom:6,
+              }}>
+                {qaName && (
+                  <span style={{ fontSize:15, fontWeight:700, color:'#1e293b' }}>{qaName}</span>
+                )}
+              </div>
+              <div style={{
+                fontSize:10.5, color:'#64748b', fontWeight:700,
+                letterSpacing:1.4, textTransform:'uppercase',
+              }}>Quality Manager</div>
+              <div style={{ fontSize:10, color:'#cbd5e1', marginTop:3 }}>Al Mawashi Company — Quality Department</div>
             </div>
           </div>
 
           {/* Bottom bar */}
           <div style={{
-            marginTop:16, paddingTop:12, borderTop:'1px solid #f1f5f9',
+            marginTop:14, paddingTop:11, borderTop:'1px solid #f1f5f9',
             display:'flex', justifyContent:'space-between', alignItems:'center',
           }}>
             <span style={{ fontSize:11, color:'#cbd5e1', letterSpacing:.5 }}>Al Mawashi Company — Quality Department</span>
-            <span style={{ fontSize:11, color:'#cbd5e1' }}>ISO 22000:2018</span>
+            <span style={{ fontSize:11, color:'#cbd5e1' }}>{TRAINING_DOC_NO} • ISO 22000:2018</span>
           </div>
         </div>
       </div>
+  );
+}
+
+/* ===================== Certificate → PDF (single + bulk) ===================== */
+const certFileName = (n) =>
+  String(n || 'Participant').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_') || 'Participant';
+
+async function waitForImages(node) {
+  const imgs = Array.from(node.querySelectorAll('img'));
+  await Promise.all(
+    imgs.map(im => (im.complete ? Promise.resolve() : new Promise(res => { im.onload = im.onerror = res; })))
+  );
+}
+
+/** Snapshot a certificate node onto a full A4-landscape PDF page (fit + centered). */
+async function addCertPage(pdf, node, html2canvas, isFirst) {
+  const canvas = await html2canvas(node, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: '#ffffff',
+    logging: false,
+    windowWidth: 1123,
+  });
+  if (!isFirst) pdf.addPage('a4', 'landscape');
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
+  const w = canvas.width * ratio;
+  const h = canvas.height * ratio;
+  pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h);
+}
+
+/**
+ * Render one certificate per participant off-screen and export them as a single
+ * multi-page A4-landscape PDF (one page per participant).
+ */
+async function exportCertificatesPdf(items, common, fileName) {
+  if (!items.length) return;
+  const [{ default: html2canvas }, { default: jsPDF }, { createRoot }] = await Promise.all([
+    import('html2canvas'),
+    import('jspdf'),
+    import('react-dom/client'),
+  ]);
+
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-20000px;top:0;width:1123px;background:#fff;z-index:-1;';
+  document.body.appendChild(holder);
+  const root = createRoot(holder);
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+
+  try {
+    for (let i = 0; i < items.length; i++) {
+      await new Promise(res => {
+        root.render(
+          <div style={{ width: 1123, background: '#fff' }}>
+            <CertificateCard {...common} participant={items[i]} />
+          </div>
+        );
+        setTimeout(res, 260);
+      });
+      await waitForImages(holder);
+      await addCertPage(pdf, holder.firstElementChild, html2canvas, i === 0);
+    }
+    pdf.save(fileName);
+  } finally {
+    root.unmount();
+    holder.remove();
+  }
+}
+
+/* ===================== Certificate Modal ===================== */
+function CertificateModal({ open, onClose, participant, session, moduleName, branch, date, conductedBy, verifiedBy, lang = "en" }) {
+  const [pdfBusy, setPdfBusy] = useState(false);
+  if (!open || !participant) return null;
+
+  const name = String(participant.name || '').trim();
+  const cardProps = { session, moduleName, branch, date, conductedBy, verifiedBy };
+
+  const doPrint = () => {
+    // Set filename: browser uses document.title as the PDF filename
+    const prevTitle = document.title;
+    document.title = `Training_Certificate_${certFileName(name)}`;
+
+    const s = document.createElement('style');
+    s.id = '_cert_ps_';
+    s.textContent = `
+      @media print {
+        @page { size: A4 landscape; margin: 0; }
+        body > * { display: none !important; }
+        body > #root { display: block !important; }
+        #cert-overlay {
+          display: flex !important;
+          position: fixed !important; inset: 0 !important;
+          background: #fff !important;
+          backdrop-filter: none !important;
+          align-items: flex-start !important;
+          justify-content: center !important;
+          padding: 0 !important;
+          overflow: visible !important;
+        }
+        .cert-noprint { display: none !important; }
+        #cert-print {
+          display: flex !important;
+          width: 297mm !important;
+          height: 210mm !important;
+          max-width: none !important;
+          min-height: 0 !important;
+          overflow: hidden !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          margin: 0 !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
+        #cert-print * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
+        #cert-left-panel {
+          background: linear-gradient(160deg,#0f172a 0%,#1e3a8a 55%,#312e81 100%) !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
+    `;
+    document.head.appendChild(s);
+    window.print();
+    setTimeout(() => {
+      document.getElementById('_cert_ps_')?.remove();
+      document.title = prevTitle;
+    }, 1500);
+  };
+
+  const doPdf = async () => {
+    setPdfBusy(true);
+    try {
+      await exportCertificatesPdf(
+        [participant],
+        cardProps,
+        `Training_Certificate_${certFileName(name)}.pdf`
+      );
+    } catch (e) {
+      alert(`Could not build the PDF: ${e?.message || e}`);
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  return (
+    <div
+      id="cert-overlay"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position:'fixed', inset:0, zIndex:10000,
+        background:'rgba(6,9,22,0.92)', backdropFilter:'blur(14px)',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        padding:'20px 16px', overflowY:'auto',
+      }}
+    >
+      {/* Floating action bar */}
+      <div className="cert-noprint" style={{
+        position:'fixed', top:20, right:20,
+        display:'flex', gap:10, zIndex:1,
+      }}>
+        <button onClick={doPdf} disabled={pdfBusy} style={{
+          background:'linear-gradient(135deg,#047857,#10b981)',
+          color:'#fff', border:'none', borderRadius:12,
+          padding:'11px 22px', fontWeight:700, fontSize:13,
+          cursor: pdfBusy ? 'wait' : 'pointer', opacity: pdfBusy ? .7 : 1,
+          boxShadow:'0 4px 18px rgba(16,185,129,.45)',
+          display:'flex', alignItems:'center', gap:7,
+        }}>{pdfBusy ? '⏳ Building PDF…' : '⬇️ Download PDF'}</button>
+        <button onClick={doPrint} style={{
+          background:'linear-gradient(135deg,#4338ca,#6366f1)',
+          color:'#fff', border:'none', borderRadius:12,
+          padding:'11px 22px', fontWeight:700, fontSize:13, cursor:'pointer',
+          boxShadow:'0 4px 18px rgba(99,102,241,.5)',
+          display:'flex', alignItems:'center', gap:7,
+        }}>🖨️ Print</button>
+        <button onClick={onClose} style={{
+          background:'rgba(255,255,255,.08)', color:'#fff',
+          border:'1px solid rgba(255,255,255,.18)',
+          borderRadius:12, padding:'11px 15px', fontWeight:700, fontSize:14, cursor:'pointer',
+        }}>✕</button>
+      </div>
+
+      <CertificateCard {...cardProps} participant={participant} withPrintIds />
     </div>
   );
 }
@@ -715,6 +905,9 @@ export default function TrainingSessionsList() {
 
   const [refOpen, setRefOpen] = useState(false);
   const [certData, setCertData] = useState(null);
+  // ✅ Certificate PDF export — row selection (by participant index) + busy flag
+  const [certSel, setCertSel] = useState({});
+  const [bulkCertBusy, setBulkCertBusy] = useState(false);
   const [complianceOpen, setComplianceOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(true);
   const [quizOpen, setQuizOpen] = useState(false);
@@ -1008,6 +1201,7 @@ export default function TrainingSessionsList() {
     setQuizAnswers({});
     setViewOpen(false);
     setViewIndex(-1);
+    setCertSel({});
   };
 
   const closeSession = () => {
@@ -1020,6 +1214,7 @@ export default function TrainingSessionsList() {
     setViewOpen(false);
     setViewIndex(-1);
     setDetailOpen({});
+    setCertSel({});
   };
 
   const addRow = () => {
@@ -1208,6 +1403,62 @@ export default function TrainingSessionsList() {
     if (!url) return alert("Cannot open link — missing session ID or origin.");
     window.open(url, "_blank", "noopener,noreferrer");
   };
+
+  /* ── Certificates → PDF (one page per participant) ── */
+  const certEligible = participants
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => String(p.result || "").toUpperCase() === "PASS" && String(p.name || "").trim());
+  const certChosen = certEligible.filter(({ i }) => certSel[i]);
+  const certTargets = (certChosen.length ? certChosen : certEligible).map(({ p }) => p);
+  const allCertsSelected = certEligible.length > 0 && certChosen.length === certEligible.length;
+
+  const toggleCertRow = (i) =>
+    setCertSel((prev) => {
+      const next = { ...prev };
+      if (next[i]) delete next[i];
+      else next[i] = true;
+      return next;
+    });
+
+  const toggleAllCerts = () => {
+    if (allCertsSelected) return setCertSel({});
+    const next = {};
+    certEligible.forEach(({ i }) => { next[i] = true; });
+    setCertSel(next);
+  };
+
+  const runCertExport = async (list) => {
+    if (!list.length) {
+      alert("No passed participants to build certificates for.");
+      return;
+    }
+    setBulkCertBusy(true);
+    try {
+      const stamp = safeDate(selected) || todayISO();
+      const fileName =
+        list.length === 1
+          ? `Training_Certificate_${certFileName(list[0].name)}.pdf`
+          : `Training_Certificates_${certFileName(moduleName || "Module")}_${stamp}.pdf`;
+      await exportCertificatesPdf(
+        list,
+        {
+          session: selected,
+          moduleName,
+          branch: safeBranch(selected),
+          date: stamp,
+          conductedBy: selected?.payload?.conductedBy || "",
+          verifiedBy: selected?.payload?.verifiedBy || DEFAULT_QA_MANAGER,
+        },
+        fileName
+      );
+    } catch (e) {
+      alert(`Could not build the certificates PDF: ${e?.message || e}`);
+    } finally {
+      setBulkCertBusy(false);
+    }
+  };
+
+  const downloadCertificates = () => runCertExport(certTargets);
 
   const saveParticipants = async () => {
     if (!selected) return;
@@ -3008,6 +3259,31 @@ export default function TrainingSessionsList() {
                 </div>
 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    onClick={downloadCertificates}
+                    disabled={bulkCertBusy || deletingSession || certEligible.length === 0}
+                    title={
+                      certEligible.length === 0
+                        ? "No passed participants yet"
+                        : certChosen.length
+                        ? `Download ${certChosen.length} selected certificate(s) as one PDF`
+                        : `Download all ${certEligible.length} certificate(s) as one PDF`
+                    }
+                    style={{
+                      padding: "9px 14px", borderRadius: 12,
+                      border: "1.5px solid #a7f3d0",
+                      background: certEligible.length ? "linear-gradient(135deg,#ecfdf5,#d1fae5)" : "#f8fafc",
+                      color: certEligible.length ? "#047857" : "#94a3b8",
+                      fontWeight: 900, fontSize: 12.5,
+                      cursor: bulkCertBusy ? "wait" : certEligible.length ? "pointer" : "not-allowed",
+                      opacity: bulkCertBusy ? 0.7 : 1,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {bulkCertBusy
+                      ? "⏳ Building PDF…"
+                      : `⬇️ Certificates PDF (${certChosen.length || certEligible.length})`}
+                  </button>
                   <button onClick={addRow} style={btn("light")} disabled={deletingSession}>
                     ➕ Add Row
                   </button>
@@ -3032,6 +3308,28 @@ export default function TrainingSessionsList() {
                 <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
                   <thead>
                     <tr>
+                      <th
+                        style={{
+                          textAlign: "center",
+                          padding: 12,
+                          width: 40,
+                          background: THEME.tableHeadBg,
+                          borderTop: `1px solid ${THEME.lineStrong}`,
+                          borderBottom: `1px solid ${THEME.lineStrong}`,
+                          position: "sticky",
+                          top: 0,
+                          zIndex: 1,
+                        }}
+                        title="Select passed participants for the certificates PDF"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allCertsSelected}
+                          onChange={toggleAllCerts}
+                          disabled={certEligible.length === 0}
+                          style={{ width: 16, height: 16, cursor: certEligible.length ? "pointer" : "not-allowed" }}
+                        />
+                      </th>
                       {["SL", "NAME", "DESIGNATION", "EMP ID", "SCORE", "RESULT", "LAST QUIZ", "CERT", ""].map(
                         (h) => (
                           <th
@@ -3059,7 +3357,7 @@ export default function TrainingSessionsList() {
                   <tbody>
                     {participants.length === 0 ? (
                       <tr>
-                        <td colSpan={9} style={{ padding: 14, color: THEME.muted, fontWeight: 900 }}>
+                        <td colSpan={10} style={{ padding: 14, color: THEME.muted, fontWeight: 900 }}>
                           No participants yet. Anyone who submits the session link will appear here automatically ✅
                         </td>
                       </tr>
@@ -3067,8 +3365,29 @@ export default function TrainingSessionsList() {
                       participants.map((p, idx) => {
                         const res = String(p.result || "").toUpperCase();
                         const hasAnswers = !!p?.quizAttempt?.answers?.length;
+                        const canCert = res === "PASS" && !!String(p.name || "").trim();
                         return (
                           <tr key={idx}>
+                            <td
+                              style={{
+                                padding: 12,
+                                textAlign: "center",
+                                borderBottom: `1px solid rgba(148,163,184,0.14)`,
+                              }}
+                            >
+                              {canCert ? (
+                                <input
+                                  type="checkbox"
+                                  checked={!!certSel[idx]}
+                                  onChange={() => toggleCertRow(idx)}
+                                  title="Include this certificate in the PDF"
+                                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                                />
+                              ) : (
+                                <span style={{ color: "#e2e8f0" }}>—</span>
+                              )}
+                            </td>
+
                             <td
                               style={{
                                 padding: 12,
@@ -3132,19 +3451,35 @@ export default function TrainingSessionsList() {
                             {/* Certificate column */}
                             <td style={{ padding: 12, borderBottom: `1px solid rgba(148,163,184,0.14)`, whiteSpace: "nowrap" }}>
                               {res === "PASS" ? (
-                                <button
-                                  onClick={() => setCertData({ participant: p, idx })}
-                                  style={{
-                                    padding:'7px 12px', borderRadius:10, border:'1.5px solid #fde68a',
-                                    background:'linear-gradient(135deg,#fef9c3,#fef3c7)',
-                                    color:'#92400e', fontWeight:800, fontSize:11.5,
-                                    cursor:'pointer', whiteSpace:'nowrap',
-                                    boxShadow:'0 1px 4px rgba(245,158,11,.2)',
-                                  }}
-                                  title="Print achievement certificate"
-                                >
-                                  🏆 Certificate
-                                </button>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button
+                                    onClick={() => setCertData({ participant: p, idx })}
+                                    style={{
+                                      padding:'7px 12px', borderRadius:10, border:'1.5px solid #fde68a',
+                                      background:'linear-gradient(135deg,#fef9c3,#fef3c7)',
+                                      color:'#92400e', fontWeight:800, fontSize:11.5,
+                                      cursor:'pointer', whiteSpace:'nowrap',
+                                      boxShadow:'0 1px 4px rgba(245,158,11,.2)',
+                                    }}
+                                    title="Open / print the achievement certificate"
+                                  >
+                                    🏆 Certificate
+                                  </button>
+                                  <button
+                                    onClick={() => runCertExport([p])}
+                                    disabled={bulkCertBusy || !canCert}
+                                    style={{
+                                      padding:'7px 11px', borderRadius:10, border:'1.5px solid #a7f3d0',
+                                      background:'linear-gradient(135deg,#ecfdf5,#d1fae5)',
+                                      color:'#047857', fontWeight:800, fontSize:11.5,
+                                      cursor: bulkCertBusy ? 'wait' : 'pointer', whiteSpace:'nowrap',
+                                      opacity: bulkCertBusy ? 0.7 : 1,
+                                    }}
+                                    title="Download this certificate as PDF"
+                                  >
+                                    ⬇️ PDF
+                                  </button>
+                                </div>
                               ) : (
                                 <span style={{ fontSize:11, color:'#cbd5e1' }}>—</span>
                               )}
@@ -3495,6 +3830,7 @@ export default function TrainingSessionsList() {
           branch={safeBranch(selected)}
           date={safeDate(selected)}
           conductedBy={selected?.payload?.conductedBy || ''}
+          verifiedBy={selected?.payload?.verifiedBy || DEFAULT_QA_MANAGER}
           lang={globalLang}
         />
       )}

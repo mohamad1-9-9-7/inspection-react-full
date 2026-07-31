@@ -378,7 +378,10 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
   const [note, setNote] = useState("");
   const [scheduleAt, setScheduleAt] = useState("");
   const [priority, setPriority] = useState("normal");
-  const [includeTable, setIncludeTable] = useState(false);
+  /* On by default — recipients should see the data in the message itself, not
+     only in the attachment. A saved template can still turn it off (the
+     template loader below overwrites this when it carries an explicit value). */
+  const [includeTable, setIncludeTable] = useState(true);
   const [sortBy, setSortBy] = useState("default");   // default | branch | action | origin | product | expiry
   const [groupBy, setGroupBy] = useState("none");    // none | branch | action | origin
   const [method, setMethod] = useState("outlook");
@@ -431,7 +434,10 @@ export default function EmailSendModal({ open, onClose, payload, config }) {
     setTemplateName("");
     setImageSelection({});
     setScheduleAt("");
-    setIncludeTable(false);
+    /* Default ON — the data table belongs in the message body, not only in the
+       attachment. Loading a saved template that carries an explicit value
+       still overrides this. */
+    setIncludeTable(true);
     setSortBy("default");
     setGroupBy("none");
     /* Default send method is a shared setting, not a per-browser memory. */

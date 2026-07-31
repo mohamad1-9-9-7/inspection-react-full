@@ -67,6 +67,14 @@ const sections = [
     route: "/haccp-iso/product-details",
   },
 
+  // 🍽️ Kitchen — sub-hub for kitchen modules (menu labelling, …)
+  {
+    id: "kitchen",
+    title: "🍽️ Kitchen / المطبخ",
+    subtitle: "Kitchen modules — menu calorie & nutrition labelling (ADG 10/2026), and more to come",
+    route: "/haccp-iso/kitchen",
+  },
+
   {
     id: "licenses-contracts",
     title: "Licenses & Contracts",
@@ -230,6 +238,18 @@ const sections = [
     route: "/haccp-iso/internal-calibration/view",
   },
 ];
+
+// Sub-hubs are gated by their leaf permission ids, not by the card id itself.
+const SUBHUB_LEAVES = {
+  "product-details": ["product-details.entry", "product-details.view"],
+  kitchen: ["kitchen.menu-nutrition"],
+};
+
+function sectionVisible(item) {
+  const leaves = SUBHUB_LEAVES[item.id];
+  if (leaves) return leaves.some((leaf) => isItemAllowed("iso", leaf));
+  return isItemAllowed("iso", item.id);
+}
 
 // Simple icon
 function IconFolder() {
@@ -505,10 +525,7 @@ function LegacyHaccpIsoMenu() {
         {/* Cards — filtered by per-user ISO permissions */}
         <section aria-label="ISO & HACCP sections">
           <div style={gridStyle}>
-            {sections.filter(item => item.id === "product-details"
-              ? isItemAllowed("iso", "product-details.entry") || isItemAllowed("iso", "product-details.view")
-              : isItemAllowed("iso", item.id)
-            ).map((item) => {
+            {sections.filter(sectionVisible).map((item) => {
               const isHover = hoverId === item.id;
               return (
                 <button
@@ -617,6 +634,7 @@ const categoryById = {
   "change-management": "governance",
   "haccp-dashboard": "performance",
   "product-details": "operations",
+  kitchen: "operations",
   "licenses-contracts": "governance",
   "dm-inspection": "records",
   "supplier-evaluation": "operations",
@@ -872,14 +890,7 @@ export default function HaccpIsoMenu() {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
 
-  const allowedSections = useMemo(
-    () => sections.filter((item) =>
-      item.id === "product-details"
-        ? isItemAllowed("iso", "product-details.entry") || isItemAllowed("iso", "product-details.view")
-        : isItemAllowed("iso", item.id)
-    ),
-    []
-  );
+  const allowedSections = useMemo(() => sections.filter(sectionVisible), []);
 
   const filteredSections = useMemo(() => {
     const q = query.trim().toLowerCase();

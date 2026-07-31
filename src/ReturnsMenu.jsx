@@ -11,6 +11,7 @@ import {
   FiHome,
   FiPackage,
   FiSearch,
+  FiTrash2,
   FiTruck,
   FiUser,
 } from "react-icons/fi";
@@ -24,6 +25,7 @@ const browseLinks = [
   { perm: "customerReturns.browse", to: "/returns-customers/browse", Icon: FiUser, label: "Browse Customer Returns", ar: "عرض مرتجعات العملاء", tone: "green" },
   { perm: "inventory.browse", to: "/inventory-daily/browse", Icon: FiPackage, label: "Browse Inventory Daily", ar: "عرض المخزون اليومي", tone: "cyan" },
   { perm: "enoc.browse", to: "/enoc-returns/browse-view", Icon: FiTruck, label: "Browse ENOC Returns", ar: "عرض مرتجعات ENOC", tone: "orange" },
+  { perm: "destruction.browse", to: "/destruction/browse", Icon: FiTrash2, label: "Browse Condemnations", ar: "عرض سجلات الإعدام", tone: "red" },
 ];
 
 const createLinks = [
@@ -32,6 +34,7 @@ const createLinks = [
   { perm: "customerReturns.create", to: "/returns-customers/new", Icon: FiUser, label: "Create Customer Returns", ar: "إنشاء مرتجعات عملاء", aria: "Create customer returns report", tone: "green" },
   { perm: "inventory.create", to: "/inventory-daily/input", Icon: FiArchive, label: "Create Inventory Daily Report", ar: "إنشاء مخزون يومي", aria: "Create inventory daily report", tone: "cyan" },
   { perm: "enoc.create", to: "/enoc-returns/input", Icon: FiTruck, label: "Create ENOC Returns Report", ar: "إنشاء تقرير ENOC", aria: "Create ENOC returns report", tone: "teal" },
+  { perm: "destruction.create", to: "/destruction/input", Icon: FiTrash2, label: "Record Condemnation", ar: "تسجيل إعدام", aria: "Create condemnation and disposal record", tone: "red" },
 ];
 
 function getCurrentUser() {
@@ -284,6 +287,7 @@ export default function ReturnsMenu() {
         .rm-tone-green{background:linear-gradient(135deg,#10b981,#059669)}
         .rm-tone-cyan{background:linear-gradient(135deg,#0891b2,#06b6d4)}
         .rm-tone-orange{background:linear-gradient(135deg,#f97316,#ea580c)}
+        .rm-tone-red{background:linear-gradient(135deg,#b91c1c,#7f1d1d)}
         .rm-cardBody{flex:1}
         .rm-cardTop{
           display:flex;

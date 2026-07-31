@@ -5,6 +5,7 @@ import {
   addDocHeader, addFooter, formatDMY, extractDate,
   pageSetupLandscape,
 } from "./_lib";
+import { getRefNo } from "../../../utils/reportRef";
 
 const COLS = [
   { key: "itemCode",    label: "Item Code",    width: 13 },
@@ -61,7 +62,8 @@ export default async function build(wb, record, ctx) {
                         .reduce((s, i) => s + (Number(i?.quantity) || 0), 0);
   ws.mergeCells(r, 1, r, NC);
   const sc = ws.getCell(r, 1);
-  sc.value     = `Items: ${items.length}  |  Total KG: ${totalKg.toFixed(2)}  |  Total PCS: ${totalPcs}`;
+  const refNo = getRefNo(record, "returns");
+  sc.value     = `${refNo ? `Ref: ${refNo}  |  ` : ""}Items: ${items.length}  |  Total KG: ${totalKg.toFixed(2)}  |  Total PCS: ${totalPcs}`;
   sc.alignment = center;
   sc.font      = { bold: true, size: 11, color: { argb: COLORS.NAVY } };
   sc.fill      = fillSolid(COLORS.SKY);

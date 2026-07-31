@@ -34,6 +34,7 @@ import DateTree from "./tools/DateTree";
 import AppearanceAndLanguage from "./tools/AppearanceAndLanguage";
 import ImageMigration from "../admin/ImageMigration";
 import ComplaintNumberBackfill from "../admin/ComplaintNumberBackfill";
+import ReferenceNumberBackfill from "../admin/ReferenceNumberBackfill";
 import AccountsManagementTab from "./AccountsManagementTab";
 import SecurityControlsTab, { getSecuritySettings } from "./SecurityControlsTab";
 import BillingPlansTab from "./BillingPlansTab";
@@ -211,6 +212,16 @@ const SECTIONS = [
         glow: "rgba(249,115,22,.30)",
       },
       {
+        id: "reference-numbers",
+        Icon: FiGrid,
+        title: "Reference Numbers",
+        desc: "Number older returns & condemnation reports",
+        tk: "tReferenceNumbers",
+        dk: "tReferenceNumbersD",
+        grad: "linear-gradient(135deg,#0f766e,#14b8a6)",
+        glow: "rgba(15,118,110,.30)",
+      },
+      {
         id: "server-health",
         Icon: FiHeart,
         title: "Server Health",
@@ -253,6 +264,8 @@ function toolComponent(active) {
       return <ImageMigration />;
     case "complaint-numbers":
       return <ComplaintNumberBackfill />;
+    case "reference-numbers":
+      return <ReferenceNumberBackfill />;
     case "server-health":
       return <ServerHealth />;
     case "billing-plans":

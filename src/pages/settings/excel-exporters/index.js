@@ -133,6 +133,7 @@ import meat_daily            from "./meat_daily";
 import returns_customers     from "./returns_customers";
 import inventory_daily       from "./inventory_daily";
 import enoc_returns          from "./enoc_returns";
+import destruction_record    from "./destruction_record";
 
 // Fresh-chicken key uses the legacy long form
 const CUSTOM = {
@@ -271,6 +272,7 @@ const CUSTOM = {
   "returns_customers":                      returns_customers,
   "inventory_daily_grouped":                inventory_daily,
   "enoc_returns":                           enoc_returns,
+  "destruction_record":                     destruction_record,
 };
 
 /**

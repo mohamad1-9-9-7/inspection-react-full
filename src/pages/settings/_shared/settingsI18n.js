@@ -73,6 +73,8 @@ export const ST = {
   tImageMigrationD: { en: "Convert base64 → Cloudinary URLs", ar: "تحويل base64 → روابط Cloudinary" },
   tComplaintNumbers:  { en: "Complaint Numbers",   ar: "أرقام الشكاوى" },
   tComplaintNumbersD: { en: "Backfill missing complaint No.", ar: "تعبئة أرقام الشكاوى الناقصة" },
+  tReferenceNumbers:  { en: "Reference Numbers",   ar: "الأرقام المرجعية" },
+  tReferenceNumbersD: { en: "Number older returns & condemnation reports", ar: "ترقيم تقارير المرتجعات والإعدام القديمة" },
   tServerHealth:    { en: "Server Health",         ar: "حالة الخادم" },
   tServerHealthD:   { en: "Ping + latency monitor", ar: "مراقبة الاتصال والاستجابة" },
 

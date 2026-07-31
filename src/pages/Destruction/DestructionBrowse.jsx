@@ -1,4 +1,20 @@
-// src/pages/BrowseCustomerReturns.jsx
+// src/pages/Destruction/DestructionBrowse.jsx
+//
+// سجل الإعدام والتخلص — Condemnation & Disposal Record browser.
+// The API type stays `destruction_record` so previously saved records keep working.
+//
+// This is the POS Returns browser (pages/BrowseReturns.jsx) retargeted at the
+// `destruction_record` type, so it keeps the exact same feature set: KPI band,
+// charts, advanced filters, global search, presets, time machine, Overview /
+// Browse / Compare / Reviews tabs, and Print / PDF / Email / XLSX / CSV export.
+//
+// Destruction rows are adapted to the Returns row shape in `adaptItem()` below,
+// which is the single place where the two data models meet:
+//     POS      ← record header branch      (destruction stores it once per day)
+//     BATCH    ← batchNo                   (the Returns "ORIGIN" column)
+//     REASON   ← reason / customReason     (the Returns "ACTION" column)
+// Everything else (itemCode, productName, quantity, qtyType, expiry, remarks,
+// images) already carries the same field names in both registers.
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import {
   FiSearch, FiX, FiDownload, FiPrinter, FiRefreshCw, FiLock, FiMail,
@@ -7,13 +23,17 @@ import {
   FiCheck, FiInfo, FiActivity, FiPieChart, FiSave, FiTrash2,
   FiArrowRight, FiCopy, FiLayers, FiAlertTriangle, FiFileText,
   FiFilter, FiColumns, FiZap, FiHelpCircle, FiPackage, FiClock,
-  FiTarget,
+  FiTarget, FiFilePlus, FiArrowLeft,
 } from "react-icons/fi";
-import EmailSendModal from "./shared/EmailSendModal";
-import { escapeHtml } from "./shared/emailReportUtils";
-import { MAWASHI_LOGO_B64 } from "../assets/mawashi-logo-b64";
-import { arrangeItems, GROUP_LABEL } from "./shared/itemSortGroup";
-import { getRefNo, isPendingRef } from "../utils/reportRef";
+import { Link } from "react-router-dom";
+import EmailSendModal from "../shared/EmailSendModal";
+import { escapeHtml } from "../shared/emailReportUtils";
+import { MAWASHI_LOGO_B64 } from "../../assets/mawashi-logo-b64";
+import { arrangeItems, GROUP_LABEL } from "../shared/itemSortGroup";
+import { getRefNo, isPendingRef } from "../../utils/reportRef";
+
+/* API report type — also the key the reference prefix is looked up by. */
+const TYPE = "destruction_record";
 
 /* ============================================================
    API
@@ -22,7 +42,10 @@ const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
 async function fetchByType(type) {
-  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
+  // The server defaults to LIMIT 200 (most-recent first). Without an explicit
+  // limit, older months (e.g. Sep 2025) get truncated and never reach the page.
+  // 5000 is the server's max clamp — enough for years of daily returns.
+  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}&limit=5000`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error("Failed to fetch " + type);
@@ -31,12 +54,12 @@ async function fetchByType(type) {
 }
 
 /* ============================================================
-   Helpers - date / branch / action / qty
+   Helpers — date / branch / action / qty
    ============================================================ */
 /* Default opening lines of the emailed report. {date} is resolved by the send
    modal (EmailSendModal → applyTemplateVars); an email template can replace
    these lines entirely. */
-const DEFAULT_INTRO = "Dear Team,\n\nPlease find attached the Daily Customer Returns Report for {date}.";
+const DEFAULT_INTRO = "Dear Team,\n\nPlease find attached the Daily Condemnation & Disposal Report for {date}.";
 
 function toTs(x) {
   if (!x) return null;
@@ -52,19 +75,52 @@ function bestTs(rec) {
     toTs(rec?._id) || toTs(rec?.payload?._clientSavedAt) || 0
   );
 }
+/* ── Destruction → Returns row adapter ──────────────────────────────────────
+   The only bridge between the two data models. Keeps the original keys too,
+   so destruction-specific fields (unit cost, method, production date) stay
+   reachable for the detail panels. */
+function adaptItem(it, header, refNo) {
+  const src = it || {};
+  const h = header || {};
+  const method =
+    src.method === "Other..." ? src.customMethod || "Other" : src.method || "";
+  const headerMethod =
+    h.method === "Other..." ? h.customMethod || "Other" : h.method || "";
+
+  return {
+    ...src,
+    /* POS column ← the record-level branch (destruction stores it once) */
+    butchery: src.butchery ?? h.branch ?? "",
+    customButchery: src.customButchery ?? h.customBranch ?? "",
+    /* "ORIGIN" column is relabelled BATCH / LOT */
+    origin: src.origin ?? src.batchNo ?? "",
+    /* "ACTION" column is relabelled REASON */
+    action: src.action ?? src.reason ?? "",
+    customAction: src.customAction ?? src.customReason ?? "",
+    /* Destruction extras surfaced in the row detail */
+    destructionMethod: method || headerMethod,
+    destructionDate: h.destructionDate || "",
+    approvedBy: h.approvedBy || "",
+    performedBy: h.performedBy || "",
+    /* Record reference, carried per row so `ref:` search works across days */
+    refNo: refNo || "",
+  };
+}
+
 function normalizeReturns(raw) {
   if (!Array.isArray(raw)) return [];
   const entries = raw
     .map((rec) => {
       const payload = rec?.payload || {};
-      const refNo = getRefNo(rec, "returns_customers");
+      const header = payload.header || {};
+      const refNo = getRefNo(rec, TYPE);
       return {
         ts: bestTs(rec),
         reportDate: payload.reportDate || rec?.reportDate || "",
         refNo,
-        /* Reference carried per row so `ref:` search works across days */
+        header,
         items: Array.isArray(payload.items)
-          ? payload.items.map((it) => ({ ...it, refNo }))
+          ? payload.items.map((it) => adaptItem(it, header, refNo))
           : [],
       };
     })
@@ -77,38 +133,24 @@ function normalizeReturns(raw) {
   return Array.from(byDate.values());
 }
 
-/**
- * Aggressive customer key - used for grouping.
- * Removes ALL whitespace + uppercases. So:
- *   "Zou Zou", "ZOU ZOU", "ZOUZOU", " ZouZou " -> all become "ZOUZOU"
- */
-function customerKey(name) {
-  return (name || "").trim().toUpperCase().replace(/\s+/g, "");
+function isOtherBranch(val) {
+  const s = String(val || "").toLowerCase();
+  return s.includes("other branch") || s.includes("فرع آخر");
 }
-
-/**
- * Module-level canonical-label map (key -> most common original spelling).
- * Populated by the component during render via a useMemo.
- * Pre-populated as empty; falls back to a simple uppercase normalization until built.
- */
-let _canonicalCustomerMap = {};
-
-/**
- * Returns the canonical (display-friendly) customer name for a row.
- * - Uses canonical map (most-common spelling for each aggressive key) if available.
- * - Falls back to UPPERCASE + collapsed-spaces version of the raw name.
- *
- * Result: aggregations using customerOf() naturally merge "Zou Zou" + "ZOU ZOU" + "ZOUZOU"
- * into ONE bucket, displayed with the most common spelling (usually "ZOU ZOU").
- */
-function customerOf(row) {
-  const raw = (row?.customerName || "").trim();
-  if (!raw) return "";
-  const aggKey = customerKey(raw);
-  return _canonicalCustomerMap[aggKey] || raw.toUpperCase().replace(/\s+/g, " ");
+// Old data sometimes stored the branch as a bare number (e.g. "47" / "48").
+// Normalize any bare-number branch to its "POS <n>" form for display/filtering.
+function normalizeBranch(val) {
+  const s = String(val ?? "").trim();
+  if (/^\d+$/.test(s)) return `POS ${s}`;
+  return s;
+}
+function safeButchery(row) {
+  return isOtherBranch(row?.butchery)
+    ? row?.customButchery || ""
+    : normalizeBranch(row?.butchery);
 }
 function actionText(row) {
-  return row?.action === "ط¥ط¬ط±ط§ط، ط¢ط®ط±..." || row?.action === "Other..."
+  return row?.action === "إجراء آخر..." || row?.action === "Other..."
     ? row?.customAction || ""
     : row?.action || "";
 }
@@ -117,7 +159,7 @@ function itemKey(row) {
     (row?.itemCode || "").trim().toLowerCase(),
     (row?.productName || "").trim().toLowerCase(),
     (row?.origin || "").trim().toLowerCase(),
-    (customerOf(row) || "").trim().toLowerCase(),
+    (safeButchery(row) || "").trim().toLowerCase(),
     (row?.expiry || "").trim().toLowerCase(),
   ].join("|");
 }
@@ -147,11 +189,11 @@ function isDisposed(s) {
 }
 function isKgType(t) {
   const s = (t || "").toString().toLowerCase();
-  return s.includes("kg") || s.includes("ظƒظٹظ„ظˆ") || s.includes("ظƒط¬ظ…");
+  return s.includes("kg") || s.includes("كيلو") || s.includes("كجم");
 }
 function isPcsType(t) {
   const s = (t || "").toString().toLowerCase();
-  return s.includes("pcs") || s.includes("ظ‚ط·ط¹ط©") || s.includes("ط­ط¨ط©") || s.includes("pc");
+  return s.includes("pcs") || s.includes("قطعة") || s.includes("حبة") || s.includes("pc");
 }
 function qtyKind(row) {
   if (isKgType(row?.qtyType)) return "kg";
@@ -167,9 +209,45 @@ function fmtPct(n) {
   if (n == null || isNaN(n)) return "0%";
   return `${Math.round(Number(n))}%`;
 }
+/* "2026-07" → "July 2026" (used by the Periodic Report). */
+function monthLabel(monthKey) {
+  const [y, m] = String(monthKey || "").split("-").map(Number);
+  if (!y || !m) return String(monthKey || "");
+  return new Date(y, m - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+/* Shift a "YYYY-MM" key by `delta` months. */
+function addMonthKey(monthKey, delta) {
+  const [y, m] = String(monthKey || "").split("-").map(Number);
+  const d = new Date(y, (m - 1) + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+/* Human range label: same month → "July 2026"; else "May – Jul 2026" (adds the
+   start year too when the window spans two calendar years). */
+function rangeLabel(fromKey, toKey) {
+  if (fromKey === toKey) return monthLabel(toKey);
+  const [fy, fm] = fromKey.split("-").map(Number);
+  const [ty, tm] = toKey.split("-").map(Number);
+  const optsFrom = { month: "short", ...(fy !== ty ? { year: "numeric" } : {}) };
+  const from = new Date(fy, fm - 1, 1).toLocaleDateString("en-GB", optsFrom);
+  const to = new Date(ty, tm - 1, 1).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+  return `${from} – ${to}`;
+}
+/* Report period presets. `months` = window length ending at the chosen anchor month. */
+const REPORT_PERIODS = [
+  { key: "monthly", months: 1,  en: "Monthly (current)",     reportTitle: "Monthly Condemnation Report",    cover: "MONTHLY CONDEMNATION",   fileTag: "Monthly" },
+  { key: "quarter", months: 3,  en: "Quarterly (3 months)",  reportTitle: "Quarterly Condemnation Report",  cover: "QUARTERLY CONDEMNATION", fileTag: "Quarter" },
+  { key: "half",    months: 6,  en: "Half-Year (6 months)",  reportTitle: "Half-Year Condemnation Report",  cover: "HALF-YEAR CONDEMNATION", fileTag: "HalfYear" },
+  { key: "nine",    months: 9,  en: "Nine-Month (9 months)", reportTitle: "Nine-Month Condemnation Report", cover: "NINE-MONTH CONDEMNATION", fileTag: "9Month" },
+  { key: "yearly",  months: 12, en: "Annual (12 months)",    reportTitle: "Annual Condemnation Report",     cover: "ANNUAL CONDEMNATION",    fileTag: "Annual" },
+];
+
+function latestReportDate(reports) {
+  const dates = (reports || []).map((r) => r.reportDate).filter(Boolean).sort();
+  return dates[dates.length - 1] || "";
+}
 
 /* ============================================================
-   Power search - parse key:value tokens with quotes
+   Power search — parse key:value tokens with quotes
    Supported keys (aliases in parens):
      code (itemcode)            substring match on itemCode
      name (product, productname) substring match on productName
@@ -178,7 +256,7 @@ function fmtPct(n) {
      action                     substring match on action
      expiry                     substring match on expiry
      remarks                    substring match on remarks
-     qty / quantity             numeric - supports >N, <N, >=N, <=N, =N
+     qty / quantity             numeric — supports >N, <N, >=N, <=N, =N
      qtytype / type             "kg" | "pcs"
      images                     "yes" | "no"
    Plain words are matched as substrings across all fields.
@@ -205,30 +283,27 @@ function parseSearchQuery(q) {
 const KEY_ALIASES = {
   code: "code", itemcode: "code",
   name: "name", product: "name", productname: "name",
-  pos: "pos", butchery: "pos", customer: "pos", customername: "pos",
-  origin: "origin",
-  action: "action",
+  pos: "pos", butchery: "pos",
+  origin: "origin", batch: "origin", lot: "origin",
+  action: "action", reason: "action",
+  ref: "refNo", refno: "refNo", reference: "refNo",
   expiry: "expiry",
   remarks: "remarks",
   qty: "qty", quantity: "qty",
   qtytype: "qtytype", type: "qtytype",
   images: "images",
-  car: "car", carnumber: "car", carno: "car",
-  driver: "driver", drivername: "driver",
-  ref: "refNo", refno: "refNo", reference: "refNo",
 };
 
 function rowMatchesPower(row, parsed) {
   if (!parsed) return true;
   const { filters, terms } = parsed;
-  // Free text terms - all must match somewhere
+  // Free text terms — all must match somewhere
   for (const t of terms) {
     const needle = t.toLowerCase();
     const hay = [
-      row.itemCode, row.productName, row.origin, customerOf(row),
-      row.carNumber, row.driverName,
+      row.itemCode, row.productName, row.origin, safeButchery(row),
       String(row.quantity ?? ""),
-      (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
+      (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
       row.expiry, row.remarks, actionText(row),
     ].some((v) => (v ?? "").toString().toLowerCase().includes(needle));
     if (!hay) return false;
@@ -242,13 +317,16 @@ function rowMatchesPower(row, parsed) {
     } else if (aliased === "name") {
       if (!String(row.productName || "").toLowerCase().includes(v)) return false;
     } else if (aliased === "pos") {
-      if (!String(customerOf(row) || "").toLowerCase().includes(v)) return false;
+      if (!String(safeButchery(row) || "").toLowerCase().includes(v)) return false;
     } else if (aliased === "origin") {
       if (!String(row.origin || "").toLowerCase().includes(v)) return false;
     } else if (aliased === "action") {
       if (!String(actionText(row) || "").toLowerCase().includes(v)) return false;
     } else if (aliased === "expiry") {
-      if (!String(row.expiry || "").toLowerCase().includes(v)) return false;
+      const expiry = String(row.expiry || "").toLowerCase();
+      if (v === "empty") { if (expiry.trim() !== "") return false; }
+      else if (v === "nonempty") { if (expiry.trim() === "") return false; }
+      else if (!expiry.includes(v)) return false;
     } else if (aliased === "remarks") {
       const r = String(row.remarks || "").toLowerCase();
       if (v === "empty") { if (r.trim() !== "") return false; }
@@ -272,10 +350,6 @@ function rowMatchesPower(row, parsed) {
       const has = Array.isArray(row.images) && row.images.length > 0;
       if (v === "yes" && !has) return false;
       if (v === "no" && has) return false;
-    } else if (aliased === "car") {
-      if (!String(row.carNumber || "").toLowerCase().includes(v)) return false;
-    } else if (aliased === "driver") {
-      if (!String(row.driverName || "").toLowerCase().includes(v)) return false;
     } else {
       return false; // unknown key
     }
@@ -286,7 +360,7 @@ function rowMatchesPower(row, parsed) {
 /* ============================================================
    Local presets (filter snapshots) in localStorage
    ============================================================ */
-const PRESETS_KEY = "browseCustomerReturns:presets:v1";
+const PRESETS_KEY = "destructionBrowse:presets:v1";
 function loadPresets() {
   try { return JSON.parse(localStorage.getItem(PRESETS_KEY) || "[]"); }
   catch { return []; }
@@ -568,7 +642,7 @@ function MultiSelect({ label, options = [], selected = [], onChange, placeholder
                 background: checked ? T.primaryS : "transparent",
               }}>
                 <input type="checkbox" checked={checked} onChange={() => toggle(opt)} style={{ accentColor: T.primary }} />
-                <span style={{ fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={opt}>{opt || "-"}</span>
+                <span style={{ fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={opt}>{opt || "—"}</span>
               </label>
             );
           })}
@@ -716,7 +790,7 @@ function MiniDonut({ percent = 0, label = "", color = T.primary, size = 80, coun
 }
 
 /* ============================================================
-   Product DNA fingerprint - radial spider chart
+   Product DNA fingerprint — radial spider chart
    axes: condemn%, useProd%, posSpread, originSpread, volume, recency
    Each axis 0-100. Optional second product overlay for comparison.
    ============================================================ */
@@ -725,7 +799,7 @@ function ProductDNA({ primary, secondary, size = 280 }) {
     { key: "condemn",  label: "Condemn%" },
     { key: "useProd",  label: "Use Prod%" },
     { key: "posSpread", label: "POS spread" },
-    { key: "originSpread", label: "Origin spread" },
+    { key: "originSpread", label: "Batch spread" },
     { key: "volume",   label: "Volume" },
     { key: "recency",  label: "Recency" },
   ];
@@ -800,7 +874,7 @@ function ProductDNA({ primary, secondary, size = 280 }) {
 }
 
 /* ============================================================
-   Sankey diagram - 3 columns (Origin -> POS -> Action) with curved links
+   Sankey diagram — 3 columns (Origin → POS → Action) with curved links
    Width = flow count. Hover highlights connected paths.
    ============================================================ */
 function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
@@ -828,7 +902,7 @@ function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
     return all;
   };
   const cols = [buildNodes(0), buildNodes(1), buildNodes(2)];
-  const colLabels = ["Origin", "Customer", "Action"];
+  const colLabels = ["Batch", "POS", "Reason"];
   const colColors = [T.success, T.primary, T.danger];
 
   // Group "Other" entries
@@ -930,7 +1004,7 @@ function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
               strokeOpacity={hoverNode ? (high ? 0.5 : 0.08) : 0.22}
               style={{ transition: "stroke-opacity .15s" }}
             >
-              <title>{`${l.src.key} -> ${l.dst.key}: ${l.value}`}</title>
+              <title>{`${l.src.key} → ${l.dst.key}: ${l.value}`}</title>
             </path>
           );
         })}
@@ -950,7 +1024,7 @@ function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
                 y={n.y + n.h / 2 + 3}
                 textAnchor={ci === 0 ? "end" : "start"}
                 style={{ fontSize: 11, fill: T.text, fontWeight: 600, pointerEvents: "none" }}>
-                {(n.key || "-").length > 18 ? (n.key || "-").slice(0, 18) + "..." : (n.key || "-")}
+                {(n.key || "—").length > 18 ? (n.key || "—").slice(0, 18) + "…" : (n.key || "—")}
                 <tspan dx={6} style={{ fill: T.textS, fontWeight: 800 }}>{n.value}</tspan>
               </text>
             </g>
@@ -962,7 +1036,7 @@ function SankeyChart({ flows = [], width = 900, height = 420, topN = 8 }) {
 }
 
 /* ============================================================
-   Pareto chart - vertical bars + cumulative %
+   Pareto chart — vertical bars + cumulative %
    ============================================================ */
 function ParetoChart({ items = [], color = T.primary, formatLabel = (s) => s, topN = 12 }) {
   if (!items || items.length === 0) {
@@ -1041,7 +1115,7 @@ function ParetoChart({ items = [], color = T.primary, formatLabel = (s) => s, to
         ))}
       </svg>
       <div style={{ ...sx.mutedS, marginTop: 4, textAlign: "center" }}>
-        Top <strong style={{ color: T.text }}>{at80Count}</strong> of {items.length} = <strong style={{ color: T.danger }}>{Math.round(data[at80Count - 1]?.cumulative || 100)}%</strong> of returns
+        Top <strong style={{ color: T.text }}>{at80Count}</strong> of {items.length} = <strong style={{ color: T.danger }}>{Math.round(data[at80Count - 1]?.cumulative || 100)}%</strong> of condemned items
       </div>
     </div>
   );
@@ -1077,7 +1151,7 @@ function DayOfWeekBars({ daily }) {
           return (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%", gap: 4 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: isPeak ? T.danger : T.textM }} title={`${counts[i]} day(s)`}>
-                {v ? v.toFixed(1) : "-"}
+                {v ? v.toFixed(1) : "—"}
               </div>
               <div style={{
                 width: "70%", height: `${h}%`, minHeight: v > 0 ? 4 : 0,
@@ -1201,7 +1275,7 @@ function CalendarHeatmap({ daily, mode = "items", onPickDay, anomalies = new Set
                   onClick={() => data && onPickDay && onPickDay(ds)}
                 >
                   <title>
-                    {ds}{data ? `\n${data.items} items - ${data.condCount} cond - ${data.kg} kg${isAnom ? "\n anomaly" : ""}` : "\nNo report"}
+                    {ds}{data ? `\n${data.items} items · ${data.condCount} cond · ${data.kg} kg${isAnom ? "\n⚠ anomaly" : ""}` : "\nNo report"}
                   </title>
                 </rect>
               </g>
@@ -1232,9 +1306,9 @@ function AuditTrailModalInner({ open, onClose, item, trail }) {
   return (
     <ModalShell open={open} onClose={onClose} title="Audit trail" width={620}>
       <div style={{ marginBottom: 14, padding: "10px 12px", background: T.cardAlt, borderRadius: 8, border: `1px solid ${T.border}` }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: T.text }}>{item.productName || "-"}</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: T.text }}>{item.productName || "—"}</div>
         <div style={{ ...sx.mutedS, marginTop: 4 }}>
-          {[item.itemCode, item.origin, customerOf(item), item.expiry ? `Exp: ${item.expiry}` : null].filter(Boolean).join(" - ") || "-"}
+          {[item.itemCode, item.origin, safeButchery(item), item.expiry ? `Exp: ${item.expiry}` : null].filter(Boolean).join(" · ") || "—"}
         </div>
       </div>
       {all.length === 0 ? (
@@ -1263,7 +1337,7 @@ function AuditTrailModalInner({ open, onClose, item, trail }) {
                 </div>
                 <div style={{ fontSize: 13, lineHeight: 1.5 }}>
                   <span style={{ color: T.textM, textDecoration: "line-through" }}>{ch.from || "(empty)"}</span>
-                  <span style={{ margin: "0 8px", color: T.primary, fontWeight: 700 }}>-></span>
+                  <span style={{ margin: "0 8px", color: T.primary, fontWeight: 700 }}>→</span>
                   <span style={{ fontWeight: 700, color: T.text }}>{ch.to || "(empty)"}</span>
                 </div>
               </div>
@@ -1276,7 +1350,7 @@ function AuditTrailModalInner({ open, onClose, item, trail }) {
 }
 
 /* ============================================================
-   Product Insights modal - full 360 deg view of a single product
+   Product Insights modal — full 360° view of a single product
    ============================================================ */
 function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate, auditTrailByKey, initialCode, initialName }) {
   const [query, setQuery] = useState("");
@@ -1349,7 +1423,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
     let returnsCount = 0, totalKg = 0, totalPcs = 0;
     let condCount = 0, condKg = 0;
     let useProd = 0, market = 0, marketKg = 0, disposed = 0, disposedKg = 0, sepExp = 0;
-    const customerMap = {}, originMap = {}, actionMap = {}, expiryMap = {};
+    const posMap = {}, originMap = {}, actionMap = {}, expiryMap = {};
     const dailyData = new Map();
     let totalAcrossAllTime = 0;
     for (const rep of returnsData) {
@@ -1383,12 +1457,12 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           disposed += 1;
           if (isKgType(it.qtyType)) disposedKg += q;
         }
-        const pos = customerOf(it) || "-";
-        const origin = it.origin || "-";
-        customerMap[pos] = (customerMap[pos] || 0) + 1;
+        const pos = safeButchery(it) || "—";
+        const origin = it.origin || "—";
+        posMap[pos] = (posMap[pos] || 0) + 1;
         originMap[origin] = (originMap[origin] || 0) + 1;
         if (it.expiry) expiryMap[it.expiry] = (expiryMap[it.expiry] || 0) + 1;
-        const cur = dailyData.get(date) || { items: 0, kg: 0, pcs: 0, condCount: 0, condKg: 0, customerSet: new Set() };
+        const cur = dailyData.get(date) || { items: 0, kg: 0, pcs: 0, condCount: 0, condKg: 0, posSet: new Set() };
         cur.items += 1;
         if (isKgType(it.qtyType)) cur.kg += q;
         else if (isPcsType(it.qtyType)) cur.pcs += q;
@@ -1396,7 +1470,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           cur.condCount += 1;
           if (isKgType(it.qtyType)) cur.condKg += q;
         }
-        cur.customerSet.add(pos);
+        cur.posSet.add(pos);
         dailyData.set(date, cur);
         occurrences.push({ ...it, date, currentAction: act, hasChange: !!ch && ch.to === actionText(it) });
       }
@@ -1424,7 +1498,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
       useProd, sepExp,
       market, marketKg: Math.round(marketKg * 100) / 100,
       disposed, disposedKg: Math.round(disposedKg * 100) / 100,
-      posTop: Object.entries(customerMap).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
+      posTop: Object.entries(posMap).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
       originTop: Object.entries(originMap).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
       actionTop: Object.entries(actionMap).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value })),
       expiryTop: Object.entries(expiryMap).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, value]) => ({ label, value })),
@@ -1437,7 +1511,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           pcs: x.pcs,
           condCount: x.condCount,
           condKg: Math.round(x.condKg * 100) / 100,
-          posList: Array.from(x.customerSet),
+          posList: Array.from(x.posSet),
         };
       }),
       dailyKg: dates.map((d) => ({ label: d, value: Math.round((dailyData.get(d)?.kg || 0) * 100) / 100 })),
@@ -1461,8 +1535,8 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
         const k = `${c}||${n}`;
         const e = stats.get(k) || { vol: 0, pos: new Set(), origin: new Set() };
         e.vol += 1;
-        e.pos.add(customerOf(it) || "-");
-        e.origin.add(it.origin || "-");
+        e.pos.add(safeButchery(it) || "—");
+        e.origin.add(it.origin || "—");
         stats.set(k, e);
       }
     }
@@ -1500,7 +1574,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
     const nameN = (compareWith.name || "").trim().toLowerCase();
     let returnsCount = 0;
     let condCount = 0, useProd = 0;
-    const customerSet = new Set(), originSet = new Set();
+    const posSet = new Set(), originSet = new Set();
     let lastSeen = "";
     for (const rep of returnsData) {
       const date = rep.reportDate;
@@ -1514,14 +1588,14 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
         const act = ch?.to ?? actionText(it);
         if (isCondemnation(act)) condCount += 1;
         if ((act || "").toLowerCase() === "use in production") useProd += 1;
-        customerSet.add(customerOf(it) || "-");
-        originSet.add(it.origin || "-");
+        posSet.add(safeButchery(it) || "—");
+        originSet.add(it.origin || "—");
         if (!lastSeen || date > lastSeen) lastSeen = date;
       }
     }
     return {
       returnsCount, condCount, useProd, lastSeen,
-      posTop: Array.from(customerSet).map((label) => ({ label, value: 0 })),
+      posTop: Array.from(posSet).map((label) => ({ label, value: 0 })),
       originTop: Array.from(originSet).map((label) => ({ label, value: 0 })),
     };
   }, [compareWith, returnsData, changeMapByDate, open]);
@@ -1540,13 +1614,13 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
 
   function exportProductCSV() {
     if (!insights || !selected) return;
-    const head = ["DATE", "ITEM CODE", "PRODUCT", "ORIGIN", "CUSTOMER", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "CURRENT ACTION"];
+    const head = ["DATE", "ITEM CODE", "PRODUCT", "BATCH", "POS", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "CURRENT REASON"];
     const rows = insights.occurrences.map((r) => [
-      r.date, r.itemCode || "", r.productName || "", r.origin || "", customerOf(r) || "",
-      r.quantity ?? "", (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? (r.customQtyType || "") : (r.qtyType || ""),
+      r.date, r.itemCode || "", r.productName || "", r.origin || "", safeButchery(r) || "",
+      r.quantity ?? "", (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || ""),
       r.expiry || "", r.remarks || "", r.currentAction || "",
     ]);
-    const csv = "\uFEFF" + [head, ...rows].map((row) => row.map((v) => {
+    const csv = "﻿" + [head, ...rows].map((row) => row.map((v) => {
       const s = v == null ? "" : String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     }).join(",")).join("\r\n");
@@ -1567,9 +1641,9 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
         <input
           ref={inputRef}
           type="text"
-          value={selected ? `${selected.code ? selected.code + " - " : ""}${selected.name}` : query}
+          value={selected ? `${selected.code ? selected.code + " · " : ""}${selected.name}` : query}
           onChange={(e) => { setQuery(e.target.value); setSelected(null); }}
-          placeholder="Search by item code or product name..."
+          placeholder="Search by item code or product name…"
           style={{ ...sx.input, paddingLeft: 36, paddingRight: 80, width: "100%", fontSize: 14 }}
           readOnly={!!selected}
         />
@@ -1594,7 +1668,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                  onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {m.name || "-"}
+                    {m.name || "—"}
                   </div>
                   <div style={{ ...sx.mutedS, marginTop: 2 }}>
                     {m.code ? <code style={{ fontFamily: "ui-monospace, monospace", color: T.primary }}>{m.code}</code> : <span style={{ color: T.textS }}>no code</span>}
@@ -1624,7 +1698,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                   <button key={i} onClick={() => setSelected({ code: p.code, name: p.name })} style={{
                     ...sx.btn, justifyContent: "space-between", padding: "8px 12px", textAlign: "left",
                   }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 360 }}>{p.name || p.code || "-"}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 360 }}>{p.name || p.code || "—"}</span>
                     <span style={{ ...sx.mutedS, fontWeight: 700 }}>{p.count}</span>
                   </button>
                 ))}
@@ -1658,7 +1732,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{selected.name || "-"}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.text }}>{selected.name || "—"}</div>
                 <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                   {selected.code && (
                     <span style={{ ...sx.pill, background: T.primaryS, color: T.primary, borderColor: "#c7d2fe" }}>
@@ -1666,10 +1740,10 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                     </span>
                   )}
                   <span style={{ ...sx.pill }}>
-                    {isRangeActive ? "First (range): " : "First: "}{insights.firstSeen || "-"}
+                    {isRangeActive ? "First (range): " : "First: "}{insights.firstSeen || "—"}
                   </span>
                   <span style={{ ...sx.pill }}>
-                    {isRangeActive ? "Last (range): " : "Last: "}{insights.lastSeen || "-"}
+                    {isRangeActive ? "Last (range): " : "Last: "}{insights.lastSeen || "—"}
                   </span>
                   <span style={{ ...sx.pill }}>
                     {insights.uniqueDates} day{insights.uniqueDates !== 1 ? "s" : ""}
@@ -1687,7 +1761,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
             </div>
           </div>
 
-          {/*  Date range filter for this product */}
+          {/* ✅ Date range filter for this product */}
           <div style={{
             ...sx.card, padding: "10px 14px", marginBottom: 14,
             display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
@@ -1701,7 +1775,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
               type="date" value={pFrom} onChange={(e) => setPFrom(e.target.value)}
               style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }}
             />
-            <span style={{ color: T.textS }}>-></span>
+            <span style={{ color: T.textS }}>→</span>
             <input
               type="date" value={pTo} onChange={(e) => setPTo(e.target.value)}
               style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }}
@@ -1725,8 +1799,8 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
 
           {/* Stat strip */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
-            <StatChip icon={FiPackage} label="Total returns" value={insights.returnsCount}
-              sub={`${insights.totalKg} kg - ${insights.totalPcs} pcs`} />
+            <StatChip icon={FiPackage} label="Total condemned" value={insights.returnsCount}
+              sub={`${insights.totalKg} kg · ${insights.totalPcs} pcs`} />
             <StatChip icon={FiAlertTriangle} label="Condemned" value={insights.condCount}
               sub={`${insights.condKg} kg`} color={T.danger} bg={T.dangerS} />
             <StatChip icon={FiZap} label="Use in prod" value={insights.useProd}
@@ -1761,7 +1835,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                       type="text"
                       value={compareQuery}
                       onChange={(e) => setCompareQuery(e.target.value)}
-                      placeholder="Compare with..."
+                      placeholder="Compare with…"
                       style={{ ...sx.input, padding: "6px 10px", fontSize: 12, width: 200 }}
                     />
                     {compareMatches.length > 0 && (
@@ -1778,7 +1852,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                           }} onMouseOver={(e) => e.currentTarget.style.background = T.bgAlt}
                              onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
-                              {m.name || m.code || "-"}
+                              {m.name || m.code || "—"}
                             </span>
                             <span style={{ ...sx.mutedS, flexShrink: 0 }}>{m.count}</span>
                           </button>
@@ -1807,7 +1881,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           {/* Charts row 1 */}
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 12, marginBottom: 12 }}>
             <div style={{ ...sx.card, padding: 14 }}>
-              <div style={{ ...sx.h3, marginBottom: 10 }}>Returns over time</div>
+              <div style={{ ...sx.h3, marginBottom: 10 }}>Condemnations over time</div>
               {insights.daily.length > 0 ? (
                 <div style={{ overflowX: "auto" }}>
                   <Sparkline
@@ -1823,7 +1897,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                           <FiCalendar size={11} /> {d.label}
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 10px", fontSize: 12 }}>
-                          <span style={{ opacity: 0.7 }}>Returns</span>
+                          <span style={{ opacity: 0.7 }}>Condemned</span>
                           <span style={{ fontWeight: 700, textAlign: "right" }}>{d.value}</span>
                           {d.kg > 0 && <>
                             <span style={{ opacity: 0.7 }}>Weight</span>
@@ -1836,7 +1910,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                           {d.condCount > 0 && <>
                             <span style={{ color: "#fca5a5" }}>Condemned</span>
                             <span style={{ fontWeight: 700, textAlign: "right", color: "#fca5a5" }}>
-                              {d.condCount}{d.condKg > 0 ? ` - ${fmtNum(d.condKg)} kg` : ""}
+                              {d.condCount}{d.condKg > 0 ? ` · ${fmtNum(d.condKg)} kg` : ""}
                             </span>
                           </>}
                           {d.posList && d.posList.length > 0 && <>
@@ -1861,7 +1935,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           {/* Charts row 2 */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
             <div style={{ ...sx.card, padding: 14 }}>
-              <div style={{ ...sx.h3, marginBottom: 10 }}>By Origin</div>
+              <div style={{ ...sx.h3, marginBottom: 10 }}>By Batch</div>
               <HBarList items={insights.originTop.slice(0, 6)} color={T.success} />
             </div>
             <div style={{ ...sx.card, padding: 14 }}>
@@ -1880,7 +1954,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
           {insights.audit.length > 0 && (
             <div style={{ ...sx.card, padding: 14, marginBottom: 12 }}>
               <div style={{ ...sx.h3, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                <FiClock size={13} /> Audit trail - {insights.audit.length} change{insights.audit.length !== 1 ? "s" : ""}
+                <FiClock size={13} /> Audit trail · {insights.audit.length} change{insights.audit.length !== 1 ? "s" : ""}
               </div>
               <div style={{ position: "relative", paddingLeft: 22, maxHeight: 260, overflow: "auto" }}>
                 <div style={{ position: "absolute", left: 8, top: 8, bottom: 8, width: 2, background: T.border }} />
@@ -1902,7 +1976,7 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                       </div>
                       <div>
                         <span style={{ color: T.textM, textDecoration: "line-through" }}>{ch.from || "(empty)"}</span>
-                        <span style={{ margin: "0 6px", color: T.primary, fontWeight: 700 }}>-></span>
+                        <span style={{ margin: "0 6px", color: T.primary, fontWeight: 700 }}>→</span>
                         <span style={{ fontWeight: 700, color: T.text }}>{ch.to || "(empty)"}</span>
                       </div>
                     </div>
@@ -1914,12 +1988,12 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
 
           {/* Occurrences table */}
           <div style={{ ...sx.card, padding: 14 }}>
-            <div style={{ ...sx.h3, marginBottom: 10 }}>All occurrences - {insights.occurrences.length}</div>
+            <div style={{ ...sx.h3, marginBottom: 10 }}>All occurrences · {insights.occurrences.length}</div>
             <div style={{ overflow: "auto", maxHeight: 360 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: T.bgAlt }}>
-                    {["Date", "Customer", "Origin", "Qty", "Type", "Expiry", "Remarks", "Current Action"].map((h) => (
+                    {["Date", "POS", "Batch", "Qty", "Type", "Expiry", "Remarks", "Current Reason"].map((h) => (
                       <th key={h} style={{
                         padding: "8px", textAlign: "left", fontSize: 10, fontWeight: 700,
                         color: T.textM, textTransform: "uppercase", letterSpacing: ".04em",
@@ -1931,18 +2005,18 @@ function ProductInsightsModalInner({ open, onClose, returnsData, changeMapByDate
                 </thead>
                 <tbody>
                   {insights.occurrences.map((r, i) => {
-                    const qtyType = (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? (r.customQtyType || "") : (r.qtyType || "");
+                    const qtyType = (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
                     return (
                       <tr key={i}>
                         <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, fontWeight: 600 }}>{r.date}</td>
-                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{customerOf(r) || "-"}</td>
-                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{r.origin || "-"}</td>
+                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{safeButchery(r) || "—"}</td>
+                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{r.origin || "—"}</td>
                         <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, textAlign: "right", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{r.quantity ?? ""}</td>
                         <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{qtyType}</td>
-                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textM }}>{r.expiry || "-"}</td>
-                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textM, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.remarks}>{r.remarks || "-"}</td>
+                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textM }}>{r.expiry || "—"}</td>
+                        <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textM, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.remarks}>{r.remarks || "—"}</td>
                         <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, fontWeight: 600 }}>
-                          {r.currentAction || "-"}
+                          {r.currentAction || "—"}
                           {r.hasChange && <span style={{ ...sx.pill, background: T.successS, color: T.success, borderColor: "#a7f3d0", marginLeft: 6, fontSize: 10 }}>changed</span>}
                         </td>
                       </tr>
@@ -2005,7 +2079,7 @@ function PasswordModal({ show, onSubmit, onCancel, title = "Enter Password" }) {
           type="password" autoFocus value={val}
           onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onSubmit(val, setErr); }}
-          placeholder="Enter password..."
+          placeholder="Enter password…"
           style={{ ...sx.input, padding: "10px 14px" }}
         />
         {err && <div style={{ color: T.danger, fontSize: 13, fontWeight: 600 }}>{err}</div>}
@@ -2022,7 +2096,7 @@ function ImageViewerModal({ open, images = [], title = "", onClose }) {
   const [preview, setPreview] = useState(images[0] || "");
   useEffect(() => { if (open) setPreview(images[0] || ""); }, [open, images]);
   return (
-    <ModalShell open={open} onClose={onClose} title={`Images${title ? ` - ${title}` : ""}`} width={1100}>
+    <ModalShell open={open} onClose={onClose} title={`Images${title ? ` — ${title}` : ""}`} width={1100}>
       {preview ? (
         <div style={{ marginBottom: 12 }}>
           <img src={preview} alt="preview" style={{
@@ -2059,7 +2133,7 @@ function PresetsModal({ open, onClose, presets, onApply, onDelete, onSave, curre
           <div style={{ display: "flex", gap: 8 }}>
             <input
               value={name} onChange={(e) => setName(e.target.value)}
-              placeholder="Preset name (e.g. Last 7 days - Customer Zaid)"
+              placeholder="Preset name (e.g. Last 7 days · Beef)"
               style={{ ...sx.input, flex: 1 }}
             />
             <PrimaryBtn icon={FiSave} onClick={() => { if (!name.trim()) return; onSave(name.trim(), currentSnapshot); setName(""); }}>
@@ -2083,11 +2157,11 @@ function PresetsModal({ open, onClose, presets, onApply, onDelete, onSave, curre
                     <div style={{ fontWeight: 700, color: T.text, fontSize: 14 }}>{p.name}</div>
                     <div style={{ ...sx.mutedS, marginTop: 2 }}>
                       {[
-                        p.from || p.to ? `${p.from || "..."} -> ${p.to || "..."}` : null,
-                        p.customerSel?.length ? `POS: ${p.customerSel.length}` : null,
-                        p.originSel?.length ? `Origin: ${p.originSel.length}` : null,
-                        p.actionSel?.length ? `Action: ${p.actionSel.length}` : null,
-                      ].filter(Boolean).join(" - ") || "Empty"}
+                        p.from || p.to ? `${p.from || "…"} → ${p.to || "…"}` : null,
+                        p.posSel?.length ? `POS: ${p.posSel.length}` : null,
+                        p.originSel?.length ? `Batch: ${p.originSel.length}` : null,
+                        p.actionSel?.length ? `Reason: ${p.actionSel.length}` : null,
+                      ].filter(Boolean).join(" · ") || "Empty"}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -2104,7 +2178,7 @@ function PresetsModal({ open, onClose, presets, onApply, onDelete, onSave, curre
   );
 }
 
-/* Inline toast - minimal */
+/* Inline toast — minimal */
 function useToast() {
   const [items, setItems] = useState([]);
   const push = useCallback((msg, kind = "ok") => {
@@ -2145,20 +2219,28 @@ function useToast() {
    ============================================================ */
 const ALL_COLUMNS = [
   { key: "sl",          label: "SL", sortable: false, always: true, width: 50 },
-  { key: "itemCode",    label: "ITEM CODE", sortable: true, width: 110 },
+  { key: "itemCode",    label: "ITEM CODE", sortable: true,  width: 110 },
   { key: "productName", label: "PRODUCT NAME", sortable: true, width: 220 },
-  { key: "origin",      label: "ORIGIN", sortable: true, width: 110 },
-  { key: "pos",         label: "CUSTOMER", sortable: true, width: 130 },
-  { key: "carNumber",   label: "CAR NO.", sortable: true, width: 110 },
-  { key: "driverName",  label: "DRIVER", sortable: true, width: 140 },
+  { key: "origin",      label: "BATCH / LOT", sortable: true, width: 120 },
+  { key: "pos",         label: "POS", sortable: true, width: 130 },
   { key: "quantity",    label: "QTY", sortable: true, width: 80 },
   { key: "qtyType",     label: "QTY TYPE", sortable: true, width: 90 },
   { key: "expiry",      label: "EXPIRY", sortable: true, width: 100 },
   { key: "remarks",     label: "REMARKS", sortable: true, width: 160 },
-  { key: "action",      label: "ACTION", sortable: true, width: 200 },
+  { key: "action",      label: "REASON", sortable: true, width: 220 },
 ];
 
-export default function BrowseReturns() {
+const SEARCH_QUICK_ACTIONS = [
+  { label: "Expired", query: "reason:expired" },
+  { label: "Contamination", query: "reason:contamination" },
+  { label: "Damaged packaging", query: "reason:damaged" },
+  { label: "Missing expiry", query: "expiry:empty" },
+  { label: "With images", query: "images:yes" },
+  { label: "Qty > 10", query: "qty:>10" },
+  { label: "KG only", query: "type:kg" },
+];
+
+export default function DestructionBrowse() {
   /* --- Data --- */
   const [returnsData, setReturnsData] = useState([]);
   const [changesData, setChangesData] = useState([]);
@@ -2171,7 +2253,7 @@ export default function BrowseReturns() {
   /* --- Filters (shared) --- */
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
-  const [customerSel, setCustomerSel] = useState([]);
+  const [posSel, setPosSel] = useState([]);
   const [originSel, setOriginSel] = useState([]);
   const [actionSel, setActionSel] = useState([]);
   const [qtySel, setQtySel] = useState("any");
@@ -2204,14 +2286,22 @@ export default function BrowseReturns() {
   /* --- Modals --- */
   const [pwModal, setPwModal] = useState(false);
   const [presetsModal, setPresetsModal] = useState(false);
-  const [emailOpen, setEmailOpen] = useState(false);
   const [presets, setPresets] = useState(loadPresets());
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerData, setViewerData] = useState({ title: "", images: [] });
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditItem, setAuditItem] = useState(null);
+  const [emailOpen, setEmailOpen] = useState(false);
+  /* Report date awaiting an auto-opened email modal ("" = nothing pending). */
+  const [pendingEmailDate, setPendingEmailDate] = useState("");
   const [productOpen, setProductOpen] = useState(false);
   const [productInit, setProductInit] = useState({ code: "", name: "" });
+
+  /* --- Periodic Report (monthly / quarter / half / 9-month / yearly) --- */
+  const [monthlyOpen, setMonthlyOpen] = useState(false);
+  const [monthlyBusy, setMonthlyBusy] = useState(false);
+  const [monthlyMonth, setMonthlyMonth] = useState("");   // anchor = ending month
+  const [periodType, setPeriodType] = useState("monthly");
 
   /* --- Heatmap mode --- */
   const [heatmapMode, setHeatmapMode] = useState("items"); // "items" | "condemn"
@@ -2222,10 +2312,10 @@ export default function BrowseReturns() {
 
   /* --- Reviews queue (persisted in localStorage) --- */
   const [reviews, setReviews] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("bcr:reviews:v1") || "{}"); } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem("dz:reviews:v1") || "{}"); } catch { return {}; }
   });
   function persistReviews(next) {
-    try { localStorage.setItem("bcr:reviews:v1", JSON.stringify(next)); } catch {}
+    try { localStorage.setItem("dz:reviews:v1", JSON.stringify(next)); } catch {}
   }
   function reviewKey(date, row) { return `${date}__${itemKey(row)}`; }
   function addReview(date, row) {
@@ -2234,8 +2324,7 @@ export default function BrowseReturns() {
     const snapshot = {
       date, key: k,
       itemCode: row.itemCode || "", productName: row.productName || "",
-      origin: row.origin || "", pos: customerOf(row) || "",
-      carNumber: row.carNumber || "", driverName: row.driverName || "",
+      origin: row.origin || "", pos: safeButchery(row) || "",
       quantity: row.quantity, qtyType: row.qtyType,
       expiry: row.expiry || "", remarks: row.remarks || "",
       action: actionText(row) || "",
@@ -2264,7 +2353,7 @@ export default function BrowseReturns() {
 
   /* --- Auto-refresh polling --- */
   const [autoRefresh, setAutoRefresh] = useState(() => {
-    try { return localStorage.getItem("bcr:autoRefresh") !== "0"; } catch { return true; }
+    try { return localStorage.getItem("dz:autoRefresh") !== "0"; } catch { return true; }
   });
   const [pendingFetch, setPendingFetch] = useState(null); // { returns, changes }
   const [newCount, setNewCount] = useState(0);
@@ -2283,17 +2372,24 @@ export default function BrowseReturns() {
     setLoadingServer(true);
     try {
       const [rawReturns, rawChanges] = await Promise.all([
-        fetchByType("returns_customers"),
-        fetchByType("returns_customers_changes"),
+        fetchByType("destruction_record"),
+        fetchByType("destruction_changes"),
       ]);
       const normalized = normalizeReturns(rawReturns);
       setReturnsData(normalized);
       setChangesData(rawChanges);
 
       if (!selectedDate && normalized.length) {
-        const oldest = [...normalized].map((r) => r.reportDate).sort((a, b) => a.localeCompare(b))[0];
-        setSelectedDate(oldest);
-        const y = oldest.slice(0, 4), m = oldest.slice(5, 7);
+        const requestedDate = (() => {
+          try { return new URLSearchParams(window.location.search).get("d") || ""; }
+          catch { return ""; }
+        })();
+        const availableDates = new Set(normalized.map((r) => r.reportDate).filter(Boolean));
+        const targetDate = requestedDate && availableDates.has(requestedDate)
+          ? requestedDate
+          : latestReportDate(normalized);
+        setSelectedDate(targetDate);
+        const y = targetDate.slice(0, 4), m = targetDate.slice(5, 7);
         setOpenYears((p) => ({ ...p, [y]: true }));
         setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
       }
@@ -2308,7 +2404,7 @@ export default function BrowseReturns() {
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, []);
 
   /* ============================================================
-     URL state sync - read on mount, write on filter change
+     URL state sync — read on mount, write on filter change
      ============================================================ */
   const urlReadDone = useRef(false);
   useEffect(() => {
@@ -2319,7 +2415,7 @@ export default function BrowseReturns() {
       const v = (k) => p.get(k);
       if (v("from")) setFilterFrom(v("from"));
       if (v("to")) setFilterTo(v("to"));
-      if (v("pos")) setCustomerSel(v("pos").split(",").filter(Boolean));
+      if (v("pos")) setPosSel(v("pos").split(",").filter(Boolean));
       if (v("origin")) setOriginSel(v("origin").split(",").filter(Boolean));
       if (v("action")) setActionSel(v("action").split(",").filter(Boolean));
       if (v("qty")) setQtySel(v("qty"));
@@ -2330,6 +2426,12 @@ export default function BrowseReturns() {
       if (v("tab")) setTab(["overview", "browse", "compare"].includes(v("tab")) ? v("tab") : "overview");
       if (v("gb")) setGroupBy(["none", "pos", "origin", "action"].includes(v("gb")) ? v("gb") : "none");
       if (v("d")) setSelectedDate(v("d"));
+      /* ?email=1 — arrived from the input page's "send it now?" prompt.
+         Deferred until that exact report has loaded (see effect below): the
+         modal's generatePdf needs a non-null selectedReport, and the
+         "selected date no longer exists" effect transiently snaps the
+         selection to the latest report while data is still loading. */
+      if (v("email") === "1" && v("d")) setPendingEmailDate(v("d"));
     } catch {}
   }, []);
 
@@ -2339,7 +2441,7 @@ export default function BrowseReturns() {
       const p = new URLSearchParams();
       if (filterFrom) p.set("from", filterFrom);
       if (filterTo) p.set("to", filterTo);
-      if (customerSel.length) p.set("pos", customerSel.join(","));
+      if (posSel.length) p.set("pos", posSel.join(","));
       if (originSel.length) p.set("origin", originSel.join(","));
       if (actionSel.length) p.set("action", actionSel.join(","));
       if (qtySel !== "any") p.set("qty", qtySel);
@@ -2355,7 +2457,7 @@ export default function BrowseReturns() {
       const hash = window.location.hash || "";
       window.history.replaceState({}, "", qs ? `${path}?${qs}${hash}` : `${path}${hash}`);
     } catch {}
-  }, [filterFrom, filterTo, customerSel, originSel, actionSel, qtySel, hasImages, remarksState, search, searchScope, tab, groupBy, selectedDate]);
+  }, [filterFrom, filterTo, posSel, originSel, actionSel, qtySel, hasImages, remarksState, search, searchScope, tab, groupBy, selectedDate]);
 
   function copyShareLink() {
     try {
@@ -2365,6 +2467,12 @@ export default function BrowseReturns() {
     } catch (e) {
       toast("Failed to copy", "err");
     }
+  }
+
+  function applySearchQuick(query, scope = searchScope) {
+    setSearch(query);
+    setSearchScope(scope);
+    setResPage(1);
   }
 
   /* --- Bulk selection handlers --- */
@@ -2420,11 +2528,9 @@ export default function BrowseReturns() {
       if (c.key === "itemCode") return r.itemCode || "";
       if (c.key === "productName") return r.productName || "";
       if (c.key === "origin") return r.origin || "";
-      if (c.key === "pos") return customerOf(r) || "";
-      if (c.key === "carNumber") return r.carNumber || "";
-      if (c.key === "driverName") return r.driverName || "";
+      if (c.key === "pos") return safeButchery(r) || "";
       if (c.key === "quantity") return r.quantity ?? "";
-      if (c.key === "qtyType") return (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? (r.customQtyType || "") : (r.qtyType || "");
+      if (c.key === "qtyType") return (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
       if (c.key === "expiry") return r.expiry || "";
       if (c.key === "remarks") return r.remarks || "";
       if (c.key === "action") return actionText(r) || "";
@@ -2455,26 +2561,24 @@ export default function BrowseReturns() {
       if (c.key === "itemCode") return r.itemCode || "";
       if (c.key === "productName") return r.productName || "";
       if (c.key === "origin") return r.origin || "";
-      if (c.key === "pos") return customerOf(r) || "";
-      if (c.key === "carNumber") return r.carNumber || "";
-      if (c.key === "driverName") return r.driverName || "";
+      if (c.key === "pos") return safeButchery(r) || "";
       if (c.key === "quantity") return r.quantity ?? "";
-      if (c.key === "qtyType") return (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? (r.customQtyType || "") : (r.qtyType || "");
+      if (c.key === "qtyType") return (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? (r.customQtyType || "") : (r.qtyType || "");
       if (c.key === "expiry") return r.expiry || "";
       if (c.key === "remarks") return r.remarks || "";
       if (c.key === "action") return actionText(r) || "";
       return "";
     }));
-    const csv = "\uFEFF" + [head, ...body].map((row) => row.map(csvEscape).join(",")).join("\r\n");
-    downloadFile(`customer_returns_${selectedReport.reportDate}_selection.csv`, csv);
+    const csv = "﻿" + [head, ...body].map((row) => row.map(csvEscape).join(",")).join("\r\n");
+    downloadFile(`condemnation_${selectedReport.reportDate}_selection.csv`, csv);
     toast(`${rows.length} rows exported`, "ok");
   }
 
   /* ============================================================
-     Auto-refresh polling - silently fetch every 5min
+     Auto-refresh polling — silently fetch every 5min
      ============================================================ */
   useEffect(() => {
-    try { localStorage.setItem("bcr:autoRefresh", autoRefresh ? "1" : "0"); } catch {}
+    try { localStorage.setItem("dz:autoRefresh", autoRefresh ? "1" : "0"); } catch {}
   }, [autoRefresh]);
 
   useEffect(() => {
@@ -2482,7 +2586,7 @@ export default function BrowseReturns() {
     let alive = true;
     const tick = async () => {
       try {
-        const [r, c] = await Promise.all([fetchByType("returns_customers"), fetchByType("returns_customers_changes")]);
+        const [r, c] = await Promise.all([fetchByType("destruction_record"), fetchByType("destruction_changes")]);
         if (!alive) return;
         const normalized = normalizeReturns(r);
         const currentTotal = returnsData.reduce((s, rep) => s + (rep.items?.length || 0), 0);
@@ -2532,37 +2636,6 @@ export default function BrowseReturns() {
   }, []);
 
   /* ============================================================
-     Canonical customer-name map (case + whitespace-insensitive merge)
-     Builds a mapping: aggressiveKey -> most-common original spelling.
-     E.g. "Zou Zou" (20) + "ZOU ZOU" (21) + "ZOUZOU" (12) -> all map to "ZOU ZOU".
-     Side-effect mirror to module-level _canonicalCustomerMap so customerOf() reads it.
-     ============================================================ */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => {
-    const counts = {};
-    for (const rec of returnsData) {
-      const items = rec?.payload?.items || [];
-      for (const it of items) {
-        const raw = (it?.customerName || "").trim();
-        if (!raw) continue;
-        const aggKey = customerKey(raw);
-        const labelKey = raw.toUpperCase().replace(/\s+/g, " ");
-        if (!counts[aggKey]) counts[aggKey] = {};
-        counts[aggKey][labelKey] = (counts[aggKey][labelKey] || 0) + 1;
-      }
-    }
-    const map = {};
-    for (const aggKey of Object.keys(counts)) {
-      const spellings = counts[aggKey];
-      // pick the spelling with the most occurrences
-      const best = Object.entries(spellings).sort((a, b) => b[1] - a[1])[0][0];
-      map[aggKey] = best;
-    }
-    _canonicalCustomerMap = map;
-    return map;
-  }, [returnsData]);
-
-  /* ============================================================
      Changes map
      ============================================================ */
   const changeMapByDate = useMemo(() => {
@@ -2584,7 +2657,7 @@ export default function BrowseReturns() {
     return map;
   }, [changesData]);
 
-  /* Full audit trail per item key - across all dates */
+  /* Full audit trail per item key — across all dates */
   const auditTrailByKey = useMemo(() => {
     const map = new Map();
     for (const rec of changesData) {
@@ -2645,15 +2718,50 @@ export default function BrowseReturns() {
     if (!filteredReportsAsc.length) { setSelectedDate(""); return; }
     const still = filteredReportsAsc.some((r) => r.reportDate === selectedDate);
     if (!still) {
-      setSelectedDate(filteredReportsAsc[0].reportDate);
-      const y = filteredReportsAsc[0].reportDate.slice(0, 4);
-      const m = filteredReportsAsc[0].reportDate.slice(5, 7);
+      const targetDate = latestReportDate(filteredReportsAsc);
+      setSelectedDate(targetDate);
+      const y = targetDate.slice(0, 4);
+      const m = targetDate.slice(5, 7);
       setOpenYears((p) => ({ ...p, [y]: true }));
       setOpenMonths((p) => ({ ...p, [`${y}-${m}`]: true }));
     }
   }, [filteredReportsAsc, selectedDate]);
 
   const selectedReport = filteredReportsAsc.find((r) => r.reportDate === selectedDate) || null;
+
+  /* Fire the deferred ?email=1 open — but only once the *requested* report is
+     the selected one, so we never open the composer on the wrong day. */
+  useEffect(() => {
+    if (!pendingEmailDate) return;
+    const target = filteredReportsAsc.find((r) => r.reportDate === pendingEmailDate);
+    if (!target) return;                       // still loading, or filtered out
+    if (selectedDate !== pendingEmailDate) {   // reclaim the selection first
+      setSelectedDate(pendingEmailDate);
+      return;
+    }
+    setPendingEmailDate("");
+    setEmailOpen(true);
+  }, [pendingEmailDate, selectedDate, filteredReportsAsc]);
+
+  /* Distinct "YYYY-MM" months present in the data — newest first. Drives the
+     Monthly Report picker. Uses the raw dataset (unfiltered) so the report
+     always reflects the full month regardless of on-screen filters. */
+  const availableMonths = useMemo(() => {
+    const set = new Set();
+    for (const rep of returnsData) {
+      const mk = (rep.reportDate || "").slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(mk)) set.add(mk);
+    }
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [returnsData]);
+
+  function openMonthlyModal() {
+    const fallback = availableMonths[0] || new Date().toISOString().slice(0, 7);
+    const fromSel = /^\d{4}-\d{2}/.test(selectedDate) ? selectedDate.slice(0, 7) : "";
+    setMonthlyMonth(fromSel && availableMonths.includes(fromSel) ? fromSel : fallback);
+    setPeriodType("monthly");
+    setMonthlyOpen(true);
+  }
 
   /* ============================================================
      Hierarchy (tree)
@@ -2682,27 +2790,27 @@ export default function BrowseReturns() {
   /* ============================================================
      Filter options
      ============================================================ */
-  const { customerOpts, originOpts, actionOpts } = useMemo(() => {
-    const customerSet = new Set(), originSet = new Set(), actionSet = new Set();
+  const { posOpts, originOpts, actionOpts } = useMemo(() => {
+    const posSet = new Set(), originSet = new Set(), actionSet = new Set();
     for (const rep of filteredReportsAsc)
       for (const it of (rep.items || [])) {
-        customerSet.add(customerOf(it) || "-");
-        originSet.add(it.origin || "-");
-        actionSet.add(actionText(it) || "-");
+        posSet.add(safeButchery(it) || "—");
+        originSet.add(it.origin || "—");
+        actionSet.add(actionText(it) || "—");
       }
     const sortFn = (a, b) => String(a || "").localeCompare(String(b || ""), undefined, { sensitivity: "base" });
     return {
-      customerOpts: Array.from(customerSet).sort(sortFn),
+      posOpts: Array.from(posSet).sort(sortFn),
       originOpts: Array.from(originSet).sort(sortFn),
       actionOpts: Array.from(actionSet).sort(sortFn),
     };
   }, [filteredReportsAsc]);
 
   function rowPassesAdvanced(row) {
-    const pos = customerOf(row) || "-";
-    const origin = row.origin || "-";
-    const action = actionText(row) || "-";
-    if (customerSel.length && !customerSel.includes(pos)) return false;
+    const pos = safeButchery(row) || "—";
+    const origin = row.origin || "—";
+    const action = actionText(row) || "—";
+    if (posSel.length && !posSel.includes(pos)) return false;
     if (originSel.length && !originSel.includes(origin)) return false;
     if (actionSel.length && !actionSel.includes(action)) return false;
     if (qtySel !== "any" && qtyKind(row) !== qtySel) return false;
@@ -2718,7 +2826,7 @@ export default function BrowseReturns() {
   }
 
   function clearAllFilters() {
-    setCustomerSel([]); setOriginSel([]); setActionSel([]);
+    setPosSel([]); setOriginSel([]); setActionSel([]);
     setQtySel("any"); setHasImages("any"); setRemarksState("any");
   }
 
@@ -2741,7 +2849,7 @@ export default function BrowseReturns() {
      ============================================================ */
   const kpi = useMemo(() => {
     let totalItems = 0, totalQtyKg = 0, totalQtyPcs = 0;
-    const customerCountItems = {}, customerKg = {}, customerPcs = {}, byActionLatest = {};
+    const posCountItems = {}, posKg = {}, posPcs = {}, byActionLatest = {};
     const condemnationNames = {}, originCountItems = {};
     let condemnationCount = 0, condemnationKg = 0, useProdCount = 0, sepExpiredCount = 0;
     let marketKg = 0, disposedCount = 0, disposedKg = 0;
@@ -2758,19 +2866,19 @@ export default function BrowseReturns() {
         if (!rowPassesAdvanced(it)) return;
         totalItems += 1;
         const q = Number(it.quantity || 0);
-        const pos = customerOf(it) || "-";
-        const origin = it.origin || "-";
-        customerCountItems[pos] = (customerCountItems[pos] || 0) + 1;
+        const pos = safeButchery(it) || "—";
+        const origin = it.origin || "—";
+        posCountItems[pos] = (posCountItems[pos] || 0) + 1;
         originCountItems[origin] = (originCountItems[origin] || 0) + 1;
-        if (isKgType(it.qtyType)) { customerKg[pos] = (customerKg[pos] || 0) + q; totalQtyKg += q; }
-        else if (isPcsType(it.qtyType)) { customerPcs[pos] = (customerPcs[pos] || 0) + q; totalQtyPcs += q; }
+        if (isKgType(it.qtyType)) { posKg[pos] = (posKg[pos] || 0) + q; totalQtyKg += q; }
+        else if (isPcsType(it.qtyType)) { posPcs[pos] = (posPcs[pos] || 0) + q; totalQtyPcs += q; }
 
         const act = latestActionFor(date, it);
         if (act) byActionLatest[act] = (byActionLatest[act] || 0) + 1;
         if (isCondemnation(act)) {
           condemnationCount += 1;
           if (isKgType(it.qtyType)) condemnationKg += q;
-          condemnationNames[(it.productName || "-").trim()] = (condemnationNames[(it.productName || "-").trim()] || 0) + 1;
+          condemnationNames[(it.productName || "—").trim()] = (condemnationNames[(it.productName || "—").trim()] || 0) + 1;
         }
         if ((act || "").toLowerCase() === "use in production") useProdCount += 1;
         if ((act || "").toLowerCase() === "separated expired shelf") sepExpiredCount += 1;
@@ -2780,16 +2888,16 @@ export default function BrowseReturns() {
     });
 
     const pickMax = (obj) => {
-      let bestK = "-", bestV = -Infinity;
+      let bestK = "—", bestV = -Infinity;
       for (const [k, v] of Object.entries(obj)) if (v > bestV) { bestV = v; bestK = k; }
       return { key: bestK, value: bestV > 0 ? bestV : 0 };
     };
-    const topKg = pickMax(customerKg);
+    const topKg = pickMax(posKg);
     const actionTotal = Object.values(byActionLatest).reduce((a, b) => a + b, 0) || 1;
 
-    const topCustomerByItems = Object.entries(customerCountItems).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    const topPosByItems = Object.entries(posCountItems).sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([label, value]) => ({ label, value }));
-    const topCustomerByKg = Object.entries(customerKg).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    const topPosByKg = Object.entries(posKg).sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([label, value]) => ({ label, value: Math.round(value * 100) / 100 }));
     const topOrigins = Object.entries(originCountItems).sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([label, value]) => ({ label, value }));
@@ -2800,21 +2908,21 @@ export default function BrowseReturns() {
 
     return {
       totalReports: filteredReportsAsc.length, totalItems, totalQtyKg, totalQtyPcs,
-      topCustomer: pickMax(customerCountItems),
-      topCustomerByKg: { key: topKg.key, kg: Math.round(topKg.value * 100) / 100, percent: Math.round(topKg.value * 100 / (totalQtyKg || 1)) },
+      topPos: pickMax(posCountItems),
+      topPosByKg: { key: topKg.key, kg: Math.round(topKg.value * 100) / 100, percent: Math.round(topKg.value * 100 / (totalQtyKg || 1)) },
       condemnation: { count: condemnationCount, percent: Math.round(condemnationCount * 100 / actionTotal), kg: Math.round(condemnationKg * 100) / 100 },
       useProd: { count: useProdCount, percent: Math.round(useProdCount * 100 / actionTotal) },
       sepExpired: { count: sepExpiredCount, percent: Math.round(sepExpiredCount * 100 / actionTotal) },
       disposed: { count: disposedCount, percent: Math.round(disposedCount * 100 / actionTotal), kg: Math.round(disposedKg * 100) / 100 },
       marketKg: Math.round(marketKg * 100) / 100,
       actionTotal,
-      topCustomerByItems, topCustomerByKg2: topCustomerByKg, topOrigins, topActions, topCondemn,
+      topPosByItems, topPosByKg2: topPosByKg, topOrigins, topActions, topCondemn,
     };
     // eslint-disable-next-line
-  }, [filteredReportsAsc, changeMapByDate, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+  }, [filteredReportsAsc, changeMapByDate, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   /* ============================================================
-     Daily metrics - items + condemnation per day (used by heatmap, sparkline, anomalies)
+     Daily metrics — items + condemnation per day (used by heatmap, sparkline, anomalies)
      ============================================================ */
   const dailyMetrics = useMemo(() => {
     return filteredReportsAsc.map((rep) => {
@@ -2837,7 +2945,7 @@ export default function BrowseReturns() {
       return { date, items, condCount, condKg: Math.round(condKg * 100) / 100, kg: Math.round(kg * 100) / 100, pcs };
     });
     // eslint-disable-next-line
-  }, [filteredReportsAsc, changeMapByDate, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+  }, [filteredReportsAsc, changeMapByDate, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   const timeSeries = useMemo(() => {
     return dailyMetrics.map((d) => ({
@@ -2848,29 +2956,29 @@ export default function BrowseReturns() {
   }, [dailyMetrics]);
 
   /* ============================================================
-     Pareto data - by Product / by POS / by Origin
+     Pareto data — by Product / by POS / by Origin
      ============================================================ */
   const paretoData = useMemo(() => {
     const productMap = new Map();
-    const customerMap = new Map();
+    const posMap = new Map();
     filteredReportsAsc.forEach((rep) => {
       (rep.items || []).forEach((it) => {
         if (!rowPassesAdvanced(it)) return;
-        const name = (it.productName || "-").trim();
+        const name = (it.productName || "—").trim();
         productMap.set(name, (productMap.get(name) || 0) + 1);
-        const pos = customerOf(it) || "-";
-        customerMap.set(pos, (customerMap.get(pos) || 0) + 1);
+        const pos = safeButchery(it) || "—";
+        posMap.set(pos, (posMap.get(pos) || 0) + 1);
       });
     });
     const toSorted = (m) => Array.from(m.entries())
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
-    return { byProduct: toSorted(productMap), byPos: toSorted(customerMap) };
+    return { byProduct: toSorted(productMap), byPos: toSorted(posMap) };
     // eslint-disable-next-line
-  }, [filteredReportsAsc, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+  }, [filteredReportsAsc, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   /* ============================================================
-     Sankey flows - Origin -> POS -> Action triplets
+     Sankey flows — Origin → POS → Action triplets
      ============================================================ */
   const sankeyFlows = useMemo(() => {
     const m = new Map();
@@ -2879,23 +2987,23 @@ export default function BrowseReturns() {
       const inner = changeMapByDate.get(date) || new Map();
       (rep.items || []).forEach((it) => {
         if (!rowPassesAdvanced(it)) return;
-        const origin = it.origin || "-";
-        const pos = customerOf(it) || "-";
+        const origin = it.origin || "—";
+        const pos = safeButchery(it) || "—";
         const ch = inner.get(itemKey(it));
-        const action = ch?.to ?? actionText(it) ?? "-";
+        const action = ch?.to ?? actionText(it) ?? "—";
         const key = `${origin}|||${pos}|||${action}`;
         m.set(key, (m.get(key) || 0) + 1);
       });
     });
     return Array.from(m.entries()).map(([k, count]) => {
       const [origin, pos, action] = k.split("|||");
-      return { origin, pos, action: action || "-", count };
+      return { origin, pos, action: action || "—", count };
     });
     // eslint-disable-next-line
-  }, [filteredReportsAsc, changeMapByDate, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+  }, [filteredReportsAsc, changeMapByDate, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   /* ============================================================
-     Auto data-quality issues - detects suspicious rows
+     Auto data-quality issues — detects suspicious rows
      ============================================================ */
   const dataQualityIssues = useMemo(() => {
     const issues = {
@@ -2925,7 +3033,7 @@ export default function BrowseReturns() {
         else seenInDay.set(k, ref);
         const act = actionText(it);
         if (isCondemnation(act) && q === 0) issues.condemnNoQty.push(ref);
-        if ((it.action === "ط¥ط¬ط±ط§ط، ط¢ط®ط±..." || it.action === "Other...") && (!it.customAction || !it.customAction.trim()))
+        if ((it.action === "إجراء آخر..." || it.action === "Other...") && (!it.customAction || !it.customAction.trim()))
           issues.otherActionEmpty.push(ref);
       });
     });
@@ -2934,7 +3042,7 @@ export default function BrowseReturns() {
   }, [filteredReportsAsc]);
 
   /* ============================================================
-     Anomaly detection - flag days where items or condemnation > mean + 2sigma
+     Anomaly detection — flag days where items or condemnation > μ + 2σ
      ============================================================ */
   const anomalies = useMemo(() => {
     const n = dailyMetrics.length;
@@ -2984,14 +3092,13 @@ export default function BrowseReturns() {
      ============================================================ */
   const SEARCH_FIELDS = [
     "itemCode","productName","origin","butchery","customButchery",
-    "carNumber","driverName",
     "quantity","qtyType","customQtyType","expiry","remarks","action","customAction",
     "refNo"
   ];
   function normalizeField(row, key) {
-    if (key === "butchery") return customerOf(row);
+    if (key === "butchery") return safeButchery(row);
     if (key === "qtyType")
-      return (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+      return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
     if (key === "action") return actionText(row);
     return row?.[key];
   }
@@ -3027,10 +3134,9 @@ export default function BrowseReturns() {
     }
     const needle = q.toLowerCase();
     return [
-      row.itemCode, row.productName, row.origin, customerOf(row),
-      row.carNumber, row.driverName,
+      row.itemCode, row.productName, row.origin, safeButchery(row),
       String(row.quantity ?? ""),
-      (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
+      (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || ""),
       row.expiry, row.remarks, actionText(row),
     ].some((v) => (v ?? "").toString().toLowerCase().includes(needle));
   }
@@ -3047,11 +3153,9 @@ export default function BrowseReturns() {
       case "itemCode":    return row.itemCode || "";
       case "productName": return row.productName || "";
       case "origin":      return row.origin || "";
-      case "pos":         return customerOf(row) || "";
-      case "carNumber":   return row.carNumber || "";
-      case "driverName":  return row.driverName || "";
+      case "pos":         return safeButchery(row) || "";
       case "quantity":    return Number(row.quantity || 0);
-      case "qtyType":     return (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+      case "qtyType":     return (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
       case "expiry":      return row.expiry || "";
       case "remarks":     return row.remarks || "";
       case "action":      return actionText(row) || "";
@@ -3074,7 +3178,7 @@ export default function BrowseReturns() {
     });
     return rows;
     // eslint-disable-next-line
-  }, [selectedReport, sort, search, searchScope, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+  }, [selectedReport, sort, search, searchScope, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   /* ============================================================
      Selected day summary
@@ -3100,10 +3204,10 @@ export default function BrowseReturns() {
     const groups = new Map();
     sortedRows.forEach((row) => {
       let key;
-      if (groupBy === "pos") key = customerOf(row) || "-";
-      else if (groupBy === "origin") key = row.origin || "-";
-      else if (groupBy === "action") key = actionText(row) || "-";
-      else key = "-";
+      if (groupBy === "pos") key = safeButchery(row) || "—";
+      else if (groupBy === "origin") key = row.origin || "—";
+      else if (groupBy === "action") key = actionText(row) || "—";
+      else key = "—";
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(row);
     });
@@ -3140,7 +3244,7 @@ export default function BrowseReturns() {
     scored.sort((a, b) => b.score !== a.score ? b.score - a.score : (b.date || "").localeCompare(a.date || ""));
     return scored;
     // eslint-disable-next-line
-  }, [search, searchScope, globalIndex, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+  }, [search, searchScope, globalIndex, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   const totalPages = Math.max(1, Math.ceil(globalResults.length / RES_PAGE_SIZE));
   const pagedResults = useMemo(() => {
@@ -3149,11 +3253,11 @@ export default function BrowseReturns() {
   }, [globalResults, resPage]);
 
   /* ============================================================
-     Compare data - period A vs B
+     Compare data — period A vs B
      ============================================================ */
   function statsForRange(from, to) {
     let items = 0, kg = 0, pcs = 0, condCount = 0, condKg = 0, days = 0;
-    const customerMap = {}, actMap = {};
+    const posMap = {}, actMap = {};
     const dailyArr = [];
     returnsData.forEach((rep) => {
       const d = rep.reportDate || "";
@@ -3167,11 +3271,11 @@ export default function BrowseReturns() {
         const q = Number(it.quantity || 0);
         if (isKgType(it.qtyType)) kg += q;
         else if (isPcsType(it.qtyType)) pcs += q;
-        const pos = customerOf(it) || "-";
+        const pos = safeButchery(it) || "—";
         const inner = changeMapByDate.get(d) || new Map();
         const ch = inner.get(itemKey(it));
         const act = ch?.to ?? actionText(it);
-        customerMap[pos] = (customerMap[pos] || 0) + 1;
+        posMap[pos] = (posMap[pos] || 0) + 1;
         if (act) actMap[act] = (actMap[act] || 0) + 1;
         if (isCondemnation(act)) {
           condCount += 1;
@@ -3184,17 +3288,17 @@ export default function BrowseReturns() {
       items, kg: Math.round(kg * 100) / 100, pcs, condCount,
       condKg: Math.round(condKg * 100) / 100, days,
       avgPerDay: days ? Math.round((items / days) * 10) / 10 : 0,
-      topCustomer: Object.entries(customerMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label, value })),
+      topPos: Object.entries(posMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label, value })),
       topAct: Object.entries(actMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label, value })),
       daily: dailyArr,
     };
   }
   const cmpA = useMemo(() => statsForRange(cmpAFrom, cmpATo),
     // eslint-disable-next-line
-    [returnsData, changeMapByDate, cmpAFrom, cmpATo, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+    [returnsData, changeMapByDate, cmpAFrom, cmpATo, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
   const cmpB = useMemo(() => statsForRange(cmpBFrom, cmpBTo),
     // eslint-disable-next-line
-    [returnsData, changeMapByDate, cmpBFrom, cmpBTo, customerSel, originSel, actionSel, qtySel, hasImages, remarksState]);
+    [returnsData, changeMapByDate, cmpBFrom, cmpBTo, posSel, originSel, actionSel, qtySel, hasImages, remarksState]);
 
   /* ============================================================
      Highlight helper
@@ -3248,7 +3352,7 @@ export default function BrowseReturns() {
     return window.XLSX;
   }
 
-  /* ===== Email helpers (Customer Returns) ===== */
+  /* ===== Email helpers (Returns) ===== */
   const collectReportImages = useCallback((rep) => {
     const items = rep?.items || [];
     const urls = [];
@@ -3260,8 +3364,8 @@ export default function BrowseReturns() {
     return urls;
   }, []);
 
-  const buildCustomerReturnsHtml = useCallback((rep, opts = {}) => {
-    const date = rep?.reportDate || "-";
+  const buildReturnsHtml = useCallback((rep, opts = {}) => {
+    const date = rep?.reportDate || "—";
     /* Greeting line wants DD/MM/YYYY; reportDate is stored as YYYY-MM-DD. */
     const dateDMY = /^\d{4}-\d{2}-\d{2}$/.test(String(rep?.reportDate || ""))
       ? String(rep.reportDate).split("-").reverse().join("/")
@@ -3271,42 +3375,44 @@ export default function BrowseReturns() {
     const includeTable = !!opts.includeTable;
     const sortBy  = opts.sortBy  || "default";
     const groupBy = opts.groupBy || "none";
+
+    /* Sort + group the items per the user's choice in the modal */
     const { groups, totalCount } = arrangeItems(rep?.items || [], { sortBy, groupBy });
     const isGrouped = groupBy !== "none";
     const items = rep?.items || [];
 
+    /* Categorize action by keyword to colorize the cell — looks modern in Outlook */
     const actionColor = (a) => {
       const s = String(a || "").toLowerCase();
       if (!s) return { bg: "#f1f5f9", fg: "#64748b" };
-      if (s.includes("condemn") || s.includes("ط¥طھظ„ط§ظپ") || s.includes("ط§طھظ„ط§ظپ")) return { bg: "#fee2e2", fg: "#991b1b" };
-      if (s.includes("production") || s.includes("ط¥ظ†طھط§ط¬") || s.includes("ط§ظ†طھط§ط¬")) return { bg: "#dcfce7", fg: "#166534" };
-      if (s.includes("supplier") || s.includes("ظ…ظˆط±ط¯"))                          return { bg: "#fef3c7", fg: "#92400e" };
-      if (s.includes("separat") || s.includes("ظپطµظ„"))                            return { bg: "#dbeafe", fg: "#1e40af" };
+      if (s.includes("condemn") || s.includes("إتلاف") || s.includes("اتلاف")) return { bg: "#fee2e2", fg: "#991b1b" };
+      if (s.includes("production") || s.includes("إنتاج") || s.includes("انتاج")) return { bg: "#dcfce7", fg: "#166534" };
+      if (s.includes("supplier") || s.includes("مورد"))                          return { bg: "#fef3c7", fg: "#92400e" };
+      if (s.includes("separat") || s.includes("فصل"))                            return { bg: "#dbeafe", fg: "#1e40af" };
       return { bg: "#ede9fe", fg: "#5b21b6" };
     };
 
-    /* Outlook (Word engine) ignores linear-gradient / border-radius on spans, so
+    /* Build a single row of <tr> HTML — used for both grouped and flat layouts.
+       Outlook (Word engine) ignores linear-gradient / border-radius on spans, so
        rows use solid colors + the `bgcolor` attribute, and the Action pill is
        painted on the <td> itself rather than an inner <span>. */
-    const cellBase = "padding:9px 10px;border-bottom:1px solid #e6ebf2;border-right:1px solid #eef2f6;font-size:12px;line-height:1.4;";
+    const cellBase = "padding:9px 12px;border-bottom:1px solid #e6ebf2;border-right:1px solid #eef2f6;font-size:12px;line-height:1.4;";
     const renderRow = (row, i) => {
-      const customer = (typeof customerOf === "function" ? customerOf(row) : (row.customer || row.pos || ""));
+      const pos = safeButchery(row) || row.pos || "";
+      const qtyType = row.qtyType || "";
       const action = row.action || row.customAction || "";
       const stripe = i % 2 === 0 ? "#ffffff" : "#f6f8fb";
       const ac = actionColor(action);
       return `<tr bgcolor="${stripe}" style="background:${stripe};">
         <td align="center" bgcolor="${stripe}" style="${cellBase}font-weight:700;color:#94a3b8;">${i + 1}</td>
-        <td bgcolor="${stripe}" style="${cellBase}color:#475569;font-weight:700;">${escapeHtml(row.itemCode || "-")}</td>
-        <td bgcolor="${stripe}" style="${cellBase}font-weight:700;color:#0f172a;">${escapeHtml(row.productName || "-")}</td>
-        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.origin || "-")}</td>
-        <td bgcolor="${stripe}" style="${cellBase}color:#0f172a;font-weight:600;">${escapeHtml(customer)}</td>
-        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.carNumber || "")}</td>
-        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.driverName || "")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}font-weight:700;color:#0f172a;">${escapeHtml(row.productName || "—")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.origin || "—")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#0f172a;font-weight:600;">${escapeHtml(pos)}</td>
         <td align="right" bgcolor="${stripe}" style="${cellBase}font-weight:700;color:#0f172a;">${escapeHtml(row.quantity ?? "")}</td>
-        <td bgcolor="${stripe}" style="${cellBase}color:#64748b;">${escapeHtml(row.qtyType || "")}</td>
-        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.expiry || "-")}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#64748b;">${escapeHtml(qtyType)}</td>
+        <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.expiry || "—")}</td>
         <td bgcolor="${stripe}" style="${cellBase}color:#475569;">${escapeHtml(row.remarks || "")}</td>
-        <td align="center" bgcolor="${ac.bg}" style="padding:9px 10px;border-bottom:1px solid #e6ebf2;font-size:11px;font-weight:800;background:${ac.bg};color:${ac.fg};white-space:nowrap;">${escapeHtml(action) || "-"}</td>
+        <td align="center" bgcolor="${ac.bg}" style="padding:9px 12px;border-bottom:1px solid #e6ebf2;font-size:11px;font-weight:800;background:${ac.bg};color:${ac.fg};white-space:nowrap;">${escapeHtml(action) || "—"}</td>
       </tr>`;
     };
 
@@ -3314,8 +3420,8 @@ export default function BrowseReturns() {
     const bodyHtml = isGrouped
       ? groups.map((g) => {
           const groupHeader = `<tr bgcolor="#1e40af" style="background:#1e40af;color:#ffffff;">
-            <td colspan="12" bgcolor="#1e40af" style="padding:9px 14px;font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#ffffff;background:#1e40af;">
-               ${escapeHtml(g.label)} &nbsp;<span style="background:#3b5bdb;padding:1px 8px;font-size:11px;color:#ffffff;border-radius:8px;">${g.items.length}</span>
+            <td colspan="9" bgcolor="#1e40af" style="padding:9px 14px;font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#ffffff;background:#1e40af;">
+              ${escapeHtml(g.label)} &nbsp;<span style="background:#3b5bdb;padding:1px 8px;font-size:11px;color:#ffffff;border-radius:8px;">${g.items.length}</span>
             </td>
           </tr>`;
           const groupRows = g.items.map((row) => renderRow(row, runningIdx++)).join("");
@@ -3332,15 +3438,11 @@ export default function BrowseReturns() {
         </tr></table>`
       : "";
 
-    const attInfo = attCount
-      ? `<span style="display:inline-block;padding:8px 16px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;font-size:13px;color:#1e3a8a;font-weight:700;">📎 ${attCount} file(s) attached</span>`
-      : "";
-
     /* Opening text: whatever the send modal resolved (template + variables),
        falling back to the built-in greeting. First line stays bold. */
     const introRaw = String(opts.intro ?? "").trim() || DEFAULT_INTRO.replace("{date}", dateDMY);
-    const introHtml = introRaw
-      .split("\n")
+    const introLines = introRaw.split("\n");
+    const introHtml = introLines
       .map((line, i) => {
         if (!line.trim()) return `<div style="height:8px;"></div>`;
         const weight = i === 0 ? "font-weight:700;" : "margin-top:2px;";
@@ -3348,13 +3450,17 @@ export default function BrowseReturns() {
       })
       .join("");
 
+    const attInfo = attCount
+      ? `<span style="display:inline-block;padding:8px 16px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;font-size:13px;color:#1e3a8a;font-weight:700;">📎 ${attCount} file(s) attached</span>`
+      : "";
+
     /* thead cells share one solid-dark style so the header never vanishes in
        Outlook the way a gradient background does. */
-    const thBase = "padding:11px 10px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#ffffff;background:#1e293b;border-right:1px solid #334155;";
+    const thBase = "padding:11px 12px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#ffffff;background:#1e293b;border-right:1px solid #334155;";
 
     return `
       <div style="font-family:'Segoe UI',Inter,Roboto,Arial,sans-serif;background:#eef2f7;padding:24px 16px;color:#0f172a;">
-        <div style="max-width:1080px;margin:auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
+        <div style="max-width:980px;margin:auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
 
           <!-- Header band with logo (solid bg so Outlook keeps it dark) -->
           <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0f172a" style="background:#0f172a;border-collapse:collapse;">
@@ -3369,7 +3475,7 @@ export default function BrowseReturns() {
                     </td>
                     <td style="vertical-align:middle;padding-inline-start:18px;">
                       <div style="font-size:11px;font-weight:800;letter-spacing:3px;color:#94a3b8;text-transform:uppercase;">Quality Control System</div>
-                      <div style="font-size:23px;font-weight:900;margin-top:4px;letter-spacing:.5px;color:#ffffff;">Customer Returns Report</div>
+                      <div style="font-size:23px;font-weight:900;margin-top:4px;letter-spacing:.5px;color:#ffffff;">Condemnation &amp; Disposal Report</div>
                       <div style="font-size:12px;color:#cbd5e1;margin-top:4px;">Trans Emirates Livestock Trading L.L.C.</div>
                     </td>
                     <td style="vertical-align:middle;text-align:right;">
@@ -3399,7 +3505,7 @@ export default function BrowseReturns() {
                   <td bgcolor="#1e40af" style="background:#1e40af;color:#ffffff;border-radius:10px;padding:8px 15px;font-weight:900;font-size:18px;">${totalCount}</td>
                   <td style="padding-inline-start:12px;vertical-align:middle;">
                     <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Total Items</div>
-                    <div style="font-size:13px;color:#0f172a;font-weight:700;margin-top:1px;">Customer returns</div>
+                    <div style="font-size:13px;color:#0f172a;font-weight:700;margin-top:1px;">Returned for review</div>
                   </td>
                   ${isGrouped ? `<td style="padding-inline-start:12px;vertical-align:middle;"><span style="display:inline-block;padding:5px 12px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:8px;font-size:11px;font-weight:800;">Grouped by ${escapeHtml(GROUP_LABEL[groupBy]?.en || groupBy)} · ${groups.length} groups</span></td>` : ""}
                   ${sortBy !== "default" ? `<td style="padding-inline-start:8px;vertical-align:middle;"><span style="display:inline-block;padding:5px 12px;background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;border-radius:8px;font-size:11px;font-weight:800;">Sorted by ${escapeHtml(sortBy)}</span></td>` : ""}
@@ -3418,12 +3524,9 @@ export default function BrowseReturns() {
                 <thead>
                   <tr bgcolor="#1e293b" style="background:#1e293b;">
                     <th align="center" style="${thBase}">#</th>
-                    <th align="left" style="${thBase}">Code</th>
                     <th align="left" style="${thBase}">Product</th>
-                    <th align="left" style="${thBase}">Origin</th>
-                    <th align="left" style="${thBase}">Customer</th>
-                    <th align="left" style="${thBase}">Car No.</th>
-                    <th align="left" style="${thBase}">Driver</th>
+                    <th align="left" style="${thBase}">Batch</th>
+                    <th align="left" style="${thBase}">POS</th>
                     <th align="right" style="${thBase}">Qty</th>
                     <th align="left" style="${thBase}">Unit</th>
                     <th align="left" style="${thBase}">Expiry</th>
@@ -3436,7 +3539,7 @@ export default function BrowseReturns() {
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;border-collapse:collapse;"><tr>
               <td bgcolor="#f6f8fb" align="center" style="padding:24px;background:#f6f8fb;border:2px dashed #cbd5e1;border-radius:12px;">
                 <div style="font-size:32px;line-height:1;">📄</div>
-                <div style="margin-top:10px;color:#334155;font-weight:800;font-size:14px;">The full customer returns table is attached as a PDF.</div>
+                <div style="margin-top:10px;color:#334155;font-weight:800;font-size:14px;">جدول المرتجعات الكامل في ملف الـ PDF المرفق</div>
                 <div style="margin-top:4px;color:#64748b;font-size:12px;">${totalCount} item(s) · Full details enclosed</div>
               </td>
             </tr></table>`}
@@ -3453,8 +3556,8 @@ export default function BrowseReturns() {
       </div>`;
   }, []);
 
-  const buildCustomerReturnsText = useCallback((rep, opts = {}) => {
-    const date = rep?.reportDate || "-";
+  const buildReturnsText = useCallback((rep, opts = {}) => {
+    const date = rep?.reportDate || "—";
     const includeTable = !!opts.includeTable;
     const sortBy  = opts.sortBy  || "default";
     const groupBy = opts.groupBy || "none";
@@ -3467,8 +3570,8 @@ export default function BrowseReturns() {
     const introRaw = String(opts.intro ?? "").trim() || DEFAULT_INTRO.replace("{date}", dateDMY);
     lines.push(...introRaw.split("\n"));
     lines.push("");
-    lines.push("AL MAWASHI - CUSTOMER RETURNS REPORT");
-    lines.push("====================================");
+    lines.push("AL MAWASHI — CONDEMNATION & DISPOSAL REPORT");
+    lines.push("═══════════════════════════");
     lines.push(`Date: ${date}    Items: ${totalCount}`);
     if (sortBy !== "default") lines.push(`Sorted by: ${sortBy}`);
     if (isGrouped) lines.push(`Grouped by: ${groupBy}`);
@@ -3477,43 +3580,48 @@ export default function BrowseReturns() {
       let n = 0;
       groups.forEach((g) => {
         if (isGrouped) {
-          lines.push(` ${g.label} (${g.items.length})`);
-          lines.push("-".repeat(40));
+          lines.push(`📂 ${g.label} (${g.items.length})`);
+          lines.push("─".repeat(40));
         }
         g.items.forEach((row) => {
           n++;
-          const customer = (typeof customerOf === "function" ? customerOf(row) : (row.customer || row.pos || ""));
-          lines.push(`${n}. ${row.productName || "-"}`);
-          lines.push(`   Customer: ${customer || "-"}  |  Car: ${row.carNumber || "-"}  |  Driver: ${row.driverName || "-"}`);
-          lines.push(`   Origin: ${row.origin || "-"}  |  Qty: ${row.quantity ?? "-"} ${row.qtyType || ""}  |  Expiry: ${row.expiry || "-"}`);
+          lines.push(`${n}. ${row.productName || "—"}`);
+          lines.push(`   Batch: ${row.origin || "—"}  |  POS: ${safeButchery(row) || row.pos || "—"}`);
+          lines.push(`   Qty: ${row.quantity ?? "—"} ${row.qtyType || ""}  |  Expiry: ${row.expiry || "—"}`);
           if (row.remarks) lines.push(`   Remarks: ${row.remarks}`);
-          if (row.action) lines.push(`   Action: ${row.action}`);
+          if (row.action) lines.push(`   Reason: ${row.action}`);
           lines.push("");
         });
       });
     } else {
-      lines.push(`The full customer returns table (${totalCount} item${totalCount === 1 ? "" : "s"}) is attached as a PDF.`);
+      lines.push(`📄 جدول المرتجعات الكامل (${totalCount} صنف) في ملف الـ PDF المرفق.`);
       lines.push("");
     }
-    if (opts.note) { lines.push("Note:", String(opts.note).trim(), ""); }
-    if (opts.pdfUrl) { lines.push(" Full PDF:", opts.pdfUrl); }
+    if (opts.note) {
+      lines.push("Note from inspector:");
+      lines.push(String(opts.note).trim());
+      lines.push("");
+    }
+    if (opts.pdfUrl) {
+      lines.push("📎 Full PDF:");
+      lines.push(opts.pdfUrl);
+    }
     lines.push("");
     lines.push("Generated by Al Mawashi QCS System");
     return lines.join("\n");
   }, []);
 
-  /* NOT memoized on purpose - generatePdf must see the latest handleExportPDF
+  /* NOT memoized on purpose — generatePdf must see the latest handleExportPDF
      (which closes over the current selectedReport). Memoizing this object
      froze it to the first render where selectedReport was null, so
      generatePdf returned undefined and EmailSendModal crashed on destructure. */
   const emailConfig = {
-    reportTitle: "Customer Returns Report",
-    reportType:  "customer_returns",
-    /* Pilot: this is the only report allowed to send straight from the
-       server's SMTP account. Other reports stay on Outlook/.eml for now. */
+    reportTitle: "Condemnation & Disposal Report",
+    reportType:  "destruction_record",
+    /* Direct server-side SMTP send — see BrowseCustomerReturns for the pilot. */
     allowServerSend: true,
     getSubject: (rep) =>
-      `[Customer Returns] ${rep?.refNo ? `${rep.refNo} - ` : ""}Report - ${rep?.reportDate || "-"}`,
+      `[Condemnation] ${rep?.refNo ? `${rep.refNo} — ` : ""}Report — ${rep?.reportDate || "—"}`,
     /* Editable in the modal's Content tab; {date} fills itself in on send. */
     getDefaultIntro: () => DEFAULT_INTRO,
     generatePdf: async (rep, pdfOpts = {}) => {
@@ -3529,13 +3637,13 @@ export default function BrowseReturns() {
       if (!result || !result.blob) throw new Error("PDF generation produced no blob");
       return result;
     },
-    buildHtml: buildCustomerReturnsHtml,
-    buildText: buildCustomerReturnsText,
+    buildHtml: buildReturnsHtml,
+    buildText: buildReturnsText,
     getImages: collectReportImages,
     getCertificate: () => null,
     getSummary: (rep) => ({
       fields: [
-        { label: "Date", value: rep?.reportDate || "-" },
+        { label: "Date", value: rep?.reportDate || "—" },
         { label: "Items", value: String(rep?.items?.length || 0) },
       ],
     }),
@@ -3546,14 +3654,14 @@ export default function BrowseReturns() {
        so we never rely on the possibly-stale `selectedReport` closure. */
     const report = opts.reportOverride || selectedReport;
     if (!report) {
-      console.warn("[handleExportPDF Customer] no report available", { opts, hasSelected: !!selectedReport });
+      console.warn("[handleExportPDF] no report available", { opts, hasSelected: !!selectedReport });
       if (opts.returnBlob) throw new Error("No report to export");
       return;
     }
     try {
       const JsPDF = await ensureJsPDF();
       await ensureAutoTable();
-      const isOther = (v) => v === "ط¥ط¬ط±ط§ط، ط¢ط®ط±..." || v === "Other...";
+      const isOther = (v) => v === "إجراء آخر..." || v === "Other...";
       const actionTextSafe = (row) => isOther(row?.action) ? row?.customAction || "" : row?.action || "";
       const doc = new JsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
       const marginL = 20, marginR = 20, marginTop = 80;
@@ -3561,7 +3669,7 @@ export default function BrowseReturns() {
       const avail = pageWidth - marginL - marginR;
       const drawHeader = () => {
         doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-        doc.text("Customer Returns Report", marginL, 36);
+        doc.text("Condemnation & Disposal Report", marginL, 36);
         doc.setFont("helvetica", "normal"); doc.setFontSize(11);
         doc.text(
           `Date: ${report.reportDate}${report.refNo ? `        Ref: ${report.refNo}` : ""}`,
@@ -3574,12 +3682,15 @@ export default function BrowseReturns() {
         doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
         doc.text("Trans Emirates Livestock Trading L.L.C.", rightX, 46, { align: "right" });
       };
+      /* Watermark for Confidential / Highly Confidential — drawn diagonal under content */
       const drawWatermark = () => {
         if (!opts.classification || opts.classification === "public" || opts.classification === "internal") return;
         const txt = opts.classification === "highly" ? "HIGHLY CONFIDENTIAL" : "CONFIDENTIAL";
         const isRed = opts.classification === "highly";
         doc.saveGraphicsState && doc.saveGraphicsState();
-        try { doc.setGState && doc.setGState(new doc.GState({ opacity: 0.10 })); } catch {}
+        try {
+          doc.setGState && doc.setGState(new doc.GState({ opacity: 0.10 }));
+        } catch {}
         doc.setFont("helvetica", "bold");
         doc.setFontSize(72);
         doc.setTextColor(isRed ? 220 : 180, isRed ? 38 : 120, isRed ? 38 : 30);
@@ -3593,12 +3704,13 @@ export default function BrowseReturns() {
       drawHeader();
       drawWatermark();
       const changeMap = changeMapByDate.get(report?.reportDate || "") || new Map();
-      /* For the email path: prefer the report's full item list rather than sortedRows. */
+      /* For the email path: prefer the report's full item list rather than sortedRows
+         (which may be empty if the email is triggered without the view being mounted). */
       const rowsForPdf = opts.reportOverride
         ? (Array.isArray(report.items) ? report.items : [])
         : sortedRows;
 
-      /* Apply email-modal sort + group choices */
+      /* Apply email-modal sort + group choices (no-op when sortBy=default & groupBy=none) */
       const { groups: pdfGroups } = arrangeItems(rowsForPdf, {
         sortBy:  opts.sortBy  || "default",
         groupBy: opts.groupBy || "none",
@@ -3606,8 +3718,8 @@ export default function BrowseReturns() {
       const isGroupedPdf = (opts.groupBy || "none") !== "none";
 
       const buildBody = (rows, startIdx = 0) => rows.map((row, i) => {
-        const pos = customerOf(row);
-        const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? row.customQtyType || "" : row.qtyType || "";
+        const pos = safeButchery(row);
+        const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType || "" : row.qtyType || "";
         const curr = actionTextSafe(row);
         let actionCell = curr || "";
         const k = itemKey(row);
@@ -3616,12 +3728,12 @@ export default function BrowseReturns() {
           const dateTxt = formatChangeDatePDF(ch);
           actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? `\n${dateTxt}` : ""}`;
         }
-        return [String(startIdx + i + 1), row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", String(row.quantity ?? ""), qtyType, row.expiry || "", row.remarks || "", actionCell];
+        return [String(startIdx + i + 1), row.productName || "", row.origin || "", pos || "", String(row.quantity ?? ""), qtyType, row.expiry || "", row.remarks || "", actionCell];
       });
-      const frac = [0.04, 0.08, 0.14, 0.07, 0.09, 0.08, 0.09, 0.05, 0.06, 0.06, 0.12, 0.12];
+      const frac = [0.05, 0.18, 0.09, 0.08, 0.06, 0.08, 0.08, 0.18, 0.20];
       const columnStyles = {};
       frac.forEach((f, idx) => (columnStyles[idx] = { cellWidth: Math.floor(avail * f) }));
-      columnStyles[0].halign = "center"; columnStyles[4].halign = "center"; columnStyles[6].halign = "center"; columnStyles[8].halign = "center";
+      columnStyles[0].halign = "center"; columnStyles[4].halign = "center"; columnStyles[6].halign = "center";
 
       const baseTableOpts = {
         margin: { top: marginTop, left: marginL, right: marginR },
@@ -3633,17 +3745,19 @@ export default function BrowseReturns() {
       };
 
       if (isGroupedPdf) {
+        /* Render one autoTable per group with a coloured banner row as a header.
+           autoTable lays out sequentially, so subsequent tables continue down the page. */
         let runningStart = 0;
         pdfGroups.forEach((g, gIdx) => {
           doc.autoTable({
             ...baseTableOpts,
             head: [
               [{
-                content: ` ${g.label}  (${g.items.length})`,
-                colSpan: 12,
+                content: `📂 ${g.label}  (${g.items.length})`,
+                colSpan: 9,
                 styles: { fillColor: [49, 46, 129], textColor: 255, halign: "left", fontStyle: "bold", fontSize: 11 },
               }],
-              ["SL", "CODE", "PRODUCT", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"],
+              ["SL", "PRODUCT", "BATCH", "POS", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "REASON"],
             ],
             body: buildBody(g.items, runningStart),
             startY: gIdx === 0 ? undefined : (doc.lastAutoTable?.finalY || 0) + 8,
@@ -3651,16 +3765,13 @@ export default function BrowseReturns() {
           runningStart += g.items.length;
         });
       } else {
-      doc.autoTable({
-        head: [["SL", "CODE", "PRODUCT", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION"]],
-        body: buildBody(pdfGroups[0]?.items || rowsForPdf), margin: { top: marginTop, left: marginL, right: marginR }, tableWidth: avail,
-        styles: { font: "helvetica", fontSize: 10, cellPadding: 4, lineColor: [226, 232, 240], lineWidth: 0.5, halign: "left", valign: "middle", overflow: "linebreak", wordBreak: "break-word", minCellHeight: 16 },
-        headStyles: { fillColor: [238, 242, 255], textColor: [15, 23, 42], fontStyle: "bold", halign: "center" },
-        columnStyles,
-        didDrawPage: () => drawHeader(),
-      });
-      } // end of else (non-grouped PDF)
-      const filename = `customer_returns_${report.reportDate}.pdf`;
+        doc.autoTable({
+          ...baseTableOpts,
+          head: [["SL", "PRODUCT", "BATCH", "POS", "QTY", "QTY TYPE", "EXPIRY", "REMARKS", "REASON"]],
+          body: buildBody(pdfGroups[0]?.items || rowsForPdf),
+        });
+      }
+      const filename = `condemnation_${report.reportDate}.pdf`;
       if (opts.returnBlob) {
         const blob = doc.output("blob");
         const dataUri = doc.output("datauristring");
@@ -3670,22 +3781,22 @@ export default function BrowseReturns() {
       doc.save(filename);
       toast("PDF exported", "ok");
     } catch (e) {
-      console.error("[handleExportPDF Customer] failed:", e);
+      console.error("[handleExportPDF] failed:", e);
       if (opts.returnBlob) throw e;
       toast("Failed to generate PDF", "err");
     }
   };
 
-  const PDF_XLSX_COLS = ["SL.NO", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QUANTITY", "QTY TYPE", "EXPIRY DATE", "REMARKS", "ACTION"];
+  const PDF_XLSX_COLS = ["SL.NO", "ITEM CODE", "PRODUCT NAME", "BATCH", "POS", "QUANTITY", "QTY TYPE", "EXPIRY DATE", "REMARKS", "REASON"];
 
   function buildRowsForReport(rep, useFiltered = false) {
     const changeMap = changeMapByDate.get(rep?.reportDate || "") || new Map();
-    const isOther = (v) => v === "ط¥ط¬ط±ط§ط، ط¢ط®ط±..." || v === "Other...";
+    const isOther = (v) => v === "إجراء آخر..." || v === "Other...";
     const actionTextSafe = (row) => isOther(row?.action) ? row?.customAction || "" : row?.action || "";
     const items = useFiltered ? sortedRows : (rep.items || []).filter(rowPassesAdvanced);
     return items.map((row, i) => {
-      const pos = customerOf(row);
-      const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? row.customQtyType || "" : row.qtyType || "";
+      const pos = safeButchery(row);
+      const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType || "" : row.qtyType || "";
       const curr = actionTextSafe(row);
       const k = itemKey(row);
       const ch = changeMap.get(k);
@@ -3694,7 +3805,7 @@ export default function BrowseReturns() {
         const dateTxt = formatChangeDatePDF(ch);
         actionCell = `${(ch.from || "").trim()} to ${(ch.to || "").trim()}${dateTxt ? ` (${dateTxt})` : ""}`;
       }
-      return [i + 1, row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionCell];
+      return [i + 1, row.itemCode || "", row.productName || "", row.origin || "", pos || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionCell];
     });
   }
 
@@ -3719,9 +3830,9 @@ export default function BrowseReturns() {
       const data = [PDF_XLSX_COLS, ...buildRowsForReport(selectedReport, true)];
       const ws = XLSX.utils.aoa_to_sheet(data);
       autosizeColumns(ws, data);
-      const label = (search || customerSel.length || actionSel.length || originSel.length) ? "Filtered" : selectedReport.reportDate;
+      const label = (search || posSel.length || actionSel.length || originSel.length) ? "Filtered" : selectedReport.reportDate;
       XLSX.utils.book_append_sheet(wb, ws, label.slice(0, 31));
-      XLSX.writeFile(wb, `customer_returns_${selectedReport.reportDate}${search ? "_filtered" : ""}.xlsx`);
+      XLSX.writeFile(wb, `condemnation_${selectedReport.reportDate}${search ? "_filtered" : ""}.xlsx`);
       toast("XLSX exported", "ok");
     } catch (e) { console.error(e); toast("Failed to export XLSX", "err"); }
   };
@@ -3742,7 +3853,7 @@ export default function BrowseReturns() {
         autosizeColumns(ws, data);
         XLSX.utils.book_append_sheet(wb, ws, (rep.reportDate || "DAY").slice(0, 31));
       }
-      XLSX.writeFile(wb, `customer_returns_ALL_days.xlsx`);
+      XLSX.writeFile(wb, `condemnation_ALL_days.xlsx`);
       toast("All reports exported", "ok");
     } catch (e) { console.error(e); toast("Failed to export ALL", "err"); }
   };
@@ -3763,21 +3874,21 @@ export default function BrowseReturns() {
   const handleExportCSV = () => {
     if (!selectedReport) { toast("Select a date first", "err"); return; }
     const rows = [PDF_XLSX_COLS, ...buildRowsForReport(selectedReport, true)];
-    const csv = "\uFEFF" + rows.map((r) => r.map(csvEscape).join(",")).join("\r\n");
-    downloadFile(`customer_returns_${selectedReport.reportDate}${search ? "_filtered" : ""}.csv`, csv);
+    const csv = "﻿" + rows.map((r) => r.map(csvEscape).join(",")).join("\r\n");
+    downloadFile(`condemnation_${selectedReport.reportDate}${search ? "_filtered" : ""}.csv`, csv);
     toast("CSV exported", "ok");
   };
   const handleExportSearchCSV = () => {
     if (!globalResults.length) { toast("No results to export", "err"); return; }
-    const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
+    const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "BATCH", "POS", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "REASON", "SCORE", "MATCH IN"];
     const rows = globalResults.map((r, i) => {
       const row = r.row;
-      const pos = customerOf(row);
-      const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
-      return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
+      const pos = safeButchery(row);
+      const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+      return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
     });
-    const csv = "\uFEFF" + [head, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
-    downloadFile(`customer_returns_search.csv`, csv);
+    const csv = "﻿" + [head, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
+    downloadFile(`condemnation_search.csv`, csv);
     toast("Search CSV exported", "ok");
   };
 
@@ -3787,19 +3898,19 @@ export default function BrowseReturns() {
       try {
         const XLSX = await ensureXLSX();
         const wb = XLSX.utils.book_new();
-        const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "ORIGIN", "CUSTOMER", "CAR NO.", "DRIVER", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "ACTION", "SCORE", "MATCH IN"];
+        const head = ["SL.NO", "DATE", "ITEM CODE", "PRODUCT NAME", "BATCH", "POS", "QUANTITY", "QTY TYPE", "EXPIRY", "REMARKS", "REASON", "SCORE", "MATCH IN"];
         const rows = globalResults.map((r, i) => {
           const row = r.row;
-          const pos = customerOf(row);
-          const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
-          return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", row.carNumber || "", row.driverName || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
+          const pos = safeButchery(row);
+          const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+          return [i + 1, r.date, row.itemCode || "", row.productName || "", row.origin || "", pos || "", Number(row.quantity ?? 0), qtyType || "", row.expiry || "", row.remarks || "", actionText(row) || "", r.score, r.hits.join(", ")];
         });
         const data = [head, ...rows];
         const ws = XLSX.utils.aoa_to_sheet(data);
         autosizeColumns(ws, data);
         ws["!freeze"] = { xSplit: 1, ySplit: 1 };
         XLSX.utils.book_append_sheet(wb, ws, "Search_Results");
-        XLSX.writeFile(wb, `customer_returns_search_results.xlsx`);
+        XLSX.writeFile(wb, `condemnation_search_results.xlsx`);
         toast("Search XLSX exported", "ok");
       } catch (e) { console.error(e); toast("Failed to export search", "err"); }
     })();
@@ -3809,6 +3920,506 @@ export default function BrowseReturns() {
      Print
      ============================================================ */
   const handlePrint = () => { window.print(); };
+
+  /* ============================================================
+     Periodic Report — a polished, multi-page executive PDF over a
+     monthly / quarterly / half-year / 9-month / annual window that ENDS at the
+     chosen anchor month. Aggregates the whole window (ignores on-screen filters):
+       • Cover with hero KPIs + highlights
+       • Executive summary metrics + disposition-mix donut
+       • Activity bar chart (per-day for 1 month, per-month otherwise) + register
+       • vs-previous-period comparison + condemnation-rate hotspots
+       • Rankings: top products / POS / origins / condemned items
+     ============================================================ */
+  async function generatePeriodReport() {
+    const anchor = monthlyMonth;
+    if (!/^\d{4}-\d{2}$/.test(anchor)) { toast("Pick a month first", "err"); return; }
+    const period = REPORT_PERIODS.find((p) => p.key === periodType) || REPORT_PERIODS[0];
+    const months = period.months;
+    const fromKey = addMonthKey(anchor, -(months - 1));
+    const toKey = anchor;
+    const inRange = (mk) => /^\d{4}-\d{2}$/.test(mk) && mk >= fromKey && mk <= toKey; // YYYY-MM lexical == chronological
+    const reports = returnsData
+      .filter((r) => inRange((r.reportDate || "").slice(0, 7)))
+      .sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || ""));
+    if (!reports.length) { toast("No data in the selected period", "err"); return; }
+
+    setMonthlyBusy(true);
+    try {
+      const JsPDF = await ensureJsPDF();
+      await ensureAutoTable();
+
+      /* ---------- Aggregate ---------- */
+      const latestActionFor = (date, row) => {
+        const inner = changeMapByDate.get(date) || new Map();
+        const ch = inner.get(itemKey(row));
+        return ch?.to ?? actionText(row);
+      };
+      let totalItems = 0, totalKg = 0, totalPcs = 0;
+      let condCount = 0, condKg = 0, marketKg = 0, disposedCount = 0, disposedKg = 0, useProdCount = 0, sepExpiredCount = 0;
+      const posCount = new Map(), originCount = new Map(), productCount = new Map(), condProduct = new Map(), actionCount = new Map();
+      const posCond = new Map(), originCond = new Map(); // condemned counts per branch/origin (for quality-rate hotspots)
+      const daily = [];
+      for (const rep of reports) {
+        const date = rep.reportDate;
+        let dItems = 0, dKg = 0, dCond = 0;
+        for (const it of (rep.items || [])) {
+          totalItems++; dItems++;
+          const q = Number(it.quantity) || 0; // guard against non-numeric quantity → 0 (never NaN-poison the total)
+          const pos = safeButchery(it) || "—";
+          const origin = it.origin || "—";
+          const prod = (it.productName || "—").trim();
+          posCount.set(pos, (posCount.get(pos) || 0) + 1);
+          originCount.set(origin, (originCount.get(origin) || 0) + 1);
+          productCount.set(prod, (productCount.get(prod) || 0) + 1);
+          if (isKgType(it.qtyType)) { totalKg += q; dKg += q; }
+          else if (isPcsType(it.qtyType)) { totalPcs += q; }
+          /* Only bucket items that actually carry a disposition. This mirrors the
+             Overview KPI (byActionLatest), so Condemnation% here == what the user
+             sees on screen. Items with a blank action are NOT in the denominator. */
+          const act = latestActionFor(date, it) || "";
+          if (act) actionCount.set(act, (actionCount.get(act) || 0) + 1);
+          if (isCondemnation(act)) { condCount++; dCond++; if (isKgType(it.qtyType)) condKg += q; condProduct.set(prod, (condProduct.get(prod) || 0) + 1); posCond.set(pos, (posCond.get(pos) || 0) + 1); originCond.set(origin, (originCond.get(origin) || 0) + 1); }
+          if ((act || "").toLowerCase() === "use in production") useProdCount++;
+          if ((act || "").toLowerCase() === "separated expired shelf") sepExpiredCount++;
+          if (isSendToMarket(act) && isKgType(it.qtyType)) marketKg += q;
+          if (isDisposed(act)) { disposedCount++; if (isKgType(it.qtyType)) disposedKg += q; }
+        }
+        /* store raw dKg — the table foot uses totalKg (= Σ dKg exactly), so the
+           weight column reconciles to its total (display rounds each cell only). */
+        daily.push({ date, items: dItems, kg: dKg, cond: dCond });
+      }
+      const actionTotal = Array.from(actionCount.values()).reduce((a, b) => a + b, 0) || 1;
+      const topN = (m, n) => Array.from(m.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, n);
+      const topProducts = topN(productCount, 8);
+      const topPos = topN(posCount, 8);
+      const topOrigins = topN(originCount, 8);
+      const topCond = topN(condProduct, 8);
+      const actionsSorted = Array.from(actionCount.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+      const activeDays = reports.length;
+      const avgPerDay = totalItems / activeDays;
+      const peakDay = daily.reduce((mx, d) => (d.items > mx.items ? d : mx), { items: -1, date: "" });
+      const condPct = Math.round(condCount * 100 / actionTotal);
+      const rangeLbl = rangeLabel(fromKey, toKey);
+      const mLabel = rangeLbl; // header/footer/pill label reused across pages
+      const genStamp = new Date().toLocaleString("en-GB", { timeZone: "Asia/Dubai" });
+
+      /* ---------- Activity buckets: per-day for a single month, per-month otherwise ---------- */
+      const spanYears = fromKey.slice(0, 4) !== toKey.slice(0, 4);
+      const shortMonth = (mk) => {
+        const [yy, mm] = mk.split("-").map(Number);
+        const s = new Date(yy, mm - 1, 1).toLocaleDateString("en-GB", { month: "short" });
+        return spanYears ? `${s} ${String(yy).slice(2)}` : s;
+      };
+      let buckets, bucketKind;
+      if (months === 1) {
+        bucketKind = "day";
+        buckets = daily.map((d) => ({ label: String(Number(d.date.slice(8, 10))), full: d.date, items: d.items, kg: d.kg, cond: d.cond }));
+      } else {
+        bucketKind = "month";
+        const mMap = new Map();
+        for (const d of daily) {
+          const mk = d.date.slice(0, 7);
+          const b = mMap.get(mk) || { items: 0, kg: 0, cond: 0 };
+          b.items += d.items; b.kg += d.kg; b.cond += d.cond;
+          mMap.set(mk, b);
+        }
+        buckets = Array.from(mMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([mk, b]) => ({ label: shortMonth(mk), full: monthLabel(mk), items: b.items, kg: b.kg, cond: b.cond }));
+      }
+      const peakBucket = buckets.reduce((mx, b) => (b.items > mx.items ? b : mx), { items: -1 });
+
+      /* ---------- Period-over-period (vs the equally-long window immediately before) ---------- */
+      const quickAgg = (reps) => {
+        let items = 0, kg = 0, cond = 0, decided = 0;
+        for (const rep of reps) {
+          for (const it of (rep.items || [])) {
+            items++;
+            if (isKgType(it.qtyType)) kg += Number(it.quantity) || 0;
+            const a = latestActionFor(rep.reportDate, it) || "";
+            if (a) decided++;               // same denominator rule as the current period
+            if (isCondemnation(a)) cond++;
+          }
+        }
+        return { items, kg: Math.round(kg * 100) / 100, cond, condPct: Math.round(cond * 100 / (decided || 1)) };
+      };
+      const prevToKey = addMonthKey(fromKey, -1);
+      const prevFromKey = addMonthKey(prevToKey, -(months - 1));
+      const prevRangeLbl = rangeLabel(prevFromKey, prevToKey);
+      const prevReports = returnsData.filter((r) => {
+        const mk = (r.reportDate || "").slice(0, 7);
+        return /^\d{4}-\d{2}$/.test(mk) && mk >= prevFromKey && mk <= prevToKey;
+      });
+      const prevAgg = prevReports.length ? quickAgg(prevReports) : null;
+      const curAgg = { items: totalItems, kg: Math.round(totalKg * 100) / 100, cond: condCount, condPct };
+      /* pctChange returns { txt, dir } — dir drives arrow + colour */
+      const pctChange = (cur, prev) => {
+        if (prev == null || prev === 0) return { txt: "—", dir: "flat" };
+        const ch = (cur - prev) / prev * 100;
+        const dir = ch > 0.5 ? "up" : ch < -0.5 ? "down" : "flat";
+        return { txt: `${ch > 0 ? "+" : ""}${Math.round(ch)}%`, dir };
+      };
+
+      /* ---------- Quality hotspots — condemnation RATE by branch / origin ---------- */
+      const MIN_SAMPLE = 5; // ignore tiny samples so a 1/1 = 100% doesn't top the list
+      const buildRates = (countMap, condMap) => Array.from(countMap.entries())
+        .map(([label, total]) => ({ label, total, cond: condMap.get(label) || 0, rate: Math.round((condMap.get(label) || 0) * 100 / total) }))
+        .filter((r) => r.total >= MIN_SAMPLE)
+        .sort((a, b) => b.rate - a.rate || b.cond - a.cond)
+        .slice(0, 7);
+      const branchRates = buildRates(posCount, posCond);
+      const originRates = buildRates(originCount, originCond);
+
+      /* ---------- Palette + primitives ---------- */
+      const NAVY = [11, 31, 77], NAVY2 = [30, 58, 95], RED = [176, 0, 0];
+      const SLATE = [71, 85, 105], MUTE = [148, 163, 184], LINE = [226, 232, 240], LIGHT = [241, 245, 249];
+      const GREEN = [5, 150, 105], AMBER = [217, 119, 6], CYAN = [8, 145, 178], PURPLE = [124, 58, 237], BLUE = [37, 99, 235];
+      const PALETTE = [NAVY, BLUE, GREEN, AMBER, RED, PURPLE, CYAN, [100, 116, 139]];
+      const ACTION_COLORS = {
+        "condemnation": RED, "send to market": GREEN, "disposed": AMBER, "desposed": AMBER,
+        "use in production": CYAN, "separated expired shelf": PURPLE,
+      };
+      const colorForAction = (name, i) => ACTION_COLORS[(name || "").toLowerCase()] || PALETTE[i % PALETTE.length];
+      const trunc = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+
+      const doc = new JsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
+      const PW = doc.internal.pageSize.getWidth();
+      const PH = doc.internal.pageSize.getHeight();
+      const M = 40;
+      const CW = PW - M * 2;
+      const setFill = (c) => doc.setFillColor(c[0], c[1], c[2]);
+      const setText = (c) => doc.setTextColor(c[0], c[1], c[2]);
+      const setDraw = (c) => doc.setDrawColor(c[0], c[1], c[2]);
+
+      const footer = () => {
+        const p = doc.getNumberOfPages();
+        setDraw(LINE); doc.setLineWidth(0.5); doc.line(M, PH - 34, PW - M, PH - 34);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); setText(MUTE);
+        doc.text("Al Mawashi · Trans Emirates Livestock Trading L.L.C.", M, PH - 22);
+        doc.text(`${mLabel}  ·  Generated ${genStamp}`, PW / 2, PH - 22, { align: "center" });
+        doc.text(`Page ${p}`, PW - M, PH - 22, { align: "right" });
+      };
+      const contentHeader = (title, sub) => {
+        setFill(NAVY); doc.rect(0, 0, PW, 60, "F");
+        setFill(RED); doc.rect(0, 60, PW, 3, "F");
+        try { doc.addImage(MAWASHI_LOGO_B64, "PNG", M, 12, 36, 36); } catch {}
+        setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+        doc.text(title, M + 46, 28);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9); setText([200, 210, 230]);
+        doc.text(sub, M + 46, 44);
+        setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+        doc.text("AL MAWASHI", PW - M, 26, { align: "right" });
+        doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); setText([200, 210, 230]);
+        doc.text("Monthly Condemnation Report", PW - M, 40, { align: "right" });
+      };
+      const sectionTitle = (y, text) => {
+        setFill(NAVY); doc.roundedRect(M, y - 11, 4, 15, 2, 2, "F");
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
+        doc.text(text, M + 12, y);
+        return y + 20;
+      };
+      const kpiCard = (x, y, w, h, label, value, sub, accent) => {
+        setFill([255, 255, 255]); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(x, y, w, h, 7, 7, "FD");
+        setFill(accent); doc.roundedRect(x, y, 4, h, 2, 2, "F");
+        setText(SLATE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+        doc.text(String(label).toUpperCase(), x + 14, y + 18);
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+        doc.text(String(value), x + 14, y + 43);
+        if (sub) { doc.setFont("helvetica", "normal"); doc.setFontSize(8); setText(MUTE); doc.text(String(sub), x + 14, y + 58); }
+      };
+      const hbars = (x, y, w, items, accent, fmt) => {
+        const max = Math.max(...items.map((i) => i.value), 1);
+        let yy = y; const rowH = 24;
+        for (const it of items) {
+          setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+          doc.text(trunc(it.label || "—", 30), x, yy);
+          setText(SLATE); doc.setFont("helvetica", "normal");
+          doc.text(fmt ? fmt(it.value) : String(it.value), x + w, yy, { align: "right" });
+          setFill(LIGHT); doc.roundedRect(x, yy + 4, w, 6, 3, 3, "F");
+          const bw = Math.max(2, (it.value / max) * w);
+          setFill(accent); doc.roundedRect(x, yy + 4, bw, 6, 3, 3, "F");
+          yy += rowH;
+        }
+        return yy;
+      };
+      const donut = (cx, cy, rOut, rIn, segs) => {
+        const total = segs.reduce((s, x) => s + x.value, 0) || 1;
+        let start = -Math.PI / 2;
+        segs.forEach((seg) => {
+          const ang = (seg.value / total) * Math.PI * 2;
+          const steps = Math.max(2, Math.ceil(ang / 0.15));
+          setFill(seg.color);
+          for (let s = 0; s < steps; s++) {
+            const a1 = start + (ang * s / steps), a2 = start + (ang * (s + 1) / steps);
+            doc.triangle(cx, cy, cx + Math.cos(a1) * rOut, cy + Math.sin(a1) * rOut, cx + Math.cos(a2) * rOut, cy + Math.sin(a2) * rOut, "F");
+          }
+          start += ang;
+        });
+        setFill([255, 255, 255]); doc.circle(cx, cy, rIn, "F");
+      };
+      /* MoM comparison tile: current value big, a coloured delta badge, and prev value.
+         `semantic` = "cond" flips colours (rising condemnation is bad → red). */
+      const compareTile = (x, y, w, h, label, curStr, deltaObj, prevStr, semantic) => {
+        setFill([255, 255, 255]); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(x, y, w, h, 7, 7, "FD");
+        setText(SLATE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+        doc.text(String(label).toUpperCase(), x + 14, y + 18);
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(19);
+        doc.text(String(curStr), x + 14, y + 42);
+        /* delta badge — arrow drawn as a triangle (WinAnsi core fonts lack ▲▼) */
+        const up = deltaObj.dir === "up", down = deltaObj.dir === "down";
+        let badge = MUTE;
+        if (up) badge = semantic === "cond" ? RED : SLATE;
+        if (down) badge = semantic === "cond" ? GREEN : SLATE;
+        const ax = x + 14, ay = y + 59;
+        setFill(badge);
+        if (up) doc.triangle(ax, ay, ax + 8, ay, ax + 4, ay - 9, "F");
+        else if (down) doc.triangle(ax, ay - 9, ax + 8, ay - 9, ax + 4, ay, "F");
+        else doc.rect(ax, ay - 5, 8, 2, "F");
+        doc.setFont("helvetica", "bold"); doc.setFontSize(9); setText(badge);
+        doc.text(deltaObj.txt, ax + 14, y + 60);
+        setText(MUTE); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+        doc.text(`prev: ${prevStr}`, x + w - 12, y + 60, { align: "right" });
+      };
+      /* Condemnation-rate hotspot bars: label, cond/total, rate% and a red bar (0-100%). */
+      const rateBars = (x, y, w, rows) => {
+        let yy = y; const rowH = 27;
+        if (!rows.length) {
+          setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(9);
+          doc.text("Not enough data", x, yy + 4);
+          return yy + rowH;
+        }
+        for (const r of rows) {
+          setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+          doc.text(trunc(r.label || "—", 26), x, yy);
+          setText(SLATE); doc.setFont("helvetica", "normal");
+          doc.text(`${r.cond}/${r.total}  ·  ${r.rate}%`, x + w, yy, { align: "right" });
+          setFill(LIGHT); doc.roundedRect(x, yy + 4, w, 6, 3, 3, "F");
+          const bw = Math.max(2, (r.rate / 100) * w);
+          setFill(RED); doc.roundedRect(x, yy + 4, bw, 6, 3, 3, "F");
+          yy += rowH;
+        }
+        return yy;
+      };
+
+      /* ---------- PAGE 1 — Cover ---------- */
+      setFill(NAVY); doc.rect(0, 0, PW, 300, "F");
+      setFill(NAVY2); doc.rect(0, 250, PW, 50, "F");
+      setFill(RED); doc.rect(0, 300, PW, 5, "F");
+      try { doc.addImage(MAWASHI_LOGO_B64, "PNG", PW / 2 - 31, 46, 62, 62); } catch {}
+      setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+      doc.text("AL MAWASHI", PW / 2, 130, { align: "center" });
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9); setText([200, 210, 230]);
+      doc.text("Trans Emirates Livestock Trading L.L.C.", PW / 2, 145, { align: "center" });
+      setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(29);
+      doc.text(period.cover, PW / 2, 196, { align: "center" });
+      doc.text("REPORT", PW / 2, 226, { align: "center" });
+      const pillW = 240, pillH = 34, pillX = PW / 2 - pillW / 2, pillY = 258;
+      setFill(RED); doc.roundedRect(pillX, pillY, pillW, pillH, 17, 17, "F");
+      setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+      doc.text(mLabel.toUpperCase(), PW / 2, pillY + 22, { align: "center" });
+
+      /* Hero KPI cards (2×2) */
+      const gx = M, gw = (CW - 15) / 2, gh = 92, gy = 340;
+      kpiCard(gx, gy, gw, gh, "Active Days", String(activeDays), "days with condemnations filed", BLUE);
+      kpiCard(gx + gw + 15, gy, gw, gh, "Total Entries", fmtNum(totalItems, 0), "returned line items", NAVY);
+      kpiCard(gx, gy + gh + 15, gw, gh, "Total Weight", `${fmtNum(totalKg)} kg`, `+ ${fmtNum(totalPcs, 0)} pcs`, GREEN);
+      kpiCard(gx + gw + 15, gy + gh + 15, gw, gh, "Condemnation", `${condPct}%`, `${fmtNum(condCount, 0)} items · ${fmtNum(condKg)} kg`, RED);
+
+      /* Highlights strip */
+      const hy = gy + gh * 2 + 44;
+      setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
+      doc.roundedRect(M, hy, CW, 96, 8, 8, "FD");
+      setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.text("AT A GLANCE", M + 16, hy + 22);
+      const facts = [
+        ["Busiest day", peakDay.date ? `${peakDay.date}  (${peakDay.items} items)` : "—"],
+        ["Avg per active day", `${fmtNum(avgPerDay, 1)} items`],
+        ["Top branch (POS)", topPos[0] ? `${trunc(topPos[0].label, 22)}  (${topPos[0].value})` : "—"],
+        ["Most returned item", topProducts[0] ? `${trunc(topProducts[0].label, 24)}  (${topProducts[0].value})` : "—"],
+      ];
+      let fy = hy + 42;
+      facts.forEach((f, i) => {
+        const col = i % 2, row = Math.floor(i / 2);
+        const fx = M + 16 + col * (CW / 2);
+        const yy = fy + row * 26;
+        setFill(RED); doc.circle(fx + 2, yy - 3, 2, "F");
+        setText(SLATE); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+        doc.text(`${f[0]}:`, fx + 10, yy);
+        setText(NAVY); doc.setFont("helvetica", "bold");
+        doc.text(String(f[1]), fx + 10 + doc.getTextWidth(`${f[0]}:  `), yy);
+      });
+      footer();
+
+      /* ---------- PAGE 2 — Executive Summary + Disposition Mix ---------- */
+      doc.addPage();
+      contentHeader("Executive Summary", mLabel);
+      let y = sectionTitle(90, "Key Metrics");
+      const metrics = [
+        ["Total Entries", fmtNum(totalItems, 0), "line items", NAVY],
+        ["Total Weight", `${fmtNum(totalKg)} kg`, "kilogram total", GREEN],
+        ["Total Pieces", fmtNum(totalPcs, 0), "pcs total", BLUE],
+        ["Sent to Market", `${fmtNum(marketKg)} kg`, "recovered value", CYAN],
+        ["Disposed", fmtNum(disposedCount, 0), `${fmtNum(disposedKg)} kg`, AMBER],
+        ["Use in Production", fmtNum(useProdCount, 0), "re-processed", PURPLE],
+      ];
+      const mcW = (CW - 24) / 3, mcH = 74;
+      metrics.forEach((mt, i) => {
+        const col = i % 3, row = Math.floor(i / 3);
+        kpiCard(M + col * (mcW + 12), y + row * (mcH + 12), mcW, mcH, mt[0], mt[1], mt[2], mt[3]);
+      });
+      y += mcH * 2 + 12 + 34;
+
+      y = sectionTitle(y, "Disposition Mix");
+      const segs = actionsSorted.slice(0, 7).map((a, i) => ({ ...a, color: colorForAction(a.label, i) }));
+      /* centre count = items that carry a disposition (Σ slices), so the donut
+         reconciles with its own legend. Equals total entries when none are blank. */
+      const decidedItems = actionsSorted.reduce((s, a) => s + a.value, 0);
+      const cx = M + 90, cy = y + 78;
+      donut(cx, cy, 74, 42, segs);
+      setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+      doc.text(fmtNum(decidedItems, 0), cx, cy - 2, { align: "center" });
+      setText(MUTE); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+      doc.text("ITEMS", cx, cy + 10, { align: "center" });
+      /* Legend */
+      let ly = y + 14; const lx = M + 200;
+      segs.forEach((s) => {
+        setFill(s.color); doc.roundedRect(lx, ly - 7, 10, 10, 2, 2, "F");
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+        doc.text(trunc(s.label || "—", 26), lx + 16, ly);
+        setText(SLATE); doc.setFont("helvetica", "normal");
+        const pct = Math.round(s.value * 100 / actionTotal);
+        doc.text(`${s.value}  ·  ${pct}%`, PW - M, ly, { align: "right" });
+        ly += 21;
+      });
+      footer();
+
+      /* ---------- PAGE 3 — Trends & Quality (MoM + condemnation hotspots) ---------- */
+      doc.addPage();
+      contentHeader("Trends & Quality", mLabel);
+      let ty = sectionTitle(90, prevAgg ? `vs Previous Period  ·  ${prevRangeLbl}` : "vs Previous Period");
+      if (!prevAgg) {
+        setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(M, ty + 4, CW, 40, 8, 8, "FD");
+        setText(SLATE); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+        doc.text(`No data for ${prevRangeLbl} — comparison unavailable.`, M + 16, ty + 28);
+        ty += 60;
+      } else {
+        const ctW = (CW - 24) / 3, ctH = 74;
+        compareTile(M, ty + 4, ctW, ctH, "Total Entries", fmtNum(curAgg.items, 0),
+          pctChange(curAgg.items, prevAgg.items), fmtNum(prevAgg.items, 0), "vol");
+        compareTile(M + ctW + 12, ty + 4, ctW, ctH, "Total Weight", `${fmtNum(curAgg.kg)} kg`,
+          pctChange(curAgg.kg, prevAgg.kg), `${fmtNum(prevAgg.kg)} kg`, "vol");
+        compareTile(M + (ctW + 12) * 2, ty + 4, ctW, ctH, "Condemnation %", `${curAgg.condPct}%`,
+          pctChange(curAgg.condPct, prevAgg.condPct), `${prevAgg.condPct}%`, "cond");
+        ty += ctH + 34;
+      }
+
+      /* Quality hotspots — two columns: by branch (left), by origin (right) */
+      const qcW = (CW - 30) / 2;
+      const qTitleY = ty + 8;
+      sectionTitle(qTitleY, "Condemnation Rate — Branch");
+      setFill(RED); doc.roundedRect(M + qcW + 30, qTitleY - 11, 4, 15, 2, 2, "F");
+      setText(RED); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
+      doc.text("Condemnation Rate — Origin", M + qcW + 42, qTitleY);
+      rateBars(M, qTitleY + 24, qcW, branchRates);
+      rateBars(M + qcW + 30, qTitleY + 24, qcW, originRates);
+      setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+      doc.text(`Rate = condemned / total condemned lines. Ranked by rate; only branches/batches with >= ${MIN_SAMPLE} lines shown.`, M, PH - 48);
+      footer();
+
+      /* ---------- PAGE 4 — Activity (per-day for 1 month, per-month otherwise) ---------- */
+      const isDaily = bucketKind === "day";
+      const activityTitle = isDaily ? "Daily Activity" : "Monthly Activity";
+      const axisLabel = isDaily ? "Day of month" : "Month";
+      const firstColHead = isDaily ? "Date" : "Month";
+      doc.addPage();
+      contentHeader(activityTitle, mLabel);
+      y = sectionTitle(90, isDaily ? "Condemned items per day" : "Condemned items per month");
+      const chX = M, chY = y + 6, chW = CW, chH = 170;
+      const dMax = Math.max(...buckets.map((b) => b.items), 1);
+      const n = buckets.length;
+      const gap = n > 1 ? Math.min(10, (chW * 0.2) / n) : 0;
+      // cap bar width so a 3-bar quarter chart doesn't stretch into slabs; centre the cluster
+      const bw = Math.min(64, Math.max(3, (chW - gap * (n - 1)) / n));
+      const clusterW = n * bw + (n - 1) * gap;
+      const startX = chX + Math.max(0, (chW - clusterW) / 2);
+      /* gridlines */
+      setDraw(LINE); doc.setLineWidth(0.5); setText(MUTE); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+      [0, 0.25, 0.5, 0.75, 1].forEach((p) => {
+        const yy = chY + chH - p * chH;
+        doc.line(chX, yy, chX + chW, yy);
+        doc.text(String(Math.round(dMax * p)), chX - 6, yy + 2, { align: "right" });
+      });
+      buckets.forEach((b, i) => {
+        const bh = (b.items / dMax) * chH;
+        const bx = startX + i * (bw + gap);
+        const isPeak = b.items === peakBucket.items && b.items > 0;
+        setFill(isPeak ? RED : NAVY2);
+        doc.roundedRect(bx, chY + chH - bh, bw, bh, 1.5, 1.5, "F");
+        // day charts get crowded → label every other; month charts always label
+        if (!isDaily || n <= 20 || i % 2 === 0) {
+          setText(MUTE); doc.setFontSize(isDaily ? 6.5 : 7);
+          doc.text(b.label, bx + bw / 2, chY + chH + 10, { align: "center" });
+        }
+      });
+      setText(MUTE); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+      doc.text(axisLabel, chX + chW / 2, chY + chH + 24, { align: "center" });
+      setFill(RED); doc.roundedRect(chX + chW - 96, chY + 2, 8, 8, 2, 2, "F");
+      setText(SLATE); doc.setFontSize(7.5); doc.text(isDaily ? "Peak day" : "Peak month", chX + chW - 84, chY + 9);
+
+      /* Register table (one row per bucket) */
+      doc.autoTable({
+        startY: chY + chH + 40,
+        margin: { left: M, right: M },
+        head: [[firstColHead, "Entries", "Weight (kg)", "Condemned"]],
+        body: buckets.map((b) => [b.full, String(b.items), fmtNum(b.kg), String(b.cond)]),
+        foot: [["TOTAL", String(totalItems), fmtNum(totalKg), String(condCount)]],
+        styles: { font: "helvetica", fontSize: 9, cellPadding: 5, lineColor: LINE, lineWidth: 0.5, textColor: [30, 41, 59] },
+        headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", halign: "center" },
+        footStyles: { fillColor: LIGHT, textColor: NAVY, fontStyle: "bold", halign: "center" },
+        columnStyles: { 0: { halign: "left" }, 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "center" } },
+        didDrawPage: () => { contentHeader(activityTitle, mLabel); footer(); },
+      });
+      footer();
+
+      /* ---------- PAGE 5 — Rankings ---------- */
+      doc.addPage();
+      contentHeader("Rankings & Hotspots", mLabel);
+      const colW = (CW - 30) / 2;
+      const yL = sectionTitle(90, "Top Returned Products");
+      hbars(M, yL + 8, colW, topProducts.length ? topProducts : [{ label: "—", value: 0 }], NAVY, (v) => String(v));
+      /* Right-column title drawn manually so it aligns on the same row as the left. */
+      setFill(BLUE); doc.roundedRect(M + colW + 30, 90 - 11, 4, 15, 2, 2, "F");
+      setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
+      doc.text("Top Branches (POS)", M + colW + 42, 90);
+      hbars(M + colW + 30, yL + 8, colW, topPos.length ? topPos : [{ label: "—", value: 0 }], BLUE, (v) => String(v));
+
+      const rowY = 90 + 28 + 24 * 8 + 46;
+      const yB = sectionTitle(rowY, "Top Batches");
+      hbars(M, yB + 8, colW, topOrigins.length ? topOrigins : [{ label: "—", value: 0 }], GREEN, (v) => String(v));
+      /* Right-column title drawn manually so it aligns on the same row as the left. */
+      setFill(RED); doc.roundedRect(M + colW + 30, rowY - 11, 4, 15, 2, 2, "F");
+      setText(RED); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
+      doc.text("Most Condemned Items", M + colW + 42, rowY);
+      hbars(M + colW + 30, yB + 8, colW, topCond.length ? topCond : [{ label: "None", value: 0 }], RED, (v) => String(v));
+      footer();
+
+      /* ---------- Page numbers already drawn via footer() ---------- */
+      const filename = months === 1
+        ? `Al_Mawashi_${period.fileTag}_Condemnation_${toKey}.pdf`
+        : `Al_Mawashi_${period.fileTag}_Condemnation_${fromKey}_to_${toKey}.pdf`;
+      doc.save(filename);
+      toast(`${period.fileTag} report generated`, "ok");
+      setMonthlyOpen(false);
+    } catch (e) {
+      console.error("[generatePeriodReport] failed:", e);
+      toast("Failed to generate report", "err");
+    } finally {
+      setMonthlyBusy(false);
+    }
+  }
 
   /* ============================================================
      Image viewer
@@ -3825,11 +4436,11 @@ export default function BrowseReturns() {
      ============================================================ */
   const currentSnapshot = {
     from: filterFrom, to: filterTo,
-    customerSel, originSel, actionSel, qtySel, hasImages, remarksState,
+    posSel, originSel, actionSel, qtySel, hasImages, remarksState,
   };
   function applyPreset(p) {
     setFilterFrom(p.from || ""); setFilterTo(p.to || "");
-    setCustomerSel(p.customerSel || []); setOriginSel(p.originSel || []); setActionSel(p.actionSel || []);
+    setPosSel(p.posSel || []); setOriginSel(p.originSel || []); setActionSel(p.actionSel || []);
     setQtySel(p.qtySel || "any"); setHasImages(p.hasImages || "any"); setRemarksState(p.remarksState || "any");
     toast(`Applied: ${p.name}`, "info");
   }
@@ -3849,9 +4460,9 @@ export default function BrowseReturns() {
   const activeFilters = [];
   if (filterFrom) activeFilters.push({ label: "From", value: filterFrom, remove: () => setFilterFrom("") });
   if (filterTo) activeFilters.push({ label: "To", value: filterTo, remove: () => setFilterTo("") });
-  customerSel.forEach((p) => activeFilters.push({ label: "Customer", value: p, remove: () => setCustomerSel(customerSel.filter((x) => x !== p)) }));
-  originSel.forEach((p) => activeFilters.push({ label: "Origin", value: p, remove: () => setOriginSel(originSel.filter((x) => x !== p)) }));
-  actionSel.forEach((p) => activeFilters.push({ label: "Action", value: p, remove: () => setActionSel(actionSel.filter((x) => x !== p)) }));
+  posSel.forEach((p) => activeFilters.push({ label: "POS", value: p, remove: () => setPosSel(posSel.filter((x) => x !== p)) }));
+  originSel.forEach((p) => activeFilters.push({ label: "Batch", value: p, remove: () => setOriginSel(originSel.filter((x) => x !== p)) }));
+  actionSel.forEach((p) => activeFilters.push({ label: "Reason", value: p, remove: () => setActionSel(actionSel.filter((x) => x !== p)) }));
   if (qtySel !== "any") activeFilters.push({ label: "Qty", value: qtySel.toUpperCase(), remove: () => setQtySel("any") });
   if (hasImages !== "any") activeFilters.push({ label: "Images", value: hasImages, remove: () => setHasImages("any") });
   if (remarksState !== "any") activeFilters.push({ label: "Remarks", value: remarksState, remove: () => setRemarksState("any") });
@@ -3869,7 +4480,7 @@ export default function BrowseReturns() {
     const bg = same ? T.bgAlt : up ? T.dangerS : T.successS;
     return (
       <span style={{ ...sx.pill, background: bg, color, borderColor: bg }}>
-        {same ? "-" : up ? <FiTrendingUp size={12} /> : <FiTrendingDown size={12} />}
+        {same ? "—" : up ? <FiTrendingUp size={12} /> : <FiTrendingDown size={12} />}
         {same ? "No change" : `${diff > 0 ? "+" : ""}${fmtNum(diff)}${suffix}${pct != null ? ` (${pct > 0 ? "+" : ""}${pct}%)` : ""}`}
       </span>
     );
@@ -3924,11 +4535,11 @@ export default function BrowseReturns() {
               <div style={{
                 width: 36, height: 36, borderRadius: 10, background: T.primaryS,
                 color: T.primary, display: "grid", placeItems: "center",
-              }}><FiPackage size={18} /></div>
+              }}><FiTrash2 size={18} /></div>
               <div>
-                <h1 style={sx.h1}>Customer Returns Browser</h1>
+                <h1 style={sx.h1}>Condemnation & Disposal — سجل الإعدام والتخلص</h1>
                 <div style={sx.muted}>
-                  Quick KPIs - charts - advanced filters - global search across reports
+                  Quick KPIs · charts · advanced filters · global search across reports
                 </div>
               </div>
             </div>
@@ -3947,6 +4558,32 @@ export default function BrowseReturns() {
                 <FiTrendingUp size={13} /> +{newCount} new
               </button>
             )}
+            <Link
+              to="/destruction/input"
+              title="Record a new condemnation"
+              style={{ ...sx.btn, background: T.success, color: "#fff", borderColor: T.success, fontWeight: 800, textDecoration: "none" }}
+            >
+              <FiFilePlus size={14} /> New Record
+            </Link>
+            <Link
+              to="/returns/menu"
+              title="Back to the returns hub"
+              style={{ ...sx.btn, textDecoration: "none", color: T.text }}
+            >
+              <FiArrowLeft size={14} /> Back
+            </Link>
+            <button
+              onClick={openMonthlyModal}
+              title="Generate an executive condemnation report (monthly / quarterly / half-year / 9-month / annual PDF)"
+              style={{
+                ...sx.btn,
+                background: `linear-gradient(135deg, ${T.primary} 0%, ${T.purple} 100%)`,
+                color: "#fff", borderColor: T.primary, fontWeight: 800,
+                boxShadow: "0 6px 16px rgba(79,70,229,.30)",
+              }}
+            >
+              <FiFileText size={14} /> Reports
+            </button>
             <IconBtn icon={FiPackage} onClick={() => { setProductInit({ code: "", name: "" }); setProductOpen(true); }} title="Open product insights">
               Product
             </IconBtn>
@@ -3956,7 +4593,7 @@ export default function BrowseReturns() {
             </IconBtn>
             <IconBtn icon={FiCopy} onClick={copyShareLink} title="Copy current view URL">Share</IconBtn>
             <IconBtn icon={FiRefreshCw} onClick={reload} disabled={loadingServer}>
-              {loadingServer ? "Loading..." : "Refresh"}
+              {loadingServer ? "Loading…" : "Refresh"}
             </IconBtn>
           </div>
         </div>
@@ -3979,7 +4616,7 @@ export default function BrowseReturns() {
               <FiCalendar size={14} color={T.textM} />
               <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)}
                 style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
-              <span style={{ color: T.textS }}>-></span>
+              <span style={{ color: T.textS }}>→</span>
               <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)}
                 style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
             </div>
@@ -3987,9 +4624,9 @@ export default function BrowseReturns() {
             <IconBtn onClick={() => setQuickDays(30)}>30d</IconBtn>
             <IconBtn onClick={() => setQuickDays(90)}>90d</IconBtn>
             <div style={{ flex: 1, minWidth: 0 }} />
-            <MultiSelect label="Customer" options={customerOpts} selected={customerSel} onChange={setCustomerSel} icon={FiLayers} />
-            <MultiSelect label="Origin" options={originOpts} selected={originSel} onChange={setOriginSel} />
-            <MultiSelect label="Action" options={actionOpts} selected={actionSel} onChange={setActionSel} />
+            <MultiSelect label="POS" options={posOpts} selected={posSel} onChange={setPosSel} icon={FiLayers} />
+            <MultiSelect label="Batch" options={originOpts} selected={originSel} onChange={setOriginSel} />
+            <MultiSelect label="Reason" options={actionOpts} selected={actionSel} onChange={setActionSel} />
             <select value={qtySel} onChange={(e) => setQtySel(e.target.value)} style={{ ...sx.input, padding: "8px 10px", fontSize: 13 }}>
               <option value="any">Qty: Any</option>
               <option value="kg">Qty: KG</option>
@@ -4087,7 +4724,7 @@ export default function BrowseReturns() {
                 onClick={() => setTmPlaying((p) => !p)}
                 title={tmPlaying ? "Pause" : "Play forward"}
                 style={{ ...sx.btn, padding: "6px 10px", fontSize: 12 }}
-              >{tmPlaying ? " Pause" : " Play"}</button>
+              >{tmPlaying ? "⏸ Pause" : "▶ Play"}</button>
             )}
             {asOfDate && (
               <button
@@ -4117,15 +4754,15 @@ export default function BrowseReturns() {
             {/* Stat strip */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 12 }}>
               <StatChip icon={FiFileText} label="Reports" value={kpi.totalReports}
-                sub={filterFrom || filterTo ? `${filterFrom || "..."} -> ${filterTo || "..."}` : "All time"} />
+                sub={filterFrom || filterTo ? `${filterFrom || "…"} → ${filterTo || "…"}` : "All time"} />
               <StatChip icon={FiPackage} label="Total items" value={fmtNum(kpi.totalItems, 0)}
-                sub={`${fmtNum(kpi.totalQtyKg)} kg - ${fmtNum(kpi.totalQtyPcs, 0)} pcs`} color={T.info} bg={T.infoS} />
+                sub={`${fmtNum(kpi.totalQtyKg)} kg · ${fmtNum(kpi.totalQtyPcs, 0)} pcs`} color={T.info} bg={T.infoS} />
               <StatChip icon={FiAlertTriangle} label="Condemnation" value={`${kpi.condemnation.count} (${fmtPct(kpi.condemnation.percent)})`}
                 sub={`${fmtNum(kpi.condemnation.kg)} kg`} color={T.danger} bg={T.dangerS} />
               <StatChip icon={FiZap} label="Use in production" value={`${kpi.useProd.count} (${fmtPct(kpi.useProd.percent)})`}
                 sub="Latest action" color={T.purple} bg={T.purpleS} />
-              <StatChip icon={FiLayers} label="Top Customer" value={kpi.topCustomer.key || "-"}
-                sub={`${kpi.topCustomer.value} items - ${kpi.topCustomerByKg.kg} kg`} color={T.warning} bg={T.warningS} />
+              <StatChip icon={FiLayers} label="Top POS" value={kpi.topPos.key || "—"}
+                sub={`${kpi.topPos.value} items · ${kpi.topPosByKg.kg} kg`} color={T.warning} bg={T.warningS} />
             </div>
 
             {/* Heatmap + Anomalies */}
@@ -4170,22 +4807,22 @@ export default function BrowseReturns() {
                 </div>
                 {anomalies.stats && (
                   <div style={{ ...sx.mutedS, marginBottom: 8 }}>
-                    Items mean {anomalies.stats.itemsMean} - threshold {anomalies.stats.itemsThreshold}
-                    {" - "}Cond mean {anomalies.stats.condMean} - threshold {anomalies.stats.condThreshold}
+                    Items μ {anomalies.stats.itemsMean} · threshold {anomalies.stats.itemsThreshold}
+                    {" · "}Cond μ {anomalies.stats.condMean} · threshold {anomalies.stats.condThreshold}
                   </div>
                 )}
                 {anomalies.top.length === 0 ? (
                   <div style={{ ...sx.muted, textAlign: "center", padding: 16 }}>
-                    {dailyMetrics.length < 4 ? "Need >=4 days of data." : "No anomalies - within 2sigma."}
+                    {dailyMetrics.length < 4 ? "Need ≥4 days of data." : "No anomalies — within 2σ."}
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflow: "auto" }}>
                     {anomalies.top.map((a, i) => {
                       const reasonLabels = a.reasons.map((r) =>
                         r.kind === "items"
-                          ? `${r.value} items (${r.sigma.toFixed(1)}sigma)`
-                          : `${r.value} cond (${r.sigma.toFixed(1)}sigma)`
-                      ).join(" - ");
+                          ? `${r.value} items (${r.sigma.toFixed(1)}σ)`
+                          : `${r.value} cond (${r.sigma.toFixed(1)}σ)`
+                      ).join(" · ");
                       return (
                         <button key={i} onClick={() => { setSelectedDate(a.date); setTab("browse"); const y=a.date.slice(0,4),m=a.date.slice(5,7); setOpenYears(p=>({...p,[y]:true})); setOpenMonths(p=>({...p,[`${y}-${m}`]:true})); }} style={{
                           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -4245,8 +4882,8 @@ export default function BrowseReturns() {
                             display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center",
                           }}>
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              <strong>{it.row.itemCode || it.row.productName || "-"}</strong>
-                              {it.reason ? ` - ${it.reason}` : ""}
+                              <strong>{it.row.itemCode || it.row.productName || "—"}</strong>
+                              {it.reason ? ` · ${it.reason}` : ""}
                             </span>
                             <span style={sx.mutedS}>{it.date}</span>
                           </button>
@@ -4288,7 +4925,7 @@ export default function BrowseReturns() {
                               <FiCalendar size={11} /> {d.label}
                               {isAnom && (
                                 <span style={{ background: T.danger, color: "#fff", padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 800 }}>
-                                   anomaly
+                                  ⚠ anomaly
                                 </span>
                               )}
                             </div>
@@ -4306,7 +4943,7 @@ export default function BrowseReturns() {
                               {d.condCount > 0 && <>
                                 <span style={{ color: "#fca5a5" }}>Condemned</span>
                                 <span style={{ fontWeight: 700, textAlign: "right", color: "#fca5a5" }}>
-                                  {d.condCount}{d.condKg > 0 ? ` - ${fmtNum(d.condKg)} kg` : ""}
+                                  {d.condCount}{d.condKg > 0 ? ` · ${fmtNum(d.condKg)} kg` : ""}
                                 </span>
                               </>}
                             </div>
@@ -4350,15 +4987,15 @@ export default function BrowseReturns() {
                 <DayOfWeekBars daily={dailyMetrics} />
               </div>
               <div style={{ ...sx.card, padding: 16 }}>
-                <h2 style={{ ...sx.h2, marginBottom: 12 }}>Top Customer by items</h2>
-                <HBarList items={kpi.topCustomerByItems} color={T.primary} />
+                <h2 style={{ ...sx.h2, marginBottom: 12 }}>Top POS by items</h2>
+                <HBarList items={kpi.topPosByItems} color={T.primary} />
               </div>
               <div style={{ ...sx.card, padding: 16 }}>
-                <h2 style={{ ...sx.h2, marginBottom: 12 }}>Top Customer by KG</h2>
-                <HBarList items={kpi.topCustomerByKg2} color={T.info} formatValue={(v) => `${fmtNum(v)} kg`} />
+                <h2 style={{ ...sx.h2, marginBottom: 12 }}>Top POS by KG</h2>
+                <HBarList items={kpi.topPosByKg2} color={T.info} formatValue={(v) => `${fmtNum(v)} kg`} />
               </div>
               <div style={{ ...sx.card, padding: 16 }}>
-                <h2 style={{ ...sx.h2, marginBottom: 12 }}>Top Origins</h2>
+                <h2 style={{ ...sx.h2, marginBottom: 12 }}>Top Batches</h2>
                 <HBarList items={kpi.topOrigins} color={T.success} />
               </div>
             </div>
@@ -4367,7 +5004,7 @@ export default function BrowseReturns() {
             <div style={{ ...sx.card, padding: 16, marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                 <FiActivity size={16} color={T.primary} />
-                <h2 style={sx.h2}>Flow: Origin -> Customer -> Action</h2>
+                <h2 style={sx.h2}>Flow: Origin → POS → Action</h2>
                 <span style={sx.mutedS}>Hover any node to highlight its paths</span>
               </div>
               {sankeyFlows.length === 0 ? (
@@ -4381,14 +5018,14 @@ export default function BrowseReturns() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div style={{ ...sx.card, padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <h2 style={sx.h2}>Pareto - by Product</h2>
+                  <h2 style={sx.h2}>Pareto — by Product</h2>
                   <span style={{ ...sx.pill, fontSize: 11 }}>80/20 rule</span>
                 </div>
                 <ParetoChart items={paretoData.byProduct} color={T.primary} />
               </div>
               <div style={{ ...sx.card, padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <h2 style={sx.h2}>Pareto - by Customer</h2>
+                  <h2 style={sx.h2}>Pareto — by POS</h2>
                   <span style={{ ...sx.pill, fontSize: 11 }}>80/20 rule</span>
                 </div>
                 <ParetoChart items={paretoData.byPos} color={T.warning} />
@@ -4409,7 +5046,7 @@ export default function BrowseReturns() {
                       <MiniDonut
                         key={a.label}
                         percent={a.percent}
-                        label={a.label || "-"}
+                        label={a.label || "—"}
                         color={color}
                         count={`${a.value} items`}
                       />
@@ -4434,9 +5071,18 @@ export default function BrowseReturns() {
                   <input
                     ref={searchInputRef}
                     type="text" value={search} onChange={(e) => { setSearch(e.target.value); setResPage(1); }}
-                    placeholder={searchScope === "day" ? "Search... or use customer:Zaid action:condemnation qty:>10" : "Search ALL reports... or customer:X action:Y qty:>5"}
+                    list="destruction-search-suggestions"
+                    placeholder={searchScope === "day" ? "Search this day, e.g. pos:POS 15 reason:expired qty:>10" : "Search all days, e.g. pos:X reason:Y qty:>5"}
                     style={{ ...sx.input, paddingLeft: 36, paddingRight: 60, width: "100%", fontSize: 14 }}
                   />
+                  <datalist id="destruction-search-suggestions">
+                    {SEARCH_QUICK_ACTIONS.map((item) => (
+                      <option key={item.query} value={item.query}>{item.label}</option>
+                    ))}
+                    <option value='name:"ground beef"'>Exact product phrase</option>
+                    <option value="remarks:nonempty">Rows with remarks</option>
+                    <option value="expiry:nonempty">Rows with expiry</option>
+                  </datalist>
                   {search && (
                     <button onClick={() => setSearch("")} style={{
                       position: "absolute", right: 36, top: "50%", transform: "translateY(-50%)",
@@ -4458,15 +5104,15 @@ export default function BrowseReturns() {
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 10px", fontSize: 12 }}>
                         {[
+                          ["code:1234", "Item code substring"],
                           ["name:beef", "Product name (also: product:)"],
-                          ["customer:zaid", "Customer name"],
-                          ["car:12345", "Car / vehicle number"],
-                          ["driver:ahmad", "Driver name"],
-                          ["origin:uae", "Origin"],
-                          ["action:condemn", "Action"],
+                          ["pos:abu", "POS / butchery"],
+                          ["batch:A123", "Batch / lot (also: origin:)"],
+                          ["reason:expired", "Condemnation reason (also: action:)"],
+                          ["ref:000142", "Report reference number"],
                           ["qty:>10", "Quantity (>, <, >=, <=, =)"],
                           ["type:kg", "kg | pcs"],
-                          ["expiry:2026", "Expiry substring"],
+                          ["expiry:empty", "Missing expiry (also: nonempty or 2026)"],
                           ["remarks:nonempty", "empty | nonempty | text"],
                           ["images:yes", "yes | no"],
                           [`name:"ground beef"`, "Use quotes for spaces"],
@@ -4508,13 +5154,37 @@ export default function BrowseReturns() {
                   </span>
                 )}
               </div>
+              <div style={{
+                display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
+                marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${T.border}`,
+              }}>
+                <span style={{ ...sx.mutedS, fontWeight: 700, marginRight: 2 }}>Quick search:</span>
+                {SEARCH_QUICK_ACTIONS.map((item) => (
+                  <button
+                    key={item.query}
+                    type="button"
+                    onClick={() => applySearchQuick(item.query)}
+                    title={`Search ${searchScope === "all" ? "all days" : "this day"} for ${item.query}`}
+                    style={{
+                      ...sx.btn,
+                      padding: "4px 9px",
+                      fontSize: 12,
+                      background: search === item.query ? T.primaryS : T.cardAlt,
+                      color: search === item.query ? T.primary : T.textM,
+                      borderColor: search === item.query ? "#c7d2fe" : T.border,
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Global search results */}
             {searchScope === "all" && search.trim() && (
               <div style={{ ...sx.card, padding: 16, marginBottom: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 8, flexWrap: "wrap" }}>
-                  <h2 style={sx.h2}>Search results - {globalResults.length}</h2>
+                  <h2 style={sx.h2}>Search results · {globalResults.length}</h2>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     {totalPages > 1 && (
                       <>
@@ -4531,7 +5201,7 @@ export default function BrowseReturns() {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead>
                       <tr style={{ background: T.bgAlt }}>
-                        {["#", "Date", "Product", "Origin", "Customer", "Car", "Driver", "Qty", "Type", "Expiry", "Action", "Match", "Score", ""].map((h) => (
+                        {["#", "Date", "Code", "Product", "Batch", "POS", "Qty", "Type", "Expiry", "Reason", "Match", "Score", ""].map((h) => (
                           <th key={h} style={{
                             padding: "10px 8px", textAlign: "left", fontSize: 11, fontWeight: 700,
                             color: T.textM, textTransform: "uppercase", letterSpacing: ".04em",
@@ -4542,15 +5212,16 @@ export default function BrowseReturns() {
                     </thead>
                     <tbody>
                       {pagedResults.length === 0 ? (
-                        <tr><td colSpan={14} style={{ padding: 30, textAlign: "center", color: T.textM }}>No results.</td></tr>
+                        <tr><td colSpan={13} style={{ padding: 30, textAlign: "center", color: T.textM }}>No results.</td></tr>
                       ) : pagedResults.map((r, i) => {
                         const row = r.row;
-                        const pos = customerOf(row);
-                        const qtyType = (row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? (row.customQtyType || "") : (row.qtyType || "");
+                        const pos = safeButchery(row);
+                        const qtyType = (row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? (row.customQtyType || "") : (row.qtyType || "");
                         return (
                           <tr key={`${r.date}-${r.idx}-${i}`} className="br-tbl-row">
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, color: T.textS }}>{(resPage - 1) * RES_PAGE_SIZE + i + 1}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, fontWeight: 600 }}>{r.date}</td>
+                            <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{highlight(row.itemCode || "", search)}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>
                               {highlight(row.productName || "", search)}
                               {Array.isArray(row.images) && row.images.length > 0 && (
@@ -4562,17 +5233,11 @@ export default function BrowseReturns() {
                             </td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{highlight(row.origin || "", search)}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{highlight(pos || "", search)}</td>
-                            <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>
-                              {row.carNumber ? <span style={{ ...sx.pill, fontSize: 11, fontWeight: 700, background: T.warningS, color: T.warning, borderColor: "#fde68a", fontFamily: "ui-monospace, monospace" }}> {highlight(row.carNumber, search)}</span> : <span style={{ color: T.textS }}>-</span>}
-                            </td>
-                            <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>
-                              {row.driverName ? <> {highlight(row.driverName, search)}</> : <span style={{ color: T.textS }}>-</span>}
-                            </td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, textAlign: "right" }}>{row.quantity ?? ""}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{qtyType}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{row.expiry || ""}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>{highlight(actionText(row) || "", search)}</td>
-                            <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, ...sx.mutedS }}>{r.hits.join(", ") || "-"}</td>
+                            <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, ...sx.mutedS }}>{r.hits.join(", ") || "—"}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}`, fontWeight: 700, color: T.primary }}>{r.score}</td>
                             <td style={{ padding: "8px", borderBottom: `1px solid ${T.borderS}` }}>
                               <IconBtn icon={FiArrowRight} onClick={() => jumpToDay(r.date)}>Open</IconBtn>
@@ -4685,7 +5350,7 @@ export default function BrowseReturns() {
                             <span
                               title={
                                 isPendingRef(selectedReport.refNo)
-                                  ? "Placeholder - run the reference backfill in Settings to assign a permanent number"
+                                  ? "Placeholder — run the reference backfill in Settings to assign a permanent number"
                                   : "Reference number"
                               }
                               style={{
@@ -4729,7 +5394,7 @@ export default function BrowseReturns() {
                         <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}
                           style={{ ...sx.input, padding: "8px 10px", fontSize: 13 }}>
                           <option value="none">Group: None</option>
-                          <option value="pos">Group by Customer</option>
+                          <option value="pos">Group by POS</option>
                           <option value="origin">Group by Origin</option>
                           <option value="action">Group by Action</option>
                         </select>
@@ -4865,7 +5530,7 @@ export default function BrowseReturns() {
                   <div style={{ ...sx.h3, marginBottom: 8, color: T.primary }}>Period A</div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <input type="date" value={cmpAFrom} onChange={(e) => setCmpAFrom(e.target.value)} style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
-                    <span style={{ color: T.textS }}>-></span>
+                    <span style={{ color: T.textS }}>→</span>
                     <input type="date" value={cmpATo} onChange={(e) => setCmpATo(e.target.value)} style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
                   </div>
                 </div>
@@ -4873,7 +5538,7 @@ export default function BrowseReturns() {
                   <div style={{ ...sx.h3, marginBottom: 8, color: T.success }}>Period B</div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <input type="date" value={cmpBFrom} onChange={(e) => setCmpBFrom(e.target.value)} style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
-                    <span style={{ color: T.textS }}>-></span>
+                    <span style={{ color: T.textS }}>→</span>
                     <input type="date" value={cmpBTo} onChange={(e) => setCmpBTo(e.target.value)} style={{ ...sx.input, padding: "6px 10px", fontSize: 13 }} />
                   </div>
                 </div>
@@ -4914,7 +5579,7 @@ export default function BrowseReturns() {
 
                 {/* Diff strip */}
                 <div style={{ ...sx.card, padding: 16, marginBottom: 12 }}>
-                  <h2 style={{ ...sx.h2, marginBottom: 10 }}>B vs A - Delta</h2>
+                  <h2 style={{ ...sx.h2, marginBottom: 10 }}>B vs A — Δ</h2>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
                     <div><div style={sx.mutedS}>Items</div>{diffPill(cmpA.items, cmpB.items)}</div>
                     <div><div style={sx.mutedS}>Avg / day</div>{diffPill(cmpA.avgPerDay, cmpB.avgPerDay)}</div>
@@ -4928,14 +5593,14 @@ export default function BrowseReturns() {
                 {/* Top breakdowns */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                   <div style={{ ...sx.card, padding: 16 }}>
-                    <h2 style={{ ...sx.h2, marginBottom: 10 }}>Top Customer - A vs B</h2>
+                    <h2 style={{ ...sx.h2, marginBottom: 10 }}>Top POS — A vs B</h2>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                      <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.primary }}>A</div><HBarList items={cmpA.topCustomer} color={T.primary} /></div>
-                      <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.success }}>B</div><HBarList items={cmpB.topCustomer} color={T.success} /></div>
+                      <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.primary }}>A</div><HBarList items={cmpA.topPos} color={T.primary} /></div>
+                      <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.success }}>B</div><HBarList items={cmpB.topPos} color={T.success} /></div>
                     </div>
                   </div>
                   <div style={{ ...sx.card, padding: 16 }}>
-                    <h2 style={{ ...sx.h2, marginBottom: 10 }}>Top Action - A vs B</h2>
+                    <h2 style={{ ...sx.h2, marginBottom: 10 }}>Top Action — A vs B</h2>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                       <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.primary }}>A</div><HBarList items={cmpA.topAct} color={T.primary} /></div>
                       <div><div style={{ ...sx.mutedS, marginBottom: 6, color: T.success }}>B</div><HBarList items={cmpB.topAct} color={T.success} /></div>
@@ -4954,7 +5619,7 @@ export default function BrowseReturns() {
               <div>
                 <h2 style={{ ...sx.h2 }}>Review queue</h2>
                 <div style={{ ...sx.mutedS, marginTop: 4 }}>
-                  Items flagged by QC for follow-up - {reviewsArr.length} total - {reviewsPending} pending
+                  Items flagged by QC for follow-up · {reviewsArr.length} total · {reviewsPending} pending
                 </div>
               </div>
               {reviewsArr.length > 0 && (
@@ -4979,7 +5644,7 @@ export default function BrowseReturns() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: T.bgAlt }}>
-                      {["Status", "Date", "Item", "Customer - Origin", "Qty", "Action", "Notes", ""].map((h) => (
+                      {["Status", "Date", "Item", "POS · Batch", "Qty", "Reason", "Notes", ""].map((h) => (
                         <th key={h} style={{
                           padding: "10px 12px", textAlign: "left", fontSize: 11, fontWeight: 700,
                           color: T.textM, textTransform: "uppercase", letterSpacing: ".04em",
@@ -4990,7 +5655,7 @@ export default function BrowseReturns() {
                   </thead>
                   <tbody>
                     {reviewsArr.map((r) => {
-                      const qtyType = (r.qtyType === "ط£ط®ط±ظ‰" || r.qtyType === "ط£ط®ط±ظ‰ / Other") ? "" : (r.qtyType || "");
+                      const qtyType = (r.qtyType === "أخرى" || r.qtyType === "أخرى / Other") ? "" : (r.qtyType || "");
                       return (
                         <tr key={r.key} style={{ background: r.status === "done" ? T.successS : "transparent", opacity: r.status === "done" ? 0.7 : 1 }}>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top" }}>
@@ -5000,7 +5665,7 @@ export default function BrowseReturns() {
                               color: r.status === "done" ? "#fff" : T.warning,
                               borderColor: r.status === "done" ? T.success : "#fde68a",
                             }}>
-                              {r.status === "done" ? <><FiCheck size={11} /> Done</> : <> Pending</>}
+                              {r.status === "done" ? <><FiCheck size={11} /> Done</> : <>⏳ Pending</>}
                             </button>
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", fontWeight: 700, fontSize: 12 }}>
@@ -5020,23 +5685,24 @@ export default function BrowseReturns() {
                               ...sx.btnGhost, padding: 0, color: T.text, cursor: "pointer", textAlign: "left",
                               fontWeight: 700, textDecoration: "underline", textDecorationStyle: "dotted",
                               textUnderlineOffset: 2, textDecorationColor: T.textS,
-                            }}>{r.productName || "-"}</button>
+                            }}>{r.productName || "—"}</button>
+                            {r.itemCode && <div style={{ ...sx.mutedS, fontFamily: "ui-monospace, monospace", marginTop: 2 }}>{r.itemCode}</div>}
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", fontSize: 12, color: T.textM }}>
-                            {r.pos || "-"}
-                            <div style={{ ...sx.mutedS }}>{r.origin || "-"}</div>
+                            {r.pos || "—"}
+                            <div style={{ ...sx.mutedS }}>{r.origin || "—"}</div>
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", textAlign: "right", fontWeight: 700 }}>
-                            {r.quantity ?? "-"} <span style={{ ...sx.mutedS }}>{qtyType}</span>
+                            {r.quantity ?? "—"} <span style={{ ...sx.mutedS }}>{qtyType}</span>
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", fontSize: 12 }}>
-                            {r.action || "-"}
+                            {r.action || "—"}
                           </td>
                           <td style={{ padding: "10px 12px", borderBottom: `1px solid ${T.borderS}`, verticalAlign: "top", minWidth: 220 }}>
                             <textarea
                               value={r.notes || ""}
                               onChange={(e) => updateReview(r.key, { notes: e.target.value })}
-                              placeholder="Add notes..."
+                              placeholder="Add notes…"
                               rows={2}
                               style={{
                                 ...sx.input, width: "100%", fontSize: 12, padding: "6px 8px",
@@ -5094,6 +5760,113 @@ export default function BrowseReturns() {
           config={emailConfig}
         />
 
+        {/* Monthly Report modal */}
+        {monthlyOpen && (
+          <div
+            className="br-noprint"
+            onClick={() => !monthlyBusy && setMonthlyOpen(false)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 1200,
+              background: "rgba(15,23,42,.55)", backdropFilter: "blur(2px)",
+              display: "grid", placeItems: "center", padding: 16,
+            }}
+          >
+            <div onClick={(e) => e.stopPropagation()} style={{
+              ...sx.card, width: "min(460px, 96vw)", overflow: "hidden", padding: 0,
+              boxShadow: "0 24px 60px rgba(15,23,42,.35)",
+            }}>
+              {/* Header band */}
+              <div style={{
+                background: `linear-gradient(135deg, ${T.primary} 0%, ${T.purple} 100%)`,
+                color: "#fff", padding: "18px 20px",
+                display: "flex", alignItems: "center", gap: 12,
+              }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                  background: "rgba(255,255,255,.18)", display: "grid", placeItems: "center",
+                }}><FiFileText size={20} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>Condemnation & Disposal Report</div>
+                  <div style={{ fontSize: 12, opacity: .9 }}>Executive PDF · monthly · quarterly · half-year · 9-month · annual</div>
+                </div>
+                <button onClick={() => !monthlyBusy && setMonthlyOpen(false)} style={{
+                  ...sx.btnGhost, color: "#fff", cursor: "pointer", padding: 4,
+                }}><FiX size={18} /></button>
+              </div>
+
+              <div style={{ padding: 20 }}>
+                <label style={{ ...sx.h3, display: "block", marginBottom: 8 }}>Report type</label>
+                <select
+                  value={periodType}
+                  onChange={(e) => setPeriodType(e.target.value)}
+                  disabled={monthlyBusy}
+                  style={{ ...sx.input, width: "100%", fontSize: 15, cursor: "pointer", marginBottom: 16 }}
+                >
+                  {REPORT_PERIODS.map((p) => (
+                    <option key={p.key} value={p.key}>{p.en}</option>
+                  ))}
+                </select>
+
+                <label style={{ ...sx.h3, display: "block", marginBottom: 8 }}>
+                  {periodType === "monthly" ? "Month" : "Ending month"}
+                </label>
+                {availableMonths.length === 0 ? (
+                  <div style={{ ...sx.muted, padding: "10px 0" }}>No condemnation data available yet.</div>
+                ) : (
+                  <select
+                    value={monthlyMonth}
+                    onChange={(e) => setMonthlyMonth(e.target.value)}
+                    disabled={monthlyBusy}
+                    style={{ ...sx.input, width: "100%", fontSize: 15, cursor: "pointer" }}
+                  >
+                    {availableMonths.map((m) => (
+                      <option key={m} value={m}>{monthLabel(m)}</option>
+                    ))}
+                  </select>
+                )}
+
+                {monthlyMonth && availableMonths.length > 0 && (() => {
+                  const p = REPORT_PERIODS.find((x) => x.key === periodType) || REPORT_PERIODS[0];
+                  const from = addMonthKey(monthlyMonth, -(p.months - 1));
+                  return (
+                    <div style={{ marginTop: 12, fontSize: 13, color: T.textM }}>
+                      Covers <strong style={{ color: T.text }}>{rangeLabel(from, monthlyMonth)}</strong>
+                      {" · "}{p.months} month{p.months > 1 ? "s" : ""}
+                    </div>
+                  );
+                })()}
+
+                <div style={{
+                  marginTop: 14, padding: "12px 14px", borderRadius: 10,
+                  background: T.primaryS, border: `1px solid #c7d2fe`,
+                  fontSize: 12.5, color: T.primaryD, lineHeight: 1.6,
+                }}>
+                  <strong>What's inside:</strong> hero KPIs, disposition-mix donut,
+                  activity chart {periodType === "monthly" ? "(per day)" : "(per month)"} + register,
+                  vs-previous-period comparison, condemnation-rate hotspots, and
+                  top products / branches / origins / condemned items.
+                </div>
+
+                <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+                  <button
+                    onClick={() => !monthlyBusy && setMonthlyOpen(false)}
+                    disabled={monthlyBusy}
+                    style={{ ...sx.btn, flex: "0 0 auto" }}
+                  >Cancel</button>
+                  <PrimaryBtn
+                    icon={FiDownload}
+                    onClick={generatePeriodReport}
+                    disabled={monthlyBusy || availableMonths.length === 0}
+                    style={{ flex: 1, justifyContent: "center", padding: "10px 12px" }}
+                  >
+                    {monthlyBusy ? "Generating…" : "Generate PDF"}
+                  </PrimaryBtn>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Floating bulk action bar */}
         {selectedRows.size > 0 && tab === "browse" && (
           <div className="br-noprint" style={{
@@ -5143,7 +5916,7 @@ export default function BrowseReturns() {
 }
 
 /* ============================================================
-   DataTable - used by Browse tab
+   DataTable — used by Browse tab
    ============================================================ */
 function DataTable({ rows, columns, changeMap, search, highlight, openViewer, rowPad, sort, toggleSort, showHeader, auditTrailByKey, onOpenAudit, selectedRows, onToggleSelect, onToggleAll, onRangeSelect, onOpenProduct, onMarkReview, reviewedSet, currentDate }) {
   const allChecked = showHeader && rows.length > 0 && rows.every((r) => selectedRows?.has(r.__i));
@@ -5184,7 +5957,7 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                     display: "inline-flex", alignItems: "center", gap: 4, textTransform: "uppercase", letterSpacing: ".04em",
                   }}>
                     {c.label}
-                    {sort.key === c.key && (sort.dir === "asc" ? "^" : "v")}
+                    {sort.key === c.key && (sort.dir === "asc" ? "▲" : "▼")}
                   </button>
                 ) : c.label}
               </th>
@@ -5230,6 +6003,7 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                   color: T.text, verticalAlign: "top",
                 };
                 if (c.key === "sl") return <td key={c.key} style={{ ...tdStyle, color: T.textS, fontVariantNumeric: "tabular-nums" }}>{i + 1}</td>;
+                if (c.key === "itemCode") return <td key={c.key} style={{ ...tdStyle, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{search ? highlight(row.itemCode || "", search) : (row.itemCode || "")}</td>;
                 if (c.key === "productName") return (
                   <td key={c.key} style={tdStyle}>
                     {onOpenProduct ? (
@@ -5252,30 +6026,10 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                   </td>
                 );
                 if (c.key === "origin") return <td key={c.key} style={tdStyle}>{search ? highlight(row.origin || "", search) : row.origin}</td>;
-                if (c.key === "pos") return <td key={c.key} style={tdStyle}>{search ? highlight(customerOf(row) || "", search) : customerOf(row)}</td>;
-                if (c.key === "carNumber") return (
-                  <td key={c.key} style={tdStyle}>
-                    {row.carNumber ? (
-                      <span style={{
-                        ...sx.pill, fontSize: 11, fontWeight: 700,
-                        background: T.warningS, color: T.warning, borderColor: "#fde68a",
-                        fontFamily: "ui-monospace, monospace",
-                      }}> {search ? highlight(row.carNumber, search) : row.carNumber}</span>
-                    ) : <span style={{ color: T.textS }}>-</span>}
-                  </td>
-                );
-                if (c.key === "driverName") return (
-                  <td key={c.key} style={tdStyle}>
-                    {row.driverName ? (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                         <span style={{ fontWeight: 600 }}>{search ? highlight(row.driverName, search) : row.driverName}</span>
-                      </span>
-                    ) : <span style={{ color: T.textS }}>-</span>}
-                  </td>
-                );
+                if (c.key === "pos") return <td key={c.key} style={tdStyle}>{search ? highlight(safeButchery(row) || "", search) : safeButchery(row)}</td>;
                 if (c.key === "quantity") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{row.quantity}</td>;
                 if (c.key === "qtyType") return <td key={c.key} style={tdStyle}>
-                  <span style={{ ...sx.pill, fontSize: 11 }}>{(row.qtyType === "ط£ط®ط±ظ‰" || row.qtyType === "ط£ط®ط±ظ‰ / Other") ? row.customQtyType : row.qtyType || ""}</span>
+                  <span style={{ ...sx.pill, fontSize: 11 }}>{(row.qtyType === "أخرى" || row.qtyType === "أخرى / Other") ? row.customQtyType : row.qtyType || ""}</span>
                 </td>;
                 if (c.key === "expiry") return <td key={c.key} style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: T.textM }}>{row.expiry}</td>;
                 if (c.key === "remarks") return <td key={c.key} style={{ ...tdStyle, color: T.textM, fontSize: 12 }}>{search ? highlight(row.remarks || "", search) : row.remarks}</td>;
@@ -5297,7 +6051,7 @@ function DataTable({ rows, columns, changeMap, search, highlight, openViewer, ro
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         <div style={{ fontSize: 12 }}>
                           <span style={{ color: T.textM, textDecoration: "line-through" }}>{ch.from}</span>
-                          <span style={{ margin: "0 6px", color: T.textS }}>-></span>
+                          <span style={{ margin: "0 6px", color: T.textS }}>→</span>
                           <span style={{ fontWeight: 700, color: T.text }}>{ch.to}</span>
                         </div>
                         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>

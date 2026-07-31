@@ -20,6 +20,7 @@ export default function TrainingCertVerify() {
   const date    = params.get('date')   || '';
   const score   = parseInt(params.get('score') || '0', 10);
   const by      = params.get('by')     || '';
+  const qaBy    = params.get('qa')     || '';
   const branch  = params.get('branch') || '';
   const expDate = params.get('exp')    || '';
 
@@ -157,6 +158,7 @@ export default function TrainingCertVerify() {
             {date   && <span>📅 Trained: <strong style={{color:'#0f172a'}}>{date}</strong></span>}
             {branch && <span>🏢 <strong style={{color:'#0f172a'}}>{branch}</strong></span>}
             {by     && <span>👤 Trainer: <strong style={{color:'#0f172a'}}>{by}</strong></span>}
+            {qaBy   && <span>✅ {tL('Quality Manager', 'مدير الجودة')}: <strong style={{color:'#0f172a'}}>{qaBy}</strong></span>}
           </div>
 
           {/* Footer */}

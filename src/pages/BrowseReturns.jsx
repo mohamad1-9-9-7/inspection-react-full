@@ -13,6 +13,7 @@ import EmailSendModal from "./shared/EmailSendModal";
 import { escapeHtml } from "./shared/emailReportUtils";
 import { MAWASHI_LOGO_B64 } from "../assets/mawashi-logo-b64";
 import { arrangeItems, GROUP_LABEL } from "./shared/itemSortGroup";
+import { getRefNo, isPendingRef } from "../utils/reportRef";
 
 /* ============================================================
    API
@@ -59,10 +60,15 @@ function normalizeReturns(raw) {
   const entries = raw
     .map((rec) => {
       const payload = rec?.payload || {};
+      const refNo = getRefNo(rec, "returns");
       return {
         ts: bestTs(rec),
         reportDate: payload.reportDate || rec?.reportDate || "",
-        items: Array.isArray(payload.items) ? payload.items : [],
+        refNo,
+        /* Reference carried per row so `ref:` search works across days */
+        items: Array.isArray(payload.items)
+          ? payload.items.map((it) => ({ ...it, refNo }))
+          : [],
       };
     })
     .filter((e) => e.reportDate);
@@ -232,6 +238,7 @@ const KEY_ALIASES = {
   qty: "qty", quantity: "qty",
   qtytype: "qtytype", type: "qtytype",
   images: "images",
+  ref: "refNo", refno: "refNo", reference: "refNo",
 };
 
 function rowMatchesPower(row, parsed) {
@@ -3030,7 +3037,8 @@ export default function BrowseReturns() {
      ============================================================ */
   const SEARCH_FIELDS = [
     "itemCode","productName","origin","butchery","customButchery",
-    "quantity","qtyType","customQtyType","expiry","remarks","action","customAction"
+    "quantity","qtyType","customQtyType","expiry","remarks","action","customAction",
+    "refNo"
   ];
   function normalizeField(row, key) {
     if (key === "butchery") return safeButchery(row);
@@ -3557,7 +3565,8 @@ export default function BrowseReturns() {
     reportType:  "returns",
     /* Direct server-side SMTP send — see BrowseCustomerReturns for the pilot. */
     allowServerSend: true,
-    getSubject: (rep) => `[Returns] Report — ${rep?.reportDate || "—"}`,
+    getSubject: (rep) =>
+      `[Returns] ${rep?.refNo ? `${rep.refNo} — ` : ""}Report — ${rep?.reportDate || "—"}`,
     /* Editable in the modal's Content tab; {date} fills itself in on send. */
     getDefaultIntro: () => DEFAULT_INTRO,
     generatePdf: async (rep, pdfOpts = {}) => {
@@ -3607,7 +3616,11 @@ export default function BrowseReturns() {
         doc.setFont("helvetica", "bold"); doc.setFontSize(16);
         doc.text("Returns Report", marginL, 36);
         doc.setFont("helvetica", "normal"); doc.setFontSize(11);
-        doc.text(`Date: ${report.reportDate}`, marginL, 54);
+        doc.text(
+          `Date: ${report.reportDate}${report.refNo ? `        Ref: ${report.refNo}` : ""}`,
+          marginL,
+          54
+        );
         const rightX = pageWidth - marginR;
         doc.setFont("helvetica", "bold"); doc.setTextColor(180, 0, 0); doc.setFontSize(18);
         doc.text("AL MAWASHI", rightX, 30, { align: "right" });
@@ -5026,6 +5039,7 @@ export default function BrowseReturns() {
                           ["name:beef", "Product name (also: product:)"],
                           ["pos:abu", "POS / butchery"],
                           ["origin:uae", "Origin"],
+                          ["ref:000087", "Report reference number"],
                           ["action:condemn", "Action"],
                           ["qty:>10", "Quantity (>, <, >=, <=, =)"],
                           ["type:kg", "kg | pcs"],
@@ -5259,8 +5273,29 @@ export default function BrowseReturns() {
                       padding: "12px 16px", borderBottom: `1px solid ${T.border}`, gap: 10, flexWrap: "wrap",
                     }}>
                       <div>
-                        <div style={{ fontWeight: 800, color: T.text, fontSize: 15 }}>
-                          {selectedReport.reportDate}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <div style={{ fontWeight: 800, color: T.text, fontSize: 15 }}>
+                            {selectedReport.reportDate}
+                          </div>
+                          {selectedReport.refNo && (
+                            <span
+                              title={
+                                isPendingRef(selectedReport.refNo)
+                                  ? "Placeholder — run the reference backfill in Settings to assign a permanent number"
+                                  : "Reference number"
+                              }
+                              style={{
+                                ...sx.pill,
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                letterSpacing: ".3px",
+                                background: isPendingRef(selectedReport.refNo) ? T.warningS : T.bgAlt,
+                                color: isPendingRef(selectedReport.refNo) ? T.warning : T.text,
+                                borderColor: isPendingRef(selectedReport.refNo) ? "#fde68a" : T.border,
+                              }}
+                            >
+                              {selectedReport.refNo}
+                            </span>
+                          )}
                         </div>
                         {selectedSummary && (
                           <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>

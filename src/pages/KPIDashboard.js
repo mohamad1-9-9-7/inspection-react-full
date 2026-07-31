@@ -273,6 +273,7 @@ const BRANCHES = [
       { t: "returns",              label: "Returns" },
       { t: "returns_customers",    label: "Customer Returns" },
       { t: "enoc_returns",         label: "ENOC Returns" },
+      { t: "destruction_record",   label: "Condemnation & Disposal" },
     ],
   },
   {

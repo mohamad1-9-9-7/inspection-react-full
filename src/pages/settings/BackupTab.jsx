@@ -53,6 +53,7 @@ const REPORT_GROUPS = {
     "returns", "returns_changes",
     "returns_customers", "returns_customers_changes",
     "enoc_returns",
+    "destruction_record",
   ],
   "HACCP & ISO": [
     "ccp_monitoring_record",
