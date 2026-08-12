@@ -78,6 +78,24 @@ async function saveLookupValue(type, value) {
 }
 
 /* =========================
+   DESTINATION (الوجهة) - required dropdown
+========================= */
+const DESTINATIONS = [
+  "ABU DHABI BUTCHERY",
+  "AL AIN BUTCHERY",
+  "AL BARSHA BUTCHERY",
+  "JUBAIL MARKET BUTCHERY",
+  "THE MARKET",
+  "DUBAI",
+  "SHARJAH",
+  "AJMAN",
+  "RAS AL KHAIMAH",
+  "FUJAIRAH",
+  "UMM AL QUWAIN",
+  "HOME DELIVERY",
+];
+
+/* =========================
    YES/NO fields (table)
 ========================= */
 const YESNO_FIELDS = [
@@ -101,6 +119,7 @@ const YESNO_FIELDS = [
 const REQUIRED_FIELDS = {
   vehicleNo: "VEHICLE NO",
   driverName: "DRIVER NAME",
+  destination: "DESTINATION",
   timeStart: "TIME START",
   timeEnd: "TIME END",
   tempCheck: "TRUCK TEMPERATURE",
@@ -137,6 +156,7 @@ function newRow() {
   return {
     vehicleNo: "",
     driverName: "",
+    destination: "",
     timeStart: "",
     timeEnd: "",
     tempCheck: "",
@@ -183,7 +203,8 @@ function uniqueSorted(values) {
 }
 
 export default function LoadingLog() {
-  const [header, setHeader] = useState({ ...HEAD_DEFAULT });
+  // Controlled document header — fixed values, not editable by the user
+  const header = HEAD_DEFAULT;
   const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10));
   const [inspectedBy, setInspectedBy] = useState("");
   const [verifiedBy, setVerifiedBy] = useState("");
@@ -197,7 +218,6 @@ export default function LoadingLog() {
   const [driverOptions, setDriverOptions] = useState([]);
   const [lookupBusy, setLookupBusy] = useState(false);
 
-  const setHead = (k, v) => setHeader((h) => ({ ...h, [k]: v }));
   const setRow = (i, k, v) =>
     setRows((rs) => {
       const n = rs.slice();
@@ -306,6 +326,7 @@ export default function LoadingLog() {
     const meaningfulKeys = [
       "vehicleNo",
       "driverName",
+      "destination",
       "timeStart",
       "timeEnd",
       "tempCheck",
@@ -325,7 +346,7 @@ export default function LoadingLog() {
       const setForRow = new Set();
 
       // INFORMED TO removed from required
-      ["vehicleNo", "driverName", "timeStart", "timeEnd", "tempCheck"].forEach((k) => {
+      ["vehicleNo", "driverName", "destination", "timeStart", "timeEnd", "tempCheck"].forEach((k) => {
         const val = String(r[k] || "").trim();
         if (!val) {
           missing.push(REQUIRED_FIELDS[k]);
@@ -454,6 +475,17 @@ export default function LoadingLog() {
     ...inputStyle,
     border: "1px solid #ef4444",
     boxShadow: "0 0 0 2px rgba(239, 68, 68, 0.15)",
+  };
+
+  // Read-only controlled-document fields (header)
+  const lockedInputStyle = {
+    ...inputStyle,
+    backgroundColor: "#eef1f5",
+    color: "#1a202c",
+    fontWeight: "600",
+    cursor: "not-allowed",
+    opacity: 1,            // keep text fully readable even when disabled
+    WebkitTextFillColor: "#1a202c", // Safari/Chrome disabled-text override
   };
 
   const titleStyle = {
@@ -615,64 +647,42 @@ export default function LoadingLog() {
   return (
     <form onSubmit={handleSave} style={wrapStyle}>
       <div style={cardStyle}>
-        {/* Header row 1 & 2 */}
+        {/* Header row 1 & 2 — controlled document fields (read-only) */}
         <div style={{ ...sectionStyle, backgroundColor: "#f0f2f5" }}>
           <div style={responsiveGrid4}>
             <div>
               <label style={labelStyle}>Document Title:</label>
-              <input
-                style={inputStyle}
-                value={header.documentTitle}
-                onChange={(e) => setHead("documentTitle", e.target.value)}
-                aria-required="true"
-              />
+              <input style={lockedInputStyle} value={header.documentTitle} readOnly disabled tabIndex={-1} />
             </div>
             <div>
               <label style={labelStyle}>Document No.:</label>
-              <input
-                style={inputStyle}
-                value={header.documentNo}
-                onChange={(e) => setHead("documentNo", e.target.value)}
-              />
+              <input style={lockedInputStyle} value={header.documentNo} readOnly disabled tabIndex={-1} />
             </div>
             <div>
               <label style={labelStyle}>Issue Date:</label>
-              <input
-                style={inputStyle}
-                placeholder="DD/MM/YYYY"
-                value={header.issueDate}
-                onChange={(e) => setHead("issueDate", e.target.value)}
-              />
+              <input style={lockedInputStyle} value={header.issueDate} readOnly disabled tabIndex={-1} />
             </div>
             <div>
               <label style={labelStyle}>Revision No.:</label>
-              <input
-                style={inputStyle}
-                value={header.revisionNo}
-                onChange={(e) => setHead("revisionNo", e.target.value)}
-              />
+              <input style={lockedInputStyle} value={header.revisionNo} readOnly disabled tabIndex={-1} />
             </div>
           </div>
           <div style={{ ...responsiveGrid4, marginTop: "16px" }}>
             <div>
               <label style={labelStyle}>Area:</label>
-              <input style={inputStyle} value={header.area} onChange={(e) => setHead("area", e.target.value)} />
+              <input style={lockedInputStyle} value={header.area} readOnly disabled tabIndex={-1} />
             </div>
             <div>
               <label style={labelStyle}>Issued By:</label>
-              <input style={inputStyle} value={header.issuedBy} onChange={(e) => setHead("issuedBy", e.target.value)} />
+              <input style={lockedInputStyle} value={header.issuedBy} readOnly disabled tabIndex={-1} />
             </div>
             <div>
               <label style={labelStyle}>Controlling Officer:</label>
-              <input
-                style={inputStyle}
-                value={header.controllingOfficer}
-                onChange={(e) => setHead("controllingOfficer", e.target.value)}
-              />
+              <input style={lockedInputStyle} value={header.controllingOfficer} readOnly disabled tabIndex={-1} />
             </div>
             <div>
               <label style={labelStyle}>Approved By:</label>
-              <input style={inputStyle} value={header.approvedBy} onChange={(e) => setHead("approvedBy", e.target.value)} />
+              <input style={lockedInputStyle} value={header.approvedBy} readOnly disabled tabIndex={-1} />
             </div>
           </div>
         </div>
@@ -727,6 +737,7 @@ export default function LoadingLog() {
                   "BAD ODOUR",
                   "PPE AVAILABLE",
 
+                  "DESTINATION",
                   "INFORMED TO (OPTIONAL)",
                   "REMARKS",
                 ].map((h) => (
@@ -856,6 +867,23 @@ export default function LoadingLog() {
                       </div>
                     </td>
                   ))}
+
+                  {/* DESTINATION - required */}
+                  <td style={isInvalid(i, "destination") ? tdInvalid : tdStyle}>
+                    <select
+                      style={isInvalid(i, "destination") ? inputInvalid : inputStyle}
+                      value={r.destination}
+                      onChange={(e) => setRow(i, "destination", e.target.value)}
+                      aria-required="true"
+                    >
+                      <option value="">Select...</option>
+                      {DESTINATIONS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
 
                   {/* INFORMED TO (optional) */}
                   <td style={tdStyle}>

@@ -7,6 +7,7 @@ import PrintButton, { PrintOfficialHeader } from "./_shared/PrintButton";
 import { useLang } from "./_shared/i18n";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 
 
 const TYPE = "prod_dried_meat";
@@ -307,9 +308,11 @@ export default function DriedMeatProcessView() {
           <button onClick={exportJSON} disabled={!record} className="dmv-btn dmv-btn-info">
             {isAr ? "تصدير JSON" : "Export JSON"}
           </button>
-          <button onClick={handleDelete} disabled={!record} className="dmv-btn dmv-btn-danger" data-delete-action="true">
-            {isAr ? "حذف" : "Delete"}
-          </button>
+          {canDelete("daily") && (
+            <button onClick={handleDelete} disabled={!record} className="dmv-btn dmv-btn-danger" data-delete-action="true">
+              {isAr ? "حذف" : "Delete"}
+            </button>
+          )}
         </div>
       </div>
 

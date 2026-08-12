@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 
 
 
@@ -348,7 +349,9 @@ export default function FTR1CookingTemperatureLogView() {
                   <button onClick={cancelEdit} style={btn("#ef4444")}>✖ Cancel</button>
                 </>
               )}
-              <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} title="Delete (password: 9999)" data-delete-action="true">🗑 Delete</button>
+              {canDelete("daily") && (
+                <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} title="Delete (password: 9999)" data-delete-action="true">🗑 Delete</button>
+              )}
               <button onClick={handleExportPDF}  style={btn("#27ae60")}>⬇ Export PDF</button>
               <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
               <button onClick={handleExportXLS}  style={btn("#0ea5e9")}>⬇ Export XLS</button>

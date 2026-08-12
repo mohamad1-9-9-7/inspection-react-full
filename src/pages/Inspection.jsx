@@ -2,7 +2,10 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildInspectionEvidencePublic } from "../utils/inspectionPublicLink";
-import { canonicalInspectionBranch } from "./inspection/inspectionBranches";
+import {
+  INSPECTION_BRANCHES,
+  canonicalInspectionBranch,
+} from "./inspection/inspectionBranches";
 
 /* ===== Routing ===== */
 const REPORTS_ROUTE = "/monitor/internal-audit";
@@ -37,38 +40,9 @@ async function uploadImageToCloudinary(file) {
   return data.optimized_url || data.url;
 }
 
-/* ===== Smart branches (same structure as the View page) ===== */
-const BRANCH_LIST = [
-  { code: "QCS",         en: "QCS — Al Qusais Warehouse",        ar: "QCS — مستودع القصيص" },
-  { code: "POS 6",       en: "POS 6 — Sharjah Butchery",         ar: "POS 6 — ملحمة الشارقة" },
-  { code: "POS 7",       en: "POS 7 — Abu Dhabi Store",          ar: "POS 7 — مخزن أبوظبي" },
-  { code: "POS 10",      en: "POS 10 — Abu Dhabi Butchery",      ar: "POS 10 — ملحمة أبوظبي" },
-  { code: "POS 11",      en: "POS 11 — Al Ain Butchery",         ar: "POS 11 — ملحمة العين" },
-  { code: "POS 14",      en: "POS 14 — Al Ain Market",           ar: "POS 14 — سوق العين" },
-  { code: "POS 15",      en: "POS 15 — Al Barsha Butchery",      ar: "POS 15 — ملحمة البرشا" },
-  { code: "POS 16",      en: "POS 16 — AFCOP Maqta Mall",         ar: "POS 16 — AFCOP مول المقطع" },
-  { code: "POS 17",      en: "POS 17 — Mushrif Coop",            ar: "POS 17 — تعاونية المشرف" },
-  { code: "POS 18",      en: "POS 18",                            ar: "POS 18" },
-  { code: "POS 19",      en: "POS 19 — Motor City",              ar: "POS 19 — موتور سيتي" },
-  { code: "POS 21",      en: "POS 21",                            ar: "POS 21" },
-  { code: "POS 24",      en: "POS 24",                            ar: "POS 24" },
-  { code: "POS 25",      en: "POS 25",                            ar: "POS 25" },
-  { code: "POS 26",      en: "POS 26",                            ar: "POS 26" },
-  { code: "POS 31",      en: "POS 31",                            ar: "POS 31" },
-  { code: "POS 34",      en: "POS 34",                            ar: "POS 34" },
-  { code: "POS 35",      en: "POS 35",                            ar: "POS 35" },
-  { code: "POS 36",      en: "POS 36",                            ar: "POS 36" },
-  { code: "POS 37",      en: "POS 37 — Safeer Musafah",           ar: "POS 37 — سفير مصفح" },
-  { code: "POS 38",      en: "POS 38 — Safeer Khalifa A",         ar: "POS 38 — سفير خليفة A" },
-  { code: "POS 41",      en: "POS 41",                            ar: "POS 41" },
-  { code: "POS 42",      en: "POS 42",                            ar: "POS 42" },
-  { code: "POS 43",      en: "POS 43 — Fazaa Shamkha",            ar: "POS 43 — فزعة الشامخة" },
-  { code: "POS 44",      en: "POS 44",                            ar: "POS 44" },
-  { code: "POS 45",      en: "POS 45",                            ar: "POS 45" },
-  { code: "FTR 1",       en: "FTR 1 — Al Mushrif Park",          ar: "FTR 1 — حديقة المشرف" },
-  { code: "FTR 2",       en: "FTR 2 — Al Mamzar",                ar: "FTR 2 — الممزر" },
-  { code: "AL WARQA KITCHEN", en: "Al Warqa Kitchen",            ar: "مطبخ الورقاء" },
-];
+/* ===== Branches =====
+ * Shared with the reports view and the annual plan — one list, no drift. */
+const BRANCH_LIST = INSPECTION_BRANCHES;
 
 const RISK_OPTIONS = [
   { v: "Low",    en: "Low",    ar: "منخفض",  color: "#166534", bg: "#dcfce7" },
@@ -113,7 +87,9 @@ export default function Inspection() {
   const [date, setDate] = useState(draft?.date || new Date().toISOString().slice(0,10));
   const [reportNo, setReportNo] = useState(draft?.reportNo || "");
   const [auditBy, setAuditBy] = useState(draft?.auditBy || "MOHAMAD ABDULLAH (QA)");
-  const [location, setLocation] = useState(draft?.location || "");
+  /* ⚠️ `location` was retired — the Branch dropdown is now the single source of
+     truth. Legacy reports still carry header.location, so every READ path keeps
+     it as a last-resort fallback; nothing new ever writes it. */
   const [approvedBy] = useState("Hussam O. Sarhan");
   const [issuedBy] = useState("MOHAMAD ABDULLAH QA");
 
@@ -144,7 +120,7 @@ export default function Inspection() {
     const t = setTimeout(() => {
       try {
         localStorage.setItem(DRAFT_KEY, JSON.stringify({
-          branch, date, reportNo, auditBy, location,
+          branch, date, reportNo, auditBy,
           rows, commentNextAudit, nextAudit, reviewedBy,
           savedAt: Date.now(),
         }));
@@ -153,7 +129,7 @@ export default function Inspection() {
       } catch {}
     }, 1500);
     return () => clearTimeout(t);
-  }, [branch, date, reportNo, auditBy, location, rows, commentNextAudit, nextAudit, reviewedBy]);
+  }, [branch, date, reportNo, auditBy, rows, commentNextAudit, nextAudit, reviewedBy]);
 
   /* Calc helpers — extended KPIs */
   const kpis = useMemo(() => {
@@ -206,7 +182,7 @@ export default function Inspection() {
   const clearAllRows = () => {
     if (!window.confirm(tt("Reset the form? All unsaved data will be lost.", "إعادة تعيين النموذج؟ كل البيانات غير المحفوظة ستضيع."))) return;
     setRows([makeEmptyRow(), makeEmptyRow(), makeEmptyRow()]);
-    setReportNo(""); setLocation(""); setCommentNextAudit(""); setReviewedBy("");
+    setReportNo(""); setCommentNextAudit(""); setReviewedBy("");
     setBranch(""); setNextAudit("nil");
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
   };
@@ -263,7 +239,8 @@ export default function Inspection() {
         title: reportName,
         /* ⚠️ The server does NOT persist the top-level `branch` column for this
            endpoint, so the selected branch MUST live inside the payload —
-           otherwise the only trace left is the free-text Location field. */
+           it is written twice (payload.branch + payload.header.branch) because
+           both spots are read by the view / annual-plan / e-mail code. */
         branch,
         header: {
           documentNumber: "FS-QM/REC/CA/1",
@@ -273,8 +250,9 @@ export default function Inspection() {
           date,
           reportNo,
           branch,
-          auditConductedBy: auditBy,
-          location: location || branch
+          auditConductedBy: auditBy
+          /* `location` is intentionally NOT written any more — see the note
+             next to the state declarations at the top of this file. */
         },
         table: rows,
         footer: {
@@ -305,6 +283,7 @@ export default function Inspection() {
       return list.find((r) => {
         const h = r?.payload?.header || {};
         if ((h.date || r?.reportDate || "") !== date) return false;
+        // h.location is legacy-only: pre-2026 reports kept the branch there.
         const raw = r?.payload?.branch || h.branch || r?.branch || h.location || "";
         return canonicalInspectionBranch(raw) === wanted;
       }) || null;
@@ -633,14 +612,10 @@ export default function Inspection() {
             <input value={auditBy} onChange={(e)=>setAuditBy(e.target.value)} style={metaInput}/>
           </label>
           <label style={metaCell}>
-            <span>{tt("Location", "الموقع")}</span>
-            <input value={location} onChange={(e)=>setLocation(e.target.value)} placeholder={tt("e.g., POS 24 — Silicon Oasis", "مثال: POS 24 — سيليكون أوايسس")} style={metaInput}/>
-          </label>
-          <label style={metaCell}>
             <span>{tt("Branch", "الفرع")} {!branch && <span style={{color:"#dc2626"}}>*</span>}</span>
             <select value={branch} onChange={(e)=>setBranch(e.target.value)} style={{...metaInput, fontWeight:800}}>
               <option value="">{tt("-- Select Branch --", "-- اختر الفرع --")}</option>
-              {BRANCH_LIST.map(b=> <option key={b.code} value={b.code}>{isAr ? b.ar : b.en}</option>)}
+              {BRANCH_LIST.map(b=> <option key={b.code} value={b.code}>{b.icon} {isAr ? b.labelAr : b.labelEn}</option>)}
             </select>
           </label>
         </div>

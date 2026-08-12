@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -386,13 +387,15 @@ export default function FTR1PersonalHygieneView() {
                 flexWrap: "wrap",
               }}
             >
-              <button
-                onClick={() => handleDelete(selectedReport)}
-                style={btn("#c0392b")}
-                title="Delete this report (password: 9999)"
-               data-delete-action="true">
-                🗑 Delete
-              </button>
+              {canDelete("daily") && (
+                <button
+                  onClick={() => handleDelete(selectedReport)}
+                  style={btn("#c0392b")}
+                  title="Delete this report (password: 9999)"
+                 data-delete-action="true">
+                  🗑 Delete
+                </button>
+              )}
 
               <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
               <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>

@@ -11,6 +11,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "ftr1_temperature";
 
@@ -289,7 +290,9 @@ export default function FTR1TemperatureView() {
       title="Temperature Control — View (FTR1 Mushrif Park)"
       actions={
         <>
-          <button onClick={() => handleDelete(selectedReport)} style={btn("#dc2626")} data-delete-action="true">Delete</button>
+          {canDelete("daily") && (
+            <button onClick={() => handleDelete(selectedReport)} style={btn("#dc2626")} data-delete-action="true">Delete</button>
+          )}
           <button onClick={handleExportPDF} style={btn("#27ae60")}>Export PDF</button>
           <button onClick={handleExportJSON} style={btn("#16a085")}>Export JSON</button>
           <button onClick={handleExportXLS} style={btn("#0ea5e9")}>Export XLS</button>

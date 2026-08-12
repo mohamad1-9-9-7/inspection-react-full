@@ -111,9 +111,10 @@ function evidenceLinksFor(sop) {
     links.push(["Internal audit evidence", "/haccp-iso/internal-audit/view"]);
   }
   if (cat === "Temperature") links.push(["CCP monitoring", "/haccp-iso/ccp-monitoring/view"]);
-  if (cat === "Recall" || cat === "Traceability" || title.includes("trace")) {
+  if (cat === "Recall" || cat === "Withdrawal" || cat === "Traceability" || title.includes("trace")) {
     links.push(["Mock recall / traceability", "/haccp-iso/mock-recall/view"]);
     links.push(["Real recall records", "/haccp-iso/real-recall/view"]);
+    links.push(["Product withdrawal records", "/haccp-iso/product-withdrawal/view"]);
   }
   if (cat === "Suppliers") links.push(["Supplier evaluation", "/haccp-iso/supplier-evaluation/results"]);
   if (cat === "Maintenance") {
@@ -136,6 +137,7 @@ const categoryColors = {
   Quality:        { bg: "rgba(168,85,247,0.13)", border: "rgba(168,85,247,0.40)", text: "#6b21a8" },
   Temperature:    { bg: "rgba(239,68,68,0.13)",  border: "rgba(239,68,68,0.40)",  text: "#991b1b" },
   Recall:         { bg: "rgba(249,115,22,0.13)", border: "rgba(249,115,22,0.40)", text: "#9a3412" },
+  Withdrawal:     { bg: "rgba(245,158,11,0.15)", border: "rgba(245,158,11,0.45)", text: "#92400e" },
   Traceability:   { bg: "rgba(59,130,246,0.13)", border: "rgba(59,130,246,0.40)", text: "#1d4ed8" },
   Allergens:      { bg: "rgba(236,72,153,0.13)", border: "rgba(236,72,153,0.40)", text: "#9d174d" },
   Suppliers:      { bg: "rgba(20,184,166,0.13)", border: "rgba(20,184,166,0.40)", text: "#0f766e" },
@@ -151,7 +153,7 @@ const UI = {
     backToHub: "Back to Hub",
     badgeLabel: "📋 SOP & sSOP",
     pageTitle: "SOP & sSOP Documents",
-    pageSubtitle: "Standard Operating Procedures — Document Set SOP 1–SOP 29 · Click any card to view full details",
+    pageSubtitle: "Standard Operating Procedures — Document Set SOP 1–SOP 30 · Click any card to view full details",
     tagline: "Al Mawashi Food Safety Management System · ISO 22000:2018 & HACCP aligned",
     totalSOPs: "Total SOPs",
     showing: "Showing",
@@ -160,7 +162,7 @@ const UI = {
     searchPlaceholder: "Search SOPs…",
     viewFullDetails: "View Full Details",
     noMatch: "No SOPs match your search.",
-    footer: "© Al Mawashi — Quality & Food Safety System · Document Set SOP 1–SOP 29",
+    footer: "© Al Mawashi — Quality & Food Safety System · Document Set SOP 1–SOP 30",
     closeBtn: "Close",
     docNo: "Doc No.",
     facility: "Facility",
@@ -179,7 +181,7 @@ const UI = {
     backToHub: "العودة للرئيسية",
     badgeLabel: "📋 SOP & sSOP",
     pageTitle: "وثائق SOP & sSOP",
-    pageSubtitle: "إجراءات التشغيل الموحدة — مجموعة وثائق SOP 1–SOP 29 · اضغط على أي بطاقة لعرض التفاصيل الكاملة",
+    pageSubtitle: "إجراءات التشغيل الموحدة — مجموعة وثائق SOP 1–SOP 30 · اضغط على أي بطاقة لعرض التفاصيل الكاملة",
     tagline: "نظام إدارة سلامة الأغذية لشركة المواشي · متوافق مع ISO 22000:2018 وHACCP",
     totalSOPs: "إجمالي SOPs",
     showing: "يعرض",
@@ -188,7 +190,7 @@ const UI = {
     searchPlaceholder: "ابحث عن SOPs…",
     viewFullDetails: "عرض التفاصيل الكاملة",
     noMatch: "لا توجد SOPs تطابق بحثك.",
-    footer: "© المواشي — نظام الجودة وسلامة الأغذية · مجموعة وثائق SOP 1–SOP 29",
+    footer: "© المواشي — نظام الجودة وسلامة الأغذية · مجموعة وثائق SOP 1–SOP 30",
     closeBtn: "إغلاق",
     docNo: "رقم الوثيقة",
     facility: "المنشأة",

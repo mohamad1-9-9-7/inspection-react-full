@@ -14,6 +14,7 @@ export const CATEGORY_TO_CLAUSE = {
   Quality: "8.5 Hazard control",
   Temperature: "8.5.4 Hazard control plan",
   Recall: "8.9.5 Withdrawal/recall",
+  Withdrawal: "8.9.5 Withdrawal (pre-consumer)",
   Traceability: "8.3 Traceability system",
   Allergens: "8.5.2 Hazard identification",
   Suppliers: "7.1.6 External providers",

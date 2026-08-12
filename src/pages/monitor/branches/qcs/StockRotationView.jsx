@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import SignatureName from "../../../shared/SignatureName";
 import { useLightbox } from "../_shared/branchViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const CRA = (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) || undefined;
@@ -199,7 +200,9 @@ export default function StockRotationView() {
                     <td style={S.td}>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button style={S.btnDetails} onClick={() => setDetail(r)}>تفاصيل</button>
-                        <button style={S.btnDanger} onClick={() => deleteRecord(r._id || r.id)} data-delete-action="true">حذف</button>
+                        {canDelete("daily") && (
+                          <button style={S.btnDanger} onClick={() => deleteRecord(r._id || r.id)} data-delete-action="true">حذف</button>
+                        )}
                       </div>
                     </td>
                   </tr>

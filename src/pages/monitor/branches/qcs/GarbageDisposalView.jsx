@@ -7,6 +7,7 @@ import autoTable from "jspdf-autotable";
 import { addFullPageImage, pdfSafeText } from "./pdfImageUtils";
 import { GlassShell, KpiGrid, ReportActions, ResponsiveTableWrap } from "../_shared/branchViewKit";
 import { deleteReport, downloadReportsJson, listReports, reportId } from "../_shared/reportApi";
+import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "qcs_garbage_disposal";
 
@@ -386,7 +387,9 @@ export default function GarbageDisposalView() {
                       )}
                     </td>
                     <td style={S.td}>
-                      <button style={S.btnDanger} onClick={() => del(reportId(rec))} data-delete-action="true">Delete</button>
+                      {canDelete("daily") && (
+                        <button style={S.btnDanger} onClick={() => del(reportId(rec))} data-delete-action="true">Delete</button>
+                      )}
                     </td>
                   </tr>
                 );

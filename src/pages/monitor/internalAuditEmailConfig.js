@@ -71,6 +71,7 @@ export function auditMeta(payload) {
     actionRequired,
     total,
     closedPct: pct,
+    // header.location is legacy-only — the Location field no longer exists.
     branch: payload?.branch || header.branch || header.location || "—",
     date: header.date || payload?.reportDate || "",
     reportNo: header.reportNo || "—",

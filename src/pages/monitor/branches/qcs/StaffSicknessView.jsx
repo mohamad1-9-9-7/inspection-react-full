@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 
 /* ===== API base ===== */
 
@@ -319,16 +320,18 @@ function DetailsPanel({ record, onDelete, deleting }) {
             Doc No: <b>{hTop.documentNo || "AM/BK/CK/SS/1"}</b> · Issue: <b>05/05/2022</b> · Area: <b>{hTop.area || "Central Kitchen"}</b>
           </div>
         </div>
-        <button
-          onClick={() => onDelete(recId(record))}
-          disabled={deleting}
-          style={{
-            background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca",
-            borderRadius: 10, padding: "8px 14px", fontWeight: 800, cursor: deleting ? "not-allowed" : "pointer",
-          }}
-         data-delete-action="true">
-          {deleting ? "…" : "🗑 Delete"}
-        </button>
+        {canDelete("daily") && (
+          <button
+            onClick={() => onDelete(recId(record))}
+            disabled={deleting}
+            style={{
+              background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca",
+              borderRadius: 10, padding: "8px 14px", fontWeight: 800, cursor: deleting ? "not-allowed" : "pointer",
+            }}
+           data-delete-action="true">
+            {deleting ? "…" : "🗑 Delete"}
+          </button>
+        )}
       </div>
 
       {/* Title */}

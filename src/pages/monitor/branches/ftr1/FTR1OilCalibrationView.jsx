@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -432,14 +433,16 @@ export default function FTR1OilCalibrationView() {
               }}
             >
               {/* الحذف ليس آخر زر + له className محمي */}
-              <button
-                onClick={() => handleDelete(selectedReport)}
-                className="btn-delete"
-                style={btnDel}
-                title="Delete this report (password: 9999)"
-               data-delete-action="true">
-                🗑 Delete
-              </button>
+              {canDelete("daily") && (
+                <button
+                  onClick={() => handleDelete(selectedReport)}
+                  className="btn-delete"
+                  style={btnDel}
+                  title="Delete this report (password: 9999)"
+                 data-delete-action="true">
+                  🗑 Delete
+                </button>
+              )}
 
               <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
               <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>

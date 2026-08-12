@@ -7,6 +7,7 @@ import autoTable from "jspdf-autotable";
 import { GlassShell, KpiGrid, ReportActions, ResponsiveTableWrap } from "../_shared/branchViewKit";
 import { deleteReport, downloadReportsJson, listReports, reportId } from "../_shared/reportApi";
 import { pdfSafeText } from "./pdfImageUtils";
+import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "qcs_pest_control";
 
@@ -269,7 +270,9 @@ export default function PestControlView() {
                     </td>
                     <td style={S.td}>{fmtDate(p.nextVisitDate)}</td>
                     <td style={S.td}>
-                      <button style={S.btnDanger} onClick={() => deleteRecord(reportId(r))} data-delete-action="true">حذف</button>
+                      {canDelete("daily") && (
+                        <button style={S.btnDanger} onClick={() => deleteRecord(reportId(r))} data-delete-action="true">حذف</button>
+                      )}
                     </td>
                   </tr>
                 );

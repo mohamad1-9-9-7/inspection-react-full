@@ -6,6 +6,7 @@ import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
+import { canEdit, canDelete } from "../../../../../utils/perms";
 
 
 
@@ -342,12 +343,16 @@ export default function FoodTemperatureVerificationView() {
           <div style={{ color:"#93c5fd", fontSize:12, marginTop:2 }}>{BRANCH} — View Mode</div>
         </div>
         <div style={{ marginLeft:"auto", display:"flex", gap:7, flexWrap:"wrap", alignItems:"center" }}>
-          <button onClick={toggleEdit}   style={actionBtn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"✏️ Edit"}</button>
+          {canEdit("daily") && (
+            <button onClick={toggleEdit}   style={actionBtn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"✏️ Edit"}</button>
+          )}
           {editing && <>
             <button onClick={addEditRow} style={actionBtn("#16a34a")}>+ Row</button>
             <button onClick={saveEdit}   style={actionBtn("#10b981")}>💾 Save</button>
           </>}
-          <button onClick={handleDelete} style={actionBtn(C.red)} data-delete-action="true">🗑 Delete</button>
+          {canDelete("daily") && (
+            <button onClick={handleDelete} style={actionBtn(C.red)} data-delete-action="true">🗑 Delete</button>
+          )}
           <button onClick={exportXLSX}   style={actionBtn("#0ea5e9", !entries.length)} disabled={!entries.length}>📊 XLSX</button>
           <button onClick={exportJSON}   style={actionBtn("#0284c7", !record)} disabled={!record}>📄 JSON</button>
           <button onClick={exportPDF}    style={actionBtn(C.gray700)}>🖨 PDF</button>

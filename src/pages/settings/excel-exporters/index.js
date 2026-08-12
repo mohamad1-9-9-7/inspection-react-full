@@ -104,6 +104,7 @@ import customer_complaint       from "./customer_complaint";
 import fsms_risk_register_item        from "./fsms_risk_register_item";
 import fsms_opportunity_register_item from "./fsms_opportunity_register_item";
 import fsms_change_management_log_item from "./fsms_change_management_log_item";
+import fsms_food_defense_item          from "./fsms_food_defense_item";
 import fsms_objective                 from "./fsms_objective";
 import glass_register_item            from "./glass_register_item";
 import calibration_record             from "./calibration_record";
@@ -113,6 +114,7 @@ import continual_improvement          from "./continual_improvement";
 import mrm_record                     from "./mrm_record";
 import internal_audit_record          from "./internal_audit_record";
 import real_recall                    from "./real_recall";
+import product_withdrawal             from "./product_withdrawal";
 import mock_recall_drill              from "./mock_recall_drill";
 
 /* ─── OHC + Training ─── */
@@ -240,6 +242,7 @@ const CUSTOM = {
   "fsms_risk_register_item":                fsms_risk_register_item,
   "fsms_opportunity_register_item":         fsms_opportunity_register_item,
   "fsms_change_management_log_item":        fsms_change_management_log_item,
+  "fsms_food_defense_item":                 fsms_food_defense_item,
   "fsms_objective":                         fsms_objective,
   "glass_register_item":                    glass_register_item,
   "calibration_record":                     calibration_record,
@@ -250,6 +253,7 @@ const CUSTOM = {
   "mrm_record":                             mrm_record,
   "internal_audit_record":                  internal_audit_record,
   "real_recall":                            real_recall,
+  "product_withdrawal":                     product_withdrawal,
   "mock_recall_drill":                      mock_recall_drill,
 
   /* OHC + Training */

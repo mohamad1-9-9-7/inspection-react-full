@@ -12,6 +12,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "prod_cleaning_checklist";
 
@@ -237,7 +238,9 @@ export default function CleaningChecklistPRDView() {
             style={{ display: "none" }}
             onChange={handleImportFile}
           />
-          <button onClick={handleDelete} style={btn("#dc2626")} disabled={!selected || loading} data-delete-action="true">Delete</button>
+          {canDelete("daily") && (
+            <button onClick={handleDelete} style={btn("#dc2626")} disabled={!selected || loading} data-delete-action="true">Delete</button>
+          )}
         </>
       }
     >

@@ -65,6 +65,19 @@ function safe(v, fallback = "-") {
   return s || fallback;
 }
 
+/* The branch used to live in the free-text `header.location` field. That field
+   is gone from the entry form, so read the branch from the places the form
+   writes today and only fall back to `location` for legacy reports. */
+function reportBranchName(record) {
+  const p = record?.payload || {};
+  const h = p.header || {};
+  return (
+    [p.branch, h.branch, record?.branch, h.location]
+      .map((v) => String(v ?? "").trim())
+      .find(Boolean) || ""
+  );
+}
+
 function submittedEvidenceMap(payload) {
   const updates = [
     payload?.public?.submission?.closedEvidenceUpdates,
@@ -162,7 +175,7 @@ function mergeClosedEvidenceIntoPayload(payload, closedEvidenceUpdates, token, f
       closedEvidenceProgressSavedAt: savedAt,
       closedEvidenceSubmittedAt: final ? savedAt : existingFields.closedEvidenceSubmittedAt || null,
       closedEvidenceUploadedBy: uploadedBy.trim(),
-      submittedBy: safe(payload?.header?.location, "branch"),
+      submittedBy: safe(reportBranchName({ payload }), "branch"),
       submissionType: "inspection_closed_evidence",
     },
     public: {
@@ -357,6 +370,7 @@ export default function InspectionEvidencePublic() {
 
   const payload = record?.payload || {};
   const header = payload.header || {};
+  const branchName = reportBranchName(record);
   const table = useMemo(() => Array.isArray(payload.table) ? payload.table : [], [payload.table]);
 
   /* Closed findings are not shown to the branch — they are already verified,
@@ -582,7 +596,7 @@ export default function InspectionEvidencePublic() {
         {!loading && !deadLink && record && (
           <>
             <div style={S.infoBand}>
-              <div style={S.searchLike}>Evidence link / رابط الصور: {safe(record.branch || header.location, "selected branch")}</div>
+              <div style={S.searchLike}>Evidence link / رابط الصور: {safe(branchName, "selected branch")}</div>
               <div style={S.statChip}>{totalFindings} Items / بنود</div>
               <div style={S.statChip}>{openRowIndexes.length} Open / مفتوح</div>
               <div style={S.statChip}>{completedOpenRows} Ready / جاهز</div>
@@ -593,7 +607,7 @@ export default function InspectionEvidencePublic() {
                 {safe(payload.title, "Internal Audit Report")}
               </div>
               <div style={S.meta}>
-                <div>Branch: {safe(record.branch || header.location)}</div>
+                <div>Branch: {safe(branchName)}</div>
                 <div>Date: {safe(header.date)}</div>
                 <div>Report No: {safe(header.reportNo)}</div>
                 <div>Audited By: {safe(header.auditConductedBy)}</div>

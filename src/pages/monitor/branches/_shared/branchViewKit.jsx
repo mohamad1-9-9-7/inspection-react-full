@@ -6,6 +6,10 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
+import { canDelete } from "../../../../utils/perms";
+
+/* All branch report views live under the "daily" permission section. */
+export const PERM_SECTION = "daily";
 
 /* =========================================================
    Helpers مشتركة
@@ -360,7 +364,9 @@ export function ReportActions({
           {refreshing ? "Loading..." : "Refresh"}
         </ActionButton>
       )}
-      {onDelete && (
+      {/* Delete is gated on the account's crudPerms for the daily section —
+          accounts without the 🗑️ operation never see the button. */}
+      {onDelete && canDelete(PERM_SECTION) && (
         <ActionButton tone="delete" onClick={onDelete} disabled={deleteDisabled} data-delete-action="true">
           Delete
         </ActionButton>

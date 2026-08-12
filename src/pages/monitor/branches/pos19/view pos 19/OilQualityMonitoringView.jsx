@@ -7,6 +7,7 @@ import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
+import { canEdit, canDelete } from "../../../../../utils/perms";
 
 
 
@@ -519,11 +520,15 @@ export default function OilQualityMonitoringView() {
         padding:"10px 12px", borderRadius:12, marginBottom:14,
         background:"#fff", border:"1px solid #e5ecf7", boxShadow:"0 1px 3px rgba(11,31,77,0.05)",
       }}>
-        <button onClick={toggleEdit} style={tbtn(editing ? "#6b7280" : "#7c3aed", { ghost: !editing })}>
-          {editing ? "✕ Cancel" : "✎ Edit"}
-        </button>
+        {canEdit("daily") && (
+          <button onClick={toggleEdit} style={tbtn(editing ? "#6b7280" : "#7c3aed", { ghost: !editing })}>
+            {editing ? "✕ Cancel" : "✎ Edit"}
+          </button>
+        )}
         {editing && <button onClick={saveEdit} style={tbtn("#10b981")}>💾 Save Changes</button>}
-        <button onClick={handleDelete} style={tbtn("#dc2626", { ghost: true })} data-delete-action="true">🗑 Delete</button>
+        {canDelete("daily") && (
+          <button onClick={handleDelete} style={tbtn("#dc2626", { ghost: true })} data-delete-action="true">🗑 Delete</button>
+        )}
 
         <span style={{ marginInlineStart:"auto", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <span style={{ fontSize:11, fontWeight:800, color:"#94a3b8", textTransform:"uppercase", letterSpacing:".05em" }}>Export</span>

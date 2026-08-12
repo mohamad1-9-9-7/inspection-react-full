@@ -11,6 +11,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 import "./FTR2UnifiedReportView.css";
 import "./FTR2ReceivingLogView.css";
 
@@ -522,7 +523,9 @@ export default function FTR2ReceivingLogView() {
                   <Btn label="⬇ Export PDF"  onClick={handleExportPDF}                    color="#10b981" disabled={busy} />
                   <Btn label="⬇ Export JSON" onClick={handleExportJSON}                   color="#059669" disabled={busy} />
                   <Btn label="⬆ Import JSON" onClick={triggerImport}                      color="#f59e0b" disabled={busy} />
-                  <Btn label="🗑 Delete"      onClick={() => handleDelete(selectedReport)} color="#ef4444" disabled={busy} />
+                  {canDelete("daily") && (
+                    <Btn label="🗑 Delete"      onClick={() => handleDelete(selectedReport)} color="#ef4444" disabled={busy} />
+                  )}
                 </>
               ) : (
                 <>

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 import FloatingSettingsButton from "../../components/FloatingSettingsButton";
 import { isItemAllowed } from "../../utils/sectionItems";
+import { getPerms } from "../../utils/perms";
 
 /**
  * Main hub for ISO 22000 & HACCP
@@ -50,6 +51,14 @@ const sections = [
     title: "🔄 Change Management Log",
     subtitle: "ISO 6.3 — Planning of Changes. 6-step procedure + 9 actual TELT changes from 2025 (relocations, suppliers, calibration, IT).",
     route: "/haccp-iso/change-management/view",
+  },
+
+  // 🛡️ Food Defense Plan — TACCP / VACCP (ISO 8.5.1.5.2)
+  {
+    id: "food-defense",
+    title: "🛡️ Food Defense Plan — خطة الدفاع الغذائي",
+    subtitle: "ISO 8.5.1.5.2 + PAS 96 + FSMA 21 CFR 121 — TACCP/VACCP: defense team, site/personnel/operational security controls, 24-threat vulnerability assessment & incident response.",
+    route: "/haccp-iso/food-defense/view",
   },
 
   // 📊 HACCP / FSMS Linkage Dashboard
@@ -150,12 +159,12 @@ const sections = [
     route: "/haccp-iso/real-recall/view",
   },
 
-  // 🚨 Emergency Preparedness Test Log (ISO 8.4)
+  // 📦 Product Withdrawal — سحب المنتج (ISO 8.9.5, pre-consumer)
   {
-    id: "emergency-preparedness",
-    title: "🚨 Emergency Preparedness Test Log",
-    subtitle: "ISO 8.4 — Emergency drills & incidents (power/cold-chain failure, contamination, fire): response, result, weaknesses & corrective actions",
-    route: "/haccp-iso/emergency-preparedness/view",
+    id: "product-withdrawal",
+    title: "📦 Product Withdrawal — سحب المنتج",
+    subtitle: "ISO 8.9.5 — Withdrawal before the product reaches the consumer: Level A/B/C, per-branch stock hold & quarantine, secured-stock rate, escalation to recall.",
+    route: "/haccp-iso/product-withdrawal/view",
   },
 
   // 💧 Potable Water & Ice Testing Log (ISO 8.2.4c)
@@ -237,6 +246,15 @@ const sections = [
     subtitle: "Daily/weekly probe verification (ice-point, boiling, master-probe) — covers ALL branches incl. kitchen, food trucks & all POSes",
     route: "/haccp-iso/internal-calibration/view",
   },
+
+  // 🕵️ Audit Trail — ADMIN ONLY (ISO 22000 §7.5 / FDA 21 CFR Part 11)
+  {
+    id: "audit-trail",
+    title: "🕵️ Audit Trail — سجل التعديلات",
+    subtitle: "ADMIN ONLY — every edit & delete across the whole system: which account, when, old value → new value",
+    route: "/haccp-iso/audit-trail",
+    adminOnly: true,
+  },
 ];
 
 // Sub-hubs are gated by their leaf permission ids, not by the card id itself.
@@ -246,6 +264,12 @@ const SUBHUB_LEAVES = {
 };
 
 function sectionVisible(item) {
+  // Admin-only cards (e.g. Audit Trail) never show for regular accounts,
+  // regardless of section permissions.
+  if (item.adminOnly) {
+    const p = getPerms();
+    return p.isAdmin || !!p.user?.isSuperAdmin;
+  }
   const leaves = SUBHUB_LEAVES[item.id];
   if (leaves) return leaves.some((leaf) => isItemAllowed("iso", leaf));
   return isItemAllowed("iso", item.id);
@@ -632,6 +656,7 @@ const categoryById = {
   "risk-register": "governance",
   "opportunity-register": "governance",
   "change-management": "governance",
+  "food-defense": "governance",
   "haccp-dashboard": "performance",
   "product-details": "operations",
   kitchen: "operations",
@@ -645,7 +670,7 @@ const categoryById = {
   "glass-register": "operations",
   "mock-recall": "records",
   "real-recall": "records",
-  "emergency-preparedness": "operations",
+  "product-withdrawal": "records",
   "water-testing": "operations",
   "ccp-monitoring": "operations",
   objectives: "performance",

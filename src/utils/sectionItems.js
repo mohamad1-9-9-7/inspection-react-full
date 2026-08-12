@@ -85,6 +85,7 @@ export const SECTION_ITEMS = {
       { id: "risk-register",         icon: "🎯", label: "FSMS Risk Register" },
       { id: "opportunity-register",  icon: "💡", label: "Opportunity Register" },
       { id: "change-management",     icon: "🔄", label: "Change Management Log" },
+      { id: "food-defense",          icon: "🛡️", label: "Food Defense Plan (TACCP/VACCP)" },
       { id: "haccp-dashboard",       icon: "📊", label: "HACCP Dashboard" },
       { id: "product-details",       icon: "📦", label: "Product Details", subItems: [
         { id: "product-details.entry", icon: "📝", label: "Product Entry" },
@@ -103,7 +104,7 @@ export const SECTION_ITEMS = {
       { id: "glass-register",        icon: "🪟", label: "Glass & Brittle Register" },
       { id: "mock-recall",           icon: "🔄", label: "Mock Recall" },
       { id: "real-recall",           icon: "🚨", label: "Real Product Recall" },
-      { id: "emergency-preparedness", icon: "🚨", label: "Emergency Preparedness Test Log" },
+      { id: "product-withdrawal",    icon: "📦", label: "Product Withdrawal" },
       { id: "water-testing",         icon: "💧", label: "Water & Ice Testing Log" },
       { id: "ccp-monitoring",        icon: "🎯", label: "CCP Monitoring" },
       { id: "objectives",            icon: "🎯", label: "FSMS Objectives" },

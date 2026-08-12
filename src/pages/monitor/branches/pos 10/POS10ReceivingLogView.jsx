@@ -16,6 +16,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { canEdit, canDelete } from "../../../../utils/perms";
 
 // Matches the POS10 input file (no external references)
 const TYPE = "pos10_receiving_log_butchery";
@@ -796,11 +797,15 @@ export default function POS10ReceivingLogView() {
       title="Receiving Log (Butchery) — View (POS 10)"
       actions={
         <>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
-            {editing ? "Cancel Edit" : "Edit"}
-          </button>
+          {canEdit("daily") && (
+            <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
+              {editing ? "Cancel Edit" : "Edit"}
+            </button>
+          )}
           {editing && <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>}
-          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+          {canDelete("daily") && (
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+          )}
 
           <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>Export XLSX</button>
           <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>

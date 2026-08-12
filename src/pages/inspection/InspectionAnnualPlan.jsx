@@ -704,7 +704,7 @@ export default function InspectionAnnualPlan() {
         { header: "Closed",       key: "c",  width: 10 },
         { header: "High risk",    key: "h",  width: 11 },
         { header: "Closure %",    key: "p",  width: 11 },
-        { header: "Location (as written)", key: "raw", width: 34 },
+        { header: "Branch (as written)", key: "raw", width: 34 },
       ];
       ws2.getRow(1).eachCell((cell) => {
         cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -939,8 +939,8 @@ export default function InspectionAnnualPlan() {
             <div
               style={pill("rgba(245,158,11,.22)")}
               title={tt(
-                "These location values didn't match any official branch — they get their own row. Fix the spelling in the report.",
-                "قيم الموقع هذه لم تطابق أي فرع رسمي — تظهر بصف مستقل. صحّح الكتابة في التقرير."
+                "These branch values didn't match any official branch — they get their own row. They come from older reports; re-save them with the Branch dropdown to fix.",
+                "قيم الفرع هذه لم تطابق أي فرع رسمي — تظهر بصف مستقل. غالباً من تقارير قديمة؛ أعد حفظها باختيار الفرع من القائمة."
               )}
             >
               ⚠ {tt("Unrecognised branch text", "نص فرع غير معروف")}:{" "}

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -371,13 +372,15 @@ export default function FTR2PersonalHygieneView() {
               <button onClick={triggerImport} style={btn("#f39c12")}>
                 ⬆ Import JSON
               </button>
-              <button
-                onClick={() => handleDelete(selectedReport)}
-                style={btn("#c0392b")}
-                title="Delete this report (password: 9999)"
-               data-delete-action="true">
-                🗑 Delete
-              </button>
+              {canDelete("daily") && (
+                <button
+                  onClick={() => handleDelete(selectedReport)}
+                  style={btn("#c0392b")}
+                  title="Delete this report (password: 9999)"
+                 data-delete-action="true">
+                  🗑 Delete
+                </button>
+              )}
 
               <input
                 ref={fileInputRef}

@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -506,20 +507,22 @@ export default function FTR2OilCalibrationView() {
                 ⬆ Import JSON
               </button>
 
-              <button
-                onClick={() => handleDelete(selectedReport)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background: "#c0392b",
-                  color: "#fff",
-                  fontWeight: "600",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-               data-delete-action="true">
-                🗑 Delete
-              </button>
+              {canDelete("daily") && (
+                <button
+                  onClick={() => handleDelete(selectedReport)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "6px",
+                    background: "#c0392b",
+                    color: "#fff",
+                    fontWeight: "600",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                 data-delete-action="true">
+                  🗑 Delete
+                </button>
+              )}
 
               {/* input مخفي لاستيراد JSON */}
               <input

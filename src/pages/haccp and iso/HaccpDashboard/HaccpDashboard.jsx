@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import API_BASE from "../../../config/api";
 import mawashiLogo from "../../../assets/almawashi-logo.jpg";
 import { useHaccpLang, HaccpLangToggle } from "../_shared/haccpI18n";
+import { needsRecallEscalation } from "../ProductWithdrawal/productWithdrawalUtils";
 
 /* Report types from existing modules */
 const TYPES = {
@@ -26,6 +27,7 @@ const TYPES = {
   docMeta:          "document_metadata",
   policyAck:        "policy_acknowledgment",
   realRecall:       "real_recall",
+  withdrawal:       "product_withdrawal",
   improvement:      "continual_improvement",
   glassReg:         "glass_register_item",
 };
@@ -193,7 +195,7 @@ export default function HaccpDashboard() {
     ccp: [], mockRecall: [], supplier: [], product: [], dm: [],
     mrm: [], audit: [], calib: [], licenses: [],
     communication: [], complaint: [], objective: [], docMeta: [], policyAck: [],
-    realRecall: [], improvement: [], glassReg: [],
+    realRecall: [], withdrawal: [], improvement: [], glassReg: [],
   });
   const [loading, setLoading] = useState(true);
   const [refreshedAt, setRefreshedAt] = useState(null);
@@ -340,6 +342,26 @@ export default function HaccpDashboard() {
     return { total: list.length, active, avgRec };
   }, [data.realRecall]);
 
+  const withdrawalStats = useMemo(() => {
+    const list = data.withdrawal || [];
+    const open = list.filter((r) => (r?.payload?.status || "Open") !== "Closed").length;
+    // A withdrawal that reached the consumer must be handled as a recall.
+    const escalated = list.filter((r) => needsRecallEscalation(r?.payload)).length;
+    const rates = list
+      .map((r) => {
+        const p = r?.payload || {};
+        if (typeof p.accountedRate === "number") return p.accountedRate;
+        const rows = Array.isArray(p.locations) ? p.locations : [];
+        const disp = rows.reduce((a, l) => a + (parseFloat(l?.dispatched) || 0), 0);
+        if (!disp) return null;
+        const sec = rows.reduce((a, l) => a + (parseFloat(l?.held) || 0) + (parseFloat(l?.returned) || 0), 0);
+        return Math.min(100, (sec / disp) * 100);
+      })
+      .filter((v) => v !== null);
+    const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
+    return { total: list.length, open, escalated, avgRate };
+  }, [data.withdrawal]);
+
   const improvementStats = useMemo(() => {
     const list = data.improvement || [];
     const inProgress = list.filter((r) => r?.payload?.status === "InProgress").length;
@@ -380,7 +402,8 @@ export default function HaccpDashboard() {
     { clauses: ["7.5"],         module: "📚 " + (lang === "ar" ? "السجل الرئيسي للوثائق" : "Document Master Register"), count: docMetaStats.total,     status: "ok", route: "/haccp-iso/document-register/view" },
     { clauses: ["8.5", "8.6"],  module: "🎯 " + (lang === "ar" ? "مراقبة CCP" : "CCP Monitoring"),                  count: ccpStats.total,         status: ccpStats.deviations > 0 ? "warn" : "ok",  route: "/haccp-iso/ccp-monitoring/view" },
     { clauses: ["8.3", "8.9"],  module: "🔄 " + (lang === "ar" ? "السحب الوهمي / التتبع" : "Mock Recall / Traceability"), count: mockRecallStats.total,  status: mockRecallStats.lastDays !== null && mockRecallStats.lastDays > 100 ? "warn" : "ok", route: "/haccp-iso/mock-recall/view" },
-    { clauses: ["8.9.5"],       module: "🚨 " + (lang === "ar" ? "السحب الفعلي" : "Real Product Recall"),              count: realRecallStats.total,  status: realRecallStats.active > 0 ? "bad" : "ok", route: "/haccp-iso/real-recall/view" },
+    { clauses: ["8.9.5"],       module: "🚨 " + (lang === "ar" ? "الاستدعاء الفعلي" : "Real Product Recall"),          count: realRecallStats.total,  status: realRecallStats.active > 0 ? "bad" : "ok", route: "/haccp-iso/real-recall/view" },
+    { clauses: ["8.9.5"],       module: "📦 " + (lang === "ar" ? "سحب المنتج" : "Product Withdrawal"),                count: withdrawalStats.total,  status: withdrawalStats.escalated > 0 ? "bad" : (withdrawalStats.open > 0 ? "warn" : "ok"), route: "/haccp-iso/product-withdrawal/view" },
     { clauses: ["8.2"],         module: "🪟 " + (lang === "ar" ? "سجل الزجاج والبلاستيك الهش" : "Glass & Brittle Plastic"), count: glassRegStats.total,    status: glassRegStats.highRiskUnprotected > 0 ? "bad" : (glassRegStats.overdue > 0 ? "warn" : "ok"), route: "/haccp-iso/glass-register/view" },
     { clauses: ["4.2"],         module: "🤝 " + (lang === "ar" ? "تقييم الموردين" : "Supplier Evaluation"),         count: supplierStats.total,    status: "ok", route: "/haccp-iso/supplier-evaluation" },
     { clauses: ["8.5", "products"], module: "🥩 " + (lang === "ar" ? "تفاصيل المنتج" : "Product Details"),           count: productStats.total,     status: "ok", route: "/haccp-iso/product-details/view" },
@@ -543,6 +566,21 @@ export default function HaccpDashboard() {
                 : (lang === "ar" ? "✅ لا سحوبات نشطة" : "✅ no active recalls")
             }
             accent={realRecallStats.active > 0 ? "#b91c1c" : "#15803d"}
+            clauses={["8.9.5"]} onClauseClick={go}
+          />
+          <KPI
+            icon="📦" label={lang === "ar" ? "سحب المنتج" : "Product Withdrawals"}
+            value={withdrawalStats.total}
+            sub={
+              withdrawalStats.escalated > 0
+                ? (lang === "ar" ? `🚨 ${withdrawalStats.escalated} صُعِّدت لاستدعاء` : `🚨 ${withdrawalStats.escalated} escalated to recall`)
+                : withdrawalStats.open > 0
+                ? (lang === "ar" ? `🟠 ${withdrawalStats.open} مفتوحة` : `🟠 ${withdrawalStats.open} open`)
+                : withdrawalStats.avgRate !== null
+                ? (lang === "ar" ? `تأمين متوسط: ${withdrawalStats.avgRate.toFixed(0)}%` : `Avg secured: ${withdrawalStats.avgRate.toFixed(0)}%`)
+                : (lang === "ar" ? "✅ لا عمليات سحب مفتوحة" : "✅ no open withdrawals")
+            }
+            accent={withdrawalStats.escalated > 0 ? "#b91c1c" : (withdrawalStats.open > 0 ? "#a16207" : "#15803d")}
             clauses={["8.9.5"]} onClauseClick={go}
           />
           <KPI

@@ -52,7 +52,23 @@ export default function HSEEquipmentMaintenance() {
         { key: "partsReplaced",   label: { ar: "قطع غيار مستبدلة", en: "Parts replaced" }, type: "textarea" },
         { key: "lotoApplied",     label: { ar: "✅ تم تطبيق LOTO أثناء الصيانة", en: "✅ LOTO applied during maintenance" }, type: "checkbox" },
         { key: "testingDone",     label: { ar: "✅ تم الاختبار بعد الصيانة", en: "✅ Post-maintenance testing done" }, type: "checkbox" },
+
+        /* ── إذن العمل داخل منطقة الإنتاج (قطع/ثقب/جلخ/لحام) ── */
+        { key: "debrisWork",      label: { ar: "⚠️ العمل يولّد نفايات/شظايا (قطع، ثقب، جلخ، لحام)", en: "⚠️ Work generates debris (cutting, drilling, grinding, welding)" }, type: "checkbox" },
+        { key: "prodApprovalBy",  label: { ar: "موافقة مسؤول الإنتاج قبل بدء العمل (الاسم)", en: "Production In-charge approval before work (name)" }, type: "text" },
+        { key: "riskAssessed",    label: { ar: "✅ تم تقييم المخاطر ووضع ضوابط التحكم قبل الموافقة", en: "✅ Risk assessed and control measures in place before approval" }, type: "checkbox" },
+
+        /* ── تسليم الآلة والإفراج للإنتاج (MNT004) ── */
+        { key: "postCleaningVerified", label: { ar: "✅ التحقق من النظافة بعد الصيانة (لا شظايا/زيوت/أدوات متروكة)", en: "✅ Post-cleaning verification (no debris/oil/tools left behind)" }, type: "checkbox" },
+        { key: "handoverProdBy",  label: { ar: "تقرير التسليم — توقيع مسؤول الإنتاج", en: "Hand-over report — Production In-charge sign-off" }, type: "text" },
+        { key: "handoverMaintBy", label: { ar: "تقرير التسليم — الاعتماد النهائي من قسم الصيانة", en: "Hand-over report — Maintenance Dept final approval" }, type: "text" },
+        { key: "releasedToProd",  label: { ar: "✅ تم الإفراج عن الآلة للإنتاج (قبل بدء التشغيل)", en: "✅ Machine released to production (before production commences)" }, type: "checkbox" },
+
         { key: "result",          label: { ar: "نتيجة الفحص بعد الصيانة", en: "Post-maintenance result" }, type: "select", options: RESULTS, default: "ok" },
+
+        /* ── إجراء تصحيحي: حجز الآلة ── */
+        { key: "holdPlaced",      label: { ar: "🚫 وُضعت الآلة تحت الحجز من قسم الإنتاج وأُخرجت من الموقع", en: "🚫 Machine placed on HOLD by Production and removed from site" }, type: "checkbox" },
+        { key: "holdReason",      label: { ar: "سبب الحجز والإجراء التصحيحي المطلوب", en: "Hold reason and corrective action required" }, type: "textarea", fullWidth: true },
         { key: "downtimeHours",   label: { ar: "ساعات التوقف", en: "Downtime (hours)" }, type: "number" },
         { key: "cost",            label: { ar: "التكلفة (درهم)", en: "Cost (AED)" }, type: "number" },
         { key: "nextScheduledDate",label:{ ar: "موعد الصيانة القادم", en: "Next scheduled date" }, type: "date" },
@@ -65,6 +81,7 @@ export default function HSEEquipmentMaintenance() {
         { key: "maintenanceType", label: { ar: "النوع", en: "Type" }, options: MAINT_TYPES },
         { key: "performedBy",     label: { ar: "بواسطة", en: "By" } },
         { key: "result",          label: { ar: "النتيجة", en: "Result" }, options: RESULTS },
+        { key: "releasedToProd",  label: { ar: "أُفرج للإنتاج", en: "Released" } },
         { key: "nextScheduledDate",label:{ ar: "القادم", en: "Next" } },
       ]}
     />

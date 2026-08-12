@@ -6,6 +6,7 @@ import PRDReportHeader from "./_shared/PRDReportHeader";
 import PrintButton, { PrintOfficialHeader } from "./_shared/PrintButton";
 import { useLang } from "./_shared/i18n";
 import API_BASE from "../../../../config/api";
+import { canDelete } from "../../../../utils/perms";
 
 
 const TYPE = "prod_online_cutting";
@@ -281,9 +282,11 @@ export default function OnlineCuttingRecordView() {
           <button onClick={exportJSON} disabled={!record} className="ocv-btn ocv-btn-info">
             {isAr ? "تصدير JSON" : "Export JSON"}
           </button>
-          <button onClick={handleDelete} disabled={!record} className="ocv-btn ocv-btn-danger" data-delete-action="true">
-            {isAr ? "حذف" : "Delete"}
-          </button>
+          {canDelete("daily") && (
+            <button onClick={handleDelete} disabled={!record} className="ocv-btn ocv-btn-danger" data-delete-action="true">
+              {isAr ? "حذف" : "Delete"}
+            </button>
+          )}
         </div>
       </div>
 

@@ -152,9 +152,33 @@ function fmtNum(n, digits = 2) {
   const v = Math.round(Number(n) * Math.pow(10, digits)) / Math.pow(10, digits);
   return v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: digits });
 }
+/* Weights in a summed column always carry both decimals — a column mixing
+   "106" and "75.52" reads as sloppy data in a management pack. */
+/* One decimal unless the rate is whole — printing "100%" for 1010/1011 makes an
+   outlier look identical to a branch that really is at 100%. */
+function fmtRate(n) {
+  const v = Number(n) || 0;
+  if (Number.isInteger(v)) return `${v}%`;
+  let s = v.toFixed(1);
+  /* Never let rounding invent a perfect score, or erase a real one: 99.95%
+     must not print as 100%, and 0.04% must not print as 0%. */
+  if (Number(s) >= 100 && v < 100) s = "99.9";
+  if (Number(s) <= 0 && v > 0) s = "0.1";
+  return `${s}%`;
+}
+function fmtKg(n) {
+  const v = Math.round((Number(n) || 0) * 100) / 100;
+  return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function fmtPct(n) {
   if (n == null || isNaN(n)) return "0%";
   return `${Math.round(Number(n))}%`;
+}
+/* "2026-08-09" → "09 Aug 2026". */
+function fmtDayLong(iso) {
+  const [y, m, d] = String(iso || "").split("-").map(Number);
+  if (!y || !m || !d) return String(iso || "");
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 /* "2026-07" → "July 2026" (used by the Periodic Report). */
 function monthLabel(monthKey) {
@@ -181,12 +205,559 @@ function rangeLabel(fromKey, toKey) {
 }
 /* Report period presets. `months` = window length ending at the chosen anchor month. */
 const REPORT_PERIODS = [
-  { key: "monthly", months: 1,  en: "Monthly (current)",     reportTitle: "Monthly Returns Report",    cover: "MONTHLY RETURNS",   fileTag: "Monthly" },
-  { key: "quarter", months: 3,  en: "Quarterly (3 months)",  reportTitle: "Quarterly Returns Report",  cover: "QUARTERLY RETURNS", fileTag: "Quarter" },
-  { key: "half",    months: 6,  en: "Half-Year (6 months)",  reportTitle: "Half-Year Returns Report",  cover: "HALF-YEAR RETURNS", fileTag: "HalfYear" },
-  { key: "nine",    months: 9,  en: "Nine-Month (9 months)", reportTitle: "Nine-Month Returns Report", cover: "NINE-MONTH RETURNS", fileTag: "9Month" },
-  { key: "yearly",  months: 12, en: "Annual (12 months)",    reportTitle: "Annual Returns Report",     cover: "ANNUAL RETURNS",    fileTag: "Annual" },
+  { key: "monthly", months: 1,  en: "Monthly (current)",     ar: "شهري (شهر واحد)",       reportTitle: "Monthly Returns Report",    cover: "MONTHLY RETURNS",   fileTag: "Monthly" },
+  { key: "quarter", months: 3,  en: "Quarterly (3 months)",  ar: "ربع سنوي (3 شهور)",     reportTitle: "Quarterly Returns Report",  cover: "QUARTERLY RETURNS", fileTag: "Quarter" },
+  { key: "half",    months: 6,  en: "Half-Year (6 months)",  ar: "نصف سنوي (6 شهور)",     reportTitle: "Half-Year Returns Report",  cover: "HALF-YEAR RETURNS", fileTag: "HalfYear" },
+  { key: "nine",    months: 9,  en: "Nine-Month (9 months)", ar: "تسعة شهور",              reportTitle: "Nine-Month Returns Report", cover: "NINE-MONTH RETURNS", fileTag: "9Month" },
+  { key: "yearly",  months: 12, en: "Annual (12 months)",    ar: "سنوي (12 شهر)",         reportTitle: "Annual Returns Report",     cover: "ANNUAL RETURNS",    fileTag: "Annual" },
 ];
+
+/* ── Report-builder UI strings. The POPUP is bilingual; the PDF stays English
+   because jsPDF's built-in helvetica cannot render Arabic glyphs. ── */
+const RB = {
+  title:        { en: "Returns Report Builder", ar: "منشئ تقرير المرتجعات" },
+  subtitle:     { en: "Choose the period, narrow the scope, pick the sections, sign it off",
+                  ar: "اختر الفترة، حدّد النطاق، اختر الأقسام، ثم الاعتماد" },
+  navPreset:    { en: "Presets",        ar: "قوالب جاهزة" },
+  navPresetSub: { en: "Start from a template", ar: "ابدأ من قالب" },
+  navScope:     { en: "Period & Scope", ar: "الفترة والنطاق" },
+  navScopeSub:  { en: "What data goes in", ar: "أي بيانات تدخل" },
+  navSections:  { en: "Sections",       ar: "الأقسام" },
+  navAnalysis:  { en: "Analysis",       ar: "التحليل" },
+  navAnalysisSub:{ en: "Depth & metrics", ar: "العمق والمقاييس" },
+  navDoc:       { en: "Document",       ar: "الوثيقة" },
+  navDocSub:    { en: "Title, ref, sign-off", ar: "العنوان والمرجع والاعتماد" },
+  on:           { en: "on",             ar: "مفعّل" },
+
+  presetTitle:  { en: "Start from a template", ar: "ابدأ من قالب جاهز" },
+  presetNote:   { en: "A preset only sets which sections are included — your scope and document details stay put.",
+                  ar: "القالب يحدّد الأقسام فقط — النطاق وتفاصيل الوثيقة تبقى كما هي." },
+  sectionsWord: { en: "sections",       ar: "أقسام" },
+
+  reportType:   { en: "Report type",    ar: "نوع التقرير" },
+  month:        { en: "Month",          ar: "الشهر" },
+  endingMonth:  { en: "Ending month",   ar: "شهر النهاية" },
+  noData:       { en: "No returns data available yet.", ar: "لا توجد بيانات مرتجعات بعد." },
+  covers:       { en: "Covers",         ar: "يغطي" },
+  monthsWord:   { en: "months",         ar: "شهور" },
+  monthWord:    { en: "month",          ar: "شهر" },
+  itemsWord:    { en: "items",          ar: "صنف" },
+
+  fBranches:    { en: "Branches (POS)", ar: "الفروع (POS)" },
+  fProducts:    { en: "Products",       ar: "المنتجات" },
+  fOrigins:     { en: "Origins",        ar: "المناشئ" },
+  fActions:     { en: "Dispositions",   ar: "القرارات" },
+  allWord:      { en: "All",            ar: "الكل" },
+  selectedWord: { en: "selected",       ar: "محدّد" },
+  filterPh:     { en: "Filter…",        ar: "بحث…" },
+  noMatches:    { en: "No matches.",    ar: "لا توجد نتائج." },
+  clearWord:    { en: "Clear",          ar: "مسح" },
+
+  unit:         { en: "Unit",           ar: "الوحدة" },
+  unitAll:      { en: "All units",      ar: "كل الوحدات" },
+  unitKg:       { en: "Kilograms only", ar: "كيلوغرام فقط" },
+  unitPcs:      { en: "Pieces only",    ar: "قطع فقط" },
+  minQty:       { en: "Minimum qty",    ar: "أقل كمية" },
+  anyPh:        { en: "any",            ar: "أي" },
+  condOnly:     { en: "Condemned items only", ar: "الأصناف المُعدَمة فقط" },
+
+  /* Condemnation leaderboard — pick products off the ranked list instead of
+     hunting for them in the alphabetical facet picker. */
+  cpTitle:      { en: "Top condemned products in this period", ar: "أعلى المنتجات إعداماً في هذه الفترة" },
+  cpNote:       { en: "Tick what you want — this sets the Products filter above, so the whole report narrows to your picks.",
+                  ar: "علّم ما تريده — هذا يضبط فلتر «المنتجات» أعلاه، فينحصر التقرير كله بما اخترته." },
+  cpTop:        { en: "Top {n}",        ar: "أعلى {n}" },
+  cpNone:       { en: "No condemned items in this period and scope.", ar: "لا توجد أصناف مُعدَمة في هذه الفترة والنطاق." },
+  cpShowing:    { en: "Showing {n} of {t} condemned products", ar: "عرض {n} من أصل {t} منتج مُعدَم" },
+  cpShowAll:    { en: "Show all",       ar: "عرض الكل" },
+  cpShowLess:   { en: "Show less",      ar: "عرض أقل" },
+  cpCond:       { en: "condemned",      ar: "مُعدَم" },
+  cpOfCond:     { en: "of all condemned", ar: "من إجمالي الإعدام" },
+  cpRate:       { en: "rate",           ar: "المعدل" },
+  cpPicked:     { en: "{n} product(s) selected", ar: "{n} منتج محدّد" },
+  cpNotInList:  { en: "Selections made elsewhere are kept.", ar: "الاختيارات من القائمة الأخرى محفوظة." },
+
+  cvPartial:    { en: "Incomplete month — data only to {d} ({a} of {b} days). Volumes for {m} are part-month figures.",
+                  ar: "شهر غير مكتمل — البيانات حتى {d} فقط ({a} من {b} يوماً). أرقام {m} تمثّل جزءاً من الشهر." },
+  cvFull:       { en: "Complete month — data to {d}.", ar: "شهر مكتمل — البيانات حتى {d}." },
+
+  sectionsTitle:{ en: "Sections to include", ar: "الأقسام المطلوب تضمينها" },
+  selectAll:    { en: "Select all",     ar: "تحديد الكل" },
+  clearAll:     { en: "Clear all",      ar: "إلغاء الكل" },
+  grpCore:      { en: "Core",           ar: "أساسي" },
+  grpAnalysis:  { en: "Analysis",       ar: "تحليلي" },
+  grpAnnex:     { en: "Annex",          ar: "ملاحق" },
+
+  analysisTitle:{ en: "How the analysis is computed", ar: "كيف يُحتسب التحليل" },
+  analysisNote: { en: "These change the numbers themselves, not just the layout.",
+                  ar: "هذه الخيارات تغيّر الأرقام نفسها، وليس الشكل فقط." },
+  rankBy:       { en: "Rank “top” by",  ar: "رتّب «الأعلى» حسب" },
+  rankByNote:   { en: "“Most returned” by count answers an ops question; by weight answers a financial one.",
+                  ar: "«الأكثر إرجاعاً» بالعدد سؤال تشغيلي، وبالوزن سؤال مالي." },
+  rankDepth:    { en: "Ranking depth",  ar: "عمق الترتيب" },
+  topWord:      { en: "Top",            ar: "أعلى" },
+  baseline:     { en: "Comparison baseline", ar: "أساس المقارنة" },
+  basePrev:     { en: "Previous period", ar: "الفترة السابقة" },
+  baseYoy:      { en: "Same period last year", ar: "نفس الفترة العام الماضي" },
+  repeatThr:    { en: "Repeat offender threshold", ar: "عتبة التكرار" },
+  repeatOpt:    { en: "Returned on {n}+ separate days", ar: "رجع في {n} أيام منفصلة أو أكثر" },
+  annexCap:     { en: "Line-item annex cap", ar: "سقف ملحق الأصناف" },
+  rowsWord:     { en: "rows",           ar: "صف" },
+  capFits:      { en: "The whole scope fits inside this cap.", ar: "كامل النطاق يدخل ضمن هذا السقف." },
+  capCut:       { en: "Scope has {a} items — {b} would be cut.", ar: "النطاق فيه {a} صنف — سيُقتطع {b}." },
+
+  docTitle:     { en: "Report title",   ar: "عنوان التقرير" },
+  docRef:       { en: "Reference no.",  ar: "الرقم المرجعي" },
+  docClass:     { en: "Classification", ar: "التصنيف" },
+  docPrep:      { en: "Prepared by",    ar: "أُعدّ بواسطة" },
+  docRev:       { en: "Reviewed by",    ar: "روجع بواسطة" },
+  docApp:       { en: "Approved by",    ar: "اعتُمد بواسطة" },
+  docNotes:     { en: "Executive commentary", ar: "التعليق التنفيذي" },
+  docNotesSub:  { en: "(printed under Key Metrics)", ar: "(يُطبع تحت المقاييس الرئيسية)" },
+  docNotesPh:   { en: "Context, root causes, actions agreed…", ar: "السياق، الأسباب الجذرية، الإجراءات المتفق عليها…" },
+  docFoot:      { en: "Reference no. and classification are stamped in the footer of every page. Signatures appear on the sign-off page (enable it under Sections).",
+                  ar: "الرقم المرجعي والتصنيف يُطبعان في تذييل كل صفحة. التواقيع تظهر في صفحة الاعتماد (فعّلها من الأقسام)." },
+
+  outline:      { en: "Document outline", ar: "مخطط الوثيقة" },
+  outlineEmpty: { en: "No sections selected — the PDF would be empty.", ar: "لم تُحدَّد أي أقسام — الملف سيكون فارغاً." },
+  rankedBy:     { en: "Ranked by",      ar: "مرتّب حسب" },
+  baselineWord: { en: "Baseline",       ar: "الأساس" },
+  scopeActive:  { en: "scope filters active", ar: "فلاتر نطاق مفعّلة" },
+
+  fLineItems:   { en: "line items",     ar: "صنف" },
+  across:       { en: "across",         ar: "على مدى" },
+  daysWord:     { en: "days",           ar: "يوم" },
+  msgNoData:    { en: "No returns recorded in this period — choose another month or a longer report type.",
+                  ar: "لا توجد مرتجعات مسجّلة في هذه الفترة — اختر شهراً آخر أو نوع تقرير أطول." },
+  msgFiltered:  { en: "{n} line items in this period, but none match the current filters — clear or widen them in “Period & Scope”.",
+                  ar: "يوجد {n} صنف في هذه الفترة، لكن لا شيء يطابق الفلاتر الحالية — امسحها أو وسّعها من «الفترة والنطاق»." },
+  msgBlocker:   { en: "{n} line items exist here, but the “{f}” filter alone excludes every one of them.",
+                  ar: "يوجد {n} صنف هنا، لكن فلتر «{f}» وحده يستبعدها جميعاً." },
+  msgCombo:     { en: "{n} line items exist here — each filter matches something on its own, but nothing matches all of them together.",
+                  ar: "يوجد {n} صنف هنا — كل فلتر يطابق شيئاً بمفرده، لكن لا شيء يطابقها كلها معاً." },
+  clearFilters: { en: "Clear all filters", ar: "مسح كل الفلاتر" },
+
+  myTemplates:  { en: "My saved templates", ar: "قوالبي المحفوظة" },
+  tplNone:      { en: "Nothing saved yet — set up a report below, then save it here.",
+                  ar: "لا يوجد محفوظ بعد — اضبط تقريراً ثم احفظه هنا." },
+  tplNamePh:    { en: "Name this setup, e.g. “POS 11 monthly”", ar: "سمِّ هذا الإعداد، مثلاً «POS 11 شهري»" },
+  tplSave:      { en: "Save current setup", ar: "حفظ الإعداد الحالي" },
+  tplSaving:    { en: "Saving…",            ar: "جارٍ الحفظ…" },
+  tplApply:     { en: "Apply",              ar: "تطبيق" },
+  tplDelete:    { en: "Delete",             ar: "حذف" },
+  tplDeleteAsk: { en: "Delete this saved template?", ar: "حذف هذا القالب المحفوظ؟" },
+  tplSaved:     { en: "Template saved",     ar: "تم حفظ القالب" },
+  tplApplied:   { en: "Template applied",   ar: "تم تطبيق القالب" },
+  tplNeedName:  { en: "Give the template a name first", ar: "اكتب اسماً للقالب أولاً" },
+  tplFailed:    { en: "Could not save the template", ar: "تعذّر حفظ القالب" },
+  tplBuiltIn:   { en: "Built-in presets",   ar: "قوالب جاهزة" },
+  tplScopeNote: { en: "Saves filters, sections, analysis options and document details — not the month.",
+                  ar: "يحفظ الفلاتر والأقسام وخيارات التحليل وتفاصيل الوثيقة — لا الشهر." },
+
+  navDelivery:  { en: "Delivery",  ar: "التسليم" },
+  navDeliverySub:{ en: "E-mail & per-branch", ar: "بريد وتوزيع للفروع" },
+  mailTitle:    { en: "E-mail this report", ar: "إرسال هذا التقرير بالبريد" },
+  mailNote2:    { en: "The PDF is built in your browser, then sent through the company mail server.",
+                  ar: "يُبنى الملف في متصفحك ثم يُرسل عبر خادم بريد الشركة." },
+  mailTo:       { en: "To",        ar: "إلى" },
+  mailCc:       { en: "Cc",        ar: "نسخة" },
+  mailSubj:     { en: "Subject",   ar: "الموضوع" },
+  mailSubjPh:   { en: "Leave empty to use the report title + period", ar: "اتركه فارغاً لاستخدام عنوان التقرير والفترة" },
+  mailBody:     { en: "Message",   ar: "الرسالة" },
+  mailSend:     { en: "Generate & send", ar: "إنشاء وإرسال" },
+  mailSending:  { en: "Sending…",  ar: "جارٍ الإرسال…" },
+  mailSent:     { en: "Report e-mailed", ar: "تم إرسال التقرير" },
+  mailFailed:   { en: "Send failed", ar: "فشل الإرسال" },
+  mailNeedTo:   { en: "Add at least one recipient", ar: "أضف مستلماً واحداً على الأقل" },
+  mailMulti:    { en: "Separate several addresses with a comma.", ar: "افصل بين العناوين بفاصلة." },
+
+  burstTitle:   { en: "One report per branch (bursting)", ar: "تقرير لكل فرع (توزيع مُقسَّم)" },
+  burstNote:    { en: "Builds a separate report for every branch, each filtered to that branch only.",
+                  ar: "ينشئ تقريراً منفصلاً لكل فرع، كل واحد مفلتر على فرعه فقط." },
+  burstScope:   { en: "Branches covered", ar: "الفروع المشمولة" },
+  burstAllNote: { en: "No branch filter set — every branch in the data will get a report.",
+                  ar: "لا يوجد فلتر فروع — كل فرع في البيانات سيحصل على تقرير." },
+  burstDl:      { en: "Download all", ar: "تنزيل الكل" },
+  burstMail:    { en: "E-mail each branch", ar: "إرسال لكل فرع" },
+  burstNoBranches:{ en: "No branches found in the data", ar: "لا توجد فروع في البيانات" },
+  burstDone:    { en: "Done: {d} · skipped: {s} · failed: {f}", ar: "تم: {d} · متجاوَز: {s} · فشل: {f}" },
+  burstAddr:    { en: "Branch addresses", ar: "عناوين الفروع" },
+  burstAddrNote:{ en: "A branch with no address is skipped when e-mailing.",
+                  ar: "الفرع بدون عنوان يُتجاوَز عند الإرسال." },
+  xlsxTitle:    { en: "Excel workbook", ar: "ملف إكسل" },
+  xlsxNote:     { en: "Same scope and analysis as the PDF, as sheets you can pivot.",
+                  ar: "نفس النطاق والتحليل، على شكل أوراق قابلة للتحليل." },
+  xlsxBtn:      { en: "Export Excel", ar: "تصدير إكسل" },
+  reset:        { en: "Reset",          ar: "إعادة ضبط" },
+  cancel:       { en: "Cancel",         ar: "إلغاء" },
+  generate:     { en: "Generate PDF",   ar: "إنشاء PDF" },
+  generating:   { en: "Generating…",    ar: "جارٍ الإنشاء…" },
+  pdfEnNote:    { en: "The PDF itself is produced in English.", ar: "ملف الـ PDF نفسه يُنتج بالإنجليزية." },
+};
+
+/* Build the "does this line item belong in the report?" predicate from the
+   builder options. Empty selections mean "no restriction", so the default
+   options reproduce the old full-scope report exactly. */
+function makeItemFilter(opts) {
+  const o = opts || {};
+  const has = (arr) => Array.isArray(arr) && arr.length > 0;
+  const min = o.minQty === "" || o.minQty == null ? null : Number(o.minQty);
+  /* `resolvedAction` lets the generator pass the LATEST disposition (after any
+     recorded change) so the action filter matches what the report actually
+     counts. Callers without that context fall back to the row's own action. */
+  return (it, resolvedAction) => {
+    if (!it) return false;
+    const act = resolvedAction !== undefined ? (resolvedAction || "") : (actionText(it) || "");
+    if (has(o.branches) && !o.branches.includes(safeButchery(it) || "—")) return false;
+    if (has(o.products) && !o.products.includes((it.productName || "").trim() || "—")) return false;
+    if (has(o.origins) && !o.origins.includes(it.origin || "—")) return false;
+    if (has(o.actions) && !o.actions.includes(act)) return false;
+    if (o.qtyType === "kg" && !isKgType(it.qtyType)) return false;
+    if (o.qtyType === "pcs" && !isPcsType(it.qtyType)) return false;
+    if (o.condemnedOnly && !isCondemnation(act)) return false;
+    if (min != null && Number.isFinite(min) && (Number(it.quantity) || 0) < min) return false;
+    return true;
+  };
+}
+
+/* Report sections the builder can switch on/off, in the order they are rendered.
+   `always` sections cannot be unticked (the document would be meaningless). */
+const REPORT_SECTIONS = [
+  { key: "cover",          group: "Core",     icon: "📘", label: "Cover page",              hint: "Branding, period pill, hero KPIs, at-a-glance facts",
+    labelAr: "صفحة الغلاف",              hintAr: "الهوية، شارة الفترة، المؤشرات الرئيسية، لمحة سريعة" },
+  { key: "summary",        group: "Core",     icon: "📊", label: "Executive summary",       hint: "Key metrics grid + your commentary",
+    labelAr: "الملخص التنفيذي",           hintAr: "شبكة المقاييس الرئيسية + تعليقك" },
+  { key: "mix",            group: "Core",     icon: "🍩", label: "Disposition mix",         hint: "Donut of every action taken, with share %",
+    labelAr: "توزيع القرارات",            hintAr: "رسم دائري لكل إجراء متخذ مع النسبة" },
+  { key: "comparison",     group: "Core",     icon: "📈", label: "Period comparison",       hint: "This period vs the chosen baseline, with % deltas",
+    labelAr: "مقارنة الفترات",            hintAr: "هذه الفترة مقابل الأساس المختار مع نسب التغير" },
+  { key: "activity",       group: "Core",     icon: "📅", label: "Activity chart + register", hint: "Bar chart per day/month plus a reconciling table",
+    labelAr: "رسم النشاط + السجل",        hintAr: "رسم بياني يومي/شهري مع جدول مطابقة" },
+
+  { key: "rankings",       group: "Analysis", icon: "🏆", label: "Rankings",                hint: "Top products, branches, origins and most-condemned items",
+    labelAr: "الترتيبات",                 hintAr: "أعلى المنتجات والفروع والمناشئ وأكثر الأصناف إعداماً" },
+  { key: "topCondemn",     group: "Analysis", icon: "⛔", label: "Top Condemnation",        hint: "The most-condemned products: weight, share of all condemnations, rate, and where they came from",
+    labelAr: "أعلى حالات الإعدام",        hintAr: "المنتجات الأكثر إعداماً: الوزن، نسبتها من إجمالي الإعدام، المعدل، ومن أي فرع/منشأ" },
+  { key: "branchScorecard", group: "Analysis", icon: "🏪", label: "Branch scorecard",       hint: "League table per branch: volume, weight, condemned, rate and grade",
+    labelAr: "بطاقة أداء الفروع",         hintAr: "جدول لكل فرع: العدد، الوزن، المُعدَم، المعدل، التقدير" },
+  { key: "originQuality",  group: "Analysis", icon: "🌍", label: "Origin quality table",    hint: "Same scorecard by country/supplier origin — supplier accountability",
+    labelAr: "جودة المنشأ",               hintAr: "نفس البطاقة حسب بلد/مورد المنشأ — محاسبة الموردين" },
+  { key: "hotspots",       group: "Analysis", icon: "🔥", label: "Condemnation hotspots",   hint: "Condemnation RATE ranked by branch and by origin",
+    labelAr: "بؤر الإعدام",               hintAr: "معدّل الإعدام مرتّباً حسب الفرع والمنشأ" },
+  { key: "pareto",         group: "Analysis", icon: "🎯", label: "Pareto (80/20)",          hint: "The vital few products driving most returns, with cumulative curve",
+    labelAr: "باريتو (80/20)",            hintAr: "القلّة الحيوية من المنتجات المسببة لمعظم المرتجعات" },
+  { key: "repeat",         group: "Analysis", icon: "🔁", label: "Repeat offenders",        hint: "Products coming back on many separate days — chronic problems",
+    labelAr: "المتكرّرون",                hintAr: "منتجات ترجع في أيام منفصلة كثيرة — مشاكل مزمنة" },
+  { key: "weekday",        group: "Analysis", icon: "🗓️", label: "Day-of-week pattern",     hint: "Which weekdays carry the returns load",
+    labelAr: "نمط أيام الأسبوع",          hintAr: "أي أيام الأسبوع تحمل عبء المرتجعات" },
+  { key: "anomalies",      group: "Analysis", icon: "⚠️", label: "Spike days",              hint: "Days statistically above normal (mean + 1.5σ) — worth investigating",
+    labelAr: "أيام الارتفاع الشاذ",       hintAr: "أيام أعلى من الطبيعي إحصائياً (المتوسط + 1.5 انحراف)" },
+
+  { key: "lineItems",      group: "Annex",    icon: "📋", label: "Line-item register",      hint: "Every matching return as one table row — the audit annex",
+    labelAr: "سجل الأصناف التفصيلي",      hintAr: "كل صنف مطابق في صف — ملحق التدقيق" },
+  { key: "signoff",        group: "Annex",    icon: "✍️", label: "Sign-off page",           hint: "Document control table + prepared / reviewed / approved signatures",
+    labelAr: "صفحة الاعتماد",             hintAr: "جدول ضبط الوثيقة + تواقيع الإعداد والمراجعة والاعتماد" },
+];
+
+const SECTION_GROUPS = ["Core", "Analysis", "Annex"];
+
+/* One-click starting points. `sections` lists what is ON; everything else is OFF. */
+const REPORT_PRESETS = [
+  {
+    key: "exec", icon: "⚡", label: "Executive one-pager", labelAr: "صفحة تنفيذية واحدة",
+    desc: "Cover + summary + mix. Fastest read for management.",
+    descAr: "غلاف + ملخص + توزيع. أسرع قراءة للإدارة.",
+    sections: ["cover", "summary", "mix"],
+  },
+  {
+    key: "standard", icon: "📗", label: "Standard monthly", labelAr: "الشهري القياسي",
+    desc: "The classic pack: KPIs, trends, activity and rankings.",
+    descAr: "الباقة الكلاسيكية: المؤشرات والاتجاهات والنشاط والترتيبات.",
+    sections: ["cover", "summary", "mix", "comparison", "hotspots", "activity", "rankings"],
+  },
+  {
+    key: "topCondemn", icon: "⛔", label: "Top Condemnation", labelAr: "أعلى حالات الإعدام",
+    desc: "One-click condemnation report: the worst products, their weight, share, rate and source.",
+    descAr: "تقرير إعدام بضغطة واحدة: أسوأ المنتجات ووزنها ونسبتها ومعدلها ومصدرها.",
+    sections: ["cover", "summary", "mix", "topCondemn", "hotspots", "originQuality", "signoff"],
+  },
+  {
+    key: "quality", icon: "🔬", label: "Condemnation deep-dive", labelAr: "تحليل معمّق للإعدام",
+    desc: "Everything about what got condemned and where it came from.",
+    descAr: "كل شيء عن الأصناف المُعدَمة ومن أين أتت.",
+    sections: ["cover", "summary", "mix", "topCondemn", "hotspots", "originQuality", "pareto", "repeat", "rankings", "signoff"],
+  },
+  {
+    key: "branch", icon: "🏪", label: "Branch performance review", labelAr: "مراجعة أداء الفروع",
+    desc: "Scorecards, patterns and rankings for a branch meeting.",
+    descAr: "بطاقات الأداء والأنماط والترتيبات لاجتماع الفروع.",
+    sections: ["cover", "summary", "branchScorecard", "comparison", "weekday", "anomalies", "rankings", "signoff"],
+  },
+  {
+    key: "audit", icon: "🗂️", label: "Full audit pack", labelAr: "باقة التدقيق الكاملة",
+    desc: "Every section including the complete line-item annex.",
+    descAr: "كل الأقسام بما فيها ملحق الأصناف الكامل.",
+    sections: REPORT_SECTIONS.map((s) => s.key),
+  },
+];
+
+const RANK_METRICS = [
+  { key: "count", label: "Number of returns",     labelAr: "عدد المرتجعات" },
+  { key: "kg",    label: "Weight returned (kg)",  labelAr: "الوزن المُرجَع (كغ)" },
+  { key: "cond",  label: "Condemned count",       labelAr: "عدد المُعدَم" },
+];
+
+const DEFAULT_REPORT_OPTS = {
+  /* scope */
+  branches: [], products: [], origins: [], actions: [],
+  qtyType: "all",          // all | kg | pcs
+  condemnedOnly: false,
+  minQty: "",
+  /* content */
+  sections: REPORT_SECTIONS.reduce(
+    (a, s) => ({ ...a, [s.key]: ["cover", "summary", "mix", "comparison", "hotspots", "activity", "rankings"].includes(s.key) }),
+    {}
+  ),
+  topN: 8,
+  rankMetric: "count",     // count | kg | cond
+  baseline: "prev",        // prev | yoy
+  lineItemLimit: 400,
+  minRepeatDays: 3,
+  /* details */
+  titleOverride: "",
+  refNo: "",
+  classification: "Internal",
+  preparedBy: "", reviewedBy: "", approvedBy: "",
+  notes: "",
+};
+
+const CLASSIFICATIONS = ["Internal", "Confidential", "Restricted", "Public"];
+
+/* Saved report setups live on the server like any other record, so they follow
+   the account between devices. */
+const REPORT_TPL_TYPE = "returns_report_template";
+/* Every generated report writes one of these — the server audits the create,
+   so the Audit Trail shows who produced which report over what scope. */
+const REPORT_LOG_TYPE = "returns_report_log";
+
+/* iOS-style switch — reads faster than a checkbox in a long section list. */
+function BuilderSwitch({ on, onChange, disabled, T }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onChange}
+      disabled={disabled}
+      style={{
+        width: 38, height: 22, borderRadius: 999, flexShrink: 0, position: "relative",
+        border: `1px solid ${on ? T.primary : "#cbd5e1"}`,
+        background: on ? T.primary : "#e2e8f0",
+        cursor: disabled ? "not-allowed" : "pointer", padding: 0,
+        transition: "background .15s ease",
+      }}
+    >
+      <span style={{
+        position: "absolute", top: 2, left: on ? 18 : 2,
+        width: 16, height: 16, borderRadius: "50%", background: "#fff",
+        boxShadow: "0 1px 3px rgba(15,23,42,.3)", transition: "left .15s ease",
+      }} />
+    </button>
+  );
+}
+
+/* Collapsible multi-select used by the report builder's Scope tab.
+   Nothing selected == "all", which is why the summary says "All" not "None". */
+function ReportFacetPicker({ title, icon, options, selected, onToggle, onClear, disabled, searchable, sx, T, L }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const list = needle ? options.filter((o) => o.label.toLowerCase().includes(needle)) : options;
+    return list.slice(0, 300);
+  }, [options, q]);
+
+  const summary = selected.length === 0
+    ? `${L("allWord")} (${options.length})`
+    : selected.length <= 2 ? selected.join(", ") : `${selected.length} ${L("selectedWord")}`;
+
+  return (
+    <div style={{ marginBottom: 12, border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 10,
+          padding: "11px 14px", border: "none", cursor: "pointer", fontFamily: "inherit",
+          background: selected.length ? T.primaryS : "transparent", textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: 15 }}>{icon}</span>
+        <span style={{ fontSize: 13.5, fontWeight: 800, color: T.text }}>{title}</span>
+        <span style={{
+          fontSize: 12, fontWeight: 700, marginInlineStart: "auto",
+          color: selected.length ? T.primaryD : T.textM,
+        }}>{summary}</span>
+        <span style={{ color: T.textM, fontSize: 12 }}>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: "10px 14px 14px", borderTop: `1px solid ${T.border}` }}>
+          {searchable && (
+            <input
+              value={q} onChange={(e) => setQ(e.target.value)} placeholder={L("filterPh")}
+              disabled={disabled}
+              style={{ ...sx.input, width: "100%", marginBottom: 10, fontSize: 13 }}
+            />
+          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 190, overflowY: "auto" }}>
+            {shown.map((o) => {
+              const on = selected.includes(o.label);
+              return (
+                <button
+                  key={o.label}
+                  type="button"
+                  onClick={() => onToggle(o.label)}
+                  disabled={disabled}
+                  style={{
+                    padding: "6px 11px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit",
+                    fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap",
+                    border: `1px solid ${on ? T.primary : T.border}`,
+                    background: on ? T.primary : "#fff",
+                    color: on ? "#fff" : T.text,
+                  }}
+                  title={`${o.label} — ${o.n} item${o.n === 1 ? "" : "s"}`}
+                >
+                  {o.label || "(blank)"} <span style={{ opacity: .7 }}>{o.n}</span>
+                </button>
+              );
+            })}
+            {shown.length === 0 && <span style={{ ...sx.muted, fontSize: 12.5 }}>{L("noMatches")}</span>}
+          </div>
+          {selected.length > 0 && (
+            <button
+              type="button" onClick={onClear} disabled={disabled}
+              style={{ ...sx.btn, marginTop: 10, padding: "5px 12px", fontSize: 12 }}
+            >{L("clearWord")} — {title}</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Condemnation leaderboard with tick boxes — builds the product scope from the
+   actual worst offenders in the chosen period instead of making the user hunt
+   through the alphabetical facet list. Ticking here writes to the same
+   `products` filter, so every section, the Excel sheets and the e-mail all
+   narrow to the picks. */
+function CondemnLeaderboard({ rows, selected, onToggle, onTopN, onClear, disabled, sx, T, L }) {
+  const [showAll, setShowAll] = useState(false);
+  const LIMIT = 8;
+  const shown = showAll ? rows : rows.slice(0, LIMIT);
+  const max = Math.max(...rows.map((r) => r.cond), 1);
+  /* Products picked in the facet list that are NOT condemned (so absent here)
+     still filter the report — say so rather than look like they were lost. */
+  const pickedInList = rows.filter((r) => selected.includes(r.label)).length;
+
+  return (
+    <div style={{
+      border: `1px solid ${T.border}`, borderRadius: 12, background: T.card,
+      marginBottom: 12, overflow: "hidden",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+        padding: "11px 14px", background: T.dangerS, borderBottom: `1px solid ${T.border}`,
+      }}>
+        <span style={{ fontSize: 16 }}>🔥</span>
+        <span style={{ fontSize: 13.5, fontWeight: 800, color: T.text, flex: 1, minWidth: 150 }}>{L("cpTitle")}</span>
+        {[5, 10].map((n) => (
+          <button
+            key={n} type="button" disabled={disabled || rows.length === 0}
+            onClick={() => onTopN(n)}
+            style={{ ...sx.btn, padding: "4px 10px", fontSize: 12 }}
+          >{L("cpTop", { n })}</button>
+        ))}
+        <button
+          type="button" disabled={disabled || selected.length === 0} onClick={onClear}
+          style={{ ...sx.btn, padding: "4px 10px", fontSize: 12 }}
+        >{L("clearWord")}</button>
+      </div>
+
+      <div style={{ padding: "10px 14px 12px" }}>
+        <div style={{ ...sx.mutedS, marginBottom: 10, lineHeight: 1.6 }}>{L("cpNote")}</div>
+        {rows.length === 0 ? (
+          <div style={{ ...sx.muted, padding: "6px 0" }}>{L("cpNone")}</div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gap: 6 }}>
+              {shown.map((r, i) => {
+                const on = selected.includes(r.label);
+                return (
+                  <button
+                    key={r.label} type="button" role="checkbox" aria-checked={on}
+                    disabled={disabled} onClick={() => onToggle(r.label)}
+                    style={{
+                      display: "block", width: "100%", textAlign: "start", fontFamily: "inherit",
+                      border: `1px solid ${on ? T.danger : T.border}`,
+                      background: on ? T.dangerS : T.card,
+                      borderRadius: 10, padding: "8px 10px",
+                      cursor: disabled ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{
+                        width: 16, height: 16, borderRadius: 4, flexShrink: 0, fontSize: 11,
+                        lineHeight: "15px", textAlign: "center", color: "#fff", fontWeight: 900,
+                        border: `1px solid ${on ? T.danger : "#cbd5e1"}`,
+                        background: on ? T.danger : "#fff",
+                      }}>{on ? "✓" : ""}</span>
+                      <span style={{
+                        fontSize: 12.5, fontWeight: 800, color: T.text, flex: 1, minWidth: 0,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>{i + 1}. {r.label || "(blank)"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: T.danger, flexShrink: 0 }}>
+                        {r.cond} {L("cpCond")}
+                      </span>
+                    </span>
+                    <span style={{
+                      display: "block", height: 5, borderRadius: 3,
+                      background: T.bgAlt, margin: "6px 0 5px",
+                    }}>
+                      <span style={{
+                        display: "block", height: 5, borderRadius: 3, background: T.danger,
+                        width: `${Math.max(3, (r.cond / max) * 100)}%`,
+                      }} />
+                    </span>
+                    <span style={{ ...sx.mutedS, display: "block" }}>
+                      {fmtNum(r.kg)} kg · {r.share.toFixed(1)}% {L("cpOfCond")} · {L("cpRate")} {Math.round(r.rate)}% ({r.cond}/{r.n})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+              <span style={sx.mutedS}>{L("cpShowing", { n: shown.length, t: rows.length })}</span>
+              {rows.length > LIMIT && (
+                <button
+                  type="button" onClick={() => setShowAll((v) => !v)}
+                  style={{ ...sx.btn, padding: "3px 10px", fontSize: 12 }}
+                >{showAll ? L("cpShowLess") : L("cpShowAll")}</button>
+              )}
+              {selected.length > 0 && (
+                <span style={{ ...sx.mutedS, fontWeight: 800, color: T.danger }}>
+                  · {L("cpPicked", { n: selected.length })}
+                  {selected.length > pickedInList ? ` · ${L("cpNotInList")}` : ""}
+                </span>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function latestReportDate(reports) {
   const dates = (reports || []).map((r) => r.reportDate).filter(Boolean).sort();
@@ -2247,6 +2818,31 @@ export default function BrowseReturns() {
   const [monthlyBusy, setMonthlyBusy] = useState(false);
   const [monthlyMonth, setMonthlyMonth] = useState("");   // anchor = ending month
   const [periodType, setPeriodType] = useState("monthly");
+  const [reportTab, setReportTab] = useState("scope");    // preset | scope | content | analysis | details
+  /* Builder popup language — remembered between sessions. The PDF stays English. */
+  const [rbLang, setRbLang] = useState(() => {
+    try { return localStorage.getItem("returnsReportLang") === "ar" ? "ar" : "en"; } catch { return "en"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("returnsReportLang", rbLang); } catch { /* private mode */ }
+  }, [rbLang]);
+  const isAr = rbLang === "ar";
+  /* L("key") → string; L("key", {n: 5}) fills {n} placeholders. */
+  const L = useCallback((key, vars) => {
+    let s = RB[key]?.[rbLang] ?? RB[key]?.en ?? key;
+    if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
+    return s;
+  }, [rbLang]);
+  /* Pick the localized field off a data object ({label,labelAr} → label). */
+  const LA = useCallback((obj, field) => (isAr ? (obj?.[`${field}Ar`] || obj?.[field]) : obj?.[field]) || "", [isAr]);
+  /* Everything the report builder can tune. Empty arrays = "no restriction". */
+  const [reportOpts, setReportOpts] = useState(() => ({ ...DEFAULT_REPORT_OPTS }));
+  const setOpt = (k, v) => setReportOpts((o) => ({ ...o, [k]: v }));
+  const toggleIn = (k, val) =>
+    setReportOpts((o) => {
+      const cur = o[k] || [];
+      return { ...o, [k]: cur.includes(val) ? cur.filter((x) => x !== val) : [...cur, val] };
+    });
 
   /* --- Heatmap mode --- */
   const [heatmapMode, setHeatmapMode] = useState("items"); // "items" | "condemn"
@@ -2688,23 +3284,359 @@ export default function BrowseReturns() {
     setEmailOpen(true);
   }, [pendingEmailDate, selectedDate, filteredReportsAsc]);
 
-  /* Distinct "YYYY-MM" months present in the data — newest first. Drives the
-     Monthly Report picker. Uses the raw dataset (unfiltered) so the report
-     always reflects the full month regardless of on-screen filters. */
-  const availableMonths = useMemo(() => {
-    const set = new Set();
+  /* Months that actually contain line items, newest first, with the item count.
+     A report row can exist for a date and carry zero items — anchoring the
+     report on such a month produces an empty PDF, so those are excluded. */
+  const monthCounts = useMemo(() => {
+    const m = new Map();
     for (const rep of returnsData) {
       const mk = (rep.reportDate || "").slice(0, 7);
-      if (/^\d{4}-\d{2}$/.test(mk)) set.add(mk);
+      if (!/^\d{4}-\d{2}$/.test(mk)) continue;
+      m.set(mk, (m.get(mk) || 0) + (rep.items || []).length);
     }
-    return Array.from(set).sort((a, b) => b.localeCompare(a));
+    return m;
   }, [returnsData]);
+
+  const availableMonths = useMemo(
+    () => Array.from(monthCounts.entries())
+      .filter(([, n]) => n > 0)
+      .map(([mk]) => mk)
+      .sort((a, b) => b.localeCompare(a)),
+    [monthCounts]
+  );
+
+  /* Distinct scope values across the whole dataset, each with how many line
+     items carry it — so the builder can show "POS 11 (312)" and sort by weight
+     of evidence rather than alphabetically. */
+  const reportFacets = useMemo(() => {
+    const b = new Map(), p = new Map(), o = new Map(), a = new Map();
+    const bump = (m, k) => { if (k) m.set(k, (m.get(k) || 0) + 1); };
+    for (const rep of returnsData) {
+      for (const it of (rep.items || [])) {
+        bump(b, safeButchery(it) || "—");
+        bump(p, (it.productName || "").trim() || "—");
+        bump(o, it.origin || "—");
+        bump(a, actionText(it) || "");
+      }
+    }
+    const sorted = (m) => Array.from(m.entries())
+      .map(([label, n]) => ({ label, n }))
+      .sort((x, y) => y.n - x.n || x.label.localeCompare(y.label));
+    return { branches: sorted(b), products: sorted(p), origins: sorted(o), actions: sorted(a) };
+  }, [returnsData]);
+
+  /* How many line items the current scope actually selects — shown live so the
+     user never generates an empty report by accident. */
+  const scopePreview = useMemo(() => {
+    const empty = { items: 0, reports: 0, periodItems: 0, state: "nodata", blockers: [] };
+    if (!monthlyOpen || !/^\d{4}-\d{2}$/.test(monthlyMonth)) return empty;
+    const period = REPORT_PERIODS.find((x) => x.key === periodType) || REPORT_PERIODS[0];
+    const fromKey = addMonthKey(monthlyMonth, -(period.months - 1));
+    const keep = makeItemFilter(reportOpts);
+    const o = reportOpts;
+    const minQ = o.minQty === "" || o.minQty == null ? null : Number(o.minQty);
+
+    /* Each ACTIVE filter dimension tested on its own, so we can name the one
+       that is actually emptying the report instead of blaming "the filters". */
+    const dims = [];
+    if (o.branches.length) dims.push({ key: "fBranches", pass: (it) => o.branches.includes(safeButchery(it) || "—") });
+    if (o.products.length) dims.push({ key: "fProducts", pass: (it) => o.products.includes((it.productName || "").trim() || "—") });
+    if (o.origins.length)  dims.push({ key: "fOrigins",  pass: (it) => o.origins.includes(it.origin || "—") });
+    if (o.actions.length)  dims.push({ key: "fActions",  pass: (it) => o.actions.includes(actionText(it) || "") });
+    if (o.qtyType === "kg")  dims.push({ key: "unit", pass: (it) => isKgType(it.qtyType) });
+    if (o.qtyType === "pcs") dims.push({ key: "unit", pass: (it) => isPcsType(it.qtyType) });
+    if (o.condemnedOnly)   dims.push({ key: "condOnly", pass: (it) => isCondemnation(actionText(it)) });
+    if (minQ != null && Number.isFinite(minQ)) dims.push({ key: "minQty", pass: (it) => (Number(it.quantity) || 0) >= minQ });
+    const dimHits = dims.map(() => 0);
+
+    let items = 0, reps = 0, periodItems = 0;
+    for (const rep of returnsData) {
+      const mk = (rep.reportDate || "").slice(0, 7);
+      if (!(/^\d{4}-\d{2}$/.test(mk) && mk >= fromKey && mk <= monthlyMonth)) continue;
+      const rows = rep.items || [];
+      periodItems += rows.length;
+      /* call keep() explicitly — Array.filter would pass the index as the
+         second argument, which keep() reads as the resolved disposition. */
+      let n = 0;
+      for (const it of rows) {
+        if (keep(it)) n++;
+        dims.forEach((d, i) => { if (d.pass(it)) dimHits[i] += 1; });
+      }
+      if (n) { items += n; reps++; }
+    }
+    /* Three distinct states so the footer can say what is actually wrong:
+       the period is empty, or a specific filter emptied it. */
+    const state = periodItems === 0 ? "nodata" : items === 0 ? "filtered" : "ok";
+    const blockers = dims
+      .map((d, i) => ({ key: d.key, hits: dimHits[i] }))
+      .filter((d) => d.hits === 0)
+      .map((d) => d.key);
+    return { items, reports: reps, periodItems, state, blockers, activeDims: dims.length };
+  }, [monthlyOpen, monthlyMonth, periodType, reportOpts, returnsData]);
+
+  /* How far the anchor month actually goes. The builder shows this BEFORE the
+     report is generated, so an unfinished month is never mistaken for a crash
+     in volume. */
+  const anchorCoverage = useMemo(() => {
+    if (!/^\d{4}-\d{2}$/.test(monthlyMonth)) return null;
+    let last = "";
+    for (const rep of returnsData) {
+      const d = rep.reportDate || "";
+      if (d.slice(0, 7) === monthlyMonth && (rep.items || []).length && d > last) last = d;
+    }
+    if (!last) return null;
+    const [y, m] = monthlyMonth.split("-").map(Number);
+    const days = new Date(y, m, 0).getDate();
+    const lastDay = Number(last.slice(8, 10));
+    return { last, days, lastDay, partial: lastDay < days };
+  }, [monthlyMonth, returnsData]);
+
+  /* Ranked condemnation list for the chosen period, using the LATEST disposition
+     exactly like the generator does. Every active scope filter applies EXCEPT
+     `products` — filtering by the current picks would collapse the list to the
+     picks themselves and there would be no way to add another product. */
+  const condLeaderboard = useMemo(() => {
+    if (!monthlyOpen || !/^\d{4}-\d{2}$/.test(monthlyMonth)) return [];
+    const period = REPORT_PERIODS.find((x) => x.key === periodType) || REPORT_PERIODS[0];
+    const fromKey = addMonthKey(monthlyMonth, -(period.months - 1));
+    const keep = makeItemFilter({ ...reportOpts, products: [] });
+    const condM = new Map(), kgM = new Map(), nM = new Map();
+    let condTotal = 0;
+    for (const rep of returnsData) {
+      const mk = (rep.reportDate || "").slice(0, 7);
+      if (!(/^\d{4}-\d{2}$/.test(mk) && mk >= fromKey && mk <= monthlyMonth)) continue;
+      const inner = changeMapByDate.get(rep.reportDate);
+      for (const it of (rep.items || [])) {
+        const act = (inner?.get(itemKey(it))?.to ?? actionText(it)) || "";
+        if (!keep(it, act)) continue;
+        const label = (it.productName || "").trim() || "—";
+        nM.set(label, (nM.get(label) || 0) + 1);
+        if (!isCondemnation(act)) continue;
+        condM.set(label, (condM.get(label) || 0) + 1);
+        condTotal++;
+        if (isKgType(it.qtyType)) kgM.set(label, (kgM.get(label) || 0) + (Number(it.quantity) || 0));
+      }
+    }
+    return Array.from(condM.entries())
+      .map(([label, cond]) => {
+        const n = nM.get(label) || 0;
+        return {
+          label, cond, n,
+          kg: kgM.get(label) || 0,
+          share: condTotal ? (cond * 100) / condTotal : 0,
+          rate: n ? (cond * 100) / n : 0,
+        };
+      })
+      .sort((a, b) => b.cond - a.cond || b.kg - a.kg || a.label.localeCompare(b.label));
+  }, [monthlyOpen, monthlyMonth, periodType, reportOpts, returnsData, changeMapByDate]);
+
+  /* ---- Saved report templates (server-backed; localStorage is never the store) ---- */
+  const [savedTemplates, setSavedTemplates] = useState([]);
+  const [tplName, setTplName] = useState("");
+  const [tplBusy, setTplBusy] = useState(false);
+
+  const loadTemplates = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(REPORT_TPL_TYPE)}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json().catch(() => null);
+      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+      setSavedTemplates(
+        arr
+          .map((rec) => ({ recordId: rec.id, ...(rec?.payload || {}) }))
+          .filter((t) => t.name)
+          .sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      );
+    } catch { /* templates are a convenience — never block the builder */ }
+  }, []);
+
+  async function saveTemplate() {
+    const name = tplName.trim();
+    if (!name) { toast(L("tplNeedName"), "err"); return; }
+    setTplBusy(true);
+    try {
+      const payload = { name, periodType, opts: reportOpts, savedAt: Date.now() };
+      const res = await fetch(`${API_BASE}/api/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reporter: "returns", type: REPORT_TPL_TYPE, payload }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setTplName("");
+      await loadTemplates();
+      toast(L("tplSaved"), "ok");
+    } catch (e) {
+      console.error("[saveTemplate]", e);
+      toast(L("tplFailed"), "err");
+    } finally { setTplBusy(false); }
+  }
+
+  function applyTemplate(tpl) {
+    /* Merge over defaults so a template saved before a new option existed
+       still yields a complete, valid options object. */
+    setReportOpts({
+      ...DEFAULT_REPORT_OPTS,
+      ...(tpl.opts || {}),
+      sections: { ...DEFAULT_REPORT_OPTS.sections, ...(tpl.opts?.sections || {}) },
+    });
+    if (tpl.periodType && REPORT_PERIODS.some((p) => p.key === tpl.periodType)) setPeriodType(tpl.periodType);
+    toast(L("tplApplied"), "ok");
+  }
+
+  async function deleteTemplate(tpl) {
+    if (!tpl.recordId) return;
+    if (!window.confirm(L("tplDeleteAsk"))) return;
+    setTplBusy(true);
+    try {
+      await fetch(`${API_BASE}/api/reports/${encodeURIComponent(tpl.recordId)}`, { method: "DELETE" });
+      await loadTemplates();
+    } catch (e) {
+      console.error("[deleteTemplate]", e);
+    } finally { setTplBusy(false); }
+  }
+
+  /* ---- Delivery: e-mail + per-branch bursting ---- */
+  const [mailTo, setMailTo] = useState("");
+  const [mailCc, setMailCc] = useState("");
+  const [mailSubject, setMailSubject] = useState("");
+  const [mailNote, setMailNote] = useState("");
+  const [burstBusy, setBurstBusy] = useState(false);
+  const [burstProgress, setBurstProgress] = useState("");
+  const [burstRecipients, setBurstRecipients] = useState({}); // branch -> email
+
+  /* Fire-and-forget compliance record. Written as a normal report row so the
+     server's existing audit layer logs the creation with account + IP. */
+  function logReportRun(info) {
+    try {
+      fetch(`${API_BASE}/api/reports`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reporter: "returns",
+          type: REPORT_LOG_TYPE,
+          payload: {
+            ...info,
+            generatedAt: new Date().toISOString(),
+            reportDate: new Date().toISOString().slice(0, 10),
+          },
+        }),
+      }).catch(() => {});
+    } catch { /* never let logging break a report */ }
+  }
+
+  const splitEmails = (s) => String(s || "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+
+  /** POST one already-rendered PDF to the server mailer. */
+  async function mailPdf({ to, cc, subject, note, filename, base64 }) {
+    const res = await fetch(`${API_BASE}/api/email/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to, cc, subject,
+        html: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#0f172a;line-height:1.7">
+          ${note ? `<p>${String(note).replace(/[<>&]/g, "")}</p>` : ""}
+          <p>Attached: <strong>${filename}</strong></p>
+          <p style="color:#64748b;font-size:12px">Generated by the Al Mawashi returns system.</p>
+        </div>`,
+        attachments: [{ filename, base64, contentType: "application/pdf" }],
+      }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+    return json;
+  }
+
+  /** Generate the current report and e-mail it to the typed recipients. */
+  async function emailCurrentReport() {
+    const to = splitEmails(mailTo);
+    if (!to.length) { toast(L("mailNeedTo"), "err"); return; }
+    setBurstBusy(true);
+    setBurstProgress(L("mailSending"));
+    try {
+      const out = await generatePeriodReport({ deliver: "blob", quiet: true });
+      if (!out) { setBurstProgress(""); return; }
+      await mailPdf({
+        to, cc: splitEmails(mailCc),
+        subject: (mailSubject.trim() || `${(reportOpts.titleOverride || "").trim() || "Returns Report"} — ${out.label}`),
+        note: mailNote, filename: out.filename, base64: out.base64,
+      });
+      logReportRun({ filename: out.filename, delivery: "email", recipients: to, items: out.items });
+      toast(L("mailSent"), "ok");
+      setBurstProgress("");
+    } catch (e) {
+      console.error("[emailCurrentReport]", e);
+      toast(`${L("mailFailed")}: ${e?.message || e}`, "err");
+      setBurstProgress("");
+    } finally { setBurstBusy(false); }
+  }
+
+  /**
+   * Bursting — one report per branch. Each branch gets its own PDF built through
+   * the same pipeline with a scope override, then either downloaded or e-mailed
+   * to that branch's address.
+   */
+  async function runBurst(mode /* "download" | "email" */) {
+    const targets = reportOpts.branches.length
+      ? reportOpts.branches
+      : reportFacets.branches.map((b) => b.label);
+    if (!targets.length) { toast(L("burstNoBranches"), "err"); return; }
+
+    setBurstBusy(true);
+    let done = 0, skipped = 0, failed = 0;
+    try {
+      for (const branch of targets) {
+        setBurstProgress(`${branch} — ${done + 1}/${targets.length}`);
+        // eslint-disable-next-line no-await-in-loop
+        const out = await generatePeriodReport({
+          scopeOverride: { branches: [branch] },
+          deliver: mode === "email" ? "blob" : "download",
+          quiet: true,
+        });
+        if (!out) { skipped++; continue; }          // branch had nothing in scope
+        if (mode === "email") {
+          const addr = splitEmails(burstRecipients[branch] || "");
+          if (!addr.length) { skipped++; continue; }
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            await mailPdf({
+              to: addr, cc: splitEmails(mailCc),
+              subject: `${(reportOpts.titleOverride || "").trim() || "Returns Report"} — ${branch} — ${out.label}`,
+              note: mailNote, filename: out.filename, base64: out.base64,
+            });
+          } catch (e) { console.error("[burst mail]", branch, e); failed++; continue; }
+        }
+        done++;
+      }
+      toast(L("burstDone", { d: done, s: skipped, f: failed }), failed ? "err" : "ok");
+    } finally {
+      setBurstBusy(false);
+      setBurstProgress("");
+    }
+  }
+
+  /* Sections in render order — drives the live outline panel. */
+  const activeSections = useMemo(
+    () => REPORT_SECTIONS.filter((s) => reportOpts.sections[s.key]),
+    [reportOpts.sections]
+  );
+  const activeSectionCount = activeSections.length;
+  const activeScopeCount = useMemo(() => (
+    reportOpts.branches.length + reportOpts.products.length +
+    reportOpts.origins.length + reportOpts.actions.length +
+    (reportOpts.qtyType !== "all" ? 1 : 0) +
+    (reportOpts.condemnedOnly ? 1 : 0) +
+    (reportOpts.minQty !== "" ? 1 : 0)
+  ), [reportOpts]);
 
   function openMonthlyModal() {
     const fallback = availableMonths[0] || new Date().toISOString().slice(0, 7);
     const fromSel = /^\d{4}-\d{2}/.test(selectedDate) ? selectedDate.slice(0, 7) : "";
     setMonthlyMonth(fromSel && availableMonths.includes(fromSel) ? fromSel : fallback);
     setPeriodType("monthly");
+    setReportTab("scope");
+    setReportOpts({ ...DEFAULT_REPORT_OPTS, sections: { ...DEFAULT_REPORT_OPTS.sections } });
+    setTplName("");
+    loadTemplates();
     setMonthlyOpen(true);
   }
 
@@ -3876,9 +4808,19 @@ export default function BrowseReturns() {
        • vs-previous-period comparison + condemnation-rate hotspots
        • Rankings: top products / POS / origins / condemned items
      ============================================================ */
-  async function generatePeriodReport() {
+  /**
+   * @param {object} [run]
+   * @param {object} [run.scopeOverride] extra scope merged over reportOpts — used by
+   *        per-branch bursting so one branch's report reuses this whole pipeline.
+   * @param {"download"|"blob"} [run.deliver] "blob" returns {filename, base64}
+   *        instead of triggering a download, so the caller can e-mail it.
+   * @param {boolean} [run.quiet] suppress toasts (bursting reports once at the end).
+   */
+  async function generatePeriodReport(run = {}) {
+    const { scopeOverride = null, deliver = "download", quiet = false } = run;
+    const say = (msg, kind) => { if (!quiet) toast(msg, kind); };
     const anchor = monthlyMonth;
-    if (!/^\d{4}-\d{2}$/.test(anchor)) { toast("Pick a month first", "err"); return; }
+    if (!/^\d{4}-\d{2}$/.test(anchor)) { say("Pick a month first", "err"); return null; }
     const period = REPORT_PERIODS.find((p) => p.key === periodType) || REPORT_PERIODS[0];
     const months = period.months;
     const fromKey = addMonthKey(anchor, -(months - 1));
@@ -3887,7 +4829,46 @@ export default function BrowseReturns() {
     const reports = returnsData
       .filter((r) => inRange((r.reportDate || "").slice(0, 7)))
       .sort((a, b) => (a.reportDate || "").localeCompare(b.reportDate || ""));
-    if (!reports.length) { toast("No data in the selected period", "err"); return; }
+    if (!reports.length) { say("No data in the selected period", "err"); return null; }
+
+    /* ---------- Is the anchor month still running? ----------
+       A report that ends on the current month covers only part of it, and its
+       last bar / its comparison against a FULL baseline both read as a collapse
+       in volume. Detect the real cut-off from the data and declare it. */
+    const lastDataDate = reports.reduce((mx, r) => ((r.reportDate || "") > mx ? r.reportDate : mx), "");
+    const [anchorY, anchorM] = toKey.split("-").map(Number);
+    const monthDays = new Date(anchorY, anchorM, 0).getDate();          // 0 = last day of anchorM
+    const lastDay = lastDataDate.slice(0, 7) === toKey ? Number(lastDataDate.slice(8, 10)) : 0;
+    const isPartial = lastDay > 0 && lastDay < monthDays;
+    const coverageNote = isPartial
+      ? `PARTIAL PERIOD — data to ${fmtDayLong(lastDataDate)} (day ${lastDay} of ${monthDays} in ${monthLabel(toKey)}); the month is not finished.`
+      : "";
+
+    /* Builder options: scope filter, section switches, sign-off details.
+       A scopeOverride (bursting) narrows the scope without touching UI state. */
+    const O = scopeOverride ? { ...reportOpts, ...scopeOverride } : reportOpts;
+    const S = O.sections || {};
+    if (!REPORT_SECTIONS.some((s) => S[s.key])) {
+      say("Pick at least one section to include", "err");
+      return null;
+    }
+    const keepItem = makeItemFilter(O);
+    const scopeBits = [
+      O.branches.length ? `Branch: ${O.branches.join(", ")}` : "",
+      O.products.length ? `Product: ${O.products.join(", ")}` : "",
+      O.origins.length ? `Origin: ${O.origins.join(", ")}` : "",
+      O.actions.length ? `Disposition: ${O.actions.map((a) => a || "(blank)").join(", ")}` : "",
+      O.qtyType !== "all" ? `Unit: ${O.qtyType}` : "",
+      O.condemnedOnly ? "Condemned items only" : "",
+      O.minQty !== "" ? `Qty >= ${O.minQty}` : "",
+    ].filter(Boolean);
+    const isFiltered = scopeBits.length > 0;
+    /* Titles are needed by both the PDF and the Excel branch, so they live
+       above the renderer rather than inside it. */
+    const RTITLE = (O.titleOverride || "").trim() || period.reportTitle;
+    const COVER_TITLE = (O.titleOverride || "").trim()
+      ? O.titleOverride.trim().toUpperCase()
+      : period.cover;
 
     setMonthlyBusy(true);
     try {
@@ -3900,51 +4881,171 @@ export default function BrowseReturns() {
         const ch = inner.get(itemKey(row));
         return ch?.to ?? actionText(row);
       };
+      /* Every matching line item, kept for the optional detail annex. */
+      const lineItems = [];
       let totalItems = 0, totalKg = 0, totalPcs = 0;
       let condCount = 0, condKg = 0, marketKg = 0, disposedCount = 0, disposedKg = 0, useProdCount = 0, sepExpiredCount = 0;
       const posCount = new Map(), originCount = new Map(), productCount = new Map(), condProduct = new Map(), actionCount = new Map();
       const posCond = new Map(), originCond = new Map(); // condemned counts per branch/origin (for quality-rate hotspots)
+      /* Condemnation-only aggregates powering the Top Condemnation section:
+         weight, which days it happened on, and which branch / origin each
+         condemned product mostly came from. */
+      const condProductKg = new Map(), condProductDays = new Map();
+      const condProdPos = new Map(), condProdOrigin = new Map(); // product -> Map(label -> count)
+      /* Extra aggregates powering the analysis sections. */
+      const posKg = new Map(), originKg = new Map(), productKg = new Map();
+      const weekdayCount = [0, 0, 0, 0, 0, 0, 0];        // 0 = Sunday
+      const productDays = new Map();                      // product -> Set(date)
+      const bump = (m, k, v) => m.set(k, (m.get(k) || 0) + v);
+      /* outer Map of Maps: outer[k1][k2] += 1 */
+      const bumpIn = (outer, k1, k2) => {
+        let inner = outer.get(k1);
+        if (!inner) { inner = new Map(); outer.set(k1, inner); }
+        inner.set(k2, (inner.get(k2) || 0) + 1);
+      };
+      const topOf = (m) => {
+        if (!m || !m.size) return "—";
+        let best = "—", bv = -1;
+        for (const [k, v] of m) if (v > bv) { best = k; bv = v; }
+        return best;
+      };
       const daily = [];
       for (const rep of reports) {
         const date = rep.reportDate;
         let dItems = 0, dKg = 0, dCond = 0;
         for (const it of (rep.items || [])) {
+          /* Scope filter first — everything downstream counts only what passes. */
+          const resolved = latestActionFor(date, it) || "";
+          if (!keepItem(it, resolved)) continue;
           totalItems++; dItems++;
           const q = Number(it.quantity) || 0; // guard against non-numeric quantity → 0 (never NaN-poison the total)
           const pos = safeButchery(it) || "—";
           const origin = it.origin || "—";
           const prod = (it.productName || "—").trim();
+          /* Collected for BOTH outputs: the PDF annex slices this to the user's
+             cap, while the Excel sheet takes the lot. */
+          if (lineItems.length < 50000) {
+            lineItems.push([
+              date, it.itemCode || "", prod, origin, pos,
+              `${fmtNum(q)} ${isKgType(it.qtyType) ? "kg" : isPcsType(it.qtyType) ? "pcs" : ""}`.trim(),
+              it.expiry || "", resolved || "—",
+            ]);
+          }
           posCount.set(pos, (posCount.get(pos) || 0) + 1);
           originCount.set(origin, (originCount.get(origin) || 0) + 1);
           productCount.set(prod, (productCount.get(prod) || 0) + 1);
-          if (isKgType(it.qtyType)) { totalKg += q; dKg += q; }
-          else if (isPcsType(it.qtyType)) { totalPcs += q; }
+          if (!productDays.has(prod)) productDays.set(prod, new Set());
+          productDays.get(prod).add(date);
+          const wd = new Date(`${date}T00:00:00`).getDay();
+          if (Number.isFinite(wd)) weekdayCount[wd] += 1;
+          if (isKgType(it.qtyType)) {
+            totalKg += q; dKg += q;
+            bump(posKg, pos, q); bump(originKg, origin, q); bump(productKg, prod, q);
+          } else if (isPcsType(it.qtyType)) { totalPcs += q; }
           /* Only bucket items that actually carry a disposition. This mirrors the
              Overview KPI (byActionLatest), so Condemnation% here == what the user
              sees on screen. Items with a blank action are NOT in the denominator. */
-          const act = latestActionFor(date, it) || "";
+          const act = resolved;
           if (act) actionCount.set(act, (actionCount.get(act) || 0) + 1);
-          if (isCondemnation(act)) { condCount++; dCond++; if (isKgType(it.qtyType)) condKg += q; condProduct.set(prod, (condProduct.get(prod) || 0) + 1); posCond.set(pos, (posCond.get(pos) || 0) + 1); originCond.set(origin, (originCond.get(origin) || 0) + 1); }
+          if (isCondemnation(act)) {
+            condCount++; dCond++;
+            if (isKgType(it.qtyType)) { condKg += q; bump(condProductKg, prod, q); }
+            condProduct.set(prod, (condProduct.get(prod) || 0) + 1);
+            posCond.set(pos, (posCond.get(pos) || 0) + 1);
+            originCond.set(origin, (originCond.get(origin) || 0) + 1);
+            if (!condProductDays.has(prod)) condProductDays.set(prod, new Set());
+            condProductDays.get(prod).add(date);
+            bumpIn(condProdPos, prod, pos);
+            bumpIn(condProdOrigin, prod, origin);
+          }
           if ((act || "").toLowerCase() === "use in production") useProdCount++;
           if ((act || "").toLowerCase() === "separated expired shelf") sepExpiredCount++;
           if (isSendToMarket(act) && isKgType(it.qtyType)) marketKg += q;
           if (isDisposed(act)) { disposedCount++; if (isKgType(it.qtyType)) disposedKg += q; }
         }
         /* store raw dKg — the table foot uses totalKg (= Σ dKg exactly), so the
-           weight column reconciles to its total (display rounds each cell only). */
-        daily.push({ date, items: dItems, kg: dKg, cond: dCond });
+           weight column reconciles to its total (display rounds each cell only).
+           Days where the scope filter matched nothing are dropped entirely. */
+        if (dItems > 0) daily.push({ date, items: dItems, kg: dKg, cond: dCond });
+      }
+      if (!totalItems) {
+        say("No line items match the selected scope", "err");
+        return null;
       }
       const actionTotal = Array.from(actionCount.values()).reduce((a, b) => a + b, 0) || 1;
       const topN = (m, n) => Array.from(m.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, n);
-      const topProducts = topN(productCount, 8);
-      const topPos = topN(posCount, 8);
-      const topOrigins = topN(originCount, 8);
-      const topCond = topN(condProduct, 8);
+      const RANK_N = Math.max(3, Math.min(20, Number(O.topN) || 8));
+      /* Rankings can be ordered by volume, by weight or by condemned count —
+         "top product" means something different to ops than to finance. */
+      const metric = O.rankMetric || "count";
+      const metricLabel = (RANK_METRICS.find((m) => m.key === metric) || RANK_METRICS[0]).label;
+      const metricFmt = metric === "kg" ? (v) => `${fmtNum(v)} kg` : (v) => String(v);
+      const pickMap = (countM, kgM, condM) => (metric === "kg" ? kgM : metric === "cond" ? condM : countM);
+      const topProducts = topN(pickMap(productCount, productKg, condProduct), RANK_N);
+      const topPos = topN(pickMap(posCount, posKg, posCond), RANK_N);
+      const topOrigins = topN(pickMap(originCount, originKg, originCond), RANK_N);
+      const topCond = topN(condProduct, RANK_N);
+
+      /* ----- Branch / origin scorecards ----- */
+      const scorecard = (countM, kgM, condM) => Array.from(countM.entries())
+        .map(([label, n]) => {
+          const cond = condM.get(label) || 0;
+          const rate = n ? (cond * 100) / n : 0;
+          return {
+            label, n, kg: kgM.get(label) || 0, cond,
+            rate, share: totalItems ? (n * 100) / totalItems : 0,
+            grade: rate >= 25 ? "D" : rate >= 15 ? "C" : rate >= 7 ? "B" : "A",
+          };
+        })
+        .sort((a, b) => b.n - a.n);
+      const branchCard = scorecard(posCount, posKg, posCond);
+      const originCard = scorecard(originCount, originKg, originCond);
+
+      /* ----- Pareto: how few products account for 80% of returns ----- */
+      const paretoRows = Array.from(productCount.entries())
+        .map(([label, n]) => ({ label, n }))
+        .sort((a, b) => b.n - a.n);
+      let running = 0;
+      const paretoData = paretoRows.map((r) => {
+        running += r.n;
+        return { ...r, cum: totalItems ? (running * 100) / totalItems : 0 };
+      });
+      const vitalFew = paretoData.findIndex((r) => r.cum >= 80) + 1;
+
+      /* ----- Repeat offenders: same product back on N or more separate days ----- */
+      const minDays = Math.max(2, Number(O.minRepeatDays) || 3);
+      const repeatRows = Array.from(productDays.entries())
+        .map(([label, set]) => ({ label, days: set.size, n: productCount.get(label) || 0, cond: condProduct.get(label) || 0 }))
+        .filter((r) => r.days >= minDays)
+        .sort((a, b) => b.days - a.days || b.n - a.n)
+        .slice(0, 25);
+
+      /* ----- Day-of-week load ----- */
+      const WD_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const weekdayRows = weekdayCount.map((v, i) => ({ label: WD_NAMES[i], value: v }));
+
+      /* ----- Spike days: mean + 1.5σ over the active days ----- */
+      const dayVals = daily.map((d) => d.items);
+      const mean = dayVals.length ? dayVals.reduce((a, b) => a + b, 0) / dayVals.length : 0;
+      const sd = dayVals.length
+        ? Math.sqrt(dayVals.reduce((s, v) => s + (v - mean) ** 2, 0) / dayVals.length)
+        : 0;
+      const spikeCut = mean + 1.5 * sd;
+      const spikeRows = daily
+        .filter((d) => sd > 0 && d.items > spikeCut)
+        .sort((a, b) => b.items - a.items)
+        .map((d) => ({ ...d, over: mean ? Math.round(((d.items - mean) / mean) * 100) : 0 }));
       const actionsSorted = Array.from(actionCount.entries()).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
-      const activeDays = reports.length;
-      const avgPerDay = totalItems / activeDays;
+      /* Days that contain MATCHING items — `reports` is date-filtered only, so
+         using it here would count days the scope filter emptied and understate
+         the daily average. `daily` only receives days with dItems > 0. */
+      const activeDays = daily.length;
+      const avgPerDay = activeDays ? totalItems / activeDays : 0;
       const peakDay = daily.reduce((mx, d) => (d.items > mx.items ? d : mx), { items: -1, date: "" });
-      const condPct = Math.round(condCount * 100 / actionTotal);
+      /* Kept UNROUNDED — every display runs it through fmtRate, and the
+         period-over-period delta is computed on the exact value. Rounding here
+         printed 1018/1019 as a flat "100%". */
+      const condPct = (condCount * 100) / actionTotal;
       const rangeLbl = rangeLabel(fromKey, toKey);
       const mLabel = rangeLbl; // header/footer/pill label reused across pages
       const genStamp = new Date().toLocaleString("en-GB", { timeZone: "Asia/Dubai" });
@@ -3970,7 +5071,13 @@ export default function BrowseReturns() {
           mMap.set(mk, b);
         }
         buckets = Array.from(mMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([mk, b]) => ({ label: shortMonth(mk), full: monthLabel(mk), items: b.items, kg: b.kg, cond: b.cond }));
+          .map(([mk, b]) => ({
+            label: shortMonth(mk),
+            /* The anchor month's row is a part-month figure — label it, or the
+               register reads as a sudden collapse in the last month. */
+            full: mk === toKey && isPartial ? `${monthLabel(mk)} (partial, to day ${lastDay})` : monthLabel(mk),
+            items: b.items, kg: b.kg, cond: b.cond,
+          }));
       }
       const peakBucket = buckets.reduce((mx, b) => (b.items > mx.items ? b : mx), { items: -1 });
 
@@ -3979,21 +5086,32 @@ export default function BrowseReturns() {
         let items = 0, kg = 0, cond = 0, decided = 0;
         for (const rep of reps) {
           for (const it of (rep.items || [])) {
+            const a = latestActionFor(rep.reportDate, it) || "";
+            if (!keepItem(it, a)) continue;  // baseline must use the SAME scope
             items++;
             if (isKgType(it.qtyType)) kg += Number(it.quantity) || 0;
-            const a = latestActionFor(rep.reportDate, it) || "";
             if (a) decided++;               // same denominator rule as the current period
             if (isCondemnation(a)) cond++;
           }
         }
-        return { items, kg: Math.round(kg * 100) / 100, cond, condPct: Math.round(cond * 100 / (decided || 1)) };
+        return { items, kg: Math.round(kg * 100) / 100, cond, condPct: (cond * 100) / (decided || 1) };
       };
-      const prevToKey = addMonthKey(fromKey, -1);
+      /* Baseline: the window immediately before, or the same window last year. */
+      const yoy = O.baseline === "yoy";
+      const prevToKey = yoy ? addMonthKey(toKey, -12) : addMonthKey(fromKey, -1);
       const prevFromKey = addMonthKey(prevToKey, -(months - 1));
-      const prevRangeLbl = rangeLabel(prevFromKey, prevToKey);
+      /* Like-for-like: when the current window stops mid-month, the baseline is
+         cut at the SAME day of ITS last month. Comparing 8 days against a full
+         month is what made a normal month look like a -60% collapse. */
+      const prevCutoff = isPartial ? `${prevToKey}-${String(lastDay).padStart(2, "0")}` : "";
+      const prevRangeLbl = isPartial
+        ? `${rangeLabel(prevFromKey, prevToKey)} (to day ${lastDay})`
+        : rangeLabel(prevFromKey, prevToKey);
       const prevReports = returnsData.filter((r) => {
-        const mk = (r.reportDate || "").slice(0, 7);
-        return /^\d{4}-\d{2}$/.test(mk) && mk >= prevFromKey && mk <= prevToKey;
+        const d = r.reportDate || "";
+        const mk = d.slice(0, 7);
+        if (!(/^\d{4}-\d{2}$/.test(mk) && mk >= prevFromKey && mk <= prevToKey)) return false;
+        return prevCutoff ? d <= prevCutoff : true;
       });
       const prevAgg = prevReports.length ? quickAgg(prevReports) : null;
       const curAgg = { items: totalItems, kg: Math.round(totalKg * 100) / 100, cond: condCount, condPct };
@@ -4007,13 +5125,187 @@ export default function BrowseReturns() {
 
       /* ---------- Quality hotspots — condemnation RATE by branch / origin ---------- */
       const MIN_SAMPLE = 5; // ignore tiny samples so a 1/1 = 100% doesn't top the list
+      /* Rates stay UNROUNDED here: rounding first made 1010/1011 rank as a clean
+         100% and made a 99.5% branch look identical to a true 100% one. */
       const buildRates = (countMap, condMap) => Array.from(countMap.entries())
-        .map(([label, total]) => ({ label, total, cond: condMap.get(label) || 0, rate: Math.round((condMap.get(label) || 0) * 100 / total) }))
+        .map(([label, total]) => {
+          const cond = condMap.get(label) || 0;
+          return { label, total, cond, rate: (cond * 100) / total };
+        })
         .filter((r) => r.total >= MIN_SAMPLE)
-        .sort((a, b) => b.rate - a.rate || b.cond - a.cond)
-        .slice(0, 7);
-      const branchRates = buildRates(posCount, posCond);
-      const originRates = buildRates(originCount, originCond);
+        /* Volume breaks a rate tie — when a dozen branches sit at 100%, the one
+           condemning the most units is the one to act on first. */
+        .sort((a, b) => b.rate - a.rate || b.cond - a.cond || b.total - a.total);
+      /* Capped at 12: the bars are 27pt tall and share the page with the
+         comparison tiles, so a Top-N of 20 would run into the page footer. */
+      const RATE_N = Math.max(7, Math.min(RANK_N, 12));
+      const branchRatesAll = buildRates(posCount, posCond);
+      const originRatesAll = buildRates(originCount, originCond);
+      const branchRates = branchRatesAll.slice(0, RATE_N);
+      const originRates = originRatesAll.slice(0, RATE_N);
+      /* The volume leader can rank low on RATE and vanish from this page — a
+         branch with 197/198 sits below every 159/159. Name it explicitly instead
+         of leaving the reader to wonder why the biggest branch is missing. */
+      const volLeaderLabel = Array.from(posCond.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+      const volLeaderRank = volLeaderLabel ? branchRatesAll.findIndex((r) => r.label === volLeaderLabel) : -1;
+      const volLeaderNote = volLeaderLabel && !branchRates.some((r) => r.label === volLeaderLabel)
+        ? `Highest condemnation VOLUME: ${volLeaderLabel} — ${posCond.get(volLeaderLabel)} of ${posCount.get(volLeaderLabel)} returns (${fmtRate((posCond.get(volLeaderLabel) * 100) / (posCount.get(volLeaderLabel) || 1))})`
+          + (volLeaderRank >= 0 ? `, ranked #${volLeaderRank + 1} by rate — below the cut-off above.` : ", under the minimum sample above.")
+        : "";
+
+      /* ---------- Top Condemnation — every condemned product, worst first ----------
+         `share` is the product's share of ALL condemned items (so the column sums
+         to 100%), while `rate` is condemned / that product's own returns — the two
+         answer different questions and are both wanted in the meeting. */
+      let condRun = 0;
+      const condRows = Array.from(condProduct.entries())
+        .map(([label, cond]) => {
+          const n = productCount.get(label) || 0;
+          return {
+            label, cond,
+            kg: condProductKg.get(label) || 0,
+            n,
+            rate: n ? (cond * 100) / n : 0,
+            share: condCount ? (cond * 100) / condCount : 0,
+            days: (condProductDays.get(label) || new Set()).size,
+            pos: topOf(condProdPos.get(label)),
+            origin: topOf(condProdOrigin.get(label)),
+          };
+        })
+        .sort((a, b) => b.cond - a.cond || b.kg - a.kg || a.label.localeCompare(b.label))
+        .map((r) => { condRun += r.share; return { ...r, cum: condRun }; });
+
+      /* ---------- Excel delivery: same model, spreadsheet shape ---------- */
+      if (deliver === "xlsx") {
+        const ExcelJS = (await import("exceljs")).default || (await import("exceljs"));
+        const wb = new ExcelJS.Workbook();
+        const BD = {
+          top: { style: "thin", color: { argb: "FFCBD5E1" } }, left: { style: "thin", color: { argb: "FFCBD5E1" } },
+          bottom: { style: "thin", color: { argb: "FFCBD5E1" } }, right: { style: "thin", color: { argb: "FFCBD5E1" } },
+        };
+        const sheet = (name, headers, rows, widths) => {
+          const ws = wb.addWorksheet(name);
+          if (widths) ws.columns = widths.map((w) => ({ width: w }));
+          const hr = ws.addRow(headers);
+          hr.eachCell((c) => {
+            c.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+            c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0B1F4D" } };
+            c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+            c.border = BD;
+          });
+          hr.height = 22;
+          rows.forEach((r) => {
+            const row = ws.addRow(r);
+            row.eachCell((c) => { c.border = BD; c.font = { size: 10 }; c.alignment = { vertical: "top" }; });
+          });
+          ws.views = [{ state: "frozen", ySplit: 1 }];
+          ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
+          return ws;
+        };
+
+        /* 1 — Summary (metrics + the exact scope this workbook covers) */
+        const sum = wb.addWorksheet("Summary");
+        sum.columns = [{ width: 34 }, { width: 46 }];
+        const put = (k, v, bold) => {
+          const r = sum.addRow([k, v]);
+          r.getCell(1).font = { bold: true, size: 11 };
+          r.getCell(2).font = { bold: !!bold, size: 11 };
+          r.getCell(1).border = BD; r.getCell(2).border = BD;
+        };
+        put("Report", RTITLE);
+        put("Period", mLabel, true);
+        put("Data coverage", isPartial
+          ? `Partial — to ${fmtDayLong(lastDataDate)} (day ${lastDay} of ${monthDays} in ${monthLabel(toKey)})`
+          : `Complete — to ${fmtDayLong(lastDataDate)}`, isPartial);
+        put("Reference no.", (O.refNo || "").trim() || "—");
+        put("Classification", O.classification || "—");
+        put("Scope", isFiltered ? scopeBits.join("  |  ") : "All branches, products and origins");
+        put("Generated", genStamp);
+        sum.addRow([]);
+        put("Total entries", totalItems, true);
+        put("Total weight (kg)", Math.round(totalKg * 100) / 100, true);
+        put("Total pieces", totalPcs);
+        put("Condemned items", condCount, true);
+        put("Condemnation rate (of all returns)", `${totalItems ? ((condCount * 100) / totalItems).toFixed(1) : "0.0"}%`);
+        put("Condemnation rate (of decided items)", fmtRate(condPct));
+        put("Condemned weight (kg)", Math.round(condKg * 100) / 100);
+        put("Sent to market (kg)", Math.round(marketKg * 100) / 100);
+        put("Disposed items", disposedCount);
+        put("Use in production", useProdCount);
+        put("Active days", activeDays);
+        put("Average per active day", Math.round(avgPerDay * 10) / 10);
+        put("Busiest day", peakDay.date ? `${peakDay.date} (${peakDay.items})` : "—");
+
+        /* 2..7 — the analysis, one sheet each */
+        sheet("Daily", ["Date", "Entries", "Weight (kg)", "Condemned"],
+          daily.map((d) => [d.date, d.items, Math.round(d.kg * 100) / 100, d.cond]), [14, 12, 14, 12]);
+
+        const cardRows = (rows) => rows.map((r) => [
+          r.label, r.n, Number((r.share).toFixed(1)), Math.round(r.kg * 100) / 100,
+          r.cond, Number(r.rate.toFixed(1)), r.grade,
+        ]);
+        sheet("By Branch", ["Branch", "Returns", "Share %", "Weight (kg)", "Condemned", "Cond. rate %", "Grade"],
+          cardRows(branchCard), [26, 11, 10, 13, 12, 13, 8]);
+        sheet("By Origin", ["Origin", "Returns", "Share %", "Weight (kg)", "Condemned", "Cond. rate %", "Grade"],
+          cardRows(originCard), [26, 11, 10, 13, 12, 13, 8]);
+
+        sheet("By Product",
+          ["Product", "Returns", "Weight (kg)", "Condemned", "Days seen", "Cumulative %"],
+          paretoData.map((p) => [
+            p.label, p.n, Math.round((productKg.get(p.label) || 0) * 100) / 100,
+            condProduct.get(p.label) || 0, (productDays.get(p.label) || new Set()).size,
+            Number(p.cum.toFixed(1)),
+          ]), [34, 11, 13, 12, 11, 13]);
+
+        /* Top Condemnation — the whole ranked list, not just the PDF's top N */
+        sheet("Top Condemnation",
+          ["Rank", "Product", "Condemned", "Condemned kg", "Share of condemned %", "Cumulative %",
+           "Total returns", "Cond. rate %", "Days condemned", "Top branch", "Top origin"],
+          condRows.map((r, i) => [
+            i + 1, r.label, r.cond, Math.round(r.kg * 100) / 100,
+            Number(r.share.toFixed(1)), Number(r.cum.toFixed(1)),
+            r.n, Number(r.rate.toFixed(1)), r.days, r.pos, r.origin,
+          ]), [7, 34, 12, 14, 19, 13, 13, 12, 15, 20, 20]);
+
+        sheet("Dispositions", ["Disposition", "Items", "Share %"],
+          actionsSorted.map((a) => [a.label || "(blank)", a.value, Number(((a.value * 100) / actionTotal).toFixed(1))]),
+          [30, 11, 10]);
+
+        sheet("Weekday", ["Weekday", "Returns"], weekdayRows.map((r) => [r.label, r.value]), [16, 11]);
+
+        if (spikeRows.length) {
+          sheet("Spike Days", ["Date", "Entries", "vs average %", "Weight (kg)", "Condemned"],
+            spikeRows.map((d) => [d.date, d.items, d.over, Math.round(d.kg * 100) / 100, d.cond]),
+            [14, 11, 14, 13, 12]);
+        }
+
+        /* 8 — every matching line item (no cap: this is the analysable sheet) */
+        sheet("Line Items", ["Date", "Code", "Product", "Origin", "Branch", "Qty", "Expiry", "Disposition"],
+          lineItems, [13, 14, 34, 18, 20, 14, 13, 22]);
+
+        const scopeTagX = scopeOverride?.branches?.length
+          ? `_${String(scopeOverride.branches[0]).replace(/[^A-Za-z0-9]+/g, "")}`
+          : isFiltered ? "_Filtered" : "";
+        const xname = months === 1
+          ? `Al_Mawashi_${period.fileTag}_Returns${scopeTagX}_${toKey}.xlsx`
+          : `Al_Mawashi_${period.fileTag}_Returns${scopeTagX}_${fromKey}_to_${toKey}.xlsx`;
+        const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([buf], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }));
+        a.download = xname;
+        a.click();
+        URL.revokeObjectURL(a.href);
+
+        logReportRun({
+          filename: xname, periodType, from: fromKey, to: toKey,
+          scope: scopeBits, items: totalItems, kg: Math.round(totalKg * 100) / 100,
+          condemned: condCount, delivery: "xlsx",
+        });
+        say("Excel workbook exported", "ok");
+        return { filename: xname, items: totalItems, label: mLabel };
+      }
 
       /* ---------- Palette + primitives ---------- */
       const NAVY = [11, 31, 77], NAVY2 = [30, 58, 95], RED = [176, 0, 0];
@@ -4030,6 +5322,10 @@ export default function BrowseReturns() {
       const doc = new JsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
       const PW = doc.internal.pageSize.getWidth();
       const PH = doc.internal.pageSize.getHeight();
+      /* Sections are optional, so pages can't blindly addPage() — the first one
+         drawn must reuse the document's initial blank page. */
+      let pageOpened = false;
+      const startPage = () => { if (pageOpened) doc.addPage(); pageOpened = true; };
       const M = 40;
       const CW = PW - M * 2;
       const setFill = (c) => doc.setFillColor(c[0], c[1], c[2]);
@@ -4040,8 +5336,19 @@ export default function BrowseReturns() {
         const p = doc.getNumberOfPages();
         setDraw(LINE); doc.setLineWidth(0.5); doc.line(M, PH - 34, PW - M, PH - 34);
         doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); setText(MUTE);
-        doc.text("Al Mawashi · Trans Emirates Livestock Trading L.L.C.", M, PH - 22);
-        doc.text(`${mLabel}  ·  Generated ${genStamp}`, PW / 2, PH - 22, { align: "center" });
+        const center = `${mLabel}  ·  Generated ${genStamp}`;
+        /* The three footer blocks used to be drawn blind, so a long company name
+           + classification + "FILTERED SCOPE" ran straight through the centred
+           stamp. Measure first, then clamp the left block to the gap. */
+        const centerStart = PW / 2 - doc.getTextWidth(center) / 2;
+        const left = ["Al Mawashi",
+          O.classification, (O.refNo || "").trim(),
+          /* A filtered report must declare it on EVERY page — the cover band is
+             not enough because the cover itself is an optional section. */
+          isFiltered ? "FILTERED SCOPE" : ""].filter(Boolean).join("  ·  ");
+        const leftMax = Math.max(60, centerStart - M - 12);
+        doc.text(doc.splitTextToSize(left, leftMax)[0] || "", M, PH - 22);
+        doc.text(center, PW / 2, PH - 22, { align: "center" });
         doc.text(`Page ${p}`, PW - M, PH - 22, { align: "right" });
       };
       const contentHeader = (title, sub) => {
@@ -4055,7 +5362,7 @@ export default function BrowseReturns() {
         setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
         doc.text("AL MAWASHI", PW - M, 26, { align: "right" });
         doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); setText([200, 210, 230]);
-        doc.text("Monthly Returns Report", PW - M, 40, { align: "right" });
+        doc.text(RTITLE, PW - M, 40, { align: "right" });
       };
       const sectionTitle = (y, text) => {
         setFill(NAVY); doc.roundedRect(M, y - 11, 4, 15, 2, 2, "F");
@@ -4139,7 +5446,7 @@ export default function BrowseReturns() {
           setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
           doc.text(trunc(r.label || "—", 26), x, yy);
           setText(SLATE); doc.setFont("helvetica", "normal");
-          doc.text(`${r.cond}/${r.total}  ·  ${r.rate}%`, x + w, yy, { align: "right" });
+          doc.text(`${r.cond}/${r.total}  ·  ${fmtRate(r.rate)}`, x + w, yy, { align: "right" });
           setFill(LIGHT); doc.roundedRect(x, yy + 4, w, 6, 3, 3, "F");
           const bw = Math.max(2, (r.rate / 100) * w);
           setFill(RED); doc.roundedRect(x, yy + 4, bw, 6, 3, 3, "F");
@@ -4149,6 +5456,8 @@ export default function BrowseReturns() {
       };
 
       /* ---------- PAGE 1 — Cover ---------- */
+      if (S.cover) {
+      startPage();
       setFill(NAVY); doc.rect(0, 0, PW, 300, "F");
       setFill(NAVY2); doc.rect(0, 250, PW, 50, "F");
       setFill(RED); doc.rect(0, 300, PW, 5, "F");
@@ -4158,19 +5467,27 @@ export default function BrowseReturns() {
       doc.setFont("helvetica", "normal"); doc.setFontSize(9); setText([200, 210, 230]);
       doc.text("Trans Emirates Livestock Trading L.L.C.", PW / 2, 145, { align: "center" });
       setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(29);
-      doc.text(period.cover, PW / 2, 196, { align: "center" });
+      doc.setFontSize(COVER_TITLE.length > 22 ? 20 : 29);
+      doc.text(COVER_TITLE, PW / 2, 196, { align: "center" });
+      doc.setFontSize(29);
       doc.text("REPORT", PW / 2, 226, { align: "center" });
       const pillW = 240, pillH = 34, pillX = PW / 2 - pillW / 2, pillY = 258;
       setFill(RED); doc.roundedRect(pillX, pillY, pillW, pillH, 17, 17, "F");
       setText([255, 255, 255]); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
       doc.text(mLabel.toUpperCase(), PW / 2, pillY + 22, { align: "center" });
+      /* An unfinished month must say so on the face of the document — every
+         volume figure below is a part-month figure. */
+      if (isPartial) {
+        setText([176, 0, 0]); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+        doc.text(coverageNote, PW / 2, 322, { align: "center" });
+      }
 
       /* Hero KPI cards (2×2) */
       const gx = M, gw = (CW - 15) / 2, gh = 92, gy = 340;
       kpiCard(gx, gy, gw, gh, "Active Days", String(activeDays), "days with returns filed", BLUE);
       kpiCard(gx + gw + 15, gy, gw, gh, "Total Entries", fmtNum(totalItems, 0), "returned line items", NAVY);
-      kpiCard(gx, gy + gh + 15, gw, gh, "Total Weight", `${fmtNum(totalKg)} kg`, `+ ${fmtNum(totalPcs, 0)} pcs`, GREEN);
-      kpiCard(gx + gw + 15, gy + gh + 15, gw, gh, "Condemnation", `${condPct}%`, `${fmtNum(condCount, 0)} items · ${fmtNum(condKg)} kg`, RED);
+      kpiCard(gx, gy + gh + 15, gw, gh, "Total Weight", `${fmtKg(totalKg)} kg`, `+ ${fmtNum(totalPcs, 0)} pcs`, GREEN);
+      kpiCard(gx + gw + 15, gy + gh + 15, gw, gh, "Condemnation", fmtRate(condPct), `${fmtNum(condCount, 0)} items · ${fmtKg(condKg)} kg`, RED);
 
       /* Highlights strip */
       const hy = gy + gh * 2 + 44;
@@ -4181,8 +5498,10 @@ export default function BrowseReturns() {
       const facts = [
         ["Busiest day", peakDay.date ? `${peakDay.date}  (${peakDay.items} items)` : "—"],
         ["Avg per active day", `${fmtNum(avgPerDay, 1)} items`],
-        ["Top branch (POS)", topPos[0] ? `${trunc(topPos[0].label, 22)}  (${topPos[0].value})` : "—"],
-        ["Most returned item", topProducts[0] ? `${trunc(topProducts[0].label, 24)}  (${topProducts[0].value})` : "—"],
+        /* values carry the ranking metric's unit — a bare number would read as a
+           count even when the ranking is by weight. */
+        ["Top branch (POS)", topPos[0] ? `${trunc(topPos[0].label, 22)}  (${metricFmt(topPos[0].value)})` : "—"],
+        ["Top product", topProducts[0] ? `${trunc(topProducts[0].label, 24)}  (${metricFmt(topProducts[0].value)})` : "—"],
       ];
       let fy = hy + 42;
       facts.forEach((f, i) => {
@@ -4195,18 +5514,38 @@ export default function BrowseReturns() {
         setText(NAVY); doc.setFont("helvetica", "bold");
         doc.text(String(f[1]), fx + 10 + doc.getTextWidth(`${f[0]}:  `), yy);
       });
+
+      /* Scope band — a filtered report must say so on its face, or a reader
+         will mistake a slice for the whole business. */
+      if (isFiltered) {
+        const sy = hy + 108;
+        setFill([255, 247, 237]); setDraw([251, 191, 36]); doc.setLineWidth(1);
+        const scopeText = scopeBits.join("   ·   ");
+        const wrapped = doc.splitTextToSize(scopeText, CW - 32);
+        const bh = 26 + wrapped.length * 11;
+        doc.roundedRect(M, sy, CW, bh, 8, 8, "FD");
+        setText([146, 64, 14]); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+        doc.text("FILTERED SCOPE — this report covers a subset of returns", M + 16, sy + 17);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+        doc.text(wrapped, M + 16, sy + 30);
+      }
       footer();
+      }
 
       /* ---------- PAGE 2 — Executive Summary + Disposition Mix ---------- */
-      doc.addPage();
-      contentHeader("Executive Summary", mLabel);
-      let y = sectionTitle(90, "Key Metrics");
+      let y = 90;
+      if (S.summary || S.mix) {
+      startPage();
+      contentHeader(S.summary ? "Executive Summary" : "Disposition Mix", mLabel);
+      }
+      if (S.summary) {
+      y = sectionTitle(90, "Key Metrics");
       const metrics = [
         ["Total Entries", fmtNum(totalItems, 0), "line items", NAVY],
-        ["Total Weight", `${fmtNum(totalKg)} kg`, "kilogram total", GREEN],
+        ["Total Weight", `${fmtKg(totalKg)} kg`, "kilogram total", GREEN],
         ["Total Pieces", fmtNum(totalPcs, 0), "pcs total", BLUE],
-        ["Sent to Market", `${fmtNum(marketKg)} kg`, "recovered value", CYAN],
-        ["Disposed", fmtNum(disposedCount, 0), `${fmtNum(disposedKg)} kg`, AMBER],
+        ["Sent to Market", `${fmtKg(marketKg)} kg`, "recovered value", CYAN],
+        ["Disposed", fmtNum(disposedCount, 0), `${fmtKg(disposedKg)} kg`, AMBER],
         ["Use in Production", fmtNum(useProdCount, 0), "re-processed", PURPLE],
       ];
       const mcW = (CW - 24) / 3, mcH = 74;
@@ -4216,6 +5555,20 @@ export default function BrowseReturns() {
       });
       y += mcH * 2 + 12 + 34;
 
+      /* Executive commentary — free text from the builder, wrapped to width. */
+      if ((O.notes || "").trim()) {
+        y = sectionTitle(y, "Commentary");
+        const nw = doc.splitTextToSize(O.notes.trim(), CW - 32);
+        const nh = 20 + nw.length * 12;
+        setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(M, y - 2, CW, nh, 8, 8, "FD");
+        setText(SLATE); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+        doc.text(nw, M + 16, y + 16);
+        y += nh + 22;
+      }
+      }
+
+      if (S.mix) {
       y = sectionTitle(y, "Disposition Mix");
       const segs = actionsSorted.slice(0, 7).map((a, i) => ({ ...a, color: colorForAction(a.label, i) }));
       /* centre count = items that carry a disposition (Σ slices), so the donut
@@ -4234,16 +5587,23 @@ export default function BrowseReturns() {
         setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
         doc.text(trunc(s.label || "—", 26), lx + 16, ly);
         setText(SLATE); doc.setFont("helvetica", "normal");
-        const pct = Math.round(s.value * 100 / actionTotal);
-        doc.text(`${s.value}  ·  ${pct}%`, PW - M, ly, { align: "right" });
+        /* fmtRate, not Math.round: the legend used to print 1018/1019 as "100%"
+           and the single other disposition as "0%" — two lies in one line. */
+        doc.text(`${s.value}  ·  ${fmtRate((s.value * 100) / actionTotal)}`, PW - M, ly, { align: "right" });
         ly += 21;
       });
-      footer();
+      }
+      if (S.summary || S.mix) footer();
 
       /* ---------- PAGE 3 — Trends & Quality (MoM + condemnation hotspots) ---------- */
-      doc.addPage();
+      let ty = 90;
+      if (S.comparison || S.hotspots) {
+      startPage();
       contentHeader("Trends & Quality", mLabel);
-      let ty = sectionTitle(90, prevAgg ? `vs Previous Period  ·  ${prevRangeLbl}` : "vs Previous Period");
+      }
+      const baseLbl = yoy ? "vs Same Period Last Year" : "vs Previous Period";
+      if (S.comparison) {
+      ty = sectionTitle(90, prevAgg ? `${baseLbl}  ·  ${prevRangeLbl}` : baseLbl);
       if (!prevAgg) {
         setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
         doc.roundedRect(M, ty + 4, CW, 40, 8, 8, "FD");
@@ -4254,14 +5614,23 @@ export default function BrowseReturns() {
         const ctW = (CW - 24) / 3, ctH = 74;
         compareTile(M, ty + 4, ctW, ctH, "Total Entries", fmtNum(curAgg.items, 0),
           pctChange(curAgg.items, prevAgg.items), fmtNum(prevAgg.items, 0), "vol");
-        compareTile(M + ctW + 12, ty + 4, ctW, ctH, "Total Weight", `${fmtNum(curAgg.kg)} kg`,
-          pctChange(curAgg.kg, prevAgg.kg), `${fmtNum(prevAgg.kg)} kg`, "vol");
-        compareTile(M + (ctW + 12) * 2, ty + 4, ctW, ctH, "Condemnation %", `${curAgg.condPct}%`,
-          pctChange(curAgg.condPct, prevAgg.condPct), `${prevAgg.condPct}%`, "cond");
+        compareTile(M + ctW + 12, ty + 4, ctW, ctH, "Total Weight", `${fmtKg(curAgg.kg)} kg`,
+          pctChange(curAgg.kg, prevAgg.kg), `${fmtKg(prevAgg.kg)} kg`, "vol");
+        compareTile(M + (ctW + 12) * 2, ty + 4, ctW, ctH, "Condemnation %", fmtRate(curAgg.condPct),
+          pctChange(curAgg.condPct, prevAgg.condPct), fmtRate(prevAgg.condPct), "cond");
         ty += ctH + 34;
+        if (isPartial) {
+          setText([176, 0, 0]); doc.setFont("helvetica", "italic"); doc.setFontSize(8);
+          doc.text(
+            `Like-for-like: this period stops on day ${lastDay}, so the baseline is cut at day ${lastDay} of ${monthLabel(prevToKey)} too.`,
+            M, ty - 20
+          );
+        }
+      }
       }
 
       /* Quality hotspots — two columns: by branch (left), by origin (right) */
+      if (S.hotspots) {
       const qcW = (CW - 30) / 2;
       const qTitleY = ty + 8;
       sectionTitle(qTitleY, "Condemnation Rate — Branch");
@@ -4270,16 +5639,27 @@ export default function BrowseReturns() {
       doc.text("Condemnation Rate — Origin", M + qcW + 42, qTitleY);
       rateBars(M, qTitleY + 24, qcW, branchRates);
       rateBars(M + qcW + 30, qTitleY + 24, qcW, originRates);
+      /* This page ranks by RATE, the Rankings page ranks by VOLUME — without
+         saying so, a branch topping one and missing from the other reads as a
+         bug. Both facts are spelled out here. */
       setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
-      doc.text(`Rate = condemned / total returns. Ranked by rate; only branches/origins with >= ${MIN_SAMPLE} returns shown.`, M, PH - 48);
-      footer();
+      const hotNotes = [
+        `Rate = condemned / total returns, ranked by rate then volume — NOT by number of returns (that is the Rankings page).`,
+        `Only branches/origins with >= ${MIN_SAMPLE} returns qualify; top ${RATE_N} of each shown (${branchRatesAll.length} branches, ${originRatesAll.length} origins qualify).`,
+        volLeaderNote,
+      ].filter(Boolean);
+      const hotLines = doc.splitTextToSize(hotNotes.join("  "), CW);
+      doc.text(hotLines, M, PH - 48 - (hotLines.length - 1) * 9);
+      }
+      if (S.comparison || S.hotspots) footer();
 
       /* ---------- PAGE 4 — Activity (per-day for 1 month, per-month otherwise) ---------- */
       const isDaily = bucketKind === "day";
       const activityTitle = isDaily ? "Daily Activity" : "Monthly Activity";
       const axisLabel = isDaily ? "Day of month" : "Month";
       const firstColHead = isDaily ? "Date" : "Month";
-      doc.addPage();
+      if (S.activity) {
+      startPage();
       contentHeader(activityTitle, mLabel);
       y = sectionTitle(90, isDaily ? "Returns per day" : "Returns per month");
       const chX = M, chY = y + 6, chW = CW, chH = 170;
@@ -4317,50 +5697,406 @@ export default function BrowseReturns() {
       /* Register table (one row per bucket) */
       doc.autoTable({
         startY: chY + chH + 40,
-        margin: { left: M, right: M },
+        margin: { left: M, right: M, bottom: 62 },
         head: [[firstColHead, "Entries", "Weight (kg)", "Condemned"]],
-        body: buckets.map((b) => [b.full, String(b.items), fmtNum(b.kg), String(b.cond)]),
-        foot: [["TOTAL", String(totalItems), fmtNum(totalKg), String(condCount)]],
+        body: buckets.map((b) => [b.full, String(b.items), fmtKg(b.kg), String(b.cond)]),
+        foot: [["TOTAL", String(totalItems), fmtKg(totalKg), String(condCount)]],
         styles: { font: "helvetica", fontSize: 9, cellPadding: 5, lineColor: LINE, lineWidth: 0.5, textColor: [30, 41, 59] },
         headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", halign: "center" },
         footStyles: { fillColor: LIGHT, textColor: NAVY, fontStyle: "bold", halign: "center" },
         columnStyles: { 0: { halign: "left" }, 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "center" } },
         didDrawPage: () => { contentHeader(activityTitle, mLabel); footer(); },
       });
+      /* The TOTAL is the exact sum of unrounded weights, so it can sit 0.01 away
+         from adding up the rounded cells above it — say so before a reader
+         calls it an error. */
+      setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+      const actNotes = [
+        coverageNote,
+        "Weights are rounded to 2 decimals; TOTAL is the exact sum and may differ from adding the rounded rows by ±0.01 kg.",
+      ].filter(Boolean);
+      const actLines = doc.splitTextToSize(actNotes.join("  "), CW);
+      doc.text(actLines, M, PH - 48 - (actLines.length - 1) * 9);
       footer();
+      }
 
       /* ---------- PAGE 5 — Rankings ---------- */
-      doc.addPage();
+      if (S.rankings) {
+      startPage();
       contentHeader("Rankings & Hotspots", mLabel);
       const colW = (CW - 30) / 2;
+      setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(8);
+      doc.text(`Ranked by: ${metricLabel}`, PW - M, 78, { align: "right" });
       const yL = sectionTitle(90, "Top Returned Products");
-      hbars(M, yL + 8, colW, topProducts.length ? topProducts : [{ label: "—", value: 0 }], NAVY, (v) => String(v));
+      hbars(M, yL + 8, colW, topProducts.length ? topProducts : [{ label: "—", value: 0 }], NAVY, metricFmt);
       /* Right-column title drawn manually so it aligns on the same row as the left. */
       setFill(BLUE); doc.roundedRect(M + colW + 30, 90 - 11, 4, 15, 2, 2, "F");
       setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
       doc.text("Top Branches (POS)", M + colW + 42, 90);
-      hbars(M + colW + 30, yL + 8, colW, topPos.length ? topPos : [{ label: "—", value: 0 }], BLUE, (v) => String(v));
+      hbars(M + colW + 30, yL + 8, colW, topPos.length ? topPos : [{ label: "—", value: 0 }], BLUE, metricFmt);
 
-      const rowY = 90 + 28 + 24 * 8 + 46;
+      /* second row starts below whatever the first row actually consumed —
+         RANK_N is user-configurable, so this can't be a fixed offset. */
+      const rowY = 90 + 28 + 24 * Math.max(topProducts.length, topPos.length, 1) + 46;
       const yB = sectionTitle(rowY, "Top Origins");
-      hbars(M, yB + 8, colW, topOrigins.length ? topOrigins : [{ label: "—", value: 0 }], GREEN, (v) => String(v));
+      hbars(M, yB + 8, colW, topOrigins.length ? topOrigins : [{ label: "—", value: 0 }], GREEN, metricFmt);
       /* Right-column title drawn manually so it aligns on the same row as the left. */
       setFill(RED); doc.roundedRect(M + colW + 30, rowY - 11, 4, 15, 2, 2, "F");
       setText(RED); doc.setFont("helvetica", "bold"); doc.setFontSize(12.5);
       doc.text("Most Condemned Items", M + colW + 42, rowY);
       hbars(M + colW + 30, yB + 8, colW, topCond.length ? topCond : [{ label: "None", value: 0 }], RED, (v) => String(v));
       footer();
+      }
+
+      /* ---------- Top Condemnation — the dedicated condemnation page ---------- */
+      if (S.topCondemn) {
+        startPage();
+        contentHeader("Top Condemnation", mLabel);
+        if (!condCount) {
+          const ny = sectionTitle(90, "Most-condemned products");
+          setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
+          doc.roundedRect(M, ny, CW, 44, 8, 8, "FD");
+          setText(SLATE); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+          doc.text("No condemned items in this period and scope.", M + 16, ny + 27);
+          footer();
+        } else {
+          const kW = (CW - 24) / 3;
+          /* Both denominators are quoted because the cover KPI uses "of decided"
+             while the scorecards use "of all returns" — showing one alone here
+             would look like it contradicts the other page. */
+          kpiCard(M, 84, kW, 74, "Condemned Items", fmtNum(condCount, 0),
+            `${fmtRate(totalItems ? (condCount * 100) / totalItems : 0)} of all · ${fmtRate(condPct)} of decided`, RED);
+          kpiCard(M + kW + 12, 84, kW, 74, "Condemned Weight", `${fmtKg(condKg)} kg`, "destroyed stock", AMBER);
+          kpiCard(M + (kW + 12) * 2, 84, kW, 74, "Products Affected", fmtNum(condRows.length, 0),
+            `worst: ${trunc(condRows[0].label || "—", 18)}`, NAVY);
+
+          /* Chart stays at 8 bars max so the ranked table still fits underneath;
+             the table itself honours the builder's Top-N. */
+          const chartRows = condRows.slice(0, Math.min(RANK_N, 8));
+          const cTitleY = sectionTitle(194, `Top ${chartRows.length} condemned products`);
+          const chEnd = hbars(M, cTitleY + 8, CW,
+            chartRows.map((r) => ({ label: r.label, value: r.cond })), RED, (v) => String(v));
+
+          const tableRows = condRows.slice(0, RANK_N);
+          doc.autoTable({
+            startY: chEnd + 22,
+            /* bottom margin keeps the last row clear of the explanatory note
+               that is printed at PH-48 once the table is done. */
+            margin: { left: M, right: M, top: 78, bottom: 68 },
+            head: [["Product", "Cond.", "Kg", "Share", "Cum.", "Returns", "Rate", "Top branch", "Top origin"]],
+            body: tableRows.map((r) => [
+              r.label, String(r.cond), fmtKg(r.kg), `${r.share.toFixed(1)}%`, `${r.cum.toFixed(0)}%`,
+              String(r.n), `${r.rate.toFixed(0)}%`, trunc(r.pos, 18), trunc(r.origin, 18),
+            ]),
+            /* TOTAL uses the same denominator as the scorecards (all returns), so
+               the rate column reconciles with the rest of the document. */
+            foot: [["TOTAL (all condemned)", String(condCount), fmtKg(condKg), "100%", "",
+                    String(totalItems), `${totalItems ? ((condCount * 100) / totalItems).toFixed(0) : "0"}%`, "", ""]],
+            styles: { font: "helvetica", fontSize: 8, cellPadding: 4, lineColor: LINE, lineWidth: 0.5, textColor: [30, 41, 59] },
+            headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", halign: "center" },
+            footStyles: { fillColor: LIGHT, textColor: NAVY, fontStyle: "bold", halign: "center" },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
+            columnStyles: {
+              0: { halign: "left", cellWidth: 116 }, 1: { halign: "center", cellWidth: 34 },
+              2: { halign: "center", cellWidth: 44 }, 3: { halign: "center", cellWidth: 40 },
+              4: { halign: "center", cellWidth: 34 }, 5: { halign: "center", cellWidth: 44 },
+              6: { halign: "center", cellWidth: 34 }, 7: { halign: "left" }, 8: { halign: "left" },
+            },
+            didParseCell: (d) => {
+              if (d.section === "body" && d.column.index === 1) {
+                d.cell.styles.textColor = RED; d.cell.styles.fontStyle = "bold";
+              }
+            },
+            didDrawPage: () => { contentHeader("Top Condemnation", mLabel); footer(); },
+          });
+          setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+          const notes = [
+            "Share = of all condemned items inside this report's scope",
+            "Rate = condemned / that product's own returns",
+            "Top branch / origin = where most of its condemnations occurred",
+          ];
+          if (condRows.length > tableRows.length) {
+            notes.push(`Showing top ${tableRows.length} of ${condRows.length} condemned products`);
+          }
+          /* Without this the Returns and Rate columns read as a data error: a
+             condemned-only scope makes every product 100% by construction. */
+          if (O.condemnedOnly) notes.push("Scope is condemned-only, so Returns = Cond. and every Rate is 100%");
+          const noteLines = doc.splitTextToSize(notes.join("  ·  "), CW);
+          doc.text(noteLines, M, PH - 48 - (noteLines.length - 1) * 9);
+          footer();
+        }
+      }
+
+      /* ---------- Branch scorecard ---------- */
+      const GRADE_FILL = { A: [220, 252, 231], B: [254, 249, 195], C: [255, 237, 213], D: [254, 226, 226] };
+      const GRADE_TEXT = { A: [22, 101, 52], B: [133, 77, 14], C: [154, 52, 18], D: [153, 27, 27] };
+      const scorecardPage = (title, rows, firstCol) => {
+        startPage();
+        contentHeader(title, mLabel);
+        doc.autoTable({
+          startY: 84,
+          margin: { left: M, right: M, top: 78 },
+          head: [[firstCol, "Returns", "Share", "Weight (kg)", "Condemned", "Cond. rate", "Grade"]],
+          body: rows.map((r) => [
+            r.label, String(r.n), `${r.share.toFixed(1)}%`, fmtKg(r.kg),
+            String(r.cond), `${r.rate.toFixed(1)}%`, r.grade,
+          ]),
+          /* The TOTAL rate must use the SAME denominator as the rows above it
+             (all returns, not just those carrying a disposition), otherwise the
+             column does not reconcile with its own total. */
+          foot: [["TOTAL", String(totalItems), "100%", fmtKg(totalKg), String(condCount),
+                  `${totalItems ? ((condCount * 100) / totalItems).toFixed(1) : "0.0"}%`, ""]],
+          styles: { font: "helvetica", fontSize: 9, cellPadding: 5, lineColor: LINE, lineWidth: 0.5, textColor: [30, 41, 59] },
+          headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", halign: "center" },
+          footStyles: { fillColor: LIGHT, textColor: NAVY, fontStyle: "bold", halign: "center" },
+          columnStyles: {
+            0: { halign: "left", cellWidth: 150 }, 1: { halign: "center" }, 2: { halign: "center" },
+            3: { halign: "center" }, 4: { halign: "center" }, 5: { halign: "center" },
+            6: { halign: "center", fontStyle: "bold" },
+          },
+          /* Grade cell colour-coded so a weak performer is visible at a glance. */
+          didParseCell: (d) => {
+            if (d.section === "body" && d.column.index === 6) {
+              const g = d.cell.raw;
+              if (GRADE_FILL[g]) { d.cell.styles.fillColor = GRADE_FILL[g]; d.cell.styles.textColor = GRADE_TEXT[g]; }
+            }
+          },
+          didDrawPage: () => { contentHeader(title, mLabel); footer(); },
+        });
+        setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+        doc.text("Grade by condemnation rate:  A < 7%   ·   B 7-15%   ·   C 15-25%   ·   D >= 25%", M, PH - 48);
+        footer();
+      };
+      if (S.branchScorecard) scorecardPage("Branch Scorecard", branchCard, "Branch (POS)");
+      if (S.originQuality) scorecardPage("Origin Quality", originCard, "Origin");
+
+      /* ---------- Pareto (80/20) ---------- */
+      if (S.pareto) {
+        startPage();
+        contentHeader("Pareto Analysis", mLabel);
+        let py = sectionTitle(90, "The vital few — products driving most returns");
+        setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(M, py, CW, 44, 8, 8, "FD");
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+        const vf = vitalFew > 0 ? vitalFew : paretoData.length;
+        const vfPct = paretoData.length ? Math.round((vf * 100) / paretoData.length) : 0;
+        doc.text(
+          `${vf} of ${paretoData.length} products (${vfPct}%) account for 80% of all returns.`,
+          M + 16, py + 27
+        );
+        py += 64;
+
+        const top = paretoData.slice(0, Math.max(RANK_N, 10));
+        const pMax = Math.max(...top.map((r) => r.n), 1);
+        const rowH = 22;
+        top.forEach((r, i) => {
+          const yy = py + i * rowH;
+          const inVital = i < vf;
+          setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+          doc.text(`${i + 1}. ${trunc(r.label || "—", 34)}`, M, yy);
+          const barX = M + 260, barW = CW - 320;
+          setFill(LIGHT); doc.roundedRect(barX, yy - 6, barW, 8, 4, 4, "F");
+          setFill(inVital ? RED : NAVY2);
+          doc.roundedRect(barX, yy - 6, Math.max(2, (r.n / pMax) * barW), 8, 4, 4, "F");
+          setText(SLATE); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+          doc.text(`${r.n}`, barX - 8, yy, { align: "right" });
+          setText(inVital ? RED : MUTE); doc.setFont("helvetica", "bold");
+          doc.text(`${r.cum.toFixed(0)}%`, PW - M, yy, { align: "right" });
+        });
+        setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+        doc.text("Red bars are inside the 80% cumulative band — fix these first. Right column is the running cumulative share.", M, PH - 48);
+        footer();
+      }
+
+      /* ---------- Repeat offenders ---------- */
+      if (S.repeat) {
+        startPage();
+        contentHeader("Repeat Offenders", mLabel);
+        const rTitle = `Products returned on ${minDays}+ separate days`;
+        doc.autoTable({
+          startY: 84,
+          margin: { left: M, right: M, top: 78 },
+          head: [["Product", "Days seen", "Total returns", "Condemned"]],
+          body: repeatRows.length
+            ? repeatRows.map((r) => [r.label, String(r.days), String(r.n), String(r.cond)])
+            : [["No product recurred on that many days in this period.", "", "", ""]],
+          styles: { font: "helvetica", fontSize: 9, cellPadding: 5, lineColor: LINE, lineWidth: 0.5, textColor: [30, 41, 59] },
+          headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", halign: "center" },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: { 0: { halign: "left" }, 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "center" } },
+          didDrawPage: () => { contentHeader("Repeat Offenders", mLabel); footer(); },
+        });
+        setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+        doc.text(`${rTitle}. A high day count means a chronic issue, not a one-off incident.`, M, PH - 48);
+        footer();
+      }
+
+      /* ---------- Day-of-week pattern ---------- */
+      if (S.weekday) {
+        startPage();
+        contentHeader("Day-of-Week Pattern", mLabel);
+        let wy = sectionTitle(90, "Returns by weekday");
+        const wMax = Math.max(...weekdayRows.map((r) => r.value), 1);
+        const busiest = weekdayRows.reduce((mx, r) => (r.value > mx.value ? r : mx), { value: -1, label: "—" });
+        weekdayRows.forEach((r, i) => {
+          const yy = wy + 16 + i * 30;
+          setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+          doc.text(r.label, M, yy);
+          const barX = M + 92, barW = CW - 160;
+          setFill(LIGHT); doc.roundedRect(barX, yy - 8, barW, 12, 6, 6, "F");
+          setFill(r.label === busiest.label && r.value > 0 ? RED : BLUE);
+          doc.roundedRect(barX, yy - 8, Math.max(2, (r.value / wMax) * barW), 12, 6, 6, "F");
+          setText(SLATE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+          doc.text(String(r.value), PW - M, yy, { align: "right" });
+        });
+        wy += 16 + 7 * 30 + 20;
+        setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(M, wy, CW, 40, 8, 8, "FD");
+        setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+        doc.text(`Heaviest weekday: ${busiest.label} (${busiest.value} returns)`, M + 16, wy + 25);
+        footer();
+      }
+
+      /* ---------- Spike days ---------- */
+      if (S.anomalies) {
+        startPage();
+        contentHeader("Spike Days", mLabel);
+        let ay = sectionTitle(90, "Days statistically above normal");
+        setFill(LIGHT); setDraw(LINE); doc.setLineWidth(1);
+        doc.roundedRect(M, ay, CW, 44, 8, 8, "FD");
+        setText(SLATE); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+        doc.text(
+          `Baseline: ${fmtNum(mean, 1)} returns/day (sigma ${fmtNum(sd, 1)}). Flagged above ${fmtNum(spikeCut, 1)}.`,
+          M + 16, ay + 27
+        );
+        ay += 62;
+        doc.autoTable({
+          startY: ay,
+          margin: { left: M, right: M, top: 78 },
+          head: [["Date", "Returns", "vs average", "Weight (kg)", "Condemned"]],
+          body: spikeRows.length
+            ? spikeRows.map((d) => [d.date, String(d.items), `+${d.over}%`, fmtKg(d.kg), String(d.cond)])
+            : [["No day exceeded the threshold — activity was statistically steady.", "", "", "", ""]],
+          styles: { font: "helvetica", fontSize: 9, cellPadding: 5, lineColor: LINE, lineWidth: 0.5, textColor: [30, 41, 59] },
+          headStyles: { fillColor: RED, textColor: 255, fontStyle: "bold", halign: "center" },
+          alternateRowStyles: { fillColor: [254, 242, 242] },
+          columnStyles: { 0: { halign: "left" }, 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "center" }, 4: { halign: "center" } },
+          didDrawPage: () => { contentHeader("Spike Days", mLabel); footer(); },
+        });
+        footer();
+      }
+
+      /* ---------- Detailed line-item register (audit annex) ---------- */
+      if (S.lineItems) {
+        startPage();
+        contentHeader("Line-Item Register", mLabel);
+        const cap = Math.max(1, Number(O.lineItemLimit) || 400);
+        const annexRows = lineItems.slice(0, cap);
+        const capped = lineItems.length > annexRows.length;
+        doc.autoTable({
+          startY: 82,
+          margin: { left: M, right: M, top: 78 },
+          head: [["Date", "Code", "Product", "Origin", "Branch", "Qty", "Expiry", "Disposition"]],
+          body: annexRows,
+          styles: { font: "helvetica", fontSize: 7.5, cellPadding: 3, lineColor: LINE, lineWidth: 0.4, textColor: [30, 41, 59], overflow: "linebreak" },
+          headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", halign: "center", fontSize: 7.5 },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: {
+            0: { cellWidth: 52 }, 1: { cellWidth: 48 }, 2: { cellWidth: 118 },
+            3: { cellWidth: 60 }, 4: { cellWidth: 62 }, 5: { cellWidth: 48, halign: "right" },
+            6: { cellWidth: 50 }, 7: { cellWidth: "auto" },
+          },
+          didDrawPage: () => { contentHeader("Line-Item Register", mLabel); footer(); },
+        });
+        if (capped) {
+          setText(MUTE); doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+          doc.text(`Showing the first ${annexRows.length} of ${fmtNum(totalItems, 0)} matching items — raise the limit in the report builder, or use the Excel export which includes them all.`, M, PH - 48);
+        }
+        footer();
+      }
+
+      /* ---------- Sign-off ---------- */
+      if (S.signoff) {
+        startPage();
+        contentHeader("Review & Approval", mLabel);
+        let sy = sectionTitle(90, "Document Control");
+        const ctrl = [
+          ["Report title", RTITLE],
+          ["Period covered", mLabel],
+          ["Reference no.", (O.refNo || "").trim() || "—"],
+          ["Classification", O.classification || "—"],
+          ["Scope", isFiltered ? scopeBits.join("  ·  ") : "All branches, products and origins"],
+          ["Line items included", fmtNum(totalItems, 0)],
+          ["Generated", genStamp],
+        ];
+        doc.autoTable({
+          startY: sy,
+          margin: { left: M, right: M },
+          body: ctrl,
+          theme: "grid",
+          styles: { font: "helvetica", fontSize: 9, cellPadding: 6, lineColor: LINE, lineWidth: 0.5, textColor: [30, 41, 59], overflow: "linebreak" },
+          columnStyles: { 0: { cellWidth: 130, fontStyle: "bold", fillColor: LIGHT, textColor: NAVY }, 1: { cellWidth: "auto" } },
+        });
+
+        let by = (doc.lastAutoTable?.finalY || sy) + 36;
+        by = sectionTitle(by, "Signatures");
+        const roles = [
+          ["Prepared by", (O.preparedBy || "").trim()],
+          ["Reviewed by", (O.reviewedBy || "").trim()],
+          ["Approved by", (O.approvedBy || "").trim()],
+        ];
+        const sbW = (CW - 24) / 3, sbH = 108;
+        roles.forEach(([role, name], i) => {
+          const x = M + i * (sbW + 12);
+          setFill([255, 255, 255]); setDraw(LINE); doc.setLineWidth(1);
+          doc.roundedRect(x, by, sbW, sbH, 7, 7, "FD");
+          setFill(NAVY); doc.roundedRect(x, by, sbW, 3, 2, 2, "F");
+          setText(SLATE); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+          doc.text(role.toUpperCase(), x + 12, by + 22);
+          setText(NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+          doc.text(name || "—", x + 12, by + 42);
+          setDraw(LINE); doc.setLineWidth(0.6);
+          doc.line(x + 12, by + 68, x + sbW - 12, by + 68);
+          setText(MUTE); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+          doc.text("Signature", x + 12, by + 78);
+          setDraw(LINE);
+          doc.line(x + 12, by + 94, x + sbW - 12, by + 94);
+          doc.text("Date", x + 12, by + 104);
+        });
+        footer();
+      }
 
       /* ---------- Page numbers already drawn via footer() ---------- */
+      const scopeTag = scopeOverride?.branches?.length
+        ? `_${String(scopeOverride.branches[0]).replace(/[^A-Za-z0-9]+/g, "")}`
+        : isFiltered ? "_Filtered" : "";
       const filename = months === 1
-        ? `Al_Mawashi_${period.fileTag}_Returns_${toKey}.pdf`
-        : `Al_Mawashi_${period.fileTag}_Returns_${fromKey}_to_${toKey}.pdf`;
+        ? `Al_Mawashi_${period.fileTag}_Returns${scopeTag}_${toKey}.pdf`
+        : `Al_Mawashi_${period.fileTag}_Returns${scopeTag}_${fromKey}_to_${toKey}.pdf`;
+
+      /* Compliance trail: who produced which report, over what scope, when.
+         Stored as a normal record so the server's audit layer logs the create. */
+      logReportRun({
+        filename, periodType, from: fromKey, to: toKey,
+        scope: scopeBits, sections: REPORT_SECTIONS.filter((s) => S[s.key]).map((s) => s.key),
+        items: totalItems, kg: Math.round(totalKg * 100) / 100, condemned: condCount,
+        delivery: deliver,
+      });
+
+      if (deliver === "blob") {
+        /* datauristring → strip the "data:...;base64," prefix for the mailer. */
+        const b64 = String(doc.output("datauristring")).replace(/^data:[^;]+;base64,/, "");
+        return { filename, base64: b64, items: totalItems, label: mLabel };
+      }
+
       doc.save(filename);
-      toast(`${period.fileTag} report generated`, "ok");
+      say(`${period.fileTag} report generated`, "ok");
       setMonthlyOpen(false);
+      return { filename, items: totalItems, label: mLabel };
     } catch (e) {
       console.error("[generatePeriodReport] failed:", e);
-      toast("Failed to generate report", "err");
+      say("Failed to generate report", "err");
+      return null;
     } finally {
       setMonthlyBusy(false);
     }
@@ -5703,96 +7439,806 @@ export default function BrowseReturns() {
             }}
           >
             <div onClick={(e) => e.stopPropagation()} style={{
-              ...sx.card, width: "min(460px, 96vw)", overflow: "hidden", padding: 0,
+              ...sx.card, width: "min(1080px, 97vw)", maxHeight: "92vh",
+              overflow: "hidden", padding: 0, display: "flex", flexDirection: "column",
               boxShadow: "0 24px 60px rgba(15,23,42,.35)",
+              direction: isAr ? "rtl" : "ltr",
+              textAlign: isAr ? "right" : "left",
             }}>
               {/* Header band */}
               <div style={{
                 background: `linear-gradient(135deg, ${T.primary} 0%, ${T.purple} 100%)`,
                 color: "#fff", padding: "18px 20px",
-                display: "flex", alignItems: "center", gap: 12,
+                display: "flex", alignItems: "center", gap: 12, flexShrink: 0,
               }}>
                 <div style={{
                   width: 40, height: 40, borderRadius: 10, flexShrink: 0,
                   background: "rgba(255,255,255,.18)", display: "grid", placeItems: "center",
                 }}><FiFileText size={20} /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>Returns Report</div>
-                  <div style={{ fontSize: 12, opacity: .9 }}>Executive PDF · monthly · quarterly · half-year · 9-month · annual</div>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{L("title")}</div>
+                  <div style={{ fontSize: 12, opacity: .9 }}>{L("subtitle")}</div>
                 </div>
+                {/* Popup language — the generated PDF stays English either way. */}
+                <button
+                  onClick={() => setRbLang(isAr ? "en" : "ar")}
+                  title={isAr ? "Switch to English" : "التبديل إلى العربية"}
+                  style={{
+                    background: "rgba(255,255,255,.18)", color: "#fff",
+                    border: "1px solid rgba(255,255,255,.35)", borderRadius: 999,
+                    padding: "6px 14px", cursor: "pointer", fontFamily: "inherit",
+                    fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap",
+                  }}
+                >{isAr ? "🇬🇧 EN" : "🇸🇦 عربي"}</button>
                 <button onClick={() => !monthlyBusy && setMonthlyOpen(false)} style={{
                   ...sx.btnGhost, color: "#fff", cursor: "pointer", padding: 4,
                 }}><FiX size={18} /></button>
               </div>
 
-              <div style={{ padding: 20 }}>
-                <label style={{ ...sx.h3, display: "block", marginBottom: 8 }}>Report type</label>
-                <select
-                  value={periodType}
-                  onChange={(e) => setPeriodType(e.target.value)}
-                  disabled={monthlyBusy}
-                  style={{ ...sx.input, width: "100%", fontSize: 15, cursor: "pointer", marginBottom: 16 }}
-                >
-                  {REPORT_PERIODS.map((p) => (
-                    <option key={p.key} value={p.key}>{p.en}</option>
-                  ))}
-                </select>
+              <style>{`
+                @media (max-width: 900px) {
+                  .rb-grid { grid-template-columns: 1fr !important; }
+                  .rb-rail { flex-direction: row !important; overflow-x: auto; border-right: none !important;
+                             border-bottom: 1px solid ${T.border} !important; }
+                  .rb-outline { display: none !important; }
+                }
+              `}</style>
 
-                <label style={{ ...sx.h3, display: "block", marginBottom: 8 }}>
-                  {periodType === "monthly" ? "Month" : "Ending month"}
-                </label>
-                {availableMonths.length === 0 ? (
-                  <div style={{ ...sx.muted, padding: "10px 0" }}>No returns data available yet.</div>
-                ) : (
-                  <select
-                    value={monthlyMonth}
-                    onChange={(e) => setMonthlyMonth(e.target.value)}
-                    disabled={monthlyBusy}
-                    style={{ ...sx.input, width: "100%", fontSize: 15, cursor: "pointer" }}
-                  >
-                    {availableMonths.map((m) => (
-                      <option key={m} value={m}>{monthLabel(m)}</option>
-                    ))}
-                  </select>
+              {/* Body: nav rail · panel · live outline */}
+              <div className="rb-grid" style={{
+                display: "grid", gridTemplateColumns: "186px minmax(0,1fr) 224px",
+                flex: 1, minHeight: 0, overflow: "hidden",
+              }}>
+                {/* ── Left rail ── */}
+                <div className="rb-rail" style={{
+                  display: "flex", flexDirection: "column", gap: 4, padding: 12,
+                  borderRight: `1px solid ${T.border}`, background: T.bgAlt, overflowY: "auto",
+                }}>
+                  {[
+                    { k: "preset",   icon: "⚡", label: L("navPreset"),   sub: L("navPresetSub") },
+                    { k: "scope",    icon: "🎯", label: L("navScope"),    sub: L("navScopeSub") },
+                    { k: "content",  icon: "🧩", label: L("navSections"), sub: `${activeSectionCount}/${REPORT_SECTIONS.length} ${L("on")}` },
+                    { k: "analysis", icon: "🧠", label: L("navAnalysis"), sub: L("navAnalysisSub") },
+                    { k: "details",  icon: "🏷️", label: L("navDoc"),      sub: L("navDocSub") },
+                    { k: "delivery", icon: "📤", label: L("navDelivery"), sub: L("navDeliverySub") },
+                  ].map((t) => {
+                    const on = reportTab === t.k;
+                    return (
+                      <button
+                        key={t.k}
+                        onClick={() => setReportTab(t.k)}
+                        disabled={monthlyBusy}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                          padding: "10px 12px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
+                          border: `1px solid ${on ? T.primary : "transparent"}`,
+                          background: on ? "#fff" : "transparent",
+                          boxShadow: on ? "0 2px 8px rgba(15,23,42,.08)" : "none",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span style={{ fontSize: 16 }}>{t.icon}</span>
+                        <span style={{ minWidth: 0, textAlign: isAr ? "right" : "left" }}>
+                          <span style={{
+                            display: "block", fontSize: 13, fontWeight: 800,
+                            color: on ? T.primaryD : T.text,
+                          }}>{t.label}</span>
+                          <span style={{ display: "block", fontSize: 11, color: T.textM, whiteSpace: "nowrap" }}>{t.sub}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* ── Panel ── */}
+                <div style={{ padding: 20, overflowY: "auto", minHeight: 0 }}>
+
+                {/* ── PRESETS ── */}
+                {reportTab === "preset" && (
+                  <>
+                    {/* ── Saved templates ── */}
+                    <div style={{ ...sx.h3, marginBottom: 4 }}>{L("myTemplates")}</div>
+                    <div style={{ ...sx.muted, marginBottom: 10 }}>{L("tplScopeNote")}</div>
+
+                    {savedTemplates.length === 0 ? (
+                      <div style={{
+                        ...sx.muted, fontSize: 12.5, padding: "12px 14px",
+                        border: `1px dashed ${T.border}`, borderRadius: 10, marginBottom: 12,
+                      }}>{L("tplNone")}</div>
+                    ) : (
+                      <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+                        {savedTemplates.map((tpl) => {
+                          const nSec = REPORT_SECTIONS.filter((s) => tpl.opts?.sections?.[s.key]).length;
+                          const nFil = (tpl.opts?.branches?.length || 0) + (tpl.opts?.products?.length || 0)
+                            + (tpl.opts?.origins?.length || 0) + (tpl.opts?.actions?.length || 0)
+                            + (tpl.opts?.qtyType && tpl.opts.qtyType !== "all" ? 1 : 0)
+                            + (tpl.opts?.condemnedOnly ? 1 : 0)
+                            + (tpl.opts?.minQty ? 1 : 0);
+                          return (
+                            <div key={tpl.recordId} style={{
+                              display: "flex", alignItems: "center", gap: 10,
+                              padding: "11px 14px", borderRadius: 12,
+                              border: `1px solid ${T.border}`, background: "#fff",
+                            }}>
+                              <span style={{ fontSize: 19 }}>💾</span>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{
+                                  fontSize: 13.5, fontWeight: 800, color: T.text,
+                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                }}>{tpl.name}</div>
+                                <div style={{ fontSize: 11.5, color: T.textM, marginTop: 2 }}>
+                                  {nSec} {L("sectionsWord")}
+                                  {nFil > 0 ? ` · ${nFil} ${L("scopeActive")}` : ""}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => applyTemplate(tpl)} disabled={monthlyBusy || tplBusy}
+                                style={{ ...sx.btn, padding: "6px 14px", fontSize: 12.5, fontWeight: 800,
+                                         borderColor: T.primary, color: T.primaryD }}
+                              >{L("tplApply")}</button>
+                              <button
+                                onClick={() => deleteTemplate(tpl)} disabled={monthlyBusy || tplBusy}
+                                data-delete-action="true"
+                                style={{ ...sx.btn, padding: "6px 12px", fontSize: 12.5,
+                                         borderColor: "#fecaca", color: T.danger }}
+                              >{L("tplDelete")}</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
+                      <input
+                        value={tplName} onChange={(e) => setTplName(e.target.value)}
+                        placeholder={L("tplNamePh")} disabled={monthlyBusy || tplBusy}
+                        onKeyDown={(e) => { if (e.key === "Enter") saveTemplate(); }}
+                        style={{ ...sx.input, flex: "1 1 220px", minWidth: 180 }}
+                      />
+                      <button
+                        onClick={saveTemplate} disabled={monthlyBusy || tplBusy || !tplName.trim()}
+                        style={{
+                          ...sx.btn, padding: "9px 16px", fontWeight: 800, whiteSpace: "nowrap",
+                          borderColor: T.success, color: T.success,
+                          opacity: tplName.trim() ? 1 : .5,
+                        }}
+                      >💾 {tplBusy ? L("tplSaving") : L("tplSave")}</button>
+                    </div>
+
+                    {/* ── Built-in presets ── */}
+                    <div style={{ ...sx.h3, marginBottom: 4 }}>{L("tplBuiltIn")}</div>
+                    <div style={{ ...sx.muted, marginBottom: 14 }}>{L("presetNote")}</div>
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {REPORT_PRESETS.map((p) => {
+                        const match = REPORT_SECTIONS.every((s) => !!reportOpts.sections[s.key] === p.sections.includes(s.key));
+                        return (
+                          <button
+                            key={p.key}
+                            onClick={() => setReportOpts((o) => ({
+                              ...o,
+                              sections: REPORT_SECTIONS.reduce((a, s) => ({ ...a, [s.key]: p.sections.includes(s.key) }), {}),
+                            }))}
+                            disabled={monthlyBusy}
+                            style={{
+                              display: "flex", alignItems: "flex-start", gap: 12, textAlign: "left",
+                              padding: "14px 16px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                              border: `1px solid ${match ? T.primary : T.border}`,
+                              background: match ? T.primaryS : "#fff",
+                            }}
+                          >
+                            <span style={{ fontSize: 22 }}>{p.icon}</span>
+                            <span style={{ minWidth: 0, flex: 1 }}>
+                              <span style={{ display: "block", fontSize: 14, fontWeight: 800, color: match ? T.primaryD : T.text }}>
+                                {LA(p, "label")}
+                              </span>
+                              <span style={{ display: "block", fontSize: 12.5, color: T.textM, marginTop: 3 }}>{LA(p, "desc")}</span>
+                              <span style={{ display: "block", fontSize: 11.5, color: T.textM, marginTop: 5, fontWeight: 700 }}>
+                                {p.sections.length} {L("sectionsWord")}
+                              </span>
+                            </span>
+                            {match && <span style={{ color: T.primary, fontWeight: 900, fontSize: 18 }}>✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
 
-                {monthlyMonth && availableMonths.length > 0 && (() => {
-                  const p = REPORT_PERIODS.find((x) => x.key === periodType) || REPORT_PERIODS[0];
-                  const from = addMonthKey(monthlyMonth, -(p.months - 1));
-                  return (
-                    <div style={{ marginTop: 12, fontSize: 13, color: T.textM }}>
-                      Covers <strong style={{ color: T.text }}>{rangeLabel(from, monthlyMonth)}</strong>
-                      {" · "}{p.months} month{p.months > 1 ? "s" : ""}
+                {/* ── TAB 1 · PERIOD & SCOPE ── */}
+                {reportTab === "scope" && (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 18 }}>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 8 }}>{L("reportType")}</label>
+                        <select
+                          value={periodType}
+                          onChange={(e) => setPeriodType(e.target.value)}
+                          disabled={monthlyBusy}
+                          style={{ ...sx.input, width: "100%", fontSize: 15, cursor: "pointer" }}
+                        >
+                          {REPORT_PERIODS.map((p) => <option key={p.key} value={p.key}>{isAr ? p.ar : p.en}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 8 }}>
+                          {periodType === "monthly" ? L("month") : L("endingMonth")}
+                        </label>
+                        {availableMonths.length === 0 ? (
+                          <div style={{ ...sx.muted, padding: "10px 0" }}>{L("noData")}</div>
+                        ) : (
+                          <select
+                            value={monthlyMonth}
+                            onChange={(e) => setMonthlyMonth(e.target.value)}
+                            disabled={monthlyBusy}
+                            style={{ ...sx.input, width: "100%", fontSize: 15, cursor: "pointer" }}
+                          >
+                            {availableMonths.map((m) => (
+                              <option key={m} value={m}>
+                                {monthLabel(m)} — {fmtNum(monthCounts.get(m) || 0, 0)} {L("itemsWord")}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
                     </div>
-                  );
-                })()}
 
-                <div style={{
-                  marginTop: 14, padding: "12px 14px", borderRadius: 10,
-                  background: T.primaryS, border: `1px solid #c7d2fe`,
-                  fontSize: 12.5, color: T.primaryD, lineHeight: 1.6,
+                    {monthlyMonth && availableMonths.length > 0 && (() => {
+                      const p = REPORT_PERIODS.find((x) => x.key === periodType) || REPORT_PERIODS[0];
+                      const from = addMonthKey(monthlyMonth, -(p.months - 1));
+                      return (
+                        <div style={{ marginBottom: 18, fontSize: 13, color: T.textM }}>
+                          {L("covers")} <strong style={{ color: T.text }}>{rangeLabel(from, monthlyMonth)}</strong>
+                          {" · "}{p.months} {p.months > 1 ? L("monthsWord") : L("monthWord")}
+                          {/* An unfinished anchor month is flagged here, before a
+                              single page is generated. */}
+                          {anchorCoverage && (
+                            <div style={{
+                              marginTop: 8, padding: "8px 12px", borderRadius: 9, fontSize: 12.5, fontWeight: 700,
+                              lineHeight: 1.6,
+                              background: anchorCoverage.partial ? T.warningS : T.successS,
+                              border: `1px solid ${anchorCoverage.partial ? "#fde68a" : "#a7f3d0"}`,
+                              color: anchorCoverage.partial ? T.warning : T.success,
+                            }}>
+                              {anchorCoverage.partial ? "⚠️ " : "✓ "}
+                              {anchorCoverage.partial
+                                ? L("cvPartial", {
+                                    d: fmtDayLong(anchorCoverage.last), a: anchorCoverage.lastDay,
+                                    b: anchorCoverage.days, m: monthLabel(monthlyMonth),
+                                  })
+                                : L("cvFull", { d: fmtDayLong(anchorCoverage.last) })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    <ReportFacetPicker
+                      title={L("fBranches")} icon="🏪" sx={sx} T={T} L={L}
+                      options={reportFacets.branches} selected={reportOpts.branches}
+                      onToggle={(v) => toggleIn("branches", v)}
+                      onClear={() => setOpt("branches", [])} disabled={monthlyBusy}
+                    />
+                    <ReportFacetPicker
+                      title={L("fProducts")} icon="🥩" sx={sx} T={T} L={L}
+                      options={reportFacets.products} selected={reportOpts.products}
+                      onToggle={(v) => toggleIn("products", v)}
+                      onClear={() => setOpt("products", [])} disabled={monthlyBusy} searchable
+                    />
+                    <CondemnLeaderboard
+                      rows={condLeaderboard} selected={reportOpts.products}
+                      onToggle={(v) => toggleIn("products", v)}
+                      onTopN={(n) => setOpt("products", condLeaderboard.slice(0, n).map((r) => r.label))}
+                      onClear={() => setOpt("products", [])}
+                      disabled={monthlyBusy} sx={sx} T={T} L={L}
+                    />
+                    <ReportFacetPicker
+                      title={L("fOrigins")} icon="🌍" sx={sx} T={T} L={L}
+                      options={reportFacets.origins} selected={reportOpts.origins}
+                      onToggle={(v) => toggleIn("origins", v)}
+                      onClear={() => setOpt("origins", [])} disabled={monthlyBusy}
+                    />
+                    <ReportFacetPicker
+                      title={L("fActions")} icon="⚖️" sx={sx} T={T} L={L}
+                      options={reportFacets.actions} selected={reportOpts.actions}
+                      onToggle={(v) => toggleIn("actions", v)}
+                      onClear={() => setOpt("actions", [])} disabled={monthlyBusy}
+                    />
+
+                    <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end", marginTop: 4 }}>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("unit")}</label>
+                        <select
+                          value={reportOpts.qtyType} onChange={(e) => setOpt("qtyType", e.target.value)}
+                          disabled={monthlyBusy} style={{ ...sx.input, cursor: "pointer" }}
+                        >
+                          <option value="all">{L("unitAll")}</option>
+                          <option value="kg">{L("unitKg")}</option>
+                          <option value="pcs">{L("unitPcs")}</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("minQty")}</label>
+                        <input
+                          type="number" min="0" step="any" placeholder={L("anyPh")}
+                          value={reportOpts.minQty} onChange={(e) => setOpt("minQty", e.target.value)}
+                          disabled={monthlyBusy} style={{ ...sx.input, width: 120 }}
+                        />
+                      </div>
+                      <label style={{
+                        display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+                        fontSize: 13.5, fontWeight: 700, color: T.text, paddingBottom: 10,
+                      }}>
+                        <input
+                          type="checkbox" checked={reportOpts.condemnedOnly}
+                          onChange={(e) => setOpt("condemnedOnly", e.target.checked)}
+                          disabled={monthlyBusy}
+                        />
+                        {L("condOnly")}
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* ── SECTIONS ── */}
+                {reportTab === "content" && (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                      <div style={{ ...sx.h3 }}>{L("sectionsTitle")}</div>
+                      <div style={{ marginInlineStart: "auto", display: "flex", gap: 6 }}>
+                        <button
+                          onClick={() => setReportOpts((o) => ({
+                            ...o, sections: REPORT_SECTIONS.reduce((a, s) => ({ ...a, [s.key]: true }), {}),
+                          }))}
+                          disabled={monthlyBusy} style={{ ...sx.btn, padding: "5px 12px", fontSize: 12 }}
+                        >{L("selectAll")}</button>
+                        <button
+                          onClick={() => setReportOpts((o) => ({
+                            ...o, sections: REPORT_SECTIONS.reduce((a, s) => ({ ...a, [s.key]: false }), {}),
+                          }))}
+                          disabled={monthlyBusy} style={{ ...sx.btn, padding: "5px 12px", fontSize: 12 }}
+                        >{L("clearAll")}</button>
+                      </div>
+                    </div>
+
+                    {SECTION_GROUPS.map((g) => {
+                      const items = REPORT_SECTIONS.filter((s) => s.group === g);
+                      const onCount = items.filter((s) => reportOpts.sections[s.key]).length;
+                      return (
+                        <div key={g} style={{ marginBottom: 18 }}>
+                          <div style={{
+                            display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
+                            fontSize: 11.5, fontWeight: 900, color: T.textM,
+                            textTransform: "uppercase", letterSpacing: ".06em",
+                          }}>
+                            <span>{L(`grp${g}`)}</span>
+                            <span style={{
+                              background: T.bgAlt, borderRadius: 999, padding: "1px 8px",
+                              fontSize: 11, color: T.text,
+                            }}>{onCount}/{items.length}</span>
+                            <span style={{ flex: 1, height: 1, background: T.border }} />
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            {items.map((s) => {
+                              const on = !!reportOpts.sections[s.key];
+                              const toggle = () => setReportOpts((o) => ({
+                                ...o, sections: { ...o.sections, [s.key]: !o.sections[s.key] },
+                              }));
+                              return (
+                                <div key={s.key} style={{
+                                  display: "flex", alignItems: "center", gap: 12,
+                                  padding: "10px 14px", borderRadius: 10,
+                                  border: `1px solid ${on ? T.primary : T.border}`,
+                                  background: on ? T.primaryS : "#fff",
+                                }}>
+                                  <span style={{ fontSize: 17 }}>{s.icon}</span>
+                                  <div style={{ minWidth: 0, flex: 1, cursor: "pointer" }} onClick={monthlyBusy ? undefined : toggle}>
+                                    <div style={{ fontSize: 13.5, fontWeight: 800, color: on ? T.primaryD : T.text }}>{LA(s, "label")}</div>
+                                    <div style={{ fontSize: 12, color: T.textM, marginTop: 2 }}>{LA(s, "hint")}</div>
+                                  </div>
+                                  <BuilderSwitch on={on} onChange={toggle} disabled={monthlyBusy} T={T} />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* ── ANALYSIS ── */}
+                {reportTab === "analysis" && (
+                  <>
+                    <div style={{ ...sx.h3, marginBottom: 4 }}>{L("analysisTitle")}</div>
+                    <div style={{ ...sx.muted, marginBottom: 16 }}>{L("analysisNote")}</div>
+
+                    <div style={{ display: "grid", gap: 14 }}>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("rankBy")}</label>
+                        <select
+                          value={reportOpts.rankMetric} onChange={(e) => setOpt("rankMetric", e.target.value)}
+                          disabled={monthlyBusy} style={{ ...sx.input, width: "100%", cursor: "pointer" }}
+                        >
+                          {RANK_METRICS.map((m) => <option key={m.key} value={m.key}>{LA(m, "label")}</option>)}
+                        </select>
+                        <div style={{ ...sx.muted, fontSize: 12, marginTop: 5 }}>{L("rankByNote")}</div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                        <div>
+                          <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("rankDepth")}</label>
+                          <select
+                            value={reportOpts.topN} onChange={(e) => setOpt("topN", Number(e.target.value))}
+                            disabled={monthlyBusy} style={{ ...sx.input, width: "100%", cursor: "pointer" }}
+                          >
+                            {[5, 8, 10, 15, 20].map((n) => <option key={n} value={n}>{L("topWord")} {n}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("baseline")}</label>
+                          <select
+                            value={reportOpts.baseline} onChange={(e) => setOpt("baseline", e.target.value)}
+                            disabled={monthlyBusy} style={{ ...sx.input, width: "100%", cursor: "pointer" }}
+                          >
+                            <option value="prev">{L("basePrev")}</option>
+                            <option value="yoy">{L("baseYoy")}</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {reportOpts.sections.repeat && (
+                        <div>
+                          <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("repeatThr")}</label>
+                          <select
+                            value={reportOpts.minRepeatDays} onChange={(e) => setOpt("minRepeatDays", Number(e.target.value))}
+                            disabled={monthlyBusy} style={{ ...sx.input, width: "100%", cursor: "pointer" }}
+                          >
+                            {[2, 3, 4, 5, 7, 10].map((n) => (
+                              <option key={n} value={n}>{L("repeatOpt", { n })}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {reportOpts.sections.lineItems && (
+                        <div>
+                          <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("annexCap")}</label>
+                          <select
+                            value={reportOpts.lineItemLimit} onChange={(e) => setOpt("lineItemLimit", Number(e.target.value))}
+                            disabled={monthlyBusy} style={{ ...sx.input, width: "100%", cursor: "pointer" }}
+                          >
+                            {[100, 250, 400, 1000, 3000].map((n) => <option key={n} value={n}>{n} {L("rowsWord")}</option>)}
+                          </select>
+                          <div style={{ ...sx.muted, fontSize: 12, marginTop: 5 }}>
+                            {scopePreview.items > reportOpts.lineItemLimit
+                              ? L("capCut", {
+                                  a: fmtNum(scopePreview.items, 0),
+                                  b: fmtNum(scopePreview.items - reportOpts.lineItemLimit, 0),
+                                })
+                              : L("capFits")}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* ── TAB 3 · DOCUMENT DETAILS ── */}
+                {reportTab === "details" && (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("docTitle")}</label>
+                        <input
+                          value={reportOpts.titleOverride} disabled={monthlyBusy}
+                          onChange={(e) => setOpt("titleOverride", e.target.value)}
+                          placeholder={(REPORT_PERIODS.find((p) => p.key === periodType) || REPORT_PERIODS[0]).reportTitle}
+                          style={{ ...sx.input, width: "100%" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("docRef")}</label>
+                        <input
+                          value={reportOpts.refNo} disabled={monthlyBusy}
+                          onChange={(e) => setOpt("refNo", e.target.value)}
+                          placeholder="e.g. AM-RET-RPT-2026-08"
+                          style={{ ...sx.input, width: "100%" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("docClass")}</label>
+                        <select
+                          value={reportOpts.classification} onChange={(e) => setOpt("classification", e.target.value)}
+                          disabled={monthlyBusy} style={{ ...sx.input, width: "100%", cursor: "pointer" }}
+                        >
+                          {CLASSIFICATIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("docPrep")}</label>
+                        <input value={reportOpts.preparedBy} disabled={monthlyBusy}
+                          onChange={(e) => setOpt("preparedBy", e.target.value)}
+                          style={{ ...sx.input, width: "100%" }} />
+                      </div>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("docRev")}</label>
+                        <input value={reportOpts.reviewedBy} disabled={monthlyBusy}
+                          onChange={(e) => setOpt("reviewedBy", e.target.value)}
+                          style={{ ...sx.input, width: "100%" }} />
+                      </div>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("docApp")}</label>
+                        <input value={reportOpts.approvedBy} disabled={monthlyBusy}
+                          onChange={(e) => setOpt("approvedBy", e.target.value)}
+                          style={{ ...sx.input, width: "100%" }} />
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>
+                          {L("docNotes")} <span style={{ fontWeight: 500, color: T.textM }}>{L("docNotesSub")}</span>
+                        </label>
+                        <textarea
+                          value={reportOpts.notes} disabled={monthlyBusy}
+                          onChange={(e) => setOpt("notes", e.target.value)}
+                          rows={4}
+                          placeholder={L("docNotesPh")}
+                          style={{ ...sx.input, width: "100%", fontFamily: "inherit", resize: "vertical" }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ ...sx.muted, fontSize: 12, marginTop: 10 }}>{L("docFoot")}</div>
+                    <div style={{
+                      marginTop: 10, padding: "10px 14px", borderRadius: 10,
+                      background: T.warningS, border: "1px solid #fde68a",
+                      fontSize: 12, color: T.warning, fontWeight: 700,
+                    }}>ℹ️ {L("pdfEnNote")}</div>
+                  </>
+                )}
+
+                {/* ── DELIVERY ── */}
+                {reportTab === "delivery" && (
+                  <>
+                    {/* Excel */}
+                    <div style={{ ...sx.h3, marginBottom: 4 }}>{L("xlsxTitle")}</div>
+                    <div style={{ ...sx.muted, marginBottom: 10 }}>{L("xlsxNote")}</div>
+                    <button
+                      onClick={() => generatePeriodReport({ deliver: "xlsx" })}
+                      disabled={monthlyBusy || burstBusy || scopePreview.items === 0}
+                      style={{
+                        ...sx.btn, padding: "9px 16px", fontWeight: 800, marginBottom: 22,
+                        borderColor: T.success, color: T.success,
+                      }}
+                    >📊 {L("xlsxBtn")}</button>
+
+                    {/* E-mail this report */}
+                    <div style={{ ...sx.h3, marginBottom: 4 }}>{L("mailTitle")}</div>
+                    <div style={{ ...sx.muted, marginBottom: 12 }}>{L("mailNote2")}</div>
+                    <div style={{ display: "grid", gap: 12, marginBottom: 12 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div>
+                          <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("mailTo")}</label>
+                          <input
+                            value={mailTo} onChange={(e) => setMailTo(e.target.value)}
+                            disabled={burstBusy} placeholder="a@x.com, b@x.com"
+                            style={{ ...sx.input, width: "100%" }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("mailCc")}</label>
+                          <input
+                            value={mailCc} onChange={(e) => setMailCc(e.target.value)}
+                            disabled={burstBusy} style={{ ...sx.input, width: "100%" }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("mailSubj")}</label>
+                        <input
+                          value={mailSubject} onChange={(e) => setMailSubject(e.target.value)}
+                          disabled={burstBusy} placeholder={L("mailSubjPh")}
+                          style={{ ...sx.input, width: "100%" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ ...sx.h3, display: "block", marginBottom: 6 }}>{L("mailBody")}</label>
+                        <textarea
+                          value={mailNote} onChange={(e) => setMailNote(e.target.value)}
+                          disabled={burstBusy} rows={3}
+                          style={{ ...sx.input, width: "100%", fontFamily: "inherit", resize: "vertical" }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 26 }}>
+                      <PrimaryBtn
+                        icon={FiFileText}
+                        onClick={emailCurrentReport}
+                        disabled={burstBusy || monthlyBusy || scopePreview.items === 0 || !mailTo.trim()}
+                        style={{ justifyContent: "center", padding: "10px 18px" }}
+                      >{burstBusy ? L("mailSending") : L("mailSend")}</PrimaryBtn>
+                      <span style={{ ...sx.muted, fontSize: 12 }}>{L("mailMulti")}</span>
+                    </div>
+
+                    {/* Bursting */}
+                    <div style={{ ...sx.h3, marginBottom: 4 }}>{L("burstTitle")}</div>
+                    <div style={{ ...sx.muted, marginBottom: 10 }}>{L("burstNote")}</div>
+                    {(() => {
+                      const targets = reportOpts.branches.length
+                        ? reportOpts.branches
+                        : reportFacets.branches.map((b) => b.label);
+                      return (
+                        <>
+                          <div style={{
+                            padding: "10px 14px", borderRadius: 10, marginBottom: 12,
+                            background: T.primaryS, border: `1px solid #c7d2fe`,
+                            fontSize: 12.5, color: T.primaryD, lineHeight: 1.6,
+                          }}>
+                            <strong>{L("burstScope")}:</strong> {targets.length} — {targets.join(" · ")}
+                            {reportOpts.branches.length === 0 && (
+                              <div style={{ marginTop: 4 }}>{L("burstAllNote")}</div>
+                            )}
+                          </div>
+
+                          <div style={{ ...sx.h3, marginBottom: 4 }}>{L("burstAddr")}</div>
+                          <div style={{ ...sx.muted, marginBottom: 8, fontSize: 12 }}>{L("burstAddrNote")}</div>
+                          <div style={{ display: "grid", gap: 6, marginBottom: 14 }}>
+                            {targets.map((b) => (
+                              <div key={b} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                <span style={{
+                                  fontSize: 12.5, fontWeight: 800, color: T.text,
+                                  minWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                }}>{b}</span>
+                                <input
+                                  value={burstRecipients[b] || ""}
+                                  onChange={(e) => setBurstRecipients((m) => ({ ...m, [b]: e.target.value }))}
+                                  disabled={burstBusy} placeholder="branch@almawashi.ae"
+                                  style={{ ...sx.input, flex: 1, fontSize: 13 }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                            <button
+                              onClick={() => runBurst("download")}
+                              disabled={burstBusy || monthlyBusy || targets.length === 0}
+                              style={{ ...sx.btn, padding: "9px 16px", fontWeight: 800 }}
+                            >⬇️ {L("burstDl")} ({targets.length})</button>
+                            <button
+                              onClick={() => runBurst("email")}
+                              disabled={burstBusy || monthlyBusy || targets.length === 0}
+                              style={{
+                                ...sx.btn, padding: "9px 16px", fontWeight: 800,
+                                borderColor: T.primary, color: T.primaryD,
+                              }}
+                            >📧 {L("burstMail")}</button>
+                            {burstProgress && (
+                              <span style={{ fontSize: 12.5, fontWeight: 800, color: T.primaryD }}>
+                                ⏳ {burstProgress}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </>
+                )}
+                </div>
+
+                {/* ── Live document outline ── */}
+                <div className="rb-outline" style={{
+                  borderLeft: `1px solid ${T.border}`, background: T.bgAlt,
+                  padding: 14, overflowY: "auto", minHeight: 0,
                 }}>
-                  <strong>What's inside:</strong> hero KPIs, disposition-mix donut,
-                  activity chart {periodType === "monthly" ? "(per day)" : "(per month)"} + register,
-                  vs-previous-period comparison, condemnation-rate hotspots, and
-                  top products / branches / origins / condemned items.
-                </div>
+                  <div style={{
+                    fontSize: 11.5, fontWeight: 900, color: T.textM,
+                    textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10,
+                  }}>{L("outline")}</div>
 
-                <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-                  <button
-                    onClick={() => !monthlyBusy && setMonthlyOpen(false)}
-                    disabled={monthlyBusy}
-                    style={{ ...sx.btn, flex: "0 0 auto" }}
-                  >Cancel</button>
-                  <PrimaryBtn
-                    icon={FiDownload}
-                    onClick={generatePeriodReport}
-                    disabled={monthlyBusy || availableMonths.length === 0}
-                    style={{ flex: 1, justifyContent: "center", padding: "10px 12px" }}
-                  >
-                    {monthlyBusy ? "Generating…" : "Generate PDF"}
-                  </PrimaryBtn>
+                  {activeSections.length === 0 ? (
+                    <div style={{ ...sx.muted, fontSize: 12.5 }}>{L("outlineEmpty")}</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 5 }}>
+                      {activeSections.map((s, i) => (
+                        <div key={s.key} style={{
+                          display: "flex", alignItems: "center", gap: 8,
+                          background: "#fff", border: `1px solid ${T.border}`,
+                          borderRadius: 8, padding: "7px 9px",
+                        }}>
+                          <span style={{
+                            width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                            background: T.primary, color: "#fff", fontSize: 10, fontWeight: 900,
+                            display: "grid", placeItems: "center",
+                          }}>{i + 1}</span>
+                          <span style={{ fontSize: 12 }}>{s.icon}</span>
+                          <span style={{
+                            fontSize: 12, fontWeight: 700, color: T.text,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>{LA(s, "label")}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{
+                    marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.border}`,
+                    fontSize: 11.5, color: T.textM, lineHeight: 1.7,
+                  }}>
+                    <div><strong style={{ color: T.text }}>{activeSections.length}</strong> {L("sectionsWord")}</div>
+                    <div>{L("rankedBy")} <strong style={{ color: T.text }}>
+                      {LA(RANK_METRICS.find((m) => m.key === reportOpts.rankMetric) || RANK_METRICS[0], "label")}
+                    </strong></div>
+                    <div>{L("baselineWord")}: <strong style={{ color: T.text }}>
+                      {reportOpts.baseline === "yoy" ? L("baseYoy") : L("basePrev")}
+                    </strong></div>
+                    {activeScopeCount > 0 && (
+                      <div style={{ color: T.warning, fontWeight: 700 }}>
+                        {activeScopeCount} {L("scopeActive")}
+                      </div>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              {/* Sticky footer: live scope preview + actions */}
+              <div style={{
+                padding: "14px 20px", borderTop: `1px solid ${T.border}`,
+                background: T.bgAlt, flexShrink: 0,
+                display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+              }}>
+                <div style={{ fontSize: 12.5, color: T.textM, flex: 1, minWidth: 200 }}>
+                  {scopePreview.state === "ok" && (
+                    <>
+                      <strong style={{ color: T.text }}>{fmtNum(scopePreview.items, 0)}</strong> {L("fLineItems")}
+                      {" "}{L("across")}{" "}<strong style={{ color: T.text }}>{scopePreview.reports}</strong> {L("daysWord")}
+                      {" · "}{activeSectionCount} {L("sectionsWord")}
+                    </>
+                  )}
+                  {scopePreview.state === "nodata" && (
+                    <span style={{ color: T.danger, fontWeight: 700 }}>{L("msgNoData")}</span>
+                  )}
+                  {scopePreview.state === "filtered" && (
+                    <span style={{ color: T.danger, fontWeight: 700 }}>
+                      {scopePreview.blockers.length > 0
+                        ? L("msgBlocker", {
+                            n: fmtNum(scopePreview.periodItems, 0),
+                            f: scopePreview.blockers.map((k) => L(k)).join(" + "),
+                          })
+                        : scopePreview.activeDims > 0
+                        ? L("msgCombo", { n: fmtNum(scopePreview.periodItems, 0) })
+                        : L("msgFiltered", { n: fmtNum(scopePreview.periodItems, 0) })}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setReportOpts({ ...DEFAULT_REPORT_OPTS, sections: { ...DEFAULT_REPORT_OPTS.sections } })}
+                  disabled={monthlyBusy}
+                  style={{ ...sx.btn, flex: "0 0 auto" }}
+                >{L("reset")}</button>
+                {activeScopeCount > 0 && (
+                  <button
+                    onClick={() => setReportOpts((o) => ({
+                      ...o, branches: [], products: [], origins: [], actions: [],
+                      qtyType: "all", condemnedOnly: false, minQty: "",
+                    }))}
+                    disabled={monthlyBusy}
+                    style={{
+                      ...sx.btn, flex: "0 0 auto",
+                      borderColor: T.warning, color: T.warning, fontWeight: 800,
+                    }}
+                  >{L("clearFilters")} ({activeScopeCount})</button>
+                )}
+                <button
+                  onClick={() => !monthlyBusy && setMonthlyOpen(false)}
+                  disabled={monthlyBusy}
+                  style={{ ...sx.btn, flex: "0 0 auto" }}
+                >{L("cancel")}</button>
+                <PrimaryBtn
+                  icon={FiDownload}
+                  onClick={generatePeriodReport}
+                  disabled={monthlyBusy || availableMonths.length === 0 || scopePreview.items === 0}
+                  style={{ flex: "0 0 auto", justifyContent: "center", padding: "10px 18px" }}
+                >
+                  {monthlyBusy ? L("generating") : L("generate")}
+                </PrimaryBtn>
               </div>
             </div>
           </div>

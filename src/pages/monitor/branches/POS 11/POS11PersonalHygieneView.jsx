@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -359,9 +360,11 @@ export default function POS11PersonalHygieneView() {
                 ⬆ Import JSON
               </button>
 
-              <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">
-                🗑 Delete
-              </button>
+              {canDelete("daily") && (
+                <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">
+                  🗑 Delete
+                </button>
+              )}
 
               <input
                 ref={fileInputRef}

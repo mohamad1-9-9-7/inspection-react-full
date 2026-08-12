@@ -34,6 +34,21 @@ const T = {
   deputyTel:    { ar: "هاتف النائب", en: "Deputy Tel" },
   location:     { ar: "الموقع الرئيسي", en: "Main Location" },
 
+  // Section 1b — First Aiders
+  faTitle:      { ar: "⛑️ المسعفون المعتمدون في الموقع", en: "⛑️ Certified Site First Aiders" },
+  faHint:       { ar: "أول من يُتصل به عند أي إصابة — قبل أي جهة خارجية. يجب أن تكون كل وردية مغطاة بمسعف واحد على الأقل بشهادة سارية (SOP-EM-04).",
+                  en: "The first person called for any injury — before any external body. Every shift must be covered by at least one first aider with a valid certificate (SOP-EM-04)." },
+  faName:       { ar: "اسم المسعف", en: "First Aider Name" },
+  faArea:       { ar: "القسم / المنطقة", en: "Department / Area" },
+  faShift:      { ar: "الوردية", en: "Shift" },
+  faCert:       { ar: "رقم الشهادة", en: "Certificate No." },
+  faExpiry:     { ar: "انتهاء الشهادة", en: "Certificate Expiry" },
+  faTel:        { ar: "الهاتف", en: "Tel" },
+  faAdd:        { ar: "+ إضافة مسعف", en: "+ Add First Aider" },
+  faExpired:    { ar: "منتهية", en: "EXPIRED" },
+  faSoon:       { ar: "قاربت الانتهاء", en: "Expiring soon" },
+  faNone:       { ar: "⚠️ لم يُسجَّل أي مسعف معتمد — مخالفة لـ SOP-EM-04", en: "⚠️ No certified first aider recorded — non-conformance with SOP-EM-04" },
+
   // Section 2
   s2Title:      { ar: "🚨 السلطات المحلية (الإمارات)", en: "🚨 Local Authorities (UAE)" },
   s3Title:      { ar: "🏥 المستشفيات والعيادات", en: "🏥 Hospitals & Clinics" },
@@ -98,6 +113,9 @@ const DEFAULT_ENFORCING = [
   { position: { ar: "🦺 ضابط الأمن (Security)", en: "🦺 Security Officer" }, tel: "" },
 ];
 
+// شكل صف المسعف — مختلف عن صف جهة الاتصال (شهادة + صلاحية + وردية)
+const BLANK_FIRST_AIDER = { name: "", area: "", shift: "", certNo: "", expiry: "", tel: "" };
+
 const DEFAULT_OTHER = [
   { position: { ar: "Project Manager", en: "Project Manager" }, name: "", tel: "" },
   { position: { ar: "Logistics Manager", en: "Logistics Manager" }, name: "", tel: "" },
@@ -113,6 +131,7 @@ const blank = () => ({
   location: SITE_LOCATIONS[0].v,
   siteAddress: "", siteTel: "",
   contractsMgr: "", contractsTel: "", deputy: "", deputyTel: "",
+  firstAiders: [{ ...BLANK_FIRST_AIDER }, { ...BLANK_FIRST_AIDER }, { ...BLANK_FIRST_AIDER }],
   localAuthorities: DEFAULT_LOCAL.map((x) => ({
     position: x.position, name: "", tel: x.tel || "", alt: "", notes: "",
   })),
@@ -161,8 +180,9 @@ export default function HSEEmergencyContacts() {
       return { ...d, [group]: arr };
     });
   }
-  function addRow(group) {
-    setDraft((d) => ({ ...d, [group]: [...(d[group] || []), { position: { ar: "", en: "" }, name: "", tel: "", alt: "", notes: "" }] }));
+  function addRow(group, shape) {
+    const fresh = shape ? { ...shape } : { position: { ar: "", en: "" }, name: "", tel: "", alt: "", notes: "" };
+    setDraft((d) => ({ ...d, [group]: [...(d[group] || []), fresh] }));
   }
   function removeRow(group, idx) {
     setDraft((d) => ({ ...d, [group]: d[group].filter((_, i) => i !== idx) }));
@@ -236,6 +256,11 @@ export default function HSEEmergencyContacts() {
               <div><label style={labelStyle}>{pick(T.deputy)}</label><input type="text" value={draft.deputy} onChange={(e) => setDraft({ ...draft, deputy: e.target.value })} style={inputStyle} /></div>
               <div><label style={labelStyle}>{pick(T.deputyTel)}</label><input type="tel" value={draft.deputyTel} onChange={(e) => setDraft({ ...draft, deputyTel: e.target.value })} style={inputStyle} /></div>
             </div>
+
+            <FirstAiderSection
+              rows={draft.firstAiders} setRow={setRow} addRow={addRow} removeRow={removeRow}
+              pick={pick} t={T}
+            />
 
             {[
               ["localAuthorities", T.s2Title, "#fee2e2"],
@@ -335,6 +360,46 @@ export default function HSEEmergencyContacts() {
                 <div><b>{pick(T.deputy)}: </b>{viewing.deputy || "—"} · {viewing.deputyTel}</div>
               </div>
 
+              <ViewBlock title={pick(T.faTitle)}>
+                {(viewing.firstAiders || []).filter(isFilledAider).length === 0 ? (
+                  <div style={{ padding: 10, borderRadius: 8, background: "#fee2e2", color: "#b91c1c", fontWeight: 800, fontSize: 12 }}>
+                    {pick(T.faNone)}
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ ...tableStyle, fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <th style={thStyle}>{pick(T.faName)}</th>
+                          <th style={thStyle}>{pick(T.faArea)}</th>
+                          <th style={thStyle}>{pick(T.faShift)}</th>
+                          <th style={thStyle}>{pick(T.faCert)}</th>
+                          <th style={thStyle}>{pick(T.faExpiry)}</th>
+                          <th style={thStyle}>{pick(T.faTel)}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(viewing.firstAiders || []).filter(isFilledAider).map((r, i) => {
+                          const st = certStatus(r.expiry);
+                          return (
+                            <tr key={i}>
+                              <td style={{ ...tdStyle, fontWeight: 800 }}>{r.name}</td>
+                              <td style={tdStyle}>{r.area || "—"}</td>
+                              <td style={tdStyle}>{r.shift || "—"}</td>
+                              <td style={tdStyle}>{r.certNo || "—"}</td>
+                              <td style={{ ...tdStyle, color: st.color, fontWeight: st.bad ? 900 : 400 }}>
+                                {r.expiry || "—"}{st.bad ? ` · ${pick(st.expired ? T.faExpired : T.faSoon)}` : ""}
+                              </td>
+                              <td style={{ ...tdStyle, fontWeight: 800 }}>{r.tel || "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </ViewBlock>
+
               {[
                 ["localAuthorities", T.s2Title],
                 ["hospitals", T.s3Title],
@@ -415,6 +480,83 @@ function SectionHeader({ title }) {
       padding: "8px 12px", borderRadius: 10,
       background: "linear-gradient(135deg, #fed7aa, #fef3c7)",
     }}>{title}</div>
+  );
+}
+
+// صف مسعف يُحتسب فقط إذا فيه اسم
+function isFilledAider(r) {
+  return !!(r && String(r.name || "").trim());
+}
+
+// حالة شهادة الإسعاف: منتهية / قاربت الانتهاء (60 يوم) / سارية
+function certStatus(expiry) {
+  if (!expiry) return { color: "#334155", bad: false, expired: false };
+  const days = Math.round((new Date(expiry) - new Date(todayISO())) / 86400000);
+  if (days < 0) return { color: "#b91c1c", bad: true, expired: true };
+  if (days <= 60) return { color: "#b45309", bad: true, expired: false };
+  return { color: "#15803d", bad: false, expired: false };
+}
+
+function FirstAiderSection({ rows, setRow, addRow, removeRow, pick, t }) {
+  const group = "firstAiders";
+  const filled = (rows || []).filter(isFilledAider).length;
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div style={{
+        marginBottom: 6,
+        fontSize: 14, fontWeight: 950, color: HSE_COLORS.primaryDark,
+        padding: "8px 12px", borderRadius: 10,
+        background: "#ffe4e6",
+      }}>{pick(t.faTitle)}</div>
+      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, lineHeight: 1.6 }}>{pick(t.faHint)}</div>
+      {filled === 0 && (
+        <div style={{ padding: 8, borderRadius: 8, background: "#fee2e2", color: "#b91c1c", fontWeight: 800, fontSize: 12, marginBottom: 8 }}>
+          {pick(t.faNone)}
+        </div>
+      )}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ ...tableStyle, fontSize: 12 }}>
+          <thead>
+            <tr>
+              <th style={thStyle}>{pick(t.faName)}</th>
+              <th style={thStyle}>{pick(t.faArea)}</th>
+              <th style={thStyle}>{pick(t.faShift)}</th>
+              <th style={thStyle}>{pick(t.faCert)}</th>
+              <th style={thStyle}>{pick(t.faExpiry)}</th>
+              <th style={thStyle}>{pick(t.faTel)}</th>
+              <th style={thStyle}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {(rows || []).map((r, i) => {
+              const st = certStatus(r.expiry);
+              return (
+                <tr key={i}>
+                  <td style={tdStyle}><input type="text" value={r.name || ""} onChange={(e) => setRow(group, i, "name", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
+                  <td style={tdStyle}><input type="text" value={r.area || ""} onChange={(e) => setRow(group, i, "area", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
+                  <td style={tdStyle}><input type="text" value={r.shift || ""} onChange={(e) => setRow(group, i, "shift", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
+                  <td style={tdStyle}><input type="text" value={r.certNo || ""} onChange={(e) => setRow(group, i, "certNo", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
+                  <td style={tdStyle}>
+                    <input type="date" value={r.expiry || ""} onChange={(e) => setRow(group, i, "expiry", e.target.value)}
+                      style={{ ...inputStyle, padding: "4px 8px", fontSize: 12, color: st.color, fontWeight: st.bad ? 900 : 400 }} />
+                    {st.bad && (
+                      <div style={{ fontSize: 10, fontWeight: 900, color: st.color, marginTop: 2 }}>
+                        {pick(st.expired ? t.faExpired : t.faSoon)}
+                      </div>
+                    )}
+                  </td>
+                  <td style={tdStyle}><input type="tel" value={r.tel || ""} onChange={(e) => setRow(group, i, "tel", e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }} /></td>
+                  <td style={tdStyle}>
+                    <button type="button" onClick={() => removeRow(group, i)} style={{ ...buttonGhost, padding: "3px 8px", fontSize: 11, color: "#b91c1c" }} data-delete-action="true">{pick(t.removeRow)}</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" onClick={() => addRow(group, BLANK_FIRST_AIDER)} style={{ ...buttonGhost, marginTop: 6, fontSize: 12 }}>{pick(t.faAdd)}</button>
+    </div>
   );
 }
 

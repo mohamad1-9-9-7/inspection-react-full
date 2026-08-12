@@ -5,6 +5,7 @@ import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn } from "../_shared/branchViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 
 
@@ -398,9 +399,11 @@ export default function RMInspectionReportIngredientsView() {
                 )}
                 <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
                 <button onClick={handleExportJSON} style={btn("#16a085")}>⬇ Export JSON</button>
-                <button onClick={() => handleDelete(selected)} disabled={editMode}
-                  title={editMode ? "Exit edit mode first" : "Delete"}
-                  style={btn(editMode ? "#9ca3af" : "#c0392b")} data-delete-action="true">🗑 Delete</button>
+                {canDelete("daily") && (
+                  <button onClick={() => handleDelete(selected)} disabled={editMode}
+                    title={editMode ? "Exit edit mode first" : "Delete"}
+                    style={btn(editMode ? "#9ca3af" : "#c0392b")} data-delete-action="true">🗑 Delete</button>
+                )}
               </div>
 
             {/* العارض */}

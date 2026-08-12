@@ -12,6 +12,7 @@ import jsPDF from "jspdf";
 import { resilientFetch, classifyError } from "../_shared/resilientFetch";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 
 /* ========= API BASE (robust like your other pages) ========= */
 
@@ -852,20 +853,22 @@ export default function FTR1ReceivingLogView() {
                     ⬆ Import JSON
                   </button>
 
-                  <button
-                    onClick={() => handleDelete(selectedReport)}
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      background: "#ef4444",
-                      color: "#fff",
-                      fontWeight: 700,
-                      border: "none",
-                      cursor: "pointer",
-                    }}
-                   data-delete-action="true">
-                    🗑 Delete
-                  </button>
+                  {canDelete("daily") && (
+                    <button
+                      onClick={() => handleDelete(selectedReport)}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        background: "#ef4444",
+                        color: "#fff",
+                        fontWeight: 700,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                     data-delete-action="true">
+                      🗑 Delete
+                    </button>
+                  )}
                 </>
               ) : (
                 <>

@@ -5,6 +5,7 @@ import * as XLSX from "xlsx-js-style";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { DateTreeSidebar, GlassShell, GLASS, EmptyState, btn, useLightbox } from "../_shared/branchViewKit";
+import { canEdit, canDelete } from "../../../../utils/perms";
 
 /* ===== API base ===== */
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
@@ -261,10 +262,14 @@ export default function NonConformanceReportsView(props) {
             <>
               {/* toolbar */}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                <button disabled={busy} onClick={onEdit} style={btn("#0ea5e9")}>✏️ Edit</button>
+                {canEdit("daily") && (
+                  <button disabled={busy} onClick={onEdit} style={btn("#0ea5e9")}>✏️ Edit</button>
+                )}
                 <button disabled={busy} onClick={exportXlsx} style={btn("#059669")}>📄 Export XLSX</button>
                 <button disabled={busy} onClick={exportPdf} style={btn("#7c3aed")}>🖨️ Export PDF</button>
-                <button disabled={busy} onClick={onDelete} style={{ ...btn("#ef4444"), marginInlineStart: "auto" }} data-delete-action="true">🗑️ Delete</button>
+                {canDelete("daily") && (
+                  <button disabled={busy} onClick={onDelete} style={{ ...btn("#ef4444"), marginInlineStart: "auto" }} data-delete-action="true">🗑️ Delete</button>
+                )}
               </div>
 
               {/* Modern full-width document */}

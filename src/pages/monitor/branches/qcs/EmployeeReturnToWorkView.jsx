@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/qcs/EmployeeReturnToWorkView.jsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import API_BASE from "../../../../config/api";
+import { canDelete } from "../../../../utils/perms";
 
 /* ===== API base ===== */
 
@@ -337,16 +338,18 @@ function DetailsPanel({ record, onDelete, deleting }) {
             Doc No: <b>{hTop.documentNo || "FSM-QM/REC/ER"}</b> · Issue: <b>1.5.2023</b> · Issue No: <b>{hTop.issueNo || "04"}</b>
           </div>
         </div>
-        <button
-          onClick={() => onDelete(recId(record))}
-          disabled={deleting}
-          style={{
-            background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca",
-            borderRadius: 10, padding: "8px 14px", fontWeight: 800, cursor: deleting ? "not-allowed" : "pointer",
-          }}
-         data-delete-action="true">
-          {deleting ? "…" : "🗑 Delete"}
-        </button>
+        {canDelete("daily") && (
+          <button
+            onClick={() => onDelete(recId(record))}
+            disabled={deleting}
+            style={{
+              background: "#fee2e2", color: "#dc2626", border: "1px solid #fecaca",
+              borderRadius: 10, padding: "8px 14px", fontWeight: 800, cursor: deleting ? "not-allowed" : "pointer",
+            }}
+           data-delete-action="true">
+            {deleting ? "…" : "🗑 Delete"}
+          </button>
+        )}
       </div>
 
       {/* Title */}

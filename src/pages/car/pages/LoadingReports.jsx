@@ -731,6 +731,7 @@ export default function LoadingReports() {
             <td>${esc(v.tempCheck)}</td>
             <td>${esc(dur)}</td>
             ${checks}
+            <td>${esc(v.destination)}</td>
           </tr>`;
       })
       .join("");
@@ -785,10 +786,11 @@ export default function LoadingReports() {
         <th>Temp Check (°C)</th>
         <th>Duration (min)</th>
         ${viHeaders}
+        <th>Destination</th>
       </tr>
     </thead>
     <tbody>
-      ${rowsHtml || `<tr><td colspan="${6 + VI_PARAMS.length}">No vehicles for this day.</td></tr>`}
+      ${rowsHtml || `<tr><td colspan="${7 + VI_PARAMS.length}">No vehicles for this day.</td></tr>`}
     </tbody>
   </table>
 
@@ -1207,6 +1209,7 @@ export default function LoadingReports() {
                             {VI_PARAMS.map(p => (
                               <th key={p.id}>{p.en}</th>
                             ))}
+                            <th>Destination</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1234,11 +1237,13 @@ export default function LoadingReports() {
                                   </td>
                                 );
                               })}
+
+                              <td>{v.destination || "—"}</td>
                             </tr>
                           ))}
                           {selectedVehicles.length === 0 && (
                             <tr>
-                              <td colSpan={6 + VI_PARAMS.length} style={{ textAlign: "center", color: "#6b7280", padding: 16 }}>No vehicles for this day.</td>
+                              <td colSpan={7 + VI_PARAMS.length} style={{ textAlign: "center", color: "#6b7280", padding: 16 }}>No vehicles for this day.</td>
                             </tr>
                           )}
                         </tbody>

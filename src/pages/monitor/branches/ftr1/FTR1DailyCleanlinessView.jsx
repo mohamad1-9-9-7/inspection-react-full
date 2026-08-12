@@ -11,6 +11,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "ftr1_daily_cleanliness";
 
@@ -195,7 +196,9 @@ export default function FTR1DailyCleanlinessView() {
       title="Cleaning Checklist — View (FTR1 Mushrif Park)"
       actions={
         <>
-          <button onClick={() => handleDelete(selectedReport)} style={btn("#dc2626")} data-delete-action="true">Delete</button>
+          {canDelete("daily") && (
+            <button onClick={() => handleDelete(selectedReport)} style={btn("#dc2626")} data-delete-action="true">Delete</button>
+          )}
           <button onClick={handleExportPDF} style={btn("#27ae60")}>Export PDF</button>
           <button onClick={handleExportJSON} style={btn("#16a085")}>Export JSON</button>
           <label style={{ ...btn("#059669"), display: "inline-block" }}>

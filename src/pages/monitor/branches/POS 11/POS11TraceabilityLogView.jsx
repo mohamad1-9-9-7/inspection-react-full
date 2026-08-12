@@ -13,6 +13,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { canEdit, canDelete } from "../../../../utils/perms";
 
 const TYPE   = "pos11_traceability_log";
 const BRANCH = "POS 11";
@@ -529,13 +530,17 @@ export default function POS11TraceabilityLogView() {
       title="Traceability Log أ¢â‚¬â€‌ View (POS 11)"
       actions={
         <>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
-            {editing ? "Cancel Edit" : "Edit"}
-          </button>
+          {canEdit("daily") && (
+            <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>
+              {editing ? "Cancel Edit" : "Edit"}
+            </button>
+          )}
           {editing && (
             <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
           )}
-          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+          {canDelete("daily") && (
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+          )}
 
           <button onClick={exportXLSX} disabled={!record} style={btn("#0ea5e9")}>
             Export XLSX

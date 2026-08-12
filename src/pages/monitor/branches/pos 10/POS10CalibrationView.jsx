@@ -9,6 +9,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -265,9 +266,11 @@ export default function POS10CalibrationView() {
           <button onClick={triggerImport} style={btn("#f39c12")}>
             ⬆ Import JSON
           </button>
-          <button onClick={() => handleDelete(selected)} disabled={!selected} style={btn("#c0392b")} data-delete-action="true">
-            🗑 Delete
-          </button>
+          {canDelete("daily") && (
+            <button onClick={() => handleDelete(selected)} disabled={!selected} style={btn("#c0392b")} data-delete-action="true">
+              🗑 Delete
+            </button>
+          )}
 
           {/* hidden input for import */}
           <input

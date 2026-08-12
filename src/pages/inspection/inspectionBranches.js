@@ -4,9 +4,15 @@
 // saved from the entry form always lands on the right row of the annual plan.
 
 export const INSPECTION_BRANCHES = [
-  // QCS covers the Al Qusais warehouse AND its production area — reports
-  // written as "PRODUCTION" or "QCS- PRODUCTION" belong to this same row.
-  { code: "QCS",        labelEn: "QCS — Al Qusais Warehouse & Production", labelAr: "QCS — مستودع القصيص والإنتاج", icon: "🏢", aliases: ["QCS","QUSAIS WAREHOUSE","AL QUSAIS","ALQUSAIS","QUSAIS","قصيص","مستودع القصيص","المستودع","QCS PRODUCTION","PRODUCTION","PROD","الإنتاج","انتاج","الانتاج"] },
+  // QCS is the Al Qusais WAREHOUSE only. The production area next to it is a
+  // branch of its own (see PRODUCTION below) and is audited separately.
+  { code: "QCS",        labelEn: "QCS — Al Qusais Warehouse",      labelAr: "QCS — مستودع القصيص",        icon: "🏢", aliases: ["QCS","QUSAIS WAREHOUSE","AL QUSAIS","ALQUSAIS","QUSAIS","قصيص","مستودع القصيص","المستودع"] },
+  // Production hall. The code matches the "PRODUCTION" branch key the rest of
+  // the app already uses (monitor/branches/production, DailyReportsTab, …).
+  // "QCS PRODUCTION" is listed here on purpose: it is longer than the plain
+  // "QCS" alias, so legacy reports written that way land on this row and not
+  // on the warehouse.
+  { code: "PRODUCTION", labelEn: "Production — Al Qusais",         labelAr: "الإنتاج — القصيص",           icon: "🏭", aliases: ["PRODUCTION","PROD","QCS PRODUCTION","PRODUCTION AREA","الإنتاج","الانتاج","انتاج","قسم الإنتاج","صالة الإنتاج","فرع الإنتاج"] },
   { code: "POS 6",      labelEn: "POS 6 — Sharjah Butchery",       labelAr: "POS 6 — ملحمة الشارقة",      icon: "🥩", aliases: ["POS 6","POS6","SHARJAH BUTCHERY","ملحمة الشارقة","الشارقة"] },
   { code: "POS 7",      labelEn: "POS 7 — Abu Dhabi Store",        labelAr: "POS 7 — مخزن أبوظبي",        icon: "🏬", aliases: ["POS 7","POS7"] },
   { code: "POS 10",     labelEn: "POS 10 — Abu Dhabi Butchery",    labelAr: "POS 10 — ملحمة أبوظبي",      icon: "🥩", aliases: ["POS 10","POS10","ABU DHABI BUTCHERY","ملحمة أبوظبي","ملحمة ابوظبي","ABU DHABI","ABUDHABI","أبوظبي","ابوظبي","ABU DAHBI","ABUDAHBI"] },
@@ -38,8 +44,10 @@ export const INSPECTION_BRANCHES = [
 ];
 
 /* ===================== Matching =====================
- * Real reports store the branch as free text in header.location — the
- * `branch` column is empty on most of them. So the matcher has to survive
+ * The entry form now writes a canonical code into payload.branch and
+ * payload.header.branch. LEGACY reports (saved before the Location field was
+ * removed) only carry free text in header.location, and the top-level `branch`
+ * column is empty on most of them — so the matcher still has to survive
  * mixed case, missing spaces, em-dashes, Arabic spelling variants and typos:
  *   "AL MUSHRIF PARK"  "FTR 1Mushrif Park"  "POS 6 SHARJHA BUTCHERY"
  *   "ABU DAHBI"        "POS 26 BARSHA SOUTH"  "QUSAIS-WAREHOUSE"
@@ -111,16 +119,18 @@ export function isKnownInspectionBranch(code) {
 }
 
 /**
- * Resolve a saved report's branch. `branch`, `header.branch` and
- * `header.location` are all tried; the first one that maps to a REAL branch
- * wins, so a blank/garbage branch column can't hide a good location.
+ * Resolve a saved report's branch. Sources are tried newest-format first:
+ * `payload.branch` → `header.branch` → the top-level column → `header.location`
+ * (legacy only) → the title. The first one that maps to a REAL branch wins, so
+ * a blank/garbage branch column can't hide a good value further down the list.
  */
 export function resolveReportBranch(report) {
   const header = report?.payload?.header || {};
   const candidates = [
-    report?.branch,
+    report?.payload?.branch,
     header.branch,
-    header.location,
+    report?.branch,
+    header.location, // legacy reports kept the branch here
     report?.payload?.title,
     report?.title,
   ].filter((v) => String(v || "").trim());

@@ -26,6 +26,7 @@ const COLS = [
   { key: "plasticCurtain",        label: "Curtain",        width: 10 },
   { key: "badOdour",              label: "Bad Odour",      width: 10 },
   { key: "ppeAvailable",          label: "PPE",            width: 8  },
+  { key: "destination",           label: "Destination",    width: 18, align: "left" },
   { key: "informedTo",            label: "Informed To",    width: 14, align: "left" },
 ];
 
@@ -35,7 +36,7 @@ export default async function build(wb, record, ctx) {
   const h = p.header || {};
   const rows = Array.isArray(p.rows) ? p.rows : [];
 
-  const NC = COLS.length; // 18
+  const NC = COLS.length; // 19
   const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
   pageSetupLandscape(ws);
   ws.columns = COLS.map((c) => ({ width: c.width }));

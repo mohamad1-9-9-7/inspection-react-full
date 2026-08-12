@@ -10,6 +10,7 @@ import {
   GLASS,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "prod_defrosting_record";
 
@@ -269,7 +270,9 @@ export default function PRDDefrostingRecordView() {
           <button onClick={triggerImport} style={btn("#059669")} disabled={importing}>
             {importing ? "Importing…" : "⇧ Import JSON"}
           </button>
-          <button onClick={handleDelete} style={btn("#dc2626")} disabled={!selected || loading} data-delete-action="true">🗑️ Delete</button>
+          {canDelete("daily") && (
+            <button onClick={handleDelete} style={btn("#dc2626")} disabled={!selected || loading} data-delete-action="true">🗑️ Delete</button>
+          )}
           <input ref={fileRef} type="file" accept="application/json" style={{ display:"none" }} onChange={handleImportFile} />
         </>
       }

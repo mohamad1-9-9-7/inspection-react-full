@@ -21,6 +21,11 @@ import {
   verificationTone,
 } from "../../utils/auditVerification";
 import API_BASE from "../../config/api";
+import {
+  INSPECTION_BRANCHES,
+  canonicalInspectionBranch,
+  getInspectionBranchLabel,
+} from "../inspection/inspectionBranches";
 
 const REPORTS_URL = `${API_BASE}/api/reports`;
 const TYPE_KEY = "internal_multi_audit";
@@ -240,77 +245,21 @@ function mergeBranchEvidenceIntoPayload(payload = {}) {
 /* Debug viewer */
 const SHOW_DEBUG = false;
 
-/* ===== Known branch codes (normalize branch name from raw text) ===== */
-/* ===== Smart branch matching =====
- * Each branch has a canonical code + a list of aliases (English + Arabic)
- * that often appear in audit reports as the "location" or "branch" field.
- * The matcher is order-sensitive: more specific codes come first so
- * "POS 11" doesn't accidentally match "POS 1".
+/* ===== Branch list =====
+ * Single source of truth: pages/inspection/inspectionBranches.js — the SAME
+ * list the entry form and the annual plan use. This page used to keep its own
+ * copy, which drifted (it was missing Al Warqa Kitchen), so a report could be
+ * filed under one branch here and another one there. QCS (warehouse) and
+ * PRODUCTION are two separate rows — a legacy report saved as "PRODUCTION" or
+ * "QCS- PRODUCTION" resolves to the PRODUCTION row.
+ *
+ * The matcher survives mixed case, missing spaces, em-dashes, Arabic spelling
+ * variants and typos — legacy reports stored the branch as free text in the
+ * retired `header.location` field, and that text is all they have.
  */
-const BRANCHES = [
-  { code: "QCS",         labelEn: "QCS — Al Qusais Warehouse",       labelAr: "QCS — مستودع القصيص",          aliases: ["QCS","QUSAIS WAREHOUSE","QUSAIS-WAREHOUSE","AL QUSAIS","ALQUSAIS","QUSAIS","قصيص","مستودع القصيص","المستودع"] },
-  { code: "POS 45",      labelEn: "POS 45",                          labelAr: "POS 45",                       aliases: ["POS 45","POS45"] },
-  { code: "POS 44",      labelEn: "POS 44",                          labelAr: "POS 44",                       aliases: ["POS 44","POS44"] },
-  { code: "POS 43",      labelEn: "POS 43",                          labelAr: "POS 43",                       aliases: ["POS 43","POS43"] },
-  { code: "POS 42",      labelEn: "POS 42",                          labelAr: "POS 42",                       aliases: ["POS 42","POS42"] },
-  { code: "POS 41",      labelEn: "POS 41",                          labelAr: "POS 41",                       aliases: ["POS 41","POS41"] },
-  { code: "POS 38",      labelEn: "POS 38",                          labelAr: "POS 38",                       aliases: ["POS 38","POS38"] },
-  { code: "POS 37",      labelEn: "POS 37",                          labelAr: "POS 37",                       aliases: ["POS 37","POS37"] },
-  { code: "POS 36",      labelEn: "POS 36",                          labelAr: "POS 36",                       aliases: ["POS 36","POS36"] },
-  { code: "POS 35",      labelEn: "POS 35",                          labelAr: "POS 35",                       aliases: ["POS 35","POS35"] },
-  { code: "POS 34",      labelEn: "POS 34",                          labelAr: "POS 34",                       aliases: ["POS 34","POS34"] },
-  { code: "POS 31",      labelEn: "POS 31",                          labelAr: "POS 31",                       aliases: ["POS 31","POS31"] },
-  { code: "POS 26",      labelEn: "POS 26",                          labelAr: "POS 26",                       aliases: ["POS 26","POS26"] },
-  { code: "POS 25",      labelEn: "POS 25",                          labelAr: "POS 25",                       aliases: ["POS 25","POS25"] },
-  { code: "POS 24",      labelEn: "POS 24",                          labelAr: "POS 24",                       aliases: ["POS 24","POS24"] },
-  { code: "POS 21",      labelEn: "POS 21",                          labelAr: "POS 21",                       aliases: ["POS 21","POS21"] },
-  { code: "POS 19",      labelEn: "POS 19 — Motor City",             labelAr: "POS 19 — موتور سيتي",          aliases: ["POS 19","POS19","MOTOR CITY"] },
-  { code: "POS 18",      labelEn: "POS 18",                          labelAr: "POS 18",                       aliases: ["POS 18","POS18"] },
-  { code: "POS 17",      labelEn: "POS 17 — Mushrif Coop",           labelAr: "POS 17 — تعاونية المشرف",      aliases: ["POS 17","POS17","MUSHRIF COOP","تعاونية المشرف"] },
-  { code: "POS 16",      labelEn: "POS 16 — AFCOP Maqta Mall",        labelAr: "POS 16 — AFCOP مول المقطع",   aliases: ["POS 16","POS16","AFCOP","MAQTA MALL","المقطع"] },
-  // 🔥 Aliased branches (Arabic names + butchery name):
-  { code: "POS 15",      labelEn: "POS 15 — Al Barsha Butchery",     labelAr: "POS 15 — ملحمة البرشا",        aliases: ["POS 15","POS15","ALBARSHA","AL BARSHA","ملحمة البرشا","البرشا","BARSHA"] },
-  { code: "POS 14",      labelEn: "POS 14 — Al Ain Market",          labelAr: "POS 14 — سوق العين",          aliases: ["POS 14","POS14","AL AIN MARKET","سوق العين"] },
-  { code: "POS 11",      labelEn: "POS 11 — Al Ain Butchery",        labelAr: "POS 11 — ملحمة العين",        aliases: ["POS 11","POS11","AL AIN BUTCHERY","ملحمة العين","AL AIN","العين"] },
-  { code: "POS 10",      labelEn: "POS 10 — Abu Dhabi Butchery",     labelAr: "POS 10 — ملحمة أبوظبي",        aliases: ["POS 10","POS10","ABU DHABI BUTCHERY","ملحمة أبوظبي","ملحمة ابوظبي","ABU DHABI","ABUDHABI","أبوظبي","ابوظبي"] },
-  { code: "POS 7",       labelEn: "POS 7",                           labelAr: "POS 7",                        aliases: ["POS 7","POS7"] },
-  { code: "POS 6",       labelEn: "POS 6 — Sharjah Butchery",        labelAr: "POS 6 — ملحمة الشارقة",        aliases: ["POS 6","POS6","SHARJAH BUTCHERY","ملحمة الشارقة","الشارقة"] },
-  { code: "FTR 1",       labelEn: "FTR 1 — Al Mushrif Park",         labelAr: "FTR 1 — حديقة المشرف",         aliases: ["FTR1","FTR 1","AL MUSHRIF","MUSHRIF PARK","المشرف","حديقة المشرف","حديقة المشرف بارك"] },
-  { code: "FTR 2",       labelEn: "FTR 2 — Al Mamzar (Park/Beach)",  labelAr: "FTR 2 — الممزر (حديقة/شاطئ)",  aliases: ["FTR2","FTR 2","MAMZAR","AL MAMZAR","الممزر","حديقة الممزر","شاطئ الممزر"] },
-  { code: "PRODUCTION",  labelEn: "Production",                       labelAr: "الإنتاج",                      aliases: ["PRODUCTION","الإنتاج","انتاج"] },
-];
-
-/** Normalize a string for matching: strip spaces, dashes, diacritics, lowercase. */
-function _normalize(s) {
-  return String(s || "")
-    .replace(/[ً-ْ]/g, "")   // strip Arabic diacritics
-    .toUpperCase()
-    .replace(/[\s\-_،,()/]+/g, "");
-}
-
-function canonicalBranchName(str) {
-  if (!str) return "";
-  const t = String(str).trim();
-  const norm = _normalize(t);
-  for (const b of BRANCHES) {
-    for (const alias of b.aliases) {
-      const a = _normalize(alias);
-      if (!a) continue;
-      if (norm === a || norm.includes(a)) return b.code;
-    }
-  }
-  return t; // unknown — keep as-is
-}
-
-/** Returns a friendly display label for a canonical branch code in the chosen language. */
-function getBranchLabel(code, lang) {
-  const found = BRANCHES.find((b) => b.code === code);
-  if (!found) return code;
-  return lang === "ar" ? found.labelAr : found.labelEn;
-}
-
-// Back-compat: legacy array of just codes (used in a few spots)
-const BRANCH_CODES = BRANCHES.map((b) => b.code);
+const canonicalBranchName = canonicalInspectionBranch;
+const getBranchLabel = (code, lang) => getInspectionBranchLabel(code, lang);
+const BRANCH_CODES = INSPECTION_BRANCHES.map((b) => b.code);
 
 /* ===== Helpers ===== */
 function safe(obj, path, fb) {
@@ -502,12 +451,20 @@ export default function InternalAuditReportsView() {
         Date.now();
       const d = new Date(tsBase);
 
-      // === هنا التعديل المهم ===
-      // نأخذ branch إن وجد، أو header.branch، وإذا كان الاثنين فاضيين نستخدم location
+      /* === مصدر الفرع ===
+         التقارير الجديدة بتحفظ الفرع بـ payload.branch + header.branch.
+         حقل الـ Location انلغى، بس التقارير القديمة الفرع محفوظ فيها فقط
+         بـ header.location — فمنحافظ عليه كآخر خيار حتى ما نخسر بياناتها. */
       const branchRaw =
-        r.branch || header.branch || header.location || "";
+        p.branch || header.branch || r.branch || header.location || "";
       const branch = canonicalBranchName(branchRaw);
-      const location = header.location || "";
+      /* Legacy extra text: only worth showing when it says something the
+         resolved branch doesn't already say. New reports never set it. */
+      const legacyLocation = header.location || "";
+      const location =
+        legacyLocation && canonicalBranchName(legacyLocation) !== branch
+          ? legacyLocation
+          : "";
 
       return {
         _raw: r,
@@ -518,7 +475,7 @@ export default function InternalAuditReportsView() {
         d: d.getUTCDate(),
         branch,          // يُستخدم في الفلترة والقائمة
         branchRaw,
-        location,        // للعرض فقط
+        location,        // legacy only — فاضي بالتقارير الجديدة
         title: p.title || "-",
         date: header.date || "-",
         reportNo: header.reportNo || "-",
@@ -1660,27 +1617,75 @@ export default function InternalAuditReportsView() {
                           >
                             <div>
                               {isEditing ? (
-                                <input
-                                  style={inputInline}
-                                  value={p.title || ""}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => {
-                                    draft.payload = p;
-                                    p.title = e.target.value;
-                                    setDraft({ ...draft });
-                                  }}
-                                  placeholder="Report Title"
-                                />
+                                <>
+                                  {/* Branch is the only place the site is
+                                      recorded now, so it has to be editable —
+                                      that's how a legacy report whose branch
+                                      only existed as free-text Location gets
+                                      corrected. */}
+                                  <select
+                                    style={{ ...inputInline, fontWeight: 700, marginBottom: 6 }}
+                                    value={(() => {
+                                      /* Read the DRAFT, not the normalized row —
+                                         the row only refreshes after a save. */
+                                      const cur = canonicalBranchName(
+                                        p.branch || p.header?.branch || p.header?.location || ""
+                                      );
+                                      return BRANCH_CODES.includes(cur) ? cur : "";
+                                    })()}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => {
+                                      const code = e.target.value;
+                                      draft.payload = p;
+                                      p.branch = code;
+                                      p.header = p.header || {};
+                                      p.header.branch = code;
+                                      /* Drop the retired field so the corrected
+                                         branch can't be shadowed later. */
+                                      delete p.header.location;
+                                      setDraft({ ...draft });
+                                    }}
+                                  >
+                                    <option value="">
+                                      {tt("-- Select Branch --", "-- اختر الفرع --")}
+                                      {r.branchRaw ? ` (${r.branchRaw})` : ""}
+                                    </option>
+                                    {BRANCH_CODES.map((code) => (
+                                      <option key={code} value={code}>
+                                        {getBranchLabel(code, pageLang)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    style={inputInline}
+                                    value={p.title || ""}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => {
+                                      draft.payload = p;
+                                      p.title = e.target.value;
+                                      setDraft({ ...draft });
+                                    }}
+                                    placeholder="Report Title"
+                                  />
+                                </>
                               ) : (
                                 <>
                                   <div style={{ fontWeight: 700 }}>
                                     {r.branch ? getBranchLabel(r.branch, pageLang) : "-"}
                                   </div>
+                                  {/* Legacy reports only: the old free-text
+                                      Location, shown when it isn't just a
+                                      restatement of the branch above. */}
                                   {r.location && (
                                     <div
+                                      title={tt(
+                                        "Legacy location text kept from an older report",
+                                        "نص الموقع القديم محفوظ من تقرير سابق"
+                                      )}
                                       style={{
-                                        opacity: 0.7,
+                                        opacity: 0.55,
                                         fontSize: 11,
+                                        fontStyle: "italic",
                                       }}
                                     >
                                       {r.location}

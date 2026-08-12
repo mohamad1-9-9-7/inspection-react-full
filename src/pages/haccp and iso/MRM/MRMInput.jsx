@@ -127,6 +127,74 @@ export default function MRMInput() {
     }
   }
 
+  /* ─── 🆕 Auto-pull from Product Withdrawals (ISO 8.9.5 — MRM input 9) ─── */
+  async function pullWithdrawals() {
+    try {
+      const res = await fetch(`${API_BASE}/api/reports?type=product_withdrawal`, { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      const arr = Array.isArray(json) ? json : json?.data || json?.items || [];
+      if (arr.length === 0) {
+        alert(lang === "ar" ? "لا توجد عمليات سحب مسجلة." : "No withdrawals recorded.");
+        return;
+      }
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+      const recent = arr.filter((r) => new Date(r?.payload?.initDate || 0) >= twelveMonthsAgo);
+
+      const secureRate = (p) => {
+        if (typeof p?.accountedRate === "number") return p.accountedRate;
+        const rows = Array.isArray(p?.locations) ? p.locations : [];
+        const disp = rows.reduce((a, l) => a + (parseFloat(l?.dispatched) || 0), 0);
+        if (!disp) return null;
+        const sec = rows.reduce((a, l) => a + (parseFloat(l?.held) || 0) + (parseFloat(l?.returned) || 0), 0);
+        return Math.min(100, (sec / disp) * 100);
+      };
+      const escalated = recent.filter((r) => {
+        const p = r?.payload || {};
+        if (p.consumerReached === "yes" || p.mustEscalate) return true;
+        const rows = Array.isArray(p.locations) ? p.locations : [];
+        return rows.some((l) => (parseFloat(l?.sold) || 0) > 0);
+      });
+      const open = recent.filter((r) => (r?.payload?.status || "Open") !== "Closed");
+      const byLevel = {};
+      recent.forEach((r) => {
+        const lv = r?.payload?.withdrawalClass || "B";
+        byLevel[lv] = (byLevel[lv] || 0) + 1;
+      });
+      const rates = recent.map((r) => secureRate(r?.payload)).filter((v) => v != null);
+      const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
+      const levelsSummary = Object.entries(byLevel).map(([k, v]) => `Level ${k}: ${v}`).join(", ");
+
+      const lines = recent.map((r) => {
+        const p = r?.payload || {};
+        const rate = secureRate(p);
+        return `  - ${p.initDate || "—"}: ${p.withdrawalNumber || "WD"} — ${p.product || "—"}`
+          + ` (Level ${p.withdrawalClass || "B"}${rate != null ? `, ${rate.toFixed(0)}%` : ""})`;
+      }).join("\n");
+
+      const summary = lang === "ar"
+        ? `📦 ملخص عمليات سحب المنتج — آخر 12 شهر (تلقائي):\n`
+          + `• الإجمالي: ${recent.length}\n`
+          + `• مفتوحة: ${open.length}\n`
+          + `• حسب المستوى: ${levelsSummary || "—"}\n`
+          + `• متوسط نسبة تأمين المخزون: ${avgRate != null ? `${avgRate.toFixed(1)}%` : "—"} (الهدف 100%)\n`
+          + `• صُعِّدت إلى استدعاء فعلي: ${escalated.length}\n\n`
+          + `السجلات:\n${lines}`
+        : `📦 Product Withdrawal summary — last 12 months (auto-pulled):\n`
+          + `• Total: ${recent.length}\n`
+          + `• Open: ${open.length}\n`
+          + `• By level: ${levelsSummary || "—"}\n`
+          + `• Average stock secured rate: ${avgRate != null ? `${avgRate.toFixed(1)}%` : "—"} (target 100%)\n`
+          + `• Escalated to real recall: ${escalated.length}\n\n`
+          + `Records:\n${lines}`;
+
+      const existing = form.inputs.emergencyIncidents || "";
+      setField("inputs.emergencyIncidents", existing ? `${existing}\n\n${summary}` : summary);
+    } catch (e) {
+      alert(t("saveError") + ": " + (e?.message || e));
+    }
+  }
+
   /* ─── 🆕 Auto-pull from Continual Improvement Log ─── */
   async function pullImprovement() {
     try {
@@ -259,7 +327,17 @@ export default function MRMInput() {
           <label style={S.label}>{t("mrmInput8")}</label>
           <textarea style={S.textarea} value={form.inputs.resourcesAdequacy} onChange={(e) => setField("inputs.resourcesAdequacy", e.target.value)} />
 
-          <label style={S.label}>{t("mrmInput9")}</label>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 8, marginTop: 8 }}>
+            <label style={{ ...S.label, marginTop: 0 }}>{t("mrmInput9")}</label>
+            <button
+              type="button"
+              onClick={pullWithdrawals}
+              style={{ ...S.btn("primary"), padding: "5px 12px", fontSize: 11 }}
+              title={lang === "ar" ? "سحب ملخص عمليات سحب المنتج" : "Pull product withdrawal summary"}
+            >
+              📦 {lang === "ar" ? "سحب من سجل سحب المنتج" : "Pull from Product Withdrawal"}
+            </button>
+          </div>
           <textarea style={S.textarea} value={form.inputs.emergencyIncidents} onChange={(e) => setField("inputs.emergencyIncidents", e.target.value)} />
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 8, marginTop: 8 }}>

@@ -6,6 +6,7 @@ import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
+import { canEdit, canDelete } from "../../../../../utils/perms";
 
 const TYPE     = "pos19_dry_store_temp_humidity";
 const BRANCH   = "POS 19";
@@ -284,14 +285,18 @@ export default function DryStoreTempHumidityView() {
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <div style={{ fontWeight: 800, fontSize: 18 }}>Dry Store Temp & Humidity — View (POS 19)</div>
         <div style={{ marginInlineStart: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit"}</button>
+          {canEdit("daily") && (
+            <button onClick={toggleEdit} style={btn(editing ? "#6b7280" : "#7c3aed")}>{editing ? "Cancel Edit" : "Edit"}</button>
+          )}
           {editing && (
             <>
               <button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button>
               <button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button>
             </>
           )}
-          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+          {canDelete("daily") && (
+            <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
+          )}
           <button onClick={exportXLSX} disabled={!rows.filter(isFilledRow).length} style={btn("#0ea5e9")}>Export XLSX</button>
           <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
           <button onClick={exportPDF} style={btn("#374151")}>Export PDF</button>

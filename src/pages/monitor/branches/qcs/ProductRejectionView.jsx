@@ -2,6 +2,7 @@
 // QCS — Product Rejection Report — Records list
 
 import React, { useEffect, useMemo, useState } from "react";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const CRA = (typeof process !== "undefined" && process.env?.REACT_APP_API_URL) || undefined;
@@ -194,7 +195,9 @@ export default function ProductRejectionView() {
                       )}
                     </td>
                     <td style={S.td}>
-                      <button style={S.btnDanger} onClick={() => del(rec.id)} data-delete-action="true">🗑️ حذف</button>
+                      {canDelete("daily") && (
+                        <button style={S.btnDanger} onClick={() => del(rec.id)} data-delete-action="true">🗑️ حذف</button>
+                      )}
                     </td>
                   </tr>
                 );

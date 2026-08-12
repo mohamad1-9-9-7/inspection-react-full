@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -387,7 +388,9 @@ export default function FTR2TemperatureView() {
               <button onClick={handleExportPDF}                    style={btn("#27ae60")}>⬇ Export PDF</button>
               <button onClick={handleExportJSON}                   style={btn("#16a085")}>⬇ Export JSON</button>
               <button onClick={triggerImport}                      style={btn("#f39c12")}>⬆ Import JSON</button>
-              <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">🗑 Delete</button>
+              {canDelete("daily") && (
+                <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">🗑 Delete</button>
+              )}
               <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportJSON} />
             </div>
 

@@ -19,6 +19,7 @@ import {
   saveReport,
 } from "../_shared/reportApi";
 import ProductPicker from "../_shared/ProductPicker";
+import { canEdit } from "../../../../utils/perms";
 
 const TYPE_COOLERS = "qcs-coolers";
 
@@ -567,7 +568,9 @@ export default function CoolersView() {
 
           <ActionBar style={{ margin: "8px 0" }}>
             {!editing ? (
-              <ActionButton onClick={() => setEditing(true)} tone="edit" disabled={!report}>Edit</ActionButton>
+              canEdit("daily") && (
+                <ActionButton onClick={() => setEditing(true)} tone="edit" disabled={!report}>Edit</ActionButton>
+              )
             ) : (
               <>
                 <ActionButton onClick={saveEditing} tone="save" disabled={saving}>Save</ActionButton>

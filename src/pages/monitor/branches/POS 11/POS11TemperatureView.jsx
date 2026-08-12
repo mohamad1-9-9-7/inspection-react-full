@@ -14,6 +14,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 /* ===== Report constants ===== */
 const TYPE   = "pos11_temperature";
@@ -224,9 +225,11 @@ export default function POS11TemperatureView() {
           <button onClick={exportCSV} style={btn("#10b981")}>
             ⬇️ Export Excel (CSV)
           </button>
-          <button onClick={handleDelete} style={btn("#ef4444")} data-delete-action="true">
-            🗑️ Delete
-          </button>
+          {canDelete("daily") && (
+            <button onClick={handleDelete} style={btn("#ef4444")} data-delete-action="true">
+              🗑️ Delete
+            </button>
+          )}
         </>
       }
     >

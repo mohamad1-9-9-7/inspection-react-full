@@ -5,6 +5,7 @@ import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { DateTreeSidebar } from "../_shared/branchViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 /* ===== API base (أسلوب موحّد) ===== */
 
@@ -257,7 +258,9 @@ export default function PersonalHygieneVIEW() {
                 <button onClick={handleExportPDF} style={btnExport}>⬇ Export PDF</button>
                 <button onClick={handleExportJSON} style={btnJson}>⬇ Export JSON</button>
                 <button onClick={triggerImport} style={btnImport}>⬆ Import JSON</button>
-                <button onClick={() => handleDelete(selectedReport)} style={btnDelete} data-delete-action="true">🗑 Delete</button>
+                {canDelete("daily") && (
+                  <button onClick={() => handleDelete(selectedReport)} style={btnDelete} data-delete-action="true">🗑 Delete</button>
+                )}
               </div>
               <input
                 ref={fileInputRef}

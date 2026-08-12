@@ -6,11 +6,20 @@ import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
 import { listReportDates, getReportByDate, invalidateReportDates } from "../_shared/reportsApi";
 import SignatureName from "../../../../shared/SignatureName";
+import {
+  DateTreeSidebar,
+  ResponsiveReportLayout,
+  ResponsiveTableWrap,
+} from "../../_shared/branchViewKit";
+import { canEdit, canDelete } from "../../../../../utils/perms";
 
 
 const TYPE     = "pos19_cooking_temperature";
 const BRANCH   = "POS 19";
 const FORM_REF = "FSM-QM/REC/CR";
+
+/** Critical limit for this record: cooked/reheated core temperature. */
+const CRITICAL_TEMP = 75;
 
 const PRODUCT_SLOTS = [
   { key:"p1", label:"Product 1" },
@@ -20,9 +29,16 @@ const PRODUCT_SLOTS = [
 
 const safe = (v) => v ?? "";
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
-const btn = (bg) => ({ background:bg,color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",fontWeight:700,cursor:"pointer" });
 const formatDMY = (iso) => { if(!iso)return iso; const[y,m,d]=iso.split("-"); return `${d}/${m}/${y}`; };
 const isFilledRow = (r={}) => PRODUCT_SLOTS.some(s => String(r[`${s.key}_name`]||"").trim()!=="") || String(r.comment||"").trim()!=="" || String(r.monitoredBy||"").trim()!=="";
+
+/** Parsed temperature, or null when the cell is blank / not a number. */
+function tempOf(row, key) {
+  const raw = row?.[`${key}_temp`];
+  if (raw === "" || raw == null) return null;
+  const n = parseFloat(raw);
+  return Number.isNaN(n) ? null : n;
+}
 
 function emptyRow(){
   const base={comment:"",monitoredBy:""};
@@ -30,29 +46,151 @@ function emptyRow(){
   return base;
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Presentation kit — bigger type, clear CCP colour coding
+   ───────────────────────────────────────────────────────────── */
+const UI = {
+  panel: {
+    background: "#fff", border: "1px solid #dbe3f4", borderRadius: 16,
+    padding: 18, color: "#0b1f4d", direction: "ltr",
+    fontFamily: 'system-ui,-apple-system,"Segoe UI",sans-serif',
+  },
+  headBar: {
+    display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+    paddingBottom: 14, marginBottom: 16, borderBottom: "2px solid #e0f2fe",
+  },
+  titleEn: { fontWeight: 900, fontSize: 21, lineHeight: 1.2, color: "#0b1f4d" },
+  titleAr: { fontWeight: 700, fontSize: 15, color: "#475569", marginTop: 3 },
+  refChip: {
+    display: "inline-block", background: "#e0f2fe", border: "1px solid #7dd3fc",
+    color: "#0c4a6e", borderRadius: 999, padding: "6px 14px",
+    fontSize: 13, fontWeight: 900, whiteSpace: "nowrap",
+  },
+  btnGroup: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
+  divider: { width: 1, height: 26, background: "#e2e8f0", margin: "0 2px" },
+
+  kpiGrid: {
+    display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+    gap: 12, marginBottom: 16,
+  },
+  kpi: (accent, bg) => ({
+    background: bg, border: `1px solid ${accent}33`, borderRadius: 14,
+    padding: "14px 16px", textAlign: "center",
+  }),
+  kpiLabel: { fontSize: 13, fontWeight: 800, color: "#64748b", marginBottom: 6 },
+  kpiValue: (color) => ({ fontSize: 30, fontWeight: 950, color, lineHeight: 1 }),
+  kpiUnit: { fontSize: 13, fontWeight: 700, color: "#94a3b8", marginTop: 4 },
+
+  legend: {
+    display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center",
+    background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12,
+    padding: "10px 16px", marginBottom: 12, fontSize: 14, fontWeight: 700, color: "#334155",
+  },
+
+  table: {
+    width: "100%", borderCollapse: "separate", borderSpacing: 0,
+    minWidth: 1080, fontSize: 14.5, background: "#fff",
+  },
+  thGroup: {
+    padding: "11px 8px", textAlign: "center", fontWeight: 900, fontSize: 15,
+    color: "#fff", background: "#0284c7",
+    border: "1px solid rgba(255,255,255,0.28)", whiteSpace: "nowrap",
+  },
+  thCell: {
+    padding: "9px 8px", textAlign: "center", fontWeight: 800, fontSize: 13.5,
+    color: "#fff", background: "#0ea5e9", lineHeight: 1.35,
+    border: "1px solid rgba(255,255,255,0.28)", whiteSpace: "pre-line",
+  },
+  td: {
+    padding: "11px 10px", textAlign: "center", verticalAlign: "middle",
+    borderBottom: "1px solid #e2e8f0", borderInlineEnd: "1px solid #eef2f7",
+    fontSize: 14.5, color: "#0f172a",
+  },
+  rowNo: {
+    padding: "11px 6px", textAlign: "center", fontWeight: 900, fontSize: 13.5,
+    color: "#94a3b8", background: "#f8fafc",
+    borderBottom: "1px solid #e2e8f0", borderInlineEnd: "1px solid #e2e8f0",
+  },
+  input: {
+    width: "100%", border: "1.5px solid #c7d2fe", borderRadius: 8,
+    padding: "8px 10px", fontSize: 14.5, fontFamily: "inherit", fontWeight: 600,
+  },
+  notes: {
+    marginTop: 16, border: "1px solid #fcd34d", borderInlineStart: "5px solid #f59e0b",
+    borderRadius: 12, padding: "14px 18px", background: "#fffbeb", fontSize: 14.5,
+    color: "#78350f", lineHeight: 1.85,
+  },
+  empty: {
+    padding: 40, border: "2px dashed #cbd5e1", borderRadius: 14,
+    textAlign: "center", color: "#64748b", fontWeight: 800, fontSize: 16,
+    background: "#f8fafc",
+  },
+};
+
+/** Action button — 40px min height so it is comfortably tappable. */
+function Btn({ tone = "slate", disabled, children, ...rest }) {
+  const map = {
+    violet: { bg: "linear-gradient(180deg,#8b5cf6,#7c3aed)", fg: "#fff", bd: "#6d28d9" },
+    sky:    { bg: "linear-gradient(180deg,#38bdf8,#0ea5e9)", fg: "#fff", bd: "#0284c7" },
+    green:  { bg: "linear-gradient(180deg,#34d399,#10b981)", fg: "#fff", bd: "#059669" },
+    red:    { bg: "linear-gradient(180deg,#f87171,#ef4444)", fg: "#fff", bd: "#dc2626" },
+    slate:  { bg: "#fff", fg: "#0f172a", bd: "#cbd5e1" },
+    dark:   { bg: "linear-gradient(180deg,#475569,#334155)", fg: "#fff", bd: "#1e293b" },
+  };
+  const c = map[tone] || map.slate;
+  return (
+    <button
+      disabled={disabled}
+      style={{
+        minHeight: 40, padding: "9px 16px", borderRadius: 10,
+        background: disabled ? "#f1f5f9" : c.bg,
+        color: disabled ? "#94a3b8" : c.fg,
+        border: `1.5px solid ${disabled ? "#e2e8f0" : c.bd}`,
+        fontWeight: 850, fontSize: 14, fontFamily: "inherit",
+        cursor: disabled ? "not-allowed" : "pointer", whiteSpace: "nowrap",
+      }}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Temperature as a pass/fail pill — the whole point of this record. */
+function TempPill({ value }) {
+  if (value === "" || value == null) return <span style={{ color: "#cbd5e1", fontWeight: 700 }}>—</span>;
+  const n = parseFloat(value);
+  if (Number.isNaN(n)) return <span style={{ fontWeight: 700 }}>{value}</span>;
+  const low = n < CRITICAL_TEMP;
+  return (
+    <span style={{
+      display: "inline-block", minWidth: 74, padding: "5px 10px", borderRadius: 999,
+      fontWeight: 950, fontSize: 14.5,
+      background: low ? "#fee2e2" : "#dcfce7",
+      color: low ? "#991b1b" : "#166534",
+      border: `1.5px solid ${low ? "#fca5a5" : "#86efac"}`,
+    }}>
+      {low ? "⚠ " : ""}{n}°C
+    </span>
+  );
+}
+
 export default function CookingTemperatureMonitoringView() {
   const reportRef    = useRef(null);
   const fileInputRef = useRef(null);
   const todayDubai   = useMemo(()=>{ try{return new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Dubai"});}catch{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;} },[]);
 
-  const [date,setDate]                     = useState(todayDubai);
-  const [loading,setLoading]               = useState(false);
-  const [err,setErr]                       = useState("");
-  const [record,setRecord]                 = useState(null);
-  const [editRows,setEditRows]             = useState([]);
-  const [editing,setEditing]               = useState(false);
-  const [allDates,setAllDates]             = useState([]);
-  const [expandedYears,setExpandedYears]   = useState({});
-  const [expandedMonths,setExpandedMonths] = useState({});
-
-  const thCell = {border:"1px solid #1f3b70",padding:"6px 4px",textAlign:"center",whiteSpace:"pre-line",fontWeight:700,background:"#f5f8ff",color:"#0b1f4d"};
-  const tdCell = {border:"1px solid #1f3b70",padding:"6px 4px",textAlign:"center",verticalAlign:"middle"};
-  const inputStyle = {width:"100%",border:"1px solid #c7d2fe",borderRadius:6,padding:"4px 6px"};
+  const [date,setDate]         = useState(todayDubai);
+  const [loading,setLoading]   = useState(false);
+  const [err,setErr]           = useState("");
+  const [record,setRecord]     = useState(null);
+  const [editRows,setEditRows] = useState([]);
+  const [editing,setEditing]   = useState(false);
+  const [allDates,setAllDates] = useState([]);
 
   async function fetchAllDates(){
     try{const uniq = await listReportDates(TYPE);
     setAllDates(uniq);
-    // Tree stays collapsed by default.
     if(!uniq.includes(date)&&uniq.length)setDate(uniq[0]);}catch(e){console.warn(e);}
   }
 
@@ -106,7 +244,7 @@ export default function CookingTemperatureMonitoringView() {
       let rIdx=5;rows.forEach(e=>{
         ws.getRow(rIdx).values=[...PRODUCT_SLOTS.flatMap(s=>[safe(e[`${s.key}_name`]),safe(e[`${s.key}_time`]),safe(e[`${s.key}_temp`])]),safe(e.comment),safe(e.monitoredBy)];
         ws.getRow(rIdx).eachCell((cell,col)=>{cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};cell.border=border;
-          const tempCols=PRODUCT_SLOTS.map((_,i)=>3+i*3);if(tempCols.includes(col)){const v=parseFloat(ws.getRow(rIdx).getCell(col).value);if(!isNaN(v)&&v<75)cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FDE8E8"}};}
+          const tempCols=PRODUCT_SLOTS.map((_,i)=>3+i*3);if(tempCols.includes(col)){const v=parseFloat(ws.getRow(rIdx).getCell(col).value);if(!isNaN(v)&&v<CRITICAL_TEMP)cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FDE8E8"}};}
         });ws.getRow(rIdx).height=20;rIdx++;
       });
       const buf=await wb.xlsx.writeBuffer({useStyles:true,useSharedStrings:true});const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));a.download=`POS19_CookingRecord_${p.reportDate||date}.xlsx`;a.click();URL.revokeObjectURL(a.href);
@@ -124,129 +262,237 @@ export default function CookingTemperatureMonitoringView() {
 
   async function importJSON(file){if(!file)return;try{const payload=JSON.parse(await file.text())?.payload||JSON.parse(await file.text());if(!payload?.reportDate)throw new Error();setLoading(true);const res=await fetch(`${API_BASE}/api/reports`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reporter:"pos19",type:TYPE,payload})});if(!res.ok)throw new Error();alert("✅ Imported");setDate(payload.reportDate);invalidateReportDates(TYPE); await fetchAllDates();await fetchRecord(payload.reportDate);}catch(e){console.error(e);alert("❌ Invalid JSON or save failed");}finally{if(fileInputRef.current)fileInputRef.current.value="";setLoading(false);}}
 
-  const grouped=useMemo(()=>{const out={};for(const d of allDates){const[y,m]=d.split("-");(out[y]||={}); (out[y][m]||=[]).push(d);}for(const y of Object.keys(out))out[y]=Object.fromEntries(Object.entries(out[y]).sort(([a],[b])=>Number(b)-Number(a)).map(([m,arr])=>[m,arr.sort((a,b)=>b.localeCompare(a))]));return Object.fromEntries(Object.entries(out).sort(([a],[b])=>Number(b)-Number(a)));}, [allDates]);
-  const toggleYear=(y)=>setExpandedYears(p=>({...p,[y]:!p[y]}));const toggleMonth=(y,m)=>setExpandedMonths(p=>({...p,[`${y}-${m}`]:!p[`${y}-${m}`]}));
-  const rows=record?.payload?.entries||[];
+  const rows = record?.payload?.entries || [];
+  const visibleRows = useMemo(() => rows.filter(isFilledRow), [rows]);
+
+  /** At-a-glance CCP summary for the selected day. */
+  const stats = useMemo(() => {
+    let checked = 0, below = 0;
+    for (const r of visibleRows) {
+      for (const s of PRODUCT_SLOTS) {
+        const n = tempOf(r, s.key);
+        if (n === null) continue;
+        checked++;
+        if (n < CRITICAL_TEMP) below++;
+      }
+    }
+    return {
+      rows: visibleRows.length,
+      checked,
+      below,
+      pct: checked ? Math.round(((checked - below) / checked) * 100) : null,
+    };
+  }, [visibleRows]);
+
+  /* DateTreeSidebar keys rows by `key` and shows `label`. */
+  const dateItems = useMemo(
+    () => allDates.map((d) => ({ key: d, dateISO: d, label: formatDMY(d) })),
+    [allDates]
+  );
+
+  /* One body row, shared by read and edit modes. */
+  const renderCells = (r, i, isEdit) =>
+    PRODUCT_SLOTS.flatMap((s, gi) => {
+      const groupTint = gi % 2 ? "#f8fbff" : "#fff";
+      const edge = gi > 0 ? { borderInlineStart: "3px solid #bae6fd" } : null;
+      return [
+        <td key={`${s.key}n`} style={{ ...UI.td, background: groupTint, textAlign: "start", fontWeight: 700, ...edge }}>
+          {isEdit
+            ? <input value={r[`${s.key}_name`]||""} onChange={e=>upd(i,`${s.key}_name`,e.target.value)} style={UI.input} placeholder="Product"/>
+            : (safe(r[`${s.key}_name`]) || <span style={{color:"#cbd5e1"}}>—</span>)}
+        </td>,
+        <td key={`${s.key}t`} style={{ ...UI.td, background: groupTint, fontWeight: 700, color: "#475569" }}>
+          {isEdit
+            ? <input type="time" value={r[`${s.key}_time`]||""} onChange={e=>upd(i,`${s.key}_time`,e.target.value)} style={UI.input}/>
+            : (safe(r[`${s.key}_time`]) || <span style={{color:"#cbd5e1"}}>—</span>)}
+        </td>,
+        <td key={`${s.key}d`} style={{ ...UI.td, background: groupTint }}>
+          {isEdit
+            ? <input type="number" step="0.1" value={r[`${s.key}_temp`]||""} onChange={e=>upd(i,`${s.key}_temp`,e.target.value)}
+                     style={{...UI.input, textAlign:"center", fontWeight:900,
+                             background: tempOf(r,s.key)!==null && tempOf(r,s.key)<CRITICAL_TEMP ? "#fee2e2" : "#fff"}} placeholder="°C"/>
+            : <TempPill value={r[`${s.key}_temp`]}/>}
+        </td>,
+      ];
+    });
 
   return (
-    <div style={{background:"#fff",border:"1px solid #dbe3f4",borderRadius:12,padding:16,color:"#0b1f4d",direction:"ltr"}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
-        <div style={{fontWeight:800,fontSize:18}}>Cooking Temperature Monitoring Record — View (POS 19)</div>
-        <div style={{marginInlineStart:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={toggleEdit} style={btn(editing?"#6b7280":"#7c3aed")}>{editing?"Cancel Edit":"Edit"}</button>
-          {editing&&<><button onClick={addRow} style={btn("#0ea5e9")}>+ Row</button><button onClick={saveEdit} style={btn("#10b981")}>Save Changes</button></>}
-          <button onClick={handleDelete} style={btn("#dc2626")} data-delete-action="true">Delete (password)</button>
-          <button onClick={exportXLSX} disabled={!rows.filter(isFilledRow).length} style={btn("#0ea5e9")}>Export XLSX</button>
-          <button onClick={exportJSON} disabled={!record} style={btn("#0284c7")}>Export JSON</button>
-          <button onClick={exportPDF} style={btn("#374151")}>Export PDF</button>
-          <label style={{...btn("#059669"),display:"inline-block"}}>Import JSON<input ref={fileInputRef} type="file" accept="application/json" onChange={e=>importJSON(e.target.files?.[0])} style={{display:"none"}}/></label>
-        </div>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"280px 1fr",gap:12}}>
-        <div style={{border:"1px solid #e5e7eb",borderRadius:10,padding:10,background:"#fafafa"}}>
-          <div style={{fontWeight:800,marginBottom:8}}>📅 Date Tree</div>
-          <div style={{maxHeight:380,overflowY:"auto"}}>
-            {Object.keys(grouped).length?Object.entries(grouped).map(([year,months])=>{const yOpen=!!expandedYears[year];return(<div key={year} style={{marginBottom:8}}>
-              <button onClick={()=>toggleYear(year)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"6px 10px",borderRadius:8,border:"1px solid #d1d5db",background:"#fff",cursor:"pointer",fontWeight:800}}><span>Year {year}</span><span>{yOpen?"▾":"▸"}</span></button>
-              {yOpen&&Object.entries(months).map(([month,days])=>{const key=`${year}-${month}`;const mOpen=!!expandedMonths[key];return(<div key={key} style={{marginTop:6,marginLeft:8}}>
-                <button onClick={()=>toggleMonth(year,month)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"6px 10px",borderRadius:8,border:"1px solid #e5e7eb",background:"#fff",cursor:"pointer",fontWeight:700}}><span>Month {month}</span><span>{mOpen?"▾":"▸"}</span></button>
-                {mOpen&&<ul style={{listStyle:"none",padding:"6px 2px 0 2px",margin:0}}>{days.map(d=>(<li key={d} style={{marginBottom:6}}><button onClick={()=>setDate(d)} style={{width:"100%",textAlign:"left",padding:"8px 10px",borderRadius:8,border:"1px solid #d1d5db",background:d===date?"#2563eb":"#fff",color:d===date?"#fff":"#111827",fontWeight:700,cursor:"pointer"}}>{formatDMY(d)}</button></li>))}</ul>}
-              </div>);})}
-            </div>);}):<div style={{color:"#6b7280"}}>No available dates.</div>}
+    <div style={UI.panel}>
+      {/* ── Header: what this is + what you can do ── */}
+      <div style={UI.headBar}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <span style={{ fontSize: 30 }}>🍳</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={UI.titleEn}>Cooking Temperature Monitoring Record</div>
+            <div style={UI.titleAr}>سجل مراقبة درجة حرارة الطبخ · {BRANCH}</div>
           </div>
         </div>
-        <div>
-          {loading&&<p>Loading…</p>}{err&&<p style={{color:"#b91c1c"}}>{err}</p>}
-          {!loading&&!err&&!record&&<div style={{padding:12,border:"1px dashed #9ca3af",borderRadius:8,textAlign:"center"}}>No report for this date.</div>}
-          {record&&(<div ref={reportRef}>
-            <ReportHeader
-              title="Cooking Temperature Monitoring Record"
-              subtitle="Restaurant: Al Mawashi – Braai Restaurant LLC"
-              titleAr="سجل مراقبة درجة حرارة الطبخ"
-              fields={[
-                { label: "Report Date",         value: safe(record.payload?.reportDate) },
-                { label: "Branch",              value: safe(record.payload?.branch) },
-                { label: "Form Ref",            value: FORM_REF },
-                { label: "Area",                value: safe(record.payload?.area) },
-                { label: "Issued By",           value: safe(record.payload?.issuedBy) },
-                { label: "Controlling Officer", value: safe(record.payload?.controllingOfficer) },
-                { label: "Approved By",         value: safe(record.payload?.approvedBy) },
-                { label: "Revision No",         value: safe(record.payload?.revisionNo) },
-              ]}
-            />
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontSize:12}}>
-                <colgroup>
-                  {PRODUCT_SLOTS.flatMap((_,i)=>[
-                    <col key={`p${i}n`} style={{width:150}}/>,
-                    <col key={`p${i}t`} style={{width:80}}/>,
-                    <col key={`p${i}d`} style={{width:80}}/>,
-                  ])}
-                  <col style={{width:160}}/><col style={{width:130}}/>
-                  {editing&&<col style={{width:70}}/>}
-                </colgroup>
-                <thead>
-                  <tr>
-                    {PRODUCT_SLOTS.map(s=><th key={s.key} style={thCell} colSpan={3}>{s.label}</th>)}
-                    <th style={thCell} rowSpan={2}>Comment{"\n"}تعليق</th>
-                    <th style={thCell} rowSpan={2}>Monitored By{"\n"}مراقب بواسطة</th>
-                    {editing&&<th style={thCell} rowSpan={2}>—</th>}
-                  </tr>
-                  <tr>
-                    {PRODUCT_SLOTS.flatMap(s=>[
-                      <th key={`${s.key}n`} style={thCell}>Product Name{"\n"}اسم الطعام</th>,
-                      <th key={`${s.key}t`} style={thCell}>Time{"\n"}وقت</th>,
-                      <th key={`${s.key}d`} style={thCell}>Temp °C{"\n"}درجة حرارة</th>,
-                    ])}
-                  </tr>
-                </thead>
-                <tbody>
-                  {!editing?(rows.filter(isFilledRow).map((r,idx)=>(<tr key={idx}>
-                    {PRODUCT_SLOTS.flatMap(s=>{
-                      const tempVal=r[`${s.key}_temp`];const isLow=tempVal&&parseFloat(tempVal)<75;
-                      return [
-                        <td key={`${s.key}n`} style={tdCell}>{safe(r[`${s.key}_name`])}</td>,
-                        <td key={`${s.key}t`} style={tdCell}>{safe(r[`${s.key}_time`])}</td>,
-                        <td key={`${s.key}d`} style={{...tdCell,background:isLow?"#fde8e8":""}}>{safe(tempVal)}</td>,
-                      ];
-                    })}
-                    <td style={tdCell}>{safe(r.comment)}</td>
-                    <td style={tdCell}>{safe(r.monitoredBy)}</td>
-                  </tr>))):(
-                    editRows.map((r,i)=>(<tr key={i}>
-                      {PRODUCT_SLOTS.flatMap(s=>{
-                        const tempVal=r[`${s.key}_temp`];const isLow=tempVal&&parseFloat(tempVal)<75;
-                        return [
-                          <td key={`${s.key}n`} style={tdCell}><input value={r[`${s.key}_name`]||""} onChange={e=>upd(i,`${s.key}_name`,e.target.value)} style={inputStyle} placeholder="Product"/></td>,
-                          <td key={`${s.key}t`} style={tdCell}><input type="time" value={r[`${s.key}_time`]||""} onChange={e=>upd(i,`${s.key}_time`,e.target.value)} style={inputStyle}/></td>,
-                          <td key={`${s.key}d`} style={{...tdCell,background:isLow?"#fde8e8":""}}>
-                            <input type="number" step="0.1" value={tempVal||""} onChange={e=>upd(i,`${s.key}_temp`,e.target.value)} style={{...inputStyle,background:isLow?"#fde8e8":"#fff"}} placeholder="°C"/>
-                          </td>,
-                        ];
-                      })}
-                      <td style={tdCell}><input value={r.comment||""} onChange={e=>upd(i,"comment",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><input value={r.monitoredBy||""} onChange={e=>upd(i,"monitoredBy",e.target.value)} style={inputStyle}/></td>
-                      <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")} data-delete-action="true">Del</button></td>
-                    </tr>))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div style={{marginTop:12,border:"1px solid #1f3b70",borderRadius:8,padding:"10px 14px",background:"#f8fafc",fontSize:12}}>
-              <div style={{fontWeight:800,marginBottom:6}}>NOTES:</div>
-              <ol style={{margin:0,paddingInlineStart:20,lineHeight:1.7}}>
-                <li>Food Must be first cooked until core temp reached &lt; 75°C or reheated core temp above 75°C</li>
-                <li>Transfer to hot holding equipment immediately after cooking or reheating</li>
-                <li>Maintain product at 60 Deg C (140 Deg F) or hotter at all times</li>
-                <li>Take temperature of food at least once per shift</li>
-              </ol>
-            </div>
-            <div style={{marginTop:12,fontSize:12}}>
-              <SignatureName label="Verified By" name={safe(record.payload?.verifiedBy)} inline />
-            </div>
-          </div>)}
+        <span style={UI.refChip}>{FORM_REF}</span>
+
+        <div style={{ ...UI.btnGroup, marginInlineStart: "auto" }}>
+          {canEdit("daily") && (
+            <Btn tone={editing ? "slate" : "violet"} onClick={toggleEdit}>
+              {editing ? "✕ Cancel Edit" : "✎ Edit"}
+            </Btn>
+          )}
+          {editing && (
+            <>
+              <Btn tone="sky" onClick={addRow}>＋ Row</Btn>
+              <Btn tone="green" onClick={saveEdit}>💾 Save Changes</Btn>
+            </>
+          )}
+          <span style={UI.divider} />
+          <Btn tone="slate" onClick={exportXLSX} disabled={!visibleRows.length}>📊 XLSX</Btn>
+          <Btn tone="slate" onClick={exportJSON} disabled={!record}>🗄 JSON</Btn>
+          <Btn tone="dark" onClick={exportPDF} disabled={!record}>📄 PDF</Btn>
+          <Btn tone="green" onClick={() => fileInputRef.current?.click()}>⬆ Import</Btn>
+          <input ref={fileInputRef} type="file" accept="application/json"
+                 onChange={e=>importJSON(e.target.files?.[0])} style={{display:"none"}}/>
+          <span style={UI.divider} />
+          {canDelete("daily") && (
+            <Btn tone="red" onClick={handleDelete} disabled={!record} data-delete-action="true">🗑 Delete</Btn>
+          )}
         </div>
       </div>
+
+      <ResponsiveReportLayout
+        sidebarWidth={300}
+        sidebar={
+          <DateTreeSidebar
+            items={dateItems}
+            activeKey={date}
+            onPick={(it) => setDate(it.dateISO)}
+            title="📅 Report dates"
+            loading={loading && !allDates.length}
+            emptyText="No saved reports yet."
+            maxHeight={460}
+          />
+        }
+      >
+        {loading && <div style={UI.empty}>⏳ Loading…</div>}
+        {err && <div style={{ ...UI.empty, color: "#b91c1c", borderColor: "#fca5a5", background: "#fef2f2" }}>{err}</div>}
+        {!loading && !err && !record && <div style={UI.empty}>📭 No report saved for {formatDMY(date)}.</div>}
+
+        {record && (
+          <>
+            {/* ── Day summary — reads the CCP result without scanning the table ── */}
+            <div style={UI.kpiGrid}>
+              <div style={UI.kpi("#0ea5e9", "linear-gradient(135deg,#e0f2fe,#f8fafc)")}>
+                <div style={UI.kpiLabel}>Rows recorded</div>
+                <div style={UI.kpiValue("#0c4a6e")}>{stats.rows}</div>
+                <div style={UI.kpiUnit}>سجلات</div>
+              </div>
+              <div style={UI.kpi("#8b5cf6", "linear-gradient(135deg,#ede9fe,#f8fafc)")}>
+                <div style={UI.kpiLabel}>Temperatures taken</div>
+                <div style={UI.kpiValue("#5b21b6")}>{stats.checked}</div>
+                <div style={UI.kpiUnit}>قراءات</div>
+              </div>
+              <div style={UI.kpi(stats.below ? "#ef4444" : "#10b981", stats.below ? "linear-gradient(135deg,#fee2e2,#fff5f5)" : "linear-gradient(135deg,#dcfce7,#f8fafc)")}>
+                <div style={UI.kpiLabel}>Below {CRITICAL_TEMP}°C</div>
+                <div style={UI.kpiValue(stats.below ? "#991b1b" : "#166534")}>{stats.below}</div>
+                <div style={UI.kpiUnit}>{stats.below ? "⚠ خرق الحد الحرج" : "✓ لا يوجد خرق"}</div>
+              </div>
+              <div style={UI.kpi("#10b981", "linear-gradient(135deg,#dcfce7,#f8fafc)")}>
+                <div style={UI.kpiLabel}>Compliance</div>
+                <div style={UI.kpiValue(stats.pct === null ? "#94a3b8" : stats.pct === 100 ? "#166534" : "#b45309")}>
+                  {stats.pct === null ? "—" : `${stats.pct}%`}
+                </div>
+                <div style={UI.kpiUnit}>نسبة المطابقة</div>
+              </div>
+            </div>
+
+            <div ref={reportRef}>
+              <ReportHeader
+                title="Cooking Temperature Monitoring Record"
+                subtitle="Restaurant: Al Mawashi – Braai Restaurant LLC"
+                titleAr="سجل مراقبة درجة حرارة الطبخ"
+                fields={[
+                  { label: "Report Date",         value: safe(record.payload?.reportDate) },
+                  { label: "Branch",              value: safe(record.payload?.branch) },
+                  { label: "Form Ref",            value: FORM_REF },
+                  { label: "Area",                value: safe(record.payload?.area) },
+                  { label: "Issued By",           value: safe(record.payload?.issuedBy) },
+                  { label: "Controlling Officer", value: safe(record.payload?.controllingOfficer) },
+                  { label: "Approved By",         value: safe(record.payload?.approvedBy) },
+                  { label: "Revision No",         value: safe(record.payload?.revisionNo) },
+                ]}
+              />
+
+              {/* ── Colour key, so a red cell needs no explanation ── */}
+              <div style={UI.legend}>
+                <span style={{ fontWeight: 900, color: "#0b1f4d" }}>Critical limit — الحد الحرج:</span>
+                <span><TempPill value="78" /> &nbsp;≥ {CRITICAL_TEMP}°C — safe / مطابق</span>
+                <span><TempPill value="68" /> &nbsp;&lt; {CRITICAL_TEMP}°C — corrective action required / يتطلب إجراءً تصحيحياً</span>
+              </div>
+
+              <ResponsiveTableWrap style={{ border: "1px solid #cbd5e1" }}>
+                <table style={UI.table}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...UI.thGroup, width: 46 }} rowSpan={2}>#</th>
+                      {PRODUCT_SLOTS.map(s => <th key={s.key} style={UI.thGroup} colSpan={3}>{s.label}</th>)}
+                      <th style={UI.thGroup} rowSpan={2}>Comment{"\n"}تعليق</th>
+                      <th style={UI.thGroup} rowSpan={2}>Monitored By{"\n"}مراقب بواسطة</th>
+                      {editing && <th style={{ ...UI.thGroup, width: 80 }} rowSpan={2}>—</th>}
+                    </tr>
+                    <tr>
+                      {PRODUCT_SLOTS.flatMap(s=>[
+                        <th key={`${s.key}n`} style={{ ...UI.thCell, minWidth: 170 }}>Product Name{"\n"}اسم الطعام</th>,
+                        <th key={`${s.key}t`} style={{ ...UI.thCell, minWidth: 95 }}>Time{"\n"}وقت</th>,
+                        <th key={`${s.key}d`} style={{ ...UI.thCell, minWidth: 110 }}>Temp °C{"\n"}درجة حرارة</th>,
+                      ])}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!editing ? (
+                      visibleRows.length ? visibleRows.map((r,idx)=>(
+                        <tr key={idx}>
+                          <td style={UI.rowNo}>{idx+1}</td>
+                          {renderCells(r, idx, false)}
+                          <td style={{ ...UI.td, textAlign: "start" }}>{safe(r.comment) || <span style={{color:"#cbd5e1"}}>—</span>}</td>
+                          <td style={{ ...UI.td, fontWeight: 700 }}>{safe(r.monitoredBy) || <span style={{color:"#cbd5e1"}}>—</span>}</td>
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td colSpan={PRODUCT_SLOTS.length*3+3} style={{ ...UI.td, padding: 28, color: "#64748b", fontWeight: 800 }}>
+                            No product rows recorded for this date.
+                          </td>
+                        </tr>
+                      )
+                    ) : (
+                      editRows.map((r,i)=>(
+                        <tr key={i}>
+                          <td style={UI.rowNo}>{i+1}</td>
+                          {renderCells(r, i, true)}
+                          <td style={UI.td}><input value={r.comment||""} onChange={e=>upd(i,"comment",e.target.value)} style={UI.input}/></td>
+                          <td style={UI.td}><input value={r.monitoredBy||""} onChange={e=>upd(i,"monitoredBy",e.target.value)} style={UI.input}/></td>
+                          <td style={UI.td}>
+                            <Btn tone="red" onClick={()=>delRow(i)} data-delete-action="true">Del</Btn>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </ResponsiveTableWrap>
+
+              <div style={UI.notes}>
+                <div style={{ fontWeight: 950, marginBottom: 8, fontSize: 15.5, color: "#92400e" }}>⚠️ NOTES — ملاحظات</div>
+                <ol style={{ margin: 0, paddingInlineStart: 22 }}>
+                  <li>Food Must be first cooked until core temp reached &lt; 75°C or reheated core temp above 75°C</li>
+                  <li>Transfer to hot holding equipment immediately after cooking or reheating</li>
+                  <li>Maintain product at 60 Deg C (140 Deg F) or hotter at all times</li>
+                  <li>Take temperature of food at least once per shift</li>
+                </ol>
+              </div>
+
+              <div style={{ marginTop: 16, fontSize: 14.5 }}>
+                <SignatureName label="Verified By" name={safe(record.payload?.verifiedBy)} inline />
+              </div>
+            </div>
+          </>
+        )}
+      </ResponsiveReportLayout>
     </div>
   );
 }

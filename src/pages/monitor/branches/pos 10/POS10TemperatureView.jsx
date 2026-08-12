@@ -11,6 +11,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -174,9 +175,11 @@ export default function POS10TemperatureView() {
         selectedReport && (
           <>
             <button onClick={handleExportPDF} style={btn("#27ae60")}>⬇ Export PDF</button>
-            <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">
-              🗑 Delete
-            </button>
+            {canDelete("daily") && (
+              <button onClick={() => handleDelete(selectedReport)} style={btn("#c0392b")} data-delete-action="true">
+                🗑 Delete
+              </button>
+            )}
           </>
         )
       }

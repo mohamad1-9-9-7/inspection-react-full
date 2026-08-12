@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -307,9 +308,11 @@ export default function FTR2DailyCleanlinessView() {
                 <button onClick={triggerImport} style={btnImport}>
                   ⬆ Import JSON
                 </button>
-                <button onClick={() => handleDelete(selectedReport)} style={btnDelete} data-delete-action="true">
-                  🗑 Delete
-                </button>
+                {canDelete("daily") && (
+                  <button onClick={() => handleDelete(selectedReport)} style={btnDelete} data-delete-action="true">
+                    🗑 Delete
+                  </button>
+                )}
               </div>
               {/* input مخفي لاستيراد JSON */}
               <input

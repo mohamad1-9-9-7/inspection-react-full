@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import unionLogo from "../../../../../assets/unioncoop-logo.png";
 import ReportHeader from "../_shared/ReportHeader";
 import API_BASE from "../../../../../config/api";
+import { canDelete } from "../../../../../utils/perms";
 
 /* ===== API base (aligned with inputs) ===== */
 
@@ -602,9 +603,11 @@ export default function CleaningProgrammeScheduleView() {
         <button onClick={handleCopyLink} style={btnStyle("#7c3aed")}>
           Copy Link
         </button>
-        <button onClick={handleDelete} style={btnStyle("#b91c1c")} data-delete-action="true">
-          Delete
-        </button>
+        {canDelete("daily") && (
+          <button onClick={handleDelete} style={btnStyle("#b91c1c")} data-delete-action="true">
+            Delete
+          </button>
+        )}
       </div>
 
       {/* حالات التحميل / الخطأ / لا يوجد */}

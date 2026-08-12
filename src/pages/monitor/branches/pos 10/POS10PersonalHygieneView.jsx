@@ -10,6 +10,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -288,9 +289,11 @@ export default function POS10PersonalHygieneView() {
             ⬆ Import JSON
           </button>
 
-          <button onClick={() => handleDelete(selectedReport)} disabled={!selectedReport} style={btn("#c0392b")} data-delete-action="true">
-            🗑 Delete
-          </button>
+          {canDelete("daily") && (
+            <button onClick={() => handleDelete(selectedReport)} disabled={!selectedReport} style={btn("#c0392b")} data-delete-action="true">
+              🗑 Delete
+            </button>
+          )}
 
           <input
             ref={fileInputRef}

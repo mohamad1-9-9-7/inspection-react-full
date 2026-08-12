@@ -230,6 +230,11 @@ const HaccpIsoMenu = lazy(() =>
   import("./pages/haccp and iso/HaccpIsoMenu")
 );
 
+// 🕵️ Audit Trail — admin-only viewer of all edits/deletes across the system
+const AuditTrailView = lazy(() =>
+  import("./pages/haccp and iso/AuditTrail/AuditTrailView")
+);
+
 // 📕 HACCP Manual — Master Reference Document
 const FSMSManualView = lazy(() =>
   import("./pages/haccp and iso/FSMSManual/FSMSManualView")
@@ -282,6 +287,8 @@ const FoodSafetyPolicyView = lazy(() => import("./pages/haccp and iso/FoodSafety
 // 🚨 Real Product Recall (ISO 8.9.5)
 const RealRecallInput = lazy(() => import("./pages/haccp and iso/RealRecall/RealRecallInput"));
 const RealRecallView  = lazy(() => import("./pages/haccp and iso/RealRecall/RealRecallView"));
+const ProductWithdrawalInput = lazy(() => import("./pages/haccp and iso/ProductWithdrawal/ProductWithdrawalInput"));
+const ProductWithdrawalView  = lazy(() => import("./pages/haccp and iso/ProductWithdrawal/ProductWithdrawalView"));
 
 // 🌱 Continual Improvement Log (ISO 10.2)
 const ContinualImprovementInput = lazy(() => import("./pages/haccp and iso/ContinualImprovement/ContinualImprovementInput"));
@@ -291,9 +298,8 @@ const ContinualImprovementView  = lazy(() => import("./pages/haccp and iso/Conti
 const GlassRegisterInput = lazy(() => import("./pages/haccp and iso/GlassRegister/GlassRegisterInput"));
 const GlassRegisterView  = lazy(() => import("./pages/haccp and iso/GlassRegister/GlassRegisterView"));
 
-// 🚨 Emergency Preparedness & Response — Test Log (ISO 8.4)
-const EmergencyPreparednessInput = lazy(() => import("./pages/haccp and iso/EmergencyPreparedness/EmergencyPreparednessInput"));
-const EmergencyPreparednessView  = lazy(() => import("./pages/haccp and iso/EmergencyPreparedness/EmergencyPreparednessView"));
+// 🚨 Emergency Preparedness (ISO 8.4) — module retired; drills are now recorded
+// only in HSE F-16 Evacuation Drills (/hse/evacuation-drills). Old routes redirect.
 
 // 💧 Potable Water & Ice Testing Log (ISO 8.2.4c)
 const WaterTestingInput = lazy(() => import("./pages/haccp and iso/WaterTesting/WaterTestingInput"));
@@ -301,6 +307,9 @@ const WaterTestingView  = lazy(() => import("./pages/haccp and iso/WaterTesting/
 
 // 🎯 FSMS Risk Register (ISO 6.1 — closes SGS Stage 2 Major NC #2)
 const RiskRegisterView = lazy(() => import("./pages/haccp and iso/RiskRegister/RiskRegisterView"));
+
+// 🛡️ Food Defense Plan — TACCP / VACCP (ISO 8.5.1.5.2 + PAS 96 + FSMA 21 CFR 121)
+const FoodDefenseView = lazy(() => import("./pages/haccp and iso/FoodDefense/FoodDefenseView"));
 
 // 💡 FSMS Opportunity Register (ISO 6.1 — actions to address risks AND opportunities)
 const OpportunityRegisterView = lazy(() => import("./pages/haccp and iso/OpportunityRegister/OpportunityRegisterView"));
@@ -1398,6 +1407,16 @@ export default function App() {
         />
         <Route path="/iso-haccp" element={<Navigate to="/haccp-iso" replace />} />
 
+        {/* 🕵️ Audit Trail (admin only — page guards itself too) */}
+        <Route
+          path="/haccp-iso/audit-trail"
+          element={
+            <ProtectedRoute>
+              <AuditTrailView />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 📕 HACCP Manual (Master Document) */}
         <Route
           path="/haccp-iso/haccp-manual"
@@ -1620,6 +1639,24 @@ export default function App() {
           }
         />
 
+        {/* 📦 Product Withdrawal (ISO 8.9.5 — withdrawal, not recall) */}
+        <Route
+          path="/haccp-iso/product-withdrawal"
+          element={
+            <ProtectedRoute>
+              <ProductWithdrawalInput />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/product-withdrawal/view"
+          element={
+            <ProtectedRoute>
+              <ProductWithdrawalView />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 🌱 Continual Improvement Log (ISO 10.2) */}
         <Route
           path="/haccp-iso/continual-improvement"
@@ -1656,22 +1693,15 @@ export default function App() {
           }
         />
 
-        {/* 🚨 Emergency Preparedness & Response — Test Log (ISO 8.4) */}
+        {/* 🚨 Emergency Preparedness (ISO 8.4) — retired in favour of HSE F-16
+            Evacuation Drills. Old links/bookmarks redirect there. */}
         <Route
           path="/haccp-iso/emergency-preparedness"
-          element={
-            <ProtectedRoute>
-              <EmergencyPreparednessInput />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/hse/evacuation-drills" replace />}
         />
         <Route
           path="/haccp-iso/emergency-preparedness/view"
-          element={
-            <ProtectedRoute>
-              <EmergencyPreparednessView />
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/hse/evacuation-drills" replace />}
         />
 
         {/* 💧 Potable Water & Ice Testing Log (ISO 8.2.4c) */}
@@ -1706,6 +1736,24 @@ export default function App() {
           element={
             <ProtectedRoute>
               <RiskRegisterView />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🛡️ Food Defense Plan — TACCP / VACCP (ISO 8.5.1.5.2) */}
+        <Route
+          path="/haccp-iso/food-defense"
+          element={
+            <ProtectedRoute>
+              <FoodDefenseView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/haccp-iso/food-defense/view"
+          element={
+            <ProtectedRoute>
+              <FoodDefenseView />
             </ProtectedRoute>
           }
         />

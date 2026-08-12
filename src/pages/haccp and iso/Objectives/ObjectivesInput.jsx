@@ -216,6 +216,7 @@ export default function ObjectivesInput() {
             <option value="none">{t("objLinkedModuleNone")}</option>
             <option value="ccp">{t("objLinkedModuleCCP")}</option>
             <option value="mock_recall">{t("objLinkedModuleMockRecall")}</option>
+            <option value="product_withdrawal">{t("objLinkedModuleWithdrawal")}</option>
             <option value="audit">{t("objLinkedModuleAudit")}</option>
             <option value="supplier">{t("objLinkedModuleSupplier")}</option>
             <option value="calibration">{t("objLinkedModuleCalib")}</option>

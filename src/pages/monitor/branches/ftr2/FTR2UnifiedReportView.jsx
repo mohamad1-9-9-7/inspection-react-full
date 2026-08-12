@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { canDelete } from "../../../../utils/perms";
 import "./FTR2UnifiedReportView.css";
 
 const MAX_CELL_LENGTH = 140;
@@ -468,9 +469,11 @@ export default function FTR2UnifiedReportView({
               <button type="button" onClick={exportCsv} disabled={!selectedReport}>CSV</button>
               <button type="button" onClick={exportJson} disabled={!selectedReport}>JSON</button>
               <button type="button" onClick={() => fileInputRef.current?.click()}>Import</button>
-              <button type="button" className="danger" onClick={deleteSelected} disabled={!selectedReport} data-delete-action="true">
-                Delete
-              </button>
+              {canDelete("daily") && (
+                <button type="button" className="danger" onClick={deleteSelected} disabled={!selectedReport} data-delete-action="true">
+                  Delete
+                </button>
+              )}
               <input ref={fileInputRef} type="file" accept="application/json" hidden onChange={importJson} />
             </div>
           </header>
