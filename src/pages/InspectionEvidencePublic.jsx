@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { getRowVerification, verificationTone } from "../utils/auditVerification";
+import { getRowVerification, isClosedStatus, verificationTone } from "../utils/auditVerification";
 
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 const API_BASE = String(
@@ -63,6 +63,38 @@ async function uploadImage(file) {
 function safe(v, fallback = "-") {
   const s = String(v ?? "").trim();
   return s || fallback;
+}
+
+function fileNameFromUrl(url, fallback = "evidence.jpg") {
+  const clean = String(url || "").split("?")[0].split("#")[0];
+  const last = clean.split("/").pop() || "";
+  if (!last) return fallback;
+  return /\.[a-z0-9]{2,5}$/i.test(last) ? last : `${last}.jpg`;
+}
+
+/* Cloudinary serves the photos from another origin, so a plain `download`
+   attribute is ignored and the browser just navigates to the image. Pulling the
+   bytes first turns it into a real download; if CORS ever blocks that we open
+   the image instead of failing silently. */
+async function downloadImage(url, name) {
+  const filename = String(name || "").trim() || fileNameFromUrl(url);
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 5000);
+    return true;
+  } catch {
+    window.open(url, "_blank", "noopener");
+    return false;
+  }
 }
 
 /* The branch used to live in the free-text `header.location` field. That field
@@ -302,9 +334,35 @@ const S = {
   input: { width: "100%", minHeight: 42, padding: "8px 10px", border: "1.5px solid #cbd5e1", borderRadius: 8, fontFamily: "inherit", fontSize: 14, background: "#fff" },
   textarea: { width: "100%", minHeight: 74, padding: 10, border: "1.5px solid #cbd5e1", borderRadius: 8, resize: "vertical", fontFamily: "inherit", fontSize: 14, lineHeight: 1.45, background: "#fff" },
   thumbs: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(150px, 100%), 1fr))", gap: 8, marginTop: 8 },
-  thumb: { width: "100%", height: "clamp(90px, 9vw, 150px)", objectFit: "cover", borderRadius: 8, border: "1px solid #cbd5e1" },
+  thumb: { width: "100%", height: "clamp(90px, 9vw, 150px)", objectFit: "cover", borderRadius: 8, border: "1px solid #cbd5e1", display: "block" },
   thumbBox: { position: "relative", minWidth: 0 },
+  thumbBtn: { display: "block", width: "100%", padding: 0, margin: 0, border: 0, background: "transparent", cursor: "zoom-in", borderRadius: 8 },
+  thumbDl: { position: "absolute", left: 6, top: 6, minWidth: 28, height: 28, padding: "0 8px", borderRadius: 999, border: "1px solid rgba(15,23,42,.18)", background: "rgba(255,255,255,.94)", color: "#0f766e", fontWeight: 1000, fontSize: 13, lineHeight: 1, cursor: "pointer", boxShadow: "0 4px 12px rgba(15,23,42,.18)" },
   removeThumb: { position: "absolute", top: 6, right: 6, width: 28, height: 28, borderRadius: 999, border: "1px solid rgba(15,23,42,.18)", background: "rgba(255,255,255,.94)", color: "#b91c1c", fontWeight: 1000, cursor: "pointer", boxShadow: "0 4px 12px rgba(15,23,42,.18)" },
+  /* Supervisor name: it is required for every save, so it gets its own block
+     instead of looking like one more read-only line in the report card. */
+  uploaderCard: { marginTop: 14, padding: "clamp(12px, 1.2vw, 18px)", borderRadius: 8, border: "2px solid #0f766e", background: "linear-gradient(135deg,#ecfeff 0%,#f0fdfa 100%)", boxShadow: "0 10px 24px rgba(15,118,110,.12)" },
+  uploaderCardMissing: { borderColor: "#dc2626", background: "linear-gradient(135deg,#fef2f2 0%,#fff7ed 100%)", boxShadow: "0 10px 24px rgba(220,38,38,.12)" },
+  uploaderTop: { display: "flex", alignItems: "center", gap: 10, marginBottom: 10 },
+  uploaderIcon: { width: 40, height: 40, borderRadius: 8, display: "grid", placeItems: "center", background: "#0f766e", color: "#fff", fontSize: 19, fontWeight: 1000, flex: "0 0 auto" },
+  uploaderLabel: { fontSize: 16, fontWeight: 1000, color: "#0f172a", lineHeight: 1.3 },
+  uploaderHint: { fontSize: 13, fontWeight: 800, color: "#475569", marginTop: 3, lineHeight: 1.5 },
+  uploaderInput: { width: "100%", minHeight: 54, padding: "12px 14px", border: "2px solid #0f766e", borderRadius: 8, fontFamily: "inherit", fontSize: 17, fontWeight: 850, background: "#fff", color: "#0f172a", boxShadow: "inset 0 1px 3px rgba(15,23,42,.07)" },
+  uploaderInputMissing: { borderColor: "#dc2626" },
+  uploaderValue: { padding: "12px 14px", background: "#fff", border: "2px solid #cbd5e1", borderRadius: 8, fontSize: 17, fontWeight: 900, color: "#0f172a" },
+  req: { color: "#dc2626", fontWeight: 1000 },
+  viewOnly: { display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 999, background: "#f1f5f9", border: "1px solid #cbd5e1", color: "#475569", fontSize: 13, fontWeight: 950 },
+  /* Photo viewer */
+  lbWrap: { position: "fixed", inset: 0, zIndex: 9999, background: "rgba(8,15,23,.88)", display: "flex", flexDirection: "column", padding: "clamp(10px, 2vw, 24px)", boxSizing: "border-box" },
+  lbBar: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", color: "#fff", marginBottom: 10 },
+  lbTitle: { fontSize: 15, fontWeight: 950, minWidth: 0, wordBreak: "break-word" },
+  lbCount: { fontSize: 13, fontWeight: 850, color: "#cbd5e1", marginTop: 2 },
+  lbActions: { display: "flex", gap: 8, flexWrap: "wrap" },
+  lbBtn: { background: "rgba(255,255,255,.14)", color: "#fff", border: "1px solid rgba(255,255,255,.32)", borderRadius: 6, padding: "10px 14px", fontWeight: 900, fontSize: 14, cursor: "pointer" },
+  lbPrimary: { background: "#0f766e", color: "#fff", border: "1px solid #0b5d57", borderRadius: 6, padding: "10px 16px", fontWeight: 950, fontSize: 14, cursor: "pointer" },
+  lbStage: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, minHeight: 0 },
+  lbImg: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8, boxShadow: "0 30px 60px rgba(0,0,0,.5)", background: "#0b1220" },
+  lbNav: { width: 46, height: 46, flex: "0 0 auto", borderRadius: 999, border: "1px solid rgba(255,255,255,.32)", background: "rgba(255,255,255,.14)", color: "#fff", fontSize: 20, fontWeight: 1000, cursor: "pointer" },
   pendingTag: { position: "absolute", left: 6, bottom: 6, padding: "3px 7px", borderRadius: 999, background: "rgba(15,118,110,.94)", color: "#fff", fontSize: 12, fontWeight: 950 },
   btn: { background: "#006b63", color: "#fff", border: "1px solid #00584f", borderRadius: 5, padding: "10px 14px", fontWeight: 950, cursor: "pointer" },
   amberBtn: { background: "#2aa8c4", color: "#fff", border: "1px solid #1789a2", borderRadius: 5, padding: "10px 14px", fontWeight: 950, cursor: "pointer" },
@@ -315,6 +373,66 @@ const S = {
   missing: { padding: 10, borderRadius: 6, background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontSize: 14, fontWeight: 850, marginTop: 8 },
   actions: { position: "sticky", bottom: 0, display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 0 4px", background: "linear-gradient(180deg,rgba(244,248,247,0),#f4f8f7 36%)", flexWrap: "wrap" },
 };
+
+/* Full-size photo viewer. Thumbnails are cropped squares, and on a phone a
+   150px crop of a temperature log is unreadable — the branch needs the whole
+   picture plus a way to keep a copy. */
+function PhotoViewer({ items, index, title, onClose, onIndex }) {
+  const total = items.length;
+  const item = items[Math.min(Math.max(index, 0), total - 1)] || null;
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight") onIndex(index + 1);
+      else if (e.key === "ArrowLeft") onIndex(index - 1);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, onClose, onIndex]);
+
+  /* The page behind the overlay must not scroll under the finger on a phone. */
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prevOverflow; };
+  }, []);
+
+  if (!item) return null;
+
+  return (
+    <div style={S.lbWrap} onClick={onClose} role="dialog" aria-modal="true" aria-label="Photo viewer">
+      <div style={S.lbBar} onClick={(e) => e.stopPropagation()}>
+        <div style={{ minWidth: 0 }}>
+          <div style={S.lbTitle}>{title || "Photo / صورة"}</div>
+          <div style={S.lbCount}>
+            {index + 1} / {total} — {item.name || fileNameFromUrl(item.src)}
+          </div>
+        </div>
+        <div style={S.lbActions}>
+          <button type="button" style={S.lbPrimary} onClick={() => downloadImage(item.src, item.name)}>
+            ⤓ Download / تنزيل
+          </button>
+          <button type="button" style={S.lbBtn} onClick={() => window.open(item.src, "_blank", "noopener")}>
+            ↗ Open / فتح
+          </button>
+          <button type="button" style={S.lbBtn} onClick={onClose}>
+            ✕ Close / إغلاق
+          </button>
+        </div>
+      </div>
+      <div style={S.lbStage} onClick={(e) => e.stopPropagation()}>
+        {total > 1 && (
+          <button type="button" style={S.lbNav} onClick={() => onIndex(index - 1)} aria-label="Previous photo">‹</button>
+        )}
+        <img src={item.src} alt={item.name || "Evidence"} style={S.lbImg} />
+        {total > 1 && (
+          <button type="button" style={S.lbNav} onClick={() => onIndex(index + 1)} aria-label="Next photo">›</button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function InspectionEvidencePublic() {
   const { token } = useParams();
@@ -332,6 +450,23 @@ export default function InspectionEvidencePublic() {
   /* Set when the link itself is unusable (expired / revoked / unknown) —
      the page then shows an explanation instead of an empty form. */
   const [deadLink, setDeadLink] = useState("");
+  /* { items: [{src, name}], index, title } while a photo is open full-size. */
+  const [viewer, setViewer] = useState(null);
+
+  const openViewer = useCallback((items, index, title) => {
+    const clean = (items || []).filter((it) => it && it.src);
+    if (!clean.length) return;
+    setViewer({ items: clean, index: Math.max(0, Math.min(index, clean.length - 1)), title });
+  }, []);
+  const closeViewer = useCallback(() => setViewer(null), []);
+  /* Wraps around, so ‹ on the first photo lands on the last one. */
+  const moveViewer = useCallback((next) => {
+    setViewer((prev) => {
+      if (!prev) return prev;
+      const total = prev.items.length;
+      return { ...prev, index: ((next % total) + total) % total };
+    });
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -373,36 +508,49 @@ export default function InspectionEvidencePublic() {
   const branchName = reportBranchName(record);
   const table = useMemo(() => Array.isArray(payload.table) ? payload.table : [], [payload.table]);
 
-  /* Closed findings are not shown to the branch — they are already verified,
-     and listing them only buries the items that still need action.
-     The server normally strips them and stamps each surviving row with its
-     ORIGINAL position as `rowIndex`; the client filter below is the fallback
-     for a server that hasn't been redeployed yet. Every upload, note and
-     submit keys off `idx` (the original position), never the display order,
-     so evidence always lands on the finding QA is looking at. */
-  const visibleRows = useMemo(
-    () => table
-      .map((row, i) => {
-        const declared = Number(row?.rowIndex);
-        return { row, idx: Number.isInteger(declared) && declared >= 0 ? declared : i };
-      })
-      .filter(({ row }) => String(row?.status || "").toLowerCase() !== "closed"),
+  /* EVERY finding is listed, closed ones included, so the branch can see the
+     whole audit and re-read what was already accepted. A closed row is strictly
+     view-only: no file input, no notes box, and the server drops any evidence
+     aimed at it — so listing it changes nothing about what can be written.
+     Rows carry their ORIGINAL table position as `rowIndex`; every upload, note
+     and submit keys off that `idx`, never the display order, so evidence always
+     lands on the finding QA is looking at. */
+  const allRows = useMemo(
+    () => table.map((row, i) => {
+      const declared = Number(row?.rowIndex);
+      return { row, idx: Number.isInteger(declared) && declared >= 0 ? declared : i };
+    }),
     [table]
   );
   const summary = payload.summary || {};
   const totalFindings = Number(summary.totalFindings) || table.length;
-  const hiddenClosedCount = Number.isFinite(Number(summary.closedFindings))
-    ? Number(summary.closedFindings)
-    : table.length - visibleRows.length;
+  const listedClosedCount = allRows.filter(({ row }) => isClosedStatus(row?.status)).length;
+  /* Only > 0 while an old server build is still filtering closed rows out of
+     the payload; then we say so instead of pretending the report is shorter. */
+  const summaryClosed = Number(summary.closedFindings);
+  const hiddenClosedCount = Number.isFinite(summaryClosed)
+    ? Math.max(0, summaryClosed - listedClosedCount)
+    : 0;
 
-  const previousEvidence = submittedEvidenceMap(payload);
+  /* Saved photos live in two places: the `closedEvidenceUpdates` list this
+     portal writes, and the row itself once the server merged them in. Closed
+     findings usually only have the row copy, so both are read. */
+  const previousEvidence = useMemo(() => {
+    const merged = { ...submittedEvidenceMap(payload) };
+    allRows.forEach(({ row, idx }) => {
+      const rowImgs = collectImageSrcs(row?.closedEvidenceImgs);
+      if (!rowImgs.length) return;
+      merged[idx] = Array.from(new Set([...(merged[idx] || []), ...rowImgs]));
+    });
+    return merged;
+  }, [payload, allRows]);
 
   /* Per-finding verdicts. A finding the branch already submitted is locked
      while QA reviews it; a finding QA rejected unlocks again with the reason
      attached. Previously one final Send froze the whole page for good. */
   const rowStates = useMemo(
-    () => visibleRows.map(({ row, idx }) => ({ row, idx, v: getRowVerification(row) })),
-    [visibleRows]
+    () => allRows.map(({ row, idx }) => ({ row, idx, v: getRowVerification(row) })),
+    [allRows]
   );
   const actionableRows = useMemo(
     () => rowStates.filter(({ v }) => v.state !== "pending" && v.state !== "accepted"),
@@ -417,8 +565,11 @@ export default function InspectionEvidencePublic() {
   const done = hasVerdictData ? actionableRows.length === 0 : submittedFlag;
 
   const openRowIndexes = useMemo(() => actionableRows.map(({ idx }) => idx), [actionableRows]);
-  /* Nothing to do: every finding is closed (or the report has no findings). */
-  const nothingPending = visibleRows.length === 0;
+  /* Nothing to do: every finding is closed or already with QA (or the report
+     has no findings at all). The rows are still listed — only the inputs and
+     the send buttons go away. */
+  const nothingPending = actionableRows.length === 0;
+  const hasRows = rowStates.length > 0;
   const allOpenRowsHaveEvidence = openRowIndexes.length > 0 && openRowIndexes.every((idx) => {
     const previous = previousEvidence[idx] || [];
     const ready = uploads[idx] || [];
@@ -473,11 +624,16 @@ export default function InspectionEvidencePublic() {
   }
 
   async function buildClosedEvidenceUpdates() {
+    /* Closed findings are read-only. The server rejects any update aimed at
+       one, so re-posting their saved photos would only bloat the request. */
+    const closedIdx = new Set(
+      allRows.filter(({ row }) => isClosedStatus(row?.status)).map(({ idx }) => idx)
+    );
     const indexes = Array.from(new Set([
       ...Object.keys(previousEvidence).map(Number),
       ...Object.keys(uploads).map(Number),
       ...Object.keys(notes).map(Number),
-    ])).filter((idx) => Number.isInteger(idx));
+    ])).filter((idx) => Number.isInteger(idx) && !closedIdx.has(idx));
 
     const updates = [];
     for (const rowIndex of indexes) {
@@ -522,6 +678,10 @@ export default function InspectionEvidencePublic() {
     setMsg("");
     try {
       const closedEvidenceUpdates = await buildClosedEvidenceUpdates();
+      if (!closedEvidenceUpdates.length) {
+        setErr("Nothing to save — closed findings are view-only. / لا يوجد ما يتم حفظه، البنود المغلقة للعرض فقط.");
+        return;
+      }
       const data = await fetchJson(`${API_BASE}/api/reports/public/${encodeURIComponent(token || "")}/submit`, {
         method: "POST",
         body: JSON.stringify({
@@ -568,16 +728,22 @@ export default function InspectionEvidencePublic() {
               <div style={S.accountText}>
                 <div>Status / الحالة</div>
                 <div>
-                  {done
+                  {!done
+                    ? allOpenRowsHaveEvidence
+                      ? "Ready / جاهز"
+                      : "Pending / قيد الانتظار"
+                    : awaitingQaCount > 0
                     ? "Under QA review / قيد مراجعة الجودة"
-                    : allOpenRowsHaveEvidence
-                    ? "Ready / جاهز"
-                    : "Pending / قيد الانتظار"}
+                    : "Completed / مكتمل"}
                 </div>
               </div>
             </div>
             <span style={S.badge(done ? "#16a34a" : allOpenRowsHaveEvidence ? "#15803d" : "#d97706")}>
-              {done ? `${awaitingQaCount} with QA` : `${completedOpenRows}/${openRowIndexes.length}`}
+              {!done
+                ? `${completedOpenRows}/${openRowIndexes.length}`
+                : awaitingQaCount > 0
+                ? `${awaitingQaCount} with QA`
+                : "All closed"}
             </span>
           </div>
         </div>
@@ -600,6 +766,7 @@ export default function InspectionEvidencePublic() {
               <div style={S.statChip}>{totalFindings} Items / بنود</div>
               <div style={S.statChip}>{openRowIndexes.length} Open / مفتوح</div>
               <div style={S.statChip}>{completedOpenRows} Ready / جاهز</div>
+              <div style={S.statChip}>{listedClosedCount + hiddenClosedCount} Closed / مغلق</div>
             </div>
 
             <section style={S.reportCard}>
@@ -612,26 +779,51 @@ export default function InspectionEvidencePublic() {
                 <div>Report No: {safe(header.reportNo)}</div>
                 <div>Audited By: {safe(header.auditConductedBy)}</div>
               </div>
-              {!nothingPending && (
-                <>
-                  <label style={S.label}>Uploaded By / اسم الشخص الذي قام برفع الصور</label>
+              {(!nothingPending || uploadedBy.trim()) && (
+                <div
+                  style={{
+                    ...S.uploaderCard,
+                    ...(!done && !uploadedBy.trim() ? S.uploaderCardMissing : null),
+                  }}
+                >
+                  <div style={S.uploaderTop}>
+                    <div style={{ ...S.uploaderIcon, ...(!done && !uploadedBy.trim() ? { background: "#dc2626" } : null) }}>👤</div>
+                    <div style={{ minWidth: 0 }}>
+                      <label htmlFor="uploadedBy" style={S.uploaderLabel}>
+                        Supervisor Name / اسم المشرف {!done && <span style={S.req}>*</span>}
+                      </label>
+                      <div style={S.uploaderHint}>
+                        Write the full name of the person uploading these photos — it is saved with the evidence. /
+                        {" "}اكتب الاسم الكامل للشخص الذي يقوم برفع الصور، يتم حفظه مع الأدلة.
+                      </div>
+                    </div>
+                  </div>
                   {done ? (
-                    <div style={S.readonly}>{safe(uploadedBy, "-")}</div>
+                    <div style={S.uploaderValue}>{safe(uploadedBy, "-")}</div>
                   ) : (
-                    <input
-                      style={S.input}
-                      value={uploadedBy}
-                      onChange={(e) => setUploadedBy(e.target.value)}
-                      placeholder="Supervisor name / اسم المشرف"
-                    />
+                    <>
+                      <input
+                        id="uploadedBy"
+                        style={{ ...S.uploaderInput, ...(uploadedBy.trim() ? null : S.uploaderInputMissing) }}
+                        value={uploadedBy}
+                        onChange={(e) => setUploadedBy(e.target.value)}
+                        placeholder="e.g. Ahmad Ali / مثال: أحمد علي"
+                        autoComplete="name"
+                      />
+                      {!uploadedBy.trim() && (
+                        <div style={{ marginTop: 6, fontSize: 13, fontWeight: 900, color: "#b91c1c" }}>
+                          Required before saving or sending. / مطلوب قبل الحفظ أو الإرسال.
+                        </div>
+                      )}
+                    </>
                   )}
-                </>
+                </div>
               )}
             </section>
 
             <section style={S.card}>
               <div style={S.sectionHead}>
-                <div style={S.sectionTitle}>Open Findings / البنود المفتوحة</div>
+                <div style={S.sectionTitle}>All Findings / جميع البنود</div>
                 <span style={S.badge(nothingPending || done || allOpenRowsHaveEvidence ? "#15803d" : "#d97706")}>
                   {nothingPending ? "Nothing pending" : done ? "Under QA review" : allOpenRowsHaveEvidence ? "Ready to send" : "Evidence required"}
                 </span>
@@ -653,8 +845,16 @@ export default function InspectionEvidencePublic() {
                 </div>
               )}
 
-              {/* Closed findings are deliberately not listed — say so, so the
-                  branch doesn't think items went missing. */}
+              {/* Closed findings are listed too, but read-only — say so, so
+                  nobody waits for an upload button that will never appear. */}
+              {listedClosedCount > 0 && (
+                <div style={{ ...S.hint, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" }}>
+                  ✔ {listedClosedCount} closed finding(s) are shown for reference only — their photos can be viewed and downloaded, but nothing new can be uploaded. /
+                  {" "}يتم عرض {listedClosedCount} بند مغلق للاطلاع فقط، يمكن عرض صورها وتنزيلها دون إمكانية رفع صور جديدة.
+                </div>
+              )}
+
+              {/* Only appears while an old server build still strips them out. */}
               {hiddenClosedCount > 0 && (
                 <div style={{ ...S.hint, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" }}>
                   ✔ {hiddenClosedCount} closed finding(s) are already verified and are not shown here. /
@@ -662,7 +862,7 @@ export default function InspectionEvidencePublic() {
                 </div>
               )}
 
-              {nothingPending ? (
+              {!hasRows ? (
                 <div style={{ ...S.readonly, textAlign: "center", padding: 24, fontWeight: 900 }}>
                   {totalFindings > 0
                     ? "✔ All findings in this report are closed — nothing to upload. / تم إغلاق جميع البنود، لا حاجة لرفع أي صور."
@@ -670,6 +870,11 @@ export default function InspectionEvidencePublic() {
                 </div>
               ) : (
                 <>
+              {nothingPending && (
+                <div style={{ ...S.readonly, textAlign: "center", padding: 16, fontWeight: 900 }}>
+                  ✔ Nothing to upload right now — every finding below is closed or already with QA. / لا يوجد ما يتم رفعه حالياً، جميع البنود أدناه مغلقة أو قيد مراجعة الجودة.
+                </div>
+              )}
               {!done && (
                 <div style={S.hint}>
                   Save Progress keeps current photos and notes. Final Send opens only when every open item has a Closed Evidence photo. / حفظ التقدم يحفظ الصور والملاحظات، وزر الإرسال النهائي لا يعمل إلا بعد رفع صورة إغلاق لكل بند مفتوح.
@@ -679,22 +884,42 @@ export default function InspectionEvidencePublic() {
               {rowStates.map(({ row, idx, v }) => {
                   const ready = uploads[idx] || [];
                   const previous = previousEvidence[idx] || [];
-                  const isClosed = String(row.status || "").toLowerCase() === "closed";
+                  const isClosed = isClosedStatus(row.status);
                   const hasEvidence = previous.length + ready.length > 0;
-                  /* Locked while QA holds it; unlocked the moment QA rejects. */
-                  const locked = v.state === "pending" || v.state === "accepted";
+                  /* Locked while QA holds it; unlocked the moment QA rejects.
+                     A closed finding is locked for good — view only. */
+                  const locked = isClosed || v.state === "pending" || v.state === "accepted";
                   const tone = verificationTone(v.state);
-                  const subLine = v.state === "pending"
+                  const subLine = isClosed
+                    ? "Closed — view only / مغلق — للعرض فقط"
+                    : v.state === "pending"
                     ? "With QA for review / قيد المراجعة لدى الجودة"
                     : v.state === "rejected"
                     ? "Returned by QA — upload new evidence / أعادته الجودة، ارفع صوراً جديدة"
                     : hasEvidence
                     ? "Closed evidence attached / تم إرفاق صور الإغلاق"
-                    : isClosed
-                    ? "Already closed / مغلق مسبقاً"
                     : "Waiting for branch evidence / بانتظار صور الفرع";
+                  const originalItems = (Array.isArray(row.evidenceImgs) ? row.evidenceImgs : [])
+                    .map((img, i) => ({ src: imageSrc(img), name: `finding-${idx + 1}-original-${i + 1}${(fileNameFromUrl(imageSrc(img)).match(/\.[a-z0-9]{2,5}$/i) || [".jpg"])[0]}` }))
+                    .filter((it) => it.src);
+                  /* Saved and just-selected photos share one viewer list so ‹ ›
+                     walks through all photos of the finding in order. */
+                  const closedItems = [
+                    ...previous.map((img, i) => ({
+                      src: imageSrc(img),
+                      name: img?.name || `finding-${idx + 1}-closed-${i + 1}${(fileNameFromUrl(imageSrc(img)).match(/\.[a-z0-9]{2,5}$/i) || [".jpg"])[0]}`,
+                    })),
+                    ...ready.map((img) => ({ src: imageSrc(img), name: img?.name || "" })),
+                  ].filter((it) => it.src);
                 return (
-                  <div key={idx} style={{ ...S.row, ...(v.state === "rejected" ? { borderColor: "#fca5a5", borderWidth: 2 } : null) }}>
+                  <div
+                    key={idx}
+                    style={{
+                      ...S.row,
+                      ...(v.state === "rejected" ? { borderColor: "#fca5a5", borderWidth: 2 } : null),
+                      ...(isClosed ? { borderColor: "#bbf7d0", background: "#f7fefb" } : null),
+                    }}
+                  >
                     <div style={S.rowTop}>
                       <div style={S.rowIdentity}>
                         <div style={S.rowIcon(isClosed || v.state === "accepted")}>{idx + 1}</div>
@@ -703,9 +928,12 @@ export default function InspectionEvidencePublic() {
                           <div style={S.rowSub}>{subLine}</div>
                         </div>
                       </div>
-                      <span style={S.badge(isClosed ? "#16a34a" : v.state === "pending" ? "#1d4ed8" : v.state === "rejected" ? "#b91c1c" : hasEvidence ? "#15803d" : "#d97706")}>
-                        {safe(row.status, "Open")}
-                      </span>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        {isClosed && <span style={S.viewOnly}>🔒 View only / للعرض فقط</span>}
+                        <span style={S.badge(isClosed ? "#16a34a" : v.state === "pending" ? "#1d4ed8" : v.state === "rejected" ? "#b91c1c" : hasEvidence ? "#15803d" : "#d97706")}>
+                          {safe(row.status, "Open")}
+                        </span>
+                      </div>
                     </div>
 
                     {/* QA's verdict, in the branch's own language. A rejection
@@ -730,14 +958,29 @@ export default function InspectionEvidencePublic() {
                     <div style={S.readonly}>{safe(row.nonConformance)}</div>
                     <label style={S.label}>Corrective / Preventive Action / الإجراء التصحيحي والوقائي</label>
                     <div style={S.readonly}>{safe(row.corrective)}</div>
-                    {Array.isArray(row.evidenceImgs) && row.evidenceImgs.length > 0 && (
+                    {originalItems.length > 0 && (
                       <>
                         <label style={S.label}>Original Evidence Photos / الصور الأصلية للمشكلة</label>
                         <div style={S.thumbs}>
-                          {row.evidenceImgs.map((src, imgIdx) => (
-                            <a key={`${src}-${imgIdx}`} href={src} target="_blank" rel="noreferrer">
-                              <img src={src} alt="Original evidence" style={S.thumb} />
-                            </a>
+                          {originalItems.map((it, imgIdx) => (
+                            <div key={`${it.src}-${imgIdx}`} style={S.thumbBox}>
+                              <button
+                                type="button"
+                                style={S.thumbBtn}
+                                onClick={() => openViewer(originalItems, imgIdx, `Finding #${idx + 1} — Original evidence / الصور الأصلية`)}
+                                title="Click to enlarge / اضغط للتكبير"
+                              >
+                                <img src={it.src} alt="Original evidence" style={S.thumb} />
+                              </button>
+                              <button
+                                type="button"
+                                style={S.thumbDl}
+                                onClick={() => downloadImage(it.src, it.name)}
+                                title="Download / تنزيل"
+                              >
+                                ⤓
+                              </button>
+                            </div>
                           ))}
                         </div>
                       </>
@@ -745,21 +988,47 @@ export default function InspectionEvidencePublic() {
                     <label style={S.label}>Closed Evidence Photos / صور الإجراء التصحيحي</label>
                     {locked ? (
                       <div style={S.readonly}>
-                        {v.state === "pending"
+                        {isClosed
+                          ? "🔒 This finding is closed — photos can be viewed and downloaded, but uploading is disabled. / هذا البند مغلق، يمكن عرض الصور وتنزيلها فقط ولا يمكن رفع صور جديدة."
+                          : v.state === "pending"
                           ? "Submitted — waiting for the QA verdict. / تم الإرسال، بانتظار قرار الجودة."
                           : "Verified and closed by QA. / تم التحقق والإغلاق من قبل الجودة."}
                       </div>
                     ) : (
-                      <input type="file" accept="image/*" multiple style={S.file} disabled={saving || isClosed} onChange={(e) => handleFiles(idx, e.target.files)} />
+                      <input type="file" accept="image/*" multiple style={S.file} disabled={saving} onChange={(e) => handleFiles(idx, e.target.files)} />
                     )}
-                    {(ready.length > 0 || previous.length > 0) && (
+                    {closedItems.length > 0 && (
                       <div style={S.thumbs}>
                         {previous.map((img, imgIdx) => (
-                          <img key={`${imageSrc(img)}-${imgIdx}`} src={imageSrc(img)} alt={img.name || "Saved closed evidence"} style={S.thumb} />
+                          <div key={`${imageSrc(img)}-${imgIdx}`} style={S.thumbBox}>
+                            <button
+                              type="button"
+                              style={S.thumbBtn}
+                              onClick={() => openViewer(closedItems, imgIdx, `Finding #${idx + 1} — Closed evidence / صور الإغلاق`)}
+                              title="Click to enlarge / اضغط للتكبير"
+                            >
+                              <img src={imageSrc(img)} alt={img?.name || "Saved closed evidence"} style={S.thumb} />
+                            </button>
+                            <button
+                              type="button"
+                              style={S.thumbDl}
+                              onClick={() => downloadImage(imageSrc(img), closedItems[imgIdx]?.name)}
+                              title="Download / تنزيل"
+                            >
+                              ⤓
+                            </button>
+                          </div>
                         ))}
                         {ready.map((img, imgIdx) => (
                           <div key={`${imageSrc(img)}-${imgIdx}`} style={S.thumbBox}>
-                            <img src={imageSrc(img)} alt={img.name || "Selected closed evidence"} style={S.thumb} />
+                            <button
+                              type="button"
+                              style={S.thumbBtn}
+                              onClick={() => openViewer(closedItems, previous.length + imgIdx, `Finding #${idx + 1} — Closed evidence / صور الإغلاق`)}
+                              title="Click to enlarge / اضغط للتكبير"
+                            >
+                              <img src={imageSrc(img)} alt={img.name || "Selected closed evidence"} style={S.thumb} />
+                            </button>
                             <button type="button" style={S.removeThumb} onClick={() => removePendingImage(idx, imgIdx)} title="Remove selected image">x</button>
                             <span style={S.pendingTag}>Selected</span>
                           </div>
@@ -767,8 +1036,10 @@ export default function InspectionEvidencePublic() {
                       </div>
                     )}
                     <label style={S.label}>Branch Notes / ملاحظات الفرع</label>
-                    {locked || isClosed ? (
-                      <div style={S.readonly}>{safe(notes[idx], "-")}</div>
+                    {locked ? (
+                      /* Closed rows keep their note on the row itself, not in
+                         the updates list the notes map is built from. */
+                      <div style={S.readonly}>{safe(notes[idx] || row.closedEvidenceNote, "-")}</div>
                     ) : (
                       <textarea
                         style={S.textarea}
@@ -786,9 +1057,11 @@ export default function InspectionEvidencePublic() {
 
             <div style={S.actions}>
               <button style={S.ghost} disabled>
-                {done && !nothingPending
+                {!nothingPending
+                  ? `${completedOpenRows}/${openRowIndexes.length} open item(s) with evidence`
+                  : awaitingQaCount > 0
                   ? `${awaitingQaCount} finding(s) with QA — nothing to do right now`
-                  : `${completedOpenRows}/${openRowIndexes.length} open item(s) with evidence`}
+                  : "Nothing to upload / لا يوجد ما يتم رفعه"}
               </button>
               {!done && !nothingPending && (
                 <button style={{ ...S.amberBtn, opacity: saving || !hasPendingChanges ? 0.55 : 1 }} onClick={() => saveEvidence({ final: false })} disabled={saving || !hasPendingChanges}>
@@ -804,6 +1077,16 @@ export default function InspectionEvidencePublic() {
           </>
         )}
       </div>
+
+      {viewer && (
+        <PhotoViewer
+          items={viewer.items}
+          index={viewer.index}
+          title={viewer.title}
+          onClose={closeViewer}
+          onIndex={moveViewer}
+        />
+      )}
     </main>
   );
 }

@@ -5,8 +5,76 @@
 import React, { useMemo, useState } from "react";
 import API_BASE from "../../config/api";
 import { getExporter } from "./excel-exporters";
-import { sheetNameFor, sanitizeSheetName } from "./excel-exporters/_lib";
+import { sheetNameFor, sanitizeSheetName, extractDate, formatDMY } from "./excel-exporters/_lib";
 import { BRANCHES } from "./reportTypeCatalog";
+
+/* ═══════════════════════════════════════════════════════════════
+   DATE FILTER
+   ═══════════════════════════════════════════════════════════════ */
+/** Normalize any stored date shape to YYYY-MM-DD ("" when unparseable). */
+function toISO(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  // بعض التقارير القديمة تخزّن التاريخ بصيغة DD/MM/YYYY
+  const dmy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if (dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2, "0")}-${String(dmy[1]).padStart(2, "0")}`;
+  return "";
+}
+
+/** YYYY-MM-DD for a record, whatever shape its payload uses. "" when undated. */
+function recordDate(rec) {
+  return toISO(extractDate(rec)) || toISO(rec?.createdAt) || toISO(rec?.created_at) || "";
+}
+
+const todayISO = () => {
+  try { return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" }); }
+  catch {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+};
+
+/** أول يوم في الشهر بعد الرجوع (n − 1) شهراً — أي "آخر n أشهر" شاملة الشهر الحالي */
+function monthsBackStart(n) {
+  const now = new Date();
+  const back = Math.max(1, Math.min(60, Number(n) || 1)) - 1;
+  const d = new Date(now.getFullYear(), now.getMonth() - back, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+/** Resolve the UI filter into a plain { from, to } window ("" = open end). */
+function filterWindow(f) {
+  if (f.mode === "day")    return { from: f.day, to: f.day };
+  if (f.mode === "range")  return { from: f.from, to: f.to };
+  if (f.mode === "months") return { from: monthsBackStart(f.months), to: "" };
+  return { from: "", to: "" };
+}
+
+function matchesFilter(rec, f) {
+  if (f.mode === "all") return true;
+  const d = recordDate(rec);
+  if (!d) return !!f.includeUndated;
+  const { from, to } = filterWindow(f);
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
+
+/** Human-readable filter description (Arabic) + a filename-safe suffix. */
+function filterLabel(f) {
+  if (f.mode === "day")    return f.day ? `يوم ${formatDMY(f.day)}` : "يوم محدد (اختر التاريخ)";
+  if (f.mode === "range")  return `من ${f.from ? formatDMY(f.from) : "البداية"} إلى ${f.to ? formatDMY(f.to) : "اليوم"}`;
+  if (f.mode === "months") return `آخر ${f.months} شهر — من ${formatDMY(monthsBackStart(f.months))}`;
+  return "كل التواريخ";
+}
+function filterSuffix(f) {
+  if (f.mode === "day")    return f.day ? `_${f.day}` : "";
+  if (f.mode === "range")  return `_${f.from || "start"}_to_${f.to || todayISO()}`;
+  if (f.mode === "months") return `_last${f.months}m`;
+  return "";
+}
 
 /* ═══════════════════════════════════════════════════════════════
    BRANCH / TYPE DEFINITIONS
@@ -103,6 +171,24 @@ export default function ExcelBackupTab() {
   const [msg, setMsg] = useState({ kind: "", text: "" });
   const [query, setQuery] = useState("");
 
+  /* Date filter: mode all | day | range | months */
+  const [filter, setFilter] = useState({
+    mode: "all",
+    day: todayISO(),
+    from: "",
+    to: "",
+    months: 3,
+    includeUndated: false,
+  });
+  const [skipEmpty, setSkipEmpty] = useState(false);
+
+  function setMode(mode) {
+    setFilter((f) => ({ ...f, mode }));
+    // فلترة بتاريخ ⇒ أغلب الأنواع رح تطلع فارغة، فالأنسب تخطّي الملفات الفارغة
+    if (mode !== "all") setSkipEmpty(true);
+  }
+  const filterOn = filter.mode !== "all";
+
   /* ─── Derived: counts & filter ─── */
   const totalTypes = useMemo(
     () => BRANCHES.reduce((s, b) => s + b.types.length, 0),
@@ -160,6 +246,18 @@ export default function ExcelBackupTab() {
       setMsg({ kind: "err", text: "⚠️ اختر تقرير واحد على الأقل" });
       return;
     }
+    if (filter.mode === "day" && !filter.day) {
+      setMsg({ kind: "err", text: "⚠️ اختر التاريخ المطلوب أولاً" });
+      return;
+    }
+    if (filter.mode === "range" && !filter.from && !filter.to) {
+      setMsg({ kind: "err", text: "⚠️ حدّد بداية أو نهاية النطاق" });
+      return;
+    }
+    if (filter.mode === "range" && filter.from && filter.to && filter.from > filter.to) {
+      setMsg({ kind: "err", text: "⚠️ تاريخ البداية بعد تاريخ النهاية" });
+      return;
+    }
     setBusy(true);
     setStats(null);
     setMsg({ kind: "info", text: "⏳ جارٍ جلب البيانات من السيرفر..." });
@@ -184,7 +282,9 @@ export default function ExcelBackupTab() {
       let step = 0;
       let filesCreated = 0;
       let filesEmpty   = 0;
-      let totalRows    = 0;
+      let filesSkipped = 0;
+      let totalRows    = 0;   // records that survived the date filter
+      let totalFetched = 0;   // records returned by the server before filtering
       const folderCache = new Map();
       const heavyTypes  = []; // types with 400+ records — warn user after export
 
@@ -192,16 +292,25 @@ export default function ExcelBackupTab() {
         step++;
         setProgress({ current: step, total: work.length, label: `${branch.label} ← ${typeLabel}` });
 
+        const fetched = await fetchType(typeKey);
+        const records = filterOn ? fetched.filter((r) => matchesFilter(r, filter)) : fetched;
+        totalFetched += fetched.length;
+        totalRows    += records.length;
+        if (records.length >= 400) {
+          heavyTypes.push(`${typeLabel} (${records.length.toLocaleString()} سجل)`);
+        }
+
+        // لا ملف أصلاً للأنواع الفارغة عند تفعيل "تخطّي الملفات الفارغة"
+        if (records.length === 0 && skipEmpty) {
+          filesSkipped++;
+          continue;
+        }
+
+        // المجلد يُنشأ فقط عند وجود ملف فعلي بداخله
         let folder = folderCache.get(branch.label);
         if (!folder) {
           folder = zip.folder(branch.label);
           folderCache.set(branch.label, folder);
-        }
-
-        const records = await fetchType(typeKey);
-        totalRows += records.length;
-        if (records.length >= 400) {
-          heavyTypes.push(`${typeLabel} (${records.length.toLocaleString()} سجل)`);
         }
 
         const wb = await buildWorkbook(ExcelJS, branch.label, typeKey, typeLabel, records);
@@ -216,6 +325,16 @@ export default function ExcelBackupTab() {
         }
       }
 
+      if (filesCreated === 0 && filesEmpty === 0) {
+        setMsg({
+          kind: "err",
+          text: filterOn
+            ? `⚠️ ما في أي سجل ضمن الفلترة (${filterLabel(filter)}) — من أصل ${totalFetched.toLocaleString()} سجل. جرّب توسيع المدة أو فعّل "تضمين السجلات بدون تاريخ".`
+            : "⚠️ ما في أي سجل في الأنواع المختارة.",
+        });
+        return;
+      }
+
       setProgress({ current: work.length, total: work.length, label: "🗜️ جارٍ ضغط الملفات..." });
 
       const today = new Date().toISOString().slice(0, 10);
@@ -228,7 +347,7 @@ export default function ExcelBackupTab() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `AlMawashi_Excel_Backup_${today}.zip`;
+      a.download = `AlMawashi_Excel_Backup_${today}${filterSuffix(filter)}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -238,9 +357,13 @@ export default function ExcelBackupTab() {
       const heavyNote = heavyTypes.length > 0
         ? `  ⚠️ تقارير ضخمة (${heavyTypes.length}): ${heavyTypes.join(" · ")}`
         : "";
+      const filterNote = filterOn
+        ? `  🗓️ الفلترة: ${filterLabel(filter)} — ${totalRows.toLocaleString()} من أصل ${totalFetched.toLocaleString()} سجل.`
+        : "";
+      const skipNote = filesSkipped > 0 ? `  ⏭️ ${filesSkipped} نوع بلا سجلات (ما انعمله ملف).` : "";
       setMsg({
         kind: heavyTypes.length > 0 ? "info" : "ok",
-        text: `✅ تم! ${filesCreated} ملف Excel · ${filesEmpty} فارغ · ${totalRows.toLocaleString()} سجل · ${folderCache.size} فرع${heavyNote}`,
+        text: `✅ تم! ${filesCreated} ملف Excel · ${filesEmpty} فارغ · ${totalRows.toLocaleString()} سجل · ${folderCache.size} فرع${filterNote}${skipNote}${heavyNote}`,
       });
     } catch (e) {
       console.error(e);
@@ -262,7 +385,7 @@ export default function ExcelBackupTab() {
           <h1 style={S.heroTitle}>نسخ احتياطي مُصمَّم لكل تقرير</h1>
           <p style={S.heroSub}>
             كل تقرير في السيستم بيطلع صفحة Excel منفصلة بنفس تصميم صفحة العرض الأصلية.
-            اختار الفروع والتقارير اللي بدك ياها بالتحديد.
+            اختار الفروع والتقارير اللي بدك ياها بالتحديد، وحدّد يوم أو مدة معيّنة بدل التصدير الشامل.
           </p>
         </div>
         <div style={S.heroRight}>
@@ -308,6 +431,106 @@ export default function ExcelBackupTab() {
           >
             طي
           </button>
+        </div>
+      </div>
+
+      {/* ═══ Date filter ═══ */}
+      <div style={S.filterCard(filterOn)}>
+        <div style={S.filterHead}>
+          <span style={S.filterTitle}>🗓️ فلترة حسب التاريخ</span>
+          <span style={S.filterState(filterOn)}>{filterLabel(filter)}</span>
+        </div>
+
+        <div style={S.filterRow}>
+          {[
+            ["all", "كل التواريخ"],
+            ["day", "يوم محدد"],
+            ["range", "نطاق تاريخ"],
+            ["months", "آخر عدة أشهر"],
+          ].map(([m, lbl]) => (
+            <button key={m} type="button" onClick={() => setMode(m)} style={S.chip(filter.mode === m)}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        {filter.mode === "day" && (
+          <div style={S.filterRow}>
+            <label style={S.fieldLbl}>التاريخ</label>
+            <input
+              type="date"
+              value={filter.day}
+              onChange={(e) => setFilter((f) => ({ ...f, day: e.target.value }))}
+              style={S.dateInput}
+            />
+            <button type="button" onClick={() => setFilter((f) => ({ ...f, day: todayISO() }))} style={S.btnGhostSm}>
+              اليوم
+            </button>
+          </div>
+        )}
+
+        {filter.mode === "range" && (
+          <div style={S.filterRow}>
+            <label style={S.fieldLbl}>من</label>
+            <input
+              type="date"
+              value={filter.from}
+              onChange={(e) => setFilter((f) => ({ ...f, from: e.target.value }))}
+              style={S.dateInput}
+            />
+            <label style={S.fieldLbl}>إلى</label>
+            <input
+              type="date"
+              value={filter.to}
+              onChange={(e) => setFilter((f) => ({ ...f, to: e.target.value }))}
+              style={S.dateInput}
+            />
+          </div>
+        )}
+
+        {filter.mode === "months" && (
+          <div style={S.filterRow}>
+            <label style={S.fieldLbl}>آخر</label>
+            <input
+              type="number"
+              min="1"
+              max="60"
+              value={filter.months}
+              onChange={(e) =>
+                setFilter((f) => ({ ...f, months: Math.max(1, Math.min(60, Number(e.target.value) || 1)) }))
+              }
+              style={{ ...S.dateInput, width: 90 }}
+            />
+            <label style={S.fieldLbl}>شهر</label>
+            {[1, 3, 6, 12].map((n) => (
+              <button key={n} type="button" onClick={() => setFilter((f) => ({ ...f, months: n }))} style={S.chip(filter.months === n)}>
+                {n}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={S.filterRow}>
+          {filterOn && (
+            <label style={S.checkRow}>
+              <input
+                type="checkbox"
+                checked={filter.includeUndated}
+                onChange={(e) => setFilter((f) => ({ ...f, includeUndated: e.target.checked }))}
+                style={S.checkBox}
+              />
+              <span>تضمين السجلات بدون تاريخ</span>
+            </label>
+          )}
+          <label style={S.checkRow}>
+            <input
+              type="checkbox"
+              checked={skipEmpty}
+              onChange={(e) => setSkipEmpty(e.target.checked)}
+              style={S.checkBox}
+            />
+            <span>تخطّي الملفات الفارغة (لا تنشئ ملف للتقارير بلا سجلات)</span>
+          </label>
         </div>
       </div>
 
@@ -564,6 +787,85 @@ const S = {
     fontFamily: "inherit",
     transition: "all .12s",
   },
+
+  /* ── Date filter ── */
+  filterCard: (on) => ({
+    background: "#fff",
+    border: `2px solid ${on ? "#2d5a8e" : BORDER}`,
+    borderRadius: 16,
+    padding: "14px 18px",
+    marginBottom: 14,
+    boxShadow: on ? "0 8px 22px rgba(45,90,142,.16)" : "0 3px 10px rgba(2,6,23,.06)",
+  }),
+  filterHead: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 10,
+  },
+  filterTitle: { fontSize: 16, fontWeight: 900, color: NAVY },
+  filterState: (on) => ({
+    fontSize: 14,
+    fontWeight: 800,
+    color: on ? "#1e3a5f" : SLATE2,
+    background: on ? "#e6eff9" : "#f1f5f9",
+    border: `1.5px solid ${on ? "#2d5a8e44" : BORDER}`,
+    borderRadius: 999,
+    padding: "5px 14px",
+  }),
+  filterRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    flexWrap: "wrap",
+    marginTop: 9,
+  },
+  chip: (on) => ({
+    padding: "9px 18px",
+    borderRadius: 999,
+    border: `1.5px solid ${on ? "#2d5a8e" : BORDER}`,
+    background: on ? "linear-gradient(135deg,#1e3a5f,#2d5a8e)" : "#f6f8fb",
+    color: on ? "#fff" : NAVY,
+    fontWeight: 800,
+    fontSize: 14,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    transition: "all .12s",
+  }),
+  fieldLbl: { fontSize: 14, fontWeight: 800, color: SLATE },
+  dateInput: {
+    padding: "9px 12px",
+    border: `1.5px solid ${BORDER}`,
+    borderRadius: 10,
+    fontSize: 15,
+    fontWeight: 700,
+    fontFamily: "inherit",
+    color: NAVY,
+    background: "#fff",
+  },
+  btnGhostSm: {
+    background: "#f1f5f9",
+    color: NAVY,
+    border: `1.5px solid ${BORDER}`,
+    padding: "8px 16px",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 13.5,
+    fontFamily: "inherit",
+  },
+  checkRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
+    fontSize: 14,
+    fontWeight: 700,
+    color: SLATE,
+    cursor: "pointer",
+  },
+  checkBox: { width: 19, height: 19, cursor: "pointer", accentColor: "#2d5a8e" },
 
   /* ── Branch grid — wider cards ── */
   branchGrid: {
