@@ -13,32 +13,10 @@ import { isItemAllowed } from "../../utils/sectionItems";
 import { useSettingsLang } from "../settings/_shared/settingsI18n";
 
 /**
- * صفحات تحتاج منحاً صريحاً — لا يكفي أن تكون قائمة التقييد فارغة.
- * الإعدادات تُعدّل بيانات القسم كلّه (الأكواد، النِّسب، الشروط)، فتُمنح بالاسم فقط.
+ * هل يُسمح لهذا المستخدم بفتح صفحة الجزار المطلوبة؟
+ * كل الصفحات — بما فيها الإعدادات — تتبع نفس القاعدة: لا استثناء لصفة "مدير".
  */
-const EXPLICIT_ONLY = ["butcher.settings"];
-
-const readUser = () => {
-  try { return JSON.parse(localStorage.getItem("currentUser") || "{}"); }
-  catch { return {}; }
-};
-
-const isBoss = (u) =>
-  !!u.isAdmin || (Array.isArray(u.permissions) && u.permissions.includes("*"));
-
-/** هل مُنِح هذا المستخدم الصفحة بالاسم في: الإعدادات ← الحسابات ← التحكم بالوصول؟ */
-const grantedByName = (itemId) => {
-  const ab = readUser().allowedBranches;
-  const list = ab && !Array.isArray(ab) && Array.isArray(ab.butcher) ? ab.butcher : null;
-  return !!list && list.includes(itemId);
-};
-
-/** هل يُسمح لهذا المستخدم بفتح صفحة الجزار المطلوبة؟ */
-export const canOpenButcherPage = (itemId) => {
-  if (!isItemAllowed("butcher", itemId)) return false;
-  if (!EXPLICIT_ONLY.includes(itemId)) return true;
-  return isBoss(readUser()) || grantedByName(itemId);
-};
+export const canOpenButcherPage = (itemId) => isItemAllowed("butcher", itemId);
 
 /** شاشة "لا صلاحية" موحّدة. */
 export function NoAccess({ page }) {
