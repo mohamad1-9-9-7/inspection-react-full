@@ -5,7 +5,7 @@
 
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { isItemAllowed } from "../../utils/sectionItems";
+import { canOpenButcherPage } from "./ButcherAccess";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 
 const CSS = `
@@ -60,7 +60,8 @@ const CARDS = [
 export default function ButcherHub() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
-  const cards = CARDS.filter((c) => isItemAllowed("butcher", c.id));
+  // نفس حارس الصفحات — حتى لا يظهر كرت يفتح على "لا صلاحية"
+  const cards = CARDS.filter((c) => canOpenButcherPage(c.id));
 
   return (
     <div dir={dir} className="bh" style={S.page}>

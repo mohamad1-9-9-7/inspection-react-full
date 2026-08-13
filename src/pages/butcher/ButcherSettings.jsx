@@ -18,6 +18,7 @@ import { BRANCHES } from "./butcherOptions";
 import API_BASE, { IMAGE_API_BASE } from "../../config/api";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
+import { can } from "../../utils/perms";
 
 const CSS = `
 #root .bg, #root .bg * { font-size: 16px !important; }
@@ -41,10 +42,11 @@ function currentUser() {
   }
 }
 
-const isAdminUser = () => {
-  const u = currentUser();
-  return !!u.isAdmin || (Array.isArray(u.permissions) && u.permissions.includes("*"));
-};
+/**
+ * الحفظ/الاستيراد/إرجاع الافتراضي — يحتاج صلاحية تعديل أو كتابة على قسم الجزار.
+ * الفتح نفسه يحكمه canOpenButcherPage (منح صريح لصفحة butcher.settings).
+ */
+const canSaveSettings = () => can("butcher", "edit") || can("butcher", "write");
 
 const numOr = (v, fallback) => {
   const n = Number(String(v).replace(",", "."));
@@ -63,7 +65,7 @@ export default function ButcherSettings() {
   const [codeAnimal, setCodeAnimal] = useState("sheep"); // النوع الذي نحرّر أكواده ونِسبه
   const [codeGrade, setCodeGrade] = useState("");         // الدرجة (فارغ = الكود العام للنوع×المنشأ)
 
-  const admin = isAdminUser();
+  const readOnly = !canSaveSettings();
   const model = draft || cfg;
   const dirty = !!draft;
 
@@ -190,23 +192,6 @@ export default function ButcherSettings() {
 
   if (!canOpenButcherPage("butcher.settings")) return <NoAccess page="butcher.settings" />;
 
-  if (!admin) {
-    return (
-      <div dir={dir} className="bg" style={S.page}>
-        <style>{CSS}</style>
-        <div style={S.card}>
-          <div className="bg-title" style={S.title}>⚙️ {t({ en: "Butcher Settings", ar: "إعدادات الجزار" })}</div>
-          <div style={S.note}>
-            {t({ en: "Administrators only.", ar: "للمدراء فقط." })}
-          </div>
-          <button type="button" style={S.btn} onClick={() => navigate("/butcher")}>
-            {t({ en: "Back", ar: "رجوع" })}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const TABS = [
     { id: "rules", ar: "الشروط", en: "Rules" },
     { id: "butchers", ar: "الجزارون", en: "Butchers" },
@@ -237,40 +222,49 @@ export default function ButcherSettings() {
           </div>
           <div style={S.headerBtns}>
             <LangToggle lang={lang} toggle={toggle} style={S.langBtn} />
-            <button type="button" style={S.btn} onClick={resetDefaults}>
-              {t({ en: "Reset to defaults", ar: "إرجاع الافتراضي" })}
-            </button>
+            {!readOnly && (
+              <button type="button" style={S.btn} onClick={resetDefaults}>
+                {t({ en: "Reset to defaults", ar: "إرجاع الافتراضي" })}
+              </button>
+            )}
             <button type="button" style={S.btn} onClick={() => navigate("/butcher")}>
               {t({ en: "Back", ar: "رجوع" })}
             </button>
           </div>
         </div>
 
-        {/* شريط الحفظ */}
-        <div style={{ ...S.saveBar, ...(dirty ? S.saveBarOn : null) }}>
+        {/* شريط الحفظ — يتحوّل لشريط "عرض فقط" لمن لا يملك صلاحية التعديل */}
+        <div style={{ ...S.saveBar, ...(readOnly ? S.saveBarRO : dirty ? S.saveBarOn : null) }}>
           <span>
-            {loading
-              ? t({ en: "Loading…", ar: "جارٍ التحميل…" })
-              : dirty
-                ? t({ en: "Unsaved changes", ar: "تعديلات غير محفوظة" })
-                : t({ en: "All changes saved", ar: "كل التعديلات محفوظة" })}
+            {readOnly
+              ? `👁️ ${t({
+                  en: "View only — you do not have edit rights on the Butcher section.",
+                  ar: "عرض فقط — لا تملك صلاحية التعديل على قسم الجزار.",
+                })}`
+              : loading
+                ? t({ en: "Loading…", ar: "جارٍ التحميل…" })
+                : dirty
+                  ? t({ en: "Unsaved changes", ar: "تعديلات غير محفوظة" })
+                  : t({ en: "All changes saved", ar: "كل التعديلات محفوظة" })}
             {msg ? ` — ${msg}` : ""}
           </span>
-          <span style={{ display: "flex", gap: 8 }}>
-            {dirty && (
-              <button type="button" style={S.btn} onClick={() => { setDraft(null); setMsg(""); }}>
-                {t({ en: "Discard", ar: "تراجع" })}
+          {!readOnly && (
+            <span style={{ display: "flex", gap: 8 }}>
+              {dirty && (
+                <button type="button" style={S.btn} onClick={() => { setDraft(null); setMsg(""); }}>
+                  {t({ en: "Discard", ar: "تراجع" })}
+                </button>
+              )}
+              <button
+                type="button"
+                style={{ ...S.btn, ...S.btnPrimary, ...(dirty && !saving ? null : S.btnOff) }}
+                onClick={save}
+                disabled={!dirty || saving}
+              >
+                {saving ? t({ en: "Saving…", ar: "جارٍ الحفظ…" }) : t({ en: "Save", ar: "حفظ" })}
               </button>
-            )}
-            <button
-              type="button"
-              style={{ ...S.btn, ...S.btnPrimary, ...(dirty && !saving ? null : S.btnOff) }}
-              onClick={save}
-              disabled={!dirty || saving}
-            >
-              {saving ? t({ en: "Saving…", ar: "جارٍ الحفظ…" }) : t({ en: "Save", ar: "حفظ" })}
-            </button>
-          </span>
+            </span>
+          )}
         </div>
 
         <div style={S.tabs}>
@@ -285,6 +279,9 @@ export default function ButcherSettings() {
             </button>
           ))}
         </div>
+
+        {/* fieldset معطّل = كل الحقول والأزرار داخل التبويبات تصير للقراءة فقط */}
+        <fieldset disabled={readOnly} style={S.panels}>
 
         {/* ═══ الشروط ═══ */}
         {tab === "rules" && (
@@ -767,10 +764,12 @@ export default function ButcherSettings() {
         {/* ═══ إدارة ═══ */}
         {tab === "admin" && (
           <AdminTab
-            t={t} isAr={isAr} model={model}
+            t={t} isAr={isAr} model={model} readOnly={readOnly}
             onImport={(parsed) => setDraft(parsed)}
           />
         )}
+
+        </fieldset>
       </div>
     </div>
   );
@@ -921,7 +920,7 @@ function LogoUpload({ onDone, t }) {
 }
 
 /** إدارة: تصدير/استيراد الإعدادات + سجل التغييرات من قاعدة التدقيق. */
-function AdminTab({ t, isAr, model, onImport }) {
+function AdminTab({ t, isAr, model, onImport, readOnly }) {
   const fileRef = useRef(null);
   const [audit, setAudit] = useState(null);
   const [auditErr, setAuditErr] = useState("");
@@ -973,16 +972,25 @@ function AdminTab({ t, isAr, model, onImport }) {
       <div className="bg-sec" style={S.secTitle}>
         {t({ en: "Backup & restore", ar: "نسخة احتياطية واستعادة" })}
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" style={S.btn} onClick={exportJson}>
-          ⬇️ {t({ en: "Export settings (JSON)", ar: "تصدير الإعدادات (JSON)" })}
-        </button>
-        <input ref={fileRef} type="file" accept="application/json" style={{ display: "none" }}
-          onChange={(e) => importJson(e.target.files?.[0])} />
-        <button type="button" style={S.btn} onClick={() => fileRef.current?.click()}>
-          ⬆️ {t({ en: "Import settings", ar: "استيراد إعدادات" })}
-        </button>
-      </div>
+      {readOnly ? (
+        <div style={S.note}>
+          {t({
+            en: "Backup and restore need edit rights on the Butcher section.",
+            ar: "النسخ الاحتياطي والاستعادة يحتاجان صلاحية تعديل على قسم الجزار.",
+          })}
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" style={S.btn} onClick={exportJson}>
+            ⬇️ {t({ en: "Export settings (JSON)", ar: "تصدير الإعدادات (JSON)" })}
+          </button>
+          <input ref={fileRef} type="file" accept="application/json" style={{ display: "none" }}
+            onChange={(e) => importJson(e.target.files?.[0])} />
+          <button type="button" style={S.btn} onClick={() => fileRef.current?.click()}>
+            ⬆️ {t({ en: "Import settings", ar: "استيراد إعدادات" })}
+          </button>
+        </div>
+      )}
       {msg && <div style={S.note}>{msg}</div>}
 
       <div className="bg-sec" style={S.secTitle}>
@@ -1224,6 +1232,10 @@ const S = {
     flexWrap: "wrap",
   },
   saveBarOn: { border: "2px solid #f59e0b", background: "#fffbeb", color: "#92400e" },
+  saveBarRO: { border: "1px solid #cfe0f0", background: "#f3f8fd", color: "#3c5a75" },
+
+  /* حاوية التبويبات — fieldset بلا مظهر، وجودها فقط لتعطيل الحقول عند العرض فقط */
+  panels: { border: 0, padding: 0, margin: 0, minWidth: 0 },
 
   tabs: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 },
   tab: {
