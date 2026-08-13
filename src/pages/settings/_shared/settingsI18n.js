@@ -243,6 +243,7 @@ export const ST = {
   amSecIso:              { en: "ISO & HACCP",       ar: "ISO و HACCP" },
   amSecHalalAudit:       { en: "HALAL Audit",       ar: "تدقيق الحلال" },
   amSecHse:              { en: "HSE",               ar: "السلامة والصحة المهنية" },
+  amSecButcher:          { en: "Butcher",           ar: "الجزار" },
   amSecSettings:         { en: "Settings",          ar: "الإعدادات" },
 
   // CRUD operations

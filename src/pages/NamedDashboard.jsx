@@ -260,6 +260,11 @@ const ALL_ROLES = [
     glow: "rgba(234,179,8,.45)",
   },
   {
+    id: "butcher", label: "Butcher", route: "/butcher", icon: "🔪",
+    grad: "linear-gradient(135deg,#dc2626,#991b1b)",
+    glow: "rgba(220,38,38,.45)",
+  },
+  {
     id: "emailCenter", label: "Email Center", route: "/email-center", icon: "📨",
     grad: "linear-gradient(135deg,#1e40af,#7c3aed)",
     glow: "rgba(30,64,175,.45)",

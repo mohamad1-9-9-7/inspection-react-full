@@ -136,6 +136,7 @@ import returns_customers     from "./returns_customers";
 import inventory_daily       from "./inventory_daily";
 import enoc_returns          from "./enoc_returns";
 import destruction_record    from "./destruction_record";
+import odoo_disposal_log     from "./odoo_disposal_log";
 
 // Fresh-chicken key uses the legacy long form
 const CUSTOM = {
@@ -277,6 +278,7 @@ const CUSTOM = {
   "inventory_daily_grouped":                inventory_daily,
   "enoc_returns":                           enoc_returns,
   "destruction_record":                     destruction_record,
+  "odoo_disposal_log":                      odoo_disposal_log,
 };
 
 /**

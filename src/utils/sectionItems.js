@@ -43,6 +43,10 @@ export const SECTION_ITEMS = {
         { id: "destruction.browse",  icon: "🗑️", label: "Browse" },
         { id: "destruction.create",  icon: "📝", label: "Create" },
       ]},
+      { id: "disposalLog",     icon: "⚖️", label: "Odoo Disposal Log", subItems: [
+        { id: "disposalLog.browse",  icon: "⚖️", label: "Comparison" },
+        { id: "disposalLog.import",  icon: "📥", label: "Import" },
+      ]},
     ],
   },
 
@@ -147,6 +151,16 @@ export const SECTION_ITEMS = {
       { id: "capa-tracker",          icon: "📌", label: "CAPA Tracker" },
       { id: "training-matrix",       icon: "🎓", label: "Training Matrix" },
       { id: "licenses",              icon: "🪪", label: "Licenses & Certifications" },
+    ],
+  },
+
+  butcher: {
+    kind: "pages",
+    items: [
+      { id: "butcher.entry",    icon: "🔪", label: "Record Cut Weights" },
+      { id: "butcher.view",     icon: "📋", label: "Butcher Reports" },
+      { id: "butcher.summary",  icon: "🗓️", label: "Full Summary Report" },
+      { id: "butcher.settings", icon: "⚙️", label: "Butcher Settings" },
     ],
   },
 

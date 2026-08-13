@@ -5,6 +5,7 @@ import {
   FiArchive,
   FiArrowRight,
   FiBarChart2,
+  FiCheckSquare,
   FiClipboard,
   FiFilePlus,
   FiFolder,
@@ -13,6 +14,7 @@ import {
   FiSearch,
   FiTrash2,
   FiTruck,
+  FiUploadCloud,
   FiUser,
 } from "react-icons/fi";
 import logo from "./assets/almawashi-logo.jpg";
@@ -26,6 +28,7 @@ const browseLinks = [
   { perm: "inventory.browse", to: "/inventory-daily/browse", Icon: FiPackage, label: "Browse Inventory Daily", ar: "عرض المخزون اليومي", tone: "cyan" },
   { perm: "enoc.browse", to: "/enoc-returns/browse-view", Icon: FiTruck, label: "Browse ENOC Returns", ar: "عرض مرتجعات ENOC", tone: "orange" },
   { perm: "destruction.browse", to: "/destruction/browse", Icon: FiTrash2, label: "Browse Condemnations", ar: "عرض سجلات الإعدام", tone: "red" },
+  { perm: "disposalLog.browse", to: "/disposal-log/browse", Icon: FiCheckSquare, label: "Disposal Log Comparison", ar: "مقارنة سجل الإعدام (أودو)", aria: "Compare the Odoo disposal log with our condemnation register", tone: "slate" },
 ];
 
 const createLinks = [
@@ -35,6 +38,7 @@ const createLinks = [
   { perm: "inventory.create", to: "/inventory-daily/input", Icon: FiArchive, label: "Create Inventory Daily Report", ar: "إنشاء مخزون يومي", aria: "Create inventory daily report", tone: "cyan" },
   { perm: "enoc.create", to: "/enoc-returns/input", Icon: FiTruck, label: "Create ENOC Returns Report", ar: "إنشاء تقرير ENOC", aria: "Create ENOC returns report", tone: "teal" },
   { perm: "destruction.create", to: "/destruction/input", Icon: FiTrash2, label: "Record Condemnation", ar: "تسجيل إعدام", aria: "Create condemnation and disposal record", tone: "red" },
+  { perm: "disposalLog.import", to: "/disposal-log/import", Icon: FiUploadCloud, label: "Import Odoo Disposal Log", ar: "استيراد سجل الإعدام الشهري", aria: "Import the monthly Odoo disposal log", tone: "slate" },
 ];
 
 function getCurrentUser() {
@@ -288,6 +292,7 @@ export default function ReturnsMenu() {
         .rm-tone-cyan{background:linear-gradient(135deg,#0891b2,#06b6d4)}
         .rm-tone-orange{background:linear-gradient(135deg,#f97316,#ea580c)}
         .rm-tone-red{background:linear-gradient(135deg,#b91c1c,#7f1d1d)}
+        .rm-tone-slate{background:linear-gradient(135deg,#334155,#0f172a)}
         .rm-cardBody{flex:1}
         .rm-cardTop{
           display:flex;

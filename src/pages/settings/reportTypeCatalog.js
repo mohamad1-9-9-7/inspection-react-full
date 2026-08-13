@@ -219,6 +219,7 @@ export const BRANCHES = [
       ["inventory_daily_grouped",    "Inventory Daily (Grouped)"],
       ["enoc_returns",               "ENOC Returns"],
       ["destruction_record",         "Condemnation & Disposal"],
+      ["odoo_disposal_log",          "Odoo Disposal Log (Monthly)"],
     ],
   },
 ];

@@ -17,6 +17,13 @@ const Inspection = lazy(() => import("./pages/Inspection"));
 const InspectionHub = lazy(() => import("./pages/inspection/InspectionHub"));
 const InspectionAnnualPlan = lazy(() => import("./pages/inspection/InspectionAnnualPlan"));
 const InspectionEvidencePublic = lazy(() => import("./pages/InspectionEvidencePublic"));
+
+// 🔪 قسم الجزار — تسجيل أوزان القطع (كشك، الدخول بالرقم الوظيفي) + العرض
+const ButcherHub = lazy(() => import("./pages/butcher/ButcherHub"));
+const ButcherLog = lazy(() => import("./pages/butcher/ButcherLog"));
+const ButcherView = lazy(() => import("./pages/butcher/ButcherView"));
+const ButcherSummary = lazy(() => import("./pages/butcher/ButcherSummary"));
+const ButcherSettings = lazy(() => import("./pages/butcher/ButcherSettings"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 
@@ -118,6 +125,10 @@ const ENOCReturnsBrowseMenuView = lazy(() =>
 // ✅🆕 Destroyed Materials / سجل إعدام المواد (Input + Browse)
 const DestructionInput = lazy(() => import("./pages/Destruction/DestructionInput"));
 const DestructionBrowse = lazy(() => import("./pages/Destruction/DestructionBrowse"));
+
+// ✅🆕 Odoo monthly disposal log — import + reconciliation against our register
+const DisposalLogImport = lazy(() => import("./pages/Destruction/DisposalLog/DisposalLogImport"));
+const DisposalLogBrowse = lazy(() => import("./pages/Destruction/DisposalLog/DisposalLogBrowse"));
 
 const KPIDashboard = lazy(() => import("./pages/KPIDashboard"));
 
@@ -761,6 +772,42 @@ export default function App() {
           }
         />
         <Route path="/inspection/evidence/:token" element={<InspectionEvidencePublic />} />
+
+        {/* 🔪 قسم الجزار */}
+        <Route
+          path="/butcher"
+          element={
+            <ProtectedRoute>
+              <ButcherHub />
+            </ProtectedRoute>
+          }
+        />
+        {/* صفحة الإدخال — بدون تسجيل دخول، الرقم الوظيفي هو التعريف (جهاز مشترك) */}
+        <Route path="/butcher/log" element={<ButcherLog />} />
+        <Route
+          path="/butcher/view"
+          element={
+            <ProtectedRoute>
+              <ButcherView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/butcher/summary"
+          element={
+            <ProtectedRoute>
+              <ButcherSummary />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/butcher/settings"
+          element={
+            <ProtectedRoute>
+              <ButcherSettings />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/admin"
           element={
@@ -1315,6 +1362,26 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <DestructionBrowse />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        {/* ✅✅✅ Odoo monthly disposal log / سجل الإعدام الشهري من أودو */}
+        <Route path="/disposal-log">
+          <Route
+            path="import"
+            element={
+              <ProtectedRoute>
+                <DisposalLogImport />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="browse"
+            element={
+              <ProtectedRoute>
+                <DisposalLogBrowse />
               </ProtectedRoute>
             }
           />
