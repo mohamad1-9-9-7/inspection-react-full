@@ -35,6 +35,30 @@ function useCatalog() {
   return items;
 }
 
+/* أوصاف الكتالوج تنتهي عادةً بـ "- KG" / "- BOX" — نفصل الوحدة عن الاسم. */
+const UOM_HINTS = {
+  KG: "KG", KGS: "KG", G: "G", GM: "G", GRAM: "G",
+  PCS: "PCS", PC: "PCS", PIECE: "PCS", NOS: "PCS", NO: "PCS",
+  BOX: "BOX", BX: "BOX", CTN: "BOX", CARTON: "BOX", PACK: "BOX", PKT: "BOX",
+  L: "L", LTR: "L", LITER: "L", LITRE: "L",
+  M: "M", MTR: "M", METER: "M", METRE: "M",
+};
+
+/** كود + اسم نظيف + وحدة مُخمّنة من سطر الكتالوج. */
+function parseCatalog(row) {
+  const raw = String(row?.description || "").trim();
+  const code = String(row?.item_code || "").trim();
+  let name = raw;
+  let uom = "KG";
+  const m = raw.match(/^(.*)\s-\s*([A-Za-z]*)\s*$/); // آخر "- وحدة"
+  if (m) {
+    name = m[1].trim();
+    const hint = m[2].trim().toUpperCase();
+    if (UOM_HINTS[hint]) uom = UOM_HINTS[hint];
+  }
+  return { code, name: name || raw || code, uom };
+}
+
 export default function MrpItems() {
   const { t, isAr } = useSettingsLang();
   const { cfg, setCfg, loading } = useMrpConfig();
@@ -50,6 +74,7 @@ export default function MrpItems() {
   const [lowOnly, setLowOnly] = useState(false);
   const [editId, setEditId] = useState("");       // صنف مفتوح بالنموذج
   const [moveFor, setMoveFor] = useState(null);   // حركة مخزون لصنف
+  const [importing, setImporting] = useState(false); // نافذة استيراد الكتالوج
 
   const canEdit = canEditMrp();
   const model = draft || cfg;
@@ -101,6 +126,51 @@ export default function MrpItems() {
     const id = freshId("sup");
     edit((n) => { n.suppliers.push({ id, ar: "", en: "", contact: "", phone: "", active: true }); });
     return id;
+  };
+
+  /** استيراد أصناف من كتالوج الشركة كنسخة قابلة للتعديل — بلا تكرار الكود. */
+  const importCatalog = (catalogRows, defType = "raw") => {
+    let added = 0;
+    edit((n) => {
+      const have = new Set(
+        (n.items || []).map((i) => String(i.sku || "").trim()).filter(Boolean)
+      );
+      catalogRows.forEach((row) => {
+        const { code, name, uom } = parseCatalog(row);
+        if (!code || have.has(code)) return;
+        have.add(code);
+        added += 1;
+        n.items.push({
+          id: freshId("item"),
+          sku: code, ar: "", en: name, uom, type: defType,
+          cost: "", supplierId: "", reorderLevel: "", openingQty: "",
+          category: "", notes: "", active: true,
+          catalogCode: code, source: "catalog", // الربط الذكي بالكتالوج
+        });
+      });
+    });
+    setMsg(
+      added
+        ? t({ en: `Imported ${added} item(s) — press Save.`, ar: `تم استيراد ${added} صنف — اضغط حفظ.` })
+        : t({ en: "Everything is already imported.", ar: "كل شي مستورد أصلاً." })
+    );
+    setImporting(false);
+  };
+
+  /** إعادة مزامنة أسماء الأصناف المرتبطة من الكتالوج (بلا دهس تعديل يدوي على العربي). */
+  const resyncNames = () => {
+    const byCode = new Map(catalog.map((r) => [String(r.item_code), r]));
+    let n = 0;
+    edit((next) => {
+      (next.items || []).forEach((it) => {
+        const row = byCode.get(String(it.catalogCode || it.sku || ""));
+        if (!row) return;
+        const { name, uom } = parseCatalog(row);
+        if (name && name !== it.en) { it.en = name; n += 1; }
+        if (!it.uom) it.uom = uom;
+      });
+    });
+    setMsg(t({ en: `Refreshed ${n} name(s) from the catalog.`, ar: `تم تحديث ${n} اسم من الكتالوج.` }));
   };
 
   const save = async () => {
@@ -155,11 +225,19 @@ export default function MrpItems() {
       });
   }, [model, q, typeFilter, lowOnly, workOrders, moves]);
 
-  const totals = useMemo(() => ({
-    count: (model.items || []).length,
-    low: rows.filter((r) => r.low).length,
-    value: rows.reduce((s, r) => s + r.value, 0),
-  }), [model.items, rows]);
+  const totals = useMemo(() => {
+    const haveCodes = new Set(
+      (model.items || []).map((i) => String(i.sku || "").trim()).filter(Boolean)
+    );
+    const notImported = catalog.filter((r) => !haveCodes.has(String(r.item_code))).length;
+    return {
+      count: (model.items || []).length,
+      low: rows.filter((r) => r.low).length,
+      value: rows.reduce((s, r) => s + r.value, 0),
+      catalog: catalog.length,
+      notImported,
+    };
+  }, [model.items, rows, catalog]);
 
   if (!canOpenMrp(PAGE)) return <MrpNoAccess page={PAGE} />;
 
@@ -176,9 +254,14 @@ export default function MrpItems() {
       })}
       actions={
         canEdit && (
-          <button type="button" style={{ ...S.btn, ...S.btnPrimary }} onClick={addItem}>
-            ＋ {t({ en: "New item", ar: "صنف جديد" })}
-          </button>
+          <>
+            <button type="button" style={{ ...S.btn, ...S.btnBlue }} onClick={() => setImporting(true)}>
+              📥 {t({ en: "Import from product list", ar: "استيراد من قائمة المنتجات" })}
+            </button>
+            <button type="button" style={{ ...S.btn, ...S.btnPrimary }} onClick={addItem}>
+              ＋ {t({ en: "New item", ar: "صنف جديد" })}
+            </button>
+          </>
         )
       }
     >
@@ -186,6 +269,16 @@ export default function MrpItems() {
 
       <div style={S.kpiRow}>
         <Kpi label={t({ en: "Items", ar: "الأصناف" })} value={totals.count} />
+        <Kpi
+          label={t({ en: "In product list", ar: "بقائمة المنتجات" })}
+          value={totals.catalog}
+          foot={
+            totals.notImported
+              ? t({ en: `${totals.notImported} not imported`, ar: `${totals.notImported} غير مستورد` })
+              : t({ en: "all imported", ar: "الكل مستورد" })
+          }
+          color={totals.notImported ? "#b45309" : "#047857"}
+        />
         <Kpi
           label={t({ en: "Below reorder level", ar: "تحت حد الطلب" })}
           value={totals.low}
@@ -226,6 +319,12 @@ export default function MrpItems() {
               <Switch checked={lowOnly} onChange={setLowOnly} />
               {t({ en: "Low stock only", ar: "الناقص فقط" })}
             </label>
+            {canEdit && (model.items || []).some((i) => i.catalogCode) && (
+              <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={resyncNames}
+                title={t({ en: "Refresh linked names from the product list", ar: "تحديث أسماء المرتبطين من قائمة المنتجات" })}>
+                🔄 {t({ en: "Sync names", ar: "تحديث الأسماء" })}
+              </button>
+            )}
           </div>
         }
       >
@@ -233,9 +332,23 @@ export default function MrpItems() {
           <EmptyBox>{t({ en: "Loading…", ar: "جارٍ التحميل…" })}</EmptyBox>
         ) : rows.length === 0 ? (
           <EmptyBox>
-            {(model.items || []).length === 0
-              ? t({ en: "No items yet — press “New item”.", ar: "لا توجد أصناف بعد — اضغط «صنف جديد»." })
-              : t({ en: "No item matches the filter.", ar: "لا يوجد صنف مطابق للفلتر." })}
+            {(model.items || []).length === 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center" }}>
+                <div>
+                  {t({
+                    en: `Your product list has ${totals.catalog} items. Bring them all in as an editable copy.`,
+                    ar: `قائمة منتجاتك فيها ${totals.catalog} صنف. جيبهم كلهم كنسخة قابلة للتعديل.`,
+                  })}
+                </div>
+                {canEdit && (
+                  <button type="button" style={{ ...S.btn, ...S.btnBlue }} onClick={() => setImporting(true)}>
+                    📥 {t({ en: "Import from product list", ar: "استيراد من قائمة المنتجات" })}
+                  </button>
+                )}
+              </div>
+            ) : (
+              t({ en: "No item matches the filter.", ar: "لا يوجد صنف مطابق للفلتر." })
+            )}
           </EmptyBox>
         ) : (
           <div style={S.tableWrap}>
@@ -259,8 +372,11 @@ export default function MrpItems() {
                   <tr key={it.id}>
                     <td style={{ ...S.td, fontWeight: 900 }}>{it.sku || "—"}</td>
                     <td style={{ ...S.td, ...S.tdStart }}>
-                      <div style={{ fontWeight: 800 }}>
+                      <div style={{ fontWeight: 800, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                         {nameOf(it, isAr) || it.id}
+                        {it.catalogCode && (
+                          <Badge color="#1f6fd0" bg="#eef4fb">🔗 {t({ en: "linked", ar: "مرتبط" })}</Badge>
+                        )}
                         {it.active === false && <span style={{ color: "#a12626" }}> ⛔</span>}
                       </div>
                       {it.category && <div style={S.hint}>{it.category}</div>}
@@ -462,6 +578,16 @@ export default function MrpItems() {
         />
       )}
 
+      {/* ── استيراد من قائمة المنتجات ── */}
+      {importing && (
+        <CatalogImportModal
+          t={t} isAr={isAr} catalog={catalog}
+          existing={new Set((model.items || []).map((i) => String(i.sku || "").trim()).filter(Boolean))}
+          onClose={() => setImporting(false)}
+          onImport={importCatalog}
+        />
+      )}
+
       <SaveDock
         dirty={dirty}
         saving={saving}
@@ -627,6 +753,165 @@ function StockMoveModal({ t, isAr, item, onClose, onSubmit, current }) {
         {" → "}
         {t({ en: "after this move", ar: "بعد الحركة" })}: <b>{money(current + signed, 2)}</b>
       </div>
+    </Modal>
+  );
+}
+
+/* ══════════════ استيراد الكتالوج ══════════════ */
+
+function CatalogImportModal({ t, isAr, catalog, existing, onClose, onImport }) {
+  const [q, setQ] = useState("");
+  const [picked, setPicked] = useState(() => new Set());
+  const [hideImported, setHideImported] = useState(true);
+  const [defType, setDefType] = useState("raw");
+
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return catalog.filter((r) => {
+      const already = existing.has(String(r.item_code));
+      if (hideImported && already) return false;
+      if (!needle) return true;
+      return [r.item_code, r.description]
+        .some((v) => String(v || "").toLowerCase().includes(needle));
+    });
+  }, [catalog, q, existing, hideImported]);
+
+  const selectable = rows.filter((r) => !existing.has(String(r.item_code)));
+  const allShownPicked = selectable.length > 0 && selectable.every((r) => picked.has(r.item_code));
+
+  const toggle = (code) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      return next;
+    });
+  const toggleAllShown = () =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (allShownPicked) selectable.forEach((r) => next.delete(r.item_code));
+      else selectable.forEach((r) => next.add(r.item_code));
+      return next;
+    });
+
+  const importPicked = () =>
+    onImport(catalog.filter((r) => picked.has(r.item_code)), defType);
+  const importAllShown = () => onImport(selectable, defType);
+
+  return (
+    <Modal
+      wide
+      icon="📥"
+      title={t({ en: "Import from product list", ar: "استيراد من قائمة المنتجات" })}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" style={S.btn} onClick={onClose}>
+            {t({ en: "Cancel", ar: "إلغاء" })}
+          </button>
+          <button
+            type="button"
+            style={{ ...S.btn, ...(selectable.length ? S.btnBlue : S.btnOff) }}
+            disabled={!selectable.length}
+            onClick={importAllShown}
+          >
+            📥 {t({ en: `Import all shown (${selectable.length})`, ar: `استيراد كل الظاهر (${selectable.length})` })}
+          </button>
+          <button
+            type="button"
+            style={{ ...S.btn, ...S.btnPrimary, ...(picked.size ? null : S.btnOff) }}
+            disabled={!picked.size}
+            onClick={importPicked}
+          >
+            ✔ {t({ en: `Import selected (${picked.size})`, ar: `استيراد المحدّد (${picked.size})` })}
+          </button>
+        </>
+      }
+    >
+      <div style={S.note}>
+        {t({
+          en: "This copies products into your editable item master (saved on the server). Codes already imported are skipped, so you can run it again after the product list grows.",
+          ar: "هذا بينسخ المنتجات لسجل أصنافك القابل للتعديل (محفوظ على السيرفر). الأكواد المستوردة بتُتجاهَل، فتقدر تعيدها كل ما تكبر القائمة.",
+        })}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <SearchBox value={q} onChange={setQ}
+          placeholder={t({ en: "Search code or name…", ar: "بحث بالكود أو الاسم…" })} />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}>
+          <Switch checked={hideImported} onChange={setHideImported} />
+          {t({ en: "Hide imported", ar: "إخفاء المستورد" })}
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}>
+          {t({ en: "Import as", ar: "استيراد كنوع" })}:
+          <select style={{ ...S.input, width: 160 }} value={defType} onChange={(e) => setDefType(e.target.value)}>
+            {ITEM_TYPES.map((x) => (
+              <option key={x.id} value={x.id}>{nameOf(x, isAr)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div style={{ ...S.hint, display: "flex", gap: 14, flexWrap: "wrap" }}>
+        <span>{t({ en: "Showing", ar: "المعروض" })}: <b>{rows.length}</b></span>
+        <span>{t({ en: "Selectable", ar: "قابل للاستيراد" })}: <b>{selectable.length}</b></span>
+        <span>{t({ en: "Selected", ar: "محدّد" })}: <b>{picked.size}</b></span>
+      </div>
+
+      <div style={{ ...S.tableWrap, maxHeight: "52vh" }}>
+        <table style={S.table}>
+          <thead>
+            <tr>
+              <th style={{ ...S.th, width: 44 }}>
+                <input type="checkbox" checked={allShownPicked} onChange={toggleAllShown} />
+              </th>
+              <th style={S.th}>{t({ en: "Code", ar: "الكود" })}</th>
+              <th style={{ ...S.th, minWidth: 260 }}>{t({ en: "Name", ar: "الاسم" })}</th>
+              <th style={S.th}>{t({ en: "UoM", ar: "الوحدة" })}</th>
+              <th style={S.th}>{t({ en: "Status", ar: "الحالة" })}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td style={S.td} colSpan={5}>{t({ en: "Nothing to show.", ar: "لا شيء للعرض." })}</td></tr>
+            )}
+            {rows.slice(0, 400).map((r) => {
+              const already = existing.has(String(r.item_code));
+              const p = parseCatalog(r);
+              return (
+                <tr key={r.item_code}
+                  style={already ? { opacity: 0.55 } : { cursor: "pointer" }}
+                  onClick={() => !already && toggle(r.item_code)}>
+                  <td style={S.td}>
+                    <input
+                      type="checkbox"
+                      disabled={already}
+                      checked={picked.has(r.item_code)}
+                      onChange={() => toggle(r.item_code)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </td>
+                  <td style={{ ...S.td, fontWeight: 900 }}>{r.item_code}</td>
+                  <td style={{ ...S.td, ...S.tdStart }}>{p.name}</td>
+                  <td style={S.td}>{p.uom}</td>
+                  <td style={S.td}>
+                    {already
+                      ? <Badge color="#047857" bg="#ecfdf5">{t({ en: "imported", ar: "مستورد" })}</Badge>
+                      : <Badge color="#6b8299" bg="#eef4fb">{t({ en: "new", ar: "جديد" })}</Badge>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > 400 && (
+        <div style={S.hint}>
+          {t({
+            en: "Showing the first 400 — narrow the search, or use “Import all shown”.",
+            ar: "عرض أول ٤٠٠ — ضيّق البحث، أو استعمل «استيراد كل الظاهر».",
+          })}
+        </div>
+      )}
     </Modal>
   );
 }
