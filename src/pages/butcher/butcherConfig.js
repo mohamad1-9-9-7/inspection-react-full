@@ -12,10 +12,18 @@
 //   codes: { "animalId:originId": "20035", ... }   ← الكود يعتمد على النوع أيضاً
 //   refs:  { animalId: { min, max }, ... }         ← النسبة المرجعية لكل نوع
 // السجلات القديمة (codes مسطّحة بالمنشأ فقط، و ref واحدة) تُهاجَر تلقائياً للخروف.
+//
+// شجرة المنتج — من الجذر حتى المنتج النهائي:
+//   animals (الذبيحة/المادة الخام) → origins → grades → cuts/pieces (القطع)
+//     → products (المنتجات النهائية، كل منتج تابع لقطعة أم عبر parentId)
+// كل مستوى قابل للإضافة والتعديل والحذف من لوحة الإعدادات، وكل عنصر له كود
+// من قائمة الأصناف (items.json) ونسبة مرجعية من أمّه.
 
 import { useEffect, useState } from "react";
 import API_BASE from "../../config/api";
-import { ANIMALS, CUTS, GRADES, ORIGIN_LIST, SHEEP_PIECES, codeKey } from "./butcherOptions";
+import {
+  ANIMALS, CUTS, GRADES, ORIGIN_LIST, SHEEP_PIECES, codeKey, itemKind,
+} from "./butcherOptions";
 
 export const CONFIG_TYPE = "butcher_config";
 const CONFIG_KEY = "config";
@@ -36,9 +44,15 @@ export const DEFAULT_RULES = {
   roundTo: 0,               // تقريب الأوزان: 0 = بلا تقريب، 0.01، 0.05، 0.1
   restrictButchers: false,  // قبول الأرقام الوظيفية المسجّلة فقط
   onScreenKeypad: true,     // لوحة أرقام على الشاشة (كشك بقفازات) بدل كيبورد الجهاز
+  requireKnownCode: false,  // منع حفظ الإعدادات إذا فيه كود خارج قائمة الأصناف
+  uniqueTemplateNo: true,   // منع تكرار رقم وصفة التقطيع
+  showActualPct: true,      // إظهار النسبة الفعلية تحت كل خانة (من وزن الأم)
 };
 
-/* ترويسة التقرير الرسمية (ISO) */
+/* أنواع الشروط المخصّصة التي يقدر المستخدم يضيفها */
+export const CUSTOM_RULE_TYPES = ["toggle", "number", "text"];
+
+/* ترويسة التقرير الرسمية (ISO) — فارغة عمداً، المستخدم بيدخل كل شي بنفسه */
 export const DEFAULT_REPORT = {
   companyEn: "",
   companyAr: "",
@@ -46,11 +60,7 @@ export const DEFAULT_REPORT = {
   revNo: "",
   issueDate: "",
   logoUrl: "",
-  signatures: [
-    { en: "Prepared by", ar: "أُعدّ بواسطة" },
-    { en: "Reviewed by", ar: "روجع بواسطة" },
-    { en: "Approved by", ar: "اعتُمد بواسطة" },
-  ],
+  signatures: [],   // تُضاف خانات التواقيع من تبويب «ترويسة التقرير»
 };
 
 /** ترحيل عنصر قديم: codes مسطّحة + ref واحدة ⇦ كانت للخروف. */
@@ -85,6 +95,7 @@ export function defaultConfig() {
     cuts: CUTS.map((c) => ({
       id: c.id, ar: c.ar, en: c.en,
       weightOnly: !!c.weightOnly,
+      kind: itemKind(c),
       codes: { ...(c.codes || {}) },
       refs: JSON.parse(JSON.stringify(c.refs || {})),
       enabled: true,
@@ -92,12 +103,16 @@ export function defaultConfig() {
     })),
     pieces: SHEEP_PIECES.map((p) => ({
       id: p.id, ar: p.ar, en: p.en, art: p.art, whole: !!p.whole,
+      kind: itemKind(p),
       codes: { ...(p.codes || {}) },
       refs: JSON.parse(JSON.stringify(p.refs || {})),
       enabled: true,
       custom: false,
     })),
     grades: GRADES.map((g) => ({ ...g, enabled: true })),
+    products: [],                       // المنتجات النهائية (تابعة لقطعة عبر parentId)
+    templates: [],                      // وصفات/قوالب التقطيع — لكل واحدة رقم فريد
+    customRules: [],                    // شروط أضافها المستخدم
     butchers: [],                       // سجل الجزارين (رقم · اسم · ملحمة · نشط)
     report: JSON.parse(JSON.stringify(DEFAULT_REPORT)),
     rules: { ...DEFAULT_RULES },
@@ -137,11 +152,16 @@ export function mergeConfig(saved) {
     cuts: mergeList(base.cuts, saved.cuts, true),
     pieces: mergeList(base.pieces, saved.pieces, true),
     grades: mergeList(base.grades, saved.grades, false),
+    // قوائم يملكها المستخدم بالكامل — لا افتراضيات تُدمج فوقها
+    products: Array.isArray(saved.products) ? saved.products : base.products,
+    templates: Array.isArray(saved.templates) ? saved.templates : base.templates,
+    customRules: Array.isArray(saved.customRules) ? saved.customRules : base.customRules,
     butchers: Array.isArray(saved.butchers) ? saved.butchers : base.butchers,
     report: {
       ...base.report,
       ...(saved.report || {}),
-      signatures: Array.isArray(saved.report?.signatures) && saved.report.signatures.length
+      // قائمة يملكها المستخدم — الفراغ يعني «بلا خانات توقيع»، لا رجوع لافتراضي
+      signatures: Array.isArray(saved.report?.signatures)
         ? saved.report.signatures
         : base.report.signatures,
     },
@@ -244,8 +264,10 @@ export const gradesFor = (cfg, animalId, originId) =>
     (g) => g.animal === animalId && g.origin === originId
   );
 
-/** كود الصنف: الدرجة أولاً ثم (النوع × المنشأ) ثم المفتاح القديم. */
+/** كود الصنف — كود واحد لكل عنصر (`code`).
+    مفاتيح (النوع × المنشأ × الدرجة) القديمة تبقى كاحتياط لأي إعدادات محفوظة سابقاً. */
 export const cfgCode = (item, animalId, originId, gradeId) =>
+  String(item?.code || "").trim() ||
   (gradeId && item?.codes?.[codeKey(animalId, originId, gradeId)]) ||
   item?.codes?.[codeKey(animalId, originId)] ||
   item?.codes?.[originId] ||
@@ -304,8 +326,134 @@ export function isLocked(cfg, dayIso) {
   return age > days;
 }
 
-/** بحث موحّد في القطع والأجزاء. */
+/** بحث موحّد في القطع والأجزاء والمنتجات النهائية. */
 export const cfgFind = (cfg, id) =>
   (cfg?.cuts || []).find((c) => c.id === id) ||
   (cfg?.pieces || []).find((p) => p.id === id) ||
+  (cfg?.products || []).find((p) => p.id === id) ||
   null;
+
+/* ══════════ شجرة المنتج: الجذر → القطعة → المنتج النهائي ══════════ */
+
+/** المنتجات النهائية التابعة لقطعة أم (مفعّلة فقط)، مرتّبة. */
+export function productsOf(cfg, parentId, animalId) {
+  return sortByOrder(
+    enabledOnly(cfg?.products).filter(
+      (p) =>
+        p.parentId === parentId &&
+        (!animalId || !p.animalId || p.animalId === animalId)
+    )
+  );
+}
+
+/** كل المنتجات النهائية لنوع ذبيحة — بأي قطعة أم. */
+export const productsForAnimal = (cfg, animalId) =>
+  sortByOrder(
+    enabledOnly(cfg?.products).filter((p) => !p.animalId || p.animalId === animalId)
+  );
+
+/** العنصر الأم لمنتج نهائي (قطعة أو جزء) — أو null. */
+export const parentOf = (cfg, product) =>
+  product?.parentId ? cfgFind(cfg, product.parentId) : null;
+
+/** القطع المتاحة كأمّ لمنتج نهائي — منتجات أساسية فقط (لا هدر ولا عظم). */
+export const parentOptions = (cfg) => {
+  const cuts = enabledOnly(cfg?.cuts).filter((c) => itemKind(c) === "product");
+  const pieces = enabledOnly(cfg?.pieces).filter(
+    (p) => !p.whole && itemKind(p) === "product" && !cuts.some((c) => c.id === p.id)
+  );
+  return [...cuts, ...pieces];
+};
+
+/** تصنيف سطر محفوظ داخل تقرير: الحقل المحفوظ أولاً، ثم إعداد العنصر، ثم الـ id.
+    لازم لأن القطع المخصّصة معرّفاتها custom_xxx فلا يكفي فحص الـ id وحده. */
+export function rowKind(row, cfg) {
+  const k = row?.kind;
+  if (k === "product" || k === "waste" || k === "bone") return k;
+  const meta = cfgFind(cfg, row?.cutId);
+  return meta ? itemKind(meta) : itemKind(String(row?.cutId || ""));
+}
+
+/** هل هذا السطر هدر/عظم (لا منتجاً)؟ */
+export const isRowSpecial = (row, cfg) => rowKind(row, cfg) !== "product";
+
+/** تقسيم قائمة إلى منتجات أساسية / هدر / عظم. */
+export function splitByKind(list) {
+  const out = { product: [], waste: [], bone: [] };
+  (list || []).forEach((it) => { out[itemKind(it)]?.push(it); });
+  return out;
+}
+
+/* ══════════ وصفات (قوالب) التقطيع ══════════ */
+
+/** أرقام الوصفات المكرّرة — Set بالأرقام التي ظهرت أكثر من مرة. */
+export function duplicateTemplateNos(templates) {
+  const seen = new Map();
+  (templates || []).forEach((x) => {
+    const no = String(x?.no || "").trim().toUpperCase();
+    if (!no) return;
+    seen.set(no, (seen.get(no) || 0) + 1);
+  });
+  return new Set([...seen.entries()].filter(([, n]) => n > 1).map(([no]) => no));
+}
+
+/** هل رقم الوصفة محجوز من وصفة ثانية؟ (skipId = الوصفة التي نحرّرها) */
+export function isTemplateNoTaken(templates, no, skipId) {
+  const key = String(no || "").trim().toUpperCase();
+  if (!key) return false;
+  return (templates || []).some(
+    (x) => x.id !== skipId && String(x?.no || "").trim().toUpperCase() === key
+  );
+}
+
+/** اقتراح رقم وصفة جديد غير مستعمل — CUT-001 ، CUT-002 … */
+export function suggestTemplateNo(templates, prefix = "CUT") {
+  const used = new Set(
+    (templates || []).map((x) => String(x?.no || "").trim().toUpperCase())
+  );
+  for (let i = 1; i < 1000; i += 1) {
+    const candidate = `${prefix}-${String(i).padStart(3, "0")}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
+}
+
+/* ══════════ الصور والرسمات ══════════ */
+
+/** صورة مرفوعة لعنصر (تسبق الرسمة المدمجة) — أو "" */
+export const imageOf = (item) => String(item?.imageUrl || "").trim();
+
+/** معرّف الرسمة المدمجة — "" يعني بلا رسمة (أُزيلت من الإعدادات). */
+export function artOf(item) {
+  if (!item) return "";
+  if (item.art === "" || item.art === "none") return "";
+  return item.art || item.id || "";
+}
+
+/* ══════════ الشروط المخصّصة ══════════ */
+
+/** قيمة شرط مخصّص حسب معرّفه (أو القيمة الافتراضية). */
+export function customRule(cfg, id, fallback = null) {
+  const r = (cfg?.customRules || []).find((x) => x.id === id && x.enabled !== false);
+  return r ? r.value : fallback;
+}
+
+/* ══════════ الأكواد مقابل قائمة الأصناف ══════════ */
+
+/** كل الأكواد المستعملة في الإعدادات — للتحقق مقابل items.json. */
+export function allConfigCodes(cfg) {
+  const out = [];
+  ["cuts", "pieces", "products"].forEach((listKey) => {
+    (cfg?.[listKey] || []).forEach((it) => {
+      const name = it.ar || it.en || it.id;
+      const flat = String(it.code || "").trim();
+      if (flat) out.push({ listKey, id: it.id, name, key: "code", code: flat });
+      // مفاتيح قديمة (نوع×منشأ) — تُفحص كمان إن وُجدت
+      Object.entries(it.codes || {}).forEach(([key, code]) => {
+        const v = String(code || "").trim();
+        if (v) out.push({ listKey, id: it.id, name, key, code: v });
+      });
+    });
+  });
+  return out;
+}

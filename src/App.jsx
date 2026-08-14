@@ -23,7 +23,20 @@ const ButcherHub = lazy(() => import("./pages/butcher/ButcherHub"));
 const ButcherLog = lazy(() => import("./pages/butcher/ButcherLog"));
 const ButcherView = lazy(() => import("./pages/butcher/ButcherView"));
 const ButcherSummary = lazy(() => import("./pages/butcher/ButcherSummary"));
+const ButcherSupervisor = lazy(() => import("./pages/butcher/ButcherSupervisor"));
+const ButcherProductForm = lazy(() => import("./pages/butcher/ButcherProductForm"));
 const ButcherSettings = lazy(() => import("./pages/butcher/ButcherSettings"));
+
+// 📦 المخزون — كرت جامع للجزار والتصنيع
+const InventoryHub = lazy(() => import("./pages/inventory/InventoryHub"));
+
+// 🏭 وحدة التصنيع — قائمة المواد (BOM)
+const MrpHub = lazy(() => import("./pages/mrp/MrpHub"));
+const MrpItems = lazy(() => import("./pages/mrp/MrpItems"));
+const MrpBom = lazy(() => import("./pages/mrp/MrpBom"));
+const MrpTree = lazy(() => import("./pages/mrp/MrpTree"));
+const MrpOrders = lazy(() => import("./pages/mrp/MrpOrders"));
+const MrpReports = lazy(() => import("./pages/mrp/MrpReports"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 
@@ -800,6 +813,32 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        {/* الماستر ليست — إدخال شجرة الجزار كاملة من صفحة واحدة
+            animals | origins | grades | cuts | pieces | products */}
+        <Route
+          path="/butcher/master"
+          element={
+            <ProtectedRoute>
+              <ButcherProductForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/butcher/product/:listKey/:id"
+          element={
+            <ProtectedRoute>
+              <ButcherProductForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/butcher/supervisor"
+          element={
+            <ProtectedRoute>
+              <ButcherSupervisor />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/butcher/settings"
           element={
@@ -808,6 +847,67 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* 📦 المخزون — يجمع الجزار والتصنيع بكرت واحد */}
+        <Route
+          path="/inventory"
+          element={
+            <ProtectedRoute>
+              <InventoryHub />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 🏭 وحدة التصنيع — BOM · أوامر التصنيع · التقارير */}
+        <Route
+          path="/mrp"
+          element={
+            <ProtectedRoute>
+              <MrpHub />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mrp/items"
+          element={
+            <ProtectedRoute>
+              <MrpItems />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mrp/bom"
+          element={
+            <ProtectedRoute>
+              <MrpBom />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mrp/tree"
+          element={
+            <ProtectedRoute>
+              <MrpTree />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mrp/orders"
+          element={
+            <ProtectedRoute>
+              <MrpOrders />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mrp/reports"
+          element={
+            <ProtectedRoute>
+              <MrpReports />
+            </ProtectedRoute>
+          }
+        />
+
         <Route
           path="/admin"
           element={

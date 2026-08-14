@@ -12,7 +12,8 @@ import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { BRANCHES, TYPE, isSpecialCut, nameOf } from "./butcherOptions";
 import {
-  butcherLabel, cfgFind, cutOptions, enabledOnly, isLocked, useButcherConfig,
+  butcherLabel, cfgFind, cutOptions, enabledOnly, isLocked, isRowSpecial,
+  useButcherConfig,
 } from "./butcherConfig";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
@@ -159,7 +160,7 @@ export default function ButcherView() {
             cutId: c.cutId,
             cutName: meta ? nameOf(meta, isAr) : c.cut || "—",
             code: c.code || "",
-            special: isSpecialCut(c.cutId),
+            special: isRowSpecial(c, cfg),
             weightKg: Number(c.weightKg) || 0,
             wasteBoneKg: Number(c.wasteBoneKg) || 0,
           };
@@ -324,7 +325,7 @@ export default function ButcherView() {
       days.set(day, e);
     });
 
-    const cols = ALL_CUT_OPTIONS.filter((c) => !isSpecialCut(c.id) && usedCuts.has(c.id));
+    const cols = ALL_CUT_OPTIONS.filter((c) => !isSpecialCut(c) && usedCuts.has(c.id));
     const list = [...days.values()].sort((a, b) => b.day.localeCompare(a.day));
     const totals = {
       count: list.reduce((s, d) => s + d.count, 0),
@@ -1005,7 +1006,7 @@ const S = {
     minHeight: "100vh", background: "#eef4fb", fontFamily: FONT, color: "#0f2740",
     padding: "18px 14px 40px", overflowX: "hidden",
   },
-  wrap: { maxWidth: "min(1900px, 97vw)", margin: "0 auto" },
+  wrap: { maxWidth: "100%", margin: "0 auto" },   // ملء الصفحة
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 14 },
   title: { fontWeight: 900 },
   sub: { color: "#6b8299", fontWeight: 700, marginTop: 2 },

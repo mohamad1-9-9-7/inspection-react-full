@@ -157,10 +157,23 @@ export const SECTION_ITEMS = {
   butcher: {
     kind: "pages",
     items: [
-      { id: "butcher.entry",    icon: "🔪", label: "Record Cut Weights" },
-      { id: "butcher.view",     icon: "📋", label: "Butcher Reports" },
-      { id: "butcher.summary",  icon: "🗓️", label: "Full Summary Report" },
-      { id: "butcher.settings", icon: "⚙️", label: "Butcher Settings" },
+      { id: "butcher.entry",      icon: "🔪", label: "Record Cut Weights" },
+      { id: "butcher.view",       icon: "📋", label: "Butcher Reports" },
+      { id: "butcher.summary",    icon: "🗓️", label: "Full Summary Report" },
+      { id: "butcher.supervisor", icon: "🧑‍🍳", label: "Supervisor Board" },
+      { id: "butcher.settings",   icon: "⚙️", label: "Butcher Settings" },
+    ],
+  },
+
+  // 🏭 التصنيع — قائمة المواد (BOM) وأوامر التصنيع
+  mrp: {
+    kind: "pages",
+    items: [
+      { id: "mrp.items",   icon: "📦", label: "Items & Materials" },
+      { id: "mrp.bom",     icon: "🧾", label: "Bills of Materials" },
+      { id: "mrp.tree",    icon: "🌳", label: "Multi-level Tree" },
+      { id: "mrp.orders",  icon: "🏭", label: "Work Orders" },
+      { id: "mrp.reports", icon: "📊", label: "BOM Reports" },
     ],
   },
 

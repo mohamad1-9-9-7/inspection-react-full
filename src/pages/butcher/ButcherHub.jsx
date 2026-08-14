@@ -48,6 +48,24 @@ const CARDS = [
     grad: "linear-gradient(135deg,#0f766e,#115e59)",
   },
   {
+    id: "butcher.supervisor",
+    to: "/butcher/supervisor",
+    icon: "🧑‍🍳",
+    ar: "لوحة المشرف",
+    en: "Supervisor Board",
+    grad: "linear-gradient(135deg,#7c3aed,#5b21b6)",
+  },
+  {
+    // الماستر ليست تتبع صلاحية الإعدادات نفسها — نفس المحتوى (شجرة الأصناف)
+    id: "butcher.master",
+    perm: "butcher.settings",
+    to: "/butcher/master",
+    icon: "🗂️",
+    ar: "الماستر ليست",
+    en: "Master List",
+    grad: "linear-gradient(135deg,#b45309,#92400e)",
+  },
+  {
     id: "butcher.settings",
     to: "/butcher/settings",
     icon: "⚙️",
@@ -61,7 +79,7 @@ export default function ButcherHub() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
   // نفس حارس الصفحات — حتى لا يظهر كرت يفتح على "لا صلاحية"
-  const cards = CARDS.filter((c) => canOpenButcherPage(c.id));
+  const cards = CARDS.filter((c) => canOpenButcherPage(c.perm || c.id));
 
   return (
     <div dir={dir} className="bh" style={S.page}>
@@ -114,7 +132,7 @@ const S = {
     minHeight: "100vh", background: "#eef4fb", fontFamily: FONT, color: "#0f2740",
     padding: "22px 14px 40px", overflowX: "hidden",
   },
-  wrap: { maxWidth: 760, margin: "0 auto" },
+  wrap: { maxWidth: "min(1200px, 100%)", margin: "0 auto" },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 22 },
   title: { fontWeight: 900 },
   sub: { color: "#6b8299", fontWeight: 700, marginTop: 2 },

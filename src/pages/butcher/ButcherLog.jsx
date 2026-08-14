@@ -27,10 +27,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
 import ButcherArt from "./ButcherIcons";
-import { BRANCHES, TYPE, isSpecialCut, nameOf } from "./butcherOptions";
+import { BRANCHES, TYPE, branchCodeFromLabel, isSpecialCut, itemKind, nameOf } from "./butcherOptions";
 import {
-  butcherByNo, cfgCode, cfgRef, enabledOnly, gradesFor, originsForAnimal,
-  roundKg, sortByOrder, useButcherConfig,
+  artOf, butcherByNo, cfgCode, cfgRef, enabledOnly, gradesFor, imageOf,
+  originsForAnimal, roundKg, sortByOrder, useButcherConfig,
 } from "./butcherConfig";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
@@ -100,16 +100,6 @@ const CSS = `
 #root .bt-pad-key { font-size: 34px !important; }
 #root .bt-pad-lbl { font-size: 20px !important; }
 `;
-
-/** استخراج كود الملحمة من نص فرع الموظف في سجل الموظفين. */
-function branchCodeFromLabel(label) {
-  if (!label) return "";
-  const norm = String(label).toUpperCase().replace(/\s+/g, "");
-  const hit = BRANCHES.find(
-    (b) => norm.includes(String(b.code).toUpperCase().replace(/\s+/g, ""))
-  );
-  return hit ? hit.code : "";
-}
 
 /** هل الصفحة مفتوحة من داخل الحساب (لا من جهاز الكشك)؟ */
 function hasSession() {
@@ -199,9 +189,17 @@ export default function ButcherLog() {
   /* القوائم والشروط تأتي من إعدادات الجزار (لوحة الإعدادات) */
   const ANIMALS = useMemo(() => enabledOnly(cfg.animals), [cfg]);
   const CUTS = useMemo(() => sortByOrder(enabledOnly(cfg.cuts)), [cfg]);
-  const SHEEP_PIECES = useMemo(() => sortByOrder(enabledOnly(cfg.pieces)), [cfg]);
+  const PIECES = useMemo(() => sortByOrder(enabledOnly(cfg.pieces)), [cfg]);
+
+  /* كرت "الذبيحة الكاملة" وقائمة الأجزاء المفردة — كلاهما من الإعدادات.
+     خطوة الأجزاء تظهر فقط لما يكون في أجزاء معرّفة (لا نوع مربوط بالاسم). */
+  const wholePiece = useMemo(() => PIECES.find((p) => p.whole) || null, [PIECES]);
+  const singlePieces = useMemo(() => PIECES.filter((p) => !p.whole), [PIECES]);
+  const hasPieces = singlePieces.length > 0;
 
   const RULES = cfg.rules;
+  // إظهار النسبة الفعلية تحت كل خانة (نسبة الرقم من وزن المنتج الأصلي)
+  const showPct = RULES.showActualPct !== false;
 
   // emp | animal | origin | grade | piece | carcass | cuts | done
   const [step, setStep] = useState("emp");
@@ -277,23 +275,29 @@ export default function ButcherLog() {
     [cfg, animal, origin]
   );
 
+  /* ── فصل المنتجات الأساسية عن الهدر والعظم ──
+     المنتجات لها خانة وزن واحدة فقط، والهدر والعظم خانتان مستقلّتان أسفل الشبكة. */
+  const productCuts = useMemo(() => CUTS.filter((c) => itemKind(c) === "product"), [CUTS]);
+  const wasteCuts = useMemo(() => CUTS.filter((c) => itemKind(c) === "waste"), [CUTS]);
+  const boneCuts = useMemo(() => CUTS.filter((c) => itemKind(c) === "bone"), [CUTS]);
+
   /* مجاميع الشاشة الحالية */
   const carcassKg = num(carcass);
   const filled = useMemo(
     () =>
       CUTS.map((c) => ({
         cut: c,
+        kind: itemKind(c),
         weightKg: num(values[c.id]?.w),
-        wasteBoneKg: c.weightOnly ? 0 : num(values[c.id]?.waste),
-      })).filter((x) => x.weightKg > 0 || x.wasteBoneKg > 0),
+        wasteBoneKg: 0,      // لا خانة هدر داخل المنتج — الهدر والعظم منفصلان
+      })).filter((x) => x.weightKg > 0),
     [values, CUTS]
   );
-  const cutsKg = filled.reduce((s, x) => s + (x.cut.weightOnly ? 0 : x.weightKg), 0);
-  // الهدر والعضم = هدر كل قطعة + كرتَي "الهدر الكامل" و"العضم الكامل"
-  const wasteKg = filled.reduce(
-    (s, x) => s + x.wasteBoneKg + (x.cut.weightOnly ? x.weightKg : 0), 0
-  );
-  const cutCount = filled.filter((x) => !x.cut.weightOnly).length;
+  const cutsKg = filled.reduce((s, x) => s + (x.kind === "product" ? x.weightKg : 0), 0);
+  const wasteOnlyKg = filled.reduce((s, x) => s + (x.kind === "waste" ? x.weightKg : 0), 0);
+  const boneOnlyKg = filled.reduce((s, x) => s + (x.kind === "bone" ? x.weightKg : 0), 0);
+  const wasteKg = wasteOnlyKg + boneOnlyKg;   // الهدر والعظم مجتمعين
+  const cutCount = filled.filter((x) => x.kind === "product").length;
 
   const usedKg = cutsKg + wasteKg;
   const remainingKg = carcassKg - usedKg;
@@ -310,7 +314,7 @@ export default function ButcherLog() {
   const netYieldPct = pctOf(cutsKg);   // نسبة التصافي
   const wastePct = pctOf(wasteKg);     // نسبة الهدر والعضم
 
-  /* النسبة الفعلية لكل قطعة — تغذّي لوحة النِّسب المرجعية */
+  /* النسبة الفعلية لكل قطعة من وزن الأم (الذبيحة) — تغذّي لوحة النِّسب والخانات */
   const actualPct = useMemo(() => {
     const out = {};
     CUTS.forEach((c) => {
@@ -320,11 +324,18 @@ export default function ButcherLog() {
     return out;
   }, [values, carcassKg, CUTS]);
 
+  // مدى وزن الذبيحة اختياري — الحقل الفارغ يعني «بلا حدّ»، فلا تحذير منه
+  const animalMin = Number(animal?.min);
+  const animalMax = Number(animal?.max);
+  const hasMin = Number.isFinite(animalMin) && animalMin > 0;
+  const hasMax = Number.isFinite(animalMax) && animalMax > 0;
   const outOfRange =
     RULES.warnOutOfRange !== false &&
-    !!animal && carcassKg > 0 && (carcassKg < animal.min || carcassKg > animal.max);
+    !!animal && carcassKg > 0 &&
+    ((hasMin && carcassKg < animalMin) || (hasMax && carcassKg > animalMax));
+  // الهدر إلزامي = لازم خانة الهدر تنعبّى (لا هدر لكل منتج بعد اليوم)
   const wasteMissing =
-    RULES.requireWaste === true && filled.some((x) => !x.cut.weightOnly && x.wasteBoneKg <= 0);
+    RULES.requireWaste === true && wasteCuts.length > 0 && wasteOnlyKg <= 0;
   const canSave = filled.length > 0 && usedKg > 0 && !isOver && !wasteMissing;
 
   /* ------- الانتقالات ------- */
@@ -348,40 +359,53 @@ export default function ButcherLog() {
     setStep("origin");
   };
 
-  /* الخروف: بعد المنشأ نعرض 7 كروت (خروف كامل + 6 أجزاء).
-     باقي الأنواع تدخل المسار الكامل مباشرة. */
+  /* بعد المنشأ (والدرجة إن وُجدت): إذا في أجزاء مفردة معرّفة نعرض شاشة
+     "ذبيحة كاملة أو أجزاء"، وإلا ندخل مسار الذبيحة الكاملة مباشرة. */
   const pickOrigin = (o) => {
     setOrigin(o);
     setGrade(null);
     setPieces({});
     const list = animal ? gradesFor(cfg, animal.id, o.id) : [];
     if (list.length) return setStep("grade");
-    setStep(animal?.id === "sheep" ? "piece" : "carcass");
+    setStep(hasPieces ? "piece" : "carcass");
   };
 
   const pickGrade = (g) => {
     setGrade(g);
-    setStep(animal?.id === "sheep" ? "piece" : "carcass");
+    setStep(hasPieces ? "piece" : "carcass");
   };
 
   const setPieceVal = (id, key, v) =>
     setPieces((prev) => ({ ...prev, [id]: { ...prev[id], [key]: v } }));
 
-  /* الأجزاء المعبّأة + مجاميعها */
+  /* الأجزاء المعبّأة + مجاميعها — نفس الفصل: منتجات مقابل هدر وعظم */
   const filledPieces = useMemo(
     () =>
-      SHEEP_PIECES.filter((p) => !p.whole)
+      singlePieces
         .map((p) => ({
           piece: p,
+          kind: itemKind(p),
           weightKg: num(pieces[p.id]?.w),
-          wasteBoneKg: num(pieces[p.id]?.waste),
+          wasteBoneKg: 0,
         }))
-        .filter((x) => x.weightKg > 0 || x.wasteBoneKg > 0),
-    [pieces, SHEEP_PIECES]
+        .filter((x) => x.weightKg > 0),
+    [pieces, singlePieces]
   );
-  const piecesKg = filledPieces.reduce((s, x) => s + x.weightKg, 0);
-  const piecesWasteKg = filledPieces.reduce((s, x) => s + x.wasteBoneKg, 0);
+  const piecesKg = filledPieces.reduce(
+    (s, x) => s + (x.kind === "product" ? x.weightKg : 0), 0
+  );
+  const piecesWasteKg = filledPieces.reduce(
+    (s, x) => s + (x.kind === "product" ? 0 : x.weightKg), 0
+  );
   const piecesTotal = piecesKg + piecesWasteKg;
+  /* النسبة الفعلية لكل جزء من مجموع ما أُدخل (المنتج الأصلي في وضع الأجزاء) */
+  const piecesActualPct = useMemo(() => {
+    const out = {};
+    if (piecesTotal > 0) {
+      filledPieces.forEach((x) => { out[x.piece.id] = (x.weightKg / piecesTotal) * 100; });
+    }
+    return out;
+  }, [filledPieces, piecesTotal]);
 
   const goCuts = () => {
     if (!carcassKg) return;
@@ -452,18 +476,19 @@ export default function ButcherLog() {
           cutId: x.cut.id,
           cut: x.cut.ar,
           cutEn: x.cut.en,
+          kind: x.kind,                 // product | waste | bone
           code: cfgCode(x.cut, animal.id, origin.id, grade?.id),
           weightKg: roundKg(x.weightKg, RULES.roundTo),
-          wasteBoneKg: roundKg(x.wasteBoneKg, RULES.roundTo),
-          // نسبة القطعة من وزن الذبيحة
+          wasteBoneKg: 0,               // الهدر والعظم صاروا سطوراً مستقلّة
+          // نسبة القطعة من وزن الذبيحة (المنتج الأصلي)
           pctOfCarcass: Number(pctOf(x.weightKg).toFixed(2)),
         })),
         cutsTotalKg: Number(cutsKg.toFixed(3)),
         wasteBoneTotalKg: Number(wasteKg.toFixed(3)),
         netYieldPct: Number(netYieldPct.toFixed(2)),  // نسبة التصافي
         wastePct: Number(wastePct.toFixed(2)),        // نسبة الهدر والعضم
-        wasteTotalKg: num(values.waste_total?.w),
-        boneTotalKg: num(values.bone_total?.w),
+        wasteTotalKg: Number(wasteOnlyKg.toFixed(3)),
+        boneTotalKg: Number(boneOnlyKg.toFixed(3)),
         date: RULES.allowBackdate === true ? entryDate : todayStr(),
         butcherName: person?.name || "",
         butcherJob: person?.job || "",
@@ -510,9 +535,12 @@ export default function ButcherLog() {
           cutId: x.piece.id,
           cut: x.piece.ar,
           cutEn: x.piece.en,
+          kind: x.kind,
           code: cfgCode(x.piece, animal.id, origin.id, grade?.id),
           weightKg: roundKg(x.weightKg, RULES.roundTo),
-          wasteBoneKg: roundKg(x.wasteBoneKg, RULES.roundTo),
+          wasteBoneKg: 0,
+          // نسبة الجزء من مجموع ما أُدخل
+          pctOfParent: Number((piecesActualPct[x.piece.id] || 0).toFixed(2)),
         })),
         cutsTotalKg: Number(piecesKg.toFixed(3)),
         wasteBoneTotalKg: Number(piecesWasteKg.toFixed(3)),
@@ -562,7 +590,7 @@ export default function ButcherLog() {
     if (step === "grade") { setStep("origin"); return; }
     if (step === "piece") { setStep(gradeList.length ? "grade" : "origin"); return; }
     if (step === "carcass") {
-      if (animal?.id === "sheep") return setStep("piece");
+      if (hasPieces) return setStep("piece");
       return setStep(gradeList.length ? "grade" : "origin");
     }
     if (step === "cuts") { setStep("carcass"); return; }
@@ -604,7 +632,7 @@ export default function ButcherLog() {
         </div>
 
         {step !== "emp" && step !== "done" && (
-          <StepBar step={step} isSheep={animal?.id === "sheep"} hasGrade={gradeList.length > 0} t={t} />
+          <StepBar step={step} hasPieces={hasPieces} hasGrade={gradeList.length > 0} t={t} />
         )}
 
         {step !== "emp" && step !== "done" && totals && (
@@ -722,10 +750,18 @@ export default function ButcherLog() {
         {step === "animal" && (
           <>
             <div className="bt-q" style={S.q}>{t({ en: "Choose type", ar: "اختر النوع" })}</div>
+            {!ANIMALS.length && (
+              <div className="bt-sum" style={S.emptyBox}>
+                {t({
+                  en: "No animals configured yet — add them in Butcher Settings → Animals.",
+                  ar: "لا توجد ذبائح معرّفة بعد — ضيفها من إعدادات الجزار ← الذبائح.",
+                })}
+              </div>
+            )}
             <div style={S.grid}>
               {ANIMALS.map((a) => (
                 <button key={a.id} className="bt-press" onClick={() => pickAnimal(a)} style={S.tile}>
-                  <span style={S.art}><ButcherArt id={a.id} /></span>
+                  {hasArt(a) && <span style={S.art}><ItemArt item={a} /></span>}
                   <span className="bt-name" style={S.name}>{nameOf(a, isAr)}</span>
                 </button>
               ))}
@@ -737,6 +773,14 @@ export default function ButcherLog() {
         {step === "origin" && (
           <>
             <div className="bt-q" style={S.q}>{t({ en: "Origin", ar: "المنشأ" })}</div>
+            {!originList.length && (
+              <div className="bt-sum" style={S.emptyBox}>
+                {t({
+                  en: "No origins available for this animal — add them in Butcher Settings → Origins, then tick them on the animal.",
+                  ar: "لا توجد مناشئ متاحة لهذا النوع — ضيفها من إعدادات الجزار ← المناشئ، وبعدين حدّدها على النوع.",
+                })}
+              </div>
+            )}
             <div style={S.grid}>
               {originList.map((o) => (
                 <button key={o.id} className="bt-press" onClick={() => pickOrigin(o)} style={S.tileOrigin}>
@@ -764,9 +808,9 @@ export default function ButcherLog() {
                     <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
                       {isAr ? g.en : g.ar}
                     </span>
-                    {cfgCode(SHEEP_PIECES.find((p) => p.whole) || {}, animal.id, origin.id, g.id) && (
+                    {cfgCode(wholePiece || {}, animal.id, origin.id, g.id) && (
                       <span className="bt-lbl" style={S.code}>
-                        {cfgCode(SHEEP_PIECES.find((p) => p.whole) || {}, animal.id, origin.id, g.id)}
+                        {cfgCode(wholePiece || {}, animal.id, origin.id, g.id)}
                       </span>
                     )}
                   </span>
@@ -784,11 +828,11 @@ export default function ButcherLog() {
               {t({ en: "The whole animal", ar: "الذبيحة الكاملة" })}
             </div>
             {(() => {
-              const whole = SHEEP_PIECES.find((p) => p.whole);
+              const whole = wholePiece || { ar: "الذبيحة الكاملة", en: "Whole Carcass", art: "" };
               const code = cfgCode(whole, animal.id, origin.id, grade?.id);
               return (
                 <button className="bt-press" onClick={() => setStep("carcass")} style={S.hero}>
-                  <span style={S.heroArt}><ButcherArt id={whole.art} /></span>
+                  {hasArt(whole) && <span style={S.heroArt}><ItemArt item={whole} /></span>}
                   <span style={S.heroBody}>
                     <span className="bt-q" style={S.heroTitle}>{nameOf(whole, isAr)}</span>
                     <span className="bt-lbl" style={S.heroSub}>
@@ -799,9 +843,11 @@ export default function ButcherLog() {
                     </span>
                     <span style={S.heroChips}>
                       {code && <span className="bt-lbl" style={S.code}>{code}</span>}
-                      <span className="bt-lbl" style={S.code}>
-                        {animal.min}–{animal.max} {KG}
-                      </span>
+                      {(hasMin || hasMax) && (
+                        <span className="bt-lbl" style={S.code}>
+                          {hasMin ? animalMin : "—"}–{hasMax ? animalMax : "—"} {KG}
+                        </span>
+                      )}
                     </span>
                     <span className="bt-sum" style={S.heroGo}>
                       {t({ en: "Start", ar: "ابدأ" })} ←
@@ -820,58 +866,59 @@ export default function ButcherLog() {
 
             <div className="bt-2col">
               <div>
+                {/* المنتجات الأساسية */}
                 <div style={S.grid}>
-                  {SHEEP_PIECES.filter((p) => !p.whole).map((p) => {
-                    const code = cfgCode(p, animal.id, origin.id, grade?.id);
-                    const v = pieces[p.id] || {};
-                    const w = num(v.w);
-                    const waste = num(v.waste);
-                    const active = w > 0 || waste > 0;
-                    const total = w + waste;
-                    return (
-                      <div key={p.id} style={{ ...S.cutCard, ...(active ? S.cutCardOn : null) }}>
-                        <span style={S.art}><ButcherArt id={p.art} /></span>
-                        <span className="bt-name" style={S.name}>{nameOf(p, isAr)}</span>
-                        {code && <span className="bt-lbl" style={S.code}>{code}</span>}
-                        <label style={S.field}>
-                          <span className="bt-lbl" style={S.lbl}>{t({ en: "Weight", ar: "الوزن" })}</span>
-                          <input
-                            className="bt-cutnum"
-                            value={v.w || ""}
-                            onChange={(e) => setPieceVal(p.id, "w", e.target.value)}
-                            onFocus={() => setFocusField({ kind: "piece", id: p.id, key: "w" })}
-                            inputMode={padEnabled ? "none" : "decimal"}
-                            placeholder="0.00"
-                            style={S.cutInput}
-                          />
-                        </label>
-                        <label style={S.field}>
-                          <span className="bt-lbl" style={S.lbl}>
-                            {t({ en: "Waste & bone", ar: "الهدر والعضم" })}
-                          </span>
-                          <input
-                            className="bt-cutnum"
-                            value={v.waste || ""}
-                            onChange={(e) => setPieceVal(p.id, "waste", e.target.value)}
-                            onFocus={() => setFocusField({ kind: "piece", id: p.id, key: "waste" })}
-                            inputMode={padEnabled ? "none" : "decimal"}
-                            placeholder="0.00"
-                            style={S.cutInput}
-                          />
-                        </label>
-                        {total > 0 && (
-                          <span className="bt-lbl" style={S.pct}>
-                            {t({ en: "Waste", ar: "هدر" })} {((waste / total) * 100).toFixed(1)}%
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {singlePieces
+                    .filter((p) => itemKind(p) === "product")
+                    .map((p) => (
+                      <ItemCard
+                        key={p.id}
+                        item={p}
+                        value={pieces[p.id]?.w || ""}
+                        onChange={(v) => setPieceVal(p.id, "w", v)}
+                        onFocus={() => setFocusField({ kind: "piece", id: p.id, key: "w" })}
+                        code={cfgCode(p, animal.id, origin.id, grade?.id)}
+                        pct={showPct ? piecesActualPct[p.id] ?? null : null}
+                        pctLabel={t({ en: "of the total", ar: "من المجموع" })}
+                        padEnabled={padEnabled}
+                        isAr={isAr}
+                        t={t}
+                      />
+                    ))}
                 </div>
 
+                {/* الهدر والعظم — خانتان مستقلّتان */}
+                {singlePieces.some((p) => itemKind(p) !== "product") && (
+                  <>
+                    <div className="bt-lbl" style={S.sectionLbl}>
+                      {t({ en: "Waste & bone", ar: "الهدر والعظم" })}
+                    </div>
+                    <div style={S.wasteRow}>
+                      {singlePieces
+                        .filter((p) => itemKind(p) !== "product")
+                        .map((p) => (
+                          <ItemCard
+                            key={p.id}
+                            item={p}
+                            value={pieces[p.id]?.w || ""}
+                            onChange={(v) => setPieceVal(p.id, "w", v)}
+                            onFocus={() => setFocusField({ kind: "piece", id: p.id, key: "w" })}
+                            code={cfgCode(p, animal.id, origin.id, grade?.id)}
+                            pct={showPct ? piecesActualPct[p.id] ?? null : null}
+                            pctLabel={t({ en: "of the total", ar: "من المجموع" })}
+                            tone={S.wasteTone}
+                            padEnabled={padEnabled}
+                            isAr={isAr}
+                            t={t}
+                          />
+                        ))}
+                    </div>
+                  </>
+                )}
+
                 <div className="bt-sum" style={S.sumBar}>
-                  <span>{t({ en: "Pieces", ar: "القطع" })}: <b>{piecesKg.toFixed(2)}</b> {KG}</span>
-                  <span>{t({ en: "Waste & bone", ar: "الهدر والعضم" })}: <b>{piecesWasteKg.toFixed(2)}</b> {KG}</span>
+                  <span>{t({ en: "Products", ar: "المنتجات" })}: <b>{piecesKg.toFixed(2)}</b> {KG}</span>
+                  <span>{t({ en: "Waste & bone", ar: "الهدر والعظم" })}: <b>{piecesWasteKg.toFixed(2)}</b> {KG}</span>
                   <span>
                     {t({ en: "Waste %", ar: "نسبة الهدر" })}:{" "}
                     <b>{piecesTotal > 0 ? ((piecesWasteKg / piecesTotal) * 100).toFixed(1) : "0.0"}%</b>
@@ -899,8 +946,8 @@ export default function ButcherLog() {
                 <RefPanel
                   t={t}
                   isAr={isAr}
-                  items={SHEEP_PIECES.filter((p) => !p.whole)}
-                  actual={null}
+                  items={singlePieces}
+                  actual={piecesActualPct}
                   animalId={animal?.id}
                 />
               </aside>
@@ -928,8 +975,12 @@ export default function ButcherLog() {
             {outOfRange && (
               <div className="bt-sum" style={S.warn}>
                 ⚠️ {isAr
-                  ? `وزن غير معتاد لـ${animal.ar} — المتوقع بين ${animal.min} و ${animal.max} كجم. تأكّد من الرقم.`
-                  : `Unusual weight for ${animal.en} — expected between ${animal.min} and ${animal.max} kg. Please check.`}
+                  ? `وزن غير معتاد لـ${animal.ar} — المتوقع ${hasMin && hasMax
+                      ? `بين ${animalMin} و ${animalMax} كجم`
+                      : hasMin ? `${animalMin} كجم فأكثر` : `${animalMax} كجم فأقل`}. تأكّد من الرقم.`
+                  : `Unusual weight for ${animal.en} — expected ${hasMin && hasMax
+                      ? `between ${animalMin} and ${animalMax} kg`
+                      : hasMin ? `${animalMin} kg or more` : `${animalMax} kg or less`}. Please check.`}
               </div>
             )}
             <button
@@ -955,63 +1006,66 @@ export default function ButcherLog() {
             <div className="bt-q" style={S.q}>{t({ en: "Cut weights", ar: "أوزان القطع" })}</div>
             <div className="bt-2col">
             <div>
-            <div style={S.grid}>
-              {CUTS.map((c) => {
-                const v = values[c.id] || {};
-                const w = num(v.w);
-                const active = w > 0 || num(v.waste) > 0;
-                return (
-                  <div
-                    key={c.id}
-                    className="bt-press"
-                    style={{
-                      ...S.cutCard,
-                      ...(active ? S.cutCardOn : null),
-                      ...refTone(cfgRef(c, animal?.id), w > 0 && carcassKg > 0 ? pctOf(w) : null),
-                    }}
-                  >
-                    <span style={S.art}><ButcherArt id={c.id} /></span>
-                    <span className="bt-name" style={S.name}>{nameOf(c, isAr)}</span>
-                    {cfgCode(c, animal?.id, origin?.id, grade?.id) && (
-                      <span className="bt-lbl" style={S.code}>{cfgCode(c, animal.id, origin.id)}</span>
-                    )}
-                    {w > 0 && carcassKg > 0 && (
-                      <span className="bt-lbl" style={S.pct}>
-                        {pctOf(w).toFixed(1)}% {t({ en: "of carcass", ar: "من الذبيحة" })}
-                      </span>
-                    )}
-                    <label style={S.field}>
-                      <span className="bt-lbl" style={S.lbl}>{t({ en: "Weight", ar: "الوزن" })}</span>
-                      <input
-                        className="bt-cutnum"
-                        value={v.w || ""}
-                        onChange={(e) => setVal(c.id, "w", e.target.value)}
-                        onFocus={() => setFocusField({ kind: "cut", id: c.id, key: "w" })}
-                        inputMode={padEnabled ? "none" : "decimal"}
-                        placeholder="0.00"
-                        style={S.cutInput}
-                      />
-                    </label>
-                    {!c.weightOnly && (
-                      <label style={S.field}>
-                        <span className="bt-lbl" style={S.lbl}>
-                          {t({ en: "Waste & bone", ar: "الهدر والعضم" })}
-                        </span>
-                        <input
-                          className="bt-cutnum"
-                          value={v.waste || ""}
-                          onChange={(e) => setVal(c.id, "waste", e.target.value)}
-                          onFocus={() => setFocusField({ kind: "cut", id: c.id, key: "waste" })}
-                          inputMode={padEnabled ? "none" : "decimal"}
-                          placeholder="0.00"
-                          style={S.cutInput}
-                        />
-                      </label>
-                    )}
-                  </div>
-                );
-              })}
+            {/* ── المنتجات الأساسية ── */}
+            <div className="bt-lbl" style={S.sectionLbl}>
+              {t({ en: "Main products", ar: "المنتجات الأساسية" })}
             </div>
+            <div style={S.grid}>
+              {productCuts.map((c) => (
+                <ItemCard
+                  key={c.id}
+                  item={c}
+                  value={values[c.id]?.w || ""}
+                  onChange={(v) => setVal(c.id, "w", v)}
+                  onFocus={() => setFocusField({ kind: "cut", id: c.id, key: "w" })}
+                  code={cfgCode(c, animal?.id, origin?.id, grade?.id)}
+                  pct={showPct && num(values[c.id]?.w) > 0 && carcassKg > 0 ? pctOf(num(values[c.id]?.w)) : null}
+                  pctLabel={t({ en: "of carcass", ar: "من الذبيحة" })}
+                  tone={refTone(
+                    cfgRef(c, animal?.id),
+                    num(values[c.id]?.w) > 0 && carcassKg > 0 ? pctOf(num(values[c.id]?.w)) : null
+                  )}
+                  padEnabled={padEnabled}
+                  isAr={isAr}
+                  t={t}
+                />
+              ))}
+              {!productCuts.length && (
+                <div className="bt-sum" style={S.emptyBox}>
+                  {t({
+                    en: "No main products defined yet — add cuts in Butcher Settings.",
+                    ar: "لا توجد منتجات أساسية بعد — ضيف القطع من إعدادات الجزار.",
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ── الهدر والعظم: خانتان فقط، خارج شبكة المنتجات ── */}
+            {(wasteCuts.length > 0 || boneCuts.length > 0) && (
+              <>
+                <div className="bt-lbl" style={S.sectionLbl}>
+                  {t({ en: "Waste & bone", ar: "الهدر والعظم" })}
+                </div>
+                <div style={S.wasteRow}>
+                  {[...wasteCuts, ...boneCuts].map((c) => (
+                    <ItemCard
+                      key={c.id}
+                      item={c}
+                      value={values[c.id]?.w || ""}
+                      onChange={(v) => setVal(c.id, "w", v)}
+                      onFocus={() => setFocusField({ kind: "cut", id: c.id, key: "w" })}
+                      code={cfgCode(c, animal?.id, origin?.id, grade?.id)}
+                      pct={showPct && num(values[c.id]?.w) > 0 && carcassKg > 0 ? pctOf(num(values[c.id]?.w)) : null}
+                      pctLabel={t({ en: "of carcass", ar: "من الذبيحة" })}
+                      tone={S.wasteTone}
+                      padEnabled={padEnabled}
+                      isAr={isAr}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
 
             <div className="bt-sum" style={{ ...S.sumBar, ...(isOver ? S.sumBarOver : null) }}>
               <ProgressRing used={usedKg} total={carcassKg} over={isOver} t={t} />
@@ -1132,14 +1186,64 @@ export default function ButcherLog() {
   );
 }
 
+/* ============================ رسمة / صورة عنصر ============================ */
+/* صورة مرفوعة من الإعدادات تسبق الرسمة المدمجة، و"" = بلا رسمة.
+   بلا رسمة ولا صورة → لا نرسم المربّع أصلاً حتى لا يبقى فراغ كبير في الكرت. */
+function hasArt(item) {
+  return !!imageOf(item) || !!artOf(item);
+}
+
+function ItemArt({ item }) {
+  const url = imageOf(item);
+  if (url) return <img src={url} alt="" style={S.artImg} />;
+  const art = artOf(item);
+  return art ? <ButcherArt id={art} /> : null;
+}
+
+/* ============================ كرت عنصر بخانة وزن واحدة ============================ */
+/* خانة وزن واحدة فقط لكل عنصر — لا خانة هدر داخل المنتج.
+   pct = النسبة الفعلية للرقم المُدخل من وزن المنتج الأصلي (الأم). */
+function ItemCard({
+  item, value, onChange, onFocus, code, pct, pctLabel, tone, padEnabled, isAr, t,
+}) {
+  const active = num(value) > 0;
+  return (
+    <div
+      className="bt-press"
+      style={{ ...S.cutCard, ...(active ? S.cutCardOn : null), ...(tone || null) }}
+    >
+      {hasArt(item) && <span style={S.art}><ItemArt item={item} /></span>}
+      <span className="bt-name" style={S.name}>{nameOf(item, isAr)}</span>
+      {code ? <span className="bt-lbl" style={S.code}>{code}</span> : null}
+      <label style={S.field}>
+        <span className="bt-lbl" style={S.lbl}>{t({ en: "Weight", ar: "الوزن" })}</span>
+        <input
+          className="bt-cutnum"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={onFocus}
+          inputMode={padEnabled ? "none" : "decimal"}
+          placeholder="0.00"
+          style={S.cutInput}
+        />
+      </label>
+      {Number.isFinite(pct) && pct > 0 && (
+        <span className="bt-lbl" style={S.pct}>
+          {pct.toFixed(1)}% {pctLabel}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /* ============================ شريط الخطوات ============================ */
 
-function StepBar({ step, isSheep, hasGrade, t }) {
+function StepBar({ step, hasPieces, hasGrade, t }) {
   const steps = [
     { id: "animal", ar: "النوع", en: "Type" },
     { id: "origin", ar: "المنشأ", en: "Origin" },
     ...(hasGrade ? [{ id: "grade", ar: "الدرجة", en: "Grade" }] : []),
-    ...(isSheep ? [{ id: "piece", ar: "الجزء", en: "Piece" }] : []),
+    ...(hasPieces ? [{ id: "piece", ar: "الجزء", en: "Piece" }] : []),
     { id: "carcass", ar: "الوزن", en: "Weight" },
     { id: "cuts", ar: "القطع", en: "Cuts" },
   ];
@@ -1310,8 +1414,8 @@ const S = {
     minHeight: "100vh", background: "#eef4fb", fontFamily: FONT, color: "#0f2740",
     padding: "18px 14px 40px", overflowX: "hidden",
   },
-  wrap: { maxWidth: 1000, margin: "0 auto" },
-  wrapWide: { maxWidth: 1360 },
+  wrap: { maxWidth: "min(1100px, 100%)", margin: "0 auto" },
+  wrapWide: { maxWidth: "100%" },   // شبكة القطع تملأ الصفحة
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 14 },
   headerRight: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
   title: { fontWeight: 900 },
@@ -1351,6 +1455,24 @@ const S = {
     alignItems: "center", gap: 8, fontFamily: FONT, color: "#0f2740",
   },
   cutCardOn: { border: "3px solid #1f6fd0", background: "#f7fbff" },
+  /* صورة مرفوعة بدل الرسمة المدمجة */
+  artImg: {
+    width: "100%", height: "100%", objectFit: "cover",
+    borderRadius: 16, display: "block",
+  },
+  /* الهدر والعظم — صفّ منفصل بلون مختلف عن شبكة المنتجات */
+  wasteRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(min(240px,100%),1fr))",
+    gap: 18,
+    marginBottom: 4,
+  },
+  wasteTone: { background: "#fffdf5", borderColor: "#e8d9a8" },
+  emptyBox: {
+    gridColumn: "1 / -1", background: "#fff", border: "2px dashed #cfe0f0",
+    borderRadius: 20, padding: "26px 18px", textAlign: "center",
+    fontWeight: 800, color: "#6b8299",
+  },
   name: { fontWeight: 900 },
   field: { width: "100%", display: "flex", flexDirection: "column", gap: 4, marginTop: 4 },
   lbl: { fontWeight: 800, color: "#6b8299" },

@@ -48,6 +48,7 @@ const SECTIONS = [
   { id: "halalAudit",       icon: "📋",   nameKey: "amSecHalalAudit" },
   { id: "hse",              icon: "🦺",  nameKey: "amSecHse" },
   { id: "butcher",          icon: "🔪",   nameKey: "amSecButcher" },
+  { id: "mrp",              icon: "🏭",   nameKey: "amSecMrp" },
   { id: "settings",         icon: "⚙️",  nameKey: "amSecSettings" },
 ];
 
@@ -82,6 +83,7 @@ const BRANCH_THEMES = {
   halalAudit:       { icon:"📋",  title:"HALAL Audit",       bg:"#f7fee7", border:"#d9f99d", accent:"#4d7c0f", chipOn:"#ecfccb", chipOnText:"#365314", badgeBg:"#ecfccb", badgeBorder:"#bef264", badgeText:"#365314" },
   hse:              { icon:"🦺",  title:"HSE",               bg:"#fefce8", border:"#fef08a", accent:"#a16207", chipOn:"#fef9c3", chipOnText:"#713f12", badgeBg:"#fef9c3", badgeBorder:"#fde047", badgeText:"#713f12" },
   butcher:          { icon:"🔪",  title:"Butcher",           bg:"#fef2f2", border:"#fecaca", accent:"#991b1b", chipOn:"#fee2e2", chipOnText:"#7f1d1d", badgeBg:"#fee2e2", badgeBorder:"#fca5a5", badgeText:"#7f1d1d" },
+  mrp:              { icon:"🏭",  title:"Manufacturing",     bg:"#ecfdf5", border:"#a7f3d0", accent:"#0f766e", chipOn:"#d1fae5", chipOnText:"#115e59", badgeBg:"#d1fae5", badgeBorder:"#6ee7b7", badgeText:"#115e59" },
   settings:         { icon:"⚙️",  title:"Settings",          bg:"#f1f5f9", border:"#cbd5e1", accent:"#334155", chipOn:"#e2e8f0", chipOnText:"#0f172a", badgeBg:"#e2e8f0", badgeBorder:"#94a3b8", badgeText:"#0f172a" },
 };
 

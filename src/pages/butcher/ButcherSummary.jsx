@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
 import { BRANCHES, TYPE, isSpecialCut, nameOf } from "./butcherOptions";
+import { isRowSpecial } from "./butcherConfig";
 import {
   butcherLabel, cfgFind, cfgRef, cutOptions, enabledOnly, useButcherConfig,
 } from "./butcherConfig";
@@ -96,7 +97,7 @@ function stdev(values) {
 
 /** التصافي المستهدف لنوع = مجموع منتصف مديات القطع (بلا كروت الهدر/العضم). */
 function targetYield(cfg, animalId) {
-  const list = (cfg?.cuts || []).filter((c) => !isSpecialCut(c.id));
+  const list = (cfg?.cuts || []).filter((c) => !isSpecialCut(c));
   let sum = 0;
   list.forEach((c) => {
     const r = cfgRef(c, animalId);
@@ -150,7 +151,7 @@ function aggregate(records, filters, cfg, isAr) {
       const meta = cfgFind(cfg, c.cutId);
       const w = Number(c.weightKg) || 0;
       const waste = Number(c.wasteBoneKg) || 0;
-      const special = isSpecialCut(c.cutId);
+      const special = isRowSpecial(c, cfg);
       if (special) wasteKg += w;
       else { cutsKg += w; if (c.cutId) used.add(c.cutId); }
       wasteKg += waste;
@@ -246,7 +247,7 @@ function aggregate(records, filters, cfg, isAr) {
       }))
       .sort((a, b) => b.cutsKg - a.cutsKg);
 
-  const cols = cutOptions(cfg).filter((c) => !isSpecialCut(c.id) && used.has(c.id));
+  const cols = cutOptions(cfg).filter((c) => !isSpecialCut(c) && used.has(c.id));
 
   const dates = [...byDate.values()]
     .map((g) => ({ ...g, cuts: dateCuts.get(g.key) || {}, yieldPct: pct(g.cutsKg, g.base) }))
@@ -289,7 +290,7 @@ function aggregate(records, filters, cfg, isAr) {
       return {
         id,
         name: meta ? nameOf(meta, isAr) : id,
-        special: isSpecialCut(id),
+        special: isSpecialCut(meta || id),
         kg: v.kg, waste: v.waste, count: v.count,
         shareOfCuts, shareOfCarcass, ref, state, domAnimal,
       };
@@ -1213,7 +1214,7 @@ const S = {
     minHeight: "100vh", background: "#eef4fb", fontFamily: FONT, color: "#0f2740",
     padding: "16px 14px 40px", overflowX: "hidden",
   },
-  tools: { maxWidth: "min(1900px, 97vw)", margin: "0 auto 14px", display: "flex", flexDirection: "column", gap: 10 },
+  tools: { maxWidth: "100%", margin: "0 auto 14px", display: "flex", flexDirection: "column", gap: 10 },
   toolRow: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" },
   langBtn: { background: "#fff", border: "1px solid #cfe0f0", color: "#1f6fd0" },
   btn: {
@@ -1238,7 +1239,7 @@ const S = {
   },
 
   sheet: {
-    maxWidth: "min(1900px, 97vw)", margin: "0 auto", background: "#fff",
+    maxWidth: "100%", margin: "0 auto", background: "#fff",
     border: "1px solid #dbe6f2", borderRadius: 14, padding: "22px 20px",
     boxShadow: "0 10px 30px rgba(15,39,64,.07)",
   },

@@ -260,9 +260,12 @@ const ALL_ROLES = [
     glow: "rgba(234,179,8,.45)",
   },
   {
-    id: "butcher", label: "Butcher", route: "/butcher", icon: "🔪",
-    grad: "linear-gradient(135deg,#dc2626,#991b1b)",
-    glow: "rgba(220,38,38,.45)",
+    // كرت واحد بيجمع الجزار والتصنيع — الظهور إذا كان عنده صلاحية أي وحدة منهم
+    id: "inventory", label: "Inventory", route: "/inventory", icon: "📦",
+    anyOf: ["butcher", "mrp"],
+    keywords: ["butcher", "manufacturing", "bom", "stock", "مخزون", "جزار", "تصنيع"],
+    grad: "linear-gradient(135deg,#0891b2,#0e7490)",
+    glow: "rgba(8,145,178,.45)",
   },
   {
     id: "emailCenter", label: "Email Center", route: "/email-center", icon: "📨",
@@ -306,7 +309,11 @@ function LegacyNamedDashboard() {
 
   const visibleRoles = isFullAccess
     ? ALL_ROLES
-    : ALL_ROLES.filter(r => permissions.includes(r.id));
+    // anyOf = كرت مجمّع (مثل «المخزون») — يظهر إذا كان يملك أي وحدة بداخله
+    : ALL_ROLES.filter(r =>
+        permissions.includes(r.id) ||
+        (Array.isArray(r.anyOf) && r.anyOf.some(x => permissions.includes(x)))
+      );
 
   /* ── Operator session (who is working now) ──
      • Admin: skipped entirely (no tracking needed)
@@ -1049,7 +1056,12 @@ export default function NamedDashboard() {
 
   const visibleRoles = isFullAccess
     ? ALL_ROLES
-    : ALL_ROLES.filter((r) => permissions.includes(r.id));
+    // anyOf = كرت مجمّع (مثل «المخزون») — يظهر إذا كان يملك أي وحدة بداخله
+    : ALL_ROLES.filter(
+        (r) =>
+          permissions.includes(r.id) ||
+          (Array.isArray(r.anyOf) && r.anyOf.some((x) => permissions.includes(x)))
+      );
 
   const sessionKey = `operator_${currentUser.username}`;
   const [operator, setOperator] = useState(() => {
@@ -1087,7 +1099,13 @@ export default function NamedDashboard() {
   };
 
   const q = query.trim().toLowerCase();
-  const filteredRoles = visibleRoles.filter((role) => !q || role.label.toLowerCase().includes(q));
+  // البحث بيلاقي الكرت المجمّع كمان من اسم أي وحدة جوّاته (Butcher / Manufacturing)
+  const filteredRoles = visibleRoles.filter(
+    (role) =>
+      !q ||
+      role.label.toLowerCase().includes(q) ||
+      (role.keywords || []).some((k) => k.toLowerCase().includes(q))
+  );
   const timeStr = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const dateStr = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
