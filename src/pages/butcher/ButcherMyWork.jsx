@@ -12,7 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 import {
-  kg, shiftDays, totalsOf, useButcherData, useNormalizedRows,
+  explainError, kg, shiftDays, totalsOf, useButcherData, useNormalizedRows,
 } from "./butcherReportKit";
 import { useOutbox } from "./butcherOutbox";
 
@@ -62,7 +62,8 @@ export default function ButcherMyWork() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
   // آخر ٩٠ يوماً — الجزار يهمّه شغله القريب، وسحب كل التاريخ بلا فائدة
-  const { records, loading, cfg, mrpCfg } = useButcherData({ from: shiftDays(-89) });
+  const { records, loading, error, reload, cfg, mrpCfg } =
+    useButcherData({ from: shiftDays(-89) });
   const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
   // سجلات لسّا بصندوق الصادر لن تظهر هنا — نوضّح ذلك بدل ما يستغرب الجزار
   const outbox = useOutbox();
@@ -191,6 +192,17 @@ export default function ButcherMyWork() {
                 <div className="mw-sm" style={{ textAlign: "center", color: "#6b8299", fontWeight: 800 }}>
                   {t({ en: "Loading…", ar: "جارٍ التحميل…" })}
                 </div>
+              </div>
+            ) : error ? (
+              /* لا نقول «ما في سجلات» والتحميل فشل — السجلات موجودة ولم تصل */
+              <div style={S.errorBox}>
+                <div>⚠️ {explainError(error, t)}</div>
+                <code style={{ opacity: 0.65, fontWeight: 700, fontSize: ".85em" }}>
+                  {String(error)}
+                </code>
+                <button type="button" className="mw-sm" style={S.smallBtn} onClick={reload}>
+                  ↻ {t({ en: "Try again", ar: "إعادة المحاولة" })}
+                </button>
               </div>
             ) : !mine.length ? (
               <div style={S.empty}>
@@ -417,6 +429,12 @@ const S = {
   empty: {
     background: "#fff", border: "2px dashed #cfe0f0", borderRadius: 18,
     padding: "36px 20px", textAlign: "center", fontWeight: 800, color: "#6b8299",
+  },
+  errorBox: {
+    background: "#fff5f5", border: "1px solid #f3c9c9", color: "#a12626",
+    borderRadius: 18, padding: "22px 18px", fontWeight: 800, lineHeight: 1.7,
+    display: "flex", flexDirection: "column", gap: 10, alignItems: "center",
+    textAlign: "center",
   },
   pendingNote: {
     background: "#fff7ed", border: "1px solid #fcd9a4", color: "#8a5a12",

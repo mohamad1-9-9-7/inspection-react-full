@@ -171,19 +171,28 @@ export function useDayPlan({ date, branch, employeeNo }) {
   const [plan, setPlan] = useState(null);
   const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(false);
+  // فشل التحميل يجب أن يُقال، لا أن يختفي الشريط وكأن لا خطة أصلاً
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     // التقدّم يُحسب متى وُجد موظف أو ملحمة؛ الخطة تحتاج ملحمة
-    if (!date || (!branch && !employeeNo)) { setPlan(null); setProgress(null); return; }
+    if (!date || (!branch && !employeeNo)) {
+      setPlan(null); setProgress(null); setError("");
+      return;
+    }
     setLoading(true);
     try {
-      // خطة واحدة مفهرسة (لا كل الخطط) + تقدّم اليوم بسقف صغير
+      // خطة واحدة مفهرسة (لا كل الخطط) + تقدّم اليوم مقيّد باليوم نفسه
       const [p, prog] = await Promise.all([
-        branch ? fetchPlan(date, branch).catch(() => null) : Promise.resolve(null),
-        fetchTodayProgress({ date, branch, employeeNo }).catch(() => null),
+        branch ? fetchPlan(date, branch) : Promise.resolve(null),
+        fetchTodayProgress({ date, branch, employeeNo }),
       ]);
       setPlan(p);
       setProgress(prog);
+      setError("");
+    } catch (e) {
+      // نُبقي آخر قيم ناجحة معروضة، ونرفع الخطأ ليظهر للمستخدم
+      setError(e?.message || "load failed");
     } finally {
       setLoading(false);
     }
@@ -203,5 +212,5 @@ export function useDayPlan({ date, branch, employeeNo }) {
     };
   }, [load]);
 
-  return { plan, progress, loading, reload: load };
+  return { plan, progress, loading, error, reload: load };
 }

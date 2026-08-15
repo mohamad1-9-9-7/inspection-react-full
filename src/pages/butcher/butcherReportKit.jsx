@@ -459,6 +459,74 @@ export function EmptyBox({ children }) {
   return <div style={S.empty}>{children}</div>;
 }
 
+/**
+ * ترجمة خطأ تقني لجملة يفهمها المستخدم — «Server 500» وحدها لا تقول شيئاً.
+ * نُبقي النص التقني بالذيل ليساعد عند الإبلاغ عن المشكلة.
+ */
+export function explainError(err, t) {
+  const raw = String(err?.message || err || "");
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+
+  if (offline) {
+    return t({
+      en: "No internet connection, so nothing could be loaded. Reconnect and try again.",
+      ar: "ما في اتصال إنترنت، فما قدرنا نحمّل شي. رجّع الاتصال وجرّب كمان مرّة.",
+    });
+  }
+  if (/Failed to fetch|NetworkError|Load failed/i.test(raw)) {
+    return t({
+      en: "Could not reach the server. It may be restarting — try again in a moment.",
+      ar: "ما قدرنا نوصل للسيرفر. يمكن يكون عم يعيد التشغيل — جرّب بعد شوي.",
+    });
+  }
+  if (/\b(401|403)\b/.test(raw)) {
+    return t({
+      en: "You are not allowed to read this data. Ask an administrator to grant access.",
+      ar: "ما عندك صلاحية لقراءة هذه البيانات. راجع المدير لمنحك الصلاحية.",
+    });
+  }
+  if (/\b5\d\d\b/.test(raw)) {
+    return t({
+      en: "The server hit an error while loading. Try again; if it repeats, report it.",
+      ar: "صار خطأ بالسيرفر أثناء التحميل. جرّب كمان مرّة، وإذا تكرّر بلّغ عنه.",
+    });
+  }
+  return t({ en: "Could not load the data.", ar: "تعذّر تحميل البيانات." });
+}
+
+/** شريط خطأ ظاهر — لا نترك الشاشة فاضية بلا تفسير. */
+export function ErrorNote({ error, t, onRetry, tone = "red" }) {
+  if (!error) return null;
+  const red = tone === "red";
+  return (
+    <div
+      role="alert"
+      style={{
+        ...S.card,
+        background: red ? "#fff5f5" : "#fff7ed",
+        borderColor: red ? "#f3c9c9" : "#fcd9a4",
+        color: red ? C.red : "#8a5a12",
+        fontWeight: 800, lineHeight: 1.7,
+        display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap",
+      }}
+    >
+      <span>⚠️ {explainError(error, t)}</span>
+      <code style={{ opacity: 0.65, fontWeight: 700, fontSize: ".85em" }}>
+        {String(error?.message || error || "")}
+      </code>
+      {onRetry && (
+        <button
+          type="button"
+          style={{ ...S.btn, ...S.btnSm, marginInlineStart: "auto" }}
+          onClick={onRetry}
+        >
+          ↻ {t({ en: "Try again", ar: "إعادة المحاولة" })}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** غلاف جدول — يمرّر أفقياً على الشاشات الضيّقة بدل ما يكسر التخطيط. */
 export function TableWrap({ children, minWidth }) {
   return (

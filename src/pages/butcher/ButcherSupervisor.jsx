@@ -700,15 +700,23 @@ function DayPlanPanel({ t, isAr, canEdit, KG }) {
   const [progress, setProgress] = useState({});   // { branchCode: {count, rawKg} }
   const [busy, setBusy] = useState("");
   const [edit, setEdit] = useState(null);          // { branch, count, kg, note }
+  const [loadErr, setLoadErr] = useState("");      // فشل قراءة الخطط/التقدّم
+  const [saveErr, setSaveErr] = useState("");      // فشل حفظ الهدف
 
   const load = useCallback(async () => {
     // طلبان فقط: الخطط + تقدّم كل الملاحم دفعة واحدة
-    const [all, per] = await Promise.all([
-      fetchPlans().catch(() => []),
-      fetchTodayProgressByBranch(today).catch(() => ({})),
-    ]);
-    setPlans(all.filter((p) => p.date === today));
-    setProgress(per);
+    try {
+      const [all, per] = await Promise.all([
+        fetchPlans(),
+        fetchTodayProgressByBranch(today),
+      ]);
+      setPlans(all.filter((p) => p.date === today));
+      setProgress(per);
+      setLoadErr("");
+    } catch (e) {
+      // لا نعرض «ما في هدف» والتحميل فشل — الفرق بين الحالتين مهم للمشرف
+      setLoadErr(e?.message || "load failed");
+    }
   }, [today]);
 
   useEffect(() => { load(); }, [load]);
@@ -719,6 +727,7 @@ function DayPlanPanel({ t, isAr, canEdit, KG }) {
   const submit = async () => {
     if (!edit?.branch) return;
     setBusy(edit.branch);
+    setSaveErr("");
     try {
       await savePlan({
         date: today,
@@ -730,8 +739,9 @@ function DayPlanPanel({ t, isAr, canEdit, KG }) {
       });
       setEdit(null);
       await load();
-    } catch {
-      /* الخطأ يظهر بغياب التحديث — نُبقي النافذة مفتوحة */
+    } catch (e) {
+      // نُبقي النافذة مفتوحة بالقيم كما هي حتى لا يُعيد المشرف الإدخال
+      setSaveErr(e?.message || "save failed");
     } finally {
       setBusy("");
     }
@@ -754,7 +764,17 @@ function DayPlanPanel({ t, isAr, canEdit, KG }) {
         )}
       </div>
 
-      {!planned.length ? (
+      {loadErr ? (
+        <div className="bs-small" style={S.planError}>
+          ⚠️ {t({
+            en: "Could not load today's targets and progress, so this panel may be empty or stale.",
+            ar: "ما قدرنا نحمّل أهداف اليوم والتقدّم، فهذه اللوحة يمكن تكون فاضية أو قديمة.",
+          })}
+          <button type="button" style={S.planEditBtn} onClick={load}>
+            ↻ {t({ en: "Try again", ar: "إعادة المحاولة" })}
+          </button>
+        </div>
+      ) : !planned.length ? (
         <div className="bs-small" style={S.planEmpty}>
           {t({
             en: "No target set for today — the kiosk shows no progress bar until you set one.",
@@ -881,6 +901,15 @@ function DayPlanPanel({ t, isAr, canEdit, KG }) {
                 ar: "خلّي الهدف صفر لإخفاء شريطه. الكشك بيتحدّث خلال دقيقتين.",
               })}
             </div>
+            {saveErr && (
+              <div className="bs-small" style={S.planError}>
+                ⚠️ {t({
+                  en: "The target was not saved. Your entries are still here — try again.",
+                  ar: "الهدف ما انحفظ. اللي كتبته لسا موجود — جرّب كمان مرّة.",
+                })}
+                <code style={{ opacity: 0.7, fontWeight: 700 }}>{saveErr}</code>
+              </div>
+            )}
             <div style={S.modalBtns}>
               <button type="button" style={S.btn} onClick={() => setEdit(null)}>
                 {t({ en: "Cancel", ar: "إلغاء" })}
@@ -1106,6 +1135,11 @@ const S = {
   planEditBtn: {
     border: "1px solid #cfe0f0", background: "#fff", color: "#1f6fd0",
     borderRadius: 10, padding: "5px 12px", fontFamily: FONT, fontWeight: 800, cursor: "pointer",
+  },
+  planError: {
+    background: "#fff5f5", border: "1px solid #f3c9c9", color: "#a12626",
+    borderRadius: 14, padding: "14px 16px", fontWeight: 800, lineHeight: 1.7,
+    display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
   },
   planEmpty: {
     background: "#f7fbff", border: "2px dashed #cfe0f0", borderRadius: 14,

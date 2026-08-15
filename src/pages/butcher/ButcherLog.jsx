@@ -482,6 +482,20 @@ export default function ButcherLog() {
           <StepBar step={step} hasCat={hasCatStep} t={t} />
         )}
 
+        {/* تعذّر تحميل الخطة/التقدّم — نقولها بدل ما يختفي الشريط بلا سبب.
+            التسجيل نفسه غير متأثّر، فنطمئن الجزار على ذلك صراحةً. */}
+        {step !== "emp" && step !== "done" && dayPlan.error && (
+          <div className="bt-sum" style={S.planWarn}>
+            ⚠️ {t({
+              en: "Today's figures could not be loaded, so the plan bar is out of date. Recording works normally.",
+              ar: "ما قدرنا نحمّل أرقام اليوم، فشريط الخطة مش محدّث. التسجيل شغّال عادي.",
+            })}{" "}
+            <button type="button" className="bt-small" style={S.chg} onClick={dayPlan.reload}>
+              ↻ {t({ en: "Try again", ar: "إعادة المحاولة" })}
+            </button>
+          </div>
+        )}
+
         {/* ── خطة اليوم: هدف الملحمة والتقدّم عليه ── */}
         {step !== "emp" && dayPlan.plan && dayPlan.progress && (
           <DayPlanBar
@@ -1222,6 +1236,11 @@ const S = {
   planFill: { display: "block", height: "100%", borderRadius: 999, transition: "width .4s ease" },
   planNums: { fontWeight: 900, whiteSpace: "nowrap", minWidth: 110, textAlign: "end" },
   planMine: { color: "#6b8299", fontWeight: 800 },
+  planWarn: {
+    background: "#fff7ed", border: "1px solid #fcd9a4", color: "#8a5a12",
+    borderRadius: 14, padding: "12px 14px", fontWeight: 800, lineHeight: 1.7,
+    marginBottom: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+  },
   planNote: {
     color: "#8a5a12", fontWeight: 800, background: "#fff7ed",
     border: "1px solid #fcd9a4", borderRadius: 12, padding: "8px 12px",

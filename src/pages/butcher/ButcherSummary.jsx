@@ -17,7 +17,7 @@ import { BarChart, LineChart } from "./ButcherCharts";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 import {
-  C, Card, Chip, DeltaCell, EmptyBox, KIT_CSS, Kpi, MiniBar, PageHead, S,
+  C, Card, Chip, DeltaCell, EmptyBox, ErrorNote, KIT_CSS, Kpi, MiniBar, PageHead, S,
   Skeleton, kg, monthStart, pct, shiftDays, todayStr, totalsOf, useButcherData,
   useNormalizedRows,
 } from "./butcherReportKit";
@@ -287,11 +287,7 @@ export default function ButcherSummary() {
           </div>
         </Card>
 
-        {error && (
-          <div style={{ ...S.card, background: "#fff5f5", borderColor: "#f3c9c9", color: C.red, fontWeight: 800 }}>
-            ⚠️ {error}
-          </div>
-        )}
+        <ErrorNote error={error} t={t} onRetry={reload} />
 
         {truncated && (
           <div style={{ ...S.card, background: "#fff7ed", borderColor: "#fcd9a4", color: "#8a5a12", fontWeight: 800 }}>
