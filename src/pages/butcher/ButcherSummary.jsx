@@ -44,11 +44,20 @@ const deltaPct = (now, before) =>
 export default function ButcherSummary() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
-  const { records, loading, error, reload, cfg, mrpCfg } = useButcherData();
-  const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
-
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(todayStr());
+
+  /* التقرير يقارن بالفترة السابقة المكافئة، فنطلب من السيرفر ضِعف المدى
+     ابتداءً من بداية الفترة السابقة — وإلا ما وصلتنا بيانات المقارنة. */
+  const fetchFrom = useMemo(() => {
+    if (!from || !to) return from;
+    const span = daysBetween(from, to);
+    return addDays(from, -span);
+  }, [from, to]);
+
+  const { records, loading, error, reload, cfg, mrpCfg } =
+    useButcherData({ from: fetchFrom, to });
+  const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
   const [branch, setBranch] = useState("");
 
   const inRange = (r, a, b) =>

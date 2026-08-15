@@ -129,8 +129,14 @@ export default function ButcherSupervisor() {
     setLoading(true);
     setError("");
     try {
+      // نافذة الفلتر فقط — الخوادم الأقدم تتجاهل from/to وترجّع الكل، والفلترة
+      // المحلية تحت تضبط النتيجة في الحالتين
+      const range = [
+        from ? `&from=${encodeURIComponent(from)}` : "",
+        to ? `&to=${encodeURIComponent(to)}` : "",
+      ].join("");
       const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=5000`,
+        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=5000${range}`,
         { headers: { Accept: "application/json" }, cache: "no-store" }
       );
       if (!res.ok) throw new Error(`Server ${res.status}`);
@@ -141,7 +147,7 @@ export default function ButcherSupervisor() {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, from, to]);
 
   useEffect(() => { load(); }, [load]);
 

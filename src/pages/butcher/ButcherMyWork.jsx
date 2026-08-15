@@ -11,7 +11,9 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
-import { kg, totalsOf, useButcherData, useNormalizedRows } from "./butcherReportKit";
+import {
+  kg, shiftDays, totalsOf, useButcherData, useNormalizedRows,
+} from "./butcherReportKit";
 import { useOutbox } from "./butcherOutbox";
 
 const LAST_EMP_KEY = "butcher_last_emp";   // كاش فقط — نفس مفتاح شاشة التسجيل
@@ -59,7 +61,8 @@ const weekday = (iso, isAr) => {
 export default function ButcherMyWork() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
-  const { records, loading, cfg, mrpCfg } = useButcherData();
+  // آخر ٩٠ يوماً — الجزار يهمّه شغله القريب، وسحب كل التاريخ بلا فائدة
+  const { records, loading, cfg, mrpCfg } = useButcherData({ from: shiftDays(-89) });
   const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
   // سجلات لسّا بصندوق الصادر لن تظهر هنا — نوضّح ذلك بدل ما يستغرب الجزار
   const outbox = useOutbox();

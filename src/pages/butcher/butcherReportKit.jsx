@@ -44,7 +44,7 @@ export function toArray(data) {
  * تحميل سجلات الجزار وتطبيعها لصفوف جاهزة للعرض.
  * كل صف = تنفيذ واحد (ذبيحة/وصفة) مع مصفوفة قطعه.
  */
-export function useButcherData() {
+export function useButcherData({ from = "", to = "" } = {}) {
   const { cfg } = useButcherConfig();
   const { cfg: mrpCfg } = useMrpConfig({ refetchOnFocus: false });
   const [records, setRecords] = useState([]);
@@ -55,8 +55,15 @@ export function useButcherData() {
     setLoading(true);
     setError("");
     try {
+      // نطلب نافذة التاريخ من السيرفر بدل سحب كل السجلات وفلترتها بالمتصفّح.
+      // خوادم أقدم تتجاهل from/to وترجّع الكل — والصفحة تفلتر محلياً على أي حال،
+      // فالنتيجة صحيحة قبل نشر السيرفر وبعده، والفرق في حجم الطلب فقط.
+      const range = [
+        from ? `&from=${encodeURIComponent(from)}` : "",
+        to ? `&to=${encodeURIComponent(to)}` : "",
+      ].join("");
       const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=5000`,
+        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=5000${range}`,
         { headers: { Accept: "application/json" }, cache: "no-store" }
       );
       if (!res.ok) throw new Error(`Server ${res.status}`);
@@ -67,7 +74,7 @@ export function useButcherData() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [from, to]);
 
   useEffect(() => { load(); }, [load]);
 

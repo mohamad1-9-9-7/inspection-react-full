@@ -36,12 +36,14 @@ const GROUPS = [
 export default function ButcherView() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
-  const { records, loading, error, reload, cfg, mrpCfg } = useButcherData();
-  const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
-
   /* ── الفلاتر ── */
+  // المدى يُمرَّر للسيرفر ليجلب نافذته فقط، فتغييره يُعيد التحميل
   const [from, setFrom] = useState(shiftDays(-30));
   const [to, setTo] = useState(todayStr());
+
+  const { records, loading, error, reload, cfg, mrpCfg } = useButcherData({ from, to });
+  const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
+
   const [branch, setBranch] = useState("");
   const [catId, setCatId] = useState("");
   const [bomRef, setBomRef] = useState("");
