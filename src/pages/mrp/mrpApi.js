@@ -199,8 +199,18 @@ export async function mutateConfig(fn) {
   return saveConfig(next);
 }
 
-/** إعدادات التصنيع الحيّة — تبدأ من الكاش ثم تتحدّث من السيرفر. */
-export function useMrpConfig() {
+/** أقل فاصل بين سحبتين ناتجتين عن الرجوع للتبويب — يمنع العاصفة عند التنقّل السريع. */
+const FOCUS_REFETCH_MIN_MS = 60000;
+
+/**
+ * إعدادات التصنيع الحيّة — تبدأ من الكاش ثم تتحدّث من السيرفر.
+ *
+ * `refetchOnFocus`: تُترك مفعّلة لصفحات التحرير (سجل الأصناف · قوائم التقطيع)
+ * حتى لا يُدهس تعديل جهاز آخر. أما الشاشات التي **تقرأ فقط** — كشك الجزار
+ * والتقارير — فتمرّرها false: جهاز الكشك يُصغّر ويُفتح عشرات المرّات يومياً،
+ * وكل مرّة كانت تعني سحب الإعدادات كاملة بلا فائدة.
+ */
+export function useMrpConfig({ refetchOnFocus = true } = {}) {
   const [cfg, setCfg] = useState(() => readCache() || defaultConfig());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -216,35 +226,44 @@ export function useMrpConfig() {
 
   useEffect(() => {
     let alive = true;
-    const pull = () =>
-      fetchConfig()
+    let lastPull = 0;
+    const pull = () => {
+      lastPull = Date.now();
+      return fetchConfig()
         .then((c) => { if (alive) { setCfg(c); setError(""); } })
         .catch((e) => { if (alive) setError(e?.message || "load failed"); })
         .finally(() => { if (alive) setLoading(false); });
+    };
 
     pull();
 
-    // نفس التبويب/الشاشة بعد الحفظ
+    // نفس التبويب/الشاشة بعد الحفظ — بلا شبكة
     const onChange = (e) => { if (e?.detail) setCfg(e.detail); };
-    // رجوع للتبويب / فتح الشاشة من جديد → اسحب أحدث نسخة من السيرفر
-    const onFocus = () => { if (!document.hidden) pull(); };
-    // تبويب آخر بنفس المتصفّح حدّث الكاش
+    // رجوع للتبويب → اسحب أحدث نسخة، لكن ليس أكثر من مرّة كل دقيقة
+    const onFocus = () => {
+      if (document.hidden) return;
+      if (Date.now() - lastPull < FOCUS_REFETCH_MIN_MS) return;
+      pull();
+    };
+    // تبويب آخر بنفس المتصفّح حدّث الكاش — قراءة محلية، بلا شبكة
     const onStorage = (e) => {
       if (e.key === CACHE_KEY) { const c = readCache(); if (c && alive) setCfg(c); }
     };
 
     window.addEventListener(EVT, onChange);
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onFocus);
     window.addEventListener("storage", onStorage);
+    if (refetchOnFocus) {
+      window.addEventListener("focus", onFocus);
+      document.addEventListener("visibilitychange", onFocus);
+    }
     return () => {
       alive = false;
       window.removeEventListener(EVT, onChange);
+      window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
-      window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [refetchOnFocus]);
 
   return { cfg, setCfg, loading, error, reload };
 }

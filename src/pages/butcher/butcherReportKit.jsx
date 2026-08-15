@@ -46,7 +46,7 @@ export function toArray(data) {
  */
 export function useButcherData() {
   const { cfg } = useButcherConfig();
-  const { cfg: mrpCfg } = useMrpConfig();
+  const { cfg: mrpCfg } = useMrpConfig({ refetchOnFocus: false });
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

@@ -17,6 +17,12 @@ import { TYPE as CUT_TYPE } from "./butcherOptions";
 
 export const PLAN_TYPE = "butcher_day_plan";
 
+/* حدود السحب — الخطة تهمّها سجلات **اليوم** فقط، لا كل التاريخ.
+   السيرفر يرجّع الأحدث أولاً، فسقف صغير يكفي ويقطع ٩٠٪+ من حجم الطلب.
+   ٤٠٠ سجل تغطّي يوماً كاملاً لكل الملاحم بهامش واسع. */
+const DAY_FETCH_LIMIT = 400;
+const PLAN_FETCH_LIMIT = 120;   // خطة واحدة لكل (يوم × ملحمة)
+
 export const planKey = (date, branch) => `${date}__${branch || "ALL"}`;
 
 function toArray(data) {
@@ -33,10 +39,26 @@ const num = (v) => Number(v) || 0;
 
 /* ══════════════ الخطط ══════════════ */
 
-/** كل الخطط المحفوظة (مسطّحة من payload). */
+/**
+ * خطة واحدة بعينها — يضرب الفهرس الفريد ويرجّع **صفاً واحداً**.
+ * هذا ما يحتاجه الكشك، فلا داعي لسحب كل الخطط لديه.
+ */
+export async function fetchPlan(date, branch) {
+  const key = planKey(date, branch);
+  const res = await fetch(
+    `${API_BASE}/api/reports?type=${encodeURIComponent(PLAN_TYPE)}`
+    + `&reportDate=${encodeURIComponent(key)}`,
+    { headers: { Accept: "application/json" }, cache: "no-store" }
+  );
+  if (!res.ok) throw new Error(`Server ${res.status}`);
+  const row = toArray(await res.json())[0];
+  return row?.payload || null;
+}
+
+/** كل الخطط المحفوظة (للوحة المشرف — يحتاج كل الملاحم). */
 export async function fetchPlans() {
   const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(PLAN_TYPE)}&limit=2000`,
+    `${API_BASE}/api/reports?type=${encodeURIComponent(PLAN_TYPE)}&limit=${PLAN_FETCH_LIMIT}`,
     { headers: { Accept: "application/json" }, cache: "no-store" }
   );
   if (!res.ok) throw new Error(`Server ${res.status}`);
@@ -78,7 +100,7 @@ const recordProductsKg = (p) =>
  */
 export async function fetchTodayProgress({ date, branch, employeeNo }) {
   const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(CUT_TYPE)}&limit=5000`,
+    `${API_BASE}/api/reports?type=${encodeURIComponent(CUT_TYPE)}&limit=${DAY_FETCH_LIMIT}`,
     { headers: { Accept: "application/json" }, cache: "no-store" }
   );
   if (!res.ok) throw new Error(`Server ${res.status}`);
@@ -109,7 +131,7 @@ export async function fetchTodayProgress({ date, branch, employeeNo }) {
  */
 export async function fetchTodayProgressByBranch(date) {
   const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(CUT_TYPE)}&limit=5000`,
+    `${API_BASE}/api/reports?type=${encodeURIComponent(CUT_TYPE)}&limit=${DAY_FETCH_LIMIT}`,
     { headers: { Accept: "application/json" }, cache: "no-store" }
   );
   if (!res.ok) throw new Error(`Server ${res.status}`);
@@ -140,10 +162,11 @@ export const progressPct = (done, target) =>
 /* ══════════════ هوك الكشك ══════════════ */
 
 /**
- * خطة اليوم لملحمة + التقدّم الفعلي، مع تحديث دوري خفيف.
+ * خطة اليوم لملحمة + التقدّم الفعلي.
+ * التحديث بالأحداث فقط (فتح · عودة للتبويب · بعد الحفظ) — بلا مؤقّتات.
  * يعيد null للخطة إذا المشرف ما حدّد هدفاً — عندها الكشك لا يعرض شيئاً.
  */
-export function useDayPlan({ date, branch, employeeNo, everyMs = 300000 }) {
+export function useDayPlan({ date, branch, employeeNo }) {
   const [plan, setPlan] = useState(null);
   const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -153,11 +176,12 @@ export function useDayPlan({ date, branch, employeeNo, everyMs = 300000 }) {
     if (!date || (!branch && !employeeNo)) { setPlan(null); setProgress(null); return; }
     setLoading(true);
     try {
-      const [plans, prog] = await Promise.all([
-        branch ? fetchPlans().catch(() => []) : Promise.resolve([]),
+      // خطة واحدة مفهرسة (لا كل الخطط) + تقدّم اليوم بسقف صغير
+      const [p, prog] = await Promise.all([
+        branch ? fetchPlan(date, branch).catch(() => null) : Promise.resolve(null),
         fetchTodayProgress({ date, branch, employeeNo }).catch(() => null),
       ]);
-      setPlan(branch ? plans.find((p) => p.reportDate === planKey(date, branch)) || null : null);
+      setPlan(p);
       setProgress(prog);
     } finally {
       setLoading(false);
@@ -166,18 +190,17 @@ export function useDayPlan({ date, branch, employeeNo, everyMs = 300000 }) {
 
   useEffect(() => {
     let alive = true;
-    const run = () => { if (alive && !document.hidden) load(); };
-    run();
-    // تحديث هادئ — لا نُبقي الخادم مشغولاً بلا داعٍ (انظر ملاحظات تكلفة Neon)
-    const timer = window.setInterval(run, everyMs);
-    const onVisible = () => { if (!document.hidden) load(); };
+    if (!document.hidden) load();
+    // ⚠️ بلا استقصاء دوري بالمرّة — جهاز الكشك مفتوح طول الدوام، ومؤقّت كل بضع
+    // دقائق كان يعني مئات الطلبات الثقيلة يومياً ويُبقي قاعدة البيانات صاحية.
+    // التحديث يكفي عند: فتح الشاشة · العودة للتبويب · بعد كل حفظ (reload).
+    const onVisible = () => { if (alive && !document.hidden) load(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
-      window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [load, everyMs]);
+  }, [load]);
 
   return { plan, progress, loading, reload: load };
 }

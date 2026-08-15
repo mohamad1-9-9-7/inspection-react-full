@@ -102,7 +102,7 @@ export default function ButcherSupervisor() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
   const { cfg } = useButcherConfig();
-  const { cfg: mrpCfg } = useMrpConfig();
+  const { cfg: mrpCfg } = useMrpConfig({ refetchOnFocus: false });
 
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);

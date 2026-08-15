@@ -130,7 +130,7 @@ export default function ButcherLog() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
   const { cfg } = useButcherConfig();
-  const { cfg: mrpCfg } = useMrpConfig();
+  const { cfg: mrpCfg } = useMrpConfig({ refetchOnFocus: false });
   // صندوق الصادر — الحفظ يشتغل حتى لو النت مقطوع، ويزامن لحاله
   const outbox = useOutbox();
   const isLoggedIn = hasSession();
