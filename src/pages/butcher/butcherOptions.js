@@ -82,7 +82,17 @@ export const isProductItem = (item) => itemKind(item) === "product";
 export const isSpecialCut = (item) => itemKind(item) !== "product";
 
 /** اسم عنصر حسب اللغة الحالية. */
-export const nameOf = (item, isAr) => (isAr ? item?.ar : item?.en) || item?.ar || "";
+/* الاسم حسب اللغة مع رجوع للّغة الأخرى — بلا هذا الرجوع يظهر الصنف فارغاً
+   بالواجهة العربية إذا كان مسجّلاً بالإنجليزي فقط (وأغلب أصناف المنتجات كذلك). */
+export const nameOf = (item, isAr) =>
+  (isAr ? item?.ar : item?.en) || item?.ar || item?.en || "";
+
+/** الاسم بالّلغة الأخرى — للعرض ثنائي اللغة تحت الاسم الأساسي (أو "" لو مكرّر). */
+export const altNameOf = (item, isAr) => {
+  const main = nameOf(item, isAr);
+  const alt = (isAr ? item?.en : item?.ar) || "";
+  return alt && alt !== main ? alt : "";
+};
 
 /** استخراج كود الملحمة من نص فرع الموظف في سجل الموظفين المشترك. */
 export function branchCodeFromLabel(label) {

@@ -26,8 +26,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
-import ButcherArt from "./ButcherIcons";
-import { BRANCHES, TYPE, branchCodeFromLabel, isSpecialCut, nameOf } from "./butcherOptions";
+import ButcherArt, { ART_IDS } from "./ButcherIcons";
+import {
+  BRANCHES, TYPE, altNameOf, branchCodeFromLabel, isSpecialCut, nameOf,
+} from "./butcherOptions";
 import { artOf, butcherByNo, imageOf, roundKg, useButcherConfig } from "./butcherConfig";
 import {
   useMrpConfig, bomInputItem, bomLines, itemName,
@@ -568,8 +570,8 @@ export default function ButcherLog() {
             {butcherBlocked && (
               <div className="bt-sum" style={S.error}>
                 {t({
-                  en: "This employee number is not registered. Ask the supervisor to add it in Settings.",
-                  ar: "هذا الرقم الوظيفي غير مسجّل. راجع المشرف لإضافته من الإعدادات.",
+                  en: "This employee number is not registered. Ask your supervisor to register it before you start.",
+                  ar: "هذا الرقم الوظيفي غير مسجّل. راجع المشرف لتسجيله قبل ما تبدأ.",
                 })}
               </div>
             )}
@@ -668,6 +670,9 @@ export default function ButcherLog() {
                   return (
                     <button key={b.id} className="bt-press" onClick={() => pickBom(b)} style={S.tile}>
                       <span className="bt-name" style={S.name}>{itemName(inp, isAr)}</span>
+                      {altNameOf(inp, isAr) && (
+                        <span className="bt-lbl" style={S.altName}>{altNameOf(inp, isAr)}</span>
+                      )}
                       <span className="bt-lbl" style={S.code}>{b.ref}</span>
                       <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
                         {outN} {t({ en: "final products", ar: "منتج نهائي" })}
@@ -689,7 +694,12 @@ export default function ButcherLog() {
                   {t({ en: "Raw material", ar: "المادة الخام" })}
                 </span>
                 {inputItem && (
-                  <span className="bt-name" style={S.name}>{itemName(inputItem, isAr)}</span>
+                  <>
+                    <span className="bt-name" style={S.name}>{itemName(inputItem, isAr)}</span>
+                    {altNameOf(inputItem, isAr) && (
+                      <span className="bt-lbl" style={S.altName}>{altNameOf(inputItem, isAr)}</span>
+                    )}
+                  </>
                 )}
               </div>
               <label style={S.rawField}>
@@ -950,17 +960,18 @@ export default function ButcherLog() {
 }
 
 /* ============================ رسمة / صورة عنصر ============================ */
-/* صورة مرفوعة من الإعدادات تسبق الرسمة المدمجة، و"" = بلا رسمة.
-   بلا رسمة ولا صورة → لا نرسم المربّع أصلاً حتى لا يبقى فراغ كبير في الكرت. */
+/* صورة مرفوعة تسبق الرسمة المدمجة. أصناف الوصفات (MRP) بلا رسمة ولا صورة،
+   و artOf ترجع الـid كاحتياط — لذلك نشترط رسمة **معروفة** فعلاً، وإلا لا نرسم
+   المربّع أصلاً حتى لا يبقى صندوق رمادي فارغ فوق كل منتج. */
 function hasArt(item) {
-  return !!imageOf(item) || !!artOf(item);
+  return !!imageOf(item) || ART_IDS.includes(artOf(item));
 }
 
 function ItemArt({ item }) {
   const url = imageOf(item);
   if (url) return <img src={url} alt="" style={S.artImg} />;
   const art = artOf(item);
-  return art ? <ButcherArt id={art} /> : null;
+  return ART_IDS.includes(art) ? <ButcherArt id={art} /> : null;
 }
 
 /* ============================ كرت عنصر بخانة وزن واحدة ============================ */
@@ -977,6 +988,10 @@ function ItemCard({
     >
       {hasArt(item) && <span style={S.art}><ItemArt item={item} /></span>}
       <span className="bt-name" style={S.name}>{nameOf(item, isAr)}</span>
+      {/* الاسم بالّلغة الأخرى — الجزار يتعرّف على الصنف بأي لغة كُتب فيها */}
+      {altNameOf(item, isAr) && (
+        <span className="bt-lbl" style={S.altName}>{altNameOf(item, isAr)}</span>
+      )}
       {code ? <span className="bt-lbl" style={S.code}>{code}</span> : null}
       <label style={S.field}>
         <span className="bt-lbl" style={S.lbl}>{t({ en: "Weight", ar: "الوزن" })}</span>
@@ -1176,6 +1191,8 @@ const S = {
     fontWeight: 800, color: "#6b8299",
   },
   name: { fontWeight: 900 },
+  // الاسم بالّلغة الأخرى — أصغر وأهدأ، تحت الاسم الأساسي مباشرة
+  altName: { color: "#6b8299", fontWeight: 700, textAlign: "center", lineHeight: 1.4 },
   field: { width: "100%", display: "flex", flexDirection: "column", gap: 4, marginTop: 4 },
   lbl: { fontWeight: 800, color: "#6b8299" },
   cutInput: {

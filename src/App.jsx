@@ -24,7 +24,7 @@ const ButcherLog = lazy(() => import("./pages/butcher/ButcherLog"));
 const ButcherView = lazy(() => import("./pages/butcher/ButcherView"));
 const ButcherSummary = lazy(() => import("./pages/butcher/ButcherSummary"));
 const ButcherSupervisor = lazy(() => import("./pages/butcher/ButcherSupervisor"));
-const ButcherSettings = lazy(() => import("./pages/butcher/ButcherSettings"));
+const ButcherMyWork = lazy(() => import("./pages/butcher/ButcherMyWork"));
 
 // 📦 المخزون — كرت جامع للجزار والتصنيع
 const InventoryHub = lazy(() => import("./pages/inventory/InventoryHub"));
@@ -813,18 +813,18 @@ export default function App() {
           }
         />
         <Route
-          path="/butcher/supervisor"
+          path="/butcher/my-work"
           element={
             <ProtectedRoute>
-              <ButcherSupervisor />
+              <ButcherMyWork />
             </ProtectedRoute>
           }
         />
         <Route
-          path="/butcher/settings"
+          path="/butcher/supervisor"
           element={
             <ProtectedRoute>
-              <ButcherSettings />
+              <ButcherSupervisor />
             </ProtectedRoute>
           }
         />

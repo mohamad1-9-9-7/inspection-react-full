@@ -158,10 +158,10 @@ export const SECTION_ITEMS = {
     kind: "pages",
     items: [
       { id: "butcher.entry",      icon: "🔪", label: "Record Cut Weights" },
+      { id: "butcher.mywork",     icon: "👤", label: "My Work" },
       { id: "butcher.view",       icon: "📋", label: "Butcher Reports" },
       { id: "butcher.summary",    icon: "🗓️", label: "Full Summary Report" },
       { id: "butcher.supervisor", icon: "🧑‍🍳", label: "Supervisor Board" },
-      { id: "butcher.settings",   icon: "⚙️", label: "Butcher Settings" },
     ],
   },
 

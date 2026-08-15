@@ -105,14 +105,16 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     : [{ cutId: p.cutId, cut: p.cut, weightKg: p.weightKg, wasteBoneKg: p.wasteBoneKg }];
 
   const cuts = rawCuts.map((c) => {
-    // الأسماء محفوظة وقت الإدخال — لقطة موثوقة، والـMRP احتياط
+    // الأسماء محفوظة وقت الإدخال — لقطة موثوقة، مع رجوع للّغة الأخرى
     const name = (isAr ? c.cut : c.cutEn) || c.cut || c.cutEn || "—";
+    const alt = (isAr ? c.cutEn : c.cut) || "";
     const kind = c.kind || (isSpecialCut(c.cutId) ? "waste" : "product");
     const weightKg = num(c.weightKg);
     const targetKg = num(c.targetKg);
     return {
       itemId: c.itemId || c.cutId || "",
       name,
+      nameAlt: alt && alt !== name ? alt : "",
       sku: c.sku || c.code || "",
       uom: c.uom || "KG",
       kind,
@@ -151,6 +153,11 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     inputItemId: p.inputItemId || "",
     inputSku: p.inputSku || "",
     inputName: (isAr ? p.animal : p.animalEn) || p.animal || p.animalEn || "—",
+    inputNameAlt: (() => {
+      const main = (isAr ? p.animal : p.animalEn) || p.animal || p.animalEn || "";
+      const alt = (isAr ? p.animalEn : p.animal) || "";
+      return alt && alt !== main ? alt : "";
+    })(),
     pieceCount: Number.isFinite(Number(p.pieceCount)) && p.pieceCount !== null
       ? Number(p.pieceCount) : null,
     // الأوزان
@@ -240,12 +247,31 @@ export const KIT_CSS = `
 }
 @keyframes bkRise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
 #root .bk-rise { animation: bkRise .3s ease both; }
+/* ═══ الموبايل: مساحات أضيق وأعمدة واحدة ═══ */
 @media (max-width: 820px) {
   #root .bk, #root .bk * { font-size: 14px !important; }
   #root .bk table, #root .bk table * { font-size: 12.5px !important; }
   #root .bk-title { font-size: 20px !important; }
   #root .bk-num   { font-size: 21px !important; }
   #root .bk-sec   { font-size: 15px !important; }
+  /* الصفحة والبطاقات: حشو أقل حتى لا تضيع المساحة */
+  #root .bk-page { padding: 12px 10px 34px !important; }
+  #root .bk-card { padding: 12px !important; border-radius: 14px !important; margin-bottom: 12px !important; }
+  /* شريط الأدوات عمود واحد — وإلغاء أي امتداد عمودين */
+  #root .bk-tools { grid-template-columns: 1fr !important; }
+  #root .bk-tools > * { grid-column: auto !important; }
+  /* أزرار الترويسة تملأ العرض بدل ما تنضغط */
+  #root .bk-actions { width: 100%; }
+  #root .bk-actions > * { flex: 1 1 auto; text-align: center; }
+  /* المؤشّرات: عمودان */
+  #root .bk-kpis { grid-template-columns: repeat(2,1fr) !important; }
+  /* رأس البطاقة: العنوان فوق والأدوات تحته بعرض كامل */
+  #root .bk-cardhead > *:last-child { margin-inline-start: 0 !important; width: 100%; }
+  /* تمرير أنعم للجداول العريضة على اللمس */
+  #root .bk-tablewrap { -webkit-overflow-scrolling: touch; }
+}
+@media (max-width: 460px) {
+  #root .bk-kpis { grid-template-columns: 1fr !important; }
 }
 @media print {
   #root .bk-noprint { display: none !important; }
@@ -358,7 +384,7 @@ export function PageHead({ icon, title, sub, children }) {
         <div className="bk-title">{title}</div>
         {sub ? <div className="bk-sub" style={S.sub}>{sub}</div> : null}
       </div>
-      <div style={S.headActions}>{children}</div>
+      <div className="bk-actions" style={S.headActions}>{children}</div>
     </div>
   );
 }
@@ -367,7 +393,7 @@ export function Card({ icon, title, sub, actions, children, style, className = "
   return (
     <section className={`bk-card bk-block ${className}`} style={{ ...S.card, ...style }}>
       {(title || actions) && (
-        <div style={S.cardHead}>
+        <div className="bk-cardhead" style={S.cardHead}>
           {icon ? <span style={S.cardIcon}>{icon}</span> : null}
           <div style={{ minWidth: 0, flex: 1 }}>
             {title ? <h2 className="bk-sec" style={S.cardTitle}>{title}</h2> : null}
@@ -414,6 +440,15 @@ export function Chip({ children, tone }) {
 
 export function EmptyBox({ children }) {
   return <div style={S.empty}>{children}</div>;
+}
+
+/** غلاف جدول — يمرّر أفقياً على الشاشات الضيّقة بدل ما يكسر التخطيط. */
+export function TableWrap({ children, minWidth }) {
+  return (
+    <div className="bk-tablewrap" style={S.tableWrap}>
+      <table style={{ ...S.table, ...(minWidth ? { minWidth } : null) }}>{children}</table>
+    </div>
+  );
 }
 
 export function Skeleton({ rows = 6 }) {
@@ -487,6 +522,77 @@ export async function downloadExcel(sheets, filename) {
     XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
   });
   XLSX.writeFile(wb, filename);
+}
+
+/**
+ * تصدير PDF — جداول متعدّدة بترويسة وترقيم صفحات.
+ * الاستيراد ديناميكي حتى لا تثقل jspdf الحزمة الأساسية.
+ * ملاحظة: jsPDF بخطوطه المدمجة لا يرسم العربية، لذلك عناوين الـPDF إنجليزية
+ * (نفس نهج الفواتير) — العربي يبقى على الشاشة وزر الطباعة.
+ */
+export async function downloadPdf({ title, meta = [], blocks = [], filename }) {
+  const [pdfMod, tableMod] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+  // الحزمتان تصدّران default أحياناً و named أحياناً حسب الإصدار
+  const JsPDF = pdfMod.default || pdfMod.jsPDF;
+  const autoTable = tableMod.default || tableMod.autoTable || tableMod;
+
+  const doc = new JsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text(title, pageW / 2, 34, { align: "center" });
+
+  if (meta.length) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(110);
+    doc.text(meta.join("   |   "), pageW / 2, 50, { align: "center" });
+    doc.setTextColor(0);
+  }
+
+  let y = 64;
+  blocks.forEach((b) => {
+    if (!b.rows?.length) return;
+    autoTable(doc, {
+      head: [b.head],
+      body: b.rows,
+      startY: y,
+      margin: { left: 24, right: 24 },
+      styles: { fontSize: 7.5, cellPadding: 3, overflow: "linebreak" },
+      headStyles: { fillColor: [31, 111, 208], textColor: 255, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [246, 250, 255] },
+      columnStyles: b.columnStyles || {},
+      didDrawPage: () => {
+        const p = doc.internal.getNumberOfPages();
+        doc.setFontSize(8);
+        doc.setTextColor(130);
+        doc.text(
+          `${b.title || ""}`,
+          24,
+          doc.internal.pageSize.getHeight() - 14
+        );
+        doc.text(
+          `Page ${p}`,
+          pageW - 24,
+          doc.internal.pageSize.getHeight() - 14,
+          { align: "right" }
+        );
+        doc.setTextColor(0);
+      },
+    });
+    y = (doc.lastAutoTable?.finalY ?? y) + 22;
+    // لا نبدأ جدولاً جديداً بذيل الصفحة
+    if (y > doc.internal.pageSize.getHeight() - 90) {
+      doc.addPage();
+      y = 40;
+    }
+  });
+
+  doc.save(filename);
 }
 
 /** فرز عام يحترم النصوص والأرقام. */

@@ -14,8 +14,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
-import { BRANCHES, TYPE, itemKind, nameOf } from "./butcherOptions";
-import { butcherLabel, enabledOnly, useButcherConfig } from "./butcherConfig";
+import { BRANCHES, TYPE, nameOf } from "./butcherOptions";
+import { butcherLabel, useButcherConfig } from "./butcherConfig";
+import { useMrpConfig } from "./butcherMrpBridge";
+import { normalizeRecord } from "./butcherReportKit";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 import { can } from "../../utils/perms";
@@ -97,6 +99,7 @@ export default function ButcherSupervisor() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
   const { cfg } = useButcherConfig();
+  const { cfg: mrpCfg } = useMrpConfig();
 
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -146,68 +149,22 @@ export default function ButcherSupervisor() {
     if (period === "30d") { setFrom(shiftDays(29)); setTo(todayStr()); }
   }, [period]);
 
-  /* ── تحويل كل سجل لشكل جاهز للعرض ── */
-  const entries = useMemo(() => {
-    const ANIMALS = enabledOnly(cfg.animals);
-    const ORIGINS = enabledOnly(cfg.origins);
-
-    return records.map((rec) => {
-      const p = rec?.payload || {};
-      const day = String(p.date || p.reportDate || rec?.created_at || "").slice(0, 10);
-      const iso = p.savedAt || p.reportDate || rec?.created_at;
-      const d = iso ? new Date(iso) : null;
-      const time = d && !Number.isNaN(d.getTime())
-        ? d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
-        : "";
-
-      const branchObj = BRANCHES.find((b) => b.code === p.branch) || null;
-      const animalObj = ANIMALS.find((a) => a.id === p.animalId) || null;
-      const originObj = ORIGINS.find((o) => o.id === p.originId) || null;
-
-      const cuts = (Array.isArray(p.cuts) ? p.cuts : []).map((c) => ({
-        cutId: c.cutId,
-        name: (isAr ? c.cut : c.cutEn) || c.cut || "—",
-        code: c.code || "",
-        kind: c.kind || itemKind(c.cutId),
-        weightKg: Number(c.weightKg) || 0,
-        // السجلات القديمة فيها هدر داخل كل قطعة — نعرضه كما هو ولا نفقد بيانات
-        legacyWasteKg: Number(c.wasteBoneKg) || 0,
-      }));
-
-      const carcassKg = Number(p.carcassWeightKg) || 0;
-      const productsKg = cuts.reduce(
-        (s, c) => s + (c.kind === "product" ? c.weightKg : 0), 0
-      );
-      const wasteKg =
-        cuts.reduce((s, c) => s + (c.kind === "product" ? 0 : c.weightKg) + c.legacyWasteKg, 0);
-      const baseKg = carcassKg > 0 ? carcassKg : productsKg + wasteKg;
-
-      const review = p.review || null;
-      const reviewStatus = review?.status === "approved" || review?.status === "rejected"
-        ? review.status
-        : "pending";
-
-      return {
-        id: rec.id ?? rec._id ?? p.savedAt,
-        rec,
-        payload: p,
-        day, time,
-        empNo: String(p.employeeNo || ""),
-        butcherName: p.butcherName || "",
-        butcherJob: p.butcherJob || "",
-        branchCode: p.branch || "",
-        branchName: branchObj ? nameOf(branchObj, isAr) : (isAr ? p.branchAr : p.branchEn) || "—",
-        animalName: animalObj ? nameOf(animalObj, isAr) : p.animal || "—",
-        originName: originObj ? nameOf(originObj, isAr) : p.origin || "—",
-        gradeName: (isAr ? p.grade : p.gradeEn) || "",
-        mode: p.mode || "whole",
-        carcassKg, productsKg, wasteKg, baseKg, cuts,
-        yieldPct: pct(productsKg, baseKg),
-        wastePct: pct(wasteKg, baseKg),
-        review, reviewStatus,
-      };
-    });
-  }, [records, cfg, isAr]);
+  /* ── تحويل كل سجل لشكل جاهز للعرض (نفس تطبيع عُدّة التقارير) ── */
+  const entries = useMemo(
+    () =>
+      records.map((rec) => {
+        const r = normalizeRecord(rec, { cfg, mrpCfg, isAr });
+        return {
+          ...r,
+          empNo: r.employeeNoRaw,
+          butcherJob: r.payload.butcherJob || "",
+          // اسم مختصر للسياق: الوصفة أو المادة الخام
+          productsKg: r.cutsKg,
+          reviewStatus: r.reviewStatus || "pending",
+        };
+      }),
+    [records, cfg, mrpCfg, isAr]
+  );
 
   /* ── تطبيق الفلاتر ── */
   const filtered = useMemo(() => {
@@ -622,14 +579,14 @@ function DetailsModal({ b, t, isAr, dir, KG, canReview, busyId, onClose, onAppro
               <div style={S.reportHead}>
                 <div style={{ minWidth: 0 }}>
                   <div style={S.reportTitle}>
-                    {r.animalName} · {r.originName}
-                    {r.gradeName ? ` · ${r.gradeName}` : ""}
+                    {r.inputName}
+                    {r.bomRef ? ` · ${r.bomRef}` : ""}
                   </div>
                   <div className="bs-small" style={S.cardMeta}>
-                    {r.day} {r.time} · {r.branchName} ·{" "}
-                    {r.mode === "pieces"
-                      ? t({ en: "Pieces mode", ar: "وضع الأجزاء" })
-                      : t({ en: "Whole carcass", ar: "ذبيحة كاملة" })}
+                    {r.day} {r.time} · {r.branchName}
+                    {r.bomCatName ? ` · ${r.bomCatName}` : ""}
+                    {r.entryDay && r.entryDay !== r.day
+                      ? ` · ${t({ en: "entered", ar: "أُدخل" })} ${r.entryDay}` : ""}
                   </div>
                 </div>
                 <StatusChip id={r.reviewStatus} isAr={isAr} big />
@@ -637,23 +594,42 @@ function DetailsModal({ b, t, isAr, dir, KG, canReview, busyId, onClose, onAppro
 
               <div style={S.reportStats}>
                 {r.carcassKg > 0 && (
-                  <span>{t({ en: "Carcass", ar: "الذبيحة" })}: <b>{r.carcassKg.toFixed(2)}</b> {KG}</span>
+                  <span>{t({ en: "Raw material", ar: "المادة الخام" })}: <b>{r.carcassKg.toFixed(2)}</b> {KG}</span>
+                )}
+                {r.pieceCount !== null && (
+                  <span>{t({ en: "Pieces", ar: "عدد القطع" })}: <b>{r.pieceCount}</b></span>
                 )}
                 <span>{t({ en: "Products", ar: "المنتجات" })}: <b>{r.productsKg.toFixed(2)}</b> {KG}</span>
-                <span>{t({ en: "Waste & bone", ar: "الهدر والعظم" })}: <b>{r.wasteKg.toFixed(2)}</b> {KG}</span>
+                <span>{t({ en: "Waste", ar: "الهدر" })}: <b>{r.wasteKg.toFixed(2)}</b> {KG}</span>
                 <span>{t({ en: "Yield", ar: "التصافي" })}: <b>{r.yieldPct.toFixed(1)}%</b></span>
+                {r.unaccountedKg > 0.005 && (
+                  <span style={{ color: "#b45309", fontWeight: 900 }}>
+                    ⚠️ {t({ en: "Unaccounted", ar: "فاقد غير مسجّل" })}: <b>{r.unaccountedKg.toFixed(2)}</b> {KG}
+                  </span>
+                )}
               </div>
 
               <div style={S.cutsWrap}>
-                {r.cuts.map((c, i) => (
-                  <span
-                    key={`${c.cutId}_${i}`}
-                    style={{ ...S.cutPill, ...(c.kind !== "product" ? S.cutPillWaste : null) }}
-                  >
-                    {c.name}
-                    {c.code ? ` (${c.code})` : ""} — <b>{c.weightKg.toFixed(2)}</b> {KG}
-                  </span>
-                ))}
+                {r.cuts.map((c, i) => {
+                  // انحراف عن هدف الوصفة — يلوّن الشريحة لما يتجاوز ±١٠٪
+                  const off = c.deltaPct !== null && Math.abs(c.deltaPct) > 10;
+                  return (
+                    <span
+                      key={`${c.itemId}_${i}`}
+                      style={{
+                        ...S.cutPill,
+                        ...(c.isWaste ? S.cutPillWaste : null),
+                        ...(off ? { background: "#fef2f2", borderColor: "#fca5a5", color: "#991b1b" } : null),
+                      }}
+                    >
+                      {c.name}
+                      {c.sku ? ` (${c.sku})` : ""} — <b>{c.weightKg.toFixed(2)}</b> {KG}
+                      {c.deltaPct !== null && (
+                        <> · {c.deltaPct > 0 ? "+" : ""}{c.deltaPct.toFixed(0)}%</>
+                      )}
+                    </span>
+                  );
+                })}
                 {!r.cuts.length && (
                   <span className="bs-small" style={S.cardMeta}>
                     {t({ en: "No lines recorded.", ar: "لا توجد أسطر مسجّلة." })}
@@ -715,7 +691,7 @@ function RejectModal({ row, onCancel, onConfirm, busy, t, dir }) {
           ✕ {t({ en: "Reject report", ar: "رفض التقرير" })}
         </div>
         <div className="bs-small" style={S.cardMeta}>
-          {row.animalName} · {row.day} {row.time} · #{row.empNo}
+          {row.inputName}{row.bomRef ? ` · ${row.bomRef}` : ""} · {row.day} {row.time} · #{row.empNo}
         </div>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>

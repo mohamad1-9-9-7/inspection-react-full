@@ -7,9 +7,10 @@
 // كل سجل = تنفيذ وصفة: مادة خام داخلة → منتجات نهائية + هدر، بأوزان فعلية
 // وأوزان مستهدفة من الوصفة. السجلات القديمة تُقرأ بلا كسر (انظر العُدّة).
 //
-// الأدوات: فلاتر ذكية (فترة · ملحمة · فئة · وصفة · جزار · بحث حر) ·
-//          مؤشّرات حيّة · تجميع مرن · فرز بالأعمدة · عرض مفصّل/مجمّع ·
-//          كشف الانحراف عن أهداف الوصفة · Excel بثلاث أوراق · طباعة.
+// الأدوات: فلاتر ذكية (فترة · ملحمة · فئة · وصفة · حالة · بحث حر · المنحرف فقط) ·
+//          مؤشّرات حيّة · المنتجات مقابل أهداف الوصفة · ملخّص يومي ·
+//          ملاحظات وجودة البيانات · تجميع مرن · فرز بالأعمدة ·
+//          تفاصيل كل تنفيذ بالضغط · Excel (٥ أوراق) · PDF · طباعة.
 
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -18,8 +19,8 @@ import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 import {
   C, Card, Chip, DeltaCell, EmptyBox, KIT_CSS, Kpi, MiniBar, PageHead,
-  ReviewChip, S, Skeleton, SortTh, downloadExcel, kg, monthStart, pct,
-  shiftDays, sortRows, todayStr, totalsOf, useButcherData, useNormalizedRows,
+  ReviewChip, S, Skeleton, SortTh, downloadExcel, downloadPdf, kg, monthStart,
+  pct, shiftDays, sortRows, todayStr, totalsOf, useButcherData, useNormalizedRows,
 } from "./butcherReportKit";
 
 /* مفاتيح التجميع المتاحة */
@@ -116,7 +117,10 @@ export default function ButcherView() {
       r.cuts.forEach((c) => {
         const k = c.itemId || c.name;
         if (!map.has(k)) {
-          map.set(k, { name: c.name, sku: c.sku, isWaste: c.isWaste, actual: 0, target: 0, n: 0 });
+          map.set(k, {
+            name: c.name, nameAlt: c.nameAlt, sku: c.sku, isWaste: c.isWaste,
+            actual: 0, target: 0, n: 0,
+          });
         }
         const g = map.get(k);
         g.actual += c.weightKg;
@@ -132,6 +136,50 @@ export default function ButcherView() {
       }))
       .sort((a, b) => b.actual - a.actual);
   }, [rows, stats.baseKg]);
+
+  /* ملخّص يومي — يغذّي التصدير ولوحة الاتجاه */
+  const byDay = useMemo(() => {
+    const map = new Map();
+    rows.forEach((r) => {
+      if (!map.has(r.day)) map.set(r.day, []);
+      map.get(r.day).push(r);
+    });
+    return [...map.entries()]
+      .map(([day, list]) => ({ day, ...totalsOf(list) }))
+      .sort((a, b) => b.day.localeCompare(a.day));
+  }, [rows]);
+
+  /* الملاحظات — فاقد غير مسجّل · انحراف كبير · مرفوض */
+  const issues = useMemo(() => {
+    const out = [];
+    rows.forEach((r) => {
+      if (r.unaccountedKg > 0.005) {
+        out.push({
+          day: r.day, who: r.employeeNo, ref: r.bomRef,
+          kind: t({ en: "Unaccounted weight", ar: "فاقد غير مسجّل" }),
+          detail: `${kg(r.unaccountedKg)} kg`, tone: "amber",
+        });
+      }
+      r.cuts.forEach((c) => {
+        if (c.deltaPct !== null && Math.abs(c.deltaPct) > 15) {
+          out.push({
+            day: r.day, who: r.employeeNo, ref: r.bomRef,
+            kind: t({ en: "Off target", ar: "بعيد عن الهدف" }),
+            detail: `${c.name}: ${c.deltaPct > 0 ? "+" : ""}${c.deltaPct.toFixed(1)}%`,
+            tone: "red",
+          });
+        }
+      });
+      if (r.reviewStatus === "rejected") {
+        out.push({
+          day: r.day, who: r.employeeNo, ref: r.bomRef,
+          kind: t({ en: "Rejected", ar: "مرفوض" }),
+          detail: r.review?.reason || "—", tone: "red",
+        });
+      }
+    });
+    return out.sort((a, b) => b.day.localeCompare(a.day));
+  }, [rows, t]);
 
   const resetAll = () => {
     setFrom(shiftDays(-30)); setTo(todayStr()); setBranch(""); setCatId("");
@@ -205,20 +253,121 @@ export default function ButcherView() {
       p.deltaPct === null ? "" : +p.deltaPct.toFixed(1), +p.share.toFixed(1),
     ]));
 
+    const daily = [[
+      t({ en: "Date", ar: "التاريخ" }), t({ en: "Jobs", ar: "التنفيذات" }),
+      t({ en: "Raw kg", ar: "الخام" }), t({ en: "Products kg", ar: "النواتج" }),
+      t({ en: "Waste kg", ar: "الهدر" }), t({ en: "Yield %", ar: "التصافي ٪" }),
+      t({ en: "Waste %", ar: "الهدر ٪" }),
+    ]];
+    byDay.forEach((d) => daily.push([
+      d.day, d.count, +kg(d.carcassKg), +kg(d.cutsKg), +kg(d.wasteKg),
+      +d.yieldPct.toFixed(1), +d.wastePct.toFixed(1),
+    ]));
+
+    const notes = [[
+      t({ en: "Date", ar: "التاريخ" }), t({ en: "Butcher", ar: "الجزار" }),
+      t({ en: "Recipe", ar: "الوصفة" }), t({ en: "Issue", ar: "الملاحظة" }),
+      t({ en: "Detail", ar: "التفصيل" }),
+    ]];
+    issues.forEach((x) => notes.push([x.day, x.who, x.ref || "—", x.kind, x.detail]));
+
     await downloadExcel(
       [
         { name: "Detail", aoa: detail, widths: [12, 12, 22, 16, 16, 12, 26, 10, 8, 26, 12, 10, 10, 10, 10, 10, 12] },
+        { name: "By date", aoa: daily, widths: [12, 10, 12, 12, 12, 10, 10] },
         { name: "Grouped", aoa: grouped, widths: [26, 10, 12, 12, 12, 10, 10] },
         { name: "Products", aoa: prod, widths: [28, 12, 10, 8, 12, 12, 10, 12] },
+        { name: "Notes", aoa: notes, widths: [12, 22, 12, 22, 34] },
       ],
       `butcher_reports_${from || "all"}_${to || "all"}.xlsx`
     );
   };
 
+  /* ── PDF: ملخّص + يومي + منتجات + تجميع + ملاحظات (إنجليزي) ── */
+  const exportPdf = async () => {
+    const blocks = [
+      {
+        title: "Summary",
+        head: ["Metric", "Value"],
+        rows: [
+          ["Records", String(stats.count)],
+          ["Butchers", String(stats.butchers)],
+          ["Recipes used", String(stats.boms)],
+          ["Raw material (kg)", kg(stats.carcassKg)],
+          ["Products (kg)", kg(stats.cutsKg)],
+          ["Waste (kg)", kg(stats.wasteKg)],
+          ["Net yield %", stats.yieldPct.toFixed(1)],
+          ["Waste %", stats.wastePct.toFixed(1)],
+          ["Avg raw per job (kg)", kg(stats.avgCarcass)],
+        ],
+        columnStyles: { 1: { halign: "right" } },
+      },
+      {
+        title: "By date",
+        head: ["Date", "Jobs", "Raw kg", "Products", "Waste", "Yield %", "Waste %"],
+        rows: byDay.map((d) => [
+          d.day, d.count, kg(d.carcassKg), kg(d.cutsKg), kg(d.wasteKg),
+          d.yieldPct.toFixed(1), d.wastePct.toFixed(1),
+        ]),
+        columnStyles: {
+          1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" },
+          4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" },
+        },
+      },
+      {
+        title: "Products vs recipe targets",
+        head: ["Product", "Code", "Lines", "Actual kg", "Target kg", "Delta %", "% of raw"],
+        rows: products.map((p) => [
+          p.name, p.sku || "-", p.n, kg(p.actual), p.target ? kg(p.target) : "-",
+          p.deltaPct === null ? "-" : `${p.deltaPct > 0 ? "+" : ""}${p.deltaPct.toFixed(1)}`,
+          p.share.toFixed(1),
+        ]),
+        columnStyles: {
+          2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" },
+          5: { halign: "right" }, 6: { halign: "right" },
+        },
+      },
+      {
+        title: `Grouped by ${GROUPS.find((g) => g.id === groupKey)?.en || groupKey}`,
+        head: [
+          GROUPS.find((g) => g.id === groupKey)?.en || groupKey,
+          "Records", "Raw kg", "Products", "Waste", "Yield %",
+        ],
+        rows: groups.map((g) => [
+          g.key, g.count, kg(g.carcassKg), kg(g.cutsKg), kg(g.wasteKg), g.yieldPct.toFixed(1),
+        ]),
+        columnStyles: {
+          1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" },
+          4: { halign: "right" }, 5: { halign: "right" },
+        },
+      },
+    ];
+
+    if (issues.length) {
+      blocks.push({
+        title: "Notes",
+        head: ["Date", "Butcher", "Recipe", "Issue", "Detail"],
+        rows: issues.slice(0, 200).map((x) => [x.day, x.who, x.ref || "-", x.kind, x.detail]),
+      });
+    }
+
+    await downloadPdf({
+      title: "BUTCHER CUTTING REPORT",
+      meta: [
+        `Period: ${from || "all"} to ${to || "all"}`,
+        branch ? `Butchery: ${branch}` : "All butcheries",
+        `Records: ${stats.count}`,
+        `Printed: ${new Date().toLocaleString("en-GB")}`,
+      ],
+      blocks,
+      filename: `butcher_reports_${from || "all"}_${to || "all"}.pdf`,
+    });
+  };
+
   if (!canOpenButcherPage("butcher.view")) return <NoAccess page="butcher.view" />;
 
   return (
-    <div dir={dir} className="bk" style={S.page}>
+    <div dir={dir} className="bk bk-page" style={S.page}>
       <style>{KIT_CSS}</style>
       <div style={S.wrap}>
         <PageHead
@@ -235,6 +384,14 @@ export default function ButcherView() {
           </button>
           <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={() => window.print()}>
             🖨 {t({ en: "Print", ar: "طباعة" })}
+          </button>
+          <button
+            type="button"
+            style={{ ...S.btn, ...S.btnSm }}
+            onClick={exportPdf}
+            disabled={!rows.length}
+          >
+            ⬇ PDF
           </button>
           <button
             type="button"
@@ -282,7 +439,7 @@ export default function ButcherView() {
             </div>
           }
         >
-          <div className="bk-noprint" style={S.toolbar}>
+          <div className="bk-noprint bk-tools" style={S.toolbar}>
             <label style={S.label}>
               <span className="bk-lbl" style={{ color: C.muted }}>{t({ en: "From", ar: "من" })}</span>
               <input type="date" value={from} max={to || undefined}
@@ -354,7 +511,7 @@ export default function ButcherView() {
         </Card>
 
         {/* ══ المؤشّرات ══ */}
-        <div style={S.kpiGrid}>
+        <div className="bk-kpis" style={S.kpiGrid}>
           <Kpi label={t({ en: "Records", ar: "السجلات" })} value={stats.count} color={C.blue}
             hint={t({ en: `${stats.butchers} butchers`, ar: `${stats.butchers} جزار` })} />
           <Kpi label={t({ en: "Raw material", ar: "المادة الخام" })} value={kg(stats.carcassKg)} unit="kg" color={C.blueDk}
@@ -395,7 +552,7 @@ export default function ButcherView() {
                 ar: "وين التقطيع الفعلي بينحرف عن اللي بتتوقّعه الوصفة.",
               })}
             >
-              <div style={S.tableWrap}>
+              <div className="bk-tablewrap" style={S.tableWrap}>
                 <table style={S.table}>
                   <thead>
                     <tr>
@@ -413,6 +570,9 @@ export default function ButcherView() {
                         <td style={S.td}>
                           <b>{p.name}</b>{" "}
                           {p.isWaste && <Chip tone="amber">{t({ en: "waste", ar: "هدر" })}</Chip>}
+                          {p.nameAlt && (
+                            <div className="bk-lbl" style={{ color: C.muted }}>{p.nameAlt}</div>
+                          )}
                         </td>
                         <td style={{ ...S.td, color: C.muted, fontWeight: 800 }}>{p.sku || "—"}</td>
                         <td style={{ ...S.td, ...S.tdNum }}>{kg(p.actual)}</td>
@@ -434,6 +594,87 @@ export default function ButcherView() {
               </div>
             </Card>
 
+            {/* ══ حسب اليوم ══ */}
+            <Card
+              icon="📆"
+              title={t({ en: "By date", ar: "حسب التاريخ" })}
+              sub={t({
+                en: "Daily volume and yield across the selected period.",
+                ar: "الحجم والتصافي اليومي عبر الفترة المختارة.",
+              })}
+            >
+              <div className="bk-tablewrap" style={S.tableWrap}>
+                <table style={S.table}>
+                  <thead>
+                    <tr>
+                      <th style={S.th}>{t({ en: "Date", ar: "التاريخ" })}</th>
+                      <th style={{ ...S.th, textAlign: "end" }}>{t({ en: "Jobs", ar: "التنفيذات" })}</th>
+                      <th style={{ ...S.th, textAlign: "end" }}>{t({ en: "Raw kg", ar: "الخام" })}</th>
+                      <th style={{ ...S.th, textAlign: "end" }}>{t({ en: "Products", ar: "النواتج" })}</th>
+                      <th style={{ ...S.th, textAlign: "end" }}>{t({ en: "Waste", ar: "الهدر" })}</th>
+                      <th style={S.th}>{t({ en: "Yield", ar: "التصافي" })}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byDay.map((d) => (
+                      <tr key={d.day}>
+                        <td style={{ ...S.td, fontWeight: 900 }}>{d.day}</td>
+                        <td style={{ ...S.td, ...S.tdNum }}>{d.count}</td>
+                        <td style={{ ...S.td, ...S.tdNum }}>{kg(d.carcassKg)}</td>
+                        <td style={{ ...S.td, ...S.tdNum, color: C.teal }}>{kg(d.cutsKg)}</td>
+                        <td style={{ ...S.td, ...S.tdNum, color: C.amber }}>{kg(d.wasteKg)}</td>
+                        <td style={S.td}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <MiniBar value={d.yieldPct} max={100} color={C.green} />
+                            <span style={{ fontWeight: 900, color: C.green, minWidth: 52 }}>
+                              {d.yieldPct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            {/* ══ الملاحظات ══ */}
+            {issues.length > 0 && (
+              <Card
+                icon="⚠️"
+                title={t({ en: "Notes & data quality", ar: "الملاحظات وجودة البيانات" })}
+                sub={t({
+                  en: `${issues.length} item(s) worth a look`,
+                  ar: `${issues.length} بند بحاجة نظرة`,
+                })}
+              >
+                <div className="bk-tablewrap" style={S.tableWrap}>
+                  <table style={S.table}>
+                    <thead>
+                      <tr>
+                        <th style={S.th}>{t({ en: "Date", ar: "التاريخ" })}</th>
+                        <th style={S.th}>{t({ en: "Butcher", ar: "الجزار" })}</th>
+                        <th style={S.th}>{t({ en: "Recipe", ar: "الوصفة" })}</th>
+                        <th style={S.th}>{t({ en: "Issue", ar: "الملاحظة" })}</th>
+                        <th style={S.th}>{t({ en: "Detail", ar: "التفصيل" })}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {issues.slice(0, 60).map((x, i) => (
+                        <tr key={i}>
+                          <td style={S.td}>{x.day}</td>
+                          <td style={S.td}>{x.who}</td>
+                          <td style={S.td}>{x.ref || "—"}</td>
+                          <td style={S.td}><Chip tone={x.tone}>{x.kind}</Chip></td>
+                          <td style={{ ...S.td, fontWeight: 800 }}>{x.detail}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
             {/* ══ التجميع ══ */}
             <Card
               icon="📊"
@@ -450,7 +691,7 @@ export default function ButcherView() {
                 </select>
               }
             >
-              <div style={S.tableWrap}>
+              <div className="bk-tablewrap" style={S.tableWrap}>
                 <table style={S.table}>
                   <thead>
                     <tr>
@@ -510,7 +751,7 @@ export default function ButcherView() {
                 </div>
               }
             >
-              <div style={S.tableWrap}>
+              <div className="bk-tablewrap" style={S.tableWrap}>
                 <table style={S.table}>
                   <thead>
                     <tr>
@@ -555,6 +796,9 @@ export default function ButcherView() {
                             </td>
                             <td style={S.td}>
                               {r.inputName}
+                              {r.inputNameAlt && (
+                                <div className="bk-lbl" style={{ color: C.muted }}>{r.inputNameAlt}</div>
+                              )}
                               {r.pieceCount !== null && (
                                 <div className="bk-lbl" style={{ color: C.muted }}>
                                   {r.pieceCount} {t({ en: "pcs", ar: "قطعة" })}
@@ -589,6 +833,9 @@ export default function ButcherView() {
                                           <td style={S.td}>
                                             {c.name}{" "}
                                             {c.isWaste && <Chip tone="amber">{t({ en: "waste", ar: "هدر" })}</Chip>}
+                                            {c.nameAlt && (
+                                              <div className="bk-lbl" style={{ color: C.muted }}>{c.nameAlt}</div>
+                                            )}
                                           </td>
                                           <td style={{ ...S.td, color: C.muted, fontWeight: 800 }}>{c.sku || "—"}</td>
                                           <td style={{ ...S.td, ...S.tdNum }}>{kg(c.weightKg)}</td>

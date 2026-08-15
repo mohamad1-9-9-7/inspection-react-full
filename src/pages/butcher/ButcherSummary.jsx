@@ -87,7 +87,10 @@ export default function ButcherSummary() {
       r.cuts.forEach((c) => {
         const k = c.itemId || c.name;
         if (!map.has(k)) {
-          map.set(k, { name: c.name, sku: c.sku, isWaste: c.isWaste, actual: 0, target: 0, n: 0 });
+          map.set(k, {
+            name: c.name, nameAlt: c.nameAlt, sku: c.sku, isWaste: c.isWaste,
+            actual: 0, target: 0, n: 0,
+          });
         }
         const g = map.get(k);
         g.actual += c.weightKg;
@@ -205,7 +208,7 @@ export default function ButcherSummary() {
   if (!canOpenButcherPage("butcher.summary")) return <NoAccess page="butcher.summary" />;
 
   return (
-    <div dir={dir} className="bk" style={S.page}>
+    <div dir={dir} className="bk bk-page" style={S.page}>
       <style>{KIT_CSS}</style>
       <div style={S.wrap}>
         <PageHead
@@ -238,7 +241,7 @@ export default function ButcherSummary() {
           title={t({ en: "Report period", ar: "فترة التقرير" })}
           style={{ marginBottom: 16 }}
         >
-          <div className="bk-noprint" style={S.toolbar}>
+          <div className="bk-noprint bk-tools" style={S.toolbar}>
             <label style={S.label}>
               <span className="bk-lbl" style={{ color: C.muted }}>{t({ en: "From", ar: "من" })}</span>
               <input type="date" value={from} max={to || undefined}
@@ -324,7 +327,7 @@ export default function ButcherSummary() {
             </Card>
 
             {/* ══ المؤشّرات مع المقارنة ══ */}
-            <div style={S.kpiGrid}>
+            <div className="bk-kpis" style={S.kpiGrid}>
               <Kpi label={t({ en: "Transactions", ar: "المعاملات" })} value={stats.count}
                 color={C.blue} delta={deltaPct(stats.count, prev.count)}
                 hint={t({ en: `${stats.butchers} butchers`, ar: `${stats.butchers} جزار` })} />
@@ -370,7 +373,7 @@ export default function ButcherSummary() {
 
             {/* ══ حسب التاريخ ══ */}
             <Card icon="📆" title={t({ en: "By date", ar: "حسب التاريخ" })}>
-              <div style={S.tableWrap}>
+              <div className="bk-tablewrap" style={S.tableWrap}>
                 <table style={S.table}>
                   <thead>
                     <tr>
@@ -421,7 +424,7 @@ export default function ButcherSummary() {
                 ar: "الانحراف فوق ±١٠٪ بيستاهل مراجعة مواصفة التقطيع أو طريقة العمل.",
               })}
             >
-              <div style={S.tableWrap}>
+              <div className="bk-tablewrap" style={S.tableWrap}>
                 <table style={S.table}>
                   <thead>
                     <tr>
@@ -440,6 +443,9 @@ export default function ButcherSummary() {
                         <td style={S.td}>
                           <b>{p.name}</b>{" "}
                           {p.isWaste && <Chip tone="amber">{t({ en: "waste", ar: "هدر" })}</Chip>}
+                          {p.nameAlt && (
+                            <div className="bk-lbl" style={{ color: C.muted }}>{p.nameAlt}</div>
+                          )}
                         </td>
                         <td style={{ ...S.td, color: C.muted, fontWeight: 800 }}>{p.sku || "—"}</td>
                         <td style={{ ...S.td, ...S.tdNum }}>{p.n}</td>
@@ -468,7 +474,7 @@ export default function ButcherSummary() {
               { icon: "🏬", title: t({ en: "By butchery", ar: "حسب الملحمة" }), data: byBranch },
             ].map((sec) => (
               <Card key={sec.title} icon={sec.icon} title={sec.title}>
-                <div style={S.tableWrap}>
+                <div className="bk-tablewrap" style={S.tableWrap}>
                   <table style={S.table}>
                     <thead>
                       <tr>
@@ -513,7 +519,7 @@ export default function ButcherSummary() {
                 ar: "الثبات بيقارن تشتّت تصافي كل جزار — كل ما قلّ التشتّت كان الأداء أثبت.",
               })}
             >
-              <div style={S.tableWrap}>
+              <div className="bk-tablewrap" style={S.tableWrap}>
                 <table style={S.table}>
                   <thead>
                     <tr>
@@ -562,7 +568,7 @@ export default function ButcherSummary() {
                   ✅ {t({ en: "All records are clean.", ar: "كل السجلات سليمة." })}
                 </EmptyBox>
               ) : (
-                <div style={S.tableWrap}>
+                <div className="bk-tablewrap" style={S.tableWrap}>
                   <table style={S.table}>
                     <thead>
                       <tr>

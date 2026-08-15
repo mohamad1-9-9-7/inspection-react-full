@@ -32,6 +32,14 @@ const CARDS = [
     grad: "linear-gradient(135deg,#dc2626,#991b1b)",
   },
   {
+    id: "butcher.mywork",
+    to: "/butcher/my-work",
+    icon: "👤",
+    ar: "شغلي",
+    en: "My Work",
+    grad: "linear-gradient(135deg,#0f766e,#115e59)",
+  },
+  {
     id: "butcher.view",
     to: "/butcher/view",
     icon: "📋",
