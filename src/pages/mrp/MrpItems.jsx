@@ -1,33 +1,38 @@
 // src/pages/mrp/MrpItems.jsx
 //
-// 1️⃣ شاشة إدارة المكونات والمواد الخام.
-// Item / component management: SKU, UoM, cost, supplier, reorder level, stock.
+// 1️⃣ سجل الأصناف والمواد — ماستر خفيف لبناء قوائم التفكيك/التقطيع (BOM).
+// Lightweight item master: unique code · names · display name · role · UoM · category.
 //
-// كل صنف: كود · اسم · وحدة قياس · تكلفة · مورد افتراضي · حد إعادة الطلب
-// · رصيد افتتاحي، مع الرصيد الحالي محسوباً من الحركات وأوامر التصنيع.
+// كل صنف: كود فريد (ماستر) · اسم عربي/إنجليزي · اسم معروض (كود+اسم+وحدة)
+// · دور داخل الـBOM (خام/مكوّن/منتج نهائي/هدر) · وحدة قياس · فئة.
+// لا تكلفة ولا رصيد افتتاحي — هيدا سجل تعريفي فقط.
+//
+// 💾 الحفظ مستقل لكل عملية: ما في شريط حفظ عائم. أي إضافة أو تعديل أو حذف
+// بينحفظ على السيرفر لحاله لحظة ما تضغط الزر، والصنف الجديد ما بينضاف
+// للقائمة قبل ما تضغط «حفظ» بالنموذج.
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
-  MOVE_TYPE, WO_TYPE, ITEM_TYPES, activeOnly, bomForProduct, freshId, itemById,
-  money, nameOf, num, onHand, saveConfig, saveRecord, supplierById, todayIso,
-  unitCost, useMrpConfig, useRecords, whereUsed,
+  ITEM_TYPES, activeOnly, categoryLabel, disassemblyForInput, displayNameOf,
+  freshId, hasRole, mutateConfig, nameOf, rolesOf, useMrpConfig, usageCount,
 } from "./mrpApi";
 import {
-  Badge, Card, EmptyBox, Field, Kpi, Modal, MrpNoAccess, MrpShell, NumInput, S,
-  SaveDock, SearchBox, Select, Switch, TextInput, UomSelect, canEditMrp, canOpenMrp,
+  Badge, Card, EmptyBox, Field, Kpi, Modal, MrpNoAccess, MrpShell, S,
+  SearchBox, Select, Switch, TextInput, Toast, UomSelect, canEditMrp, canOpenMrp,
 } from "./mrpUi";
 import { useSettingsLang } from "../settings/_shared/settingsI18n";
 
 const PAGE = "mrp.items";
 
-/* قائمة أصناف الشركة (items.json) — لتعبئة الكود والاسم بضغطة */
+/* قائمة المنتجات — مصدرها ملف Product.xlsx بعد تحويله لـ mrp_products.json.
+   الشكل: { item_code, description(اسم نظيف), uom, category }. */
 let catalogCache = null;
 function useCatalog() {
   const [items, setItems] = useState(catalogCache || []);
   React.useEffect(() => {
     if (catalogCache) return;
     const pub = process.env.PUBLIC_URL || "";
-    fetch(`${pub}/data/items.json`, { cache: "force-cache" })
+    fetch(`${pub}/data/mrp_products.json`, { cache: "force-cache" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("no catalog"))))
       .then((d) => { catalogCache = Array.isArray(d) ? d : []; setItems(catalogCache); })
       .catch(() => { catalogCache = []; });
@@ -35,7 +40,7 @@ function useCatalog() {
   return items;
 }
 
-/* أوصاف الكتالوج تنتهي عادةً بـ "- KG" / "- BOX" — نفصل الوحدة عن الاسم. */
+/* توحيد الوحدات — لو انكتبت بصيغة مختلفة بالملف. */
 const UOM_HINTS = {
   KG: "KG", KGS: "KG", G: "G", GM: "G", GRAM: "G",
   PCS: "PCS", PC: "PCS", PIECE: "PCS", NOS: "PCS", NO: "PCS",
@@ -43,205 +48,378 @@ const UOM_HINTS = {
   L: "L", LTR: "L", LITER: "L", LITRE: "L",
   M: "M", MTR: "M", METER: "M", METRE: "M",
 };
+const normUom = (v) =>
+  UOM_HINTS[String(v || "").trim().toUpperCase()] || String(v || "").trim().toUpperCase() || "KG";
 
-/** كود + اسم نظيف + وحدة مُخمّنة من سطر الكتالوج. */
+/** كود + اسم نظيف + وحدة + فئة من سطر الملف (مع رجوع لتخمين الوحدة من آخر "- KG"). */
 function parseCatalog(row) {
-  const raw = String(row?.description || "").trim();
   const code = String(row?.item_code || "").trim();
-  let name = raw;
-  let uom = "KG";
-  const m = raw.match(/^(.*)\s-\s*([A-Za-z]*)\s*$/); // آخر "- وحدة"
-  if (m) {
-    name = m[1].trim();
-    const hint = m[2].trim().toUpperCase();
-    if (UOM_HINTS[hint]) uom = UOM_HINTS[hint];
+  let name = String(row?.description || "").trim();
+  let uom = row?.uom ? normUom(row.uom) : "";
+  if (!uom) {
+    const m = name.match(/^(.*)\s-\s*([A-Za-z]*)\s*$/); // آخر "- وحدة"
+    if (m && UOM_HINTS[m[2].trim().toUpperCase()]) {
+      name = m[1].trim();
+      uom = UOM_HINTS[m[2].trim().toUpperCase()];
+    }
   }
-  return { code, name: name || raw || code, uom };
+  return { code, name: name || code, uom: uom || "KG", category: String(row?.category || "").trim() };
 }
+
+/** مفتاح مقارنة الكود — بلا مسافات وبأحرف كبيرة كي يكون الكود ماستر فريد. */
+const skuKey = (v) => String(v || "").trim().toUpperCase();
+
+const blankItem = () => ({
+  id: freshId("item"), sku: "", ar: "", en: "", uom: "KG",
+  type: "raw", roles: ["raw"], categoryId: "", notes: "", active: true,
+});
+
+/** يبقّي `type` = أول دور، ويضمن دوراً واحداً على الأقل. */
+const normalizeRoles = (roles) => {
+  const clean = (Array.isArray(roles) ? roles : []).filter(Boolean);
+  const list = clean.length ? clean : ["raw"];
+  return { roles: list, type: list[0] };
+};
 
 export default function MrpItems() {
   const { t, isAr } = useSettingsLang();
   const { cfg, setCfg, loading } = useMrpConfig();
-  const { rows: workOrders } = useRecords(WO_TYPE);
-  const { rows: moves, setRows: setMoves } = useRecords(MOVE_TYPE);
   const catalog = useCatalog();
 
-  const [draft, setDraft] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState(null);        // { text, bad }
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const [lowOnly, setLowOnly] = useState(false);
-  const [editId, setEditId] = useState("");       // صنف مفتوح بالنموذج
-  const [moveFor, setMoveFor] = useState(null);   // حركة مخزون لصنف
-  const [importing, setImporting] = useState(false); // نافذة استيراد الكتالوج
+  const [catFilter, setCatFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");     // "" | "active" | "off"
+  const [srcFilter, setSrcFilter] = useState("");           // "" | "file" | "manual"
+  const [sort, setSort] = useState({ key: "sku", dir: "asc" });
+  const [itemForm, setItemForm] = useState(null);  // { mode: "new"|"edit", data }
+  const [catForm, setCatForm] = useState(null);    // { mode: "new"|"edit", data }
+  const [importing, setImporting] = useState(false);
 
   const canEdit = canEditMrp();
-  const model = draft || cfg;
-  const dirty = !!draft;
+  const toastTimer = useRef(null);
 
-  const edit = (fn) => {
-    setMsg("");
-    setDraft((prev) => {
-      const next = JSON.parse(JSON.stringify(prev || cfg));
-      if (!Array.isArray(next.items)) next.items = [];
-      if (!Array.isArray(next.suppliers)) next.suppliers = [];
-      fn(next);
-      return next;
-    });
+  const flash = (text, bad) => {
+    setToast({ text, bad: !!bad });
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3600);
   };
 
-  const patchItem = (id, p) =>
-    edit((n) => {
-      const it = n.items.find((x) => x.id === id);
-      if (it) Object.assign(it, p);
-    });
-
-  const addItem = () => {
-    const id = freshId("item");
-    edit((n) => {
-      n.items.push({
-        id, sku: "", ar: "", en: "", uom: "KG", type: "raw",
-        cost: "", supplierId: "", reorderLevel: "", openingQty: "",
-        category: "", notes: "", active: true,
-      });
-    });
-    setEditId(id);
-  };
-
-  const removeItem = (id) => {
-    const used = whereUsed(model, id);
-    const label = itemById(model, id);
-    if (!window.confirm(
-      `${t({
-        en: `Delete "${nameOf(label, isAr) || id}"?`,
-        ar: `حذف «${nameOf(label, isAr) || id}»؟`,
-      })}${used.length ? `\n${t({ en: "Used in", ar: "مستعمل في" })}: ${used.length} BOM` : ""}`
-    )) return;
-    edit((n) => { n.items = n.items.filter((x) => x.id !== id); });
-    setEditId("");
-  };
-
-  const addSupplier = () => {
-    const id = freshId("sup");
-    edit((n) => { n.suppliers.push({ id, ar: "", en: "", contact: "", phone: "", active: true }); });
-    return id;
-  };
-
-  /** استيراد أصناف من كتالوج الشركة كنسخة قابلة للتعديل — بلا تكرار الكود. */
-  const importCatalog = (catalogRows, defType = "raw") => {
-    let added = 0;
-    edit((n) => {
-      const have = new Set(
-        (n.items || []).map((i) => String(i.sku || "").trim()).filter(Boolean)
-      );
-      catalogRows.forEach((row) => {
-        const { code, name, uom } = parseCatalog(row);
-        if (!code || have.has(code)) return;
-        have.add(code);
-        added += 1;
-        n.items.push({
-          id: freshId("item"),
-          sku: code, ar: "", en: name, uom, type: defType,
-          cost: "", supplierId: "", reorderLevel: "", openingQty: "",
-          category: "", notes: "", active: true,
-          catalogCode: code, source: "catalog", // الربط الذكي بالكتالوج
-        });
-      });
-    });
-    setMsg(
-      added
-        ? t({ en: `Imported ${added} item(s) — press Save.`, ar: `تم استيراد ${added} صنف — اضغط حفظ.` })
-        : t({ en: "Everything is already imported.", ar: "كل شي مستورد أصلاً." })
-    );
-    setImporting(false);
-  };
-
-  /** إعادة مزامنة أسماء الأصناف المرتبطة من الكتالوج (بلا دهس تعديل يدوي على العربي). */
-  const resyncNames = () => {
-    const byCode = new Map(catalog.map((r) => [String(r.item_code), r]));
-    let n = 0;
-    edit((next) => {
-      (next.items || []).forEach((it) => {
-        const row = byCode.get(String(it.catalogCode || it.sku || ""));
-        if (!row) return;
-        const { name, uom } = parseCatalog(row);
-        if (name && name !== it.en) { it.en = name; n += 1; }
-        if (!it.uom) it.uom = uom;
-      });
-    });
-    setMsg(t({ en: `Refreshed ${n} name(s) from the catalog.`, ar: `تم تحديث ${n} اسم من الكتالوج.` }));
-  };
-
-  const save = async () => {
-    if (!draft || saving) return;
-    setSaving(true);
+  /**
+   * تعديل + حفظ فوري مستقل — اقرأ آخر نسخة من السيرفر ثم عدّل ثم احفظ،
+   * حتى ما يندهس صنف أضافه جهاز تاني بنفس الوقت.
+   */
+  const commit = async (fn, okMsg) => {
+    if (busy) return false;
+    setBusy(true);
     try {
-      const saved = await saveConfig(draft);
+      const saved = await mutateConfig((next) => {
+        if (!Array.isArray(next.items)) next.items = [];
+        if (!Array.isArray(next.categories)) next.categories = [];
+        fn(next);
+      });
       setCfg(saved);
-      setDraft(null);
-      setMsg(t({ en: "Saved.", ar: "تم الحفظ." }));
+      if (okMsg) flash(okMsg);
+      return true;
     } catch (e) {
-      setMsg(`${t({ en: "Save failed", ar: "فشل الحفظ" })}: ${e?.message || e}`);
+      flash(e?.userMessage || `${t({ en: "Save failed", ar: "فشل الحفظ" })}: ${e?.message || e}`, true);
+      return false;
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   };
 
-  /* حركة مخزون يدوية — سجل مستقل على السيرفر */
-  const postMove = async (itemId, qty, reason, note) => {
-    const rec = {
-      // reportDate = مفتاح فريد (فهرس السيرفر الفريد)، والتاريخ الحقيقي بـ date
-      reportDate: freshId("mv"),
-      date: todayIso(),
-      itemId, qty: num(qty), reason, note,
-      at: new Date().toISOString(),
-    };
-    const saved = await saveRecord(MOVE_TYPE, rec);
-    setMoves((prev) => [...prev, saved]);
+  /* ── الأصناف ── */
+  const openNewItem = () => setItemForm({ mode: "new", data: blankItem() });
+  const openItem = (it) => setItemForm({ mode: "edit", data: { ...it } });
+
+  const saveItemForm = async () => {
+    const d = itemForm.data;
+    const code = String(d.sku || "").trim();
+    const isNew = itemForm.mode === "new";
+    const { roles, type } = normalizeRoles(d.roles);
+
+    // كل الخانات إلزامية عند الإضافة
+    if (isNew) {
+      const missing = [];
+      if (!code) missing.push(t({ en: "code", ar: "الكود" }));
+      if (!String(d.ar || "").trim()) missing.push(t({ en: "Arabic name", ar: "الاسم بالعربي" }));
+      if (!String(d.en || "").trim()) missing.push(t({ en: "English name", ar: "الاسم بالإنجليزي" }));
+      if (!(d.roles || []).filter(Boolean).length) missing.push(t({ en: "role", ar: "الدور" }));
+      if (!String(d.uom || "").trim()) missing.push(t({ en: "UoM", ar: "الوحدة" }));
+      if (!d.categoryId) missing.push(t({ en: "category", ar: "الفئة" }));
+      if (missing.length) {
+        flash(`${t({ en: "Required", ar: "إلزامي" })}: ${missing.join("، ")}`, true);
+        return;
+      }
+    } else if (!code) {
+      flash(t({ en: "A master code is required.", ar: "لازم كود ماستر." }), true);
+      return;
+    }
+
+    const clean = { ...d, sku: code, roles, type };
+    const ok = await commit(
+      (n) => {
+        // فحص التكرار على أحدث نسخة من السيرفر (مش النسخة القديمة بالذاكرة)
+        const clash = (n.items || []).some((i) => i.id !== clean.id && skuKey(i.sku) === skuKey(code));
+        if (clash) {
+          const err = new Error("DUPLICATE_SKU");
+          err.userMessage = t({
+            en: `Code ${code} already exists (maybe added on another device) — the code is a master key and cannot repeat.`,
+            ar: `الكود ${code} موجود مسبقاً (يمكن أُضيف من جهاز تاني) — الكود مفتاح ماستر وما بيتكرّر.`,
+          });
+          throw err;
+        }
+        if (isNew) n.items.push(clean);
+        else {
+          const it = n.items.find((x) => x.id === clean.id);
+          if (it) Object.assign(it, clean);
+        }
+      },
+      isNew
+        ? t({ en: `Item ${code} added.`, ar: `تمت إضافة الصنف ${code}.` })
+        : t({ en: `Item ${code} saved.`, ar: `تم حفظ الصنف ${code}.` })
+    );
+    if (ok) setItemForm(null);
   };
 
-  const rows = useMemo(() => {
+  const removeItem = async (it) => {
+    const used = usageCount(cfg, it.id);
+    if (!window.confirm(
+      `${t({
+        en: `Delete "${nameOf(it, isAr) || it.sku || it.id}"? This is saved immediately.`,
+        ar: `حذف «${nameOf(it, isAr) || it.sku || it.id}»؟ الحذف بينحفظ فوراً.`,
+      })}${used ? `\n${t({ en: "Used in", ar: "مستعمل في" })}: ${used} BOM` : ""}`
+    )) return;
+    const ok = await commit(
+      (n) => { n.items = n.items.filter((x) => x.id !== it.id); },
+      t({ en: "Item deleted.", ar: "تم حذف الصنف." })
+    );
+    if (ok) setItemForm(null);
+  };
+
+  /** حذف شامل — عملية فورية لا رجعة فيها، لذلك بتطلب تأكيد مكتوب. */
+  const removeAll = async () => {
+    const count = (cfg.items || []).length;
+    if (!count) return;
+    const typed = window.prompt(t({
+      en: `Delete ALL ${count} items permanently?\nBOM lines that point at them will be left orphaned.\n\nType DELETE to confirm:`,
+      ar: `حذف كل الأصناف (${count}) نهائياً؟\nأسطر قوائم المواد المرتبطة فيهم رح تصير معلّقة.\n\nاكتب DELETE للتأكيد:`,
+    }));
+    if (String(typed || "").trim().toUpperCase() !== "DELETE") return;
+    await commit(
+      (n) => { n.items = []; },
+      t({ en: `All ${count} items deleted.`, ar: `تم حذف كل الأصناف (${count}).` })
+    );
+    setItemForm(null);
+  };
+
+  /* ── الفئات ── */
+  const openNewCat = () =>
+    setCatForm({ mode: "new", data: { id: freshId("cat"), ar: "", en: "", active: true } });
+  const openCat = (c) => setCatForm({ mode: "edit", data: { ...c } });
+
+  const saveCatForm = async () => {
+    const d = catForm.data;
+    if (!String(d.en || "").trim() && !String(d.ar || "").trim()) {
+      flash(t({ en: "Enter a category name.", ar: "أدخل اسم الفئة." }), true);
+      return;
+    }
+    const isNew = catForm.mode === "new";
+    const ok = await commit(
+      (n) => {
+        if (isNew) n.categories.push(d);
+        else {
+          const c = n.categories.find((x) => x.id === d.id);
+          if (c) Object.assign(c, d);
+        }
+      },
+      isNew
+        ? t({ en: "Category added.", ar: "تمت إضافة الفئة." })
+        : t({ en: "Category saved.", ar: "تم حفظ الفئة." })
+    );
+    if (ok) setCatForm(null);
+  };
+
+  const removeCat = async (c) => {
+    const used = (cfg.items || []).filter((i) => i.categoryId === c.id).length;
+    if (!window.confirm(t({
+      en: `Delete category "${nameOf(c, isAr) || c.id}"?${used ? `\n${used} item(s) will be left with no category.` : ""}`,
+      ar: `حذف الفئة «${nameOf(c, isAr) || c.id}»؟${used ? `\n${used} صنف رح يضلّوا بلا فئة.` : ""}`,
+    }))) return;
+    const ok = await commit(
+      (n) => {
+        n.categories = n.categories.filter((x) => x.id !== c.id);
+        (n.items || []).forEach((it) => { if (it.categoryId === c.id) it.categoryId = ""; });
+      },
+      t({ en: "Category deleted.", ar: "تم حذف الفئة." })
+    );
+    if (ok) setCatForm(null);
+  };
+
+  /** استيراد من قائمة المنتجات — بلا تكرار كود، مع إنشاء/ربط الفئة من عمود Type. */
+  const importCatalog = async (catalogRows, defType = "raw") => {
+    let added = 0;
+    const ok = await commit((n) => {
+      const have = new Set((n.items || []).map((i) => skuKey(i.sku)).filter(Boolean));
+      const catKey = (s) => String(s || "").trim().toLowerCase();
+      const catIndex = new Map();
+      n.categories.forEach((c) => {
+        if (c.en) catIndex.set(catKey(c.en), c.id);
+        if (c.ar) catIndex.set(catKey(c.ar), c.id);
+      });
+      const ensureCategory = (label) => {
+        const k = catKey(label);
+        if (!k) return "";
+        if (catIndex.has(k)) return catIndex.get(k);
+        const id = freshId("cat");
+        n.categories.push({ id, ar: "", en: label, active: true });
+        catIndex.set(k, id);
+        return id;
+      };
+      catalogRows.forEach((row) => {
+        const { code, name, uom, category } = parseCatalog(row);
+        if (!code || have.has(skuKey(code))) return;
+        have.add(skuKey(code));
+        added += 1;
+        n.items.push({
+          ...blankItem(),
+          id: freshId("item"),
+          sku: code, en: name, uom, type: defType, roles: [defType],
+          categoryId: ensureCategory(category),
+          catalogCode: code, source: "catalog", // الربط الذكي بالملف
+        });
+      });
+    }, null);
+
+    if (ok) {
+      flash(added
+        ? t({ en: `Imported & saved ${added} item(s).`, ar: `تم استيراد وحفظ ${added} صنف.` })
+        : t({ en: "Everything is already imported.", ar: "كل شي مستورد أصلاً." }));
+      setImporting(false);
+    }
+  };
+
+  /** إعادة مزامنة الأسماء والوحدات من الملف (بلا دهس الاسم العربي اليدوي). */
+  const resyncNames = async () => {
+    const byCode = new Map(catalog.map((r) => [skuKey(r.item_code), r]));
+    let n = 0;
+    await commit((next) => {
+      (next.items || []).forEach((it) => {
+        const row = byCode.get(skuKey(it.catalogCode || it.sku));
+        if (!row) return;
+        const { name, uom } = parseCatalog(row);
+        if (name && name !== it.en) { it.en = name; n += 1; }
+        if (uom && uom !== it.uom) it.uom = uom;
+      });
+    }, null);
+    flash(t({ en: `Refreshed ${n} name(s) from the product list.`, ar: `تم تحديث ${n} اسم من قائمة المنتجات.` }));
+  };
+
+  /* ── صحة الأكواد (بيانات قديمة قد تحوي تكراراً) ── */
+  const validation = useMemo(() => {
+    const byKey = new Map();
+    const blank = new Set();
+    (cfg.items || []).forEach((it) => {
+      const k = skuKey(it.sku);
+      if (!k) { blank.add(it.id); return; }
+      byKey.set(k, [...(byKey.get(k) || []), it.id]);
+    });
+    const dup = new Set();
+    byKey.forEach((ids) => { if (ids.length > 1) ids.forEach((id) => dup.add(id)); });
+    return { dup, blank };
+  }, [cfg.items]);
+
+  const catalogCodes = useMemo(
+    () => new Set(catalog.map((r) => skuKey(r.item_code))),
+    [catalog]
+  );
+
+  const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return (model.items || [])
-      .map((it) => {
-        const qty = onHand(model, it.id, workOrders, moves);
-        const reorder = num(it.reorderLevel);
-        return {
-          it,
-          qty,
-          low: reorder > 0 && qty <= reorder,
-          value: qty * unitCost(model, it.id),
-          usedIn: whereUsed(model, it.id).length,
-          hasBom: !!bomForProduct(model, it.id),
-        };
-      })
+    return (cfg.items || [])
+      .map((it) => ({
+        it,
+        cat: categoryLabel(cfg, it, isAr),
+        display: displayNameOf(it),
+        usedIn: usageCount(cfg, it.id),
+        hasBom: !!disassemblyForInput(cfg, it.id),
+        fromFile: catalogCodes.has(skuKey(it.sku)),
+        dup: validation.dup.has(it.id),
+        noCode: validation.blank.has(it.id),
+      }))
       .filter((r) => {
-        if (typeFilter && (r.it.type || "raw") !== typeFilter) return false;
-        if (lowOnly && !r.low) return false;
+        if (typeFilter && !hasRole(r.it, typeFilter)) return false;
+        if (catFilter && (r.it.categoryId || "") !== catFilter) return false;
+        if (statusFilter === "active" && r.it.active === false) return false;
+        if (statusFilter === "off" && r.it.active !== false) return false;
+        if (srcFilter === "file" && !r.fromFile) return false;
+        if (srcFilter === "manual" && r.fromFile) return false;
         if (!needle) return true;
-        return [r.it.sku, r.it.ar, r.it.en, r.it.category]
+        return [r.it.sku, r.it.ar, r.it.en, r.cat, r.display]
           .some((v) => String(v || "").toLowerCase().includes(needle));
       });
-  }, [model, q, typeFilter, lowOnly, workOrders, moves]);
+  }, [cfg, q, typeFilter, catFilter, statusFilter, srcFilter, isAr, validation, catalogCodes]);
+
+  const rows = useMemo(() => {
+    if (!sort.key) return filtered;
+    const dir = sort.dir === "desc" ? -1 : 1;
+    const val = (r) => {
+      switch (sort.key) {
+        case "sku": return r.it.sku || "";
+        case "name": return nameOf(r.it, isAr) || r.it.id || "";
+        case "role": return nameOf(ITEM_TYPES.find((x) => x.id === rolesOf(r.it)[0]) || {}, isAr) || "";
+        case "uom": return r.it.uom || "";
+        case "cat": return r.cat || "";
+        case "used": return r.usedIn || 0;
+        case "status": return r.it.active === false ? 1 : 0;
+        default: return "";
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const va = val(a); const vb = val(b);
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: "base" }) * dir;
+    });
+  }, [filtered, sort, isAr]);
+
+  const toggleSort = (key) =>
+    setSort((s) => {
+      if (s.key !== key) return { key, dir: "asc" };
+      if (s.dir === "asc") return { key, dir: "desc" };
+      return { key: "", dir: "asc" };                 // النقرة الثالثة تلغي الفرز
+    });
+
+  const anyFilter = q || typeFilter || catFilter || statusFilter || srcFilter;
+  const resetView = () => {
+    setQ(""); setTypeFilter(""); setCatFilter(""); setStatusFilter(""); setSrcFilter("");
+    setSort({ key: "sku", dir: "asc" });
+  };
 
   const totals = useMemo(() => {
-    const haveCodes = new Set(
-      (model.items || []).map((i) => String(i.sku || "").trim()).filter(Boolean)
-    );
-    const notImported = catalog.filter((r) => !haveCodes.has(String(r.item_code))).length;
+    const items = cfg.items || [];
+    const haveCodes = new Set(items.map((i) => skuKey(i.sku)).filter(Boolean));
+    const catalogCodes = new Set(catalog.map((r) => skuKey(r.item_code)));
+    const notImported = catalog.filter((r) => !haveCodes.has(skuKey(r.item_code))).length;
+    const off = items.filter((i) => i.active === false).length;
+    // من الملف = كودُه موجود بقائمة المنتجات ؛ يدوي = مضاف بإيدك (مثل 22160)
+    const fromFile = items.filter((i) => catalogCodes.has(skuKey(i.sku))).length;
     return {
-      count: (model.items || []).length,
-      low: rows.filter((r) => r.low).length,
-      value: rows.reduce((s, r) => s + r.value, 0),
+      count: items.length,
+      off,
+      active: items.length - off,
+      categories: (cfg.categories || []).length,
       catalog: catalog.length,
+      fromFile,
+      manual: items.length - fromFile,
       notImported,
+      issues: validation.dup.size + validation.blank.size,
     };
-  }, [model.items, rows, catalog]);
+  }, [cfg.items, cfg.categories, catalog, validation]);
 
   if (!canOpenMrp(PAGE)) return <MrpNoAccess page={PAGE} />;
-
-  const current = editId ? (model.items || []).find((x) => x.id === editId) : null;
 
   return (
     <MrpShell
@@ -249,45 +427,62 @@ export default function MrpItems() {
       icon="📦"
       title={t({ en: "Items & materials", ar: "الأصناف والمواد" })}
       sub={t({
-        en: "Every component that goes into manufacturing",
-        ar: "كل مادة أو مكوّن بيدخل بالتصنيع",
+        en: "Master item list — unique codes for building BOMs",
+        ar: "سجل الأصناف — أكواد فريدة لبناء قوائم المواد",
       })}
       actions={
         canEdit && (
           <>
+            {totals.count > 0 && (
+              <button type="button" style={{ ...S.btn, ...S.btnDanger, ...(busy ? S.btnOff : null) }}
+                disabled={busy} onClick={removeAll}>
+                🗑 {t({ en: "Delete all", ar: "حذف الكل" })}
+              </button>
+            )}
             <button type="button" style={{ ...S.btn, ...S.btnBlue }} onClick={() => setImporting(true)}>
               📥 {t({ en: "Import from product list", ar: "استيراد من قائمة المنتجات" })}
             </button>
-            <button type="button" style={{ ...S.btn, ...S.btnPrimary }} onClick={addItem}>
+            <button type="button" style={{ ...S.btn, ...S.btnPrimary }} onClick={openNewItem}>
               ＋ {t({ en: "New item", ar: "صنف جديد" })}
             </button>
           </>
         )
       }
     >
-      {msg && <div style={msg.includes("✔") || msg.includes("Saved") || msg.includes("تم") ? S.ok : S.note}>{msg}</div>}
+      <Toast toast={toast} busy={busy} t={t} />
 
       <div style={S.kpiRow}>
-        <Kpi label={t({ en: "Items", ar: "الأصناف" })} value={totals.count} />
         <Kpi
-          label={t({ en: "In product list", ar: "بقائمة المنتجات" })}
-          value={totals.catalog}
-          foot={
+          label={t({ en: "Items", ar: "الأصناف" })}
+          value={totals.count}
+          foot={totals.off
+            ? t({
+                en: `${totals.active} active · ${totals.off} inactive`,
+                ar: `${totals.active} مفعّل · ${totals.off} معطّل`,
+              })
+            : t({ en: "all active", ar: "الكل مفعّل" })}
+        />
+        <Kpi label={t({ en: "Categories", ar: "الفئات" })} value={totals.categories} />
+        <Kpi
+          label={t({ en: "From product file", ar: "من ملف المنتجات" })}
+          value={`${totals.fromFile} / ${totals.catalog}`}
+          foot={[
+            totals.manual
+              ? t({ en: `${totals.manual} added manually`, ar: `${totals.manual} مضاف يدوياً` })
+              : "",
             totals.notImported
               ? t({ en: `${totals.notImported} not imported`, ar: `${totals.notImported} غير مستورد` })
-              : t({ en: "all imported", ar: "الكل مستورد" })
-          }
+              : "",
+          ].filter(Boolean).join(" · ") || t({ en: "all imported", ar: "الكل مستورد" })}
           color={totals.notImported ? "#b45309" : "#047857"}
         />
         <Kpi
-          label={t({ en: "Below reorder level", ar: "تحت حد الطلب" })}
-          value={totals.low}
-          color={totals.low ? "#a12626" : "#047857"}
-        />
-        <Kpi
-          label={t({ en: "Stock value", ar: "قيمة المخزون" })}
-          value={money(totals.value, 0)}
-          foot="AED"
+          label={t({ en: "Code issues", ar: "مشاكل الأكواد" })}
+          value={totals.issues}
+          foot={totals.issues
+            ? t({ en: "duplicate / missing", ar: "مكرّر / ناقص" })
+            : t({ en: "all unique", ar: "الكل فريد" })}
+          color={totals.issues ? "#a12626" : "#047857"}
         />
       </div>
 
@@ -295,32 +490,69 @@ export default function MrpItems() {
         icon="📦"
         title={t({ en: "Item master", ar: "سجل الأصناف" })}
         sub={t({
-          en: "Cost and unit of measure feed every BOM automatically.",
-          ar: "التكلفة ووحدة القياس بتغذّي كل قوائم المواد تلقائياً.",
+          en: "Each code is a master key — it cannot repeat. Every change is saved on its own.",
+          ar: "كل كود مفتاح ماستر — ما بيتكرّر. كل تعديل بينحفظ لحاله.",
         })}
         right={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <SearchBox
               value={q}
               onChange={setQ}
-              placeholder={t({ en: "Search SKU or name…", ar: "بحث بالكود أو الاسم…" })}
+              placeholder={t({ en: "Search code or name…", ar: "بحث بالكود أو الاسم…" })}
             />
             <select
-              style={{ ...S.input, width: 170 }}
+              style={{ ...S.input, width: 165 }}
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
             >
-              <option value="">{t({ en: "All types", ar: "كل الأنواع" })}</option>
+              <option value="">{t({ en: "All roles", ar: "كل الأدوار" })}</option>
               {ITEM_TYPES.map((x) => (
                 <option key={x.id} value={x.id}>{nameOf(x, isAr)}</option>
               ))}
             </select>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}>
-              <Switch checked={lowOnly} onChange={setLowOnly} />
-              {t({ en: "Low stock only", ar: "الناقص فقط" })}
-            </label>
-            {canEdit && (model.items || []).some((i) => i.catalogCode) && (
-              <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={resyncNames}
+            <select
+              style={{ ...S.input, width: 165 }}
+              value={catFilter}
+              onChange={(e) => setCatFilter(e.target.value)}
+            >
+              <option value="">{t({ en: "All categories", ar: "كل الفئات" })}</option>
+              {activeOnly(cfg.categories).map((c) => (
+                <option key={c.id} value={c.id}>{nameOf(c, isAr) || c.id}</option>
+              ))}
+            </select>
+            <select
+              style={{
+                ...S.input, width: 165,
+                ...(statusFilter ? { borderColor: "#1f6fd0", background: "#f7fbff" } : null),
+              }}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">{t({ en: "Active & inactive", ar: "المفعّل والمعطّل" })}</option>
+              <option value="active">{t({ en: "✓ Active only", ar: "✓ المفعّل فقط" })}</option>
+              <option value="off">{t({ en: "⛔ Inactive only", ar: "⛔ المعطّل فقط" })}</option>
+            </select>
+            <select
+              style={{
+                ...S.input, width: 165,
+                ...(srcFilter ? { borderColor: "#1f6fd0", background: "#f7fbff" } : null),
+              }}
+              value={srcFilter}
+              onChange={(e) => setSrcFilter(e.target.value)}
+            >
+              <option value="">{t({ en: "All sources", ar: "كل المصادر" })}</option>
+              <option value="file">{t({ en: "🔗 From product file", ar: "🔗 من ملف المنتجات" })}</option>
+              <option value="manual">{t({ en: "✎ Manual only", ar: "✎ اليدوي فقط" })}</option>
+            </select>
+            {anyFilter && (
+              <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={resetView}
+                title={t({ en: "Clear filters & sort", ar: "مسح الفلاتر والفرز" })}>
+                ✕ {t({ en: "Reset", ar: "مسح" })}
+              </button>
+            )}
+            {canEdit && (cfg.items || []).some((i) => i.catalogCode) && (
+              <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
+                disabled={busy} onClick={resyncNames}
                 title={t({ en: "Refresh linked names from the product list", ar: "تحديث أسماء المرتبطين من قائمة المنتجات" })}>
                 🔄 {t({ en: "Sync names", ar: "تحديث الأسماء" })}
               </button>
@@ -328,11 +560,19 @@ export default function MrpItems() {
           </div>
         }
       >
+        {anyFilter && (
+          <div style={{ ...S.hint, fontWeight: 800 }}>
+            {t({
+              en: `Showing ${rows.length} of ${totals.count} items`,
+              ar: `عرض ${rows.length} من ${totals.count} صنف`,
+            })}
+          </div>
+        )}
         {loading && !rows.length ? (
           <EmptyBox>{t({ en: "Loading…", ar: "جارٍ التحميل…" })}</EmptyBox>
         ) : rows.length === 0 ? (
           <EmptyBox>
-            {(model.items || []).length === 0 ? (
+            {totals.count === 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "center" }}>
                 <div>
                   {t({
@@ -355,70 +595,54 @@ export default function MrpItems() {
             <table style={S.table}>
               <thead>
                 <tr>
-                  <th style={S.th}>{t({ en: "SKU", ar: "الكود" })}</th>
-                  <th style={S.th}>{t({ en: "Item", ar: "الصنف" })}</th>
-                  <th style={S.th}>{t({ en: "Type", ar: "النوع" })}</th>
-                  <th style={S.th}>{t({ en: "UoM", ar: "الوحدة" })}</th>
-                  <th style={S.th}>{t({ en: "Unit cost", ar: "تكلفة الوحدة" })}</th>
-                  <th style={S.th}>{t({ en: "On hand", ar: "الرصيد" })}</th>
-                  <th style={S.th}>{t({ en: "Reorder", ar: "حد الطلب" })}</th>
-                  <th style={S.th}>{t({ en: "Supplier", ar: "المورّد" })}</th>
-                  <th style={S.th}>{t({ en: "Used in", ar: "مستعمل في" })}</th>
+                  <SortTh col="sku" label={t({ en: "Code", ar: "الكود" })} sort={sort} onSort={toggleSort} />
+                  <SortTh col="name" label={t({ en: "Item", ar: "الصنف" })} sort={sort} onSort={toggleSort} />
+                  <SortTh col="role" label={t({ en: "Role", ar: "الدور" })} sort={sort} onSort={toggleSort} />
+                  <SortTh col="uom" label={t({ en: "UoM", ar: "الوحدة" })} sort={sort} onSort={toggleSort} />
+                  <SortTh col="cat" label={t({ en: "Category", ar: "الفئة" })} sort={sort} onSort={toggleSort} />
+                  <SortTh col="used" label={t({ en: "Used in", ar: "مستعمل في" })} sort={sort} onSort={toggleSort} />
                   <th style={S.th}></th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ it, qty, low, usedIn, hasBom }) => (
-                  <tr key={it.id}>
-                    <td style={{ ...S.td, fontWeight: 900 }}>{it.sku || "—"}</td>
+                {rows.map(({ it, cat, display, usedIn, hasBom, dup, noCode }) => (
+                  <tr key={it.id} style={it.active === false ? { opacity: 0.6 } : null}>
+                    <td style={{ ...S.td, fontWeight: 900 }}>
+                      {it.sku || <span style={{ color: "#a12626" }}>—</span>}
+                      {dup && <div><Badge color="#a12626" bg="#fff1f1">⚠ {t({ en: "duplicate", ar: "مكرّر" })}</Badge></div>}
+                      {noCode && <div><Badge color="#a12626" bg="#fff1f1">⚠ {t({ en: "no code", ar: "بلا كود" })}</Badge></div>}
+                    </td>
                     <td style={{ ...S.td, ...S.tdStart }}>
                       <div style={{ fontWeight: 800, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                         {nameOf(it, isAr) || it.id}
                         {it.catalogCode && (
                           <Badge color="#1f6fd0" bg="#eef4fb">🔗 {t({ en: "linked", ar: "مرتبط" })}</Badge>
                         )}
-                        {it.active === false && <span style={{ color: "#a12626" }}> ⛔</span>}
+                        {it.active === false && (
+                          <Badge color="#a12626" bg="#fff1f1">⛔ {t({ en: "inactive", ar: "معطّل" })}</Badge>
+                        )}
                       </div>
-                      {it.category && <div style={S.hint}>{it.category}</div>}
+                      {/* الاسم بالطرف الآخر — كي يظهر العربي دائماً حتى بواجهة إنجليزية والعكس */}
+                      {(isAr ? it.en : it.ar) && (
+                        <div style={{ ...S.hint, fontWeight: 800, color: "#3c5a75", direction: isAr ? "ltr" : "rtl" }}>
+                          {isAr ? it.en : it.ar}
+                        </div>
+                      )}
+                      {display && <div style={{ ...S.hint, direction: "ltr" }}>{display}</div>}
                     </td>
                     <td style={S.td}>
-                      {nameOf(ITEM_TYPES.find((x) => x.id === (it.type || "raw")) || {}, isAr)}
+                      <RoleBadges item={it} isAr={isAr} />
                       {hasBom && (
-                        <div>
-                          <Badge color="#0f766e" bg="#e7f5f3">BOM</Badge>
-                        </div>
+                        <div><Badge color="#0f766e" bg="#e7f5f3">BOM</Badge></div>
                       )}
                     </td>
                     <td style={S.td}>{it.uom || "—"}</td>
-                    <td style={{ ...S.td, fontWeight: 800 }}>{money(unitCost(model, it.id))}</td>
-                    <td style={{
-                      ...S.td, fontWeight: 900,
-                      color: low ? "#a12626" : qty > 0 ? "#047857" : "#6b8299",
-                    }}>
-                      {money(qty, 2)}
-                    </td>
-                    <td style={S.td}>{it.reorderLevel === "" || it.reorderLevel == null ? "—" : money(it.reorderLevel, 2)}</td>
-                    <td style={S.td}>{nameOf(supplierById(model, it.supplierId) || {}, isAr) || "—"}</td>
+                    <td style={S.td}>{cat || "—"}</td>
                     <td style={S.td}>{usedIn || "—"}</td>
                     <td style={S.td}>
-                      <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          style={{ ...S.btn, ...S.btnSm }}
-                          onClick={() => setEditId(it.id)}
-                        >
-                          {canEdit ? t({ en: "Open", ar: "فتح" }) : t({ en: "View", ar: "عرض" })}
-                        </button>
-                        {canEdit && (
-                          <button
-                            type="button"
-                            style={{ ...S.btn, ...S.btnSm }}
-                            onClick={() => setMoveFor(it)}
-                          >
-                            ± {t({ en: "Stock", ar: "مخزون" })}
-                          </button>
-                        )}
-                      </div>
+                      <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={() => openItem(it)}>
+                        {canEdit ? `✎ ${t({ en: "Edit", ar: "تعديل" })}` : t({ en: "View", ar: "عرض" })}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -426,192 +650,320 @@ export default function MrpItems() {
             </table>
           </div>
         )}
-
-        <div style={S.note}>
-          {t({
-            en: "On hand = opening quantity + manual moves + finished work orders (production in, components out).",
-            ar: "الرصيد = الرصيد الافتتاحي + الحركات اليدوية + أوامر التصنيع المنتهية (إنتاج داخل، مكوّنات خارج).",
-          })}
-        </div>
       </Card>
 
-      {/* ── سجل الموردين ── */}
-      <SuppliersCard
-        t={t} isAr={isAr} model={model} canEdit={canEdit}
-        onAdd={addSupplier}
-        onPatch={(id, p) => edit((n) => {
-          const s = n.suppliers.find((x) => x.id === id);
-          if (s) Object.assign(s, p);
-        })}
-        onRemove={(id) => edit((n) => { n.suppliers = n.suppliers.filter((x) => x.id !== id); })}
+      {/* ── الفئات ── */}
+      <CategoriesCard
+        t={t} isAr={isAr} cfg={cfg} canEdit={canEdit} busy={busy}
+        onAdd={openNewCat} onEdit={openCat} onRemove={removeCat}
       />
 
-      {/* ── نموذج الصنف ── */}
-      {current && (
-        <Modal
-          icon="📦"
-          title={`${current.sku ? `[${current.sku}] ` : ""}${nameOf(current, isAr) || t({ en: "New item", ar: "صنف جديد" })}`}
-          onClose={() => setEditId("")}
-          footer={
-            <>
-              {canEdit && (
-                <button type="button" style={{ ...S.btn, ...S.btnDanger }}
-                  onClick={() => removeItem(current.id)}>
-                  🗑 {t({ en: "Delete", ar: "حذف" })}
-                </button>
-              )}
-              <button type="button" style={S.btn} onClick={() => setEditId("")}>
-                {t({ en: "Close", ar: "إغلاق" })}
-              </button>
-            </>
-          }
-        >
-          <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-            <div style={S.grid}>
-              <Field label={t({ en: "SKU / code", ar: "الكود" })}>
-                <SkuField
-                  value={current.sku || ""}
-                  catalog={catalog}
-                  t={t}
-                  onType={(v) => patchItem(current.id, { sku: v })}
-                  onPick={(row) => patchItem(current.id, {
-                    sku: String(row.item_code),
-                    en: current.en || row.description || "",
-                    ar: current.ar || row.description || "",
-                  })}
-                />
-              </Field>
-              <Field label={t({ en: "Arabic name", ar: "الاسم بالعربي" })}>
-                <TextInput value={current.ar} onChange={(v) => patchItem(current.id, { ar: v })} />
-              </Field>
-              <Field label={t({ en: "English name", ar: "الاسم بالإنجليزي" })}>
-                <TextInput value={current.en} onChange={(v) => patchItem(current.id, { en: v })} />
-              </Field>
-              <Field label={t({ en: "Type", ar: "النوع" })}>
-                <Select
-                  value={current.type || "raw"}
-                  onChange={(v) => patchItem(current.id, { type: v })}
-                  options={ITEM_TYPES}
-                  isAr={isAr}
-                />
-              </Field>
-              <Field label={t({ en: "Unit of measure", ar: "وحدة القياس" })}>
-                <UomSelect value={current.uom} onChange={(v) => patchItem(current.id, { uom: v })} isAr={isAr} />
-              </Field>
-              <Field label={t({ en: "Standard cost (AED)", ar: "التكلفة المعيارية (درهم)" })}>
-                <NumInput value={current.cost} onChange={(v) => patchItem(current.id, { cost: v })} />
-              </Field>
-              <Field label={t({ en: "Default supplier", ar: "المورّد الافتراضي" })}>
-                <Select
-                  value={current.supplierId}
-                  onChange={(v) => patchItem(current.id, { supplierId: v })}
-                  options={activeOnly(model.suppliers)}
-                  isAr={isAr}
-                  placeholder={t({ en: "None", ar: "بلا" })}
-                />
-              </Field>
-              <Field label={t({ en: "Reorder level", ar: "حد إعادة الطلب" })}>
-                <NumInput
-                  value={current.reorderLevel}
-                  onChange={(v) => patchItem(current.id, { reorderLevel: v })}
-                />
-              </Field>
-              <Field label={t({ en: "Opening quantity", ar: "الرصيد الافتتاحي" })}>
-                <NumInput
-                  value={current.openingQty}
-                  onChange={(v) => patchItem(current.id, { openingQty: v })}
-                />
-              </Field>
-              <Field label={t({ en: "Category", ar: "الفئة" })}>
-                <TextInput value={current.category} onChange={(v) => patchItem(current.id, { category: v })} />
-              </Field>
-            </div>
-
-            <div style={{ ...S.chipRow, marginTop: 14 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
-                <Switch
-                  checked={current.active !== false}
-                  onChange={(v) => patchItem(current.id, { active: v })}
-                />
-                {t({ en: "Active", ar: "مفعّل" })}
-              </label>
-              {bomForProduct(model, current.id) && (
-                <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
-                  <Switch
-                    checked={current.costFromBom !== false}
-                    onChange={(v) => patchItem(current.id, { costFromBom: v })}
-                  />
-                  {t({ en: "Cost from its BOM", ar: "التكلفة من قائمة موادّه" })}
-                </label>
-              )}
-            </div>
-
-            <Field label={t({ en: "Notes", ar: "ملاحظات" })} style={{ marginTop: 14 }}>
-              <textarea
-                style={{ ...S.input, resize: "vertical" }}
-                rows={3}
-                value={current.notes || ""}
-                onChange={(e) => patchItem(current.id, { notes: e.target.value })}
-              />
-            </Field>
-          </fieldset>
-
-          <div style={S.note}>
-            {t({ en: "Current stock", ar: "الرصيد الحالي" })}:{" "}
-            <b>{money(onHand(model, current.id, workOrders, moves), 2)} {current.uom}</b>
-            {" · "}
-            {t({ en: "Unit cost", ar: "تكلفة الوحدة" })}: <b>{money(unitCost(model, current.id))} AED</b>
-          </div>
-        </Modal>
+      {/* ── نموذج الصنف (ما بينضاف قبل الحفظ) ── */}
+      {itemForm && (
+        <ItemFormModal
+          t={t} isAr={isAr} cfg={cfg} catalog={catalog} canEdit={canEdit} busy={busy}
+          form={itemForm}
+          allItems={cfg.items || []}
+          onChange={(p) => setItemForm((f) => ({ ...f, data: { ...f.data, ...p } }))}
+          onClose={() => setItemForm(null)}
+          onSave={saveItemForm}
+          onDelete={() => removeItem(itemForm.data)}
+        />
       )}
 
-      {/* ── حركة مخزون ── */}
-      {moveFor && (
-        <StockMoveModal
-          t={t} isAr={isAr} item={moveFor} cfg={model}
-          onClose={() => setMoveFor(null)}
-          onSubmit={async (qty, reason, note) => {
-            await postMove(moveFor.id, qty, reason, note);
-            setMoveFor(null);
-          }}
-          current={onHand(model, moveFor.id, workOrders, moves)}
+      {/* ── نموذج الفئة ── */}
+      {catForm && (
+        <CategoryFormModal
+          t={t} busy={busy} form={catForm}
+          onChange={(p) => setCatForm((f) => ({ ...f, data: { ...f.data, ...p } }))}
+          onClose={() => setCatForm(null)}
+          onSave={saveCatForm}
         />
       )}
 
       {/* ── استيراد من قائمة المنتجات ── */}
       {importing && (
         <CatalogImportModal
-          t={t} isAr={isAr} catalog={catalog}
-          existing={new Set((model.items || []).map((i) => String(i.sku || "").trim()).filter(Boolean))}
+          t={t} isAr={isAr} catalog={catalog} busy={busy}
+          existing={new Set((cfg.items || []).map((i) => skuKey(i.sku)).filter(Boolean))}
           onClose={() => setImporting(false)}
           onImport={importCatalog}
         />
       )}
-
-      <SaveDock
-        dirty={dirty}
-        saving={saving}
-        onSave={save}
-        onDiscard={() => { setDraft(null); setMsg(""); }}
-        t={t}
-      />
     </MrpShell>
   );
 }
 
-/* ══════════════ الموردون ══════════════ */
+const ROLE_TONE = {
+  raw: { color: "#14507f", bg: "#eef4fb" },
+  component: { color: "#1f6fd0", bg: "#eaf2fc" },
+  finished: { color: "#047857", bg: "#ecfdf5" },
+  waste: { color: "#b45309", bg: "#fffbeb" },
+};
 
-function SuppliersCard({ t, isAr, model, canEdit, onAdd, onPatch, onRemove }) {
+/** ترويسة عمود قابلة للفرز — سهم مزدوج، وبالنقر تصاعدي ↑ ثم تنازلي ↓ ثم إلغاء. */
+function SortTh({ col, label, sort, onSort }) {
+  const active = sort.key === col;
+  const arrow = !active ? "⇅" : sort.dir === "asc" ? "▲" : "▼";
+  return (
+    <th style={{ ...S.th, cursor: "pointer", userSelect: "none" }} onClick={() => onSort(col)}
+      title={label}>
+      <span style={{
+        display: "inline-flex", gap: 6, alignItems: "center", justifyContent: "center",
+        color: active ? "#1f6fd0" : "#14507f",
+      }}>
+        {label}
+        <span style={{ fontSize: 11, opacity: active ? 1 : 0.35 }}>{arrow}</span>
+      </span>
+    </th>
+  );
+}
+
+function RoleBadges({ item, isAr }) {
+  return (
+    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "center" }}>
+      {rolesOf(item).map((rid) => {
+        const role = ITEM_TYPES.find((x) => x.id === rid);
+        if (!role) return null;
+        const tone = ROLE_TONE[rid] || { color: "#6b8299", bg: "#f5f9fd" };
+        return <Badge key={rid} color={tone.color} bg={tone.bg}>{nameOf(role, isAr)}</Badge>;
+      })}
+    </div>
+  );
+}
+
+/** وسم حقل إلزامي — نجمة حمراء عند الإضافة. */
+function Req({ isNew, children }) {
+  return (
+    <span>
+      {children}
+      {isNew && <span style={{ color: "#a12626", fontWeight: 900 }}> *</span>}
+    </span>
+  );
+}
+
+/** اختيار متعدّد لأدوار الصنف داخل الـBOM — خلية داخل الشبكة. */
+function RolesField({ t, isAr, isNew, selected, invalid, onToggle }) {
+  const set = new Set((selected || []).filter(Boolean));
+  return (
+    <div style={S.field}>
+      <span style={S.label}>
+        <Req isNew={isNew}>{t({ en: "Role(s) in BOM", ar: "الدور/الأدوار في الـBOM" })}</Req>
+        <span style={{ ...S.hint, fontWeight: 700 }}> · {t({ en: "one or more", ar: "واحد أو أكثر" })}</span>
+      </span>
+      <div style={{
+        display: "flex", gap: 6, flexWrap: "wrap",
+        padding: 6, borderRadius: 10,
+        border: `1.5px solid ${invalid ? "#e59a9a" : "#cfe0f0"}`,
+        background: invalid ? "#fff7f7" : "#fff",
+      }}>
+        {ITEM_TYPES.map((r) => {
+          const on = set.has(r.id);
+          const tone = ROLE_TONE[r.id] || { color: "#6b8299", bg: "#f5f9fd" };
+          return (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => onToggle(r.id)}
+              title={nameOf(r, isAr)}
+              style={{
+                ...S.btn, padding: "6px 10px", borderRadius: 9,
+                display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 800,
+                ...(on
+                  ? { background: tone.bg, borderColor: tone.color, color: tone.color }
+                  : { color: "#8aa3b8" }),
+              }}
+            >
+              <span style={{
+                width: 16, height: 16, borderRadius: 5, flexShrink: 0,
+                display: "grid", placeItems: "center", fontSize: 11, color: "#fff",
+                border: `1.5px solid ${on ? tone.color : "#cfe0f0"}`,
+                background: on ? tone.color : "#fff",
+              }}>{on ? "✓" : ""}</span>
+              {nameOf(r, isAr)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════ نموذج الصنف ══════════════ */
+
+function ItemFormModal({
+  t, isAr, cfg, catalog, canEdit, busy, form, allItems, onChange, onClose, onSave, onDelete,
+}) {
+  const d = form.data;
+  const isNew = form.mode === "new";
+  const code = String(d.sku || "").trim();
+  const dup = !!code && allItems.some((i) => i.id !== d.id && skuKey(i.sku) === skuKey(code));
+
+  // كل الخانات إلزامية عند الإضافة
+  const miss = {
+    sku: !code,
+    ar: !String(d.ar || "").trim(),
+    en: !String(d.en || "").trim(),
+    roles: !(d.roles || []).filter(Boolean).length,
+    uom: !String(d.uom || "").trim(),
+    categoryId: !d.categoryId,
+  };
+  const missingCount = Object.values(miss).filter(Boolean).length;
+  // الإلزام الكامل عند الإضافة؛ بالتعديل يكفي كود فريد (كي لا نعطّل تعديل بيانات قديمة)
+  const invalid = dup || (isNew ? missingCount > 0 : !code);
+  const rq = (bad) => (isNew && bad ? { borderColor: "#e59a9a", background: "#fff7f7" } : null);
+
+  return (
+    <Modal
+      icon="📦"
+      title={isNew
+        ? t({ en: "New item", ar: "صنف جديد" })
+        : `${code ? `[${code}] ` : ""}${nameOf(d, isAr) || t({ en: "Item", ar: "صنف" })}`}
+      onClose={onClose}
+      footer={
+        <>
+          {!isNew && canEdit && (
+            <button type="button" style={{ ...S.btn, ...S.btnDanger, ...(busy ? S.btnOff : null) }}
+              disabled={busy} onClick={onDelete}>
+              🗑 {t({ en: "Delete", ar: "حذف" })}
+            </button>
+          )}
+          <button type="button" style={S.btn} onClick={onClose}>
+            {t({ en: "Cancel", ar: "إلغاء" })}
+          </button>
+          {canEdit && (
+            <button
+              type="button"
+              style={{ ...S.btn, ...S.btnPrimary, ...(invalid || busy ? S.btnOff : null) }}
+              disabled={invalid || busy}
+              onClick={onSave}
+            >
+              {busy
+                ? t({ en: "Saving…", ar: "جارٍ الحفظ…" })
+                : `💾 ${isNew ? t({ en: "Add & save", ar: "إضافة وحفظ" }) : t({ en: "Save changes", ar: "حفظ التعديلات" })}`}
+            </button>
+          )}
+        </>
+      }
+    >
+      {dup && (
+        <div style={S.err}>
+          {t({
+            en: `Code ${code} already exists — the code is a master key and cannot repeat.`,
+            ar: `الكود ${code} موجود مسبقاً — الكود مفتاح ماستر وما بيتكرّر.`,
+          })}
+        </div>
+      )}
+      {isNew && (
+        <div style={missingCount ? S.note : S.ok}>
+          {missingCount
+            ? t({
+                en: `Fill every field — ${missingCount} still required. Nothing is added until you press “Add & save”.`,
+                ar: `عبّي كل الخانات — باقي ${missingCount} إلزامية. ما بينضاف إشي قبل ما تضغط «إضافة وحفظ».`,
+              })
+            : t({ en: "All set — press “Add & save”.", ar: "تمام — اضغط «إضافة وحفظ»." })}
+        </div>
+      )}
+
+      <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <div style={S.grid}>
+          <Field label={<Req isNew={isNew}>{t({ en: "Code (master)", ar: "الكود (ماستر)" })}</Req>}>
+            <SkuField
+              value={d.sku || ""}
+              invalid={dup || (isNew && miss.sku)}
+              catalog={catalog}
+              t={t}
+              onType={(v) => onChange({ sku: v })}
+              onPick={(row) => {
+                const p = parseCatalog(row);
+                onChange({
+                  sku: p.code,
+                  en: d.en || p.name,
+                  uom: p.uom || d.uom,
+                  catalogCode: p.code,
+                });
+              }}
+            />
+          </Field>
+          <Field label={<Req isNew={isNew}>{t({ en: "Arabic name", ar: "الاسم بالعربي" })}</Req>}>
+            <TextInput value={d.ar} onChange={(v) => onChange({ ar: v })} style={{ ...S.input, ...rq(miss.ar) }} />
+          </Field>
+          <Field label={<Req isNew={isNew}>{t({ en: "English name", ar: "الاسم بالإنجليزي" })}</Req>}>
+            <TextInput value={d.en} onChange={(v) => onChange({ en: v })} style={{ ...S.input, ...rq(miss.en) }} />
+          </Field>
+          <RolesField
+            t={t} isAr={isAr} isNew={isNew}
+            selected={d.roles || []}
+            invalid={isNew && miss.roles}
+            onToggle={(rid) => {
+              const cur = new Set((d.roles || []).filter(Boolean));
+              if (cur.has(rid)) cur.delete(rid); else cur.add(rid);
+              const list = [...cur];
+              onChange({ roles: list, type: list[0] || "" });
+            }}
+          />
+          <Field label={<Req isNew={isNew}>{t({ en: "Unit of measure", ar: "وحدة القياس" })}</Req>}>
+            <UomSelect value={d.uom} onChange={(v) => onChange({ uom: v })} isAr={isAr} />
+          </Field>
+          <Field label={<Req isNew={isNew}>{t({ en: "Category", ar: "الفئة" })}</Req>}>
+            <Select
+              value={d.categoryId}
+              onChange={(v) => onChange({ categoryId: v })}
+              options={activeOnly(cfg.categories)}
+              isAr={isAr}
+              placeholder={t({ en: "— choose —", ar: "— اختر —" })}
+              style={rq(miss.categoryId)}
+            />
+          </Field>
+        </div>
+
+        {/* الاسم المعروض — يُبنى تلقائياً: كود + اسم إنجليزي + وحدة */}
+        <Field label={t({ en: "Display name (auto)", ar: "الاسم المعروض (تلقائي)" })} style={{ marginTop: 14 }}>
+          <div style={{ ...S.input, background: "#f7fbff", fontWeight: 900, color: "#14507f" }}>
+            {displayNameOf(d) || t({ en: "— fill code, English name & UoM —", ar: "— عبّي الكود والاسم الإنجليزي والوحدة —" })}
+          </div>
+          <span style={{ ...S.hint, marginTop: 4 }}>
+            {t({
+              en: "Links code + English name + UoM — used across BOMs.",
+              ar: "بيربط الكود + الاسم الإنجليزي + الوحدة — بيُستعمل بكل الـBOM.",
+            })}
+          </span>
+        </Field>
+
+        <div style={{ ...S.chipRow, marginTop: 14 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
+            <Switch checked={d.active !== false} onChange={(v) => onChange({ active: v })} />
+            {t({ en: "Active", ar: "مفعّل" })}
+          </label>
+        </div>
+
+        <Field label={t({ en: "Notes", ar: "ملاحظات" })} style={{ marginTop: 14 }}>
+          <textarea
+            style={{ ...S.input, resize: "vertical" }}
+            rows={3}
+            value={d.notes || ""}
+            onChange={(e) => onChange({ notes: e.target.value })}
+          />
+        </Field>
+      </fieldset>
+    </Modal>
+  );
+}
+
+/* ══════════════ الفئات ══════════════ */
+
+function CategoriesCard({ t, isAr, cfg, canEdit, busy, onAdd, onEdit, onRemove }) {
   const [open, setOpen] = useState(false);
-  const list = model.suppliers || [];
+  const list = cfg.categories || [];
+  const countFor = (id) => (cfg.items || []).filter((i) => i.categoryId === id).length;
 
   return (
     <Card
-      icon="🚚"
-      title={t({ en: "Suppliers", ar: "الموردون" })}
+      icon="🏷️"
+      title={t({ en: "Categories", ar: "الفئات" })}
       sub={t({
-        en: "Default source for each purchased material.",
-        ar: "المصدر الافتراضي لكل مادة مشتراة.",
+        en: "Group items — each item links to one category.",
+        ar: "تجميع الأصناف — كل صنف بيرتبط بفئة واحدة.",
       })}
       right={
         <>
@@ -621,7 +973,7 @@ function SuppliersCard({ t, isAr, model, canEdit, onAdd, onPatch, onRemove }) {
           {canEdit && (
             <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary }}
               onClick={() => { onAdd(); setOpen(true); }}>
-              ＋ {t({ en: "Add", ar: "إضافة" })}
+              ＋ {t({ en: "Add category", ar: "إضافة فئة" })}
             </button>
           )}
         </>
@@ -629,7 +981,7 @@ function SuppliersCard({ t, isAr, model, canEdit, onAdd, onPatch, onRemove }) {
     >
       {open && (
         list.length === 0 ? (
-          <EmptyBox>{t({ en: "No suppliers yet.", ar: "لا يوجد موردون بعد." })}</EmptyBox>
+          <EmptyBox>{t({ en: "No categories yet.", ar: "لا توجد فئات بعد." })}</EmptyBox>
         ) : (
           <div style={S.tableWrap}>
             <table style={S.table}>
@@ -637,44 +989,33 @@ function SuppliersCard({ t, isAr, model, canEdit, onAdd, onPatch, onRemove }) {
                 <tr>
                   <th style={S.th}>{t({ en: "Arabic name", ar: "الاسم بالعربي" })}</th>
                   <th style={S.th}>{t({ en: "English name", ar: "الاسم بالإنجليزي" })}</th>
-                  <th style={S.th}>{t({ en: "Contact", ar: "المسؤول" })}</th>
-                  <th style={S.th}>{t({ en: "Phone", ar: "الهاتف" })}</th>
+                  <th style={S.th}>{t({ en: "Items", ar: "الأصناف" })}</th>
                   <th style={S.th}>{t({ en: "Active", ar: "مفعّل" })}</th>
                   <th style={S.th}></th>
                 </tr>
               </thead>
               <tbody>
-                {list.map((s) => (
-                  <tr key={s.id}>
+                {list.map((c) => (
+                  <tr key={c.id}>
+                    <td style={{ ...S.td, ...S.tdStart, fontWeight: 800 }}>{c.ar || "—"}</td>
+                    <td style={{ ...S.td, ...S.tdStart, fontWeight: 800 }}>{c.en || "—"}</td>
+                    <td style={{ ...S.td, fontWeight: 800 }}>{countFor(c.id) || "—"}</td>
                     <td style={S.td}>
-                      <input style={S.input} value={s.ar || ""} disabled={!canEdit}
-                        onChange={(e) => onPatch(s.id, { ar: e.target.value })} />
-                    </td>
-                    <td style={S.td}>
-                      <input style={S.input} value={s.en || ""} disabled={!canEdit}
-                        onChange={(e) => onPatch(s.id, { en: e.target.value })} />
-                    </td>
-                    <td style={S.td}>
-                      <input style={S.input} value={s.contact || ""} disabled={!canEdit}
-                        onChange={(e) => onPatch(s.id, { contact: e.target.value })} />
-                    </td>
-                    <td style={S.td}>
-                      <input style={S.input} value={s.phone || ""} disabled={!canEdit}
-                        onChange={(e) => onPatch(s.id, { phone: e.target.value })} />
-                    </td>
-                    <td style={S.td}>
-                      <Switch
-                        checked={s.active !== false}
-                        disabled={!canEdit}
-                        onChange={(v) => onPatch(s.id, { active: v })}
-                      />
+                      {c.active === false
+                        ? <Badge color="#a12626" bg="#fff1f1">{t({ en: "off", ar: "معطّلة" })}</Badge>
+                        : <Badge color="#047857" bg="#ecfdf5">{t({ en: "on", ar: "مفعّلة" })}</Badge>}
                     </td>
                     <td style={S.td}>
                       {canEdit && (
-                        <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
-                          onClick={() => onRemove(s.id)}>
-                          {t({ en: "Delete", ar: "حذف" })}
-                        </button>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
+                          <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={() => onEdit(c)}>
+                            ✎ {t({ en: "Edit", ar: "تعديل" })}
+                          </button>
+                          <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger, ...(busy ? S.btnOff : null) }}
+                            disabled={busy} onClick={() => onRemove(c)}>
+                            🗑
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -688,33 +1029,15 @@ function SuppliersCard({ t, isAr, model, canEdit, onAdd, onPatch, onRemove }) {
   );
 }
 
-/* ══════════════ حركة مخزون ══════════════ */
-
-function StockMoveModal({ t, isAr, item, onClose, onSubmit, current }) {
-  const [qty, setQty] = useState("");
-  const [reason, setReason] = useState("receipt");
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-
-  const signed = reason === "receipt" ? Math.abs(num(qty)) : -Math.abs(num(qty));
-
-  const submit = async () => {
-    if (!num(qty)) { setErr(t({ en: "Enter a quantity.", ar: "أدخل كمية." })); return; }
-    setBusy(true);
-    setErr("");
-    try {
-      await onSubmit(signed, reason, note);
-    } catch (e) {
-      setErr(e?.message || "failed");
-      setBusy(false);
-    }
-  };
+function CategoryFormModal({ t, busy, form, onChange, onClose, onSave }) {
+  const d = form.data;
+  const isNew = form.mode === "new";
+  const empty = !String(d.en || "").trim() && !String(d.ar || "").trim();
 
   return (
     <Modal
-      icon="±"
-      title={`${t({ en: "Stock move", ar: "حركة مخزون" })} — ${nameOf(item, isAr) || item.sku}`}
+      icon="🏷️"
+      title={isNew ? t({ en: "New category", ar: "فئة جديدة" }) : t({ en: "Edit category", ar: "تعديل الفئة" })}
       onClose={onClose}
       footer={
         <>
@@ -723,60 +1046,54 @@ function StockMoveModal({ t, isAr, item, onClose, onSubmit, current }) {
           </button>
           <button
             type="button"
-            style={{ ...S.btn, ...S.btnPrimary, ...(busy ? S.btnOff : null) }}
-            onClick={submit}
-            disabled={busy}
+            style={{ ...S.btn, ...S.btnPrimary, ...(empty || busy ? S.btnOff : null) }}
+            disabled={empty || busy}
+            onClick={onSave}
           >
-            {busy ? t({ en: "Saving…", ar: "جارٍ الحفظ…" }) : t({ en: "Post move", ar: "تسجيل الحركة" })}
+            {busy ? t({ en: "Saving…", ar: "جارٍ الحفظ…" }) : `💾 ${t({ en: "Save", ar: "حفظ" })}`}
           </button>
         </>
       }
     >
-      {err && <div style={S.err}>{err}</div>}
       <div style={S.grid}>
-        <Field label={t({ en: "Move type", ar: "نوع الحركة" })}>
-          <select style={S.input} value={reason} onChange={(e) => setReason(e.target.value)}>
-            <option value="receipt">{t({ en: "Receipt (+)", ar: "استلام (+)" })}</option>
-            <option value="issue">{t({ en: "Issue (−)", ar: "صرف (−)" })}</option>
-            <option value="adjust">{t({ en: "Adjustment (−)", ar: "تسوية (−)" })}</option>
-          </select>
+        <Field label={t({ en: "Arabic name", ar: "الاسم بالعربي" })}>
+          <TextInput value={d.ar} onChange={(v) => onChange({ ar: v })} />
         </Field>
-        <Field label={`${t({ en: "Quantity", ar: "الكمية" })} (${item.uom || ""})`}>
-          <NumInput value={qty} onChange={setQty} />
-        </Field>
-        <Field label={t({ en: "Note", ar: "ملاحظة" })}>
-          <TextInput value={note} onChange={setNote} />
+        <Field label={t({ en: "English name", ar: "الاسم بالإنجليزي" })}>
+          <TextInput value={d.en} onChange={(v) => onChange({ en: v })} />
         </Field>
       </div>
-      <div style={S.note}>
-        {t({ en: "Current", ar: "الرصيد الحالي" })}: <b>{money(current, 2)}</b>
-        {" → "}
-        {t({ en: "after this move", ar: "بعد الحركة" })}: <b>{money(current + signed, 2)}</b>
+      <div style={{ ...S.chipRow, marginTop: 14 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
+          <Switch checked={d.active !== false} onChange={(v) => onChange({ active: v })} />
+          {t({ en: "Active", ar: "مفعّلة" })}
+        </label>
       </div>
     </Modal>
   );
 }
 
-/* ══════════════ استيراد الكتالوج ══════════════ */
+/* ══════════════ استيراد قائمة المنتجات ══════════════ */
 
-function CatalogImportModal({ t, isAr, catalog, existing, onClose, onImport }) {
+function CatalogImportModal({ t, isAr, catalog, existing, busy, onClose, onImport }) {
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState(() => new Set());
   const [hideImported, setHideImported] = useState(true);
   const [defType, setDefType] = useState("raw");
 
+  const has = (code) => existing.has(skuKey(code));
+
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return catalog.filter((r) => {
-      const already = existing.has(String(r.item_code));
-      if (hideImported && already) return false;
+      if (hideImported && has(r.item_code)) return false;
       if (!needle) return true;
-      return [r.item_code, r.description]
+      return [r.item_code, r.description, r.category]
         .some((v) => String(v || "").toLowerCase().includes(needle));
     });
   }, [catalog, q, existing, hideImported]);
 
-  const selectable = rows.filter((r) => !existing.has(String(r.item_code)));
+  const selectable = rows.filter((r) => !has(r.item_code));
   const allShownPicked = selectable.length > 0 && selectable.every((r) => picked.has(r.item_code));
 
   const toggle = (code) =>
@@ -793,8 +1110,7 @@ function CatalogImportModal({ t, isAr, catalog, existing, onClose, onImport }) {
       return next;
     });
 
-  const importPicked = () =>
-    onImport(catalog.filter((r) => picked.has(r.item_code)), defType);
+  const importPicked = () => onImport(catalog.filter((r) => picked.has(r.item_code)), defType);
   const importAllShown = () => onImport(selectable, defType);
 
   return (
@@ -810,16 +1126,16 @@ function CatalogImportModal({ t, isAr, catalog, existing, onClose, onImport }) {
           </button>
           <button
             type="button"
-            style={{ ...S.btn, ...(selectable.length ? S.btnBlue : S.btnOff) }}
-            disabled={!selectable.length}
+            style={{ ...S.btn, ...(selectable.length && !busy ? S.btnBlue : S.btnOff) }}
+            disabled={!selectable.length || busy}
             onClick={importAllShown}
           >
             📥 {t({ en: `Import all shown (${selectable.length})`, ar: `استيراد كل الظاهر (${selectable.length})` })}
           </button>
           <button
             type="button"
-            style={{ ...S.btn, ...S.btnPrimary, ...(picked.size ? null : S.btnOff) }}
-            disabled={!picked.size}
+            style={{ ...S.btn, ...S.btnPrimary, ...(picked.size && !busy ? null : S.btnOff) }}
+            disabled={!picked.size || busy}
             onClick={importPicked}
           >
             ✔ {t({ en: `Import selected (${picked.size})`, ar: `استيراد المحدّد (${picked.size})` })}
@@ -829,21 +1145,21 @@ function CatalogImportModal({ t, isAr, catalog, existing, onClose, onImport }) {
     >
       <div style={S.note}>
         {t({
-          en: "This copies products into your editable item master (saved on the server). Codes already imported are skipped, so you can run it again after the product list grows.",
-          ar: "هذا بينسخ المنتجات لسجل أصنافك القابل للتعديل (محفوظ على السيرفر). الأكواد المستوردة بتُتجاهَل، فتقدر تعيدها كل ما تكبر القائمة.",
+          en: "Products come from Product.xlsx. Importing copies them into your item master and saves immediately — codes already imported are skipped.",
+          ar: "المنتجات مصدرها ملف Product.xlsx. الاستيراد بينسخهم لسجل أصنافك وبيحفظ فوراً — والأكواد المستوردة بتُتجاهَل.",
         })}
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <SearchBox value={q} onChange={setQ}
-          placeholder={t({ en: "Search code or name…", ar: "بحث بالكود أو الاسم…" })} />
+          placeholder={t({ en: "Search code, name or category…", ar: "بحث بالكود أو الاسم أو الفئة…" })} />
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}>
           <Switch checked={hideImported} onChange={setHideImported} />
           {t({ en: "Hide imported", ar: "إخفاء المستورد" })}
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}>
-          {t({ en: "Import as", ar: "استيراد كنوع" })}:
-          <select style={{ ...S.input, width: 160 }} value={defType} onChange={(e) => setDefType(e.target.value)}>
+          {t({ en: "Import as", ar: "استيراد كدور" })}:
+          <select style={{ ...S.input, width: 175 }} value={defType} onChange={(e) => setDefType(e.target.value)}>
             {ITEM_TYPES.map((x) => (
               <option key={x.id} value={x.id}>{nameOf(x, isAr)}</option>
             ))}
@@ -867,15 +1183,16 @@ function CatalogImportModal({ t, isAr, catalog, existing, onClose, onImport }) {
               <th style={S.th}>{t({ en: "Code", ar: "الكود" })}</th>
               <th style={{ ...S.th, minWidth: 260 }}>{t({ en: "Name", ar: "الاسم" })}</th>
               <th style={S.th}>{t({ en: "UoM", ar: "الوحدة" })}</th>
+              <th style={S.th}>{t({ en: "Category", ar: "الفئة" })}</th>
               <th style={S.th}>{t({ en: "Status", ar: "الحالة" })}</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td style={S.td} colSpan={5}>{t({ en: "Nothing to show.", ar: "لا شيء للعرض." })}</td></tr>
+              <tr><td style={S.td} colSpan={6}>{t({ en: "Nothing to show.", ar: "لا شيء للعرض." })}</td></tr>
             )}
             {rows.slice(0, 400).map((r) => {
-              const already = existing.has(String(r.item_code));
+              const already = has(r.item_code);
               const p = parseCatalog(r);
               return (
                 <tr key={r.item_code}
@@ -893,6 +1210,7 @@ function CatalogImportModal({ t, isAr, catalog, existing, onClose, onImport }) {
                   <td style={{ ...S.td, fontWeight: 900 }}>{r.item_code}</td>
                   <td style={{ ...S.td, ...S.tdStart }}>{p.name}</td>
                   <td style={S.td}>{p.uom}</td>
+                  <td style={S.td}>{p.category || "—"}</td>
                   <td style={S.td}>
                     {already
                       ? <Badge color="#047857" bg="#ecfdf5">{t({ en: "imported", ar: "مستورد" })}</Badge>
@@ -916,8 +1234,8 @@ function CatalogImportModal({ t, isAr, catalog, existing, onClose, onImport }) {
   );
 }
 
-/* حقل الكود مع بحث في قائمة أصناف الشركة */
-function SkuField({ value, onPick, onType, catalog, t }) {
+/* حقل الكود مع بحث في قائمة المنتجات */
+function SkuField({ value, onPick, onType, catalog, t, invalid }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -936,7 +1254,10 @@ function SkuField({ value, onPick, onType, catalog, t }) {
   return (
     <span style={{ position: "relative", display: "block" }}>
       <input
-        style={S.input}
+        style={{
+          ...S.input,
+          ...(invalid ? { borderColor: "#e59a9a", background: "#fff7f7" } : null),
+        }}
         value={value}
         placeholder={t({ en: "code or name…", ar: "كود أو اسم…" })}
         onChange={(e) => { onType(e.target.value); setQ(e.target.value); setOpen(true); }}
@@ -954,6 +1275,7 @@ function SkuField({ value, onPick, onType, catalog, t }) {
               onClick={() => { onPick(i); setOpen(false); }}
             >
               <b>{i.item_code}</b> — {i.description}
+              <span style={{ color: "#8aa3b8" }}> · {i.uom || ""}{i.category ? ` · ${i.category}` : ""}</span>
             </button>
           ))}
         </span>

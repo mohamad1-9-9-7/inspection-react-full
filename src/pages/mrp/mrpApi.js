@@ -42,11 +42,14 @@ export const UOMS = [
   { id: "HR", ar: "ساعة", en: "Hour" },
 ];
 
+// أدوار الصنف داخل قوائم التفكيك/التقطيع — تعريف واحد يسهّل بناء الـ BOM.
+// Raw = المادة الداخلة (ذبيحة) · Component = مكوّن/قطعة وسيطة
+// · Finished = منتج ناتج نهائي · Waste = هدر/مخلّفات (عظم، دهن، فقد).
 export const ITEM_TYPES = [
-  { id: "raw", ar: "مادة خام", en: "Raw material" },
-  { id: "semi", ar: "نصف مصنّع", en: "Semi-finished" },
-  { id: "finished", ar: "منتج نهائي", en: "Finished product" },
-  { id: "service", ar: "خدمة/مصروف", en: "Service / expense" },
+  { id: "raw", ar: "مادة خام (داخلة)", en: "Raw material (input)" },
+  { id: "component", ar: "مكوّن / قطعة", en: "Component / cut" },
+  { id: "finished", ar: "منتج نهائي (ناتج)", en: "Finished product (output)" },
+  { id: "waste", ar: "هدر / مخلّفات", en: "Waste / scrap" },
 ];
 
 export const WO_STATUS = [
@@ -84,6 +87,13 @@ export const money = (v, digits = 2) =>
 
 export const nameOf = (x, isAr) => (isAr ? x?.ar : x?.en) || x?.ar || x?.en || "";
 
+/** أدوار الصنف داخل الـBOM — مصفوفة (متوافقة مع `type` القديم كدور وحيد). */
+export const rolesOf = (item) => {
+  const r = Array.isArray(item?.roles) ? item.roles.filter(Boolean) : [];
+  return r.length ? r : [item?.type || "raw"];
+};
+export const hasRole = (item, roleId) => rolesOf(item).includes(roleId);
+
 export const freshId = (prefix) =>
   `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
@@ -103,6 +113,7 @@ export const userName = () => currentUser().username || currentUser().name || ""
 export function defaultConfig() {
   return {
     items: [],
+    categories: [],
     suppliers: [],
     operations: [],
     boms: [],
@@ -116,6 +127,7 @@ export function mergeConfig(saved) {
   if (!saved || typeof saved !== "object") return base;
   return {
     items: Array.isArray(saved.items) ? saved.items : base.items,
+    categories: Array.isArray(saved.categories) ? saved.categories : base.categories,
     suppliers: Array.isArray(saved.suppliers) ? saved.suppliers : base.suppliers,
     operations: Array.isArray(saved.operations) ? saved.operations : base.operations,
     boms: Array.isArray(saved.boms) ? saved.boms : base.boms,
@@ -168,6 +180,23 @@ export async function saveConfig(cfg) {
   return saved;
 }
 
+/**
+ * تعديل آمن للإعدادات عبر الأجهزة: **اقرأ آخر نسخة من السيرفر ثم عدّل ثم احفظ.**
+ * هيك ما بيندهس تعديل جهاز تاني (مثلاً صنف أضافه غيرك) لأن كل عملية
+ * بتنبني على أحدث حالة موجودة على السيرفر — مش على نسخة قديمة بالذاكرة.
+ */
+export async function mutateConfig(fn) {
+  let base;
+  try {
+    base = await fetchConfig();               // حقيقة السيرفر
+  } catch {
+    base = readCache() || defaultConfig();    // بلا نت: أفضل ما عندنا
+  }
+  const next = JSON.parse(JSON.stringify(base));
+  fn(next);
+  return saveConfig(next);
+}
+
 /** إعدادات التصنيع الحيّة — تبدأ من الكاش ثم تتحدّث من السيرفر. */
 export function useMrpConfig() {
   const [cfg, setCfg] = useState(() => readCache() || defaultConfig());
@@ -185,14 +214,34 @@ export function useMrpConfig() {
 
   useEffect(() => {
     let alive = true;
-    fetchConfig()
-      .then((c) => { if (alive) { setCfg(c); setError(""); } })
-      .catch((e) => { if (alive) setError(e?.message || "load failed"); })
-      .finally(() => { if (alive) setLoading(false); });
+    const pull = () =>
+      fetchConfig()
+        .then((c) => { if (alive) { setCfg(c); setError(""); } })
+        .catch((e) => { if (alive) setError(e?.message || "load failed"); })
+        .finally(() => { if (alive) setLoading(false); });
 
+    pull();
+
+    // نفس التبويب/الشاشة بعد الحفظ
     const onChange = (e) => { if (e?.detail) setCfg(e.detail); };
+    // رجوع للتبويب / فتح الشاشة من جديد → اسحب أحدث نسخة من السيرفر
+    const onFocus = () => { if (!document.hidden) pull(); };
+    // تبويب آخر بنفس المتصفّح حدّث الكاش
+    const onStorage = (e) => {
+      if (e.key === CACHE_KEY) { const c = readCache(); if (c && alive) setCfg(c); }
+    };
+
     window.addEventListener(EVT, onChange);
-    return () => { alive = false; window.removeEventListener(EVT, onChange); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      alive = false;
+      window.removeEventListener(EVT, onChange);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   return { cfg, setCfg, loading, error, reload };
@@ -287,11 +336,53 @@ export const activeOnly = (list) => (list || []).filter((x) => x.active !== fals
 export const itemById = (cfg, id) => (cfg?.items || []).find((x) => x.id === id) || null;
 export const bomById = (cfg, id) => (cfg?.boms || []).find((x) => x.id === id) || null;
 export const supplierById = (cfg, id) => (cfg?.suppliers || []).find((x) => x.id === id) || null;
+export const categoryById = (cfg, id) => (cfg?.categories || []).find((x) => x.id === id) || null;
 export const opById = (cfg, id) => (cfg?.operations || []).find((x) => x.id === id) || null;
+
+/** فئة الصنف كنص — من قائمة الفئات المُدارة، مع رجوع للنص القديم إن وُجد. */
+export const categoryLabel = (cfg, item, isAr) => {
+  const c = categoryById(cfg, item?.categoryId);
+  return (c ? nameOf(c, isAr) : "") || item?.category || "";
+};
+
+/**
+ * الاسم المعروض — يربط الكود بالاسم الإنجليزي مع وحدة القياس:
+ *   [CODE] English name · UoM
+ * يُحتسب تلقائياً كي يبقى الثلاثة متطابقين في كل مكان.
+ */
+export function displayNameOf(item) {
+  if (!item) return "";
+  const code = String(item.sku || "").trim();
+  const name = String(item.en || item.ar || "").trim();
+  const uom = String(item.uom || "").trim();
+  const head = code ? (name ? `[${code}] ${name}` : `[${code}]`) : name;
+  return uom ? `${head}${head ? " · " : ""}${uom}` : head;
+}
 
 /** قائمة المواد الفعّالة لمنتج — أول قائمة مفعّلة لهذا المنتج. */
 export const bomForProduct = (cfg, productId) =>
   (cfg?.boms || []).find((b) => b.productId === productId && b.active !== false) || null;
+
+/** قائمة تفكيك مفعّلة مادتها الداخلة هي هذا الصنف. */
+export const disassemblyForInput = (cfg, itemId) =>
+  (cfg?.boms || []).find(
+    (b) => b.bomType === "disassembly" && b.inputId === itemId && b.active !== false
+  ) || null;
+
+/** كل مواضع استعمال الصنف داخل قوائم التفكيك — داخل/ناتج/هدر. */
+export function whereUsedDisassembly(cfg, itemId) {
+  return (cfg?.boms || []).filter(
+    (b) =>
+      b.bomType === "disassembly" &&
+      (b.inputId === itemId ||
+        (b.outputs || []).some((o) => o.itemId === itemId) ||
+        (b.wastes || []).some((w) => w.itemId === itemId))
+  );
+}
+
+/** عدد القوائم اللي بيظهر فيها الصنف — تفكيك + تصنيع (لعمود «مستعمل في»). */
+export const usageCount = (cfg, itemId) =>
+  whereUsedDisassembly(cfg, itemId).length + whereUsed(cfg, itemId).length;
 
 export const itemLabel = (cfg, id, isAr) => {
   const it = itemById(cfg, id);
@@ -391,10 +482,14 @@ export function rawRequirements(cfg, bom, produceQty = 1) {
   return [...map.values()];
 }
 
-/** أين يُستعمل هذا الصنف — كل قوائم المواد التي فيها سطر لهذا الصنف. */
+/**
+ * أين يُستعمل هذا الصنف في قوائم **التصنيع** — مع حصّته من التكلفة.
+ * (تقارير التكلفة بتعتمد عليها، فبتضل مقتصرة على قوائم التصنيع.)
+ * لعدّ الاستعمال الكلي شامل التفكيك استعمل usageCount.
+ */
 export function whereUsed(cfg, itemId) {
   return (cfg?.boms || [])
-    .filter((b) => (b.lines || []).some((l) => l.itemId === itemId))
+    .filter((b) => b.bomType !== "disassembly" && (b.lines || []).some((l) => l.itemId === itemId))
     .map((b) => {
       const line = (b.lines || []).find((l) => l.itemId === itemId);
       const cost = bomCost(cfg, b);

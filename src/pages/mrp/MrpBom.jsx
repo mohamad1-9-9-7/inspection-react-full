@@ -1,382 +1,501 @@
 // src/pages/mrp/MrpBom.jsx
 //
-// 2️⃣ شاشة بناء وتعديل قائمة المواد (BOM Builder).
-// Parent product + component lines (qty · scrap %) + operations + live cost + versions.
+// 2️⃣ قوائم التفكيك والتقطيع (Disassembly / Cutting BOM).
+// One input product → many output products + waste, all from the Item Master.
+//
+// طبيعة الشغل: ذبيحة/منتج واحد داخل → مجموعة قطع ناتجة + هدر (عظم، دهن، فقد).
+// كل الأطراف (الداخل · الناتج · الهدر) بتنسحب من سجل الأصناف بالكود الماستر.
+//
+// 💾 الحفظ: كل قائمة بتنحفظ لحالها بزر «حفظ القائمة» بترويسة الباني —
+// ما في شريط حفظ أسفل الصفحة. عمليات الجدول (تفعيل/نسخ/حذف) بتنحفظ فوراً.
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
-  CONSUMPTION_POLICIES, activeOnly, bomCost, freshId, isBomEffective, itemById,
-  money, nameOf, num, opById, saveConfig, unitCost, useMrpConfig, userName,
+  ITEM_TYPES, activeOnly, categoryById, freshId, hasRole, itemById, money,
+  mutateConfig, nameOf, num, useMrpConfig, userName,
 } from "./mrpApi";
 import {
   Badge, Card, EmptyBox, Field, ItemPicker, Kpi, Modal, MrpNoAccess, MrpShell,
-  NumInput, S, SaveDock, SearchBox, Select, Switch, TextInput, UomSelect,
-  canEditMrp, canOpenMrp,
+  NumInput, S, SearchBox, Select, Switch, Toast, canEditMrp, canOpenMrp,
 } from "./mrpUi";
 import { useSettingsLang } from "../settings/_shared/settingsI18n";
 
 const PAGE = "mrp.bom";
 
-/** رقم قائمة مواد جديد — BOM-0001 */
+/** رقم قائمة تقطيع جديد — CUT-0001 حسب الموجود. */
 function nextRef(boms) {
   const max = (boms || []).reduce((m, b) => {
     const n = parseInt(String(b.ref || "").replace(/\D/g, ""), 10);
     return Number.isFinite(n) && n > m ? n : m;
   }, 0);
-  return `BOM-${String(max + 1).padStart(4, "0")}`;
+  return `CUT-${String(max + 1).padStart(4, "0")}`;
+}
+
+const blankBom = (boms) => ({
+  id: freshId("bom"),
+  ref: nextRef(boms),
+  bomType: "disassembly",
+  categoryId: "",
+  inputId: "",
+  inputQty: 100,
+  outputs: [],
+  wastes: [],
+  notes: "",
+  active: true,
+  version: 1,
+  history: [],
+  createdAt: new Date().toISOString(),
+  createdBy: userName(),
+});
+
+/** تجميع أرقام القائمة — الداخل، الناتج، الهدر، الفاقد غير المسجّل، والعائد. */
+function bomMath(bom) {
+  const input = num(bom?.inputQty);
+  const out = (bom?.outputs || []).reduce((s, l) => s + num(l.qty), 0);
+  const waste = (bom?.wastes || []).reduce((s, l) => s + num(l.qty), 0);
+  const loss = input - out - waste;               // فاقد غير مسجّل (تبخّر/انكماش…)
+  const yieldPct = input > 0 ? (out / input) * 100 : 0;
+  const wastePct = input > 0 ? (waste / input) * 100 : 0;
+  const over = loss < -1e-6;                      // موزّع أكثر من الداخل = خطأ
+  return { input, out, waste, loss, yieldPct, wastePct, over };
 }
 
 export default function MrpBom() {
   const { t, isAr } = useSettingsLang();
   const { cfg, setCfg, loading } = useMrpConfig();
 
-  const [draft, setDraft] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState(null);
   const [q, setQ] = useState("");
-  const [openId, setOpenId] = useState("");
+  const [catFilter, setCatFilter] = useState("");
+  const [draft, setDraft] = useState(null);   // { mode: "new"|"edit", bom, dirty }
   const [historyFor, setHistoryFor] = useState("");
 
   const canEdit = canEditMrp();
-  const model = draft || cfg;
-  const dirty = !!draft;
+  const toastTimer = useRef(null);
 
-  const edit = (fn) => {
-    setMsg("");
-    setDraft((prev) => {
-      const next = JSON.parse(JSON.stringify(prev || cfg));
-      if (!Array.isArray(next.boms)) next.boms = [];
-      if (!Array.isArray(next.operations)) next.operations = [];
-      fn(next);
-      return next;
-    });
+  const flash = (text, bad) => {
+    setToast({ text, bad: !!bad });
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3600);
   };
 
-  const patchBom = (id, p) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === id);
-      if (b) Object.assign(b, p);
-    });
-
-  const addBom = () => {
-    const id = freshId("bom");
-    edit((n) => {
-      n.boms.push({
-        id, ref: nextRef(n.boms), productId: "", qty: 1, uom: "KG",
-        version: 1, active: true, overheadPct: "", notes: "",
-        bomType: "manufacture",             // manufacture | kit
-        consumptionPolicy: "warn",          // flexible | warn | strict
-        effectiveFrom: "", effectiveTo: "",
-        lines: [], byproducts: [], ops: [], history: [],
-        createdAt: new Date().toISOString(), createdBy: userName(),
+  /**
+   * تعديل + حفظ فوري مستقل — اقرأ أحدث نسخة من السيرفر ثم عدّل ثم احفظ،
+   * حتى ما تندهس قائمة عدّلها جهاز تاني بنفس الوقت.
+   */
+  const commit = async (fn, okMsg) => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      const saved = await mutateConfig((next) => {
+        if (!Array.isArray(next.boms)) next.boms = [];
+        fn(next);
       });
-    });
-    setOpenId(id);
+      setCfg(saved);
+      if (okMsg) flash(okMsg);
+      return true;
+    } catch (e) {
+      flash(`${t({ en: "Save failed", ar: "فشل الحفظ" })}: ${e?.message || e}`, true);
+      return false;
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const duplicateBom = (id) => {
-    const src = (model.boms || []).find((x) => x.id === id);
-    if (!src) return;
+  /* ── فتح/إنشاء ── */
+  const openNew = () => setDraft({ mode: "new", bom: blankBom(cfg.boms), dirty: false });
+
+  const openBom = (b) => {
+    const legacy = b.bomType !== "disassembly" && (b.lines || []).length > 0;
+    // قائمة تصنيع قديمة: التحويل بيشيلها من أوامر التصنيع — لازم قرار صريح
+    if (legacy && !window.confirm(t({
+      en: `${b.ref} is an old manufacturing BOM.\nOpening it here converts it to a cutting BOM when you save, and work orders will stop using it.\n\nContinue?`,
+      ar: `${b.ref} قائمة تصنيع قديمة.\nفتحها هون بيحوّلها لقائمة تقطيع وقت ما تحفظ، وأوامر التصنيع بتوقف تستعملها.\n\nمتابعة؟`,
+    }))) return;
+    setDraft({
+      mode: "edit",
+      // نضمن حقول التفكيك حتى للسجلات القديمة — بلا دهس باقي الحقول
+      bom: {
+        outputs: [], wastes: [], inputId: "", inputQty: "",
+        ...JSON.parse(JSON.stringify(b)),
+        bomType: "disassembly",
+      },
+      dirty: false,
+    });
+  };
+
+  const closeBuilder = () => {
+    if (draft?.dirty && !window.confirm(t({
+      en: "Discard unsaved changes to this BOM?",
+      ar: "تجاهل التعديلات غير المحفوظة على هذه القائمة؟",
+    }))) return;
+    setDraft(null);
+  };
+
+  const patch = (p) => setDraft((d) => ({ ...d, dirty: true, bom: { ...d.bom, ...p } }));
+  const patchList = (list, id, p) =>
+    setDraft((d) => ({
+      ...d, dirty: true,
+      bom: { ...d.bom, [list]: (d.bom[list] || []).map((l) => (l.id === id ? { ...l, ...p } : l)) },
+    }));
+  const addTo = (list) =>
+    setDraft((d) => ({
+      ...d, dirty: true,
+      bom: { ...d.bom, [list]: [...(d.bom[list] || []), { id: freshId("ln"), itemId: "", qty: "" }] },
+    }));
+  const dropFrom = (list, id) =>
+    setDraft((d) => ({
+      ...d, dirty: true,
+      bom: { ...d.bom, [list]: (d.bom[list] || []).filter((l) => l.id !== id) },
+    }));
+
+  /* ── تحقق قبل الحفظ ── */
+  const validate = (bom) => {
+    if (!bom.inputId) {
+      return t({ en: "Pick the input product first.", ar: "اختر المنتج الداخل أولاً." });
+    }
+    const inItem = itemById(cfg, bom.inputId);
+    if (inItem && (hasRole(inItem, "finished") || hasRole(inItem, "waste"))) {
+      return t({
+        en: `"${nameOf(inItem, false) || bom.inputId}" is a finished/waste item — the input must be a raw material or a component.`,
+        ar: `«${nameOf(inItem, true) || bom.inputId}» منتج نهائي/هدر — الداخل لازم يكون مادة خام أو مكوّن.`,
+      });
+    }
+    if (!(num(bom.inputQty) > 0)) {
+      return t({ en: "Input quantity must be more than zero.", ar: "كمية الداخل لازم تكون أكبر من صفر." });
+    }
+    if ((bom.outputs || []).length === 0) {
+      return t({ en: "A cutting BOM needs at least one output.", ar: "قائمة التقطيع بدها ناتج واحد على الأقل." });
+    }
+    const all = [...(bom.outputs || []), ...(bom.wastes || [])];
+    if (all.some((l) => !l.itemId)) {
+      return t({ en: "Every line must pick an item from the master list.", ar: "كل سطر لازم يختار صنف من السجل." });
+    }
+    // الكميات اختيارية — بتقدر تحفظ الهيكل وتعبّي الأوزان لاحقاً
+    const inItemName = nameOf(inItem, isAr) || bom.inputId;
+    if (all.some((l) => l.itemId === bom.inputId)) {
+      return t({
+        en: `Duplicate: "${inItemName}" is the input product — it cannot also be listed as an output or waste. Remove that line.`,
+        ar: `مكرّر: «${inItemName}» هو المنتج الداخل — ما بيصير ينضاف كناتج أو هدر كمان. احذف هالسطر.`,
+      });
+    }
+    const seen = new Set();
+    for (const l of all) {
+      if (seen.has(l.itemId)) {
+        const it = itemById(cfg, l.itemId);
+        return t({
+          en: `Duplicate: "${nameOf(it, false) || l.itemId}" is listed twice — each item may appear only once. Merge its lines.`,
+          ar: `مكرّر: «${nameOf(it, true) || l.itemId}» موجود بسطرين — كل صنف بيجي مرة وحدة بس. ادمجهم.`,
+        });
+      }
+      seen.add(l.itemId);
+    }
+    if (bomMath(bom).over) {
+      return t({
+        en: "Outputs + waste exceed the input quantity — fix the mass balance.",
+        ar: "الناتج + الهدر أكثر من كمية الداخل — صحّح الميزان.",
+      });
+    }
+    return "";
+  };
+
+  const saveBom = async () => {
+    const bom = { ...draft.bom, updatedAt: new Date().toISOString(), updatedBy: userName() };
+    const err = validate(bom);
+    if (err) { flash(err, true); return; }
+    const isNew = draft.mode === "new";
+    const ok = await commit(
+      (n) => {
+        const i = n.boms.findIndex((x) => x.id === bom.id);
+        if (i >= 0) n.boms[i] = bom; else n.boms.push(bom);
+      },
+      t({ en: `${bom.ref} saved.`, ar: `تم حفظ ${bom.ref}.` })
+    );
+    if (ok) setDraft({ mode: "edit", bom, dirty: false });
+    return ok;
+  };
+
+  /** إصدار جديد — لقطة من النسخة المحفوظة ثم رفع الرقم (بينحفظ فوراً). */
+  const bumpVersion = async () => {
+    if (draft.dirty) {
+      flash(t({ en: "Save the BOM first, then take a version.", ar: "احفظ القائمة أولاً وبعدين خُد إصدار." }), true);
+      return;
+    }
+    const b = draft.bom;
+    const snapshot = {
+      version: num(b.version, 1),
+      at: new Date().toISOString(),
+      by: userName(),
+      inputId: b.inputId, inputQty: b.inputQty,
+      outputs: JSON.parse(JSON.stringify(b.outputs || [])),
+      wastes: JSON.parse(JSON.stringify(b.wastes || [])),
+    };
+    const bumped = {
+      ...b,
+      history: [...(b.history || []).slice(-49), snapshot],
+      version: num(b.version, 1) + 1,
+    };
+    const ok = await commit(
+      (n) => {
+        const i = n.boms.findIndex((x) => x.id === b.id);
+        if (i >= 0) n.boms[i] = bumped;
+      },
+      t({ en: `Version v${bumped.version} opened.`, ar: `تم فتح الإصدار v${bumped.version}.` })
+    );
+    if (ok) setDraft({ mode: "edit", bom: bumped, dirty: false });
+  };
+
+  const restoreVersion = async (snapshot) => {
+    if (!window.confirm(t({
+      en: `Restore version ${snapshot.version}? The current one stays in the history.`,
+      ar: `استرجاع الإصدار ${snapshot.version}؟ الحالي بيضل بالسجل.`,
+    }))) return;
+    const b = draft.bom;
+    const snap = {
+      version: num(b.version, 1), at: new Date().toISOString(), by: userName(),
+      inputId: b.inputId, inputQty: b.inputQty,
+      outputs: JSON.parse(JSON.stringify(b.outputs || [])),
+      wastes: JSON.parse(JSON.stringify(b.wastes || [])),
+    };
+    const restored = {
+      ...b,
+      history: [...(b.history || []).slice(-49), snap],
+      version: num(b.version, 1) + 1,
+      inputId: snapshot.inputId,
+      inputQty: snapshot.inputQty,
+      outputs: JSON.parse(JSON.stringify(snapshot.outputs || [])),
+      wastes: JSON.parse(JSON.stringify(snapshot.wastes || [])),
+    };
+    const ok = await commit(
+      (n) => {
+        const i = n.boms.findIndex((x) => x.id === b.id);
+        if (i >= 0) n.boms[i] = restored;
+      },
+      t({ en: `Version ${snapshot.version} restored.`, ar: `تم استرجاع الإصدار ${snapshot.version}.` })
+    );
+    if (ok) {
+      setDraft({ mode: "edit", bom: restored, dirty: false });
+      setHistoryFor("");
+    }
+  };
+
+  /* ── عمليات القائمة (حفظ فوري) ── */
+  const toggleActive = (b, v) =>
+    commit((n) => {
+      const x = n.boms.find((y) => y.id === b.id);
+      if (x) x.active = v;
+    }, v
+      ? t({ en: `${b.ref} activated.`, ar: `تم تفعيل ${b.ref}.` })
+      : t({ en: `${b.ref} deactivated.`, ar: `تم تعطيل ${b.ref}.` }));
+
+  const duplicateBom = async (b) => {
     const copy = {
-      ...JSON.parse(JSON.stringify(src)),
+      ...JSON.parse(JSON.stringify(b)),
       id: freshId("bom"),
-      ref: nextRef(model.boms),
+      ref: nextRef(cfg.boms),
       version: 1,
       history: [],
       active: false,
       createdAt: new Date().toISOString(),
       createdBy: userName(),
     };
-    edit((n) => { n.boms.push(copy); });
-    setOpenId(copy.id);
+    const ok = await commit(
+      (n) => { n.boms.push(copy); },
+      t({ en: `Copied to ${copy.ref} (inactive).`, ar: `تم النسخ إلى ${copy.ref} (معطّلة).` })
+    );
+    if (ok) setDraft({ mode: "edit", bom: copy, dirty: false });
   };
 
-  const removeBom = (id) => {
-    const b = (model.boms || []).find((x) => x.id === id);
+  const removeBom = async (b) => {
     if (!window.confirm(t({
-      en: `Delete ${b?.ref || "this BOM"}? Work orders already created keep their own snapshot.`,
-      ar: `حذف ${b?.ref || "هذه القائمة"}؟ أوامر التصنيع المفتوحة سابقاً بتحتفظ بنسختها.`,
+      en: `Delete ${b.ref}? This is saved immediately.`,
+      ar: `حذف ${b.ref}؟ الحذف بينحفظ فوراً.`,
     }))) return;
-    edit((n) => { n.boms = n.boms.filter((x) => x.id !== id); });
-    setOpenId("");
+    const ok = await commit(
+      (n) => { n.boms = n.boms.filter((x) => x.id !== b.id); },
+      t({ en: `${b.ref} deleted.`, ar: `تم حذف ${b.ref}.` })
+    );
+    if (ok && draft?.bom?.id === b.id) setDraft(null);
   };
 
-  /* ── الأسطر ── */
-  const addLine = (bomId) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      if (b) b.lines = [...(b.lines || []), { id: freshId("ln"), itemId: "", qty: "", scrapPct: "" }];
-    });
-  const patchLine = (bomId, lineId, p) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      const l = (b?.lines || []).find((x) => x.id === lineId);
-      if (l) Object.assign(l, p);
-    });
-  const removeLine = (bomId, lineId) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      if (b) b.lines = (b.lines || []).filter((x) => x.id !== lineId);
-    });
-
-  /* ── المنتجات الثانوية ── */
-  const addByproduct = (bomId) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      if (b) b.byproducts = [...(b.byproducts || []), { id: freshId("bp"), itemId: "", qty: "" }];
-    });
-  const patchByproduct = (bomId, bpId, p) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      const bp = (b?.byproducts || []).find((x) => x.id === bpId);
-      if (bp) Object.assign(bp, p);
-    });
-  const removeByproduct = (bomId, bpId) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      if (b) b.byproducts = (b.byproducts || []).filter((x) => x.id !== bpId);
-    });
-
-  /* ── العمليات ── */
-  const addOp = (bomId) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      if (b) b.ops = [...(b.ops || []), { id: freshId("op"), opId: "", minutes: "", instructions: "", checks: [] }];
-    });
-  const patchOp = (bomId, opRowId, p) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      const o = (b?.ops || []).find((x) => x.id === opRowId);
-      if (o) Object.assign(o, p);
-    });
-  const removeOp = (bomId, opRowId) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      if (b) b.ops = (b.ops || []).filter((x) => x.id !== opRowId);
-    });
-
-  /** حفظ إصدار جديد — لقطة من الحالة الحالية داخل السجل ثم رفع الرقم. */
-  const bumpVersion = (bomId, note) =>
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      if (!b) return;
-      b.history = [
-        ...(b.history || []).slice(-49),
-        {
-          version: num(b.version, 1),
-          at: new Date().toISOString(),
-          by: userName(),
-          note: note || "",
-          qty: b.qty,
-          overheadPct: b.overheadPct,
-          lines: JSON.parse(JSON.stringify(b.lines || [])),
-          ops: JSON.parse(JSON.stringify(b.ops || [])),
-        },
-      ];
-      b.version = num(b.version, 1) + 1;
-      b.updatedAt = new Date().toISOString();
-      b.updatedBy = userName();
-    });
-
-  const restoreVersion = (bomId, snapshot) => {
-    if (!window.confirm(t({
-      en: `Restore version ${snapshot.version}? The current one is kept in the history.`,
-      ar: `استرجاع الإصدار ${snapshot.version}؟ الحالي بينحفظ بالسجل.`,
-    }))) return;
-    bumpVersion(bomId, t({ en: "before restore", ar: "قبل الاسترجاع" }));
-    edit((n) => {
-      const b = n.boms.find((x) => x.id === bomId);
-      if (!b) return;
-      b.qty = snapshot.qty;
-      b.overheadPct = snapshot.overheadPct;
-      b.lines = JSON.parse(JSON.stringify(snapshot.lines || []));
-      b.ops = JSON.parse(JSON.stringify(snapshot.ops || []));
-    });
-    setHistoryFor("");
-  };
-
-  const save = async () => {
-    if (!draft || saving) return;
-    setSaving(true);
-    try {
-      const saved = await saveConfig(draft);
-      setCfg(saved);
-      setDraft(null);
-      setMsg(t({ en: "Saved.", ar: "تم الحفظ." }));
-    } catch (e) {
-      setMsg(`${t({ en: "Save failed", ar: "فشل الحفظ" })}: ${e?.message || e}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  /* منتج بقائمتين مفعّلتين = خطأ يمنع الحفظ */
-  const blocker = useMemo(() => {
-    const seen = new Map();
-    for (const b of activeOnly(model.boms)) {
-      if (!b.productId) continue;
-      if (seen.has(b.productId)) {
-        const p = itemById(model, b.productId);
-        return t({
-          en: `Two active BOMs for ${nameOf(p, false) || b.productId} — deactivate one.`,
-          ar: `في قائمتَي مواد مفعّلتين لـ${nameOf(p, true) || b.productId} — عطّل وحدة.`,
-        });
-      }
-      seen.set(b.productId, b.id);
-    }
-    return "";
-  }, [model, t]);
-
+  /* ── جدول القوائم ── */
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return (model.boms || [])
-      .map((b) => ({ b, product: itemById(model, b.productId), cost: bomCost(model, b) }))
-      .filter(({ b, product }) => {
+    return (cfg.boms || [])
+      .map((b) => ({
+        b,
+        input: itemById(cfg, b.inputId),
+        math: bomMath(b),
+        cat: nameOf(categoryById(cfg, b.categoryId) || {}, isAr),
+        legacy: b.bomType !== "disassembly" && (b.lines || []).length > 0,
+      }))
+      .filter(({ b, input, cat }) => {
+        if (catFilter && (b.categoryId || "") !== catFilter) return false;
         if (!needle) return true;
-        return [b.ref, product?.sku, product?.ar, product?.en]
+        return [b.ref, input?.sku, input?.ar, input?.en, cat]
           .some((v) => String(v || "").toLowerCase().includes(needle));
       });
-  }, [model, q]);
+  }, [cfg, q, catFilter, isAr]);
 
   if (!canOpenMrp(PAGE)) return <MrpNoAccess page={PAGE} />;
 
-  const current = openId ? (model.boms || []).find((x) => x.id === openId) : null;
-  const histBom = historyFor ? (model.boms || []).find((x) => x.id === historyFor) : null;
+  const histBom = historyFor && draft ? draft.bom : null;
 
   return (
     <MrpShell
       pageId={PAGE}
-      icon="🧾"
-      title={t({ en: "Bills of materials", ar: "قوائم المواد" })}
+      icon="🔪"
+      title={t({ en: "Cutting BOMs", ar: "قوائم التفكيك والتقطيع" })}
       sub={t({
-        en: "Build the finished product from its components",
-        ar: "تركيب المنتج النهائي من مكوّناته",
+        en: "One input product → output cuts + waste, straight from the item master",
+        ar: "منتج واحد داخل → قطع ناتجة + هدر، كله من سجل الأصناف",
       })}
       actions={
-        canEdit && !current && (
-          <button type="button" style={{ ...S.btn, ...S.btnPrimary }} onClick={addBom}>
-            ＋ {t({ en: "New BOM", ar: "قائمة مواد جديدة" })}
+        canEdit && !draft && (
+          <button type="button" style={{ ...S.btn, ...S.btnPrimary }} onClick={openNew}>
+            ＋ {t({ en: "New cutting BOM", ar: "قائمة تقطيع جديدة" })}
           </button>
         )
       }
     >
-      {msg && <div style={S.ok}>{msg}</div>}
-      {blocker && <div style={S.err}>⚠️ {blocker}</div>}
+      <Toast toast={toast} busy={busy} t={t} />
 
-      {!current ? (
-        <>
-          <Card
-            icon="🧾"
-            title={t({ en: "All bills of materials", ar: "كل قوائم المواد" })}
-            sub={t({
-              en: "One active BOM per product. Cost is recalculated live from the item master.",
-              ar: "قائمة مفعّلة وحدة لكل منتج. التكلفة بتتحسب مباشرة من سجل الأصناف.",
-            })}
-            right={
+      {!draft ? (
+        <Card
+          icon="🔪"
+          title={t({ en: "All cutting BOMs", ar: "كل قوائم التقطيع" })}
+          sub={t({
+            en: "Yield % = outputs ÷ input. Activate one BOM per input product.",
+            ar: "العائد ٪ = الناتج ÷ الداخل. فعّل قائمة وحدة لكل منتج داخل.",
+          })}
+          right={
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <SearchBox value={q} onChange={setQ}
-                placeholder={t({ en: "Search BOM or product…", ar: "بحث برقم القائمة أو المنتج…" })} />
-            }
-          >
-            {loading && !rows.length ? (
-              <EmptyBox>{t({ en: "Loading…", ar: "جارٍ التحميل…" })}</EmptyBox>
-            ) : rows.length === 0 ? (
-              <EmptyBox>
-                {t({
-                  en: "No BOM yet — press “New BOM” to build your first product.",
-                  ar: "لا توجد قوائم بعد — اضغط «قائمة مواد جديدة» لتركيب أول منتج.",
-                })}
-              </EmptyBox>
-            ) : (
-              <div style={S.tableWrap}>
-                <table style={S.table}>
-                  <thead>
-                    <tr>
-                      <th style={S.th}>{t({ en: "BOM no.", ar: "رقم القائمة" })}</th>
-                      <th style={S.th}>{t({ en: "Finished product", ar: "المنتج النهائي" })}</th>
-                      <th style={S.th}>{t({ en: "Produces", ar: "ينتج" })}</th>
-                      <th style={S.th}>{t({ en: "Components", ar: "المكوّنات" })}</th>
-                      <th style={S.th}>{t({ en: "Material", ar: "المواد" })}</th>
-                      <th style={S.th}>{t({ en: "Labor", ar: "التشغيل" })}</th>
-                      <th style={S.th}>{t({ en: "Cost / unit", ar: "التكلفة/وحدة" })}</th>
-                      <th style={S.th}>{t({ en: "Version", ar: "الإصدار" })}</th>
-                      <th style={S.th}>{t({ en: "Active", ar: "مفعّلة" })}</th>
-                      <th style={S.th}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(({ b, product, cost }) => (
-                      <tr key={b.id}>
-                        <td style={{ ...S.td, fontWeight: 900 }}>{b.ref}</td>
-                        <td style={{ ...S.td, ...S.tdStart }}>
-                          {product
-                            ? `${product.sku ? `[${product.sku}] ` : ""}${nameOf(product, isAr) || product.id}`
-                            : <span style={{ color: "#a12626" }}>⚠️ {t({ en: "no product", ar: "بلا منتج" })}</span>}
-                        </td>
-                        <td style={S.td}>{money(b.qty, 2)} {b.uom || product?.uom || ""}</td>
-                        <td style={S.td}>{(b.lines || []).length}</td>
-                        <td style={S.td}>{money(cost.material)}</td>
-                        <td style={S.td}>{money(cost.labor)}</td>
-                        <td style={{ ...S.td, fontWeight: 900, color: "#0f766e" }}>{money(cost.unit)}</td>
-                        <td style={S.td}>
-                          <Badge color="#14507f" bg="#eef4fb">v{num(b.version, 1)}</Badge>
-                        </td>
-                        <td style={S.td}>
-                          <Switch
-                            checked={b.active !== false}
-                            disabled={!canEdit}
-                            onChange={(v) => patchBom(b.id, { active: v })}
-                          />
-                        </td>
-                        <td style={S.td}>
-                          <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
-                            <button type="button" style={{ ...S.btn, ...S.btnSm }}
-                              onClick={() => setOpenId(b.id)}>
-                              {t({ en: "Open", ar: "فتح" })}
-                            </button>
-                            {canEdit && (
-                              <button type="button" style={{ ...S.btn, ...S.btnSm }}
-                                onClick={() => duplicateBom(b.id)}>
+                placeholder={t({ en: "Search ref, input or category…", ar: "بحث بالرقم أو الداخل أو الفئة…" })} />
+              <select
+                style={{
+                  ...S.input, width: 175,
+                  ...(catFilter ? { borderColor: "#1f6fd0", background: "#f7fbff" } : null),
+                }}
+                value={catFilter}
+                onChange={(e) => setCatFilter(e.target.value)}
+              >
+                <option value="">{t({ en: "All categories", ar: "كل الفئات" })}</option>
+                {activeOnly(cfg.categories).map((c) => (
+                  <option key={c.id} value={c.id}>{nameOf(c, isAr) || c.id}</option>
+                ))}
+              </select>
+            </div>
+          }
+        >
+          {loading && !rows.length ? (
+            <EmptyBox>{t({ en: "Loading…", ar: "جارٍ التحميل…" })}</EmptyBox>
+          ) : rows.length === 0 ? (
+            <EmptyBox>
+              {t({
+                en: "No cutting BOM yet — press “New cutting BOM” to define your first breakdown.",
+                ar: "لا توجد قوائم بعد — اضغط «قائمة تقطيع جديدة» لتعريف أول تفكيك.",
+              })}
+            </EmptyBox>
+          ) : (
+            <div style={S.tableWrap}>
+              <table style={S.table}>
+                <thead>
+                  <tr>
+                    <th style={S.th}>{t({ en: "Ref", ar: "الرقم" })}</th>
+                    <th style={S.th}>{t({ en: "Category", ar: "الفئة" })}</th>
+                    <th style={S.th}>{t({ en: "Input product", ar: "المنتج الداخل" })}</th>
+                    <th style={S.th}>{t({ en: "Input qty", ar: "كمية الداخل" })}</th>
+                    <th style={S.th}>{t({ en: "Outputs", ar: "النواتج" })}</th>
+                    <th style={S.th}>{t({ en: "Waste", ar: "الهدر" })}</th>
+                    <th style={S.th}>{t({ en: "Yield", ar: "العائد" })}</th>
+                    <th style={S.th}>{t({ en: "Version", ar: "الإصدار" })}</th>
+                    <th style={S.th}>{t({ en: "Active", ar: "مفعّلة" })}</th>
+                    <th style={S.th}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(({ b, input, math, cat, legacy }) => (
+                    <tr key={b.id}>
+                      <td style={{ ...S.td, fontWeight: 900 }}>
+                        {b.ref}
+                        {legacy && (
+                          <div><Badge color="#b45309" bg="#fffbeb">{t({ en: "legacy", ar: "قديمة" })}</Badge></div>
+                        )}
+                      </td>
+                      <td style={S.td}>
+                        {cat
+                          ? <Badge color="#1f6fd0" bg="#eaf2fc">{cat}</Badge>
+                          : <span style={{ color: "#8aa3b8" }}>—</span>}
+                      </td>
+                      <td style={{ ...S.td, ...S.tdStart }}>
+                        {input
+                          ? `${input.sku ? `[${input.sku}] ` : ""}${nameOf(input, isAr) || input.id}`
+                          : <span style={{ color: "#a12626" }}>⚠️ {t({ en: "no input", ar: "بلا داخل" })}</span>}
+                      </td>
+                      <td style={S.td}>{math.input ? `${money(math.input, 2)} ${input?.uom || ""}` : "—"}</td>
+                      <td style={S.td}>
+                        {(b.outputs || []).length}
+                        <span style={S.hint}> · {money(math.out, 1)}</span>
+                      </td>
+                      <td style={S.td}>
+                        {(b.wastes || []).length}
+                        <span style={S.hint}> · {money(math.waste, 1)}</span>
+                      </td>
+                      <td style={{
+                        ...S.td, fontWeight: 900,
+                        color: math.yieldPct >= 60 ? "#047857" : math.yieldPct > 0 ? "#b45309" : "#6b8299",
+                      }}>
+                        {math.input ? `${math.yieldPct.toFixed(1)}%` : "—"}
+                      </td>
+                      <td style={S.td}>
+                        <Badge color="#14507f" bg="#eef4fb">v{num(b.version, 1)}</Badge>
+                      </td>
+                      <td style={S.td}>
+                        <Switch
+                          checked={b.active !== false}
+                          disabled={!canEdit || busy}
+                          onChange={(v) => toggleActive(b, v)}
+                        />
+                      </td>
+                      <td style={S.td}>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
+                          <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={() => openBom(b)}>
+                            {canEdit ? `✎ ${t({ en: "Open", ar: "فتح" })}` : t({ en: "View", ar: "عرض" })}
+                          </button>
+                          {canEdit && (
+                            <>
+                              <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
+                                disabled={busy} onClick={() => duplicateBom(b)}
+                                title={t({ en: "Duplicate", ar: "نسخ" })}>
                                 ⧉
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-
-          <OperationsCard
-            t={t} isAr={isAr} model={model} canEdit={canEdit}
-            onAdd={() => edit((n) => {
-              n.operations.push({
-                id: freshId("wc"), ar: "", en: "", costPerHour: "", active: true,
-              });
-            })}
-            onPatch={(id, p) => edit((n) => {
-              const o = n.operations.find((x) => x.id === id);
-              if (o) Object.assign(o, p);
-            })}
-            onRemove={(id) => edit((n) => {
-              n.operations = n.operations.filter((x) => x.id !== id);
-            })}
-          />
-        </>
+                              <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger, ...(busy ? S.btnOff : null) }}
+                                disabled={busy} onClick={() => removeBom(b)}>
+                                🗑
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
       ) : (
-        <BomBuilder
-          t={t} isAr={isAr} model={model} bom={current} canEdit={canEdit}
-          onBack={() => setOpenId("")}
-          patchBom={patchBom}
-          addLine={addLine} patchLine={patchLine} removeLine={removeLine}
-          addByproduct={addByproduct} patchByproduct={patchByproduct} removeByproduct={removeByproduct}
-          addOp={addOp} patchOp={patchOp} removeOp={removeOp}
-          onDelete={() => removeBom(current.id)}
-          onDuplicate={() => duplicateBom(current.id)}
-          onBump={() => bumpVersion(current.id, "")}
-          onHistory={() => setHistoryFor(current.id)}
+        <CutBuilder
+          t={t} isAr={isAr} cfg={cfg} draft={draft} canEdit={canEdit} busy={busy}
+          notify={flash}
+          onBack={closeBuilder}
+          onSave={saveBom}
+          onDelete={() => removeBom(draft.bom)}
+          onBump={bumpVersion}
+          onHistory={() => setHistoryFor(draft.bom.id)}
+          patch={patch} patchList={patchList} addTo={addTo} dropFrom={dropFrom}
         />
       )}
 
@@ -397,8 +516,8 @@ export default function MrpBom() {
                     <th style={S.th}>{t({ en: "Version", ar: "الإصدار" })}</th>
                     <th style={S.th}>{t({ en: "Saved at", ar: "الوقت" })}</th>
                     <th style={S.th}>{t({ en: "By", ar: "بواسطة" })}</th>
-                    <th style={S.th}>{t({ en: "Components", ar: "مكوّنات" })}</th>
-                    <th style={S.th}>{t({ en: "Note", ar: "ملاحظة" })}</th>
+                    <th style={S.th}>{t({ en: "Outputs", ar: "نواتج" })}</th>
+                    <th style={S.th}>{t({ en: "Waste", ar: "هدر" })}</th>
                     <th style={S.th}></th>
                   </tr>
                 </thead>
@@ -410,12 +529,12 @@ export default function MrpBom() {
                         {new Date(h.at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}
                       </td>
                       <td style={S.td}>{h.by || "—"}</td>
-                      <td style={S.td}>{(h.lines || []).length}</td>
-                      <td style={S.td}>{h.note || "—"}</td>
+                      <td style={S.td}>{(h.outputs || []).length}</td>
+                      <td style={S.td}>{(h.wastes || []).length}</td>
                       <td style={S.td}>
                         {canEdit && (
-                          <button type="button" style={{ ...S.btn, ...S.btnSm }}
-                            onClick={() => restoreVersion(histBom.id, h)}>
+                          <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
+                            disabled={busy} onClick={() => restoreVersion(h)}>
                             ↺ {t({ en: "Restore", ar: "استرجاع" })}
                           </button>
                         )}
@@ -428,623 +547,380 @@ export default function MrpBom() {
           )}
         </Modal>
       )}
-
-      <SaveDock
-        dirty={dirty}
-        saving={saving}
-        blocker={blocker}
-        onSave={save}
-        onDiscard={() => { setDraft(null); setMsg(""); }}
-        t={t}
-      />
     </MrpShell>
   );
 }
 
-/* ══════════════ الباني ══════════════ */
+/* ══════════════ باني قائمة التقطيع ══════════════ */
 
-function BomBuilder({
-  t, isAr, model, bom, canEdit, onBack, patchBom,
-  addLine, patchLine, removeLine,
-  addByproduct, patchByproduct, removeByproduct,
-  addOp, patchOp, removeOp,
-  onDelete, onDuplicate, onBump, onHistory,
+function CutBuilder({
+  t, isAr, cfg, draft, canEdit, busy, notify,
+  onBack, onSave, onDelete, onBump, onHistory,
+  patch, patchList, addTo, dropFrom,
 }) {
-  const cost = bomCost(model, bom);
-  const product = itemById(model, bom.productId);
-  const ro = !canEdit;
-  const [worksheetOp, setWorksheetOp] = React.useState("");
-  const isKit = bom.bomType === "kit";
-  const effective = isBomEffective(bom);
+  const bom = draft.bom;
+  const isNew = draft.mode === "new";
+  const input = itemById(cfg, bom.inputId);
+  const math = bomMath(bom);
+  const uom = input?.uom || "";
+
+  // كل الأصناف المستعملة بالقائمة (نواتج + هدر) — لمنع التكرار عبر السطور
+  const usedIds = useMemo(
+    () => [...(bom.outputs || []), ...(bom.wastes || [])].map((l) => l.itemId).filter(Boolean),
+    [bom.outputs, bom.wastes]
+  );
+
+  /** سبب منع صنف بجداول الناتج/الهدر — بيظهر بالقائمة بس ما بينضاف. */
+  const lineDisabledFor = (curItemId) => (i) => {
+    if (i.id === bom.inputId) {
+      return t({ en: "same as input", ar: "هو الداخل" });
+    }
+    if (i.id !== curItemId && usedIds.includes(i.id)) {
+      return t({ en: "already added", ar: "مضاف مسبقاً" });
+    }
+    return "";
+  };
+  const onLineBlocked = (i, reason) => {
+    const nm = nameOf(i, isAr) || i.sku || i.id;
+    if (reason === t({ en: "same as input", ar: "هو الداخل" })) {
+      notify?.(t({
+        en: `Duplicate: "${nm}" is the input product — it can't also be an output or waste.`,
+        ar: `مكرّر: «${nm}» هو المنتج الداخل — ما بيصير يكون ناتج أو هدر كمان.`,
+      }), true);
+    } else {
+      notify?.(t({
+        en: `Duplicate: "${nm}" is already added in this BOM.`,
+        ar: `مكرّر: «${nm}» مضاف مسبقاً بهالقائمة.`,
+      }), true);
+    }
+  };
 
   return (
     <>
       <Card
-        icon="🧾"
-        title={`${bom.ref} — ${product ? nameOf(product, isAr) || product.id : t({ en: "pick a product", ar: "اختر منتجاً" })}`}
+        icon="🔪"
+        title={
+          <span style={{ display: "inline-flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            {bom.ref} — {input ? nameOf(input, isAr) || input.id : t({ en: "pick the input", ar: "اختر الداخل" })}
+            {draft.dirty && (
+              <Badge color="#b45309" bg="#fffbeb">● {t({ en: "unsaved", ar: "غير محفوظ" })}</Badge>
+            )}
+            {isNew && (
+              <Badge color="#1f6fd0" bg="#eef4fb">{t({ en: "new — not saved yet", ar: "جديدة — لسا ما انحفظت" })}</Badge>
+            )}
+          </span>
+        }
         sub={t({
-          en: "Components, by-products and operations. Cost updates as you type.",
-          ar: "المكوّنات والمنتجات الثانوية والعمليات. التكلفة بتتحدّث وأنت عم تكتب.",
+          en: "Define how one input breaks into cuts and waste. Nothing is stored until you press Save.",
+          ar: "عرّف كيف الداخل بيتفكّك لقطع وهدر. ما بينحفظ إشي قبل ما تضغط حفظ.",
         })}
         right={
           <>
             <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={onBack}>
               ← {t({ en: "All BOMs", ar: "كل القوائم" })}
             </button>
-            <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={onHistory}>
-              🕓 v{num(bom.version, 1)}
-            </button>
-            {canEdit && (
+            {!isNew && (
+              <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={onHistory}>
+                🕓 v{num(bom.version, 1)}
+              </button>
+            )}
+            {canEdit && !isNew && (
               <>
-                <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={onBump}>
+                <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
+                  disabled={busy} onClick={onBump}>
                   ＋ {t({ en: "New version", ar: "إصدار جديد" })}
                 </button>
-                <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={onDuplicate}>
-                  ⧉ {t({ en: "Duplicate", ar: "نسخ" })}
-                </button>
-                <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }} onClick={onDelete}>
+                <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger, ...(busy ? S.btnOff : null) }}
+                  disabled={busy} onClick={onDelete}>
                   🗑
                 </button>
               </>
             )}
+            {canEdit && (
+              <button
+                type="button"
+                style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary, ...(busy || !draft.dirty ? S.btnOff : null) }}
+                disabled={busy || !draft.dirty}
+                onClick={onSave}
+              >
+                {busy
+                  ? t({ en: "Saving…", ar: "جارٍ الحفظ…" })
+                  : `💾 ${t({ en: "Save BOM", ar: "حفظ القائمة" })}`}
+              </button>
+            )}
           </>
         }
       >
-        <fieldset disabled={ro} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <div style={S.grid}>
-            <Field label={t({ en: "Finished product", ar: "المنتج النهائي" })}>
+            <Field label={t({ en: "Input product (from item master)", ar: "المنتج الداخل (من سجل الأصناف)" })}>
               <ItemPicker
-                cfg={model}
-                value={bom.productId}
-                onPick={(id) => {
-                  const it = itemById(model, id);
-                  patchBom(bom.id, { productId: id, uom: bom.uom || it?.uom || "KG" });
-                }}
+                cfg={cfg}
+                value={bom.inputId}
+                onPick={(id) => patch({ inputId: id })}
                 isAr={isAr}
                 t={t}
-                filter={(i) => (i.type || "raw") !== "raw"}
+                prefer={["raw", "component"]}
+                // بيظهروا بالقائمة بس ما بينضافوا — المنتج النهائي والهدر ما بيصيروا مدخلات
+                disabledFor={(i) =>
+                  (hasRole(i, "finished") || hasRole(i, "waste"))
+                    ? t({ en: "finished/waste — not an input", ar: "نهائي/هدر — مش مدخل" })
+                    : ""}
+                onBlocked={(i) => notify?.(t({
+                  en: `"${nameOf(i, false) || i.sku || i.id}" is a finished/waste item — the input must be a raw material or a component.`,
+                  ar: `«${nameOf(i, true) || i.sku || i.id}» منتج نهائي/هدر — الداخل لازم يكون مادة خام أو مكوّن.`,
+                }), true)}
+                placeholder={t({ en: "carcass / primal…", ar: "ذبيحة / قطعة أساسية…" })}
               />
             </Field>
-            <Field label={t({ en: "BOM type", ar: "نوع القائمة" })}>
+            <Field label={`${t({ en: "Input quantity", ar: "كمية الداخل" })}${uom ? ` (${uom})` : ""}`}>
+              <NumInput
+                value={bom.inputQty}
+                onChange={(v) => patch({ inputQty: v })}
+                // يتنسّق لرقمين بعد الفاصلة عند مغادرة الحقل
+                onBlur={() => {
+                  const v = num(bom.inputQty);
+                  if (String(bom.inputQty ?? "").trim() !== "") patch({ inputQty: v.toFixed(2) });
+                }}
+              />
+              <span style={{ ...S.hint, marginTop: 4 }}>
+                {num(bom.inputQty) > 0
+                  ? `${money(num(bom.inputQty), 2)} ${uom || ""}`
+                  : t({ en: "optional — you can fill it later", ar: "اختياري — فيك تعبّيها لاحقاً" })}
+              </span>
+            </Field>
+            <Field label={t({ en: "Category", ar: "الفئة" })}>
               <Select
-                value={bom.bomType || "manufacture"}
-                onChange={(v) => patchBom(bom.id, { bomType: v })}
-                options={[
-                  { id: "manufacture", label: t({ en: "Manufacture this product", ar: "تصنيع هذا المنتج" }) },
-                  { id: "kit", label: t({ en: "Kit (explodes, not built)", ar: "مجموعة (تتفكّك بلا تصنيع)" }) },
-                ]}
+                value={bom.categoryId}
+                onChange={(v) => patch({ categoryId: v })}
+                options={activeOnly(cfg.categories)}
+                isAr={isAr}
+                placeholder={t({ en: "— none —", ar: "— بلا —" })}
               />
             </Field>
-            <Field label={t({ en: "Produces quantity", ar: "الكمية المنتَجة" })}>
-              <NumInput value={bom.qty} onChange={(v) => patchBom(bom.id, { qty: v })} />
-            </Field>
-            <Field label={t({ en: "Unit", ar: "الوحدة" })}>
-              <UomSelect value={bom.uom} onChange={(v) => patchBom(bom.id, { uom: v })} isAr={isAr} />
-            </Field>
-            <Field label={t({ en: "Overhead %", ar: "تكاليف غير مباشرة ٪" })}>
-              <NumInput value={bom.overheadPct} onChange={(v) => patchBom(bom.id, { overheadPct: v })} />
-            </Field>
-            <Field label={t({ en: "Consumption policy", ar: "سياسة الاستهلاك" })}>
-              <Select
-                value={bom.consumptionPolicy || "warn"}
-                onChange={(v) => patchBom(bom.id, { consumptionPolicy: v })}
-                options={CONSUMPTION_POLICIES.map((p) => ({
-                  id: p.id, label: `${nameOf(p, isAr)} — ${isAr ? p.arSub : p.enSub}`,
-                }))}
-              />
-            </Field>
-            <Field label={t({ en: "Effective from", ar: "ساري من" })}>
-              <input type="date" style={S.input} value={bom.effectiveFrom || ""}
-                onChange={(e) => patchBom(bom.id, { effectiveFrom: e.target.value })} />
-            </Field>
-            <Field label={t({ en: "Effective to", ar: "ساري حتى" })}>
-              <input type="date" style={S.input} value={bom.effectiveTo || ""}
-                onChange={(e) => patchBom(bom.id, { effectiveTo: e.target.value })} />
+            <Field label={t({ en: "Notes", ar: "ملاحظات" })}>
+              <TextInputLike value={bom.notes} onChange={(v) => patch({ notes: v })} />
             </Field>
           </div>
-
           <div style={{ ...S.chipRow, marginTop: 12 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
-              <Switch checked={bom.active !== false} onChange={(v) => patchBom(bom.id, { active: v })} />
+              <Switch checked={bom.active !== false} onChange={(v) => patch({ active: v })} />
               {t({ en: "Active BOM", ar: "قائمة مفعّلة" })}
             </label>
-            {!effective && (
-              <Badge color="#b45309" bg="#fffbeb">
-                {t({ en: "Out of effectivity today", ar: "خارج فترة السريان اليوم" })}
-              </Badge>
-            )}
-            {isKit && (
-              <Badge color="#0f766e" bg="#e7f5f3">
-                {t({ en: "Kit — no work order needed", ar: "مجموعة — بلا أمر تصنيع" })}
-              </Badge>
-            )}
             <span style={S.hint}>
-              {isKit
-                ? t({
-                    en: "A kit is delivered as its components — it is not produced by a work order.",
-                    ar: "المجموعة بتتسلّم كمكوّناتها — ما بتنتصنع بأمر تصنيع.",
-                  })
-                : t({
-                    en: "Only the active BOM (within its effectivity dates) is used by work orders.",
-                    ar: "القائمة المفعّلة (ضمن تواريخ سريانها) وحدها بتُستعمل بأوامر التصنيع.",
-                  })}
+              {t({
+                en: "Tip: 100 KG input makes every line read directly as a percentage.",
+                ar: "نصيحة: داخل ١٠٠ كجم بيخلي كل سطر ينقرأ كنسبة مئوية مباشرة.",
+              })}
             </span>
           </div>
         </fieldset>
       </Card>
 
-      {/* ── المكوّنات ── */}
-      <Card
-        icon="🧩"
-        title={t({ en: "Components", ar: "المكوّنات" })}
+      {/* ── ميزان الكتلة ── */}
+      <MassBalance t={t} math={math} uom={uom} />
+
+      {/* ── النواتج ── */}
+      <CutLines
+        t={t} isAr={isAr} cfg={cfg} canEdit={canEdit}
+        icon="🥩"
+        title={t({ en: "Output products", ar: "المنتجات الناتجة" })}
         sub={t({
-          en: "Quantity is per the produced quantity above. Scrap % is added on top.",
-          ar: "الكمية مقابل الكمية المنتَجة فوق. نسبة الهدر بتنضاف فوقها.",
+          en: "The cuts this input yields — picked from the item master.",
+          ar: "القطع اللي بيعطيها الداخل — من سجل الأصناف.",
         })}
-        right={
-          canEdit && (
-            <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary }}
-              onClick={() => addLine(bom.id)}>
-              ＋ {t({ en: "Add component", ar: "إضافة مكوّن" })}
-            </button>
-          )
-        }
-      >
-        {(bom.lines || []).length === 0 ? (
-          <EmptyBox>{t({ en: "No components yet.", ar: "لا توجد مكوّنات بعد." })}</EmptyBox>
-        ) : (
-          <div style={S.tableWrap}>
-            <table style={S.table}>
-              <thead>
-                <tr>
-                  <th style={{ ...S.th, minWidth: 260 }}>{t({ en: "Component", ar: "المكوّن" })}</th>
-                  <th style={S.th}>{t({ en: "Qty", ar: "الكمية" })}</th>
-                  <th style={S.th}>{t({ en: "UoM", ar: "الوحدة" })}</th>
-                  <th style={S.th}>{t({ en: "Scrap %", ar: "هدر ٪" })}</th>
-                  <th style={S.th}>{t({ en: "Net qty", ar: "الكمية الصافية" })}</th>
-                  <th style={S.th}>{t({ en: "Unit cost", ar: "تكلفة الوحدة" })}</th>
-                  <th style={S.th}>{t({ en: "Line cost", ar: "تكلفة السطر" })}</th>
-                  <th style={S.th}>%</th>
-                  <th style={S.th}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(bom.lines || []).map((l) => {
-                  const it = itemById(model, l.itemId);
-                  const net = num(l.qty) * (1 + num(l.scrapPct) / 100);
-                  const uc = unitCost(model, l.itemId);
-                  const lineCost = net * uc;
-                  const share = cost.total > 0 ? (lineCost / cost.total) * 100 : 0;
-                  return (
-                    <tr key={l.id}>
-                      <td style={{ ...S.td, ...S.tdStart, minWidth: 260 }}>
-                        {canEdit ? (
-                          <ItemPicker
-                            cfg={model}
-                            value={l.itemId}
-                            onPick={(id) => patchLine(bom.id, l.id, { itemId: id })}
-                            isAr={isAr}
-                            t={t}
-                            filter={(i) => i.id !== bom.productId}
-                          />
-                        ) : (
-                          <span style={{ fontWeight: 800 }}>{nameOf(it, isAr) || "—"}</span>
-                        )}
-                      </td>
-                      <td style={S.td}>
-                        <input
-                          style={S.inputSm}
-                          disabled={!canEdit}
-                          value={l.qty ?? ""}
-                          inputMode="decimal"
-                          onChange={(e) => patchLine(bom.id, l.id, { qty: e.target.value })}
-                        />
-                      </td>
-                      <td style={S.td}>{it?.uom || "—"}</td>
-                      <td style={S.td}>
-                        <input
-                          style={S.inputSm}
-                          disabled={!canEdit}
-                          value={l.scrapPct ?? ""}
-                          inputMode="decimal"
-                          placeholder="0"
-                          onChange={(e) => patchLine(bom.id, l.id, { scrapPct: e.target.value })}
-                        />
-                      </td>
-                      <td style={{ ...S.td, fontWeight: 800 }}>{money(net, 3)}</td>
-                      <td style={S.td}>{money(uc)}</td>
-                      <td style={{ ...S.td, fontWeight: 900 }}>{money(lineCost)}</td>
-                      <td style={S.td}>{share.toFixed(1)}%</td>
-                      <td style={S.td}>
-                        {canEdit && (
-                          <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
-                            onClick={() => removeLine(bom.id, l.id)}>
-                            ✕
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+        addLabel={t({ en: "Add output", ar: "إضافة ناتج" })}
+        lines={bom.outputs || []}
+        inputQty={math.input}
+        preferRoles={["finished", "component"]}
+        accent="#047857"
+        disabledFor={lineDisabledFor}
+        onBlocked={onLineBlocked}
+        onAdd={() => addTo("outputs")}
+        onPatch={(id, p) => patchList("outputs", id, p)}
+        onDrop={(id) => dropFrom("outputs", id)}
+      />
 
-      {/* ── المنتجات الثانوية ── */}
-      <Card
-        icon="🔀"
-        title={t({ en: "By-products", ar: "المنتجات الثانوية" })}
+      {/* ── الهدر ── */}
+      <CutLines
+        t={t} isAr={isAr} cfg={cfg} canEdit={canEdit}
+        icon="🦴"
+        title={t({ en: "Waste / scrap", ar: "الهدر والمخلّفات" })}
         sub={t({
-          en: "Extra outputs produced in the same run — e.g. a carcass yields meat, bones and fat together.",
-          ar: "مخرجات إضافية بنفس الدفعة — مثلاً الذبيحة بتعطي لحم وعظم ودهن مع بعض.",
+          en: "Bones, fat, trimmings… items whose role is “Waste” in the master list.",
+          ar: "عظم، دهن، تشذيب… أصناف دورها «هدر» بسجل الأصناف.",
         })}
-        right={
-          canEdit && (
-            <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary }}
-              onClick={() => addByproduct(bom.id)}>
-              ＋ {t({ en: "Add by-product", ar: "إضافة منتج ثانوي" })}
-            </button>
-          )
-        }
-      >
-        {(bom.byproducts || []).length === 0 ? (
-          <EmptyBox>
-            {t({
-              en: "No by-products — the run yields only the main product.",
-              ar: "لا منتجات ثانوية — الدفعة بتعطي المنتج الرئيسي فقط.",
-            })}
-          </EmptyBox>
-        ) : (
-          <div style={S.tableWrap}>
-            <table style={S.table}>
-              <thead>
-                <tr>
-                  <th style={{ ...S.th, minWidth: 260 }}>{t({ en: "By-product", ar: "المنتج الثانوي" })}</th>
-                  <th style={S.th}>{t({ en: "Qty per batch", ar: "الكمية لكل دفعة" })}</th>
-                  <th style={S.th}>{t({ en: "UoM", ar: "الوحدة" })}</th>
-                  <th style={S.th}>{t({ en: "Std cost", ar: "التكلفة المعيارية" })}</th>
-                  <th style={S.th}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(bom.byproducts || []).map((bp) => {
-                  const it = itemById(model, bp.itemId);
-                  return (
-                    <tr key={bp.id}>
-                      <td style={{ ...S.td, ...S.tdStart, minWidth: 260 }}>
-                        {canEdit ? (
-                          <ItemPicker
-                            cfg={model}
-                            value={bp.itemId}
-                            onPick={(id) => patchByproduct(bom.id, bp.id, { itemId: id })}
-                            isAr={isAr}
-                            t={t}
-                            filter={(i) => i.id !== bom.productId}
-                          />
-                        ) : (
-                          <span style={{ fontWeight: 800 }}>{nameOf(it, isAr) || "—"}</span>
-                        )}
-                      </td>
-                      <td style={S.td}>
-                        <input
-                          style={S.inputSm}
-                          disabled={!canEdit}
-                          value={bp.qty ?? ""}
-                          inputMode="decimal"
-                          onChange={(e) => patchByproduct(bom.id, bp.id, { qty: e.target.value })}
-                        />
-                      </td>
-                      <td style={S.td}>{it?.uom || "—"}</td>
-                      <td style={S.td}>{money(unitCost(model, bp.itemId))}</td>
-                      <td style={S.td}>
-                        {canEdit && (
-                          <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
-                            onClick={() => removeByproduct(bom.id, bp.id)}>
-                            ✕
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div style={S.note}>
-          {t({
-            en: "By-products are added to stock when the work order is closed. Their cost is their own standard cost (no cost split, as agreed).",
-            ar: "المنتجات الثانوية بتدخل المخزون عند إقفال أمر التصنيع. تكلفتها هي تكلفتها المعيارية (بلا توزيع تكلفة، متل ما اتفقنا).",
-          })}
-        </div>
-      </Card>
-
-      {/* ── العمليات ── */}
-      <Card
-        icon="⚙️"
-        title={t({ en: "Operations (routing)", ar: "العمليات والتشغيل" })}
-        sub={t({
-          en: "Time, worksheet instructions and quality checks for each step.",
-          ar: "الوقت وتعليمات ورقة العمل وفحوصات الجودة لكل خطوة.",
-        })}
-        right={
-          canEdit && (
-            <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary }}
-              onClick={() => addOp(bom.id)}>
-              ＋ {t({ en: "Add operation", ar: "إضافة عملية" })}
-            </button>
-          )
-        }
-      >
-        {(bom.ops || []).length === 0 ? (
-          <EmptyBox>{t({ en: "No operations — material cost only.", ar: "لا عمليات — تكلفة المواد فقط." })}</EmptyBox>
-        ) : (
-          <div style={S.tableWrap}>
-            <table style={S.table}>
-              <thead>
-                <tr>
-                  <th style={S.th}>{t({ en: "Work centre", ar: "مركز العمل" })}</th>
-                  <th style={S.th}>{t({ en: "Minutes", ar: "الدقائق" })}</th>
-                  <th style={S.th}>{t({ en: "Cost / hour", ar: "التكلفة/ساعة" })}</th>
-                  <th style={S.th}>{t({ en: "Cost", ar: "التكلفة" })}</th>
-                  <th style={S.th}>{t({ en: "Worksheet", ar: "ورقة العمل" })}</th>
-                  <th style={S.th}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(bom.ops || []).map((o) => {
-                  const wc = opById(model, o.opId);
-                  const rate = num(o.costPerHour ?? wc?.costPerHour);
-                  return (
-                    <tr key={o.id}>
-                      <td style={{ ...S.td, ...S.tdStart }}>
-                        <Select
-                          value={o.opId}
-                          onChange={(v) => patchOp(bom.id, o.id, { opId: v })}
-                          options={activeOnly(model.operations)}
-                          isAr={isAr}
-                          disabled={!canEdit}
-                          placeholder={t({ en: "Select…", ar: "اختر…" })}
-                        />
-                      </td>
-                      <td style={S.td}>
-                        <input
-                          style={S.inputSm}
-                          disabled={!canEdit}
-                          value={o.minutes ?? ""}
-                          inputMode="decimal"
-                          onChange={(e) => patchOp(bom.id, o.id, { minutes: e.target.value })}
-                        />
-                      </td>
-                      <td style={S.td}>
-                        <input
-                          style={S.inputSm}
-                          disabled={!canEdit}
-                          value={o.costPerHour ?? ""}
-                          inputMode="decimal"
-                          placeholder={String(num(wc?.costPerHour) || 0)}
-                          onChange={(e) => patchOp(bom.id, o.id, { costPerHour: e.target.value })}
-                        />
-                      </td>
-                      <td style={{ ...S.td, fontWeight: 900 }}>
-                        {money((num(o.minutes) / 60) * rate)}
-                      </td>
-                      <td style={S.td}>
-                        <button type="button" style={{ ...S.btn, ...S.btnSm }}
-                          onClick={() => setWorksheetOp(o.id)}>
-                          📋 {(o.instructions ? 1 : 0) + (o.checks || []).length || t({ en: "Edit", ar: "تحرير" })}
-                        </button>
-                      </td>
-                      <td style={S.td}>
-                        {canEdit && (
-                          <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
-                            onClick={() => removeOp(bom.id, o.id)}>
-                            ✕
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      {/* ── ورقة عمل العملية ── */}
-      {worksheetOp && (
-        <OpWorksheetModal
-          t={t} isAr={isAr} canEdit={canEdit}
-          op={(bom.ops || []).find((x) => x.id === worksheetOp)}
-          wc={opById(model, (bom.ops || []).find((x) => x.id === worksheetOp)?.opId)}
-          onClose={() => setWorksheetOp("")}
-          onPatch={(p) => patchOp(bom.id, worksheetOp, p)}
-        />
-      )}
-
-      {/* ── ملخّص التكلفة ── */}
-      <div style={S.kpiRow}>
-        <Kpi label={t({ en: "Material", ar: "المواد" })} value={money(cost.material)} foot="AED" />
-        <Kpi label={t({ en: "Labor", ar: "التشغيل" })} value={money(cost.labor)} foot="AED" />
-        <Kpi label={t({ en: "Overhead", ar: "غير مباشرة" })} value={money(cost.overhead)} foot="AED" />
-        <Kpi label={t({ en: "Total batch", ar: "إجمالي الدفعة" })} value={money(cost.total)} foot="AED" />
-        <Kpi
-          label={t({ en: "Cost per unit", ar: "التكلفة للوحدة" })}
-          value={money(cost.unit)}
-          foot={`AED / ${bom.uom || ""}`}
-          color="#0f766e"
-        />
-      </div>
-
-      <Card icon="📝" title={t({ en: "Notes", ar: "ملاحظات" })}>
-        <textarea
-          style={{ ...S.input, resize: "vertical" }}
-          rows={3}
-          disabled={ro}
-          value={bom.notes || ""}
-          onChange={(e) => patchBom(bom.id, { notes: e.target.value })}
-        />
-      </Card>
+        addLabel={t({ en: "Add waste line", ar: "إضافة سطر هدر" })}
+        lines={bom.wastes || []}
+        inputQty={math.input}
+        preferRoles={["waste"]}
+        accent="#b45309"
+        disabledFor={lineDisabledFor}
+        onBlocked={onLineBlocked}
+        onAdd={() => addTo("wastes")}
+        onPatch={(id, p) => patchList("wastes", id, p)}
+        onDrop={(id) => dropFrom("wastes", id)}
+      />
     </>
   );
 }
 
-/* ══════════════ ورقة عمل العملية ══════════════ */
-
-function OpWorksheetModal({ t, isAr, canEdit, op, wc, onClose, onPatch }) {
-  if (!op) return null;
-  const checks = op.checks || [];
-
-  const setCheck = (id, text) =>
-    onPatch({ checks: checks.map((c) => (c.id === id ? { ...c, text } : c)) });
-  const addCheck = () =>
-    onPatch({ checks: [...checks, { id: freshId("chk"), text: "" }] });
-  const removeCheck = (id) =>
-    onPatch({ checks: checks.filter((c) => c.id !== id) });
-
+/* حقل نص بسيط بنمط الوحدة */
+function TextInputLike({ value, onChange }) {
   return (
-    <Modal
-      icon="📋"
-      title={`${t({ en: "Worksheet", ar: "ورقة العمل" })} — ${nameOf(wc || {}, isAr) || t({ en: "operation", ar: "عملية" })}`}
-      onClose={onClose}
-      footer={
-        <button type="button" style={{ ...S.btn, ...S.btnPrimary }} onClick={onClose}>
-          {t({ en: "Done", ar: "تم" })}
-        </button>
-      }
-    >
-      <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-        <Field label={t({ en: "Instructions for the operator", ar: "تعليمات للعامل" })}>
-          <textarea
-            style={{ ...S.input, resize: "vertical" }}
-            rows={5}
-            value={op.instructions || ""}
-            placeholder={t({
-              en: "Step-by-step notes shown on the work order…",
-              ar: "خطوات بتظهر على أمر التصنيع…",
-            })}
-            onChange={(e) => onPatch({ instructions: e.target.value })}
-          />
-        </Field>
-
-        <div style={{ ...S.cardHead, marginTop: 16 }}>
-          <span style={S.cardIcon}>✔️</span>
-          <div style={{ minWidth: 0 }}>
-            <h2 className="mrp-sec" style={S.cardTitle}>
-              {t({ en: "Quality checks", ar: "فحوصات الجودة" })}
-            </h2>
-            <div className="mrp-sub" style={S.cardSub}>
-              {t({
-                en: "The operator marks each one pass / fail on the work order.",
-                ar: "العامل بيحدّد لكل فحص ناجح / راسب على أمر التصنيع.",
-              })}
-            </div>
-          </div>
-          {canEdit && (
-            <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary, marginInlineStart: "auto" }}
-              onClick={addCheck}>
-              ＋ {t({ en: "Add check", ar: "إضافة فحص" })}
-            </button>
-          )}
-        </div>
-
-        {checks.length === 0 ? (
-          <EmptyBox>{t({ en: "No quality check.", ar: "لا فحوصات جودة." })}</EmptyBox>
-        ) : (
-          checks.map((c, i) => (
-            <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-              <span style={{ ...S.badge, background: "#eef4fb", color: "#6b8299" }}>{i + 1}</span>
-              <input
-                style={S.input}
-                value={c.text || ""}
-                placeholder={t({ en: "e.g. Core temperature ≤ 4°C", ar: "مثلاً: حرارة القلب ≤ ٤°م" })}
-                onChange={(e) => setCheck(c.id, e.target.value)}
-              />
-              {canEdit && (
-                <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
-                  onClick={() => removeCheck(c.id)}>
-                  ✕
-                </button>
-              )}
-            </div>
-          ))
-        )}
-      </fieldset>
-    </Modal>
+    <input style={S.input} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
   );
 }
 
-/* ══════════════ مراكز العمل ══════════════ */
+/* ══════════════ ميزان الكتلة ══════════════ */
 
-function OperationsCard({ t, isAr, model, canEdit, onAdd, onPatch, onRemove }) {
-  const list = model.operations || [];
+function MassBalance({ t, math, uom }) {
+  const { input, out, waste, loss, yieldPct, wastePct, over } = math;
+  const pct = (v) => (input > 0 ? Math.max(0, Math.min(100, (v / input) * 100)) : 0);
+
   return (
     <Card
-      icon="⚙️"
-      title={t({ en: "Work centres", ar: "مراكز العمل" })}
+      icon="⚖️"
+      title={t({ en: "Mass balance", ar: "ميزان الكتلة" })}
       sub={t({
-        en: "Labor and machine rates used by the operations of every BOM.",
-        ar: "أجور العمالة والماكينات المستعملة بعمليات كل قائمة مواد.",
+        en: "Input = outputs + waste + unrecorded loss. Going over the input blocks saving.",
+        ar: "الداخل = الناتج + الهدر + فاقد غير مسجّل. التجاوز عن الداخل بيمنع الحفظ.",
       })}
+    >
+      <div style={S.kpiRow}>
+        <Kpi label={t({ en: "Input", ar: "الداخل" })} value={money(input, 2)} foot={uom} />
+        <Kpi label={t({ en: "Outputs", ar: "الناتج" })} value={money(out, 2)}
+          foot={`${yieldPct.toFixed(1)}% ${t({ en: "yield", ar: "عائد" })}`} color="#047857" />
+        <Kpi label={t({ en: "Waste", ar: "الهدر" })} value={money(waste, 2)}
+          foot={`${wastePct.toFixed(1)}%`} color="#b45309" />
+        <Kpi
+          label={over
+            ? t({ en: "Over-allocated!", ar: "موزّع زيادة!" })
+            : t({ en: "Unrecorded loss", ar: "فاقد غير مسجّل" })}
+          value={money(Math.abs(loss), 2)}
+          foot={input > 0 ? `${((Math.abs(loss) / input) * 100).toFixed(1)}%` : ""}
+          color={over ? "#a12626" : "#6b8299"}
+        />
+      </div>
+
+      {/* شريط التوزيع */}
+      <div style={{
+        display: "flex", height: 26, borderRadius: 999, overflow: "hidden",
+        border: over ? "2px solid #a12626" : "1px solid #dbe6f2", background: "#f2f7fc",
+      }}>
+        <div style={{ width: `${pct(out)}%`, background: "#0f9d7a", transition: "width .25s ease" }}
+          title={t({ en: "Outputs", ar: "الناتج" })} />
+        <div style={{ width: `${pct(waste)}%`, background: "#e5a53f", transition: "width .25s ease" }}
+          title={t({ en: "Waste", ar: "الهدر" })} />
+      </div>
+      <div style={{ ...S.hint, display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <span>🟩 {t({ en: "Outputs", ar: "الناتج" })}</span>
+        <span>🟧 {t({ en: "Waste", ar: "الهدر" })}</span>
+        <span>⬜ {t({ en: "Unrecorded loss", ar: "فاقد غير مسجّل" })}</span>
+        {over && (
+          <b style={{ color: "#a12626" }}>
+            ⚠️ {t({ en: "Total exceeds the input quantity.", ar: "المجموع أكثر من كمية الداخل." })}
+          </b>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ══════════════ أسطر (نواتج / هدر) ══════════════ */
+
+function CutLines({
+  t, isAr, cfg, canEdit, icon, title, sub, addLabel, lines, inputQty,
+  preferRoles, accent, onAdd, onPatch, onDrop, disabledFor, onBlocked,
+}) {
+  const roleNames = preferRoles
+    .map((r) => nameOf(ITEM_TYPES.find((x) => x.id === r) || {}, isAr))
+    .filter(Boolean)
+    .join(" / ");
+
+  return (
+    <Card
+      icon={icon}
+      title={title}
+      sub={sub}
       right={
         canEdit && (
           <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary }} onClick={onAdd}>
-            ＋ {t({ en: "Add", ar: "إضافة" })}
+            ＋ {addLabel}
           </button>
         )
       }
     >
-      {list.length === 0 ? (
-        <EmptyBox>{t({ en: "No work centre yet.", ar: "لا يوجد مركز عمل بعد." })}</EmptyBox>
+      {lines.length === 0 ? (
+        <EmptyBox>
+          {t({ en: "No lines yet — add one from the item master.", ar: "لا أسطر بعد — ضيف من سجل الأصناف." })}
+          <div style={{ ...S.hint, marginTop: 6 }}>
+            {t({ en: "Suggested role", ar: "الدور المقترح" })}: {roleNames}
+          </div>
+        </EmptyBox>
       ) : (
         <div style={S.tableWrap}>
           <table style={S.table}>
             <thead>
               <tr>
-                <th style={S.th}>{t({ en: "Arabic name", ar: "الاسم بالعربي" })}</th>
-                <th style={S.th}>{t({ en: "English name", ar: "الاسم بالإنجليزي" })}</th>
-                <th style={S.th}>{t({ en: "Cost / hour", ar: "التكلفة/ساعة" })}</th>
-                <th style={S.th}>{t({ en: "Active", ar: "مفعّل" })}</th>
+                <th style={{ ...S.th, width: 46 }}>#</th>
+                <th style={S.th}>{t({ en: "Code", ar: "الكود" })}</th>
+                <th style={{ ...S.th, minWidth: 280 }}>{t({ en: "Item (from master)", ar: "الصنف (من السجل)" })}</th>
+                <th style={S.th}>{t({ en: "Qty", ar: "الكمية" })}</th>
+                <th style={S.th}>{t({ en: "UoM", ar: "الوحدة" })}</th>
+                <th style={S.th}>{t({ en: "% of input", ar: "٪ من الداخل" })}</th>
                 <th style={S.th}></th>
               </tr>
             </thead>
             <tbody>
-              {list.map((o) => (
-                <tr key={o.id}>
-                  <td style={S.td}>
-                    <TextInput value={o.ar} onChange={(v) => onPatch(o.id, { ar: v })} disabled={!canEdit} />
-                  </td>
-                  <td style={S.td}>
-                    <TextInput value={o.en} onChange={(v) => onPatch(o.id, { en: v })} disabled={!canEdit} />
-                  </td>
-                  <td style={S.td}>
-                    <NumInput
-                      value={o.costPerHour}
-                      onChange={(v) => onPatch(o.id, { costPerHour: v })}
-                      disabled={!canEdit}
-                      style={{ maxWidth: 130, margin: "0 auto" }}
-                    />
-                  </td>
-                  <td style={S.td}>
-                    <Switch
-                      checked={o.active !== false}
-                      disabled={!canEdit}
-                      onChange={(v) => onPatch(o.id, { active: v })}
-                    />
-                  </td>
-                  <td style={S.td}>
-                    {canEdit && (
-                      <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
-                        onClick={() => onRemove(o.id)}>
-                        {t({ en: "Delete", ar: "حذف" })}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {lines.map((l, idx) => {
+                const it = itemById(cfg, l.itemId);
+                const share = inputQty > 0 ? (num(l.qty) / inputQty) * 100 : 0;
+                return (
+                  <tr key={l.id}>
+                    <td style={{ ...S.td, fontWeight: 900, color: "#8aa3b8" }}>{idx + 1}</td>
+                    <td style={{ ...S.td, fontWeight: 900, color: "#14507f", whiteSpace: "nowrap" }}>
+                      {it?.sku || (l.itemId ? "—" : "")}
+                    </td>
+                    <td style={{ ...S.td, ...S.tdStart, minWidth: 280 }}>
+                      {canEdit ? (
+                        <ItemPicker
+                          cfg={cfg}
+                          value={l.itemId}
+                          onPick={(id) => onPatch(l.id, { itemId: id })}
+                          isAr={isAr}
+                          t={t}
+                          prefer={preferRoles}
+                          disabledFor={disabledFor ? disabledFor(l.itemId) : undefined}
+                          onBlocked={onBlocked}
+                        />
+                      ) : (
+                        <span style={{ fontWeight: 800 }}>{nameOf(it, isAr) || "—"}</span>
+                      )}
+                    </td>
+                    <td style={S.td}>
+                      <NumInput
+                        style={S.inputSm}
+                        disabled={!canEdit}
+                        value={l.qty}
+                        onChange={(v) => onPatch(l.id, { qty: v })}
+                      />
+                    </td>
+                    <td style={S.td}>{it?.uom || "—"}</td>
+                    <td style={{ ...S.td, fontWeight: 900, color: accent }}>
+                      {inputQty > 0 && num(l.qty) > 0 ? `${share.toFixed(1)}%` : "—"}
+                    </td>
+                    <td style={S.td}>
+                      {canEdit && (
+                        <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
+                          onClick={() => onDrop(l.id)}>
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

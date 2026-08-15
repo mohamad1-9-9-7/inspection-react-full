@@ -7,11 +7,12 @@
 // + شريط حفظ عائم. كل شاشة بتستورد من هون فقط.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { isItemAllowed } from "../../utils/sectionItems";
 import { can } from "../../utils/perms";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
-import { UOMS, itemById, nameOf, num } from "./mrpApi";
+import { ITEM_TYPES, UOMS, displayNameOf, itemById, nameOf, num, rolesOf } from "./mrpApi";
 
 /* ══════════════ الصفحات والصلاحيات ══════════════ */
 
@@ -22,9 +23,9 @@ export const MRP_PAGES = [
     arSub: "المواد الخام والأكواد والتكاليف", enSub: "Raw materials, SKUs & costs",
   },
   {
-    id: "mrp.bom", to: "/mrp/bom", icon: "🧾",
-    ar: "قوائم المواد", en: "Bills of materials",
-    arSub: "تركيب المنتج والهدر والإصدارات", enSub: "Components, scrap & versions",
+    id: "mrp.bom", to: "/mrp/bom", icon: "🔪",
+    ar: "قوائم التفكيك (BOM)", en: "Cutting BOMs",
+    arSub: "منتج داخل → قطع ناتجة + هدر", enSub: "One input → outputs + waste",
   },
   {
     id: "mrp.tree", to: "/mrp/tree", icon: "🌳",
@@ -429,13 +430,26 @@ export function TextInput({ value, onChange, ...rest }) {
   );
 }
 
-export function NumInput({ value, onChange, style, ...rest }) {
+/**
+ * حقل رقمي بيحتفظ بالنص وأنت عم تكتب — فتقدر تكتب «12.5» بلا ما ينقص عند النقطة.
+ * (num("12.") = 12، فلو حوّلنا كل ضغطة زر ما بتقدر تكتب فاصلة عشرية.)
+ */
+export function NumInput({ value, onChange, style, onBlur, ...rest }) {
+  const [buf, setBuf] = useState(null);          // نص مؤقّت أثناء الكتابة
+  const shown = buf !== null ? buf : (value ?? "");
+
   return (
     <input
       style={{ ...S.input, ...style }}
-      value={value ?? ""}
+      value={shown}
       inputMode="decimal"
-      onChange={(e) => onChange(e.target.value === "" ? "" : num(e.target.value, ""))}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (!/^-?\d*[.,]?\d*$/.test(raw)) return;  // أرقام وفاصلة واحدة فقط
+        setBuf(raw);
+        onChange(raw === "" ? "" : num(raw, ""));
+      }}
+      onBlur={(e) => { setBuf(null); onBlur?.(e); }}
       {...rest}
     />
   );
@@ -521,6 +535,31 @@ export function EmptyBox({ children }) {
   return <div style={S.empty}>{children}</div>;
 }
 
+/** إشعار حفظ عائم أعلى الصفحة — بديل شريط الحفظ السفلي. */
+export function Toast({ toast, busy, t }) {
+  if (!toast && !busy) return null;
+  const bad = toast?.bad;
+  return (
+    <div
+      style={{
+        position: "sticky", top: 78, zIndex: 55, display: "flex", justifyContent: "center",
+        pointerEvents: "none", marginBottom: -8,
+      }}
+    >
+      <div
+        style={{
+          ...(bad ? S.err : S.ok),
+          boxShadow: "0 12px 30px rgba(15,39,64,.18)",
+          display: "flex", alignItems: "center", gap: 10,
+        }}
+      >
+        <span>{busy ? "⏳" : bad ? "⚠️" : "✔"}</span>
+        <span>{busy ? t({ en: "Saving…", ar: "جارٍ الحفظ…" }) : toast?.text}</span>
+      </div>
+    </div>
+  );
+}
+
 /** نافذة منبثقة — Esc يقفلها والنقر على الخلفية كذلك. */
 export function Modal({ title, icon, onClose, footer, children, wide }) {
   useEffect(() => {
@@ -582,66 +621,170 @@ export function SaveDock({ dirty, saving, onSave, onDiscard, blocker, t }) {
   );
 }
 
-/** اختيار صنف بالبحث — بالكود أو الاسم. */
-export function ItemPicker({ cfg, value, onPick, isAr, t, filter, placeholder }) {
+/**
+ * اختيار صنف بالبحث — بالكود أو الاسم، مربوط بسجل الأصناف (Item master).
+ * `prefer`: أدوار بتطلع أول القائمة (توجيه بلا منع) — الباقي بيضل ظاهر.
+ * `disabledFor(item) → string|null`: بيخلي الصنف ظاهر بالقائمة بس ما بيسمح باختياره،
+ *   وبيرجّع نص السبب اللي بيظهر على السطر وبيمرّر لـ`onBlocked(item, reason)`.
+ *
+ * القائمة المنسدلة تُرسم بـ portal بموضع ثابت (fixed) محسوب من الحقل،
+ * فما بتنقص أو بتنقصّ داخل الجداول ذات التمرير — تطفو فوق كل شي.
+ */
+export function ItemPicker({
+  cfg, value, onPick, isAr, t, filter, prefer, placeholder, disabledFor, onBlocked,
+}) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const boxRef = useRef(null);
+  const [box, setBox] = useState(null);     // {left, top, width, up}
+  const [hi, setHi] = useState(0);          // السطر المميّز للوحة المفاتيح
+  const inputRef = useRef(null);
+  const popRef = useRef(null);
 
   const chosen = itemById(cfg, value);
-  const label = chosen
-    ? `${chosen.sku ? `[${chosen.sku}] ` : ""}${nameOf(chosen, isAr) || chosen.id}`
-    : "";
+  const label = chosen ? displayNameOf(chosen) || nameOf(chosen, isAr) || chosen.id : "";
 
   const results = useMemo(() => {
     const s = q.trim().toLowerCase();
-    const list = (cfg?.items || []).filter((i) => i.active !== false && (!filter || filter(i)));
-    if (!s) return list.slice(0, 30);
-    return list
-      .filter((i) =>
+    let list = (cfg?.items || []).filter((i) => i.active !== false && (!filter || filter(i)));
+    if (s) {
+      list = list.filter((i) =>
         [i.sku, i.ar, i.en, i.id].some((v) => String(v || "").toLowerCase().includes(s))
-      )
-      .slice(0, 30);
-  }, [cfg, q, filter]);
+      );
+    }
+    if (prefer?.length) {
+      // الأدوار المقترحة أولاً، وبعدين الباقي — بلا ما نخفي إشي (يراعي الأدوار المتعددة)
+      const wanted = (i) => (rolesOf(i).some((r) => prefer.includes(r)) ? 1 : 0);
+      list = [...list].sort((a, b) => wanted(b) - wanted(a));
+    }
+    return list.slice(0, 40);
+  }, [cfg, q, filter, prefer]);
+
+  const place = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = Math.max(r.width, 340);
+    const spaceBelow = window.innerHeight - r.bottom;
+    const up = spaceBelow < 280 && r.top > spaceBelow;   // افتح للأعلى إذا الأسفل ضيّق
+    let left = r.left;
+    left = Math.min(left, window.innerWidth - width - 8); // ما يطلع بره اليمين
+    left = Math.max(8, left);
+    setBox({ left, top: up ? r.top : r.bottom + 4, width, up });
+  };
+
+  const openList = () => { setQ(""); setHi(0); place(); setOpen(true); };
+  const close = () => setOpen(false);
+
+  /** الصنف الممنوع بيضل ظاهر — بس اختياره بيوقف وبيطلع سبب واضح. */
+  const choose = (i) => {
+    const reason = disabledFor?.(i);
+    if (reason) { onBlocked?.(i, reason); return; }
+    onPick(i.id);
+    setOpen(false);
+    setQ("");
+  };
 
   useEffect(() => {
+    if (!open) return undefined;
     const onDown = (e) => {
-      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+      if (inputRef.current?.contains(e.target)) return;
+      if (popRef.current?.contains(e.target)) return;
+      setOpen(false);
     };
+    const reflow = () => place();
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, []);
+    window.addEventListener("scroll", reflow, true);
+    window.addEventListener("resize", reflow);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", reflow, true);
+      window.removeEventListener("resize", reflow);
+    };
+  }, [open]);
 
-  return (
-    <span ref={boxRef} style={{ position: "relative", display: "block", minWidth: 0 }}>
-      <input
-        style={S.input}
-        value={open ? q : label}
-        placeholder={placeholder || t({ en: "code or name…", ar: "كود أو اسم…" })}
-        onFocus={() => { setQ(""); setOpen(true); }}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-      />
-      {open && (
-        <span style={S.pickList}>
-          {results.length === 0 && (
-            <span style={{ ...S.pickOpt, color: "#8aa3b8" }}>
-              {t({ en: "No item matches", ar: "لا يوجد صنف مطابق" })}
-            </span>
-          )}
-          {results.map((i) => (
+  const onKey = (e) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "Enter")) { openList(); return; }
+    if (!open) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(h + 1, results.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (results[hi]) choose(results[hi]); }
+    else if (e.key === "Escape") { close(); }
+  };
+
+  const list = open && box && createPortal(
+    <div
+      ref={popRef}
+      className="mrp"
+      style={{
+        position: "fixed",
+        left: box.left,
+        [box.up ? "bottom" : "top"]: box.up ? window.innerHeight - box.top + 4 : box.top,
+        width: box.width,
+        maxHeight: 300, overflowY: "auto",
+        background: "#fff", border: "1px solid #cfe0f0", borderRadius: 12,
+        boxShadow: "0 18px 40px rgba(15,39,64,.22)", zIndex: 9999,
+        fontFamily: FONT,
+      }}
+    >
+      {results.length === 0 ? (
+        <div style={{ ...S.pickOpt, color: "#8aa3b8" }}>
+          {t({ en: "No item matches", ar: "لا يوجد صنف مطابق" })}
+        </div>
+      ) : (
+        results.map((i, idx) => {
+          const role = ITEM_TYPES.find((x) => x.id === (i.type || "raw"));
+          const blocked = disabledFor?.(i) || "";
+          return (
             <button
               key={i.id}
               type="button"
-              style={S.pickOpt}
+              onMouseEnter={() => setHi(idx)}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => { onPick(i.id); setOpen(false); setQ(""); }}
+              onClick={() => choose(i)}
+              title={blocked || undefined}
+              aria-disabled={blocked ? true : undefined}
+              style={{
+                ...S.pickOpt,
+                display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                background: idx === hi ? (blocked ? "#fff1f1" : "#eef4fb") : "transparent",
+                cursor: blocked ? "not-allowed" : "pointer",
+                opacity: blocked ? 0.62 : 1,
+              }}
             >
-              <b>{i.sku || "—"}</b> — {nameOf(i, isAr) || i.id}
-              <span style={{ color: "#8aa3b8" }}> · {i.uom || ""}</span>
+              <b style={{ color: blocked ? "#a12626" : "#14507f", minWidth: 54 }}>{i.sku || "—"}</b>
+              <span style={{ fontWeight: 700, textDecoration: blocked ? "line-through" : "none" }}>
+                {nameOf(i, isAr) || i.id}
+              </span>
+              <span style={{ color: "#8aa3b8" }}>· {i.uom || ""}</span>
+              {blocked ? (
+                <span style={{ ...S.badge, background: "#fff1f1", color: "#a12626", padding: "2px 9px", marginInlineStart: "auto" }}>
+                  ⛔ {blocked}
+                </span>
+              ) : role ? (
+                <span style={{ ...S.badge, background: "#f2f7fc", color: "#6b8299", padding: "2px 9px", marginInlineStart: "auto" }}>
+                  {nameOf(role, isAr)}
+                </span>
+              ) : null}
             </button>
-          ))}
-        </span>
+          );
+        })
       )}
+    </div>,
+    document.body
+  );
+
+  return (
+    <span style={{ display: "block", minWidth: 0 }}>
+      <input
+        ref={inputRef}
+        style={{ ...S.input, ...(open ? { borderColor: "#1f6fd0", boxShadow: "0 0 0 3px rgba(31,111,208,.15)" } : null) }}
+        value={open ? q : label}
+        placeholder={placeholder || t({ en: "code or name…", ar: "كود أو اسم…" })}
+        onFocus={openList}
+        onKeyDown={onKey}
+        onChange={(e) => { setQ(e.target.value); setHi(0); place(); setOpen(true); }}
+      />
+      {list}
     </span>
   );
 }
