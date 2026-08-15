@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 import { kg, totalsOf, useButcherData, useNormalizedRows } from "./butcherReportKit";
+import { useOutbox } from "./butcherOutbox";
 
 const LAST_EMP_KEY = "butcher_last_emp";   // كاش فقط — نفس مفتاح شاشة التسجيل
 
@@ -60,6 +61,8 @@ export default function ButcherMyWork() {
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
   const { records, loading, cfg, mrpCfg } = useButcherData();
   const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
+  // سجلات لسّا بصندوق الصادر لن تظهر هنا — نوضّح ذلك بدل ما يستغرب الجزار
+  const outbox = useOutbox();
 
   const [empInput, setEmpInput] = useState(() => {
     try { return localStorage.getItem(LAST_EMP_KEY) || ""; } catch { return ""; }
@@ -162,6 +165,23 @@ export default function ButcherMyWork() {
                 </span>
               </span>
             </div>
+
+            {outbox.pending > 0 && (
+              <div className="mw-sm" style={S.pendingNote}>
+                📤 {outbox.pending}{" "}
+                {t({
+                  en: "record(s) still on this device — not uploaded yet, so they are not shown below.",
+                  ar: "سجل لسّا على الجهاز — ما ترفع بعد، فما بيبيّن تحت.",
+                })}{" "}
+                {outbox.online && (
+                  <button type="button" style={S.linkBtn} onClick={outbox.sync} disabled={outbox.syncing}>
+                    {outbox.syncing
+                      ? t({ en: "Syncing…", ar: "جارٍ المزامنة…" })
+                      : t({ en: "Sync now", ar: "زامن الآن" })}
+                  </button>
+                )}
+              </div>
+            )}
 
             {loading ? (
               <div style={S.card}>
@@ -394,5 +414,15 @@ const S = {
   empty: {
     background: "#fff", border: "2px dashed #cfe0f0", borderRadius: 18,
     padding: "36px 20px", textAlign: "center", fontWeight: 800, color: "#6b8299",
+  },
+  pendingNote: {
+    background: "#fff7ed", border: "1px solid #fcd9a4", color: "#8a5a12",
+    borderRadius: 14, padding: "12px 16px", fontWeight: 800, lineHeight: 1.6,
+    marginBottom: 14,
+  },
+  linkBtn: {
+    border: "none", background: "transparent", color: "#1f6fd0",
+    fontFamily: FONT, fontWeight: 900, cursor: "pointer", textDecoration: "underline",
+    padding: 0,
   },
 };

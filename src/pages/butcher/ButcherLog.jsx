@@ -15,6 +15,8 @@
 //   • وزن ذبيحة خارج المدى المعقول لنوعها → تحذير فقط (ANIMALS.min/max).
 //
 // ملاحظات تقنية:
+//   • الحفظ يمرّ بصندوق الصادر (butcherOutbox): يذهب للسيرفر فوراً، وإن كان
+//     النت مقطوعاً ينتظر محلياً ويُرفع تلقائياً عند عودة الاتصال.
 //   • السيرفر هو مصدر الحقيقة — كل ذبيحة سجل واحد فيه مصفوفة cuts عبر
 //     POST /api/reports بنوع butcher_cut_log. الـ localStorage للكاش فقط.
 //   • UNIQUE على (type, payload->>'reportDate') لكل الأنواع ما عدا maintenance،
@@ -35,6 +37,7 @@ import {
   useMrpConfig, bomInputItem, bomLines, itemName,
   bomCategoriesForPicker, bomsInCategory, UNCAT,
 } from "./butcherMrpBridge";
+import { saveOrQueue, useOutbox } from "./butcherOutbox";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 // سجل الموظفين المشترك (نفس المصدر الذي يستعمله رابط التدريب الداخلي) — قراءة فقط
@@ -145,23 +148,6 @@ function recordCutsKg(p) {
   return Number(p?.weightKg) || 0;
 }
 
-/** حفظ ذبيحة. reportDate = طابع وقت فريد حتى لا يصطدم بالـ UNIQUE. */
-async function saveCarcass(payload, attempt = 0) {
-  const stamp = new Date(Date.now() + attempt).toISOString();
-  const res = await fetch(`${API_BASE}/api/reports`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      reporter: payload.employeeNo || "butcher",
-      type: TYPE,
-      payload: { ...payload, reportDate: stamp },
-    }),
-  });
-  if (res.status === 409 && attempt < 5) return saveCarcass(payload, attempt + 1);
-  if (!res.ok) throw new Error(`Server ${res.status}: ${await res.text()}`);
-  return res.json();
-}
-
 /** ملخّص اليوم لهذا الموظف (اختياري — يُخفى بصمت لو فشل الطلب). */
 async function fetchTodayTotals(employeeNo) {
   const res = await fetch(
@@ -189,6 +175,8 @@ export default function ButcherLog() {
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
   const { cfg } = useButcherConfig();
   const { cfg: mrpCfg } = useMrpConfig();
+  // صندوق الصادر — الحفظ يشتغل حتى لو النت مقطوع، ويزامن لحاله
+  const outbox = useOutbox();
   const isLoggedIn = hasSession();
 
   /* الشروط من إعدادات الجزار — المنتجات صارت من قوائم التقطيع (MRP Cutting BOMs) */
@@ -432,7 +420,8 @@ export default function ButcherLog() {
         butcherJob: person?.job || "",
         savedAt: new Date().toISOString(),
       };
-      await saveCarcass(payload);
+      // يذهب للسيرفر فوراً، وإن كان النت مقطوعاً يدخل صندوق الصادر ويُزامن لاحقاً
+      const res = await saveOrQueue(payload);
       setSaved({
         animal: itemName(inputItem, isAr),
         origin: bom?.ref || "",
@@ -440,6 +429,7 @@ export default function ButcherLog() {
         pieceCount: needPieces ? pieceCountNum : null,
         cutDate: RULES.allowBackdate === true ? cutDate : todayStr(),
         entryStamp: stampStr(new Date()),
+        queued: res.queued === true,
       });
       setStep("done");
       refreshTotals(empNo);
@@ -485,6 +475,26 @@ export default function ButcherLog() {
             🔪 {t({ en: "Butcher", ar: "الجزار" })}
           </div>
           <div style={S.headerRight}>
+            {/* حالة الاتصال والمزامنة — تظهر فقط لما يكون في شي يستحق الانتباه */}
+            {(!outbox.online || outbox.pending > 0) && (
+              <button
+                type="button"
+                className="bt-small"
+                onClick={outbox.sync}
+                disabled={outbox.syncing || !outbox.online}
+                style={{
+                  ...S.syncChip,
+                  ...(outbox.online ? S.syncPending : S.syncOffline),
+                }}
+                title={t({ en: "Sync now", ar: "زامن الآن" })}
+              >
+                {!outbox.online
+                  ? `📴 ${t({ en: "Offline", ar: "بلا إنترنت" })}${outbox.pending ? ` · ${outbox.pending}` : ""}`
+                  : outbox.syncing
+                    ? `⏳ ${t({ en: "Syncing…", ar: "جارٍ المزامنة…" })}`
+                    : `📤 ${outbox.pending} ${t({ en: "unsynced", ar: "غير مُزامن" })}`}
+              </button>
+            )}
             <span className="bt-toggle">
               <LangToggle lang={lang} toggle={toggle} style={S.langBtn} />
             </span>
@@ -899,8 +909,19 @@ export default function ButcherLog() {
         {/* 6 — تم */}
         {step === "done" && saved && (
           <div style={S.card}>
-            <div className="bt-done bt-pop" style={{ textAlign: "center" }}>✅</div>
+            <div className="bt-done bt-pop" style={{ textAlign: "center" }}>
+              {saved.queued ? "📥" : "✅"}
+            </div>
             <div className="bt-q" style={S.q}>{saved.animal} — {saved.origin}</div>
+            {/* حُفظ محلياً — لا يضيع، بينرفع لحاله لما يرجع النت */}
+            {saved.queued && (
+              <div className="bt-sum" style={S.queuedNote}>
+                {t({
+                  en: "Saved on this device — no internet right now. It will upload automatically once the connection is back.",
+                  ar: "انحفظ على الجهاز — ما في إنترنت هلأ. رح يترفع لحاله أول ما يرجع الاتصال.",
+                })}
+              </div>
+            )}
             <div>
               <div className="bt-sum" style={S.doneRow}>
                 <span>{t({ en: "Cutting date", ar: "تاريخ التقطيع" })}</span>
@@ -1118,6 +1139,18 @@ const S = {
   chg: {
     border: "1px solid #cfe0f0", background: "#fff", color: "#1f6fd0",
     borderRadius: 10, padding: "7px 14px", fontFamily: FONT, fontWeight: 700, cursor: "pointer",
+  },
+  /* ── مؤشّر الاتصال وصندوق الصادر ── */
+  syncChip: {
+    borderRadius: 999, padding: "7px 16px", fontFamily: FONT, fontWeight: 800,
+    cursor: "pointer", whiteSpace: "nowrap",
+  },
+  syncOffline: { border: "1px solid #f0c9c9", background: "#fff5f5", color: "#a12626" },
+  syncPending: { border: "1px solid #fcd9a4", background: "#fff7ed", color: "#b45309" },
+  queuedNote: {
+    background: "#fff7ed", border: "1px solid #fcd9a4", color: "#8a5a12",
+    borderRadius: 14, padding: "12px 14px", fontWeight: 800, lineHeight: 1.6,
+    textAlign: "center",
   },
   totals: {
     background: "#fff", border: "1px solid #dbe6f2", borderRadius: 12,
