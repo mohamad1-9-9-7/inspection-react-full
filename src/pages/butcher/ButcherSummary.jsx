@@ -55,7 +55,7 @@ export default function ButcherSummary() {
     return addDays(from, -span);
   }, [from, to]);
 
-  const { records, loading, error, reload, cfg, mrpCfg } =
+  const { records, loading, error, truncated, reload, cfg, mrpCfg } =
     useButcherData({ from: fetchFrom, to });
   const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
   const [branch, setBranch] = useState("");
@@ -290,6 +290,15 @@ export default function ButcherSummary() {
         {error && (
           <div style={{ ...S.card, background: "#fff5f5", borderColor: "#f3c9c9", color: C.red, fontWeight: 800 }}>
             ⚠️ {error}
+          </div>
+        )}
+
+        {truncated && (
+          <div style={{ ...S.card, background: "#fff7ed", borderColor: "#fcd9a4", color: "#8a5a12", fontWeight: 800 }}>
+            ⚠️ {t({
+              en: "This period has more records than one page can hold, so the oldest are not included and the totals below understate it. Narrow the period.",
+              ar: "هذه الفترة فيها سجلات أكثر مما يُحمَّل دفعة واحدة، فالأقدم غير محسوب والمجاميع تحت أقل من الحقيقة. ضيّق الفترة.",
+            })}
           </div>
         )}
 

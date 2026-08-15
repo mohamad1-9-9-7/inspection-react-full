@@ -40,6 +40,11 @@ export function toArray(data) {
 
 /* ══════════════ طبقة البيانات ══════════════ */
 
+/* سقف السحب للتقارير — أقصى ما يقبله السيرفر. يُطبَّق بعد فلتر التاريخ،
+   فهو سقف لنافذة المدى المختار لا لكل الجدول. إن بلغته النتيجة فالمدى
+   يحوي أكثر مما رجع، فنُظهر تحذيراً بدل أن نقصّ الأقدم بصمت. */
+export const REPORT_LIMIT = 5000;
+
 /**
  * تحميل سجلات الجزار وتطبيعها لصفوف جاهزة للعرض.
  * كل صف = تنفيذ واحد (ذبيحة/وصفة) مع مصفوفة قطعه.
@@ -50,6 +55,8 @@ export function useButcherData({ from = "", to = "" } = {}) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // بلغنا السقف؟ إذاً المدى أوسع مما يُرجَع، ولازم نقولها بدل القصّ الصامت
+  const [truncated, setTruncated] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,14 +70,17 @@ export function useButcherData({ from = "", to = "" } = {}) {
         to ? `&to=${encodeURIComponent(to)}` : "",
       ].join("");
       const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=5000${range}`,
+        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=${REPORT_LIMIT}${range}`,
         { headers: { Accept: "application/json" }, cache: "no-store" }
       );
       if (!res.ok) throw new Error(`Server ${res.status}`);
-      setRecords(toArray(await res.json()));
+      const rows = toArray(await res.json());
+      setRecords(rows);
+      setTruncated(rows.length >= REPORT_LIMIT);
     } catch (e) {
       setError(e?.message || "Failed to load");
       setRecords([]);
+      setTruncated(false);
     } finally {
       setLoading(false);
     }
@@ -78,7 +88,7 @@ export function useButcherData({ from = "", to = "" } = {}) {
 
   useEffect(() => { load(); }, [load]);
 
-  return { records, loading, error, reload: load, cfg, mrpCfg };
+  return { records, loading, error, truncated, reload: load, cfg, mrpCfg };
 }
 
 /** اسم فئة الوصفة من إعدادات التصنيع. */

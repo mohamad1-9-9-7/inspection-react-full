@@ -17,11 +17,18 @@ import { TYPE as CUT_TYPE } from "./butcherOptions";
 
 export const PLAN_TYPE = "butcher_day_plan";
 
-/* حدود السحب — الخطة تهمّها سجلات **اليوم** فقط، لا كل التاريخ.
-   السيرفر يرجّع الأحدث أولاً، فسقف صغير يكفي ويقطع ٩٠٪+ من حجم الطلب.
-   ٤٠٠ سجل تغطّي يوماً كاملاً لكل الملاحم بهامش واسع. */
-const DAY_FETCH_LIMIT = 400;
+/* حدود السحب. السقف يُطبَّق **بعد** فلتر التاريخ على السيرفر، فهو سقف
+   لسجلات يوم واحد لا لكل التاريخ — ٢٠٠٠ تنفيذ باليوم الواحد لكل الملاحم
+   هامش لا يُبلَغ عملياً. (قبل الفلتر كان سقفاً على كل الجدول، وهذا كان
+   يقصّ سجلات اليوم بصمت لو كثُرت السجلات الأحدث منها.) */
+const DAY_FETCH_LIMIT = 2000;
 const PLAN_FETCH_LIMIT = 120;   // خطة واحدة لكل (يوم × ملحمة)
+
+/** رابط سجلات يوم واحد — الفلتر على السيرفر، فلا نسحب ما لا نحتاجه. */
+const dayUrl = (date) =>
+  `${API_BASE}/api/reports?type=${encodeURIComponent(CUT_TYPE)}`
+  + `&from=${encodeURIComponent(date)}&to=${encodeURIComponent(date)}`
+  + `&limit=${DAY_FETCH_LIMIT}`;
 
 export const planKey = (date, branch) => `${date}__${branch || "ALL"}`;
 
@@ -99,10 +106,7 @@ const recordProductsKg = (p) =>
  * طلب واحد يخدم الاثنين حتى لا نُثقل الشبكة على جهاز الكشك.
  */
 export async function fetchTodayProgress({ date, branch, employeeNo }) {
-  const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(CUT_TYPE)}&limit=${DAY_FETCH_LIMIT}`,
-    { headers: { Accept: "application/json" }, cache: "no-store" }
-  );
+  const res = await fetch(dayUrl(date), { headers: { Accept: "application/json" }, cache: "no-store" });
   if (!res.ok) throw new Error(`Server ${res.status}`);
   const rows = toArray(await res.json());
 
@@ -130,10 +134,7 @@ export async function fetchTodayProgress({ date, branch, employeeNo }) {
  * يرجّع { [branchCode]: {count, rawKg, productsKg}, __all: {...} }
  */
 export async function fetchTodayProgressByBranch(date) {
-  const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(CUT_TYPE)}&limit=${DAY_FETCH_LIMIT}`,
-    { headers: { Accept: "application/json" }, cache: "no-store" }
-  );
+  const res = await fetch(dayUrl(date), { headers: { Accept: "application/json" }, cache: "no-store" });
   if (!res.ok) throw new Error(`Server ${res.status}`);
 
   const out = { __all: { count: 0, rawKg: 0, productsKg: 0 } };
