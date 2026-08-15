@@ -18,6 +18,9 @@ import { BRANCHES, TYPE, nameOf } from "./butcherOptions";
 import { butcherLabel, useButcherConfig } from "./butcherConfig";
 import { useMrpConfig } from "./butcherMrpBridge";
 import { normalizeRecord } from "./butcherReportKit";
+import {
+  fetchPlans, fetchTodayProgressByBranch, progressPct, savePlan,
+} from "./butcherDayPlan";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 import { can } from "../../utils/perms";
@@ -343,6 +346,9 @@ export default function ButcherSupervisor() {
           <Kpi label={`${t({ en: "Total", ar: "الإجمالي" })} ${KG}`} value={kpi.kg.toFixed(1)} tone="#7c3aed" />
           <Kpi label={t({ en: "Pending review", ar: "بانتظار المراجعة" })} value={kpi.pending} tone="#b45309" />
         </div>
+
+        {/* ── خطة اليوم: هدف كل ملحمة والإنجاز عليه ── */}
+        <DayPlanPanel t={t} isAr={isAr} canEdit={canReview} KG={KG} />
 
         {/* ── الفلاتر ── */}
         <div style={S.filters}>
@@ -679,6 +685,216 @@ function DetailsModal({ b, t, isAr, dir, KG, canReview, busyId, onClose, onAppro
   );
 }
 
+/* ============================ خطة اليوم ============================ */
+/* المشرف يحدّد هدف كل ملحمة لليوم (عدد ذبائح + وزن خام) ويشوف الإنجاز لحظياً.
+   الهدف محفوظ على السيرفر بسجل واحد لكل (يوم × ملحمة). */
+function DayPlanPanel({ t, isAr, canEdit, KG }) {
+  const today = todayStr();
+  const [plans, setPlans] = useState([]);
+  const [progress, setProgress] = useState({});   // { branchCode: {count, rawKg} }
+  const [busy, setBusy] = useState("");
+  const [edit, setEdit] = useState(null);          // { branch, count, kg, note }
+
+  const load = useCallback(async () => {
+    // طلبان فقط: الخطط + تقدّم كل الملاحم دفعة واحدة
+    const [all, per] = await Promise.all([
+      fetchPlans().catch(() => []),
+      fetchTodayProgressByBranch(today).catch(() => ({})),
+    ]);
+    setPlans(all.filter((p) => p.date === today));
+    setProgress(per);
+  }, [today]);
+
+  useEffect(() => { load(); }, [load]);
+
+  /* الملاحم التي لها هدف اليوم — وإلا نعرض زر إضافة فقط */
+  const planned = plans.filter((p) => Number(p.targetCount) > 0 || Number(p.targetKg) > 0);
+
+  const submit = async () => {
+    if (!edit?.branch) return;
+    setBusy(edit.branch);
+    try {
+      await savePlan({
+        date: today,
+        branch: edit.branch,
+        targetCount: edit.count,
+        targetKg: edit.kg,
+        note: edit.note,
+        by: currentUser().username || currentUser().name || "supervisor",
+      });
+      setEdit(null);
+      await load();
+    } catch {
+      /* الخطأ يظهر بغياب التحديث — نُبقي النافذة مفتوحة */
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <div style={S.planWrap}>
+      <div style={S.planHead}>
+        <span className="bs-name" style={{ fontWeight: 900 }}>
+          🎯 {t({ en: "Today's plan", ar: "خطة اليوم" })}
+        </span>
+        {canEdit && (
+          <button
+            type="button"
+            style={S.planAddBtn}
+            onClick={() => setEdit({ branch: BRANCHES[0]?.code || "", count: "", kg: "", note: "" })}
+          >
+            ＋ {t({ en: "Set a target", ar: "تحديد هدف" })}
+          </button>
+        )}
+      </div>
+
+      {!planned.length ? (
+        <div className="bs-small" style={S.planEmpty}>
+          {t({
+            en: "No target set for today — the kiosk shows no progress bar until you set one.",
+            ar: "ما في هدف لليوم — شريط التقدّم ما بيظهر بالكشك حتى تحدّد هدفاً.",
+          })}
+        </div>
+      ) : (
+        <div style={S.planGrid}>
+          {planned.map((p) => {
+            const b = BRANCHES.find((x) => x.code === p.branch);
+            const done = progress[p.branch] || { count: 0, rawKg: 0 };
+            const rows = [
+              {
+                lbl: t({ en: "Carcasses", ar: "الذبائح" }),
+                done: done.count, target: Number(p.targetCount) || 0,
+                fmt: (v) => String(Math.round(v)),
+              },
+              {
+                lbl: t({ en: "Raw kg", ar: "وزن الخام" }),
+                done: done.rawKg, target: Number(p.targetKg) || 0,
+                fmt: (v) => `${v.toFixed(0)} ${KG}`,
+              },
+            ].filter((r) => r.target > 0);
+            const complete = rows.every((r) => r.done >= r.target);
+
+            return (
+              <div key={p.branch} style={{ ...S.planCard, ...(complete ? S.planCardDone : null) }}>
+                <div style={S.planCardHead}>
+                  <span style={{ fontWeight: 900 }}>{b ? nameOf(b, isAr) : p.branch}</span>
+                  {complete
+                    ? <span style={S.planOk}>✓ {t({ en: "Done", ar: "تحقّق" })}</span>
+                    : canEdit && (
+                      <button
+                        type="button"
+                        style={S.planEditBtn}
+                        onClick={() => setEdit({
+                          branch: p.branch, count: p.targetCount || "",
+                          kg: p.targetKg || "", note: p.note || "",
+                        })}
+                      >
+                        {t({ en: "Edit", ar: "تعديل" })}
+                      </button>
+                    )}
+                </div>
+                {rows.map((r) => {
+                  const pctv = progressPct(r.done, r.target);
+                  const ok = r.done >= r.target;
+                  return (
+                    <div key={r.lbl} style={S.planLine}>
+                      <span className="bs-small" style={{ color: "#6b8299", fontWeight: 800, minWidth: 78 }}>
+                        {r.lbl}
+                      </span>
+                      <span style={S.planTrack}>
+                        <span style={{
+                          ...S.planFill, width: `${pctv}%`,
+                          background: ok ? "#047857" : "#1f6fd0",
+                        }} />
+                      </span>
+                      <span className="bs-small" style={{ fontWeight: 900, color: ok ? "#047857" : "#14507f" }}>
+                        {r.fmt(r.done)} / {r.fmt(r.target)}
+                      </span>
+                    </div>
+                  );
+                })}
+                {p.note && <div className="bs-small" style={S.planNote}>📌 {p.note}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* نافذة تحديد الهدف */}
+      {edit && (
+        <div style={S.overlay} onClick={() => setEdit(null)}>
+          <div className="bs-rise" style={S.smallModal} onClick={(e) => e.stopPropagation()}>
+            <div className="bs-name" style={S.cardName}>
+              🎯 {t({ en: "Set today's target", ar: "تحديد هدف اليوم" })}
+            </div>
+            <label style={S.planField}>
+              <span className="bs-small" style={S.fieldLabel}>{t({ en: "Butchery", ar: "الملحمة" })}</span>
+              <select
+                style={S.planInput}
+                value={edit.branch}
+                onChange={(e) => setEdit({ ...edit, branch: e.target.value })}
+              >
+                {BRANCHES.map((b) => (
+                  <option key={b.code} value={b.code}>{nameOf(b, isAr)}</option>
+                ))}
+              </select>
+            </label>
+            <label style={S.planField}>
+              <span className="bs-small" style={S.fieldLabel}>
+                {t({ en: "Carcasses target", ar: "هدف عدد الذبائح" })}
+              </span>
+              <input
+                style={S.planInput} inputMode="numeric" placeholder="0"
+                value={edit.count}
+                onChange={(e) => setEdit({ ...edit, count: e.target.value.replace(/[^\d]/g, "") })}
+              />
+            </label>
+            <label style={S.planField}>
+              <span className="bs-small" style={S.fieldLabel}>
+                {t({ en: "Raw weight target (kg)", ar: `هدف وزن الخام (${KG})` })}
+              </span>
+              <input
+                style={S.planInput} inputMode="decimal" placeholder="0"
+                value={edit.kg}
+                onChange={(e) => setEdit({ ...edit, kg: e.target.value.replace(/[^\d.]/g, "") })}
+              />
+            </label>
+            <label style={S.planField}>
+              <span className="bs-small" style={S.fieldLabel}>
+                {t({ en: "Note for the butchers (optional)", ar: "ملاحظة للجزارين (اختياري)" })}
+              </span>
+              <input
+                style={S.planInput}
+                value={edit.note}
+                onChange={(e) => setEdit({ ...edit, note: e.target.value })}
+              />
+            </label>
+            <div className="bs-small" style={{ color: "#6b8299", fontWeight: 700, lineHeight: 1.6 }}>
+              {t({
+                en: "Leave a target at 0 to hide that bar. The kiosk updates within two minutes.",
+                ar: "خلّي الهدف صفر لإخفاء شريطه. الكشك بيتحدّث خلال دقيقتين.",
+              })}
+            </div>
+            <div style={S.modalBtns}>
+              <button type="button" style={S.btn} onClick={() => setEdit(null)}>
+                {t({ en: "Cancel", ar: "إلغاء" })}
+              </button>
+              <button
+                type="button"
+                style={{ ...S.btn, ...S.btnOk, ...(busy ? S.btnOff : null) }}
+                disabled={!!busy || !edit.branch}
+                onClick={submit}
+              >
+                {busy ? t({ en: "Saving…", ar: "جارٍ الحفظ…" }) : t({ en: "Save", ar: "حفظ" })}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** نافذة الرفض — لا يُقبل الرفض بلا سبب. */
 function RejectModal({ row, onCancel, onConfirm, busy, t, dir }) {
   const [reason, setReason] = useState("");
@@ -865,6 +1081,58 @@ const S = {
   },
   modalBody: {
     padding: 16, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12,
+  },
+  modalBtns: { display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14, flexWrap: "wrap" },
+
+  /* ── خطة اليوم ── */
+  planWrap: {
+    background: "#fff", border: "1px solid #dbe6f2", borderRadius: 18,
+    padding: 16, marginBottom: 16, display: "flex", flexDirection: "column", gap: 12,
+  },
+  planHead: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    gap: 10, flexWrap: "wrap",
+  },
+  planAddBtn: {
+    border: "1px solid #1f6fd0", background: "#1f6fd0", color: "#fff",
+    borderRadius: 12, padding: "9px 16px", fontFamily: FONT, fontWeight: 800, cursor: "pointer",
+  },
+  planEditBtn: {
+    border: "1px solid #cfe0f0", background: "#fff", color: "#1f6fd0",
+    borderRadius: 10, padding: "5px 12px", fontFamily: FONT, fontWeight: 800, cursor: "pointer",
+  },
+  planEmpty: {
+    background: "#f7fbff", border: "2px dashed #cfe0f0", borderRadius: 14,
+    padding: "20px 16px", textAlign: "center", fontWeight: 800, color: "#6b8299",
+  },
+  planGrid: {
+    display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(280px,100%),1fr))",
+    gap: 12,
+  },
+  planCard: {
+    background: "#f9fcff", border: "1px solid #e3edf7", borderRadius: 14,
+    padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8,
+  },
+  planCardDone: { background: "#f6fffa", borderColor: "#a7f3d0" },
+  planCardHead: {
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+  },
+  planOk: { color: "#047857", fontWeight: 900 },
+  planLine: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  planTrack: {
+    flex: 1, minWidth: 90, height: 12, borderRadius: 999,
+    background: "#e6eef7", overflow: "hidden", display: "block",
+  },
+  planFill: { display: "block", height: "100%", borderRadius: 999, transition: "width .4s ease" },
+  planNote: {
+    color: "#8a5a12", fontWeight: 800, background: "#fff7ed",
+    border: "1px solid #fcd9a4", borderRadius: 10, padding: "6px 10px",
+  },
+  planField: { display: "flex", flexDirection: "column", gap: 6, marginTop: 10 },
+  planInput: {
+    border: "1px solid #cfe0f0", borderRadius: 12, padding: "11px 12px",
+    fontFamily: FONT, fontWeight: 700, color: "#0f2740", outline: "none", width: "100%",
+    boxSizing: "border-box",
   },
 
   reportBox: {

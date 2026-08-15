@@ -27,17 +27,15 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import API_BASE from "../../config/api";
 import ButcherArt, { ART_IDS } from "./ButcherIcons";
-import {
-  BRANCHES, TYPE, altNameOf, branchCodeFromLabel, isSpecialCut, nameOf,
-} from "./butcherOptions";
+import { BRANCHES, altNameOf, branchCodeFromLabel, nameOf } from "./butcherOptions";
 import { artOf, butcherByNo, imageOf, roundKg, useButcherConfig } from "./butcherConfig";
 import {
   useMrpConfig, bomInputItem, bomLines, itemName,
   bomCategoriesForPicker, bomsInCategory, UNCAT,
 } from "./butcherMrpBridge";
 import { saveOrQueue, useOutbox } from "./butcherOutbox";
+import { progressPct, useDayPlan } from "./butcherDayPlan";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 // سجل الموظفين المشترك (نفس المصدر الذي يستعمله رابط التدريب الداخلي) — قراءة فقط
@@ -126,48 +124,6 @@ function num(v) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-function toArray(data) {
-  return (
-    (Array.isArray(data) && data) ||
-    (Array.isArray(data?.data) && data.data) ||
-    (Array.isArray(data?.items) && data.items) ||
-    (Array.isArray(data?.reports) && data.reports) ||
-    []
-  );
-}
-
-/** مجموع أوزان القطع داخل سجل — بدون كروت المجاميع، ويدعم السجلات القديمة. */
-function recordCutsKg(p) {
-  if (Array.isArray(p?.cuts)) {
-    return p.cuts.reduce((s, c) => {
-      // السجلات الجديدة (BOM) تحمل kind؛ القديمة تُصنّف بالمعرّف
-      const isProduct = c?.kind ? c.kind === "product" : !isSpecialCut(c?.cutId);
-      return s + (isProduct ? Number(c?.weightKg) || 0 : 0);
-    }, 0);
-  }
-  return Number(p?.weightKg) || 0;
-}
-
-/** ملخّص اليوم لهذا الموظف (اختياري — يُخفى بصمت لو فشل الطلب). */
-async function fetchTodayTotals(employeeNo) {
-  const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=5000`,
-    { headers: { Accept: "application/json" }, cache: "no-store" }
-  );
-  if (!res.ok) throw new Error(`Server ${res.status}`);
-  const rows = toArray(await res.json());
-  const day = todayStr();
-  const mine = rows.filter((r) => {
-    const p = r?.payload || {};
-    return String(p.employeeNo || "") === String(employeeNo) &&
-      String(p.date || p.reportDate || "").slice(0, 10) === day;
-  });
-  return {
-    count: mine.length,
-    kg: mine.reduce((s, r) => s + recordCutsKg(r?.payload), 0),
-  };
-}
-
 /* ============================ الصفحة ============================ */
 
 export default function ButcherLog() {
@@ -200,7 +156,7 @@ export default function ButcherLog() {
   const [bomSearch, setBomSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [totals, setTotals] = useState(null);
+
   const [saved, setSaved] = useState(null);     // ملخّص آخر حفظ
   const [cutDate, setCutDate] = useState(todayStr());  // تاريخ التقطيع (يختاره الجزار)
   // تاريخ إدخال البيانات — لحظة فتح الشاشة، ويُثبَّت وقت الحفظ
@@ -215,10 +171,6 @@ export default function ButcherLog() {
     } catch { /* ignore */ }
   }, []);
 
-  const refreshTotals = useCallback((emp) => {
-    if (!emp) return;
-    fetchTodayTotals(emp).then(setTotals).catch(() => setTotals(null));
-  }, []);
 
   /* بطاقة الموظف: سجل الجزارين (الإعدادات) أولاً، ثم سجل الموظفين المشترك */
   const butcherRec = useMemo(() => butcherByNo(cfg, empNo), [cfg, empNo]);
@@ -251,6 +203,18 @@ export default function ButcherLog() {
     () => BRANCHES.find((b) => b.code === branch) || null,
     [branch]
   );
+
+  /* خطة اليوم لهذه الملحمة + تقدّم الجزار — طلب واحد يخدم الاثنين.
+     لا نحمّل قبل ما يدخل الجزار حتى لا نسحب بيانات بلا داعٍ. */
+  const dayPlan = useDayPlan({
+    date: todayStr(),
+    branch: step === "emp" ? "" : branch,
+    employeeNo: step === "emp" ? "" : empNo,
+  });
+  // ملخّص الجزار اليوم — من نفس نتيجة الخطة بدل طلب ثانٍ بـ٥٠٠٠ سجل
+  const totals = dayPlan.progress?.mine
+    ? { count: dayPlan.progress.mine.count, kg: dayPlan.progress.mine.productsKg }
+    : null;
 
   /* الوصفات المعروضة = وصفات الفئة المختارة */
   const shownBoms = useMemo(() => bomsInCategory(mrpCfg, bomCat), [mrpCfg, bomCat]);
@@ -345,7 +309,7 @@ export default function ButcherLog() {
     // في فئات وصفات؟ ابدأ باختيار الفئة، وإلا اعرض كل الوصفات مباشرة
     setBomCat(null);
     setStep(hasCatStep ? "category" : "bom");
-    refreshTotals(emp);
+    dayPlan.reload();
   };
 
   /* اختيار فئة الوصفات → عرض وصفات هذه الفئة فقط */
@@ -432,7 +396,7 @@ export default function ButcherLog() {
         queued: res.queued === true,
       });
       setStep("done");
-      refreshTotals(empNo);
+      dayPlan.reload();
     } catch (e) {
       setError(e?.message || t({ en: "Save failed", ar: "فشل الحفظ" }));
     } finally {
@@ -516,6 +480,17 @@ export default function ButcherLog() {
 
         {step !== "emp" && step !== "done" && (
           <StepBar step={step} hasCat={hasCatStep} t={t} />
+        )}
+
+        {/* ── خطة اليوم: هدف الملحمة والتقدّم عليه ── */}
+        {step !== "emp" && dayPlan.plan && dayPlan.progress && (
+          <DayPlanBar
+            plan={dayPlan.plan}
+            progress={dayPlan.progress}
+            branchName={branchObj ? nameOf(branchObj, isAr) : ""}
+            KG={KG}
+            t={t}
+          />
         )}
 
         {step !== "emp" && step !== "done" && totals && (
@@ -980,6 +955,77 @@ export default function ButcherLog() {
   );
 }
 
+/* ============================ خطة اليوم ============================ */
+/* هدف الملحمة اليوم مقابل المنجز — عدّاد التنفيذات ووزن المادة الخام.
+   يظهر فقط لما يكون المشرف حدّد هدفاً، وإلا لا نزحم شاشة الجزار. */
+function DayPlanBar({ plan, progress, branchName, KG, t }) {
+  const bars = [
+    {
+      key: "count",
+      label: t({ en: "Carcasses", ar: "الذبائح" }),
+      done: progress.branch.count,
+      target: Number(plan.targetCount) || 0,
+      fmt: (v) => String(Math.round(v)),
+    },
+    {
+      key: "kg",
+      label: t({ en: "Raw weight", ar: "وزن الخام" }),
+      done: progress.branch.rawKg,
+      target: Number(plan.targetKg) || 0,
+      fmt: (v) => `${v.toFixed(0)} ${KG}`,
+    },
+  ].filter((b) => b.target > 0);
+
+  if (!bars.length) return null;
+  const allDone = bars.every((b) => b.done >= b.target);
+
+  return (
+    <div className="bt-rise" style={{ ...S.planBox, ...(allDone ? S.planBoxDone : null) }}>
+      <div style={S.planHead}>
+        <span className="bt-sum" style={{ fontWeight: 900 }}>
+          🎯 {t({ en: "Today's plan", ar: "خطة اليوم" })}
+          {branchName ? ` — ${branchName}` : ""}
+        </span>
+        {allDone && (
+          <span className="bt-chip" style={S.planDoneChip}>
+            ✓ {t({ en: "Target reached", ar: "تحقّق الهدف" })}
+          </span>
+        )}
+      </div>
+
+      {bars.map((b) => {
+        const p = progressPct(b.done, b.target);
+        const done = b.done >= b.target;
+        return (
+          <div key={b.key} style={S.planRow}>
+            <span className="bt-lbl" style={S.planLbl}>{b.label}</span>
+            <span style={S.planTrack}>
+              <span style={{
+                ...S.planFill,
+                width: `${p}%`,
+                background: done ? "#047857" : "#1f6fd0",
+              }} />
+            </span>
+            <span className="bt-sum" style={{ ...S.planNums, color: done ? "#047857" : "#14507f" }}>
+              {b.fmt(b.done)} / {b.fmt(b.target)}
+            </span>
+          </div>
+        );
+      })}
+
+      {progress.mine.count > 0 && (
+        <div className="bt-lbl" style={S.planMine}>
+          {t({ en: "Your share today", ar: "نصيبك اليوم" })}: {progress.mine.count}{" "}
+          {t({ en: "carcasses", ar: "ذبيحة" })} · {progress.mine.rawKg.toFixed(0)} {KG}
+        </div>
+      )}
+      {plan.note && (
+        <div className="bt-lbl" style={S.planNote}>📌 {plan.note}</div>
+      )}
+    </div>
+  );
+}
+
 /* ============================ رسمة / صورة عنصر ============================ */
 /* صورة مرفوعة تسبق الرسمة المدمجة. أصناف الوصفات (MRP) بلا رسمة ولا صورة،
    و artOf ترجع الـid كاحتياط — لذلك نشترط رسمة **معروفة** فعلاً، وإلا لا نرسم
@@ -1151,6 +1197,34 @@ const S = {
     background: "#fff7ed", border: "1px solid #fcd9a4", color: "#8a5a12",
     borderRadius: 14, padding: "12px 14px", fontWeight: 800, lineHeight: 1.6,
     textAlign: "center",
+  },
+  /* ── خطة اليوم ── */
+  planBox: {
+    background: "#fff", border: "2px solid #cfe0f0", borderRadius: 18,
+    padding: "14px 16px", marginBottom: 12, display: "flex",
+    flexDirection: "column", gap: 10,
+  },
+  planBoxDone: { borderColor: "#86efac", background: "#f6fffa" },
+  planHead: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    gap: 10, flexWrap: "wrap",
+  },
+  planDoneChip: {
+    background: "#dcfce7", color: "#166534", borderRadius: 999,
+    padding: "4px 14px", fontWeight: 900,
+  },
+  planRow: { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
+  planLbl: { color: "#6b8299", fontWeight: 800, minWidth: 92 },
+  planTrack: {
+    flex: 1, minWidth: 140, height: 14, borderRadius: 999,
+    background: "#e6eef7", overflow: "hidden", display: "block",
+  },
+  planFill: { display: "block", height: "100%", borderRadius: 999, transition: "width .4s ease" },
+  planNums: { fontWeight: 900, whiteSpace: "nowrap", minWidth: 110, textAlign: "end" },
+  planMine: { color: "#6b8299", fontWeight: 800 },
+  planNote: {
+    color: "#8a5a12", fontWeight: 800, background: "#fff7ed",
+    border: "1px solid #fcd9a4", borderRadius: 12, padding: "8px 12px",
   },
   totals: {
     background: "#fff", border: "1px solid #dbe6f2", borderRadius: 12,
