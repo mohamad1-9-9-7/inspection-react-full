@@ -1,6 +1,7 @@
 // src/pages/ohc/OHCView.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../config/api";
+import { uploadImage } from "../../utils/imageUpload";
 
 /* ========= API ========= */
 
@@ -8,8 +9,7 @@ import API_BASE from "../../config/api";
 const TYPE = "ohc_certificate";
 
 /* ضغط الصور */
-const MAX_IMG_DIM = 1280;
-const IMG_QUALITY = 0.8;
+// Resize/quality now happen server-side in POST /api/images.
 
 async function jsonFetch(url, opts = {}) {
   const res = await fetch(url, {
@@ -804,38 +804,10 @@ export default function OHCView() {
     }
 
     try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const img = new Image();
-          img.onload = () => {
-            let { width, height } = img;
-            if (width > height && width > MAX_IMG_DIM) {
-              height = (height * MAX_IMG_DIM) / width;
-              width = MAX_IMG_DIM;
-            } else if (height >= width && height > MAX_IMG_DIM) {
-              width = (width * MAX_IMG_DIM) / height;
-              height = MAX_IMG_DIM;
-            }
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) {
-              // لو صار خطأ في الكانفا، نستعمل الداتا الأصلية
-              resolve(ev.target.result);
-              return;
-            }
-            ctx.drawImage(img, 0, 0, width, height);
-            const out = canvas.toDataURL("image/jpeg", IMG_QUALITY);
-            resolve(out);
-          };
-          img.onerror = reject;
-          img.src = ev.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // Cloudinary does the resize/compress (1280px, quality 80), so the file
+      // goes up as-is and the record keeps only the returned URL.
+      setMsg({ type: "ok", text: "⏳ Uploading image…" });
+      const dataUrl = await uploadImage(file, "ohc_certificate");
 
       setEditImage({
         dataUrl,
@@ -847,10 +819,10 @@ export default function OHCView() {
         text: "Image loaded for update. Please click Save to apply changes.",
       });
     } catch (err) {
-      console.error("Image compress error:", err);
+      console.error("Image upload error:", err);
       setMsg({
         type: "error",
-        text: "Failed to process image. Please try another file.",
+        text: `Failed to upload image: ${err?.message || err}`,
       });
     }
   }
@@ -912,8 +884,8 @@ export default function OHCView() {
 
     // لو تم اختيار صورة جديدة نستبدل حقول الصورة
     if (editImage && editImage.dataUrl) {
-      payload.imageData = editImage.dataUrl;
-      payload.imageUrl = ""; // نفضّل data URL
+      payload.imageUrl = editImage.dataUrl; // رابط Cloudinary
+      payload.imageData = ""; // ما عاد يُخزَّن الملف داخل الـ payload
       payload.imageName = editImage.name;
       payload.imageType = editImage.type;
     }

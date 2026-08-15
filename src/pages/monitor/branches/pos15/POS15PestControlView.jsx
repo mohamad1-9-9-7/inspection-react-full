@@ -5,6 +5,7 @@ import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
 import API_BASE from "../../../../config/api";
 import { canDelete, canWrite } from "../../../../utils/perms";
+import { photoOf, downloadImage } from "../../../../utils/imageUpload";
 import {
   formatDMY,
   IsoShell,
@@ -99,8 +100,8 @@ export default function POS15PestControlView() {
     pdf.save(`POS15_PestControl_${fileDate}.pdf`);
   };
 
-  const downloadBase64 = (dataUrl, filename = "image.png") => {
-    try { const a = document.createElement("a"); a.href = dataUrl; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); }
+  const downloadBase64 = (src, filename = "image.png") => {
+    try { downloadImage(src, filename); }
     catch (e) { console.error(e); alert("❌ Failed to download image."); }
   };
 
@@ -211,12 +212,12 @@ export default function POS15PestControlView() {
                           <td style={tdCell}>{idx + 1}</td>
                           <td style={tdCellLeft}>{row.location || "—"}</td>
                           <td style={tdCell}>
-                            {row.photoBase64 ? (
+                            {photoOf(row) ? (
                               <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                                <img src={row.photoBase64} alt={`sighting-${idx + 1}`} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 6, border: "1px solid #c7d2fe", cursor: "zoom-in" }} onClick={() => openPreview(row.photoBase64, `Sighting #${idx + 1} — ${row.location || ""}`, idx)} title="Click to preview" />
+                                <img src={photoOf(row)} alt={`sighting-${idx + 1}`} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 6, border: "1px solid #c7d2fe", cursor: "zoom-in" }} onClick={() => openPreview(photoOf(row), `Sighting #${idx + 1} — ${row.location || ""}`, idx)} title="Click to preview" />
                                 <div style={{ display: "flex", gap: 8 }}>
-                                  <button type="button" style={btnMini} onClick={() => openPreview(row.photoBase64, `Sighting #${idx + 1} — ${row.location || ""}`, idx)}>🔍 Preview</button>
-                                  <button type="button" style={btnMini} onClick={() => downloadBase64(row.photoBase64, filename)}>⬇ Download</button>
+                                  <button type="button" style={btnMini} onClick={() => openPreview(photoOf(row), `Sighting #${idx + 1} — ${row.location || ""}`, idx)}>🔍 Preview</button>
+                                  <button type="button" style={btnMini} onClick={() => downloadBase64(photoOf(row), filename)}>⬇ Download</button>
                                 </div>
                               </div>
                             ) : "—"}

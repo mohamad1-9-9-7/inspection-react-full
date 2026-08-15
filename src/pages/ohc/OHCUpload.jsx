@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
+import { uploadImage } from "../../utils/imageUpload";
 
 /* ========= API ========= */
 
@@ -70,38 +71,10 @@ async function appNoExistsOnServer(appNo) {
   return false;
 }
 
-// Compress image in-memory to ~1280px longest side, quality ≈ 0.8 (JPEG)
-async function compressImage(file) {
-  const dataURL = await new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result);
-    fr.onerror = reject;
-    fr.readAsDataURL(file);
-  });
-
-  const img = await new Promise((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = reject;
-    i.src = dataURL;
-  });
-
-  const maxSide = 1280;
-  const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
-  const w = Math.round(img.width * ratio);
-  const h = Math.round(img.height * ratio);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, 0, 0, w, h);
-
-  const out = canvas.toDataURL("image/jpeg", 0.8);
-  return out;
-}
+/* The certificate used to be stored inside the payload as base64 — one record
+   ran ~87 KB, of which 99.4% was the image, and reading the list cost 12.9 MB.
+   It now goes to Cloudinary via uploadImage(), which resizes to 1280px at
+   quality 80 server-side, so the local canvas pass here is gone. */
 
 /* ========= UI ========= */
 
@@ -535,7 +508,7 @@ export default function OHCUpload() {
         ...form,
         appNo: trimmedAppNo, // stored as appNo but used as Employee Number
         result: "FIT",       // force FIT in payload
-        imageData: imageData || undefined,
+        imageUrl: imageData || undefined,
         imageName: imageData ? imageMeta.name : undefined,
         imageType: imageData ? imageMeta.type : undefined,
         savedAt: new Date().toISOString(),
@@ -603,14 +576,15 @@ export default function OHCUpload() {
       return;
     }
     try {
-      const compressed = await compressImage(file);
-      setImageData(compressed);
-      setImageMeta({ name: file.name, type: "image/jpeg" });
+      setMsg({ type: "", text: "⏳ Uploading image…" });
+      const url = await uploadImage(file, TYPE);
+      setImageData(url);
+      setImageMeta({ name: file.name, type: file.type || "image/jpeg" });
       setMsg({ type: "", text: "" });
-    } catch {
+    } catch (err) {
       setMsg({
         type: "error",
-        text: "Image processing failed. Try another image.",
+        text: `Image upload failed: ${err?.message || err}`,
       });
     } finally {
       e.target.value = "";

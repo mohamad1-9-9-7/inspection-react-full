@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API_BASE from "../../config/api";
+import { uploadImage } from "../../utils/imageUpload";
 
 /* ========= API ========= */
 
@@ -40,38 +41,8 @@ async function jsonFetch(url, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-// دالة ضغط الصورة (نفس الإدخال)
-async function compressImage(file) {
-  const dataURL = await new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result);
-    fr.onerror = reject;
-    fr.readAsDataURL(file);
-  });
-
-  const img = await new Promise((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = reject;
-    i.src = dataURL;
-  });
-
-  const maxSide = 1280;
-  const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
-  const w = Math.round(img.width * ratio);
-  const h = Math.round(img.height * ratio);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, 0, 0, w, h);
-
-  const out = canvas.toDataURL("image/jpeg", 0.8);
-  return out;
-}
+/* الصور تُرفع على Cloudinary (نفس مسار صفحة الإدخال) — الضغط 1280px/جودة 80
+   يتم على السيرفر، والسجل يحفظ الرابط فقط في imageUrl. */
 
 // إرجاع لستة السجلات كما هي (مع id + payload)
 function extractReportsList(data) {
@@ -313,7 +284,7 @@ export default function TrainingCertificatesView() {
       const p = rec?.payload || rec || {};
       const savedAt =
         p.savedAt || rec?.createdAt || rec?.created_at || "";
-      const imageData = p.imageData || "";
+      const imageData = p.imageUrl || p.imageData || "";
       const status = getCertStatus(p.expiryDate || "");
 
       return {
@@ -664,7 +635,7 @@ export default function TrainingCertificatesView() {
       courseType: row.courseType || "",
       issueDate: row.issueDate || "",
       expiryDate: row.expiryDate || "",
-      imageData: origPayload.imageData || row.imageData || "",
+      imageData: origPayload.imageUrl || origPayload.imageData || row.imageData || "",
       imageName: origPayload.imageName || "",
       imageType: origPayload.imageType || "",
     });
@@ -693,7 +664,7 @@ export default function TrainingCertificatesView() {
     }
 
     try {
-      const compressed = await compressImage(file);
+      const compressed = await uploadImage(file, TYPE);
       setEditDraft((prev) => ({
         ...(prev || {}),
         imageData: compressed,
@@ -749,7 +720,10 @@ export default function TrainingCertificatesView() {
       issueDate: editDraft.issueDate,
       expiryDate: editDraft.expiryDate || undefined,
       savedAt: new Date().toISOString(),
-      imageData: editDraft.imageData || undefined,
+      // editDraft.imageData now carries a Cloudinary URL, so it is written to
+      // imageUrl; imageData is blanked so no record keeps an embedded file.
+      imageUrl: editDraft.imageData || undefined,
+      imageData: "",
       imageName: editDraft.imageData
         ? editDraft.imageName || origPayload.imageName || "certificate.jpg"
         : undefined,

@@ -113,7 +113,8 @@ export const userName = () => currentUser().username || currentUser().name || ""
 export function defaultConfig() {
   return {
     items: [],
-    categories: [],
+    categories: [],        // فئات الأصناف (سجل الأصناف)
+    bomCategories: [],      // فئات الوصفات (قوائم التقطيع) — مستقلّة عن فئات الأصناف
     suppliers: [],
     operations: [],
     boms: [],
@@ -128,6 +129,7 @@ export function mergeConfig(saved) {
   return {
     items: Array.isArray(saved.items) ? saved.items : base.items,
     categories: Array.isArray(saved.categories) ? saved.categories : base.categories,
+    bomCategories: Array.isArray(saved.bomCategories) ? saved.bomCategories : base.bomCategories,
     suppliers: Array.isArray(saved.suppliers) ? saved.suppliers : base.suppliers,
     operations: Array.isArray(saved.operations) ? saved.operations : base.operations,
     boms: Array.isArray(saved.boms) ? saved.boms : base.boms,
@@ -337,6 +339,7 @@ export const itemById = (cfg, id) => (cfg?.items || []).find((x) => x.id === id)
 export const bomById = (cfg, id) => (cfg?.boms || []).find((x) => x.id === id) || null;
 export const supplierById = (cfg, id) => (cfg?.suppliers || []).find((x) => x.id === id) || null;
 export const categoryById = (cfg, id) => (cfg?.categories || []).find((x) => x.id === id) || null;
+export const bomCategoryById = (cfg, id) => (cfg?.bomCategories || []).find((x) => x.id === id) || null;
 export const opById = (cfg, id) => (cfg?.operations || []).find((x) => x.id === id) || null;
 
 /** فئة الصنف كنص — من قائمة الفئات المُدارة، مع رجوع للنص القديم إن وُجد. */

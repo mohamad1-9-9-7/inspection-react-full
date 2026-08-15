@@ -3,14 +3,14 @@
 // لوحة إعدادات الجزار — الشروط والجزارون ووصفات التقطيع وترويسة التقرير.
 // Butcher settings: rules, butchers, cutting templates, report header.
 //
-// شجرة الأصناف (ذبائح · مناشئ · درجات · قطع · أجزاء · منتجات نهائية) ما عادت
-// هون — صارت كلها بالماستر ليست: /butcher/master (ButcherProductForm).
+// شجرة الأصناف (ذبائح · مناشئ · درجات · قطع · أجزاء · منتجات نهائية) تُدار الآن
+// من سجل أصناف الـMRP (الماستر) — لم تعد جزءاً من هذه الصفحة.
 //
 // كل شي بينحفظ على السيرفر (butcher_config) وبينعكس فوراً على شاشات الإدخال
 // والتقارير.
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   DEFAULT_RULES, allConfigCodes, defaultConfig, duplicateTemplateNos,
   enabledOnly, mergeConfig, originsForAnimal,
@@ -25,7 +25,7 @@ import { can } from "../../utils/perms";
 // سجل الموظفين المشترك — منه تُجلب أسماء الجزارين بدل الكتابة اليدوية
 import { EMPLOYEES } from "../ohc/OHCUpload";
 
-const TAB_IDS = ["rules", "butchers", "tree", "templates", "report", "admin"];
+const TAB_IDS = ["rules", "butchers", "templates", "report", "admin"];
 
 /* ══ الشروط مجمّعة بأقسام — العرض كله مبني من هون ══
    type: switch | number | select ، والمفتاح هو نفسه في cfg.rules */
@@ -79,13 +79,6 @@ const RULE_GROUPS = [
         key: "requireBranch", type: "switch",
         ar: "إلزام اختيار الملحمة قبل بدء الإدخال",
         en: "Require choosing a butchery before entry",
-      },
-      {
-        key: "onScreenKeypad", type: "switch",
-        ar: "لوحة أرقام على الشاشة",
-        en: "On-screen number pad",
-        arHint: "مناسبة لجهاز مشترك والإدخال بالقفازات.",
-        enHint: "Made for a shared kiosk operated with gloves.",
       },
       {
         key: "showActualPct", type: "switch",
@@ -161,16 +154,6 @@ const RULE_GROUPS = [
       },
     ],
   },
-];
-
-/* مستويات شجرة الأصناف — كلها تُدار من الماستر ليست */
-const TREE_LEVELS = [
-  { key: "animals",  icon: "🐑", ar: "الذبائح",           en: "Animals" },
-  { key: "origins",  icon: "🌍", ar: "المناشئ",           en: "Origins" },
-  { key: "grades",   icon: "🏅", ar: "الدرجات",           en: "Grades" },
-  { key: "cuts",     icon: "🥩", ar: "القطع",             en: "Cuts" },
-  { key: "pieces",   icon: "🍖", ar: "الأجزاء",           en: "Pieces" },
-  { key: "products", icon: "📦", ar: "المنتجات النهائية", en: "Final products" },
 ];
 
 const CSS = `
@@ -528,16 +511,6 @@ export default function ButcherSettings() {
     };
   });
 
-  /** تفريغ شجرة الأصناف بالكامل — الذبائح والمناشئ والدرجات والقطع والأجزاء والمنتجات. */
-  const clearTree = () => {
-    const counts = TREE_LEVELS.map((l) => (model[l.key] || []).length).reduce((a, b) => a + b, 0);
-    if (!window.confirm(t({
-      en: `Delete all ${counts} record(s) in the product tree (animals, origins, grades, cuts, pieces, final products)? Saved reports keep their old values. Nothing is written until you press Save.`,
-      ar: `حذف كل الـ${counts} سجل من شجرة الأصناف (ذبائح · مناشئ · درجات · قطع · أجزاء · منتجات نهائية)؟ التقارير المحفوظة بتحتفظ بقيمها. لا شي بينحفظ حتى تضغط «حفظ».`,
-    }))) return;
-    edit((n) => { TREE_LEVELS.forEach((l) => { n[l.key] = []; }); });
-  };
-
   const resetDefaults = () => {
     if (!window.confirm(t({
       en: "Reset every setting to the built-in defaults? Nothing is saved until you press Save.",
@@ -559,11 +532,6 @@ export default function ButcherSettings() {
       id: "butchers", icon: "🧑‍🍳", ar: "الجزارون", en: "Butchers",
       arSub: "سجل الأرقام الوظيفية", enSub: "Employee register",
       count: (model.butchers || []).length || null,
-    },
-    {
-      id: "tree", icon: "🗂️", ar: "شجرة الأصناف", en: "Product tree",
-      arSub: "تُدار من الماستر ليست", enSub: "Managed in the master list",
-      count: TREE_LEVELS.reduce((s, l) => s + (model[l.key] || []).length, 0) || null,
     },
     {
       id: "templates", icon: "📐", ar: "وصفات التقطيع", en: "Cutting templates",
@@ -616,9 +584,6 @@ export default function ButcherSettings() {
 
         <div style={S.topActions}>
           <LangToggle lang={lang} toggle={toggle} style={S.langBtn} />
-          <Link to="/butcher/master" style={S.masterBtn}>
-            🗂️ {t({ en: "Master list", ar: "الماستر ليست" })}
-          </Link>
           <button type="button" style={S.btn} onClick={() => navigate("/butcher")}>
             ← {t({ en: "Back", ar: "رجوع" })}
           </button>
@@ -953,76 +918,6 @@ export default function ButcherSettings() {
             <button type="button" style={S.btn} onClick={addButcher}>
               + {t({ en: "Add butcher", ar: "إضافة جزّار" })}
             </button>
-          </div>
-        )}
-
-        {/* ═══ شجرة الأصناف — كلها تُدار من الماستر ليست ═══ */}
-        {tab === "tree" && (
-          <div style={S.card}>
-            <div style={S.cardHead}>
-              <span style={S.cardIcon}>🗂️</span>
-              <div style={{ minWidth: 0 }}>
-                <h2 className="bg-sec" style={S.cardTitle}>
-                  {t({ en: "Product tree", ar: "شجرة الأصناف" })}
-                </h2>
-                <div className="bg-sub" style={S.cardSub}>
-                  {t({
-                    en: "Animal → origin → grade → cut → final product.",
-                    ar: "ذبيحة ← منشأ ← درجة ← قطعة ← منتج نهائي.",
-                  })}
-                </div>
-              </div>
-              <Link to="/butcher/master" style={{ ...S.masterBtn, marginInlineStart: "auto" }}>
-                🗂️ {t({ en: "Open the master list", ar: "فتح الماستر ليست" })}
-              </Link>
-            </div>
-            <div style={S.note}>
-              {t({
-                en: "Animals, origins, grades, cuts, pieces and final products all live in one master list now — every record opens as one form with all of its attributes.",
-                ar: "الذبائح والمناشئ والدرجات والقطع والأجزاء والمنتجات النهائية صاروا كلهم بماستر ليست وحدة — كل سجل بيفتح بنموذج واحد فيه كل خصائصه.",
-              })}
-            </div>
-
-            <div style={S.treeGrid}>
-              {TREE_LEVELS.map((l) => (
-                <Link
-                  key={l.key}
-                  // فتح أول سجل بالمستوى مباشرة — وإلا القائمة بلا اختيار
-                  to={(model[l.key] || [])[0]
-                    ? `/butcher/product/${l.key}/${model[l.key][0].id}`
-                    : "/butcher/master"}
-                  style={S.treeCard}
-                >
-                  <span style={S.treeIcon}>{l.icon}</span>
-                  <span style={S.treeName}>{isAr ? l.ar : l.en}</span>
-                  <span style={S.treeCount}>
-                    {(model[l.key] || []).length} {t({ en: "records", ar: "سجل" })}
-                  </span>
-                </Link>
-              ))}
-            </div>
-
-            <Link to="/butcher/master" style={S.masterBtn}>
-              🗂️ {t({ en: "Open the master list", ar: "فتح الماستر ليست" })}
-            </Link>
-
-            {/* منطقة خطرة — تفريغ الشجرة كاملة */}
-            {!readOnly && (
-              <div style={S.danger}>
-                <div style={S.dangerTitle}>
-                  ⚠️ {t({ en: "Danger zone", ar: "منطقة خطرة" })}
-                </div>
-                <div style={S.dangerText}>
-                  {t({
-                    en: "Empties every level of the tree at once so you can build it from scratch. Saved reports keep their old values, and nothing is written until you press Save.",
-                    ar: "بيفرّغ كل مستويات الشجرة دفعة وحدة حتى تبنيها من الصفر. التقارير المحفوظة بتحتفظ بقيمها، ولا شي بينحفظ حتى تضغط «حفظ».",
-                  })}
-                </div>
-                <button type="button" style={S.dangerBtn} onClick={clearTree}>
-                  🗑 {t({ en: "Clear the whole product tree", ar: "تفريغ شجرة الأصناف بالكامل" })}
-                </button>
-              </div>
-            )}
           </div>
         )}
 
@@ -1818,17 +1713,6 @@ const S = {
   rows: { display: "flex", flexDirection: "column", gap: 2 },
   sigRow: { display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" },
 
-  danger: {
-    marginTop: 8, border: "1.5px solid #f3d4d4", background: "#fffafa",
-    borderRadius: 16, padding: 16, display: "flex", flexDirection: "column",
-    gap: 8, alignItems: "flex-start",
-  },
-  dangerTitle: { fontWeight: 900, color: "#a12626" },
-  dangerText: { color: "#8a6a6a", fontWeight: 700, lineHeight: 1.7 },
-  dangerBtn: {
-    border: "none", background: "#a12626", color: "#fff", borderRadius: 12,
-    padding: "11px 20px", fontWeight: 800, fontFamily: FONT, cursor: "pointer",
-  },
   numWrap: { display: "flex", alignItems: "center", gap: 8 },
   unit: { color: "#8aa3b8", fontWeight: 800, whiteSpace: "nowrap" },
   empty: {
@@ -1852,26 +1736,6 @@ const S = {
   saveBarBad: { background: "#8e1f1f" },
   saveMsg: { fontWeight: 900 },
   saveBtns: { display: "flex", gap: 10, marginInlineStart: "auto", flexWrap: "wrap" },
-
-  /* الماستر ليست — روابط (وليست أزرار) حتى تشتغل داخل fieldset المعطّل */
-  masterBtn: {
-    background: "#b45309", color: "#fff", border: "none", borderRadius: 12,
-    padding: "12px 20px", fontWeight: 800, fontFamily: FONT,
-    textDecoration: "none", whiteSpace: "nowrap", display: "inline-block",
-    alignSelf: "flex-start",
-  },
-  treeGrid: {
-    display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(200px,100%),1fr))",
-    gap: 14, margin: "16px 0",
-  },
-  treeCard: {
-    border: "1px solid #e3edf7", borderRadius: 16, padding: "20px 14px",
-    background: "#fbfdff", textDecoration: "none", color: "#0f2740",
-    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-  },
-  treeIcon: { fontSize: 34, lineHeight: 1 },
-  treeName: { fontWeight: 900, color: "#14507f" },
-  treeCount: { color: "#8aa3b8", fontWeight: 800 },
 
   blockers: {
     background: "#fff1f1", border: "1px solid #f5c2c2", color: "#a12626",

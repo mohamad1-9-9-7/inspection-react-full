@@ -10,6 +10,7 @@ import {
   EmptyState,
 } from "./pos10ViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { photoOf, downloadImage } from "../../../../utils/imageUpload";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -142,15 +143,10 @@ export default function POS10CalibrationView() {
     pdf.save(`POS10_Calibration_${fileDate}.pdf`);
   };
 
-  // تنزيل Base64 كملف
-  const downloadBase64 = (dataUrl, filename = "image.png") => {
+  // تنزيل الصورة (رابط Cloudinary يُفتح بتبويب جديد)
+  const downloadBase64 = (src, filename = "image.png") => {
     try {
-      const a = document.createElement("a");
-      a.href = dataUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      downloadImage(src, filename);
     } catch (e) {
       console.error(e);
       alert("❌ Failed to download image.");
@@ -395,10 +391,10 @@ export default function POS10CalibrationView() {
                         <td style={tdCellCenter}>{idx + 1}</td>
                         <td style={tdCellLeft}>{row.equipmentName || "—"}</td>
                         <td style={tdCellCenter}>
-                          {row.photoBase64 ? (
+                          {photoOf(row) ? (
                             <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                               <img
-                                src={row.photoBase64}
+                                src={photoOf(row)}
                                 alt={`calib-${idx + 1}`}
                                 style={{
                                   width: 90,
@@ -411,7 +407,7 @@ export default function POS10CalibrationView() {
                                 title="Click to preview"
                                 onClick={() =>
                                   openPreview(
-                                    row.photoBase64,
+                                    photoOf(row),
                                     `Entry #${idx + 1} — ${row.equipmentName || ""}`,
                                     idx
                                   )
@@ -423,7 +419,7 @@ export default function POS10CalibrationView() {
                                   style={btnMini}
                                   onClick={() =>
                                     openPreview(
-                                      row.photoBase64,
+                                      photoOf(row),
                                       `Entry #${idx + 1} — ${row.equipmentName || ""}`,
                                       idx
                                     )
@@ -435,7 +431,7 @@ export default function POS10CalibrationView() {
                                 <button
                                   type="button"
                                   style={btnMini}
-                                  onClick={() => downloadBase64(row.photoBase64, filename)}
+                                  onClick={() => downloadBase64(photoOf(row), filename)}
                                   title="Download"
                                 >
                                   ⬇ Download

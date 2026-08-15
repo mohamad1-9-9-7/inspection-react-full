@@ -24,7 +24,6 @@ const ButcherLog = lazy(() => import("./pages/butcher/ButcherLog"));
 const ButcherView = lazy(() => import("./pages/butcher/ButcherView"));
 const ButcherSummary = lazy(() => import("./pages/butcher/ButcherSummary"));
 const ButcherSupervisor = lazy(() => import("./pages/butcher/ButcherSupervisor"));
-const ButcherProductForm = lazy(() => import("./pages/butcher/ButcherProductForm"));
 const ButcherSettings = lazy(() => import("./pages/butcher/ButcherSettings"));
 
 // 📦 المخزون — كرت جامع للجزار والتصنيع
@@ -810,24 +809,6 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ButcherSummary />
-            </ProtectedRoute>
-          }
-        />
-        {/* الماستر ليست — إدخال شجرة الجزار كاملة من صفحة واحدة
-            animals | origins | grades | cuts | pieces | products */}
-        <Route
-          path="/butcher/master"
-          element={
-            <ProtectedRoute>
-              <ButcherProductForm />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/butcher/product/:listKey/:id"
-          element={
-            <ProtectedRoute>
-              <ButcherProductForm />
             </ProtectedRoute>
           }
         />

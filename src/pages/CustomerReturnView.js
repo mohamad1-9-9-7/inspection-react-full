@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../config/api";
 import { normalizeCode, useProductCatalog } from "./monitor/branches/_shared/ProductPicker";
 import { mergeCustomerOptions } from "./shared/customerReturnsCustomers";
+import { uploadImage } from "../utils/imageUpload";
 
 /* ========== Fetch (type=returns_customers) ========== */
 async function fetchReports() {
@@ -142,36 +143,9 @@ async function appendActionChange(reportDate, changeItem) {
 /* ========= Images manager modal (per-row) with compression ========= */
 const MAX_IMAGES_PER_PRODUCT = 5;
 
-// compress to max 1280px (longest) and ~80% quality, output JPEG dataURL
-async function compressImage(file) {
-  const fileDataURL = await new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-
-  const img = await new Promise((resolve, reject) => {
-    const im = new Image();
-    im.onload = () => resolve(im);
-    im.onerror = reject;
-    im.src = fileDataURL;
-  });
-
-  const maxSide = 1280;
-  let { width, height } = img;
-  const scale = Math.min(1, maxSide / Math.max(width, height));
-  const w = Math.round(width * scale);
-  const h = Math.round(height * scale);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, 0, 0, w, h);
-  const out = canvas.toDataURL("image/jpeg", 0.8);
-  return out;
-}
+/* Images go to Cloudinary and the row keeps only the URL — resize to 1280px at
+   quality 80 happens server-side in POST /api/images. Storing the file itself
+   in the payload made every read of this report type carry all of it. */
 
 function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, remaining }) {
   const [previewSrc, setPreviewSrc] = useState("");
@@ -191,20 +165,16 @@ function ImageManagerModal({ open, row, onClose, onAddImages, onRemoveImage, rem
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     const allowed = files.slice(0, remaining);
-    const b64s = [];
+    const urls = [];
     for (const f of allowed) {
       try {
-        const b = await compressImage(f);
-        b64s.push(b);
+        urls.push(await uploadImage(f, "returns_customers"));
       } catch (err) {
-        console.error("Compress failed, using original", err);
-        const fb = await new Promise((resolve, reject) => {
-          const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(f);
-        });
-        b64s.push(fb);
+        console.error("Upload failed", err);
+        alert(`❌ فشل رفع الصورة ${f.name}: ${err?.message || err}`);
       }
     }
-    onAddImages(b64s);
+    if (urls.length) onAddImages(urls);
     e.target.value = "";
   };
 

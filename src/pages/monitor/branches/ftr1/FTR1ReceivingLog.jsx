@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/ftr1/FTR1ReceivingLog.jsx
 import React, { useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { uploadImage } from "../../../../utils/imageUpload";
 
 
 
@@ -119,7 +120,7 @@ function Modal({ open, title, children, onClose, lock = false }) {
  * ملاحظة: Base64 يزيد الحجم ~ 33% بعد التحويل،
  * لكن نحن نضغط قبل Base64 قدر الإمكان.
  */
-const TARGET_BYTES = 60 * 1024; // هدف صغير جدًا (≈60KB قبل Base64) — قد لا يتحقق لبعض الصور الثقيلة مع الحفاظ على الأبعاد
+const TARGET_BYTES = 60 * 1024; // هدف صغير جدًا (≈60KB قبل الرفع) — قد لا يتحقق لبعض الصور الثقيلة مع الحفاظ على الأبعاد
 
 // نزول قوي جدًا بالجودة
 const Q_STEPS_WEBP = [0.50, 0.35, 0.25, 0.18, 0.14, 0.11, 0.09, 0.07, 0.06, 0.05, 0.04, 0.03];
@@ -181,22 +182,19 @@ function canvasToBlob(canvas, mime, quality) {
   });
 }
 
-function blobToDataURL(blob) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result));
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
-}
-
-async function compressToMaxSmallDataURL(file) {
+// يرجّع ملفاً مضغوطاً جاهزاً للرفع على Cloudinary — سابقاً كان يرجّع data URL
+// يُخزَّن داخل الـ payload، وهذا ما جعل هذا التقرير ~20 MB لكل فتحة صفحة.
+async function compressToMaxSmallFile(file) {
   const webp = canUseWebP();
   const mime = webp ? "image/webp" : "image/jpeg";
   const qSteps = webp ? Q_STEPS_WEBP : Q_STEPS_JPG;
+  const ext = webp ? "webp" : "jpg";
 
   const img = await fileToImage(file);
   const canvas = drawToCanvasSameSize(img); // ✅ نفس الأبعاد الأصلية
+
+  const toFile = (blob) =>
+    new File([blob], `${(file.name || "photo").replace(/\.[^.]+$/, "")}.${ext}`, { type: mime });
 
   let bestBlob = null;
 
@@ -208,14 +206,12 @@ async function compressToMaxSmallDataURL(file) {
     if (!bestBlob || blob.size < bestBlob.size) bestBlob = blob;
 
     // إذا وصلنا الهدف، نوقف
-    if (blob.size <= TARGET_BYTES) {
-      return await blobToDataURL(blob);
-    }
+    if (blob.size <= TARGET_BYTES) return toFile(blob);
   }
 
   // إذا ما قدرنا نوصل للهدف، نرجّع أصغر شي وصلنا له (بدون تغيير أبعاد)
   if (!bestBlob) throw new Error("compress failed");
-  return await blobToDataURL(bestBlob);
+  return toFile(bestBlob);
 }
 
 export default function FTR1ReceivingLog() {
@@ -390,7 +386,7 @@ export default function FTR1ReceivingLog() {
 
     try {
       openModal(
-        "جارٍ ضغط الصورة لأقصى حد…",
+        "جارٍ ضغط الصورة ورفعها…",
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span
             className="spinner"
@@ -409,7 +405,7 @@ export default function FTR1ReceivingLog() {
         { lock: true }
       );
 
-      const tiny = await compressToMaxSmallDataURL(file);
+      const tiny = await uploadImage(await compressToMaxSmallFile(file), `${TYPE}_photo`);
 
       setRows((prev) => {
         const next = [...prev];
@@ -426,11 +422,11 @@ export default function FTR1ReceivingLog() {
         return next;
       });
 
-      openModal("تم ✅", "تم ضغط الصورة بأقصى تصغير ممكن (بدون تغيير الأبعاد).", { lock: false });
+      openModal("تم ✅", "تم ضغط الصورة ورفعها (بدون تغيير الأبعاد).", { lock: false });
       setTimeout(() => closeModal(), 900);
     } catch (e) {
       console.error(e);
-      openModal("خطأ", "فشل ضغط/حفظ الصورة.", { lock: false });
+      openModal("خطأ", `فشل ضغط/رفع الصورة: ${e?.message || e}`, { lock: false });
     }
   }
 

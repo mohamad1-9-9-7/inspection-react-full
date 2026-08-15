@@ -11,7 +11,7 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import {
-  ITEM_TYPES, activeOnly, categoryById, freshId, hasRole, itemById, money,
+  ITEM_TYPES, activeOnly, bomCategoryById, freshId, hasRole, itemById, money,
   mutateConfig, nameOf, num, useMrpConfig, userName,
 } from "./mrpApi";
 import {
@@ -42,6 +42,8 @@ const blankBom = (boms) => ({
   wastes: [],
   notes: "",
   active: true,
+  requireExactBalance: false,   // إلزام الجزار بتطابق تام: الخام = النواتج + الهدر
+  requirePieceCount: false,     // إظهار خانة «عدد القطع» وإلزام الجزار بتعبئتها
   version: 1,
   history: [],
   createdAt: new Date().toISOString(),
@@ -56,7 +58,8 @@ function bomMath(bom) {
   const loss = input - out - waste;               // فاقد غير مسجّل (تبخّر/انكماش…)
   const yieldPct = input > 0 ? (out / input) * 100 : 0;
   const wastePct = input > 0 ? (waste / input) * 100 : 0;
-  const over = loss < -1e-6;                      // موزّع أكثر من الداخل = خطأ
+  // الميزان يُفحص فقط لما يكون في كمية داخل — بلا داخل (هيكل فقط) لا مقارنة
+  const over = input > 0 && loss < -1e-6;         // موزّع أكثر من الداخل = خطأ
   return { input, out, waste, loss, yieldPct, wastePct, over };
 }
 
@@ -133,6 +136,26 @@ export default function MrpBom() {
     setDraft(null);
   };
 
+  /** إضافة فئة وصفة جديدة (مستقلّة عن فئات الأصناف) وإرجاع معرّفها لاختيارها. */
+  const addBomCategory = async () => {
+    const name = window.prompt(t({ en: "New recipe category name", ar: "اسم فئة الوصفة الجديدة" }));
+    const label = String(name || "").trim();
+    if (!label) return "";
+    const existing = (cfg.bomCategories || []).find(
+      (c) => (nameOf(c, isAr) || c.en || c.ar || "").trim().toLowerCase() === label.toLowerCase()
+    );
+    if (existing) return existing.id;
+    const id = freshId("bcat");
+    const ok = await commit(
+      (next) => {
+        if (!Array.isArray(next.bomCategories)) next.bomCategories = [];
+        next.bomCategories.push({ id, ar: label, en: label, active: true });
+      },
+      t({ en: "Category added.", ar: "تمت إضافة الفئة." })
+    );
+    return ok ? id : "";
+  };
+
   const patch = (p) => setDraft((d) => ({ ...d, dirty: true, bom: { ...d.bom, ...p } }));
   const patchList = (list, id, p) =>
     setDraft((d) => ({
@@ -156,15 +179,15 @@ export default function MrpBom() {
       return t({ en: "Pick the input product first.", ar: "اختر المنتج الداخل أولاً." });
     }
     const inItem = itemById(cfg, bom.inputId);
-    if (inItem && (hasRole(inItem, "finished") || hasRole(inItem, "waste"))) {
+    // مسموح كمُدخل إذا بيلعب دور خام أو مكوّن — حتى لو كان كمان نهائي (منتج وسيط).
+    // ممنوع فقط إذا كان نهائي فقط / هدر فقط بلا أي دور خام أو مكوّن.
+    if (inItem && !(hasRole(inItem, "raw") || hasRole(inItem, "component"))) {
       return t({
-        en: `"${nameOf(inItem, false) || bom.inputId}" is a finished/waste item — the input must be a raw material or a component.`,
-        ar: `«${nameOf(inItem, true) || bom.inputId}» منتج نهائي/هدر — الداخل لازم يكون مادة خام أو مكوّن.`,
+        en: `"${nameOf(inItem, false) || bom.inputId}" is a finished/waste item — the input must be (or also be) a raw material or a component.`,
+        ar: `«${nameOf(inItem, true) || bom.inputId}» نهائي/هدر فقط — الداخل لازم يكون (أو يكون كمان) مادة خام أو مكوّن.`,
       });
     }
-    if (!(num(bom.inputQty) > 0)) {
-      return t({ en: "Input quantity must be more than zero.", ar: "كمية الداخل لازم تكون أكبر من صفر." });
-    }
+    // الكميات اختيارية — بتقدر تحفظ الهيكل (الداخل + النواتج) وتعبّي الأوزان لاحقاً
     if ((bom.outputs || []).length === 0) {
       return t({ en: "A cutting BOM needs at least one output.", ar: "قائمة التقطيع بدها ناتج واحد على الأقل." });
     }
@@ -327,7 +350,7 @@ export default function MrpBom() {
         b,
         input: itemById(cfg, b.inputId),
         math: bomMath(b),
-        cat: nameOf(categoryById(cfg, b.categoryId) || {}, isAr),
+        cat: nameOf(bomCategoryById(cfg, b.categoryId) || {}, isAr),
         legacy: b.bomType !== "disassembly" && (b.lines || []).length > 0,
       }))
       .filter(({ b, input, cat }) => {
@@ -382,7 +405,7 @@ export default function MrpBom() {
                 onChange={(e) => setCatFilter(e.target.value)}
               >
                 <option value="">{t({ en: "All categories", ar: "كل الفئات" })}</option>
-                {activeOnly(cfg.categories).map((c) => (
+                {activeOnly(cfg.bomCategories).map((c) => (
                   <option key={c.id} value={c.id}>{nameOf(c, isAr) || c.id}</option>
                 ))}
               </select>
@@ -495,6 +518,7 @@ export default function MrpBom() {
           onDelete={() => removeBom(draft.bom)}
           onBump={bumpVersion}
           onHistory={() => setHistoryFor(draft.bom.id)}
+          onAddCategory={addBomCategory}
           patch={patch} patchList={patchList} addTo={addTo} dropFrom={dropFrom}
         />
       )}
@@ -555,7 +579,7 @@ export default function MrpBom() {
 
 function CutBuilder({
   t, isAr, cfg, draft, canEdit, busy, notify,
-  onBack, onSave, onDelete, onBump, onHistory,
+  onBack, onSave, onDelete, onBump, onHistory, onAddCategory,
   patch, patchList, addTo, dropFrom,
 }) {
   const bom = draft.bom;
@@ -661,14 +685,14 @@ function CutBuilder({
                 isAr={isAr}
                 t={t}
                 prefer={["raw", "component"]}
-                // بيظهروا بالقائمة بس ما بينضافوا — المنتج النهائي والهدر ما بيصيروا مدخلات
+                // خام/مكوّن مسموح — حتى لو كان كمان نهائي (منتج وسيط). النهائي فقط/الهدر فقط بيظهر ومحجوب.
                 disabledFor={(i) =>
-                  (hasRole(i, "finished") || hasRole(i, "waste"))
-                    ? t({ en: "finished/waste — not an input", ar: "نهائي/هدر — مش مدخل" })
+                  !(hasRole(i, "raw") || hasRole(i, "component"))
+                    ? t({ en: "finished/waste only — not an input", ar: "نهائي/هدر فقط — مش مدخل" })
                     : ""}
                 onBlocked={(i) => notify?.(t({
-                  en: `"${nameOf(i, false) || i.sku || i.id}" is a finished/waste item — the input must be a raw material or a component.`,
-                  ar: `«${nameOf(i, true) || i.sku || i.id}» منتج نهائي/هدر — الداخل لازم يكون مادة خام أو مكوّن.`,
+                  en: `"${nameOf(i, false) || i.sku || i.id}" is a finished/waste-only item — the input must be (or also be) a raw material or a component.`,
+                  ar: `«${nameOf(i, true) || i.sku || i.id}» نهائي/هدر فقط — الداخل لازم يكون (أو يكون كمان) مادة خام أو مكوّن.`,
                 }), true)}
                 placeholder={t({ en: "carcass / primal…", ar: "ذبيحة / قطعة أساسية…" })}
               />
@@ -689,14 +713,32 @@ function CutBuilder({
                   : t({ en: "optional — you can fill it later", ar: "اختياري — فيك تعبّيها لاحقاً" })}
               </span>
             </Field>
-            <Field label={t({ en: "Category", ar: "الفئة" })}>
-              <Select
-                value={bom.categoryId}
-                onChange={(v) => patch({ categoryId: v })}
-                options={activeOnly(cfg.categories)}
-                isAr={isAr}
-                placeholder={t({ en: "— none —", ar: "— بلا —" })}
-              />
+            <Field label={t({ en: "Category (recipes)", ar: "الفئة (للوصفات)" })}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Select
+                    value={bom.categoryId}
+                    onChange={(v) => patch({ categoryId: v })}
+                    options={activeOnly(cfg.bomCategories)}
+                    isAr={isAr}
+                    placeholder={t({ en: "— none —", ar: "— بلا —" })}
+                  />
+                </div>
+                {canEdit && (
+                  <button
+                    type="button"
+                    style={{ ...S.btn, ...S.btnSm }}
+                    disabled={busy}
+                    onClick={async () => {
+                      const id = await onAddCategory();
+                      if (id) patch({ categoryId: id });
+                    }}
+                    title={t({ en: "Add a new recipe category", ar: "إضافة فئة وصفة جديدة" })}
+                  >
+                    ＋ {t({ en: "New", ar: "جديدة" })}
+                  </button>
+                )}
+              </div>
             </Field>
             <Field label={t({ en: "Notes", ar: "ملاحظات" })}>
               <TextInputLike value={bom.notes} onChange={(v) => patch({ notes: v })} />
@@ -711,6 +753,36 @@ function CutBuilder({
               {t({
                 en: "Tip: 100 KG input makes every line read directly as a percentage.",
                 ar: "نصيحة: داخل ١٠٠ كجم بيخلي كل سطر ينقرأ كنسبة مئوية مباشرة.",
+              })}
+            </span>
+          </div>
+          <div style={{ ...S.chipRow, marginTop: 10 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
+              <Switch
+                checked={bom.requireExactBalance === true}
+                onChange={(v) => patch({ requireExactBalance: v })}
+              />
+              {t({ en: "Require exact balance (raw = products + waste)", ar: "إلزام تطابق تام (الخام = النواتج + الهدر)" })}
+            </label>
+            <span style={S.hint}>
+              {t({
+                en: "When on, the butcher cannot save unless the raw weight equals the products + waste exactly.",
+                ar: "لما يكون مفعّل، الجزار ما بيقدر يحفظ إلا إذا وزن المادة الخام ساوى النواتج + الهدر تماماً.",
+              })}
+            </span>
+          </div>
+          <div style={{ ...S.chipRow, marginTop: 10 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
+              <Switch
+                checked={bom.requirePieceCount === true}
+                onChange={(v) => patch({ requirePieceCount: v })}
+              />
+              {t({ en: "Show a piece-count box (required)", ar: "إظهار خانة عدد القطع (إلزامية)" })}
+            </label>
+            <span style={S.hint}>
+              {t({
+                en: "When on, the butcher must enter the number of pieces before saving.",
+                ar: "لما يكون مفعّل، الجزار لازم يدخّل عدد القطع قبل الحفظ.",
               })}
             </span>
           </div>

@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/qcs/MeatProductInspectionReportFTR1.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { uploadImage } from "../../../../utils/imageUpload";
 
 /* ===== API base ===== */
 
@@ -213,36 +214,7 @@ function randProductTemp() {
   return v.toFixed(1);
 }
 
-// ضغط صورة (الأطول ≈1280px, جودة 0.8)
-async function fileToBase64Compressed(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("read_error"));
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const maxSide = 1280;
-          const { width, height } = img;
-          const scale = Math.min(1, maxSide / Math.max(width, height));
-          const w = Math.round(width * scale);
-          const h = Math.round(height * scale);
-          const canvas = document.createElement("canvas");
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL("image/jpeg", 0.8));
-        } catch {
-          resolve(reader.result);
-        }
-      };
-      img.onerror = () => resolve(reader.result);
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
+/* الصور تُرفع على Cloudinary (ضغط 1280px/جودة 80 على السيرفر) ويُحفظ الرابط. */
 
 /* ===== Defaults ===== */
 function emptySample(no) {
@@ -464,8 +436,12 @@ export default function MeatProductInspectionReportFTR1() {
   // صور لكل منتج
   async function onPickPhoto(colIdx, key, file) {
     if (!file) return;
-    const b64 = await fileToBase64Compressed(file);
-    setVal(colIdx, key, b64);
+    try {
+      setVal(colIdx, key, await uploadImage(file, TYPE));
+    } catch (e) {
+      console.error(e);
+      alert(`❌ فشل رفع الصورة: ${e?.message || e}`);
+    }
   }
 
   // أسماء المسؤولين (أسفل التقرير)

@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos15/POS15PestControlInput.jsx
 import React, { useState } from "react";
 import API_BASE from "../../../../config/api";
+import { uploadImage, photoOf } from "../../../../utils/imageUpload";
 
 /* ===== API base ===== */
 
@@ -18,7 +19,7 @@ export default function POS15PestControlInput() {
     checkedBy: "",
     verifiedBy: "",
     // Sightings rows: Location + Photo (Base64)
-    sightings: [{ location: "", photoBase64: "" }],
+    sightings: [{ location: "", photoUrl: "" }],
   });
 
   const [saving, setSaving] = useState(false);
@@ -46,24 +47,31 @@ export default function POS15PestControlInput() {
   const addRow = () =>
     setForm((s) => ({
       ...s,
-      sightings: [...s.sightings, { location: "", photoBase64: "" }],
+      sightings: [...s.sightings, { location: "", photoUrl: "" }],
     }));
 
   const removeRow = (i) =>
     setForm((s) => ({ ...s, sightings: s.sightings.filter((_, idx) => idx !== i) }));
 
-  // تحويل الصورة إلى Base64 وتخزينها في الصف
-  const setRowImage = (i, file) => {
+  const [uploading, setUploading] = useState(-1);
+
+  // ترفع الصورة على Cloudinary وتخزّن الرابط فقط في الصف.
+  // تخزين الصورة نفسها داخل الـ payload كان يضخّم كل قراءة لهذا التقرير.
+  const setRowImage = async (i, file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || "");
-      setRow(i, "photoBase64", dataUrl);
-    };
-    reader.readAsDataURL(file);
+    setUploading(i);
+    try {
+      const url = await uploadImage(file, `${TYPE}_sighting`);
+      setRow(i, "photoUrl", url);
+    } catch (e) {
+      console.error(e);
+      alert(`❌ فشل رفع الصورة: ${e?.message || e}`);
+    } finally {
+      setUploading(-1);
+    }
   };
 
-  const clearRowImage = (i) => setRow(i, "photoBase64", "");
+  const clearRowImage = (i) => setRow(i, "photoUrl", "");
 
   async function handleSave() {
     try {
@@ -92,7 +100,7 @@ export default function POS15PestControlInput() {
         serviceProvider: "",
         checkedBy: "",
         verifiedBy: "",
-        sightings: [{ location: "", photoBase64: "" }],
+        sightings: [{ location: "", photoUrl: "" }],
       }));
     } catch (e) {
       console.error(e);
@@ -221,7 +229,7 @@ export default function POS15PestControlInput() {
           <tr style={{ background: "#2563eb", color: "#fff" }}>
             <th style={th}>#</th>
             <th style={th}>Location</th>
-            <th style={th}>Photo (Base64)</th>
+            <th style={th}>Photo</th>
             <th style={th} />
           </tr>
         </thead>
@@ -245,12 +253,14 @@ export default function POS15PestControlInput() {
                     type="file"
                     accept="image/*"
                     onChange={(e) => setRowImage(i, e.target.files?.[0] || null)}
-                    disabled={saving}
+                    disabled={saving || uploading === i}
                   />
-                  {row.photoBase64 ? (
+                  {uploading === i ? (
+                    <small style={{ color: "#2563eb" }}>⏳ جاري الرفع…</small>
+                  ) : photoOf(row) ? (
                     <>
                       <img
-                        src={row.photoBase64}
+                        src={photoOf(row)}
                         alt="preview"
                         style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }}
                       />

@@ -1,37 +1,16 @@
 // src/pages/haccp and iso/MockRecall/AttachmentsSection.jsx
-// قسم المرفقات لـ Mock Recall: رفع متعدّد + تصنيف + ضغط تلقائي + معاينة + حذف
-// كل مرفق يُحفظ كـ Base64 في الـ payload (متوافق مع نمط بقية النظام)
+// قسم المرفقات لـ Mock Recall: رفع متعدّد + تصنيف + معاينة + حذف
+// كل مرفق يُرفع على Cloudinary ويُحفظ رابطه فقط داخل الـ payload.
+// سابقاً كان الملف نفسه يُخزَّن Base64، فصار سجل واحد ~144 KB وقراءة القائمة 7 MB.
 
 import React, { useEffect, useRef, useState } from "react";
+import { uploadImage, downloadImage } from "../../../utils/imageUpload";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB قبل الضغط
-const MAX_DIMENSION = 1280;              // أقصى عرض/ارتفاع بعد الضغط
-const JPEG_QUALITY = 0.85;
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB قبل الرفع
 
-/* ===== ضغط الصورة قبل الحفظ ===== */
-async function compressImage(file) {
-  const dataURL = await new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result);
-    fr.onerror = reject;
-    fr.readAsDataURL(file);
-  });
-  const img = await new Promise((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = reject;
-    i.src = dataURL;
-  });
-  const ratio = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height));
-  const w = Math.round(img.width * ratio);
-  const h = Math.round(img.height * ratio);
-  const canvas = document.createElement("canvas");
-  canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, 0, 0, w, h);
-  return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+/* مصدر عرض المرفق: الرابط الجديد أو المرفق القديم المخزَّن Base64 */
+function attSrc(att) {
+  return att?.imageUrl || att?.imageBase64 || "";
 }
 
 /* ===== Attachment row factory ===== */
@@ -44,7 +23,7 @@ function makeAttachment({ category, label, fileName, fileSize, dataUrl }) {
     label: String(label || "").trim(),
     fileName: fileName || "image.jpg",
     fileSize: fileSize || 0,
-    imageBase64: dataUrl,
+    imageUrl: dataUrl,
     uploadedAt: new Date().toISOString(),
   };
 }
@@ -87,7 +66,7 @@ export default function AttachmentsSection({ value = [], onChange, t, lang, dir 
           setErrMsg(t("invalidFileType") + ` (${file.name})`);
           continue;
         }
-        const dataUrl = await compressImage(file);
+        const dataUrl = await uploadImage(file, "mock_recall_attachment");
         next.push(makeAttachment({
           category: pendingCategory,
           label: pendingLabel,
@@ -111,13 +90,9 @@ export default function AttachmentsSection({ value = [], onChange, t, lang, dir 
   }
 
   function downloadAttachment(att) {
-    if (!att?.imageBase64) return;
-    const a = document.createElement("a");
-    a.href = att.imageBase64;
-    a.download = (att.fileName || `${att.category}.jpg`).replace(/[^\w.-]/g, "_");
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const src = attSrc(att);
+    if (!src) return;
+    downloadImage(src, (att.fileName || `${att.category}.jpg`).replace(/[^\w.-]/g, "_"));
   }
 
   function fmtSize(bytes) {
@@ -220,7 +195,7 @@ export default function AttachmentsSection({ value = [], onChange, t, lang, dir 
               <div key={att.id} style={S.tile}>
                 <div style={S.thumbWrap} onClick={() => setLightbox(att)} title={t("fullSize")}>
                   <img
-                    src={att.imageBase64}
+                    src={attSrc(att)}
                     alt={att.label || att.category}
                     style={S.thumbImg}
                   />
@@ -303,7 +278,7 @@ function Lightbox({ attachment, onClose, onDownload, t, dir, categoryLabel }) {
         onClick={(e) => e.stopPropagation()}
       >
         <img
-          src={attachment.imageBase64}
+          src={attSrc(attachment)}
           alt={attachment.label || ""}
           style={actualSize ? S.lbImgActual : S.lbImgFull}
           onClick={() => setActualSize((v) => !v)}

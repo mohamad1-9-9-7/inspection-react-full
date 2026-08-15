@@ -9,12 +9,15 @@
 //   }} />
 
 import React, { useState } from "react";
+import { uploadImage, imageSrc } from "../../../../utils/imageUpload";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const emptySighting = () => ({ location: "", photoBase64: "" });
+// photoUrl holds a Cloudinary link. The old photoBase64 field embedded the
+// whole file in the payload and is gone — see src/utils/imageUpload.js.
+const emptySighting = () => ({ location: "", photoUrl: "" });
 
 export default function BranchPestControlInput({ config }) {
   const { type: TYPE, defaultBranch, reporter } = config || {};
@@ -52,13 +55,22 @@ export default function BranchPestControlInput({ config }) {
   const removeRow = (i) =>
     setForm((s) => ({ ...s, sightings: s.sightings.filter((_, idx) => idx !== i) }));
 
-  const setRowImage = (i, file) => {
+  const [uploading, setUploading] = useState(-1);
+
+  const setRowImage = async (i, file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setRow(i, "photoBase64", String(reader.result || ""));
-    reader.readAsDataURL(file);
+    setUploading(i);
+    try {
+      const url = await uploadImage(file, `${TYPE}_sighting`);
+      setRow(i, "photoUrl", url);
+    } catch (e) {
+      console.error(e);
+      alert(`❌ فشل رفع الصورة: ${e?.message || e}`);
+    } finally {
+      setUploading(-1);
+    }
   };
-  const clearRowImage = (i) => setRow(i, "photoBase64", "");
+  const clearRowImage = (i) => setRow(i, "photoUrl", "");
 
   async function handleSave() {
     try {
@@ -215,7 +227,7 @@ export default function BranchPestControlInput({ config }) {
           <tr style={{ background: "#2563eb", color: "#fff" }}>
             <th style={th}>#</th>
             <th style={th}>Location</th>
-            <th style={th}>Photo (Base64)</th>
+            <th style={th}>Photo</th>
             <th style={th} />
           </tr>
         </thead>
@@ -237,12 +249,14 @@ export default function BranchPestControlInput({ config }) {
                     type="file"
                     accept="image/*"
                     onChange={(e) => setRowImage(i, e.target.files?.[0] || null)}
-                    disabled={saving}
+                    disabled={saving || uploading === i}
                   />
-                  {row.photoBase64 ? (
+                  {uploading === i ? (
+                    <small style={{ color: "#2563eb" }}>⏳ جاري الرفع…</small>
+                  ) : imageSrc(row.photoUrl) ? (
                     <>
                       <img
-                        src={row.photoBase64}
+                        src={imageSrc(row.photoUrl)}
                         alt="preview"
                         style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb" }}
                       />

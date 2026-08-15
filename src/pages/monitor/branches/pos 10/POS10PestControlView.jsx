@@ -11,6 +11,7 @@ import {
   EmptyState,
 } from "./pos10ViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { photoOf, downloadImage } from "../../../../utils/imageUpload";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -144,15 +145,10 @@ export default function POS10PestControlView() {
     pdf.save(`POS10_PestControl_${fileDate}.pdf`);
   };
 
-  // تنزيل Base64 كملف
-  const downloadBase64 = (dataUrl, filename = "image.png") => {
+  // تنزيل الصورة (رابط Cloudinary يُفتح بتبويب جديد)
+  const downloadBase64 = (src, filename = "image.png") => {
     try {
-      const a = document.createElement("a");
-      a.href = dataUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      downloadImage(src, filename);
     } catch (e) {
       console.error(e);
       alert("❌ Failed to download image.");
@@ -338,21 +334,21 @@ export default function POS10PestControlView() {
                         <td style={tdCellCenter}>{idx + 1}</td>
                         <td style={tdCellLeft}>{row.location || "—"}</td>
                         <td style={tdCellCenter}>
-                          {row.photoBase64 ? (
+                          {photoOf(row) ? (
                             <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                               {/* المصغّر قابل للنقر لفتح المعاينة */}
                               <img
-                                src={row.photoBase64}
+                                src={photoOf(row)}
                                 alt={`sighting-${idx + 1}`}
                                 style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 6, border: "1px solid #d1d5db", cursor: "zoom-in" }}
-                                onClick={() => openPreview(row.photoBase64, `Sighting #${idx + 1} — ${row.location || ""}`, idx)}
+                                onClick={() => openPreview(photoOf(row), `Sighting #${idx + 1} — ${row.location || ""}`, idx)}
                                 title="Click to preview"
                               />
                               <div style={{ display: "flex", gap: 8 }}>
                                 <button
                                   type="button"
                                   style={btnMini}
-                                  onClick={() => openPreview(row.photoBase64, `Sighting #${idx + 1} — ${row.location || ""}`, idx)}
+                                  onClick={() => openPreview(photoOf(row), `Sighting #${idx + 1} — ${row.location || ""}`, idx)}
                                   title="Preview"
                                 >
                                   🔍 Preview
@@ -360,7 +356,7 @@ export default function POS10PestControlView() {
                                 <button
                                   type="button"
                                   style={btnMini}
-                                  onClick={() => downloadBase64(row.photoBase64, filename)}
+                                  onClick={() => downloadBase64(photoOf(row), filename)}
                                   title="Download"
                                 >
                                   ⬇ Download

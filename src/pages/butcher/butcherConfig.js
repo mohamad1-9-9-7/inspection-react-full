@@ -43,7 +43,6 @@ export const DEFAULT_RULES = {
   lockAfterDays: 0,         // قفل السجلات الأقدم من (0 = بلا قفل)
   roundTo: 0,               // تقريب الأوزان: 0 = بلا تقريب، 0.01، 0.05، 0.1
   restrictButchers: false,  // قبول الأرقام الوظيفية المسجّلة فقط
-  onScreenKeypad: true,     // لوحة أرقام على الشاشة (كشك بقفازات) بدل كيبورد الجهاز
   requireKnownCode: false,  // منع حفظ الإعدادات إذا فيه كود خارج قائمة الأصناف
   uniqueTemplateNo: true,   // منع تكرار رقم وصفة التقطيع
   showActualPct: true,      // إظهار النسبة الفعلية تحت كل خانة (من وزن الأم)

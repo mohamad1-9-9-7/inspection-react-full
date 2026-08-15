@@ -13,12 +13,13 @@ import {
   EmptyState,
 } from "../_shared/branchViewKit";
 import { canEdit, canDelete } from "../../../../utils/perms";
+import { uploadImage, photoOf } from "../../../../utils/imageUpload";
 
 const TYPE   = "pos11_calibration_log";
 const BRANCH = "POS 11";
 
 function emptyRow(today) {
-  return { equipmentName: "", calibrationDate: today, nextDueDate: "", photoBase64: "" };
+  return { equipmentName: "", calibrationDate: today, nextDueDate: "", photoUrl: "" };
 }
 
 export default function POS11CalibrationView() {
@@ -127,7 +128,7 @@ export default function POS11CalibrationView() {
           equipmentName: e.equipmentName || "",
           calibrationDate: e.calibrationDate || todayDubai,
           nextDueDate: e.nextDueDate || "",
-          photoBase64: e.photoBase64 || "",
+          photoUrl: photoOf(e),
         } : emptyRow(todayDubai);
       });
       setEditRows(rows);
@@ -154,7 +155,7 @@ export default function POS11CalibrationView() {
           equipmentName: e.equipmentName || "",
           calibrationDate: e.calibrationDate || todayDubai,
           nextDueDate: e.nextDueDate || "",
-          photoBase64: e.photoBase64 || "",
+          photoUrl: photoOf(e),
         } : emptyRow(todayDubai);
       });
       setEditRows(rows);
@@ -168,11 +169,14 @@ export default function POS11CalibrationView() {
   const setRow = (i, k, v) => setEditRows(prev => { const n = [...prev]; n[i] = { ...n[i], [k]: v }; return n; });
   const removeRow = (i) => setEditRows(prev => prev.filter((_, idx) => idx !== i));
 
-  const setRowImage = (i, file) => {
+  const setRowImage = async (i, file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setRow(i, "photoBase64", String(reader.result || ""));
-    reader.readAsDataURL(file);
+    try {
+      setRow(i, "photoUrl", await uploadImage(file, `${TYPE}_equipment`));
+    } catch (e) {
+      console.error(e);
+      alert(`❌ فشل رفع الصورة: ${e?.message || e}`);
+    }
   };
 
   async function saveEdit() {
@@ -273,7 +277,7 @@ export default function POS11CalibrationView() {
     const csvRows = (p.entries || []).filter(isFilledRow).map((e, idx) => [
       String(idx + 1),
       e?.equipmentName ?? "",
-      e?.photoBase64 ? "Yes" : "No",
+      photoOf(e) ? "Yes" : "No",
       e?.calibrationDate ?? "",
       e?.nextDueDate ?? "",
     ]);
@@ -339,7 +343,7 @@ export default function POS11CalibrationView() {
         ws.getRow(rowIdx).values = [
           i + 1,
           e?.equipmentName || "",
-          e?.photoBase64 ? "Yes" : "No",
+          photoOf(e) ? "Yes" : "No",
           e?.calibrationDate || "",
           e?.nextDueDate || "",
         ];
@@ -547,12 +551,12 @@ export default function POS11CalibrationView() {
                         <td style={tdCell}>{idx + 1}</td>
                         <td style={tdCell}>{safe(r.equipmentName)}</td>
                         <td style={tdCell}>
-                          {r.photoBase64 ? (
+                          {photoOf(r) ? (
                             <img
-                              src={r.photoBase64}
+                              src={photoOf(r)}
                               alt="equipment"
                               style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb", cursor: "zoom-in" }}
-                              onClick={() => openPreview(r.photoBase64)}
+                              onClick={() => openPreview(photoOf(r))}
                             />
                           ) : <span style={{ color: "#6b7280" }}>—</span>}
                         </td>
@@ -575,15 +579,15 @@ export default function POS11CalibrationView() {
                         <td style={tdCell}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
                             <input type="file" accept="image/*" onChange={(e) => setRowImage(idx, e.target.files?.[0] || null)} />
-                            {r.photoBase64 ? (
+                            {photoOf(r) ? (
                               <>
                                 <img
-                                  src={r.photoBase64}
+                                  src={photoOf(r)}
                                   alt="preview"
                                   style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb", cursor: "zoom-in" }}
-                                  onClick={() => openPreview(r.photoBase64)}
+                                  onClick={() => openPreview(photoOf(r))}
                                 />
-                                <button onClick={() => setRow(idx, "photoBase64", "")} style={{ ...btn("#ef4444"), padding: "2px 8px" }}>Clear</button>
+                                <button onClick={() => setRow(idx, "photoUrl", "")} style={{ ...btn("#ef4444"), padding: "2px 8px" }}>Clear</button>
                               </>
                             ) : <small style={{ color: "#6b7280" }}>No image</small>}
                           </div>

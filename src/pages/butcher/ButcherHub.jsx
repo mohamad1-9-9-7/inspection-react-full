@@ -55,24 +55,6 @@ const CARDS = [
     en: "Supervisor Board",
     grad: "linear-gradient(135deg,#7c3aed,#5b21b6)",
   },
-  {
-    // الماستر ليست تتبع صلاحية الإعدادات نفسها — نفس المحتوى (شجرة الأصناف)
-    id: "butcher.master",
-    perm: "butcher.settings",
-    to: "/butcher/master",
-    icon: "🗂️",
-    ar: "الماستر ليست",
-    en: "Master List",
-    grad: "linear-gradient(135deg,#b45309,#92400e)",
-  },
-  {
-    id: "butcher.settings",
-    to: "/butcher/settings",
-    icon: "⚙️",
-    ar: "الإعدادات",
-    en: "Settings",
-    grad: "linear-gradient(135deg,#475569,#334155)",
-  },
 ];
 
 export default function ButcherHub() {

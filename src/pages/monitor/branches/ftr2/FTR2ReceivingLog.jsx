@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/ftr2/FTR2ReceivingLog.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { uploadImage } from "../../../../utils/imageUpload";
 
 
 
@@ -50,7 +51,7 @@ function emptyRow() {
     expiryDate: "",
     remarks: "",
     receivedBy: "",
-    images: ["", "", "", ""], // 4 base64 images per row
+    images: ["", "", "", ""], // 4 Cloudinary URLs per row
   };
 }
 
@@ -240,24 +241,19 @@ export default function FTR2ReceivingLog() {
   }
 
   // --- Image helpers ---
-  const fileToBase64 = (file) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
+  // `images` holds Cloudinary URLs. It used to hold the files themselves as
+  // base64, which made a single row of this report ~102 KB and a single page
+  // open 27.6 MB — the heaviest report type in the system by a wide margin.
   async function handleImageChange(rowIdx, slotIdx, file) {
     if (!file) return;
     try {
-      const b64 = await fileToBase64(file);
+      const url = await uploadImage(file, `${TYPE}_photo`);
       setRows((prev) => {
         const next = [...prev];
         const imgs = Array.isArray(next[rowIdx].images)
           ? [...next[rowIdx].images]
           : ["", "", "", ""];
-        imgs[slotIdx] = b64;
+        imgs[slotIdx] = url;
         next[rowIdx] = { ...next[rowIdx], images: imgs };
         return next;
       });
