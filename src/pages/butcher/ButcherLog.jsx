@@ -109,6 +109,12 @@ function hasSession() {
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
+/** تاريخ ووقت للعرض — YYYY-MM-DD · HH:MM (بالتوقيت المحلي). */
+function stampStr(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} · ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** رقم من إدخال المستخدم — يقبل الفاصلة العربية/اللاتينية. */
 function num(v) {
   const n = Number(String(v ?? "").replace(",", ".").trim());
@@ -206,7 +212,9 @@ export default function ButcherLog() {
   const [error, setError] = useState("");
   const [totals, setTotals] = useState(null);
   const [saved, setSaved] = useState(null);     // ملخّص آخر حفظ
-  const [entryDate, setEntryDate] = useState(todayStr()); // يُستعمل فقط لو سُمح بتاريخ سابق
+  const [cutDate, setCutDate] = useState(todayStr());  // تاريخ التقطيع (يختاره الجزار)
+  // تاريخ إدخال البيانات — لحظة فتح الشاشة، ويُثبَّت وقت الحفظ
+  const [entryAt] = useState(() => new Date());
 
   useEffect(() => {
     try {
@@ -412,7 +420,12 @@ export default function ButcherLog() {
         wastePct: Number(wastePct.toFixed(2)),        // نسبة الهدر
         wasteTotalKg: Number(wasteOnlyKg.toFixed(3)),
         boneTotalKg: 0,
-        date: RULES.allowBackdate === true ? entryDate : todayStr(),
+        // تاريخ التقطيع — هو تاريخ السجل المعتمد بالتقارير
+        date: RULES.allowBackdate === true ? cutDate : todayStr(),
+        cutDate: RULES.allowBackdate === true ? cutDate : todayStr(),
+        // تاريخ إدخال البيانات — لحظة الحفظ الفعلية
+        entryDate: todayStr(),
+        entryAt: new Date().toISOString(),
         butcherName: person?.name || "",
         butcherJob: person?.job || "",
         savedAt: new Date().toISOString(),
@@ -423,6 +436,8 @@ export default function ButcherLog() {
         origin: bom?.ref || "",
         carcassKg, cutsKg, wasteKg, count: cutCount, netYieldPct, wastePct,
         pieceCount: needPieces ? pieceCountNum : null,
+        cutDate: RULES.allowBackdate === true ? cutDate : todayStr(),
+        entryStamp: stampStr(new Date()),
       });
       setStep("done");
       refreshTotals(empNo);
@@ -434,7 +449,7 @@ export default function ButcherLog() {
   };
 
   const newEntry = () => {
-    setEntryDate(todayStr());
+    setCutDate(todayStr());
     setBomCat(null);
     setBom(null);
     setCarcass("");
@@ -573,19 +588,6 @@ export default function ButcherLog() {
                 <option key={b.code} value={b.code}>{nameOf(b, isAr)}</option>
               ))}
             </select>
-            {RULES.allowBackdate === true && (
-              <>
-                <div className="bt-q" style={S.q}>{t({ en: "Date", ar: "التاريخ" })}</div>
-                <input
-                  className="bt-cutnum"
-                  type="date"
-                  value={entryDate}
-                  max={todayStr()}
-                  onChange={(e) => setEntryDate(e.target.value)}
-                  style={S.select}
-                />
-              </>
-            )}
             <button
               className="bt-btn"
               onClick={startWithEmp}
@@ -719,6 +721,33 @@ export default function ButcherLog() {
                   />
                 </label>
               )}
+
+              {/* ── التواريخ: تاريخ التقطيع (يختاره الجزار) وتاريخ الإدخال (تلقائي) ── */}
+              <div style={S.dateRow}>
+                <label style={S.dateField}>
+                  <span className="bt-lbl" style={S.lbl}>
+                    {t({ en: "Cutting date", ar: "تاريخ التقطيع" })}
+                  </span>
+                  <input
+                    className="bt-cutnum"
+                    type="date"
+                    value={cutDate}
+                    max={todayStr()}
+                    disabled={RULES.allowBackdate !== true}
+                    onChange={(e) => setCutDate(e.target.value)}
+                    style={{
+                      ...S.select,
+                      ...(RULES.allowBackdate !== true ? { background: "#f1f6fb", color: "#6b8299" } : null),
+                    }}
+                  />
+                </label>
+                <label style={S.dateField}>
+                  <span className="bt-lbl" style={S.lbl}>
+                    {t({ en: "Data entry date", ar: "تاريخ إدخال البيانات" })}
+                  </span>
+                  <span className="bt-cutnum" style={S.stamp}>{stampStr(entryAt)}</span>
+                </label>
+              </div>
             </div>
 
             {/* ── المنتجات النهائية (نواتج الوصفة) ── */}
@@ -863,6 +892,14 @@ export default function ButcherLog() {
             <div className="bt-done bt-pop" style={{ textAlign: "center" }}>✅</div>
             <div className="bt-q" style={S.q}>{saved.animal} — {saved.origin}</div>
             <div>
+              <div className="bt-sum" style={S.doneRow}>
+                <span>{t({ en: "Cutting date", ar: "تاريخ التقطيع" })}</span>
+                <b>{saved.cutDate}</b>
+              </div>
+              <div className="bt-sum" style={S.doneRow}>
+                <span>{t({ en: "Data entry date", ar: "تاريخ إدخال البيانات" })}</span>
+                <b>{saved.entryStamp}</b>
+              </div>
               <div className="bt-sum" style={S.doneRow}>
                 <span>{t({ en: "Raw material weight", ar: "وزن المادة الخام" })}</span>
                 <b>{saved.carcassKg.toFixed(2)} {KG}</b>
@@ -1110,6 +1147,15 @@ const S = {
   rawField: {
     display: "flex", flexDirection: "column", gap: 6, alignItems: "center",
     maxWidth: 360, width: "100%", margin: "0 auto",
+  },
+  dateRow: {
+    display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center",
+    borderTop: "1px solid #e6eef7", paddingTop: 12, marginTop: 2,
+  },
+  dateField: { display: "flex", flexDirection: "column", gap: 6, alignItems: "center" },
+  stamp: {
+    background: "#f1f6fb", border: "1px solid #dbe6f2", borderRadius: 12,
+    padding: "12px 16px", fontWeight: 800, color: "#3c5a75", whiteSpace: "nowrap",
   },
   /* صورة مرفوعة بدل الرسمة المدمجة */
   artImg: {
