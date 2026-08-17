@@ -12,6 +12,8 @@ import {
 } from "./pos10ViewKit";
 import { canDelete } from "../../../../utils/perms";
 import { photoOf, downloadImage } from "../../../../utils/imageUpload";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -41,6 +43,7 @@ export default function POS10PestControlView() {
 
   const getDate = (r) => {
     const d =
+      (r?.reportDate && new Date(r.reportDate)) ||
       (r?.payload?.reportDate && new Date(r.payload.reportDate)) ||
       (r?.created_at && new Date(r.created_at)) ||
       new Date(NaN);
@@ -61,17 +64,10 @@ export default function POS10PestControlView() {
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("fetch failed");
-      const json = await res.json();
-      let arr =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.rows) ? json.rows : [];
+      let arr = await listReportDateIndex(TYPE);
 
       // فقط POS 10
-      arr = arr.filter(isPos10);
+      arr = arr.filter((r) => !r.payload || isPos10(r));
 
       // الأحدث أولًا
       arr = arr
@@ -79,13 +75,18 @@ export default function POS10PestControlView() {
         .sort((a, b) => getDate(b) - getDate(a));
 
       setReports(arr);
-      setSelected(arr[0] || null);
+      await loadSelectedReport(arr[0]?.reportDate);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadSelectedReport(reportDate) {
+    if (!reportDate) { setSelected(null); return; }
+    setSelected(await getReportByDate(TYPE, reportDate));
   }
 
   // عناصر شجرة التاريخ الموحّدة
@@ -173,9 +174,10 @@ export default function POS10PestControlView() {
   }
 
   // Export JSON (كل تقارير POS 10 فقط)
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const items = reports.map((r) => r?.payload ?? r);
+      const fullReports = await listReports(TYPE);
+      const items = fullReports.map((r) => r?.payload ?? r);
       const bundle = {
         type: TYPE,
         branch: "POS 10",
@@ -276,7 +278,7 @@ export default function POS10PestControlView() {
             title="🗓️ Saved Reports"
             items={treeItems}
             activeKey={getId(selected)}
-            onPick={(it) => setSelected(it.data)}
+            onPick={(it) => loadSelectedReport(it.dateISO)}
             loading={loading}
             emptyText="❌ No reports"
           />

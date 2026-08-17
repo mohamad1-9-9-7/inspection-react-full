@@ -9,6 +9,8 @@ import {
   EmptyState,
 } from "./pos10ViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -30,20 +32,14 @@ export default function POS10DailyCleaningView() {
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=pos10_daily_cleanliness`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
+      const arr = await listReportDateIndex("pos10_daily_cleanliness");
       arr.sort(
         (a, b) =>
-          new Date(a.payload?.reportDate || 0) -
-          new Date(b.payload?.reportDate || 0)
+          new Date(a.reportDate || a.payload?.reportDate || 0) -
+          new Date(b.reportDate || b.payload?.reportDate || 0)
       );
       setReports(arr);
-      setSelectedReport(arr[0] || null);
+      await loadSelectedReport(arr[0]?.reportDate);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");
@@ -55,6 +51,11 @@ export default function POS10DailyCleaningView() {
   useEffect(() => {
     fetchReports();
   }, []);
+
+  async function loadSelectedReport(reportDate) {
+    if (!reportDate) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate("pos10_daily_cleanliness", reportDate));
+  }
 
   // ===== PDF
   const handleExportPDF = async () => {
@@ -117,9 +118,10 @@ export default function POS10DailyCleaningView() {
   };
 
   // ===== Export JSON (كل التقارير)
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullReports = await listReports("pos10_daily_cleanliness");
+      const payloads = fullReports.map((r) => r?.payload ?? r);
       const bundle = {
         type: "pos10_daily_cleanliness",
         exportedAt: new Date().toISOString(),
@@ -205,9 +207,9 @@ export default function POS10DailyCleaningView() {
   const treeItems = useMemo(
     () =>
       reports
-        .filter((r) => r?.payload?.reportDate && !isNaN(new Date(r.payload.reportDate)))
+        .filter((r) => (r?.reportDate || r?.payload?.reportDate) && !isNaN(new Date(r.reportDate || r.payload.reportDate)))
         .map((r, i) => {
-          const iso = String(r.payload.reportDate).slice(0, 10);
+          const iso = String(r.reportDate || r.payload.reportDate).slice(0, 10);
           return {
             key: getId(r) || `${iso}-${i}`,
             dateISO: iso,
@@ -261,7 +263,7 @@ export default function POS10DailyCleaningView() {
             title="🗓️ Saved Reports"
             items={treeItems}
             activeKey={getId(selectedReport)}
-            onPick={(it) => setSelectedReport(it.data)}
+            onPick={(it) => loadSelectedReport(it.dateISO)}
             loading={loading}
             emptyText="❌ No reports"
           />

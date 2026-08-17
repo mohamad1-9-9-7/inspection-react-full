@@ -12,6 +12,7 @@ import {
   EmptyState,
 } from "./pos10ViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -65,6 +66,7 @@ export default function POS10TemperatureView() {
   // Pick the correct date field: payload.date (from input) or created_at
   const getReportDate = (r) => {
     const d =
+      (r?.reportDate && new Date(r.reportDate)) ||
       (r?.payload?.date && new Date(r.payload.date)) ||
       (r?.payload?.reportDate && new Date(r.payload.reportDate)) ||
       (r?.created_at && new Date(r.created_at)) ||
@@ -80,22 +82,24 @@ export default function POS10TemperatureView() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=pos10_temperature`, { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to fetch");
-      const json = await res.json();
-      let arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
+      let arr = await listReportDateIndex("pos10_temperature");
       // Exclude items without a valid date, then sort newest -> oldest
       arr = arr
         .filter((r) => !isNaN(getReportDate(r)))
         .sort((a, b) => getReportDate(b) - getReportDate(a));
       setReports(arr);
-      setSelectedReport(arr[0] || null); // newest by default
+      await loadSelectedReport(arr[0]?.reportDate);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadSelectedReport = async (reportDate) => {
+    if (!reportDate) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate("pos10_temperature", reportDate));
   };
 
   const handleExportPDF = async () => {
@@ -191,7 +195,7 @@ export default function POS10TemperatureView() {
             title="🗓️ Saved Reports"
             items={treeItems}
             activeKey={getId(selectedReport)}
-            onPick={(it) => setSelectedReport(it.data)}
+            onPick={(it) => loadSelectedReport(it.dateISO)}
             loading={loading}
             emptyText="❌ No reports"
           />

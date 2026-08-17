@@ -11,6 +11,8 @@ import {
   EmptyState,
 } from "./pos10ViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -45,7 +47,7 @@ export default function POS10PersonalHygieneView() {
 
   // helper: تاريخ آمن من reportDate ثم fallback على created_at
   const getReportDate = (r) => {
-    const d1 = new Date(r?.payload?.reportDate);
+    const d1 = new Date(r?.reportDate || r?.payload?.reportDate);
     if (!isNaN(d1)) return d1;
     const d2 = new Date(r?.created_at);
     return isNaN(d2) ? new Date(0) : d2;
@@ -59,26 +61,16 @@ export default function POS10PersonalHygieneView() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      let arr =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.rows) ? json.rows : [];
+      let arr = await listReportDateIndex(TYPE);
 
       // ✅ نحصر النتائج بفرع POS 10 فقط
-      arr = arr.filter(isPOS10);
+      arr = arr.filter((r) => !r.payload || isPOS10(r));
 
       // ✅ الأحدث أولاً
       arr.sort((a, b) => getReportDate(b) - getReportDate(a));
 
       setReports(arr);
-      setSelectedReport(arr[0] || null); // الأحدث
+      await loadSelectedReport(arr[0]?.reportDate);
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
@@ -86,6 +78,15 @@ export default function POS10PersonalHygieneView() {
       setLoading(false);
     }
   };
+
+  const loadSelectedReport = async (reportDate) => {
+    if (!reportDate) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate(TYPE, reportDate));
+  };
+
+  useEffect(() => {
+    if (selectedReport?.reportDate && !selectedReport?.payload) loadSelectedReport(selectedReport.reportDate);
+  }, [selectedReport]);
 
   const payload = selectedReport?.payload || {};
   const branchLabel = payload?.branchLabel || "POS 10 — Abu Dhabi Butchery";
@@ -169,9 +170,10 @@ export default function POS10PersonalHygieneView() {
   };
 
   // ===== Export JSON (كل تقارير POS 10 فقط) =====
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullReports = await listReports(TYPE);
+      const payloads = fullReports.map((r) => r?.payload ?? r);
       const bundle = {
         type: TYPE,
         branch: "POS 10",
@@ -312,7 +314,7 @@ export default function POS10PersonalHygieneView() {
             title="🗓️ Saved Reports"
             items={treeItems}
             activeKey={getId(selectedReport)}
-            onPick={(it) => setSelectedReport(it.data)}
+            onPick={(it) => loadSelectedReport(it.dateISO)}
             loading={loading}
             emptyText="❌ No reports"
           />

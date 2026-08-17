@@ -1,13 +1,15 @@
 // src/pages/hse/HSEEvacuationDrills.jsx — F-16 · Mock Drill / Fire Drill Report
 // Custom form layout matching the controlled paper template (FS-QM/REC/TR/MD/01)
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import mawashiLogo from "../../assets/almawashi-logo.jpg";
 import {
-  pageStyle, containerStyle, headerBar, buttonGhost, buttonPrimary,
+  pageStyle, containerStyle, buttonGhost, buttonPrimary,
   inputStyle, HSE_COLORS,
   apiList, apiSave, apiUpdate, apiDelete,
-  useHSELang, HSELangToggle,
+  useHSELang,
 } from "./hseShared";
 
 const STORAGE_KEY = "evacuation_drills";
@@ -434,22 +436,178 @@ function lang2(pick) {
   return pick({ ar: "ar", en: "en" });
 }
 
+/* ---------------- PDF: capture a node and slice across A4 pages ---------------- */
+async function exportNodeToPdf(node, filename) {
+  const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+  const pdf = new jsPDF("p", "pt", "a4");
+  const margin = 26;
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const imgW = pageW - margin * 2;
+  const ratio = imgW / canvas.width;
+  const sliceH = Math.floor((pageH - margin * 2) / ratio);
+  let y = 0, first = true;
+  while (y < canvas.height) {
+    const h = Math.min(sliceH, canvas.height - y);
+    const slice = document.createElement("canvas");
+    slice.width = canvas.width; slice.height = h;
+    const ctx = slice.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, slice.width, slice.height);
+    ctx.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+    if (!first) pdf.addPage("a4", "p");
+    pdf.addImage(slice.toDataURL("image/jpeg", 0.96), "JPEG", margin, margin, imgW, h * ratio);
+    first = false; y += h;
+  }
+  pdf.save(filename);
+}
+
+/* ---------------- Off-screen controlled document for PDF export ---------------- */
+function DrillPrintable({ rec, pick, innerRef }) {
+  const isAr = lang2(pick) === "ar";
+  const cell = { border: "1px solid #cbd5e1", padding: "7px 10px", fontSize: 12, verticalAlign: "top" };
+  const lblCell = { ...cell, background: "#f1f5f9", fontWeight: 900, color: "#475569", width: "26%", whiteSpace: "nowrap" };
+  const row = (label, value) => (
+    <tr><td style={lblCell}>{label}</td><td style={{ ...cell, fontWeight: 700 }}>{value || "—"}</td></tr>
+  );
+  const yn = (v) => (v === "sat" ? (isAr ? "مُرضٍ ✓" : "Satisfactory ✓") : v === "unsat" ? (isAr ? "غير مُرضٍ ✗" : "Unsatisfactory ✗") : "—");
+  const docFields = [
+    [pick(T.docNumber), DOC_CONTROL.docNumber, pick(T.revision), DOC_CONTROL.revision],
+    [pick(T.issueDate), DOC_CONTROL.issueDate, pick(T.area), DOC_CONTROL.area],
+    [pick(T.issuedBy), DOC_CONTROL.issuedBy, pick(T.approvedBy), DOC_CONTROL.approvedBy],
+  ];
+  return (
+    <div aria-hidden="true" style={{ position: "fixed", left: -12000, top: 0, pointerEvents: "none" }}>
+      <div ref={innerRef} style={{ width: 780, background: "#fff", padding: 34, boxSizing: "border-box", direction: isAr ? "rtl" : "ltr", fontFamily: 'Cairo, system-ui, -apple-system, "Segoe UI", sans-serif', color: "#0f172a" }}>
+        {/* Company header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "3px solid #ea580c", paddingBottom: 12, marginBottom: 12 }}>
+          <img src={mawashiLogo} alt="Al Mawashi" crossOrigin="anonymous" style={{ width: 62, height: 62, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 950 }}>TRANS EMIRATES LIVESTOCK TRADING L.L.C.</div>
+            <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>{isAr ? "المواشي — نظام إدارة HSE" : "AL MAWASHI — HSE Management System"}</div>
+          </div>
+          <div style={{ textAlign: isAr ? "left" : "right", flexShrink: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 950, color: "#ea580c" }}>F-16</div>
+            <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{DOC_CONTROL.docNumber}</div>
+          </div>
+        </div>
+
+        {/* Title */}
+        <div style={{ background: "rgba(234,88,12,0.10)", border: "1px solid rgba(234,88,12,0.30)", borderRadius: 8, padding: "10px 14px", marginBottom: 12, textAlign: "center" }}>
+          <div style={{ fontSize: 20, fontWeight: 950, color: "#7c2d12", letterSpacing: "0.04em" }}>🚨 {pick(T.reportTitle)}</div>
+        </div>
+
+        {/* Doc control */}
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}>
+          <tbody>
+            {docFields.map((r, i) => (
+              <tr key={i}>
+                <td style={lblCell}>{r[0]}</td><td style={{ ...cell, fontWeight: 700, width: "24%" }}>{r[1]}</td>
+                <td style={lblCell}>{r[2]}</td><td style={{ ...cell, fontWeight: 700, width: "24%" }}>{r[3]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Drill data */}
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}>
+          <tbody>
+            {row(pick(T.dateOfDrill), rec.date)}
+            {row(`${pick(T.timeStarted)} → ${pick(T.timeCompleted)}`, `${rec.timeStarted || "—"} → ${rec.timeCompleted || "—"}`)}
+            {row(pick(T.floorNo), rec.floorNo)}
+            {row(pick(T.totalPeople), rec.totalPeople)}
+            {row(pick(T.deptParticipating), rec.departments)}
+            {row(pick(T.alarmSounded), rec.timeAlarmSounded)}
+            {row(pick(T.evacStarted), rec.timeEvacStarted)}
+            {row(pick(T.totalEvacTime), rec.totalEvacTime)}
+          </tbody>
+        </table>
+
+        {/* Two persons */}
+        <div style={{ fontSize: 13, fontWeight: 950, color: "#7c2d12", margin: "6px 0 8px" }}>👥 {pick(T.twoPeopleHeader)}</div>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}>
+          <tbody>
+            <tr>
+              <td style={lblCell}></td>
+              <td style={{ ...cell, fontWeight: 900, textAlign: "center" }}>{pick(T.startedToEvacuate)}</td>
+              <td style={{ ...cell, fontWeight: 900, textAlign: "center" }}>{pick(T.reachedFinalExit)}</td>
+            </tr>
+            <tr>
+              <td style={lblCell}>① {rec.firstPersonName || "—"}</td>
+              <td style={{ ...cell, textAlign: "center" }}>{rec.firstPersonStarted || "—"}</td>
+              <td style={{ ...cell, textAlign: "center" }}>{rec.firstPersonReached || "—"}</td>
+            </tr>
+            <tr>
+              <td style={lblCell}>② {rec.secondPersonName || "—"}</td>
+              <td style={{ ...cell, textAlign: "center" }}>{rec.secondPersonStarted || "—"}</td>
+              <td style={{ ...cell, textAlign: "center" }}>{rec.secondPersonReached || "—"}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Effectiveness */}
+        <div style={{ fontSize: 13, fontWeight: 950, color: "#7c2d12", margin: "6px 0 8px" }}>✅ {pick(T.effectiveness)}</div>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}>
+          <tbody>
+            {EFFECTIVENESS_ITEMS.map((it) => row(pick(T[it.labelKey]), yn(rec[it.key])))}
+          </tbody>
+        </table>
+
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <tbody>{row(pick(T.emergencyCoordinator), rec.emergencyCoordinator)}</tbody>
+        </table>
+
+        <div style={{ marginTop: 16, paddingTop: 10, borderTop: "1px solid #e2e8f0", fontSize: 10.5, color: "#94a3b8", textAlign: "center" }}>
+          © Al Mawashi — HSE Management System · {DOC_CONTROL.docNumber} · Rev {DOC_CONTROL.revision}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================ */
 export default function HSEEvacuationDrills() {
   const navigate = useNavigate();
-  const { lang, toggle, dir, pick } = useHSELang();
+  const { lang, setLang, dir, pick } = useHSELang();
   const [items, setItems] = useState([]);
   const [tab, setTab] = useState("list");
   const [viewing, setViewing] = useState(null); // record being viewed read-only
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [printRecord, setPrintRecord] = useState(null); // record queued for PDF export
+  const [exportingId, setExportingId] = useState(null);
+  const printRef = useRef(null);
 
   async function reload() {
     const arr = await apiList(STORAGE_KEY);
     setItems(arr);
   }
   useEffect(() => { reload(); }, []);
+
+  // When a record is queued, render the off-screen printable then capture it.
+  useEffect(() => {
+    if (!printRecord) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await new Promise((r) => setTimeout(r, 80)); // let the printable + logo render
+        const node = printRef.current;
+        if (!node) throw new Error("PDF content not ready.");
+        const fname = `F-16_Drill_${(printRecord.date || "record").replace(/[^\w-]+/g, "_")}.pdf`;
+        await exportNodeToPdf(node, fname);
+      } catch (e) {
+        alert((pick({ ar: "❌ خطأ بتصدير PDF: ", en: "❌ PDF export error: " })) + (e?.message || e));
+      } finally {
+        if (!cancelled) { setExportingId(null); setPrintRecord(null); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [printRecord]); // eslint-disable-line
+
+  function exportPdf(rec) {
+    setExportingId(rec.id || "current");
+    setPrintRecord(rec);
+  }
 
   function startEdit(it) {
     setDraft({ ...EMPTY_DRAFT, ...it });
@@ -543,20 +701,35 @@ export default function HSEEvacuationDrills() {
     return d.toLocaleDateString(lang === "ar" ? "ar-AE" : "en-GB", { day: "2-digit", month: "short", year: "numeric" });
   }
 
+  const satisfactoryCount = items.filter((it) =>
+    EFFECTIVENESS_ITEMS.every((e) => it[e.key] === "sat")).length;
+  const latestDrill = items.length ? fmtDate(items[0].date) : "—";
+
   return (
     <main style={pageStyle} dir={dir}>
+      {printRecord && <DrillPrintable rec={printRecord} pick={pick} innerRef={printRef} />}
       <div style={containerStyle}>
-        <div style={headerBar}>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 950 }}>
-              🚨 {pick(T.pageTitle)}
-            </div>
-            <div style={{ fontSize: 12, color: HSE_COLORS.primaryDark, marginTop: 4 }}>
-              FS-QM/REC/TR/MD/01 · Rev 0 · {DOC_CONTROL.issueDate}
+        {/* Glassy top bar */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "14px 16px", borderRadius: 18, background: "rgba(255,255,255,0.86)", border: "1px solid rgba(120,53,15,0.18)", boxShadow: "0 14px 40px rgba(234,88,12,0.12)", backdropFilter: "blur(12px)", marginBottom: 16, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <img src={mawashiLogo} alt="Al Mawashi" style={{ width: 46, height: 46, borderRadius: 12, objectFit: "cover", border: "1px solid rgba(234,88,12,0.18)", background: "#fff" }} />
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 950, lineHeight: 1.2 }}>🚨 {pick(T.pageTitle)}</div>
+              <div style={{ fontSize: 12, color: HSE_COLORS.primaryDark, marginTop: 3 }}>{DOC_CONTROL.docNumber} · Rev {DOC_CONTROL.revision} · {DOC_CONTROL.issueDate}</div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <HSELangToggle lang={lang} toggle={toggle} />
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", borderRadius: 999, overflow: "hidden", border: "1px solid rgba(234,88,12,0.40)" }}>
+              {["en", "ar"].map((l) => (
+                <button key={l} onClick={() => setLang(l)} style={{
+                  padding: "7px 15px", fontSize: 13, fontWeight: 900, cursor: "pointer",
+                  background: lang === l ? "linear-gradient(135deg,rgba(251,146,60,0.30),rgba(245,158,11,0.20))" : "rgba(255,255,255,0.70)",
+                  border: "none", color: lang === l ? "#7c2d12" : "#64748b",
+                }}>
+                  {l === "en" ? "EN" : "العربية"}
+                </button>
+              ))}
+            </div>
             <button style={tab === "list" ? buttonPrimary : buttonGhost} onClick={() => { setTab("list"); setViewing(null); }}>
               {pick(T.list)} ({items.length})
             </button>
@@ -566,6 +739,22 @@ export default function HSEEvacuationDrills() {
             <button style={buttonGhost} onClick={() => navigate("/hse")}>{pick(T.back)}</button>
           </div>
         </div>
+
+        {/* Stats */}
+        {tab === "list" && !viewing && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+            {[
+              { label: lang === "ar" ? "إجمالي التجارب" : "Total Drills", value: items.length, color: "#9a3412" },
+              { label: lang === "ar" ? "تجارب مُرضية" : "Satisfactory", value: satisfactoryCount, color: "#15803d" },
+              { label: lang === "ar" ? "أحدث تجربة" : "Latest Drill", value: latestDrill, color: "#0369a1" },
+            ].map((s) => (
+              <div key={s.label} style={{ padding: "10px 16px", borderRadius: 14, background: "rgba(255,255,255,0.88)", border: "1px solid rgba(15,23,42,0.12)", boxShadow: "0 6px 18px rgba(234,88,12,0.08)" }}>
+                <div style={{ fontSize: 20, fontWeight: 980, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Document Control Header — always visible */}
         <DocControlHeader pick={pick} />
@@ -593,6 +782,13 @@ export default function HSEEvacuationDrills() {
             <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
               <button style={buttonGhost} onClick={() => setViewing(null)}>
                 {lang === "ar" ? "↩ رجوع للقائمة" : "↩ Back to list"}
+              </button>
+              <button
+                style={{ ...buttonPrimary, opacity: exportingId ? 0.6 : 1 }}
+                disabled={!!exportingId}
+                onClick={() => exportPdf(viewing)}
+              >
+                {exportingId ? (lang === "ar" ? "⏳ جارٍ التصدير…" : "⏳ Exporting…") : (lang === "ar" ? "⬇️ تصدير PDF" : "⬇️ Export PDF")}
               </button>
               <button
                 style={{ ...buttonGhost, color: "#b91c1c", borderColor: "#fecaca" }}
@@ -641,6 +837,13 @@ export default function HSEEvacuationDrills() {
                       )}
                     </div>
                     <div style={actionGroup}>
+                      <button
+                        style={{ ...buttonGhost, padding: "8px 14px", fontSize: 12, color: "#7c2d12", borderColor: "#fdba74", background: "#fff7ed", opacity: exportingId === it.id ? 0.6 : 1 }}
+                        disabled={!!exportingId}
+                        onClick={() => exportPdf(it)}
+                      >
+                        {exportingId === it.id ? "⏳" : (lang === "ar" ? "⬇️ PDF" : "⬇️ PDF")}
+                      </button>
                       <button
                         style={{ ...buttonGhost, padding: "8px 14px", fontSize: 12 }}
                         onClick={() => setViewing(it)}
