@@ -5,6 +5,7 @@ import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { canEdit, canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
 import { uploadImage, photoOf } from "../../../../utils/imageUpload";
 
 
@@ -97,14 +98,8 @@ export default function POS11PestControlView() {
   /* ===== جلب كل التواريخ ===== */
   async function fetchAllDates() {
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache:"no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const filtered = list.map(r=>r?.payload).filter(p=>p && p.branch===BRANCH && p.reportDate);
-      const uniq = Array.from(new Set(filtered.map(p=>p.reportDate))).sort((a,b)=>b.localeCompare(a));
+      const index = await listReportDateIndex(TYPE);
+      const uniq = Array.from(new Set(index.map((r) => r.reportDate))).sort((a,b)=>b.localeCompare(a));
       setAllDates(uniq);
 
       // Tree stays collapsed by default.
@@ -118,13 +113,7 @@ export default function POS11PestControlView() {
   async function fetchRecord(d=date) {
     setLoading(true); setErr(""); setRecord(null);
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache:"no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const match = list.find(r=>r?.payload?.branch===BRANCH && r?.payload?.reportDate===d) || null;
+      const match = await getReportByDate(TYPE, d);
       setRecord(match);
 
       const p = match?.payload || {};

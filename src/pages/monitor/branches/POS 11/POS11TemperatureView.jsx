@@ -13,6 +13,8 @@ import {
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
+  getReportByDate,
+  listReportDateIndex,
 } from "../_shared/branchViewKit";
 import { canDelete } from "../../../../utils/perms";
 
@@ -50,6 +52,7 @@ function calculateKPI(rows = []) {
 
 const getReportDate = (r) => {
   try {
+    if (r?.reportDate) return new Date(r.reportDate);
     const p = r?.payload ?? r ?? {};
     const d1 = p?.date ? new Date(p.date) : null;
     if (d1 && !isNaN(d1)) return d1;
@@ -64,6 +67,7 @@ export default function POS11TemperatureView() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState("");
+  const [selectedReport, setSelectedReport] = useState(null);
   const [opMsg, setOpMsg] = useState("");
   const printRef = useRef(null);
 
@@ -73,25 +77,14 @@ export default function POS11TemperatureView() {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(
-          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
-          { cache: "no-store" }
-        );
-        const json = await res.json().catch(() => []);
-        const arr = Array.isArray(json)
-          ? json
-          : json?.data || json?.items || [];
+        const arr = await listReportDateIndex(TYPE);
 
         if (!abort) {
-          const sorted = [...arr].sort((a, b) => {
-            const da = new Date(a?.payload?.date || a?.created_at || 0).getTime();
-            const db = new Date(b?.payload?.date || b?.created_at || 0).getTime();
-            return db - da;
-          });
+          const sorted = [...arr];
           setReports(sorted);
-          if (sorted.length && !selectedId) {
-            setSelectedId(getId(sorted[0]));
-          }
+          const full = await getReportByDate(TYPE, sorted[0]?.reportDate);
+          setSelectedReport(full);
+          if (full || sorted.length) setSelectedId(getId(full || sorted[0]));
         }
       } catch {
         if (!abort) setReports([]);
@@ -105,9 +98,15 @@ export default function POS11TemperatureView() {
   }, []);
 
   const selected = useMemo(
-    () => reports.find((r) => getId(r) === selectedId),
-    [reports, selectedId]
+    () => selectedReport || reports.find((r) => getId(r) === selectedId),
+    [reports, selectedId, selectedReport]
   );
+
+  const loadSelectedReport = async (reportDate) => {
+    const full = await getReportByDate(TYPE, reportDate);
+    setSelectedReport(full);
+    if (full) setSelectedId(getId(full));
+  };
   const payload = selected?.payload ?? selected ?? {};
   const times = (payload?.times || []).filter((t) => t !== "Corrective Action");
   const rows = payload?.coolers || [];
@@ -239,7 +238,7 @@ export default function POS11TemperatureView() {
           <DateTreeSidebar
             items={treeItems}
             activeKey={selectedId}
-            onPick={(it) => setSelectedId(it.key)}
+            onPick={(it) => loadSelectedReport(it.dateISO)}
             loading={loading && !reports.length}
           />
         }
