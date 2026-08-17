@@ -10,7 +10,10 @@ import {
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
+  listReportDateIndex,
+  getReportByDate,
 } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "ftr1_daily_cleanliness";
@@ -22,23 +25,17 @@ export default function FTR1DailyCleanlinessView() {
   const reportRef = useRef();
   const fileInputRef = useRef(null);
 
-  const getReportDate = (r) => {
-    const d1 = new Date(r?.payload?.reportDate);
-    if (!isNaN(d1)) return d1;
-    const d2 = new Date(r?.created_at);
-    return isNaN(d2) ? new Date(0) : d2;
-  };
+  async function loadSelectedReport(date) {
+    if (!date) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate(TYPE, date));
+  }
 
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a, b) => getReportDate(b) - getReportDate(a));
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
+      const index = await listReportDateIndex(TYPE);
+      setReports(index);
+      await loadSelectedReport(index[0]?.reportDate);
     } catch (err) {
       console.error(err);
       alert("Failed to fetch data.");
@@ -106,9 +103,10 @@ export default function FTR1DailyCleanlinessView() {
   };
 
   // ===== Export JSON =====
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullRows = await listReports(TYPE);
+      const payloads = fullRows.map((r) => r?.payload ?? r);
       const bundle = { type: TYPE, exportedAt: new Date().toISOString(), count: payloads.length, items: payloads };
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -169,8 +167,7 @@ export default function FTR1DailyCleanlinessView() {
   // ===== Tree items =====
   const treeItems = useMemo(() => {
     return reports.map((r) => {
-      const d = getReportDate(r);
-      const iso = d.getTime() > 0 ? d.toISOString().slice(0, 10) : "";
+      const iso = String(r?.reportDate || "").slice(0, 10);
       return {
         key: getId(r) || iso,
         dateISO: iso,
@@ -214,7 +211,7 @@ export default function FTR1DailyCleanlinessView() {
           <DateTreeSidebar
             items={treeItems}
             activeKey={activeKey}
-            onPick={(it) => setSelectedReport(it.data)}
+            onPick={(it) => loadSelectedReport(it.data?.reportDate)}
             loading={loading}
           />
         }

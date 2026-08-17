@@ -4,6 +4,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { listReportDateIndex, getReportByDate } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -231,20 +233,17 @@ export default function FTR2TemperatureView() {
   const getId  = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
   const toDate = (v) => { const d = v ? new Date(v) : null; return d && !isNaN(d) ? d : null; };
 
+  async function loadSelectedReport(date) {
+    if (!date) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate("ftr2_temperature", date));
+  }
+
   async function fetchReports() {
     setLoading(true);
     try {
-      const res  = await fetch(`${API_BASE}/api/reports?type=ftr2_temperature`, { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed");
-      const json = await res.json();
-      const arr  = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a, b) => {
-        const da = toDate(a?.payload?.date)?.getTime() || 0;
-        const db = toDate(b?.payload?.date)?.getTime() || 0;
-        return db - da;
-      });
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
+      const index = await listReportDateIndex("ftr2_temperature");
+      setReports(index);
+      await loadSelectedReport(index[0]?.reportDate);
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
@@ -281,9 +280,10 @@ export default function FTR2TemperatureView() {
     } catch (err) { console.error(err); alert("⚠️ Delete failed."); }
   };
 
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const blob = new Blob([JSON.stringify({ type: "ftr2_temperature", exportedAt: new Date().toISOString(), count: reports.length, items: reports.map(r => r?.payload ?? r) }, null, 2)], { type: "application/json" });
+      const fullRows = await listReports("ftr2_temperature");
+      const blob = new Blob([JSON.stringify({ type: "ftr2_temperature", exportedAt: new Date().toISOString(), count: fullRows.length, items: fullRows.map(r => r?.payload ?? r) }, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a   = document.createElement("a"); a.href = url; a.download = `FTR2_Temperature_ALL_${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
@@ -312,7 +312,7 @@ export default function FTR2TemperatureView() {
   };
 
   const groupedReports = reports.reduce((acc, r) => {
-    const d = toDate(r?.payload?.date); if (!d) return acc;
+    const d = toDate(r?.reportDate); if (!d) return acc;
     const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), day = String(d.getDate()).padStart(2,"0");
     acc[y] ??= {}; acc[y][m] ??= [];
     acc[y][m].push({ ...r, day, _dt: d.getTime() });
@@ -353,7 +353,7 @@ export default function FTR2TemperatureView() {
                           {[...days].sort((a,b) => b._dt-a._dt).map((r,i) => {
                             const active = getId(selectedReport) && getId(selectedReport) === getId(r);
                             return (
-                              <li key={i} onClick={() => setSelectedReport(r)}
+                              <li key={i} onClick={() => loadSelectedReport(r.reportDate)}
                                 style={{ padding: "6px 10px", marginBottom: 4, borderRadius: 6, cursor: "pointer", background: active ? "#dcd6f7" : "#ecf0f1", color: active ? "#222" : "#333", fontWeight: 600, textAlign: "center" }}>
                                 {`${r.day}/${month}/${year}`}
                               </li>
@@ -369,8 +369,6 @@ export default function FTR2TemperatureView() {
 
       {/* Main */}
       <div style={{ flex: 1, background: "#eef3f8", padding: "1.5rem", borderRadius: 14, boxShadow: "0 4px 18px #d2b4de44" }}>
-
-        {reports.length > 0 && <GlobalKPI reports={reports} />}
 
         {!selectedReport ? (
           <p style={{ color: "#94a3b8", textAlign: "center", marginTop: "2rem" }}>👈 Select a date to view the report</p>

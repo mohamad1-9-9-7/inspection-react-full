@@ -13,7 +13,10 @@ import {
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
+  getReportByDate,
+  listReportDateIndex,
 } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const TYPE = "pos15_pest_control";
 
@@ -21,7 +24,7 @@ const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 const askPass = (label = "") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
 const getDate = (r) => {
-  const d = (r?.payload?.reportDate && new Date(r.payload.reportDate)) || (r?.created_at && new Date(r.created_at)) || new Date(NaN);
+  const d = (r?.reportDate && new Date(r.reportDate)) || (r?.payload?.reportDate && new Date(r.payload.reportDate)) || (r?.created_at && new Date(r.created_at)) || new Date(NaN);
   return d;
 };
 const isPos15 = (r) => String(r?.payload?.branch || r?.branch || "").trim().toLowerCase() === "pos 15";
@@ -54,16 +57,18 @@ export default function POS15PestControlView() {
   const openPreview = (src, title, idx) => setPreview({ open: true, src, title, idx });
   const closePreview = () => setPreview((p) => ({ ...p, open: false }));
 
+  async function loadSelectedReport(reportDate) {
+    if (!reportDate) { setSelected(null); return; }
+    setSelected(await getReportByDate(TYPE, reportDate));
+  }
+
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("fetch failed");
-      const json = await res.json();
-      let arr = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : Array.isArray(json?.items) ? json.items : [];
-      arr = arr.filter(isPos15).filter((r) => !isNaN(getDate(r))).sort((a, b) => getDate(b) - getDate(a));
+      let arr = await listReportDateIndex(TYPE);
+      arr = arr.filter((r) => !r.payload || isPos15(r)).filter((r) => !isNaN(getDate(r))).sort((a, b) => getDate(b) - getDate(a));
       setReports(arr);
-      setSelected(arr[0] || null);
+      await loadSelectedReport(arr[0]?.reportDate);
     } catch (e) { console.error(e); alert("⚠️ Failed to fetch data."); }
     finally { setLoading(false); }
   }
@@ -116,9 +121,10 @@ export default function POS15PestControlView() {
     } catch (e) { console.error(e); alert("❌ Failed to delete."); }
   }
 
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const items = reports.map((r) => r?.payload ?? r);
+      const fullReports = await listReports(TYPE);
+      const items = fullReports.map((r) => r?.payload ?? r);
       const bundle = { type: TYPE, branch: "POS 15", exportedAt: new Date().toISOString(), count: items.length, items };
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob); const a = document.createElement("a");
@@ -170,7 +176,7 @@ export default function POS15PestControlView() {
             <DateTreeSidebar
               items={treeItems}
               activeKey={activeKey}
-              onPick={(it) => setSelected(it.data)}
+              onPick={(it) => loadSelectedReport(it.dateISO)}
               loading={loading && !reports.length}
             />
           }

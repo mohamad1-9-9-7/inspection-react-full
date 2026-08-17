@@ -8,7 +8,10 @@ import {
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
+  getReportByDate,
+  listReportDateIndex,
 } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 
 const TYPE   = "pos15_receiving_log_butchery";
@@ -120,17 +123,9 @@ export default function POS15ReceivingLogView() {
 
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
-      const uniqueReports = Array.from(filtered.reduce((map, payload) => {
-        if (!map.has(payload.reportDate)) map.set(payload.reportDate, payload);
-        return map;
-      }, new Map()).values());
-      const uniq = uniqueReports.map((p) => p.reportDate).sort((a, b) => b.localeCompare(a));
-      setHistoricalReports(uniqueReports);
+      const index = await listReportDateIndex(TYPE);
+      const uniq = Array.from(new Set(index.map((r) => r.reportDate))).sort((a, b) => b.localeCompare(a));
+      setHistoricalReports([]);
       setAllDates(uniq);
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) { console.warn("Failed to fetch dates", e); }
@@ -142,11 +137,7 @@ export default function POS15ReceivingLogView() {
     setSupplierFilter("all"); setItemFilter("all"); setCountryFilter("all");
     setComplianceFilter("all"); setResultSort("original");
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportByDate(TYPE, d);
       setRecord(match);
       const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
@@ -188,6 +179,16 @@ export default function POS15ReceivingLogView() {
     searchQuery.trim() || supplierFilter !== "all" || itemFilter !== "all"
     || countryFilter !== "all" || complianceFilter !== "all"
   );
+
+  useEffect(() => {
+    if (!isHistoricalSearch || historicalReports.length) return;
+    listReports(TYPE).then((rows) => {
+      const filtered = rows
+        .map((r) => r?.payload)
+        .filter((p) => p && (!p.branch || p.branch === BRANCH));
+      setHistoricalReports(filtered);
+    }).catch((e) => console.warn("Failed to load historical search data", e));
+  }, [isHistoricalSearch, historicalReports.length]);
 
   const searchSourceEntries = isHistoricalSearch ? historicalEntries : filledEntries;
 

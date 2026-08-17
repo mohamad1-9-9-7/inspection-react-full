@@ -4,6 +4,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -31,20 +33,10 @@ export default function POS11DailyCleaningView() {
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=pos11_daily_cleanliness`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      let arr =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.rows) ? json.rows : [];
+      let arr = await listReportDateIndex("pos11_daily_cleanliness");
 
       // فلترة الفرع
-      arr = arr.filter(isPOS11);
+      arr = arr.filter((r) => !r.payload || isPOS11(r));
 
       // ترتيب تصاعدي بالتاريخ
       arr.sort(
@@ -54,6 +46,7 @@ export default function POS11DailyCleaningView() {
       );
       setReports(arr);
       setSelectedReport(arr[0] || null);
+      await loadSelectedReport(arr[0]?.reportDate);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");
@@ -65,6 +58,11 @@ export default function POS11DailyCleaningView() {
   useEffect(() => {
     fetchReports();
   }, []);
+
+  async function loadSelectedReport(reportDate) {
+    if (!reportDate) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate("pos11_daily_cleanliness", reportDate));
+  }
 
   // ===== PDF
   const handleExportPDF = async () => {
@@ -122,9 +120,10 @@ export default function POS11DailyCleaningView() {
   };
 
   // ===== Export JSON (كل التقارير لفرع POS 11)
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullReports = await listReports("pos11_daily_cleanliness");
+      const payloads = fullReports.map((r) => r?.payload ?? r);
       const bundle = {
         type: "pos11_daily_cleanliness",
         branch: "POS 11",
@@ -204,7 +203,7 @@ export default function POS11DailyCleaningView() {
 
   // ===== Group by Year > Month > Day
   const groupedReports = reports.reduce((acc, r) => {
-    const date = new Date(r?.payload?.reportDate);
+    const date = new Date(r?.reportDate || r?.payload?.reportDate);
     if (isNaN(date)) return acc;
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -260,7 +259,7 @@ export default function POS11DailyCleaningView() {
                               return (
                                 <li
                                   key={i}
-                                  onClick={() => setSelectedReport(r)}
+                                  onClick={() => loadSelectedReport(r.reportDate)}
                                   style={{
                                     padding: "6px 10px",
                                     marginBottom: "4px",

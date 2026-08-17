@@ -10,7 +10,10 @@ import {
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
+  listReportDateIndex,
+  getReportByDate,
 } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "ftr1_temperature";
@@ -28,25 +31,18 @@ export default function FTR1TemperatureView() {
   const reportRef = useRef();
   const fileInputRef = useRef(null);
 
-  // ===== Fetch (newest first) =====
+  // ===== Fetch date index, then only the selected report =====
+  async function loadSelectedReport(date) {
+    if (!date) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate(TYPE, date));
+  }
+
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-
-      arr.sort((a, b) => {
-        const da = toDate(a?.payload?.date)?.getTime() || 0;
-        const db = toDate(b?.payload?.date)?.getTime() || 0;
-        return db - da;
-      });
-
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
+      const index = await listReportDateIndex(TYPE);
+      setReports(index);
+      await loadSelectedReport(index[0]?.reportDate);
     } catch (err) {
       console.error(err);
       alert("Failed to fetch data from server.");
@@ -171,9 +167,10 @@ export default function FTR1TemperatureView() {
   };
 
   // ===== Export JSON =====
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullRows = await listReports(TYPE);
+      const payloads = fullRows.map((r) => r?.payload ?? r);
       const bundle = {
         type: TYPE,
         exportedAt: new Date().toISOString(),
@@ -245,12 +242,11 @@ export default function FTR1TemperatureView() {
   // ===== Tree items from reports =====
   const treeItems = useMemo(() => {
     return reports.map((r) => {
-      const d = r?.payload?.date || "";
-      const iso = d ? new Date(d).toISOString().slice(0, 10) : "";
+      const iso = String(r?.reportDate || "").slice(0, 10);
       return {
         key: getId(r) || iso,
         dateISO: iso,
-        label: formatDMY(iso) || d || "No date",
+        label: formatDMY(iso) || iso || "No date",
         data: r,
       };
     });
@@ -315,7 +311,7 @@ export default function FTR1TemperatureView() {
           <DateTreeSidebar
             items={treeItems}
             activeKey={activeKey}
-            onPick={(it) => setSelectedReport(it.data)}
+            onPick={(it) => loadSelectedReport(it.data?.reportDate)}
             loading={loading}
           />
         }

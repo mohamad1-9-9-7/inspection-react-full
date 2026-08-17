@@ -9,8 +9,11 @@ import {
   DateTreeSidebar,
   GLASS,
   EmptyState,
+  getReportByDate,
+  listReportDateIndex,
 } from "../_shared/branchViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { listReports } from "../_shared/reportApi";
 
 const TYPE = "prod_defrosting_record";
 
@@ -29,9 +32,9 @@ function normYMD(dateStr) {
 
 function getKey(r) {
   if (!r) return "";
-  if (r._id) return r._id;
+  if (r._id || r.id) return r._id || r.id;
   const h = r.payload?.header || {};
-  const n = normYMD(h.reportDate || h.month || h.issueDate || r.createdAt);
+  const n = normYMD(r.reportDate || h.reportDate || h.month || h.issueDate || r.createdAt);
   const doc = String(h.documentNo || "");
   return `${n?.iso || "NA"}|${doc}`;
 }
@@ -40,7 +43,7 @@ function groupByYMD(arr) {
   const years = {};
   arr.forEach((r) => {
     const h = r.payload?.header || {};
-    const pick = h.reportDate || h.month || h.issueDate || r.createdAt || "";
+    const pick = r.reportDate || h.reportDate || h.month || h.issueDate || r.createdAt || "";
     const n = normYMD(pick);
     if (!n) return;
     const itemsCount = (r.payload?.entries || []).length || 0;
@@ -66,12 +69,7 @@ export default function PRDDefrostingRecordView() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${String(API_BASE).replace(/\/$/, "")}/api/reports?type=${TYPE}`,
-        { cache: "no-store" }
-      );
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
+      const arr = await listReportDateIndex(TYPE);
 
       arr.forEach((r) => {
         const h = r.payload?.header || {};
@@ -92,6 +90,15 @@ export default function PRDDefrostingRecordView() {
     load();
   }, []);
 
+  async function loadSelectedReport(reportDate) {
+    if (!reportDate) { setSelected(null); return; }
+    setSelected(await getReportByDate(TYPE, reportDate));
+  }
+
+  useEffect(() => {
+    if (selected?.reportDate && !selected?.payload) loadSelectedReport(selected.reportDate);
+  }, [selected]);
+
   const groups = useMemo(() => groupByYMD(reports), [reports]);
   const selectedKey = getKey(selected);
 
@@ -102,7 +109,7 @@ export default function PRDDefrostingRecordView() {
       const k = getKey(r);
       if (!k || seen.has(k)) continue;
       const h = r.payload?.header || {};
-      const pick = h.reportDate || h.month || h.issueDate || r.createdAt || "";
+      const pick = r.reportDate || h.reportDate || h.month || h.issueDate || r.createdAt || "";
       const n = normYMD(pick);
       if (!n) continue;
       seen.set(k, { key: k, dateISO: n.iso, label: formatDMY(n.iso), data: r });
@@ -143,10 +150,11 @@ export default function PRDDefrostingRecordView() {
   }
 
   /* ============ NEW: Export/Import JSON (all) ============ */
-  function exportJSONAll() {
+  async function exportJSONAll() {
+    const fullReports = await listReports(TYPE);
     const dump = {
-      meta: { type: TYPE, exportedAt: new Date().toISOString(), count: reports.length },
-      items: reports.map((r) => ({
+      meta: { type: TYPE, exportedAt: new Date().toISOString(), count: fullReports.length },
+      items: fullReports.map((r) => ({
         type: TYPE,
         reporter: r.reporter || "production",
         payload: r.payload,
@@ -291,7 +299,7 @@ export default function PRDDefrostingRecordView() {
         <DateTreeSidebar
           items={treeItems}
           activeKey={selectedKey}
-          onPick={(it) => setSelected(it.data)}
+          onPick={(it) => loadSelectedReport(it.dateISO)}
           loading={loading && !reports.length}
           maxHeight="calc(100vh - 160px)"
         />

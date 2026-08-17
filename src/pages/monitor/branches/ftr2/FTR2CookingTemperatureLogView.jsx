@@ -5,6 +5,8 @@ import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 
 
@@ -88,26 +90,20 @@ export default function FTR2CookingTemperatureLogView() {
     <col key="chk"  style={{ width: 160 }} />,
   ]), []);
 
-  async function fetchReports(preserveId) {
+  async function loadSelectedReport(reportDate) {
+    if (!reportDate) { setSelectedReport(null); return; }
+    const report = await getReportByDate(TYPE, reportDate);
+    setSelectedReport(report);
+    setEditMode(false);
+    setDraft(null);
+  }
+
+  async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=200`, { cache: "no-store" });
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a,b) => {
-        const da = toDate(a?.payload?.reportDate)?.getTime() || 0;
-        const db = toDate(b?.payload?.reportDate)?.getTime() || 0;
-        return db - da;
-      });
+      const arr = await listReportDateIndex(TYPE);
       setReports(arr);
-      if (preserveId) {
-        const found = arr.find((r) => getId(r) === preserveId);
-        setSelectedReport(found || arr[0] || null);
-      } else {
-        setSelectedReport(arr[0] || null);
-      }
-      setEditMode(false);
-      setDraft(null);
+      await loadSelectedReport(arr[0]?.reportDate);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data from server.");
@@ -153,9 +149,10 @@ export default function FTR2CookingTemperatureLogView() {
   };
 
   /* ===== Export JSON ===== */
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullReports = await listReports(TYPE);
+      const payloads = fullReports.map((r) => r?.payload ?? r);
       const bundle = { type: TYPE, exportedAt: new Date().toISOString(), count: payloads.length, items: payloads };
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -276,7 +273,7 @@ export default function FTR2CookingTemperatureLogView() {
 
       setEditMode(false);
       setDraft(null);
-      await fetchReports(newId || undefined);
+      await fetchReports();
       alert("✅ Saved changes (deleted old and uploaded new).");
     } catch (e) {
       console.error(e);
@@ -287,7 +284,7 @@ export default function FTR2CookingTemperatureLogView() {
 
   /* ===== شجرة التاريخ ===== */
   const groupedReports = reports.reduce((acc, r) => {
-    const d = toDate(r?.payload?.reportDate); if (!d) return acc;
+    const d = toDate(r?.reportDate); if (!d) return acc;
     const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,"0"); const day = String(d.getDate()).padStart(2,"0");
     acc[y] ??= {}; acc[y][m] ??= []; acc[y][m].push({ ...r, day, _dt:d.getTime() }); return acc;
   }, {});
@@ -315,7 +312,7 @@ export default function FTR2CookingTemperatureLogView() {
                         {daysSorted.map((r,i) => {
                           const active = getId(selectedReport) && getId(selectedReport) === getId(r);
                           return (
-                            <li key={i} onClick={() => { setSelectedReport(r); setEditMode(false); setDraft(null); }}
+                            <li key={i} onClick={() => { loadSelectedReport(r.reportDate); }}
                                 style={{ padding:"6px 10px", marginBottom:"4px", borderRadius:"6px", cursor:"pointer",
                                          background: active ? "#dcd6f7" : "#ecf0f1", color: active ? "#222" : "#333",
                                          fontWeight:600, textAlign:"center" }}>

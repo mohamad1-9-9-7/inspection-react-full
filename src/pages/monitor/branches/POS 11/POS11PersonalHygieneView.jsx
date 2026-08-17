@@ -4,6 +4,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -38,7 +40,7 @@ export default function POS11PersonalHygieneView() {
 
   // helper: تاريخ آمن من reportDate ثم fallback على created_at
   const getReportDate = (r) => {
-    const d1 = new Date(r?.payload?.reportDate);
+    const d1 = new Date(r?.reportDate || r?.payload?.reportDate);
     if (!isNaN(d1)) return d1;
     const d2 = new Date(r?.created_at);
     return isNaN(d2) ? new Date(0) : d2;
@@ -52,25 +54,16 @@ export default function POS11PersonalHygieneView() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      let arr =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.rows) ? json.rows : [];
+      let arr = await listReportDateIndex(TYPE);
 
       // ✅ نحصر النتائج بفرع POS 11 فقط
-      arr = arr.filter(isPOS11);
+      arr = arr.filter((r) => !r.payload || isPOS11(r));
 
       // ✅ الأحدث أولاً
       arr.sort((a, b) => getReportDate(b) - getReportDate(a));
 
       setReports(arr);
+      await loadSelectedReport(arr[0]?.reportDate);
       setSelectedReport(arr[0] || null); // الأحدث
     } catch (err) {
       console.error(err);
@@ -79,6 +72,15 @@ export default function POS11PersonalHygieneView() {
       setLoading(false);
     }
   };
+
+  const loadSelectedReport = async (reportDate) => {
+    if (!reportDate) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate(TYPE, reportDate));
+  };
+
+  useEffect(() => {
+    if (selectedReport?.reportDate && !selectedReport?.payload) loadSelectedReport(selectedReport.reportDate);
+  }, [selectedReport]);
 
   const payload = selectedReport?.payload || {};
 
@@ -156,9 +158,10 @@ export default function POS11PersonalHygieneView() {
     }
   };
 
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullReports = await listReports(TYPE);
+      const payloads = fullReports.map((r) => r?.payload ?? r);
       const bundle = {
         type: TYPE,
         branch: "POS 11",
@@ -297,7 +300,7 @@ export default function POS11PersonalHygieneView() {
                               return (
                                 <li
                                   key={i}
-                                  onClick={() => setSelectedReport(r)}
+                                  onClick={() => loadSelectedReport(r.reportDate || r?.payload?.reportDate)}
                                   style={{
                                     padding: "6px 10px",
                                     marginBottom: "4px",

@@ -10,6 +10,8 @@ import {
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
+  getReportByDate,
+  listReportDateIndex,
 } from "../_shared/branchViewKit";
 
 const DEFAULT_TYPE   = "pos15_equipment_inspection";
@@ -73,12 +75,8 @@ export default function POS15EquipmentInspectionSanitizingLogView({
 
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${reportType}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === branch && p.reportDate);
-      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
+      const index = await listReportDateIndex(reportType);
+      const uniq = Array.from(new Set(index.map((r) => r.reportDate))).sort((a, b) => b.localeCompare(a));
       setAllDates(uniq);
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) { console.warn("Failed to fetch dates", e); }
@@ -87,11 +85,7 @@ export default function POS15EquipmentInspectionSanitizingLogView({
   async function fetchRecord(d = date) {
     setLoading(true); setErr(""); setRecord(null); setEditRows([]);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${reportType}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const match = list.find((r) => r?.payload?.branch === branch && r?.payload?.reportDate === d) || null;
+      const match = await getReportByDate(reportType, d);
       if (match?.payload) match.payload.formRef = FORM_REF;
       setRecord(match);
       const rows = match?.payload?.entries ?? [];

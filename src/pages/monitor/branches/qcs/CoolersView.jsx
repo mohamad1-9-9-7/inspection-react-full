@@ -13,6 +13,7 @@ import {
   downloadReportsJson,
   getReportPayloadByDate,
   importReportPayloads,
+  listReportDates,
   listReports,
   parseJsonImport,
   reportDateOf,
@@ -178,7 +179,8 @@ export default function CoolersView() {
   async function refreshList() {
     setLoadingList(true);
     try {
-      const rows = await listReports(TYPE_COOLERS);
+      // Load only the date/id index. The selected day's payload is fetched below.
+      const rows = await listReportDates(TYPE_COOLERS);
       rows.sort((a, b) => {
         const da = new Date(extractAnyDate(a)).getTime() || 0;
         const db = new Date(extractAnyDate(b)).getTime() || 0;

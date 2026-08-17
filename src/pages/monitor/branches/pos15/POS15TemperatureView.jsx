@@ -11,7 +11,10 @@ import {
   DateTreeSidebar,
   SidebarLayout,
   EmptyState,
+  getReportByDate,
+  listReportDateIndex,
 } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const TYPE = "pos15_temperature";
 
@@ -51,8 +54,8 @@ function normYMD(dateStr) {
 }
 function getKey(r) {
   if (!r) return "";
-  if (r._id) return r._id;
-  const pick = r.payload?.date || r.payload?.reportDate || r.createdAt;
+  if (r._id || r.id) return r._id || r.id;
+  const pick = r.reportDate || r.payload?.date || r.payload?.reportDate || r.createdAt;
   const n = normYMD(pick);
   return n?.iso || "";
 }
@@ -65,21 +68,26 @@ export default function POS15TemperatureView() {
   const sheetRef = useRef(null);
   const fileRef = useRef(null);
 
+  async function loadSelectedReport(reportDate) {
+    if (!reportDate) { setSelected(null); return; }
+    setSelected(await getReportByDate(TYPE, reportDate));
+  }
+
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.forEach((r) => (r.__dateStr = r.payload?.date || r.payload?.reportDate || r.createdAt || ""));
-      arr.sort((a, b) => new Date(a.__dateStr || 0) - new Date(b.__dateStr || 0));
+      const arr = await listReportDateIndex(TYPE);
       setReports(arr);
-      setSelected(arr[arr.length - 1] || null);
+      await loadSelectedReport(arr[0]?.reportDate);
     } finally {
       setLoading(false);
     }
   }
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (selected?.reportDate && !selected?.payload) loadSelectedReport(selected.reportDate);
+  }, [selected]);
 
   const selectedKey = getKey(selected);
 
@@ -88,7 +96,7 @@ export default function POS15TemperatureView() {
     for (const r of reports) {
       const k = getKey(r);
       if (!k || seen.has(k)) continue;
-      const pick = r.payload?.date || r.payload?.reportDate || r.createdAt || "";
+      const pick = r.reportDate || r.payload?.date || r.payload?.reportDate || r.createdAt || "";
       const n = normYMD(pick);
       if (!n) continue;
       seen.set(k, { key: k, dateISO: n.iso, label: formatDMY(n.iso), data: r });
@@ -117,8 +125,9 @@ export default function POS15TemperatureView() {
     setTimeout(() => { w.focus(); w.print(); }, 100);
   }
 
-  function exportJSONAll() {
-    const dump = { meta: { type: TYPE, exportedAt: new Date().toISOString(), count: reports.length }, items: reports.map((r) => ({ type: TYPE, payload: r.payload })) };
+  async function exportJSONAll() {
+    const fullReports = await listReports(TYPE);
+    const dump = { meta: { type: TYPE, exportedAt: new Date().toISOString(), count: fullReports.length }, items: fullReports.map((r) => ({ type: TYPE, payload: r.payload })) };
     const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -202,7 +211,7 @@ export default function POS15TemperatureView() {
           <DateTreeSidebar
             items={treeItems}
             activeKey={selectedKey}
-            onPick={(it) => setSelected(it.data)}
+            onPick={(it) => loadSelectedReport(it.dateISO)}
             loading={loading && !reports.length}
           />
         }

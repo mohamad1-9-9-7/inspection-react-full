@@ -8,6 +8,7 @@ import { useLang } from "./_shared/i18n";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
 
 
 const TYPE = "prod_dried_meat";
@@ -40,12 +41,8 @@ export default function DriedMeatProcessView() {
 
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const uniq = Array.from(new Set(
-        list.map((r) => r?.payload?.reportDate).filter(Boolean)
-      )).sort((a, b) => b.localeCompare(a));
+      const index = await listReportDateIndex(TYPE);
+      const uniq = Array.from(new Set(index.map((r) => r.reportDate).filter(Boolean))).sort((a, b) => b.localeCompare(a));
       setAllDates(uniq);
       if (uniq.length) {
         const n = normYMD(uniq[0]);
@@ -61,12 +58,7 @@ export default function DriedMeatProcessView() {
   async function fetchRecord(d = date) {
     setLoading(true); setErr(""); setRecord(null);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const matches = list.filter((r) => r?.payload?.reportDate === d);
-      matches.sort((a, b) => (b?.payload?.savedAt || 0) - (a?.payload?.savedAt || 0));
-      setRecord(matches[0] || null);
+      setRecord(await getReportByDate(TYPE, d));
     } catch (e) {
       console.error(e);
       setErr("Failed to fetch data.");

@@ -4,6 +4,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { listReportDateIndex, getReportByDate } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -18,23 +20,17 @@ export default function FTR2DailyCleanlinessView() {
   const getId = (r) => r?.id || r?._id;
 
   // Fetch reports (أقدم → أحدث)
+  async function loadSelectedReport(date) {
+    if (!date) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate("ftr2_daily_cleanliness", date));
+  }
+
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=ftr2_daily_cleanliness`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort(
-        (a, b) =>
-          new Date(a.payload?.reportDate || 0) -
-          new Date(b.payload?.reportDate || 0)
-      );
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
+      const index = await listReportDateIndex("ftr2_daily_cleanliness");
+      setReports(index);
+      await loadSelectedReport(index[0]?.reportDate);
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
@@ -100,7 +96,8 @@ export default function FTR2DailyCleanlinessView() {
   // ===== Export JSON (كل التقارير) =====
   const handleExportJSON = () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullRows = await listReports("ftr2_daily_cleanliness");
+      const payloads = fullRows.map((r) => r?.payload ?? r);
       const bundle = {
         type: "ftr2_daily_cleanliness",
         exportedAt: new Date().toISOString(),
@@ -181,7 +178,7 @@ export default function FTR2DailyCleanlinessView() {
 
   // Group reports by year > month > day
   const groupedReports = reports.reduce((acc, r) => {
-    const date = new Date(r.payload?.reportDate);
+    const date = new Date(r.reportDate);
     if (isNaN(date)) return acc;
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -233,7 +230,7 @@ export default function FTR2DailyCleanlinessView() {
                               return (
                                 <li
                                   key={i}
-                                  onClick={() => setSelectedReport(r)}
+                                  onClick={() => loadSelectedReport(r.reportDate)}
                                   style={{
                                     padding: "6px 10px",
                                     marginBottom: "4px",

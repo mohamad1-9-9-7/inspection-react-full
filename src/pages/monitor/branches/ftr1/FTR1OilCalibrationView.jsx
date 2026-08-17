@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -28,29 +30,27 @@ export default function FTR1OilCalibrationView() {
     const yy = dt.getFullYear();
     return `${dd}/${mm}/${yy}`;
   };
-  const firstEntryDate = (r) => r?.payload?.entries?.[0]?.date || null;
+  const firstEntryDate = (r) => r?.reportDate || r?.payload?.reportDate || r?.payload?.entries?.[0]?.date || null;
+
+  const loadSelectedReport = useCallback(async (reportDate) => {
+    if (!reportDate) { setSelectedReport(null); return; }
+    const report = await getReportByDate("ftr1_oil_calibration", reportDate);
+    setSelectedReport(report);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=ftr1_oil_calibration`, { cache: "no-store" });
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data || [];
-
-      arr.sort((a, b) => {
-        const ta = safeDate(firstEntryDate(a))?.getTime() || 0;
-        const tb = safeDate(firstEntryDate(b))?.getTime() || 0;
-        return tb - ta; // latest first
-      });
+      const arr = await listReportDateIndex("ftr1_oil_calibration");
 
       setReports(arr);
-      setSelectedReport(arr[0] || null);
+      await loadSelectedReport(arr[0]?.reportDate);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadSelectedReport]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -187,13 +187,7 @@ export default function FTR1OilCalibrationView() {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
 
-      setReports((prev) => {
-        const idx = prev.findIndex((x) => getId(x) === rid);
-        const next = prev.filter((x) => getId(x) !== rid);
-        const pick = next[Math.min(idx, Math.max(0, next.length - 1))] || null;
-        setSelectedReport(pick);
-        return next;
-      });
+      await load();
 
       alert("✅ Report deleted successfully.");
     } catch (err) {
@@ -203,9 +197,10 @@ export default function FTR1OilCalibrationView() {
   };
 
   /* ===== Export/Import JSON ===== */
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullReports = await listReports("ftr1_oil_calibration");
+      const payloads = fullReports.map((r) => r?.payload ?? r);
       const bundle = {
         type: "ftr1_oil_calibration",
         exportedAt: new Date().toISOString(),
@@ -371,7 +366,7 @@ export default function FTR1OilCalibrationView() {
                           return (
                             <div
                               key={getId(r) || dt || Math.random()}
-                              onClick={() => setSelectedReport(r)}
+                              onClick={() => loadSelectedReport(r.reportDate)}
                               style={{
                                 padding: "6px 10px",
                                 marginBottom: 4,

@@ -4,6 +4,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { listReportDateIndex, getReportByDate } from "../_shared/branchViewKit";
+import { listReports } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
@@ -30,28 +32,17 @@ export default function FTR1PersonalHygieneView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const getReportDate = (r) => {
-    const d1 = new Date(r?.payload?.reportDate);
-    if (!isNaN(d1)) return d1;
-    const d2 = new Date(r?.created_at);
-    return isNaN(d2) ? new Date(0) : d2;
+  const loadSelectedReport = async (date) => {
+    if (!date) { setSelectedReport(null); return; }
+    setSelectedReport(await getReportByDate("ftr1_personal_hygiene", date));
   };
 
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=ftr1_personal_hygiene`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a, b) => getReportDate(b) - getReportDate(a)); // ✅ أحدث أولاً
-      setReports(arr);
-
-      // ✅ اعرض آخر/أحدث تقرير تلقائياً دائماً
-      setSelectedReport(arr[0] || null);
+      const index = await listReportDateIndex("ftr1_personal_hygiene");
+      setReports(index);
+      await loadSelectedReport(index[0]?.reportDate);
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
@@ -176,9 +167,10 @@ export default function FTR1PersonalHygieneView() {
   };
 
   // ===== Export JSON (كل التقارير) =====
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const fullRows = await listReports("ftr1_personal_hygiene");
+      const payloads = fullRows.map((r) => r?.payload ?? r);
       const bundle = {
         type: "ftr1_personal_hygiene",
         exportedAt: new Date().toISOString(),
@@ -266,7 +258,7 @@ export default function FTR1PersonalHygieneView() {
   // Group by year → month → day
   const groupedReports = useMemo(() => {
     return reports.reduce((acc, r) => {
-      const date = getReportDate(r);
+      const date = new Date(r?.reportDate);
       if (isNaN(date)) return acc;
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -327,7 +319,7 @@ export default function FTR1PersonalHygieneView() {
                               return (
                                 <li
                                   key={i}
-                                  onClick={() => setSelectedReport(r)}
+                                  onClick={() => loadSelectedReport(r.reportDate)}
                                   style={{
                                     padding: "6px 10px",
                                     marginBottom: "4px",

@@ -6,6 +6,7 @@ import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { DateTreeSidebar } from "../_shared/branchViewKit";
 import { canDelete } from "../../../../utils/perms";
+import { getReportRowByDate, listReportDates, listReports } from "../_shared/reportApi";
 
 /* ===== API base (نفس أسلوب مشروعك) ===== */
 
@@ -49,22 +50,31 @@ const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 export default function DailyCleanlinessView() {
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
+  const [selectedDate, setSelectedDate] = useState("");
   const [loading, setLoading] = useState(false);
 
   const reportRef = useRef(null);
   const fileInputRef = useRef(null);
 
   /* ===== جلب التقارير (أحدث ← أقدم) ===== */
+  async function loadSelectedReport(date) {
+    if (!date) {
+      setSelectedReport(null);
+      return;
+    }
+    const row = await getReportRowByDate(TYPE, date);
+    setSelectedReport(row);
+  }
+
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : (json?.data ?? []);
-      arr.sort((a,b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
+      const arr = await listReportDates(TYPE);
+      arr.sort((a,b) => String(b.reportDate || "").localeCompare(String(a.reportDate || "")));
       setReports(arr);
-      setSelectedReport(arr[0] || null);
+      const nextDate = arr[0]?.reportDate || "";
+      setSelectedDate(nextDate);
+      await loadSelectedReport(nextDate);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");
@@ -74,6 +84,14 @@ export default function DailyCleanlinessView() {
   }
 
   useEffect(() => { fetchReports(); }, []);
+
+  async function pickDate(date) {
+    setSelectedDate(date);
+    setLoading(true);
+    try { await loadSelectedReport(date); }
+    catch (e) { console.error(e); setSelectedReport(null); alert("⚠️ Failed to load the selected report."); }
+    finally { setLoading(false); }
+  }
 
   /* ===== PDF ===== */
   const handleExportPDF = async () => {
@@ -116,9 +134,10 @@ export default function DailyCleanlinessView() {
   };
 
   /* ===== تصدير JSON (كل التقارير) ===== */
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map(r => r?.payload ?? r);
+      const fullRows = await listReports(TYPE);
+      const payloads = fullRows.map(r => r?.payload ?? r);
       const out = {
         type: TYPE,
         exportedAt: new Date().toISOString(),
@@ -209,10 +228,10 @@ export default function DailyCleanlinessView() {
 
   const treeItems = useMemo(() =>
     reports.map((r) => ({
-      key: getId(r) || r?.payload?.reportDate,
-      dateISO: r?.payload?.reportDate || "",
-      label: r?.payload?.reportDate
-        ? new Date(r.payload.reportDate).toLocaleDateString("en-GB")
+      key: r?.reportDate || "",
+      dateISO: r?.reportDate || "",
+      label: r?.reportDate
+        ? new Date(r.reportDate).toLocaleDateString("en-GB")
         : "—",
     })),
   [reports]);
@@ -223,11 +242,8 @@ export default function DailyCleanlinessView() {
       <div style={{ width: 285, flexShrink: 0 }}>
         <DateTreeSidebar
           items={treeItems}
-          activeKey={getId(selectedReport)}
-          onPick={(it) => {
-            const r = reports.find((x) => getId(x) === it.key);
-            if (r) setSelectedReport(r);
-          }}
+          activeKey={selectedDate}
+          onPick={(it) => pickDate(it.dateISO)}
           title="📅 Saved Reports"
           loading={loading && reports.length === 0}
           maxHeight="calc(100vh - 200px)"

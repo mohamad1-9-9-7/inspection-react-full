@@ -53,8 +53,51 @@ export async function listReports(type, params = {}) {
   return Array.isArray(json) ? json : json?.data || json?.items || [];
 }
 
+/**
+ * Return only the archive index needed to build a date tree.
+ * This deliberately does not include payloads/images from old reports.
+ */
+export async function listReportDates(type, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.reporter) qs.set("reporter", params.reporter);
+  qs.set("type", type);
+  qs.set("dates", "1");
+  qs.set("lite", "1");
+  qs.set("limit", String(params.limit || 5000));
+
+  const res = await fetch(`${REPORTS_URL}?${qs.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+    credentials,
+    headers: { Accept: "application/json" },
+    signal: params.signal,
+  });
+  if (!res.ok) throw new Error(`Failed to list ${type} report dates (${res.status})`);
+  const json = await res.json().catch(() => null);
+  const rows = Array.isArray(json) ? json : json?.data || json?.items || [];
+  return rows
+    .map((row) => ({
+      ...row,
+      id: reportId(row),
+      reportDate: reportDateOf(row),
+    }))
+    .filter((row) => row.reportDate);
+}
+
 export async function getReportRowByDate(type, date, params = {}) {
-  const rows = await listReports(type, params);
+  const qs = new URLSearchParams();
+  qs.set("type", type);
+  qs.set("reportDate", String(date || ""));
+  const res = await fetch(`${REPORTS_URL}?${qs.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+    credentials,
+    headers: { Accept: "application/json" },
+    signal: params.signal,
+  });
+  if (!res.ok) throw new Error(`Failed to load ${type} report (${res.status})`);
+  const json = await res.json().catch(() => null);
+  const rows = Array.isArray(json) ? json : json?.data || json?.items || [];
   return rows.find((row) => String(reportDateOf(row)).trim() === String(date).trim()) || null;
 }
 

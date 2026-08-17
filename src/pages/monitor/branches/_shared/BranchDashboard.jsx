@@ -133,7 +133,11 @@ export default function BranchDashboard({
       const cached = getCached(rt.type);
       if (cached) return [rt.type, cached];
       try {
-        const res = await fetch(`${API_BASE}/api/reports?type=${rt.type}`);
+        // Overview only needs the archive index. Never transfer old payloads/images here.
+        const res = await fetch(
+          `${API_BASE}/api/reports?type=${encodeURIComponent(rt.type)}&dates=1&lite=1&limit=5000`,
+          { cache: "no-store", headers: { Accept: "application/json" } }
+        );
         if (!res.ok) return [rt.type, []];
         const json = await res.json();
         const arr = Array.isArray(json) ? json : json?.data ?? [];
@@ -165,6 +169,7 @@ export default function BranchDashboard({
       list.forEach((r) => {
         const p = r?.payload || {};
         const rd =
+          r?.reportDate ||
           p.reportDate ||
           p.header?.reportDate ||
           p.date ||
