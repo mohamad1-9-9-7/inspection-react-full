@@ -13,6 +13,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
 import { canEdit, canDelete } from "../../../../utils/perms";
 
 const TYPE   = "pos10_traceability_log";
@@ -56,6 +57,7 @@ export default function POS10TraceabilityLogView() {
   const [editCheckedBy, setEditCheckedBy] = useState("");
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
   const [allDates, setAllDates] = useState([]);
+  const dateIndexRef = useRef([]);
 
   // Styles
   // Styles — جدول يملأ الصفحة بتصميم طيفي عصري
@@ -96,14 +98,10 @@ export default function POS10TraceabilityLogView() {
   /* ===== Fetch dates ===== */
   async function fetchAllDates() {
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
-      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
+      const index = await listReportDateIndex(TYPE);
+      const filtered = index.filter((r) => !r?.payload?.branch || r.payload.branch === BRANCH);
+      dateIndexRef.current = filtered;
+      const uniq = Array.from(new Set(filtered.map((r) => r.reportDate))).sort((a, b) => b.localeCompare(a));
       setAllDates(uniq);
 
       // Tree stays collapsed by default.
@@ -119,13 +117,8 @@ export default function POS10TraceabilityLogView() {
     setErr("");
     setRecord(null);
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportByDate(TYPE, d);
+      if (match?.payload?.branch && match.payload.branch !== BRANCH) throw new Error("Unexpected branch report");
       setRecord(match);
 
       // Init edit buffers
@@ -571,7 +564,7 @@ export default function POS10TraceabilityLogView() {
           <DateTreeSidebar
             items={treeItems}
             activeKey={date}
-            onPick={(it) => setDate(it.key)}
+            onPick={(it) => setDate(it.dateISO || it.key)}
             loading={loading && !allDates.length}
           />
         }

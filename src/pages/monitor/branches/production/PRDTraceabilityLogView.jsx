@@ -11,6 +11,8 @@ import {
   DateTreeSidebar,
   GLASS,
   EmptyState,
+  getReportByDate,
+  listReportDateIndex,
 } from "../_shared/branchViewKit";
 import { canEdit, canDelete } from "../../../../utils/perms";
 
@@ -134,42 +136,13 @@ export default function PRDTraceabilityLogView() {
     <col key="finalWeight"   style={{ width: "8%" }} />,
   ]), []);
 
-  /* ===== Init: fetch lite dates + last 5 full records in parallel ===== */
+  /* ===== Init: fetch only the lightweight date index ===== */
   async function init() {
     try {
-      const [liteRes, fullRes] = await Promise.all([
-        fetch(`${API_BASE}/api/reports?type=${TYPE}&lite=1&limit=5000`, { cache: "no-store" }),
-        fetch(`${API_BASE}/api/reports?type=${TYPE}&limit=5`, { cache: "no-store" }),
-      ]);
-
-      // lite dates
-      if (liteRes.ok) {
-        const data = await liteRes.json();
-        const rows = Array.isArray(data) ? data : data?.data ?? [];
-        const filtered = rows
-          .filter((r) => r.reportDate)
-          .map((r) => ({ id: r.id, reportDate: r.reportDate }))
-          .sort((a, b) => b.reportDate.localeCompare(a.reportDate));
-        liteDatesRef.current = filtered;
-        setLiteDates(filtered);
-      }
-
-      // preload last 5 full records
-      if (fullRes.ok) {
-        const data = await fullRes.json();
-        const rows = Array.isArray(data) ? data : data?.data ?? [];
-        const map = preloadedRef.current;
-        rows.forEach((r) => {
-          const d = r?.payload?.reportDate;
-          if (d) map.set(d, r);
-        });
-        // show the most recent immediately
-        const first = rows[0];
-        if (first?.payload?.reportDate) {
-          applyRecord(first);
-          setDate(first.payload.reportDate);
-        }
-      }
+      const filtered = await listReportDateIndex(TYPE);
+      liteDatesRef.current = filtered;
+      setLiteDates(filtered);
+      if (filtered[0]?.reportDate) setDate(filtered[0].reportDate);
     } catch (e) {
       console.warn("Init fetch failed", e);
     }
@@ -204,20 +177,10 @@ export default function PRDTraceabilityLogView() {
       return;
     }
 
-    // find the id from liteDatesRef (sync, always current)
-    const liteEntry = liteDatesRef.current.find((x) => x.reportDate === d);
-    if (!liteEntry?.id) {
-      setRecord(null);
-      return;
-    }
-
     setLoading(true);
     setErr("");
     try {
-      const res = await fetch(`${API_BASE}/api/reports/${liteEntry.id}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const match = data?.report ?? null;
+      const match = await getReportByDate(TYPE, d);
       preloadedRef.current.set(d, match); // cache it
       applyRecord(match);
     } catch (e) {
