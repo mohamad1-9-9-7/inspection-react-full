@@ -118,6 +118,7 @@ export function defaultConfig() {
     suppliers: [],
     operations: [],
     boms: [],
+    settings: {},          // إعدادات نظام الوحدة (مثال: تفعيل المسارات المتعددة)
     updatedAt: null,
     updatedBy: "",
   };
@@ -133,6 +134,7 @@ export function mergeConfig(saved) {
     suppliers: Array.isArray(saved.suppliers) ? saved.suppliers : base.suppliers,
     operations: Array.isArray(saved.operations) ? saved.operations : base.operations,
     boms: Array.isArray(saved.boms) ? saved.boms : base.boms,
+    settings: (saved.settings && typeof saved.settings === "object") ? saved.settings : base.settings,
     updatedAt: saved.updatedAt || null,
     updatedBy: saved.updatedBy || "",
   };
