@@ -12,14 +12,13 @@
 
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BRANCHES, nameOf } from "./butcherOptions";
 import { BarChart, LineChart } from "./ButcherCharts";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 import {
-  C, Card, Chip, DeltaCell, EmptyBox, ErrorNote, KIT_CSS, Kpi, MiniBar, PageHead, S,
-  Skeleton, kg, monthStart, pct, shiftDays, todayStr, totalsOf, useButcherData,
-  useNormalizedRows,
+  C, Card, Chip, DeltaCell, EmptyBox, ErrorNote, FONT, KIT_CSS, Kpi, MiniBar, MultiPicker, PageHead, S,
+  Skeleton, downloadExcel, downloadPdf, groupTree, inSet, kg, monthStart, pct, shiftDays,
+  todayStr, totalsOf, useButcherData, useNormalizedRows, wasteBreakdown,
 } from "./butcherReportKit";
 
 const addDays = (iso, n) => {
@@ -58,13 +57,45 @@ export default function ButcherSummary() {
   const { records, loading, error, truncated, reload, cfg, mrpCfg } =
     useButcherData({ from: fetchFrom, to });
   const all = useNormalizedRows(records, { cfg, mrpCfg, isAr });
-  const [branch, setBranch] = useState("");
 
-  const inRange = (r, a, b) =>
-    (!a || r.day >= a) && (!b || r.day <= b) && (!branch || r.branchCode === branch);
+  /* ── فلاتر متعدّدة تعمل معاً في آن واحد ── */
+  const [fBranch, setFBranch] = useState([]);
+  const [fButcher, setFButcher] = useState([]);
+  const [fPathway, setFPathway] = useState([]);
+  const [fRecipe, setFRecipe] = useState([]);
+  const [fCategory, setFCategory] = useState([]);
+
+  const NOPATH = t({ en: "No pathway", ar: "بلا مسار" });
+  const UNCAT = t({ en: "Uncategorized", ar: "بلا فئة" });
+
+  const passFilters = (r) =>
+    inSet(fBranch, r.branchCode) &&
+    inSet(fButcher, r.employeeNoRaw) &&
+    inSet(fPathway, r.pathwayCode || "—") &&
+    inSet(fRecipe, r.bomRef || "—") &&
+    inSet(fCategory, r.bomCatName || "—");
+
+  const inRange = (r, a, b) => (!a || r.day >= a) && (!b || r.day <= b) && passFilters(r);
+
+  /* خيارات الفلاتر من كل البيانات المحمّلة (ثابتة رغم الفلترة) */
+  const opts = useMemo(() => {
+    const uniq = (arr) => [...new Map(arr.filter((o) => o.value).map((o) => [o.value, o])).values()]
+      .sort((a, b) => String(a.label).localeCompare(String(b.label), undefined, { numeric: true }));
+    return {
+      branch: uniq(all.map((r) => ({ value: r.branchCode, label: r.branchName || r.branchCode }))),
+      butcher: uniq(all.map((r) => ({ value: r.employeeNoRaw, label: r.employeeNo }))),
+      pathway: uniq(all.map((r) => ({ value: r.pathwayCode || "—", label: r.pathwayLabel || NOPATH }))),
+      recipe: uniq(all.map((r) => ({ value: r.bomRef || "—", label: r.bomRef || "—" }))),
+      category: uniq(all.map((r) => ({ value: r.bomCatName || "—", label: r.bomCatName || UNCAT }))),
+    };
+  }, [all, NOPATH, UNCAT]);
+
+  const activeFilters = fBranch.length + fButcher.length + fPathway.length + fRecipe.length + fCategory.length;
+  const clearFilters = () => { setFBranch([]); setFButcher([]); setFPathway([]); setFRecipe([]); setFCategory([]); };
 
   /* الفترة الحالية والفترة السابقة المكافئة (للمقارنة) */
-  const rows = useMemo(() => all.filter((r) => inRange(r, from, to)), [all, from, to, branch]);
+  const rows = useMemo(() => all.filter((r) => inRange(r, from, to)),
+    [all, from, to, fBranch, fButcher, fPathway, fRecipe, fCategory]);
 
   const prevRows = useMemo(() => {
     if (!from || !to) return [];
@@ -72,7 +103,7 @@ export default function ButcherSummary() {
     const pTo = addDays(from, -1);
     const pFrom = addDays(pTo, -(span - 1));
     return all.filter((r) => inRange(r, pFrom, pTo));
-  }, [all, from, to, branch]);
+  }, [all, from, to, fBranch, fButcher, fPathway, fRecipe, fCategory]);
 
   const stats = useMemo(() => totalsOf(rows), [rows]);
   const prev = useMemo(() => totalsOf(prevRows), [prevRows]);
@@ -132,6 +163,20 @@ export default function ButcherSummary() {
   const byCategory = useMemo(() => groupBy("bomCatName"), [rows]);
   const byRecipe = useMemo(() => groupBy("bomRef"), [rows]);
   const byBranch = useMemo(() => groupBy("branchName"), [rows]);
+  const byPathway = useMemo(
+    () => groupBy("pathwayLabel").map((g) => ({ ...g, key: g.key === "—" ? NOPATH : g.key })),
+    [rows, NOPATH]
+  );
+
+  /* ── التجميع الهرمي: الملحمة → الجزار → المسار (مع تفصيل الهدر) ── */
+  const pivot = useMemo(
+    () => groupTree(rows, [
+      { key: "branchName" },
+      { key: "employeeNo" },
+      { key: (r) => r.pathwayLabel || NOPATH },
+    ]),
+    [rows, NOPATH]
+  );
 
   /* ── أداء الجزارين: متوسط التصافي + الثبات ── */
   const byButcher = useMemo(() => {
@@ -214,6 +259,85 @@ export default function ButcherSummary() {
     year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
   });
 
+  /* ── تسطيح التجميع الهرمي للتصدير ── */
+  const flattenPivot = () => {
+    const out = [];
+    const levelName = ["Branch", "Butcher", "Pathway"];
+    const walk = (nodes) => (nodes || []).forEach((n) => {
+      out.push([
+        `${"    ".repeat(n.depth)}${n.label}`,
+        levelName[n.depth] || "",
+        n.totals.count, kg(n.totals.carcassKg), kg(n.totals.cutsKg),
+        kg(n.totals.wasteKg), `${n.totals.yieldPct.toFixed(1)}%`,
+      ]);
+      walk(n.children);
+    });
+    walk(pivot);
+    return out;
+  };
+
+  const fileStamp = `${from}_${to}`;
+
+  const exportExcel = async () => {
+    const H = ["Jobs", "Raw kg", "Products kg", "Waste kg", "Yield %"];
+    const grpAoa = (data, first) => [
+      [first, ...H],
+      ...data.map((g) => [g.key, g.count, kg(g.carcassKg), kg(g.cutsKg), kg(g.wasteKg), `${g.yieldPct.toFixed(1)}%`]),
+    ];
+    const sheets = [
+      { name: "KPIs", widths: [24, 22], aoa: [
+        ["Metric", "Value"],
+        ["Period", `${from} → ${to}`],
+        ["Filters", activeFilters ? `${activeFilters} active` : "none"],
+        ["Transactions", stats.count],
+        ["Butchers", stats.butchers],
+        ["Raw kg", kg(stats.carcassKg)],
+        ["Products kg", kg(stats.cutsKg)],
+        ["Waste kg", kg(stats.wasteKg)],
+        ["Net yield %", stats.yieldPct.toFixed(1)],
+        ["Waste %", stats.wastePct.toFixed(1)],
+      ] },
+      { name: "By date", widths: [14, 8, 12, 12, 12, 10], aoa: [
+        ["Date", ...H],
+        ...byDate.map((d) => [d.day, d.count, kg(d.carcassKg), kg(d.cutsKg), kg(d.wasteKg), `${d.yieldPct.toFixed(1)}%`]),
+      ] },
+      { name: "By branch", widths: [26, 8, 12, 12, 12, 10], aoa: grpAoa(byBranch, "Branch") },
+      { name: "By butcher", widths: [26, 8, 12, 12, 12, 10], aoa: grpAoa(byButcher, "Butcher") },
+      { name: "By pathway", widths: [26, 8, 12, 12, 12, 10], aoa: grpAoa(byPathway, "Pathway") },
+      { name: "Pivot", widths: [42, 10, 8, 12, 12, 12, 10], aoa: [["Group", "Level", ...H], ...flattenPivot()] },
+      { name: "Products", widths: [28, 12, 8, 12, 12, 12, 10], aoa: [
+        ["Product", "Code", "Lines", "Actual kg", "Target kg", "Deviation %", "Share %"],
+        ...products.map((p) => [p.name, p.sku, p.n, kg(p.actual), p.target ? kg(p.target) : "",
+          p.deviation != null ? p.deviation.toFixed(1) : "", p.share.toFixed(1)]),
+      ] },
+      { name: "Raw", widths: [12, 7, 20, 22, 12, 18, 10, 10, 10, 9, 9], aoa: [
+        ["Date", "Time", "Branch", "Butcher", "Recipe", "Pathway", "Raw", "Products", "Waste", "Yield %", "Waste %"],
+        ...rows.map((r) => [r.day, r.time, r.branchName, r.employeeNo, r.bomRef, r.pathwayLabel || "",
+          kg(r.carcassKg), kg(r.cutsKg), kg(r.wasteKg), r.yieldPct.toFixed(1), r.wastePct.toFixed(1)]),
+      ] },
+    ];
+    await downloadExcel(sheets, `butcher-summary_${fileStamp}.xlsx`);
+  };
+
+  const exportPdf = async () => {
+    const H = ["Jobs", "Raw kg", "Products", "Waste", "Yield %"];
+    const grp = (data) => data.map((g) => [g.key, g.count, kg(g.carcassKg), kg(g.cutsKg), kg(g.wasteKg), `${g.yieldPct.toFixed(1)}%`]);
+    await downloadPdf({
+      title: "Butcher Summary Report",
+      meta: [`Period: ${from} to ${to}`, `Transactions: ${stats.count}`,
+        `Net yield: ${stats.yieldPct.toFixed(1)}%`, `Waste: ${stats.wastePct.toFixed(1)}%`],
+      blocks: [
+        { title: "By date", head: ["Date", ...H],
+          rows: byDate.map((d) => [d.day, d.count, kg(d.carcassKg), kg(d.cutsKg), kg(d.wasteKg), `${d.yieldPct.toFixed(1)}%`]) },
+        { title: "By branch", head: ["Branch", ...H], rows: grp(byBranch) },
+        { title: "By butcher", head: ["Butcher", ...H], rows: grp(byButcher) },
+        { title: "By pathway", head: ["Pathway", ...H], rows: grp(byPathway) },
+        { title: "Branch > Butcher > Pathway", head: ["Group", "Level", ...H], rows: flattenPivot() },
+      ],
+      filename: `butcher-summary_${fileStamp}.pdf`,
+    });
+  };
+
   if (!canOpenButcherPage("butcher.summary")) return <NoAccess page="butcher.summary" />;
 
   return (
@@ -234,20 +358,44 @@ export default function ButcherSummary() {
           </button>
           <button
             type="button"
+            style={{ ...S.btn, ...S.btnSm, ...(rows.length ? null : { opacity: 0.5, pointerEvents: "none" }) }}
+            onClick={exportExcel}
+            title={t({ en: "Download Excel (multi-sheet)", ar: "تنزيل إكسل (أوراق متعددة)" })}
+          >
+            ⬇ {t({ en: "Excel", ar: "إكسل" })}
+          </button>
+          <button
+            type="button"
+            style={{ ...S.btn, ...S.btnSm, ...(rows.length ? null : { opacity: 0.5, pointerEvents: "none" }) }}
+            onClick={exportPdf}
+            title={t({ en: "Download PDF (English)", ar: "تنزيل PDF (إنجليزي)" })}
+          >
+            ⬇ {t({ en: "PDF", ar: "PDF" })}
+          </button>
+          <button
+            type="button"
             style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary }}
             onClick={() => window.print()}
           >
-            🖨 {t({ en: "Print / PDF", ar: "طباعة / PDF" })}
+            🖨 {t({ en: "Print", ar: "طباعة" })}
           </button>
           <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={() => navigate("/butcher", { replace: true })}>
             ← {t({ en: "Back", ar: "رجوع" })}
           </button>
         </PageHead>
 
-        {/* ══ اختيار الفترة ══ */}
+        {/* ══ الفترة + الفلاتر المتعدّدة ══ */}
         <Card
-          icon="📅"
-          title={t({ en: "Report period", ar: "فترة التقرير" })}
+          icon="🧰"
+          title={t({ en: "Period & filters", ar: "الفترة والفلاتر" })}
+          sub={activeFilters
+            ? t({ en: `${activeFilters} filter(s) applied together`, ar: `${activeFilters} فلتر مطبّق معاً` })
+            : t({ en: "Combine as many filters as you like — they all apply at once.", ar: "اجمع أي عدد من الفلاتر — كلها بتشتغل بنفس الوقت." })}
+          actions={activeFilters ? (
+            <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={clearFilters}>
+              ✕ {t({ en: "Clear filters", ar: "مسح الفلاتر" })}
+            </button>
+          ) : null}
           style={{ marginBottom: 16 }}
         >
           <div className="bk-noprint bk-tools" style={S.toolbar}>
@@ -261,29 +409,35 @@ export default function ButcherSummary() {
               <input type="date" value={to} min={from || undefined}
                 onChange={(e) => setTo(e.target.value)} style={S.input} />
             </label>
-            <label style={S.label}>
-              <span className="bk-lbl" style={{ color: C.muted }}>{t({ en: "Butchery", ar: "الملحمة" })}</span>
-              <select value={branch} onChange={(e) => setBranch(e.target.value)} style={S.input}>
-                <option value="">{t({ en: "All butcheries", ar: "كل الملاحم" })}</option>
-                {BRANCHES.map((b) => (
-                  <option key={b.code} value={b.code}>{nameOf(b, isAr)}</option>
-                ))}
-              </select>
-            </label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
-              {[
-                { lbl: t({ en: "This month", ar: "هذا الشهر" }), a: monthStart(), b: todayStr() },
-                { lbl: t({ en: "30 days", ar: "٣٠ يوم" }), a: shiftDays(-29), b: todayStr() },
-                { lbl: t({ en: "90 days", ar: "٩٠ يوم" }), a: shiftDays(-89), b: todayStr() },
-              ].map((p) => (
-                <button key={p.lbl} type="button"
-                  style={{ ...S.btn, ...S.btnSm, ...(from === p.a && to === p.b ? S.btnPrimary : null) }}
-                  onClick={() => { setFrom(p.a); setTo(p.b); }}
-                >
-                  {p.lbl}
-                </button>
-              ))}
-            </div>
+            <MultiPicker t={t} label={t({ en: "Butchery", ar: "الملحمة" })}
+              options={opts.branch} value={fBranch} onChange={setFBranch}
+              placeholder={t({ en: "All butcheries", ar: "كل الملاحم" })} />
+            <MultiPicker t={t} label={t({ en: "Butcher", ar: "الجزار" })}
+              options={opts.butcher} value={fButcher} onChange={setFButcher}
+              placeholder={t({ en: "All butchers", ar: "كل الجزارين" })} />
+            <MultiPicker t={t} label={t({ en: "Pathway", ar: "المسار" })}
+              options={opts.pathway} value={fPathway} onChange={setFPathway}
+              placeholder={t({ en: "All pathways", ar: "كل المسارات" })} />
+            <MultiPicker t={t} label={t({ en: "Recipe", ar: "الوصفة" })}
+              options={opts.recipe} value={fRecipe} onChange={setFRecipe}
+              placeholder={t({ en: "All recipes", ar: "كل الوصفات" })} />
+            <MultiPicker t={t} label={t({ en: "Category", ar: "الفئة" })}
+              options={opts.category} value={fCategory} onChange={setFCategory}
+              placeholder={t({ en: "All categories", ar: "كل الفئات" })} />
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {[
+              { lbl: t({ en: "This month", ar: "هذا الشهر" }), a: monthStart(), b: todayStr() },
+              { lbl: t({ en: "30 days", ar: "٣٠ يوم" }), a: shiftDays(-29), b: todayStr() },
+              { lbl: t({ en: "90 days", ar: "٩٠ يوم" }), a: shiftDays(-89), b: todayStr() },
+            ].map((p) => (
+              <button key={p.lbl} type="button"
+                style={{ ...S.btn, ...S.btnSm, ...(from === p.a && to === p.b ? S.btnPrimary : null) }}
+                onClick={() => { setFrom(p.a); setTo(p.b); }}
+              >
+                {p.lbl}
+              </button>
+            ))}
           </div>
         </Card>
 
@@ -328,7 +482,7 @@ export default function ButcherSummary() {
                   </div>
                   <div className="bk-lbl" style={{ color: C.muted, marginTop: 4 }}>
                     {t({ en: "Period", ar: "الفترة" })}: {from} → {to}
-                    {branch ? ` · ${nameOf(BRANCHES.find((b) => b.code === branch) || {}, isAr)}` : ""}
+                    {activeFilters ? ` · ${activeFilters} ${t({ en: "filters", ar: "فلتر" })}` : ""}
                     {" · "}{t({ en: "Printed", ar: "طُبع" })}: {printedAt}
                   </div>
                 </div>
@@ -481,8 +635,26 @@ export default function ButcherSummary() {
               </div>
             </Card>
 
-            {/* ══ حسب الفئة / الوصفة / الملحمة ══ */}
+            {/* ══ التجميع الهرمي: الملحمة ← الجزار ← المسار ← الهدر ══ */}
+            <Card
+              className="bk-pagebreak"
+              icon="🧭"
+              title={t({ en: "Branch → Butcher → Pathway → Waste", ar: "الملحمة ← الجزار ← المسار ← الهدر" })}
+              sub={t({
+                en: "Expand a row to drill down. The deepest level opens the waste breakdown.",
+                ar: "افتح أي صف للتفصيل. أعمق مستوى بيفتح تفصيل الهدر.",
+              })}
+            >
+              {pivot && pivot.length ? (
+                <PivotTree nodes={pivot} t={t} />
+              ) : (
+                <EmptyBox>{t({ en: "Nothing to group.", ar: "لا يوجد ما يُجمَّع." })}</EmptyBox>
+              )}
+            </Card>
+
+            {/* ══ حسب الفئة / الوصفة / الملحمة / المسار ══ */}
             {[
+              { icon: "🔀", title: t({ en: "By pathway", ar: "حسب المسار" }), data: byPathway },
               { icon: "🗂️", title: t({ en: "By category", ar: "حسب الفئة" }), data: byCategory },
               { icon: "📐", title: t({ en: "By recipe", ar: "حسب الوصفة" }), data: byRecipe },
               { icon: "🏬", title: t({ en: "By butchery", ar: "حسب الملحمة" }), data: byBranch },
@@ -635,6 +807,109 @@ export default function ButcherSummary() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ══════════════ جدول التجميع الهرمي القابل للطي ══════════════ */
+/* الملحمة → الجزار → المسار، وأعمق مستوى بيفتح تفصيل الهدر. */
+function PivotTree({ nodes, t }) {
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = (p) =>
+    setOpen((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+
+  const ICON = ["🏬", "🧑‍🍳", "🔀"];
+  const TONE = [C.blueDk, C.ink, C.violet];
+
+  const flat = [];
+  const walk = (list, parent) => {
+    (list || []).forEach((node) => {
+      const path = `${parent}/${node.key}`;
+      const isLeaf = !(node.children && node.children.length);
+      const canOpen = !isLeaf || node.depth === 2;   // المسار (leaf) بيفتح الهدر
+      const isOpen = open.has(path);
+      flat.push({ type: "node", node, path, canOpen, isOpen });
+      if (isOpen) {
+        if (!isLeaf) walk(node.children, path);
+        else if (node.depth === 2) {
+          const wb = wasteBreakdown(node.rows);
+          if (!wb.length) {
+            flat.push({ type: "wnone", path: `${path}/wn`, depth: node.depth + 1 });
+          } else {
+            wb.forEach((w, i) => flat.push({ type: "waste", w, path: `${path}/w${i}`, depth: node.depth + 1 }));
+          }
+        }
+      }
+    });
+  };
+  walk(nodes, "");
+
+  return (
+    <div className="bk-tablewrap" style={S.tableWrap}>
+      <table style={S.table}>
+        <thead>
+          <tr>
+            <th style={S.th}>{t({ en: "Group", ar: "المجموعة" })}</th>
+            <th style={{ ...S.th, textAlign: "end" }}>{t({ en: "Jobs", ar: "المعاملات" })}</th>
+            <th style={{ ...S.th, textAlign: "end" }}>{t({ en: "Raw kg", ar: "الخام" })}</th>
+            <th style={{ ...S.th, textAlign: "end" }}>{t({ en: "Products", ar: "النواتج" })}</th>
+            <th style={{ ...S.th, textAlign: "end" }}>{t({ en: "Waste", ar: "الهدر" })}</th>
+            <th style={{ ...S.th, textAlign: "end" }}>{t({ en: "Yield %", ar: "التصافي ٪" })}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {flat.map((r) => {
+            if (r.type === "waste") {
+              return (
+                <tr key={r.path} style={{ background: C.soft }}>
+                  <td style={{ ...S.td, paddingInlineStart: 18 + r.depth * 22 }}>
+                    <span style={{ color: C.amber, fontWeight: 800 }}>🦴 {r.w.name}</span>
+                    {r.w.sku ? <span className="bk-lbl" style={{ color: C.muted }}> · {r.w.sku}</span> : null}
+                  </td>
+                  <td style={{ ...S.td, ...S.tdNum }}>{r.w.n}</td>
+                  <td style={{ ...S.td, ...S.tdNum, color: C.muted }}>—</td>
+                  <td style={{ ...S.td, ...S.tdNum, color: C.muted }}>—</td>
+                  <td style={{ ...S.td, ...S.tdNum, color: C.amber }}>{kg(r.w.kg)}</td>
+                  <td style={{ ...S.td, ...S.tdNum, color: C.muted }}>—</td>
+                </tr>
+              );
+            }
+            if (r.type === "wnone") {
+              return (
+                <tr key={r.path}>
+                  <td colSpan={6} style={{ ...S.td, paddingInlineStart: 18 + r.depth * 22, color: C.muted }}>
+                    {t({ en: "No waste recorded.", ar: "لا هدر مسجّل." })}
+                  </td>
+                </tr>
+              );
+            }
+            const { node, canOpen, isOpen } = r;
+            return (
+              <tr key={r.path} style={node.depth === 0 ? { background: "#f2f8ff" } : null}>
+                <td style={{ ...S.td, fontWeight: node.depth === 0 ? 900 : 800, paddingInlineStart: 12 + node.depth * 22 }}>
+                  <button
+                    type="button"
+                    onClick={() => canOpen && toggle(r.path)}
+                    style={{
+                      border: "none", background: "transparent", cursor: canOpen ? "pointer" : "default",
+                      fontFamily: FONT, color: TONE[node.depth] || C.ink, fontWeight: "inherit",
+                      display: "inline-flex", alignItems: "center", gap: 8, padding: 0,
+                    }}
+                  >
+                    <span style={{ width: 14, color: C.muted }}>{canOpen ? (isOpen ? "▾" : "▸") : ""}</span>
+                    <span>{ICON[node.depth] || ""} {node.label}</span>
+                  </button>
+                </td>
+                <td style={{ ...S.td, ...S.tdNum }}>{node.totals.count}</td>
+                <td style={{ ...S.td, ...S.tdNum }}>{kg(node.totals.carcassKg)}</td>
+                <td style={{ ...S.td, ...S.tdNum, color: C.teal }}>{kg(node.totals.cutsKg)}</td>
+                <td style={{ ...S.td, ...S.tdNum, color: C.amber }}>{kg(node.totals.wasteKg)}</td>
+                <td style={{ ...S.td, ...S.tdNum, color: C.green }}>{node.totals.yieldPct.toFixed(1)}%</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

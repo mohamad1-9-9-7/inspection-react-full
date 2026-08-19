@@ -167,6 +167,13 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     bomRef: p.bomRef || "",
     bomCatId: p.bomCategoryId || "",
     bomCatName: bomCatName(mrpCfg, p.bomCategoryId, isAr),
+    // المسار (وضع المسارات المتعددة) — لقطة محفوظة وقت التسجيل
+    pathwayId: p.pathwayId || "",
+    pathwayCode: p.pathwayCode || "",
+    pathwayName: p.pathwayName || "",
+    pathwayLabel: p.pathwayCode
+      ? (p.pathwayName ? `${p.pathwayCode} · ${p.pathwayName}` : p.pathwayCode)
+      : "",
     inputItemId: p.inputItemId || "",
     inputSku: p.inputSku || "",
     inputName: (isAr ? p.animal : p.animalEn) || p.animal || p.animalEn || "—",
@@ -217,6 +224,57 @@ export function totalsOf(rows) {
     avgCarcass: rows.length ? carcassKg / rows.length : 0,
   };
 }
+
+/**
+ * تجميع هرمي متعدّد المستويات (Branch → Butcher → Pathway → …).
+ * `levels` = مصفوفة من { key, label } حيث key اسم حقل بالصف أو دالة (r)=>value.
+ * يرجّع شجرة عقد: { key, label, level, totals, rows, children[] }.
+ */
+export function groupTree(rows, levels) {
+  const build = (list, depth) => {
+    if (depth >= levels.length) return null;
+    const { key, label } = levels[depth];
+    const get = typeof key === "function" ? key : (r) => r[key];
+    const map = new Map();
+    list.forEach((r) => {
+      const raw = get(r);
+      const k = raw === "" || raw === null || raw === undefined ? "—" : String(raw);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(r);
+    });
+    return [...map.entries()]
+      .map(([k, sub]) => ({
+        key: k,
+        label: typeof label === "function" ? label(sub[0], k) : k,
+        levelKey: typeof key === "function" ? `lvl${depth}` : key,
+        depth,
+        totals: totalsOf(sub),
+        rows: sub,
+        children: build(sub, depth + 1),
+      }))
+      .sort((a, b) => b.totals.carcassKg - a.totals.carcassKg);
+  };
+  return build(rows, 0);
+}
+
+/** تفصيل الهدر — تجميع أسطر الهدر عبر الصفوف حسب الصنف. */
+export function wasteBreakdown(rows) {
+  const map = new Map();
+  rows.forEach((r) => {
+    r.cuts.forEach((c) => {
+      if (!c.isWaste || !(c.weightKg > 0)) return;
+      const k = c.itemId || c.name;
+      if (!map.has(k)) map.set(k, { name: c.name, nameAlt: c.nameAlt, sku: c.sku, kg: 0, n: 0 });
+      const g = map.get(k);
+      g.kg += c.weightKg;
+      g.n += 1;
+    });
+  });
+  return [...map.values()].sort((a, b) => b.kg - a.kg);
+}
+
+/** فلتر متعدّد القيم — إذا `sel` فاضية يمرّ الكل، وإلا لازم القيمة ضمنها. */
+export const inSet = (sel, value) => !sel || sel.length === 0 || sel.includes(value);
 
 /* ══════════════ التصميم ══════════════ */
 
@@ -678,6 +736,100 @@ export async function downloadPdf({ title, meta = [], blocks = [], filename }) {
   });
 
   doc.save(filename);
+}
+
+/**
+ * منتقي متعدّد القيم — زر يفتح قائمة بحث + خانات اختيار.
+ * `options` = [{ value, label }] · `value` = مصفوفة القيم المختارة · `onChange(next)`.
+ */
+export function MultiPicker({ label, options, value = [], onChange, t, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const boxRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const shown = q.trim()
+    ? options.filter((o) => String(o.label).toLowerCase().includes(q.trim().toLowerCase()))
+    : options;
+  const toggle = (v) =>
+    onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+
+  const summary = value.length === 0
+    ? (placeholder || t({ en: "All", ar: "الكل" }))
+    : `${value.length} ${t({ en: "selected", ar: "مختار" })}`;
+
+  return (
+    <label style={S.label}>
+      {label && <span className="bk-lbl" style={{ color: C.muted }}>{label}</span>}
+      <div ref={boxRef} style={{ position: "relative", minWidth: 0 }}>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          style={{ ...S.input, textAlign: "start", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}
+        >
+          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            color: value.length ? C.ink : C.muted, fontWeight: 800 }}>{summary}</span>
+          {value.length > 0 && (
+            <span
+              role="button"
+              onClick={(e) => { e.stopPropagation(); onChange([]); }}
+              style={{ color: C.muted, fontWeight: 900 }}
+              title={t({ en: "Clear", ar: "مسح" })}
+            >✕</span>
+          )}
+          <span style={{ color: C.muted }}>▾</span>
+        </button>
+        {open && (
+          <div style={{
+            position: "absolute", zIndex: 60, insetInlineStart: 0, top: "calc(100% + 4px)",
+            width: "min(320px, 86vw)", background: "#fff", border: `1px solid ${C.line2}`,
+            borderRadius: 12, boxShadow: "0 18px 40px rgba(15,39,64,.20)", overflow: "hidden",
+          }}>
+            <div style={{ padding: 8, borderBottom: `1px solid ${C.line}` }}>
+              <input
+                autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+                placeholder={t({ en: "Search…", ar: "بحث…" })}
+                style={{ ...S.input, padding: "8px 10px" }}
+              />
+            </div>
+            <div style={{ maxHeight: 260, overflowY: "auto" }}>
+              {shown.length === 0 ? (
+                <div className="bk-lbl" style={{ padding: 12, color: C.muted }}>
+                  {t({ en: "No match", ar: "لا يوجد مطابق" })}
+                </div>
+              ) : shown.map((o) => {
+                const on = value.includes(o.value);
+                return (
+                  <button
+                    key={o.value} type="button" onClick={() => toggle(o.value)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, width: "100%",
+                      textAlign: "start", border: "none", background: on ? "#eaf2fc" : "transparent",
+                      padding: "9px 12px", cursor: "pointer", fontFamily: FONT, color: C.ink,
+                      fontWeight: 700, borderBottom: `1px solid ${C.soft}`,
+                    }}
+                  >
+                    <span style={{
+                      width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                      border: `2px solid ${on ? C.blue : C.line2}`, background: on ? C.blue : "#fff",
+                      color: "#fff", display: "grid", placeItems: "center", fontSize: 12,
+                    }}>{on ? "✓" : ""}</span>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{o.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </label>
+  );
 }
 
 /** فرز عام يحترم النصوص والأرقام. */
