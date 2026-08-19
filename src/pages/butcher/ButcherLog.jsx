@@ -151,7 +151,6 @@ export default function ButcherLog() {
   const [branch, setBranch] = useState("");
   const [bomCat, setBomCat] = useState(null);   // الفئة المختارة (null=الكل، UNCAT=بلا فئة)
   const [bom, setBom] = useState(null);         // قائمة التقطيع المختارة
-  const [pathwayId, setPathwayId] = useState(""); // المسار المختار (وضع المسارات المتعددة)
   const [carcass, setCarcass] = useState("");   // وزن المادة الخام قبل التقطيع
   const [pieceCount, setPieceCount] = useState(""); // عدد القطع (إن طلبته الوصفة)
   const [values, setValues] = useState({});     // { itemId: { w } }
@@ -230,14 +229,37 @@ export default function ButcherLog() {
   /* ── المادة الخام ونواتج الوصفة من قائمة التقطيع المختارة ── */
   const inputItem = useMemo(() => (bom ? bomInputItem(mrpCfg, bom) : null), [mrpCfg, bom]);
 
-  /* المسارات المتعددة: الجزار يختار المسار، والنواتج/الهدر تُقرأ من المسار لا من الوصفة المسطّحة. */
+  /* المسارات المتعددة: كل المسارات تظهر بنفس الصفحة؛ الجزار يختار المسار
+     ضمنياً بأول منتج بيوزنه، وباقي المسارات بتتعطّل. */
   const isMultiPath = bomIsMultiPath(bom);
   const activePathways = useMemo(() => activePathwaysOf(bom), [bom]);
-  const pathway = useMemo(
-    () => (isMultiPath ? activePathways.find((p) => p.id === pathwayId) || null : null),
-    [isMultiPath, activePathways, pathwayId]
+
+  // أسطر كل مسار (نواتج + هدر) — المفتاح lineId فريد عبر كل المسارات
+  const pathwaySections = useMemo(
+    () => (isMultiPath
+      ? activePathways.map((p) => ({
+          pathway: p,
+          products: bomLines(mrpCfg, p, "outputs"),
+          wastes: bomLines(mrpCfg, p, "wastes"),
+        }))
+      : []),
+    [isMultiPath, activePathways, mrpCfg]
   );
-  // مصدر الأسطر: المسار المختار في وضع المسارات، وإلا الوصفة نفسها (bomLines يقرأ .outputs/.wastes من أي مصدر).
+
+  // المسار المختار = أول مسار عليه وزن > 0 (يحدّده الجزار بأول منتج يوزنه)
+  const chosenPathwayId = useMemo(() => {
+    if (!isMultiPath) return "";
+    const hit = pathwaySections.find((s) =>
+      [...s.products, ...s.wastes].some((c) => num(values[c.lineId]?.w) > 0));
+    return hit?.pathway.id || "";
+  }, [isMultiPath, pathwaySections, values]);
+
+  const pathway = useMemo(
+    () => (isMultiPath ? activePathways.find((p) => p.id === chosenPathwayId) || null : null),
+    [isMultiPath, activePathways, chosenPathwayId]
+  );
+
+  // مصدر أسطر المجاميع/الحفظ: المسار المختار (متعدد) أو الوصفة نفسها (مسطّح).
   const lineSource = isMultiPath ? pathway : bom;
   const bomOutputs = useMemo(() => (lineSource ? bomLines(mrpCfg, lineSource, "outputs") : []), [mrpCfg, lineSource]);
   const bomWastes = useMemo(() => (lineSource ? bomLines(mrpCfg, lineSource, "wastes") : []), [mrpCfg, lineSource]);
@@ -247,14 +269,14 @@ export default function ButcherLog() {
   const wasteCuts = useMemo(() => bomWastes, [bomWastes]);
   const ALL = useMemo(() => [...productCuts, ...wasteCuts], [productCuts, wasteCuts]);
 
-  /* مجاميع الشاشة الحالية — المفتاح معرّف الصنف */
+  /* مجاميع الشاشة الحالية — المفتاح معرّف السطر (lineId) ليبقى فريداً عبر المسارات */
   const carcassKg = num(carcass);
   const filled = useMemo(
     () =>
       ALL.map((c) => ({
         cut: c,
         kind: c.kind,
-        weightKg: num(values[c.id]?.w),
+        weightKg: num(values[c.lineId]?.w),
       })).filter((x) => x.weightKg > 0),
     [values, ALL]
   );
@@ -337,34 +359,21 @@ export default function ButcherLog() {
     setStep("bom");
   };
 
-  /* اختيار وصفة التقطيع → المسار (لو متعددة) وإلا صفحة الأوزان مباشرة */
+  /* اختيار وصفة التقطيع → صفحة الأوزان (المسارات المتعددة تظهر كلها بنفس الصفحة) */
   const pickBom = (b) => {
     setBom(b);
     setCarcass("");
     setPieceCount("");
     setValues({});
-    setPathwayId("");
-    setError("");
-    const paths = activePathwaysOf(b);
-    if (bomIsMultiPath(b)) {
-      // مسار واحد فعّال؟ اختَره تلقائياً وروح للأوزان. أكثر من واحد؟ اعرض شاشة الاختيار.
-      if (paths.length === 1) { setPathwayId(paths[0].id); setStep("cuts"); }
-      else { setStep("pathway"); }
-    } else {
-      setStep("cuts");
-    }
-  };
-
-  /* اختيار المسار → صفحة الأوزان (نواتج/هدر هذا المسار) */
-  const pickPathway = (p) => {
-    setPathwayId(p.id);
-    setValues({});       // الأسطر تتغيّر حسب المسار — صفّر الأوزان
     setError("");
     setStep("cuts");
   };
 
   const setVal = (cutId, key, v) =>
     setValues((prev) => ({ ...prev, [cutId]: { ...prev[cutId], [key]: v } }));
+
+  /* تفريغ كل الأوزان — لفكّ تعطيل المسارات والبدء بمسار آخر */
+  const clearWeights = () => { setValues({}); setError(""); };
 
   const save = async () => {
     if (!canSave || saving) return;
@@ -448,7 +457,6 @@ export default function ButcherLog() {
     setCarcass("");
     setPieceCount("");
     setValues({});
-    setPathwayId("");
     setBomSearch("");
     setError("");
     setSaved(null);
@@ -458,9 +466,7 @@ export default function ButcherLog() {
   const back = () => {
     if (step === "category") { setStep("emp"); return; }
     if (step === "bom") { setStep(hasCatStep ? "category" : "emp"); return; }
-    if (step === "pathway") { setStep("bom"); return; }
-    // من الأوزان: ارجع للمسار لو الوصفة متعددة المسارات، وإلا للوصفة
-    if (step === "cuts") { setStep(isMultiPath ? "pathway" : "bom"); return; }
+    if (step === "cuts") { setStep("bom"); return; }
   };
 
   const KG = t({ en: "kg", ar: "كجم" });
@@ -519,7 +525,7 @@ export default function ButcherLog() {
         </div>
 
         {step !== "emp" && step !== "done" && (
-          <StepBar step={step} hasCat={hasCatStep} hasPath={isMultiPath} t={t} />
+          <StepBar step={step} hasCat={hasCatStep} t={t} />
         )}
 
         {/* تعذّر تحميل الخطة/التقدّم — نقولها بدل ما يختفي الشريط بلا سبب.
@@ -733,40 +739,6 @@ export default function ButcherLog() {
           </>
         )}
 
-        {/* 2.5 — اختيار المسار (للوصفات متعددة المسارات فقط) */}
-        {step === "pathway" && (
-          <>
-            <div className="bt-q" style={S.q}>
-              {t({ en: "Choose the routing pathway", ar: "اختر مسار التوزيع" })}
-            </div>
-            {!activePathways.length ? (
-              <div className="bt-sum" style={S.emptyBox}>
-                {t({
-                  en: "This recipe has no active pathway — activate one in Manufacturing → Cutting BOMs.",
-                  ar: "هالوصفة ما فيها مسار مفعّل — فعّل واحد من التصنيع ← قوائم التقطيع.",
-                })}
-              </div>
-            ) : (
-              <div style={S.grid}>
-                {activePathways.map((p) => {
-                  const outN = (p.outputs || []).length;
-                  return (
-                    <button key={p.id} className="bt-press" onClick={() => pickPathway(p)} style={S.tile}>
-                      <span className="bt-name" style={S.name}>
-                        {p.name || t({ en: "Pathway", ar: "مسار" })}
-                      </span>
-                      <span className="bt-lbl" style={S.code}>{p.code}</span>
-                      <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-                        {outN} {t({ en: "final products", ar: "منتج نهائي" })}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
-
         {/* 3 — الأوزان: المادة الخام + النواتج بنفس الصفحة */}
         {step === "cuts" && (
           <>
@@ -843,66 +815,175 @@ export default function ButcherLog() {
               </div>
             </div>
 
-            {/* ── المنتجات النهائية (نواتج الوصفة) ── */}
-            <div className="bt-lbl" style={S.sectionLbl}>
-              {t({ en: "Final products", ar: "المنتجات النهائية" })}
-            </div>
-            <div style={S.grid}>
-              {productCuts.map((c) => {
-                const w = num(values[c.id]?.w);
-                const target = targetKgOf(c);
-                return (
-                  <ItemCard
-                    key={c.id}
-                    item={c}
-                    value={values[c.id]?.w || ""}
-                    onChange={(v) => setVal(c.id, "w", v)}
-                    code={c.sku}
-                    pct={showPct && w > 0 && carcassKg > 0 ? pctOf(w) : null}
-                    pctLabel={t({ en: "of raw", ar: "من الخام" })}
-                    target={target > 0 ? target : null}
-                    targetLabel={t({ en: "target", ar: "الهدف" })}
-                    tone={targetTone(target, w)}
-                    isAr={isAr}
-                    t={t}
-                  />
-                );
-              })}
-              {!productCuts.length && (
-                <div className="bt-sum" style={S.emptyBox}>
-                  {t({
-                    en: "This recipe has no final products — fix the BOM.",
-                    ar: "هالوصفة بلا منتجات نهائية — صحّح الوصفة.",
+            {isMultiPath ? (
+              /* ── وضع المسارات: كل المسارات بنفس الصفحة، واحد بيتفعّل والباقي بيتعطّل ── */
+              <>
+                <div className="bt-sum" style={{
+                  ...S.emptyBox, textAlign: "start", background: "#f7f5ff",
+                  borderColor: "#c9b8f2", color: "#4c1d95",
+                }}>
+                  🔀 {t({
+                    en: "Enter a weight under one pathway — the others lock automatically.",
+                    ar: "أدخل وزن تحت مسار واحد — الباقي بيتعطّل تلقائياً.",
                   })}
                 </div>
-              )}
-            </div>
-
-            {/* ── الهدر ── */}
-            {wasteCuts.length > 0 && (
+                {!pathwaySections.length && (
+                  <div className="bt-sum" style={S.emptyBox}>
+                    {t({
+                      en: "This recipe has no active pathway — activate one in Manufacturing → Cutting BOMs.",
+                      ar: "هالوصفة ما فيها مسار مفعّل — فعّل واحد من التصنيع ← قوائم التقطيع.",
+                    })}
+                  </div>
+                )}
+                {pathwaySections.map((sec) => {
+                  const isChosen = chosenPathwayId === sec.pathway.id;
+                  const locked = !!chosenPathwayId && !isChosen;
+                  return (
+                    <div key={sec.pathway.id} style={{
+                      border: `2px solid ${isChosen ? "#6d28d9" : "#e6eef7"}`,
+                      borderRadius: 16, padding: 12, marginTop: 12,
+                      background: locked ? "#f6f8fb" : "#fff", opacity: locked ? 0.6 : 1,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                        <span className="bt-chip" style={{ ...S.crumb, background: "#f3eefe", color: "#6d28d9", fontWeight: 900 }}>
+                          🔀 {sec.pathway.code}
+                        </span>
+                        {sec.pathway.name && <span className="bt-name" style={S.name}>{sec.pathway.name}</span>}
+                        {isChosen && (
+                          <>
+                            <span className="bt-chip" style={{ ...S.crumb, background: "#ecfdf5", color: "#047857" }}>
+                              ✓ {t({ en: "selected", ar: "مختار" })}
+                            </span>
+                            <button type="button" className="bt-small" style={S.chg} onClick={clearWeights}>
+                              ↺ {t({ en: "change pathway", ar: "تغيير المسار" })}
+                            </button>
+                          </>
+                        )}
+                        {locked && (
+                          <span className="bt-lbl" style={{ color: "#8aa3b8", fontWeight: 800 }}>
+                            🔒 {t({ en: "locked", ar: "معطّل" })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="bt-lbl" style={S.sectionLbl}>
+                        {t({ en: "Final products", ar: "المنتجات النهائية" })}
+                      </div>
+                      <div style={S.grid}>
+                        {sec.products.map((c) => {
+                          const w = num(values[c.lineId]?.w);
+                          const target = targetKgOf(c);
+                          return (
+                            <ItemCard
+                              key={c.lineId} item={c} disabled={locked}
+                              value={values[c.lineId]?.w || ""}
+                              onChange={(v) => setVal(c.lineId, "w", v)}
+                              code={c.sku}
+                              pct={showPct && w > 0 && carcassKg > 0 ? pctOf(w) : null}
+                              pctLabel={t({ en: "of raw", ar: "من الخام" })}
+                              target={target > 0 ? target : null}
+                              targetLabel={t({ en: "target", ar: "الهدف" })}
+                              tone={targetTone(target, w)} isAr={isAr} t={t}
+                            />
+                          );
+                        })}
+                        {!sec.products.length && (
+                          <div className="bt-sum" style={S.emptyBox}>
+                            {t({ en: "No products in this pathway.", ar: "لا منتجات بهالمسار." })}
+                          </div>
+                        )}
+                      </div>
+                      {sec.wastes.length > 0 && (
+                        <>
+                          <div className="bt-lbl" style={S.sectionLbl}>
+                            {t({ en: "Waste", ar: "الهدر" })}
+                          </div>
+                          <div style={S.wasteRow}>
+                            {sec.wastes.map((c) => {
+                              const w = num(values[c.lineId]?.w);
+                              return (
+                                <ItemCard
+                                  key={c.lineId} item={c} disabled={locked}
+                                  value={values[c.lineId]?.w || ""}
+                                  onChange={(v) => setVal(c.lineId, "w", v)}
+                                  code={c.sku}
+                                  pct={showPct && w > 0 && carcassKg > 0 ? pctOf(w) : null}
+                                  pctLabel={t({ en: "of raw", ar: "من الخام" })}
+                                  tone={S.wasteTone} isAr={isAr} t={t}
+                                />
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            ) : (
+              /* ── الوضع المسطّح التقليدي ── */
               <>
+                {/* ── المنتجات النهائية (نواتج الوصفة) ── */}
                 <div className="bt-lbl" style={S.sectionLbl}>
-                  {t({ en: "Waste", ar: "الهدر" })}
+                  {t({ en: "Final products", ar: "المنتجات النهائية" })}
                 </div>
-                <div style={S.wasteRow}>
-                  {wasteCuts.map((c) => {
-                    const w = num(values[c.id]?.w);
+                <div style={S.grid}>
+                  {productCuts.map((c) => {
+                    const w = num(values[c.lineId]?.w);
+                    const target = targetKgOf(c);
                     return (
                       <ItemCard
-                        key={c.id}
+                        key={c.lineId}
                         item={c}
-                        value={values[c.id]?.w || ""}
-                        onChange={(v) => setVal(c.id, "w", v)}
+                        value={values[c.lineId]?.w || ""}
+                        onChange={(v) => setVal(c.lineId, "w", v)}
                         code={c.sku}
                         pct={showPct && w > 0 && carcassKg > 0 ? pctOf(w) : null}
                         pctLabel={t({ en: "of raw", ar: "من الخام" })}
-                        tone={S.wasteTone}
+                        target={target > 0 ? target : null}
+                        targetLabel={t({ en: "target", ar: "الهدف" })}
+                        tone={targetTone(target, w)}
                         isAr={isAr}
                         t={t}
                       />
                     );
                   })}
+                  {!productCuts.length && (
+                    <div className="bt-sum" style={S.emptyBox}>
+                      {t({
+                        en: "This recipe has no final products — fix the BOM.",
+                        ar: "هالوصفة بلا منتجات نهائية — صحّح الوصفة.",
+                      })}
+                    </div>
+                  )}
                 </div>
+
+                {/* ── الهدر ── */}
+                {wasteCuts.length > 0 && (
+                  <>
+                    <div className="bt-lbl" style={S.sectionLbl}>
+                      {t({ en: "Waste", ar: "الهدر" })}
+                    </div>
+                    <div style={S.wasteRow}>
+                      {wasteCuts.map((c) => {
+                        const w = num(values[c.lineId]?.w);
+                        return (
+                          <ItemCard
+                            key={c.lineId}
+                            item={c}
+                            value={values[c.lineId]?.w || ""}
+                            onChange={(v) => setVal(c.lineId, "w", v)}
+                            code={c.sku}
+                            pct={showPct && w > 0 && carcassKg > 0 ? pctOf(w) : null}
+                            pctLabel={t({ en: "of raw", ar: "من الخام" })}
+                            tone={S.wasteTone}
+                            isAr={isAr}
+                            t={t}
+                          />
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </>
             )}
 
@@ -1147,13 +1228,16 @@ function ItemArt({ item }) {
 /* خانة وزن واحدة فقط لكل عنصر — لا خانة هدر داخل المنتج.
    pct = النسبة الفعلية للرقم المُدخل من وزن المنتج الأصلي (الأم). */
 function ItemCard({
-  item, value, onChange, code, pct, pctLabel, tone, target, targetLabel, isAr, t,
+  item, value, onChange, code, pct, pctLabel, tone, target, targetLabel, isAr, t, disabled,
 }) {
   const active = num(value) > 0;
   return (
     <div
       className="bt-press"
-      style={{ ...S.cutCard, ...(active ? S.cutCardOn : null), ...(tone || null) }}
+      style={{
+        ...S.cutCard, ...(active ? S.cutCardOn : null), ...(tone || null),
+        ...(disabled ? { opacity: 0.55, pointerEvents: "none" } : null),
+      }}
     >
       {hasArt(item) && <span style={S.art}><ItemArt item={item} /></span>}
       <span className="bt-name" style={S.name}>{nameOf(item, isAr)}</span>
@@ -1170,6 +1254,7 @@ function ItemCard({
           onChange={(e) => onChange(e.target.value)}
           inputMode="decimal"
           placeholder="0.00"
+          disabled={disabled}
           style={S.cutInput}
         />
       </label>
@@ -1189,11 +1274,10 @@ function ItemCard({
 
 /* ============================ شريط الخطوات ============================ */
 
-function StepBar({ step, hasCat, hasPath, t }) {
+function StepBar({ step, hasCat, t }) {
   const steps = [
     ...(hasCat ? [{ id: "category", ar: "الفئة", en: "Category" }] : []),
     { id: "bom", ar: "الوصفة", en: "Recipe" },
-    ...(hasPath ? [{ id: "pathway", ar: "المسار", en: "Pathway" }] : []),
     { id: "cuts", ar: "الأوزان", en: "Weights" },
   ];
   const at = steps.findIndex((x) => x.id === step);

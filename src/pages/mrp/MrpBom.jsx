@@ -43,6 +43,7 @@ const blankBom = (boms) => ({
   // المسارات المتعددة — خيار مستقل لكل وصفة (يُفعّل من داخل باني القائمة نفسها).
   // كل مسار: { id, no, code, name, outputs[], wastes[], notes, active }.
   multiPathways: false,        // No = تفكيك مسطّح تقليدي · Yes = مسارات متعددة لهالوصفة
+  requirePathwayWeight: false, // إلزام كل مسار بمخرَج موزون (Qty>0) — اختياري يحدّده المستخدم
   pathways: [],
   pathwaySeq: 0,               // عدّاد تصاعدي ثابت لأكواد المسارات (لا يُعاد ترقيمه بالحذف)
   notes: "",
@@ -58,6 +59,9 @@ const blankBom = (boms) => ({
 
 /** كود المسار الفريد — مربوط هرمياً بكود الـ BOM: CUT-0001-P3. */
 const pathwayCode = (bomRef, no) => `${bomRef || "CUT"}-P${no}`;
+
+/** نسخ أسطر قائمة بمعرّفات جديدة — لبذر المسار من منتجات الـ BOM الأساسية. */
+const cloneLines = (lines) => (lines || []).map((l) => ({ ...l, id: freshId("ln") }));
 
 /**
  * تحقّق مشترك لقائمة تقطيع واحدة (مسطّحة أو مسار).
@@ -216,7 +220,7 @@ export default function MrpBom() {
       // نضمن حقول التفكيك حتى للسجلات القديمة — بلا دهس باقي الحقول
       bom: {
         outputs: [], wastes: [], inputId: "", inputQty: "",
-        multiPathways: false, pathways: [], pathwaySeq: 0, allowSameIO: false,
+        multiPathways: false, requirePathwayWeight: false, pathways: [], pathwaySeq: 0, allowSameIO: false,
         ...JSON.parse(JSON.stringify(b)),
         bomType: "disassembly",
       },
@@ -271,19 +275,44 @@ export default function MrpBom() {
 
   /* ── مسارات التوزيع المتعددة (تعديل المسودّة) ── */
 
-  /** إضافة مسار جديد بكود فريد مربوط بكود الـ BOM (CUT-0001-P{n}). */
+  /**
+   * إضافة مسار جديد بكود فريد مربوط بكود الـ BOM (CUT-0001-P{n}).
+   * يُبذَر بنفس منتجات/هدر الـ BOM الأساسية حتى يبلّش الجزار من نفس القائمة.
+   */
   const addPathway = () =>
     setDraft((d) => {
       const no = num(d.bom.pathwaySeq, 0) + 1;
       const pw = {
         id: freshId("pw"), no,
         code: pathwayCode(d.bom.ref, no),
-        name: "", outputs: [], wastes: [], notes: "", active: true,
+        name: "",
+        outputs: cloneLines(d.bom.outputs),
+        wastes: cloneLines(d.bom.wastes),
+        notes: "", active: true,
       };
       return {
         ...d, dirty: true,
         bom: { ...d.bom, pathwaySeq: no, pathways: [...(d.bom.pathways || []), pw] },
       };
+    });
+
+  /**
+   * تفعيل/تعطيل المسارات المتعددة لهالوصفة. عند التفعيل بلا مسارات:
+   * يُنشأ أول مسار مبذور من منتجات الـ BOM الأساسية (نفس المنتجات الظاهرة).
+   */
+  const toggleMultiPathways = (v) =>
+    setDraft((d) => {
+      const bom = { ...d.bom, multiPathways: v };
+      if (v && (bom.pathways || []).length === 0) {
+        const no = num(bom.pathwaySeq, 0) + 1;
+        bom.pathwaySeq = no;
+        bom.pathways = [{
+          id: freshId("pw"), no, code: pathwayCode(bom.ref, no),
+          name: "", outputs: cloneLines(bom.outputs), wastes: cloneLines(bom.wastes),
+          notes: "", active: true,
+        }];
+      }
+      return { ...d, dirty: true, bom };
     });
 
   const patchPathway = (pid, p) =>
@@ -361,7 +390,8 @@ export default function MrpBom() {
           ar: "المسارات المتعددة مفعّلة — أضف مسار توزيع واحد على الأقل.",
         });
       }
-      const sigs = new Map();   // توقيع الهويّة → كود المسار الأول اللي حمله
+      const requireWeight = bom.requirePathwayWeight === true;
+      const sigs = new Map();   // توقيع الهويّة (غير الفارغ) → كود المسار الأول اللي حمله
       for (const pw of pws) {
         const label = `${t({ en: "Pathway", ar: "المسار" })} ${pw.code || pw.name || ""} — `;
         const err = cutListError(
@@ -370,23 +400,26 @@ export default function MrpBom() {
         );
         if (err) return err;
 
-        // كل مسار لازم يحمل صنفاً مميِّزاً واحداً على الأقل (qty>0 وغير مشترك Any).
         const sig = pathwaySignature(pw);
-        if (sig === "[]") {
+        // الشرط اختياري: لو مطلوب، كل مسار لازم مخرَج مميِّز واحد على الأقل (qty>0).
+        if (requireWeight && sig === "[]") {
           return t({
-            en: `${label}has no distinguishing output — give at least one non-shared cut a quantity > 0 (shared items marked “Any” don’t count).`,
-            ar: `${label}بلا مخرَج مميِّز — أعطِ قطعة واحدة غير مشتركة كمية > 0 (الأصناف المعلَّمة «Any» ما بتُحسب).`,
+            en: `${label}has no weighed output — give at least one non-shared cut a quantity > 0 (shared items marked “Any” don’t count).`,
+            ar: `${label}بلا مخرَج موزون — أعطِ قطعة واحدة غير مشتركة كمية > 0 (الأصناف المعلَّمة «Any» ما بتُحسب).`,
           });
         }
-        // المنع التلقائي للتناقض — ممنوع مساران بنفس نمط المخرجات المميِّزة تماماً.
-        if (sigs.has(sig)) {
-          const other = sigs.get(sig);
-          return t({
-            en: `Conflict: pathways ${other} and ${pw.code || pw.name || ""} have the exact same distinguishing outputs — each pathway must be unique. Change a quantity (Qty > 0 / Qty = 0) or mark shared items as “Any”.`,
-            ar: `تناقض: المساران ${other} و${pw.code || pw.name || ""} إلهم نفس المخرجات المميِّزة تماماً — كل مسار لازم يكون فريد. غيّر كمية (Qty > 0 / Qty = 0) أو علّم الأصناف المشتركة كـ«Any».`,
-          });
+        // المنع التلقائي للتناقض — ممنوع مساران بنفس نمط المخرجات المميِّزة (غير الفارغ) تماماً.
+        // التوقيعات الفارغة (بلا كميات بعد) مسموحة ولا تدخل بفحص التناقض.
+        if (sig !== "[]") {
+          if (sigs.has(sig)) {
+            const other = sigs.get(sig);
+            return t({
+              en: `Conflict: pathways ${other} and ${pw.code || pw.name || ""} have the exact same distinguishing outputs — each pathway must be unique. Change a quantity (Qty > 0 / Qty = 0) or mark shared items as “Any”.`,
+              ar: `تناقض: المساران ${other} و${pw.code || pw.name || ""} إلهم نفس المخرجات المميِّزة تماماً — كل مسار لازم يكون فريد. غيّر كمية (Qty > 0 / Qty = 0) أو علّم الأصناف المشتركة كـ«Any».`,
+            });
+          }
+          sigs.set(sig, pw.code || pw.name || "");
         }
-        sigs.set(sig, pw.code || pw.name || "");
       }
       return "";
     }
@@ -714,6 +747,7 @@ export default function MrpBom() {
           onAddCategory={addBomCategory}
           patch={patch} patchList={patchList} addTo={addTo} dropFrom={dropFrom}
           pathwayOps={{
+            enable: toggleMultiPathways,
             add: addPathway, patch: patchPathway, drop: dropPathway,
             addLine: addPathwayLine, patchLine: patchPathwayLine, dropLine: dropPathwayLine,
           }}
@@ -962,15 +996,15 @@ function CutBuilder({
             <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontWeight: 800, minWidth: 0 }}>
               <Switch
                 checked={multiPathways}
-                onChange={(v) => patch({ multiPathways: v })}
+                onChange={(v) => pathwayOps.enable(v)}
               />
               <span style={{ minWidth: 0 }}>
                 🔀 {t({ en: "Enable multi-routing pathways for this BOM", ar: "تفعيل مسارات التوزيع المتعددة لهالوصفة" })}
                 <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
                   {multiPathways
                     ? t({
-                        en: "On — define several alternative breakdowns for this input, each with its own unique pathway code (e.g. CUT-0001-P1).",
-                        ar: "مفعّل — عرّف عدة تفكيكات بديلة لهذا الداخل، لكل واحد كود مسار فريد (مثال: CUT-0001-P1).",
+                        en: "On — the first pathway starts from the same products as this BOM. Add more alternative breakdowns, each with its own unique code (e.g. CUT-0001-P1).",
+                        ar: "مفعّل — أول مسار بيبلّش بنفس منتجات هالوصفة. ضيف تفكيكات بديلة، لكل واحد كود فريد (مثال: CUT-0001-P1).",
                       })
                     : t({
                         en: "Off — this BOM uses a single flat breakdown (input → outputs + waste), the traditional way.",
@@ -980,6 +1014,36 @@ function CutBuilder({
               </span>
             </label>
           </div>
+
+          {/* ── شرط الوزن للمسار (اختياري) — يحدّده المستخدم ── */}
+          {multiPathways && (
+            <div style={{
+              ...S.chipRow, marginTop: 10, padding: "12px 14px", borderRadius: 14,
+              border: `1.5px solid ${bom.requirePathwayWeight === true ? "#c9b8f2" : "#e3edf7"}`,
+              background: bom.requirePathwayWeight === true ? "#f7f5ff" : "#fafcff",
+            }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontWeight: 800, minWidth: 0 }}>
+                <Switch
+                  checked={bom.requirePathwayWeight === true}
+                  onChange={(v) => patch({ requirePathwayWeight: v })}
+                />
+                <span style={{ minWidth: 0 }}>
+                  ⚖️ {t({ en: "Require a weighed output per pathway (Qty > 0)", ar: "إلزام كل مسار بمخرَج موزون (Qty > 0)" })}
+                  <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
+                    {bom.requirePathwayWeight === true
+                      ? t({
+                          en: "On — each pathway must have at least one distinguishing output with a quantity greater than zero before you can save.",
+                          ar: "مفعّل — كل مسار لازم يكون فيه مخرَج مميِّز واحد على الأقل كميّته أكبر من صفر قبل الحفظ.",
+                        })
+                      : t({
+                          en: "Off — quantities are optional (weight ≥ 0). You can save pathways with no quantities yet and fill them later.",
+                          ar: "معطّل — الكميات اختيارية (الوزن ≥ 0). فيك تحفظ المسارات بلا كميات وتعبّيها لاحقاً.",
+                        })}
+                  </div>
+                </span>
+              </label>
+            </div>
+          )}
 
           <div style={{ ...S.chipRow, marginTop: 12 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
