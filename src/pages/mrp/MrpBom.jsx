@@ -49,6 +49,7 @@ const blankBom = (boms) => ({
   active: true,
   requireExactBalance: false,   // إلزام الجزار بتطابق تام: الخام = النواتج + الهدر
   requirePieceCount: false,     // إظهار خانة «عدد القطع» وإلزام الجزار بتعبئتها
+  allowSameIO: false,           // السماح بأن يكون المخرَج نفسه المدخل (تنظيف/تشذيب بوزن أقل)
   version: 1,
   history: [],
   createdAt: new Date().toISOString(),
@@ -63,7 +64,7 @@ const pathwayCode = (bomRef, no) => `${bomRef || "CUT"}-P${no}`;
  * `label` بادئة رسالة الخطأ — "" للمسطّحة، و«المسار CUT-0001-P1 — » للمسار.
  * يرجّع نص الخطأ أو "" إذا صحيحة.
  */
-function cutListError({ inputId, inItemName, outputs, wastes, inputQty }, cfg, isAr, t, label = "") {
+function cutListError({ inputId, inItemName, outputs, wastes, inputQty, allowSameIO }, cfg, isAr, t, label = "") {
   const all = [...(outputs || []), ...(wastes || [])];
   if ((outputs || []).length === 0) {
     return t({
@@ -77,11 +78,39 @@ function cutListError({ inputId, inItemName, outputs, wastes, inputQty }, cfg, i
       ar: `${label}كل سطر لازم يختار صنف من السجل.`,
     });
   }
-  if (all.some((l) => l.itemId === inputId)) {
-    return t({
-      en: `${label}"${inItemName}" is the input product — it cannot also be listed as an output or waste. Remove that line.`,
-      ar: `${label}«${inItemName}» هو المنتج الداخل — ما بيصير ينضاف كناتج أو هدر كمان. احذف هالسطر.`,
-    });
+  // تطابق المدخل والمخرج — محكوم بمفتاح التجاوز allowSameIO.
+  const inOutputs = (outputs || []).filter((l) => l.itemId === inputId);
+  const inWastes = (wastes || []).filter((l) => l.itemId === inputId);
+  if (!allowSameIO) {
+    if (inOutputs.length || inWastes.length) {
+      return t({
+        en: `${label}"${inItemName}" is the input product — it cannot also be listed as an output or waste. Remove that line.`,
+        ar: `${label}«${inItemName}» هو المنتج الداخل — ما بيصير ينضاف كناتج أو هدر كمان. احذف هالسطر.`,
+      });
+    }
+  } else {
+    // الهدر ما بيصير يطابق الداخل — التجاوز للمخرجات فقط.
+    if (inWastes.length) {
+      return t({
+        en: `${label}"${inItemName}" is the input product — with the override it can be an output, but never a waste line.`,
+        ar: `${label}«${inItemName}» هو المنتج الداخل — مع التجاوز بيصير ناتج، بس أبداً مش سطر هدر.`,
+      });
+    }
+    // تكرار السطر — يُسمح بمطابقة الداخل مرة واحدة فقط بجدول المخرجات.
+    if (inOutputs.length > 1) {
+      return t({
+        en: `${label}"${inItemName}" (same as input) may appear only once in the outputs table.`,
+        ar: `${label}«${inItemName}» (نفس الداخل) بيجي مرة وحدة بس بجدول المخرجات.`,
+      });
+    }
+    // شرط انخفاض الوزن — وزن المخرج المطابق لازم < وزن المدخل.
+    const line = inOutputs[0];
+    if (line && num(inputQty) > 0 && num(line.qty) > 0 && num(line.qty) >= num(inputQty)) {
+      return t({
+        en: `${label}the same-item output (${money(num(line.qty), 2)}) must weigh LESS than the input (${money(num(inputQty), 2)}) — cleaning/trimming reduces weight.`,
+        ar: `${label}وزن المخرج المطابق للداخل (${money(num(line.qty), 2)}) لازم يكون أقل من وزن المدخل (${money(num(inputQty), 2)}) — التنظيف/التشذيب بيقلّل الوزن.`,
+      });
+    }
   }
   const seen = new Set();
   for (const l of all) {
@@ -187,7 +216,7 @@ export default function MrpBom() {
       // نضمن حقول التفكيك حتى للسجلات القديمة — بلا دهس باقي الحقول
       bom: {
         outputs: [], wastes: [], inputId: "", inputQty: "",
-        multiPathways: false, pathways: [], pathwaySeq: 0,
+        multiPathways: false, pathways: [], pathwaySeq: 0, allowSameIO: false,
         ...JSON.parse(JSON.stringify(b)),
         bomType: "disassembly",
       },
@@ -336,7 +365,7 @@ export default function MrpBom() {
       for (const pw of pws) {
         const label = `${t({ en: "Pathway", ar: "المسار" })} ${pw.code || pw.name || ""} — `;
         const err = cutListError(
-          { inputId: bom.inputId, inItemName, outputs: pw.outputs, wastes: pw.wastes, inputQty: bom.inputQty },
+          { inputId: bom.inputId, inItemName, outputs: pw.outputs, wastes: pw.wastes, inputQty: bom.inputQty, allowSameIO: bom.allowSameIO === true },
           cfg, isAr, t, label
         );
         if (err) return err;
@@ -363,7 +392,7 @@ export default function MrpBom() {
     }
 
     return cutListError(
-      { inputId: bom.inputId, inItemName, outputs: bom.outputs, wastes: bom.wastes, inputQty: bom.inputQty },
+      { inputId: bom.inputId, inItemName, outputs: bom.outputs, wastes: bom.wastes, inputQty: bom.inputQty, allowSameIO: bom.allowSameIO === true },
       cfg, isAr, t, ""
     );
   };
@@ -756,6 +785,7 @@ function CutBuilder({
   const math = bomMath(bom);
   const uom = input?.uom || "";
   const multiPathways = bom.multiPathways === true;   // خيار مستقل لهالوصفة
+  const allowSameIO = bom.allowSameIO === true;       // السماح بمطابقة المدخل والمخرج
 
   // كل الأصناف المستعملة بالقائمة (نواتج + هدر) — لمنع التكرار عبر السطور
   const usedIds = useMemo(
@@ -763,9 +793,18 @@ function CutBuilder({
     [bom.outputs, bom.wastes]
   );
 
-  /** سبب منع صنف بجداول الناتج/الهدر — بيظهر بالقائمة بس ما بينضاف. */
-  const lineDisabledFor = (curItemId) => (i) => {
+  /**
+   * سبب منع صنف بجداول الناتج/الهدر — بيظهر بالقائمة بس ما بينضاف.
+   * `listKind`: "outputs" | "wastes" — مع التجاوز، الداخل مسموح كناتج (مرة) بس مش كهدر.
+   */
+  const lineDisabledForList = (listKind) => (curItemId) => (i) => {
     if (i.id === bom.inputId) {
+      if (allowSameIO && listKind === "outputs") {
+        if (i.id !== curItemId && usedIds.includes(i.id)) {
+          return t({ en: "already added", ar: "مضاف مسبقاً" });
+        }
+        return "";   // مسموح كمخرَج مطابق للداخل
+      }
       return t({ en: "same as input", ar: "هو الداخل" });
     }
     if (i.id !== curItemId && usedIds.includes(i.id)) {
@@ -984,6 +1023,31 @@ function CutBuilder({
               })}
             </span>
           </div>
+
+          {/* ── تجاوز قيد تطابق المدخل والمخرج (Same Item Override) ── */}
+          <div style={{
+            ...S.chipRow, marginTop: 12, padding: "12px 14px", borderRadius: 14,
+            border: `1.5px solid ${allowSameIO ? "#a7d9d3" : "#e3edf7"}`,
+            background: allowSameIO ? "#f0faf8" : "#fafcff",
+          }}>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontWeight: 800, minWidth: 0 }}>
+              <Switch checked={allowSameIO} onChange={(v) => patch({ allowSameIO: v })} />
+              <span style={{ minWidth: 0 }}>
+                ♻️ {t({ en: "Allow same input/output product", ar: "السماح بتطابق المنتج المدخل والمخرج" })}
+                <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
+                  {allowSameIO
+                    ? t({
+                        en: "On — the input item may also be an output (cleaning/trimming the same piece): once only, and its output weight must be less than the input.",
+                        ar: "مفعّل — الصنف الداخل بيصير كمان مخرَج (تنظيف/تشذيب نفس القطعة): مرة وحدة بس، ووزن مخرجه لازم يكون أقل من المدخل.",
+                      })
+                    : t({
+                        en: "Off — an output/waste can never be the same item as the input (the traditional rule).",
+                        ar: "معطّل — ما بيصير المخرَج/الهدر يكون نفس صنف المدخل (القاعدة التقليدية).",
+                      })}
+                </div>
+              </span>
+            </label>
+          </div>
         </fieldset>
       </Card>
 
@@ -1012,7 +1076,7 @@ function CutBuilder({
             inputQty={math.input}
             preferRoles={["finished", "component"]}
             accent="#047857"
-            disabledFor={lineDisabledFor}
+            disabledFor={lineDisabledForList("outputs")}
             onBlocked={onLineBlocked}
             onAdd={() => addTo("outputs")}
             onPatch={(id, p) => patchList("outputs", id, p)}
@@ -1033,7 +1097,7 @@ function CutBuilder({
             inputQty={math.input}
             preferRoles={["waste"]}
             accent="#b45309"
-            disabledFor={lineDisabledFor}
+            disabledFor={lineDisabledForList("wastes")}
             onBlocked={onLineBlocked}
             onAdd={() => addTo("wastes")}
             onPatch={(id, p) => patchList("wastes", id, p)}
@@ -1086,8 +1150,15 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
         return it?.sku || nameOf(it, isAr) || l.itemId;
       });
   }, [sel, cfg, isAr]);
-  const lineDisabledFor = (curItemId) => (i) => {
-    if (i.id === bom.inputId) return t({ en: "same as input", ar: "هو الداخل" });
+  const allowSameIO = bom.allowSameIO === true;   // مطابقة المدخل والمخرج
+  const lineDisabledForList = (listKind) => (curItemId) => (i) => {
+    if (i.id === bom.inputId) {
+      if (allowSameIO && listKind === "outputs") {
+        if (i.id !== curItemId && usedIds.includes(i.id)) return t({ en: "already added", ar: "مضاف مسبقاً" });
+        return "";
+      }
+      return t({ en: "same as input", ar: "هو الداخل" });
+    }
     if (i.id !== curItemId && usedIds.includes(i.id)) return t({ en: "already added", ar: "مضاف مسبقاً" });
     return "";
   };
@@ -1263,7 +1334,7 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
             inputQty={math.input}
             preferRoles={["finished", "component"]}
             accent="#047857"
-            disabledFor={lineDisabledFor}
+            disabledFor={lineDisabledForList("outputs")}
             onBlocked={onLineBlocked}
             showAny
             onAdd={() => ops.addLine(sel.id, "outputs")}
@@ -1284,7 +1355,7 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
             inputQty={math.input}
             preferRoles={["waste"]}
             accent="#b45309"
-            disabledFor={lineDisabledFor}
+            disabledFor={lineDisabledForList("wastes")}
             onBlocked={onLineBlocked}
             showAny
             onAdd={() => ops.addLine(sel.id, "wastes")}
