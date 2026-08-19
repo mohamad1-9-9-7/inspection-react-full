@@ -103,6 +103,19 @@ function cutListError({ inputId, inItemName, outputs, wastes, inputQty }, cfg, i
   return "";
 }
 
+/**
+ * توقيع المسار = بصمة هويّته: مجموعة الأصناف المميِّزة اللي كميّتها > 0،
+ * بعد استبعاد الأصناف المشتركة المعلَّمة «Any» (دهن أبيض، هدر طبيعي، أكياس…).
+ * مساران بنفس التوقيع = متطابقان تماماً → تناقض يُمنع حفظه.
+ * (الصنف بـ qty = 0 غائب عن النمط، والصنف Any لا يدخل بالهويّة إطلاقاً.)
+ */
+function pathwaySignature(pw) {
+  const ids = [...(pw?.outputs || []), ...(pw?.wastes || [])]
+    .filter((l) => l.itemId && l.any !== true && num(l.qty) > 0)
+    .map((l) => l.itemId);
+  return JSON.stringify([...new Set(ids)].sort());
+}
+
 /** تجميع أرقام القائمة — الداخل، الناتج، الهدر، الفاقد غير المسجّل، والعائد. */
 function bomMath(bom) {
   const input = num(bom?.inputQty);
@@ -319,6 +332,7 @@ export default function MrpBom() {
           ar: "المسارات المتعددة مفعّلة — أضف مسار توزيع واحد على الأقل.",
         });
       }
+      const sigs = new Map();   // توقيع الهويّة → كود المسار الأول اللي حمله
       for (const pw of pws) {
         const label = `${t({ en: "Pathway", ar: "المسار" })} ${pw.code || pw.name || ""} — `;
         const err = cutListError(
@@ -326,6 +340,24 @@ export default function MrpBom() {
           cfg, isAr, t, label
         );
         if (err) return err;
+
+        // كل مسار لازم يحمل صنفاً مميِّزاً واحداً على الأقل (qty>0 وغير مشترك Any).
+        const sig = pathwaySignature(pw);
+        if (sig === "[]") {
+          return t({
+            en: `${label}has no distinguishing output — give at least one non-shared cut a quantity > 0 (shared items marked “Any” don’t count).`,
+            ar: `${label}بلا مخرَج مميِّز — أعطِ قطعة واحدة غير مشتركة كمية > 0 (الأصناف المعلَّمة «Any» ما بتُحسب).`,
+          });
+        }
+        // المنع التلقائي للتناقض — ممنوع مساران بنفس نمط المخرجات المميِّزة تماماً.
+        if (sigs.has(sig)) {
+          const other = sigs.get(sig);
+          return t({
+            en: `Conflict: pathways ${other} and ${pw.code || pw.name || ""} have the exact same distinguishing outputs — each pathway must be unique. Change a quantity (Qty > 0 / Qty = 0) or mark shared items as “Any”.`,
+            ar: `تناقض: المساران ${other} و${pw.code || pw.name || ""} إلهم نفس المخرجات المميِّزة تماماً — كل مسار لازم يكون فريد. غيّر كمية (Qty > 0 / Qty = 0) أو علّم الأصناف المشتركة كـ«Any».`,
+          });
+        }
+        sigs.set(sig, pw.code || pw.name || "");
       }
       return "";
     }
@@ -1043,6 +1075,17 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
     () => (sel ? [...(sel.outputs || []), ...(sel.wastes || [])].map((l) => l.itemId).filter(Boolean) : []),
     [sel]
   );
+
+  // المخرجات المميِّزة لهويّة المسار: qty>0 وغير مشتركة (Any).
+  const distinguishing = useMemo(() => {
+    if (!sel) return [];
+    return [...(sel.outputs || []), ...(sel.wastes || [])]
+      .filter((l) => l.itemId && l.any !== true && num(l.qty) > 0)
+      .map((l) => {
+        const it = itemById(cfg, l.itemId);
+        return it?.sku || nameOf(it, isAr) || l.itemId;
+      });
+  }, [sel, cfg, isAr]);
   const lineDisabledFor = (curItemId) => (i) => {
     if (i.id === bom.inputId) return t({ en: "same as input", ar: "هو الداخل" });
     if (i.id !== curItemId && usedIds.includes(i.id)) return t({ en: "already added", ar: "مضاف مسبقاً" });
@@ -1180,6 +1223,28 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
                   {t({ en: "Active pathway", ar: "مسار مفعّل" })}
                 </label>
               </div>
+
+              {/* هويّة المسار — المخرجات المميِّزة اللي بتفرّقه عن باقي المسارات. */}
+              <div style={{ ...S.note, marginTop: 12 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <b>🧬 {t({ en: "Pathway identity:", ar: "هوية المسار:" })}</b>
+                  {distinguishing.length === 0 ? (
+                    <span style={{ color: "#a12626", fontWeight: 800 }}>
+                      {t({ en: "no distinguishing output yet", ar: "بلا مخرَج مميِّز بعد" })}
+                    </span>
+                  ) : (
+                    distinguishing.map((s, i) => (
+                      <Badge key={`${s}-${i}`} color="#6d28d9" bg="#f3eefe">{s}</Badge>
+                    ))
+                  )}
+                </div>
+                <div style={{ ...S.hint, marginTop: 6 }}>
+                  {t({
+                    en: "No two pathways may share the exact same set of distinguishing outputs. Mark shared items (white fat, natural waste, packaging…) as “Any” so they don’t affect the identity.",
+                    ar: "ما بيصير مساران يتشاركوا نفس مجموعة المخرجات المميِّزة تماماً. علّم الأصناف المشتركة (دهن أبيض، هدر طبيعي، تغليف…) كـ«Any» حتى ما تأثّر على الهويّة.",
+                  })}
+                </div>
+              </div>
             </fieldset>
           </Card>
 
@@ -1200,6 +1265,7 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
             accent="#047857"
             disabledFor={lineDisabledFor}
             onBlocked={onLineBlocked}
+            showAny
             onAdd={() => ops.addLine(sel.id, "outputs")}
             onPatch={(id, p) => ops.patchLine(sel.id, "outputs", id, p)}
             onDrop={(id) => ops.dropLine(sel.id, "outputs", id)}
@@ -1220,6 +1286,7 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
             accent="#b45309"
             disabledFor={lineDisabledFor}
             onBlocked={onLineBlocked}
+            showAny
             onAdd={() => ops.addLine(sel.id, "wastes")}
             onPatch={(id, p) => ops.patchLine(sel.id, "wastes", id, p)}
             onDrop={(id) => ops.dropLine(sel.id, "wastes", id)}
@@ -1296,7 +1363,7 @@ function MassBalance({ t, math, uom }) {
 
 function CutLines({
   t, isAr, cfg, canEdit, icon, title, sub, addLabel, lines, inputQty,
-  preferRoles, accent, onAdd, onPatch, onDrop, disabledFor, onBlocked,
+  preferRoles, accent, onAdd, onPatch, onDrop, disabledFor, onBlocked, showAny,
 }) {
   const roleNames = preferRoles
     .map((r) => nameOf(ITEM_TYPES.find((x) => x.id === r) || {}, isAr))
@@ -1334,6 +1401,14 @@ function CutLines({
                 <th style={S.th}>{t({ en: "Qty", ar: "الكمية" })}</th>
                 <th style={S.th}>{t({ en: "UoM", ar: "الوحدة" })}</th>
                 <th style={S.th}>{t({ en: "% of input", ar: "٪ من الداخل" })}</th>
+                {showAny && (
+                  <th style={S.th} title={t({
+                    en: "Shared item — ignored when identifying the pathway",
+                    ar: "صنف مشترك — يُتجاهل عند تحديد هوية المسار",
+                  })}>
+                    {t({ en: "Shared (Any)", ar: "مشترك (Any)" })}
+                  </th>
+                )}
                 <th style={S.th}></th>
               </tr>
             </thead>
@@ -1373,8 +1448,21 @@ function CutLines({
                     </td>
                     <td style={S.td}>{it?.uom || "—"}</td>
                     <td style={{ ...S.td, fontWeight: 900, color: accent }}>
-                      {inputQty > 0 && num(l.qty) > 0 ? `${share.toFixed(1)}%` : "—"}
+                      {l.any === true
+                        ? <span style={{ color: "#8aa3b8" }}>—</span>
+                        : inputQty > 0 && num(l.qty) > 0 ? `${share.toFixed(1)}%` : "—"}
                     </td>
+                    {showAny && (
+                      <td style={S.td}>
+                        <div style={{ display: "flex", justifyContent: "center" }}>
+                          <Switch
+                            checked={l.any === true}
+                            disabled={!canEdit}
+                            onChange={(v) => onPatch(l.id, { any: v })}
+                          />
+                        </div>
+                      </td>
+                    )}
                     <td style={S.td}>
                       {canEdit && (
                         <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
