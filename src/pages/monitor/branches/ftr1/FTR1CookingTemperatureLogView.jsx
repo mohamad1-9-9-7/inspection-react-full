@@ -5,6 +5,7 @@ import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 
 
 
@@ -70,9 +71,12 @@ const btn = (bg) => ({ padding:"6px 12px", borderRadius:"6px", background:bg, co
 const input = { width:"100%", boxSizing:"border-box", border:"1px solid #cbd5e1", borderRadius:6, padding:"6px 8px" };
 
 export default function FTR1CookingTemperatureLogView() {
+  // `reports` holds lightweight index rows (id + reportDate, no payload); the
+  // full record for the open date is fetched on demand into `selectedReport`.
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
 
   // edit mode
   const [editMode, setEditMode] = useState(false);
@@ -94,18 +98,19 @@ export default function FTR1CookingTemperatureLogView() {
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&limit=200`, { cache: "no-store" });
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
+      // Lightweight index only (dates + ids); the record loads on click.
+      const arr = await listReportDates(TYPE);
       arr.sort((a,b) => {
-        const da = toDate(a?.payload?.reportDate)?.getTime() || 0;
-        const db = toDate(b?.payload?.reportDate)?.getTime() || 0;
+        const da = toDate(reportDateOf(a))?.getTime() || 0;
+        const db = toDate(reportDateOf(b))?.getTime() || 0;
         return db - da;
       });
       setReports(arr);
-      setSelectedReport(arr[0] || null);
       setEditMode(false);
       setDraft(null);
+      const newest = arr[0] || null;
+      if (newest) await openRow(newest);
+      else setSelectedReport(null);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data from server.");
@@ -114,6 +119,19 @@ export default function FTR1CookingTemperatureLogView() {
     }
   }
   useEffect(() => { fetchReports(); }, []);
+
+  // Pull one full record (by id, falling back to a date-targeted read).
+  async function openRow(row) {
+    setLoadingReport(true);
+    try {
+      const id = getId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate(TYPE, reportDateOf(row));
+      setSelectedReport(full);
+    } finally {
+      setLoadingReport(false);
+    }
+  }
 
   /* ===== PDF ===== */
   const handleExportPDF = async () => {
@@ -151,9 +169,10 @@ export default function FTR1CookingTemperatureLogView() {
   };
 
   /* ===== JSON ===== */
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const rows = await listReports(TYPE);
+      const payloads = rows.map((r) => payloadOf(r));
       const bundle = { type: TYPE, exportedAt: new Date().toISOString(), count: payloads.length, items: payloads };
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -287,7 +306,7 @@ export default function FTR1CookingTemperatureLogView() {
 
   /* ===== Date tree ===== */
   const groupedReports = reports.reduce((acc, r) => {
-    const d = toDate(r?.payload?.reportDate); if (!d) return acc;
+    const d = toDate(reportDateOf(r)); if (!d) return acc;
     const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,"0"); const day = String(d.getDate()).padStart(2,"0");
     acc[y] ??= {}; acc[y][m] ??= []; acc[y][m].push({ ...r, day, _dt:d.getTime() }); return acc;
   }, {});
@@ -315,7 +334,7 @@ export default function FTR1CookingTemperatureLogView() {
                         {daysSorted.map((r,i) => {
                           const active = getId(selectedReport) && getId(selectedReport) === getId(r);
                           return (
-                            <li key={i} onClick={() => { setSelectedReport(r); setEditMode(false); setDraft(null); }}
+                            <li key={i} onClick={() => { openRow(r); setEditMode(false); setDraft(null); }}
                                 style={{ padding:"6px 10px", marginBottom:"4px", borderRadius:"6px", cursor:"pointer",
                                          background: active ? "#dcd6f7" : "#ecf0f1", color: active ? "#222" : "#333",
                                          fontWeight:600, textAlign:"center" }}>
@@ -335,7 +354,9 @@ export default function FTR1CookingTemperatureLogView() {
 
       {/* Report display + Toolbar */}
       <div style={{ flex:1, background:"#eef3f8", padding:"1.5rem", borderRadius:"14px", boxShadow:"0 4px 18px #d2b4de44" }}>
-        {!selectedReport ? (
+        {loadingReport ? (
+          <p>⏳ Loading…</p>
+        ) : !selectedReport ? (
           <p>❌ No report selected.</p>
         ) : (
           <div ref={reportRef}>

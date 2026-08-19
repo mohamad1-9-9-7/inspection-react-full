@@ -3,14 +3,20 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { canDelete } from "../../../../utils/perms";
+import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
+const TYPE = "ftr2_oil_calibration";
+
 export default function FTR2OilCalibrationView() {
+  // `reports` holds lightweight index rows (id + reportDate, no payload); the
+  // full record for the open date is fetched on demand into `selectedReport`.
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
   const reportRef = useRef();
   const fileInputRef = useRef(null);
 
@@ -29,32 +35,44 @@ export default function FTR2OilCalibrationView() {
     return `${dd}/${mm}/${yy}`;
   };
   const firstEntryDate = (r) => r?.payload?.entries?.[0]?.date || null;
+  // For the tree/index we use the lightweight top-level reportDate (no payload).
+  const rowDate = (r) => reportDateOf(r) || null;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=ftr2_oil_calibration`,
-        { cache: "no-store" }
-      );
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data || [];
-
+      // Lightweight index only (dates + ids); the record loads on click.
+      const arr = await listReportDates(TYPE);
       // تصاعدي: الأقدم أولًا
       arr.sort((a, b) => {
-        const ta = safeDate(firstEntryDate(a))?.getTime() || 0;
-        const tb = safeDate(firstEntryDate(b))?.getTime() || 0;
+        const ta = safeDate(rowDate(a))?.getTime() || 0;
+        const tb = safeDate(rowDate(b))?.getTime() || 0;
         return ta - tb;
       });
-
       setReports(arr);
-      setSelectedReport(arr[0] || null); // الأقدم
+      const first = arr[0] || null;
+      if (first) await openRow(first); // الأقدم
+      else setSelectedReport(null);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Pull one full record (by id, falling back to a date-targeted read).
+  async function openRow(row) {
+    setLoadingReport(true);
+    try {
+      const id = getId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate(TYPE, reportDateOf(row));
+      setSelectedReport(full);
+    } finally {
+      setLoadingReport(false);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -64,7 +82,7 @@ export default function FTR2OilCalibrationView() {
   const grouped = useMemo(() => {
     const acc = {};
     for (const r of reports) {
-      const dt = safeDate(firstEntryDate(r));
+      const dt = safeDate(rowDate(r));
       if (!dt) continue;
       const y = String(dt.getFullYear());
       const m = String(dt.getMonth() + 1).padStart(2, "0");
@@ -77,8 +95,8 @@ export default function FTR2OilCalibrationView() {
       Object.values(months).forEach((arr) =>
         arr.sort(
           (a, b) =>
-            (safeDate(firstEntryDate(a))?.getTime() || 0) -
-            (safeDate(firstEntryDate(b))?.getTime() || 0)
+            (safeDate(rowDate(a))?.getTime() || 0) -
+            (safeDate(rowDate(b))?.getTime() || 0)
         )
       );
     });
@@ -148,7 +166,7 @@ export default function FTR2OilCalibrationView() {
         const next = prev.filter((x) => getId(x) !== rid);
         // بعد الحذف: اختَر العنصر في نفس الموضع إن وُجد
         const pick = next[Math.min(idx, Math.max(0, next.length - 1))] || null;
-        setSelectedReport(pick);
+        if (pick) openRow(pick); else setSelectedReport(null);
         return next;
       });
 
@@ -160,9 +178,10 @@ export default function FTR2OilCalibrationView() {
   };
 
   /* ===== Export JSON (كل التقارير) ===== */
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const rows = await listReports(TYPE);
+      const payloads = rows.map((r) => payloadOf(r));
       const bundle = {
         type: "ftr2_oil_calibration",
         exportedAt: new Date().toISOString(),
@@ -324,11 +343,11 @@ export default function FTR2OilCalibrationView() {
                         {/* داخل الشهر: الأقدم أولًا */}
                         {reportsInMonth.map((r) => {
                           const isActive = getId(selectedReport) === getId(r);
-                          const dt = firstEntryDate(r);
+                          const dt = rowDate(r);
                           return (
                             <div
                               key={getId(r) || dt || Math.random()}
-                              onClick={() => setSelectedReport(r)}
+                              onClick={() => openRow(r)}
                               style={{
                                 padding: "6px 10px",
                                 marginBottom: 4,
@@ -370,7 +389,9 @@ export default function FTR2OilCalibrationView() {
           boxShadow: "0 4px 18px #d2b4de44",
         }}
       >
-        {!selectedReport ? (
+        {loadingReport ? (
+          <p>⏳ Loading…</p>
+        ) : !selectedReport ? (
           <p>❌ No report selected.</p>
         ) : (
           <div ref={reportRef}>

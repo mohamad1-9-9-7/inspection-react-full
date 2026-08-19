@@ -11,6 +11,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 import { canDelete } from "../../../../utils/perms";
 
 const TYPE = "ftr1_temperature";
@@ -21,9 +22,12 @@ const toDate = (v) => {
 };
 
 export default function FTR1TemperatureView() {
+  // `reports` holds lightweight index rows (id + reportDate, no payload); the
+  // full record for the open date is fetched on demand into `selectedReport`.
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
 
   const reportRef = useRef();
   const fileInputRef = useRef(null);
@@ -32,26 +36,35 @@ export default function FTR1TemperatureView() {
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-
-      arr.sort((a, b) => {
-        const da = toDate(a?.payload?.date)?.getTime() || 0;
-        const db = toDate(b?.payload?.date)?.getTime() || 0;
+      // Lightweight index only (dates + ids); the record loads on click.
+      const rows = await listReportDates(TYPE);
+      rows.sort((a, b) => {
+        const da = toDate(reportDateOf(a))?.getTime() || 0;
+        const db = toDate(reportDateOf(b))?.getTime() || 0;
         return db - da;
       });
-
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
+      setReports(rows);
+      const newest = rows[0] || null;
+      if (newest) await openRow(newest);
+      else setSelectedReport(null);
     } catch (err) {
       console.error(err);
       alert("Failed to fetch data from server.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Pull one full record (by id, falling back to a date-targeted read).
+  async function openRow(row) {
+    setLoadingReport(true);
+    try {
+      const id = getId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate(TYPE, reportDateOf(row));
+      setSelectedReport(full);
+    } finally {
+      setLoadingReport(false);
     }
   }
 
@@ -171,9 +184,10 @@ export default function FTR1TemperatureView() {
   };
 
   // ===== Export JSON =====
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const rows = await listReports(TYPE);
+      const payloads = rows.map((r) => payloadOf(r));
       const bundle = {
         type: TYPE,
         exportedAt: new Date().toISOString(),
@@ -245,12 +259,12 @@ export default function FTR1TemperatureView() {
   // ===== Tree items from reports =====
   const treeItems = useMemo(() => {
     return reports.map((r) => {
-      const d = r?.payload?.date || "";
-      const iso = d ? new Date(d).toISOString().slice(0, 10) : "";
+      const raw = reportDateOf(r) || "";
+      const iso = raw ? String(raw).slice(0, 10) : "";
       return {
         key: getId(r) || iso,
         dateISO: iso,
-        label: formatDMY(iso) || d || "No date",
+        label: formatDMY(iso) || raw || "No date",
         data: r,
       };
     });
@@ -315,16 +329,16 @@ export default function FTR1TemperatureView() {
           <DateTreeSidebar
             items={treeItems}
             activeKey={activeKey}
-            onPick={(it) => setSelectedReport(it.data)}
+            onPick={(it) => openRow(it.data)}
             loading={loading}
           />
         }
       >
-        {loading && <p>Loading...</p>}
+        {(loading || loadingReport) && <p>Loading...</p>}
 
-        {!loading && !selectedReport && <EmptyState text="No report selected." />}
+        {!loading && !loadingReport && !selectedReport && <EmptyState text="No report selected." />}
 
-        {selectedReport && (
+        {!loadingReport && selectedReport && (
           <div ref={reportRef} style={{ overflowX: "auto" }}>
             {/* Meta badges */}
             <div style={{ marginBottom: 8 }}>

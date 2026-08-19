@@ -4,9 +4,12 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import SignatureName from "../../../shared/SignatureName";
 import { canDelete } from "../../../../utils/perms";
+import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
+
+const TYPE = "ftr1_personal_hygiene";
 
 /* ✅ نفس أعمدة الإدخال (النظافة العامة) */
 const HYGIENE_COLUMNS = [
@@ -17,9 +20,12 @@ const HYGIENE_COLUMNS = [
 ];
 
 export default function FTR1PersonalHygieneView() {
+  // `reports` holds lightweight index rows (id + reportDate, no payload); the
+  // full record for the open date is fetched on demand into `selectedReport`.
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
   const reportRef = useRef();
   const fileInputRef = useRef(null);
 
@@ -33,6 +39,8 @@ export default function FTR1PersonalHygieneView() {
   const getReportDate = (r) => {
     const d1 = new Date(r?.payload?.reportDate);
     if (!isNaN(d1)) return d1;
+    const d3 = new Date(r?.reportDate);
+    if (!isNaN(d3)) return d3;
     const d2 = new Date(r?.created_at);
     return isNaN(d2) ? new Date(0) : d2;
   };
@@ -40,23 +48,31 @@ export default function FTR1PersonalHygieneView() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=ftr1_personal_hygiene`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort((a, b) => getReportDate(b) - getReportDate(a)); // ✅ أحدث أولاً
-      setReports(arr);
-
-      // ✅ اعرض آخر/أحدث تقرير تلقائياً دائماً
-      setSelectedReport(arr[0] || null);
+      // Lightweight index only (dates + ids); the record loads on click.
+      const rows = await listReportDates(TYPE);
+      rows.sort((a, b) => getReportDate(b) - getReportDate(a)); // newest first
+      setReports(rows);
+      const newest = rows[0] || null;
+      if (newest) await openRow(newest);
+      else setSelectedReport(null);
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Pull one full record (by id, falling back to a date-targeted read).
+  const openRow = async (row) => {
+    setLoadingReport(true);
+    try {
+      const id = getId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate(TYPE, reportDateOf(row));
+      setSelectedReport(full);
+    } finally {
+      setLoadingReport(false);
     }
   };
 
@@ -176,9 +192,10 @@ export default function FTR1PersonalHygieneView() {
   };
 
   // ===== Export JSON (كل التقارير) =====
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const rows = await listReports(TYPE);
+      const payloads = rows.map((r) => payloadOf(r));
       const bundle = {
         type: "ftr1_personal_hygiene",
         exportedAt: new Date().toISOString(),
@@ -327,7 +344,7 @@ export default function FTR1PersonalHygieneView() {
                               return (
                                 <li
                                   key={i}
-                                  onClick={() => setSelectedReport(r)}
+                                  onClick={() => openRow(r)}
                                   style={{
                                     padding: "6px 10px",
                                     marginBottom: "4px",
@@ -363,7 +380,9 @@ export default function FTR1PersonalHygieneView() {
           boxShadow: "0 4px 18px #d2b4de44",
         }}
       >
-        {!selectedReport ? (
+        {loadingReport ? (
+          <p>⏳ Loading…</p>
+        ) : !selectedReport ? (
           <p>❌ No report selected.</p>
         ) : (
           <div ref={reportRef}>
