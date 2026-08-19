@@ -239,7 +239,7 @@ export default function ButcherSummary() {
           >
             🖨 {t({ en: "Print / PDF", ar: "طباعة / PDF" })}
           </button>
-          <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={() => navigate("/butcher")}>
+          <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={() => navigate("/butcher", { replace: true })}>
             ← {t({ en: "Back", ar: "رجوع" })}
           </button>
         </PageHead>

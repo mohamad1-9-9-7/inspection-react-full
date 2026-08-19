@@ -565,7 +565,7 @@ export default function ButcherLog() {
               <LangToggle lang={lang} toggle={toggle} style={S.langBtn} />
             </span>
             {step === "emp" && isLoggedIn && (
-              <button className="bt-small" style={S.chg} onClick={() => navigate("/butcher")}>
+              <button className="bt-small" style={S.chg} onClick={() => navigate("/butcher", { replace: true })}>
                 {t({ en: "Back to section", ar: "رجوع للقسم" })}
               </button>
             )}

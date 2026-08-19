@@ -334,7 +334,7 @@ export function MrpShell({ pageId, icon, title, sub, actions, children }) {
         <div style={S.topActions}>
           {actions}
           <LangToggle lang={lang} toggle={toggle} style={S.langBtn} />
-          <button type="button" style={S.btn} onClick={() => navigate("/mrp")}>
+          <button type="button" style={S.btn} onClick={() => navigate("/mrp", { replace: true })}>
             ← {t({ en: "Manufacturing", ar: "التصنيع" })}
           </button>
         </div>
@@ -348,6 +348,9 @@ export function MrpShell({ pageId, icon, title, sub, actions, children }) {
               <Link
                 key={p.id}
                 to={p.to}
+                // استبدال بدل دفع: التنقّل بين تبويبات الوحدة ما بيكدّس تاريخ المتصفّح،
+                // فزر الرجوع بيرجّعك لخارج الوحدة بضغطة وحدة بدل ما يمشي على كل تبويب فتحته.
+                replace
                 style={{ ...S.navBtn, ...(on ? S.navBtnOn : null) }}
               >
                 <span style={{ ...S.navIcon, ...(on ? S.navIconOn : null) }}>{p.icon}</span>

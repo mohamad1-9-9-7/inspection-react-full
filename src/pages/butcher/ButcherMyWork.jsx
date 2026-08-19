@@ -122,7 +122,7 @@ export default function ButcherMyWork() {
                 {t({ en: "Change number", ar: "تغيير الرقم" })}
               </button>
             )}
-            <button className="mw-sm" style={S.smallBtn} onClick={() => navigate("/butcher")}>
+            <button className="mw-sm" style={S.smallBtn} onClick={() => navigate("/butcher", { replace: true })}>
               ← {t({ en: "Back", ar: "رجوع" })}
             </button>
           </div>

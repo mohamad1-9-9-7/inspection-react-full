@@ -329,7 +329,7 @@ export default function ButcherSupervisor() {
             <button type="button" style={S.btn} onClick={load} disabled={loading}>
               {loading ? t({ en: "Loading…", ar: "جارٍ التحميل…" }) : `↻ ${t({ en: "Refresh", ar: "تحديث" })}`}
             </button>
-            <button type="button" style={S.btn} onClick={() => navigate("/butcher")}>
+            <button type="button" style={S.btn} onClick={() => navigate("/butcher", { replace: true })}>
               {t({ en: "Back", ar: "رجوع" })}
             </button>
           </div>
