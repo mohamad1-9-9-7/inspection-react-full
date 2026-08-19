@@ -13,6 +13,11 @@ const isSameOrigin = (() => {
 
 const credentials = isSameOrigin ? "include" : "omit";
 
+/* Report reads funnel through the global fetch wrapper in utils/authFetch.js,
+   which already throttles bursts and retries 429s with the server's
+   Retry-After. So a plain `fetch` here is automatically rate-limit resilient —
+   no need to duplicate that logic in this module. */
+
 export function reportId(row) {
   return row?.id || row?._id || row?.payload?.id || row?.payload?._id || "";
 }
@@ -53,9 +58,91 @@ export async function listReports(type, params = {}) {
   return Array.isArray(json) ? json : json?.data || json?.items || [];
 }
 
+/* The Date Tree only needs a date per record, not the record. `?lite=1` makes
+   the server return metadata-only rows (id, dates, reporter — no payload), so
+   the old reports no longer download up front; their dates show in the tree and
+   the full record is pulled only when the user clicks one (getReportPayloadByDate).
+
+   Deliberately NOT `?dates=1`: that variant filters `WHERE <business date> IS
+   NOT NULL`, which silently DROPS every record whose date lives only in
+   created_at or an unusual field — the tree then shows fewer rows than the
+   total count. `?lite=1` applies no such filter and returns created_at, and
+   reportDateOf below falls back to it, so every record gets a date and the tree
+   matches the full total. limit=5000 covers every real type (a server that
+   predates lite just returns full rows, still correct — only heavier). */
+export async function listReportDates(type, params = {}) {
+  const qs = new URLSearchParams();
+  qs.set("type", type);
+  qs.set("lite", "1");
+  qs.set("limit", "5000");
+
+  const res = await fetch(`${REPORTS_URL}?${qs.toString()}`, {
+    method: "GET",
+    cache: "no-store",
+    credentials,
+    headers: { Accept: "application/json" },
+    signal: params.signal,
+  });
+  if (!res.ok) throw new Error(`Failed to list ${type} dates (${res.status})`);
+  const json = await res.json().catch(() => null);
+  const rows = Array.isArray(json) ? json : json?.data || json?.items || [];
+  return rows.map((r) => ({
+    id: reportId(r) || r.id || null,
+    reportDate: reportDateOf(r),
+    ...r,
+  }));
+}
+
+/* Fetch one record by its numeric id (from listReportDates). One tiny query
+   instead of re-downloading the whole table to find it. */
+export async function getReportById(id, params = {}) {
+  if (!id) return null;
+  const res = await fetch(`${REPORTS_URL}/${encodeURIComponent(id)}`, {
+    method: "GET",
+    cache: "no-store",
+    credentials,
+    headers: { Accept: "application/json" },
+    signal: params.signal,
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to load report ${id} (${res.status})`);
+  const json = await res.json().catch(() => null);
+  return json?.report || (Array.isArray(json?.data) ? json.data[0] : null) || null;
+}
+
 export async function getReportRowByDate(type, date, params = {}) {
+  const want = String(date).trim();
+
+  // Targeted read: the server answers `?type=&reportDate=` with just the one
+  // record. This replaces the old "download the entire table and .find()"
+  // path that doubled every screen's bandwidth and request count.
+  const qs = new URLSearchParams();
+  qs.set("type", type);
+  qs.set("reportDate", want);
+  try {
+    const res = await fetch(`${REPORTS_URL}?${qs.toString()}`, {
+      method: "GET",
+      cache: "no-store",
+      credentials,
+      headers: { Accept: "application/json" },
+      signal: params.signal,
+    });
+    if (res.ok) {
+      const json = await res.json().catch(() => null);
+      const rows = Array.isArray(json) ? json : json?.data || json?.items || [];
+      const hit = rows.find((row) => String(reportDateOf(row)).trim() === want);
+      // Fast path: the targeted query found it. On any miss we deliberately
+      // fall through to the full scan below — reportDateOf understands more
+      // date shapes than the server's matcher, so the scan is the correctness
+      // backstop and guarantees this never misses an existing record.
+      if (hit) return hit;
+    }
+  } catch {
+    /* fall through to the full-list scan */
+  }
+
   const rows = await listReports(type, params);
-  return rows.find((row) => String(reportDateOf(row)).trim() === String(date).trim()) || null;
+  return rows.find((row) => String(reportDateOf(row)).trim() === want) || null;
 }
 
 export async function getReportPayloadByDate(type, date, params = {}) {
