@@ -27,6 +27,7 @@ import {
 const GROUPS = [
   { id: "employeeNo", ar: "الجزار", en: "Butcher" },
   { id: "bomRef", ar: "الوصفة", en: "Recipe" },
+  { id: "pathwayLabel", ar: "المسار", en: "Pathway" },
   { id: "bomCatName", ar: "الفئة", en: "Category" },
   { id: "inputName", ar: "المادة الخام", en: "Raw material" },
   { id: "branchName", ar: "الملحمة", en: "Butchery" },
@@ -48,6 +49,7 @@ export default function ButcherView() {
   const [branch, setBranch] = useState("");
   const [catId, setCatId] = useState("");
   const [bomRef, setBomRef] = useState("");
+  const [pathway, setPathway] = useState("");
   const [q, setQ] = useState("");
   const [review, setReview] = useState("");
   const [onlyDeviating, setOnlyDeviating] = useState(false);
@@ -73,6 +75,12 @@ export default function ButcherView() {
     return [...s].sort();
   }, [all]);
 
+  const pathwayOptions = useMemo(() => {
+    const m = new Map();
+    all.forEach((r) => { if (r.pathwayCode) m.set(r.pathwayCode, r.pathwayLabel || r.pathwayCode); });
+    return [...m.entries()].map(([code, label]) => ({ code, label })).sort((a, b) => a.code.localeCompare(b.code));
+  }, [all]);
+
   /* ── التطبيق ── */
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -82,13 +90,14 @@ export default function ButcherView() {
       if (branch && r.branchCode !== branch) return false;
       if (catId && r.bomCatId !== catId) return false;
       if (bomRef && r.bomRef !== bomRef) return false;
+      if (pathway && r.pathwayCode !== pathway) return false;
       if (review && (r.reviewStatus || "pending") !== review) return false;
       if (onlyDeviating && !r.cuts.some((c) => c.deltaPct !== null && Math.abs(c.deltaPct) > 10)) {
         return false;
       }
       if (needle) {
         const hay = [
-          r.employeeNo, r.employeeNoRaw, r.bomRef, r.inputName, r.inputSku,
+          r.employeeNo, r.employeeNoRaw, r.bomRef, r.pathwayLabel, r.inputName, r.inputSku,
           r.branchName, r.bomCatName, ...r.cuts.map((c) => `${c.name} ${c.sku}`),
         ].join(" ").toLowerCase();
         if (!hay.includes(needle)) return false;
@@ -96,7 +105,7 @@ export default function ButcherView() {
       return true;
     });
     return sortRows(out, sort.key, sort.dir);
-  }, [all, from, to, branch, catId, bomRef, review, onlyDeviating, q, sort]);
+  }, [all, from, to, branch, catId, bomRef, pathway, review, onlyDeviating, q, sort]);
 
   const stats = useMemo(() => totalsOf(rows), [rows]);
 
@@ -186,11 +195,11 @@ export default function ButcherView() {
 
   const resetAll = () => {
     setFrom(shiftDays(-30)); setTo(todayStr()); setBranch(""); setCatId("");
-    setBomRef(""); setQ(""); setReview(""); setOnlyDeviating(false);
+    setBomRef(""); setPathway(""); setQ(""); setReview(""); setOnlyDeviating(false);
   };
 
   const activeFilters =
-    (branch ? 1 : 0) + (catId ? 1 : 0) + (bomRef ? 1 : 0) + (q.trim() ? 1 : 0) +
+    (branch ? 1 : 0) + (catId ? 1 : 0) + (bomRef ? 1 : 0) + (pathway ? 1 : 0) + (q.trim() ? 1 : 0) +
     (review ? 1 : 0) + (onlyDeviating ? 1 : 0);
 
   /* ── Excel: تفاصيل + تجميع + منتجات ── */
@@ -202,6 +211,7 @@ export default function ButcherView() {
       t({ en: "Butchery", ar: "الملحمة" }),
       t({ en: "Category", ar: "الفئة" }),
       t({ en: "Recipe", ar: "الوصفة" }),
+      t({ en: "Pathway", ar: "المسار" }),
       t({ en: "Raw material", ar: "المادة الخام" }),
       t({ en: "Raw kg", ar: "وزن الخام" }),
       t({ en: "Pieces", ar: "عدد القطع" }),
@@ -218,7 +228,7 @@ export default function ButcherView() {
       r.cuts.forEach((c) => {
         detail.push([
           r.day, r.entryDay, r.employeeNo, r.branchName, r.bomCatName, r.bomRef,
-          r.inputName, +kg(r.carcassKg), r.pieceCount ?? "",
+          r.pathwayLabel || "", r.inputName, +kg(r.carcassKg), r.pieceCount ?? "",
           c.name, c.sku,
           c.isWaste ? t({ en: "Waste", ar: "هدر" }) : t({ en: "Product", ar: "منتج" }),
           +kg(c.weightKg), c.targetKg ? +kg(c.targetKg) : "",
@@ -476,6 +486,15 @@ export default function ButcherView() {
                 {bomOptions.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </label>
+            {pathwayOptions.length > 0 && (
+              <label style={S.label}>
+                <span className="bk-lbl" style={{ color: C.muted }}>{t({ en: "Pathway", ar: "المسار" })}</span>
+                <select value={pathway} onChange={(e) => setPathway(e.target.value)} style={S.input}>
+                  <option value="">{t({ en: "All", ar: "الكل" })}</option>
+                  {pathwayOptions.map((p) => <option key={p.code} value={p.code}>{p.label}</option>)}
+                </select>
+              </label>
+            )}
             <label style={S.label}>
               <span className="bk-lbl" style={{ color: C.muted }}>{t({ en: "Status", ar: "الحالة" })}</span>
               <select value={review} onChange={(e) => setReview(e.target.value)} style={S.input}>
@@ -796,6 +815,15 @@ export default function ButcherView() {
                             </td>
                             <td style={S.td}>
                               <Chip>{r.bomRef || "—"}</Chip>
+                              {r.pathwayLabel && (
+                                <div style={{ marginTop: 4 }}>
+                                  <span className="bk-chip" style={{
+                                    display: "inline-flex", alignItems: "center", gap: 4,
+                                    background: "#f3eefe", color: C.violet, borderRadius: 999,
+                                    padding: "3px 10px", fontWeight: 800, whiteSpace: "nowrap",
+                                  }}>🔀 {r.pathwayLabel}</span>
+                                </div>
+                              )}
                               {r.bomCatName && (
                                 <div className="bk-lbl" style={{ color: C.muted, marginTop: 3 }}>
                                   {r.bomCatName}
