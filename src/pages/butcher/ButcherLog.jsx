@@ -299,13 +299,18 @@ export default function ButcherLog() {
   // epsilon زغير للفواصل العشرية فقط — التطابق تام
   const balanceOff = exactBalance && (carcassKg <= 0 || Math.abs(balanceDiff) > 1e-6);
 
+  /* منع التجاوز فوق وزن الخام مربوط بالتطابق التام:
+     - «التطابق التام» مفعّل → التجاوز ممنوع (لازم يساوي تماماً).
+     - «التطابق التام» مطفي → التجاوز مسموح (لأسباب تشغيلية) ويبقى تحذير بصري فقط. */
+  const overBlocks = isOver && exactBalance;
+
   /* عدد القطع — تطلبه بعض الوصفات فقط */
   const needPieces = bom?.requirePieceCount === true;
   const pieceCountNum = Math.floor(num(pieceCount));
   const pieceMissing = needPieces && !(pieceCountNum > 0);
 
   const canSave =
-    filled.length > 0 && usedKg > 0 && !isOver && !wasteMissing && !balanceOff && !pieceMissing;
+    filled.length > 0 && usedKg > 0 && !overBlocks && !wasteMissing && !balanceOff && !pieceMissing;
 
   /* ------- الانتقالات ------- */
 
@@ -953,10 +958,14 @@ export default function ButcherLog() {
               </div>
             )}
             {isOver && (
-              <div className="bt-sum" style={S.error}>
-                {isAr
-                  ? `المجموع أكبر من وزن المادة الخام بـ ${overKg.toFixed(2)} كجم — صحّح الأوزان قبل الحفظ.`
-                  : `Total exceeds the raw material weight by ${overKg.toFixed(2)} kg — fix the weights before saving.`}
+              <div className="bt-sum" style={overBlocks ? S.error : S.warn}>
+                {overBlocks
+                  ? (isAr
+                      ? `المجموع أكبر من وزن المادة الخام بـ ${overKg.toFixed(2)} كجم — صحّح الأوزان قبل الحفظ.`
+                      : `Total exceeds the raw material weight by ${overKg.toFixed(2)} kg — fix the weights before saving.`)
+                  : (isAr
+                      ? `تنبيه: المجموع أكبر من وزن المادة الخام بـ ${overKg.toFixed(2)} كجم — مسموح الحفظ لأن التطابق التام غير مفعّل.`
+                      : `Note: total exceeds the raw material weight by ${overKg.toFixed(2)} kg — saving is allowed because exact balance is off.`)}
               </div>
             )}
             {error && <div className="bt-sum" style={S.error}>{error}</div>}
