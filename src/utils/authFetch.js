@@ -2,6 +2,7 @@
 // call site in the app (250+ files) automatically sends the session token —
 // without having to touch each call site individually.
 import { API_BASE, IMAGE_API_BASE } from "../config/api";
+import { windowRuleForType, canSeeFullHistory, filterRowsByWindow } from "./reportWindow";
 
 const ORIGINAL_FETCH = window.fetch.bind(window);
 const API_ORIGINS = [API_BASE, IMAGE_API_BASE].filter(Boolean);
@@ -86,6 +87,54 @@ function withFullLimit(url) {
   return url + (url.includes("?") ? "&" : "?") + "limit=5000";
 }
 
+/* ------------------------------------------------------------------
+   Report visibility window (see utils/reportWindow.js)
+   ------------------------------------------------------------------
+   Non-admin accounts only see recent reports: POS 10/11/15/19 for the
+   last 30 days, returns reports for the last 2 months. Because every
+   `/api/reports?type=…` list read funnels through this wrapper, trimming
+   the response here hides older rows from the Date Tree, search, exports
+   and everything else at once — without touching any of the ~250 views.
+   Accounts with the section's "history" op (and all admins) are exempt,
+   so their reads are returned untouched with no parsing overhead. */
+function reportTypeParam(url) {
+  const q = String(url).split("?")[1];
+  if (!q) return "";
+  const p = new URLSearchParams(q);
+  return p.get("type") || p.get("reportType") || "";
+}
+
+async function applyReportWindow(url, res) {
+  try {
+    const type = reportTypeParam(url);
+    if (!type) return res;
+    const rule = windowRuleForType(type);
+    if (!rule || canSeeFullHistory(rule.section)) return res;
+    if (!res.ok) return res;
+    if (!/json/i.test(res.headers.get("content-type") || "")) return res;
+
+    // Read a clone so the original body stays intact if anything goes wrong.
+    const data = await res.clone().json().catch(() => null);
+    if (data == null) return res;
+
+    let filtered;
+    if (Array.isArray(data)) filtered = filterRowsByWindow(type, data);
+    else if (Array.isArray(data.data)) filtered = { ...data, data: filterRowsByWindow(type, data.data) };
+    else if (Array.isArray(data.items)) filtered = { ...data, items: filterRowsByWindow(type, data.items) };
+    else return res;
+
+    const headers = new Headers(res.headers);
+    headers.delete("content-length");
+    return new Response(JSON.stringify(filtered), {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    });
+  } catch {
+    return res;
+  }
+}
+
 async function withRetry(send, { retries = 4, signal } = {}) {
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
@@ -139,6 +188,11 @@ window.fetch = function authFetch(input, init = {}) {
       if (window.location.pathname !== "/") {
         window.location.href = "/";
       }
+      return res;
+    }
+    // Trim windowed report lists for non-privileged accounts.
+    if (isReportRead(url, method)) {
+      return applyReportWindow(url, res);
     }
     return res;
   });

@@ -252,6 +252,7 @@ export const ST = {
   amWrite:  { en: "Write",  ar: "إضافة" },
   amEditOp: { en: "Edit",   ar: "تعديل" },
   amDelOp:  { en: "Delete", ar: "حذف" },
+  amHistoryOp: { en: "Old Reports", ar: "التقارير القديمة" },
 
   // Permissions table
   amPermissions:      { en: "Permissions", ar: "الصلاحيات" },

@@ -13,6 +13,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 import { canEdit, canDelete } from "../../../../utils/perms";
 
 const TYPE   = "pos10_traceability_log";
@@ -96,14 +97,9 @@ export default function POS10TraceabilityLogView() {
   /* ===== Fetch dates ===== */
   async function fetchAllDates() {
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
-      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
+      // Lightweight index (dates only, no payloads); the record loads on demand.
+      const rows = await listReportDates(TYPE);
+      const uniq = Array.from(new Set(rows.map((r) => reportDateOf(r)).filter(Boolean))).sort((a, b) => String(b).localeCompare(String(a)));
       setAllDates(uniq);
 
       // Tree stays collapsed by default.
@@ -119,13 +115,7 @@ export default function POS10TraceabilityLogView() {
     setErr("");
     setRecord(null);
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportRowByDate(TYPE, d);
       setRecord(match);
 
       // Init edit buffers

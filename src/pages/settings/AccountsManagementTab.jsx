@@ -53,11 +53,19 @@ const SECTIONS = [
 ];
 
 const CRUD_OPS = [
-  { id: "view",   icon: "👁️", nameKey: "amView",   color: "#2563eb" },
-  { id: "write",  icon: "✏️", nameKey: "amWrite",  color: "#059669" },
-  { id: "edit",   icon: "📝", nameKey: "amEditOp", color: "#d97706" },
-  { id: "delete", icon: "🗑️", nameKey: "amDelOp",  color: "#dc2626" },
+  { id: "view",    icon: "👁️", nameKey: "amView",     color: "#2563eb" },
+  { id: "write",   icon: "✏️", nameKey: "amWrite",    color: "#059669" },
+  { id: "edit",    icon: "📝", nameKey: "amEditOp",   color: "#d97706" },
+  { id: "delete",  icon: "🗑️", nameKey: "amDelOp",    color: "#dc2626" },
+  // "history" lifts the recent-only window on report views. It only has an
+  // effect on the Daily (POS 10/11/15/19) and Returns sections; elsewhere it
+  // is stored but never checked. See utils/reportWindow.js.
+  { id: "history", icon: "🕰️", nameKey: "amHistoryOp", color: "#7c3aed" },
 ];
+
+/* Sections where the "history" op has an effect (lifts the recent-only report
+   window). Elsewhere the column renders a muted dash so it isn't misleading. */
+const HISTORY_SECTIONS = new Set(["daily", "returns"]);
 
 const EMPTY_FORM = {
   username: "", displayName: "", password: "", confirmPassword: "",
@@ -247,10 +255,14 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
                     </td>
                     {CRUD_OPS.map(op => (
                       <td key={op.id} style={{ ...fs.permTd, textAlign:"center" }}>
-                        <input type="checkbox" checked={ops.includes(op.id)}
-                          disabled={!hasAccess || (op.id !== "view" && !ops.includes("view"))}
-                          onChange={() => toggleOp(sec.id, op.id)}
-                          style={{ width:16, height:16, accentColor:op.color, cursor: hasAccess ? "pointer" : "not-allowed" }} />
+                        {op.id === "history" && !HISTORY_SECTIONS.has(sec.id) ? (
+                          <span style={{ color:"#cbd5e1", fontWeight:900 }} title="Only applies to Daily (POS) & Returns reports">—</span>
+                        ) : (
+                          <input type="checkbox" checked={ops.includes(op.id)}
+                            disabled={!hasAccess || (op.id !== "view" && !ops.includes("view"))}
+                            onChange={() => toggleOp(sec.id, op.id)}
+                            style={{ width:16, height:16, accentColor:op.color, cursor: hasAccess ? "pointer" : "not-allowed" }} />
+                        )}
                       </td>
                     ))}
                     <td style={{ ...fs.permTd, textAlign:"center" }}>

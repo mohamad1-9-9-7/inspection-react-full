@@ -16,6 +16,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { listReportDates, listReports, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 import { canEdit, canDelete } from "../../../../utils/perms";
 
 // Matches the POS10 input file (no external references)
@@ -141,6 +142,8 @@ export default function POS10ReceivingLogView() {
 
   // Cache: all payloads for this TYPE+BRANCH (used for global search)
   const [allPayloads, setAllPayloads] = useState([]);
+  const [payloadsLoaded, setPayloadsLoaded] = useState(false);
+  const [payloadsLoading, setPayloadsLoading] = useState(false);
 
   // Optional edit mode (password 9999)
   const [editRows, setEditRows] = useState(
@@ -196,29 +199,14 @@ export default function POS10ReceivingLogView() {
   /* ====== Fetch ====== */
   async function fetchAllDates() {
     try {
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      // payloads for POS 10 only
-      const payloads = list
-        .map((r) => r?.payload)
-        .filter((p) => p && p.branch === BRANCH && p.reportDate);
-
-      // cache for global search
-      payloads.sort((a, b) =>
-        String(b.reportDate || "").localeCompare(String(a.reportDate || ""))
-      );
-      setAllPayloads(payloads);
-
-      const uniq = Array.from(new Set(payloads.map((p) => p.reportDate))).sort(
+      // Lightweight index (dates only, no payloads); records load on demand.
+      const rows = await listReportDates(TYPE);
+      const uniq = Array.from(new Set(rows.map((r) => reportDateOf(r)).filter(Boolean))).sort(
         (a, b) => String(b).localeCompare(String(a))
       );
       setAllDates(uniq);
+      // The global search needs full payloads; reload them lazily next time.
+      setPayloadsLoaded(false);
 
       // Tree stays collapsed by default.
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
@@ -233,37 +221,7 @@ export default function POS10ReceivingLogView() {
     setRecord(null);
 
     try {
-      // fast path from cached payloads
-      const cached = allPayloads.find((p) => p?.reportDate === d);
-      if (cached) {
-        // emulate record shape (payload only is used heavily)
-        const pseudo = { payload: cached };
-        setRecord(pseudo);
-
-        const rows = Array.from({ length: 15 }, (_, i) => cached?.entries?.[i] || emptyRow());
-        setEditRows(rows);
-        setEditVerifiedBy(cached?.verifiedBy || "");
-        setEditReceivedBy(cached?.receivedBy || "");
-        setEditing(false);
-        return;
-      }
-
-      // fallback: fetch all and find match (kept for safety)
-      const q = new URLSearchParams({ type: TYPE });
-      const res = await fetch(`${API_BASE}/api/reports?${q.toString()}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-
-      const match =
-        list.find(
-          (r) =>
-            r?.payload?.branch === BRANCH &&
-            r?.payload?.reportDate === d
-        ) || null;
-
+      const match = await getReportRowByDate(TYPE, d);
       setRecord(match);
 
       const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
@@ -291,6 +249,27 @@ export default function POS10ReceivingLogView() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
+
+  // The cross-day search needs every payload; pull them only once the user
+  // actually types a query (so opening the page stays lightweight).
+  async function loadAllPayloads() {
+    if (payloadsLoaded || payloadsLoading) return;
+    setPayloadsLoading(true);
+    try {
+      const list = await listReports(TYPE);
+      const payloads = list
+        .map((r) => payloadOf(r))
+        .filter((p) => p && p.reportDate)
+        .sort((a, b) => String(b.reportDate || "").localeCompare(String(a.reportDate || "")));
+      setAllPayloads(payloads);
+      setPayloadsLoaded(true);
+    } catch (e) { console.warn("Failed to load search data", e); }
+    finally { setPayloadsLoading(false); }
+  }
+  useEffect(() => {
+    if (norm(search) && !payloadsLoaded) loadAllPayloads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, payloadsLoaded]);
 
   /* ====== Edit / Save / Delete (password protected) ====== */
   const askPass = (label = "") =>

@@ -12,6 +12,15 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import {
+  listReportDates,
+  listReports,
+  getReportById,
+  getReportRowByDate,
+  reportId,
+  reportDateOf,
+  payloadOf,
+} from "../_shared/reportApi";
 
 const TYPE = "pos15_temperature";
 
@@ -49,18 +58,13 @@ function normYMD(dateStr) {
   const dd = String(d.getDate()).padStart(2, "0");
   return { y, m, d: dd, iso: `${y}-${m}-${dd}` };
 }
-function getKey(r) {
-  if (!r) return "";
-  if (r._id) return r._id;
-  const pick = r.payload?.date || r.payload?.reportDate || r.createdAt;
-  const n = normYMD(pick);
-  return n?.iso || "";
-}
-
 export default function POS15TemperatureView() {
-  const [reports, setReports] = useState([]);
+  // `index` holds lightweight rows (id + reportDate, no payload); the full
+  // report for the open date is fetched on demand into `selected`.
+  const [index, setIndex] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
   const [importing, setImporting] = useState(false);
   const sheetRef = useRef(null);
   const fileRef = useRef(null);
@@ -68,33 +72,48 @@ export default function POS15TemperatureView() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.forEach((r) => (r.__dateStr = r.payload?.date || r.payload?.reportDate || r.createdAt || ""));
-      arr.sort((a, b) => new Date(a.__dateStr || 0) - new Date(b.__dateStr || 0));
-      setReports(arr);
-      setSelected(arr[arr.length - 1] || null);
+      const rows = await listReportDates(TYPE);
+      rows.sort((a, b) => String(reportDateOf(a)).localeCompare(String(reportDateOf(b))));
+      setIndex(rows);
+      const newest = rows[rows.length - 1] || null;
+      if (newest) openRow(newest);
+      else setSelected(null);
     } finally {
       setLoading(false);
     }
   }
   useEffect(() => { load(); }, []);
 
-  const selectedKey = getKey(selected);
+  // Pull one full record (by id, falling back to a date-targeted read).
+  async function openRow(row) {
+    setLoadingReport(true);
+    try {
+      const id = reportId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate(TYPE, reportDateOf(row));
+      setSelected(full);
+    } finally {
+      setLoadingReport(false);
+    }
+  }
+
+  const selectedKey = selected
+    ? reportId(selected) || normYMD(reportDateOf(selected))?.iso || ""
+    : "";
 
   const treeItems = useMemo(() => {
-    const seen = new Map();
-    for (const r of reports) {
-      const k = getKey(r);
-      if (!k || seen.has(k)) continue;
-      const pick = r.payload?.date || r.payload?.reportDate || r.createdAt || "";
-      const n = normYMD(pick);
+    // One entry per date; when a date has duplicates the newest id wins.
+    const byDate = new Map();
+    for (const r of index) {
+      const n = normYMD(reportDateOf(r));
       if (!n) continue;
-      seen.set(k, { key: k, dateISO: n.iso, label: formatDMY(n.iso), data: r });
+      const prev = byDate.get(n.iso);
+      if (!prev || Number(reportId(r)) > Number(reportId(prev))) byDate.set(n.iso, r);
     }
-    return Array.from(seen.values());
-  }, [reports]);
+    return Array.from(byDate.entries())
+      .map(([iso, r]) => ({ key: reportId(r) || iso, dateISO: iso, label: formatDMY(iso), data: r }))
+      .sort((a, b) => String(b.dateISO).localeCompare(String(a.dateISO)));
+  }, [index]);
 
   const kpi = useMemo(() => calculateKPI(selected?.payload?.coolers), [selected]);
 
@@ -117,8 +136,9 @@ export default function POS15TemperatureView() {
     setTimeout(() => { w.focus(); w.print(); }, 100);
   }
 
-  function exportJSONAll() {
-    const dump = { meta: { type: TYPE, exportedAt: new Date().toISOString(), count: reports.length }, items: reports.map((r) => ({ type: TYPE, payload: r.payload })) };
+  async function exportJSONAll() {
+    const rows = await listReports(TYPE);
+    const dump = { meta: { type: TYPE, exportedAt: new Date().toISOString(), count: rows.length }, items: rows.map((r) => ({ type: TYPE, payload: payloadOf(r) })) };
     const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -158,16 +178,17 @@ export default function POS15TemperatureView() {
 
   async function handleDelete() {
     if (!selected) return;
-    const rid = selected?._id || selected?.id;
+    const rid = reportId(selected);
     if (!rid) return alert("⚠️ Missing report ID.");
     if (!window.confirm("Delete this report permanently?")) return;
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const next = reports.filter((r) => getKey(r) !== selectedKey);
-      setReports(next);
-      setSelected(next[next.length - 1] || null);
+      const nextIndex = index.filter((r) => String(reportId(r)) !== String(rid));
+      setIndex(nextIndex);
+      const newest = nextIndex[nextIndex.length - 1] || null;
+      if (newest) await openRow(newest); else setSelected(null);
       alert("Deleted successfully ✓");
     } catch (e) {
       alert("Failed to delete: " + (e?.message || String(e)));
@@ -202,16 +223,16 @@ export default function POS15TemperatureView() {
           <DateTreeSidebar
             items={treeItems}
             activeKey={selectedKey}
-            onPick={(it) => setSelected(it.data)}
-            loading={loading && !reports.length}
+            onPick={(it) => openRow(it.data)}
+            loading={loading && !index.length}
           />
         }
       >
-        {loading && <p>Loading…</p>}
-        {!loading && !selected && <EmptyState text="No report selected" />}
-        {selected && (
+        {(loading || loadingReport) && <p>Loading…</p>}
+        {!loading && !loadingReport && !selected && <EmptyState text="No report selected" />}
+        {!loadingReport && selected && (
           <div style={{ overflowX: "auto" }}>
-            <ReportSheet ref={sheetRef} data={selected.payload} kpi={kpi} />
+            <ReportSheet ref={sheetRef} data={payloadOf(selected)} kpi={kpi} />
           </div>
         )}
       </SidebarLayout>

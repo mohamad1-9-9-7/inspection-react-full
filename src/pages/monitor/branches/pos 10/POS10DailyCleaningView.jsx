@@ -8,15 +8,19 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
 export default function POS10DailyCleaningView() {
+  // `reports` holds lightweight index rows (id + reportDate, no payload); the
+  // full record for the open date is fetched on demand into `selectedReport`.
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
   const reportRef = useRef();
   const fileInputRef = useRef(null);
 
@@ -30,25 +34,31 @@ export default function POS10DailyCleaningView() {
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=pos10_daily_cleanliness`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : json?.data ?? [];
-      arr.sort(
-        (a, b) =>
-          new Date(a.payload?.reportDate || 0) -
-          new Date(b.payload?.reportDate || 0)
-      );
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
+      // Lightweight index only (dates + ids); the record loads on click.
+      const rows = await listReportDates("pos10_daily_cleanliness");
+      rows.sort((a, b) => String(reportDateOf(a)).localeCompare(String(reportDateOf(b))));
+      setReports(rows);
+      const first = rows[0] || null;
+      if (first) await openRow(first);
+      else setSelectedReport(null);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Pull one full record (by id, falling back to a date-targeted read).
+  async function openRow(row) {
+    setLoadingReport(true);
+    try {
+      const id = getId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate("pos10_daily_cleanliness", reportDateOf(row));
+      setSelectedReport(full);
+    } finally {
+      setLoadingReport(false);
     }
   }
 
@@ -117,9 +127,10 @@ export default function POS10DailyCleaningView() {
   };
 
   // ===== Export JSON (كل التقارير)
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const rows = await listReports("pos10_daily_cleanliness");
+      const payloads = rows.map((r) => payloadOf(r));
       const bundle = {
         type: "pos10_daily_cleanliness",
         exportedAt: new Date().toISOString(),
@@ -205,16 +216,17 @@ export default function POS10DailyCleaningView() {
   const treeItems = useMemo(
     () =>
       reports
-        .filter((r) => r?.payload?.reportDate && !isNaN(new Date(r.payload.reportDate)))
         .map((r, i) => {
-          const iso = String(r.payload.reportDate).slice(0, 10);
+          const iso = String(reportDateOf(r)).slice(0, 10);
+          if (!iso || isNaN(new Date(iso))) return null;
           return {
             key: getId(r) || `${iso}-${i}`,
             dateISO: iso,
             label: formatDMY(iso),
             data: r,
           };
-        }),
+        })
+        .filter(Boolean),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [reports]
   );
@@ -261,13 +273,15 @@ export default function POS10DailyCleaningView() {
             title="🗓️ Saved Reports"
             items={treeItems}
             activeKey={getId(selectedReport)}
-            onPick={(it) => setSelectedReport(it.data)}
+            onPick={(it) => openRow(it.data)}
             loading={loading}
             emptyText="❌ No reports"
           />
         }
       >
-        {!selectedReport ? (
+        {loadingReport ? (
+          <EmptyState text="⏳ Loading…" />
+        ) : !selectedReport ? (
           <EmptyState text="❌ No report selected." />
         ) : (
           <div ref={reportRef} style={{ paddingBottom: "100px" }}>

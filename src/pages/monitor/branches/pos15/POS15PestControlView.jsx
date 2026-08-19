@@ -14,6 +14,14 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import {
+  listReportDates,
+  listReports,
+  getReportById,
+  getReportRowByDate,
+  reportDateOf,
+  payloadOf,
+} from "../_shared/reportApi";
 
 const TYPE = "pos15_pest_control";
 
@@ -24,7 +32,6 @@ const getDate = (r) => {
   const d = (r?.payload?.reportDate && new Date(r.payload.reportDate)) || (r?.created_at && new Date(r.created_at)) || new Date(NaN);
   return d;
 };
-const isPos15 = (r) => String(r?.payload?.branch || r?.branch || "").trim().toLowerCase() === "pos 15";
 
 function normYMD(s) {
   const str = String(s || "").trim();
@@ -44,9 +51,12 @@ const tdCell = { border: "1px solid #e2e8f0", padding: "8px", textAlign: "center
 const tdCellLeft = { border: "1px solid #e2e8f0", padding: "8px", textAlign: "left", verticalAlign: "middle" };
 
 export default function POS15PestControlView() {
+  // `reports` holds lightweight index rows (id + reportDate, no payload); the
+  // full record for the open date is fetched on demand into `selected`.
   const [reports, setReports] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
   const reportRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -57,27 +67,37 @@ export default function POS15PestControlView() {
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("fetch failed");
-      const json = await res.json();
-      let arr = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : Array.isArray(json?.items) ? json.items : [];
-      arr = arr.filter(isPos15).filter((r) => !isNaN(getDate(r))).sort((a, b) => getDate(b) - getDate(a));
-      setReports(arr);
-      setSelected(arr[0] || null);
+      const rows = await listReportDates(TYPE);
+      rows.sort((a, b) => String(reportDateOf(b)).localeCompare(String(reportDateOf(a)))); // newest first
+      setReports(rows);
+      const newest = rows[0] || null;
+      if (newest) await openRow(newest);
+      else setSelected(null);
     } catch (e) { console.error(e); alert("⚠️ Failed to fetch data."); }
     finally { setLoading(false); }
   }
 
   useEffect(() => { fetchReports(); }, []);
 
+  // Pull one full record (by id, falling back to a date-targeted read).
+  async function openRow(row) {
+    setLoadingReport(true);
+    try {
+      const id = getId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate(TYPE, reportDateOf(row));
+      setSelected(full);
+    } finally {
+      setLoadingReport(false);
+    }
+  }
+
   const treeItems = useMemo(() =>
     reports.map(r => {
-      const d = getDate(r);
-      if (isNaN(d)) return null;
-      const iso = d.toISOString().slice(0, 10);
-      const n = normYMD(iso);
-      const id = getId(r) || iso;
-      return { key: id, dateISO: iso, label: n ? formatDMY(n.iso) : iso, data: r };
+      const n = normYMD(reportDateOf(r));
+      if (!n) return null;
+      const id = getId(r) || n.iso;
+      return { key: id, dateISO: n.iso, label: formatDMY(n.iso), data: r };
     }).filter(Boolean),
   [reports]);
 
@@ -116,9 +136,10 @@ export default function POS15PestControlView() {
     } catch (e) { console.error(e); alert("❌ Failed to delete."); }
   }
 
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const items = reports.map((r) => r?.payload ?? r);
+      const rows = await listReports(TYPE);
+      const items = rows.map((r) => payloadOf(r));
       const bundle = { type: TYPE, branch: "POS 15", exportedAt: new Date().toISOString(), count: items.length, items };
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob); const a = document.createElement("a");
@@ -170,15 +191,15 @@ export default function POS15PestControlView() {
             <DateTreeSidebar
               items={treeItems}
               activeKey={activeKey}
-              onPick={(it) => setSelected(it.data)}
+              onPick={(it) => openRow(it.data)}
               loading={loading && !reports.length}
             />
           }
         >
-          {loading && <p>Loading…</p>}
-          {!loading && !selected && <EmptyState text="No report selected." />}
+          {(loading || loadingReport) && <p>Loading…</p>}
+          {!loading && !loadingReport && !selected && <EmptyState text="No report selected." />}
 
-          {selected && (
+          {!loadingReport && selected && (
             <div>
               <div ref={reportRef}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>

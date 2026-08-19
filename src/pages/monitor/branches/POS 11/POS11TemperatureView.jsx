@@ -14,6 +14,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { listReportDates, getReportById, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 import { canDelete } from "../../../../utils/perms";
 
 /* ===== Report constants ===== */
@@ -51,10 +52,9 @@ function calculateKPI(rows = []) {
 const getReportDate = (r) => {
   try {
     const p = r?.payload ?? r ?? {};
-    const d1 = p?.date ? new Date(p.date) : null;
-    if (d1 && !isNaN(d1)) return d1;
-    const d2 = r?.created_at ? new Date(r.created_at) : null;
-    if (d2 && !isNaN(d2)) return d2;
+    const raw = p?.date || p?.reportDate || r?.reportDate || r?.created_at;
+    const d = raw ? new Date(raw) : null;
+    if (d && !isNaN(d)) return d;
   } catch { /* ignore */ }
   return new Date(0);
 };
@@ -73,21 +73,10 @@ export default function POS11TemperatureView() {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(
-          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
-          { cache: "no-store" }
-        );
-        const json = await res.json().catch(() => []);
-        const arr = Array.isArray(json)
-          ? json
-          : json?.data || json?.items || [];
-
+        // Lightweight index only (dates + ids); the record loads on click.
+        const arr = await listReportDates(TYPE);
         if (!abort) {
-          const sorted = [...arr].sort((a, b) => {
-            const da = new Date(a?.payload?.date || a?.created_at || 0).getTime();
-            const db = new Date(b?.payload?.date || b?.created_at || 0).getTime();
-            return db - da;
-          });
+          const sorted = [...arr].sort((a, b) => getReportDate(b) - getReportDate(a));
           setReports(sorted);
           if (sorted.length && !selectedId) {
             setSelectedId(getId(sorted[0]));
@@ -104,11 +93,32 @@ export default function POS11TemperatureView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selected = useMemo(
-    () => reports.find((r) => getId(r) === selectedId),
-    [reports, selectedId]
-  );
-  const payload = selected?.payload ?? selected ?? {};
+  // The full record for the selected id is fetched on demand; the tree itself
+  // only carries lightweight index rows.
+  const [selectedFull, setSelectedFull] = useState(null);
+  const [loadingReport, setLoadingReport] = useState(false);
+  useEffect(() => {
+    let abort = false;
+    if (!selectedId) { setSelectedFull(null); return undefined; }
+    (async () => {
+      setLoadingReport(true);
+      try {
+        let full = await getReportById(selectedId);
+        if (!full) {
+          const row = reports.find((r) => String(getId(r)) === String(selectedId));
+          if (row) full = await getReportRowByDate(TYPE, reportDateOf(row));
+        }
+        if (!abort) setSelectedFull(full);
+      } finally {
+        if (!abort) setLoadingReport(false);
+      }
+    })();
+    return () => { abort = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, reports]);
+
+  const selected = selectedFull;
+  const payload = selected?.payload ?? {};
   const times = (payload?.times || []).filter((t) => t !== "Corrective Action");
   const rows = payload?.coolers || [];
   const kpi = useMemo(() => calculateKPI(rows), [rows]);
@@ -182,7 +192,7 @@ export default function POS11TemperatureView() {
 
   /* Delete */
   const handleDelete = async () => {
-    if (!selected) return;
+    if (!selectedId) return;
     const pin = window.prompt("Enter PIN to delete:");
     if (pin !== ADMIN_PIN) {
       alert("❌ Wrong PIN.");
@@ -190,7 +200,7 @@ export default function POS11TemperatureView() {
     }
     try {
       setOpMsg("⏳ Deleting…");
-      const id = getId(selected);
+      const id = selectedId;
       const res = await fetch(
         `${API_BASE}/api/reports/${encodeURIComponent(id)}`,
         { method: "DELETE" }
@@ -256,8 +266,9 @@ export default function POS11TemperatureView() {
             {opMsg}
           </div>
         )}
-        {!loading && !selected && <EmptyState />}
-        {selected && (
+        {loadingReport && <p>⏳ Loading…</p>}
+        {!loading && !loadingReport && !selected && <EmptyState />}
+        {!loadingReport && selected && (
           <div ref={printRef} style={{ width: "100%", minWidth: 0 }}>
             {/* Glass meta badges */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginBottom: 10, fontSize: 14.5 }}>

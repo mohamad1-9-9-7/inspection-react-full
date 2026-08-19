@@ -9,6 +9,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { listReportDates, listReports, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 
 const TYPE   = "pos15_receiving_log_butchery";
@@ -110,6 +111,8 @@ export default function POS15ReceivingLogView() {
   const [editVerifiedBy, setEditVerifiedBy] = useState("");
   const [allDates, setAllDates] = useState([]);
   const [historicalReports, setHistoricalReports] = useState([]);
+  const [historicalLoaded, setHistoricalLoaded] = useState(false);
+  const [historicalLoading, setHistoricalLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [supplierFilter, setSupplierFilter] = useState("all");
@@ -120,20 +123,35 @@ export default function POS15ReceivingLogView() {
 
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
-      const uniqueReports = Array.from(filtered.reduce((map, payload) => {
-        if (!map.has(payload.reportDate)) map.set(payload.reportDate, payload);
-        return map;
-      }, new Map()).values());
-      const uniq = uniqueReports.map((p) => p.reportDate).sort((a, b) => b.localeCompare(a));
-      setHistoricalReports(uniqueReports);
+      // Lightweight index (dates only, no payloads); the record loads on demand.
+      const rows = await listReportDates(TYPE);
+      const uniq = Array.from(new Set(rows.map((r) => reportDateOf(r)).filter(Boolean)))
+        .sort((a, b) => String(b).localeCompare(String(a)));
       setAllDates(uniq);
+      // Cross-day search data is heavy; reset it so it reloads on next search.
+      setHistoricalLoaded(false);
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) { console.warn("Failed to fetch dates", e); }
+  }
+
+  // The advanced search scans every archived report, so it needs the full
+  // payloads — but only once the user actually opens the search panel.
+  async function loadHistorical() {
+    if (historicalLoaded || historicalLoading) return;
+    setHistoricalLoading(true);
+    try {
+      const rows = await listReports(TYPE);
+      const uniqueReports = Array.from(
+        rows.reduce((map, r) => {
+          const p = payloadOf(r);
+          if (p?.reportDate && !map.has(p.reportDate)) map.set(p.reportDate, p);
+          return map;
+        }, new Map()).values()
+      );
+      setHistoricalReports(uniqueReports);
+      setHistoricalLoaded(true);
+    } catch (e) { console.warn("Failed to load history", e); }
+    finally { setHistoricalLoading(false); }
   }
 
   async function fetchRecord(d = date) {
@@ -142,11 +160,7 @@ export default function POS15ReceivingLogView() {
     setSupplierFilter("all"); setItemFilter("all"); setCountryFilter("all");
     setComplianceFilter("all"); setResultSort("original");
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportRowByDate(TYPE, d);
       setRecord(match);
       const rows = Array.from({ length: 15 }, (_, i) => match?.payload?.entries?.[i] || emptyRow());
       setEditRows(rows);
@@ -158,6 +172,11 @@ export default function POS15ReceivingLogView() {
 
   useEffect(() => { fetchAllDates(); }, []);
   useEffect(() => { if (date) fetchRecord(date); }, [date]);
+  // Pull the heavy cross-day payloads only when the search panel is opened.
+  useEffect(() => {
+    if (showAdvancedSearch && !historicalLoaded) loadHistorical();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAdvancedSearch, historicalLoaded]);
 
   const treeItems = useMemo(() =>
     allDates.map(d => {

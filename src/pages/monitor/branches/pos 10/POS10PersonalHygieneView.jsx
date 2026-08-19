@@ -10,6 +10,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
@@ -29,9 +30,12 @@ const norm = (s) => String(s ?? "").trim();
 const low = (s) => norm(s).toLowerCase();
 
 export default function POS10PersonalHygieneView() {
+  // `reports` holds lightweight index rows (id + reportDate, no payload); the
+  // full record for the open date is fetched on demand into `selectedReport`.
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
   const reportRef = useRef();
   const fileInputRef = useRef(null);
 
@@ -47,43 +51,40 @@ export default function POS10PersonalHygieneView() {
   const getReportDate = (r) => {
     const d1 = new Date(r?.payload?.reportDate);
     if (!isNaN(d1)) return d1;
+    const d3 = new Date(r?.reportDate);
+    if (!isNaN(d3)) return d3;
     const d2 = new Date(r?.created_at);
     return isNaN(d2) ? new Date(0) : d2;
   };
 
-  const isPOS10 = (r) =>
-    String(r?.payload?.branch || r?.branch || "")
-      .trim()
-      .toLowerCase() === "pos 10";
-
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      let arr =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.rows) ? json.rows : [];
-
-      // ✅ نحصر النتائج بفرع POS 10 فقط
-      arr = arr.filter(isPOS10);
-
-      // ✅ الأحدث أولاً
-      arr.sort((a, b) => getReportDate(b) - getReportDate(a));
-
-      setReports(arr);
-      setSelectedReport(arr[0] || null); // الأحدث
+      // Lightweight index only (dates + ids); the record loads on click.
+      const rows = await listReportDates(TYPE);
+      rows.sort((a, b) => getReportDate(b) - getReportDate(a)); // newest first
+      setReports(rows);
+      const newest = rows[0] || null;
+      if (newest) await openRow(newest);
+      else setSelectedReport(null);
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Pull one full record (by id, falling back to a date-targeted read).
+  const openRow = async (row) => {
+    setLoadingReport(true);
+    try {
+      const id = getId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate(TYPE, reportDateOf(row));
+      setSelectedReport(full);
+    } finally {
+      setLoadingReport(false);
     }
   };
 
@@ -169,9 +170,10 @@ export default function POS10PersonalHygieneView() {
   };
 
   // ===== Export JSON (كل تقارير POS 10 فقط) =====
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map((r) => r?.payload ?? r);
+      const rows = await listReports(TYPE);
+      const payloads = rows.map((r) => payloadOf(r));
       const bundle = {
         type: TYPE,
         branch: "POS 10",
@@ -312,13 +314,15 @@ export default function POS10PersonalHygieneView() {
             title="🗓️ Saved Reports"
             items={treeItems}
             activeKey={getId(selectedReport)}
-            onPick={(it) => setSelectedReport(it.data)}
+            onPick={(it) => openRow(it.data)}
             loading={loading}
             emptyText="❌ No reports"
           />
         }
       >
-        {!selectedReport ? (
+        {loadingReport ? (
+          <EmptyState text="⏳ Loading…" />
+        ) : !selectedReport ? (
           <EmptyState text="❌ No report selected." />
         ) : (
             <div ref={reportRef}>

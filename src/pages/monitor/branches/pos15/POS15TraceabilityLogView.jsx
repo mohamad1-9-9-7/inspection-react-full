@@ -11,6 +11,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "../_shared/branchViewKit";
+import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 
 const TYPE   = "pos15_traceability_log";
 const BRANCH = "POS 15";
@@ -80,12 +81,10 @@ export default function POS15TraceabilityLogView() {
 
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const filtered = list.map((r) => r?.payload).filter((p) => p && p.branch === BRANCH && p.reportDate);
-      const uniq = Array.from(new Set(filtered.map((p) => p.reportDate))).sort((a, b) => b.localeCompare(a));
+      // Lightweight index (dates only, no payloads); the record loads on demand.
+      const rows = await listReportDates(TYPE);
+      const uniq = Array.from(new Set(rows.map((r) => reportDateOf(r)).filter(Boolean)))
+        .sort((a, b) => String(b).localeCompare(String(a)));
       setAllDates(uniq);
       if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
     } catch (e) { console.warn("Failed to fetch dates", e); }
@@ -94,11 +93,7 @@ export default function POS15TraceabilityLogView() {
   async function fetchRecord(d = date) {
     setLoading(true); setErr(""); setRecord(null);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const list = Array.isArray(data) ? data : data?.data ?? [];
-      const match = list.find((r) => r?.payload?.branch === BRANCH && r?.payload?.reportDate === d) || null;
+      const match = await getReportRowByDate(TYPE, d);
       setRecord(match);
       const rows = Array.from({ length: 12 }, (_, i) => {
         const e = match?.payload?.entries?.[i];

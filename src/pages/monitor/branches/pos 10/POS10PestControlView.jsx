@@ -10,6 +10,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { listReportDates, listReports, getReportById, getReportRowByDate, reportDateOf, payloadOf } from "../_shared/reportApi";
 import { canDelete } from "../../../../utils/perms";
 import { photoOf, downloadImage } from "../../../../utils/imageUpload";
 
@@ -18,9 +19,12 @@ const API_BASE =
 
 export default function POS10PestControlView() {
   const TYPE = "pos10_pest_control";
+  // `reports` holds lightweight index rows (id + reportDate, no payload); the
+  // full record for the open date is fetched on demand into `selected`.
   const [reports, setReports] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
   const reportRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -42,15 +46,11 @@ export default function POS10PestControlView() {
   const getDate = (r) => {
     const d =
       (r?.payload?.reportDate && new Date(r.payload.reportDate)) ||
+      (r?.reportDate && new Date(r.reportDate)) ||
       (r?.created_at && new Date(r.created_at)) ||
       new Date(NaN);
     return d;
   };
-
-  const isPos10 = (r) =>
-    String(r?.payload?.branch || r?.branch || "")
-      .trim()
-      .toLowerCase() === "pos 10";
 
   // Fetch
   useEffect(() => {
@@ -61,30 +61,31 @@ export default function POS10PestControlView() {
   async function fetchReports() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("fetch failed");
-      const json = await res.json();
-      let arr =
-        Array.isArray(json) ? json :
-        Array.isArray(json?.data) ? json.data :
-        Array.isArray(json?.items) ? json.items :
-        Array.isArray(json?.rows) ? json.rows : [];
-
-      // فقط POS 10
-      arr = arr.filter(isPos10);
-
-      // الأحدث أولًا
-      arr = arr
-        .filter((r) => !isNaN(getDate(r)))
-        .sort((a, b) => getDate(b) - getDate(a));
-
-      setReports(arr);
-      setSelected(arr[0] || null);
+      // Lightweight index only (dates + ids); the record loads on click.
+      const rows = await listReportDates(TYPE);
+      rows.sort((a, b) => getDate(b) - getDate(a)); // newest first
+      setReports(rows);
+      const newest = rows[0] || null;
+      if (newest) await openRow(newest);
+      else setSelected(null);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Pull one full record (by id, falling back to a date-targeted read).
+  async function openRow(row) {
+    setLoadingReport(true);
+    try {
+      const id = getId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate(TYPE, reportDateOf(row));
+      setSelected(full);
+    } finally {
+      setLoadingReport(false);
     }
   }
 
@@ -173,9 +174,10 @@ export default function POS10PestControlView() {
   }
 
   // Export JSON (كل تقارير POS 10 فقط)
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     try {
-      const items = reports.map((r) => r?.payload ?? r);
+      const rows = await listReports(TYPE);
+      const items = rows.map((r) => payloadOf(r));
       const bundle = {
         type: TYPE,
         branch: "POS 10",
@@ -276,13 +278,15 @@ export default function POS10PestControlView() {
             title="🗓️ Saved Reports"
             items={treeItems}
             activeKey={getId(selected)}
-            onPick={(it) => setSelected(it.data)}
+            onPick={(it) => openRow(it.data)}
             loading={loading}
             emptyText="❌ No reports"
           />
         }
       >
-        {!selected ? (
+        {loadingReport ? (
+          <EmptyState text="⏳ Loading…" />
+        ) : !selected ? (
           <EmptyState text="❌ No report selected." />
         ) : (
             <div ref={reportRef}>

@@ -11,6 +11,7 @@ import {
   SidebarLayout,
   EmptyState,
 } from "./pos10ViewKit";
+import { listReportDates, getReportById, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 import { canDelete } from "../../../../utils/perms";
 
 const API_BASE =
@@ -53,9 +54,12 @@ function calculateKPI(coolers = []) {
 }
 
 export default function POS10TemperatureView() {
+  // `reports` holds lightweight index rows (id + reportDate, no payload); the
+  // full record for the open date is fetched on demand into `selectedReport`.
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
   const reportRef = useRef();
 
   // 🔐 Password prompt (9999)
@@ -67,6 +71,7 @@ export default function POS10TemperatureView() {
     const d =
       (r?.payload?.date && new Date(r.payload.date)) ||
       (r?.payload?.reportDate && new Date(r.payload.reportDate)) ||
+      (r?.reportDate && new Date(r.reportDate)) ||
       (r?.created_at && new Date(r.created_at)) ||
       new Date(NaN);
     return d;
@@ -80,21 +85,31 @@ export default function POS10TemperatureView() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=pos10_temperature`, { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to fetch");
-      const json = await res.json();
-      let arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
-      // Exclude items without a valid date, then sort newest -> oldest
-      arr = arr
-        .filter((r) => !isNaN(getReportDate(r)))
-        .sort((a, b) => getReportDate(b) - getReportDate(a));
-      setReports(arr);
-      setSelectedReport(arr[0] || null); // newest by default
+      // Lightweight index only (dates + ids); the record loads on click.
+      const rows = await listReportDates("pos10_temperature");
+      rows.sort((a, b) => getReportDate(b) - getReportDate(a)); // newest -> oldest
+      setReports(rows);
+      const newest = rows[0] || null;
+      if (newest) await openRow(newest);
+      else setSelectedReport(null);
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Pull one full record (by id, falling back to a date-targeted read).
+  const openRow = async (row) => {
+    setLoadingReport(true);
+    try {
+      const id = getId(row);
+      let full = id ? await getReportById(id) : null;
+      if (!full) full = await getReportRowByDate("pos10_temperature", reportDateOf(row));
+      setSelectedReport(full);
+    } finally {
+      setLoadingReport(false);
     }
   };
 
@@ -191,13 +206,15 @@ export default function POS10TemperatureView() {
             title="🗓️ Saved Reports"
             items={treeItems}
             activeKey={getId(selectedReport)}
-            onPick={(it) => setSelectedReport(it.data)}
+            onPick={(it) => openRow(it.data)}
             loading={loading}
             emptyText="❌ No reports"
           />
         }
       >
-        {!selectedReport ? (
+        {loadingReport ? (
+          <EmptyState text="⏳ Loading…" />
+        ) : !selectedReport ? (
           <EmptyState text="❌ No report selected." />
         ) : (
           <div ref={reportRef}>
