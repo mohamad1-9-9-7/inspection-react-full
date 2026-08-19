@@ -43,7 +43,6 @@ const blankBom = (boms) => ({
   // المسارات المتعددة — خيار مستقل لكل وصفة (يُفعّل من داخل باني القائمة نفسها).
   // كل مسار: { id, no, code, name, outputs[], wastes[], notes, active }.
   multiPathways: false,        // No = تفكيك مسطّح تقليدي · Yes = مسارات متعددة لهالوصفة
-  requirePathwayWeight: false, // إلزام كل مسار بمخرَج موزون (Qty>0) — اختياري يحدّده المستخدم
   pathways: [],
   pathwaySeq: 0,               // عدّاد تصاعدي ثابت لأكواد المسارات (لا يُعاد ترقيمه بالحذف)
   notes: "",
@@ -220,7 +219,7 @@ export default function MrpBom() {
       // نضمن حقول التفكيك حتى للسجلات القديمة — بلا دهس باقي الحقول
       bom: {
         outputs: [], wastes: [], inputId: "", inputQty: "",
-        multiPathways: false, requirePathwayWeight: false, pathways: [], pathwaySeq: 0, allowSameIO: false,
+        multiPathways: false, pathways: [], pathwaySeq: 0, allowSameIO: false,
         ...JSON.parse(JSON.stringify(b)),
         bomType: "disassembly",
       },
@@ -390,7 +389,6 @@ export default function MrpBom() {
           ar: "المسارات المتعددة مفعّلة — أضف مسار توزيع واحد على الأقل.",
         });
       }
-      const requireWeight = bom.requirePathwayWeight === true;
       const sigs = new Map();   // توقيع الهويّة (غير الفارغ) → كود المسار الأول اللي حمله
       for (const pw of pws) {
         const label = `${t({ en: "Pathway", ar: "المسار" })} ${pw.code || pw.name || ""} — `;
@@ -400,14 +398,8 @@ export default function MrpBom() {
         );
         if (err) return err;
 
+        // الكميات اختيارية دائماً — الحفظ مسموح حتى بأوزان صفر. الإلزام صار لكل منتج بالكشك.
         const sig = pathwaySignature(pw);
-        // الشرط اختياري: لو مطلوب، كل مسار لازم مخرَج مميِّز واحد على الأقل (qty>0).
-        if (requireWeight && sig === "[]") {
-          return t({
-            en: `${label}has no weighed output — give at least one non-shared cut a quantity > 0 (shared items marked “Any” don’t count).`,
-            ar: `${label}بلا مخرَج موزون — أعطِ قطعة واحدة غير مشتركة كمية > 0 (الأصناف المعلَّمة «Any» ما بتُحسب).`,
-          });
-        }
         // المنع التلقائي للتناقض — ممنوع مساران بنفس نمط المخرجات المميِّزة (غير الفارغ) تماماً.
         // التوقيعات الفارغة (بلا كميات بعد) مسموحة ولا تدخل بفحص التناقض.
         if (sig !== "[]") {
@@ -1015,36 +1007,6 @@ function CutBuilder({
             </label>
           </div>
 
-          {/* ── شرط الوزن للمسار (اختياري) — يحدّده المستخدم ── */}
-          {multiPathways && (
-            <div style={{
-              ...S.chipRow, marginTop: 10, padding: "12px 14px", borderRadius: 14,
-              border: `1.5px solid ${bom.requirePathwayWeight === true ? "#c9b8f2" : "#e3edf7"}`,
-              background: bom.requirePathwayWeight === true ? "#f7f5ff" : "#fafcff",
-            }}>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontWeight: 800, minWidth: 0 }}>
-                <Switch
-                  checked={bom.requirePathwayWeight === true}
-                  onChange={(v) => patch({ requirePathwayWeight: v })}
-                />
-                <span style={{ minWidth: 0 }}>
-                  ⚖️ {t({ en: "Require a weighed output per pathway (Qty > 0)", ar: "إلزام كل مسار بمخرَج موزون (Qty > 0)" })}
-                  <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
-                    {bom.requirePathwayWeight === true
-                      ? t({
-                          en: "On — each pathway must have at least one distinguishing output with a quantity greater than zero before you can save.",
-                          ar: "مفعّل — كل مسار لازم يكون فيه مخرَج مميِّز واحد على الأقل كميّته أكبر من صفر قبل الحفظ.",
-                        })
-                      : t({
-                          en: "Off — quantities are optional (weight ≥ 0). You can save pathways with no quantities yet and fill them later.",
-                          ar: "معطّل — الكميات اختيارية (الوزن ≥ 0). فيك تحفظ المسارات بلا كميات وتعبّيها لاحقاً.",
-                        })}
-                  </div>
-                </span>
-              </label>
-            </div>
-          )}
-
           <div style={{ ...S.chipRow, marginTop: 12 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
               <Switch checked={bom.active !== false} onChange={(v) => patch({ active: v })} />
@@ -1142,6 +1104,7 @@ function CutBuilder({
             accent="#047857"
             disabledFor={lineDisabledForList("outputs")}
             onBlocked={onLineBlocked}
+            showRequired
             onAdd={() => addTo("outputs")}
             onPatch={(id, p) => patchList("outputs", id, p)}
             onDrop={(id) => dropFrom("outputs", id)}
@@ -1401,6 +1364,7 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
             disabledFor={lineDisabledForList("outputs")}
             onBlocked={onLineBlocked}
             showAny
+            showRequired
             onAdd={() => ops.addLine(sel.id, "outputs")}
             onPatch={(id, p) => ops.patchLine(sel.id, "outputs", id, p)}
             onDrop={(id) => ops.dropLine(sel.id, "outputs", id)}
@@ -1498,7 +1462,7 @@ function MassBalance({ t, math, uom }) {
 
 function CutLines({
   t, isAr, cfg, canEdit, icon, title, sub, addLabel, lines, inputQty,
-  preferRoles, accent, onAdd, onPatch, onDrop, disabledFor, onBlocked, showAny,
+  preferRoles, accent, onAdd, onPatch, onDrop, disabledFor, onBlocked, showAny, showRequired,
 }) {
   const roleNames = preferRoles
     .map((r) => nameOf(ITEM_TYPES.find((x) => x.id === r) || {}, isAr))
@@ -1542,6 +1506,14 @@ function CutLines({
                     ar: "صنف مشترك — يُتجاهل عند تحديد هوية المسار",
                   })}>
                     {t({ en: "Shared (Any)", ar: "مشترك (Any)" })}
+                  </th>
+                )}
+                {showRequired && (
+                  <th style={S.th} title={t({
+                    en: "The butcher must weigh this product (Qty > 0) before saving",
+                    ar: "الجزار لازم يوزن هذا المنتج (Qty > 0) قبل الحفظ",
+                  })}>
+                    {t({ en: "Required", ar: "مطلوب" })}
                   </th>
                 )}
                 <th style={S.th}></th>
@@ -1594,6 +1566,17 @@ function CutLines({
                             checked={l.any === true}
                             disabled={!canEdit}
                             onChange={(v) => onPatch(l.id, { any: v })}
+                          />
+                        </div>
+                      </td>
+                    )}
+                    {showRequired && (
+                      <td style={S.td}>
+                        <div style={{ display: "flex", justifyContent: "center" }}>
+                          <Switch
+                            checked={l.required === true}
+                            disabled={!canEdit}
+                            onChange={(v) => onPatch(l.id, { required: v })}
                           />
                         </div>
                       </td>

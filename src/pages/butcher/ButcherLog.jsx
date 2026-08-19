@@ -331,8 +331,16 @@ export default function ButcherLog() {
   const pieceCountNum = Math.floor(num(pieceCount));
   const pieceMissing = needPieces && !(pieceCountNum > 0);
 
+  /* منتجات إلزامية (مُعلَّمة «مطلوب» بالوصفة) لازم تتوزن — تنطبق على المسار المختار فقط */
+  const requiredMissingItems = useMemo(
+    () => productCuts.filter((c) => c.required && !(num(values[c.lineId]?.w) > 0)),
+    [productCuts, values]
+  );
+  const requiredMissing = requiredMissingItems.length > 0;
+
   const canSave =
-    filled.length > 0 && usedKg > 0 && !overBlocks && !wasteMissing && !balanceOff && !pieceMissing;
+    filled.length > 0 && usedKg > 0 && !overBlocks && !wasteMissing && !balanceOff
+    && !pieceMissing && !requiredMissing;
 
   /* ------- الانتقالات ------- */
 
@@ -882,7 +890,7 @@ export default function ButcherLog() {
                               pctLabel={t({ en: "of raw", ar: "من الخام" })}
                               target={target > 0 ? target : null}
                               targetLabel={t({ en: "target", ar: "الهدف" })}
-                              tone={targetTone(target, w)} isAr={isAr} t={t}
+                              tone={targetTone(target, w)} required={c.required} isAr={isAr} t={t}
                             />
                           );
                         })}
@@ -942,6 +950,7 @@ export default function ButcherLog() {
                         target={target > 0 ? target : null}
                         targetLabel={t({ en: "target", ar: "الهدف" })}
                         tone={targetTone(target, w)}
+                        required={c.required}
                         isAr={isAr}
                         t={t}
                       />
@@ -1028,6 +1037,12 @@ export default function ButcherLog() {
                   en: "Number of pieces is required for this recipe.",
                   ar: "إدخال عدد القطع إلزامي لهالوصفة.",
                 })}
+              </div>
+            )}
+            {requiredMissing && (
+              <div className="bt-sum" style={S.warn}>
+                {t({ en: "Weight required for", ar: "الوزن إلزامي لـ" })}:{" "}
+                <b>{requiredMissingItems.map((c) => nameOf(c, isAr) || c.sku).join("، ")}</b>
               </div>
             )}
             {wasteMissing && (
@@ -1228,19 +1243,24 @@ function ItemArt({ item }) {
 /* خانة وزن واحدة فقط لكل عنصر — لا خانة هدر داخل المنتج.
    pct = النسبة الفعلية للرقم المُدخل من وزن المنتج الأصلي (الأم). */
 function ItemCard({
-  item, value, onChange, code, pct, pctLabel, tone, target, targetLabel, isAr, t, disabled,
+  item, value, onChange, code, pct, pctLabel, tone, target, targetLabel, isAr, t, disabled, required,
 }) {
   const active = num(value) > 0;
+  const needsWeight = required && !active && !disabled;   // منتج إلزامي لسا بلا وزن
   return (
     <div
       className="bt-press"
       style={{
         ...S.cutCard, ...(active ? S.cutCardOn : null), ...(tone || null),
+        ...(needsWeight ? { border: "2px solid #e07a7a", background: "#fff7f7" } : null),
         ...(disabled ? { opacity: 0.55, pointerEvents: "none" } : null),
       }}
     >
       {hasArt(item) && <span style={S.art}><ItemArt item={item} /></span>}
-      <span className="bt-name" style={S.name}>{nameOf(item, isAr)}</span>
+      <span className="bt-name" style={S.name}>
+        {nameOf(item, isAr)}
+        {required && <span style={{ color: "#dc2626", fontWeight: 900 }}> *</span>}
+      </span>
       {/* الاسم بالّلغة الأخرى — الجزار يتعرّف على الصنف بأي لغة كُتب فيها */}
       {altNameOf(item, isAr) && (
         <span className="bt-lbl" style={S.altName}>{altNameOf(item, isAr)}</span>

@@ -94,6 +94,7 @@ export function bomLines(mrpCfg, bom, kind) {
         uom: it.uom || "",
         kind: kind === "wastes" ? "waste" : "product",
         targetQty: num(l.qty),
+        required: l.required === true,   // منتج إلزامي — لازم الجزار يوزنه (Qty>0)
       };
     })
     .filter(Boolean);
