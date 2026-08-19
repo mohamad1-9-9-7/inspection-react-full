@@ -1,17 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
 import { canDelete } from "../../../../utils/perms";
+import { getReportByDate, listReportDateIndex } from "../_shared/branchViewKit";
 import "./FTR2UnifiedReportView.css";
 
 const MAX_CELL_LENGTH = 140;
-
-function normalizeList(json) {
-  if (Array.isArray(json)) return json;
-  if (Array.isArray(json?.data)) return json.data;
-  if (Array.isArray(json?.items)) return json.items;
-  if (Array.isArray(json?.reports)) return json.reports;
-  return [];
-}
 
 function getId(record) {
   return record?.id || record?._id || record?.payload?.id || record?.payload?._id || "";
@@ -278,31 +271,28 @@ export default function FTR2UnifiedReportView({
 }) {
   const [reports, setReports] = useState([]);
   const [selectedId, setSelectedId] = useState("");
+  const [selectedReport, setSelectedReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const fileInputRef = useRef(null);
 
-  const selectedReport = useMemo(
-    () => reports.find((record) => getId(record) === selectedId) || reports[0] || null,
-    [reports, selectedId]
-  );
+  async function loadSelectedReport(reportDate) {
+    if (!reportDate) {
+      setSelectedReport(null);
+      return;
+    }
+    setSelectedReport(await getReportByDate(type, reportDate));
+  }
 
   async function load() {
     setLoading(true);
     setMessage("");
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}&limit=500`, {
-        cache: "no-store",
-      });
-      const json = await res.json().catch(() => []);
-      const list = normalizeList(json)
-        .slice()
-        .sort((a, b) => getReportDate(b).localeCompare(getReportDate(a)));
+      const list = await listReportDateIndex(type);
       setReports(list);
-      setSelectedId((prev) => {
-        if (prev && list.some((item) => getId(item) === prev)) return prev;
-        return getId(list[0]) || "";
-      });
+      const firstDate = list[0]?.reportDate || "";
+      setSelectedId(firstDate);
+      await loadSelectedReport(firstDate);
     } catch (e) {
       setMessage(`Unable to load reports: ${e?.message || e}`);
     } finally {
@@ -434,17 +424,20 @@ export default function FTR2UnifiedReportView({
                         </summary>
                         <div className="ftr2-tree-list">
                           {items.map((record) => {
-                            const id = getId(record);
-                            const active = selectedReport && id === getId(selectedReport);
+                            const reportDate = getReportDate(record);
+                            const active = reportDate === selectedId;
                             return (
                               <button
-                                key={id || `${getReportDate(record)}-${items.indexOf(record)}`}
+                                key={record.id || `${reportDate}-${items.indexOf(record)}`}
                                 type="button"
                                 className={active ? "active" : ""}
-                                onClick={() => setSelectedId(id)}
+                                onClick={() => {
+                                  setSelectedId(reportDate);
+                                  loadSelectedReport(reportDate);
+                                }}
                               >
-                                <span>{getReportDate(record)}</span>
-                                <small>{record?.payload?.checkedBy || record?.payload?.verifiedBy || "Saved report"}</small>
+                                <span>{reportDate}</span>
+                                <small>Saved report</small>
                               </button>
                             );
                           })}

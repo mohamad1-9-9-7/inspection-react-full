@@ -7,6 +7,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 import { canDelete } from "../../../../utils/perms";
+import API_BASE from "../../../../config/api";
 
 /* All branch report views live under the "daily" permission section. */
 export const PERM_SECTION = "daily";
@@ -17,6 +18,41 @@ export const PERM_SECTION = "daily";
 export const safe = (v) => (v ?? "");
 
 export const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
+
+const unwrapReportRows = (json) => Array.isArray(json) ? json : json?.data || json?.items || [];
+
+/** Lightweight archive index: dates and ids only; report payloads stay on the server. */
+export async function listReportDateIndex(type, { signal } = {}) {
+  const qs = new URLSearchParams({ type, dates: "1", lite: "1", limit: "5000" });
+  const res = await fetch(`${API_BASE}/api/reports?${qs.toString()}`, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!res.ok) throw new Error(`Failed to list ${type} report dates (${res.status})`);
+  return unwrapReportRows(await res.json().catch(() => null))
+    .map((row) => ({
+      ...row,
+      id: getId(row),
+      reportDate: row?.reportDate || row?.payload?.reportDate || row?.date || row?.payload?.date || "",
+    }))
+    .filter((row) => row.reportDate)
+    .sort((a, b) => String(b.reportDate).localeCompare(String(a.reportDate)));
+}
+
+/** Fetch only the full report for the date selected in the archive tree. */
+export async function getReportByDate(type, date, { signal } = {}) {
+  if (!date) return null;
+  const qs = new URLSearchParams({ type, reportDate: String(date) });
+  const res = await fetch(`${API_BASE}/api/reports?${qs.toString()}`, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!res.ok) throw new Error(`Failed to load ${type} report (${res.status})`);
+  const rows = unwrapReportRows(await res.json().catch(() => null));
+  return rows.find((row) => String(row?.reportDate || row?.payload?.reportDate || row?.payload?.date || row?.payload?.cutDate || "").slice(0, 10) === String(date).slice(0, 10)) || rows[0] || null;
+}
 
 export const btn = (bg) => ({
   background: bg,

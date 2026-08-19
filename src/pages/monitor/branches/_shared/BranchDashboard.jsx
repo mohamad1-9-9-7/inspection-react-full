@@ -16,6 +16,7 @@ import API_BASE from "../../../../config/api";
 
 /* ─── Module-level cache (5-minute TTL) ─── */
 const _cache = new Map(); // key → { data, ts }
+const _inflight = new Map(); // key → shared request promise (also protects React StrictMode)
 const CACHE_TTL = 5 * 60 * 1000; // 5 min
 
 function getCached(key) {
@@ -25,6 +26,29 @@ function getCached(key) {
   return entry.data;
 }
 function setCached(key, data) { _cache.set(key, { data, ts: Date.now() }); }
+
+async function fetchDateIndex(type) {
+  const cached = getCached(type);
+  if (cached) return cached;
+  if (_inflight.has(type)) return _inflight.get(type);
+
+  const request = fetch(
+    `${API_BASE}/api/reports?type=${encodeURIComponent(type)}&dates=1&lite=1`,
+    { cache: "no-store", headers: { Accept: "application/json" } }
+  )
+    .then(async (res) => {
+      if (!res.ok) return [];
+      const json = await res.json().catch(() => null);
+      const rows = Array.isArray(json) ? json : json?.data ?? [];
+      return rows
+        .map((row) => ({ ...row, reportDate: String(row?.reportDate || "").slice(0, 10) }))
+        .filter((row) => row.reportDate);
+    })
+    .finally(() => _inflight.delete(type));
+
+  _inflight.set(type, request);
+  return request;
+}
 
 /* ─── Concurrency-limited fetcher (max 4 at a time) ─── */
 async function fetchAllLimited(tasks, limit = 4) {
@@ -133,10 +157,7 @@ export default function BranchDashboard({
       const cached = getCached(rt.type);
       if (cached) return [rt.type, cached];
       try {
-        const res = await fetch(`${API_BASE}/api/reports?type=${rt.type}`);
-        if (!res.ok) return [rt.type, []];
-        const json = await res.json();
-        const arr = Array.isArray(json) ? json : json?.data ?? [];
+        const arr = await fetchDateIndex(rt.type);
         setCached(rt.type, arr);
         return [rt.type, arr];
       } catch { return [rt.type, []]; }
@@ -164,12 +185,14 @@ export default function BranchDashboard({
       let todayCount = 0, weekCount = 0, monthCount = 0;
       list.forEach((r) => {
         const p = r?.payload || {};
-        const rd =
+        const rd = String(
+          r?.reportDate ||
           p.reportDate ||
           p.header?.reportDate ||
           p.date ||
           r?.createdAt?.slice?.(0, 10) ||
-          "";
+          ""
+        ).slice(0, 10);
         if (!rd) return;
         if (rd === todayIso) todayCount++;
         const ts = Date.parse(rd);
