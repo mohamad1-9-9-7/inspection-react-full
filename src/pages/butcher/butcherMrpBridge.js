@@ -24,6 +24,19 @@ export function activeCuttingBoms(mrpCfg) {
 /** المادة الخام الداخلة لقائمة تقطيع — أو null. */
 export const bomInputItem = (mrpCfg, bom) => itemById(mrpCfg, bom?.inputId);
 
+/**
+ * هل الوصفة تستعمل مسارات توزيع متعددة فعّالة؟
+ * (مفتاح `multiPathways` على مستوى الوصفة + وجود مسار مفعّل واحد على الأقل.)
+ */
+export const bomIsMultiPath = (bom) =>
+  bom?.multiPathways === true && (bom?.pathways || []).some((p) => p.active !== false);
+
+/** المسارات الفعّالة لوصفة — فاضية لو الوصفة مش متعددة المسارات. */
+export const activePathwaysOf = (bom) =>
+  bom?.multiPathways === true
+    ? (bom?.pathways || []).filter((p) => p.active !== false)
+    : [];
+
 /** مُعرّف الفئة «بلا فئة» في شاشة الاختيار. */
 export const UNCAT = "__uncat__";
 

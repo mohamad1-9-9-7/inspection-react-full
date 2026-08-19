@@ -33,6 +33,7 @@ import { artOf, butcherByNo, imageOf, roundKg, useButcherConfig } from "./butche
 import {
   useMrpConfig, bomInputItem, bomLines, itemName,
   bomCategoriesForPicker, bomsInCategory, UNCAT,
+  bomIsMultiPath, activePathwaysOf,
 } from "./butcherMrpBridge";
 import { saveOrQueue, useOutbox } from "./butcherOutbox";
 import { progressPct, useDayPlan } from "./butcherDayPlan";
@@ -150,6 +151,7 @@ export default function ButcherLog() {
   const [branch, setBranch] = useState("");
   const [bomCat, setBomCat] = useState(null);   // الفئة المختارة (null=الكل، UNCAT=بلا فئة)
   const [bom, setBom] = useState(null);         // قائمة التقطيع المختارة
+  const [pathwayId, setPathwayId] = useState(""); // المسار المختار (وضع المسارات المتعددة)
   const [carcass, setCarcass] = useState("");   // وزن المادة الخام قبل التقطيع
   const [pieceCount, setPieceCount] = useState(""); // عدد القطع (إن طلبته الوصفة)
   const [values, setValues] = useState({});     // { itemId: { w } }
@@ -227,8 +229,18 @@ export default function ButcherLog() {
 
   /* ── المادة الخام ونواتج الوصفة من قائمة التقطيع المختارة ── */
   const inputItem = useMemo(() => (bom ? bomInputItem(mrpCfg, bom) : null), [mrpCfg, bom]);
-  const bomOutputs = useMemo(() => (bom ? bomLines(mrpCfg, bom, "outputs") : []), [mrpCfg, bom]);
-  const bomWastes = useMemo(() => (bom ? bomLines(mrpCfg, bom, "wastes") : []), [mrpCfg, bom]);
+
+  /* المسارات المتعددة: الجزار يختار المسار، والنواتج/الهدر تُقرأ من المسار لا من الوصفة المسطّحة. */
+  const isMultiPath = bomIsMultiPath(bom);
+  const activePathways = useMemo(() => activePathwaysOf(bom), [bom]);
+  const pathway = useMemo(
+    () => (isMultiPath ? activePathways.find((p) => p.id === pathwayId) || null : null),
+    [isMultiPath, activePathways, pathwayId]
+  );
+  // مصدر الأسطر: المسار المختار في وضع المسارات، وإلا الوصفة نفسها (bomLines يقرأ .outputs/.wastes من أي مصدر).
+  const lineSource = isMultiPath ? pathway : bom;
+  const bomOutputs = useMemo(() => (lineSource ? bomLines(mrpCfg, lineSource, "outputs") : []), [mrpCfg, lineSource]);
+  const bomWastes = useMemo(() => (lineSource ? bomLines(mrpCfg, lineSource, "wastes") : []), [mrpCfg, lineSource]);
 
   /* المنتجات = نواتج الوصفة فقط ، والهدر = هدر الوصفة */
   const productCuts = useMemo(() => bomOutputs, [bomOutputs]);
@@ -320,12 +332,28 @@ export default function ButcherLog() {
     setStep("bom");
   };
 
-  /* اختيار وصفة التقطيع → صفحة الأوزان (المادة الخام + النواتج معاً) */
+  /* اختيار وصفة التقطيع → المسار (لو متعددة) وإلا صفحة الأوزان مباشرة */
   const pickBom = (b) => {
     setBom(b);
     setCarcass("");
     setPieceCount("");
     setValues({});
+    setPathwayId("");
+    setError("");
+    const paths = activePathwaysOf(b);
+    if (bomIsMultiPath(b)) {
+      // مسار واحد فعّال؟ اختَره تلقائياً وروح للأوزان. أكثر من واحد؟ اعرض شاشة الاختيار.
+      if (paths.length === 1) { setPathwayId(paths[0].id); setStep("cuts"); }
+      else { setStep("pathway"); }
+    } else {
+      setStep("cuts");
+    }
+  };
+
+  /* اختيار المسار → صفحة الأوزان (نواتج/هدر هذا المسار) */
+  const pickPathway = (p) => {
+    setPathwayId(p.id);
+    setValues({});       // الأسطر تتغيّر حسب المسار — صفّر الأوزان
     setError("");
     setStep("cuts");
   };
@@ -347,6 +375,10 @@ export default function ButcherLog() {
         bomId: bom?.id || "",
         bomRef: bom?.ref || "",
         bomCategoryId: bom?.categoryId || "",
+        // ── المسار المختار (وضع المسارات المتعددة) ──
+        pathwayId: pathway?.id || "",
+        pathwayCode: pathway?.code || "",
+        pathwayName: pathway?.name || "",
         inputItemId: bom?.inputId || "",
         inputSku: inputItem?.sku || "",
         animal: inputItem?.ar || "",              // توافق مع View/Summary القديمة
@@ -411,6 +443,7 @@ export default function ButcherLog() {
     setCarcass("");
     setPieceCount("");
     setValues({});
+    setPathwayId("");
     setBomSearch("");
     setError("");
     setSaved(null);
@@ -420,7 +453,9 @@ export default function ButcherLog() {
   const back = () => {
     if (step === "category") { setStep("emp"); return; }
     if (step === "bom") { setStep(hasCatStep ? "category" : "emp"); return; }
-    if (step === "cuts") { setStep("bom"); return; }
+    if (step === "pathway") { setStep("bom"); return; }
+    // من الأوزان: ارجع للمسار لو الوصفة متعددة المسارات، وإلا للوصفة
+    if (step === "cuts") { setStep(isMultiPath ? "pathway" : "bom"); return; }
   };
 
   const KG = t({ en: "kg", ar: "كجم" });
@@ -479,7 +514,7 @@ export default function ButcherLog() {
         </div>
 
         {step !== "emp" && step !== "done" && (
-          <StepBar step={step} hasCat={hasCatStep} t={t} />
+          <StepBar step={step} hasCat={hasCatStep} hasPath={isMultiPath} t={t} />
         )}
 
         {/* تعذّر تحميل الخطة/التقدّم — نقولها بدل ما يختفي الشريط بلا سبب.
@@ -519,6 +554,11 @@ export default function ButcherLog() {
             {branchObj && <span className="bt-chip" style={S.crumb}>{nameOf(branchObj, isAr)}</span>}
             {bomCatName && <span className="bt-chip" style={S.crumb}>{bomCatName}</span>}
             {bom && <span className="bt-chip" style={S.crumb}>{bom.ref}</span>}
+            {pathway && (
+              <span className="bt-chip" style={{ ...S.crumb, color: "#6d28d9" }}>
+                🔀 {pathway.code}{pathway.name ? ` · ${pathway.name}` : ""}
+              </span>
+            )}
             {inputItem && <span className="bt-chip" style={S.crumb}>{itemName(inputItem, isAr)}</span>}
             {step === "cuts" && carcassKg > 0 && (
               <span className="bt-chip" style={S.crumb}>
@@ -665,7 +705,10 @@ export default function ButcherLog() {
                 })
                 .map((b) => {
                   const inp = bomInputItem(mrpCfg, b);
-                  const outN = (b.outputs || []).length;
+                  const multi = bomIsMultiPath(b);
+                  const outN = multi
+                    ? activePathwaysOf(b).length
+                    : (b.outputs || []).length;
                   return (
                     <button key={b.id} className="bt-press" onClick={() => pickBom(b)} style={S.tile}>
                       <span className="bt-name" style={S.name}>{itemName(inp, isAr)}</span>
@@ -674,12 +717,48 @@ export default function ButcherLog() {
                       )}
                       <span className="bt-lbl" style={S.code}>{b.ref}</span>
                       <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-                        {outN} {t({ en: "final products", ar: "منتج نهائي" })}
+                        {multi
+                          ? `🔀 ${outN} ${t({ en: "pathways", ar: "مسار" })}`
+                          : `${outN} ${t({ en: "final products", ar: "منتج نهائي" })}`}
                       </span>
                     </button>
                   );
                 })}
             </div>
+          </>
+        )}
+
+        {/* 2.5 — اختيار المسار (للوصفات متعددة المسارات فقط) */}
+        {step === "pathway" && (
+          <>
+            <div className="bt-q" style={S.q}>
+              {t({ en: "Choose the routing pathway", ar: "اختر مسار التوزيع" })}
+            </div>
+            {!activePathways.length ? (
+              <div className="bt-sum" style={S.emptyBox}>
+                {t({
+                  en: "This recipe has no active pathway — activate one in Manufacturing → Cutting BOMs.",
+                  ar: "هالوصفة ما فيها مسار مفعّل — فعّل واحد من التصنيع ← قوائم التقطيع.",
+                })}
+              </div>
+            ) : (
+              <div style={S.grid}>
+                {activePathways.map((p) => {
+                  const outN = (p.outputs || []).length;
+                  return (
+                    <button key={p.id} className="bt-press" onClick={() => pickPathway(p)} style={S.tile}>
+                      <span className="bt-name" style={S.name}>
+                        {p.name || t({ en: "Pathway", ar: "مسار" })}
+                      </span>
+                      <span className="bt-lbl" style={S.code}>{p.code}</span>
+                      <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
+                        {outN} {t({ en: "final products", ar: "منتج نهائي" })}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
 
@@ -1101,10 +1180,11 @@ function ItemCard({
 
 /* ============================ شريط الخطوات ============================ */
 
-function StepBar({ step, hasCat, t }) {
+function StepBar({ step, hasCat, hasPath, t }) {
   const steps = [
     ...(hasCat ? [{ id: "category", ar: "الفئة", en: "Category" }] : []),
     { id: "bom", ar: "الوصفة", en: "Recipe" },
+    ...(hasPath ? [{ id: "pathway", ar: "المسار", en: "Pathway" }] : []),
     { id: "cuts", ar: "الأوزان", en: "Weights" },
   ];
   const at = steps.findIndex((x) => x.id === step);
