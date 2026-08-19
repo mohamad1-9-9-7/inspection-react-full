@@ -9,7 +9,7 @@
 // 💾 الحفظ: كل قائمة بتنحفظ لحالها بزر «حفظ القائمة» بترويسة الباني —
 // ما في شريط حفظ أسفل الصفحة. عمليات الجدول (تفعيل/نسخ/حذف) بتنحفظ فوراً.
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ITEM_TYPES, activeOnly, bomCategoryById, freshId, hasRole, itemById, money,
   mutateConfig, nameOf, num, useMrpConfig, userName,
@@ -40,6 +40,10 @@ const blankBom = (boms) => ({
   inputQty: 100,
   outputs: [],
   wastes: [],
+  // المسارات المتعددة — تُستعمل فقط لما إعداد النظام «Multi-Routing Pathways» مفعّل.
+  // كل مسار: { id, no, code, name, outputs[], wastes[], notes, active }.
+  pathways: [],
+  pathwaySeq: 0,               // عدّاد تصاعدي ثابت لأكواد المسارات (لا يُعاد ترقيمه بالحذف)
   notes: "",
   active: true,
   requireExactBalance: false,   // إلزام الجزار بتطابق تام: الخام = النواتج + الهدر
@@ -49,6 +53,54 @@ const blankBom = (boms) => ({
   createdAt: new Date().toISOString(),
   createdBy: userName(),
 });
+
+/** كود المسار الفريد — مربوط هرمياً بكود الـ BOM: CUT-0001-P3. */
+const pathwayCode = (bomRef, no) => `${bomRef || "CUT"}-P${no}`;
+
+/**
+ * تحقّق مشترك لقائمة تقطيع واحدة (مسطّحة أو مسار).
+ * `label` بادئة رسالة الخطأ — "" للمسطّحة، و«المسار CUT-0001-P1 — » للمسار.
+ * يرجّع نص الخطأ أو "" إذا صحيحة.
+ */
+function cutListError({ inputId, inItemName, outputs, wastes, inputQty }, cfg, isAr, t, label = "") {
+  const all = [...(outputs || []), ...(wastes || [])];
+  if ((outputs || []).length === 0) {
+    return t({
+      en: `${label}A cutting list needs at least one output.`,
+      ar: `${label}قائمة التقطيع بدها ناتج واحد على الأقل.`,
+    });
+  }
+  if (all.some((l) => !l.itemId)) {
+    return t({
+      en: `${label}Every line must pick an item from the master list.`,
+      ar: `${label}كل سطر لازم يختار صنف من السجل.`,
+    });
+  }
+  if (all.some((l) => l.itemId === inputId)) {
+    return t({
+      en: `${label}"${inItemName}" is the input product — it cannot also be listed as an output or waste. Remove that line.`,
+      ar: `${label}«${inItemName}» هو المنتج الداخل — ما بيصير ينضاف كناتج أو هدر كمان. احذف هالسطر.`,
+    });
+  }
+  const seen = new Set();
+  for (const l of all) {
+    if (seen.has(l.itemId)) {
+      const it = itemById(cfg, l.itemId);
+      return t({
+        en: `${label}"${nameOf(it, false) || l.itemId}" is listed twice — each item may appear only once. Merge its lines.`,
+        ar: `${label}«${nameOf(it, true) || l.itemId}» موجود بسطرين — كل صنف بيجي مرة وحدة بس. ادمجهم.`,
+      });
+    }
+    seen.add(l.itemId);
+  }
+  if (bomMath({ inputQty, outputs, wastes }).over) {
+    return t({
+      en: `${label}Outputs + waste exceed the input quantity — fix the mass balance.`,
+      ar: `${label}الناتج + الهدر أكثر من كمية الداخل — صحّح الميزان.`,
+    });
+  }
+  return "";
+}
 
 /** تجميع أرقام القائمة — الداخل، الناتج، الهدر، الفاقد غير المسجّل، والعائد. */
 function bomMath(bom) {
@@ -76,6 +128,9 @@ export default function MrpBom() {
 
   const canEdit = canEditMrp();
   const toastTimer = useRef(null);
+
+  // إعداد النظام: تفعيل المسارات المتعددة لكل قائمة (No = تفكيك مسطّح تقليدي).
+  const multiPathways = cfg.settings?.multiPathways === true;
 
   const flash = (text, bad) => {
     setToast({ text, bad: !!bad });
@@ -106,6 +161,18 @@ export default function MrpBom() {
     }
   };
 
+  /** إعداد النظام — تفعيل/تعطيل المسارات المتعددة (حفظ فوري). */
+  const setMultiPathwaysFlag = (v) =>
+    commit(
+      (n) => {
+        if (!n.settings || typeof n.settings !== "object") n.settings = {};
+        n.settings.multiPathways = v;
+      },
+      v
+        ? t({ en: "Multi-routing pathways enabled.", ar: "تم تفعيل المسارات المتعددة." })
+        : t({ en: "Multi-routing pathways disabled.", ar: "تم تعطيل المسارات المتعددة." })
+    );
+
   /* ── فتح/إنشاء ── */
   const openNew = () => setDraft({ mode: "new", bom: blankBom(cfg.boms), dirty: false });
 
@@ -121,6 +188,7 @@ export default function MrpBom() {
       // نضمن حقول التفكيك حتى للسجلات القديمة — بلا دهس باقي الحقول
       bom: {
         outputs: [], wastes: [], inputId: "", inputQty: "",
+        pathways: [], pathwaySeq: 0,
         ...JSON.parse(JSON.stringify(b)),
         bomType: "disassembly",
       },
@@ -173,6 +241,72 @@ export default function MrpBom() {
       bom: { ...d.bom, [list]: (d.bom[list] || []).filter((l) => l.id !== id) },
     }));
 
+  /* ── مسارات التوزيع المتعددة (تعديل المسودّة) ── */
+
+  /** إضافة مسار جديد بكود فريد مربوط بكود الـ BOM (CUT-0001-P{n}). */
+  const addPathway = () =>
+    setDraft((d) => {
+      const no = num(d.bom.pathwaySeq, 0) + 1;
+      const pw = {
+        id: freshId("pw"), no,
+        code: pathwayCode(d.bom.ref, no),
+        name: "", outputs: [], wastes: [], notes: "", active: true,
+      };
+      return {
+        ...d, dirty: true,
+        bom: { ...d.bom, pathwaySeq: no, pathways: [...(d.bom.pathways || []), pw] },
+      };
+    });
+
+  const patchPathway = (pid, p) =>
+    setDraft((d) => ({
+      ...d, dirty: true,
+      bom: {
+        ...d.bom,
+        pathways: (d.bom.pathways || []).map((pw) => (pw.id === pid ? { ...pw, ...p } : pw)),
+      },
+    }));
+
+  const dropPathway = (pid) =>
+    setDraft((d) => ({
+      ...d, dirty: true,
+      bom: { ...d.bom, pathways: (d.bom.pathways || []).filter((pw) => pw.id !== pid) },
+    }));
+
+  const addPathwayLine = (pid, list) =>
+    setDraft((d) => ({
+      ...d, dirty: true,
+      bom: {
+        ...d.bom,
+        pathways: (d.bom.pathways || []).map((pw) =>
+          pw.id === pid
+            ? { ...pw, [list]: [...(pw[list] || []), { id: freshId("ln"), itemId: "", qty: "" }] }
+            : pw),
+      },
+    }));
+
+  const patchPathwayLine = (pid, list, lid, p) =>
+    setDraft((d) => ({
+      ...d, dirty: true,
+      bom: {
+        ...d.bom,
+        pathways: (d.bom.pathways || []).map((pw) =>
+          pw.id === pid
+            ? { ...pw, [list]: (pw[list] || []).map((l) => (l.id === lid ? { ...l, ...p } : l)) }
+            : pw),
+      },
+    }));
+
+  const dropPathwayLine = (pid, list, lid) =>
+    setDraft((d) => ({
+      ...d, dirty: true,
+      bom: {
+        ...d.bom,
+        pathways: (d.bom.pathways || []).map((pw) =>
+          pw.id === pid ? { ...pw, [list]: (pw[list] || []).filter((l) => l.id !== lid) } : pw),
+      },
+    }));
+
   /* ── تحقق قبل الحفظ ── */
   const validate = (bom) => {
     if (!bom.inputId) {
@@ -188,39 +322,32 @@ export default function MrpBom() {
       });
     }
     // الكميات اختيارية — بتقدر تحفظ الهيكل (الداخل + النواتج) وتعبّي الأوزان لاحقاً
-    if ((bom.outputs || []).length === 0) {
-      return t({ en: "A cutting BOM needs at least one output.", ar: "قائمة التقطيع بدها ناتج واحد على الأقل." });
-    }
-    const all = [...(bom.outputs || []), ...(bom.wastes || [])];
-    if (all.some((l) => !l.itemId)) {
-      return t({ en: "Every line must pick an item from the master list.", ar: "كل سطر لازم يختار صنف من السجل." });
-    }
-    // الكميات اختيارية — بتقدر تحفظ الهيكل وتعبّي الأوزان لاحقاً
     const inItemName = nameOf(inItem, isAr) || bom.inputId;
-    if (all.some((l) => l.itemId === bom.inputId)) {
-      return t({
-        en: `Duplicate: "${inItemName}" is the input product — it cannot also be listed as an output or waste. Remove that line.`,
-        ar: `مكرّر: «${inItemName}» هو المنتج الداخل — ما بيصير ينضاف كناتج أو هدر كمان. احذف هالسطر.`,
-      });
-    }
-    const seen = new Set();
-    for (const l of all) {
-      if (seen.has(l.itemId)) {
-        const it = itemById(cfg, l.itemId);
+
+    // وضع المسارات المتعددة — كل مسار يُتحقّق لوحده بنفس قواعد القائمة المسطّحة.
+    if (multiPathways) {
+      const pws = bom.pathways || [];
+      if (pws.length === 0) {
         return t({
-          en: `Duplicate: "${nameOf(it, false) || l.itemId}" is listed twice — each item may appear only once. Merge its lines.`,
-          ar: `مكرّر: «${nameOf(it, true) || l.itemId}» موجود بسطرين — كل صنف بيجي مرة وحدة بس. ادمجهم.`,
+          en: "Multi-routing is on — add at least one routing pathway.",
+          ar: "المسارات المتعددة مفعّلة — أضف مسار توزيع واحد على الأقل.",
         });
       }
-      seen.add(l.itemId);
+      for (const pw of pws) {
+        const label = `${t({ en: "Pathway", ar: "المسار" })} ${pw.code || pw.name || ""} — `;
+        const err = cutListError(
+          { inputId: bom.inputId, inItemName, outputs: pw.outputs, wastes: pw.wastes, inputQty: bom.inputQty },
+          cfg, isAr, t, label
+        );
+        if (err) return err;
+      }
+      return "";
     }
-    if (bomMath(bom).over) {
-      return t({
-        en: "Outputs + waste exceed the input quantity — fix the mass balance.",
-        ar: "الناتج + الهدر أكثر من كمية الداخل — صحّح الميزان.",
-      });
-    }
-    return "";
+
+    return cutListError(
+      { inputId: bom.inputId, inItemName, outputs: bom.outputs, wastes: bom.wastes, inputQty: bom.inputQty },
+      cfg, isAr, t, ""
+    );
   };
 
   const saveBom = async () => {
@@ -253,6 +380,7 @@ export default function MrpBom() {
       inputId: b.inputId, inputQty: b.inputQty,
       outputs: JSON.parse(JSON.stringify(b.outputs || [])),
       wastes: JSON.parse(JSON.stringify(b.wastes || [])),
+      pathways: JSON.parse(JSON.stringify(b.pathways || [])),
     };
     const bumped = {
       ...b,
@@ -280,6 +408,7 @@ export default function MrpBom() {
       inputId: b.inputId, inputQty: b.inputQty,
       outputs: JSON.parse(JSON.stringify(b.outputs || [])),
       wastes: JSON.parse(JSON.stringify(b.wastes || [])),
+      pathways: JSON.parse(JSON.stringify(b.pathways || [])),
     };
     const restored = {
       ...b,
@@ -289,6 +418,7 @@ export default function MrpBom() {
       inputQty: snapshot.inputQty,
       outputs: JSON.parse(JSON.stringify(snapshot.outputs || [])),
       wastes: JSON.parse(JSON.stringify(snapshot.wastes || [])),
+      pathways: JSON.parse(JSON.stringify(snapshot.pathways || [])),
     };
     const ok = await commit(
       (n) => {
@@ -352,6 +482,7 @@ export default function MrpBom() {
         math: bomMath(b),
         cat: nameOf(bomCategoryById(cfg, b.categoryId) || {}, isAr),
         legacy: b.bomType !== "disassembly" && (b.lines || []).length > 0,
+        pwCount: (b.pathways || []).length,
       }))
       .filter(({ b, input, cat }) => {
         if (catFilter && (b.categoryId || "") !== catFilter) return false;
@@ -383,6 +514,38 @@ export default function MrpBom() {
       }
     >
       <Toast toast={toast} busy={busy} t={t} />
+
+      {!draft && canEdit && (
+        <Card
+          icon="🔀"
+          title={t({ en: "Multi-routing pathways", ar: "مسارات التوزيع المتعددة" })}
+          sub={t({
+            en: "System setting — applies to every cutting BOM.",
+            ar: "إعداد نظام — بينطبّق على كل قوائم التقطيع.",
+          })}
+        >
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 12, fontWeight: 800 }}>
+            <Switch checked={multiPathways} disabled={busy} onChange={setMultiPathwaysFlag} />
+            <span style={{ minWidth: 0 }}>
+              {t({
+                en: "Enable multi-routing pathways per BOM",
+                ar: "تفعيل مسارات التوزيع المتعددة لكل قائمة",
+              })}
+              <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
+                {multiPathways
+                  ? t({
+                      en: "On — each BOM can define several alternative breakdowns, each with its own unique pathway code (e.g. CUT-0001-P1).",
+                      ar: "مفعّل — كل قائمة بتقدر تعرّف عدة تفكيكات بديلة، لكل واحد كود مسار فريد (مثال: CUT-0001-P1).",
+                    })
+                  : t({
+                      en: "Off — BOMs use a single flat breakdown (input → outputs + waste), the traditional way.",
+                      ar: "معطّل — القوائم بتستعمل تفكيك مسطّح واحد (داخل → نواتج + هدر)، بالطريقة التقليدية.",
+                    })}
+              </div>
+            </span>
+          </label>
+        </Card>
+      )}
 
       {!draft ? (
         <Card
@@ -439,12 +602,19 @@ export default function MrpBom() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(({ b, input, math, cat, legacy }) => (
+                  {rows.map(({ b, input, math, cat, legacy, pwCount }) => (
                     <tr key={b.id}>
                       <td style={{ ...S.td, fontWeight: 900 }}>
                         {b.ref}
                         {legacy && (
                           <div><Badge color="#b45309" bg="#fffbeb">{t({ en: "legacy", ar: "قديمة" })}</Badge></div>
+                        )}
+                        {pwCount > 0 && (
+                          <div style={{ marginTop: 4 }}>
+                            <Badge color="#6d28d9" bg="#f3eefe">
+                              🔀 {pwCount} {t({ en: "pathways", ar: "مسار" })}
+                            </Badge>
+                          </div>
                         )}
                       </td>
                       <td style={S.td}>
@@ -458,20 +628,28 @@ export default function MrpBom() {
                           : <span style={{ color: "#a12626" }}>⚠️ {t({ en: "no input", ar: "بلا داخل" })}</span>}
                       </td>
                       <td style={S.td}>{math.input ? `${money(math.input, 2)} ${input?.uom || ""}` : "—"}</td>
-                      <td style={S.td}>
-                        {(b.outputs || []).length}
-                        <span style={S.hint}> · {money(math.out, 1)}</span>
-                      </td>
-                      <td style={S.td}>
-                        {(b.wastes || []).length}
-                        <span style={S.hint}> · {money(math.waste, 1)}</span>
-                      </td>
-                      <td style={{
-                        ...S.td, fontWeight: 900,
-                        color: math.yieldPct >= 60 ? "#047857" : math.yieldPct > 0 ? "#b45309" : "#6b8299",
-                      }}>
-                        {math.input ? `${math.yieldPct.toFixed(1)}%` : "—"}
-                      </td>
+                      {pwCount > 0 ? (
+                        <td style={{ ...S.td, color: "#6d28d9", fontWeight: 800 }} colSpan={3}>
+                          🔀 {pwCount} {t({ en: "routing pathways", ar: "مسار توزيع" })}
+                        </td>
+                      ) : (
+                        <>
+                          <td style={S.td}>
+                            {(b.outputs || []).length}
+                            <span style={S.hint}> · {money(math.out, 1)}</span>
+                          </td>
+                          <td style={S.td}>
+                            {(b.wastes || []).length}
+                            <span style={S.hint}> · {money(math.waste, 1)}</span>
+                          </td>
+                          <td style={{
+                            ...S.td, fontWeight: 900,
+                            color: math.yieldPct >= 60 ? "#047857" : math.yieldPct > 0 ? "#b45309" : "#6b8299",
+                          }}>
+                            {math.input ? `${math.yieldPct.toFixed(1)}%` : "—"}
+                          </td>
+                        </>
+                      )}
                       <td style={S.td}>
                         <Badge color="#14507f" bg="#eef4fb">v{num(b.version, 1)}</Badge>
                       </td>
@@ -513,6 +691,7 @@ export default function MrpBom() {
         <CutBuilder
           t={t} isAr={isAr} cfg={cfg} draft={draft} canEdit={canEdit} busy={busy}
           notify={flash}
+          multiPathways={multiPathways}
           onBack={closeBuilder}
           onSave={saveBom}
           onDelete={() => removeBom(draft.bom)}
@@ -520,6 +699,10 @@ export default function MrpBom() {
           onHistory={() => setHistoryFor(draft.bom.id)}
           onAddCategory={addBomCategory}
           patch={patch} patchList={patchList} addTo={addTo} dropFrom={dropFrom}
+          pathwayOps={{
+            add: addPathway, patch: patchPathway, drop: dropPathway,
+            addLine: addPathwayLine, patchLine: patchPathwayLine, dropLine: dropPathwayLine,
+          }}
         />
       )}
 
@@ -578,9 +761,9 @@ export default function MrpBom() {
 /* ══════════════ باني قائمة التقطيع ══════════════ */
 
 function CutBuilder({
-  t, isAr, cfg, draft, canEdit, busy, notify,
+  t, isAr, cfg, draft, canEdit, busy, notify, multiPathways,
   onBack, onSave, onDelete, onBump, onHistory, onAddCategory,
-  patch, patchList, addTo, dropFrom,
+  patch, patchList, addTo, dropFrom, pathwayOps,
 }) {
   const bom = draft.bom;
   const isNew = draft.mode === "new";
@@ -789,50 +972,277 @@ function CutBuilder({
         </fieldset>
       </Card>
 
-      {/* ── ميزان الكتلة ── */}
-      <MassBalance t={t} math={math} uom={uom} />
+      {multiPathways ? (
+        /* ── وضع المسارات المتعددة: كل مسار له نواتجه وهدره وميزانه ── */
+        <PathwayManager
+          t={t} isAr={isAr} cfg={cfg} canEdit={canEdit} bom={bom} notify={notify}
+          ops={pathwayOps}
+        />
+      ) : (
+        <>
+          {/* ── ميزان الكتلة ── */}
+          <MassBalance t={t} math={math} uom={uom} />
 
-      {/* ── النواتج ── */}
-      <CutLines
-        t={t} isAr={isAr} cfg={cfg} canEdit={canEdit}
-        icon="🥩"
-        title={t({ en: "Output products", ar: "المنتجات الناتجة" })}
-        sub={t({
-          en: "The cuts this input yields — picked from the item master.",
-          ar: "القطع اللي بيعطيها الداخل — من سجل الأصناف.",
-        })}
-        addLabel={t({ en: "Add output", ar: "إضافة ناتج" })}
-        lines={bom.outputs || []}
-        inputQty={math.input}
-        preferRoles={["finished", "component"]}
-        accent="#047857"
-        disabledFor={lineDisabledFor}
-        onBlocked={onLineBlocked}
-        onAdd={() => addTo("outputs")}
-        onPatch={(id, p) => patchList("outputs", id, p)}
-        onDrop={(id) => dropFrom("outputs", id)}
-      />
+          {/* ── النواتج ── */}
+          <CutLines
+            t={t} isAr={isAr} cfg={cfg} canEdit={canEdit}
+            icon="🥩"
+            title={t({ en: "Output products", ar: "المنتجات الناتجة" })}
+            sub={t({
+              en: "The cuts this input yields — picked from the item master.",
+              ar: "القطع اللي بيعطيها الداخل — من سجل الأصناف.",
+            })}
+            addLabel={t({ en: "Add output", ar: "إضافة ناتج" })}
+            lines={bom.outputs || []}
+            inputQty={math.input}
+            preferRoles={["finished", "component"]}
+            accent="#047857"
+            disabledFor={lineDisabledFor}
+            onBlocked={onLineBlocked}
+            onAdd={() => addTo("outputs")}
+            onPatch={(id, p) => patchList("outputs", id, p)}
+            onDrop={(id) => dropFrom("outputs", id)}
+          />
 
-      {/* ── الهدر ── */}
-      <CutLines
-        t={t} isAr={isAr} cfg={cfg} canEdit={canEdit}
-        icon="🦴"
-        title={t({ en: "Waste / scrap", ar: "الهدر والمخلّفات" })}
+          {/* ── الهدر ── */}
+          <CutLines
+            t={t} isAr={isAr} cfg={cfg} canEdit={canEdit}
+            icon="🦴"
+            title={t({ en: "Waste / scrap", ar: "الهدر والمخلّفات" })}
+            sub={t({
+              en: "Bones, fat, trimmings… items whose role is “Waste” in the master list.",
+              ar: "عظم، دهن، تشذيب… أصناف دورها «هدر» بسجل الأصناف.",
+            })}
+            addLabel={t({ en: "Add waste line", ar: "إضافة سطر هدر" })}
+            lines={bom.wastes || []}
+            inputQty={math.input}
+            preferRoles={["waste"]}
+            accent="#b45309"
+            disabledFor={lineDisabledFor}
+            onBlocked={onLineBlocked}
+            onAdd={() => addTo("wastes")}
+            onPatch={(id, p) => patchList("wastes", id, p)}
+            onDrop={(id) => dropFrom("wastes", id)}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+/* ══════════════ مدير المسارات المتعددة ══════════════ */
+
+function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
+  const pathways = bom.pathways || [];
+  const input = itemById(cfg, bom.inputId);
+  const uom = input?.uom || "";
+
+  const [selId, setSel] = useState(pathways[0]?.id || "");
+  const prevLen = useRef(pathways.length);
+
+  // حافظ على اختيار صالح: اختر الجديد عند الإضافة، وارجع للأول لو انحذف المختار.
+  useEffect(() => {
+    if (pathways.length === 0) {
+      if (selId) setSel("");
+    } else if (pathways.length > prevLen.current) {
+      setSel(pathways[pathways.length - 1].id);
+    } else if (!pathways.some((p) => p.id === selId)) {
+      setSel(pathways[0].id);
+    }
+    prevLen.current = pathways.length;
+  }, [pathways, selId]);
+
+  const sel = pathways.find((p) => p.id === selId) || null;
+  const math = sel ? bomMath({ inputQty: bom.inputQty, outputs: sel.outputs, wastes: sel.wastes }) : null;
+
+  // منع تكرار الصنف داخل نفس المسار (الداخل + الأصناف المضافة).
+  const usedIds = useMemo(
+    () => (sel ? [...(sel.outputs || []), ...(sel.wastes || [])].map((l) => l.itemId).filter(Boolean) : []),
+    [sel]
+  );
+  const lineDisabledFor = (curItemId) => (i) => {
+    if (i.id === bom.inputId) return t({ en: "same as input", ar: "هو الداخل" });
+    if (i.id !== curItemId && usedIds.includes(i.id)) return t({ en: "already added", ar: "مضاف مسبقاً" });
+    return "";
+  };
+  const onLineBlocked = (i, reason) => {
+    const nm = nameOf(i, isAr) || i.sku || i.id;
+    if (reason === t({ en: "same as input", ar: "هو الداخل" })) {
+      notify?.(t({
+        en: `Duplicate: "${nm}" is the input product — it can't also be an output or waste.`,
+        ar: `مكرّر: «${nm}» هو المنتج الداخل — ما بيصير يكون ناتج أو هدر كمان.`,
+      }), true);
+    } else {
+      notify?.(t({
+        en: `Duplicate: "${nm}" is already added in this pathway.`,
+        ar: `مكرّر: «${nm}» مضاف مسبقاً بهالمسار.`,
+      }), true);
+    }
+  };
+
+  const removePathway = (pw) => {
+    if (!window.confirm(t({
+      en: `Remove pathway ${pw.code || pw.name || ""}? (Applied when you Save the BOM.)`,
+      ar: `حذف المسار ${pw.code || pw.name || ""}؟ (بيتطبّق وقت ما تحفظ القائمة.)`,
+    }))) return;
+    ops.drop(pw.id);
+  };
+
+  return (
+    <>
+      <Card
+        icon="🔀"
+        title={t({ en: "Routing pathways", ar: "مسارات التوزيع" })}
         sub={t({
-          en: "Bones, fat, trimmings… items whose role is “Waste” in the master list.",
-          ar: "عظم، دهن، تشذيب… أصناف دورها «هدر» بسجل الأصناف.",
+          en: "Alternative ways this input can be broken down. Each pathway carries a unique code linked to the BOM.",
+          ar: "طرق بديلة لتفكيك هذا الداخل. كل مسار بيحمل كود فريد مربوط بالقائمة.",
         })}
-        addLabel={t({ en: "Add waste line", ar: "إضافة سطر هدر" })}
-        lines={bom.wastes || []}
-        inputQty={math.input}
-        preferRoles={["waste"]}
-        accent="#b45309"
-        disabledFor={lineDisabledFor}
-        onBlocked={onLineBlocked}
-        onAdd={() => addTo("wastes")}
-        onPatch={(id, p) => patchList("wastes", id, p)}
-        onDrop={(id) => dropFrom("wastes", id)}
-      />
+        right={
+          canEdit && (
+            <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary }} onClick={ops.add}>
+              ＋ {t({ en: "Add pathway", ar: "إضافة مسار" })}
+            </button>
+          )
+        }
+      >
+        {pathways.length === 0 ? (
+          <EmptyBox>
+            {t({
+              en: "No pathway yet — add one to define the first breakdown route.",
+              ar: "لا مسار بعد — أضف واحداً لتعريف أول طريق تفكيك.",
+            })}
+          </EmptyBox>
+        ) : (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {pathways.map((pw) => {
+              const on = pw.id === selId;
+              const off = pw.active === false;
+              return (
+                <button
+                  key={pw.id}
+                  type="button"
+                  onClick={() => setSel(pw.id)}
+                  style={{
+                    ...S.btn, ...S.btnSm,
+                    display: "flex", alignItems: "center", gap: 8,
+                    ...(on ? { background: "#6d28d9", color: "#fff", border: "1.5px solid #6d28d9" } : null),
+                    ...(off && !on ? { opacity: 0.6 } : null),
+                  }}
+                  title={off ? t({ en: "inactive pathway", ar: "مسار معطّل" }) : undefined}
+                >
+                  <b>{pw.code}</b>
+                  {pw.name ? <span style={{ fontWeight: 700 }}>· {pw.name}</span> : null}
+                  {off && <span>⏸</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {sel && (
+        <>
+          <Card
+            icon="🧭"
+            title={
+              <span style={{ display: "inline-flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <Badge color="#6d28d9" bg="#f3eefe">{sel.code}</Badge>
+                {sel.name || t({ en: "Unnamed pathway", ar: "مسار بلا اسم" })}
+                {sel.active === false && (
+                  <Badge color="#b45309" bg="#fffbeb">{t({ en: "inactive", ar: "معطّل" })}</Badge>
+                )}
+              </span>
+            }
+            sub={t({
+              en: "This pathway’s unique code is fixed and linked to the BOM reference.",
+              ar: "كود هذا المسار الفريد ثابت ومربوط برقم القائمة.",
+            })}
+            right={
+              canEdit && (
+                <button
+                  type="button"
+                  style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
+                  onClick={() => removePathway(sel)}
+                >
+                  🗑 {t({ en: "Remove pathway", ar: "حذف المسار" })}
+                </button>
+              )
+            }
+          >
+            <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <div style={S.grid}>
+                <Field label={t({ en: "Pathway ID (auto)", ar: "كود المسار (تلقائي)" })}>
+                  <input style={{ ...S.input, background: "#f7f5ff", fontWeight: 900, color: "#6d28d9" }}
+                    value={sel.code} readOnly />
+                </Field>
+                <Field label={t({ en: "Pathway name", ar: "اسم المسار" })}>
+                  <input
+                    style={S.input}
+                    value={sel.name ?? ""}
+                    onChange={(e) => ops.patch(sel.id, { name: e.target.value })}
+                    placeholder={t({ en: "e.g. Standard cut / Export cut", ar: "مثال: تقطيع عادي / تصدير" })}
+                  />
+                </Field>
+                <Field label={t({ en: "Notes", ar: "ملاحظات" })}>
+                  <input
+                    style={S.input}
+                    value={sel.notes ?? ""}
+                    onChange={(e) => ops.patch(sel.id, { notes: e.target.value })}
+                  />
+                </Field>
+              </div>
+              <div style={{ ...S.chipRow, marginTop: 12 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
+                  <Switch checked={sel.active !== false} onChange={(v) => ops.patch(sel.id, { active: v })} />
+                  {t({ en: "Active pathway", ar: "مسار مفعّل" })}
+                </label>
+              </div>
+            </fieldset>
+          </Card>
+
+          <MassBalance t={t} math={math} uom={uom} />
+
+          <CutLines
+            t={t} isAr={isAr} cfg={cfg} canEdit={canEdit}
+            icon="🥩"
+            title={t({ en: "Output products", ar: "المنتجات الناتجة" })}
+            sub={t({
+              en: "The cuts this pathway yields — picked from the item master.",
+              ar: "القطع اللي بيعطيها هذا المسار — من سجل الأصناف.",
+            })}
+            addLabel={t({ en: "Add output", ar: "إضافة ناتج" })}
+            lines={sel.outputs || []}
+            inputQty={math.input}
+            preferRoles={["finished", "component"]}
+            accent="#047857"
+            disabledFor={lineDisabledFor}
+            onBlocked={onLineBlocked}
+            onAdd={() => ops.addLine(sel.id, "outputs")}
+            onPatch={(id, p) => ops.patchLine(sel.id, "outputs", id, p)}
+            onDrop={(id) => ops.dropLine(sel.id, "outputs", id)}
+          />
+
+          <CutLines
+            t={t} isAr={isAr} cfg={cfg} canEdit={canEdit}
+            icon="🦴"
+            title={t({ en: "Waste / scrap", ar: "الهدر والمخلّفات" })}
+            sub={t({
+              en: "Bones, fat, trimmings… items whose role is “Waste” in the master list.",
+              ar: "عظم، دهن، تشذيب… أصناف دورها «هدر» بسجل الأصناف.",
+            })}
+            addLabel={t({ en: "Add waste line", ar: "إضافة سطر هدر" })}
+            lines={sel.wastes || []}
+            inputQty={math.input}
+            preferRoles={["waste"]}
+            accent="#b45309"
+            disabledFor={lineDisabledFor}
+            onBlocked={onLineBlocked}
+            onAdd={() => ops.addLine(sel.id, "wastes")}
+            onPatch={(id, p) => ops.patchLine(sel.id, "wastes", id, p)}
+            onDrop={(id) => ops.dropLine(sel.id, "wastes", id)}
+          />
+        </>
+      )}
     </>
   );
 }
