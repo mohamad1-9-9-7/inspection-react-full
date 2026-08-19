@@ -40,8 +40,9 @@ const blankBom = (boms) => ({
   inputQty: 100,
   outputs: [],
   wastes: [],
-  // المسارات المتعددة — تُستعمل فقط لما إعداد النظام «Multi-Routing Pathways» مفعّل.
+  // المسارات المتعددة — خيار مستقل لكل وصفة (يُفعّل من داخل باني القائمة نفسها).
   // كل مسار: { id, no, code, name, outputs[], wastes[], notes, active }.
+  multiPathways: false,        // No = تفكيك مسطّح تقليدي · Yes = مسارات متعددة لهالوصفة
   pathways: [],
   pathwaySeq: 0,               // عدّاد تصاعدي ثابت لأكواد المسارات (لا يُعاد ترقيمه بالحذف)
   notes: "",
@@ -129,9 +130,6 @@ export default function MrpBom() {
   const canEdit = canEditMrp();
   const toastTimer = useRef(null);
 
-  // إعداد النظام: تفعيل المسارات المتعددة لكل قائمة (No = تفكيك مسطّح تقليدي).
-  const multiPathways = cfg.settings?.multiPathways === true;
-
   const flash = (text, bad) => {
     setToast({ text, bad: !!bad });
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -161,18 +159,6 @@ export default function MrpBom() {
     }
   };
 
-  /** إعداد النظام — تفعيل/تعطيل المسارات المتعددة (حفظ فوري). */
-  const setMultiPathwaysFlag = (v) =>
-    commit(
-      (n) => {
-        if (!n.settings || typeof n.settings !== "object") n.settings = {};
-        n.settings.multiPathways = v;
-      },
-      v
-        ? t({ en: "Multi-routing pathways enabled.", ar: "تم تفعيل المسارات المتعددة." })
-        : t({ en: "Multi-routing pathways disabled.", ar: "تم تعطيل المسارات المتعددة." })
-    );
-
   /* ── فتح/إنشاء ── */
   const openNew = () => setDraft({ mode: "new", bom: blankBom(cfg.boms), dirty: false });
 
@@ -188,7 +174,7 @@ export default function MrpBom() {
       // نضمن حقول التفكيك حتى للسجلات القديمة — بلا دهس باقي الحقول
       bom: {
         outputs: [], wastes: [], inputId: "", inputQty: "",
-        pathways: [], pathwaySeq: 0,
+        multiPathways: false, pathways: [], pathwaySeq: 0,
         ...JSON.parse(JSON.stringify(b)),
         bomType: "disassembly",
       },
@@ -325,7 +311,7 @@ export default function MrpBom() {
     const inItemName = nameOf(inItem, isAr) || bom.inputId;
 
     // وضع المسارات المتعددة — كل مسار يُتحقّق لوحده بنفس قواعد القائمة المسطّحة.
-    if (multiPathways) {
+    if (bom.multiPathways === true) {
       const pws = bom.pathways || [];
       if (pws.length === 0) {
         return t({
@@ -515,38 +501,6 @@ export default function MrpBom() {
     >
       <Toast toast={toast} busy={busy} t={t} />
 
-      {!draft && canEdit && (
-        <Card
-          icon="🔀"
-          title={t({ en: "Multi-routing pathways", ar: "مسارات التوزيع المتعددة" })}
-          sub={t({
-            en: "System setting — applies to every cutting BOM.",
-            ar: "إعداد نظام — بينطبّق على كل قوائم التقطيع.",
-          })}
-        >
-          <label style={{ display: "flex", alignItems: "flex-start", gap: 12, fontWeight: 800 }}>
-            <Switch checked={multiPathways} disabled={busy} onChange={setMultiPathwaysFlag} />
-            <span style={{ minWidth: 0 }}>
-              {t({
-                en: "Enable multi-routing pathways per BOM",
-                ar: "تفعيل مسارات التوزيع المتعددة لكل قائمة",
-              })}
-              <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
-                {multiPathways
-                  ? t({
-                      en: "On — each BOM can define several alternative breakdowns, each with its own unique pathway code (e.g. CUT-0001-P1).",
-                      ar: "مفعّل — كل قائمة بتقدر تعرّف عدة تفكيكات بديلة، لكل واحد كود مسار فريد (مثال: CUT-0001-P1).",
-                    })
-                  : t({
-                      en: "Off — BOMs use a single flat breakdown (input → outputs + waste), the traditional way.",
-                      ar: "معطّل — القوائم بتستعمل تفكيك مسطّح واحد (داخل → نواتج + هدر)، بالطريقة التقليدية.",
-                    })}
-              </div>
-            </span>
-          </label>
-        </Card>
-      )}
-
       {!draft ? (
         <Card
           icon="🔪"
@@ -691,7 +645,6 @@ export default function MrpBom() {
         <CutBuilder
           t={t} isAr={isAr} cfg={cfg} draft={draft} canEdit={canEdit} busy={busy}
           notify={flash}
-          multiPathways={multiPathways}
           onBack={closeBuilder}
           onSave={saveBom}
           onDelete={() => removeBom(draft.bom)}
@@ -761,7 +714,7 @@ export default function MrpBom() {
 /* ══════════════ باني قائمة التقطيع ══════════════ */
 
 function CutBuilder({
-  t, isAr, cfg, draft, canEdit, busy, notify, multiPathways,
+  t, isAr, cfg, draft, canEdit, busy, notify,
   onBack, onSave, onDelete, onBump, onHistory, onAddCategory,
   patch, patchList, addTo, dropFrom, pathwayOps,
 }) {
@@ -770,6 +723,7 @@ function CutBuilder({
   const input = itemById(cfg, bom.inputId);
   const math = bomMath(bom);
   const uom = input?.uom || "";
+  const multiPathways = bom.multiPathways === true;   // خيار مستقل لهالوصفة
 
   // كل الأصناف المستعملة بالقائمة (نواتج + هدر) — لمنع التكرار عبر السطور
   const usedIds = useMemo(
@@ -927,6 +881,35 @@ function CutBuilder({
               <TextInputLike value={bom.notes} onChange={(v) => patch({ notes: v })} />
             </Field>
           </div>
+
+          {/* ── تفعيل المسارات المتعددة لهالوصفة (خيار مستقل لكل قائمة) ── */}
+          <div style={{
+            ...S.chipRow, marginTop: 12, padding: "12px 14px", borderRadius: 14,
+            border: `1.5px solid ${multiPathways ? "#c9b8f2" : "#e3edf7"}`,
+            background: multiPathways ? "#f7f5ff" : "#fafcff",
+          }}>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontWeight: 800, minWidth: 0 }}>
+              <Switch
+                checked={multiPathways}
+                onChange={(v) => patch({ multiPathways: v })}
+              />
+              <span style={{ minWidth: 0 }}>
+                🔀 {t({ en: "Enable multi-routing pathways for this BOM", ar: "تفعيل مسارات التوزيع المتعددة لهالوصفة" })}
+                <div style={{ ...S.hint, fontWeight: 700, marginTop: 4 }}>
+                  {multiPathways
+                    ? t({
+                        en: "On — define several alternative breakdowns for this input, each with its own unique pathway code (e.g. CUT-0001-P1).",
+                        ar: "مفعّل — عرّف عدة تفكيكات بديلة لهذا الداخل، لكل واحد كود مسار فريد (مثال: CUT-0001-P1).",
+                      })
+                    : t({
+                        en: "Off — this BOM uses a single flat breakdown (input → outputs + waste), the traditional way.",
+                        ar: "معطّل — هالوصفة بتستعمل تفكيك مسطّح واحد (داخل → نواتج + هدر)، بالطريقة التقليدية.",
+                      })}
+                </div>
+              </span>
+            </label>
+          </div>
+
           <div style={{ ...S.chipRow, marginTop: 12 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
               <Switch checked={bom.active !== false} onChange={(v) => patch({ active: v })} />
