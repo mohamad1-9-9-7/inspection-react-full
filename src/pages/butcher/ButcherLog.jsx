@@ -1245,11 +1245,6 @@ function ItemCard({
           style={S.cutInput}
         />
       </label>
-      {Number.isFinite(target) && target > 0 && (
-        <span className="bt-lbl" style={S.target}>
-          🎯 {targetLabel}: {target.toFixed(2)}
-        </span>
-      )}
       {Number.isFinite(pct) && pct > 0 && (
         <span className="bt-lbl" style={S.pct}>
           {pct.toFixed(1)}% {pctLabel}
