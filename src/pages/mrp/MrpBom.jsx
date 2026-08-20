@@ -11,8 +11,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ITEM_TYPES, activeOnly, bomCategoryById, freshId, hasRole, itemById, money,
-  mutateConfig, nameOf, num, useMrpConfig, userName,
+  ITEM_TYPES, activeOnly, bomCategoryById, bomKindById, bomOriginById, freshId, hasRole,
+  itemById, money, mutateConfig, nameOf, num, useMrpConfig, userName,
 } from "./mrpApi";
 import {
   Badge, Card, EmptyBox, Field, ItemPicker, Kpi, Modal, MrpNoAccess, MrpShell,
@@ -36,6 +36,8 @@ const blankBom = (boms) => ({
   ref: nextRef(boms),
   bomType: "disassembly",
   categoryId: "",
+  originId: "",                // المنشأ — تعريف من قائمة المناشئ (السيرفر)
+  kindId: "",                  // النوع — تعريف من قائمة الأنواع (السيرفر)
   inputId: "",
   inputQty: 100,
   outputs: [],
@@ -55,6 +57,27 @@ const blankBom = (boms) => ({
   createdAt: new Date().toISOString(),
   createdBy: userName(),
 });
+
+/**
+ * 🗂️ التعريفات اللي منعرّفها نحن — الفئة · المنشأ · النوع.
+ * كلّها قوائم فاضية بالأصل، بتنبنى من هون، وبتنحفظ **على السيرفر** داخل
+ * إعدادات التصنيع (mrp_config) — ما في قوائم ثابتة بالكود ولا تخزين محلي.
+ */
+const LOOKUPS = {
+  category: {
+    key: "bomCategories", prefix: "bcat", field: "categoryId", icon: "🏷️",
+    ar: "الفئة", en: "Category", arPl: "الفئات", enPl: "Categories",
+  },
+  origin: {
+    key: "bomOrigins", prefix: "borig", field: "originId", icon: "🌍",
+    ar: "المنشأ", en: "Origin", arPl: "المناشئ", enPl: "Origins",
+  },
+  kind: {
+    key: "bomKinds", prefix: "bkind", field: "kindId", icon: "🐑",
+    ar: "النوع", en: "Type", arPl: "الأنواع", enPl: "Types",
+  },
+};
+const LOOKUP_LIST = [LOOKUPS.category, LOOKUPS.origin, LOOKUPS.kind];
 
 /** كود المسار الفريد — مربوط هرمياً بكود الـ BOM: CUT-0001-P3. */
 const pathwayCode = (bomRef, no) => `${bomRef || "CUT"}-P${no}`;
@@ -180,6 +203,8 @@ export default function MrpBom() {
   const [toast, setToast] = useState(null);
   const [q, setQ] = useState("");
   const [catFilter, setCatFilter] = useState("");
+  const [originFilter, setOriginFilter] = useState("");
+  const [kindFilter, setKindFilter] = useState("");
   const [draft, setDraft] = useState(null);   // { mode: "new"|"edit", bom, dirty }
   const [historyFor, setHistoryFor] = useState("");
 
@@ -246,24 +271,74 @@ export default function MrpBom() {
     setDraft(null);
   };
 
-  /** إضافة فئة وصفة جديدة (مستقلّة عن فئات الأصناف) وإرجاع معرّفها لاختيارها. */
-  const addBomCategory = async () => {
-    const name = window.prompt(t({ en: "New recipe category name", ar: "اسم فئة الوصفة الجديدة" }));
+  /* ── التعريفات (فئة · منشأ · نوع) — نضيفها نحن، والسيرفر هو المرجع ── */
+
+  const sameLabel = (x, label) =>
+    [x.ar, x.en].some((v) => String(v || "").trim().toLowerCase() === label.toLowerCase());
+
+  /**
+   * إضافة تعريف جديد وإرجاع معرّفه لاختياره فوراً.
+   * الحفظ على السيرفر مباشرة (mutateConfig) — فبيوصل لكل الأجهزة والكشك.
+   */
+  const addLookup = async (spec) => {
+    const name = window.prompt(t({
+      en: `New ${spec.en.toLowerCase()} name`,
+      ar: `اسم ${spec.ar} الجديد`,
+    }));
     const label = String(name || "").trim();
     if (!label) return "";
-    const existing = (cfg.bomCategories || []).find(
-      (c) => (nameOf(c, isAr) || c.en || c.ar || "").trim().toLowerCase() === label.toLowerCase()
-    );
+    const existing = (cfg[spec.key] || []).find((x) => sameLabel(x, label));
     if (existing) return existing.id;
-    const id = freshId("bcat");
+    const id = freshId(spec.prefix);
     const ok = await commit(
       (next) => {
-        if (!Array.isArray(next.bomCategories)) next.bomCategories = [];
-        next.bomCategories.push({ id, ar: label, en: label, active: true });
+        if (!Array.isArray(next[spec.key])) next[spec.key] = [];
+        next[spec.key].push({ id, ar: label, en: label, active: true });
       },
-      t({ en: "Category added.", ar: "تمت إضافة الفئة." })
+      t({ en: `${spec.en} added.`, ar: `تمت إضافة ${spec.ar}.` })
     );
     return ok ? id : "";
+  };
+
+  /** إعادة تسمية تعريف — بتعدّل لغة الواجهة، وبتعبّي اللغة التانية إذا فاضية. */
+  const renameLookup = async (spec, row) => {
+    const cur = nameOf(row, isAr) || row.en || row.ar || "";
+    const name = window.prompt(t({
+      en: `Rename ${spec.en.toLowerCase()}`,
+      ar: `إعادة تسمية ${spec.ar}`,
+    }), cur);
+    const label = String(name ?? "").trim();
+    if (!label || label === cur) return;
+    await commit((next) => {
+      const x = (next[spec.key] || []).find((y) => y.id === row.id);
+      if (!x) return;
+      if (isAr) { x.ar = label; if (!String(x.en || "").trim()) x.en = label; }
+      else { x.en = label; if (!String(x.ar || "").trim()) x.ar = label; }
+    }, t({ en: "Saved.", ar: "تم الحفظ." }));
+  };
+
+  const toggleLookup = (spec, row, v) =>
+    commit((next) => {
+      const x = (next[spec.key] || []).find((y) => y.id === row.id);
+      if (x) x.active = v;
+    }, null);
+
+  /** حذف تعريف — وبيفكّ ارتباطه عن أي قائمة كانت مربوطة فيه. */
+  const removeLookup = async (spec, row) => {
+    const label = nameOf(row, isAr) || row.id;
+    const used = (cfg.boms || []).filter((b) => (b[spec.field] || "") === row.id).length;
+    if (!window.confirm(t({
+      en: `Delete ${spec.en.toLowerCase()} "${label}"?${used
+        ? `
+${used} BOM(s) will be left with no ${spec.en.toLowerCase()}.` : ""}`,
+      ar: `حذف ${spec.ar} «${label}»؟${used
+        ? `
+${used} قائمة رح تضل بلا ${spec.ar}.` : ""}`,
+    }))) return;
+    await commit((next) => {
+      next[spec.key] = (next[spec.key] || []).filter((x) => x.id !== row.id);
+      (next.boms || []).forEach((b) => { if (b[spec.field] === row.id) b[spec.field] = ""; });
+    }, t({ en: `${spec.en} deleted.`, ar: `تم حذف ${spec.ar}.` }));
   };
 
   const patch = (p) => setDraft((d) => ({ ...d, dirty: true, bom: { ...d.bom, ...p } }));
@@ -565,16 +640,20 @@ export default function MrpBom() {
         input: itemById(cfg, b.inputId),
         math: bomMath(b),
         cat: nameOf(bomCategoryById(cfg, b.categoryId) || {}, isAr),
+        origin: nameOf(bomOriginById(cfg, b.originId) || {}, isAr),
+        kind: nameOf(bomKindById(cfg, b.kindId) || {}, isAr),
         legacy: b.bomType !== "disassembly" && (b.lines || []).length > 0,
         pwCount: (b.pathways || []).length,
       }))
-      .filter(({ b, input, cat }) => {
+      .filter(({ b, input, cat, origin, kind }) => {
         if (catFilter && (b.categoryId || "") !== catFilter) return false;
+        if (originFilter && (b.originId || "") !== originFilter) return false;
+        if (kindFilter && (b.kindId || "") !== kindFilter) return false;
         if (!needle) return true;
-        return [b.ref, input?.sku, input?.ar, input?.en, cat]
+        return [b.ref, input?.sku, input?.ar, input?.en, cat, origin, kind]
           .some((v) => String(v || "").toLowerCase().includes(needle));
       });
-  }, [cfg, q, catFilter, isAr]);
+  }, [cfg, q, catFilter, originFilter, kindFilter, isAr]);
 
   if (!canOpenMrp(PAGE)) return <MrpNoAccess page={PAGE} />;
 
@@ -610,20 +689,22 @@ export default function MrpBom() {
           right={
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <SearchBox value={q} onChange={setQ}
-                placeholder={t({ en: "Search ref, input or category…", ar: "بحث بالرقم أو الداخل أو الفئة…" })} />
-              <select
-                style={{
-                  ...S.input, width: 175,
-                  ...(catFilter ? { borderColor: "#1f6fd0", background: "#f7fbff" } : null),
-                }}
-                value={catFilter}
-                onChange={(e) => setCatFilter(e.target.value)}
-              >
-                <option value="">{t({ en: "All categories", ar: "كل الفئات" })}</option>
-                {activeOnly(cfg.bomCategories).map((c) => (
-                  <option key={c.id} value={c.id}>{nameOf(c, isAr) || c.id}</option>
-                ))}
-              </select>
+                placeholder={t({
+                  en: "Search ref, input, category, origin or type…",
+                  ar: "بحث بالرقم أو الداخل أو الفئة أو المنشأ أو النوع…",
+                })} />
+              <LookupFilter
+                spec={LOOKUPS.category} list={cfg.bomCategories} isAr={isAr} t={t}
+                value={catFilter} onChange={setCatFilter}
+              />
+              <LookupFilter
+                spec={LOOKUPS.origin} list={cfg.bomOrigins} isAr={isAr} t={t}
+                value={originFilter} onChange={setOriginFilter}
+              />
+              <LookupFilter
+                spec={LOOKUPS.kind} list={cfg.bomKinds} isAr={isAr} t={t}
+                value={kindFilter} onChange={setKindFilter}
+              />
             </div>
           }
         >
@@ -643,6 +724,8 @@ export default function MrpBom() {
                   <tr>
                     <th style={S.th}>{t({ en: "Ref", ar: "الرقم" })}</th>
                     <th style={S.th}>{t({ en: "Category", ar: "الفئة" })}</th>
+                    <th style={S.th}>{t({ en: "Origin", ar: "المنشأ" })}</th>
+                    <th style={S.th}>{t({ en: "Type", ar: "النوع" })}</th>
                     <th style={S.th}>{t({ en: "Input product", ar: "المنتج الداخل" })}</th>
                     <th style={S.th}>{t({ en: "Input qty", ar: "كمية الداخل" })}</th>
                     <th style={S.th}>{t({ en: "Outputs", ar: "النواتج" })}</th>
@@ -654,7 +737,7 @@ export default function MrpBom() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(({ b, input, math, cat, legacy, pwCount }) => (
+                  {rows.map(({ b, input, math, cat, origin, kind, legacy, pwCount }) => (
                     <tr key={b.id}>
                       <td style={{ ...S.td, fontWeight: 900 }}>
                         {b.ref}
@@ -672,6 +755,16 @@ export default function MrpBom() {
                       <td style={S.td}>
                         {cat
                           ? <Badge color="#1f6fd0" bg="#eaf2fc">{cat}</Badge>
+                          : <span style={{ color: "#8aa3b8" }}>—</span>}
+                      </td>
+                      <td style={S.td}>
+                        {origin
+                          ? <Badge color="#047857" bg="#ecfdf5">🌍 {origin}</Badge>
+                          : <span style={{ color: "#8aa3b8" }}>—</span>}
+                      </td>
+                      <td style={S.td}>
+                        {kind
+                          ? <Badge color="#b45309" bg="#fffbeb">🐑 {kind}</Badge>
                           : <span style={{ color: "#8aa3b8" }}>—</span>}
                       </td>
                       <td style={{ ...S.td, ...S.tdStart }}>
@@ -748,13 +841,23 @@ export default function MrpBom() {
           onDelete={() => removeBom(draft.bom)}
           onBump={bumpVersion}
           onHistory={() => setHistoryFor(draft.bom.id)}
-          onAddCategory={addBomCategory}
+          onAddLookup={addLookup}
           patch={patch} patchList={patchList} addTo={addTo} dropFrom={dropFrom}
           pathwayOps={{
             enable: toggleMultiPathways,
             add: addPathway, patch: patchPathway, drop: dropPathway,
             addLine: addPathwayLine, patchLine: patchPathwayLine, dropLine: dropPathwayLine,
           }}
+        />
+      )}
+
+      {!draft && (
+        <DefinitionsCard
+          t={t} isAr={isAr} cfg={cfg} canEdit={canEdit} busy={busy}
+          onAdd={addLookup}
+          onRename={renameLookup}
+          onToggle={toggleLookup}
+          onRemove={removeLookup}
         />
       )}
 
@@ -814,7 +917,7 @@ export default function MrpBom() {
 
 function CutBuilder({
   t, isAr, cfg, draft, canEdit, busy, notify,
-  onBack, onSave, onDelete, onBump, onHistory, onAddCategory,
+  onBack, onSave, onDelete, onBump, onHistory, onAddLookup,
   patch, patchList, addTo, dropFrom, pathwayOps,
 }) {
   const bom = draft.bom;
@@ -959,33 +1062,33 @@ function CutBuilder({
                   : t({ en: "optional — you can fill it later", ar: "اختياري — فيك تعبّيها لاحقاً" })}
               </span>
             </Field>
-            <Field label={t({ en: "Category (recipes)", ar: "الفئة (للوصفات)" })}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Select
-                    value={bom.categoryId}
-                    onChange={(v) => patch({ categoryId: v })}
-                    options={activeOnly(cfg.bomCategories)}
-                    isAr={isAr}
-                    placeholder={t({ en: "— none —", ar: "— بلا —" })}
-                  />
-                </div>
-                {canEdit && (
-                  <button
-                    type="button"
-                    style={{ ...S.btn, ...S.btnSm }}
-                    disabled={busy}
-                    onClick={async () => {
-                      const id = await onAddCategory();
-                      if (id) patch({ categoryId: id });
-                    }}
-                    title={t({ en: "Add a new recipe category", ar: "إضافة فئة وصفة جديدة" })}
-                  >
-                    ＋ {t({ en: "New", ar: "جديدة" })}
-                  </button>
-                )}
-              </div>
-            </Field>
+            <LookupField
+              t={t} isAr={isAr} canEdit={canEdit} busy={busy}
+              label={t({ en: "Category (recipes)", ar: "الفئة (للوصفات)" })}
+              spec={LOOKUPS.category}
+              options={activeOnly(cfg.bomCategories)}
+              value={bom.categoryId}
+              onChange={(v) => patch({ categoryId: v })}
+              onAdd={() => onAddLookup(LOOKUPS.category)}
+            />
+            <LookupField
+              t={t} isAr={isAr} canEdit={canEdit} busy={busy}
+              label={t({ en: "Origin", ar: "المنشأ" })}
+              spec={LOOKUPS.origin}
+              options={activeOnly(cfg.bomOrigins)}
+              value={bom.originId}
+              onChange={(v) => patch({ originId: v })}
+              onAdd={() => onAddLookup(LOOKUPS.origin)}
+            />
+            <LookupField
+              t={t} isAr={isAr} canEdit={canEdit} busy={busy}
+              label={t({ en: "Type", ar: "النوع" })}
+              spec={LOOKUPS.kind}
+              options={activeOnly(cfg.bomKinds)}
+              value={bom.kindId}
+              onChange={(v) => patch({ kindId: v })}
+              onAdd={() => onAddLookup(LOOKUPS.kind)}
+            />
             <Field label={t({ en: "Notes", ar: "ملاحظات" })}>
               <TextInputLike value={bom.notes} onChange={(v) => patch({ notes: v })} />
             </Field>
@@ -1410,6 +1513,193 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
 }
 
 /* حقل نص بسيط بنمط الوحدة */
+/* ══════════════ التعريفات: فئة · منشأ · نوع ══════════════
+   قوائم يعرّفها المستخدم بنفسه — لا شيء منها مكتوب بالكود، وكل إضافة/تعديل
+   بينحفظ فوراً على السيرفر داخل إعدادات التصنيع (mrp_config). */
+
+/** فلتر أعلى جدول القوائم لتعريف واحد. */
+function LookupFilter({ spec, list, value, onChange, isAr, t }) {
+  const options = activeOnly(list);
+  if (!options.length) return null;
+  return (
+    <select
+      style={{
+        ...S.input, width: 165,
+        ...(value ? { borderColor: "#1f6fd0", background: "#f7fbff" } : null),
+      }}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      title={t({ en: spec.enPl, ar: spec.arPl })}
+    >
+      <option value="">
+        {spec.icon} {t({ en: `All ${spec.enPl.toLowerCase()}`, ar: `كل ${spec.arPl}` })}
+      </option>
+      {options.map((c) => (
+        <option key={c.id} value={c.id}>{nameOf(c, isAr) || c.id}</option>
+      ))}
+    </select>
+  );
+}
+
+/** حقل اختيار تعريف داخل الباني + زر «جديد» (بيحفظ على السيرفر ثم بيختاره). */
+function LookupField({ t, isAr, label, spec, options, value, onChange, onAdd, canEdit, busy }) {
+  return (
+    <Field label={`${spec.icon} ${label}`}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Select
+            value={value}
+            onChange={onChange}
+            options={options}
+            isAr={isAr}
+            placeholder={t({ en: "— none —", ar: "— بلا —" })}
+          />
+        </div>
+        {canEdit && (
+          <button
+            type="button"
+            style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
+            disabled={busy}
+            onClick={async () => {
+              const id = await onAdd();
+              if (id) onChange(id);
+            }}
+            title={t({
+              en: `Add a new ${spec.en.toLowerCase()} — saved on the server`,
+              ar: `إضافة ${spec.ar} جديد — بينحفظ على السيرفر`,
+            })}
+          >
+            ＋ {t({ en: "New", ar: "جديد" })}
+          </button>
+        )}
+      </div>
+      {options.length === 0 && (
+        <span style={{ ...S.hint, marginTop: 4 }}>
+          {t({
+            en: `No ${spec.enPl.toLowerCase()} defined yet — press “New” to add the first one.`,
+            ar: `ما في ${spec.arPl} معرّفة بعد — اضغط «جديد» لإضافة أول وحدة.`,
+          })}
+        </span>
+      )}
+    </Field>
+  );
+}
+
+/** بطاقة إدارة التعريفات — إضافة · إعادة تسمية · تفعيل · حذف. */
+function DefinitionsCard({ t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const total = LOOKUP_LIST.reduce((s, spec) => s + (cfg[spec.key] || []).length, 0);
+
+  return (
+    <Card
+      icon="🗂️"
+      title={t({ en: "Definitions — category · origin · type", ar: "التعريفات — الفئة · المنشأ · النوع" })}
+      sub={t({
+        en: "Your own lists. Every addition or edit is saved on the server, so all devices and the butcher kiosk see it.",
+        ar: "قوائمنا نحن. كل إضافة أو تعديل بينحفظ على السيرفر، فبيشوفها كل الأجهزة وكشك الجزار.",
+      })}
+      right={
+        <button type="button" style={{ ...S.btn, ...S.btnSm }} onClick={() => setOpen((v) => !v)}>
+          {open ? t({ en: "Hide", ar: "إخفاء" }) : `${total} · ${t({ en: "Manage", ar: "إدارة" })}`}
+        </button>
+      }
+    >
+      {open && (
+        <div style={S.grid}>
+          {LOOKUP_LIST.map((spec) => (
+            <LookupBox
+              key={spec.key}
+              spec={spec} t={t} isAr={isAr} cfg={cfg} canEdit={canEdit} busy={busy}
+              onAdd={onAdd} onRename={onRename} onToggle={onToggle} onRemove={onRemove}
+            />
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** صندوق تعريف واحد داخل بطاقة التعريفات. */
+function LookupBox({ spec, t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle, onRemove }) {
+  const list = cfg[spec.key] || [];
+  const countFor = (id) => (cfg.boms || []).filter((b) => (b[spec.field] || "") === id).length;
+
+  return (
+    <div style={{
+      border: "1px solid #e3edf7", borderRadius: 16, background: "#fafcff",
+      padding: "12px 13px", display: "flex", flexDirection: "column", gap: 10, minWidth: 0,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 900, fontSize: 15 }}>
+          {spec.icon} {t({ en: spec.enPl, ar: spec.arPl })}
+        </span>
+        <span style={S.hint}>({list.length})</span>
+        <span style={{ flex: 1 }} />
+        {canEdit && (
+          <button
+            type="button"
+            style={{ ...S.btn, ...S.btnSm, ...S.btnPrimary, ...(busy ? S.btnOff : null) }}
+            disabled={busy}
+            onClick={() => onAdd(spec)}
+          >
+            ＋ {t({ en: "Add", ar: "إضافة" })}
+          </button>
+        )}
+      </div>
+
+      {list.length === 0 ? (
+        <EmptyBox>
+          {t({
+            en: `No ${spec.enPl.toLowerCase()} yet — add the ones you work with.`,
+            ar: `ما في ${spec.arPl} بعد — ضيف اللي بتشتغل فيهم.`,
+          })}
+        </EmptyBox>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {list.map((row) => {
+            const used = countFor(row.id);
+            const off = row.active === false;
+            return (
+              <div
+                key={row.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                  background: "#fff", border: "1px solid #e6eff8", borderRadius: 12,
+                  padding: "7px 10px", opacity: off ? 0.6 : 1,
+                }}
+              >
+                <span style={{ fontWeight: 800, minWidth: 0, flex: 1, wordBreak: "break-word" }}>
+                  {nameOf(row, isAr) || row.id}
+                </span>
+                <span style={S.hint}>
+                  {used ? `${used} ${t({ en: "BOM", ar: "قائمة" })}` : "—"}
+                </span>
+                {canEdit ? (
+                  <>
+                    <Switch checked={!off} disabled={busy} onChange={(v) => onToggle(spec, row, v)} />
+                    <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
+                      disabled={busy} onClick={() => onRename(spec, row)}
+                      title={t({ en: "Rename", ar: "إعادة تسمية" })}>
+                      ✎
+                    </button>
+                    <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger, ...(busy ? S.btnOff : null) }}
+                      disabled={busy} onClick={() => onRemove(spec, row)}
+                      title={t({ en: "Delete", ar: "حذف" })}>
+                      🗑
+                    </button>
+                  </>
+                ) : (
+                  off && <Badge color="#a12626" bg="#fff1f1">{t({ en: "off", ar: "معطّل" })}</Badge>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TextInputLike({ value, onChange }) {
   return (
     <input style={S.input} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />

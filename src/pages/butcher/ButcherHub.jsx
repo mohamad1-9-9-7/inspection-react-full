@@ -45,15 +45,7 @@ const CARDS = [
     icon: "📋",
     ar: "عرض التقارير",
     en: "Butcher Reports",
-    grad: "linear-gradient(135deg,#1f6fd0,#1e40af)",
-  },
-  {
-    id: "butcher.summary",
-    to: "/butcher/summary",
-    icon: "🗓️",
-    ar: "التقرير الشامل",
-    en: "Full Summary Report",
-    grad: "linear-gradient(135deg,#0f766e,#115e59)",
+    grad: "linear-gradient(135deg,#0b3358,#1f6fd0 58%,#0f766e)",
   },
   {
     id: "butcher.supervisor",

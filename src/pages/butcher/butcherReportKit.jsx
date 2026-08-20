@@ -91,6 +91,12 @@ export function useButcherData({ from = "", to = "" } = {}) {
   return { records, loading, error, truncated, reload: load, cfg, mrpCfg };
 }
 
+/** اسم تعريف (منشأ/نوع) من قائمة إعدادات التصنيع. */
+const defName = (list, id, isAr) => {
+  const x = (list || []).find((y) => y.id === id);
+  return x ? nameOf(x, isAr) || x.id : "";
+};
+
 /** اسم فئة الوصفة من إعدادات التصنيع. */
 const bomCatName = (mrpCfg, id, isAr) => {
   const c = (mrpCfg?.bomCategories || []).find((x) => x.id === id);
@@ -116,6 +122,11 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     : "";
 
   const branchObj = BRANCHES.find((b) => b.code === p.branch) || null;
+
+  // النوع/المنشأ: اللقطة المحفوظة أولاً، وإلا تعريف الوصفة الحالي (سجلات قديمة)
+  const bomDef = p.bomId ? (mrpCfg?.boms || []).find((b) => b.id === p.bomId) || null : null;
+  const kindId = p.bomKindId || bomDef?.kindId || "";
+  const originId = p.bomOriginId || bomDef?.originId || "";
 
   const rawCuts = Array.isArray(p.cuts) && p.cuts.length
     ? p.cuts
@@ -170,6 +181,13 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     bomRef: p.bomRef || "",
     bomCatId: p.bomCategoryId || "",
     bomCatName: bomCatName(mrpCfg, p.bomCategoryId, isAr),
+    // المنشأ والنوع — اللقطة المحفوظة أولاً، ثم التعريف الحالي للسجلات الأقدم
+    bomOriginId: originId,
+    bomOriginName: (isAr ? p.bomOriginAr : p.bomOriginEn) || p.bomOriginAr || p.bomOriginEn
+      || defName(mrpCfg?.bomOrigins, originId, isAr),
+    bomKindId: kindId,
+    bomKindName: (isAr ? p.bomKindAr : p.bomKindEn) || p.bomKindAr || p.bomKindEn
+      || defName(mrpCfg?.bomKinds, kindId, isAr),
     // المسار (وضع المسارات المتعددة) — لقطة محفوظة وقت التسجيل
     pathwayId: p.pathwayId || "",
     pathwayCode: p.pathwayCode || "",

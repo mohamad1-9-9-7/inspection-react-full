@@ -598,6 +598,8 @@ function DetailsModal({ b, t, isAr, dir, KG, canReview, busyId, onClose, onAppro
                     {r.opNo ? <b>{r.opNo}</b> : null}
                     {r.opNo ? " · " : ""}
                     {r.day} {r.time} · {r.branchName}
+                    {r.bomKindName ? ` · 🐑 ${r.bomKindName}` : ""}
+                    {r.bomOriginName ? ` · 🌍 ${r.bomOriginName}` : ""}
                     {r.bomCatName ? ` · ${r.bomCatName}` : ""}
                     {r.entryDay && r.entryDay !== r.day
                       ? ` · ${t({ en: "entered", ar: "أُدخل" })} ${r.entryDay}` : ""}

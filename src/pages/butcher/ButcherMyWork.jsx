@@ -277,6 +277,8 @@ export default function ButcherMyWork() {
                                 <span className="mw-sm" style={{ fontWeight: 900, minWidth: 0 }}>
                                   {r.inputName}
                                   {r.bomRef ? <span style={{ color: "#6b8299" }}> · {r.bomRef}</span> : null}
+                                  {r.bomKindName ? <span style={{ color: "#6b8299" }}> · 🐑 {r.bomKindName}</span> : null}
+                                  {r.bomOriginName ? <span style={{ color: "#6b8299" }}> · 🌍 {r.bomOriginName}</span> : null}
                                 </span>
                                 <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                   {r.opNo && (

@@ -10,7 +10,7 @@
 // ⚠️ كل التعامل مع موديل الـMRP يمرّ من هنا فقط — لا يستورد ButcherLog داخليّة
 // الـMRP مباشرة. مفتاح الربط بين العالمين: كود الصنف (item.sku).
 
-import { itemById, num } from "../mrp/mrpApi";
+import { bomKindById, bomOriginById, itemById, num } from "../mrp/mrpApi";
 
 export { useMrpConfig } from "../mrp/mrpApi";
 
@@ -37,6 +37,22 @@ export const activePathwaysOf = (bom) =>
     ? (bom?.pathways || []).filter((p) => p.active !== false)
     : [];
 
+/**
+ * المنشأ والنوع المعرَّفان على الوصفة — تعريفات المستخدم المحفوظة على السيرفر
+ * ضمن إعدادات التصنيع. بيرجّعوا الكائن كامل (فيه ar/en) أو null.
+ */
+export const bomOriginOf = (mrpCfg, bom) => bomOriginById(mrpCfg, bom?.originId);
+export const bomKindOf = (mrpCfg, bom) => bomKindById(mrpCfg, bom?.kindId);
+
+/** نصوص المنشأ/النوع جاهزة للعرض بلغة الواجهة ("" إذا بلا تعريف). */
+export function bomTags(mrpCfg, bom, isAr) {
+  const label = (x) => (x ? (isAr ? x.ar : x.en) || x.ar || x.en || "" : "");
+  return {
+    origin: label(bomOriginOf(mrpCfg, bom)),
+    kind: label(bomKindOf(mrpCfg, bom)),
+  };
+}
+
 /** مُعرّف الفئة «بلا فئة» في شاشة الاختيار. */
 export const UNCAT = "__uncat__";
 
@@ -54,6 +70,65 @@ export function bomCategoriesForPicker(mrpCfg) {
     (b) => !b.categoryId || !cats.some((c) => c.id === b.categoryId)
   ).length;
   return { cats: list, uncat };
+}
+
+/* ══════════════ أبعاد التصفية قبل اختيار الوصفة ══════════════
+   النوع 🐑 ← المنشأ 🌍 ← الفئة 🏷️ — ثلاثتها تعريفات يضيفها المستخدم من
+   «التصنيع ← قوائم التقطيع» وتُحفظ على السيرفر. أي بُعد بلا تعريفات
+   ترجع خياراته فاضية، فتتخطّاه شاشة الجزار وتبقى الرحلة القديمة كما هي. */
+
+export const BOM_FACETS = {
+  kind: {
+    key: "bomKinds", field: "kindId", icon: "🐑",
+    ar: "النوع", en: "Type", arNone: "بلا نوع", enNone: "No type",
+  },
+  origin: {
+    key: "bomOrigins", field: "originId", icon: "🌍",
+    ar: "المنشأ", en: "Origin", arNone: "بلا منشأ", enNone: "No origin",
+  },
+  category: {
+    key: "bomCategories", field: "categoryId", icon: "🏷️",
+    ar: "الفئة", en: "Category", arNone: "بلا فئة", enNone: "Uncategorized",
+  },
+};
+
+/**
+ * خيارات بُعد ضمن مجموعة وصفات: التعريفات الفعّالة اللي إلها وصفة واحدة
+ * على الأقل (مع عدّاد)، وعدد الوصفات اللي بلا تعريف.
+ * opts فاضية = ما في تعريفات لهالبُعد ⇒ الشاشة ما بتظهر.
+ */
+export function bomFacetOptions(mrpCfg, boms, dim) {
+  const spec = BOM_FACETS[dim];
+  const list = boms || [];
+  const defs = (mrpCfg?.[spec.key] || []).filter((d) => d.active !== false);
+  const opts = defs
+    .map((d) => ({ ...d, count: list.filter((x) => x[spec.field] === d.id).length }))
+    .filter((d) => d.count > 0);
+  const none = list.filter(
+    (x) => !x[spec.field] || !defs.some((d) => d.id === x[spec.field])
+  ).length;
+  return { opts, none };
+}
+
+/** تصفية وصفات ببُعد — فاضي/null = الكل ، UNCAT = بلا تعريف. */
+export function filterBomsByFacet(mrpCfg, boms, dim, value) {
+  const list = boms || [];
+  if (!value) return list;
+  const spec = BOM_FACETS[dim];
+  const defs = mrpCfg?.[spec.key] || [];
+  if (value === UNCAT) {
+    return list.filter((x) => !x[spec.field] || !defs.some((d) => d.id === x[spec.field]));
+  }
+  return list.filter((x) => x[spec.field] === value);
+}
+
+/** اسم القيمة المختارة ببُعد — لشريط المسار أعلى الشاشة. */
+export function facetValueName(mrpCfg, dim, value, isAr) {
+  if (!value) return "";
+  const spec = BOM_FACETS[dim];
+  if (value === UNCAT) return isAr ? spec.arNone : spec.enNone;
+  const d = (mrpCfg?.[spec.key] || []).find((x) => x.id === value);
+  return d ? (isAr ? d.ar : d.en) || d.ar || d.en || d.id : "";
 }
 
 /** الوصفات ضمن فئة مختارة — null = الكل ، UNCAT = بلا فئة. */

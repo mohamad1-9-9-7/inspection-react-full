@@ -31,9 +31,9 @@ import ButcherArt, { ART_IDS } from "./ButcherIcons";
 import { BRANCHES, altNameOf, branchCodeFromLabel, nameOf } from "./butcherOptions";
 import { artOf, butcherByNo, imageOf, roundKg, useButcherConfig } from "./butcherConfig";
 import {
-  useMrpConfig, bomInputItem, bomLines, itemName,
-  bomCategoriesForPicker, bomsInCategory, UNCAT,
-  bomIsMultiPath, activePathwaysOf,
+  useMrpConfig, bomInputItem, bomLines, itemName, UNCAT,
+  activeCuttingBoms, BOM_FACETS, bomFacetOptions, filterBomsByFacet, facetValueName,
+  bomIsMultiPath, activePathwaysOf, bomTags, bomOriginOf, bomKindOf,
 } from "./butcherMrpBridge";
 import { saveOrQueue, useOutbox } from "./butcherOutbox";
 import { progressPct, useDayPlan } from "./butcherDayPlan";
@@ -141,14 +141,12 @@ export default function ButcherLog() {
   // إظهار النسبة الفعلية تحت كل خانة (نسبة الرقم من وزن المادة الخام)
   const showPct = RULES.showActualPct !== false;
 
-  /* فئات الوصفات لشاشة الاختيار — فئات فيها وصفات + «بلا فئة» إن وُجدت */
-  const catPick = useMemo(() => bomCategoriesForPicker(mrpCfg), [mrpCfg]);
-  const hasCatStep = catPick.cats.length > 0;
-
-  // emp | category | bom | cuts | done
+  // emp | kind | origin | category | bom | cuts | done
   const [step, setStep] = useState("emp");
   const [empNo, setEmpNo] = useState("");
   const [branch, setBranch] = useState("");
+  const [bomKind, setBomKind] = useState(null);     // النوع المختار (null=الكل، UNCAT=بلا نوع)
+  const [bomOrigin, setBomOrigin] = useState(null); // المنشأ المختار (null=الكل، UNCAT=بلا منشأ)
   const [bomCat, setBomCat] = useState(null);   // الفئة المختارة (null=الكل، UNCAT=بلا فئة)
   const [bom, setBom] = useState(null);         // قائمة التقطيع المختارة
   const [carcass, setCarcass] = useState("");   // وزن المادة الخام قبل التقطيع
@@ -217,14 +215,43 @@ export default function ButcherLog() {
     ? { count: dayPlan.progress.mine.count, kg: dayPlan.progress.mine.productsKg }
     : null;
 
-  /* الوصفات المعروضة = وصفات الفئة المختارة */
-  const shownBoms = useMemo(() => bomsInCategory(mrpCfg, bomCat), [mrpCfg, bomCat]);
-  /* اسم الفئة المختارة للعرض */
-  const bomCatName = useMemo(() => {
-    if (!bomCat) return "";
-    if (bomCat === UNCAT) return isAr ? "بلا فئة" : "Uncategorized";
-    return nameOf(catPick.cats.find((c) => c.id === bomCat) || {}, isAr);
-  }, [bomCat, catPick, isAr]);
+  /* ── سلسلة التصفية قبل الوصفة: 🐑 النوع ← 🌍 المنشأ ← 🏷️ الفئة ──
+     كل شاشة بتظهر فقط إذا في تعريفات لهالبُعد على الوصفات المتبقية؛
+     وإلا بتتخطّى — فالتركيب القديم (بلا أنواع/مناشئ) بيضل نفسه تماماً. */
+  const allBoms = useMemo(() => activeCuttingBoms(mrpCfg), [mrpCfg]);
+
+  const kindPick = useMemo(() => bomFacetOptions(mrpCfg, allBoms, "kind"), [mrpCfg, allBoms]);
+  const bomsOfKind = useMemo(
+    () => filterBomsByFacet(mrpCfg, allBoms, "kind", bomKind),
+    [mrpCfg, allBoms, bomKind]
+  );
+  const originPick = useMemo(
+    () => bomFacetOptions(mrpCfg, bomsOfKind, "origin"),
+    [mrpCfg, bomsOfKind]
+  );
+  const bomsOfOrigin = useMemo(
+    () => filterBomsByFacet(mrpCfg, bomsOfKind, "origin", bomOrigin),
+    [mrpCfg, bomsOfKind, bomOrigin]
+  );
+  const catPick = useMemo(
+    () => bomFacetOptions(mrpCfg, bomsOfOrigin, "category"),
+    [mrpCfg, bomsOfOrigin]
+  );
+
+  const hasKindStep = kindPick.opts.length > 0;
+  const hasOriginStep = originPick.opts.length > 0;
+  const hasCatStep = catPick.opts.length > 0;
+
+  /* الوصفات المعروضة = بعد النوع والمنشأ والفئة */
+  const shownBoms = useMemo(
+    () => filterBomsByFacet(mrpCfg, bomsOfOrigin, "category", bomCat),
+    [mrpCfg, bomsOfOrigin, bomCat]
+  );
+
+  /* أسماء الاختيارات — لشريط المسار أعلى الشاشة */
+  const kindName = facetValueName(mrpCfg, "kind", bomKind, isAr);
+  const originName = facetValueName(mrpCfg, "origin", bomOrigin, isAr);
+  const bomCatName = facetValueName(mrpCfg, "category", bomCat, isAr);
 
   /* ── المادة الخام ونواتج الوصفة من قائمة التقطيع المختارة ── */
   const inputItem = useMemo(() => (bom ? bomInputItem(mrpCfg, bom) : null), [mrpCfg, bom]);
@@ -451,10 +478,38 @@ export default function ButcherLog() {
       localStorage.setItem(LAST_BRANCH_KEY, branch);
     } catch { /* ignore */ }
     setEmpNo(emp);
-    // في فئات وصفات؟ ابدأ باختيار الفئة، وإلا اعرض كل الوصفات مباشرة
+    // ابدأ بأول شاشة تصفية متاحة (نوع ← منشأ ← فئة)، وإلا الوصفات مباشرة
+    setBomKind(null);
+    setBomOrigin(null);
     setBomCat(null);
-    setStep(hasCatStep ? "category" : "bom");
+    setStep(firstFilterStep());
     dayPlan.reload();
+  };
+
+  /** أول شاشة تصفية معروضة — بتتخطّى الأبعاد اللي ما إلها تعريفات. */
+  const firstFilterStep = () =>
+    hasKindStep ? "kind" : hasOriginStep ? "origin" : hasCatStep ? "category" : "bom";
+
+  /* اختيار النوع → المنشأ (أو الفئة/الوصفات إذا ما في) */
+  const pickKind = (id) => {
+    const rest = filterBomsByFacet(mrpCfg, allBoms, "kind", id);
+    setBomKind(id);
+    setBomOrigin(null);
+    setBomCat(null);
+    setBom(null);
+    setBomSearch("");
+    if (bomFacetOptions(mrpCfg, rest, "origin").opts.length) { setStep("origin"); return; }
+    setStep(bomFacetOptions(mrpCfg, rest, "category").opts.length ? "category" : "bom");
+  };
+
+  /* اختيار المنشأ → الفئة (أو الوصفات إذا ما في فئات) */
+  const pickOrigin = (id) => {
+    const rest = filterBomsByFacet(mrpCfg, bomsOfKind, "origin", id);
+    setBomOrigin(id);
+    setBomCat(null);
+    setBom(null);
+    setBomSearch("");
+    setStep(bomFacetOptions(mrpCfg, rest, "category").opts.length ? "category" : "bom");
   };
 
   /* اختيار فئة الوصفات → عرض وصفات هذه الفئة فقط */
@@ -495,6 +550,13 @@ export default function ButcherLog() {
         bomId: bom?.id || "",
         bomRef: bom?.ref || "",
         bomCategoryId: bom?.categoryId || "",
+        // المنشأ والنوع — لقطة وقت التسجيل حتى لو تعدّلت الوصفة لاحقاً
+        bomOriginId: bom?.originId || "",
+        bomOriginAr: bomOriginOf(mrpCfg, bom)?.ar || "",
+        bomOriginEn: bomOriginOf(mrpCfg, bom)?.en || "",
+        bomKindId: bom?.kindId || "",
+        bomKindAr: bomKindOf(mrpCfg, bom)?.ar || "",
+        bomKindEn: bomKindOf(mrpCfg, bom)?.en || "",
         // ── المسار المختار (وضع المسارات المتعددة) ──
         pathwayId: pathway?.id || "",
         pathwayCode: pathway?.code || "",
@@ -559,6 +621,8 @@ export default function ButcherLog() {
 
   const newEntry = () => {
     setCutDate(todayStr());
+    setBomKind(null);
+    setBomOrigin(null);
     setBomCat(null);
     setBom(null);
     setCarcass("");
@@ -567,12 +631,16 @@ export default function ButcherLog() {
     setBomSearch("");
     setError("");
     setSaved(null);
-    setStep(hasCatStep ? "category" : "bom");
+    setStep(firstFilterStep());
   };
 
+  /** رجوع خطوة — لأقرب شاشة تصفية معروضة قبل الحالية. */
   const back = () => {
-    if (step === "category") { setStep("emp"); return; }
-    if (step === "bom") { setStep(hasCatStep ? "category" : "emp"); return; }
+    const beforeCat = hasOriginStep ? "origin" : hasKindStep ? "kind" : "emp";
+    if (step === "kind") { setStep("emp"); return; }
+    if (step === "origin") { setStep(hasKindStep ? "kind" : "emp"); return; }
+    if (step === "category") { setStep(beforeCat); return; }
+    if (step === "bom") { setStep(hasCatStep ? "category" : beforeCat); return; }
     if (step === "cuts") { setStep("bom"); return; }
   };
 
@@ -632,7 +700,11 @@ export default function ButcherLog() {
         </div>
 
         {step !== "emp" && step !== "done" && (
-          <StepBar step={step} hasCat={hasCatStep} t={t} />
+          <StepBar
+            step={step}
+            hasKind={hasKindStep} hasOrigin={hasOriginStep} hasCat={hasCatStep}
+            t={t}
+          />
         )}
 
         {/* تعذّر تحميل الخطة/التقدّم — نقولها بدل ما يختفي الشريط بلا سبب.
@@ -670,6 +742,8 @@ export default function ButcherLog() {
         {step !== "emp" && step !== "done" && (
           <div style={S.crumbs}>
             {branchObj && <span className="bt-chip" style={S.crumb}>{nameOf(branchObj, isAr)}</span>}
+            {kindName && <span className="bt-chip" style={S.crumb}>🐑 {kindName}</span>}
+            {originName && <span className="bt-chip" style={S.crumb}>🌍 {originName}</span>}
             {bomCatName && <span className="bt-chip" style={S.crumb}>{bomCatName}</span>}
             {bom && <span className="bt-chip" style={S.crumb}>{bom.ref}</span>}
             {pathway && (
@@ -762,31 +836,31 @@ export default function ButcherLog() {
           </div>
         )}
 
-        {/* 2 — اختيار فئة الوصفات */}
+        {/* 2أ — اختيار النوع (تعريف من قوائم التقطيع) */}
+        {step === "kind" && (
+          <FacetStep
+            dim="kind" pick={kindPick} onPick={pickKind}
+            title={t({ en: "Choose the type", ar: "اختر النوع" })}
+            t={t} isAr={isAr}
+          />
+        )}
+
+        {/* 2ب — اختيار المنشأ (ضمن النوع المختار) */}
+        {step === "origin" && (
+          <FacetStep
+            dim="origin" pick={originPick} onPick={pickOrigin}
+            title={t({ en: "Choose the origin", ar: "اختر المنشأ" })}
+            t={t} isAr={isAr}
+          />
+        )}
+
+        {/* 2ج — اختيار فئة الوصفات (آخر شاشة قبل الوصفات) */}
         {step === "category" && (
-          <>
-            <div className="bt-q" style={S.q}>
-              {t({ en: "Choose a category", ar: "اختر الفئة" })}
-            </div>
-            <div style={S.grid}>
-              {catPick.cats.map((c) => (
-                <button key={c.id} className="bt-press" onClick={() => pickCategory(c.id)} style={S.tile}>
-                  <span className="bt-name" style={S.name}>{nameOf(c, isAr) || c.id}</span>
-                  <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-                    {c.count} {t({ en: "recipes", ar: "وصفة" })}
-                  </span>
-                </button>
-              ))}
-              {catPick.uncat > 0 && (
-                <button className="bt-press" onClick={() => pickCategory(UNCAT)} style={S.tile}>
-                  <span className="bt-name" style={S.name}>{t({ en: "Uncategorized", ar: "بلا فئة" })}</span>
-                  <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-                    {catPick.uncat} {t({ en: "recipes", ar: "وصفة" })}
-                  </span>
-                </button>
-              )}
-            </div>
-          </>
+          <FacetStep
+            dim="category" pick={catPick} onPick={pickCategory}
+            title={t({ en: "Choose a category", ar: "اختر الفئة" })}
+            t={t} isAr={isAr}
+          />
         )}
 
         {/* 3 — اختيار وصفة التقطيع (Cutting BOM) */}
@@ -818,11 +892,13 @@ export default function ButcherLog() {
                   const q = bomSearch.trim().toLowerCase();
                   if (!q) return true;
                   const inp = bomInputItem(mrpCfg, b);
-                  return [b.ref, inp?.sku, inp?.ar, inp?.en]
+                  const tg = bomTags(mrpCfg, b, isAr);
+                  return [b.ref, inp?.sku, inp?.ar, inp?.en, tg.origin, tg.kind]
                     .filter(Boolean).join(" ").toLowerCase().includes(q);
                 })
                 .map((b) => {
                   const inp = bomInputItem(mrpCfg, b);
+                  const tags = bomTags(mrpCfg, b, isAr);
                   const multi = bomIsMultiPath(b);
                   const outN = multi
                     ? activePathwaysOf(b).length
@@ -834,6 +910,12 @@ export default function ButcherLog() {
                         <span className="bt-lbl" style={S.altName}>{altNameOf(inp, isAr)}</span>
                       )}
                       <span className="bt-lbl" style={S.code}>{b.ref}</span>
+                      {(tags.origin || tags.kind) && (
+                        <span className="bt-lbl" style={S.altName}>
+                          {[tags.kind && `🐑 ${tags.kind}`, tags.origin && `🌍 ${tags.origin}`]
+                            .filter(Boolean).join(" · ")}
+                        </span>
+                      )}
                       <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
                         {multi
                           ? `🔀 ${outN} ${t({ en: "pathways", ar: "مسار" })}`
@@ -1162,7 +1244,7 @@ export default function ButcherLog() {
           </div>
         )}
 
-        {["category", "bom", "cuts"].includes(step) && (
+        {["kind", "origin", "category", "bom", "cuts"].includes(step) && (
           <button className="bt-back" onClick={back} style={S.back}>
             {t({ en: "Back", ar: "رجوع" })}
           </button>
@@ -1305,8 +1387,42 @@ function ItemCard({
 
 /* ============================ شريط الخطوات ============================ */
 
-function StepBar({ step, hasCat, t }) {
+/* ==================== شاشة تصفية (نوع · منشأ · فئة) ====================
+   نفس كروت الفئة القديمة بالضبط — بس معمَّمة على الأبعاد الثلاثة، مع كرت
+   «بلا …» لما يكون في وصفات ما عليها تعريف بهالبُعد. */
+function FacetStep({ dim, pick, onPick, title, t, isAr }) {
+  const spec = BOM_FACETS[dim];
+  const label = t({ en: "recipes", ar: "وصفة" });
+
+  return (
+    <>
+      <div className="bt-q" style={S.q}>{spec.icon} {title}</div>
+      <div style={S.grid}>
+        {pick.opts.map((o) => (
+          <button key={o.id} className="bt-press" onClick={() => onPick(o.id)} style={S.tile}>
+            <span className="bt-name" style={S.name}>{nameOf(o, isAr) || o.id}</span>
+            <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
+              {o.count} {label}
+            </span>
+          </button>
+        ))}
+        {pick.none > 0 && (
+          <button className="bt-press" onClick={() => onPick(UNCAT)} style={S.tile}>
+            <span className="bt-name" style={S.name}>{t({ en: spec.enNone, ar: spec.arNone })}</span>
+            <span className="bt-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
+              {pick.none} {label}
+            </span>
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+function StepBar({ step, hasKind, hasOrigin, hasCat, t }) {
   const steps = [
+    ...(hasKind ? [{ id: "kind", ar: "النوع", en: "Type" }] : []),
+    ...(hasOrigin ? [{ id: "origin", ar: "المنشأ", en: "Origin" }] : []),
     ...(hasCat ? [{ id: "category", ar: "الفئة", en: "Category" }] : []),
     { id: "bom", ar: "الوصفة", en: "Recipe" },
     { id: "cuts", ar: "الأوزان", en: "Weights" },
