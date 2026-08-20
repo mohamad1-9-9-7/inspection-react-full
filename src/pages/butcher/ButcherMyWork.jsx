@@ -262,17 +262,54 @@ export default function ButcherMyWork() {
 
                       {open && (
                         <div className="mw-rise" style={S.dayBody}>
-                          {d.list.map((r) => (
-                            <div key={r.id} style={S.job}>
+                          {d.list.map((r) => {
+                            const hasPath = !!(r.pathwayCode || r.pathwayName);
+                            return (
+                            <div
+                              key={r.id}
+                              style={{
+                                ...S.job,
+                                ...(r.reviewStatus === "rejected" ? S.jobRejected : null),
+                                ...(r.reviewStatus === "approved" ? S.jobApproved : null),
+                              }}
+                            >
                               <div style={S.jobHead}>
-                                <span className="mw-sm" style={{ fontWeight: 900 }}>
+                                <span className="mw-sm" style={{ fontWeight: 900, minWidth: 0 }}>
                                   {r.inputName}
-                                  {r.bomRef ? ` · ${r.bomRef}` : ""}
+                                  {r.bomRef ? <span style={{ color: "#6b8299" }}> · {r.bomRef}</span> : null}
                                 </span>
-                                <span className="mw-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
-                                  {r.time}
+                                <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                  {r.opNo && (
+                                    <span className="mw-lbl" style={S.opNoChip}>{r.opNo}</span>
+                                  )}
+                                  {r.reviewStatus === "approved" && (
+                                    <span className="mw-lbl" style={S.badgeOk}>✓ {t({ en: "Approved", ar: "معتمد" })}</span>
+                                  )}
+                                  {r.reviewStatus === "rejected" && (
+                                    <span className="mw-lbl" style={S.badgeNo}>✕ {t({ en: "Rejected", ar: "مرفوض" })}</span>
+                                  )}
+                                  <span className="mw-lbl" style={{ color: "#6b8299", fontWeight: 800 }}>
+                                    {r.time}
+                                  </span>
                                 </span>
                               </div>
+
+                              {/* شريط المسار — بارز لأنه محور هالشاشة */}
+                              {hasPath && (
+                                <div className="mw-sm" style={S.pathBar}>
+                                  <span style={S.pathIcon}>🛤️</span>
+                                  <span style={{ color: "#6366f1", fontWeight: 800 }}>
+                                    {t({ en: "Pathway", ar: "المسار" })}
+                                  </span>
+                                  {r.pathwayCode && <span style={S.pathCode}>{r.pathwayCode}</span>}
+                                  {r.pathwayName && (
+                                    <span style={{ fontWeight: 800, color: "#3730a3", minWidth: 0 }}>
+                                      {r.pathwayName}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
                               <div style={S.jobStats}>
                                 <span className="mw-lbl">
                                   {t({ en: "Raw", ar: "الخام" })}: <b>{kg(r.carcassKg)}</b> {KG}
@@ -303,19 +340,14 @@ export default function ButcherMyWork() {
                                   </span>
                                 ))}
                               </div>
-                              {r.reviewStatus === "rejected" && (
+                              {r.reviewStatus === "rejected" && r.review?.reason && (
                                 <div className="mw-lbl" style={S.rejected}>
-                                  ✕ {t({ en: "Rejected", ar: "مرفوض" })}
-                                  {r.review?.reason ? `: ${r.review.reason}` : ""}
-                                </div>
-                              )}
-                              {r.reviewStatus === "approved" && (
-                                <div className="mw-lbl" style={S.approved}>
-                                  ✓ {t({ en: "Approved", ar: "معتمد" })}
+                                  ✕ {r.review.reason}
                                 </div>
                               )}
                             </div>
-                          ))}
+                          );
+                          })}
                         </div>
                       )}
                     </div>
@@ -411,7 +443,10 @@ const S = {
   job: {
     background: "#fff", border: "1px solid #e3edf7", borderRadius: 14,
     padding: "12px 14px", marginBottom: 10,
+    borderInlineStart: "4px solid #dbe6f2",
   },
+  jobApproved: { borderInlineStartColor: "#34d399" },
+  jobRejected: { borderInlineStartColor: "#f87171", background: "#fffafa" },
   jobHead: {
     display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap",
     alignItems: "center", marginBottom: 6,
@@ -423,8 +458,36 @@ const S = {
     padding: "4px 12px", fontWeight: 700, color: "#14507f",
   },
   pillWaste: { background: "#fffbeb", borderColor: "#fcd34d", color: "#92400e" },
-  rejected: { color: "#b91c1c", fontWeight: 900, marginTop: 8 },
-  approved: { color: "#047857", fontWeight: 900, marginTop: 8 },
+
+  // شريط المسار — بانر أفقي بلون بنفسجي هادئ يفصل نفسه عن باقي الكرت
+  pathBar: {
+    display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+    background: "linear-gradient(90deg,#eef2ff,#f5f3ff)",
+    border: "1px solid #c7d2fe", borderRadius: 12,
+    padding: "7px 12px", margin: "8px 0 2px",
+  },
+  pathIcon: { fontSize: "1.1em", lineHeight: 1 },
+  // رقم العملية المميّز — «POS 10 — 00001»
+  opNoChip: {
+    background: "#eef2ff", border: "1px solid #c7d2fe", color: "#3730a3",
+    borderRadius: 8, padding: "2px 8px", fontWeight: 800, whiteSpace: "nowrap",
+  },
+  pathCode: {
+    background: "#4f46e5", color: "#fff", borderRadius: 8,
+    padding: "2px 10px", fontWeight: 900, letterSpacing: ".3px", whiteSpace: "nowrap",
+  },
+
+  // شارات الاعتماد الصغيرة برأس الكرت
+  badgeOk: {
+    background: "#dcfce7", border: "1px solid #86efac", color: "#166534",
+    borderRadius: 999, padding: "2px 10px", fontWeight: 900, whiteSpace: "nowrap",
+  },
+  badgeNo: {
+    background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b",
+    borderRadius: 999, padding: "2px 10px", fontWeight: 900, whiteSpace: "nowrap",
+  },
+
+  rejected: { color: "#b91c1c", fontWeight: 800, marginTop: 8 },
 
   empty: {
     background: "#fff", border: "2px dashed #cfe0f0", borderRadius: 18,

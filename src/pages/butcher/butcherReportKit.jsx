@@ -154,6 +154,9 @@ export function normalizeRecord(rec, { cfg, mrpCfg, isAr }) {
     id: rec.id || rec._id || p.savedAt,
     rec, payload: p, isBom,
     day, entryDay, time,
+    // رقم العملية المميّز — «POS 10 — 00001»، يخصّصه السيرفر لكل فرع على حدة.
+    // السجلات القديمة (قبل التفعيل) بلا رقم — نعرضها بشرطة بدل فراغ.
+    opNo: p.refNo || "",
     employeeNo: p.butcherName
       ? `${p.butcherName} (${p.employeeNo || "—"})`
       : butcherLabel(cfg, p.employeeNo),
@@ -438,6 +441,12 @@ export const S = {
     display: "inline-flex", alignItems: "center", gap: 6, background: "#eaf2fc",
     color: C.blueDk, borderRadius: 999, padding: "4px 12px", fontWeight: 800,
     whiteSpace: "nowrap",
+  },
+  /* رقم العملية المميّز — «POS 10 — 00001» */
+  opNo: {
+    display: "inline-block", background: "#eef2ff", border: "1px solid #c7d2fe",
+    color: "#3730a3", borderRadius: 8, padding: "2px 8px", fontWeight: 800,
+    letterSpacing: ".3px", whiteSpace: "nowrap",
   },
   empty: {
     background: C.soft, border: `2px dashed ${C.line2}`, borderRadius: 16,

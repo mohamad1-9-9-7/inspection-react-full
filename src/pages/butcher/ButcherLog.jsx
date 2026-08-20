@@ -235,23 +235,53 @@ export default function ButcherLog() {
   const activePathways = useMemo(() => activePathwaysOf(bom), [bom]);
 
   /* دمج منتجات/هدر كل المسارات في قائمة واحدة بلا تكرار (المفتاح itemId).
-     المنتج اللي بأكثر من مسار بيظهر مرة وحدة، ونحتفظ بمجموعة المسارات اللي بتحتويه. */
+     المنتج اللي بأكثر من مسار بيظهر مرة وحدة. نبني خريطتين:
+     - pathwaysOf  : انتماء كامل (أي مسار يُدرج الصنف) — للتعطيل والعرض.
+     - shared: الأصناف المعلَّمة «مشترك/Any». التعليم مرّة بأي مسار بيخلّي الصنف
+       يخصّ **كل المسارات** — بيضل متاح للوزن مهما كان التوجيه، وما بيميّز مسار أبداً.
+     - distinguishOf: الأصناف المميِّزة للهويّة = كل الأسطر (نواتج + هدر) ما عدا
+       المشتركة — لتحديد المسار.
+       ملاحظة مهمة: لا نشترط Qty>0 هون. الكميّات اختيارية بالمحرّر (مسار كامل ممكن
+       ينحفظ وكل كميّاته صفر)، فلو اشترطنا Qty>0 بتطلع الخريطة فاضية وما بيتحدّد
+       ولا مسار أبداً — يعني ما بيقفل ولا منتج. الانتماء وحده كافٍ للتمييز،
+       و«Any» هو الاستثناء الوحيد لأنه صنف مشترك بين المسارات بقصد. */
   const merged = useMemo(() => {
-    const pathwaysOf = new Map();   // itemId → Set(pathwayId)
-    const pm = new Map();           // itemId → سطر منتج (أول ظهور)
-    const wm = new Map();           // itemId → سطر هدر
+    const pathwaysOf = new Map();    // itemId → Set(pathwayId) — انتماء كامل
+    const distinguishOf = new Map(); // itemId → Set(pathwayId) — مميِّز (بلا المشتركة)
+    const shared = new Set();        // أصناف «مشترك/Any» — تخصّ كل المسارات
+    const pm = new Map();            // itemId → سطر منتج (أول ظهور)
+    const wm = new Map();            // itemId → سطر هدر
     if (isMultiPath) {
-      const add = (map, line, pid) => {
-        const set = pathwaysOf.get(line.itemId) || new Set();
-        set.add(pid); pathwaysOf.set(line.itemId, set);
-        if (!map.has(line.itemId)) map.set(line.itemId, line);
+      const add = (map, itemId, pid) => {
+        const set = map.get(itemId) || new Set();
+        set.add(pid); map.set(itemId, set);
       };
+      // تمريرة أولى: القوائم الموحّدة + الانتماء الكامل + جمع المشتركة
       activePathways.forEach((p) => {
-        bomLines(mrpCfg, p, "outputs").forEach((l) => add(pm, l, p.id));
-        bomLines(mrpCfg, p, "wastes").forEach((l) => add(wm, l, p.id));
+        bomLines(mrpCfg, p, "outputs").forEach((l) => {
+          add(pathwaysOf, l.itemId, p.id);
+          if (!pm.has(l.itemId)) pm.set(l.itemId, l);
+        });
+        bomLines(mrpCfg, p, "wastes").forEach((l) => {
+          add(pathwaysOf, l.itemId, p.id);
+          if (!wm.has(l.itemId)) wm.set(l.itemId, l);
+        });
+        // علم «مشترك» عالمي: يكفي تعليمه بمسار واحد ليسري على الكل
+        [...(p.outputs || []), ...(p.wastes || [])].forEach((raw) => {
+          if (raw?.itemId && raw.any === true) shared.add(raw.itemId);
+        });
+      });
+      // تمريرة ثانية: الهويّة من الأسطر الخام (بعد ما اكتملت قائمة المشتركة)
+      activePathways.forEach((p) => {
+        [...(p.outputs || []), ...(p.wastes || [])].forEach((raw) => {
+          const id = raw?.itemId;
+          if (!id || shared.has(id)) return;             // «مشترك» لا يميِّز إطلاقاً
+          if (!pm.has(id) && !wm.has(id)) return;        // صنف مجهول بسجل الأصناف
+          add(distinguishOf, id, p.id);
+        });
       });
     }
-    return { products: [...pm.values()], wastes: [...wm.values()], pathwaysOf };
+    return { products: [...pm.values()], wastes: [...wm.values()], pathwaysOf, distinguishOf, shared };
   }, [isMultiPath, activePathways, mrpCfg]);
 
   /* المنتجات = نواتج الوصفة (مسطّح) أو الدمج (متعدد المسارات) */
@@ -265,32 +295,65 @@ export default function ButcherLog() {
   );
   const ALL = useMemo(() => [...productCuts, ...wasteCuts], [productCuts, wasteCuts]);
 
-  /* المسارات المرشّحة = تقاطع مجموعات مسارات كل الأصناف الموزونة.
-     - صنف مشترك بكل المسارات → ما بيضيّق التقاطع (بيضل مبهم).
-     - صنف مميِّز لمسار واحد → التقاطع بينحصر فهذا هو المسار. */
+  /* المسارات المرشّحة = تقاطع مجموعات المسارات لكل صنف مميِّز موزون.
+     - صنف معلَّم «مشترك/Any» → ما بيضيّق التقاطع (بيضل الوضع مبهم).
+     - صنف موجود بمسار واحد → التقاطع بينحصر فهذا هو المسار وباقيهم بيتقفلوا. */
   const candidateIds = useMemo(() => {
     const allIds = activePathways.map((p) => p.id);
     if (!isMultiPath) return allIds;
     let cand = null;
     ALL.forEach((c) => {
       if (!(num(values[c.itemId]?.w) > 0)) return;
-      const set = merged.pathwaysOf.get(c.itemId) || new Set();
+      const set = merged.distinguishOf.get(c.itemId);
+      if (!set || set.size === 0) return;   // صنف غير مميِّز — ما بيضيّق التقاطع
       cand = cand === null ? new Set(set) : new Set([...cand].filter((x) => set.has(x)));
     });
     return cand === null ? allIds : [...cand];
   }, [isMultiPath, activePathways, ALL, merged, values]);
 
-  const determined = isMultiPath && candidateIds.length === 1;
-  const chosenPathwayId = determined ? candidateIds[0] : "";
+  /* فكّ الغموض بالمطابقة التامّة:
+     لو ضل أكتر من مرشّح (لأن مسار مجموعته جزء من مسار أكبر — مثلاً P4={فخذ بالعضم}
+     جزء من P2={فخذ بالعضم، موزة}), منشوف إذا في مسار **مجموعته تطابق الموزون تماماً**:
+     كل منتجاته غير المشتركة موزونة، وما في منتج موزون برّا مخرجاته → هو المقصود.
+     مثال: الجزار نظّف الفخذ وباعه كما هو → يوزن 20015 لحاله → P4 معرَّف بهذا المنتج
+     لحاله → ينعتمد ويُسمح بالحفظ. ولو كمّل ووزن الموزة بعدين، بيرجع التقاطع
+     يحصر المسار على P2 تلقائياً (الكروت بتضل مفتوحة، ما منقفل عليه بدري). */
+  const exactPathwayId = useMemo(() => {
+    if (!isMultiPath || candidateIds.length <= 1) return "";
+    const weighed = new Set(
+      productCuts.filter((c) => num(values[c.itemId]?.w) > 0).map((c) => c.itemId)
+    );
+    if (!weighed.size) return "";
+    const hits = candidateIds.filter((pid) => {
+      const p = activePathways.find((x) => x.id === pid);
+      if (!p) return false;
+      const outs = (p.outputs || []).filter((l) => l?.itemId);
+      const own = outs.filter((l) => !merged.shared.has(l.itemId)).map((l) => l.itemId);
+      if (!own.length) return false;
+      // كل منتجات المسار (غير المشتركة) موزونة؟
+      if (!own.every((id) => weighed.has(id))) return false;
+      // وما في منتج موزون خارج هالمسار؟ (المشترك مسموح دايماً)
+      const all = new Set(outs.map((l) => l.itemId));
+      return [...weighed].every((id) => all.has(id) || merged.shared.has(id));
+    });
+    return hits.length === 1 ? hits[0] : "";   // مطابقتان = غموض حقيقي، ما منحسم
+  }, [isMultiPath, candidateIds, activePathways, productCuts, values, merged]);
+
+  const chosenPathwayId = !isMultiPath
+    ? ""
+    : (candidateIds.length === 1 ? candidateIds[0] : exactPathwayId);
+  const determined = isMultiPath && !!chosenPathwayId;
   const pathway = useMemo(
     () => (chosenPathwayId ? activePathways.find((p) => p.id === chosenPathwayId) || null : null),
     [chosenPathwayId, activePathways]
   );
 
-  /* صنف معطّل = ما في تقاطع بين مساراته والمسارات المرشّحة (بيخصّ مسار آخر) */
+  /* صنف معطّل = ما في تقاطع بين مساراته والمسارات المرشّحة (بيخصّ مسار آخر).
+     الأصناف المشتركة «Any» ما بتتعطّل أبداً — هي تخصّ كل المسارات بالتعريف. */
   const itemLocked = useCallback(
     (itemId) => {
       if (!isMultiPath) return false;
+      if (merged.shared.has(itemId)) return false;
       const set = merged.pathwaysOf.get(itemId) || new Set();
       return !candidateIds.some((id) => set.has(id));
     },
@@ -373,22 +436,9 @@ export default function ButcherLog() {
   /* المسار لسا مبهم: أوزان مُدخلة بس ما انحصر المسار بواحد (مشتركة فقط) */
   const pathwayPending = isMultiPath && filled.length > 0 && !determined;
 
-  /* منتجات إلزامية (مُعلَّمة «مطلوب») لازم تتوزن. بوضع المسارات نعتمد على المسار
-     المحدَّد؛ قبل ما يتّضح المسار ما منفرض الإلزام (الحفظ ممنوع أصلاً بالإبهام). */
-  const requiredMissingItems = useMemo(() => {
-    if (!isMultiPath) {
-      return productCuts.filter((c) => c.required && !(num(values[c.itemId]?.w) > 0));
-    }
-    if (!determined) return [];
-    const chosen = activePathways.find((p) => p.id === chosenPathwayId);
-    return bomLines(mrpCfg, chosen, "outputs")
-      .filter((c) => c.required && !(num(values[c.itemId]?.w) > 0));
-  }, [isMultiPath, determined, chosenPathwayId, activePathways, mrpCfg, productCuts, values]);
-  const requiredMissing = requiredMissingItems.length > 0;
-
   const canSave =
     filled.length > 0 && usedKg > 0 && !overBlocks && !wasteMissing && !balanceOff
-    && !pieceMissing && !requiredMissing && !pathwayPending;
+    && !pieceMissing && !pathwayPending;
 
   /* ------- الانتقالات ------- */
 
@@ -496,6 +546,7 @@ export default function ButcherLog() {
         cutDate: RULES.allowBackdate === true ? cutDate : todayStr(),
         entryStamp: stampStr(new Date()),
         queued: res.queued === true,
+        refNo: res.refNo || "",     // رقم العملية المميّز من السيرفر
       });
       setStep("done");
       dayPlan.reload();
@@ -905,7 +956,6 @@ export default function ButcherLog() {
                 const w = num(values[c.itemId]?.w);
                 const info = isMultiPath ? chosenLineOf.get(c.itemId) : c;
                 const target = targetKgOf({ targetQty: info ? info.targetQty : (isMultiPath ? 0 : c.targetQty) });
-                const req = isMultiPath ? (determined ? !!info?.required : c.required) : c.required;
                 return (
                   <ItemCard
                     key={c.itemId}
@@ -919,7 +969,6 @@ export default function ButcherLog() {
                     target={target > 0 ? target : null}
                     targetLabel={t({ en: "target", ar: "الهدف" })}
                     tone={targetTone(target, w)}
-                    required={req}
                     isAr={isAr}
                     t={t}
                   />
@@ -1006,12 +1055,6 @@ export default function ButcherLog() {
                 })}
               </div>
             )}
-            {requiredMissing && (
-              <div className="bt-sum" style={S.warn}>
-                {t({ en: "Weight required for", ar: "الوزن إلزامي لـ" })}:{" "}
-                <b>{requiredMissingItems.map((c) => nameOf(c, isAr) || c.sku).join("، ")}</b>
-              </div>
-            )}
             {wasteMissing && (
               <div className="bt-sum" style={S.warn}>
                 {t({
@@ -1053,6 +1096,15 @@ export default function ButcherLog() {
               {saved.queued ? "📥" : "✅"}
             </div>
             <div className="bt-q" style={S.q}>{saved.animal} — {saved.origin}</div>
+            {/* رقم العملية المميّز — يخصّصه السيرفر لكل فرع على حدة */}
+            {saved.refNo && (
+              <div className="bt-sum" style={S.opNoBox}>
+                <span style={{ fontWeight: 800, opacity: 0.75 }}>
+                  {t({ en: "Operation no.", ar: "رقم العملية" })}
+                </span>
+                <b className="bt-q" style={{ letterSpacing: ".5px" }}>{saved.refNo}</b>
+              </div>
+            )}
             {/* حُفظ محلياً — لا يضيع، بينرفع لحاله لما يرجع النت */}
             {saved.queued && (
               <div className="bt-sum" style={S.queuedNote}>
@@ -1210,23 +1262,20 @@ function ItemArt({ item }) {
 /* خانة وزن واحدة فقط لكل عنصر — لا خانة هدر داخل المنتج.
    pct = النسبة الفعلية للرقم المُدخل من وزن المنتج الأصلي (الأم). */
 function ItemCard({
-  item, value, onChange, code, pct, pctLabel, tone, target, targetLabel, isAr, t, disabled, required,
+  item, value, onChange, code, pct, pctLabel, tone, target, targetLabel, isAr, t, disabled,
 }) {
   const active = num(value) > 0;
-  const needsWeight = required && !active && !disabled;   // منتج إلزامي لسا بلا وزن
   return (
     <div
       className="bt-press"
       style={{
         ...S.cutCard, ...(active ? S.cutCardOn : null), ...(tone || null),
-        ...(needsWeight ? { border: "2px solid #e07a7a", background: "#fff7f7" } : null),
         ...(disabled ? { opacity: 0.55, pointerEvents: "none" } : null),
       }}
     >
       {hasArt(item) && <span style={S.art}><ItemArt item={item} /></span>}
       <span className="bt-name" style={S.name}>
         {nameOf(item, isAr)}
-        {required && <span style={{ color: "#dc2626", fontWeight: 900 }}> *</span>}
       </span>
       {/* الاسم بالّلغة الأخرى — الجزار يتعرّف على الصنف بأي لغة كُتب فيها */}
       {altNameOf(item, isAr) && (
@@ -1366,6 +1415,12 @@ const S = {
     background: "#fff7ed", border: "1px solid #fcd9a4", color: "#8a5a12",
     borderRadius: 14, padding: "12px 14px", fontWeight: 800, lineHeight: 1.6,
     textAlign: "center",
+  },
+  /* رقم العملية المميّز بشاشة التأكيد */
+  opNoBox: {
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+    background: "#eef2ff", border: "1px solid #c7d2fe", color: "#3730a3",
+    borderRadius: 14, padding: "12px 14px", textAlign: "center",
   },
   /* ── خطة اليوم ── */
   planBox: {

@@ -310,9 +310,9 @@ export default function ButcherSummary() {
         ...products.map((p) => [p.name, p.sku, p.n, kg(p.actual), p.target ? kg(p.target) : "",
           p.deviation != null ? p.deviation.toFixed(1) : "", p.share.toFixed(1)]),
       ] },
-      { name: "Raw", widths: [12, 7, 20, 22, 12, 18, 10, 10, 10, 9, 9], aoa: [
-        ["Date", "Time", "Branch", "Butcher", "Recipe", "Pathway", "Raw", "Products", "Waste", "Yield %", "Waste %"],
-        ...rows.map((r) => [r.day, r.time, r.branchName, r.employeeNo, r.bomRef, r.pathwayLabel || "",
+      { name: "Raw", widths: [18, 12, 7, 20, 22, 12, 18, 10, 10, 10, 9, 9], aoa: [
+        ["Operation no.", "Date", "Time", "Branch", "Butcher", "Recipe", "Pathway", "Raw", "Products", "Waste", "Yield %", "Waste %"],
+        ...rows.map((r) => [r.opNo || "", r.day, r.time, r.branchName, r.employeeNo, r.bomRef, r.pathwayLabel || "",
           kg(r.carcassKg), kg(r.cutsKg), kg(r.wasteKg), r.yieldPct.toFixed(1), r.wastePct.toFixed(1)]),
       ] },
     ];

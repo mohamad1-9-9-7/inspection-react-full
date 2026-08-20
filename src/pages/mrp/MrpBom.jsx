@@ -141,11 +141,22 @@ function cutListError({ inputId, inItemName, outputs, wastes, inputQty, allowSam
  * مساران بنفس التوقيع = متطابقان تماماً → تناقض يُمنع حفظه.
  * (الصنف بـ qty = 0 غائب عن النمط، والصنف Any لا يدخل بالهويّة إطلاقاً.)
  */
-function pathwaySignature(pw) {
+function pathwaySignature(pw, shared) {
   const ids = [...(pw?.outputs || []), ...(pw?.wastes || [])]
-    .filter((l) => l.itemId && l.any !== true && num(l.qty) > 0)
+    .filter((l) => l.itemId && l.any !== true && !shared?.has(l.itemId) && num(l.qty) > 0)
     .map((l) => l.itemId);
   return JSON.stringify([...new Set(ids)].sort());
+}
+
+/** الأصناف المشتركة «Any» — تعليمها بمسار واحد يخصّها بكل المسارات. */
+function sharedItemIds(pathways) {
+  const s = new Set();
+  (pathways || []).forEach((p) =>
+    [...(p?.outputs || []), ...(p?.wastes || [])].forEach((l) => {
+      if (l?.itemId && l.any === true) s.add(l.itemId);
+    })
+  );
+  return s;
 }
 
 /** تجميع أرقام القائمة — الداخل، الناتج، الهدر، الفاقد غير المسجّل، والعائد. */
@@ -390,6 +401,7 @@ export default function MrpBom() {
         });
       }
       const sigs = new Map();   // توقيع الهويّة (غير الفارغ) → كود المسار الأول اللي حمله
+      const sharedIds = sharedItemIds(pws);   // «مشترك» بأي مسار = مشترك بكلهم
       for (const pw of pws) {
         const label = `${t({ en: "Pathway", ar: "المسار" })} ${pw.code || pw.name || ""} — `;
         const err = cutListError(
@@ -399,7 +411,7 @@ export default function MrpBom() {
         if (err) return err;
 
         // الكميات اختيارية دائماً — الحفظ مسموح حتى بأوزان صفر. الإلزام صار لكل منتج بالكشك.
-        const sig = pathwaySignature(pw);
+        const sig = pathwaySignature(pw, sharedIds);
         // المنع التلقائي للتناقض — ممنوع مساران بنفس نمط المخرجات المميِّزة (غير الفارغ) تماماً.
         // التوقيعات الفارغة (بلا كميات بعد) مسموحة ولا تدخل بفحص التناقض.
         if (sig !== "[]") {
@@ -1104,7 +1116,6 @@ function CutBuilder({
             accent="#047857"
             disabledFor={lineDisabledForList("outputs")}
             onBlocked={onLineBlocked}
-            showRequired
             onAdd={() => addTo("outputs")}
             onPatch={(id, p) => patchList("outputs", id, p)}
             onDrop={(id) => dropFrom("outputs", id)}
@@ -1167,16 +1178,19 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
     [sel]
   );
 
+  // «مشترك» بأي مسار = مشترك بكل المسارات، فلا يدخل بهويّة أي واحد فيهم.
+  const sharedIds = useMemo(() => sharedItemIds(pathways), [pathways]);
+
   // المخرجات المميِّزة لهويّة المسار: qty>0 وغير مشتركة (Any).
   const distinguishing = useMemo(() => {
     if (!sel) return [];
     return [...(sel.outputs || []), ...(sel.wastes || [])]
-      .filter((l) => l.itemId && l.any !== true && num(l.qty) > 0)
+      .filter((l) => l.itemId && l.any !== true && !sharedIds.has(l.itemId) && num(l.qty) > 0)
       .map((l) => {
         const it = itemById(cfg, l.itemId);
         return it?.sku || nameOf(it, isAr) || l.itemId;
       });
-  }, [sel, cfg, isAr]);
+  }, [sel, cfg, isAr, sharedIds]);
   const allowSameIO = bom.allowSameIO === true;   // مطابقة المدخل والمخرج
   const lineDisabledForList = (listKind) => (curItemId) => (i) => {
     if (i.id === bom.inputId) {
@@ -1364,7 +1378,6 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
             disabledFor={lineDisabledForList("outputs")}
             onBlocked={onLineBlocked}
             showAny
-            showRequired
             onAdd={() => ops.addLine(sel.id, "outputs")}
             onPatch={(id, p) => ops.patchLine(sel.id, "outputs", id, p)}
             onDrop={(id) => ops.dropLine(sel.id, "outputs", id)}
@@ -1462,7 +1475,7 @@ function MassBalance({ t, math, uom }) {
 
 function CutLines({
   t, isAr, cfg, canEdit, icon, title, sub, addLabel, lines, inputQty,
-  preferRoles, accent, onAdd, onPatch, onDrop, disabledFor, onBlocked, showAny, showRequired,
+  preferRoles, accent, onAdd, onPatch, onDrop, disabledFor, onBlocked, showAny,
 }) {
   const roleNames = preferRoles
     .map((r) => nameOf(ITEM_TYPES.find((x) => x.id === r) || {}, isAr))
@@ -1506,14 +1519,6 @@ function CutLines({
                     ar: "صنف مشترك — يُتجاهل عند تحديد هوية المسار",
                   })}>
                     {t({ en: "Shared (Any)", ar: "مشترك (Any)" })}
-                  </th>
-                )}
-                {showRequired && (
-                  <th style={S.th} title={t({
-                    en: "The butcher must weigh this product (Qty > 0) before saving",
-                    ar: "الجزار لازم يوزن هذا المنتج (Qty > 0) قبل الحفظ",
-                  })}>
-                    {t({ en: "Required", ar: "مطلوب" })}
                   </th>
                 )}
                 <th style={S.th}></th>
@@ -1570,17 +1575,6 @@ function CutLines({
                         </div>
                       </td>
                     )}
-                    {showRequired && (
-                      <td style={S.td}>
-                        <div style={{ display: "flex", justifyContent: "center" }}>
-                          <Switch
-                            checked={l.required === true}
-                            disabled={!canEdit}
-                            onChange={(v) => onPatch(l.id, { required: v })}
-                          />
-                        </div>
-                      </td>
-                    )}
                     <td style={S.td}>
                       {canEdit && (
                         <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
@@ -1599,3 +1593,4 @@ function CutLines({
     </Card>
   );
 }
+

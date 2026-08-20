@@ -86,17 +86,19 @@ async function postOnce(payload, attempt = 0) {
 
 /**
  * حفظ سجل: يحاول السيرفر، وإن تعذّر لسبب شبكة يضعه بالطابور.
- * يرجّع { synced: true } أو { synced: false, queued: true }.
+ * يرجّع { synced: true, refNo } أو { synced: false, queued: true }.
+ * `refNo` = رقم العملية المميّز («POS 10 — 00001») — يخصّصه السيرفر لكل فرع
+ * على حدة، فما بيتوفّر إلا لما يوصل السجل فعلاً (السجل المؤجَّل بياخده بالمزامنة).
  * يرمي الخطأ فقط إذا رفض السيرفر البيانات (لا فائدة من الطابور حينها).
  */
 export async function saveOrQueue(payload) {
   try {
-    await postOnce(payload);
-    return { synced: true, queued: false };
+    const out = await postOnce(payload);
+    return { synced: true, queued: false, refNo: out?.report?.payload?.refNo || "" };
   } catch (e) {
     if (e instanceof PermanentError) throw e;   // بيانات خاطئة — أظهر الخطأ
     enqueue(payload);                            // شبكة/سيرفر مؤقّت — أجّل
-    return { synced: false, queued: true };
+    return { synced: false, queued: true, refNo: "" };
   }
 }
 

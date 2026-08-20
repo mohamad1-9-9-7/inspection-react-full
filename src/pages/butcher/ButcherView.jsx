@@ -97,7 +97,7 @@ export default function ButcherView() {
       }
       if (needle) {
         const hay = [
-          r.employeeNo, r.employeeNoRaw, r.bomRef, r.pathwayLabel, r.inputName, r.inputSku,
+          r.opNo, r.employeeNo, r.employeeNoRaw, r.bomRef, r.pathwayLabel, r.inputName, r.inputSku,
           r.branchName, r.bomCatName, ...r.cuts.map((c) => `${c.name} ${c.sku}`),
         ].join(" ").toLowerCase();
         if (!hay.includes(needle)) return false;
@@ -205,6 +205,7 @@ export default function ButcherView() {
   /* ── Excel: تفاصيل + تجميع + منتجات ── */
   const exportExcel = async () => {
     const detail = [[
+      t({ en: "Operation no.", ar: "رقم العملية" }),
       t({ en: "Cutting date", ar: "تاريخ التقطيع" }),
       t({ en: "Entry date", ar: "تاريخ الإدخال" }),
       t({ en: "Butcher", ar: "الجزار" }),
@@ -227,7 +228,7 @@ export default function ButcherView() {
     rows.forEach((r) => {
       r.cuts.forEach((c) => {
         detail.push([
-          r.day, r.entryDay, r.employeeNo, r.branchName, r.bomCatName, r.bomRef,
+          r.opNo || "", r.day, r.entryDay, r.employeeNo, r.branchName, r.bomCatName, r.bomRef,
           r.pathwayLabel || "", r.inputName, +kg(r.carcassKg), r.pieceCount ?? "",
           c.name, c.sku,
           c.isWaste ? t({ en: "Waste", ar: "هدر" }) : t({ en: "Product", ar: "منتج" }),
@@ -808,6 +809,11 @@ export default function ButcherView() {
                                 {r.time} {r.entryDay && r.entryDay !== r.day
                                   ? `· ${t({ en: "entered", ar: "أُدخل" })} ${r.entryDay}` : ""}
                               </div>
+                              {r.opNo && (
+                                <div className="bk-lbl" style={{ marginTop: 3 }}>
+                                  <span style={S.opNo}>{r.opNo}</span>
+                                </div>
+                              )}
                             </td>
                             <td style={S.td}>
                               {r.employeeNo}

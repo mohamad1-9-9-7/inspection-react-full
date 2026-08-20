@@ -595,6 +595,8 @@ function DetailsModal({ b, t, isAr, dir, KG, canReview, busyId, onClose, onAppro
                     {r.bomRef ? ` · ${r.bomRef}` : ""}
                   </div>
                   <div className="bs-small" style={S.cardMeta}>
+                    {r.opNo ? <b>{r.opNo}</b> : null}
+                    {r.opNo ? " · " : ""}
                     {r.day} {r.time} · {r.branchName}
                     {r.bomCatName ? ` · ${r.bomCatName}` : ""}
                     {r.entryDay && r.entryDay !== r.day
