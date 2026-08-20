@@ -89,9 +89,7 @@ export default function POS10TemperatureView() {
       const rows = await listReportDates("pos10_temperature");
       rows.sort((a, b) => getReportDate(b) - getReportDate(a)); // newest -> oldest
       setReports(rows);
-      const newest = rows[0] || null;
-      if (newest) await openRow(newest);
-      else setSelectedReport(null);
+      setSelectedReport(null); // nothing open until the user picks a date
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");

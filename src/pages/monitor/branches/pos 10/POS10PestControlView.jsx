@@ -65,9 +65,7 @@ export default function POS10PestControlView() {
       const rows = await listReportDates(TYPE);
       rows.sort((a, b) => getDate(b) - getDate(a)); // newest first
       setReports(rows);
-      const newest = rows[0] || null;
-      if (newest) await openRow(newest);
-      else setSelected(null);
+      setSelected(null); // nothing open until the user picks a date
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");

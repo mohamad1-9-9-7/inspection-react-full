@@ -108,9 +108,7 @@ export default function FTR1CookingTemperatureLogView() {
       setReports(arr);
       setEditMode(false);
       setDraft(null);
-      const newest = arr[0] || null;
-      if (newest) await openRow(newest);
-      else setSelectedReport(null);
+      setSelectedReport(null); // nothing open until the user picks a date
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data from server.");

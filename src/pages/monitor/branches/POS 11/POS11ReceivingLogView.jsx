@@ -80,7 +80,7 @@ export default function POS11ReceivingLogView() {
   }, []);
 
   // الحالة
-  const [date, setDate] = useState(todayDubai);
+  const [date, setDate] = useState(""); // empty = nothing open until a date is picked
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [record, setRecord] = useState(null);
@@ -147,7 +147,7 @@ export default function POS11ReceivingLogView() {
       setAllDates(uniq);
 
       // Tree stays collapsed by default.
-      if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
+      // Nothing opens by default; the user picks a date from the tree.
     } catch (e) {
       console.warn("Failed to fetch dates", e);
     }

@@ -78,9 +78,7 @@ export default function POS11TemperatureView() {
         if (!abort) {
           const sorted = [...arr].sort((a, b) => getReportDate(b) - getReportDate(a));
           setReports(sorted);
-          if (sorted.length && !selectedId) {
-            setSelectedId(getId(sorted[0]));
-          }
+          // Nothing opens by default; the user picks a date from the tree.
         }
       } catch {
         if (!abort) setReports([]);

@@ -66,9 +66,7 @@ export default function POS15PersonalHygieneView() {
       const rows = await listReportDates(TYPE);
       rows.sort((a, b) => String(reportDateOf(a)).localeCompare(String(reportDateOf(b))));
       setIndex(rows);
-      const newest = rows[rows.length - 1] || null;
-      if (newest) openRow(newest);
-      else setSelected(null);
+      setSelected(null); // nothing open until the user picks a date
     } finally {
       setLoading(false);
     }

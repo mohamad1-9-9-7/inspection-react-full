@@ -70,9 +70,7 @@ export default function POS15PestControlView() {
       const rows = await listReportDates(TYPE);
       rows.sort((a, b) => String(reportDateOf(b)).localeCompare(String(reportDateOf(a)))); // newest first
       setReports(rows);
-      const newest = rows[0] || null;
-      if (newest) await openRow(newest);
-      else setSelected(null);
+      setSelected(null); // nothing open until the user picks a date
     } catch (e) { console.error(e); alert("⚠️ Failed to fetch data."); }
     finally { setLoading(false); }
   }

@@ -105,7 +105,8 @@ export default function FTR2CookingTemperatureLogView() {
       setReports(arr);
       setEditMode(false);
       setDraft(null);
-      const target = preserveId ? (arr.find((r) => getId(r) === preserveId) || arr[0]) : arr[0];
+      // Nothing opens on a normal load; only re-open the just-saved report.
+      const target = preserveId ? (arr.find((r) => getId(r) === preserveId) || arr[0]) : null;
       if (target) await openRow(target);
       else setSelectedReport(null);
     } catch (e) {

@@ -44,9 +44,7 @@ export default function FTR1TemperatureView() {
         return db - da;
       });
       setReports(rows);
-      const newest = rows[0] || null;
-      if (newest) await openRow(newest);
-      else setSelectedReport(null);
+      setSelectedReport(null); // nothing open until the user picks a date
     } catch (err) {
       console.error(err);
       alert("Failed to fetch data from server.");

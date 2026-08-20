@@ -49,9 +49,7 @@ export default function FTR1OilCalibrationView() {
         return tb - ta; // latest first
       });
       setReports(arr);
-      const newest = arr[0] || null;
-      if (newest) await openRow(newest);
-      else setSelectedReport(null);
+      setSelectedReport(null); // nothing open until the user picks a date
     } catch (e) {
       console.error(e);
     } finally {

@@ -42,9 +42,7 @@ export default function FTR1DailyCleanlinessView() {
       const rows = await listReportDates(TYPE);
       rows.sort((a, b) => getReportDate(b) - getReportDate(a));
       setReports(rows);
-      const newest = rows[0] || null;
-      if (newest) await openRow(newest);
-      else setSelectedReport(null);
+      setSelectedReport(null); // nothing open until the user picks a date
     } catch (err) {
       console.error(err);
       alert("Failed to fetch data.");

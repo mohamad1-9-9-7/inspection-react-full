@@ -38,9 +38,7 @@ export default function POS10DailyCleaningView() {
       const rows = await listReportDates("pos10_daily_cleanliness");
       rows.sort((a, b) => String(reportDateOf(a)).localeCompare(String(reportDateOf(b))));
       setReports(rows);
-      const first = rows[0] || null;
-      if (first) await openRow(first);
-      else setSelectedReport(null);
+      setSelectedReport(null); // nothing open until the user picks a date
     } catch (e) {
       console.error(e);
       alert("⚠️ Failed to fetch data.");

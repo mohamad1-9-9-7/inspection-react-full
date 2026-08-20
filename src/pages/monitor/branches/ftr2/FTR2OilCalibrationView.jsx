@@ -50,9 +50,7 @@ export default function FTR2OilCalibrationView() {
         return ta - tb;
       });
       setReports(arr);
-      const first = arr[0] || null;
-      if (first) await openRow(first); // الأقدم
-      else setSelectedReport(null);
+      setSelectedReport(null); // nothing open until the user picks a date
     } catch (e) {
       console.error(e);
     } finally {

@@ -32,7 +32,7 @@ export default function POS11CalibrationView() {
     catch { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
   }, []);
 
-  const [date, setDate] = useState(todayDubai);
+  const [date, setDate] = useState(""); // empty = nothing open until a date is picked
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [record, setRecord] = useState(null);
@@ -101,7 +101,7 @@ export default function POS11CalibrationView() {
       const rows = await listReportDates(TYPE);
       const uniq = Array.from(new Set(rows.map(r => reportDateOf(r)).filter(Boolean))).sort((a, b) => String(b).localeCompare(String(a)));
       setAllDates(uniq);
-      if (!uniq.includes(date) && uniq.length) setDate(uniq[0]);
+      // Nothing opens by default; the user picks a date from the tree.
     } catch (e) {
       console.warn("Dates fetch failed", e);
     }

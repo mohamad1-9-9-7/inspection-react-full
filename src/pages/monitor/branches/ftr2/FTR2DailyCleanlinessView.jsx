@@ -31,9 +31,7 @@ export default function FTR2DailyCleanlinessView() {
       const rows = await listReportDates(TYPE);
       rows.sort((a, b) => String(reportDateOf(a)).localeCompare(String(reportDateOf(b))));
       setReports(rows);
-      const first = rows[0] || null;
-      if (first) await openRow(first);
-      else setSelectedReport(null);
+      setSelectedReport(null); // nothing open until the user picks a date
     } catch (err) {
       console.error(err);
       alert("⚠️ Failed to fetch data.");
