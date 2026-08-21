@@ -8,7 +8,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 
-/** الوحدات داخل المخزون — الظهور يتبع صلاحية القسم نفسه. */
+/** الوحدات داخل المخزون — الظهور يتبع صلاحية القسم، إلا ما عليه open:true فبيظهر للكل. */
 const MODULES = [
   {
     id: "butcher",
@@ -29,6 +29,34 @@ const MODULES = [
     arSub: "قوائم المواد وأوامر التصنيع وتحليل التكاليف",
     enSub: "Bills of materials, work orders and cost analytics",
     grad: "linear-gradient(135deg,#0f766e,#115e59)",
+  },
+  {
+    // وحدة مستقلّة عن الجزار — سجل الملاحم والجزارين والمشرفين.
+    // صفحة عادية مفتوحة: بتظهر لكل من بيوصل للمخزون بلا صلاحية خاصة.
+    id: "workforce",
+    open: true,
+    to: "/workforce",
+    icon: "👥",
+    ar: "القوى العاملة",
+    en: "Workforce",
+    arSub: "الملاحم والجزارون والمشرفون — ومين بيشتغل وين وتحت مين",
+    enSub: "Butcheries, butchers, supervisors — and who works where, under whom",
+    grad: "linear-gradient(135deg,#6d28d9,#4338ca)",
+  },
+  {
+    // نفس كرت «Products Catalog» يلي بالإعدادات ← أدوات البيانات.
+    // نفس المكوّن ونفس البيانات — مدخل تاني بس.
+    // صفحة عادية مفتوحة: بتظهر لكل من بيوصل للمخزون بلا صلاحية خاصة.
+    id: "products-catalog",
+    open: true,
+    to: "/inventory/products",
+    icon: "🏷️",
+    kind: "tool",
+    ar: "كتالوج المنتجات",
+    en: "Products Catalog",
+    arSub: "إضافة / تعديل المنتجات والباركود اللي بتغذّي كل القوائم المنسدلة",
+    enSub: "Add / edit products & barcodes for dropdowns",
+    grad: "linear-gradient(135deg,#14b8a6,#0d9488)",
   },
 ];
 
@@ -61,7 +89,7 @@ export default function InventoryHub() {
   const user = currentUser();
   const perms = Array.isArray(user.permissions) ? user.permissions : [];
   const full = perms.includes("*") || perms.length === 0 || !!user.isAdmin;
-  const modules = MODULES.filter((m) => full || perms.includes(m.id));
+  const modules = MODULES.filter((m) => m.open || full || perms.includes(m.id));
 
   return (
     <div dir={dir} className="inv" style={S.page}>
@@ -102,7 +130,11 @@ export default function InventoryHub() {
             >
               <div style={S.cardTop}>
                 <span style={{ ...S.icon, background: m.grad }}>{m.icon}</span>
-                <span style={S.tag}>{t({ en: "Module", ar: "وحدة" })}</span>
+                <span style={S.tag}>
+                  {m.kind === "tool"
+                    ? t({ en: "Tool", ar: "أداة" })
+                    : t({ en: "Module", ar: "وحدة" })}
+                </span>
               </div>
 
               <div>
@@ -111,7 +143,11 @@ export default function InventoryHub() {
               </div>
 
               <div style={S.cardFoot}>
-                <span>{t({ en: "Open module", ar: "فتح الوحدة" })}</span>
+                <span>
+                  {m.kind === "tool"
+                    ? t({ en: "Open tool", ar: "فتح الأداة" })
+                    : t({ en: "Open module", ar: "فتح الوحدة" })}
+                </span>
                 <span aria-hidden="true">{isAr ? "←" : "→"}</span>
               </div>
             </button>

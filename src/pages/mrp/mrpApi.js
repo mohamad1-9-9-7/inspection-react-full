@@ -115,6 +115,8 @@ export function defaultConfig() {
     items: [],
     categories: [],        // فئات الأصناف (سجل الأصناف)
     bomCategories: [],      // فئات الوصفات (قوائم التقطيع) — مستقلّة عن فئات الأصناف
+    bomOrigins: [],         // المناشئ (مصدر/بلد الذبيحة) — يعرّفها المستخدم وتُحفظ على السيرفر
+    bomKinds: [],           // الأنواع (نوع اللحم/الذبيحة) — يعرّفها المستخدم وتُحفظ على السيرفر
     suppliers: [],
     operations: [],
     boms: [],
@@ -123,13 +125,31 @@ export function defaultConfig() {
   };
 }
 
+/**
+ * تنظيف بقايا الاستيراد القديم من قائمة المنتجات (Product.xlsx).
+ * الاستيراد انلغى نهائياً وسجل الأصناف صار يدوي بالكامل، فأي صنف انجاب
+ * من الملف بينشال، وأي صنف يدوي بيضل بس بينشال منه أثر الربط بالملف.
+ *
+ * موجود هون عمداً — mergeConfig بتمرق عليها **كل قراءة** سواء من السيرفر أو
+ * من كاش المتصفّح، فالبقايا بتختفي على كل جهاز بلا ما تعمل شي، وبتنمسح
+ * نهائياً من السيرفر أول ما تنحفظ أي تعديل.
+ */
+function dropImported(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((it) => it?.source !== "catalog")
+    .map(({ catalogCode, source, ...rest }) => rest);
+}
+
 export function mergeConfig(saved) {
   const base = defaultConfig();
   if (!saved || typeof saved !== "object") return base;
   return {
-    items: Array.isArray(saved.items) ? saved.items : base.items,
+    items: dropImported(saved.items),
     categories: Array.isArray(saved.categories) ? saved.categories : base.categories,
     bomCategories: Array.isArray(saved.bomCategories) ? saved.bomCategories : base.bomCategories,
+    bomOrigins: Array.isArray(saved.bomOrigins) ? saved.bomOrigins : base.bomOrigins,
+    bomKinds: Array.isArray(saved.bomKinds) ? saved.bomKinds : base.bomKinds,
     suppliers: Array.isArray(saved.suppliers) ? saved.suppliers : base.suppliers,
     operations: Array.isArray(saved.operations) ? saved.operations : base.operations,
     boms: Array.isArray(saved.boms) ? saved.boms : base.boms,
@@ -359,6 +379,8 @@ export const bomById = (cfg, id) => (cfg?.boms || []).find((x) => x.id === id) |
 export const supplierById = (cfg, id) => (cfg?.suppliers || []).find((x) => x.id === id) || null;
 export const categoryById = (cfg, id) => (cfg?.categories || []).find((x) => x.id === id) || null;
 export const bomCategoryById = (cfg, id) => (cfg?.bomCategories || []).find((x) => x.id === id) || null;
+export const bomOriginById = (cfg, id) => (cfg?.bomOrigins || []).find((x) => x.id === id) || null;
+export const bomKindById = (cfg, id) => (cfg?.bomKinds || []).find((x) => x.id === id) || null;
 export const opById = (cfg, id) => (cfg?.operations || []).find((x) => x.id === id) || null;
 
 /** فئة الصنف كنص — من قائمة الفئات المُدارة، مع رجوع للنص القديم إن وُجد. */

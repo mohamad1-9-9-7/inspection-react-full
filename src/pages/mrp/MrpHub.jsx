@@ -1,6 +1,8 @@
 // src/pages/mrp/MrpHub.jsx
 //
-// 🏭 وحدة التصنيع — الصفحة الرئيسية: مؤشّرات سريعة + مداخل الشاشات الخمس.
+// 🏭 وحدة التصنيع — الصفحة الرئيسية: مؤشّرات سريعة + مدخلَي الشاشتين.
+//
+// الوحدة صفحتين فقط: الأصناف والمواد · قوائم التقطيع (BOM).
 
 import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -8,32 +10,26 @@ import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import {
   MRP_PAGES, S, CSS, Kpi, canOpenMrp,
 } from "./mrpUi";
-import {
-  WO_TYPE, MOVE_TYPE, activeOnly, money, reorderAlerts, useMrpConfig, useRecords, woCost,
-} from "./mrpApi";
+import { activeOnly, useMrpConfig } from "./mrpApi";
 
 export default function MrpHub() {
   const navigate = useNavigate();
   const { t, isAr, dir, lang, toggle } = useSettingsLang();
   const { cfg, loading } = useMrpConfig();
-  const { rows: workOrders } = useRecords(WO_TYPE);
-  const { rows: moves } = useRecords(MOVE_TYPE);
 
   const pages = MRP_PAGES.filter((p) => canOpenMrp(p.id));
 
   const stats = useMemo(() => {
-    const open = workOrders.filter((w) => w.status === "confirmed").length;
-    const done = workOrders.filter((w) => w.status === "done");
-    const producedValue = done.reduce((s, w) => s + woCost(w).total, 0);
+    const items = cfg.items || [];
+    const boms = cfg.boms || [];
     return {
-      items: activeOnly(cfg.items).length,
-      boms: activeOnly(cfg.boms).length,
-      open,
-      done: done.length,
-      producedValue,
-      alerts: reorderAlerts(cfg, workOrders, moves).length,
+      items: activeOnly(items).length,
+      itemsOff: items.length - activeOnly(items).length,
+      boms: activeOnly(boms).length,
+      bomsOff: boms.length - activeOnly(boms).length,
+      pathways: boms.reduce((s, b) => s + (b.pathways || []).length, 0),
     };
-  }, [cfg, workOrders, moves]);
+  }, [cfg]);
 
   return (
     <div dir={dir} className="mrp" style={S.page}>
@@ -48,8 +44,8 @@ export default function MrpHub() {
             </div>
             <div className="mrp-sub" style={S.sub}>
               {t({
-                en: "Components, bills of materials, work orders and cost analytics",
-                ar: "المكوّنات وقوائم المواد وأوامر التصنيع وتحليل التكاليف",
+                en: "Master items and the cutting BOMs the butchery kiosk runs on",
+                ar: "سجل الأصناف وقوائم التقطيع اللي بيشتغل عليها كشك الملحمة",
               })}
             </div>
           </div>
@@ -64,22 +60,24 @@ export default function MrpHub() {
 
       <div style={{ ...S.main, maxWidth: 1400, margin: "0 auto", width: "100%" }}>
         <div style={S.kpiRow}>
-          <Kpi label={t({ en: "Active items", ar: "أصناف مفعّلة" })} value={stats.items} />
-          <Kpi label={t({ en: "Active BOMs", ar: "قوائم مواد" })} value={stats.boms} />
           <Kpi
-            label={t({ en: "Work orders in progress", ar: "أوامر قيد التصنيع" })}
-            value={stats.open}
-            color={stats.open ? "#b45309" : undefined}
+            label={t({ en: "Active items", ar: "أصناف مفعّلة" })}
+            value={stats.items}
+            foot={stats.itemsOff
+              ? `${stats.itemsOff} ${t({ en: "inactive", ar: "معطّل" })}`
+              : undefined}
           />
           <Kpi
-            label={t({ en: "Low stock alerts", ar: "تنبيهات نفاد" })}
-            value={stats.alerts}
-            color={stats.alerts ? "#a12626" : "#047857"}
+            label={t({ en: "Active BOMs", ar: "قوائم تقطيع مفعّلة" })}
+            value={stats.boms}
+            foot={stats.bomsOff
+              ? `${stats.bomsOff} ${t({ en: "inactive", ar: "معطّلة" })}`
+              : undefined}
           />
           <Kpi
-            label={t({ en: "Produced value", ar: "قيمة الإنتاج" })}
-            value={money(stats.producedValue, 0)}
-            foot={`AED · ${stats.done} ${t({ en: "finished orders", ar: "أمر منتهي" })}`}
+            label={t({ en: "Pathways", ar: "المسارات" })}
+            value={stats.pathways}
+            foot={t({ en: "across all BOMs", ar: "بكل القوائم" })}
           />
         </div>
 

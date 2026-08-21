@@ -7,13 +7,16 @@ import {
   FiCheck, FiInfo, FiActivity, FiPieChart, FiSave, FiTrash2,
   FiArrowRight, FiCopy, FiLayers, FiAlertTriangle, FiFileText,
   FiFilter, FiColumns, FiZap, FiHelpCircle, FiPackage, FiClock,
-  FiTarget,
+  FiTarget, FiChevronLeft, FiChevronsUp, FiChevronsDown,
 } from "react-icons/fi";
 import EmailSendModal from "./shared/EmailSendModal";
 import { escapeHtml } from "./shared/emailReportUtils";
 import { MAWASHI_LOGO_B64 } from "../assets/mawashi-logo-b64";
 import { arrangeItems, GROUP_LABEL } from "./shared/itemSortGroup";
 import { getRefNo, isPendingRef } from "../utils/reportRef";
+
+/* Left date-tree panel: remember whether the user folded it away (UI preference only). */
+const TREE_HIDDEN_KEY = "browseCustomerReturns.treeHidden";
 
 /* ============================================================
    API
@@ -2182,6 +2185,9 @@ export default function BrowseReturns() {
   const [selectedDate, setSelectedDate] = useState("");
   const [openYears, setOpenYears] = useState({});
   const [openMonths, setOpenMonths] = useState({});
+  const [treeHidden, setTreeHidden] = useState(() => {
+    try { return localStorage.getItem(TREE_HIDDEN_KEY) === "1"; } catch { return false; }
+  });
   const [search, setSearch] = useState("");
   const [searchScope, setSearchScope] = useState("day"); // "day" | "all"
   const [resPage, setResPage] = useState(1);
@@ -2678,6 +2684,36 @@ export default function BrowseReturns() {
       };
     });
   }, [filteredReportsAsc]);
+
+  /* --- Date tree folding --- */
+  useEffect(() => {
+    try { localStorage.setItem(TREE_HIDDEN_KEY, treeHidden ? "1" : "0"); } catch {}
+  }, [treeHidden]);
+
+  const treeDayCount = useMemo(
+    () => hierarchyAsc.reduce((a, y) => a + y.months.reduce((b, mo) => b + mo.days.length, 0), 0),
+    [hierarchyAsc]
+  );
+
+  const allTreeOpen = useMemo(() => {
+    if (!hierarchyAsc.length) return false;
+    return hierarchyAsc.every(({ year, months }) =>
+      openYears[year] && months.every(({ month }) => openMonths[`${year}-${month}`]));
+  }, [hierarchyAsc, openYears, openMonths]);
+
+  function collapseTreeNodes() {
+    setOpenYears({});
+    setOpenMonths({});
+  }
+  function expandTreeNodes() {
+    const ys = {}, ms = {};
+    hierarchyAsc.forEach(({ year, months }) => {
+      ys[year] = true;
+      months.forEach(({ month }) => { ms[`${year}-${month}`] = true; });
+    });
+    setOpenYears(ys);
+    setOpenMonths(ms);
+  }
 
   /* ============================================================
      Filter options
@@ -4587,11 +4623,62 @@ export default function BrowseReturns() {
             )}
 
             {/* Tree + Detail panel */}
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 300px) 1fr", gap: 12 }}>
-              {/* Left tree */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: treeHidden ? "44px 1fr" : "minmax(260px, 300px) 1fr",
+              gap: 12,
+            }}>
+              {/* Left tree - folds away to a thin rail */}
+              {treeHidden ? (
+              <div
+                className="br-noprint"
+                title="Show the date tree"
+                onClick={() => setTreeHidden(false)}
+                style={{
+                  ...sx.card, alignSelf: "start", padding: "8px 4px", cursor: "pointer",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                }}
+              >
+                <FiChevronRight size={16} color={T.primary} />
+                <div style={{
+                  writingMode: "vertical-rl", transform: "rotate(180deg)",
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                  fontSize: 12, fontWeight: 700, color: T.textM, letterSpacing: "0.04em",
+                }}>
+                  <FiCalendar size={13} />
+                  Date tree
+                </div>
+                <span style={{ ...sx.pill, fontSize: 11, padding: "3px 7px" }}>{treeDayCount}</span>
+              </div>
+              ) : (
               <div className="br-noprint" style={{
                 ...sx.card, maxHeight: "75vh", overflow: "auto", padding: 4,
               }}>
+                <div style={{
+                  position: "sticky", top: 0, zIndex: 2, background: T.card,
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
+                  padding: "6px 6px 8px", borderBottom: `1px solid ${T.border}`,
+                }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: T.textM }}>
+                    <FiCalendar size={13} /> Date tree
+                    <span style={sx.mutedS}>({treeDayCount})</span>
+                  </span>
+                  <span style={{ display: "inline-flex", gap: 4 }}>
+                    <IconBtn
+                      icon={allTreeOpen ? FiChevronsUp : FiChevronsDown}
+                      title={allTreeOpen ? "Collapse all years and months" : "Expand all years and months"}
+                      onClick={() => (allTreeOpen ? collapseTreeNodes() : expandTreeNodes())}
+                      disabled={hierarchyAsc.length === 0}
+                      style={{ padding: "5px 7px" }}
+                    />
+                    <IconBtn
+                      icon={FiChevronLeft}
+                      title="Hide the date tree"
+                      onClick={() => setTreeHidden(true)}
+                      style={{ padding: "5px 7px" }}
+                    />
+                  </span>
+                </div>
                 {hierarchyAsc.length === 0 ? (
                   <div style={{ ...sx.muted, textAlign: "center", padding: 30 }}>
                     No reports for the selected period.
@@ -4661,6 +4748,7 @@ export default function BrowseReturns() {
                   );
                 })}
               </div>
+              )}
 
               {/* Right detail panel */}
               <div className="br-card" style={{ ...sx.card }}>

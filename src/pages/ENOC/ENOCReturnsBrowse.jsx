@@ -3,6 +3,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+/* Left date-tree panel: remember whether the user folded it away (UI preference only). */
+const TREE_HIDDEN_KEY = "enocReturnsBrowse.treeHidden";
+
 /* ========= API BASE ========= */
 const API_ROOT_DEFAULT = "https://inspection-server-4nvj.onrender.com";
 let fromVite;
@@ -277,6 +280,14 @@ export default function ENOCReturnsBrowse() {
   const [openYears, setOpenYears] = useState(() => new Set());
   const [openMonths, setOpenMonths] = useState(() => new Set()); // "YYYY-MM"
 
+  // date tree folded away?
+  const [treeHidden, setTreeHidden] = useState(() => {
+    try { return localStorage.getItem(TREE_HIDDEN_KEY) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(TREE_HIDDEN_KEY, treeHidden ? "1" : "0"); } catch {}
+  }, [treeHidden]);
+
   // edit report
   const [editMode, setEditMode] = useState(false);
   const [draftItems, setDraftItems] = useState([]);
@@ -408,6 +419,29 @@ export default function ENOCReturnsBrowse() {
       else next.add(key);
       return next;
     });
+  };
+
+  const allTreeOpen = useMemo(() => {
+    if (!dateTree.length) return false;
+    return dateTree.every(
+      (y) => openYears.has(y.Y) && y.months.every((m) => openMonths.has(`${y.Y}-${m.M}`))
+    );
+  }, [dateTree, openYears, openMonths]);
+
+  const collapseTreeNodes = () => {
+    setOpenYears(new Set());
+    setOpenMonths(new Set());
+  };
+
+  const expandTreeNodes = () => {
+    const ys = new Set();
+    const ms = new Set();
+    dateTree.forEach((y) => {
+      ys.add(y.Y);
+      y.months.forEach((m) => ms.add(`${y.Y}-${m.M}`));
+    });
+    setOpenYears(ys);
+    setOpenMonths(ms);
   };
 
   async function selectDay(ymd, sourceList = null) {
@@ -732,12 +766,44 @@ export default function ENOCReturnsBrowse() {
       {toast && <div style={toastBox}>{toast}</div>}
       {error && <div style={errBox}>❌ {error}</div>}
 
-      <div style={mainGrid}>
+      <div style={{ ...mainGrid, gridTemplateColumns: treeHidden ? "46px 1fr" : "320px 1fr" }}>
+        {treeHidden ? (
+          <div
+            style={treeRailCard}
+            title="Show the date tree"
+            onClick={() => setTreeHidden(false)}
+          >
+            <span style={{ fontWeight: 900, color: "#512e5f" }}>▶</span>
+            <div style={treeRailLabel}>📅 Date Tree</div>
+            <span style={{ fontWeight: 900, color: "#64748b", fontSize: 12 }}>
+              {visibleReports.length}
+            </span>
+          </div>
+        ) : (
         <div style={treeCard}>
           <div style={treeHead}>
             <div style={{ fontWeight: 900 }}>📅 Date Tree</div>
-            <div style={{ color: "#64748b", fontWeight: 900 }}>
-              {visibleReports.length} report(s)
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ color: "#64748b", fontWeight: 900 }}>
+                {visibleReports.length} report(s)
+              </div>
+              <button
+                type="button"
+                style={treeToolBtn}
+                disabled={dateTree.length === 0}
+                title={allTreeOpen ? "Collapse all years and months" : "Expand all years and months"}
+                onClick={() => (allTreeOpen ? collapseTreeNodes() : expandTreeNodes())}
+              >
+                {allTreeOpen ? "⇱" : "⇲"}
+              </button>
+              <button
+                type="button"
+                style={treeToolBtn}
+                title="Hide the date tree"
+                onClick={() => setTreeHidden(true)}
+              >
+                ◀
+              </button>
             </div>
           </div>
 
@@ -798,6 +864,7 @@ export default function ENOCReturnsBrowse() {
             )}
           </div>
         </div>
+        )}
 
         <div style={detailsCard}>
           <div style={detailsTopBar}>
@@ -1271,6 +1338,41 @@ const treeHead = {
   background: "#f1f5f9",
   borderRadius: 12,
   fontWeight: 900,
+};
+
+const treeToolBtn = {
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#334155",
+  borderRadius: 10,
+  padding: "4px 8px",
+  fontWeight: 900,
+  fontSize: 12,
+  cursor: "pointer",
+  lineHeight: 1.4,
+};
+
+const treeRailCard = {
+  background: "#fff",
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  boxShadow: "0 2px 12px rgba(0,0,0,.06)",
+  padding: "10px 4px",
+  cursor: "pointer",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 10,
+  alignSelf: "start",
+};
+
+const treeRailLabel = {
+  writingMode: "vertical-rl",
+  transform: "rotate(180deg)",
+  fontWeight: 900,
+  fontSize: 12,
+  color: "#475569",
+  letterSpacing: ".04em",
 };
 
 const treeScroll = { marginTop: 10, maxHeight: "75vh", overflow: "auto", paddingRight: 2 };

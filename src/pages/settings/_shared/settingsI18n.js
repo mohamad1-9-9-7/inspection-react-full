@@ -244,6 +244,7 @@ export const ST = {
   amSecHalalAudit:       { en: "HALAL Audit",       ar: "تدقيق الحلال" },
   amSecHse:              { en: "HSE",               ar: "السلامة والصحة المهنية" },
   amSecButcher:          { en: "Butcher",           ar: "الجزار" },
+  amSecWorkforce:        { en: "Workforce",         ar: "القوى العاملة" },
   amSecMrp:              { en: "Manufacturing",     ar: "التصنيع" },
   amSecSettings:         { en: "Settings",          ar: "الإعدادات" },
 

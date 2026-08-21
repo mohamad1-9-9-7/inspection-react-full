@@ -160,20 +160,28 @@ export const SECTION_ITEMS = {
       { id: "butcher.entry",      icon: "🔪", label: "Record Cut Weights" },
       { id: "butcher.mywork",     icon: "👤", label: "My Work" },
       { id: "butcher.view",       icon: "📋", label: "Butcher Reports" },
-      { id: "butcher.summary",    icon: "🗓️", label: "Full Summary Report" },
       { id: "butcher.supervisor", icon: "🧑‍🍳", label: "Supervisor Board" },
     ],
   },
 
-  // 🏭 التصنيع — قائمة المواد (BOM) وأوامر التصنيع
+  // 👥 القوى العاملة — الملاحم والجزارون والمشرفون (وحدة مستقلّة عن butcher)
+  workforce: {
+    kind: "pages",
+    items: [
+      { id: "workforce.people", icon: "👥", label: "People (butchers & supervisors)" },
+      { id: "workforce.sites",  icon: "🏪", label: "Butcheries (sites)" },
+      { id: "workforce.gate",   icon: "🚪", label: "Gate simulator" },
+      { id: "workforce.log",    icon: "🕰️", label: "Movement log" },
+      { id: "workforce.rules",  icon: "⚙️", label: "Access rules" },
+    ],
+  },
+
+  // 🏭 التصنيع — الأصناف وقوائم التقطيع (BOM) فقط
   mrp: {
     kind: "pages",
     items: [
       { id: "mrp.items",   icon: "📦", label: "Items & Materials" },
-      { id: "mrp.bom",     icon: "🧾", label: "Bills of Materials" },
-      { id: "mrp.tree",    icon: "🌳", label: "Multi-level Tree" },
-      { id: "mrp.orders",  icon: "🏭", label: "Work Orders" },
-      { id: "mrp.reports", icon: "📊", label: "BOM Reports" },
+      { id: "mrp.bom",     icon: "🧾", label: "Cutting BOMs" },
     ],
   },
 

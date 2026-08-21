@@ -5,6 +5,9 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from "react"
 const API_BASE =
   process.env.REACT_APP_API_URL || "https://inspection-server-4nvj.onrender.com";
 
+/* Left date-tree panel: remember whether the user folded it away (UI preference only). */
+const TREE_HIDDEN_KEY = "returnView.treeHidden";
+
 /* ===== Cloudinary via server (upload + delete) ===== */
 async function uploadViaServer(file) {
   const fd = new FormData();
@@ -303,6 +306,9 @@ export default function ReturnView() {
   const [selectedDate, setSelectedDate] = useState("");
   const [openYears, setOpenYears] = useState({});
   const [openMonths, setOpenMonths] = useState({});
+  const [treeHidden, setTreeHidden] = useState(() => {
+    try { return localStorage.getItem(TREE_HIDDEN_KEY) === "1"; } catch { return false; }
+  });
   const [serverErr, setServerErr] = useState("");
   const [loadingServer, setLoadingServer] = useState(false);
   const [opMsg, setOpMsg] = useState("");
@@ -452,6 +458,29 @@ export default function ReturnView() {
       return { year: y, months: sortedMonths.map((m) => ({ month: m, days: months.get(m) })) };
     });
   }, [filteredReports]);
+
+  /* ========== Date tree folding ========== */
+  useEffect(() => {
+    try { localStorage.setItem(TREE_HIDDEN_KEY, treeHidden ? "1" : "0"); } catch {}
+  }, [treeHidden]);
+
+  const allTreeOpen = useMemo(() => {
+    if (!hierarchy.length) return false;
+    return hierarchy.every(({ year, months }) =>
+      openYears[year] && months.every(({ month }) => openMonths[year + "-" + month]));
+  }, [hierarchy, openYears, openMonths]);
+
+  const collapseTreeNodes = () => { setOpenYears({}); setOpenMonths({}); };
+
+  const expandTreeNodes = () => {
+    const ys = {}, ms = {};
+    hierarchy.forEach(({ year, months }) => {
+      ys[year] = true;
+      months.forEach(({ month }) => { ms[year + "-" + month] = true; });
+    });
+    setOpenYears(ys);
+    setOpenMonths(ms);
+  };
 
   /* ========== Row add/edit/delete logic ========== */
   const blankRow = {
@@ -908,8 +937,32 @@ export default function ReturnView() {
 
       {/* Tree + Details */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, minHeight: 420 }}>
-        {/* Left tree */}
+        {/* Left tree - folds away to a thin rail */}
+        {treeHidden ? (
+          <div style={treeRail} title="Show the date tree" onClick={() => setTreeHidden(false)}>
+            <span style={{ fontWeight: 900, color: "#0369a1" }}>►</span>
+            <span style={treeRailLabel}>📅 Date tree</span>
+          </div>
+        ) : (
         <div style={leftTree}>
+          <div style={treeToolbar}>
+            <span style={{ fontWeight: 800, color: "#334155", fontSize: 12 }}>📅 Date tree</span>
+            <span style={{ display: "flex", gap: 6 }}>
+              <button
+                type="button"
+                style={treeToolBtn}
+                disabled={hierarchy.length === 0}
+                title={allTreeOpen ? "Collapse all years and months" : "Expand all years and months"}
+                onClick={() => (allTreeOpen ? collapseTreeNodes() : expandTreeNodes())}
+              >
+                {allTreeOpen ? "⇱ Collapse all" : "⇲ Expand all"}
+              </button>
+              <button type="button" style={treeToolBtn} title="Hide the date tree" onClick={() => setTreeHidden(true)}>
+                ◄
+              </button>
+            </span>
+          </div>
+
           {hierarchy.length === 0 && (
             <div style={{ textAlign: "center", padding: 60, color: "#6b7280", fontSize: "1.03em" }}>
               No saved return reports for the selected period.
@@ -959,6 +1012,7 @@ export default function ReturnView() {
             );
           })}
         </div>
+        )}
 
         {/* Right panel */}
         <div style={rightPanel}>
@@ -1297,6 +1351,10 @@ const summaryChip = (color, bg) => ({
 });
 
 const leftTree = { minWidth: 280, background: "#fff", borderRadius: 12, boxShadow: "0 1px 10px #e8daef66", padding: "6px 0", border: "1px solid #e5e7eb", maxHeight: "70vh", overflow: "auto", color: "#111" };
+const treeToolbar = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", position: "sticky", top: 0, background: "#fff", borderBottom: "1px solid #e5e7eb", zIndex: 2 };
+const treeToolBtn = { border: "1px solid #cbd5e1", background: "#fff", color: "#334155", borderRadius: 9, padding: "3px 8px", fontSize: 11, fontWeight: 800, cursor: "pointer" };
+const treeRail = { minWidth: 46, width: 46, background: "#fff", borderRadius: 12, boxShadow: "0 1px 10px #e8daef66", border: "1px solid #e5e7eb", padding: "12px 4px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, alignSelf: "flex-start" };
+const treeRailLabel = { writingMode: "vertical-rl", transform: "rotate(180deg)", fontSize: 12, fontWeight: 800, color: "#475569", letterSpacing: ".04em", whiteSpace: "nowrap" };
 const treeSection = { marginBottom: 4 };
 const treeHeader = { display: "flex", justifyContent: "space-between", padding: "10px 14px", cursor: "pointer", fontWeight: 800, color: "#111", borderBottom: "1px solid #e5e7eb" };
 const treeSubHeader = { display: "flex", justifyContent: "space-between", padding: "8px 14px", cursor: "pointer", color: "#111", borderBottom: "1px dashed #e5e7eb" };

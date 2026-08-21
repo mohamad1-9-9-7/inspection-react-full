@@ -7,6 +7,9 @@ import API_BASE from "../../config/api";
 /* Server report type */
 const TYPE = "enoc_returns";
 
+/* Left date-tree panel: remember whether the user folded it away (UI preference only). */
+const TREE_HIDDEN_KEY = "enocReturnsMenuView.treeHidden";
+
 /* ========= Helpers ========= */
 const safeArr = (v) => (Array.isArray(v) ? v : []);
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
@@ -348,6 +351,34 @@ export default function ENOCReturnsBrowseMenuView() {
   const [action, setAction] = useState("ALL");
   const [quickDays, setQuickDays] = useState("ALL"); // ALL | 7 | 30
 
+  // ✅ date tree folding: whole panel + per year / month
+  const [treeHidden, setTreeHidden] = useState(() => {
+    try { return localStorage.getItem(TREE_HIDDEN_KEY) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(TREE_HIDDEN_KEY, treeHidden ? "1" : "0"); } catch {}
+  }, [treeHidden]);
+
+  // stored as "closed" sets so everything stays open by default
+  const [closedYears, setClosedYears] = useState(() => new Set());
+  const [closedMonths, setClosedMonths] = useState(() => new Set());
+
+  const toggleYear = (y) =>
+    setClosedYears((prev) => {
+      const next = new Set(prev);
+      if (next.has(y)) next.delete(y);
+      else next.add(y);
+      return next;
+    });
+
+  const toggleMonth = (key) =>
+    setClosedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
   // ✅ collapse/expand per box group
   const [openGroups, setOpenGroups] = useState(() => new Set());
 
@@ -522,6 +553,29 @@ export default function ENOCReturnsBrowseMenuView() {
       };
     });
   }, [dateStats]);
+
+  const allTreeOpen = useMemo(() => {
+    if (!tree.length) return false;
+    return tree.every(
+      (y) => !closedYears.has(y.y) && y.months.every((m) => !closedMonths.has(`${y.y}-${m.m}`))
+    );
+  }, [tree, closedYears, closedMonths]);
+
+  const collapseTreeNodes = () => {
+    const ys = new Set();
+    const ms = new Set();
+    tree.forEach((y) => {
+      ys.add(y.y);
+      y.months.forEach((m) => ms.add(`${y.y}-${m.m}`));
+    });
+    setClosedYears(ys);
+    setClosedMonths(ms);
+  };
+
+  const expandTreeNodes = () => {
+    setClosedYears(new Set());
+    setClosedMonths(new Set());
+  };
 
   // filtered rows
   const filteredRows = useMemo(() => {
@@ -769,7 +823,31 @@ export default function ENOCReturnsBrowseMenuView() {
           width:100%;
           align-items:start;
         }
-        @media (max-width: 1100px){ .grid{ grid-template-columns: 1fr; } }
+        .grid.gridTreeFolded{ grid-template-columns: 46px minmax(0, 1fr); }
+        @media (max-width: 1100px){ .grid, .grid.gridTreeFolded{ grid-template-columns: 1fr; } }
+
+        .treeRail{
+          display:flex; flex-direction:column; align-items:center; gap:10px;
+          padding:12px 4px; cursor:pointer; align-self:start;
+        }
+        .treeRail__chev{ font-weight:900; color:#0f172a; font-size:12px; }
+        .treeRail__label{
+          writing-mode: vertical-rl; transform: rotate(180deg);
+          font-size:12px; font-weight:900; color:#334155; letter-spacing:.04em; white-space:nowrap;
+        }
+        @media (max-width: 1100px){
+          .treeRail{ flex-direction:row; justify-content:center; padding:10px; }
+          .treeRail__label{ writing-mode: horizontal-tb; transform:none; }
+        }
+
+        .treeTools{ margin-left:auto; display:flex; gap:6px; align-items:center; }
+        .treeToolBtn{
+          border:1px solid rgba(2,6,23,.14); background:#fff; color:#334155;
+          border-radius:10px; padding:3px 8px; font-size:11px; font-weight:900; cursor:pointer;
+        }
+        .treeToolBtn:disabled{ opacity:.5; cursor:not-allowed; }
+        .chev{ display:inline-block; width:12px; color:#475569; font-size:10px; }
+        .nodeY__head, .nodeM__head{ cursor:pointer; user-select:none; }
 
         .panel{
           border-radius:16px;
@@ -1106,10 +1184,46 @@ export default function ENOCReturnsBrowseMenuView() {
           </div>
         </div>
 
-        <div className="grid">
+        <div className={`grid ${treeHidden ? "gridTreeFolded" : ""}`}>
+          {treeHidden ? (
+            <div
+              className="panel treeRail"
+              title="Show the date tree"
+              role="button"
+              tabIndex={0}
+              onClick={() => setTreeHidden(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") setTreeHidden(false);
+              }}
+            >
+              <span className="treeRail__chev">▶</span>
+              <span className="treeRail__label">📅 Date Tree</span>
+            </div>
+          ) : (
           <div className="panel">
             <div className="tree">
-              <h3>📅 Date Tree</h3>
+              <h3>
+                📅 Date Tree
+                <span className="treeTools">
+                  <button
+                    type="button"
+                    className="treeToolBtn"
+                    disabled={!tree.length}
+                    title={allTreeOpen ? "Collapse all years and months" : "Expand all years and months"}
+                    onClick={() => (allTreeOpen ? collapseTreeNodes() : expandTreeNodes())}
+                  >
+                    {allTreeOpen ? "⇱ Collapse all" : "⇲ Expand all"}
+                  </button>
+                  <button
+                    type="button"
+                    className="treeToolBtn"
+                    title="Hide the date tree"
+                    onClick={() => setTreeHidden(true)}
+                  >
+                    ◀
+                  </button>
+                </span>
+              </h3>
 
               {!tree.length && (
                 <div className="muted" style={{ fontSize: 12 }}>
@@ -1117,27 +1231,50 @@ export default function ENOCReturnsBrowseMenuView() {
                 </div>
               )}
 
-              {tree.map((y) => (
+              {tree.map((y) => {
+                const yClosed = closedYears.has(y.y);
+                return (
                 <div className="nodeY" key={y.y}>
-                  <div className="nodeY__head">
-                    <span>Year {y.y}</span>
+                  <div
+                    className="nodeY__head"
+                    role="button"
+                    tabIndex={0}
+                    title={yClosed ? "Expand this year" : "Collapse this year"}
+                    onClick={() => toggleYear(y.y)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") toggleYear(y.y);
+                    }}
+                  >
+                    <span><span className="chev">{yClosed ? "▶" : "▼"}</span> Year {y.y}</span>
                     <div className="badges">
                       <span className="badge" title="Items">{y.count}</span>
                       <span className="badge badgeBox" title="BOX QTY (sum)">BQ {fmtQty(y.boxQtySum)}</span>
                     </div>
                   </div>
 
-                  {y.months.map((m) => (
-                    <div className="nodeM" key={`${y.y}-${m.m}`}>
-                      <div className="nodeM__head">
-                        <span>Month {m.m}</span>
+                  {!yClosed && y.months.map((m) => {
+                    const mKey = `${y.y}-${m.m}`;
+                    const mClosed = closedMonths.has(mKey);
+                    return (
+                    <div className="nodeM" key={mKey}>
+                      <div
+                        className="nodeM__head"
+                        role="button"
+                        tabIndex={0}
+                        title={mClosed ? "Expand this month" : "Collapse this month"}
+                        onClick={() => toggleMonth(mKey)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") toggleMonth(mKey);
+                        }}
+                      >
+                        <span><span className="chev">{mClosed ? "▶" : "▼"}</span> Month {m.m}</span>
                         <div className="badges">
                           <span className="badge" title="Items">{m.count}</span>
                           <span className="badge badgeBox" title="BOX QTY (sum)">BQ {fmtQty(m.boxQtySum)}</span>
                         </div>
                       </div>
 
-                      {m.days.map((d) => (
+                      {!mClosed && m.days.map((d) => (
                         <div
                           key={d.date}
                           className={`day ${selectedDate === d.date ? "active" : ""}`}
@@ -1157,11 +1294,14 @@ export default function ENOCReturnsBrowseMenuView() {
                         </div>
                       ))}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
+          )}
 
           <div className="panel">
             <div className="tableWrap">

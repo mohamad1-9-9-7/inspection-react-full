@@ -13,6 +13,7 @@ import { isItemAllowed } from "../../utils/sectionItems";
 import { can } from "../../utils/perms";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { ITEM_TYPES, UOMS, displayNameOf, itemById, nameOf, num, rolesOf } from "./mrpApi";
+import { normalizeCode, useProductCatalog } from "../monitor/branches/_shared/ProductPicker";
 
 /* ══════════════ الصفحات والصلاحيات ══════════════ */
 
@@ -27,22 +28,9 @@ export const MRP_PAGES = [
     ar: "قوائم التفكيك (BOM)", en: "Cutting BOMs",
     arSub: "منتج داخل → قطع ناتجة + هدر", enSub: "One input → outputs + waste",
   },
-  {
-    id: "mrp.tree", to: "/mrp/tree", icon: "🌳",
-    ar: "الشجرة والتفكيك", en: "Multi-level tree",
-    arSub: "المستويات وتفكيك المواد الخام", enSub: "Sub-assemblies & explosion",
-  },
-  {
-    id: "mrp.orders", to: "/mrp/orders", icon: "🏭",
-    ar: "أوامر التصنيع", en: "Work orders",
-    arSub: "الإنتاج والخصم الآلي من المخزن", enSub: "Production & backflushing",
-  },
-  {
-    id: "mrp.reports", to: "/mrp/reports", icon: "📊",
-    ar: "التقارير والتحليل", en: "Reports & analytics",
-    arSub: "التكلفة المخطّطة مقابل الفعلية", enSub: "Planned vs actual, where-used",
-  },
 ];
+/* الوحدة صفحتين فقط: الأصناف وقوائم التقطيع. الشجرة وأوامر التصنيع والتقارير
+   انشالت بطلب المستخدم — تقارير التقطيع صارت بصفحة «تقارير الجزار». */
 
 export const canOpenMrp = (pageId) => isItemAllowed("mrp", pageId);
 export const canEditMrp = () => can("mrp", "edit") || can("mrp", "write");
@@ -430,6 +418,137 @@ export function Field({ label, children, style }) {
 export function TextInput({ value, onChange, ...rest }) {
   return (
     <input style={S.input} value={value ?? ""} onChange={(e) => onChange(e.target.value)} {...rest} />
+  );
+}
+
+/**
+ * 🔎 حقل الكود مربوط بـ«كتالوج المنتجات» (الإعدادات ← Products Catalog).
+ * منك تكتب جزء من الكود أو من اسم المنتج فبتنزل اقتراحات من نفس الكتالوج؛
+ * لما تختار واحد بيرجع onPick({ item_code, description }) — فبينعبّى الكود
+ * والاسم الإنجليزي سوا. الكتابة الحرّة مسموحة: الكتالوج اقتراح مش قيد،
+ * كي تقدر تعرّف كود جديد مش موجود بالكتالوج.
+ *
+ * onChange(value, match) — match = صنف الكتالوج المطابق للكود حرفياً، أو null.
+ */
+export function CatalogCodeInput({
+  value = "", onChange, onPick, placeholder, style, disabled = false, maxResults = 30,
+}) {
+  const { t } = useSettingsLang();
+  const { allItems, loading } = useProductCatalog();
+  const boxRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState(0);
+
+  const findExact = (v) => {
+    const k = normalizeCode(v);
+    if (!k) return null;
+    return allItems.find((it) => normalizeCode(it.item_code) === k) || null;
+  };
+
+  const exact = useMemo(() => {
+    const k = normalizeCode(value);
+    if (!k) return null;
+    return allItems.find((it) => normalizeCode(it.item_code) === k) || null;
+  }, [allItems, value]);
+
+  const results = useMemo(() => {
+    const qCode = normalizeCode(value);
+    const qText = String(value || "").toLowerCase().trim();
+    if (!qCode && !qText) return allItems.slice(0, maxResults);
+    return allItems
+      .filter((it) => {
+        const c = normalizeCode(it.item_code);
+        const n = String(it.description || "").toLowerCase();
+        return (qCode && c.includes(qCode)) || (qText && n.includes(qText));
+      })
+      .slice(0, maxResults);
+  }, [allItems, value, maxResults]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const pick = (it) => {
+    if (typeof onPick === "function") {
+      onPick({ item_code: it.item_code || "", description: it.description || "" });
+    }
+    setOpen(false);
+  };
+
+  return (
+    <div ref={boxRef} style={{ position: "relative", minWidth: 0 }}>
+      <input
+        style={{ ...S.input, ...style }}
+        value={value ?? ""}
+        disabled={disabled}
+        placeholder={placeholder}
+        autoComplete="off"
+        onFocus={() => { setSel(0); setOpen(true); }}
+        onChange={(e) => {
+          const v = e.target.value;
+          setSel(0);
+          setOpen(true);
+          onChange(v, findExact(v));
+        }}
+        onKeyDown={(e) => {
+          if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { setOpen(true); return; }
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setSel((n) => Math.min(n + 1, results.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setSel((n) => Math.max(n - 1, 0));
+          } else if (e.key === "Enter" && open && results[sel]) {
+            e.preventDefault();
+            pick(results[sel]);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+      />
+
+      {open && !disabled && (
+        <div style={S.pickList}>
+          {loading && !allItems.length ? (
+            <div style={{ ...S.pickOpt, color: "#8aa3b8" }}>
+              {t({ en: "Loading catalog…", ar: "جارٍ تحميل الكتالوج…" })}
+            </div>
+          ) : results.length === 0 ? (
+            <div style={{ ...S.pickOpt, color: "#8aa3b8" }}>
+              {t({
+                en: "No match in the catalog — you can still type a brand-new code.",
+                ar: "ما في تطابق بالكتالوج — فيك تكتب كود جديد بأي حال.",
+              })}
+            </div>
+          ) : (
+            results.map((it, i) => (
+              <button
+                key={String(it.item_code) + "|" + i}
+                type="button"
+                style={{ ...S.pickOpt, ...(i === sel ? { background: "#f2f8ff" } : null) }}
+                onMouseEnter={() => setSel(i)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(it)}
+              >
+                <b style={{ color: "#14507f" }}>{it.item_code || "—"}</b>
+                <span style={{ color: "#5c7a94", marginInlineStart: 8 }}>{it.description}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {exact && (
+        <span style={{ ...S.hint, display: "block", marginTop: 5, color: "#047857" }}>
+          ✓ {t({ en: "From Products Catalog", ar: "من كتالوج المنتجات" })} — {exact.description}
+        </span>
+      )}
+    </div>
   );
 }
 

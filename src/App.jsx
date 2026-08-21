@@ -22,20 +22,19 @@ const InspectionEvidencePublic = lazy(() => import("./pages/InspectionEvidencePu
 const ButcherHub = lazy(() => import("./pages/butcher/ButcherHub"));
 const ButcherLog = lazy(() => import("./pages/butcher/ButcherLog"));
 const ButcherView = lazy(() => import("./pages/butcher/ButcherView"));
-const ButcherSummary = lazy(() => import("./pages/butcher/ButcherSummary"));
 const ButcherSupervisor = lazy(() => import("./pages/butcher/ButcherSupervisor"));
 const ButcherMyWork = lazy(() => import("./pages/butcher/ButcherMyWork"));
 
 // 📦 المخزون — كرت جامع للجزار والتصنيع
 const InventoryHub = lazy(() => import("./pages/inventory/InventoryHub"));
+const WorkforceHub = lazy(() => import("./pages/workforce/WorkforceHub"));
+// كتالوج المنتجات — نفس أداة الإعدادات، بمدخل تاني من المخزون
+const ProductsCatalogPage = lazy(() => import("./pages/inventory/ProductsCatalogPage"));
 
 // 🏭 وحدة التصنيع — قائمة المواد (BOM)
 const MrpHub = lazy(() => import("./pages/mrp/MrpHub"));
 const MrpItems = lazy(() => import("./pages/mrp/MrpItems"));
 const MrpBom = lazy(() => import("./pages/mrp/MrpBom"));
-const MrpTree = lazy(() => import("./pages/mrp/MrpTree"));
-const MrpOrders = lazy(() => import("./pages/mrp/MrpOrders"));
-const MrpReports = lazy(() => import("./pages/mrp/MrpReports"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 
@@ -805,14 +804,6 @@ export default function App() {
           }
         />
         <Route
-          path="/butcher/summary"
-          element={
-            <ProtectedRoute>
-              <ButcherSummary />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/butcher/my-work"
           element={
             <ProtectedRoute>
@@ -839,6 +830,25 @@ export default function App() {
           }
         />
 
+        {/* 👥 القوى العاملة — الملاحم والجزارون والمشرفون (وحدة مستقلّة) */}
+        <Route
+          path="/workforce"
+          element={
+            <ProtectedRoute>
+              <WorkforceHub />
+            </ProtectedRoute>
+          }
+        />
+        {/* 📦 كتالوج المنتجات — نفس أداة الإعدادات ← أدوات البيانات، مدخل تاني من المخزون */}
+        <Route
+          path="/inventory/products"
+          element={
+            <ProtectedRoute>
+              <ProductsCatalogPage />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 🏭 وحدة التصنيع — BOM · أوامر التصنيع · التقارير */}
         <Route
           path="/mrp"
@@ -861,30 +871,6 @@ export default function App() {
           element={
             <ProtectedRoute>
               <MrpBom />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/mrp/tree"
-          element={
-            <ProtectedRoute>
-              <MrpTree />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/mrp/orders"
-          element={
-            <ProtectedRoute>
-              <MrpOrders />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/mrp/reports"
-          element={
-            <ProtectedRoute>
-              <MrpReports />
             </ProtectedRoute>
           }
         />
