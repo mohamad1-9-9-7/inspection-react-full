@@ -28,10 +28,14 @@ import {
   groupTree, inSet, kg, monthStart, pct, shiftDays, sortRows, todayStr, totalsOf,
   useButcherData, useNormalizedRows, wasteBreakdown,
 } from "./butcherReportKit";
+import OdooMoves, {
+  OdooNavbar, ODOO_SKIN_CSS, buildMoves, buildMovesAoa, MOVE_COLS,
+} from "./ButcherOdooMoves";
 
 /* ══════════════ ثابتات ══════════════ */
 
 const TABS = [
+  { id: "moves",     icon: "📦", ar: "حركات المنتج", en: "Product Moves" },
   { id: "overview",  icon: "📈", ar: "نظرة عامة",  en: "Overview" },
   { id: "ops",       icon: "🧾", ar: "العمليات",   en: "Operations" },
   { id: "products",  icon: "🥩", ar: "المنتجات",   en: "Products" },
@@ -155,24 +159,7 @@ const VIEW_CSS = `
 #root .bv-hbtn-solid { background: #fff; color: #10466f; border-color: #fff; }
 #root .bv-hbtn-solid:hover { background: #eaf3ff; }
 
-/* ── شريط التبويبات ── */
-#root .bv-tabs {
-  display: flex; gap: 6px; overflow-x: auto; background: #fff; border: 1px solid ${C.line};
-  border-radius: 16px; padding: 6px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(15,39,64,.05);
-}
-#root .bv-tab {
-  border: none; background: transparent; color: ${C.ink2}; font-weight: 800; font-family: inherit;
-  padding: 10px 15px; border-radius: 12px; cursor: pointer; white-space: nowrap;
-  display: inline-flex; align-items: center; gap: 8px; transition: background .15s ease;
-}
-#root .bv-tab:hover { background: #f2f8ff; }
-#root .bv-tab.on {
-  background: linear-gradient(135deg,#1f6fd0,#12456f); color: #fff;
-  box-shadow: 0 8px 18px rgba(31,111,208,.30);
-}
-#root .bv-tabn { border-radius: 999px; padding: 1px 8px; font-size: 12px !important; font-weight: 900; }
-#root .bv-tab.on .bv-tabn { background: rgba(255,255,255,.24); }
-#root .bv-tab:not(.on) .bv-tabn { background: #eaf2fc; color: ${C.blueDk}; }
+/* شريط التبويبات القديم استُبدل بشريط تطبيق Odoo — انظر <OdooNavbar/> */
 
 /* ── بطاقات المؤشّرات ── */
 #root .bv-stat {
@@ -265,29 +252,6 @@ function StatCard({ icon, label, value, unit, color = C.blue, delta, deltaUnit =
   );
 }
 
-function Tabs({ tabs, value, onChange, counts, isAr }) {
-  return (
-    <div className="bk-noprint bv-tabs" role="tablist">
-      {tabs.map((tb) => (
-        <button
-          key={tb.id}
-          type="button"
-          role="tab"
-          aria-selected={value === tb.id}
-          className={`bv-tab ${value === tb.id ? "on" : ""}`}
-          onClick={() => onChange(tb.id)}
-        >
-          <span aria-hidden="true">{tb.icon}</span>
-          {isAr ? tb.ar : tb.en}
-          {counts?.[tb.id] !== undefined && (
-            <span className="bv-tabn">{fmtInt(counts[tb.id])}</span>
-          )}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** رأس عمود قابل للفرز لجداول التجميع — يشارك نفس شكل SortTh. */
 function AggTh({ label, col, sort, setSort, numeric }) {
   return (
@@ -347,7 +311,7 @@ export default function ButcherView() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   /* ── العرض ── */
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("moves");
   const [sort, setSort] = useState({ key: "day", dir: "desc" });
   const [prodSort, setProdSort] = useState({ key: "actual", dir: "desc" });
   const [aggSort, setAggSort] = useState({ key: "carcassKg", dir: "desc" });
@@ -511,6 +475,19 @@ export default function ButcherView() {
     () => (compare ? all.filter((r) => r.day >= prevFrom && r.day <= prevTo).filter(passes) : []),
     [compare, all, prevFrom, prevTo, passes]
   );
+
+  /* أسطر «حركات المنتج» بشكل Odoo — تُبنى مرّة وتُستعمل بالشاشة وبتصدير Excel */
+  const moves = useMemo(() => buildMoves(rows, { t, isAr }), [rows, t, isAr]);
+
+  /* اسم المستخدم لشريط تطبيق Odoo — مجرّد عرض، والمصدر جلسة الدخول المخزّنة */
+  const userName = useMemo(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("currentUser") || "{}");
+      return u.name || u.fullName || u.username || "";
+    } catch {
+      return "";
+    }
+  }, []);
 
   const stats = useMemo(() => totalsOf(filtered), [filtered]);
   const prevStats = useMemo(() => totalsOf(prevRows), [prevRows]);
@@ -961,6 +938,9 @@ export default function ButcherView() {
 
     await downloadExcel([
       { name: "Summary",     aoa: summary,     widths: [30, 20, 20] },
+      // نفس أعمدة شاشة «حركات المنتج» الـ١٣ حرفياً — النسخة الورقية تطابق العرض
+      { name: "Product Moves", aoa: buildMovesAoa(moves, { isAr }),
+        widths: MOVE_COLS.map((c) => Math.round(c.w / 7)) },
       { name: "Operations",  aoa: opsAoa,      widths: [16, 12, 12, 8, 22, 12, 16, 12, 14, 14, 14, 16, 12, 20, 24, 12, 10, 8, 10, 10, 12, 9, 9, 8, 14, 16, 16, 30] },
       { name: "Lines",       aoa: lines,       widths: [16, 12, 22, 16, 14, 14, 14, 16, 18, 24, 10, 26, 12, 10, 8, 10, 10, 10, 10, 14] },
       { name: "By date",     aoa: daily,       widths: [12, 11, 12, 12, 12, 12, 10, 10, 11] },
@@ -1119,6 +1099,7 @@ export default function ButcherView() {
   const opCovered = filtered.filter((r) => r.opNo).length;
 
   const tabCounts = {
+    moves: moves.length,
     ops: rows.length,
     products: products.length,
     pathways: byPathway.length,
@@ -1126,10 +1107,25 @@ export default function ButcherView() {
   };
 
   return (
-    <div dir={dir} className="bk bk-page" style={S.page}>
+    <div dir={dir} className="bk bk-page odoo-skin" style={S.page}>
       <style>{`${KIT_CSS}
-${VIEW_CSS}`}</style>
-      <div style={S.wrap}>
+${VIEW_CSS}
+${ODOO_SKIN_CSS}`}</style>
+      {/* الصفحة كلها تملأ الشاشة — الهامش الوحيد هو حشوة الصفحة الجانبية */}
+      <div style={{ ...S.wrap, maxWidth: "none" }}>
+
+        {/* ══ شريط تطبيق Odoo — يستبدل شريط التبويبات القديم ══ */}
+        <OdooNavbar
+          brand={t({ en: "Butchery", ar: "التقطيع" })}
+          items={TABS}
+          value={tab}
+          onChange={setTab}
+          counts={tabCounts}
+          onHome={() => navigate("/butcher")}
+          isAr={isAr}
+          t={t}
+          userName={userName}
+        />
 
         {/* ══ الترويسة ══ */}
         <header className="bv-hero">
@@ -1469,9 +1465,6 @@ ${VIEW_CSS}`}</style>
           </div>
         )}
 
-        {/* ══ التبويبات ══ */}
-        <Tabs tabs={TABS} value={tab} onChange={setTab} counts={tabCounts} isAr={isAr} />
-
         {loading ? (
           <Card><Skeleton rows={9} /></Card>
         ) : !rows.length ? (
@@ -1485,6 +1478,23 @@ ${VIEW_CSS}`}</style>
           </Card>
         ) : (
           <>
+            {/* ══════════ حركات المنتج — عرض Odoo ══════════ */}
+            {show("moves") && (
+              <div className={printAll ? "bk-pagebreak" : ""}>
+                <OdooMoves
+                  moves={moves}
+                  t={t}
+                  isAr={isAr}
+                  dateFrom={from}
+                  dateTo={to}
+                  chips={chips}
+                  onExportCsv={downloadCsv}
+                  onExportXlsx={downloadExcel}
+                  printMode={printAll}
+                />
+              </div>
+            )}
+
             {/* ══════════ نظرة عامة ══════════ */}
             {show("overview") && (
               <>

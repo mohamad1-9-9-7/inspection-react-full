@@ -2,17 +2,18 @@
 //
 // صفحة الجزار — تسجيل أوزان التقطيع / Butcher cut log (EN/AR).
 //
-// الخطوات (كشك لمس، كروت كبيرة برسمات):
-//   الرقم الوظيفي + الملحمة → النوع → المنشأ →
-//   [الخروف فقط] شاشة فيها كرت "خروف كامل" منفصل فوق + 6 قطع مفردة تحته:
-//      • خروف كامل → وزن الذبيحة → شبكة القطع العشرة → حفظ
-//      • قطع مفردة → وزن وهدر لكل قطعة → حفظ (بلا وزن ذبيحة)
-//   وباقي الأنواع تدخل مسار الذبيحة الكاملة مباشرة.
-// لوحة النِّسب المرجعية (REF_PCT) بجانب الشبكة تقارن الفعلي بالمتوقّع.
+// الخطوات (كشك لمس، كروت كبيرة):
+//   الرقم الوظيفي + الملحمة → النوع → المنشأ → الفئة → وصفة التقطيع → الأوزان.
+//   كل شاشة تصفية بتظهر فقط إذا في تعريفات لبُعدها، وإلا بتتخطّى تلقائياً.
+//   شاشة الأوزان: وزن المادة الخام + خانة وزن لكل منتج نهائي ولكل صنف هدر.
+//   وضع المسارات المتعددة: كل المسارات بنفس الشاشة، وأول منتج مميِّز يوزنه
+//   الجزار بيحدّد المسار وباقي المسارات بتتعطّل.
 //
 // الشروط:
-//   • مجموع (القطع + الهدر والعضم) لا يتجاوز وزن الذبيحة → يمنع الحفظ.
-//   • وزن ذبيحة خارج المدى المعقول لنوعها → تحذير فقط (ANIMALS.min/max).
+//   • وزن المادة الخام إلزامي — كل النسب مبنية عليه.
+//   • مجموع (المنتجات + الهدر) لا يتجاوز وزن الخام → تحذير، ويمنع الحفظ
+//     لما تكون الوصفة على «تطابق تام».
+//   • وزن خام بعيد جداً عن الوزن القياسي للوصفة → تحذير فقط (warnOutOfRange).
 //
 // ملاحظات تقنية:
 //   • الحفظ يمرّ بصندوق الصادر (butcherOutbox): يذهب للسيرفر فوراً، وإن كان
@@ -62,14 +63,6 @@ const CSS = `
 #root .bt-small   { font-size: 22px !important; }
 #root .bt-done    { font-size: 64px !important; }
 #root .bt-toggle, #root .bt-toggle * { font-size: 20px !important; }
-#root .bt-ref, #root .bt-ref * { font-size: 20px !important; }
-#root .bt-ref-title { font-size: 24px !important; }
-/* عمودان على الشاشات العريضة: الكروت + لوحة النِّسب المرجعية */
-#root .bt-2col { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: start; }
-@media (min-width: 1200px) {
-  #root .bt-2col { grid-template-columns: 1fr 340px; }
-  #root .bt-aside { position: sticky; top: 12px; }
-}
 /* ═══ الموبايل: أحجام أصغر ومساحات أضيق ═══ */
 @media (max-width: 820px) {
   #root .bt, #root .bt * { font-size: 20px !important; }
@@ -83,14 +76,20 @@ const CSS = `
   #root .bt-emp, #root .bt-chip, #root .bt-sum, #root .bt-back { font-size: 18px !important; }
   #root .bt-small  { font-size: 15px !important; }
   #root .bt-done   { font-size: 48px !important; }
-  #root .bt-ref, #root .bt-ref * { font-size: 17px !important; }
-  #root .bt-ref-title { font-size: 20px !important; }
   /* شريط الخطوات: أرقام فقط بلا أسماء */
   #root .bt-step-lbl { display: none !important; }
 }
 @media (max-width: 520px) {
   #root .bt-toggle { display: none; }   /* زر اللغة يضيّق الترويسة على الجوال */
 }
+/* رصيف الحفظ اللاصق: globals.css حاطط overflow-x:hidden على html/body/#root،
+   و«hidden» بيحوّل المحور الثاني لـ auto فبيصير الصندوق حاوية تمرير — وهذا
+   بيعطّل position:sticky لكل ما بداخله. «clip» بيقصّ الزيادة الأفقية نفسها
+   بلا ما يعمل حاوية تمرير، فبيرجع اللصق يشتغل. مقيَّد بصفحة الجزار وحدها
+   عبر :has(.bt) — وإن كان المتصفّح قديماً بتسقط القاعدة ويرجع الرصيف
+   عنصراً عادياً بلا أي كسر. */
+html:has(.bt), body:has(.bt), #root:has(.bt) { overflow-x: clip; }
+
 /* حركات خفيفة */
 #root .bt-press { transition: transform .12s ease, box-shadow .12s ease, border-color .15s ease; }
 #root .bt-press:active { transform: scale(.97); }
@@ -119,10 +118,40 @@ function stampStr(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} · ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** رقم من إدخال المستخدم — يقبل الفاصلة العربية/اللاتينية. */
+/* الأرقام العربية/الفارسية والفواصل بكل أشكالها → صيغة يفهمها Number.
+   لوحة مفاتيح الكشك بتكتب ٠١٢٣ لما تكون اللغة عربية، وبلا هالتحويل كان
+   الوزن بينقرأ NaN فيصير صفراً بصمت — رقم مكتوب وما بينحسب أبداً. */
+function normalizeDigits(v) {
+  return String(v ?? "")
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/\u066C/g, "")               // فاصل الآلاف العربي — يُحذف
+    .replace(/[,\u060C\u066B]/g, ".");    // الفاصلة العشرية بكل أشكالها
+}
+
+/** رقم من إدخال المستخدم — يقبل الأرقام والفواصل العربية. */
 function num(v) {
-  const n = Number(String(v ?? "").replace(",", ".").trim());
+  const n = Number(normalizeDigits(v).trim());
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** تنظيف خانة وزن أثناء الكتابة — أرقام ونقطة عشرية واحدة فقط. */
+function cleanDecimal(v) {
+  const s = normalizeDigits(v).replace(/[^\d.]/g, "");
+  const dot = s.indexOf(".");
+  return dot < 0 ? s : s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, "");
+}
+
+/** تنظيف خانة عدد صحيح (عدد القطع). */
+const cleanInt = (v) => normalizeDigits(v).replace(/[^\d]/g, "");
+
+/** Enter بخانة وزن → الخانة اللي بعدها — إدخال أسرع بلا لمس الشاشة. */
+function focusNextWeight(e) {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const all = [...document.querySelectorAll("input[data-bt-w]")].filter((el) => !el.disabled);
+  const next = all[all.indexOf(e.currentTarget) + 1];
+  if (next) { next.focus(); next.select?.(); } else e.currentTarget.blur();
 }
 
 /* ============================ الصفحة ============================ */
@@ -158,8 +187,8 @@ export default function ButcherLog() {
 
   const [saved, setSaved] = useState(null);     // ملخّص آخر حفظ
   const [cutDate, setCutDate] = useState(todayStr());  // تاريخ التقطيع (يختاره الجزار)
-  // تاريخ إدخال البيانات — لحظة فتح الشاشة، ويُثبَّت وقت الحفظ
-  const [entryAt] = useState(() => new Date());
+  // تاريخ إدخال البيانات — لحظة بدء التسجيل، بيتحدّث لحظياً ويُثبَّت وقت الحفظ
+  const [entryAt, setEntryAt] = useState(() => new Date());
 
   useEffect(() => {
     try {
@@ -169,6 +198,14 @@ export default function ButcherLog() {
       if (lastBranch) setBranch(lastBranch);
     } catch { /* ignore */ }
   }, []);
+
+  /* ساعة حيّة لتاريخ الإدخال — جهاز الكشك بيضل مفتوح طول الدوام، وبلا
+     تحديث كان الحقل يعرض لحظة فتح الشاشة (ساعات قبل) لا لحظة التسجيل. */
+  useEffect(() => {
+    if (step !== "cuts") return undefined;
+    const id = setInterval(() => setEntryAt(new Date()), 30000);
+    return () => clearInterval(id);
+  }, [step]);
 
 
   /* بطاقة الموظف: سجل الجزارين (الإعدادات) أولاً، ثم سجل الموظفين المشترك */
@@ -417,9 +454,14 @@ export default function ButcherLog() {
   const usedKg = cutsKg + wasteKg;
   const remainingKg = carcassKg - usedKg;
   const overKg = usedKg - carcassKg;
-  // شرط قابل للإطفاء من لوحة الإعدادات، مع سماحية تقريب قابلة للتعديل
+  /* وزن المادة الخام أساس كل النسب — بلاه السجل بلا معنى (تصافي ٠٪)،
+     فما منسمح بالحفظ قبل إدخاله. */
+  const rawMissing = !(carcassKg > 0);
+  /* شرط قابل للإطفاء من لوحة الإعدادات، مع سماحية تقريب قابلة للتعديل.
+     بلا وزن خام ما منصرخ «تجاوز» — الرسالة الصحيحة «أدخل وزن الخام». */
   const isOver =
-    RULES.blockOverCarcass !== false && overKg > (Number(RULES.toleranceKg) || 0.05);
+    RULES.blockOverCarcass !== false && !rawMissing
+    && overKg > (Number(RULES.toleranceKg) || 0.05);
 
   /* النِّسب من وزن المادة الخام */
   const pctOf = useCallback(
@@ -439,6 +481,12 @@ export default function ButcherLog() {
     },
     [carcassKg, inputQty]
   );
+
+  /* تحذير ليّن: وزن الخام بعيد جداً عن الوزن القياسي بالوصفة — غالباً خطأ
+     فاصلة عشرية (٢٥٠ بدل ٢٥). تحذير فقط، ما بيمنع الحفظ. */
+  const rawFar =
+    RULES.warnOutOfRange !== false && inputQty > 0 && carcassKg > 0
+    && (carcassKg > inputQty * 3 || carcassKg < inputQty / 3);
 
   // الهدر إلزامي = لازم خانة الهدر تنعبّى إن وُجد صنف هدر في الوصفة
   const wasteMissing =
@@ -464,8 +512,8 @@ export default function ButcherLog() {
   const pathwayPending = isMultiPath && filled.length > 0 && !determined;
 
   const canSave =
-    filled.length > 0 && usedKg > 0 && !overBlocks && !wasteMissing && !balanceOff
-    && !pieceMissing && !pathwayPending;
+    filled.length > 0 && usedKg > 0 && !rawMissing && !overBlocks && !wasteMissing
+    && !balanceOff && !pieceMissing && !pathwayPending;
 
   /* ------- الانتقالات ------- */
 
@@ -527,14 +575,24 @@ export default function ButcherLog() {
     setPieceCount("");
     setValues({});
     setError("");
+    setEntryAt(new Date());   // لحظة بداية هالتسجيل، لا لحظة فتح الشاشة
     setStep("cuts");
   };
 
-  const setVal = (cutId, key, v) =>
+  const setVal = (cutId, key, v) => {
+    if (error) setError("");   // رسالة فشل قديمة ما بتضل معلّقة بعد التعديل
     setValues((prev) => ({ ...prev, [cutId]: { ...prev[cutId], [key]: v } }));
+  };
 
-  /* تفريغ كل الأوزان — لفكّ تعطيل المسارات والبدء بمسار آخر */
-  const clearWeights = () => { setValues({}); setError(""); };
+  /* تفريغ كل الأوزان — لفكّ تعطيل المسارات والبدء بمسار آخر.
+     منسأل قبل، لأن ضغطة غلط بتمحي شغل الجزار كله. */
+  const clearWeights = () => {
+    if (filled.length > 0
+      && !window.confirm(t({ en: "Clear all entered weights?", ar: "تفريغ كل الأوزان المُدخلة؟" }))
+    ) return;
+    setValues({});
+    setError("");
+  };
 
   const save = async () => {
     if (!canSave || saving) return;
@@ -621,6 +679,7 @@ export default function ButcherLog() {
 
   const newEntry = () => {
     setCutDate(todayStr());
+    setEntryAt(new Date());
     setBomKind(null);
     setBomOrigin(null);
     setBomCat(null);
@@ -640,8 +699,16 @@ export default function ButcherLog() {
     if (step === "kind") { setStep("emp"); return; }
     if (step === "origin") { setStep(hasKindStep ? "kind" : "emp"); return; }
     if (step === "category") { setStep(beforeCat); return; }
-    if (step === "bom") { setStep(hasCatStep ? "category" : beforeCat); return; }
-    if (step === "cuts") { setStep("bom"); return; }
+    if (step === "bom") { setBomSearch(""); setStep(hasCatStep ? "category" : beforeCat); return; }
+    if (step === "cuts") {
+      // اختيار وصفة بيصفّر الأوزان — فالرجوع بيضيّعها. منسأل قبل.
+      if (filled.length > 0 && !window.confirm(t({
+        en: "Go back? The weights you entered will be discarded.",
+        ar: "رجوع؟ الأوزان اللي دخّلتها رح تنمسح.",
+      }))) return;
+      setStep("bom");
+      return;
+    }
   };
 
   const KG = t({ en: "kg", ar: "كجم" });
@@ -953,11 +1020,13 @@ export default function ButcherLog() {
                 <input
                   className="bt-num"
                   value={carcass}
-                  onChange={(e) => setCarcass(e.target.value)}
+                  onChange={(e) => setCarcass(cleanDecimal(e.target.value))}
+                  onKeyDown={focusNextWeight}
+                  data-bt-w=""
                   inputMode="decimal"
                   autoFocus
                   placeholder="0.00"
-                  style={S.input}
+                  style={{ ...S.input, ...(rawMissing && filled.length > 0 ? S.inputBad : null) }}
                 />
               </label>
               {needPieces && (
@@ -968,7 +1037,9 @@ export default function ButcherLog() {
                   <input
                     className="bt-num"
                     value={pieceCount}
-                    onChange={(e) => setPieceCount(e.target.value.replace(/[^\d]/g, ""))}
+                    onChange={(e) => setPieceCount(cleanInt(e.target.value))}
+                    onKeyDown={focusNextWeight}
+                    data-bt-w=""
                     inputMode="numeric"
                     placeholder="0"
                     style={{ ...S.input, ...(pieceMissing ? { borderColor: "#e88", background: "#fff7f7" } : null) }}
@@ -1102,6 +1173,12 @@ export default function ButcherLog() {
               <span style={isOver ? S.overText : null}>
                 {t({ en: "Remaining", ar: "المتبقي" })}: <b>{remainingKg.toFixed(2)}</b> {KG}
               </span>
+              {/* تفريغ سريع — بوضع المسارات موجود ببانر المسار فوق */}
+              {filled.length > 0 && !isMultiPath && (
+                <button type="button" className="bt-small" style={S.chg} onClick={clearWeights}>
+                  ↺ {t({ en: "Clear weights", ar: "تفريغ الأوزان" })}
+                </button>
+              )}
             </div>
 
             {/* النِّسب من وزن المادة الخام */}
@@ -1129,6 +1206,21 @@ export default function ButcherLog() {
               </div>
             )}
 
+            {rawMissing && filled.length > 0 && (
+              <div className="bt-sum" style={S.warn}>
+                {t({
+                  en: "Enter the raw material weight — every percentage is based on it.",
+                  ar: "أدخل وزن المادة الخام — كل النسب مبنية عليه.",
+                })}
+              </div>
+            )}
+            {rawFar && (
+              <div className="bt-sum" style={S.warn}>
+                {isAr
+                  ? `تأكّد من الوزن: الوزن القياسي لهالوصفة ${inputQty} كجم تقريباً.`
+                  : `Check the weight: this recipe's standard input is about ${inputQty} kg.`}
+              </div>
+            )}
             {pieceMissing && (
               <div className="bt-sum" style={S.warn}>
                 {t({
@@ -1158,16 +1250,34 @@ export default function ButcherLog() {
             )}
             {error && <div className="bt-sum" style={S.error}>{error}</div>}
 
-            <button
-              className="bt-btn"
-              onClick={save}
-              disabled={!canSave || saving}
-              style={{ ...S.primary, marginTop: 14, ...(canSave && !saving ? null : S.disabled) }}
-            >
-              {saving
-                ? t({ en: "Saving…", ar: "جارٍ الحفظ…" })
-                : `${t({ en: "Save", ar: "حفظ" })} (${cutCount})`}
-            </button>
+            {/* رصيف الحفظ — ملتصق بأسفل الشاشة حتى ما يضيع تحت شبكة طويلة */}
+            <div style={S.saveDock}>
+              {(carcassKg > 0 || filled.length > 0) && (
+                <div className="bt-small" style={S.dockLine}>
+                  <span>
+                    {t({ en: "Remaining", ar: "المتبقي" })}:{" "}
+                    <b style={isOver ? S.overText : null}>{remainingKg.toFixed(2)}</b> {KG}
+                  </span>
+                  <span>
+                    {t({ en: "Net yield", ar: "التصافي" })}: <b>{netYieldPct.toFixed(1)}%</b>
+                  </span>
+                  <span>
+                    {t({ en: "Weighed", ar: "الموزون" })}: <b>{cutCount}</b>
+                    {wasteOnlyKg > 0 ? ` + ${t({ en: "waste", ar: "هدر" })}` : ""}
+                  </span>
+                </div>
+              )}
+              <button
+                className="bt-btn"
+                onClick={save}
+                disabled={!canSave || saving}
+                style={{ ...S.primary, ...(canSave && !saving ? null : S.disabled) }}
+              >
+                {saving
+                  ? t({ en: "Saving…", ar: "جارٍ الحفظ…" })
+                  : `${t({ en: "Save", ar: "حفظ" })} (${cutCount})`}
+              </button>
+            </div>
           </>
         )}
 
@@ -1369,7 +1479,9 @@ function ItemCard({
         <input
           className="bt-cutnum"
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(cleanDecimal(e.target.value))}
+          onKeyDown={focusNextWeight}
+          data-bt-w=""
           inputMode="decimal"
           placeholder="0.00"
           disabled={disabled}
@@ -1379,6 +1491,13 @@ function ItemCard({
       {Number.isFinite(pct) && pct > 0 && (
         <span className="bt-lbl" style={S.pct}>
           {pct.toFixed(1)}% {pctLabel}
+        </span>
+      )}
+      {/* الوزن المستهدف من الوصفة — كان يُحسب ويلوّن الكرت بلا ما يُعرض رقمه */}
+      {Number.isFinite(target) && target > 0 && (
+        <span className="bt-lbl" style={S.target}>
+          🎯 {targetLabel}: {target.toFixed(2)} {t({ en: "kg", ar: "كجم" })}
+          {active && ` (${num(value) >= target ? "+" : "−"}${Math.abs(num(value) - target).toFixed(2)})`}
         </span>
       )}
     </div>
@@ -1590,11 +1709,6 @@ const S = {
     padding: "16px 14px 22px", display: "flex", flexDirection: "column",
     alignItems: "center", gap: 12, cursor: "pointer", fontFamily: FONT, color: "#0f2740",
   },
-  tileOrigin: {
-    background: "#fff", border: "3px solid #dbe6f2", borderRadius: 26,
-    padding: "56px 14px", display: "flex", justifyContent: "center",
-    cursor: "pointer", fontFamily: FONT, color: "#0f2740",
-  },
   cutCard: {
     position: "relative",
     background: "#fff", border: "3px solid #dbe6f2", borderRadius: 26,
@@ -1671,47 +1785,7 @@ const S = {
     border: "1px solid #dbe6f2", borderRadius: 999, padding: "2px 12px",
   },
 
-  /* ── الذبيحة الكاملة: كرت عريض منفصل ── */
   sectionLbl: { fontWeight: 900, color: "#6b8299", margin: "4px 0 10px" },
-  hero: {
-    width: "100%", background: "linear-gradient(135deg,#fff,#f3f8ff)",
-    border: "3px solid #1f6fd0", borderRadius: 28, padding: "18px 20px",
-    display: "flex", alignItems: "center", gap: 22, textAlign: "start", flexWrap: "wrap",
-    cursor: "pointer", fontFamily: FONT, color: "#0f2740",
-    boxShadow: "0 10px 26px rgba(31,111,208,.14)",
-  },
-  heroArt: {
-    width: "min(190px, 42vw)", minWidth: 120, aspectRatio: "1 / 1",
-    background: "#f5f9fd", borderRadius: 22, padding: 8, boxSizing: "border-box",
-  },
-  heroBody: { display: "flex", flexDirection: "column", gap: 8, flex: 1 },
-  heroTitle: { fontWeight: 900 },
-  heroSub: { fontWeight: 700, color: "#6b8299" },
-  heroChips: { display: "flex", gap: 8, flexWrap: "wrap" },
-  heroGo: { fontWeight: 900, color: "#1f6fd0" },
-
-  divider: {
-    display: "flex", alignItems: "center", justifyContent: "center",
-    margin: "22px 0 16px", borderTop: "2px dashed #cfe0f0", position: "relative",
-  },
-  dividerText: {
-    background: "#eef4fb", color: "#6b8299", fontWeight: 900,
-    padding: "0 16px", transform: "translateY(-50%)",
-  },
-
-  /* ── لوحة النِّسب المرجعية ── */
-  ref: {
-    background: "#fff", border: "1px solid #dbe6f2", borderRadius: 20, padding: 16,
-  },
-  refTitle: { fontWeight: 900, color: "#14507f", marginBottom: 6 },
-  refNote: { fontWeight: 700, color: "#8aa3b8", marginBottom: 10, lineHeight: 1.5 },
-  refRow: {
-    display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between",
-    padding: "9px 0", borderTop: "1px solid #f0f5fa", fontWeight: 800,
-  },
-  refName: { flex: 1 },
-  refTarget: { color: "#6b8299" },
-  refVal: { borderRadius: 999, padding: "2px 10px", fontWeight: 900 },
 
   card: {
     background: "#fff", border: "1px solid #dbe6f2", borderRadius: 22,
@@ -1731,7 +1805,17 @@ const S = {
     border: "none", background: "#1f6fd0", color: "#fff", borderRadius: 16,
     padding: "18px 14px", fontWeight: 900, fontFamily: FONT, cursor: "pointer", width: "100%",
   },
-  primaryWarn: { background: "#d97706" },
+  /* رصيف الحفظ الملتصق بأسفل الشاشة — زر الحفظ دائماً بمتناول اليد */
+  saveDock: {
+    position: "sticky", bottom: 0, zIndex: 6, marginTop: 14, padding: "10px 0 8px",
+    background: "linear-gradient(180deg, rgba(238,244,251,0) 0%, #eef4fb 34%, #eef4fb 100%)",
+    display: "flex", flexDirection: "column", gap: 8,
+  },
+  dockLine: {
+    display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center",
+    fontWeight: 800, color: "#3c5a75",
+  },
+  inputBad: { borderColor: "#e88", background: "#fff7f7" },
   disabled: { background: "#a9c3dd", cursor: "not-allowed" },
   back: {
     marginTop: 16, width: "100%", border: "1px solid #cfe0f0", background: "#fff",

@@ -323,23 +323,8 @@ export default function MrpBom() {
       if (x) x.active = v;
     }, null);
 
-  /** حذف تعريف — وبيفكّ ارتباطه عن أي قائمة كانت مربوطة فيه. */
-  const removeLookup = async (spec, row) => {
-    const label = nameOf(row, isAr) || row.id;
-    const used = (cfg.boms || []).filter((b) => (b[spec.field] || "") === row.id).length;
-    if (!window.confirm(t({
-      en: `Delete ${spec.en.toLowerCase()} "${label}"?${used
-        ? `
-${used} BOM(s) will be left with no ${spec.en.toLowerCase()}.` : ""}`,
-      ar: `حذف ${spec.ar} «${label}»؟${used
-        ? `
-${used} قائمة رح تضل بلا ${spec.ar}.` : ""}`,
-    }))) return;
-    await commit((next) => {
-      next[spec.key] = (next[spec.key] || []).filter((x) => x.id !== row.id);
-      (next.boms || []).forEach((b) => { if (b[spec.field] === row.id) b[spec.field] = ""; });
-    }, t({ en: `${spec.en} deleted.`, ar: `تم حذف ${spec.ar}.` }));
-  };
+  /* لا حذف للتعريفات — التعطيل هو البديل: القوائم المربوطة فيه بتضل سليمة
+     وسجلات التقطيع القديمة بتحافظ على اسم النوع/المنشأ/الفئة تبعها. */
 
   const patch = (p) => setDraft((d) => ({ ...d, dirty: true, bom: { ...d.bom, ...p } }));
   const patchList = (list, id, p) =>
@@ -619,17 +604,9 @@ ${used} قائمة رح تضل بلا ${spec.ar}.` : ""}`,
     if (ok) setDraft({ mode: "edit", bom: copy, dirty: false });
   };
 
-  const removeBom = async (b) => {
-    if (!window.confirm(t({
-      en: `Delete ${b.ref}? This is saved immediately.`,
-      ar: `حذف ${b.ref}؟ الحذف بينحفظ فوراً.`,
-    }))) return;
-    const ok = await commit(
-      (n) => { n.boms = n.boms.filter((x) => x.id !== b.id); },
-      t({ en: `${b.ref} deleted.`, ar: `تم حذف ${b.ref}.` })
-    );
-    if (ok && draft?.bom?.id === b.id) setDraft(null);
-  };
+  /* ما في حذف لقائمة تقطيع — سجلات التقطيع القديمة بتشير عليها بالكود والإصدار،
+     والحذف بيخلّيها يتيمة. التعطيل (مفتاح «قائمة مفعّلة») بيخفّيها من الكشك
+     وبيبقّي التاريخ سليم. */
 
   /* ── جدول القوائم ── */
   const rows = useMemo(() => {
@@ -811,17 +788,11 @@ ${used} قائمة رح تضل بلا ${spec.ar}.` : ""}`,
                             {canEdit ? `✎ ${t({ en: "Open", ar: "فتح" })}` : t({ en: "View", ar: "عرض" })}
                           </button>
                           {canEdit && (
-                            <>
-                              <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
-                                disabled={busy} onClick={() => duplicateBom(b)}
-                                title={t({ en: "Duplicate", ar: "نسخ" })}>
-                                ⧉
-                              </button>
-                              <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger, ...(busy ? S.btnOff : null) }}
-                                disabled={busy} onClick={() => removeBom(b)}>
-                                🗑
-                              </button>
-                            </>
+                            <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
+                              disabled={busy} onClick={() => duplicateBom(b)}
+                              title={t({ en: "Duplicate", ar: "نسخ" })}>
+                              ⧉
+                            </button>
                           )}
                         </div>
                       </td>
@@ -838,7 +809,6 @@ ${used} قائمة رح تضل بلا ${spec.ar}.` : ""}`,
           notify={flash}
           onBack={closeBuilder}
           onSave={saveBom}
-          onDelete={() => removeBom(draft.bom)}
           onBump={bumpVersion}
           onHistory={() => setHistoryFor(draft.bom.id)}
           onAddLookup={addLookup}
@@ -857,7 +827,6 @@ ${used} قائمة رح تضل بلا ${spec.ar}.` : ""}`,
           onAdd={addLookup}
           onRename={renameLookup}
           onToggle={toggleLookup}
-          onRemove={removeLookup}
         />
       )}
 
@@ -917,7 +886,7 @@ ${used} قائمة رح تضل بلا ${spec.ar}.` : ""}`,
 
 function CutBuilder({
   t, isAr, cfg, draft, canEdit, busy, notify,
-  onBack, onSave, onDelete, onBump, onHistory, onAddLookup,
+  onBack, onSave, onBump, onHistory, onAddLookup,
   patch, patchList, addTo, dropFrom, pathwayOps,
 }) {
   const bom = draft.bom;
@@ -999,14 +968,19 @@ function CutBuilder({
             )}
             {canEdit && !isNew && (
               <>
+                {/* بدل زر الحذف: مفتاح «قائمة مفعّلة» موجود بجسم المحرّر تحت */}
                 <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
                   disabled={busy} onClick={onBump}>
                   ＋ {t({ en: "New version", ar: "إصدار جديد" })}
                 </button>
-                <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger, ...(busy ? S.btnOff : null) }}
-                  disabled={busy} onClick={onDelete}>
-                  🗑
-                </button>
+                <Badge
+                  color={bom.active !== false ? "#047857" : "#b45309"}
+                  bg={bom.active !== false ? "#ecfdf5" : "#fffbeb"}
+                >
+                  {bom.active !== false
+                    ? `✓ ${t({ en: "Active", ar: "مفعّلة" })}`
+                    : `⏸ ${t({ en: "Inactive", ar: "معطّلة" })}`}
+                </Badge>
               </>
             )}
             {canEdit && (
@@ -1586,7 +1560,7 @@ function LookupField({ t, isAr, label, spec, options, value, onChange, onAdd, ca
 }
 
 /** بطاقة إدارة التعريفات — إضافة · إعادة تسمية · تفعيل · حذف. */
-function DefinitionsCard({ t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle, onRemove }) {
+function DefinitionsCard({ t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle }) {
   const [open, setOpen] = useState(false);
   const total = LOOKUP_LIST.reduce((s, spec) => s + (cfg[spec.key] || []).length, 0);
 
@@ -1610,7 +1584,7 @@ function DefinitionsCard({ t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggl
             <LookupBox
               key={spec.key}
               spec={spec} t={t} isAr={isAr} cfg={cfg} canEdit={canEdit} busy={busy}
-              onAdd={onAdd} onRename={onRename} onToggle={onToggle} onRemove={onRemove}
+              onAdd={onAdd} onRename={onRename} onToggle={onToggle}
             />
           ))}
         </div>
@@ -1620,7 +1594,7 @@ function DefinitionsCard({ t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggl
 }
 
 /** صندوق تعريف واحد داخل بطاقة التعريفات. */
-function LookupBox({ spec, t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle, onRemove }) {
+function LookupBox({ spec, t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggle }) {
   const list = cfg[spec.key] || [];
   const countFor = (id) => (cfg.boms || []).filter((b) => (b[spec.field] || "") === id).length;
 
@@ -1676,16 +1650,16 @@ function LookupBox({ spec, t, isAr, cfg, canEdit, busy, onAdd, onRename, onToggl
                 </span>
                 {canEdit ? (
                   <>
+                    {/* تفعيل/تعطيل بدل الحذف — المعطّل بيختفي من قوائم الاختيار
+                        بس بيضل مربوط بالقوائم والسجلات القديمة */}
                     <Switch checked={!off} disabled={busy} onChange={(v) => onToggle(spec, row, v)} />
+                    <span style={{ ...S.hint, minWidth: 46 }}>
+                      {off ? t({ en: "off", ar: "معطّل" }) : t({ en: "on", ar: "مفعّل" })}
+                    </span>
                     <button type="button" style={{ ...S.btn, ...S.btnSm, ...(busy ? S.btnOff : null) }}
                       disabled={busy} onClick={() => onRename(spec, row)}
                       title={t({ en: "Rename", ar: "إعادة تسمية" })}>
                       ✎
-                    </button>
-                    <button type="button" style={{ ...S.btn, ...S.btnSm, ...S.btnDanger, ...(busy ? S.btnOff : null) }}
-                      disabled={busy} onClick={() => onRemove(spec, row)}
-                      title={t({ en: "Delete", ar: "حذف" })}>
-                      🗑
                     </button>
                   </>
                 ) : (
