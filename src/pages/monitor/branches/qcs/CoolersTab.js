@@ -2,6 +2,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ProductPicker from "../_shared/ProductPicker";
 import { countValidMatches, MIN_MATCHES } from "../_shared/TemperatureMatchingReport";
+import {
+  getLatestReport,
+  getReportRowByDate,
+  payloadOf,
+  reportId,
+} from "../_shared/reportApi";
 
 /* ===== Draft (localStorage) ===== */
 const DRAFT_KEY = "qcs_coolers_draft_v1";
@@ -338,19 +344,18 @@ function tempInputStyleLoading(temp) {
 /* =========================
    Server helpers (COOLERS only)
 ========================= */
-async function listReportsByType(type) {
-  const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(type)}`,
-    { method: "GET", cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" }
-  );
-  if (!res.ok) return [];
-  const json = await res.json().catch(() => null);
-  return Array.isArray(json) ? json : json?.data || [];
-}
+/* Targeted read — this used to download every coolers report ever saved just
+   to find out whether one date already had a record. */
 async function fetchExistingByDate(dateStr) {
-  const rows = await listReportsByType(COOLERS_TYPE);
-  const found = rows.find(r => String(r?.payload?.reportDate || "") === String(dateStr));
-  return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
+  const row = await getReportRowByDate(COOLERS_TYPE, dateStr);
+  return row ? { id: reportId(row), payload: payloadOf(row) } : null;
+}
+
+/* Blanks every reading in a temperature block while keeping its shape. */
+function clearTemps(block) {
+  const temps = {};
+  TIMES.forEach((t) => { temps[t] = ""; });
+  return { ...(block || {}), temps, remarks: "" };
 }
 
 /* ================================================================== */
@@ -521,6 +526,61 @@ export default function CoolersTab(props) {
   };
 
   const [saving, setSaving] = useState(false);
+  const [loadingLast, setLoadingLast] = useState(false);
+
+  /* Restores the SHAPE of the last record — which products were verified, in
+     which storage area, plus the header and the verifying manager — and clears
+     the date and every temperature reading. Readings are measurements of
+     today's cold chain and must never be carried over from another day. */
+  async function loadFromLast() {
+    try {
+      setLoadingLast(true);
+      const hit = await getLatestReport(COOLERS_TYPE);
+      if (!hit) {
+        alert("ℹ️ No previous Coolers report found.");
+        return;
+      }
+      const p = hit.payload || {};
+
+      const prevCoolers = Array.isArray(p.coolers) ? p.coolers : [];
+      updateCoolers(
+        makeDefaultCoolers().map((c, i) => (prevCoolers[i] ? clearTemps(prevCoolers[i]) : c))
+      );
+      setLoadingArea(p.loadingArea ? clearTemps(p.loadingArea) : makeDefaultLoadingArea());
+
+      const prevChecks = Array.isArray(p.productVerifications) ? p.productVerifications : [];
+      setProductVerifications(
+        prevChecks.length
+          ? prevChecks.map((r) =>
+              makeProductVerificationRow({
+                time: r?.time,
+                storageKey: r?.storageKey,
+                itemCode: r?.itemCode,
+                productName: r?.productName,
+                country: r?.country,
+                productTemp: "", // measured today, never copied
+                remarks: "",
+              })
+            )
+          : makeDefaultProductVerifications()
+      );
+
+      if (p.headers?.tmpHeader && !useExternalHeader) {
+        setLocalHeader({ ...defaultTMPHeader, ...p.headers.tmpHeader });
+      }
+      if (p.verifiedByManager) setVerifiedByManager(p.verifiedByManager);
+
+      setDate("");
+      alert(
+        `✅ Loaded the layout from ${hit.reportDate}. Temperatures were left blank — pick today's date and record the readings.`
+      );
+    } catch (e) {
+      alert(`❌ Could not load the last report: ${e.message || e}`);
+    } finally {
+      setLoadingLast(false);
+    }
+  }
+
   async function saveCoolersToServer() {
     const matchCount = countValidMatches(productVerifications);
     if (matchCount < MIN_MATCHES) {
@@ -529,6 +589,10 @@ export default function CoolersTab(props) {
     }
     try {
       setSaving(true);
+      if (!date) {
+        alert("⚠️ Pick a report date first.");
+        return;
+      }
       const existing = await fetchExistingByDate(date);
 
       const payload = {
@@ -1017,6 +1081,22 @@ export default function CoolersTab(props) {
       </div>
 
       <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
+        <button
+          onClick={loadFromLast}
+          disabled={loadingLast}
+          title="Bring back the products and layout from the last report — temperatures stay blank"
+          style={{
+            padding: "11px 18px",
+            borderRadius: 10,
+            border: "1px solid #cbd5e1",
+            background: "#fff",
+            fontWeight: 800,
+            cursor: loadingLast ? "wait" : "pointer",
+          }}
+        >
+          {loadingLast ? "⏳ Loading…" : "📋 Load from last report"}
+        </button>
+
         <button onClick={saveCoolersToServer} disabled={saving} style={btnSave}>
           {saving ? "⏳ Saving..." : "💾 Save Coolers"}
         </button>

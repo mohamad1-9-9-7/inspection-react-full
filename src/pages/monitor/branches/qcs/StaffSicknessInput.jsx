@@ -1,6 +1,11 @@
 // src/pages/monitor/branches/qcs/StaffSicknessInput.jsx
 import React, { useState } from "react";
 import API_BASE from "../../../../config/api";
+import {
+  useStaffDirectory,
+  normalizeEmpNo,
+  normalizeName,
+} from "../_shared/staffRegistry";
 
 /* ===== API base ===== */
 
@@ -105,8 +110,8 @@ const delRowBtn = {
 export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {}) {
   const [headerDate, setHeaderDate] = useState("");
   const [rows, setRows] = useState([
-    { staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
-    { staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
+    { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
+    { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
   ]);
   const [remarks, setRemarks] = useState("");
   const [checkedBy, setCheckedBy] = useState({ name: "", date: "" });
@@ -115,11 +120,29 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
+  /* Staff directory (Settings → Staff Directory) — filling in either the
+     employee number or the name looks the other one up, so the pair always
+     matches the register. */
+  const { staff, byNo, byName } = useStaffDirectory();
+
   function setRow(idx, field, v) {
-    setRows((p) => p.map((r, i) => (i === idx ? { ...r, [field]: v } : r)));
+    setRows((p) =>
+      p.map((r, i) => {
+        if (i !== idx) return r;
+        if (field === "employeeNo") {
+          const match = byNo.get(normalizeEmpNo(v));
+          return { ...r, employeeNo: v, ...(match ? { staffName: match.name } : {}) };
+        }
+        if (field === "staffName") {
+          const match = byName.get(normalizeName(v));
+          return { ...r, staffName: v, ...(match ? { employeeNo: match.empNo } : {}) };
+        }
+        return { ...r, [field]: v };
+      })
+    );
   }
   function addRow() {
-    setRows((p) => [...p, { staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" }]);
+    setRows((p) => [...p, { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" }]);
   }
   function delRow(idx) {
     setRows((p) => (p.length <= 1 ? p : p.filter((_, i) => i !== idx)));
@@ -128,8 +151,8 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
   function resetForm() {
     setHeaderDate("");
     setRows([
-      { staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
-      { staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
+      { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
+      { employeeNo: "", staffName: "", details: "", action: "", dateFrom: "", dateReturned: "", comments: "" },
     ]);
     setRemarks("");
     setCheckedBy({ name: "", date: "" });
@@ -154,6 +177,7 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
       date: headerDate,
       rows: rows.map((r, i) => ({
         sNo: i + 1,
+        employeeNo:   String(r.employeeNo || "").trim(),
         staffName:    r.staffName.trim(),
         details:      r.details.trim(),
         action:       r.action.trim(),
@@ -250,11 +274,20 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
         <input style={input} type="date" value={headerDate} onChange={(e) => setHeaderDate(e.target.value)} />
       </div>
 
+      {/* Directory-backed suggestions for both employee columns */}
+      <datalist id="staff-empno-options">
+        {staff.map((s) => <option key={s.empNo} value={s.empNo}>{s.name}</option>)}
+      </datalist>
+      <datalist id="staff-empname-options">
+        {staff.map((s) => <option key={s.empNo} value={s.name}>{s.empNo}</option>)}
+      </datalist>
+
       {/* ===== Table ===== */}
       <div style={{ overflowX: "auto" }}>
         <table style={table}>
           <colgroup>
             <col style={{ width: 60 }} />
+            <col style={{ width: 110 }} />
             <col style={{ width: "16%" }} />
             <col style={{ width: "20%" }} />
             <col style={{ width: "16%" }} />
@@ -266,6 +299,7 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
           <thead>
             <tr>
               <th style={th}>S.No</th>
+              <th style={th}>Employee No</th>
               <th style={th}>Staff Name</th>
               <th style={th}>Details of Sickness</th>
               <th style={th}>Action Taken</th>
@@ -280,7 +314,22 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
               <tr key={i}>
                 <td style={{ ...td, fontWeight: 800, textAlign: "center", color: "#475569" }}>{i + 1}</td>
                 <td style={td}>
-                  <input style={input} placeholder="Name" value={r.staffName} onChange={(e) => setRow(i, "staffName", e.target.value)} />
+                  <input
+                    style={input}
+                    list="staff-empno-options"
+                    placeholder="No."
+                    value={r.employeeNo || ""}
+                    onChange={(e) => setRow(i, "employeeNo", e.target.value)}
+                  />
+                </td>
+                <td style={td}>
+                  <input
+                    style={input}
+                    list="staff-empname-options"
+                    placeholder="Name"
+                    value={r.staffName}
+                    onChange={(e) => setRow(i, "staffName", e.target.value)}
+                  />
                 </td>
                 <td style={td}>
                   <textarea style={{ ...input, minHeight: 60, resize: "vertical" }} placeholder="Details…" value={r.details} onChange={(e) => setRow(i, "details", e.target.value)} />

@@ -9,6 +9,7 @@ import {
 
 const COLS = [
   { key: "sNo",          label: "S.No",          width: 6  },
+  { key: "employeeNo",   label: "Employee No",   width: 12 },
   { key: "staffName",    label: "Staff Name",    width: 24, align: "left" },
   { key: "details",      label: "Details of Sickness", width: 34, align: "left" },
   { key: "action",       label: "Action Taken",  width: 28, align: "left" },

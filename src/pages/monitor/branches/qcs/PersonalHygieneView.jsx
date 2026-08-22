@@ -92,6 +92,7 @@ export default function PersonalHygieneVIEW() {
   const ftr = p.footer || p.headers?.phFooter || DEFAULT_FOOTER;
   const rowsRaw = Array.isArray(p.personalHygiene) ? p.personalHygiene : (Array.isArray(p.rows) ? p.rows : []);
   const phRows  = rowsRaw.map(x => ({
+    employeeNo: x?.employeeNo ?? x?.empNo ?? "",
     employeeName: x?.employeeName ?? x?.employName ?? "",
     nails: x?.nails ?? "",
     hair: x?.hair ?? "",
@@ -310,6 +311,7 @@ export default function PersonalHygieneVIEW() {
                 <tr style={{ background:"#d9d9d9", color:"#000" }}>
                   {[
                     "S. No",
+                    "Employee No",
                     "Employee Name",
                     "Nails",
                     "Hair",
@@ -325,6 +327,7 @@ export default function PersonalHygieneVIEW() {
                 {phRows.length ? phRows.map((emp, i) => (
                   <tr key={i}>
                     <td style={{ ...tdStyle, textAlign:"center" }}>{i+1}</td>
+                    <td style={{ ...tdStyle, textAlign:"center" }}>{emp.employeeNo}</td>
                     <td style={tdStyle}>{emp.employeeName}</td>
                     <td style={{ ...tdStyle, textAlign:"center" }}>{emp.nails}</td>
                     <td style={{ ...tdStyle, textAlign:"center" }}>{emp.hair}</td>
@@ -335,33 +338,15 @@ export default function PersonalHygieneVIEW() {
                     <td style={{ ...tdStyle, whiteSpace:"pre-wrap", wordBreak:"break-word" }}>{emp.remarks}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={9} style={{ ...tdStyle, textAlign:"center", color:"#6b7280" }}>No rows.</td></tr>
+                  <tr><td colSpan={10} style={{ ...tdStyle, textAlign:"center", color:"#6b7280" }}>No rows.</td></tr>
                 )}
               </tbody>
             </table>
 
-            {/* التذييل + التوقيعات الرقمية */}
+            {/* التذييل — أسماء فقط (أُلغي التوقيع الرقمي) */}
             <div style={{ marginTop:"1.5rem", display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, padding:"0 1rem" }}>
-              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                <SignatureName label="Checked By" name={ftr?.checkedBy} align="start" />
-                {ftr?.checkedBySignature && (
-                  <img
-                    src={ftr.checkedBySignature}
-                    alt="Checked By signature"
-                    style={{ maxWidth:260, maxHeight:80, objectFit:"contain", border:"1px solid #e5e7eb", borderRadius:6, background:"#fff", padding:4 }}
-                  />
-                )}
-              </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"flex-end" }}>
-                <SignatureName label="Verified By" name={ftr?.verifiedBy} align="end" />
-                {ftr?.verifiedBySignature && (
-                  <img
-                    src={ftr.verifiedBySignature}
-                    alt="Verified By signature"
-                    style={{ maxWidth:260, maxHeight:80, objectFit:"contain", border:"1px solid #e5e7eb", borderRadius:6, background:"#fff", padding:4 }}
-                  />
-                )}
-              </div>
+              <SignatureName label="Checked By" name={ftr?.checkedBy} align="start" />
+              <SignatureName label="Verified By" name={ftr?.verifiedBy} align="end" />
             </div>
           </div>
         )}

@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/qcs/RMInspectionReportIngredients.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { getReportRowByDate, reportId } from "../_shared/reportApi";
 
 /* ====== API & هوية التقرير ====== */
 
@@ -214,51 +215,46 @@ export default function RMInspectionReportIngredients() {
     },
   });
 
-  /* ====== ✅ التحقق من وجود تقرير بنفس التاريخ ====== */
-  const [dateBusy, setDateBusy] = useState(false);
+  /* ====== Existing report for the chosen date ======
+     This used to block saving outright ("Not Allowed"), which forced anyone
+     who missed one item to delete the whole day from the View page. Now the
+     existing record is offered for editing instead. */
+  const [existingId, setExistingId] = useState("");
+  const [editingId, setEditingId] = useState("");
   const [dateCheckLoading, setDateCheckLoading] = useState(false);
   const [dateMsg, setDateMsg] = useState("");
+
+  const existingRowRef = useRef(null);
 
   async function checkDateHasReport(dateStr) {
     const d = String(dateStr || "").trim();
     if (!d) {
-      setDateBusy(false);
+      setExistingId("");
+      existingRowRef.current = null;
       setDateMsg("");
       return;
     }
 
     setDateCheckLoading(true);
-    setDateMsg("Checking date availability...");
+    setDateMsg("Checking this date…");
 
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error("Failed to fetch");
-
-      const json = await res.json().catch(() => null);
-      const arr = Array.isArray(json)
-        ? json
-        : json?.data || json?.items || json?.rows || [];
-
-      const exists = (Array.isArray(arr) ? arr : []).some((r) => {
-        const p = r?.payload || {};
-        return (
-          String(p?.reportDate || "").slice(0, 10) === d &&
-          String(p?.branch || "").trim() === BRANCH_ID &&
-          String(p?.file || "").trim() === FILE_ID
-        );
-      });
-
-      setDateBusy(exists);
+      // Targeted read — the old version downloaded every report of this type
+      // on each keystroke in the date field.
+      const row = await getReportRowByDate(TYPE, d);
+      existingRowRef.current = row;
+      const id = row ? reportId(row) : "";
+      setExistingId(id);
       setDateMsg(
-        exists ? "A report already exists for this day." : "Date is available."
+        id
+          ? "A report already exists for this day — load it to edit, or save to replace it."
+          : "This date is free."
       );
     } catch (e) {
       console.error(e);
-      // إذا فشل التحقق: لا نمنع الحفظ لكن ننبه
-      setDateBusy(false);
-      setDateMsg("Unable to verify date right now. You can try saving.");
+      setExistingId("");
+      existingRowRef.current = null;
+      setDateMsg("Could not check this date right now. You can still save.");
     } finally {
       setDateCheckLoading(false);
     }
@@ -272,58 +268,81 @@ export default function RMInspectionReportIngredients() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportDate]);
 
+  /* Pull the existing day's record into the form so it can be corrected. */
+  function loadExistingForEdit() {
+    const row = existingRowRef.current;
+    const p = row?.payload || {};
+    const entries = Array.isArray(p.entries) ? p.entries : [];
+    const next = entries.map((e) => ({ ...emptyRow(), ...e }));
+    while (next.length < 8) next.push(emptyRow());
+    setRows(next);
+    setCheckedBy(String(p.checkedBy || ""));
+    setVerifiedBy(String(p.verifiedBy || ""));
+    setCorrectiveAction(String(p.correctiveAction || ""));
+    setEditingId(existingId);
+    setModal({ open: true, text: "📝 Loaded this day's report for editing.", kind: "info" });
+  }
+
   /* ====== ✅ تصفير البيانات بعد حفظ ناجح ====== */
   function resetForm() {
     setRows(Array.from({ length: 8 }, () => emptyRow()));
     setCheckedBy("");
     setVerifiedBy("");
     setCorrectiveAction("");
-    // نترك reportDate كما هو (بس التقرير صار محفوظ، وسيصير Busy تلقائياً بعد التحقق)
+    setEditingId("");
   }
 
   const handleSave = async () => {
     if (!reportDate) {
-      setModal({ open: true, text: "⚠️ الرجاء اختيار تاريخ التقرير.", kind: "error" });
+      setModal({ open: true, text: "⚠️ Pick a report date first.", kind: "error" });
       return;
     }
 
-    if (dateBusy) {
-      setModal({
-        open: true,
-        text: "A report already exists for this day.",
-        kind: "error",
-      });
-      return;
+    // Saving over a day that already has a record and was not loaded first
+    // would silently discard the stored rows — make that an explicit choice.
+    const targetId = editingId || existingId;
+    if (existingId && !editingId) {
+      const ok = window.confirm(
+        `A report already exists for ${reportDate}.\n\n` +
+          "OK  = replace it with what is on screen now\n" +
+          "Cancel = go back (use “Load for editing” to keep the saved rows)"
+      );
+      if (!ok) return;
     }
 
-    setModal({ open: true, text: "⏳ يتم الحفظ الآن…", kind: "info" });
+    setModal({ open: true, text: "⏳ Saving…", kind: "info" });
     setSaving(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/reports`, {
-        method: "POST",
+      const url = targetId
+        ? `${API_BASE}/api/reports/${encodeURIComponent(targetId)}`
+        : `${API_BASE}/api/reports`;
+
+      const res = await fetch(url, {
+        method: targetId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: TYPE, payload: buildPayload() }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      setModal({ open: true, text: "✅ تم الحفظ على السيرفر بنجاح.", kind: "success" });
+      setModal({
+        open: true,
+        text: targetId ? "✅ Report updated." : "✅ Report saved.",
+        kind: "success",
+      });
 
-      // ✅ بعد الحفظ الصحيح: صفّر البيانات
-      resetForm();
-
-      // ✅ وحدث حالة التاريخ (صار الآن موجود تقرير)
+      if (!targetId) resetForm();
       checkDateHasReport(reportDate);
     } catch (e) {
       console.error(e);
-      setModal({ open: true, text: "❌ فشل الحفظ على السيرفر.", kind: "error" });
+      setModal({ open: true, text: `❌ Save failed: ${e?.message || e}`, kind: "error" });
     } finally {
       setSaving(false);
     }
   };
 
-  const saveDisabled = saving || dateCheckLoading || dateBusy;
+  const saveDisabled = saving || dateCheckLoading;
 
   return (
     <div style={page}>
@@ -456,16 +475,28 @@ export default function RMInspectionReportIngredients() {
               />
             </div>
 
-            {/* ✅ رسالة التحقق */}
+            {/* ✅ حالة التاريخ */}
             {dateMsg ? (
               <div
                 style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
                   fontSize: 12,
                   fontWeight: 800,
-                  color: dateBusy ? COLORS.err : dateCheckLoading ? COLORS.warn : COLORS.ok,
+                  color: dateCheckLoading ? COLORS.warn : existingId ? COLORS.warn : COLORS.ok,
                 }}
               >
-                {dateMsg}
+                <span>{dateMsg}</span>
+                {existingId && !editingId ? (
+                  <button onClick={loadExistingForEdit} style={{ ...btnGhost, padding: "4px 10px", fontSize: 12 }}>
+                    📝 Load for editing
+                  </button>
+                ) : null}
+                {editingId ? (
+                  <span style={{ color: COLORS.primary }}>• editing the saved report</span>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -480,7 +511,7 @@ export default function RMInspectionReportIngredients() {
               style={btn(saveDisabled ? "#94a3b8" : COLORS.primary)}
               title="Save to server"
             >
-              {saving ? "Saving…" : dateBusy ? "Not Allowed" : "💾 Save"}
+              {saving ? "Saving…" : editingId || existingId ? "💾 Update" : "💾 Save"}
             </button>
           </div>
         </div>

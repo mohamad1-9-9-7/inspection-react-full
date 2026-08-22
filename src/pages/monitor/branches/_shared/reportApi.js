@@ -150,6 +150,39 @@ export async function getReportPayloadByDate(type, date, params = {}) {
   return row ? payloadOf(row) : null;
 }
 
+/* Most recent record of a type — the data behind the forms' "load from last
+   report" button. Two cheap calls (a metadata-only listing to find the newest
+   id, then that one record) instead of downloading every payload of the type
+   just to read the last one. */
+export async function getLatestReport(type, params = {}) {
+  const rows = await listReportDates(type, params);
+  if (!rows.length) return null;
+
+  const withDate = rows
+    .map((r) => {
+      const d = String(reportDateOf(r) || "").slice(0, 10);
+      const t = Date.parse(d);
+      return { row: r, date: d, t: Number.isFinite(t) ? t : -Infinity };
+    })
+    .filter((x) => x.date);
+  if (!withDate.length) return null;
+
+  // Newest business date wins; same-day records fall back to the highest id,
+  // which is the most recently inserted one.
+  withDate.sort((a, b) => b.t - a.t || Number(reportId(b.row)) - Number(reportId(a.row)));
+  const best = withDate[0];
+
+  const id = reportId(best.row);
+  const full = id ? await getReportById(id, params) : null;
+  const row = full || (await getReportRowByDate(type, best.date, params));
+  return row ? { row, payload: payloadOf(row), reportDate: best.date } : null;
+}
+
+export async function getLatestPayload(type, params = {}) {
+  const hit = await getLatestReport(type, params);
+  return hit ? hit.payload : null;
+}
+
 export async function saveReport(type, payload, options = {}) {
   const res = await fetch(REPORTS_URL, {
     method: options.method || "PUT",

@@ -19,6 +19,7 @@ import {
   FiSearch,
   FiShield,
   FiSliders,
+  FiUserCheck,
   FiUsers,
 } from "react-icons/fi";
 import logo from "../../assets/almawashi-logo.jpg";
@@ -26,6 +27,7 @@ import logo from "../../assets/almawashi-logo.jpg";
 import BackupTab from "./BackupTab";
 import ExcelBackupTab from "./ExcelBackupTab";
 import ProductsTab from "./ProductsTab";
+import StaffDirectoryTab from "./StaffDirectoryTab";
 import NotificationsTab from "./NotificationsTab";
 import DataInventory from "./tools/DataInventory";
 import ServerHealth from "./tools/ServerHealth";
@@ -132,6 +134,16 @@ const SECTIONS = [
         dk: "tProductsD",
         grad: "linear-gradient(135deg,#14b8a6,#0d9488)",
         glow: "rgba(20,184,166,.30)",
+      },
+      {
+        id: "staff-directory",
+        Icon: FiUserCheck,
+        title: "Staff Directory",
+        desc: "Employee numbers & names for QCS forms",
+        tk: "tStaffDirectory",
+        dk: "tStaffDirectoryD",
+        grad: "linear-gradient(135deg,#ec4899,#be185d)",
+        glow: "rgba(236,72,153,.30)",
       },
     ],
   },
@@ -260,6 +272,8 @@ function toolComponent(active) {
       return <ExcelBackupTab />;
     case "products":
       return <ProductsTab />;
+    case "staff-directory":
+      return <StaffDirectoryTab />;
     case "image-migration":
       return <ImageMigration />;
     case "complaint-numbers":

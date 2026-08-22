@@ -9,6 +9,7 @@ import {
 
 const HEAD_COLS = [
   { key: "sno",                  label: "S. No",                                     width: 7 },
+  { key: "employeeNo",           label: "Employee No",                               width: 12 },
   { key: "employeeName",         label: "Employee Name",                             width: 22 },
   { key: "nails",                label: "Nails",                                     width: 10 },
   { key: "hair",                 label: "Hair",                                      width: 10 },
@@ -28,6 +29,7 @@ export default async function build(wb, record, ctx) {
   const rowsRaw = Array.isArray(p.personalHygiene) ? p.personalHygiene
                 : (Array.isArray(p.rows) ? p.rows : []);
   const rows = rowsRaw.map((x) => ({
+    employeeNo:          x?.employeeNo ?? x?.empNo ?? "",
     employeeName:        x?.employeeName ?? x?.employName ?? "",
     nails:               x?.nails ?? "",
     hair:                x?.hair ?? "",

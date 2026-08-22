@@ -1,5 +1,11 @@
 // src/pages/monitor/branches/qcs/DailyCleanlinessTab.jsx
 import React, { useMemo, useState } from "react";
+import {
+  getLatestReport,
+  getReportRowByDate,
+  payloadOf,
+  reportId,
+} from "../_shared/reportApi";
 
 /* =========================
    API base (CRA + Vite safe)
@@ -447,25 +453,45 @@ export default function DailyCleanlinessTab({
 
   // حفظ للسيرفر (على نوع qcs-clean فقط)
   const [saving, setSaving] = useState(false);
+  const [loadingLast, setLoadingLast] = useState(false);
 
-  async function listReportsByType(type) {
-    const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
-      method: "GET",
-      cache: "no-store",
-      credentials: IS_SAME_ORIGIN ? "include" : "omit",
-    });
-    if (!res.ok) return [];
-    const json = await res.json().catch(() => null);
-    return Array.isArray(json) ? json : json?.data || [];
+  /* Targeted read — this used to download every cleanliness report ever saved
+     just to discover whether this one date already had a record. */
+  async function fetchExistingByDate(dateStr) {
+    const row = await getReportRowByDate(CLEAN_TYPE, dateStr);
+    return row ? { id: reportId(row), payload: payloadOf(row) } : null;
   }
 
-  async function fetchExistingByDate(dateStr) {
-    const arr = await listReportsByType(CLEAN_TYPE); // 👈 هنا
-    const found = arr.find((r) => String(r?.payload?.reportDate || "") === String(dateStr));
-    return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
+  /* Brings the last saved checklist back and clears the date, so the user
+     picks the day they are filling in rather than overwriting yesterday. */
+  async function loadFromLast() {
+    try {
+      setLoadingLast(true);
+      const hit = await getLatestReport(CLEAN_TYPE);
+      if (!hit) {
+        alert("ℹ️ No previous Daily Cleanliness report found.");
+        return;
+      }
+      const p = hit.payload || {};
+      if (Array.isArray(p.cleanlinessRows) && p.cleanlinessRows.length) {
+        updateRows(p.cleanlinessRows.map((r) => ({ ...emptyRow(), ...r })));
+      }
+      if (p.headers?.dcHeader) setHeader({ ...defaultDCHeader, ...p.headers.dcHeader });
+      if (p.headers?.dcFooter) setFooter({ ...defaultDCFooter, ...p.headers.dcFooter });
+      setDate("");
+      alert(`✅ Loaded from ${hit.reportDate}. Now pick the date for today's record.`);
+    } catch (e) {
+      alert(`❌ Could not load the last report: ${e.message || e}`);
+    } finally {
+      setLoadingLast(false);
+    }
   }
 
   async function saveDailyCleanliness() {
+    if (!date) {
+      alert("⚠️ Pick a report date first.");
+      return;
+    }
     try {
       setSaving(true);
 
@@ -527,15 +553,35 @@ export default function DailyCleanlinessTab({
       {/* شريط عنوان صغير مع تاريخ الإدخال داخل التبويب */}
       <div style={{ ...card, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <h3 style={{ margin: 0 }}>🧹 Daily Cleanliness</h3>
-        <label style={{ fontWeight: 700 }}>
-          Date:{" "}
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={loadFromLast}
+            disabled={loadingLast}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              background: "#fff",
+              fontWeight: 700,
+              cursor: loadingLast ? "wait" : "pointer",
+            }}
+          >
+            {loadingLast ? "⏳ Loading…" : "📋 Load from last report"}
+          </button>
+          <label style={{ fontWeight: 700 }}>
+            Date:{" "}
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: date ? "1px solid #cbd5e1" : "2px solid #f59e0b",
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       <DCEntryHeader header={header} date={date} logoUrl={logoUrl || LOGO_FALLBACK} />

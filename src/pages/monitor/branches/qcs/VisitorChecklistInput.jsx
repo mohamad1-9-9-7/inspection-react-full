@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/qcs/VisitorChecklistInput.jsx
 import React, { useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { getLatestReport } from "../_shared/reportApi";
 
 /* ===== API base ===== */
 
@@ -166,7 +167,38 @@ export default function VisitorChecklistInput() {
   const [managerSignature, setManagerSignature] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const [loadingLast, setLoadingLast] = useState(false);
   const [msg, setMsg] = useState("");
+
+  /* Repeat-visit shortcut. Only the details that genuinely recur for a
+     returning contractor are brought back — company, purpose, and the manager
+     signing off. The visitor's own name, the date, the health declaration and
+     the entry decision are always answered fresh: they are the record. */
+  async function loadFromLast() {
+    try {
+      setLoadingLast(true);
+      setMsg("Loading the last visitor record…");
+      const hit = await getLatestReport(TYPE);
+      if (!hit) {
+        setMsg("ℹ️ No previous visitor record found.");
+        return;
+      }
+      const p = hit.payload || {};
+      setMeta((prev) => ({
+        ...prev,
+        companyName: String(p?.visitor?.companyName || ""),
+        purposeOfVisit: String(p?.visitor?.purposeOfVisit || ""),
+      }));
+      setManagerSignature(String(p?.signatures?.managerSignature || ""));
+      setMsg("✅ Company, purpose and manager filled in — enter the visitor's own details.");
+    } catch (e) {
+      console.error(e);
+      setMsg("❌ Could not load the last record");
+    } finally {
+      setLoadingLast(false);
+      setTimeout(() => setMsg(""), 4000);
+    }
+  }
 
   function setMetaVal(k, v) { setMeta((p) => ({ ...p, [k]: v })); }
   function setAnswer(code, v) { setAnswers((p) => ({ ...p, [code]: v })); }
@@ -302,6 +334,25 @@ export default function VisitorChecklistInput() {
       </div>
 
       {/* ===== Visitor info ===== */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        <button
+          type="button"
+          onClick={loadFromLast}
+          disabled={loadingLast}
+          title="Fill in company, purpose and manager from the last visitor record"
+          style={{
+            padding: "8px 14px",
+            borderRadius: 10,
+            border: "1px solid #cbd5e1",
+            background: "#fff",
+            fontWeight: 800,
+            cursor: loadingLast ? "wait" : "pointer",
+          }}
+        >
+          {loadingLast ? "⏳ Loading…" : "📋 Repeat visit — load company & purpose"}
+        </button>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
         <div>
           <span style={label}>Visitor Name</span>

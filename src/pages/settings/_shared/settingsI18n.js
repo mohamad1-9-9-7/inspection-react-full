@@ -55,6 +55,8 @@ export const ST = {
   tExcelBackupD:    { en: "All branches → ZIP + Excel", ar: "كل الفروع → ZIP + Excel" },
   tProducts:        { en: "Products Catalog",      ar: "كتالوج المنتجات" },
   tProductsD:       { en: "Add / edit products & barcodes for dropdowns", ar: "إضافة / تعديل المنتجات والباركود للقوائم" },
+  tStaffDirectory:  { en: "Staff Directory",        ar: "سجل الموظفين" },
+  tStaffDirectoryD: { en: "Employee numbers & names used by the QCS forms", ar: "الأرقام الوظيفية وأسماء الموظفين المستخدمة في نماذج QCS" },
   tAccounts:        { en: "Account Management",    ar: "إدارة الحسابات" },
   tAccountsD:       { en: "Users · permissions · activity log", ar: "المستخدمون · الصلاحيات · سجل النشاط" },
   tSubscription:    { en: "Subscription",          ar: "الاشتراك" },

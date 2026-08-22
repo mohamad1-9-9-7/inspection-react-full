@@ -361,6 +361,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
         <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}>
           <colgroup>
             <col style={{ width: 50 }} />
+            <col style={{ width: 100 }} />
             <col style={{ width: "16%" }} />
             <col />
             <col style={{ width: "16%" }} />
@@ -371,6 +372,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
           <thead>
             <tr style={{ background: "#0f3d2e", color: "#fff" }}>
               <th style={hCell}>S.No</th>
+              <th style={hCell}>Employee No</th>
               <th style={hCell}>Staff Name</th>
               <th style={hCell}>Details of Sickness</th>
               <th style={hCell}>Action Taken</th>
@@ -382,7 +384,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ ...dCell, textAlign: "center", color: "#94a3b8" }}>
+                <td colSpan={8} style={{ ...dCell, textAlign: "center", color: "#94a3b8" }}>
                   No entries.
                 </td>
               </tr>
@@ -390,6 +392,7 @@ function DetailsPanel({ record, onDelete, deleting }) {
             {rows.map((r, i) => (
               <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
                 <td style={{ ...dCell, fontWeight: 800, textAlign: "center" }}>{r.sNo || i + 1}</td>
+                <td style={{ ...dCell, textAlign: "center" }}>{r.employeeNo || "—"}</td>
                 <td style={dCell}>{r.staffName || "—"}</td>
                 <td style={{ ...dCell, whiteSpace: "pre-wrap" }}>{r.details || "—"}</td>
                 <td style={{ ...dCell, whiteSpace: "pre-wrap" }}>{r.action || "—"}</td>
@@ -506,7 +509,7 @@ export default function StaffSicknessView({ type = TYPE, reporter = "qcs" } = {}
         p.date, p.remarks,
         ft.checkedBy?.name, ft.verifiedBy?.name,
         ...rows.flatMap((row) => [
-          row.staffName, row.details, row.action, row.comments, row.dateFrom, row.dateReturned,
+          row.employeeNo, row.staffName, row.details, row.action, row.comments, row.dateFrom, row.dateReturned,
         ]),
       ].filter(Boolean).join(" ").toLowerCase();
       return hay.includes(q);

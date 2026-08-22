@@ -1,6 +1,11 @@
 // src/pages/monitor/branches/qcs/EmployeeReturnToWorkInput.jsx
 import React, { useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import {
+  useStaffDirectory,
+  normalizeEmpNo,
+  normalizeName,
+} from "../_shared/staffRegistry";
 
 /* ===== API base ===== */
 
@@ -152,7 +157,7 @@ export default function EmployeeReturnToWorkInput({ type = TYPE, reporter = "qcs
   const [meta, setMeta] = useState({
     restaurantName: "",
     leaveStartDate: "",
-    employeeNo: "EMP-",
+    employeeNo: "",
     returnFromLeaveDate: "",
     name: "",
     datesOfVacation: "",
@@ -186,11 +191,27 @@ export default function EmployeeReturnToWorkInput({ type = TYPE, reporter = "qcs
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  function setMetaVal(k, v) { setMeta((p) => ({ ...p, [k]: v })); }
+  /* Staff directory (Settings → Staff Directory): number ⇄ name stay matched,
+     so a form can never pair a number with the wrong person. */
+  const { staff, byNo, byName } = useStaffDirectory();
+
+  function setMetaVal(k, v) {
+    setMeta((p) => {
+      if (k === "employeeNo") {
+        const match = byNo.get(normalizeEmpNo(v));
+        return { ...p, employeeNo: v, ...(match ? { name: match.name } : {}) };
+      }
+      if (k === "name") {
+        const match = byName.get(normalizeName(v));
+        return { ...p, name: v, ...(match ? { employeeNo: match.empNo } : {}) };
+      }
+      return { ...p, [k]: v };
+    });
+  }
   function setAbsenceVal(k, v) { setAbsence((p) => ({ ...p, [k]: v })); }
 
   function resetForm() {
-    setMeta({ restaurantName: "", leaveStartDate: "", employeeNo: "EMP-", returnFromLeaveDate: "", name: "", datesOfVacation: "", countryVisited: "" });
+    setMeta({ restaurantName: "", leaveStartDate: "", employeeNo: "", returnFromLeaveDate: "", name: "", datesOfVacation: "", countryVisited: "" });
     setAbsence({ absenceHistoryPercent: "", absenceHistoryOccasions: "", reason: "", medicalCertificate: "", previousCounselling: "", previousDisciplinary: "", liveWarningDetails: "" });
     setQuestionnaire(initialAnswers);
     setCurrentSymptoms(initialSymptoms);
@@ -342,7 +363,7 @@ export default function EmployeeReturnToWorkInput({ type = TYPE, reporter = "qcs
         </div>
         <div>
           <span style={label}>Employee No.</span>
-          <input style={input} placeholder="EMP-" value={meta.employeeNo} onChange={(e) => setMetaVal("employeeNo", e.target.value)} />
+          <input style={input} list="rtw-empno-options" placeholder="Employee number" value={meta.employeeNo} onChange={(e) => setMetaVal("employeeNo", e.target.value)} />
         </div>
         <div>
           <span style={label}>Return From Leave Date</span>
@@ -350,7 +371,7 @@ export default function EmployeeReturnToWorkInput({ type = TYPE, reporter = "qcs
         </div>
         <div>
           <span style={label}>Name</span>
-          <input style={input} placeholder="Full name" value={meta.name} onChange={(e) => setMetaVal("name", e.target.value)} />
+          <input style={input} list="rtw-empname-options" placeholder="Full name" value={meta.name} onChange={(e) => setMetaVal("name", e.target.value)} />
         </div>
         <div>
           <span style={label}>Dates of Vacation</span>
@@ -395,6 +416,14 @@ export default function EmployeeReturnToWorkInput({ type = TYPE, reporter = "qcs
           <input style={input} placeholder="Details…" value={absence.liveWarningDetails} onChange={(e) => setAbsenceVal("liveWarningDetails", e.target.value)} />
         </div>
       </div>
+
+      {/* Directory-backed suggestions for the employee fields */}
+      <datalist id="rtw-empno-options">
+        {staff.map((s) => <option key={s.empNo} value={s.empNo}>{s.name}</option>)}
+      </datalist>
+      <datalist id="rtw-empname-options">
+        {staff.map((s) => <option key={s.empNo} value={s.name}>{s.empNo}</option>)}
+      </datalist>
 
       {/* ===== Questionnaire ===== */}
       <div style={sectionTitle}>QUESTIONNAIRE — TICK EACH BOX AS POINTS ARE COVERED</div>

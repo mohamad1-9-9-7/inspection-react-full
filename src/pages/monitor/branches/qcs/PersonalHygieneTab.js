@@ -1,25 +1,17 @@
 // src/pages/monitor/branches/qcs/PersonalHygieneTab.jsx
-import React, { useState } from "react";
-import SignaturePad from "../../../../components/SignaturePad";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import API_BASE from "../../../../config/api";
+import {
+  getLatestReport,
+  getReportRowByDate,
+  reportId,
+} from "../_shared/reportApi";
+import {
+  useStaffDirectory,
+  normalizeEmpNo,
+  normalizeName,
+} from "../_shared/staffRegistry";
 
-/* =========================
-   API base (CRA + Vite safe)
-========================= */
-const API_BASE_DEFAULT = "https://inspection-server-4nvj.onrender.com";
-
-const CRA_URL =
-  typeof process !== "undefined" &&
-  process.env &&
-  process.env.REACT_APP_API_URL
-    ? process.env.REACT_APP_API_URL
-    : undefined;
-
-let VITE_URL;
-try {
-  VITE_URL = import.meta.env?.VITE_API_URL;
-} catch {}
-
-const API_BASE = (VITE_URL || CRA_URL || API_BASE_DEFAULT).replace(/\/$/, "");
 const IS_SAME_ORIGIN = (() => {
   try {
     return new URL(API_BASE).origin === window.location.origin;
@@ -32,25 +24,6 @@ const IS_SAME_ORIGIN = (() => {
 const LOGO_FALLBACK = "/brand/al-mawashi.jpg";
 const MIN_ROWS_FALLBACK = 21;
 
-// ✅ Removed "KIDANY"
-const DEFAULT_NAMES = [
-  "WELSON",
-  "GABREAL",
-  "ROTIC",
-  "RAJU",
-  "ABED",
-  "MARK",
-  "SOULEMAN",
-  "THEOPHIAUS",
-  "PRINCE",
-  "KWAKU ANTWI",
-  "KARTHICK",
-  "BHUVANESHWARAN",
-  "JAYABHARATHI",
-  "PURUSHOTH",
-  "NASIR",
-];
-
 const defaultPHHeader = {
   documentTitle: "Personal Hygiene Checklist",
   documentNo: "FS-QM/REC/PH",
@@ -62,13 +35,10 @@ const defaultPHHeader = {
   approvedBy: "Hussam O. Sarhan",
 };
 
-// ✅ Auto-fill with MOHAMAD ABDULLAH (editable)
 const DEFAULT_SIGN_NAME = "MOHAMAD ABDULLAH";
 const defaultPHFooter = {
   checkedBy: DEFAULT_SIGN_NAME,
   verifiedBy: DEFAULT_SIGN_NAME,
-  checkedBySignature: "",   // ✍️ توقيع رقمي (Base64 PNG)
-  verifiedBySignature: "",  // ✍️ توقيع رقمي (Base64 PNG)
 };
 
 /* ---- Small UI helpers ---- */
@@ -170,16 +140,9 @@ function PHEntryFooter({ footer }) {
   const sigCellStyle = {
     padding: "6px 8px",
     flex: 1,
-    minHeight: 70,
+    minHeight: 44,
     display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  };
-  const sigImgStyle = {
-    maxWidth: "100%",
-    maxHeight: 60,
-    objectFit: "contain",
-    alignSelf: "flex-start",
+    alignItems: "center",
   };
 
   return (
@@ -202,16 +165,7 @@ function PHEntryFooter({ footer }) {
           >
             Checked By:
           </div>
-          <div style={sigCellStyle}>
-            <span>{f.checkedBy || "\u00A0"}</span>
-            {f.checkedBySignature ? (
-              <img src={f.checkedBySignature} alt="Checked By signature" style={sigImgStyle} />
-            ) : (
-              <span style={{ color: "#9ca3af", fontSize: "0.78rem", fontStyle: "italic" }}>
-                \u2014 \u0644\u0627 \u064A\u0648\u062C\u062F \u062A\u0648\u0642\u064A\u0639 \u2014
-              </span>
-            )}
-          </div>
+          <div style={sigCellStyle}>{f.checkedBy || " "}</div>
         </div>
         <div style={{ display: "flex", borderInlineStart: "1px solid #000" }}>
           <div
@@ -224,16 +178,7 @@ function PHEntryFooter({ footer }) {
           >
             Verified By:
           </div>
-          <div style={sigCellStyle}>
-            <span>{f.verifiedBy || "\u00A0"}</span>
-            {f.verifiedBySignature ? (
-              <img src={f.verifiedBySignature} alt="Verified By signature" style={sigImgStyle} />
-            ) : (
-              <span style={{ color: "#9ca3af", fontSize: "0.78rem", fontStyle: "italic" }}>
-                \u2014 \u0644\u0627 \u064A\u0648\u062C\u062F \u062A\u0648\u0642\u064A\u0639 \u2014
-              </span>
-            )}
-          </div>
+          <div style={sigCellStyle}>{f.verifiedBy || " "}</div>
         </div>
       </div>
     </div>
@@ -307,33 +252,6 @@ function PHHeaderEditor({ header, setHeader, footer, setFooter }) {
           <input style={input} value={f.verifiedBy} onChange={(e) => updateFooter("verifiedBy", e.target.value)} />
         </label>
       </div>
-
-      {/* ✍️ التوقيع الرقمي */}
-      <div
-        style={{
-          marginTop: 16,
-          paddingTop: 12,
-          borderTop: "1px dashed #cbd5e1",
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-        }}
-      >
-        <SignaturePad
-          label={`✍️ Checked By Signature${f.checkedBy ? ` (${f.checkedBy})` : ""}`}
-          value={f.checkedBySignature || ""}
-          onChange={(v) => updateFooter("checkedBySignature", v)}
-          width={380}
-          height={130}
-        />
-        <SignaturePad
-          label={`✍️ Verified By Signature${f.verifiedBy ? ` (${f.verifiedBy})` : ""}`}
-          value={f.verifiedBySignature || ""}
-          onChange={(v) => updateFooter("verifiedBySignature", v)}
-          width={380}
-          height={130}
-        />
-      </div>
     </details>
   );
 }
@@ -349,34 +267,43 @@ const COLUMNS = [
 ];
 
 /* ---- Helpers ---- */
-const makeCDefaults = () => ({
-  nails: "C",
-  hair: "C",
-  notWearingJewelries: "C",
-  wearingCleanCloth: "C",
-  communicicableDisease: undefined, // (typo guard, not used)
-  communicableDisease: "C",
-  openWounds: "C",
-});
-
-function makeEmptyRow(name = "", active = false) {
-  const c = active ? makeCDefaults() : {};
-  return {
-    employName: name,
-    nails: active ? c.nails : "",
-    hair: active ? c.hair : "",
-    notWearingJewelries: active ? c.notWearingJewelries : "",
-    wearingCleanCloth: active ? c.wearingCleanCloth : "",
-    communicableDisease: active ? c.communicableDisease : "",
-    openWounds: active ? c.openWounds : "",
-    remarks: "",
-  };
+function makeEmptyRow(name = "", employeeNo = "", active = false) {
+  const row = { employeeNo, employName: name, remarks: "" };
+  COLUMNS.forEach((c) => {
+    row[c.key] = active ? "C" : "";
+  });
+  return row;
 }
 
-// ✅ Default named rows => auto C, blank rows remain empty
-function makeDefaultHygiene(min = MIN_ROWS_FALLBACK) {
-  const rows = DEFAULT_NAMES.map((n) => makeEmptyRow(n, true));
-  while (rows.length < min) rows.push(makeEmptyRow("", false));
+const isBlankRow = (r) =>
+  !String(r?.employName || "").trim() &&
+  !String(r?.employeeNo || "").trim() &&
+  !String(r?.remarks || "").trim() &&
+  COLUMNS.every((c) => !String(r?.[c.key] || "").trim());
+
+/** Rows for the whole staff directory, padded out to `min` blank rows. */
+function makeRowsFromStaff(staff, min = MIN_ROWS_FALLBACK) {
+  const rows = (Array.isArray(staff) ? staff : []).map((s) => makeEmptyRow(s.name, s.empNo, true));
+  while (rows.length < min) rows.push(makeEmptyRow("", "", false));
+  return rows;
+}
+
+/** Normalises rows coming back from a saved report (older ones have no empNo). */
+function adoptRows(raw, min = MIN_ROWS_FALLBACK) {
+  const list = Array.isArray(raw) ? raw : [];
+  const rows = list.map((r) => {
+    const row = makeEmptyRow(
+      String(r?.employName ?? r?.employeeName ?? ""),
+      String(r?.employeeNo ?? r?.empNo ?? ""),
+      false
+    );
+    COLUMNS.forEach((c) => {
+      row[c.key] = String(r?.[c.key] ?? "");
+    });
+    row.remarks = String(r?.remarks ?? "");
+    return row;
+  });
+  while (rows.length < min) rows.push(makeEmptyRow("", "", false));
   return rows;
 }
 
@@ -411,23 +338,6 @@ const sel = (w) => ({
 ========================= */
 const PH_TYPE = "qcs-ph";
 
-async function listReportsByType(type) {
-  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
-    method: "GET",
-    cache: "no-store",
-    credentials: IS_SAME_ORIGIN ? "include" : "omit",
-  });
-  if (!res.ok) return [];
-  const json = await res.json().catch(() => null);
-  return Array.isArray(json) ? json : json?.data || [];
-}
-
-async function fetchExistingPHByDate(dateStr) {
-  const rows = await listReportsByType(PH_TYPE);
-  const found = rows.find((r) => String(r?.payload?.reportDate || "") === String(dateStr));
-  return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
-}
-
 /* ================================================================== */
 /*                        PersonalHygieneTab                           */
 /* ================================================================== */
@@ -449,7 +359,7 @@ export default function PersonalHygieneTab(props) {
   const [date, setDate] = useState(() => reportDate || new Date().toISOString().split("T")[0]);
 
   const useExternalRows = Array.isArray(personalHygiene) && typeof setPersonalHygiene === "function";
-  const [localRows, setLocalRows] = useState(() => makeDefaultHygiene(minRows));
+  const [localRows, setLocalRows] = useState(() => makeRowsFromStaff([], minRows));
   const rows = useExternalRows ? personalHygiene : localRows;
   const setRows = useExternalRows ? setPersonalHygiene : setLocalRows;
 
@@ -464,13 +374,46 @@ export default function PersonalHygieneTab(props) {
   const setFooter = useExternalFooter ? setPhFooter : setLocalFooter;
 
   const [savingLocal, setSavingLocal] = useState(false);
+  const [loadingLast, setLoadingLast] = useState(false);
+  const [note, setNote] = useState("");
 
-  // ✅ يحفظ وثيقة مستقلة بنوع qcs-ph فقط
+  /* ===== Staff directory (Settings → Staff Directory) ===== */
+  const { staff, loading: staffLoading, byNo, byName } = useStaffDirectory();
+
+  /* Seed the table from the directory once it arrives — but only while the
+     user has not typed anything, so a reload never wipes work in progress. */
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || staffLoading || !staff.length) return;
+    const untouched = (Array.isArray(rows) ? rows : []).every(isBlankRow);
+    if (!untouched) {
+      seededRef.current = true;
+      return;
+    }
+    seededRef.current = true;
+    setRows(makeRowsFromStaff(staff, minRows));
+    // `rows`/`setRows` deliberately omitted: this must run on directory load only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staff, staffLoading, minRows]);
+
+  const empNoOptions = useMemo(() => staff.map((s) => s.empNo), [staff]);
+  const nameOptions = useMemo(() => staff.map((s) => s.name), [staff]);
+
+  /* ===== Save ===== */
   async function savePHToServer() {
+    if (!date) {
+      setNote("⚠️ Pick a report date first.");
+      return;
+    }
     try {
       setSavingLocal(true);
+      setNote("");
 
-      const existing = await fetchExistingPHByDate(date);
+      // Targeted lookup — the old version downloaded every PH report ever
+      // saved just to find out whether this one date already existed.
+      const existing = await getReportRowByDate(PH_TYPE, date);
+      const existingId = existing ? reportId(existing) : "";
+
       const payload = {
         reportDate: date,
         personalHygiene: rows,
@@ -480,93 +423,137 @@ export default function PersonalHygieneTab(props) {
         },
       };
 
-      const body = {
-        reporter: "QCS/PH",
-        type: PH_TYPE, // 👈 نوع مستقل
-        payload, // 👈 فقط حقول PH
-      };
+      const body = { reporter: "QCS/PH", type: PH_TYPE, payload };
 
-      if (existing?.id) {
-        const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(existing.id)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          credentials: IS_SAME_ORIGIN ? "include" : "omit",
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to update PH report");
-      } else {
-        const res = await fetch(`${API_BASE}/api/reports`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          credentials: IS_SAME_ORIGIN ? "include" : "omit",
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Failed to create PH report");
+      const url = existingId
+        ? `${API_BASE}/api/reports/${encodeURIComponent(existingId)}`
+        : `${API_BASE}/api/reports`;
+
+      const res = await fetch(url, {
+        method: existingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: IS_SAME_ORIGIN ? "include" : "omit",
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        throw new Error((await res.text().catch(() => "")) || `Save failed (${res.status})`);
       }
 
-      alert(`✅ Personal Hygiene saved for ${date}. (type: ${PH_TYPE})`);
+      setNote(`✅ Personal Hygiene saved for ${date}.`);
     } catch (e) {
-      alert(`❌ Failed to save: ${e.message || e}`);
+      setNote(`❌ Failed to save: ${e.message || e}`);
     } finally {
       setSavingLocal(false);
     }
   }
 
-  const addRow = () => setRows((prev) => ([...(Array.isArray(prev) ? prev : []), makeEmptyRow("", false)]));
+  /* ===== Load from the last saved report =====
+     Brings back the employee list and the checks from the most recent record
+     and clears the date, so the user picks the day they are filling in. */
+  async function loadFromLast() {
+    try {
+      setLoadingLast(true);
+      setNote("⏳ Loading the last report…");
+      const hit = await getLatestReport(PH_TYPE);
+      if (!hit) {
+        setNote("ℹ️ No previous Personal Hygiene report found.");
+        return;
+      }
+      const p = hit.payload || {};
+      setRows(adoptRows(p.personalHygiene, minRows));
+      if (p.headers?.phHeader) setHeader({ ...defaultPHHeader, ...p.headers.phHeader });
+      if (p.headers?.phFooter) {
+        const { checkedBy, verifiedBy } = p.headers.phFooter;
+        setFooter({
+          checkedBy: checkedBy || defaultPHFooter.checkedBy,
+          verifiedBy: verifiedBy || defaultPHFooter.verifiedBy,
+        });
+      }
+      setDate(""); // the day must be chosen deliberately
+      seededRef.current = true;
+      setNote(`✅ Loaded from ${hit.reportDate}. Pick the date for today's record.`);
+    } catch (e) {
+      setNote(`❌ Could not load the last report: ${e.message || e}`);
+    } finally {
+      setLoadingLast(false);
+    }
+  }
+
+  const addRow = () => setRows((prev) => ([...(Array.isArray(prev) ? prev : []), makeEmptyRow("", "", false)]));
   const removeRow = (i) => setRows((prev) => (Array.isArray(prev) ? prev.filter((_, idx) => idx !== i) : prev));
 
-  // ✅ Fill default names + set default C for those rows
-  const fillDefaultNames = () => {
-    setRows((prev) => {
-      const base = Array.isArray(prev) ? [...prev] : [];
-      for (let i = 0; i < DEFAULT_NAMES.length; i++) {
-        const name = DEFAULT_NAMES[i];
-        const existing = base[i] || makeEmptyRow("", false);
-        base[i] = {
-          ...existing,
-          employName: name,
-          nails: "C",
-          hair: "C",
-          notWearingJewelries: "C",
-          wearingCleanCloth: "C",
-          communicableDisease: "C",
-          openWounds: "C",
-        };
-      }
-      return base;
-    });
+  /** Repopulate the table from the staff directory. */
+  const fillFromDirectory = () => {
+    if (!staff.length) {
+      setNote("ℹ️ The staff directory is empty — add employees in Settings → Staff Directory.");
+      return;
+    }
+    setRows(makeRowsFromStaff(staff, minRows));
+    setNote(`✅ Loaded ${staff.length} employees from the directory.`);
   };
 
   const ensureMin = () => {
     setRows((prev) => {
       const base = Array.isArray(prev) ? [...prev] : [];
-      while (base.length < (minRows || MIN_ROWS_FALLBACK)) base.push(makeEmptyRow("", false));
+      while (base.length < (minRows || MIN_ROWS_FALLBACK)) base.push(makeEmptyRow("", "", false));
       return base;
     });
   };
 
-  // ✅ When employee name becomes non-empty (active row), auto-fill C (only if those fields are empty)
+  /** Sets one check column to the same value down the whole active table. */
+  const fillColumn = (key, value) => {
+    setRows((prev) =>
+      (Array.isArray(prev) ? prev : []).map((r) =>
+        String(r?.employName || "").trim() || String(r?.employeeNo || "").trim()
+          ? { ...r, [key]: value }
+          : r
+      )
+    );
+  };
+
+  const fillAllConform = () => {
+    setRows((prev) =>
+      (Array.isArray(prev) ? prev : []).map((r) => {
+        if (!String(r?.employName || "").trim() && !String(r?.employeeNo || "").trim()) return r;
+        const next = { ...r };
+        COLUMNS.forEach((c) => { next[c.key] = "C"; });
+        return next;
+      })
+    );
+  };
+
+  /* Employee number ⇄ name stay matched: filling either side looks the other
+     up in the directory, so a number is never paired with the wrong person. */
   const onCellChange = (rowIdx, key, value) => {
     setRows((prev) => {
       const base = Array.isArray(prev) ? [...prev] : [];
-      const r = base[rowIdx] || makeEmptyRow("", false);
+      const r = base[rowIdx] || makeEmptyRow("", "", false);
+
+      if (key === "employeeNo") {
+        const nextNo = String(value || "");
+        const match = byNo.get(normalizeEmpNo(nextNo));
+        const next = { ...r, employeeNo: nextNo };
+        if (match) next.employName = match.name;
+        if (nextNo.trim() || String(next.employName || "").trim()) {
+          COLUMNS.forEach((c) => {
+            if (!String(next[c.key] || "").trim()) next[c.key] = "C";
+          });
+        }
+        base[rowIdx] = next;
+        return base;
+      }
 
       if (key === "employName") {
         const nextName = String(value || "");
-        const wasEmpty = !String(r?.employName || "").trim();
-        const nowHasName = !!nextName.trim();
-
-        // If row becomes active now, set defaults to C (only if blanks)
-        if (wasEmpty && nowHasName) {
-          const next = { ...r, employName: nextName };
-          for (const c of COLUMNS) {
-            if (!String(next?.[c.key] || "").trim()) next[c.key] = "C";
-          }
-          base[rowIdx] = next;
-          return base;
+        const match = byName.get(normalizeName(nextName));
+        const next = { ...r, employName: nextName };
+        if (match) next.employeeNo = match.empNo;
+        if (nextName.trim()) {
+          COLUMNS.forEach((c) => {
+            if (!String(next[c.key] || "").trim()) next[c.key] = "C";
+          });
         }
-
-        base[rowIdx] = { ...r, employName: nextName };
+        base[rowIdx] = next;
         return base;
       }
 
@@ -599,6 +586,12 @@ export default function PersonalHygieneTab(props) {
     boxShadow: "0 0 8px rgba(0,0,0,.10)",
   };
 
+  const noteTone = note.startsWith("❌")
+    ? { bg: "#fee2e2", fg: "#991b1b" }
+    : note.startsWith("✅")
+      ? { bg: "#dcfce7", fg: "#166534" }
+      : { bg: "#e0f2fe", fg: "#075985" };
+
   return (
     <div>
       {/* عنوان صغير + تاريخ إدخال داخل التبويب */}
@@ -619,7 +612,11 @@ export default function PersonalHygieneTab(props) {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: date ? "1px solid #cbd5e1" : "2px solid #f59e0b",
+            }}
           />
         </label>
       </div>
@@ -628,8 +625,14 @@ export default function PersonalHygieneTab(props) {
       <PHHeaderEditor header={header} setHeader={setHeader} footer={footer} setFooter={setFooter} />
 
       <div style={toolbar}>
-        <button onClick={fillDefaultNames} style={btnBase}>
-          Reset Default Names
+        <button onClick={loadFromLast} disabled={loadingLast} style={btnBase}>
+          {loadingLast ? "⏳ Loading…" : "📋 Load from last report"}
+        </button>
+        <button onClick={fillFromDirectory} style={btnBase}>
+          👥 Load employees{staff.length ? ` (${staff.length})` : ""}
+        </button>
+        <button onClick={fillAllConform} style={btnBase}>
+          ✅ Mark all C
         </button>
         <button onClick={ensureMin} style={btnBase}>
           Autofill to {minRows || MIN_ROWS_FALLBACK} rows
@@ -639,15 +642,82 @@ export default function PersonalHygieneTab(props) {
         </button>
       </div>
 
+      {note ? (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "8px 12px",
+            borderRadius: 8,
+            fontWeight: 800,
+            fontSize: 13,
+            background: noteTone.bg,
+            color: noteTone.fg,
+          }}
+        >
+          {note}
+        </div>
+      ) : null}
+
+      {/* Directory-backed suggestions for both employee columns */}
+      <datalist id="ph-empno-options">
+        {empNoOptions.map((n) => {
+          const rec = byNo.get(normalizeEmpNo(n));
+          return <option key={n} value={n}>{rec?.name || ""}</option>;
+        })}
+      </datalist>
+      <datalist id="ph-empname-options">
+        {nameOptions.map((n) => {
+          const rec = byName.get(normalizeName(n));
+          return <option key={n} value={n}>{rec?.empNo || ""}</option>;
+        })}
+      </datalist>
+
       {/* جدول */}
       <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
         <thead>
           <tr style={{ background: "#2980b9", color: "#fff" }}>
-            <th style={th(60)}>S.No</th>
+            <th style={th(50)}>S.No</th>
+            <th style={th(110)}>Employee No</th>
             <th style={th(180)}>Employee Name</th>
             {COLUMNS.map((c, i) => (
               <th key={i} style={th(150)}>
                 {c.label}
+                <div style={{ marginTop: 4, display: "flex", gap: 4, justifyContent: "center" }}>
+                  <button
+                    type="button"
+                    title={`Set every employee to C for "${c.label}"`}
+                    onClick={() => fillColumn(c.key, "C")}
+                    style={{
+                      padding: "1px 7px",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      borderRadius: 6,
+                      border: "1px solid #ffffff66",
+                      background: "#ffffff22",
+                      color: "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    C
+                  </button>
+                  <button
+                    type="button"
+                    title={`Clear the "${c.label}" column`}
+                    onClick={() => fillColumn(c.key, "")}
+                    style={{
+                      padding: "1px 7px",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      borderRadius: 6,
+                      border: "1px solid #ffffff66",
+                      background: "#ffffff22",
+                      color: "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✖
+                  </button>
+                </div>
               </th>
             ))}
             <th style={th(240)}>Remarks and Corrective Actions</th>
@@ -655,51 +725,81 @@ export default function PersonalHygieneTab(props) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              <td style={td()}>{i + 1}</td>
+          {rows.map((r, i) => {
+            const noVal = String(r?.employeeNo || "");
+            const nameVal = String(r?.employName || "");
+            const known =
+              (noVal.trim() && byNo.has(normalizeEmpNo(noVal))) ||
+              (nameVal.trim() && byName.has(normalizeName(nameVal)));
+            const unknown = (noVal.trim() || nameVal.trim()) && !known && staff.length > 0;
 
-              {/* Employee Name remains a free text input */}
-              <td style={td()}>
-                <input value={r?.employName || ""} onChange={(e) => onCellChange(i, "employName", e.target.value)} style={inp(180)} />
-              </td>
+            return (
+              <tr key={i}>
+                <td style={td()}>{i + 1}</td>
 
-              {/* All other hygiene columns are dropdowns: C / N\C */}
-              {COLUMNS.map((c, idx) => (
-                <td key={idx} style={td()}>
-                  <select value={r?.[c.key] || ""} onChange={(e) => onCellChange(i, c.key, e.target.value)} style={sel(140)}>
-                    <option value=""></option>
-                    <option value="C">C</option>
-                    <option value={"N\\C"}>N\C</option>
-                  </select>
+                <td style={td()}>
+                  <input
+                    list="ph-empno-options"
+                    value={noVal}
+                    onChange={(e) => onCellChange(i, "employeeNo", e.target.value)}
+                    style={{
+                      ...inp(110),
+                      borderColor: unknown ? "#f59e0b" : "#cbd5e1",
+                    }}
+                    placeholder="No."
+                  />
                 </td>
-              ))}
 
-              <td style={td()}>
-                <input value={r?.remarks || ""} onChange={(e) => onCellChange(i, "remarks", e.target.value)} style={inp(240)} />
-              </td>
+                <td style={td()}>
+                  <input
+                    list="ph-empname-options"
+                    value={nameVal}
+                    onChange={(e) => onCellChange(i, "employName", e.target.value)}
+                    style={{
+                      ...inp(180),
+                      borderColor: unknown ? "#f59e0b" : "#cbd5e1",
+                    }}
+                    title={unknown ? "Not in the staff directory" : ""}
+                  />
+                </td>
 
-              <td style={{ ...td(), textAlign: "center" }}>
-                <button
-                  onClick={() => removeRow(i)}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #ef4444",
-                    color: "#ef4444",
-                    background: "#fff",
-                  }}
-                 data-delete-action="true">
-                  ✖
-                </button>
-              </td>
-            </tr>
-          ))}
+                {/* All other hygiene columns are dropdowns: C / N\C */}
+                {COLUMNS.map((c, idx) => (
+                  <td key={idx} style={td()}>
+                    <select value={r?.[c.key] || ""} onChange={(e) => onCellChange(i, c.key, e.target.value)} style={sel(140)}>
+                      <option value=""></option>
+                      <option value="C">C</option>
+                      <option value={"N\\C"}>N\C</option>
+                    </select>
+                  </td>
+                ))}
+
+                <td style={td()}>
+                  <input value={r?.remarks || ""} onChange={(e) => onCellChange(i, "remarks", e.target.value)} style={inp(240)} />
+                </td>
+
+                <td style={{ ...td(), textAlign: "center" }}>
+                  <button
+                    onClick={() => removeRow(i)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #ef4444",
+                      color: "#ef4444",
+                      background: "#fff",
+                    }}
+                   data-delete-action="true">
+                    ✖
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
 
           {rows.length === 0 && (
             <tr>
-              <td colSpan={COLUMNS.length + 3} style={{ ...td(), textAlign: "center", color: "#6b7280" }}>
-                No rows yet. Use “Autofill” or “Add Row”.
+              <td colSpan={COLUMNS.length + 5} style={{ ...td(), textAlign: "center", color: "#6b7280" }}>
+                No rows yet. Use “Load employees” or “Add Row”.
               </td>
             </tr>
           )}
