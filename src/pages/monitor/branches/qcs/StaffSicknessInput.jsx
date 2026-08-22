@@ -123,7 +123,7 @@ export default function StaffSicknessInput({ type = TYPE, reporter = "qcs" } = {
   /* Staff directory (Settings → Staff Directory) — filling in either the
      employee number or the name looks the other one up, so the pair always
      matches the register. */
-  const { staff, byNo, byName } = useStaffDirectory();
+  const { roster: staff, byNo, byName } = useStaffDirectory("qcs_staff_sickness");
 
   function setRow(idx, field, v) {
     setRows((p) =>

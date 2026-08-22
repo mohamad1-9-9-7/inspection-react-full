@@ -1,39 +1,83 @@
 // src/pages/monitor/branches/_shared/staffRegistry.js
 //
-// Shared staff directory — employee number ⇄ employee name.
+// 👥 سجل الموظفين — الرقم الوظيفي · الاسم · أين يظهر تلقائياً.
+// Staff registry: employee number, name, and which report forms the person is
+// listed on automatically.
 //
-// Why this exists: the employee list used to be a hardcoded `DEFAULT_NAMES`
-// array inside PersonalHygieneTab.js. Adding or removing one worker meant a
-// code edit and a deploy. It now lives on the server so QA can maintain it
-// from Settings → Staff Directory, and every form that asks for an employee
-// (Personal Hygiene, Staff Sickness, Return to Work) reads the same list.
+// Why it exists: the roster used to be a hardcoded `DEFAULT_NAMES` array inside
+// PersonalHygieneTab.js, so adding one worker meant a code change and a deploy.
 //
-// Storage: the generic `product_catalog` table, scope "qcs_staff".
-//   code → employee number (unique per scope, enforced by the DB)
-//   name → employee name
-// No new server route was needed; /api/catalog/products already takes a scope.
+// ── Where the people come from ──────────────────────────────────────────────
+// Employee numbers are NOT invented here. They come from the company directory
+// (`EMPLOYEES` in pages/ohc/OHCUpload.jsx) — the same register the butcher /
+// workforce screens read. This module only records WHO is on the QA forms and
+// WHERE they appear; it never becomes a second source of employee numbers.
 //
-// localStorage is a CACHE only, never a standalone store: it keeps the
-// dropdowns populated on a slow connection, and the server always wins.
+// ⚠️ The company record's `branch` field is stale — it is not updated on every
+// transfer. It is used here only to pre-filter the import list; the assignment
+// stored below is what the forms actually read.
+//
+// ── Storage ─────────────────────────────────────────────────────────────────
+// One config record on the server, exactly like `workforce_config`:
+//   type = staff_directory , payload.reportDate = "config"
+// PUT /api/reports upserts on (type, reportDate), so there is always one row.
+// localStorage is a cache for first paint only — never a standalone store.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { EMPLOYEES } from "../../../ohc/OHCUpload";
 
-export const STAFF_SCOPE = "qcs_staff";
-export const STAFF_CACHE_KEY = "qcs_staff_cache_v1";
-export const STAFF_EVENT = "qcs_staff_changed";
+export const STAFF_TYPE = "staff_directory";
+const STAFF_KEY = "config";
+export const STAFF_CACHE_KEY = "staff_directory_cache_v1";
+export const STAFF_EVENT = "staff_directory_changed";
 
-const CATALOG_URL = `${API_BASE}/api/catalog/products`;
+/* ══════════════════════════════════════ أين يظهر الموظف تلقائياً
+   Forms an employee can be listed on automatically. Only QCS is wired for now;
+   the other branches' checklists get added here as they are connected, and no
+   other file needs to change — the forms read this registry. */
+export const STAFF_FORMS = [
+  {
+    key: "qcs_personal_hygiene",
+    branch: "QCS",
+    ar: "النظافة الشخصية",
+    en: "Personal Hygiene",
+    /* This one pre-fills a row per assigned employee every day. */
+    autoFills: true,
+  },
+  {
+    key: "qcs_staff_sickness",
+    branch: "QCS",
+    ar: "مرض الموظفين",
+    en: "Staff Sickness",
+    autoFills: false,
+  },
+  {
+    key: "qcs_return_to_work",
+    branch: "QCS",
+    ar: "العودة للعمل",
+    en: "Return to Work",
+    autoFills: false,
+  },
+];
 
-/* ===== Normalisation ===== */
+export const STAFF_FORM_KEYS = STAFF_FORMS.map((f) => f.key);
+const FORM_BY_KEY = new Map(STAFF_FORMS.map((f) => [f.key, f]));
+export const staffForm = (key) => FORM_BY_KEY.get(key) || null;
 
-/** Employee numbers are compared loosely: "0012", "12 ", "EMP-12" → "12"/"emp12". */
+/** Default assignment for a newly imported person: every QCS form. */
+export const DEFAULT_FORMS = STAFF_FORM_KEYS.slice();
+
+/* ══════════════════════════════════════ Normalisation */
+
+/** Employee numbers compare loosely: "0012", " 12", "EMP-12" → "12". */
 export function normalizeEmpNo(v) {
   return String(v ?? "")
     .toLowerCase()
     .trim()
     .replace(/\s+/g, "")
     .replace(/[-_()/\\.]/g, "")
+    .replace(/^emp/, "")
     .replace(/^0+(?=\d)/, "");
 }
 
@@ -41,13 +85,22 @@ export function normalizeName(v) {
   return String(v ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
-/** Accepts every shape the catalog API and the cache can produce. */
+/** Accepts every shape the server, the cache and the old catalog rows produce. */
 export function normalizeStaff(raw) {
   if (!raw) return null;
   const empNo = String(raw.empNo ?? raw.code ?? raw.item_code ?? raw.employeeNo ?? "").trim();
   const name = String(raw.name ?? raw.description ?? raw.employeeName ?? "").trim();
   if (!empNo || !name) return null;
-  return { empNo, name };
+
+  const forms = Array.isArray(raw.forms)
+    ? raw.forms.filter((f) => FORM_BY_KEY.has(f))
+    : DEFAULT_FORMS.slice(); // records written before this field existed
+  return {
+    empNo,
+    name,
+    forms,
+    active: raw.active === false ? false : true,
+  };
 }
 
 const sortStaff = (list) =>
@@ -58,7 +111,51 @@ const sortStaff = (list) =>
     return String(a.empNo).localeCompare(String(b.empNo), undefined, { numeric: true });
   });
 
-/* ===== Cache layer ===== */
+/* ══════════════════════════════════════ دليل الشركة (read-only) */
+
+/** All company employees as { empNo, name, branch }, sorted by number. */
+export const COMPANY_DIRECTORY = Object.entries(EMPLOYEES || {})
+  .map(([empNo, rec]) => ({
+    empNo: String(empNo).trim(),
+    name: String(rec?.name || "").trim(),
+    branch: String(rec?.branch || "").trim(),
+  }))
+  .filter((d) => d.empNo && d.name)
+  .sort((a, b) => Number(a.empNo) - Number(b.empNo) || a.empNo.localeCompare(b.empNo));
+
+/** Branch labels present in the company record, with a head count each. */
+export function companyBranches() {
+  const counts = new Map();
+  COMPANY_DIRECTORY.forEach((d) => {
+    if (!d.branch) return;
+    counts.set(d.branch, (counts.get(d.branch) || 0) + 1);
+  });
+  return [...counts.entries()]
+    .map(([branch, count]) => ({ branch, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+/** The company branches that make up the QCS site — the sensible import default. */
+export const QCS_COMPANY_BRANCHES = COMPANY_DIRECTORY.map((d) => d.branch)
+  .filter((b, i, arr) => b && arr.indexOf(b) === i)
+  .filter((b) => /QUASIS/i.test(b));
+
+/** Search the company directory by number or name. */
+export function searchCompany(query, { branches = [], exclude = new Set(), limit = 500 } = {}) {
+  const q = String(query || "").trim().toLowerCase();
+  const branchSet = branches.length ? new Set(branches) : null;
+  const out = [];
+  for (const d of COMPANY_DIRECTORY) {
+    if (branchSet && !branchSet.has(d.branch)) continue;
+    if (exclude.has(normalizeEmpNo(d.empNo))) continue;
+    if (q && !d.empNo.includes(q) && !d.name.toLowerCase().includes(q)) continue;
+    out.push(d);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/* ══════════════════════════════════════ Cache layer */
 
 export function loadStaffCache() {
   try {
@@ -71,11 +168,11 @@ export function loadStaffCache() {
 }
 
 export function saveStaffCache(list) {
-  const clean = (Array.isArray(list) ? list : []).map(normalizeStaff).filter(Boolean);
+  const clean = sortStaff((Array.isArray(list) ? list : []).map(normalizeStaff).filter(Boolean));
   try {
     localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify(clean));
   } catch {
-    /* quota / private mode — the server copy is still authoritative */
+    /* quota / private mode — the server copy stays authoritative */
   }
   try {
     window.dispatchEvent(new CustomEvent(STAFF_EVENT));
@@ -85,64 +182,81 @@ export function saveStaffCache(list) {
   return clean;
 }
 
-/* ===== Server layer ===== */
+/* ══════════════════════════════════════ Server layer */
 
 /** Returns the staff list, or null when the server could not be reached. */
 export async function fetchStaff(signal) {
   try {
     const res = await fetch(
-      `${CATALOG_URL}?scope=${encodeURIComponent(STAFF_SCOPE)}&limit=10000`,
-      { cache: "no-store", signal }
+      `${API_BASE}/api/reports?type=${encodeURIComponent(STAFF_TYPE)}&limit=5`,
+      { cache: "no-store", signal, headers: { Accept: "application/json" } }
     );
     if (!res.ok) return null;
-    const json = await res.json().catch(() => ({}));
-    const list = Array.isArray(json) ? json : Array.isArray(json?.items) ? json.items : [];
-    return sortStaff(list.map(normalizeStaff).filter(Boolean));
+    const json = await res.json().catch(() => null);
+    const rows = Array.isArray(json) ? json : json?.data || json?.items || [];
+    const row =
+      rows.find((r) => String(r?.payload?.reportDate || "") === STAFF_KEY) || rows[0] || null;
+    const list = row?.payload?.staff;
+    return sortStaff((Array.isArray(list) ? list : []).map(normalizeStaff).filter(Boolean));
   } catch {
     return null;
   }
 }
 
-export async function saveStaff(entry, oldEmpNo = "") {
-  const normalized = normalizeStaff(entry);
-  if (!normalized) throw new Error("Employee number and name are both required");
-
-  const target = String(oldEmpNo || "").trim();
-  const url = target ? `${CATALOG_URL}/${encodeURIComponent(target)}` : CATALOG_URL;
-
-  const res = await fetch(url, {
-    method: target ? "PUT" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      scope: STAFF_SCOPE,
-      item: { code: normalized.empNo, name: normalized.name },
-    }),
+/** Writes the whole list back. PUT upserts on (type, reportDate) — one row. */
+export async function saveStaffList(list, user = "") {
+  const staff = sortStaff((Array.isArray(list) ? list : []).map(normalizeStaff).filter(Boolean));
+  const payload = {
+    reportDate: STAFF_KEY,
+    staff,
+    updatedAt: new Date().toISOString(),
+    updatedBy: user || "",
+  };
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ reporter: user || "staff-directory", type: STAFF_TYPE, payload }),
   });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || json?.ok === false) {
-    if (json?.error === "DUPLICATE_CODE") {
-      throw new Error(`Employee number "${normalized.empNo}" already exists.`);
-    }
-    throw new Error(json?.message || json?.error || `Save failed (${res.status})`);
+  if (!res.ok) {
+    throw new Error((await res.text().catch(() => "")) || `Save failed (${res.status})`);
   }
-  return normalizeStaff(json?.item) || normalized;
+  saveStaffCache(staff);
+  return staff;
 }
 
-export async function deleteStaff(empNo) {
-  const code = String(empNo || "").trim();
-  if (!code) throw new Error("Employee number required");
-  const res = await fetch(
-    `${CATALOG_URL}/${encodeURIComponent(code)}?scope=${encodeURIComponent(STAFF_SCOPE)}`,
-    { method: "DELETE" }
+/* ══════════════════════════════════════ List operations (pure) */
+
+/** Adds or replaces one person, matching on employee number. */
+export function upsertStaff(list, entry) {
+  const rec = normalizeStaff(entry);
+  if (!rec) throw new Error("Employee number and name are both required");
+  const key = normalizeEmpNo(rec.empNo);
+  const rest = (list || []).filter((s) => normalizeEmpNo(s.empNo) !== key);
+  return sortStaff([...rest, rec]);
+}
+
+/** Adds or replaces one person whose number is changing. */
+export function renumberStaff(list, oldEmpNo, entry) {
+  const oldKey = normalizeEmpNo(oldEmpNo);
+  const rec = normalizeStaff(entry);
+  if (!rec) throw new Error("Employee number and name are both required");
+  const newKey = normalizeEmpNo(rec.empNo);
+  const clash = (list || []).some(
+    (s) => normalizeEmpNo(s.empNo) === newKey && normalizeEmpNo(s.empNo) !== oldKey
   );
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || json?.ok === false) {
-    throw new Error(json?.message || json?.error || `Delete failed (${res.status})`);
-  }
-  return json;
+  if (clash) throw new Error(`Employee number "${rec.empNo}" already exists.`);
+  const rest = (list || []).filter(
+    (s) => normalizeEmpNo(s.empNo) !== oldKey && normalizeEmpNo(s.empNo) !== newKey
+  );
+  return sortStaff([...rest, rec]);
 }
 
-/* ===== Lookup helpers (used by the forms) ===== */
+export function removeStaff(list, empNo) {
+  const key = normalizeEmpNo(empNo);
+  return (list || []).filter((s) => normalizeEmpNo(s.empNo) !== key);
+}
+
+/* ══════════════════════════════════════ Lookup helpers (used by the forms) */
 
 export function buildStaffIndex(list) {
   const byNo = new Map();
@@ -166,10 +280,17 @@ export function lookupByName(list, name) {
   return buildStaffIndex(list).byName.get(normalizeName(name)) || null;
 }
 
-/* ===== React hook =====
+/** The active people a given form should list automatically. */
+export function rosterForForm(list, formKey) {
+  return (Array.isArray(list) ? list : []).filter(
+    (s) => s.active !== false && (s.forms || []).includes(formKey)
+  );
+}
+
+/* ══════════════════════════════════════ React hook
    Serves the cached list immediately so a form never renders an empty
    dropdown, then replaces it with the server copy. */
-export function useStaffDirectory() {
+export function useStaffDirectory(formKey = "") {
   const [staff, setStaff] = useState(() => loadStaffCache());
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(true);
@@ -206,6 +327,11 @@ export function useStaffDirectory() {
     };
   }, []);
 
-  const index = buildStaffIndex(staff);
-  return { staff, loading, online, reload, ...index };
+  const index = useMemo(() => buildStaffIndex(staff), [staff]);
+  const roster = useMemo(
+    () => (formKey ? rosterForForm(staff, formKey) : staff.filter((s) => s.active !== false)),
+    [staff, formKey]
+  );
+
+  return { staff, roster, loading, online, reload, setStaff, ...index };
 }

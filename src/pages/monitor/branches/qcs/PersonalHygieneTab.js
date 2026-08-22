@@ -337,6 +337,8 @@ const sel = (w) => ({
    Server helpers (PH only)
 ========================= */
 const PH_TYPE = "qcs-ph";
+/* Which Staff Directory assignment fills this sheet. */
+const PH_FORM_KEY = "qcs_personal_hygiene";
 
 /* ================================================================== */
 /*                        PersonalHygieneTab                           */
@@ -377,8 +379,12 @@ export default function PersonalHygieneTab(props) {
   const [loadingLast, setLoadingLast] = useState(false);
   const [note, setNote] = useState("");
 
-  /* ===== Staff directory (Settings → Staff Directory) ===== */
-  const { staff, loading: staffLoading, byNo, byName } = useStaffDirectory();
+  /* ===== Staff directory (Settings → Staff Directory) =====
+     `roster` is only the people assigned to this form, so the daily sheet lists
+     exactly who is supposed to be on it. `all` still backs the lookups, so a
+     name typed for someone outside the roster is still matched to a number. */
+  const { roster: staff, staff: allStaff, loading: staffLoading, byNo, byName } =
+    useStaffDirectory(PH_FORM_KEY);
 
   /* Seed the table from the directory once it arrives — but only while the
      user has not typed anything, so a reload never wipes work in progress. */
@@ -396,8 +402,8 @@ export default function PersonalHygieneTab(props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staff, staffLoading, minRows]);
 
-  const empNoOptions = useMemo(() => staff.map((s) => s.empNo), [staff]);
-  const nameOptions = useMemo(() => staff.map((s) => s.name), [staff]);
+  const empNoOptions = useMemo(() => allStaff.map((s) => s.empNo), [allStaff]);
+  const nameOptions = useMemo(() => allStaff.map((s) => s.name), [allStaff]);
 
   /* ===== Save ===== */
   async function savePHToServer() {
@@ -485,7 +491,11 @@ export default function PersonalHygieneTab(props) {
   /** Repopulate the table from the staff directory. */
   const fillFromDirectory = () => {
     if (!staff.length) {
-      setNote("ℹ️ The staff directory is empty — add employees in Settings → Staff Directory.");
+      setNote(
+        allStaff.length
+          ? "ℹ️ No employee is assigned to Personal Hygiene yet — tick that form for them in Settings → Staff Directory."
+          : "ℹ️ The staff directory is empty — import employees in Settings → Staff Directory."
+      );
       return;
     }
     setRows(makeRowsFromStaff(staff, minRows));
@@ -628,8 +638,12 @@ export default function PersonalHygieneTab(props) {
         <button onClick={loadFromLast} disabled={loadingLast} style={btnBase}>
           {loadingLast ? "⏳ Loading…" : "📋 Load from last report"}
         </button>
-        <button onClick={fillFromDirectory} style={btnBase}>
-          👥 Load employees{staff.length ? ` (${staff.length})` : ""}
+        <button
+          onClick={fillFromDirectory}
+          style={btnBase}
+          title="Employees assigned to Personal Hygiene in Settings → Staff Directory"
+        >
+          👥 Load roster{staff.length ? ` (${staff.length})` : ""}
         </button>
         <button onClick={fillAllConform} style={btnBase}>
           ✅ Mark all C
@@ -731,7 +745,7 @@ export default function PersonalHygieneTab(props) {
             const known =
               (noVal.trim() && byNo.has(normalizeEmpNo(noVal))) ||
               (nameVal.trim() && byName.has(normalizeName(nameVal)));
-            const unknown = (noVal.trim() || nameVal.trim()) && !known && staff.length > 0;
+            const unknown = (noVal.trim() || nameVal.trim()) && !known && allStaff.length > 0;
 
             return (
               <tr key={i}>
@@ -799,7 +813,7 @@ export default function PersonalHygieneTab(props) {
           {rows.length === 0 && (
             <tr>
               <td colSpan={COLUMNS.length + 5} style={{ ...td(), textAlign: "center", color: "#6b7280" }}>
-                No rows yet. Use “Load employees” or “Add Row”.
+                No rows yet. Use “Load roster” or “Add Row”.
               </td>
             </tr>
           )}

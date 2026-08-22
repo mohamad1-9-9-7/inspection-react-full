@@ -193,7 +193,7 @@ export default function EmployeeReturnToWorkInput({ type = TYPE, reporter = "qcs
 
   /* Staff directory (Settings → Staff Directory): number ⇄ name stay matched,
      so a form can never pair a number with the wrong person. */
-  const { staff, byNo, byName } = useStaffDirectory();
+  const { roster: staff, byNo, byName } = useStaffDirectory("qcs_return_to_work");
 
   function setMetaVal(k, v) {
     setMeta((p) => {
