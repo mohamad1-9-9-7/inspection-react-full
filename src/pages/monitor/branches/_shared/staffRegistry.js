@@ -13,9 +13,10 @@
 // workforce screens read. This module only records WHO is on the QA forms and
 // WHERE they appear; it never becomes a second source of employee numbers.
 //
-// ⚠️ The company record's `branch` field is stale — it is not updated on every
-// transfer. It is used here only to pre-filter the import list; the assignment
-// stored below is what the forms actually read.
+// ⚠️ The company record's `branch` and `job` fields are stale — they are not
+// updated on every transfer or promotion. `branch` is used only to pre-filter the
+// import list, and `job` is copied in as a starting value that stays editable
+// here. What this module stores is what the forms actually read.
 //
 // ── Storage ─────────────────────────────────────────────────────────────────
 // One config record on the server, exactly like `workforce_config`:
@@ -92,12 +93,15 @@ export function normalizeStaff(raw) {
   const name = String(raw.name ?? raw.description ?? raw.employeeName ?? "").trim();
   if (!empNo || !name) return null;
 
+  const job = String(raw.job ?? raw.jobTitle ?? raw.position ?? raw.designation ?? "").trim();
+
   const forms = Array.isArray(raw.forms)
     ? raw.forms.filter((f) => FORM_BY_KEY.has(f))
     : DEFAULT_FORMS.slice(); // records written before this field existed
   return {
     empNo,
     name,
+    job,
     forms,
     active: raw.active === false ? false : true,
   };
@@ -113,11 +117,12 @@ const sortStaff = (list) =>
 
 /* ══════════════════════════════════════ دليل الشركة (read-only) */
 
-/** All company employees as { empNo, name, branch }, sorted by number. */
+/** All company employees as { empNo, name, job, branch }, sorted by number. */
 export const COMPANY_DIRECTORY = Object.entries(EMPLOYEES || {})
   .map(([empNo, rec]) => ({
     empNo: String(empNo).trim(),
     name: String(rec?.name || "").trim(),
+    job: String(rec?.job || "").trim(),
     branch: String(rec?.branch || "").trim(),
   }))
   .filter((d) => d.empNo && d.name)
@@ -135,20 +140,44 @@ export function companyBranches() {
     .sort((a, b) => b.count - a.count);
 }
 
+/** Job titles present in the company record, with a head count each. */
+export function companyJobs(branches = []) {
+  const branchSet = branches.length ? new Set(branches) : null;
+  const counts = new Map();
+  COMPANY_DIRECTORY.forEach((d) => {
+    if (!d.job) return;
+    if (branchSet && !branchSet.has(d.branch)) return;
+    counts.set(d.job, (counts.get(d.job) || 0) + 1);
+  });
+  return [...counts.entries()]
+    .map(([job, count]) => ({ job, count }))
+    .sort((a, b) => b.count - a.count || a.job.localeCompare(b.job));
+}
+
 /** The company branches that make up the QCS site — the sensible import default. */
 export const QCS_COMPANY_BRANCHES = COMPANY_DIRECTORY.map((d) => d.branch)
   .filter((b, i, arr) => b && arr.indexOf(b) === i)
   .filter((b) => /QUASIS/i.test(b));
 
-/** Search the company directory by number or name. */
-export function searchCompany(query, { branches = [], exclude = new Set(), limit = 500 } = {}) {
-  const q = String(query || "").trim().toLowerCase();
+/**
+ * Search the company directory. Every term in the query must match somewhere on
+ * the row (number, name, job or branch), so "butcher qusais" narrows instead of
+ * widening — that is what makes typing a couple of words feel like a filter.
+ */
+export function searchCompany(query, { branches = [], jobs = [], exclude = new Set(), limit = 1000 } = {}) {
+  const terms = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
   const branchSet = branches.length ? new Set(branches) : null;
+  const jobSet = jobs.length ? new Set(jobs) : null;
+
   const out = [];
   for (const d of COMPANY_DIRECTORY) {
     if (branchSet && !branchSet.has(d.branch)) continue;
+    if (jobSet && !jobSet.has(d.job)) continue;
     if (exclude.has(normalizeEmpNo(d.empNo))) continue;
-    if (q && !d.empNo.includes(q) && !d.name.toLowerCase().includes(q)) continue;
+    if (terms.length) {
+      const hay = `${d.empNo} ${d.name} ${d.job} ${d.branch}`.toLowerCase();
+      if (!terms.every((t) => hay.includes(t))) continue;
+    }
     out.push(d);
     if (out.length >= limit) break;
   }
