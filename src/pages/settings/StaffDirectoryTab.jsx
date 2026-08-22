@@ -28,16 +28,57 @@ import {
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 
 const chip = (on) => ({
-  padding: "3px 9px",
+  padding: "4px 10px",
   borderRadius: 999,
-  fontSize: 11,
+  fontSize: 11.5,
   fontWeight: 950,
   border: `1px solid ${on ? "#0f766e" : "rgba(15,23,42,0.16)"}`,
   background: on ? "#0f766e" : "#fff",
-  color: on ? "#fff" : "#64748b",
+  color: on ? "#fff" : "#94a3b8",
   cursor: "pointer",
   whiteSpace: "nowrap",
+  lineHeight: 1.5,
 });
+
+/* Row actions sit in a fixed-width cell. Without nowrap the shared Button
+   wraps its label one character per line, which is what made the column
+   unreadable. */
+const rowBtn = {
+  minHeight: 30,
+  padding: "4px 11px",
+  fontSize: 12,
+  fontWeight: 900,
+  whiteSpace: "nowrap",
+};
+
+function Stat({ label, value, tone }) {
+  return (
+    <div
+      style={{
+        border: "1px solid rgba(15,23,42,0.12)",
+        borderRadius: 8,
+        padding: "8px 14px",
+        background: "#f8fafc",
+        minWidth: 118,
+      }}
+    >
+      <div style={{ fontSize: 21, fontWeight: 1000, color: tone, lineHeight: 1.1 }}>{value}</div>
+      <div
+        style={{
+          fontSize: 10.5,
+          fontWeight: 950,
+          color: "#64748b",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          marginTop: 2,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </div>
+    </div>
+  );
+}
 
 export default function StaffDirectoryTab() {
   const [staff, setStaff] = useState(() => loadStaffCache());
@@ -53,7 +94,8 @@ export default function StaffDirectoryTab() {
   const [importQ, setImportQ] = useState("");
   const [importBranches, setImportBranches] = useState(() => QCS_COMPANY_BRANCHES);
   const [picked, setPicked] = useState(() => new Set());
-  const [importForms, setImportForms] = useState(() => DEFAULT_FORMS.slice());
+  /* Deliberately empty: nobody is put on a form until it is ticked here. */
+  const [importForms, setImportForms] = useState([]);
 
   const importRef = useRef(null);
 
@@ -72,6 +114,14 @@ export default function StaffDirectoryTab() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+
+  /* Nothing to show yet — open the picker rather than an empty table. */
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (loading || autoOpened.current) return;
+    autoOpened.current = true;
+    if (!staff.length) setImportOpen(true);
+  }, [loading, staff.length]);
 
   /* Every write goes through here: change the list, push the whole thing, and
      roll back on failure so the screen never shows a save that did not land. */
@@ -109,6 +159,20 @@ export default function StaffDirectoryTab() {
         String(s.name).toLowerCase().includes(term)
     );
   }, [staff, q]);
+
+  const activeCount = useMemo(() => staff.filter((s) => s.active !== false).length, [staff]);
+
+  /* How many people each form will actually list — inactive people are skipped,
+     so these are the numbers the forms really see. */
+  const formCounts = useMemo(() => {
+    const counts = {};
+    STAFF_FORMS.forEach((f) => {
+      counts[f.key] = staff.filter(
+        (s) => s.active !== false && (s.forms || []).includes(f.key)
+      ).length;
+    });
+    return counts;
+  }, [staff]);
 
   /* ── Per-person edits ── */
 
@@ -295,13 +359,13 @@ export default function StaffDirectoryTab() {
               {importOpen ? "✕ Close import" : "👥 Import employees"}
             </Button>
             <Button tone="secondary" onClick={() => importRef.current?.click()} disabled={busy}>
-              ⬆ CSV
+              ⬆ Import CSV
             </Button>
             <Button tone="secondary" onClick={exportCsv} disabled={!staff.length}>
-              ⬇ CSV
+              ⬇ Export CSV
             </Button>
             <Button tone="muted" onClick={reload} disabled={loading || busy}>
-              {loading ? "⏳" : "↻"}
+              {loading ? "⏳" : "↻ Refresh"}
             </Button>
           </>
         }
@@ -445,8 +509,28 @@ export default function StaffDirectoryTab() {
             </table>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-            <Button tone="primary" onClick={commitImport} disabled={busy || !picked.size}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+              marginTop: 14,
+            }}
+          >
+            <span style={{ color: "#64748b", fontWeight: 800, fontSize: 12.5 }}>
+              {!picked.size
+                ? "Tick the employees you want, then choose their forms above."
+                : !importForms.length
+                  ? "⚠️ Pick at least one form above — otherwise they are added but appear nowhere."
+                  : `${picked.size} employee(s) → ${importForms.length} form(s).`}
+            </span>
+            <Button
+              tone="primary"
+              onClick={commitImport}
+              disabled={busy || !picked.size || !importForms.length}
+            >
               ➕ Add {picked.size || ""} to the directory
             </Button>
           </div>
@@ -493,6 +577,29 @@ export default function StaffDirectoryTab() {
 
       {/* ═══ The directory ═══ */}
       <div style={ui.card}>
+        {/* At-a-glance: how many people, and how many each form will list. */}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            marginBottom: 14,
+            paddingBottom: 14,
+            borderBottom: "1px solid rgba(15,23,42,0.08)",
+          }}
+        >
+          <Stat label="In the directory" value={staff.length} tone="#0f172a" />
+          <Stat label="Active" value={activeCount} tone="#0f766e" />
+          {STAFF_FORMS.map((f) => (
+            <Stat
+              key={f.key}
+              label={`${f.en}${f.autoFills ? " ⚡" : ""}`}
+              value={formCounts[f.key] || 0}
+              tone={f.autoFills ? "#b45309" : "#475569"}
+            />
+          ))}
+        </div>
+
         <div style={ui.toolbar}>
           <strong style={{ fontWeight: 1000 }}>
             {filtered.length} of {staff.length} employee{staff.length === 1 ? "" : "s"}
@@ -509,55 +616,84 @@ export default function StaffDirectoryTab() {
           <table style={ui.table}>
             <thead>
               <tr>
-                <th style={{ ...ui.th, width: 110 }}>No</th>
-                <th style={ui.th}>Name</th>
-                <th style={{ ...ui.th, width: 380 }}>Appears automatically in</th>
-                <th style={{ ...ui.th, width: 220, textAlign: "end" }}>Actions</th>
+                <th style={{ ...ui.th, width: 70 }}>No</th>
+                <th style={{ ...ui.th, minWidth: 240 }}>Name</th>
+                {STAFF_FORMS.map((f) => (
+                  <th key={f.key} style={{ ...ui.th, width: 112, textAlign: "center" }}>
+                    {f.en}
+                    {f.autoFills ? " ⚡" : ""}
+                  </th>
+                ))}
+                <th style={{ ...ui.th, width: 160, textAlign: "end" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((s) => (
                 <tr key={s.empNo} style={{ opacity: s.active === false ? 0.5 : 1 }}>
                   <td style={{ ...ui.td, fontWeight: 1000, fontVariantNumeric: "tabular-nums" }}>{s.empNo}</td>
+                  {/* Status sits with the person, not in Actions — it describes
+                      them, and it keeps the Actions column narrow enough to read. */}
                   <td style={ui.td}>
-                    {s.name}
-                    {s.active === false && (
-                      <span style={{ marginInlineStart: 8, fontSize: 11, color: "#94a3b8", fontWeight: 900 }}>
-                        INACTIVE
-                      </span>
-                    )}
-                  </td>
-                  <td style={ui.td}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {STAFF_FORMS.map((f) => {
-                        const on = (s.forms || []).includes(f.key);
-                        return (
-                          <button
-                            key={f.key}
-                            type="button"
-                            style={chip(on)}
-                            disabled={busy}
-                            title={
-                              f.autoFills
-                                ? `${f.en} — pre-fills a row for this employee`
-                                : `${f.en} — suggested in the picker`
-                            }
-                            onClick={() => toggleForm(s, f.key)}
-                          >
-                            {f.en}{f.autoFills ? " ⚡" : ""}
-                          </button>
-                        );
-                      })}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span>{s.name}</span>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => toggleActive(s)}
+                        title={
+                          s.active === false
+                            ? "Inactive — not listed on new forms. Click to reactivate."
+                            : "Active. Click to take off new forms without deleting."
+                        }
+                        style={{
+                          padding: "2px 9px",
+                          borderRadius: 999,
+                          fontSize: 10.5,
+                          fontWeight: 950,
+                          letterSpacing: "0.04em",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          border: `1px solid ${s.active === false ? "#fcd34d" : "#a7f3d0"}`,
+                          background: s.active === false ? "#fffbeb" : "#ecfdf5",
+                          color: s.active === false ? "#b45309" : "#047857",
+                        }}
+                      >
+                        {s.active === false ? "INACTIVE" : "ACTIVE"}
+                      </button>
                     </div>
                   </td>
-                  <td style={{ ...ui.td, textAlign: "end" }}>
-                    <div style={{ display: "inline-flex", gap: 8 }}>
-                      <Button tone="secondary" onClick={() => startEdit(s)} disabled={busy}>Edit</Button>
-                      <Button tone="muted" onClick={() => toggleActive(s)} disabled={busy}>
-                        {s.active === false ? "Activate" : "Deactivate"}
+
+                  {/* One column per form: the tick is the assignment, so a whole
+                      form's roster can be read straight down the column. */}
+                  {STAFF_FORMS.map((f) => {
+                    const on = (s.forms || []).includes(f.key);
+                    return (
+                      <td key={f.key} style={{ ...ui.td, textAlign: "center" }}>
+                        <button
+                          type="button"
+                          style={chip(on)}
+                          disabled={busy}
+                          title={
+                            on
+                              ? `Remove ${s.name} from ${f.en}`
+                              : `Add ${s.name} to ${f.en}`
+                          }
+                          onClick={() => toggleForm(s, f.key)}
+                        >
+                          {on ? "✔ on" : "off"}
+                        </button>
+                      </td>
+                    );
+                  })}
+
+                  <td style={{ ...ui.td, textAlign: "end", whiteSpace: "nowrap" }}>
+                    <div style={{ display: "inline-flex", gap: 6 }}>
+                      <Button tone="secondary" style={rowBtn} onClick={() => startEdit(s)} disabled={busy}>
+                        Edit
                       </Button>
                       <Button
                         tone="danger"
+                        style={rowBtn}
                         onClick={() => setConfirmRemove(s)}
                         disabled={busy}
                         data-delete-action="true"
@@ -570,7 +706,7 @@ export default function StaffDirectoryTab() {
               ))}
               {!filtered.length && (
                 <tr>
-                  <td colSpan={4} style={{ ...ui.td, textAlign: "center", color: "#64748b" }}>
+                  <td colSpan={3 + STAFF_FORMS.length} style={{ ...ui.td, textAlign: "center", color: "#64748b" }}>
                     {loading
                       ? "Loading…"
                       : staff.length
@@ -584,8 +720,11 @@ export default function StaffDirectoryTab() {
         </div>
 
         <p style={{ margin: "12px 0 0", color: "#64748b", fontWeight: 750, fontSize: 12.5, lineHeight: 1.6 }}>
-          ⚡ = the form pre-fills a row for every assigned employee. The others suggest the person in
-          a picker. Deactivating keeps someone in the history without listing them on new forms.
+          ⚡ <b>Personal Hygiene</b> pre-fills a row for every employee marked “on”, every day.
+          The other two only suggest the person while typing — they never fill a row by themselves.
+          <b>Deactivate</b> keeps someone in the history but drops them off new forms; <b>Delete</b>
+          removes them from the directory. Reports already saved always keep the name and number they
+          were saved with.
         </p>
       </div>
 
