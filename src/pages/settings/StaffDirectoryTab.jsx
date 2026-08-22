@@ -3,20 +3,23 @@
 // 👥 سجل الموظفين — من هو على نماذج الجودة، وأين يظهر اسمه تلقائياً.
 //
 // Replaces the hardcoded `DEFAULT_NAMES` array that used to live inside
-// PersonalHygieneTab.js. People are imported from the company register
-// (pages/ohc/OHCUpload → EMPLOYEES), so employee numbers and job titles are
-// never typed by hand and never invented. Each person carries the list of forms
-// they appear on automatically — QCS today, other branches as they get wired.
+// PersonalHygieneTab.js. People come from the company register
+// (pages/ohc/OHCUpload → EMPLOYEES), so number, name and job title are never
+// typed by hand and never invented.
+//
+// A worker is put on specific SITE checklists — "Personal Hygiene" is not one
+// form, every site keeps its own — see STAFF_FORMS in staffRegistry.js.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   COMPANY_DIRECTORY,
-  DEFAULT_FORMS,
   QCS_COMPANY_BRANCHES,
   STAFF_FORMS,
   companyBranches,
   companyJobs,
   fetchStaff,
+  formShortLabel,
+  formsBySite,
   loadStaffCache,
   normalizeEmpNo,
   removeStaff,
@@ -24,8 +27,10 @@ import {
   saveStaffCache,
   saveStaffList,
   searchCompany,
+  staffForm,
   upsertStaff,
 } from "../monitor/branches/_shared/staffRegistry";
+import FilterBar, { filterValues } from "./_shared/FilterBar";
 import { Button, ConfirmModal, PageHeader, StatusMessage, ui } from "./_shared/SettingsUIKit";
 
 /* ═════════════════════════════════════════════════════ tokens */
@@ -40,28 +45,11 @@ const T = {
   lineStrong: "rgba(15,23,42,0.16)",
   surface: "#ffffff",
   raised: "#f8fafc",
+  warn: "#b45309",
+  warnSoft: "#fffbeb",
   radius: 10,
 };
 
-const pill = (on, tone = T.accent) => ({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "5px 11px",
-  borderRadius: 999,
-  fontSize: 11.5,
-  fontWeight: 950,
-  lineHeight: 1.5,
-  whiteSpace: "nowrap",
-  cursor: "pointer",
-  transition: "background .12s, border-color .12s, color .12s",
-  border: `1px solid ${on ? tone : T.lineStrong}`,
-  background: on ? tone : T.surface,
-  color: on ? "#fff" : T.faint,
-});
-
-/* Row actions live in a fixed-width cell; without nowrap the shared Button
-   wraps its label one character per line. */
 const rowBtn = {
   minHeight: 30,
   padding: "4px 11px",
@@ -84,13 +72,29 @@ const fieldBase = {
   fontFamily: "inherit",
 };
 
+const pill = (on, tone = T.accent) => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "5px 11px",
+  borderRadius: 999,
+  fontSize: 11.5,
+  fontWeight: 950,
+  lineHeight: 1.5,
+  whiteSpace: "nowrap",
+  cursor: "pointer",
+  border: `1px solid ${on ? tone : T.lineStrong}`,
+  background: on ? tone : T.surface,
+  color: on ? "#fff" : T.faint,
+});
+
 /* ═════════════════════════════════════════════════════ pieces */
 
 function Stat({ label, value, tone, hint }) {
   return (
     <div
       style={{
-        flex: "1 1 130px",
+        flex: "1 1 120px",
         border: `1px solid ${T.line}`,
         borderRadius: T.radius,
         padding: "10px 14px",
@@ -115,71 +119,108 @@ function Stat({ label, value, tone, hint }) {
   );
 }
 
-/** Search box with a magnifier and a clear button. */
-function SearchField({ value, onChange, placeholder, width = "100%" }) {
+function SectionTitle({ children, hint }) {
   return (
-    <div style={{ position: "relative", width, flex: width === "100%" ? "1 1 220px" : undefined }}>
-      <span
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          insetInlineStart: 12,
-          top: "50%",
-          transform: "translateY(-50%)",
-          color: T.faint,
-          fontSize: 13,
-          pointerEvents: "none",
-        }}
-      >
-        🔍
-      </span>
-      <input
-        style={{ ...fieldBase, width: "100%", paddingInlineStart: 34, paddingInlineEnd: value ? 32 : 12 }}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
-      {value && (
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          aria-label="Clear search"
-          style={{
-            position: "absolute",
-            insetInlineEnd: 8,
-            top: "50%",
-            transform: "translateY(-50%)",
-            border: "none",
-            background: "transparent",
-            color: T.faint,
-            fontWeight: 950,
-            cursor: "pointer",
-            fontSize: 14,
-            lineHeight: 1,
-          }}
-        >
-          ✕
-        </button>
+    <div style={{ marginBottom: 12 }}>
+      <h3 style={{ margin: 0, fontWeight: 1000, fontSize: 15.5, color: T.ink }}>{children}</h3>
+      {hint && (
+        <p style={{ margin: "5px 0 0", color: T.muted, fontWeight: 750, fontSize: 12.5, lineHeight: 1.6 }}>
+          {hint}
+        </p>
       )}
     </div>
   );
 }
 
 /**
- * Multi-select facet. A wall of 28 branch chips is unreadable, so the options
- * live behind one button: the label reports the current state, and the popover
- * carries its own search, counts, and select-all/clear.
+ * Grouped form checkboxes. With one checklist per site the list is long, so it
+ * is grouped by site and never rendered as one flat wall of chips.
  */
-function Facet({ label, icon, options, selected, onChange, searchPlaceholder = "Search…", width = 210 }) {
+function FormPicker({ selected, onToggle, onSetAll, compact }) {
+  return (
+    <div style={{ display: "grid", gap: compact ? 8 : 10 }}>
+      {formsBySite().map(({ site, siteAr, forms }) => {
+        const allOn = forms.every((f) => selected.includes(f.key));
+        return (
+          <div key={site}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 5,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 950,
+                  color: T.faint,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                {site} · {siteAr}
+              </span>
+              {onSetAll && (
+                <button
+                  type="button"
+                  onClick={() => onSetAll(forms.map((f) => f.key), !allOn)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: T.accent,
+                    fontWeight: 950,
+                    fontSize: 10,
+                    cursor: "pointer",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {allOn ? "none" : "all"}
+                </button>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {forms.map((f) => {
+                const on = selected.includes(f.key);
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => onToggle(f.key)}
+                    title={
+                      (f.autoFills ? "Pre-fills a row per employee. " : "Suggested while typing. ") +
+                      (f.wired ? "Connected." : "Not connected to this screen yet — the assignment is stored and takes effect when it is.")
+                    }
+                    style={{
+                      ...pill(on),
+                      opacity: f.wired ? 1 : 0.72,
+                      borderStyle: f.wired ? "solid" : "dashed",
+                    }}
+                  >
+                    {f.en}
+                    {f.autoFills ? " ⚡" : ""}
+                    {!f.wired && <span style={{ fontSize: 9, opacity: 0.85 }}>soon</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Compact cell: the badges a person carries, click to edit in a popover. */
+function FormsCell({ person, onToggle, busy }) {
   const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const boxRef = useRef(null);
+  const ref = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
-    const onDown = (e) => {
-      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
-    };
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     const onKey = (e) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -189,238 +230,91 @@ function Facet({ label, icon, options, selected, onChange, searchPlaceholder = "
     };
   }, [open]);
 
-  const shown = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return options;
-    return options.filter((o) => o.label.toLowerCase().includes(term));
-  }, [options, q]);
-
-  const active = selected.length > 0;
-  const summary = !active
-    ? `All ${label.toLowerCase()}`
-    : selected.length === 1
-      ? options.find((o) => o.value === selected[0])?.label || `1 ${label.toLowerCase()}`
-      : `${selected.length} ${label.toLowerCase()}`;
-
-  const toggle = (value) =>
-    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
+  const forms = person.forms || [];
+  const shown = forms.slice(0, 2);
+  const extra = forms.length - shown.length;
 
   return (
-    <div ref={boxRef} style={{ position: "relative", width }}>
+    <div ref={ref} style={{ position: "relative" }}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        disabled={busy}
         style={{
-          ...fieldBase,
-          width: "100%",
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: 5,
+          flexWrap: "wrap",
+          width: "100%",
+          border: `1px dashed ${forms.length ? "transparent" : T.lineStrong}`,
+          background: "transparent",
+          borderRadius: 8,
+          padding: "3px 5px",
           cursor: "pointer",
           textAlign: "start",
-          borderColor: active ? T.accent : T.lineStrong,
-          background: active ? T.accentSoft : T.surface,
-          color: active ? T.accent : T.ink,
+          fontFamily: "inherit",
         }}
       >
-        <span aria-hidden="true" style={{ fontSize: 13 }}>{icon}</span>
-        <span
-          style={{
-            flex: 1,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            fontSize: 12.5,
-          }}
-        >
-          {summary}
-        </span>
-        <span aria-hidden="true" style={{ color: T.faint, fontSize: 10 }}>▼</span>
+        {shown.map((k) => {
+          const f = staffForm(k);
+          return (
+            <span
+              key={k}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "2px 8px",
+                borderRadius: 999,
+                fontSize: 10.5,
+                fontWeight: 950,
+                whiteSpace: "nowrap",
+                border: `1px solid ${f?.wired ? T.accent : T.lineStrong}`,
+                background: f?.wired ? T.accentSoft : T.raised,
+                color: f?.wired ? T.accent : T.muted,
+              }}
+            >
+              {formShortLabel(k)}
+              {f?.autoFills ? " ⚡" : ""}
+            </span>
+          );
+        })}
+        {extra > 0 && (
+          <span style={{ fontSize: 10.5, fontWeight: 950, color: T.faint }}>+{extra}</span>
+        )}
+        {!forms.length && (
+          <span style={{ fontSize: 11, fontWeight: 850, color: T.faint }}>+ assign…</span>
+        )}
       </button>
 
       {open && (
         <div
           style={{
             position: "absolute",
-            zIndex: 60,
-            top: "calc(100% + 6px)",
+            zIndex: 65,
+            top: "calc(100% + 5px)",
             insetInlineStart: 0,
-            width: Math.max(width, 280),
+            width: 340,
             background: T.surface,
             border: `1px solid ${T.lineStrong}`,
             borderRadius: T.radius,
-            boxShadow: "0 18px 44px rgba(15,23,42,0.18)",
-            padding: 10,
+            boxShadow: "0 18px 44px rgba(15,23,42,0.20)",
+            padding: 12,
           }}
         >
-          <input
-            autoFocus
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={searchPlaceholder}
-            style={{ ...fieldBase, width: "100%", minHeight: 34, fontSize: 12.5, marginBottom: 8 }}
-          />
-
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <button
-              type="button"
-              onClick={() => onChange(shown.map((o) => o.value))}
-              style={{ ...pill(false), color: T.accent, borderColor: T.accent }}
-            >
-              Select shown
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              style={{ ...pill(false) }}
-              disabled={!active}
-            >
-              Clear
-            </button>
+          <div style={{ fontWeight: 1000, fontSize: 12.5, marginBottom: 10, color: T.ink }}>
+            {person.name} appears in
           </div>
-
-          <div style={{ maxHeight: 260, overflowY: "auto", display: "grid", gap: 2 }}>
-            {shown.map((o) => {
-              const on = selected.includes(o.value);
-              return (
-                <label
-                  key={o.value}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    padding: "6px 8px",
-                    borderRadius: 7,
-                    cursor: "pointer",
-                    background: on ? T.accentSoft : "transparent",
-                    fontWeight: 800,
-                    fontSize: 12.5,
-                    color: T.ink,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={() => toggle(o.value)}
-                    style={{ width: 15, height: 15, accentColor: T.accent }}
-                  />
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {o.label}
-                  </span>
-                  {o.count != null && (
-                    <span style={{ color: T.faint, fontWeight: 950, fontSize: 11 }}>{o.count}</span>
-                  )}
-                </label>
-              );
+          <FormPicker
+            compact
+            selected={forms}
+            onToggle={(key) => onToggle(person, key)}
+            onSetAll={(keys, on) => keys.forEach((k) => {
+              const has = forms.includes(k);
+              if (has !== on) onToggle(person, k);
             })}
-            {!shown.length && (
-              <div style={{ padding: 12, textAlign: "center", color: T.faint, fontWeight: 800, fontSize: 12.5 }}>
-                Nothing matches “{q}”.
-              </div>
-            )}
-          </div>
+          />
         </div>
-      )}
-    </div>
-  );
-}
-
-/** Segmented control — clearer than a dropdown for two or three states. */
-function Segmented({ value, onChange, options }) {
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        padding: 3,
-        borderRadius: T.radius,
-        border: `1px solid ${T.lineStrong}`,
-        background: T.raised,
-      }}
-    >
-      {options.map((o) => {
-        const on = value === o.value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => onChange(o.value)}
-            style={{
-              padding: "6px 13px",
-              borderRadius: 7,
-              border: "none",
-              cursor: "pointer",
-              fontWeight: 950,
-              fontSize: 12,
-              whiteSpace: "nowrap",
-              background: on ? T.surface : "transparent",
-              color: on ? T.accent : T.muted,
-              boxShadow: on ? "0 1px 4px rgba(15,23,42,0.12)" : "none",
-            }}
-          >
-            {o.label}
-            {o.count != null && (
-              <span style={{ marginInlineStart: 6, color: on ? T.faint : T.faint, fontWeight: 900 }}>
-                {o.count}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** One removable "what is currently filtered" pill. */
-function ActivePill({ children, onRemove }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 7,
-        padding: "4px 6px 4px 11px",
-        borderRadius: 999,
-        border: `1px solid ${T.accent}`,
-        background: T.accentSoft,
-        color: T.accent,
-        fontWeight: 900,
-        fontSize: 11.5,
-        maxWidth: 260,
-      }}
-    >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{children}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label="Remove filter"
-        style={{
-          border: "none",
-          background: "rgba(15,118,110,0.16)",
-          color: T.accent,
-          borderRadius: 999,
-          width: 17,
-          height: 17,
-          lineHeight: 1,
-          fontSize: 11,
-          fontWeight: 950,
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      >
-        ✕
-      </button>
-    </span>
-  );
-}
-
-function SectionTitle({ children, hint }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <h3 style={{ margin: 0, fontWeight: 1000, fontSize: 15.5, color: T.ink }}>{children}</h3>
-      {hint && (
-        <p style={{ margin: "5px 0 0", color: T.muted, fontWeight: 750, fontSize: 12.5, lineHeight: 1.6 }}>
-          {hint}
-        </p>
       )}
     </div>
   );
@@ -436,18 +330,18 @@ export default function StaffDirectoryTab() {
   const [msg, setMsg] = useState("");
   const [confirmRemove, setConfirmRemove] = useState(null);
 
-  /* Directory filters */
+  /* Directory criteria */
   const [q, setQ] = useState("");
-  const [formFilter, setFormFilter] = useState([]);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [dirFilters, setDirFilters] = useState([]);
 
-  /* Import filters */
+  /* Picker criteria */
   const [importOpen, setImportOpen] = useState(false);
   const [importQ, setImportQ] = useState("");
-  const [importBranches, setImportBranches] = useState(() => QCS_COMPANY_BRANCHES);
-  const [importJobs, setImportJobs] = useState([]);
+  const [importFilters, setImportFilters] = useState(() =>
+    QCS_COMPANY_BRANCHES.length ? [{ field: "branch", values: QCS_COMPANY_BRANCHES }] : []
+  );
   const [picked, setPicked] = useState(() => new Set());
-  /* Deliberately empty: nobody goes on a form until it is ticked here. */
+  /* Deliberately empty: nobody goes on a form until it is ticked. */
   const [importForms, setImportForms] = useState([]);
 
   const csvRef = useRef(null);
@@ -468,7 +362,6 @@ export default function StaffDirectoryTab() {
 
   useEffect(() => { reload(); }, [reload]);
 
-  /* Nothing to show yet — open the picker rather than an empty table. */
   const autoOpened = useRef(false);
   useEffect(() => {
     if (loading || autoOpened.current) return;
@@ -476,8 +369,8 @@ export default function StaffDirectoryTab() {
     if (!staff.length) setImportOpen(true);
   }, [loading, staff.length]);
 
-  /* Every write goes through here: change the list, push the whole thing, and
-     roll back on failure so the screen never shows a save that did not land. */
+  /* Change the list, push the whole thing, roll back on failure so the screen
+     never shows a save that did not land. */
   const commit = useCallback(async (next, successMsg) => {
     const previous = staff;
     setStaff(next);
@@ -500,7 +393,7 @@ export default function StaffDirectoryTab() {
 
   const takenNos = useMemo(() => new Set(staff.map((s) => normalizeEmpNo(s.empNo))), [staff]);
 
-  /* ── Directory view ── */
+  /* ── Counts ── */
 
   const activeCount = useMemo(() => staff.filter((s) => s.active !== false).length, [staff]);
 
@@ -514,21 +407,90 @@ export default function StaffDirectoryTab() {
     return counts;
   }, [staff]);
 
+  const assignedCount = useMemo(
+    () => staff.filter((s) => (s.forms || []).length > 0).length,
+    [staff]
+  );
+
+  /* ── Directory filtering ── */
+
+  const dirFields = useMemo(
+    () => [
+      {
+        key: "form",
+        label: "Form",
+        icon: "📋",
+        options: STAFF_FORMS.map((f) => ({
+          value: f.key,
+          label: `${f.site} · ${f.en}${f.autoFills ? " ⚡" : ""}`,
+          count: formCounts[f.key] || 0,
+        })),
+      },
+      {
+        key: "site",
+        label: "Site",
+        icon: "🏭",
+        options: [...new Set(STAFF_FORMS.map((f) => f.site))].map((site) => ({
+          value: site,
+          label: site,
+          count: staff.filter((s) =>
+            (s.forms || []).some((k) => staffForm(k)?.site === site)
+          ).length,
+        })),
+      },
+      {
+        key: "job",
+        label: "Job",
+        icon: "🧰",
+        options: [...new Set(staff.map((s) => s.job).filter(Boolean))].map((job) => ({
+          value: job,
+          label: job,
+          count: staff.filter((s) => s.job === job).length,
+        })),
+      },
+      {
+        key: "status",
+        label: "Status",
+        icon: "🔆",
+        options: [
+          { value: "active", label: "Active", count: activeCount },
+          { value: "inactive", label: "Inactive", count: staff.length - activeCount },
+          { value: "unassigned", label: "On no form", count: staff.length - assignedCount },
+        ],
+      },
+    ],
+    [staff, formCounts, activeCount, assignedCount]
+  );
+
   const filtered = useMemo(() => {
     const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const wantForms = filterValues(dirFilters, "form");
+    const wantSites = filterValues(dirFilters, "site");
+    const wantJobs = filterValues(dirFilters, "job");
+    const wantStatus = filterValues(dirFilters, "status");
+
     return staff.filter((s) => {
-      if (statusFilter === "active" && s.active === false) return false;
-      if (statusFilter === "inactive" && s.active !== false) return false;
-      if (formFilter.length && !formFilter.some((k) => (s.forms || []).includes(k))) return false;
+      const forms = s.forms || [];
+      if (wantForms.length && !wantForms.some((k) => forms.includes(k))) return false;
+      if (wantSites.length && !forms.some((k) => wantSites.includes(staffForm(k)?.site))) return false;
+      if (wantJobs.length && !wantJobs.includes(s.job)) return false;
+      if (wantStatus.length) {
+        const ok = wantStatus.some((st) =>
+          st === "active" ? s.active !== false
+            : st === "inactive" ? s.active === false
+              : forms.length === 0
+        );
+        if (!ok) return false;
+      }
       if (terms.length) {
         const hay = `${s.empNo} ${s.name} ${s.job || ""}`.toLowerCase();
         if (!terms.every((t) => hay.includes(t))) return false;
       }
       return true;
     });
-  }, [staff, q, formFilter, statusFilter]);
+  }, [staff, q, dirFilters]);
 
-  const dirFiltersOn = q.trim() || formFilter.length || statusFilter !== "all";
+  const dirCriteria = dirFilters.length > 0 || !!q.trim();
 
   /* ── Per-person edits ── */
 
@@ -552,42 +514,89 @@ export default function StaffDirectoryTab() {
     commit(removeStaff(staff, person.empNo), `✅ Removed ${person.name}.`);
   }
 
-  /** Applies one form to everything the current filter shows. */
+  /** Applies one form to everything the filter currently shows. */
   function bulkForm(formKey, on) {
     let next = staff;
     filtered.forEach((s) => {
       const has = (s.forms || []).includes(formKey);
       if (has === on) return;
-      const forms = on ? [...(s.forms || []), formKey] : (s.forms || []).filter((f) => f !== formKey);
+      const forms = on
+        ? [...(s.forms || []), formKey]
+        : (s.forms || []).filter((f) => f !== formKey);
       next = upsertStaff(next, { ...s, forms });
     });
     if (next === staff) return;
-    const f = STAFF_FORMS.find((x) => x.key === formKey);
-    commit(next, `✅ ${on ? "Added" : "Removed"} ${filtered.length} employee(s) ${on ? "to" : "from"} ${f?.en}.`);
+    commit(
+      next,
+      `✅ ${on ? "Added" : "Removed"} ${filtered.length} employee(s) ${on ? "to" : "from"} ${formShortLabel(formKey)}.`
+    );
   }
 
-  /* ── Import ── */
+  const [bulkOpen, setBulkOpen] = useState(false);
 
-  const branchOptions = useMemo(
-    () => companyBranches().map(({ branch, count }) => ({ value: branch, label: branch, count })),
-    []
-  );
-  const jobOptions = useMemo(
-    () => companyJobs(importBranches).map(({ job, count }) => ({ value: job, label: job, count })),
-    [importBranches]
-  );
+  /* ── Picker ── */
+
+  const importFields = useMemo(() => {
+    const branchSel = filterValues(importFilters, "branch");
+    return [
+      {
+        key: "branch",
+        label: "Branch",
+        icon: "🏢",
+        options: companyBranches().map(({ branch, count }) => ({
+          value: branch,
+          label: branch,
+          count,
+        })),
+      },
+      {
+        key: "job",
+        label: "Job",
+        icon: "🧰",
+        options: companyJobs(branchSel).map(({ job, count }) => ({
+          value: job,
+          label: job,
+          count,
+        })),
+      },
+    ];
+  }, [importFilters]);
 
   const importCandidates = useMemo(
     () =>
       searchCompany(importQ, {
-        branches: importBranches,
-        jobs: importJobs,
+        branches: filterValues(importFilters, "branch"),
+        jobs: filterValues(importFilters, "job"),
         exclude: takenNos,
       }),
-    [importQ, importBranches, importJobs, takenNos]
+    [importQ, importFilters, takenNos]
   );
 
-  const importFiltersOn = importQ.trim() || importBranches.length || importJobs.length;
+  const importPresets = useMemo(() => {
+    const jobsFor = (re) =>
+      companyJobs().filter((j) => re.test(j.job)).map((j) => j.job);
+    const qcs = [{ field: "branch", values: QCS_COMPANY_BRANCHES }];
+    const sel = JSON.stringify(importFilters);
+    const eq = (f) => JSON.stringify(f) === sel;
+    return [
+      {
+        label: "QCS site",
+        filters: qcs,
+        on: eq(qcs),
+        count: searchCompany("", { branches: QCS_COMPANY_BRANCHES, exclude: takenNos }).length,
+      },
+      {
+        label: "Butchery roles",
+        filters: [{ field: "job", values: jobsFor(/butcher/i) }],
+        on: eq([{ field: "job", values: jobsFor(/butcher/i) }]),
+      },
+      {
+        label: "Kitchen roles",
+        filters: [{ field: "job", values: jobsFor(/chef|kitchen|waiter|grill|shawerma/i) }],
+        on: eq([{ field: "job", values: jobsFor(/chef|kitchen|waiter|grill|shawerma/i) }]),
+      },
+    ];
+  }, [importFilters, takenNos]);
 
   function togglePick(empNo) {
     setPicked((prev) => {
@@ -608,12 +617,6 @@ export default function StaffDirectoryTab() {
       else importCandidates.forEach((c) => next.add(c.empNo));
       return next;
     });
-  }
-
-  function clearImportFilters() {
-    setImportQ("");
-    setImportBranches([]);
-    setImportJobs([]);
   }
 
   async function commitImport() {
@@ -640,37 +643,40 @@ export default function StaffDirectoryTab() {
 
   /* ── Manual add / edit ── */
 
-  const [form, setForm] = useState({ empNo: "", name: "", job: "", editingNo: "" });
+  const [form, setForm] = useState({ empNo: "", name: "", job: "", forms: [], editingNo: "" });
   const [manualOpen, setManualOpen] = useState(false);
   const empNoRef = useRef(null);
 
-  const resetForm = () => setForm({ empNo: "", name: "", job: "", editingNo: "" });
+  const resetForm = () => setForm({ empNo: "", name: "", job: "", forms: [], editingNo: "" });
 
   async function submitManual() {
     const empNo = form.empNo.trim();
     const name = form.name.trim();
-    const job = form.job.trim();
     if (!empNo || !name) {
       setMsg("❌ Employee number and name are both required.");
       return;
     }
     try {
       const existing = staff.find((s) => normalizeEmpNo(s.empNo) === normalizeEmpNo(form.editingNo));
+      const payload = { empNo, name, job: form.job.trim(), forms: form.forms, active: true };
       const next = form.editingNo
-        ? renumberStaff(staff, form.editingNo, { ...existing, empNo, name, job })
-        : upsertStaff(staff, { empNo, name, job, forms: DEFAULT_FORMS, active: true });
+        ? renumberStaff(staff, form.editingNo, { ...existing, ...payload })
+        : upsertStaff(staff, payload);
       const ok = await commit(next, form.editingNo ? `✅ Updated ${name}.` : `✅ Added ${name}.`);
-      if (ok) {
-        resetForm();
-        setManualOpen(false);
-      }
+      if (ok) { resetForm(); setManualOpen(false); }
     } catch (e) {
       setMsg(`❌ ${e.message || e}`);
     }
   }
 
   function startEdit(person) {
-    setForm({ empNo: person.empNo, name: person.name, job: person.job || "", editingNo: person.empNo });
+    setForm({
+      empNo: person.empNo,
+      name: person.name,
+      job: person.job || "",
+      forms: person.forms || [],
+      editingNo: person.empNo,
+    });
     setManualOpen(true);
     setMsg("");
     setTimeout(() => empNoRef.current?.focus(), 0);
@@ -683,13 +689,7 @@ export default function StaffDirectoryTab() {
     const lines = ["employee_no,employee_name,job_title,forms,active"];
     staff.forEach((s) => {
       lines.push(
-        [
-          esc(s.empNo),
-          esc(s.name),
-          esc(s.job),
-          esc((s.forms || []).join("|")),
-          esc(s.active === false ? "no" : "yes"),
-        ].join(",")
+        [esc(s.empNo), esc(s.name), esc(s.job), esc((s.forms || []).join("|")), esc(s.active === false ? "no" : "yes")].join(",")
       );
     });
     const blob = new Blob([`﻿${lines.join("\n")}`], { type: "text/csv;charset=utf-8" });
@@ -709,10 +709,7 @@ export default function StaffDirectoryTab() {
     setMsg("⏳ Reading…");
     try {
       const text = await file.text();
-      const rows = text
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean)
+      const rows = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
         .filter((l) => !/^"?employee[_ ]?no/i.test(l));
 
       let next = staff;
@@ -728,7 +725,7 @@ export default function StaffDirectoryTab() {
           empNo,
           name,
           job: job || "",
-          forms: formsRaw ? formsRaw.split("|").filter(Boolean) : DEFAULT_FORMS,
+          forms: formsRaw ? formsRaw.split("|").filter(Boolean) : [],
           active: !/^no$/i.test(activeRaw || ""),
         });
         added++;
@@ -743,12 +740,14 @@ export default function StaffDirectoryTab() {
 
   /* ═════════════════════════════════════════════════ render */
 
+  const liveForms = STAFF_FORMS.filter((f) => f.wired);
+
   return (
     <div style={ui.page}>
       <PageHeader
         eyebrow="Data Tools"
         title="Staff Directory"
-        subtitle="Who appears on the quality forms, and where. People come from the company register, so the number, the name and the job title always match — nothing is typed by hand."
+        subtitle="Who appears on the quality forms, and on which site's sheet. People come from the company register, so number, name and job title always match — nothing is typed by hand."
         actions={
           <>
             <Button tone="primary" onClick={() => setImportOpen((v) => !v)} disabled={busy}>
@@ -767,13 +766,7 @@ export default function StaffDirectoryTab() {
         }
       />
 
-      <input
-        ref={csvRef}
-        type="file"
-        accept=".csv,text/csv,text/plain"
-        style={{ display: "none" }}
-        onChange={importCsv}
-      />
+      <input ref={csvRef} type="file" accept=".csv,text/csv,text/plain" style={{ display: "none" }} onChange={importCsv} />
 
       <StatusMessage message={msg} />
 
@@ -781,111 +774,38 @@ export default function StaffDirectoryTab() {
         <StatusMessage message="⚠️ Could not reach the server — showing the last cached list. Changes will not save until the connection is back." />
       )}
 
-      {/* ═══════════ Import picker ═══════════ */}
+      {/* ═══════════ Picker ═══════════ */}
       {importOpen && (
-        <div style={{ ...ui.card, padding: 0, overflow: "hidden" }}>
+        <div style={{ ...ui.card, padding: 0, overflow: "visible" }}>
           <div
             style={{
               padding: "16px 18px",
               background: "linear-gradient(135deg,#0f766e,#115e59)",
               color: "#fff",
+              borderRadius: "8px 8px 0 0",
             }}
           >
             <h3 style={{ margin: 0, fontWeight: 1000, fontSize: 16 }}>Add from the company register</h3>
             <p style={{ margin: "6px 0 0", fontSize: 12.5, fontWeight: 750, opacity: 0.9, lineHeight: 1.6 }}>
               {COMPANY_DIRECTORY.length} employees on file. Number, name and job title are copied
               across. Branch and job come from the company register and are not always updated after
-              a transfer or promotion — the branch is only a filter, and the job stays editable here.
+              a transfer or promotion — the branch is only a filter, the job stays editable here.
             </p>
           </div>
 
           <div style={{ padding: 18 }}>
-            {/* ── Filter bar ── */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <SearchField
-                value={importQ}
-                onChange={setImportQ}
-                placeholder="Search number, name, job or branch…"
-              />
-              <Facet
-                label="branches"
-                icon="🏢"
-                options={branchOptions}
-                selected={importBranches}
-                onChange={setImportBranches}
-                searchPlaceholder="Find a branch…"
-                width={230}
-              />
-              <Facet
-                label="job titles"
-                icon="🧰"
-                options={jobOptions}
-                selected={importJobs}
-                onChange={setImportJobs}
-                searchPlaceholder="Find a job title…"
-                width={200}
-              />
-            </div>
+            <FilterBar
+              fields={importFields}
+              filters={importFilters}
+              onFiltersChange={setImportFilters}
+              query={importQ}
+              onQueryChange={setImportQ}
+              placeholder="Filter by branch or job, or search a name or number…"
+              resultCount={importCandidates.length}
+              resultNoun="available"
+              presets={importPresets}
+            />
 
-            {/* ── Presets ── */}
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 950, color: T.faint, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Quick
-              </span>
-              <button
-                type="button"
-                style={pill(
-                  importBranches.length === QCS_COMPANY_BRANCHES.length &&
-                    QCS_COMPANY_BRANCHES.every((b) => importBranches.includes(b))
-                )}
-                onClick={() => { setImportBranches(QCS_COMPANY_BRANCHES); setImportJobs([]); }}
-              >
-                QCS site
-              </button>
-              <button
-                type="button"
-                style={pill(importJobs.length > 0 && importJobs.every((j) => /butcher/i.test(j)))}
-                onClick={() =>
-                  setImportJobs(jobOptions.filter((o) => /butcher/i.test(o.value)).map((o) => o.value))
-                }
-              >
-                Butchery roles
-              </button>
-              <button
-                type="button"
-                style={pill(importJobs.length > 0 && importJobs.every((j) => /chef|kitchen|waiter|grill|shawerma/i.test(j)))}
-                onClick={() =>
-                  setImportJobs(
-                    jobOptions.filter((o) => /chef|kitchen|waiter|grill|shawerma/i.test(o.value)).map((o) => o.value)
-                  )
-                }
-              >
-                Kitchen roles
-              </button>
-              {importFiltersOn && (
-                <button type="button" style={{ ...pill(false), color: "#b91c1c", borderColor: "#fecaca" }} onClick={clearImportFilters}>
-                  ✕ Clear filters
-                </button>
-              )}
-            </div>
-
-            {/* ── Applied filters ── */}
-            {(importBranches.length > 0 || importJobs.length > 0) && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                {importBranches.map((b) => (
-                  <ActivePill key={`b-${b}`} onRemove={() => setImportBranches((p) => p.filter((x) => x !== b))}>
-                    🏢 {b}
-                  </ActivePill>
-                ))}
-                {importJobs.map((j) => (
-                  <ActivePill key={`j-${j}`} onRemove={() => setImportJobs((p) => p.filter((x) => x !== j))}>
-                    🧰 {j}
-                  </ActivePill>
-                ))}
-              </div>
-            )}
-
-            {/* ── Results ── */}
             <div
               style={{
                 display: "flex",
@@ -897,8 +817,7 @@ export default function StaffDirectoryTab() {
               }}
             >
               <strong style={{ fontWeight: 1000, fontSize: 13 }}>
-                {importCandidates.length} available
-                {picked.size ? ` · ${picked.size} selected` : ""}
+                {picked.size ? `${picked.size} selected` : "Nothing selected yet"}
               </strong>
               <button
                 type="button"
@@ -910,15 +829,15 @@ export default function StaffDirectoryTab() {
               </button>
             </div>
 
-            <div style={{ ...ui.tableWrap, maxHeight: 360 }}>
+            <div style={{ ...ui.tableWrap, maxHeight: 340 }}>
               <table style={ui.table}>
                 <thead>
                   <tr>
-                    <th style={{ ...ui.th, width: 44, position: "sticky", top: 0 }} />
-                    <th style={{ ...ui.th, width: 84, position: "sticky", top: 0 }}>No</th>
-                    <th style={{ ...ui.th, position: "sticky", top: 0 }}>Name</th>
-                    <th style={{ ...ui.th, width: 176, position: "sticky", top: 0 }}>Job title</th>
-                    <th style={{ ...ui.th, width: 200, position: "sticky", top: 0 }}>Branch on file</th>
+                    <th style={{ ...ui.th, width: 44 }} />
+                    <th style={{ ...ui.th, width: 84 }}>No</th>
+                    <th style={ui.th}>Name</th>
+                    <th style={{ ...ui.th, width: 176 }}>Job title</th>
+                    <th style={{ ...ui.th, width: 200 }}>Branch on file</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -949,7 +868,7 @@ export default function StaffDirectoryTab() {
                   {!importCandidates.length && (
                     <tr>
                       <td colSpan={5} style={{ ...ui.td, textAlign: "center", color: T.muted, padding: 26 }}>
-                        {importFiltersOn
+                        {importFilters.length || importQ
                           ? "No one matches these filters — widen them or clear them."
                           : "Everyone in the company register is already in the directory."}
                       </td>
@@ -959,7 +878,6 @@ export default function StaffDirectoryTab() {
               </table>
             </div>
 
-            {/* ── Assign + confirm ── */}
             <div
               style={{
                 marginTop: 14,
@@ -969,41 +887,41 @@ export default function StaffDirectoryTab() {
                 background: picked.size ? T.accentSoft : T.raised,
               }}
             >
-              <span style={{ ...ui.label, marginBottom: 8 }}>
-                These employees will appear automatically in
-              </span>
-              <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
-                {STAFF_FORMS.map((f) => {
-                  const on = importForms.includes(f.key);
-                  return (
-                    <button
-                      key={f.key}
-                      type="button"
-                      style={pill(on)}
-                      title={f.autoFills ? "Pre-fills a row per employee, every day" : "Suggested while typing"}
-                      onClick={() =>
-                        setImportForms((prev) => (on ? prev.filter((k) => k !== f.key) : [...prev, f.key]))
-                      }
-                    >
-                      {f.branch} · {f.en}{f.autoFills ? " ⚡" : ""}
-                    </button>
-                  );
-                })}
+              <div style={{ ...ui.label, marginBottom: 10 }}>
+                Put them on which sheet?
               </div>
+              <FormPicker
+                selected={importForms}
+                onToggle={(key) =>
+                  setImportForms((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+                }
+                onSetAll={(keys, on) =>
+                  setImportForms((prev) =>
+                    on ? [...new Set([...prev, ...keys])] : prev.filter((k) => !keys.includes(k))
+                  )
+                }
+              />
 
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  marginTop: 14,
+                  paddingTop: 12,
+                  borderTop: `1px solid ${T.line}`,
+                }}
+              >
                 <span style={{ color: T.muted, fontWeight: 850, fontSize: 12.5 }}>
                   {!picked.size
                     ? "Tick the employees you want above."
                     : !importForms.length
-                      ? "⚠️ Choose at least one form — otherwise they are added but appear nowhere."
-                      : `${picked.size} employee(s) → ${importForms.length} form(s).`}
+                      ? "⚠️ Choose at least one sheet — otherwise they are added but appear nowhere."
+                      : `${picked.size} employee(s) → ${importForms.length} sheet(s).`}
                 </span>
-                <Button
-                  tone="primary"
-                  onClick={commitImport}
-                  disabled={busy || !picked.size || !importForms.length}
-                >
+                <Button tone="primary" onClick={commitImport} disabled={busy || !picked.size || !importForms.length}>
                   ➕ Add {picked.size || ""} to the directory
                 </Button>
               </div>
@@ -1018,18 +936,9 @@ export default function StaffDirectoryTab() {
           type="button"
           onClick={() => { setManualOpen((v) => !v); if (manualOpen) resetForm(); }}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 9,
-            width: "100%",
-            border: "none",
-            background: "transparent",
-            padding: 0,
-            cursor: "pointer",
-            fontWeight: 1000,
-            fontSize: 14,
-            color: T.ink,
-            textAlign: "start",
+            display: "flex", alignItems: "center", gap: 9, width: "100%",
+            border: "none", background: "transparent", padding: 0, cursor: "pointer",
+            fontWeight: 1000, fontSize: 14, color: T.ink, textAlign: "start",
           }}
         >
           <span aria-hidden="true" style={{ color: T.faint, fontSize: 11 }}>{manualOpen ? "▾" : "▸"}</span>
@@ -1040,61 +949,65 @@ export default function StaffDirectoryTab() {
         </button>
 
         {manualOpen && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "140px 1fr 1fr auto",
-              gap: 12,
-              alignItems: "end",
-              marginTop: 14,
-            }}
-          >
-            <div>
-              <label style={ui.label} htmlFor="staff-empno">Employee No</label>
-              <input
-                id="staff-empno"
-                ref={empNoRef}
-                style={{ ...fieldBase, width: "100%" }}
-                value={form.empNo}
-                onChange={(e) => setForm((f) => ({ ...f, empNo: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && submitManual()}
-                placeholder="e.g. 1042"
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", gap: 12, marginTop: 14 }}>
+              <div>
+                <label style={ui.label} htmlFor="staff-empno">Employee No</label>
+                <input
+                  id="staff-empno" ref={empNoRef} style={{ ...fieldBase, width: "100%" }}
+                  value={form.empNo}
+                  onChange={(e) => setForm((f) => ({ ...f, empNo: e.target.value }))}
+                  placeholder="e.g. 1042"
+                />
+              </div>
+              <div>
+                <label style={ui.label} htmlFor="staff-name">Employee Name</label>
+                <input
+                  id="staff-name" style={{ ...fieldBase, width: "100%" }}
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Full name"
+                />
+              </div>
+              <div>
+                <label style={ui.label} htmlFor="staff-job">Job Title</label>
+                <input
+                  id="staff-job" list="staff-job-options" style={{ ...fieldBase, width: "100%" }}
+                  value={form.job}
+                  onChange={(e) => setForm((f) => ({ ...f, job: e.target.value }))}
+                  placeholder="e.g. Butcher"
+                />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div style={{ ...ui.label, marginBottom: 10 }}>Appears automatically in</div>
+              <FormPicker
+                selected={form.forms}
+                onToggle={(key) =>
+                  setForm((f) => ({
+                    ...f,
+                    forms: f.forms.includes(key) ? f.forms.filter((k) => k !== key) : [...f.forms, key],
+                  }))
+                }
+                onSetAll={(keys, on) =>
+                  setForm((f) => ({
+                    ...f,
+                    forms: on ? [...new Set([...f.forms, ...keys])] : f.forms.filter((k) => !keys.includes(k)),
+                  }))
+                }
               />
             </div>
-            <div>
-              <label style={ui.label} htmlFor="staff-name">Employee Name</label>
-              <input
-                id="staff-name"
-                style={{ ...fieldBase, width: "100%" }}
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && submitManual()}
-                placeholder="Full name"
-              />
-            </div>
-            <div>
-              <label style={ui.label} htmlFor="staff-job">Job Title</label>
-              <input
-                id="staff-job"
-                list="staff-job-options"
-                style={{ ...fieldBase, width: "100%" }}
-                value={form.job}
-                onChange={(e) => setForm((f) => ({ ...f, job: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && submitManual()}
-                placeholder="e.g. Butcher"
-              />
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
               <Button tone="primary" onClick={submitManual} disabled={busy}>
                 {form.editingNo ? "💾 Save" : "➕ Add"}
               </Button>
-              {form.editingNo && (
-                <Button tone="muted" onClick={() => { resetForm(); setManualOpen(false); }} disabled={busy}>
-                  Cancel
-                </Button>
-              )}
+              <Button tone="muted" onClick={() => { resetForm(); setManualOpen(false); }} disabled={busy}>
+                Cancel
+              </Button>
             </div>
-          </div>
+          </>
         )}
       </div>
 
@@ -1102,114 +1015,109 @@ export default function StaffDirectoryTab() {
         {companyJobs().map((j) => <option key={j.job} value={j.job} />)}
       </datalist>
 
-      {/* ═══════════ The directory ═══════════ */}
+      {/* ═══════════ Directory ═══════════ */}
       <div style={ui.card}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
           <Stat label="In the directory" value={staff.length} tone={T.ink} />
           <Stat label="Active" value={activeCount} tone={T.accent} hint="Listed on new forms" />
-          {STAFF_FORMS.map((f) => (
+          <Stat
+            label="On no sheet"
+            value={staff.length - assignedCount}
+            tone={staff.length - assignedCount ? T.warn : T.faint}
+            hint="Added but not assigned to any form — they appear nowhere"
+          />
+          {liveForms.map((f) => (
             <Stat
               key={f.key}
-              label={f.en}
+              label={`${f.site} ${f.en.replace("Personal Hygiene", "Hygiene").replace("Return to Work", "Return")}`}
               value={formCounts[f.key] || 0}
-              tone={f.autoFills ? "#b45309" : "#475569"}
+              tone={f.autoFills ? T.warn : "#475569"}
               hint={f.autoFills ? "Pre-fills a row per employee" : "Suggested while typing"}
             />
           ))}
         </div>
 
-        <SectionTitle hint="Click a form cell to put someone on or off that form. Changes save immediately.">
+        <SectionTitle hint="Each site keeps its own Personal Hygiene sheet — click a person's badges to choose which ones they belong to. Changes save immediately.">
           Directory
         </SectionTitle>
 
-        {/* ── Filter bar ── */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-          <SearchField value={q} onChange={setQ} placeholder="Search number, name or job…" />
-          <Facet
-            label="forms"
-            icon="📋"
-            options={STAFF_FORMS.map((f) => ({
-              value: f.key,
-              label: `${f.en}${f.autoFills ? " ⚡" : ""}`,
-              count: formCounts[f.key] || 0,
-            }))}
-            selected={formFilter}
-            onChange={setFormFilter}
-            searchPlaceholder="Find a form…"
-            width={195}
-          />
-          <Segmented
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={[
-              { value: "all", label: "All", count: staff.length },
-              { value: "active", label: "Active", count: activeCount },
-              { value: "inactive", label: "Inactive", count: staff.length - activeCount },
-            ]}
-          />
-          {dirFiltersOn && (
-            <button
-              type="button"
-              style={{ ...pill(false), color: "#b91c1c", borderColor: "#fecaca" }}
-              onClick={() => { setQ(""); setFormFilter([]); setStatusFilter("all"); }}
-            >
-              ✕ Clear
-            </button>
-          )}
-        </div>
+        <FilterBar
+          fields={dirFields}
+          filters={dirFilters}
+          onFiltersChange={setDirFilters}
+          query={q}
+          onQueryChange={setQ}
+          placeholder="Filter by form, site, job or status — or search a name or number…"
+          resultCount={filtered.length}
+          resultNoun={`of ${staff.length}`}
+        />
 
-        {/* ── Bulk actions on the filtered set ── */}
-        {dirFiltersOn && filtered.length > 0 && (
+        {/* Bulk actions on the filtered set */}
+        {dirCriteria && filtered.length > 0 && (
           <div
             style={{
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-              alignItems: "center",
+              marginTop: 10,
               padding: "10px 12px",
-              marginBottom: 12,
               borderRadius: T.radius,
               background: T.accentSoft,
               border: `1px solid ${T.accent}`,
             }}
           >
-            <strong style={{ fontWeight: 1000, fontSize: 12.5, color: T.accent }}>
-              {filtered.length} shown — apply to all:
-            </strong>
-            {STAFF_FORMS.map((f) => (
-              <span key={f.key} style={{ display: "inline-flex", gap: 4 }}>
-                <button type="button" style={pill(false)} disabled={busy} onClick={() => bulkForm(f.key, true)}>
-                  + {f.en}
-                </button>
-                <button
-                  type="button"
-                  style={{ ...pill(false), color: "#b91c1c", borderColor: "#fecaca" }}
-                  disabled={busy}
-                  onClick={() => bulkForm(f.key, false)}
-                >
-                  −
-                </button>
-              </span>
-            ))}
+            <button
+              type="button"
+              onClick={() => setBulkOpen((v) => !v)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, width: "100%",
+                border: "none", background: "transparent", padding: 0, cursor: "pointer",
+                fontWeight: 1000, fontSize: 12.5, color: T.accent, textAlign: "start",
+              }}
+            >
+              <span aria-hidden="true" style={{ fontSize: 10 }}>{bulkOpen ? "▾" : "▸"}</span>
+              Apply a sheet to all {filtered.length} shown
+            </button>
+
+            {bulkOpen && (
+              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                {formsBySite().map(({ site, forms }) => (
+                  <div key={site} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <span
+                      style={{
+                        fontSize: 10, fontWeight: 950, color: T.muted, minWidth: 78,
+                        textTransform: "uppercase", letterSpacing: "0.05em",
+                      }}
+                    >
+                      {site}
+                    </span>
+                    {forms.map((f) => (
+                      <span key={f.key} style={{ display: "inline-flex", gap: 3 }}>
+                        <button type="button" style={pill(false)} disabled={busy} onClick={() => bulkForm(f.key, true)}>
+                          + {f.en.replace("Personal Hygiene", "Hygiene")}
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...pill(false), color: "#b91c1c", borderColor: "#fecaca" }}
+                          disabled={busy}
+                          onClick={() => bulkForm(f.key, false)}
+                          title={`Remove all shown from ${formShortLabel(f.key)}`}
+                        >
+                          −
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        <div style={{ marginBottom: 8, fontWeight: 1000, fontSize: 13 }}>
-          {filtered.length} of {staff.length} employee{staff.length === 1 ? "" : "s"}
-        </div>
-
-        <div style={ui.tableWrap}>
+        <div style={{ ...ui.tableWrap, marginTop: 12, overflow: "visible" }}>
           <table style={ui.table}>
             <thead>
               <tr>
                 <th style={{ ...ui.th, width: 70 }}>No</th>
-                <th style={{ ...ui.th, minWidth: 230 }}>Name &amp; job</th>
-                {STAFF_FORMS.map((f) => (
-                  <th key={f.key} style={{ ...ui.th, width: 112, textAlign: "center" }}>
-                    {f.en}
-                    {f.autoFills ? " ⚡" : ""}
-                  </th>
-                ))}
+                <th style={{ ...ui.th, minWidth: 210 }}>Name &amp; job</th>
+                <th style={{ ...ui.th, minWidth: 260 }}>Appears automatically in</th>
                 <th style={{ ...ui.th, width: 160, textAlign: "end" }}>Actions</th>
               </tr>
             </thead>
@@ -1218,8 +1126,6 @@ export default function StaffDirectoryTab() {
                 <tr key={s.empNo} style={{ opacity: s.active === false ? 0.55 : 1 }}>
                   <td style={{ ...ui.td, fontWeight: 1000, fontVariantNumeric: "tabular-nums" }}>{s.empNo}</td>
 
-                  {/* Job sits under the name: it identifies the person without
-                      costing a column the panel does not have room for. */}
                   <td style={ui.td}>
                     <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
                       <span>{s.name}</span>
@@ -1233,57 +1139,31 @@ export default function StaffDirectoryTab() {
                             : "Active. Click to take off new forms without deleting."
                         }
                         style={{
-                          padding: "2px 9px",
-                          borderRadius: 999,
-                          fontSize: 10,
-                          fontWeight: 950,
-                          letterSpacing: "0.04em",
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
+                          padding: "2px 9px", borderRadius: 999, fontSize: 10, fontWeight: 950,
+                          letterSpacing: "0.04em", cursor: "pointer", whiteSpace: "nowrap",
                           border: `1px solid ${s.active === false ? "#fcd34d" : "#a7f3d0"}`,
-                          background: s.active === false ? "#fffbeb" : "#ecfdf5",
-                          color: s.active === false ? "#b45309" : "#047857",
+                          background: s.active === false ? T.warnSoft : "#ecfdf5",
+                          color: s.active === false ? T.warn : "#047857",
                         }}
                       >
                         {s.active === false ? "INACTIVE" : "ACTIVE"}
                       </button>
                     </div>
                     {s.job && (
-                      <div style={{ color: T.faint, fontSize: 11.5, fontWeight: 800, marginTop: 2 }}>
-                        {s.job}
-                      </div>
+                      <div style={{ color: T.faint, fontSize: 11.5, fontWeight: 800, marginTop: 2 }}>{s.job}</div>
                     )}
                   </td>
 
-                  {/* One column per form: a whole roster reads straight down. */}
-                  {STAFF_FORMS.map((f) => {
-                    const on = (s.forms || []).includes(f.key);
-                    return (
-                      <td key={f.key} style={{ ...ui.td, textAlign: "center" }}>
-                        <button
-                          type="button"
-                          style={pill(on)}
-                          disabled={busy}
-                          title={on ? `Remove ${s.name} from ${f.en}` : `Add ${s.name} to ${f.en}`}
-                          onClick={() => toggleForm(s, f.key)}
-                        >
-                          {on ? "✔ on" : "off"}
-                        </button>
-                      </td>
-                    );
-                  })}
+                  <td style={ui.td}>
+                    <FormsCell person={s} onToggle={toggleForm} busy={busy} />
+                  </td>
 
                   <td style={{ ...ui.td, textAlign: "end", whiteSpace: "nowrap" }}>
                     <div style={{ display: "inline-flex", gap: 6 }}>
-                      <Button tone="secondary" style={rowBtn} onClick={() => startEdit(s)} disabled={busy}>
-                        Edit
-                      </Button>
+                      <Button tone="secondary" style={rowBtn} onClick={() => startEdit(s)} disabled={busy}>Edit</Button>
                       <Button
-                        tone="danger"
-                        style={rowBtn}
-                        onClick={() => setConfirmRemove(s)}
-                        disabled={busy}
-                        data-delete-action="true"
+                        tone="danger" style={rowBtn} onClick={() => setConfirmRemove(s)}
+                        disabled={busy} data-delete-action="true"
                       >
                         Delete
                       </Button>
@@ -1293,10 +1173,7 @@ export default function StaffDirectoryTab() {
               ))}
               {!filtered.length && (
                 <tr>
-                  <td
-                    colSpan={3 + STAFF_FORMS.length}
-                    style={{ ...ui.td, textAlign: "center", color: T.muted, padding: 30 }}
-                  >
+                  <td colSpan={4} style={{ ...ui.td, textAlign: "center", color: T.muted, padding: 30 }}>
                     {loading
                       ? "Loading…"
                       : !staff.length
@@ -1310,11 +1187,11 @@ export default function StaffDirectoryTab() {
         </div>
 
         <p style={{ margin: "12px 0 0", color: T.muted, fontWeight: 750, fontSize: 12.5, lineHeight: 1.7 }}>
-          ⚡ <b>Personal Hygiene</b> pre-fills a row for every employee marked “on”, every day. The
-          other two only suggest the person while typing — they never fill a row by themselves.{" "}
-          <b>ACTIVE / INACTIVE</b> keeps someone in the history but drops them off new forms;{" "}
-          <b>Delete</b> removes them from the directory. Reports already saved always keep the name
-          and number they were saved with.
+          ⚡ pre-fills a row for every assigned employee, every day — one sheet per site, so a worker
+          belongs to their own site's checklist only. A <b>dashed “soon”</b> badge means that screen
+          is not reading this directory yet; the assignment is stored and takes effect when it is.{" "}
+          <b>ACTIVE / INACTIVE</b> keeps someone in the history but drops them off new forms.
+          Reports already saved always keep the name and number they were saved with.
         </p>
       </div>
 

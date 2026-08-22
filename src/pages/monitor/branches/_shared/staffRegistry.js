@@ -34,40 +34,61 @@ export const STAFF_CACHE_KEY = "staff_directory_cache_v1";
 export const STAFF_EVENT = "staff_directory_changed";
 
 /* ══════════════════════════════════════ أين يظهر الموظف تلقائياً
-   Forms an employee can be listed on automatically. Only QCS is wired for now;
-   the other branches' checklists get added here as they are connected, and no
-   other file needs to change — the forms read this registry. */
+   Forms an employee can be listed on automatically.
+
+   ⚠️ "Personal Hygiene" is NOT one form — every site keeps its own checklist,
+   under its own report type, and a worker belongs to one site's sheet, not to
+   all of them. So each site's checklist is its own entry here, carrying the
+   real report type it saves under (verified against each input screen).
+
+   `wired` says whether that screen reads this registry yet. QCS is connected;
+   the rest are listed so the roster can be prepared now, and wiring one is a
+   single `useStaffDirectory(key)` call in its input file. */
 export const STAFF_FORMS = [
-  {
-    key: "qcs_personal_hygiene",
-    branch: "QCS",
-    ar: "النظافة الشخصية",
-    en: "Personal Hygiene",
-    /* This one pre-fills a row per assigned employee every day. */
-    autoFills: true,
-  },
-  {
-    key: "qcs_staff_sickness",
-    branch: "QCS",
-    ar: "مرض الموظفين",
-    en: "Staff Sickness",
-    autoFills: false,
-  },
-  {
-    key: "qcs_return_to_work",
-    branch: "QCS",
-    ar: "العودة للعمل",
-    en: "Return to Work",
-    autoFills: false,
-  },
+  // ── Personal hygiene, one per site ──
+  { key: "qcs_personal_hygiene",   reportType: "qcs-ph",                   site: "QCS",     siteAr: "القصيص",        en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: true },
+  { key: "pos10_personal_hygiene", reportType: "pos10_personal_hygiene",   site: "POS 10",  siteAr: "أبوظبي",        en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
+  { key: "pos11_personal_hygiene", reportType: "pos11_personal_hygiene",   site: "POS 11",  siteAr: "العين",         en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
+  { key: "pos15_personal_hygiene", reportType: "pos15_personal_hygiene",   site: "POS 15",  siteAr: "البرشاء",       en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
+  { key: "pos19_personal_hygiene", reportType: "pos19_personal_hygiene",   site: "POS 19",  siteAr: "موتور سيتي",    en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
+  { key: "ftr1_personal_hygiene",  reportType: "ftr1_personal_hygiene",    site: "FTR 1",   siteAr: "حديقة المشرف",  en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
+  { key: "ftr2_personal_hygiene",  reportType: "ftr2_personal_hygiene",    site: "FTR 2",   siteAr: "الممزر",        en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
+  { key: "prod_personal_hygiene",  reportType: "prod_personal_hygiene",    site: "Production", siteAr: "الإنتاج",    en: "Personal Hygiene", ar: "النظافة الشخصية", autoFills: true,  wired: false },
+
+  // ── QCS people forms (pickers, not row pre-fill) ──
+  { key: "qcs_staff_sickness",     reportType: "qcs_staff_sickness",           site: "QCS", siteAr: "القصيص", en: "Staff Sickness", ar: "مرض الموظفين",  autoFills: false, wired: true },
+  { key: "qcs_return_to_work",     reportType: "qcs_employee_return_to_work",  site: "QCS", siteAr: "القصيص", en: "Return to Work", ar: "العودة للعمل",  autoFills: false, wired: true },
 ];
 
 export const STAFF_FORM_KEYS = STAFF_FORMS.map((f) => f.key);
 const FORM_BY_KEY = new Map(STAFF_FORMS.map((f) => [f.key, f]));
 export const staffForm = (key) => FORM_BY_KEY.get(key) || null;
 
-/** Default assignment for a newly imported person: every QCS form. */
-export const DEFAULT_FORMS = STAFF_FORM_KEYS.slice();
+/** Sites that own at least one form, in registry order. */
+export const STAFF_SITES = STAFF_FORMS.reduce((acc, f) => {
+  if (!acc.some((s) => s.site === f.site)) acc.push({ site: f.site, siteAr: f.siteAr });
+  return acc;
+}, []);
+
+/** Forms grouped by site — the shape both the picker and the editor render. */
+export function formsBySite() {
+  return STAFF_SITES.map(({ site, siteAr }) => ({
+    site,
+    siteAr,
+    forms: STAFF_FORMS.filter((f) => f.site === site),
+  }));
+}
+
+/** Short label for a chip: "QCS · Personal Hygiene" → "QCS · Hygiene". */
+export function formShortLabel(key) {
+  const f = FORM_BY_KEY.get(key);
+  if (!f) return key;
+  const short = f.en.replace("Personal Hygiene", "Hygiene").replace("Return to Work", "Return");
+  return `${f.site} · ${short}`;
+}
+
+/** No form is assumed — a person appears only where they are explicitly put. */
+export const DEFAULT_FORMS = [];
 
 /* ══════════════════════════════════════ Normalisation */
 
@@ -95,9 +116,7 @@ export function normalizeStaff(raw) {
 
   const job = String(raw.job ?? raw.jobTitle ?? raw.position ?? raw.designation ?? "").trim();
 
-  const forms = Array.isArray(raw.forms)
-    ? raw.forms.filter((f) => FORM_BY_KEY.has(f))
-    : DEFAULT_FORMS.slice(); // records written before this field existed
+  const forms = Array.isArray(raw.forms) ? raw.forms.filter((f) => FORM_BY_KEY.has(f)) : [];
   return {
     empNo,
     name,
