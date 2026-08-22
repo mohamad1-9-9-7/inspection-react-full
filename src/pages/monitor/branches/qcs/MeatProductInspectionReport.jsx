@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/qcs/MeatProductInspectionReport.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import { getReportRowByDate, payloadOf } from "../_shared/reportApi";
 
 /* ===== API base ===== */
 
@@ -410,26 +411,21 @@ export default function MeatProductInspectionReport() {
     });
   }
 
+  /* One report per day for this site. TYPE is already unique per site
+     (ftr1_… vs ftr2_…), so the date alone identifies the day's record; the
+     site/branch comparison is kept as a defensive check on what came back.
+     This used to download every report of the type on every save. */
   async function checkDuplicateForDay(dateStr) {
+    if (!dateStr) return false;
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`);
-      const data = await res.json().catch(() => ({}));
-      const items = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data?.data)
-        ? data.data
-        : [];
-      for (const it of items) {
-        const p = ensureObject(it?.payload);
-        const d = p?.header?.reportEntryDate || p?.header?.date || (it?.createdAt || "").slice(0, 10);
-        const site = p?.header?.site || "";
-        const branch = p?.branchCode || p?.branch || "";
-        if (d === dateStr && site === FIXED_AREA && branch === BRANCH) return true;
-      }
-      return false;
+      const row = await getReportRowByDate(TYPE, dateStr);
+      if (!row) return false;
+      const p = ensureObject(payloadOf(row));
+      const site = p?.header?.site || "";
+      const branch = p?.branchCode || p?.branch || "";
+      return (!site || site === FIXED_AREA) && (!branch || branch === BRANCH);
     } catch {
+      /* A failed check must not block a legitimate save. */
       return false;
     }
   }
@@ -456,6 +452,11 @@ export default function MeatProductInspectionReport() {
     const columns = samplesForSave.map(sampleToColumn);
 
     const payload = {
+      // Canonical business date. Without it the server resolves NULL for this
+      // record, so no targeted date query can find it and every lookup degrades
+      // to a full-table scan. header.date/reportEntryDate stay untouched — the
+      // viewer and the Excel exporter read those.
+      reportDate,
       branchCode: BRANCH,
       branch: BRANCH,
       header: { date: reportDate, reportEntryDate: reportDate, dayOfWeek: reportDay, site: FIXED_AREA },
@@ -472,6 +473,18 @@ export default function MeatProductInspectionReport() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reporter: "ftr2", type: TYPE, payload }),
       });
+      // Now that the payload carries a canonical reportDate, the unique index
+      // on (type, reportDate) enforces one-per-day server side as well. Show
+      // that as the duplicate warning, not as a generic network failure.
+      if (res.status === 409) {
+        setSaving(false);
+        setModalState({
+          open: true,
+          text: "⚠️ يوجد تقرير محفوظ لهذا اليوم لنفس الفرع/الموقع.",
+          kind: "warn",
+        });
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       setModalState({ open: true, text: "✅ تم الحفظ بنجاح", kind: "success" });

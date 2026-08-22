@@ -26,18 +26,44 @@ export function payloadOf(row) {
   return row?.payload || row || {};
 }
 
+/* The business date of a record, in the SAME order the server's BUSINESS_DATE
+   expression resolves it (routes/reports.cjs). The two must agree: when this
+   function cannot read a date the server can, getReportRowByDate discards the
+   row the server just handed it and falls through to a full-table scan — and
+   when neither can read it, a save that should UPDATE inserts a DUPLICATE
+   instead. Both were happening:
+
+     • NCR keeps its date at payload.headRow.reportDate — the server knew that
+       path, this function did not.
+     • The FTR preloading sheets keep theirs at payload.header.date, which
+       NEITHER knew.
+
+   New paths are appended rather than reordered, so every record that already
+   resolved keeps resolving to exactly the same date. The created_at fallbacks
+   stay last: they are a guess, and any real business date must win over them.
+
+   Deliberately NOT copied from the server: header.issueDate / header.month /
+   header.dateIssued. Those are document-control fields — most forms carry a
+   fixed "Issue Date: 05/02/2020" in their header — so reading them as the
+   record's date would confidently return the wrong day. */
 export function reportDateOf(row) {
   const p = payloadOf(row);
-  return (
+  const v =
     p.reportDate ||
     p.date ||
     p.header?.reportDate ||
     p.header?.reportEntryDate ||
     p.meta?.entryDate ||
-    row?.createdAt?.slice?.(0, 10) ||
-    row?.created_at?.slice?.(0, 10) ||
-    ""
-  );
+    p.headRow?.reportDate ||
+    p.header?.date ||
+    p.cutDate ||
+    p.entries?.[0]?.date ||
+    row?.createdAt ||
+    row?.created_at ||
+    "";
+  // The server compares LEFT(...,10); an ISO timestamp must match a plain
+  // YYYY-MM-DD. Shorter and non-ISO values (e.g. "05/02/2020") pass through.
+  return String(v).slice(0, 10);
 }
 
 export async function listReports(type, params = {}) {

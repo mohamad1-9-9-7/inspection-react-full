@@ -1,6 +1,12 @@
 // src/pages/monitor/branches/qcs/NonConformanceReportInput.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import {
+  getReportById,
+  getReportRowByDate,
+  payloadOf,
+  reportId,
+} from "../_shared/reportApi";
 
 /* =========================
    API base (CRA + Vite safe)
@@ -335,27 +341,21 @@ const divider = {
 
 /* =========================
    Server helpers (NC only)
+   -------------------------
+   Both of these used to download every NC report ever written — the by-date
+   one on each change of the date field, and the by-id one to find a single
+   record it already had the id of. They are now two targeted queries:
+   `?type=&reportDate=` (the server resolves headRow.reportDate as the business
+   date) and `GET /api/reports/:id`.
 ========================= */
-async function listReportsByType(type) {
-  const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(type)}`, {
-    method: "GET",
-    cache: "no-store",
-    credentials: IS_SAME_ORIGIN ? "include" : "omit",
-  });
-  if (!res.ok) return [];
-  const json = await res.json().catch(() => null);
-  return Array.isArray(json) ? json : json?.data || [];
-}
 async function fetchExistingNCByDate(dateStr, type) {
-  const rows = await listReportsByType(type || DEFAULT_TYPE);
-  const found = rows.find((r) => String(r?.payload?.headRow?.reportDate || r?.payload?.reportDate || "") === String(dateStr));
-  return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
+  const row = await getReportRowByDate(type || DEFAULT_TYPE, dateStr);
+  return row ? { id: reportId(row), payload: payloadOf(row) } : null;
 }
-async function fetchExistingNCById(reportId, type) {
-  if (!reportId) return null;
-  const rows = await listReportsByType(type || DEFAULT_TYPE);
-  const found = rows.find((r) => String(r?._id || r?.id || "") === String(reportId));
-  return found ? { id: found._id || found.id, payload: found.payload || {} } : null;
+async function fetchExistingNCById(id) {
+  if (!id) return null;
+  const row = await getReportById(id);
+  return row ? { id: reportId(row) || id, payload: payloadOf(row) } : null;
 }
 
 function todayDubaiISO() {
@@ -524,7 +524,7 @@ export default function NonConformanceReportInput(props) {
       if (!dateISO) return;
       if (editingReportId && dateISO !== queryDate) return;
       const existing = editingReportId
-        ? await fetchExistingNCById(editingReportId, TYPE)
+        ? await fetchExistingNCById(editingReportId)
         : await fetchExistingNCByDate(dateISO, TYPE);
       if (cancelled) return;
       applyPayload(existing?.payload || {});
