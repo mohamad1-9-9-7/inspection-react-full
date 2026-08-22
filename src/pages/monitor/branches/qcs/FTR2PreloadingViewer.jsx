@@ -1,7 +1,8 @@
 // src/pages/monitor/branches/qcs/FTR2PreloadingViewer.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import PreloadingKPIBar from "../_shared/PreloadingKPIBar";
 import CollapsibleDateTree from "../_shared/CollapsibleDateTree";
+import { getReportById, listReportDates } from "../_shared/reportApi";
 import API_BASE from "../../../../config/api";
 
 /* ===== API base ===== */
@@ -120,7 +121,7 @@ function buildYMDTree(items) {
   const byY = new Map();
   for (const it of items) {
     const p = ensureObject(it?.payload) || {};
-    const dStr = pickEntryDate(p) || String(it?.createdAt || "").slice(0, 10);
+    const dStr = it?.reportDate || pickEntryDate(p) || String(it?.createdAt || "").slice(0, 10);
     if (!dStr) continue;
     const [y, m, d] = dStr.split("-");
     if (!byY.has(y)) byY.set(y, new Map());
@@ -333,26 +334,20 @@ export default function FTR2PreloadingViewer() {
     setLoading(true);
     setError("");
     try {
-      let res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`);
-      let data = await res.json().catch(() => ({}));
-      let items = extractItems(data);
-
-      if (!items.length) {
-        res = await fetch(`${API_BASE}/api/reports`);
-        data = await res.json().catch(() => ({}));
-        const all = extractItems(data);
-        items = all.filter((x) => (x?.type || "").trim() === TYPE);
-      }
-
-      items = items.map((it) => ({ ...it, payload: ensureObject(it?.payload) }));
+      // Metadata only — the tree needs a date per record, not the record.
+      // This used to pull every payload (775 KB) just to draw the sidebar,
+      // and when a type came back empty it fell back to fetching the WHOLE
+      // reports table unfiltered. Both are gone.
+      const items = (await listReportDates(TYPE)).map((it) => ({
+        ...it,
+        createdAt: it.createdAt || it.created_at,
+      }));
 
       const tree = buildYMDTree(items);
       setYmdTree(tree);
 
       if (tree[0]?.months?.[0]?.days?.[0]?.items?.[0]) {
-        const first = tree[0].months[0].days[0];
-        setReport(first.items[0]);
-        setDate(first.date);
+        await openItem(tree[0].months[0].days[0].items[0]);
       } else {
         setReport(null);
         setError("لا توجد تقارير محفوظة لـ FTR2.");
@@ -367,13 +362,43 @@ export default function FTR2PreloadingViewer() {
     }
   }
 
-  function openItem(item) {
+  /* The tree carries metadata; the record itself is fetched the moment a
+     date is picked, and kept for the session so going back and forth is
+     free. */
+  const recordCache = useRef(new Map());
+
+  async function openItem(item) {
     if (!item) return;
-    const d = pickEntryDate(ensureObject(item?.payload) || {}) || (item?.createdAt || "").slice(0, 10) || todayDubai();
-    setReport(item);
+    const id = item?.id || item?._id;
+    const d =
+      item?.reportDate ||
+      pickEntryDate(ensureObject(item?.payload) || {}) ||
+      (item?.createdAt || "").slice(0, 10) ||
+      todayDubai();
+
     setDate(d);
     setEditMode(false);
     setError("");
+
+    // Already a full row (e.g. straight after an edit) — nothing to fetch.
+    if (item?.payload && Object.keys(ensureObject(item.payload)).length) {
+      setReport(item);
+      return;
+    }
+
+    const cached = recordCache.current.get(String(id));
+    if (cached) { setReport(cached); return; }
+
+    try {
+      const full = await getReportById(id);
+      if (!full) { setError("تعذّر فتح هذا التقرير."); return; }
+      const row = { ...full, payload: ensureObject(full.payload) };
+      recordCache.current.set(String(id), row);
+      setReport(row);
+    } catch (e) {
+      console.error(e);
+      setError("تعذّر فتح هذا التقرير.");
+    }
   }
 
   useEffect(() => { buildDaysTree(); /* eslint-disable-next-line */ }, []);

@@ -1,7 +1,8 @@
 // src/pages/monitor/branches/qcs/FTR1PreloadingViewer.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import PreloadingKPIBar from "../_shared/PreloadingKPIBar";
 import CollapsibleDateTree from "../_shared/CollapsibleDateTree";
+import { getReportById, listReportDates } from "../_shared/reportApi";
 import API_BASE from "../../../../config/api";
 
 /* ===== API base ===== */
@@ -275,31 +276,20 @@ export default function FTR1PreloadingViewer() {
     setLoading(true);
     setError("");
     try {
-      async function fetchAll(url) {
-        const res = await fetch(url);
-        const data = await res.json().catch(() => ({}));
-        if (Array.isArray(data)) return data;
-        if (Array.isArray(data?.items)) return data.items;
-        if (Array.isArray(data?.data)) return data.data;
-        return [];
-      }
-
-      // 1) جرّب مع type
-      let items = await fetchAll(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`);
-      // 2) لو فاضي، جرّب بدون فلترة
-      if (!items.length) {
-        items = await fetchAll(`${API_BASE}/api/reports`);
-        items = items.filter((it) => (it?.type || "").trim() === TYPE);
-      }
-
-      // payload قد يكون string
-      items = items.map((it) => ({ ...it, payload: ensureObject(it?.payload) }));
+      // Metadata only — the tree needs a date per record, not the record.
+      // This used to pull every payload (988 KB of samples and photos) just
+      // to draw the sidebar, and when a type came back empty it fell back to
+      // fetching the WHOLE reports table unfiltered. Both are gone.
+      const items = (await listReportDates(TYPE)).map((it) => ({
+        ...it,
+        createdAt: it.createdAt || it.created_at,
+      }));
 
       // تجميع حسب التاريخ
       const groups = new Map();
       for (const it of items) {
         const p = it?.payload || {};
-        const d = pickEntryDate(p) || String(it?.createdAt || "").slice(0, 10);
+        const d = it?.reportDate || pickEntryDate(p) || String(it?.createdAt || "").slice(0, 10);
         if (!d) continue;
         const arr = groups.get(d) || [];
         arr.push(it);
@@ -317,8 +307,7 @@ export default function FTR1PreloadingViewer() {
 
       // افتح أحدث عنصر إن لم يوجد تقرير مفتوح
       if (!report && list[0]?.items?.[0]) {
-        setReport(list[0].items[0]);
-        setDate(list[0].date);
+        await openItem(list[0].items[0]);
       }
     } catch (e) {
       console.error(e);
@@ -329,13 +318,43 @@ export default function FTR1PreloadingViewer() {
     }
   }
 
-  function openItem(item) {
+  /* The tree carries metadata; the record itself is fetched the moment a
+     date is picked, and kept for the session so going back and forth is
+     free. */
+  const recordCache = useRef(new Map());
+
+  async function openItem(item) {
     if (!item) return;
-    const d = pickEntryDate(item?.payload || {}) || (item?.createdAt || "").slice(0, 10) || todayDubai();
-    setReport(item);
+    const id = item?.id || item?._id;
+    const d =
+      item?.reportDate ||
+      pickEntryDate(ensureObject(item?.payload) || {}) ||
+      (item?.createdAt || "").slice(0, 10) ||
+      todayDubai();
+
     setDate(d);
     setError("");
     setEditMode(false);
+
+    // Already a full row (e.g. straight after an edit) — nothing to fetch.
+    if (item?.payload && Object.keys(ensureObject(item.payload)).length) {
+      setReport(item);
+      return;
+    }
+
+    const cached = recordCache.current.get(String(id));
+    if (cached) { setReport(cached); return; }
+
+    try {
+      const full = await getReportById(id);
+      if (!full) { setError("تعذّر فتح هذا التقرير."); return; }
+      const row = { ...full, payload: ensureObject(full.payload) };
+      recordCache.current.set(String(id), row);
+      setReport(row);
+    } catch (e) {
+      console.error(e);
+      setError("تعذّر فتح هذا التقرير.");
+    }
   }
 
   useEffect(() => {
