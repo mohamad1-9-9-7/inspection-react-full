@@ -1,10 +1,11 @@
 // src/pages/monitor/branches/qcs/DailyCleanlinessView.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import API_BASE from "../../../../config/api";
 import SignatureName from "../../../shared/SignatureName";
 import { DateTreeSidebar } from "../_shared/branchViewKit";
+import useReportIndex from "../_shared/useReportIndex";
 import { canDelete } from "../../../../utils/perms";
 
 /* ===== API base (نفس أسلوب مشروعك) ===== */
@@ -47,33 +48,23 @@ const DEFAULT_FOOTER = { checkedBy: "", verifiedBy: "" };
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
 
 export default function DailyCleanlinessView() {
-  const [reports, setReports] = useState([]);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [loading, setLoading] = useState(false);
+  /* The date tree needs one date per record, not the records themselves. The
+     full list is pulled only by "Export JSON". */
+  const {
+    treeItems,
+    selected: selectedReport,
+    selectedKey,
+    loading,
+    open,
+    rowForKey,
+    reload: fetchReports,
+    loadAll,
+  } = useReportIndex(TYPE);
+
+  const [busy, setBusy] = useState(false);
 
   const reportRef = useRef(null);
   const fileInputRef = useRef(null);
-
-  /* ===== جلب التقارير (أحدث ← أقدم) ===== */
-  async function fetchReports() {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const json = await res.json();
-      const arr = Array.isArray(json) ? json : (json?.data ?? []);
-      arr.sort((a,b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
-      setReports(arr);
-      setSelectedReport(arr[0] || null);
-    } catch (e) {
-      console.error(e);
-      alert("⚠️ Failed to fetch data.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { fetchReports(); }, []);
 
   /* ===== PDF ===== */
   const handleExportPDF = async () => {
@@ -116,9 +107,13 @@ export default function DailyCleanlinessView() {
   };
 
   /* ===== تصدير JSON (كل التقارير) ===== */
-  const handleExportJSON = () => {
+  /* The one action that genuinely needs every record — so it is the one place
+     that downloads them. */
+  const handleExportJSON = async () => {
     try {
-      const payloads = reports.map(r => r?.payload ?? r);
+      setBusy(true);
+      const rows = await loadAll();
+      const payloads = rows.map(r => r?.payload ?? r);
       const out = {
         type: TYPE,
         exportedAt: new Date().toISOString(),
@@ -145,7 +140,7 @@ export default function DailyCleanlinessView() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      setLoading(true);
+      setBusy(true);
       const txt = await file.text();
       const json = JSON.parse(txt);
 
@@ -175,23 +170,10 @@ export default function DailyCleanlinessView() {
       console.error(e2);
       alert("❌ Invalid JSON file.");
     } finally {
-      setLoading(false);
+      setBusy(false);
       if (e?.target) e.target.value = "";
     }
   };
-
-  /* ===== تجميع حسب سنة > شهر > يوم ===== */
-  const grouped = reports.reduce((acc, r) => {
-    const d = new Date(r?.payload?.reportDate);
-    if (isNaN(d)) return acc;
-    const Y = d.getFullYear();
-    const M = String(d.getMonth()+1).padStart(2,"0");
-    const D = String(d.getDate()).padStart(2,"0");
-    if (!acc[Y]) acc[Y] = {};
-    if (!acc[Y][M]) acc[Y][M] = [];
-    acc[Y][M].push({ ...r, _dt: d.getTime(), _day: D });
-    return acc;
-  }, {});
 
   /* ===== استخراج الحقول بمرونة (header/footer/rows) ===== */
   const p = selectedReport?.payload || {};
@@ -207,29 +189,16 @@ export default function DailyCleanlinessView() {
     return Array.isArray(raw) ? raw : [];
   })();
 
-  const treeItems = useMemo(() =>
-    reports.map((r) => ({
-      key: getId(r) || r?.payload?.reportDate,
-      dateISO: r?.payload?.reportDate || "",
-      label: r?.payload?.reportDate
-        ? new Date(r.payload.reportDate).toLocaleDateString("en-GB")
-        : "—",
-    })),
-  [reports]);
-
   return (
     <div style={{ display: "flex", gap: "1rem", direction: "ltr" }}>
       {/* الشجرة الجانبية */}
       <div style={{ width: 285, flexShrink: 0 }}>
         <DateTreeSidebar
           items={treeItems}
-          activeKey={getId(selectedReport)}
-          onPick={(it) => {
-            const r = reports.find((x) => getId(x) === it.key);
-            if (r) setSelectedReport(r);
-          }}
+          activeKey={selectedKey}
+          onPick={(it) => open(rowForKey(it.key))}
           title="📅 Saved Reports"
-          loading={loading && reports.length === 0}
+          loading={loading}
           maxHeight="calc(100vh - 200px)"
         />
       </div>
@@ -253,7 +222,9 @@ export default function DailyCleanlinessView() {
               <h3 style={{ color:"#2980b9" }}>🧹 Report: {p.reportDate || ""}</h3>
               <div className="action-buttons" style={{ display:"flex", gap:".6rem" }}>
                 <button onClick={handleExportPDF} style={btnExport}>⬇ Export PDF</button>
-                <button onClick={handleExportJSON} style={btnJson}>⬇ Export JSON</button>
+                <button onClick={handleExportJSON} style={btnJson} disabled={busy}>
+                  {busy ? "⏳ Working…" : "⬇ Export JSON"}
+                </button>
                 <button onClick={triggerImport} style={btnImport}>⬆ Import JSON</button>
                 {canDelete("daily") && (
                   <button onClick={() => handleDelete(selectedReport)} style={btnDelete} data-delete-action="true">🗑 Delete</button>
