@@ -59,18 +59,20 @@ export default function POS15ReceivingLogInput() {
   }, [reportDate]);
 
   const gridStyle = useMemo(() => ({
-    width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12,
+    width: "max-content", minWidth: "100%",
+    borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13.5,
   }), []);
   const thCell = {
-    border: "1px solid #1f3b70", padding: "6px 4px", textAlign: "center",
-    whiteSpace: "pre-line", fontWeight: 700, background: "#f5f8ff", color: "#0b1f4d",
+    border: "1px solid #1f3b70", padding: "14px 8px", height: 78, textAlign: "center",
+    whiteSpace: "normal", overflowWrap: "anywhere", lineHeight: 1.4, fontSize: 12.5,
+    fontWeight: 700, background: "#f5f8ff", color: "#0b1f4d",
   };
   const tdCell = {
-    border: "1px solid #1f3b70", padding: "6px 4px", textAlign: "center", verticalAlign: "middle",
+    border: "1px solid #1f3b70", padding: "12px 8px", height: 56, textAlign: "center", verticalAlign: "middle",
   };
   const inputStyle = {
     width: "100%", boxSizing: "border-box", border: "1px solid #c7d2fe", borderRadius: 6,
-    padding: "4px 6px", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
+    padding: "9px 10px", minHeight: 40, fontSize: 13.5, fontFamily: "inherit", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
   };
   const btn = (bg) => ({
     background: bg, color: "#fff", border: "none", borderRadius: 10, padding: "10px 14px",

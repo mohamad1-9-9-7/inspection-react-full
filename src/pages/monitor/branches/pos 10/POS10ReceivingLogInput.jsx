@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos 10/POS10ReceivingLogInput.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
+import useTakenDates from "../_shared/useTakenDates";
 
 
 
@@ -58,8 +59,9 @@ export default function POS10ReceivingLogInput() {
     }
   });
 
-  // حالة التحقق من التاريخ
-  const [dateStatus, setDateStatus] = useState("idle"); // idle | checking | available | exists | error
+  // حالة التحقق من التاريخ — تُشتق من فهرس التواريخ الخفيف (بلا تنزيل الأرشيف)
+  const { isTaken, markTaken, loading: datesLoading, failed: datesFailed } =
+    useTakenDates(TYPE);
 
   // 🧾 رقم الفاتورة في أعلى التقرير (إلزامي)
   const [invoiceNo, setInvoiceNo] = useState("");
@@ -89,25 +91,31 @@ export default function POS10ReceivingLogInput() {
 
   const gridStyle = useMemo(
     () => ({
-      width: "100%",
+      width: "max-content",     // honour colDefs; the wrapper scrolls
+      minWidth: "100%",
       borderCollapse: "collapse",
       tableLayout: "fixed",
-      fontSize: 12,
+      fontSize: 13.5,
     }),
     []
   );
   const thCell = {
     border: "1px solid #1f3b70",
-    padding: "6px 4px",
+    padding: "14px 8px",
+    height: 78,
     textAlign: "center",
-    whiteSpace: "pre-line",
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+    lineHeight: 1.4,
+    fontSize: 12.5,
     fontWeight: 700,
     background: "#f5f8ff",
     color: "#0b1f4d",
   };
   const tdCell = {
     border: "1px solid #1f3b70",
-    padding: "6px 4px",
+    padding: "12px 8px",
+    height: 56,
     textAlign: "center",
     verticalAlign: "middle",
   };
@@ -116,7 +124,10 @@ export default function POS10ReceivingLogInput() {
     boxSizing: "border-box",
     border: "1px solid #c7d2fe",
     borderRadius: 6,
-    padding: "4px 6px",
+    padding: "9px 10px",
+    minHeight: 40,
+    fontSize: 13.5,
+    fontFamily: "inherit",
     display: "block",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -161,21 +172,22 @@ export default function POS10ReceivingLogInput() {
   // ✅ تعريف الأعمدة
   const colDefs = useMemo(
     () => [
-      <col key="supplier" style={{ width: 170 }} />,
-      <col key="food" style={{ width: 160 }} />,
-      <col key="vehT" style={{ width: 90 }} />,
-      <col key="foodT" style={{ width: 90 }} />,
-      <col key="qty" style={{ width: 110 }} />,          // ✅ عمود الكمية
-      <col key="vehClean" style={{ width: 120 }} />,
-      <col key="handler" style={{ width: 140 }} />,
-      <col key="appearanceOK" style={{ width: 120 }} />,
-      <col key="firmnessOK" style={{ width: 110 }} />,
-      <col key="smellOK" style={{ width: 110 }} />,
-      <col key="pack" style={{ width: 220 }} />,
-      <col key="origin" style={{ width: 120 }} />,
-      <col key="prod" style={{ width: 120 }} />,
-      <col key="exp" style={{ width: 120 }} />,
-      <col key="remarks" style={{ width: 200 }} />,
+      <col key="supplier" style={{ width: 190 }} />,
+      <col key="food" style={{ width: 180 }} />,
+      <col key="vehT" style={{ width: 96 }} />,
+      <col key="foodT" style={{ width: 96 }} />,
+      <col key="qty" style={{ width: 116 }} />,          // ✅ عمود الكمية
+      <col key="vehClean" style={{ width: 96 }} />,
+      <col key="handler" style={{ width: 104 }} />,
+      <col key="appearanceOK" style={{ width: 96 }} />,
+      <col key="firmnessOK" style={{ width: 92 }} />,
+      <col key="smellOK" style={{ width: 92 }} />,
+      <col key="pack" style={{ width: 150 }} />,
+      <col key="origin" style={{ width: 130 }} />,
+      <col key="prod" style={{ width: 132 }} />,
+      <col key="exp" style={{ width: 132 }} />,
+      <col key="remarks" style={{ width: 230 }} />,
+      <col key="del" style={{ width: 64 }} />,
     ],
     []
   );
@@ -205,46 +217,12 @@ export default function POS10ReceivingLogInput() {
   }
 
   // ===== التحقق من توفر التاريخ =====
-  useEffect(() => {
-    let ignore = false;
-
-    async function checkDate() {
-      if (!reportDate) {
-        setDateStatus("idle");
-        return;
-      }
-      setDateStatus("checking");
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const data = Array.isArray(json?.data) ? json.data : [];
-
-        const exists = data.some((r) => {
-          const d =
-            (r && r.payload && r.payload.reportDate) ||
-            (r && r.payload && r.payload.date);
-          return String(d) === String(reportDate);
-        });
-
-        if (!ignore) {
-          setDateStatus(exists ? "exists" : "available");
-        }
-      } catch (err) {
-        console.error("Date check failed:", err);
-        if (!ignore) {
-          setDateStatus("error");
-        }
-      }
-    }
-
-    checkDate();
-    return () => {
-      ignore = true;
-    };
-  }, [reportDate]);
+  const dateStatus = (() => {
+    if (!reportDate) return "idle";
+    if (datesLoading) return "checking";
+    if (datesFailed) return "error";
+    return isTaken(reportDate) ? "exists" : "available";
+  })();
 
   const dateStatusText = (() => {
     if (!reportDate) return "";
@@ -349,6 +327,7 @@ export default function POS10ReceivingLogInput() {
       }
 
       if (res.status === 409) {
+        markTaken(reportDate);
         setSaveMsg(
           (data && data.message) ||
             "⚠️ يوجد تقرير محفوظ لهذا التاريخ، لا يمكن حفظ تقرير جديد."
@@ -360,6 +339,7 @@ export default function POS10ReceivingLogInput() {
         throw new Error(`HTTP ${res.status}`);
       }
 
+      markTaken(reportDate);
       setSaveMsg("✅ تم الحفظ بنجاح!");
     } catch (e) {
       console.error(e);
@@ -687,8 +667,7 @@ export default function POS10ReceivingLogInput() {
                       fontWeight: 700,
                       cursor: "pointer",
                     }}
-                    title="Delete this row"
-                   data-delete-action="true">
+                    title="Delete this row">
                     ✕
                   </button>
                 </td>

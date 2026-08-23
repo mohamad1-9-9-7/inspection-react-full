@@ -65,7 +65,6 @@ const IconStar      = ({ size = 14, filled }) => (
   </svg>
 );
 const IconStarFilled = (p) => <IconStar {...p} filled />;
-const IconClock     = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Icon>;
 
 /* ===== Tabs ===== */
 const TABS = [
@@ -118,7 +117,6 @@ const GROUP_LABEL = Object.fromEntries(GROUPS.map((g) => [g.key, g.label]));
 
 /* ===== UI preferences (localStorage — UI only, no report data) ===== */
 const LS_PINNED   = "qcs_nav_pinned_v1";
-const LS_RECENT   = "qcs_nav_recent_v1";
 const LS_GROUPS   = "qcs_nav_closed_groups_v1";
 const LS_COLLAPSE = "qcs_nav_collapsed_v1";
 
@@ -181,7 +179,6 @@ export default function QCSReport() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readLS(LS_COLLAPSE, false));
   const [query, setQuery] = useState("");
   const [pinned, setPinned] = useState(() => readLS(LS_PINNED, []));
-  const [recent, setRecent] = useState(() => readLS(LS_RECENT, []));
   const [closedGroups, setClosedGroups] = useState(() => readLS(LS_GROUPS, []));
   const [cursor, setCursor] = useState(-1);
 
@@ -221,20 +218,12 @@ export default function QCSReport() {
     if (pinnedItems.length) {
       out.push({ key: "__pinned", label: "PINNED", color: "#facc15", Icon: IconStarFilled, items: pinnedItems, pinnable: true, collapsible: true });
     }
-    const recentItems = recent
-      .map((k) => TABS.find((t) => t.key === k))
-      .filter(Boolean)
-      .filter((t) => !pinned.includes(t.key) && t.key !== active)
-      .slice(0, 3);
-    if (recentItems.length) {
-      out.push({ key: "__recent", label: "RECENT", color: "#94a3b8", Icon: IconClock, items: recentItems, pinnable: false, collapsible: true });
-    }
     GROUPS.forEach((g) => {
       const items = TABS.filter((t) => t.group === g.key);
       if (items.length) out.push({ key: g.key, label: g.label, color: g.color, Icon: g.Icon, items, pinnable: true, collapsible: true });
     });
     return out;
-  }, [searching, results, pinned, recent, active]);
+  }, [searching, results, pinned]);
 
   /* Flat list of currently visible rows — drives arrow-key navigation. */
   const visibleItems = useMemo(() => {
@@ -251,11 +240,6 @@ export default function QCSReport() {
   /* ── Actions ── */
   const selectTab = useCallback((key) => {
     setActive(key);
-    setRecent((prev) => {
-      const next = [key, ...prev.filter((k) => k !== key)].slice(0, 6);
-      writeLS(LS_RECENT, next);
-      return next;
-    });
   }, []);
 
   const togglePin = useCallback((key, e) => {
@@ -388,6 +372,7 @@ export default function QCSReport() {
             let flatIdx = -1;
             return sections.map((sec) => {
               const isClosed = sec.collapsible && closedGroups.includes(sec.key);
+              const holdsActive = sec.items.some((t) => t.key === active);
               return (
                 <React.Fragment key={sec.key}>
                   {!sidebarCollapsed ? (
@@ -400,6 +385,9 @@ export default function QCSReport() {
                     >
                       {sec.collapsible && (
                         <span className="qcs-heading-chev"><IconChevron size={12} /></span>
+                      )}
+                      {isClosed && holdsActive && (
+                        <span className="qcs-heading-dot" title="The open form is in this section" />
                       )}
                       <span className="qcs-heading-icon"><sec.Icon size={11} /></span>
                       <span className="qcs-heading-label">{sec.label}</span>
@@ -421,7 +409,8 @@ export default function QCSReport() {
                         ref={isCursor ? cursorRef : undefined}
                         className={`qcs-nav-item ${isActive ? "active" : ""} ${isCursor ? "cursor" : ""}`}
                         onClick={() => selectTab(tab.key)}
-                        title={sidebarCollapsed ? tab.title : ""}
+                        title={sidebarCollapsed ? tab.title : `${tab.title} — ${tab.subtitle}`}
+                        aria-current={isActive ? "page" : undefined}
                         style={isActive ? { "--accent": tab.accent } : undefined}
                       >
                         <span className="qcs-nav-icon" style={{ color: tab.accent }}>
@@ -440,10 +429,16 @@ export default function QCSReport() {
                             {sec.pinnable && (
                               <span
                                 role="button"
-                                tabIndex={-1}
+                                tabIndex={0}
                                 className={`qcs-pin ${isPinned ? "on" : ""}`}
                                 onClick={(e) => togglePin(tab.key, e)}
+                                onKeyDown={(e) => {
+                                  if (e.key !== "Enter" && e.key !== " ") return;
+                                  e.preventDefault();
+                                  togglePin(tab.key, e);
+                                }}
                                 title={isPinned ? "Unpin" : "Pin to top"}
+                                aria-label={`${isPinned ? "Unpin" : "Pin"} ${tab.title}`}
                               >
                                 <IconStar size={14} filled={isPinned} />
                               </span>
@@ -537,15 +532,16 @@ const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
   .qcs-hub {
-    --brand:    #1d4ed8;
-    --brand-2:  #38bdf8;
+    /* Same accent as the Production hub, so the two screens read as one system. */
+    --brand:    #0f766e;
+    --brand-2:  #14b8a6;
     --ink:      #0f172a;
     --muted:    #64748b;
     --border:   #e2e8f0;
     --canvas:   #f8fafc;
     --surface:  #ffffff;
 
-    --sb-w: 262px;
+    --sb-w: 340px;
 
     display: block;
     min-height: 100vh;
@@ -589,7 +585,7 @@ const STYLES = `
     background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
     display: flex; align-items: center; justify-content: center;
     color: #fff;
-    box-shadow: 0 8px 20px rgba(56,189,248,.3);
+    box-shadow: 0 8px 20px rgba(20,184,166,.3);
     flex-shrink: 0;
   }
   .qcs-brand-text { overflow: hidden; }
@@ -650,7 +646,7 @@ const STYLES = `
   .qcs-search-input:focus {
     border-color: var(--brand-2);
     background: rgba(255,255,255,.08);
-    box-shadow: 0 0 0 3px rgba(56,189,248,.12);
+    box-shadow: 0 0 0 3px rgba(20,184,166,.12);
   }
   .qcs-search-clear {
     position: absolute; right: 8px;
@@ -687,7 +683,7 @@ const STYLES = `
   .qcs-search-mini:hover { color: #fff; border-color: var(--brand-2); }
 
   .qcs-mark {
-    background: rgba(56,189,248,.28);
+    background: rgba(20,184,166,.28);
     color: #e0f2fe;
     border-radius: 3px;
     padding: 0 1px;
@@ -728,6 +724,12 @@ const STYLES = `
     flex-shrink: 0;
   }
 
+  .qcs-heading-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--brand-2);
+    box-shadow: 0 0 0 3px rgba(20,184,166,.25);
+    flex-shrink: 0;
+  }
   .qcs-heading-label { flex: 1; min-width: 0; line-height: 1.25; }
   .qcs-heading-count {
     font-size: 9.5px; font-weight: 800;
@@ -766,7 +768,8 @@ const STYLES = `
     position: relative;
     display: flex; align-items: center;
     gap: 12px;
-    padding: 9px 12px;
+    padding: 12px;
+    min-height: 56px;
     flex-shrink: 0;   /* never squash a row — the nav scrolls instead */
     border: none;
     border-radius: 10px;
@@ -796,23 +799,36 @@ const STYLES = `
     background: var(--accent, var(--brand-2));
     border-radius: 0 3px 3px 0;
   }
+  .qcs-nav-item:focus-visible,
+  .qcs-collapse-btn:focus-visible,
+  .qcs-search-mini:focus-visible,
+  .qcs-empty-btn:focus-visible {
+    outline: 2px solid var(--brand-2);
+    outline-offset: 2px;
+  }
   .qcs-nav-item.cursor {
-    background: rgba(56,189,248,.14);
-    box-shadow: inset 0 0 0 1px rgba(56,189,248,.45);
+    background: rgba(20,184,166,.14);
+    box-shadow: inset 0 0 0 1px rgba(20,184,166,.45);
     color: #fff;
   }
 
   /* Pin (star) */
   .qcs-pin {
     display: flex; align-items: center; justify-content: center;
-    width: 22px; height: 22px;
+    width: 26px; height: 26px;
     border-radius: 6px;
-    color: #ffffff;
+    color: #94a3b8;
     flex-shrink: 0;
-    opacity: 0;
+    opacity: .4;
     transition: opacity .15s, color .15s, background .15s;
   }
-  .qcs-nav-item:hover .qcs-pin { opacity: 1; }
+  .qcs-nav-item:hover .qcs-pin,
+  .qcs-nav-item:focus-within .qcs-pin { opacity: 1; }
+  .qcs-pin:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--brand-2);
+    outline-offset: 1px;
+  }
   .qcs-pin:hover { background: rgba(255,255,255,.12); color: #fbbf24; }
   .qcs-pin.on { opacity: 1; color: #fbbf24; }
 
@@ -839,7 +855,7 @@ const STYLES = `
   .qcs-empty-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
 
   .qcs-nav-icon {
-    width: 36px; height: 36px;
+    width: 38px; height: 38px;
     border-radius: 9px;
     background: rgba(255,255,255,.04);
     display: flex; align-items: center; justify-content: center;
@@ -852,13 +868,13 @@ const STYLES = `
     min-width: 0; flex: 1;
   }
   .qcs-nav-title {
-    font-size: 13px; font-weight: 700;
-    line-height: 1.3;
-    white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis;
+    font-size: 13.5px; font-weight: 700;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .qcs-nav-sub {
-    font-size: 11px; font-weight: 500;
+    font-size: 11.5px; font-weight: 500;
     color: #94a3b8;
     margin-top: 1px;
     white-space: nowrap;
@@ -875,8 +891,8 @@ const STYLES = `
     display: inline-flex; align-items: center; gap: 6px;
     padding: 4px 10px;
     border-radius: 999px;
-    background: rgba(56,189,248,.15);
-    color: #7dd3fc;
+    background: rgba(20,184,166,.15);
+    color: #5eead4;
     font-size: 11px; font-weight: 800;
     letter-spacing: .05em;
   }
@@ -1000,8 +1016,8 @@ const STYLES = `
     .qcs-collapse-btn { display: none; }
     .qcs-brand { padding-bottom: 12px; margin-bottom: 8px; }
     .qcs-nav { flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 8px; }
-    .qcs-nav-item { flex-shrink: 0; padding: 8px 12px; }
-    .qcs-nav-text { display: none; }
+    .qcs-nav-item { flex-shrink: 0; padding: 10px 12px; min-height: 52px; max-width: 240px; }
+    .qcs-nav-sub { display: none; }
     .qcs-nav-heading { display: none; }
     .qcs-nav-divider { display: none; }
     .qcs-pin { display: none; }
