@@ -189,6 +189,7 @@ export const SECTION_ITEMS = {
     items: [
       { id: "mrp.items",   icon: "📦", label: "Items & Materials" },
       { id: "mrp.bom",     icon: "🧾", label: "Cutting BOMs" },
+      { id: "mrp.audit",   icon: "🕰️", label: "Change log" },
     ],
   },
 

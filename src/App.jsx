@@ -36,6 +36,7 @@ const ProductsCatalogPage = lazy(() => import("./pages/inventory/ProductsCatalog
 const MrpHub = lazy(() => import("./pages/mrp/MrpHub"));
 const MrpItems = lazy(() => import("./pages/mrp/MrpItems"));
 const MrpBom = lazy(() => import("./pages/mrp/MrpBom"));
+const MrpAudit = lazy(() => import("./pages/mrp/MrpAudit"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 
 const DailyMonitorDashboard = lazy(() =>
@@ -904,6 +905,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <MrpBom />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mrp/audit"
+          element={
+            <ProtectedRoute>
+              <MrpAudit />
             </ProtectedRoute>
           }
         />

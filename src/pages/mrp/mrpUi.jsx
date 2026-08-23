@@ -28,9 +28,16 @@ export const MRP_PAGES = [
     ar: "قوائم التفكيك (BOM)", en: "Cutting BOMs",
     arSub: "منتج داخل → قطع ناتجة + هدر", enSub: "One input → outputs + waste",
   },
+  {
+    id: "mrp.audit", to: "/mrp/audit", icon: "🧾",
+    ar: "سجل التغييرات", en: "Change log",
+    arSub: "مين عدّل شو وإمتى · التعطيل والتفعيل",
+    enSub: "Who changed what & when · on/off history",
+  },
 ];
-/* الوحدة صفحتين فقط: الأصناف وقوائم التقطيع. الشجرة وأوامر التصنيع والتقارير
-   انشالت بطلب المستخدم — تقارير التقطيع صارت بصفحة «تقارير الجزار». */
+/* الوحدة: الأصناف · قوائم التقطيع · سجل التغييرات (قراءة فقط). الشجرة وأوامر
+   التصنيع والتقارير انشالت بطلب المستخدم — تقارير التقطيع صارت بصفحة
+   «تقارير الجزار». */
 
 export const canOpenMrp = (pageId) => isItemAllowed("mrp", pageId);
 export const canEditMrp = () => can("mrp", "edit") || can("mrp", "write");
