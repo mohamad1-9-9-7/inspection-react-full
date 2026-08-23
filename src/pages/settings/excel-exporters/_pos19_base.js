@@ -33,6 +33,8 @@ const safe = (v) => v ?? "";
  *     rowFilter?: (row) => boolean              // optional skip filter
  *     cellWarn?:  ({ value, key, row }) => "red" | undefined  // color hints
  *     extraFooter?: (payload) => { checkedBy, verifiedBy, revDate, revNo }
+ *     branchLabel?: string      // defaults to "POS 19" — the doc header and title
+ *     company?: string          // defaults to the Braai entity on the header
  *   }
  */
 export async function buildPos19Sheet(wb, record, ctx, opts) {
@@ -52,12 +54,12 @@ export async function buildPos19Sheet(wb, record, ctx, opts) {
     documentNo:    opts.formRef,
     issueDate:     "05/02/2020",
     revisionNo:    "0",
-    area:          p.area || "POS 19",
+    area:          p.area || opts.branchLabel || "POS 19",
     issuedBy:      "MOHAMAD ABDULLAH",
     controllingOfficer: "Quality Controller",
     approvedBy:    "Hussam O. Sarhan",
-    company:       "AL MAWASHI — BRAAI RESTAURANT LLC",
-    reportTitle:   `POS 19  ·  ${opts.title.toUpperCase()}`,
+    company:       opts.company || "AL MAWASHI — BRAAI RESTAURANT LLC",
+    reportTitle:   `${opts.branchLabel || "POS 19"}  ·  ${opts.title.toUpperCase()}`,
     reportDate:    formatDMY(p.reportDate || extractDate(record)),
     totalCols:     NC,
   });

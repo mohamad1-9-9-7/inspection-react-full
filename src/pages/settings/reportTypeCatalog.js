@@ -62,7 +62,7 @@ export const BRANCHES = [
       ["pos10_temperature",            "Temperature"],
       ["pos10_daily_cleanliness",      "Daily Cleanliness"],
       ["pos10_personal_hygiene",       "Personal Hygiene"],
-      ["pos10_calibration_log",        "Calibration"],
+      ["pos10_calibration_log",        "Calibration (archive)"],
       ["pos10_pest_control",           "Pest Control"],
       ["pos10_receiving_log_butchery", "Receiving Log"],
       ["pos10_traceability_log",       "Traceability"],
@@ -77,6 +77,16 @@ export const BRANCHES = [
       ["pos11_calibration_log",        "Calibration"],
       ["pos11_pest_control",           "Pest Control"],
       ["pos11_receiving_log_butchery", "Receiving Log"],
+    ],
+  },
+  {
+    id: "POS6", label: "POS 6", emoji: "🏪", accent: "#0284c7",
+    types: [
+      ["pos6_personal_hygiene",            "Personal Hygiene"],
+      ["pos6_cleaning_checklist",          "Cleaning Checklist"],
+      ["pos6_equipment_inspection",        "Equipment Inspection"],
+      ["pos6_receiving_log_butchery",      "Receiving Log"],
+      ["pos6_coolers_temperature",         "Coolers Temperatures"],
     ],
   },
   {

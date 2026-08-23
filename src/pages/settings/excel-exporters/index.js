@@ -66,6 +66,13 @@ import pos15_receiving_log_butchery from "./pos15_receiving_log_butchery";
 import pos15_traceability_log      from "./pos15_traceability_log";
 import pos15_equipment_inspection  from "./pos15_equipment_inspection";
 
+/* ─── POS 6 (5) ─── */
+import pos6_personal_hygiene      from "./pos6_personal_hygiene";
+import pos6_cleaning_checklist    from "./pos6_cleaning_checklist";
+import pos6_equipment_inspection  from "./pos6_equipment_inspection";
+import pos6_receiving_log_butchery from "./pos6_receiving_log_butchery";
+import pos6_coolers_temperature   from "./pos6_coolers_temperature";
+
 /* ─── POS 19 (23) ─── */
 import pos19_cleaning_programme_schedule   from "./pos19_cleaning_programme_schedule";
 import pos19_blast_freezer_ccp             from "./pos19_blast_freezer_ccp";
@@ -197,6 +204,13 @@ const CUSTOM = {
   "pos15_receiving_log_butchery":           pos15_receiving_log_butchery,
   "pos15_traceability_log":                 pos15_traceability_log,
   "pos15_equipment_inspection":             pos15_equipment_inspection,
+
+  /* POS 6 */
+  "pos6_personal_hygiene":                  pos6_personal_hygiene,
+  "pos6_cleaning_checklist":                pos6_cleaning_checklist,
+  "pos6_equipment_inspection":              pos6_equipment_inspection,
+  "pos6_receiving_log_butchery":            pos6_receiving_log_butchery,
+  "pos6_coolers_temperature":               pos6_coolers_temperature,
 
   /* POS 19 */
   "pos19_cleaning_programme_schedule":      pos19_cleaning_programme_schedule,
