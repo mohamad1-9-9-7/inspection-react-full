@@ -62,12 +62,19 @@ export const SECTION_ITEMS = {
 
   // ── system-wide sections — no inner restriction (full access if section is granted) ──
   inspector:        { kind: "none" },
-  supervisor:       { kind: "none" },
   kpi:              { kind: "none" },
-  finalProduct:     { kind: "none" },
   cars:             { kind: "none" },
   maintenance:      { kind: "none" },
   qcsView:          { kind: "none" },
+
+  // 🏷️ المنتج النهائي — إدخال التقارير وتصفّح المحفوظ منها
+  finalProduct: {
+    kind: "pages",
+    items: [
+      { id: "finalProduct.entry",   icon: "📝", label: "Report Entry" },
+      { id: "finalProduct.reports", icon: "📋", label: "Saved Reports" },
+    ],
+  },
 
   training: {
     kind: "pages",

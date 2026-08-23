@@ -195,11 +195,6 @@ const ALL_ROLES = [
     glow: "rgba(59,130,246,.45)",
   },
   {
-    id: "supervisor", label: "Supervisor", route: "/supervisor", icon: "🛠️",
-    grad: "linear-gradient(135deg,#8b5cf6,#6d28d9)",
-    glow: "rgba(139,92,246,.45)",
-  },
-  {
     id: "daily", label: "Daily Monitor", route: "/monitor", icon: "📅",
     grad: "linear-gradient(135deg,#06b6d4,#0284c7)",
     glow: "rgba(6,182,212,.45)",
@@ -215,7 +210,7 @@ const ALL_ROLES = [
     glow: "rgba(249,115,22,.45)",
   },
   {
-    id: "finalProduct", label: "Final Product", route: "/finished-product-entry", icon: "🏷️",
+    id: "finalProduct", label: "Final Product", route: "/finished-product", icon: "🏷️",
     grad: "linear-gradient(135deg,#ec4899,#db2777)",
     glow: "rgba(236,72,153,.45)",
   },

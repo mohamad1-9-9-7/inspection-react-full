@@ -3,34 +3,20 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { branchAllowed } from "../../utils/perms";
 
+/* Branches with a real entry page behind them. POS 7/14/16/17/18/21/25/31/34/
+   35/36/37/38/41/42/43/44/45 were listed here too, but /monitor/<slug> has no
+   route for any of them — every one of those tiles landed on the "هذه صفحة
+   مؤقتة" placeholder. POS 24 and POS 26 are gone because the branches closed
+   — their routes and past reports are still reachable by URL. POS 6 is kept on
+   purpose: the branch goes live later, and adding its route is all it needs. */
 const branches = [
   { id: "QCS",        label: "QCS",               type: "qcs"     },
   { id: "PRODUCTION", label: "PRODUCTION",         type: "prod"    },
   { id: "POS 6",      label: "POS 6",              type: "pos"     },
-  { id: "POS 7",      label: "POS 7",              type: "pos"     },
   { id: "POS 10",     label: "POS 10",             type: "pos"     },
   { id: "POS 11",     label: "POS 11",             type: "pos"     },
-  { id: "POS 14",     label: "POS 14",             type: "pos"     },
   { id: "POS 15",     label: "POS 15",             type: "pos"     },
-  { id: "POS 16",     label: "POS 16",             type: "pos"     },
-  { id: "POS 17",     label: "POS 17",             type: "pos"     },
-  { id: "POS 18",     label: "POS 18",             type: "pos"     },
   { id: "POS 19",     label: "Al Warqa Kitchen",   type: "kitchen" },
-  { id: "POS 21",     label: "POS 21",             type: "pos"     },
-  { id: "POS 24",     label: "POS 24",             type: "pos"     },
-  { id: "POS 25",     label: "POS 25",             type: "pos"     },
-  { id: "POS 26",     label: "POS 26",             type: "pos"     },
-  { id: "POS 31",     label: "POS 31",             type: "pos"     },
-  { id: "POS 34",     label: "POS 34",             type: "pos"     },
-  { id: "POS 35",     label: "POS 35",             type: "pos"     },
-  { id: "POS 36",     label: "POS 36",             type: "pos"     },
-  { id: "POS 37",     label: "POS 37",             type: "pos"     },
-  { id: "POS 38",     label: "POS 38",             type: "pos"     },
-  { id: "POS 41",     label: "POS 41",             type: "pos"     },
-  { id: "POS 42",     label: "POS 42",             type: "pos"     },
-  { id: "POS 43",     label: "POS 43",             type: "pos"     },
-  { id: "POS 44",     label: "POS 44",             type: "pos"     },
-  { id: "POS 45",     label: "POS 45",             type: "pos"     },
   { id: "FTR 1",      label: "FTR 1",              type: "ftr"     },
   { id: "FTR 2",      label: "FTR 2",              type: "ftr"     },
 ];
@@ -692,14 +678,8 @@ export default function DailyMonitorDashboard() {
     { icon: "👨‍🍳", val: visibleBranches.filter(b => b.type === "kitchen").length, label: "Kitchen" },
   ];
 
-  const goBranch = (id) => {
-    if (id === "FTR 2") navigate("/monitor/ftr2");
-    else if (id === "FTR 1") navigate("/monitor/ftr1");
-    else navigate(`/monitor/${toSlug(id)}`);
-  };
-
-  /* Authentication happens at login — open branch directly */
-  const open = (branch) => goBranch(branch.id);
+  /* toSlug already yields ftr1 / ftr2, so the old FTR special-cases were no-ops. */
+  const open = (branch) => navigate(`/monitor/${toSlug(branch.id)}`);
 
   return (
     <>

@@ -1,16 +1,17 @@
 // src/pages/admin/DailyReportsTab.jsx
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
 import Button from "../../components/Button";
-import BranchHealthScore from "./BranchHealthScore";
 import { branchAllowed } from "../../utils/perms";
 import "./DailyReportsTab.css";
 
+/* Only branches that actually have a report page behind them. POS 7/14/16/17/
+   21/24/25/26/37/38/42/44/45 were listed here but every one of them fell
+   through to an `alert("No report available")` (POS 26 navigated to a route
+   that does not exist), so they were dead tiles. */
 const branches = [
-  "QCS", "POS 6", "POS 7", "POS 10", "POS 11", "POS 14",
-  "POS 15", "POS 16", "POS 17", "Al Warqa Kitchen", "POS 21", "POS 24",
-  "POS 25", "POS 26", "POS 37", "POS 38", "POS 42", "POS 44",
-  "POS 45", "FTR 1", "FTR 2", "PRODUCTION",
+  "QCS", "POS 6", "POS 10", "POS 11", "POS 15",
+  "Al Warqa Kitchen", "FTR 1", "FTR 2", "PRODUCTION",
 ];
 
 const getType = (b) =>
@@ -30,8 +31,6 @@ const getBadge = (branch, type) => {
   if (branch === "POS 15")           return "Al Barsha Butchery";
   if (branch === "POS 19")           return "Al Warqa Kitchen";
   if (branch === "Al Warqa Kitchen") return "Al Warqa Kitchen";
-  if (branch === "POS 24")           return "Silicon Branch";
-  if (branch === "POS 26")           return "Al Barsha South";
   if (type === "ftr")                return "FTR Branch";
   if (type === "prod")               return "Production";
   return "Point of Sale";
@@ -39,9 +38,7 @@ const getBadge = (branch, type) => {
 
 
 export default function DailyReportsTab({
-  dailyReports = [],
-  totalReportsCount,
-  setDailyReports,
+  dateStr = "",
   onOpenQCSReport,
   onOpenPOS19Report,
   onOpenFTR1Report,
@@ -49,16 +46,10 @@ export default function DailyReportsTab({
   onOpenProductionReport,
   onOpenPOS15Report,
   onOpenPOS10Report,
+  onOpenPOS6Report,
   onOpenPOS11Report,
-  onOpenPOS26Report,
 }) {
   const navigate = useNavigate();
-  const [dateStr, setDateStr] = useState("");
-
-  useEffect(() => {
-    const fmt = () => setDateStr(new Date().toLocaleString("en-AE",{timeZone:"Asia/Dubai",weekday:"long",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"}));
-    fmt(); const t=setInterval(fmt,30_000); return ()=>clearInterval(t);
-  }, []);
 
   /* Branch access control (perms.js is the single source of truth for
      allowedBranches — see src/utils/perms.js). "Al Warqa Kitchen" in this
@@ -66,18 +57,15 @@ export default function DailyReportsTab({
   const aliasForMatch = (b) => (b === "Al Warqa Kitchen" ? "POS 19" : b);
   const visibleBranches = branches.filter(b => branchAllowed("admin", aliasForMatch(b)));
   const isRestrictedToBranches = visibleBranches.length < branches.length;
-  const displayReportCount = Number.isFinite(totalReportsCount)
-    ? totalReportsCount
-    : dailyReports.length;
 
   const openBranchAfterAuth = (branch) => {
     if (branch==="QCS")                  { onOpenQCSReport        ? onOpenQCSReport()        : navigate("/admin/monitor/branches/qcs/reports"); }
     else if (branch==="POS 10")          { onOpenPOS10Report      ? onOpenPOS10Report()      : navigate("/admin/pos10"); }
+    else if (branch==="POS 6")           { onOpenPOS6Report       ? onOpenPOS6Report()       : navigate("/admin/pos6"); }
     else if (branch==="POS 11")          { onOpenPOS11Report      ? onOpenPOS11Report()      : navigate("/admin/pos11"); }
     else if (branch==="POS 15")          { onOpenPOS15Report      ? onOpenPOS15Report()      : navigate("/admin/pos15"); }
     else if (branch==="POS 19")          { onOpenPOS19Report      ? onOpenPOS19Report()      : navigate("/admin/pos19"); }
     else if (branch==="Al Warqa Kitchen"){ onOpenPOS19Report      ? onOpenPOS19Report()      : navigate("/admin/pos19"); }
-    else if (branch==="POS 26")          { onOpenPOS26Report      ? onOpenPOS26Report()      : navigate("/admin/pos26"); }
     else if (branch==="FTR 1")           { onOpenFTR1Report       ? onOpenFTR1Report()       : navigate("/admin/ftr1"); }
     else if (branch==="FTR 2")           { onOpenFTR2Report       ? onOpenFTR2Report()       : navigate("/admin/ftr2"); }
     else if (branch==="PRODUCTION")      { onOpenProductionReport ? onOpenProductionReport() : navigate("/admin/production"); }
@@ -103,17 +91,11 @@ export default function DailyReportsTab({
           </div>
           <div className="dr-metrics">
             <div className="dr-metric">
-              <span>Total Reports</span>
-              <strong>{displayReportCount}</strong>
-            </div>
-            <div className="dr-metric">
               <span>Branches</span>
               <strong>{visibleBranches.length}</strong>
             </div>
           </div>
         </header>
-
-        <BranchHealthScore visibleBranches={visibleBranches} />
 
         {/* Topbar */}
         <div className="dr-topbar">
@@ -121,10 +103,6 @@ export default function DailyReportsTab({
             {isRestrictedToBranches
               ? `Your assigned branches (${visibleBranches.length})`
               : "Select a branch"}
-          </div>
-          <div className="dr-count">
-            <div className="dr-count-dot"/>
-            Reports: {displayReportCount}
           </div>
         </div>
 
