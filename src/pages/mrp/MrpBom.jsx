@@ -394,12 +394,6 @@ export default function MrpBom() {
       },
     }));
 
-  const dropPathway = (pid) =>
-    setDraft((d) => ({
-      ...d, dirty: true,
-      bom: { ...d.bom, pathways: (d.bom.pathways || []).filter((pw) => pw.id !== pid) },
-    }));
-
   const addPathwayLine = (pid, list) =>
     setDraft((d) => ({
       ...d, dirty: true,
@@ -815,7 +809,7 @@ export default function MrpBom() {
           patch={patch} patchList={patchList} addTo={addTo} dropFrom={dropFrom}
           pathwayOps={{
             enable: toggleMultiPathways,
-            add: addPathway, patch: patchPathway, drop: dropPathway,
+            add: addPathway, patch: patchPathway,
             addLine: addPathwayLine, patchLine: patchPathwayLine, dropLine: dropPathwayLine,
           }}
         />
@@ -1295,13 +1289,8 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
     }
   };
 
-  const removePathway = (pw) => {
-    if (!window.confirm(t({
-      en: `Remove pathway ${pw.code || pw.name || ""}? (Applied when you Save the BOM.)`,
-      ar: `حذف المسار ${pw.code || pw.name || ""}؟ (بيتطبّق وقت ما تحفظ القائمة.)`,
-    }))) return;
-    ops.drop(pw.id);
-  };
+  // لا حذف للمسارات: الكود مربوط بسجلات تقطيع محفوظة، فالتعطيل («مسار مفعّل»)
+  // هو البديل الآمن — بيخفيه عن الجزار بلا ما يكسر تاريخه.
 
   return (
     <>
@@ -1372,17 +1361,6 @@ function PathwayManager({ t, isAr, cfg, canEdit, bom, notify, ops }) {
               en: "This pathway’s unique code is fixed and linked to the BOM reference.",
               ar: "كود هذا المسار الفريد ثابت ومربوط برقم القائمة.",
             })}
-            right={
-              canEdit && (
-                <button
-                  type="button"
-                  style={{ ...S.btn, ...S.btnSm, ...S.btnDanger }}
-                  onClick={() => removePathway(sel)}
-                >
-                  🗑 {t({ en: "Remove pathway", ar: "حذف المسار" })}
-                </button>
-              )
-            }
           >
             <fieldset disabled={!canEdit} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div style={S.grid}>

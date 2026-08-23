@@ -7,13 +7,14 @@
 // شاشة كشك: خط كبير، كروت لمس، بلا فلاتر معقّدة. كل يوم كرت فيه المجاميع،
 // والضغط عليه بيفتح تفاصيل التنفيذات (الوصفة · المادة الخام · الأوزان).
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettingsLang, LangToggle } from "../settings/_shared/settingsI18n";
 import { canOpenButcherPage, NoAccess } from "./ButcherAccess";
 import {
   explainError, kg, shiftDays, totalsOf, useButcherData, useNormalizedRows,
 } from "./butcherReportKit";
+import CuttingCard, { CARD_CSS, CuttingCardPrint } from "./ButcherCuttingCard";
 import { useOutbox } from "./butcherOutbox";
 
 const LAST_EMP_KEY = "butcher_last_emp";   // كاش فقط — نفس مفتاح شاشة التسجيل
@@ -73,6 +74,9 @@ export default function ButcherMyWork() {
   });
   const [emp, setEmp] = useState("");        // الرقم المعتمد بعد الضغط
   const [openDay, setOpenDay] = useState("");
+  // شكل العرض: بطاقة التقطيع (نموذج الملحمة الورقي) هي الأصل، والتفاصيل بديل سريع
+  const [mode, setMode] = useState("card");
+  const [printJob, setPrintJob] = useState(null);   // بطاقة قيد الطباعة (بوّابة)
 
   /* سجلات هذا الجزار فقط */
   const mine = useMemo(
@@ -95,6 +99,23 @@ export default function ButcherMyWork() {
       .sort((a, b) => b.day.localeCompare(a.day));
   }, [mine]);
 
+  /* افتح آخر يوم تلقائياً — الجزار يدخل فيلقى بطاقته أمامه بلا ضغطة زائدة */
+  useEffect(() => {
+    setOpenDay((cur) =>
+      cur && days.some((d) => d.day === cur) ? cur : (days[0]?.day || "")
+    );
+  }, [days]);
+
+  /* خصائص البطاقة ليوم واحد — للعرض وللطباعة معاً */
+  const cardProps = (d) => ({
+    rows: d.list,
+    day: d.day,
+    isAr,
+    butcherName: me?.butcherName || "",
+    employeeNo: emp,
+    branchName: me?.branchName || "",
+  });
+
   const start = () => {
     const v = empInput.trim();
     if (!v) return;
@@ -109,8 +130,10 @@ export default function ButcherMyWork() {
 
   return (
     <div dir={dir} className="mw" style={S.page}>
-      <style>{CSS}</style>
-      <div style={S.wrap}>
+      <style>{CSS + CARD_CSS}</style>
+      <CuttingCardPrint job={printJob} onDone={() => setPrintJob(null)} />
+      {/* بطاقة التقطيع ورقة عريضة — نوسّع الحاوية لما تكون هي المعروضة */}
+      <div style={{ ...S.wrap, maxWidth: mode === "card" ? 1280 : 1000 }}>
         <div style={S.header}>
           <div className="mw-title" style={{ fontWeight: 900 }}>
             👤 {t({ en: "My work", ar: "شغلي" })}
@@ -222,8 +245,28 @@ export default function ButcherMyWork() {
                   <Stat lbl={t({ en: "Net yield", ar: "نسبة التصافي" })} val={`${totals.yieldPct.toFixed(1)}%`} color="#047857" />
                 </div>
 
-                <div className="mw-lbl" style={S.sectionLbl}>
-                  {t({ en: "Day by day — newest first", ar: "يوم بيوم — الأحدث أولاً" })}
+                <div style={S.sectionBar}>
+                  <span className="mw-lbl" style={S.sectionLbl}>
+                    {t({ en: "Day by day — newest first", ar: "يوم بيوم — الأحدث أولاً" })}
+                  </span>
+                  <span style={S.seg}>
+                    <button
+                      type="button"
+                      className="mw-sm"
+                      onClick={() => setMode("card")}
+                      style={{ ...S.segBtn, ...(mode === "card" ? S.segOn : null) }}
+                    >
+                      🧾 {t({ en: "Cutting card", ar: "بطاقة التقطيع" })}
+                    </button>
+                    <button
+                      type="button"
+                      className="mw-sm"
+                      onClick={() => setMode("list")}
+                      style={{ ...S.segBtn, ...(mode === "list" ? S.segOn : null) }}
+                    >
+                      📋 {t({ en: "Details", ar: "تفاصيل" })}
+                    </button>
+                  </span>
                 </div>
 
                 {days.map((d) => {
@@ -262,7 +305,22 @@ export default function ButcherMyWork() {
 
                       {open && (
                         <div className="mw-rise" style={S.dayBody}>
-                          {d.list.map((r) => {
+                          {mode === "card" ? (
+                            <>
+                              <div style={S.cardBar}>
+                                <button
+                                  type="button"
+                                  className="mw-sm"
+                                  style={S.printBtn}
+                                  onClick={() => setPrintJob(cardProps(d))}
+                                >
+                                  🖨️ {t({ en: "Print card", ar: "طباعة البطاقة" })}
+                                </button>
+                              </div>
+                              <CuttingCard {...cardProps(d)} />
+                            </>
+                          ) : (
+                          d.list.map((r) => {
                             const hasPath = !!(r.pathwayCode || r.pathwayName);
                             return (
                             <div
@@ -349,7 +407,8 @@ export default function ButcherMyWork() {
                               )}
                             </div>
                           );
-                          })}
+                          })
+                          )}
                         </div>
                       )}
                     </div>
@@ -427,7 +486,27 @@ const S = {
     padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4,
   },
 
-  sectionLbl: { fontWeight: 900, color: "#6b8299", margin: "4px 0 10px" },
+  sectionLbl: { fontWeight: 900, color: "#6b8299" },
+  sectionBar: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    gap: 10, flexWrap: "wrap", margin: "4px 0 10px",
+  },
+  // مبدّل شكل العرض — بطاقة التقطيع أو التفاصيل
+  seg: {
+    display: "inline-flex", background: "#fff", border: "1px solid #cfe0f0",
+    borderRadius: 12, padding: 3, gap: 3,
+  },
+  segBtn: {
+    border: "none", background: "transparent", color: "#3c5a75", borderRadius: 10,
+    padding: "7px 14px", fontFamily: FONT, fontWeight: 800, cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  segOn: { background: "#1f6fd0", color: "#fff" },
+  cardBar: { display: "flex", justifyContent: "flex-end", marginBottom: 8 },
+  printBtn: {
+    border: "1px solid #cfe0f0", background: "#fff", color: "#1f6fd0", borderRadius: 12,
+    padding: "8px 16px", fontFamily: FONT, fontWeight: 800, cursor: "pointer",
+  },
 
   dayBox: {
     background: "#fff", border: "1px solid #dbe6f2", borderRadius: 18,
