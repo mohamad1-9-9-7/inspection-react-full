@@ -68,7 +68,9 @@ async function saveApprovalsToServer(items) {
 
 async function loadAllApprovalsForMerge() {
   const attempts = [
-    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+    // The screen only ever wants FIXED_DATE, so ask the server for that day
+    // instead of pulling the type's whole history and filtering it below.
+    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(FIXED_DATE)}`,
     `${API_BASE}/api/reports`,
   ];
   for (const url of attempts) {
@@ -382,7 +384,7 @@ export default function Approvals() {
                   <td style={s.td}><input value={r.remarks} onChange={(e) => setVal(i, "remarks", e.target.value)} style={s.in} /></td>
 
                   <td style={s.td}>
-                    <button type="button" onClick={() => delRow(i)} style={s.btnDanger} data-delete-action="true">🗑️ Delete</button>
+                    <button type="button" onClick={() => delRow(i)} style={s.btnDanger}>🗑️ Delete</button>
                   </td>
                 </tr>
               );

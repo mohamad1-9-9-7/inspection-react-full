@@ -500,11 +500,15 @@ export default function TraceabilityLogInput() {
       }
       setCheckingExisting(true);
       try {
-        // نجلب كل تقارير هذا النوع ثم نفلتر محليًا حسب الفرع والتاريخ
+        // Targeted read: the server matches the business date and returns at
+        // most one row. Asking for the type alone became limit=5000 on the way
+        // out, so every traceability log ever filed for this branch arrived in
+        // full just to answer whether this day was already used. TYPE already
+        // names the branch, so no branch comparison is needed either.
         const res = await fetch(
           `${API_BASE}/api/reports?type=${encodeURIComponent(
             TYPE
-          )}`,
+          )}&reportDate=${encodeURIComponent(date)}`,
           { cache: "no-store", headers: { Accept: "application/json" } }
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -518,16 +522,7 @@ export default function TraceabilityLogInput() {
           ? json
           : json?.data || json?.items || json?.reports || json?.rows || [];
 
-        const exists = (arr || []).some((r) => {
-          const p = r?.payload ?? r;
-          const branch = String(p?.branch || "")
-            .toLowerCase()
-            .trim();
-          const rd = p?.reportDate || p?.date || r?.created_at;
-          return (
-            branch === BRANCH.toLowerCase() && sameDay(rd, date)
-          );
-        });
+        const exists = (arr || []).length > 0;
 
         if (!abort) setHasExistingForDate(exists);
       } catch (e) {
@@ -1245,8 +1240,7 @@ export default function TraceabilityLogInput() {
                         borderColor: "#ef4444",
                         color: "#b91c1c",
                       }}
-                      title="Delete batch"
-                     data-delete-action="true">
+                      title="Delete batch">
                       × Delete batch
                     </button>
                   </div>
@@ -1448,8 +1442,7 @@ export default function TraceabilityLogInput() {
                                 "#f97316",
                               color: "#9a3412",
                             }}
-                            title="Remove this raw line"
-                           data-delete-action="true">
+                            title="Remove this raw line">
                             – Remove RAW
                           </button>
                         </div>
@@ -1585,8 +1578,7 @@ export default function TraceabilityLogInput() {
                                 "#fb7185",
                               color: "#9f1239",
                             }}
-                            title="Remove this final line"
-                           data-delete-action="true">
+                            title="Remove this final line">
                             – Remove FINAL
                           </button>
                         </div>

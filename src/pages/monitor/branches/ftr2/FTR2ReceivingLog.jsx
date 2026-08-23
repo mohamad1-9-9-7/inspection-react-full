@@ -285,8 +285,13 @@ export default function FTR2ReceivingLog() {
       setCheckingExisting(true);
       setHasReportToday(false);
       try {
+        // Targeted read: the server matches the business date and answers with
+        // at most one row. Asking for the type alone became limit=5000 on the
+        // way out, so the whole archive arrived with full payloads to answer a
+        // yes/no question. TYPE already names the branch, so the branch
+        // comparison goes with it.
         const res = await fetch(
-          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(reportDate)}`,
           { cache: "no-store" }
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -297,12 +302,7 @@ export default function FTR2ReceivingLog() {
           ? data.data
           : [];
 
-        const found = list.some((r) => {
-          const p = r?.payload ?? r;
-          const b = String(p?.branch || "").toLowerCase().trim();
-          const d = p?.reportDate || p?.date || r?.created_at;
-          return b === BRANCH.toLowerCase() && sameDay(d, reportDate);
-        });
+        const found = list.length > 0;
 
         if (!cancelled) {
           setHasReportToday(found);
@@ -761,8 +761,7 @@ export default function FTR2ReceivingLog() {
                     type="button"
                     onClick={() => removeRow(idx)}
                     title="Delete row"
-                    style={btnSm("#ef4444")}
-                   data-delete-action="true">
+                    style={btnSm("#ef4444")}>
                     Delete
                   </button>
                 </td>

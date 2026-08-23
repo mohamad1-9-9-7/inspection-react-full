@@ -70,8 +70,13 @@ export default function POS10PersonalHygiene() {
   const hasDuplicateForDate = async (d) => {
     if (!d) return false;
     try {
+      // Targeted read: the server matches the date itself and returns at most
+      // one row. The old query asked for the type with no date, which authFetch
+      // turns into limit=5000, so every record of this type came back with its
+      // full payload just to answer "is this day taken?".
+      // The report type already names the branch, so no branch filter is needed.
       const res = await fetch(
-        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+        `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(d)}`,
         { cache: "no-store" }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -83,12 +88,7 @@ export default function POS10PersonalHygiene() {
         Array.isArray(json?.items) ? json.items :
         Array.isArray(json?.rows) ? json.rows : [];
 
-      return list.some((r) => {
-        const p = r?.payload || {};
-        const recBranch = p.branch || r.branch;
-        const recDate = p.reportDate || p.header?.reportDate;
-        return String(recBranch) === String(branch) && String(recDate) === String(d);
-      });
+      return list.length > 0;
     } catch (e) {
       console.warn("Duplicate check failed:", e);
       return false;

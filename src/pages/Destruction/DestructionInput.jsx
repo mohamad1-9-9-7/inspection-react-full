@@ -62,10 +62,13 @@ function getId(r) {
 async function findReportForDate(reportDate) {
   const target = String(reportDate || "").slice(0, 10);
   try {
-    const res = await fetch(`${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
+    // Targeted read: the server matches the business date and returns just that
+    // record. Fetching the type alone became limit=5000 on the way out, so the
+    // whole archive travelled here to look up a single day.
+    const res = await fetch(
+      `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(target)}`,
+      { headers: { Accept: "application/json" }, cache: "no-store" }
+    );
     if (!res.ok) return null;
     const data = await res.json().catch(() => null);
     const arr =
@@ -896,7 +899,6 @@ export default function DestructionInput() {
                       onClick={() => removeRow(idx)}
                       style={btnMiniDel}
                       title="Delete row"
-                      data-delete-action="true"
                     >
                       ✖
                     </button>

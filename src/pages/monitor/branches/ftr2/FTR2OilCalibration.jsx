@@ -63,8 +63,13 @@ export default function FTR2OilCalibration() {
 
       setDateBusy(true);
       try {
+        // Targeted read: the server matches the business date and answers with
+        // at most one row. Asking for the type alone became limit=5000 on the
+        // way out, so the whole archive arrived with full payloads to answer a
+        // yes/no question. TYPE already names the branch, so the branch
+        // comparison goes with it.
         const res = await fetch(
-          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(d)}`,
           { cache: "no-store" }
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -73,12 +78,7 @@ export default function FTR2OilCalibration() {
           ? json
           : json?.data || json?.items || json?.rows || [];
 
-        const exists = arr.some((r) => {
-          const p  = r?.payload ?? r;
-          const br = String(p?.branch || "").toLowerCase().trim();
-          const rd = p?.reportDate || r?.created_at;
-          return br === "ftr 2" && sameDay(rd, d);
-        });
+        const exists = arr.length > 0;
 
         if (!abort) {
           setDateTaken(exists);

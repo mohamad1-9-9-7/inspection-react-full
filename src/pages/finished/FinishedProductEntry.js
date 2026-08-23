@@ -42,8 +42,12 @@ function normalizeServerItem(item) {
 
 /** ابحث عن تقرير بنفس التاريخ (حسب النوع) وأرجع {id, ...} إن وجد */
 async function findReportByDate(reportDate) {
+  // Targeted read: the server matches the business date and returns just that
+  // record. Fetching the type alone became limit=5000 on the way out, so the
+  // whole archive travelled here to look up a single day.
   const { ok, data } = await jsonFetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`
+    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}` +
+      `&reportDate=${encodeURIComponent(reportDate)}`
   );
   if (!ok) return null;
   const list = extractReportsList(data).map(normalizeServerItem);
@@ -1002,8 +1006,7 @@ export default function FinishedProductEntry() {
                         padding: "6px 10px",
                         cursor: rows.length === 1 ? "not-allowed" : "pointer",
                         width: "100%",
-                      }}
-                     data-delete-action="true">
+                      }}>
                       🗑️
                     </button>
                   </td>

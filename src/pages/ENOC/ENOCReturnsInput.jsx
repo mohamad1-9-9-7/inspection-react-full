@@ -210,8 +210,10 @@ async function sendOneToServer({ reportDate, items }) {
    Now: fetch all enoc_returns and check matching payload.reportDate locally.
 */
 async function checkDuplicateReportDateOnServer(reportDate) {
-  const url = `${API_BASE}/api/reports?type=enoc_returns`;
   const target = String(reportDate || "").slice(0, 10);
+  // Targeted read: the server matches the business date and returns just that
+  // record. Fetching the type alone became limit=5000 on the way out.
+  const url = `${API_BASE}/api/reports?type=enoc_returns&reportDate=${encodeURIComponent(target)}`;
 
   try {
     const res = await fetch(url, {
@@ -1214,7 +1216,7 @@ export default function ENOCReturnsInput() {
                   {/* DELETE ROW */}
                   <td style={{ ...td, ...cellBorder, ...borders }}>
                     {rows.length > 1 && (
-                      <button onClick={() => removeRow(idx)} style={btnDel} title="Delete row" data-delete-action="true">
+                      <button onClick={() => removeRow(idx)} style={btnDel} title="Delete row">
                         ✖
                       </button>
                     )}

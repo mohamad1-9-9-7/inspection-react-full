@@ -114,10 +114,14 @@ export default function POS10DailyCleaning() {
   const hasDuplicateForDate = async (d) => {
     if (!d) return false;
     try {
+      // Targeted read: the server matches the date itself and returns at most
+      // one row. The old query asked for the type with no date, which authFetch
+      // turns into limit=5000, so every record of this type came back with its
+      // full payload just to answer "is this day taken?".
       const res = await fetch(
         `${API_BASE}/api/reports?type=${encodeURIComponent(
           "pos10_daily_cleanliness"
-        )}`,
+        )}&reportDate=${encodeURIComponent(d)}`,
         { cache: "no-store" }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -128,12 +132,9 @@ export default function POS10DailyCleaning() {
         Array.isArray(json?.items) ? json.items :
         Array.isArray(json?.rows) ? json.rows : [];
 
-      return list.some((r) => {
-        const p = r?.payload || {};
-        const recBranch = p.branch || r.branch;
-        const recDate = p.reportDate || p.header?.reportDate;
-        return String(recBranch) === "POS 10" && String(recDate) === String(d);
-      });
+      // The type already names the branch; matching payload.branch as well only
+      // added a way for the check to miss when that field was written differently.
+      return list.length > 0;
     } catch (e) {
       console.warn("Duplicate check failed:", e);
       // في حال فشل التحقق من السيرفر لا نمنع الحفظ، فقط نسمح للمستخدم بالمحاولة

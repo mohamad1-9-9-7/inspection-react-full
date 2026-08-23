@@ -40,11 +40,14 @@ export default function DriedMeatProcessView() {
 
   async function fetchAllDates() {
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
+      // `dates=1` returns one { id, reportDate } per record — no payload and no
+      // limit. Building this list from the full table meant every report of the
+      // type crossed the wire so the tree could show a few date strings.
+      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}&dates=1`, { cache: "no-store" });
       const data = await res.json();
       const list = Array.isArray(data) ? data : data?.data ?? [];
       const uniq = Array.from(new Set(
-        list.map((r) => r?.payload?.reportDate).filter(Boolean)
+        list.map((r) => r?.reportDate).filter(Boolean)
       )).sort((a, b) => b.localeCompare(a));
       setAllDates(uniq);
       if (uniq.length) {
@@ -61,10 +64,16 @@ export default function DriedMeatProcessView() {
   async function fetchRecord(d = date) {
     setLoading(true); setErr(""); setRecord(null);
     try {
-      const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
+      // Targeted read: the server matches the business date, so the record the
+      // user clicked arrives on its own instead of the whole table being
+      // downloaded again to filter it here.
+      const res = await fetch(
+        `${API_BASE}/api/reports?type=${TYPE}&reportDate=${encodeURIComponent(d)}`,
+        { cache: "no-store" }
+      );
       const data = await res.json();
       const list = Array.isArray(data) ? data : data?.data ?? [];
-      const matches = list.filter((r) => r?.payload?.reportDate === d);
+      const matches = [...list];
       matches.sort((a, b) => (b?.payload?.savedAt || 0) - (a?.payload?.savedAt || 0));
       setRecord(matches[0] || null);
     } catch (e) {

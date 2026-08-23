@@ -142,16 +142,19 @@ export default function POS11TemperatureInput() {
       if (!d) return;
       setDateBusy(true);
       try {
-        const res = await fetch(`${API_BASE}/api/reports?type=pos11_temperature`, { cache: "no-store" });
+        // Targeted read: the server matches the business date itself and sends
+        // back at most one row. Asking for the type alone became limit=5000 on
+        // the way out, so the whole archive arrived with full payloads just to
+        // answer whether this day was already filed. The type already names the
+        // branch, so the branch comparison is dropped with it.
+        const res = await fetch(
+          `${API_BASE}/api/reports?type=pos11_temperature&reportDate=${encodeURIComponent(d)}`,
+          { cache: "no-store" }
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         const arr = Array.isArray(json) ? json : json?.data || json?.items || json?.rows || [];
-        const exists = arr.some((r) => {
-          const p = r?.payload ?? r;
-          const b = (p?.branch || "").toLowerCase().trim();
-          const pd = p?.date || p?.reportDate || r?.created_at;
-          return b === "pos 11" && sameDay(pd, d);
-        });
+        const exists = arr.length > 0;
         if (!abort) setDateTaken(exists);
       } catch (e) {
         if (!abort) {

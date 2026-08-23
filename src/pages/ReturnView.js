@@ -183,7 +183,12 @@ function itemKey(row) {
 async function appendActionChange(reportDate, changeItem) {
   let existing = [];
   try {
-    const res = await fetch(`${API_BASE}/api/reports?type=returns_changes`, { cache: "no-store" });
+    // Targeted read: the server matches the business date, so only this day's
+    // change log arrives instead of every change ever recorded.
+    const res = await fetch(
+      `${API_BASE}/api/reports?type=returns_changes&reportDate=${encodeURIComponent(reportDate)}`,
+      { cache: "no-store" }
+    );
     if (res.ok) {
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data || [];
@@ -1229,7 +1234,7 @@ export default function ReturnView() {
                             ) : (
                               <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
                                 <button onClick={() => startEditRow(i)} style={editBtn}>✏️ Edit</button>
-                                <button onClick={() => deleteRow(i)} style={rowDeleteBtn} data-delete-action="true">🗑️</button>
+                                <button onClick={() => deleteRow(i)} style={rowDeleteBtn}>🗑️</button>
                                 <button onClick={() => openImagesFor(i)} style={imageBtn}>🖼️ {row.images?.length || 0}/{MAX_IMAGES_PER_PRODUCT}</button>
                               </div>
                             )}

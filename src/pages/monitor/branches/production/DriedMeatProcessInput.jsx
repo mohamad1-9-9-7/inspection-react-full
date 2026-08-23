@@ -171,11 +171,17 @@ export default function DriedMeatProcessInput() {
       setLoadingExisting(true);
       setLoadMsg("");
       try {
-        const res = await fetch(`${API_BASE}/api/reports?type=${TYPE}`, { cache: "no-store" });
+        // Targeted read: the server resolves the business date and returns just
+        // that record. Fetching the type alone became limit=5000 on the way out,
+        // so the whole archive travelled here to find one day.
+        const res = await fetch(
+          `${API_BASE}/api/reports?type=${TYPE}&reportDate=${encodeURIComponent(reportDate)}`,
+          { cache: "no-store" }
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const arr = Array.isArray(data) ? data : data?.data ?? [];
-        const matches = arr.filter((r) => r?.payload?.reportDate === reportDate);
+        const matches = arr;
         if (myReq !== reqIdRef.current) return;
 
         if (matches.length > 0) {

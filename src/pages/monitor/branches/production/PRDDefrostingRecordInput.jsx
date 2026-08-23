@@ -92,17 +92,21 @@ export default function PRDDefrostingRecordInput() {
       setLoadMsg("");
       try {
         const base = String(API_BASE).replace(/\/$/, "");
-        const res = await fetch(`${base}/api/reports?type=${TYPE}`, { cache: "no-store" });
+        // Targeted read: the server resolves the business date itself — and its
+        // fallback chain already covers header.reportDate / issueDate / month,
+        // which is exactly what the local filter below used to look at. Asking
+        // for the type alone became limit=5000, so every defrosting record ever
+        // written arrived here to find one day.
+        const res = await fetch(
+          `${base}/api/reports?type=${TYPE}&reportDate=${encodeURIComponent(iso)}`,
+          { cache: "no-store" }
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const arr = Array.isArray(data) ? data : data?.data ?? [];
 
-        // كل التقارير اللي تاريخها == iso
-        const matches = arr.filter((r) => {
-          const h = r?.payload?.header || {};
-          const d = toIsoYMD(h.reportDate || h.issueDate || h.month || r.createdAt || "");
-          return d === iso;
-        });
+        // التقارير اللي تاريخها == iso (السيرفر فلترها)
+        const matches = arr;
 
         // إذا صار fetch أحدث، نتجاهل هذا الرد
         if (myReq !== reqIdRef.current) return;

@@ -325,8 +325,13 @@ export default function POS11TraceabilityLogInput() {
       if (!date) { setHasExistingForDate(false); return; }
       setCheckingExisting(true);
       try {
+        // Targeted read: the server matches the business date and returns at
+        // most one row. Asking for the type alone became limit=5000 on the way
+        // out, so every traceability log ever filed for this branch arrived in
+        // full just to answer whether this day was already used. TYPE already
+        // names the branch, so no branch comparison is needed either.
         const res = await fetch(
-          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+          `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(date)}`,
           { cache: "no-store", headers: { Accept: "application/json" } }
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -335,11 +340,7 @@ export default function POS11TraceabilityLogInput() {
         const arr = Array.isArray(json)
           ? json
           : json?.data || json?.items || json?.reports || json?.rows || [];
-        const exists = (arr || []).some((r) => {
-          const p = r?.payload ?? r;
-          const rd = p?.reportDate || p?.date || r?.created_at;
-          return String(rd || "").slice(0, 10) === date;
-        });
+        const exists = (arr || []).length > 0;
         if (!abort) setHasExistingForDate(exists);
       } catch (e) {
         console.error("Failed to check existing traceability log", e);
@@ -869,7 +870,7 @@ export default function POS11TraceabilityLogInput() {
                       onClick={() => deleteBatch(bi)}
                       style={{ ...miniBtn, background:"#fef2f2", borderColor:"#ef4444", color:"#b91c1c" }}
                       title="Delete batch"
-                     data-delete-action="true">× Delete batch</button>
+>× Delete batch</button>
                   </div>
                 </td>
 
@@ -934,7 +935,7 @@ export default function POS11TraceabilityLogInput() {
                             onClick={()=>deleteInput(bi, ii)}
                             style={{ ...miniBtn, background:"#fff7ed", borderColor:"#f97316", color:"#9a3412" }}
                             title="Remove this raw line"
-                           data-delete-action="true">– Remove RAW</button>
+>– Remove RAW</button>
                         </div>
                       </div>
                     ))}
@@ -974,7 +975,7 @@ export default function POS11TraceabilityLogInput() {
                             onClick={()=>deleteOutput(bi, oi)}
                             style={{ ...miniBtn, background:"#fff1f2", borderColor:"#fb7185", color:"#9f1239" }}
                             title="Remove this final line"
-                           data-delete-action="true">– Remove FINAL</button>
+>– Remove FINAL</button>
                         </div>
                       </div>
                     ))}

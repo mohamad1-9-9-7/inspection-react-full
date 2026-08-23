@@ -66,7 +66,9 @@ async function saveApprovalsToServer(items) {
 
 async function loadApprovalsFromServer() {
   const attempts = [
-    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}`,
+    // The screen only ever wants FIXED_DATE, so ask the server for that day
+    // instead of pulling the type's whole history and filtering it below.
+    `${API_BASE}/api/reports?type=${encodeURIComponent(TYPE)}&reportDate=${encodeURIComponent(FIXED_DATE)}`,
     `${API_BASE}/api/reports`,
   ];
   for (const url of attempts) {
@@ -1279,7 +1281,7 @@ export default function ApprovalsView() {
                         <td style={s.td}>
                           <div style={s.actions}>
                             <button type="button" onClick={() => startEdit(uid)} style={s.btnGhost} disabled={saving}>✏ Edit</button>
-                            <button type="button" onClick={() => deleteRow(uid)} style={s.btnDanger} disabled={saving} data-delete-action="true">🗑 Delete</button>
+                            <button type="button" onClick={() => deleteRow(uid)} style={s.btnDanger} disabled={saving}>🗑 Delete</button>
                           </div>
                         </td>
                       </tr>

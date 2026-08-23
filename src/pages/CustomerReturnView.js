@@ -116,7 +116,12 @@ function normalize(raw) {
 async function appendActionChange(reportDate, changeItem) {
   let existing = [];
   try {
-    const res = await fetch(`${API_BASE}/api/reports?type=returns_customers_changes`, { cache: "no-store" });
+    // Targeted read: the server matches the business date, so only this day's
+    // change log arrives instead of every change ever recorded.
+    const res = await fetch(
+      `${API_BASE}/api/reports?type=returns_customers_changes&reportDate=${encodeURIComponent(reportDate)}`,
+      { cache: "no-store" }
+    );
     if (res.ok) {
       const json = await res.json();
       const arr = Array.isArray(json) ? json : json?.data || [];
@@ -1046,7 +1051,7 @@ export default function CustomerReturnView() {
                           </td>
                           <td style={{...td2, ...col.ops, borderRight: "none"}}>
                             <button onClick={()=>startEditRow(i)} style={btnGraySm}>Edit</button>
-                            <button onClick={()=>deleteRow(i)} style={btnDangerSm} data-delete-action="true">Delete</button>
+                            <button onClick={()=>deleteRow(i)} style={btnDangerSm}>Delete</button>
                           </td>
                         </tr>
                       );
