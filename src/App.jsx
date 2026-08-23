@@ -6,6 +6,7 @@ import API_BASE from "./config/api";
 import { branchIdFromPath } from "./config/branches";
 import { getSecuritySettings, isDeleteAllowedForBranch } from "./pages/settings/SecurityControlsTab";
 import { clearAppSession } from "./utils/authFetch";
+import { hasSection, branchAllowed } from "./utils/perms";
 
 const SubscriptionExpired = lazy(() => import("./pages/SubscriptionExpired"));
 const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
@@ -36,7 +37,6 @@ const MrpHub = lazy(() => import("./pages/mrp/MrpHub"));
 const MrpItems = lazy(() => import("./pages/mrp/MrpItems"));
 const MrpBom = lazy(() => import("./pages/mrp/MrpBom"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
-const SupervisorDashboard = lazy(() => import("./pages/Supervisor"));
 
 const DailyMonitorDashboard = lazy(() =>
   import("./pages/monitor/DailyMonitorDashboard")
@@ -59,6 +59,16 @@ const POS26Layout = lazy(() =>
 );
 const POS15Layout = lazy(() =>
   import("./pages/monitor/branches/pos15/POS15Layout")
+);
+
+// 🆕 POS 6 — إدخال (Production-style hub)
+const POS6Hub = lazy(() =>
+  import("./pages/monitor/branches/pos6/POS6Hub")
+);
+
+// 🆕 POS 6 — عرض التقارير (Viewer)
+const POS6ReportsView = lazy(() =>
+  import("./pages/monitor/branches/pos6/POS6ReportsView")
 );
 
 // 🆕 ✅ POS 10 — التبويبات (إدخال)
@@ -149,6 +159,9 @@ const FinishedProductEntry = lazy(() =>
 );
 const FinishedProductReports = lazy(() =>
   import("./pages/finished/FinishedProductReports")
+);
+const FinishedProductHub = lazy(() =>
+  import("./pages/finished/FinishedProductHub")
 );
 
 // 🆕 سيارات — Hub + sub-pages
@@ -576,6 +589,26 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+/* Section-scoped guard. ProtectedRoute alone only means "signed in", so every
+   page behind it was reachable by typing its URL — /admin with its data tools,
+   and the /monitor/* entry screens where a wrong account could file reports
+   for a branch it was never assigned. Hiding a tile on a hub was never a
+   guard. `section` is the same permission the hub tile is drawn from, and
+   `branch` additionally pins a route to one branch, matching the per-branch
+   filter the hubs already apply. Admins and full-access accounts pass both. */
+function SectionRoute({ section, branch, children }) {
+  const allowed = hasSection(section) && (!branch || branchAllowed(section, branch));
+  return (
+    <ProtectedRoute>
+      {allowed ? children : <Navigate to="/named-dashboard" replace />}
+    </ProtectedRoute>
+  );
+}
+
+function AdminRoute({ children }) {
+  return <SectionRoute section="admin">{children}</SectionRoute>;
+}
+
 // ⏳ مؤشر تحميل فوري لصفحات الفروع الثقيلة
 // مع v7_startTransition يبقى React على الصفحة القديمة حتى يكتمل تحميل chunk الفرع،
 // فيبدو أن الضغط على الفرع "علّق". حدود Suspense جديدة لكل مسار تُظهر اللودر فوراً.
@@ -878,18 +911,18 @@ export default function App() {
         <Route
           path="/admin"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <AdminDashboard />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
         {/* ⏰ Expiry Center — مركز تواريخ الانتهاء */}
         <Route
           path="/admin/expiry-center"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <ExpiryCenter />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
         {/* 📨 Email Center — audit history + analytics */}
@@ -898,14 +931,6 @@ export default function App() {
           element={
             <ProtectedRoute>
               <EmailCenter />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/supervisor"
-          element={
-            <ProtectedRoute>
-              <SupervisorDashboard />
             </ProtectedRoute>
           }
         />
@@ -985,9 +1010,9 @@ export default function App() {
           <Route
             index
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily">
                 <DailyMonitorDashboard />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -995,9 +1020,9 @@ export default function App() {
           <Route
             path="internal-audit"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="inspector">
                 <InternalAuditReportsView />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -1005,9 +1030,9 @@ export default function App() {
           <Route
             path="ftr1"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="FTR 1">
                 <FTR1Report />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -1015,33 +1040,33 @@ export default function App() {
           <Route
             path="production"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="PRODUCTION">
                 <ProductionHub />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
           <Route
             path="production/personal-hygiene-prd/input"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="PRODUCTION">
                 <PersonalHygienePRDInput />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
           <Route
             path="production/cleaning-checklist-prd/input"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="PRODUCTION">
                 <CleaningChecklistPRDInput />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
           <Route
             path="production/prd-defrosting-record/input"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="PRODUCTION">
                 <PRDDefrostingRecordInput />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -1049,9 +1074,9 @@ export default function App() {
           <Route
             path="qcs"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="QCS">
                 <QCSReport />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -1059,49 +1084,57 @@ export default function App() {
           <Route
             path="pos19"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="POS 19">
                 <POS19Layout />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
           <Route
             path="pos24"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="POS 24">
                 <POS24Layout />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
           <Route
             path="pos26"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="POS 26">
                 <POS26Layout />
-              </ProtectedRoute>
+              </SectionRoute>
+            }
+          />
+          <Route
+            path="pos6"
+            element={
+              <SectionRoute section="daily" branch="POS 6">
+                <POS6Hub />
+              </SectionRoute>
             }
           />
           <Route
             path="pos15"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="POS 15">
                 <POS15Layout />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
           <Route
             path="pos10"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="POS 10">
                 <POS10Layout />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
           <Route
             path="pos11"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="POS 11">
                 <POS11Layout />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -1109,9 +1142,9 @@ export default function App() {
           <Route
             path="pos10/reports"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="POS 10">
                 <POS10ReportsView />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -1119,9 +1152,9 @@ export default function App() {
           <Route
             path="pos15/personal-hygiene"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="POS 15">
                 <POS15PersonalHygieneView />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -1129,18 +1162,18 @@ export default function App() {
           <Route
             path="ftr2"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="FTR 2">
                 <FTR2Report />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
           <Route
             path="qcs-raw-material-inspection"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="QCS">
                 <QCSRawMaterialInspection />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -1148,9 +1181,9 @@ export default function App() {
           <Route
             path="branches/qcs/fresh-chicken-inter"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily" branch="QCS">
                 <FreshChickenInter />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
 
@@ -1158,9 +1191,9 @@ export default function App() {
           <Route
             path=":slug"
             element={
-              <ProtectedRoute>
+              <SectionRoute section="daily">
                 <BranchMonitorPage />
-              </ProtectedRoute>
+              </SectionRoute>
             }
           />
         </Route>
@@ -1169,33 +1202,41 @@ export default function App() {
         <Route
           path="/admin/ftr1"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><FTR1ReportView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
         <Route
           path="/admin/ftr2"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><FTR2ReportView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
         <Route
           path="/admin/production"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><PRDReportsView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
         <Route
           path="/admin/pos15"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><POS15ReportsView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/pos6"
+          element={
+            <AdminRoute>
+              <BranchSuspense><POS6ReportsView /></BranchSuspense>
+            </AdminRoute>
           }
         />
 
@@ -1203,9 +1244,9 @@ export default function App() {
         <Route
           path="/admin/pos19"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><POS19DailyView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
@@ -1213,9 +1254,9 @@ export default function App() {
         <Route
           path="/admin/pos11"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><POS11ReportsViewLayout /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
@@ -1223,9 +1264,9 @@ export default function App() {
         <Route
           path="/admin/pos10"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><POS10ReportsView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
@@ -1233,9 +1274,9 @@ export default function App() {
         <Route
           path="/admin/monitor/branches/qcs/fresh-chicken-reports"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><FreshChickenReportsView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
@@ -1243,9 +1284,9 @@ export default function App() {
         <Route
           path="/admin/monitor/branches/qcs/reports"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><QCSReportsView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
         {/* 🆕 Aliases */}
@@ -1256,17 +1297,17 @@ export default function App() {
         <Route
           path="/admin/monitor/qcs"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><QCSReportsView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
         <Route
           path="/admin/qcs"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <BranchSuspense><QCSReportsView /></BranchSuspense>
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
@@ -1302,9 +1343,9 @@ export default function App() {
         <Route
           path="/admin/image-migration"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <ImageMigration />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
@@ -1312,9 +1353,9 @@ export default function App() {
         <Route
           path="/admin/complaint-numbers"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <ComplaintNumberBackfill />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
@@ -1342,9 +1383,9 @@ export default function App() {
         <Route
           path="/admin/all-reports-view"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <AllReportsView />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 
@@ -2202,6 +2243,15 @@ export default function App() {
           />
         </Route>
 
+        {/* 🏷️ Final Product hub — two cards: entry + saved reports */}
+        <Route
+          path="/finished-product"
+          element={
+            <ProtectedRoute>
+              <FinishedProductHub />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/finished-product-reports"
           element={
