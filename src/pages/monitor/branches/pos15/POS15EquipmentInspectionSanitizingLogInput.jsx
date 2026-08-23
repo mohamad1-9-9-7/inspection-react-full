@@ -548,7 +548,7 @@ export default function POS15EquipmentInspectionSanitizingLogInput({
                   </td>
 
                   <td style={td}>
-                    <button onClick={() => removeRow(i)} style={btn("#dc2626")} data-delete-action="true">
+                    <button onClick={() => removeRow(i)} style={btn("#dc2626")}>
                       Delete
                     </button>
                   </td>

@@ -1068,7 +1068,7 @@ export default function LicensesContractsView() {
 
                                 {editing && (
                                   <td style={{ padding: "10px 10px", borderBottom: "1px solid #f1f5f9" }}>
-                                    <button type="button" style={miniBtnRed} onClick={() => deleteContractRow(i)} data-delete-action="true">
+                                    <button type="button" style={miniBtnRed} onClick={() => deleteContractRow(i)}>
                                       Remove
                                     </button>
                                   </td>

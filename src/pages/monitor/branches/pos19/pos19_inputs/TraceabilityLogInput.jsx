@@ -914,7 +914,7 @@ export default function TraceabilityLogInput() {
                     <button onClick={() => addOutput(bi)} style={{ ...miniBtn, background: "#ecfeff", borderColor: "#06b6d4", color: "#0e7490" }} title="Add final product row to this batch">
                       + Add FINAL / نهائي
                     </button>
-                    <button onClick={() => deleteBatch(bi)} style={{ ...miniBtn, background: "#fef2f2", borderColor: "#ef4444", color: "#b91c1c" }} title="Delete batch" data-delete-action="true">
+                    <button onClick={() => deleteBatch(bi)} style={{ ...miniBtn, background: "#fef2f2", borderColor: "#ef4444", color: "#b91c1c" }} title="Delete batch">
                       × Delete / حذف
                     </button>
                   </div>
@@ -958,7 +958,7 @@ export default function TraceabilityLogInput() {
                           <input type="number" step="0.01" min="0" value={inp.rawWeight} onChange={(e) => updateInputField(bi, ii, "rawWeight", e.target.value)} style={inputStyle} placeholder="e.g., 2.50" />
                         </div>
                         <div style={{ marginTop: 6, textAlign: "right" }}>
-                          <button onClick={() => deleteInput(bi, ii)} style={{ ...miniBtn, background: "#fff7ed", borderColor: "#f97316", color: "#9a3412" }} title="Remove this raw line" data-delete-action="true">
+                          <button onClick={() => deleteInput(bi, ii)} style={{ ...miniBtn, background: "#fff7ed", borderColor: "#f97316", color: "#9a3412" }} title="Remove this raw line">
                             – Remove RAW / حذف الخام
                           </button>
                         </div>
@@ -985,7 +985,7 @@ export default function TraceabilityLogInput() {
                           <input type="number" step="0.01" min="0" value={out.finalWeight} onChange={(e) => updateOutputField(bi, oi, "finalWeight", e.target.value)} style={inputStyle} placeholder="e.g., 1.20" />
                         </div>
                         <div style={{ marginTop: 6, textAlign: "right" }}>
-                          <button onClick={() => deleteOutput(bi, oi)} style={{ ...miniBtn, background: "#fff1f2", borderColor: "#fb7185", color: "#9f1239" }} title="Remove this final line" data-delete-action="true">
+                          <button onClick={() => deleteOutput(bi, oi)} style={{ ...miniBtn, background: "#fff1f2", borderColor: "#fb7185", color: "#9f1239" }} title="Remove this final line">
                             – Remove FINAL / حذف النهائي
                           </button>
                         </div>

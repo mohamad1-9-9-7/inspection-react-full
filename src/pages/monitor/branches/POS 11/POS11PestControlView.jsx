@@ -669,7 +669,7 @@ export default function POS11PestControlView() {
                           <td style={{ ...tdCell, textAlign:"center", width:60 }}>
                             <div style={{ display:"flex", gap:6, alignItems:"center", justifyContent:"center" }}>
                               <span>{idx+1}</span>
-                              <button onClick={()=>removeRow(idx)} style={{ ...btn("#ef4444"), padding:"2px 8px" }} data-delete-action="true">✖</button>
+                              <button onClick={()=>removeRow(idx)} style={{ ...btn("#ef4444"), padding:"2px 8px" }}>✖</button>
                             </div>
                           </td>
                           <td style={tdCell}>

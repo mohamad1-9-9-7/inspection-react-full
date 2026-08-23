@@ -683,7 +683,7 @@ export default function ProductWithdrawalInput() {
                           <input type="checkbox" checked={!!l.confirmed} onChange={(e) => setLocation(l.uid, "confirmed", e.target.checked)} style={{ width: 16, height: 16 }} />
                         </td>
                         <td style={{ ...S.td, textAlign: "center" }}>
-                          <button style={S.miniBtn("danger")} onClick={() => removeLocation(l.uid)} data-delete-action="true">✕</button>
+                          <button style={S.miniBtn("danger")} onClick={() => removeLocation(l.uid)}>✕</button>
                         </td>
                       </tr>
                     );

@@ -650,7 +650,7 @@ export default function MeatDailyView() {
                         </td>
 
                         <td style={s.td}>
-                          <button onClick={() => handleDeleteRow(i)} style={s.btnDelSmall} data-delete-action="true">🗑️ Delete</button>
+                          <button onClick={() => handleDeleteRow(i)} style={s.btnDelSmall}>🗑️ Delete</button>
                         </td>
                       </tr>
                     ))}

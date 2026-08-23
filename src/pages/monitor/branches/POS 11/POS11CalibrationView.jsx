@@ -562,7 +562,7 @@ export default function POS11CalibrationView() {
                         <td style={tdCell}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>
                             <span>{idx + 1}</span>
-                            <button onClick={() => removeRow(idx)} style={{ ...btn("#ef4444"), padding: "2px 8px" }} title="Remove" data-delete-action="true">✖</button>
+                            <button onClick={() => removeRow(idx)} style={{ ...btn("#ef4444"), padding: "2px 8px" }} title="Remove">✖</button>
                           </div>
                         </td>
                         <td style={tdCell}>

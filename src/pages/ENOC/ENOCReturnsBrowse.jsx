@@ -1179,8 +1179,7 @@ export default function ENOCReturnsBrowse() {
                                         const ok = window.confirm("Delete this row?");
                                         if (ok) deleteDraftRow(globalIndex);
                                       }}
-                                      title="Delete row"
-                                     data-delete-action="true">
+                                      title="Delete row">
                                       ✖
                                     </button>
                                   </td>

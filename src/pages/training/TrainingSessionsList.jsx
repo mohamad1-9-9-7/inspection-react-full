@@ -3516,8 +3516,7 @@ export default function TrainingSessionsList() {
                                     cursor: "pointer",
                                     fontWeight: 1000,
                                     opacity: deletingSession ? 0.6 : 1,
-                                  }}
-                                 data-delete-action="true">
+                                  }}>
                                   Delete
                                 </button>
                               </div>

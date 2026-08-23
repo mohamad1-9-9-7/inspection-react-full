@@ -820,7 +820,7 @@ export default function CustomerReturns() {
                 </td>
 
                 <td style={td}>
-                  <button onClick={() => removeRow(idx)} style={btnDel} data-delete-action="true">Delete</button>
+                  <button onClick={() => removeRow(idx)} style={btnDel}>Delete</button>
                 </td>
               </tr>
             ))}

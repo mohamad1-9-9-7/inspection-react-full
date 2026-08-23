@@ -267,7 +267,7 @@ export default function DefrostingRecordView() {
                         <td style={tdCell}><input type="number" step="0.1" value={r.endTemp||""} onChange={e=>upd(i,"endTemp",e.target.value)} style={inputStyle}/></td>
                         <td style={tdCell}><input type="number" step="0.1" value={r.defrostTemp||""} onChange={e=>upd(i,"defrostTemp",e.target.value)} style={inputStyle}/></td>
                         <td style={tdCell}><input value={r.remarks||""} onChange={e=>upd(i,"remarks",e.target.value)} style={inputStyle}/></td>
-                        <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")} data-delete-action="true">Del</button></td>
+                        <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")}>Del</button></td>
                       </tr>
                     ))}
                   </tbody>

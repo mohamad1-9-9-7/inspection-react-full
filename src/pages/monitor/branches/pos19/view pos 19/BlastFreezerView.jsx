@@ -518,7 +518,7 @@ export default function BlastFreezerView() {
                             <td style={tdCell}><input value={r.correctiveAction || ""} onChange={(e) => upd(i, "correctiveAction", e.target.value)} style={inputStyle} /></td>
                             <td style={tdCell}><input value={r.operator || ""} onChange={(e) => upd(i, "operator", e.target.value)} style={inputStyle} /></td>
                             <td style={tdCell}><input value={r.verifiedBy || ""} onChange={(e) => upd(i, "verifiedBy", e.target.value)} style={inputStyle} /></td>
-                            <td style={tdCell}><button onClick={() => delRow(i)} style={btn("#dc2626")} data-delete-action="true">Del</button></td>
+                            <td style={tdCell}><button onClick={() => delRow(i)} style={btn("#dc2626")}>Del</button></td>
                           </tr>
                         );
                       })

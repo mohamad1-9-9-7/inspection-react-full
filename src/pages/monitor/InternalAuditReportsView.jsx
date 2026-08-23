@@ -2286,8 +2286,7 @@ export default function InternalAuditReportsView() {
                                           >
                                             <button
                                               onClick={() => removeRow(ridx)}
-                                              style={iconBtn}
-                                             data-delete-action="true">
+                                              style={iconBtn}>
                                               ✕
                                             </button>
                                           </div>

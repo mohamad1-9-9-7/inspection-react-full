@@ -1257,7 +1257,7 @@ export default function MeatWasteDisposalView() {
                   </td>
                   {isEditing && (
                     <td style={ST.td}>
-                      <button onClick={() => removeEntryRow(j)} style={{ ...ISO_UI.btn("danger"), padding: "4px 9px", fontSize: 11 }} data-delete-action="true">🗑</button>
+                      <button onClick={() => removeEntryRow(j)} style={{ ...ISO_UI.btn("danger"), padding: "4px 9px", fontSize: 11 }}>🗑</button>
                     </td>
                   )}
                 </tr>

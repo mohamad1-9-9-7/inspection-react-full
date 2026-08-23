@@ -196,7 +196,7 @@ export default function CalibrationLogView() {
                         <td style={tdCell}><input value={r.correctiveAction||""} onChange={e=>upd(i,"correctiveAction",e.target.value)} style={inputStyle}/></td>
                         <td style={tdCell}><input value={r.calibratedBy||""} onChange={e=>upd(i,"calibratedBy",e.target.value)} style={inputStyle}/></td>
                         <td style={tdCell}><input type="date" value={r.nextDueDate||""} onChange={e=>upd(i,"nextDueDate",e.target.value)} style={inputStyle}/></td>
-                        <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")} data-delete-action="true">Del</button></td>
+                        <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")}>Del</button></td>
                       </tr>
                     ))}
                   </tbody>

@@ -215,8 +215,7 @@ export default function PersonalHygienePRDInput() {
                     onClick={() => removeRow(i)}
                     className="ph-btn-icon ph-btn-danger"
                     title={t("btn_remove")}
-                    disabled={entries.length === 1}
-                   data-delete-action="true">
+                    disabled={entries.length === 1}>
                     ×
                   </button>
                 </td>

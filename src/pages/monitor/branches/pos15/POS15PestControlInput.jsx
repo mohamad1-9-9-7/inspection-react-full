@@ -275,7 +275,7 @@ export default function POS15PestControlInput() {
               </td>
 
               <td style={tdCenter}>
-                <button type="button" onClick={() => removeRow(i)} style={btnDanger} disabled={saving} data-delete-action="true">
+                <button type="button" onClick={() => removeRow(i)} style={btnDanger} disabled={saving}>
                   ✖
                 </button>
               </td>

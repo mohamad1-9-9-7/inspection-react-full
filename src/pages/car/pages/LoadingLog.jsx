@@ -905,7 +905,7 @@ export default function LoadingLog() {
 
                   <td style={tdStyle}>
                     {rows.length > 1 && (
-                      <button type="button" onClick={() => removeRow(i)} style={removeBtnStyle} title="Remove row" data-delete-action="true">
+                      <button type="button" onClick={() => removeRow(i)} style={removeBtnStyle} title="Remove row">
                         X
                       </button>
                     )}

@@ -350,7 +350,7 @@ export default function CookingTemperatureMonitoringView() {
                  onChange={e=>importJSON(e.target.files?.[0])} style={{display:"none"}}/>
           <span style={UI.divider} />
           {canDelete("daily") && (
-            <Btn tone="red" onClick={handleDelete} disabled={!record} data-delete-action="true">🗑 Delete</Btn>
+            <Btn tone="red" onClick={handleDelete} disabled={!record}>🗑 Delete</Btn>
           )}
         </div>
       </div>
@@ -467,7 +467,7 @@ export default function CookingTemperatureMonitoringView() {
                           <td style={UI.td}><input value={r.comment||""} onChange={e=>upd(i,"comment",e.target.value)} style={UI.input}/></td>
                           <td style={UI.td}><input value={r.monitoredBy||""} onChange={e=>upd(i,"monitoredBy",e.target.value)} style={UI.input}/></td>
                           <td style={UI.td}>
-                            <Btn tone="red" onClick={()=>delRow(i)} data-delete-action="true">Del</Btn>
+                            <Btn tone="red" onClick={()=>delRow(i)}>Del</Btn>
                           </td>
                         </tr>
                       ))

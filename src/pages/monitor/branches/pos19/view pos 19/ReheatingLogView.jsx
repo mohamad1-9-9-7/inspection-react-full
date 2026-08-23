@@ -197,7 +197,7 @@ export default function ReheatingLogView() {
                         <td style={tdCell}><input type="number" step="0.1" value={r.finalTemp||""} onChange={e=>upd(i,"finalTemp",e.target.value)} style={inputStyle}/></td>
                         <td style={tdCell}><input value={r.destination||""} onChange={e=>upd(i,"destination",e.target.value)} style={inputStyle}/></td>
                         <td style={tdCell}><input value={r.correctiveAction||""} onChange={e=>upd(i,"correctiveAction",e.target.value)} style={inputStyle}/></td>
-                        <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")} data-delete-action="true">Del</button></td>
+                        <td style={tdCell}><button onClick={()=>delRow(i)} style={btn("#dc2626")}>Del</button></td>
                       </tr>
                     ))}
                   </tbody>

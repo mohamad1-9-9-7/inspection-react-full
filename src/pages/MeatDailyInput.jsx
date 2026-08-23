@@ -366,7 +366,7 @@ export default function MeatDailyInput() {
                 </td>
 
                 <td style={s.td}>
-                  <button onClick={() => delRow(i)} style={s.btnDel} title="Delete row" data-delete-action="true">🗑️</button>
+                  <button onClick={() => delRow(i)} style={s.btnDel} title="Delete row">🗑️</button>
                 </td>
               </tr>
             ))}
