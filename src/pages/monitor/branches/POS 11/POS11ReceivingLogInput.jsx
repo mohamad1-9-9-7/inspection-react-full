@@ -5,6 +5,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import API_BASE from "../../../../config/api";
+import useTakenDates from "../_shared/useTakenDates";
 
 
 
@@ -61,6 +62,11 @@ export default function POS11ReceivingLogInput() {
   const [receivedBy, setReceivedBy] = useState("");
 
   const [saving, setSaving] = useState(false);
+
+  // One report per day for this branch — the date index answers that from
+  // metadata, so it costs one light request per screen instead of the archive.
+  const { isTaken, markTaken, loading: datesLoading } = useTakenDates(TYPE);
+  const dateTaken = Boolean(reportDate) && !datesLoading && isTaken(reportDate);
   const [saveMsg, setSaveMsg] = useState("");
 
   // month text
@@ -163,6 +169,12 @@ export default function POS11ReceivingLogInput() {
       }
     }
 
+    if (datesLoading) { setSaveMsg("⏳ جارٍ التحقق من التاريخ…"); return; }
+    if (dateTaken) {
+      setSaveMsg("⛔ يوجد تقرير محفوظ لهذا التاريخ — اختر تاريخًا آخر.");
+      return;
+    }
+
     const payload = {
       branch,              // ✅ POS 11 أو من URL
       reportDate,
@@ -182,6 +194,7 @@ export default function POS11ReceivingLogInput() {
         body: JSON.stringify({ reporter: "pos11", type: TYPE, payload }), // ✅ تمييز الفرع
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      markTaken(reportDate);
       setSaveMsg("✅ تم الحفظ بنجاح!");
     } catch (e) {
       console.error(e);
@@ -229,7 +242,17 @@ export default function POS11ReceivingLogInput() {
       {/* ✅ Date + Invoice خارج الترويسة */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(220px, 1fr))", gap:12, alignItems:"center", marginBottom:12 }}>
         <label style={{ fontWeight:700 }}>Date:
-          <input type="date" value={reportDate} onChange={(e)=>setReportDate(e.target.value)} style={{ marginLeft:8, padding:"4px 8px", borderRadius:6, border:"1px solid #ccc" }} />
+          <input type="date" value={reportDate} onChange={(e)=>setReportDate(e.target.value)} style={{ marginLeft:8, padding:"4px 8px", borderRadius:6, border: dateTaken ? "1px solid #b91c1c" : "1px solid #ccc" }} />
+          {dateTaken && (
+            <div style={{ gridColumn: "1 / -1", color: "#b91c1c", fontWeight: 800, fontSize: 12 }}>
+              ⛔ يوجد تقرير محفوظ لهذا التاريخ — تقرير واحد لكل يوم.
+            </div>
+          )}
+          {datesLoading && (
+            <div style={{ gridColumn: "1 / -1", color: "#64748b", fontWeight: 700, fontSize: 12 }}>
+              ⏳ جارٍ التحقق من توفر التاريخ…
+            </div>
+          )}
         </label>
         <div style={{ display:"grid", gap:4 }}>
           <div style={{ fontWeight:700, color:"#0b1f4d" }}>Invoice No <span style={{color:"#b91c1c"}}>*</span> :</div>

@@ -1,6 +1,7 @@
 // src/pages/monitor/branches/pos15/POS15ReceivingLogInput.jsx
 import React, { useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
+import useTakenDates from "../_shared/useTakenDates";
 
 
 
@@ -51,6 +52,11 @@ export default function POS15ReceivingLogInput() {
   const [verifiedBy, setVerifiedBy] = useState("");
 
   const [saving, setSaving] = useState(false);
+
+  // One report per day for this branch — the date index answers that from
+  // metadata, so it costs one light request per screen instead of the archive.
+  const { isTaken, markTaken, loading: datesLoading } = useTakenDates(TYPE);
+  const dateTaken = Boolean(reportDate) && !datesLoading && isTaken(reportDate);
 
   // month text
   const monthText = useMemo(() => {
@@ -113,6 +119,12 @@ export default function POS15ReceivingLogInput() {
       }
     }
 
+    if (datesLoading) { alert("⏳ جارٍ التحقق من التاريخ…"); return; }
+    if (dateTaken) {
+      alert("⛔ يوجد تقرير محفوظ لهذا التاريخ.\nاختر تاريخًا آخر أو عدّل التقرير الموجود.");
+      return;
+    }
+
     const payload = {
       branch: BRANCH, formRef, classification, reportDate, month: monthText,
       entries, verifiedBy, savedAt: Date.now(),
@@ -126,6 +138,7 @@ export default function POS15ReceivingLogInput() {
         body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      markTaken(reportDate);
       alert("✅ تم الحفظ بنجاح!");
     } catch (e) {
       console.error(e);
@@ -155,7 +168,17 @@ export default function POS15ReceivingLogInput() {
           <div style={{ border:"1px solid #1f3b70", padding:"4px 6px" }}>Official</div>
 
           <div>Date :</div>
-          <input type="date" value={reportDate} onChange={(e)=>setReportDate(e.target.value)} style={{ ...inputStyle, borderColor:"#1f3b70" }} />
+          <input type="date" value={reportDate} onChange={(e)=>setReportDate(e.target.value)} style={{ ...inputStyle, borderColor: dateTaken ? "#b91c1c" : "#1f3b70" }} />
+          {dateTaken && (
+            <div style={{ gridColumn: "1 / -1", color: "#b91c1c", fontWeight: 800, fontSize: 12 }}>
+              ⛔ يوجد تقرير محفوظ لهذا التاريخ — تقرير واحد لكل يوم.
+            </div>
+          )}
+          {datesLoading && (
+            <div style={{ gridColumn: "1 / -1", color: "#64748b", fontWeight: 700, fontSize: 12 }}>
+              ⏳ جارٍ التحقق من توفر التاريخ…
+            </div>
+          )}
         </div>
       </div>
 

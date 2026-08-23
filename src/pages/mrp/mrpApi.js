@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import API_BASE from "../../config/api";
+import { recordConfigChange } from "./mrpAudit";
 
 export const CONFIG_TYPE = "mrp_config";
 export const WO_TYPE = "mrp_work_order";
@@ -183,7 +184,19 @@ export async function fetchConfig() {
   return cfg;
 }
 
-export async function saveConfig(cfg) {
+/**
+ * حفظ الإعدادات — ومعه **سجل التغييرات**.
+ *
+ * السجل بينبنى من مقارنة حالة السيرفر قبل الحفظ بالحالة بعده، فكل صفحات
+ * التحرير بتنرصد من نقطة وحدة بلا ما نلمس أي منها. `opts.base` بيمرّرها
+ * `mutateConfig` لأنها أصلاً سحبت النسخة القديمة — فما منعيد السحب.
+ */
+export async function saveConfig(cfg, opts = {}) {
+  let before = opts.base;
+  if (before === undefined) {
+    try { before = await fetchConfig(); } catch { before = readCache(); }
+  }
+
   const payload = {
     ...cfg,
     reportDate: CONFIG_KEY,
@@ -199,6 +212,8 @@ export async function saveConfig(cfg) {
   const saved = mergeConfig(payload);
   writeCache(saved);
   try { window.dispatchEvent(new CustomEvent(EVT, { detail: saved })); } catch { /* ignore */ }
+  // بلا await: سطر السجل ما بيأخّر تأكيد الحفظ للمستخدم، وفشله ما بيكسره
+  if (before) recordConfigChange(before, saved).catch(() => { /* السجل مساعد */ });
   return saved;
 }
 
@@ -216,7 +231,7 @@ export async function mutateConfig(fn) {
   }
   const next = JSON.parse(JSON.stringify(base));
   fn(next);
-  return saveConfig(next);
+  return saveConfig(next, { base });
 }
 
 /** أقل فاصل بين سحبتين ناتجتين عن الرجوع للتبويب — يمنع العاصفة عند التنقّل السريع. */
