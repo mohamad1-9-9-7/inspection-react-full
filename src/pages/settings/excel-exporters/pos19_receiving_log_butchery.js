@@ -3,7 +3,8 @@ import { buildPos19Sheet } from "./_pos19_base";
 const columns = [
   { key: "date",            label: "Date",            width: 12 },
   { key: "supplier",        label: "Supplier",        width: 22 },
-  { key: "product",         label: "Product",         width: 22 },
+  { key: "itemCode",        label: "Item Code",       width: 12 },
+  { key: "product",         label: "Product",         width: 22, get: (r) => r.foodItem ?? r.product ?? "" },
   { key: "quantity",        label: "Qty",             width: 10 },
   { key: "unit",            label: "Unit",            width: 8  },
   { key: "brand",           label: "Brand",           width: 14 },

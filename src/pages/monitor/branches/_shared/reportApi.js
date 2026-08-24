@@ -112,10 +112,16 @@ export async function listReportDates(type, params = {}) {
   if (!res.ok) throw new Error(`Failed to list ${type} dates (${res.status})`);
   const json = await res.json().catch(() => null);
   const rows = Array.isArray(json) ? json : json?.data || json?.items || [];
+  // The row is spread FIRST: the server's own `reportDate` is its business-date
+  // expression, which is NULL for a record whose date lives only in created_at.
+  // Spreading it last put that NULL back over the resolved value, so those
+  // records came back dateless — invisible to the date tree and to the
+  // "is this day already filed?" check. reportDateOf falls back to created_at,
+  // and it is what must win.
   return rows.map((r) => ({
+    ...r,
     id: reportId(r) || r.id || null,
     reportDate: reportDateOf(r),
-    ...r,
   }));
 }
 

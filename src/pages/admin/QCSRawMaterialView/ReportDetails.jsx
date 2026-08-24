@@ -1233,6 +1233,16 @@ export default function ReportDetails({
                   </tr>
                   <tr>
                     <th style={{ textAlign: "left", textTransform: "none", letterSpacing: 0, fontWeight: 700, opacity: .85 }}>
+                      Product Code
+                    </th>
+                    {selectedReport?.samples?.map((s, idx) => (
+                      <th key={`pc-${idx}`} style={{ textAlign: "center", textTransform: "none", letterSpacing: 0, fontWeight: 800, opacity: .85, color: "#4f46e5" }}>
+                        {s?.productCode || s?.itemCode || "-"}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr>
+                    <th style={{ textAlign: "left", textTransform: "none", letterSpacing: 0, fontWeight: 700, opacity: .85 }}>
                       Product Name
                     </th>
                     {selectedReport?.samples?.map((s, idx) => (
@@ -1285,6 +1295,7 @@ export default function ReportDetails({
               <table className="qcs-modern-table" style={{ minWidth: "640px" }}>
                 <thead>
                   <tr>
+                    <th style={{ width: 120, textAlign: "left" }}>Item Code</th>
                     <th style={{ textAlign: "left" }}>Product Name</th>
                     <th style={{ width: 130, textAlign: "center" }}>Qty (pcs)</th>
                     <th style={{ width: 150, textAlign: "center" }}>Weight (kg)</th>
@@ -1294,6 +1305,9 @@ export default function ReportDetails({
                   {lines.length > 0 ? (
                     lines.map((r, idx) => (
                       <tr key={r?.id || idx}>
+                        <td style={{ fontWeight: 800, color: "#4f46e5" }}>
+                          {String(r?.code ?? r?.itemCode ?? r?.item_code ?? "").trim() || "-"}
+                        </td>
                         <td>{String(r?.name ?? r?.productName ?? "").trim() || "-"}</td>
                         <td style={{ textAlign: "center" }}>
                           {show(pick(r, ["qty", "quantity", "pcs", "pieces"]))}
@@ -1305,7 +1319,7 @@ export default function ReportDetails({
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={3} style={{ textAlign: "center", color: "#94a3b8", padding: "18px 8px", fontStyle: "italic" }}>
+                      <td colSpan={4} style={{ textAlign: "center", color: "#94a3b8", padding: "18px 8px", fontStyle: "italic" }}>
                         لا توجد أسطر منتجات مسجلة.
                       </td>
                     </tr>
@@ -1313,12 +1327,12 @@ export default function ReportDetails({
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td style={{ textAlign: "right" }}>الإجمالي:</td>
+                    <td colSpan={2} style={{ textAlign: "right" }}>الإجمالي:</td>
                     <td style={{ textAlign: "center" }}>{show(selectedReport?.totalQuantity ?? sumQty)}</td>
                     <td style={{ textAlign: "center" }}>{show2(selectedReport?.totalWeight ?? sumWgt)}</td>
                   </tr>
                   <tr>
-                    <td colSpan={3} style={{ textAlign: "right" }}>
+                    <td colSpan={4} style={{ textAlign: "right" }}>
                       <strong>Average Weight (kg/pc):</strong> {show2(selectedReport?.averageWeight ?? avgW)}
                     </td>
                   </tr>

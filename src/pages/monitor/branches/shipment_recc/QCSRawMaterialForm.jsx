@@ -1,6 +1,7 @@
 // QCSRawMaterialForm.jsx
 import React, { useEffect, useMemo, useRef, useReducer, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 import {
   sendToServer,
   listReportsByType,
@@ -320,12 +321,14 @@ export default function QCSRawMaterialForm() {
   const lastSaveTsRef = useRef(0);
 
   function makeNewSample() {
-    const s = { id: makeStableId(), productName: "" };
+    // productCode ⟷ productName: bound to the shared product catalog so the
+    // Product Traceability system can follow this shipment by its item code.
+    const s = { id: makeStableId(), productCode: "", productName: "" };
     ATTRIBUTES.forEach(a => s[a.key] = a.default);
     return s;
   }
   function makeEmptyLine() {
-    return { id: makeStableId(), name: "", qty: "", weight: "" };
+    return { id: makeStableId(), code: "", name: "", qty: "", weight: "" };
   }
   function sanitizeNum(v) {
     const n = parseFloat(String(v ?? "").replace(",", ".").replace(/[^\d.\-]/g, ""));
@@ -340,6 +343,40 @@ export default function QCSRawMaterialForm() {
     const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
     return avg.toFixed(2);
   }
+
+  // The products actually inspected in the sample columns — the only choices a
+  // product line may carry. Keyed by code+name so a sample with no code yet
+  // still has a stable option value.
+  const lineKeyOf = (r) => (r?.code || r?.name ? `${r.code || ""}||${r.name || ""}` : "");
+  const sampleProducts = useMemo(() => {
+    const seen = new Map();
+    samples.forEach((s) => {
+      const code = String(s.productCode || "").trim();
+      const name = String(s.productName || "").trim();
+      if (!code && !name) return;
+      const key = `${code}||${name}`;
+      if (!seen.has(key)) seen.set(key, { key, code, name });
+    });
+    return Array.from(seen.values());
+  }, [samples]);
+
+  // Keep the lines honest about what the samples say. Editing a sample's name
+  // re-labels the line that is bound to the same code; a line whose product
+  // left the sample columns entirely is cleared, so a shipment can never claim
+  // a product it never tested.
+  useEffect(() => {
+    setProductLines((prev) => {
+      let changed = false;
+      const next = prev.map((r) => {
+        const key = lineKeyOf(r);
+        if (!key || sampleProducts.some((sp) => sp.key === key)) return r;
+        const byCode = r.code && sampleProducts.find((sp) => sp.code === r.code);
+        changed = true;
+        return byCode ? { ...r, code: byCode.code, name: byCode.name } : { ...r, code: "", name: "" };
+      });
+      return changed ? next : prev;
+    });
+  }, [sampleProducts]);
 
   const totalQtyCalc = useMemo(() => productLines.reduce((acc, r) => acc + sanitizeNum(r.qty), 0), [productLines]);
   const totalWeightCalc = useMemo(() => productLines.reduce((acc, r) => acc + sanitizeNum(r.weight), 0), [productLines]);
@@ -489,6 +526,12 @@ export default function QCSRawMaterialForm() {
   function setSampleValue(index, key, value) {
     setSamples((prev) => prev.map((s, i) => (i === index ? { ...s, [key]: value } : s)));
   }
+  // Code and name always move together, so they are written in one update.
+  function setSampleProduct(index, { code, name }) {
+    setSamples((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, productCode: code, productName: name } : s))
+    );
+  }
   function addSample() { setSamples((prev) => [...prev, makeNewSample()]); }
   function removeSample() { if (samples.length > 1) setSamples((prev) => prev.slice(0, -1)); }
 
@@ -594,6 +637,17 @@ export default function QCSRawMaterialForm() {
 
   function updateLine(id, field, value) {
     setProductLines(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+  }
+  function updateLineProduct(id, { code, name }) {
+    setProductLines(prev => prev.map(r => r.id === id ? { ...r, code, name } : r));
+  }
+  // A product line is one of the products inspected in the sample columns, so
+  // its dropdown is fed from those columns — nothing else can be chosen.
+  function pickLineProduct(id, key) {
+    const hit = sampleProducts.find((sp) => sp.key === key);
+    setProductLines(prev =>
+      prev.map(r => (r.id === id ? { ...r, code: hit?.code ?? "", name: hit?.name ?? "" } : r))
+    );
   }
   function addLine() { setProductLines(prev => [...prev, makeEmptyLine()]); }
   function removeLine(id) { if (productLines.length > 1) setProductLines(prev => prev.filter(r => r.id !== id)); }
@@ -1068,10 +1122,30 @@ export default function QCSRawMaterialForm() {
               </thead>
               <tbody>
                 <tr>
+                  <td style={styles.firstColCell}>PRODUCT CODE</td>
+                  {samples.map((s, i) => (
+                    <td key={`code-${s.id}`} style={styles.td}>
+                      <ItemCodeInput
+                        code={s.productCode || ""}
+                        name={s.productName || ""}
+                        onChange={(pair) => setSampleProduct(i, pair)}
+                        style={styles.tdInput}
+                        placeholder="e.g., 22000"
+                      />
+                    </td>
+                  ))}
+                </tr>
+                <tr>
                   <td style={styles.firstColCell}>PRODUCT NAME</td>
                   {samples.map((s, i) => (
                     <td key={s.id} style={styles.td}>
-                      <input value={s.productName} onChange={(e) => setSampleValue(i, "productName", e.target.value)} style={styles.tdInput} />
+                      <ItemNameInput
+                        code={s.productCode || ""}
+                        name={s.productName || ""}
+                        onChange={(pair) => setSampleProduct(i, pair)}
+                        style={styles.tdInput}
+                        placeholder="Search code or product…"
+                      />
                     </td>
                   ))}
                 </tr>
@@ -1101,9 +1175,43 @@ export default function QCSRawMaterialForm() {
           <div style={{ marginTop: 14 }}>
             <label style={styles.label}>Product Lines:</label>
             <div style={{ marginTop: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "0.9fr 2fr 1fr 1fr auto", gap: 8, marginBottom: 4, fontWeight: 800, color: "#475569", fontSize: ".85rem" }}>
+                <span>Item Code</span><span>Product Name</span><span>Qty (pcs)</span><span>Weight (kg)</span><span />
+              </div>
+              {sampleProducts.length === 0 && (
+                <div style={{ color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 12px", marginBottom: 8, fontWeight: 700, fontSize: ".85rem" }}>
+                  ⚠️ أدخل كود واسم المنتج في أعمدة العينات أولاً — أسطر المنتجات تُختار منها فقط.
+                </div>
+              )}
               {productLines.map((row) => (
-                <div key={row.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 8, marginBottom: 8 }}>
-                  <input placeholder="Product Name" value={row.name} onChange={(e) => updateLine(row.id, "name", e.target.value)} {...inputProps(`pl_name_${row.id}`)} />
+                <div key={row.id} style={{ display: "grid", gridTemplateColumns: "0.9fr 2fr 1fr 1fr auto", gap: 8, marginBottom: 8 }}>
+                  {/* A product line describes a product that was actually inspected
+                      in the sample columns, so the code is picked from those
+                      columns only — never free-typed from the whole catalog. */}
+                  <select
+                    value={lineKeyOf(row)}
+                    onChange={(e) => pickLineProduct(row.id, e.target.value)}
+                    {...selectProps(`pl_code_${row.id}`)}
+                  >
+                    <option value="">— اختر —</option>
+                    {sampleProducts.map((sp) => (
+                      <option key={sp.key} value={sp.key}>
+                        {sp.code || "—"}{sp.name ? ` · ${sp.name}` : ""}
+                      </option>
+                    ))}
+                    {lineKeyOf(row) && !sampleProducts.some((sp) => sp.key === lineKeyOf(row)) && (
+                      <option value={lineKeyOf(row)}>
+                        {row.code || "—"}{row.name ? ` · ${row.name}` : ""} (خارج العينات)
+                      </option>
+                    )}
+                  </select>
+                  <input
+                    value={row.name || ""}
+                    readOnly
+                    placeholder="يُعبّأ من كود العينة"
+                    title="اسم المنتج يأتي مع الكود من أعمدة العينات"
+                    style={{ ...styles.input, background: "#f1f5f9", color: "#0f172a", fontWeight: 700 }}
+                  />
                   <input type="number" min="0" step="1" placeholder="Qty (pcs)" value={row.qty} onChange={(e) => updateLine(row.id, "qty", e.target.value)} onWheel={(e) => e.currentTarget.blur()} {...inputProps(`pl_qty_${row.id}`)} />
                   <input type="number" min="0" step="0.001" placeholder="Weight (kg)" value={row.weight} onChange={(e) => updateLine(row.id, "weight", e.target.value)} onWheel={(e) => e.currentTarget.blur()} {...inputProps(`pl_weight_${row.id}`)} />
                   <button type="button" onClick={() => removeLine(row.id)} style={{ ...styles.dangerButton, padding: "9px 14px" }} disabled={productLines.length <= 1}>Remove</button>

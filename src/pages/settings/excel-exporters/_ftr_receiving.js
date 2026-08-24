@@ -6,7 +6,8 @@ import {
 
 const COLS = [
   { key: "supplier",        label: "Name of the Supplier",   width: 22, align: "left" },
-  { key: "foodItem",        label: "Food Item",              width: 18, align: "left" },
+  { key: "itemCode",        label: "Item Code",              width: 12, align: "left" },
+  { key: "foodItem",        label: "Food Item",              width: 20, align: "left" },
   { key: "dmApprovalNo",    label: "DM approval No. of vehicle", width: 18, align: "left" },
   { key: "vehicleTemp",     label: "Vehicle Temp (°C)",      width: 12 },
   { key: "foodTemp",        label: "Food Temp (°C)",         width: 12 },
@@ -22,20 +23,34 @@ const COLS = [
   { key: "receivedBy",      label: "Received by",            width: 14 },
 ];
 
-export function makeFtrReceivingBuilder(branchLabel) {
+/**
+ * @param {string} branchLabel  e.g. "FTR 1", "POS 10"
+ * @param {object} [opts]
+ *   cols       — column list for a branch whose sheet differs from the FTR one
+ *                (POS 10 has Quantity and Firmness and no DM approval number);
+ *                a backup has to mirror the branch's own View, not a cousin's.
+ *   documentNo — document-control number printed in the header: a string, or a
+ *                function of the payload for a branch whose form ref is typed
+ *                on the form itself (POS 10).
+ */
+export function makeFtrReceivingBuilder(branchLabel, opts = {}) {
+  const COLUMNS = opts.cols || COLS;
+
   return async function build(wb, record, ctx) {
     const { sheetName } = ctx;
     const p = record?.payload || {};
     const entries = Array.isArray(p.entries) ? p.entries : [];
 
-    const NC = 1 + COLS.length; // + S.No
+    const NC = 1 + COLUMNS.length; // + S.No
     const ws = wb.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
     pageSetupLandscape(ws);
-    ws.columns = [{ width: 6 }, ...COLS.map((c) => ({ width: c.width }))];
+    ws.columns = [{ width: 6 }, ...COLUMNS.map((c) => ({ width: c.width }))];
 
     addDocHeader(ws, {
       documentTitle: `${branchLabel} Receiving Log`,
-      documentNo:    "FS-QM/REC/REL",
+      documentNo:    (typeof opts.documentNo === "function"
+                       ? opts.documentNo(p)
+                       : opts.documentNo) || "FS-QM/REC/REL",
       issueDate:     "05/02/2020",
       revisionNo:    "0",
       area:          "QA",
@@ -44,13 +59,19 @@ export function makeFtrReceivingBuilder(branchLabel) {
       approvedBy:    "Hussam O. Sarhan",
       company:       "TRANS EMIRATES LIVESTOCK MEAT TRADING LLC",
       reportTitle:   `${branchLabel.toUpperCase()} — RECEIVING LOG`,
-      reportDate:    formatDMY(p.reportDate || extractDate(record)),
+      // The invoice number rides along on the date row: the View prints it in
+      // its meta strip, and a receiving backup without it cannot be tied back
+      // to the delivery it records.
+      reportDate:    [
+        formatDMY(p.reportDate || extractDate(record)),
+        p.invoiceNo ? `Invoice No: ${p.invoiceNo}` : "",
+      ].filter(Boolean).join("      |      "),
       totalCols:     NC,
     });
 
     let r = ws.lastRow.number + 1;
 
-    const head = ["S.No", ...COLS.map((c) => c.label)];
+    const head = ["S.No", ...COLUMNS.map((c) => c.label)];
     head.forEach((h, ci) => {
       const c = ws.getCell(r, ci + 1);
       c.value = h;
@@ -80,7 +101,7 @@ export function makeFtrReceivingBuilder(branchLabel) {
         c0.fill = fillSolid(bg);
         c0.alignment = center;
         c0.border = BORDER_BLACK;
-        COLS.forEach((col, ci) => {
+        COLUMNS.forEach((col, ci) => {
           let v = row[col.key];
           if (col.key === "productionDate" || col.key === "expiryDate") v = formatDMY(v);
           const cell = ws.getCell(r, ci + 2);
@@ -97,9 +118,12 @@ export function makeFtrReceivingBuilder(branchLabel) {
       });
     }
 
+    // POS 10 signs the sheet with receivedBy / verifiedBy at the top level of
+    // the payload; the FTR sheets nest theirs under `footer`. Read both, or the
+    // backup prints an unsigned form for a report that was signed.
     addFooter(ws, {
-      checkedBy:  p?.footer?.checkedBy || "",
-      verifiedBy: p?.footer?.verifiedBy || "",
+      checkedBy:  p?.footer?.checkedBy || p.checkedBy || p.receivedBy || "",
+      verifiedBy: p?.footer?.verifiedBy || p.verifiedBy || "",
     }, NC);
     return ws;
   };

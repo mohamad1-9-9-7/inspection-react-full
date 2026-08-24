@@ -1,5 +1,5 @@
-// src/pages/monitor/branches/pos6/POS6FormShell.jsx
-// The chrome every POS 6 form shares: the Production form stylesheet, the
+// src/pages/monitor/branches/_shared/BranchFormShell.jsx
+// The chrome every branch input form shares: the Production form stylesheet, the
 // two-signature footer and the save bar. Keeping them here is what lets each
 // form file be just its own table.
 
@@ -70,7 +70,10 @@ export function GuidanceNote({ isAr, accent = "#0284c7", items = [] }) {
   );
 }
 
-export function SaveBar({ t, opMsg, saving, onSave }) {
+/* `disabled` blocks the button for a reason that is not "a save is running" —
+   e.g. the report date is already taken. Without it the caller had to pass that
+   state as `saving`, and the button then claimed to be saving when it was not. */
+export function SaveBar({ t, opMsg, saving, disabled, onSave }) {
   const message =
     opMsg === "⏳" ? `⏳ ${t("msg_saving")}`
     : opMsg === "✅" ? `✅ ${t("msg_saved")}`
@@ -79,7 +82,7 @@ export function SaveBar({ t, opMsg, saving, onSave }) {
   return (
     <div className="ph-savebar">
       {message && <div className="ph-msg">{message}</div>}
-      <button onClick={onSave} disabled={saving} className="ph-btn ph-btn-primary ph-btn-lg">
+      <button onClick={onSave} disabled={saving || disabled} className="ph-btn ph-btn-primary ph-btn-lg">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
           <polyline points="17 21 17 13 7 13 7 21" />

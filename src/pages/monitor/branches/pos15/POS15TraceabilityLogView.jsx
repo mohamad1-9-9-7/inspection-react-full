@@ -13,6 +13,15 @@ import {
 } from "../_shared/branchViewKit";
 import { listReportDates, getReportRowByDate, reportDateOf } from "../_shared/reportApi";
 
+/* "22000 · NAME" — the item code glued to its product name, so one cell
+   carries both wherever the row is rendered, printed or exported. */
+const codedName = (code, name) => {
+  const c = String(code ?? "").trim();
+  const n = String(name ?? "").trim();
+  return c && n ? `${c} · ${n}` : c || n || "";
+};
+
+
 const TYPE   = "pos15_traceability_log";
 const BRANCH = "POS 15";
 
@@ -44,7 +53,7 @@ function normYMD(s) {
 }
 
 function emptyRow() {
-  return { batchId: "", rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "", rawWeight: "", finalName: "", finalProdDate: "", finalExpDate: "", finalWeight: "" };
+  return { batchId: "", rawCode: "", rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "", rawWeight: "", finalCode: "", finalName: "", finalProdDate: "", finalExpDate: "", finalWeight: "" };
 }
 
 const equalAcross = (rows, keys) => {
@@ -97,7 +106,7 @@ export default function POS15TraceabilityLogView() {
       setRecord(match);
       const rows = Array.from({ length: 12 }, (_, i) => {
         const e = match?.payload?.entries?.[i];
-        return e ? { batchId: e.batchId ?? "", rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "", openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "", rawWeight: e.rawWeight ?? "", finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "", finalWeight: e.finalWeight ?? "" } : emptyRow();
+        return e ? { batchId: e.batchId ?? "", rawCode: e.rawCode ?? "", rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "", openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "", rawWeight: e.rawWeight ?? "", finalCode: e.finalCode ?? "", finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "", finalWeight: e.finalWeight ?? "" } : emptyRow();
       });
       setEditRows(rows);
       setEditCheckedBy(match?.payload?.checkedBy || "");
@@ -122,7 +131,7 @@ export default function POS15TraceabilityLogView() {
 
   function toggleEdit() {
     if (editing) {
-      const rows = Array.from({ length: 12 }, (_, i) => { const e = record?.payload?.entries?.[i]; return e ? { batchId: e.batchId ?? "", rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "", openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "", rawWeight: e.rawWeight ?? "", finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "", finalWeight: e.finalWeight ?? "" } : emptyRow(); });
+      const rows = Array.from({ length: 12 }, (_, i) => { const e = record?.payload?.entries?.[i]; return e ? { batchId: e.batchId ?? "", rawCode: e.rawCode ?? "", rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "", openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "", rawWeight: e.rawWeight ?? "", finalCode: e.finalCode ?? "", finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "", finalWeight: e.finalWeight ?? "" } : emptyRow(); });
       setEditRows(rows); setEditCheckedBy(record?.payload?.checkedBy || ""); setEditVerifiedBy(record?.payload?.verifiedBy || ""); setEditReportDate(record?.payload?.reportDate || ""); setEditing(false); return;
     }
 
@@ -172,7 +181,7 @@ export default function POS15TraceabilityLogView() {
 
   function fallbackCSV(p) {
     const headers = ["Batch / Lot ID","Name of Raw Material Used for Preparation","Original Production Date","Original Expiry Date","Opened Date","Best Before Date","Raw Weight (kg)","Name of Product Prepared (Final Product)","Production Date (Final Product)","Expiry Date (Final Product)","Final Weight (kg)","Checked by","Verified by"];
-    const rows = (p.entries || []).filter(isFilledRow).map(e => ([e?.batchId ?? "", e?.rawName ?? "", e?.origProdDate ?? "", e?.origExpDate ?? "", e?.openedDate ?? "", e?.bestBefore ?? "", e?.rawWeight ?? "", e?.finalName ?? "", e?.finalProdDate ?? "", e?.finalExpDate ?? "", e?.finalWeight ?? "", p?.checkedBy ?? "", p?.verifiedBy ?? ""]));
+    const rows = (p.entries || []).filter(isFilledRow).map(e => ([e?.batchId ?? "", codedName(e?.rawCode, e?.rawName), e?.origProdDate ?? "", e?.origExpDate ?? "", e?.openedDate ?? "", e?.bestBefore ?? "", e?.rawWeight ?? "", codedName(e?.finalCode, e?.finalName), e?.finalProdDate ?? "", e?.finalExpDate ?? "", e?.finalWeight ?? "", p?.checkedBy ?? "", p?.verifiedBy ?? ""]));
     const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
@@ -197,7 +206,7 @@ export default function POS15TraceabilityLogView() {
       const COL_HEADERS = ["Batch / Lot ID","Name of Raw Material Used for Preparation","Original Production Date","Original Expiry Date","Opened Date","Best Before Date","Raw Weight (kg)","Name of Product Prepared (Final Product)","Production Date (Final Product)","Expiry Date (Final Product)","Final Weight (kg)"];
       const hr = ws.getRow(7); hr.values = COL_HEADERS; hr.eachCell((cell) => { cell.font = { bold: true }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headBlue } }; cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin }; }); hr.height = 28;
       let rowIdx = 8;
-      rawRows.forEach((e) => { ws.getRow(rowIdx).values = [e?.batchId || "", e?.rawName || "", e?.origProdDate || "", e?.origExpDate || "", e?.openedDate || "", e?.bestBefore || "", e?.rawWeight || "", e?.finalName || "", e?.finalProdDate || "", e?.finalExpDate || "", e?.finalWeight || ""]; ws.getRow(rowIdx).eachCell((cell) => { cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin }; }); ws.getRow(rowIdx).height = 22; rowIdx++; });
+      rawRows.forEach((e) => { ws.getRow(rowIdx).values = [e?.batchId || "", codedName(e?.rawCode, e?.rawName), e?.origProdDate || "", e?.origExpDate || "", e?.openedDate || "", e?.bestBefore || "", e?.rawWeight || "", codedName(e?.finalCode, e?.finalName), e?.finalProdDate || "", e?.finalExpDate || "", e?.finalWeight || ""]; ws.getRow(rowIdx).eachCell((cell) => { cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin }; }); ws.getRow(rowIdx).height = 22; rowIdx++; });
       const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
       saveAs(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `POS15_TraceabilityLog_${p.reportDate || date}.xlsx`);
     } catch (err) {
@@ -340,8 +349,8 @@ export default function POS15TraceabilityLogView() {
                       Array.from(grouped.entries()).map(([batchId, allRows], gi) => {
                         const rows = allRows.filter(isFilledRow);
                         if (!rows.length) return null;
-                        const rawsSame = equalAcross(rows, ["rawName","origProdDate","origExpDate","openedDate","bestBefore","rawWeight"]);
-                        const finalsSame = equalAcross(rows, ["finalName","finalProdDate","finalExpDate","finalWeight"]);
+                        const rawsSame = equalAcross(rows, ["rawCode","rawName","origProdDate","origExpDate","openedDate","bestBefore","rawWeight"]);
+                        const finalsSame = equalAcross(rows, ["finalCode","finalName","finalProdDate","finalExpDate","finalWeight"]);
                         const span = rows.length;
                         return (
                           <React.Fragment key={`g-${gi}`}>
@@ -354,11 +363,11 @@ export default function POS15TraceabilityLogView() {
                               <tr key={`${gi}-${idx}`} style={{ background: idx % 2 ? "#f0f9ff" : "#fff" }}>
                                 {idx === 0 && (<td style={tdCell} rowSpan={span}>{safe(batchId)}</td>)}
                                 {rawsSame ? (
-                                  idx === 0 ? (<><td style={tdCell} rowSpan={span}>{safe(rows[0].rawName)}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origProdDate))}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origExpDate))}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].openedDate))}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].bestBefore))}</td><td style={tdCell} rowSpan={span}>{safe(rows[0].rawWeight) ? `${rows[0].rawWeight} kg` : ""}</td></>) : null
-                                ) : (<><td style={tdCell}>{safe(r.rawName)}</td><td style={tdCell}>{formatDMY(safe(r.origProdDate))}</td><td style={tdCell}>{formatDMY(safe(r.origExpDate))}</td><td style={tdCell}>{formatDMY(safe(r.openedDate))}</td><td style={tdCell}>{formatDMY(safe(r.bestBefore))}</td><td style={tdCell}>{safe(r.rawWeight) ? `${r.rawWeight} kg` : ""}</td></>)}
+                                  idx === 0 ? (<><td style={tdCell} rowSpan={span}>{codedName(rows[0].rawCode, rows[0].rawName)}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origProdDate))}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origExpDate))}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].openedDate))}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].bestBefore))}</td><td style={tdCell} rowSpan={span}>{safe(rows[0].rawWeight) ? `${rows[0].rawWeight} kg` : ""}</td></>) : null
+                                ) : (<><td style={tdCell}>{codedName(r.rawCode, r.rawName)}</td><td style={tdCell}>{formatDMY(safe(r.origProdDate))}</td><td style={tdCell}>{formatDMY(safe(r.origExpDate))}</td><td style={tdCell}>{formatDMY(safe(r.openedDate))}</td><td style={tdCell}>{formatDMY(safe(r.bestBefore))}</td><td style={tdCell}>{safe(r.rawWeight) ? `${r.rawWeight} kg` : ""}</td></>)}
                                 {finalsSame ? (
-                                  idx === 0 ? (<><td style={tdCell} rowSpan={span}>{safe(rows[0].finalName)}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalProdDate))}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalExpDate))}</td><td style={tdCell} rowSpan={span}>{safe(rows[0].finalWeight) ? `${rows[0].finalWeight} kg` : ""}</td></>) : null
-                                ) : (<><td style={tdCell}>{safe(r.finalName)}</td><td style={tdCell}>{formatDMY(safe(r.finalProdDate))}</td><td style={tdCell}>{formatDMY(safe(r.finalExpDate))}</td><td style={tdCell}>{safe(r.finalWeight) ? `${r.finalWeight} kg` : ""}</td></>)}
+                                  idx === 0 ? (<><td style={tdCell} rowSpan={span}>{codedName(rows[0].finalCode, rows[0].finalName)}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalProdDate))}</td><td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalExpDate))}</td><td style={tdCell} rowSpan={span}>{safe(rows[0].finalWeight) ? `${rows[0].finalWeight} kg` : ""}</td></>) : null
+                                ) : (<><td style={tdCell}>{codedName(r.finalCode, r.finalName)}</td><td style={tdCell}>{formatDMY(safe(r.finalProdDate))}</td><td style={tdCell}>{formatDMY(safe(r.finalExpDate))}</td><td style={tdCell}>{safe(r.finalWeight) ? `${r.finalWeight} kg` : ""}</td></>)}
                               </tr>
                             ))}
                           </React.Fragment>

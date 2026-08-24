@@ -82,9 +82,19 @@ export default function PRDReportHeader({
                     onChange={(e) => f.onChange(e.target.value)}
                     placeholder={f.placeholder || ""}
                     className="prd-rh-input"
+                    aria-invalid={f.invalid ? "true" : undefined}
+                    style={f.invalid ? { borderColor: "#dc2626", background: "#fef2f2" } : undefined}
                   />
                 ) : (
                   <div className="prd-rh-value">{f.value || "—"}</div>
+                )}
+                {/* Optional line under the field: "this date is already filed",
+                    "invoice number is required" — said where it is fixed,
+                    rather than after the sheet has been filled in. */}
+                {f.note && (
+                  <div className="prd-rh-note" style={f.noteColor ? { color: f.noteColor } : undefined}>
+                    {f.note}
+                  </div>
                 )}
               </div>
             );
@@ -192,6 +202,12 @@ const HEADER_STYLES = `
     color: #0f172a;
     padding: 2px 0;
     min-height: 22px;
+  }
+  .prd-rh-note {
+    font-size: 11.5px;
+    font-weight: 700;
+    line-height: 1.45;
+    color: #64748b;
   }
   .prd-rh-input {
     width: 100%;

@@ -4,6 +4,7 @@ import { REPORTS_URL } from "../../shipment_recc/qcsRawApi";
 import API_BASE from "../../../../../config/api";
 import useReportDateStatus from "../_shared/useReportDateStatus";
 import { BilingualGuidance } from "../_shared/ReportHeader";
+import { ItemCodeInput, ItemNameInput } from "../../_shared/CodedProductField";
 
 /* ===== ثابت التقرير ===== */
 const TYPE   = "pos19_traceability_log";
@@ -25,7 +26,10 @@ function genBatchId() {
 }
 
 /* ===== قوالب عناصر الإدخال/الإخراج ===== */
+// rawCode / finalCode carry the catalog item code alongside the name, so the
+// Product Traceability system can follow one code from shipment to dispatch.
 const emptyInput = () => ({
+  rawCode: "",
   rawName: "",
   origProdDate: "",
   origExpDate: "",
@@ -34,6 +38,7 @@ const emptyInput = () => ({
   rawWeight: "",
 });
 const emptyOutput = () => ({
+  finalCode: "",
   finalName: "",
   finalProdDate: "",
   finalExpDate: "",
@@ -626,6 +631,15 @@ export default function TraceabilityLogInput() {
       next[bi] = { ...next[bi], inputs: arr };
       return next;
     });
+  // Code and name are one unit — a catalog pick on either side rewrites both.
+  const updateInputProduct = (bi, ii, { code, name }) =>
+    setBatches((prev) => {
+      const next = [...prev];
+      const arr = [...next[bi].inputs];
+      arr[ii] = { ...arr[ii], rawCode: code, rawName: name };
+      next[bi] = { ...next[bi], inputs: arr };
+      return next;
+    });
 
   const addOutput = (bi) =>
     setBatches((prev) => {
@@ -652,6 +666,14 @@ export default function TraceabilityLogInput() {
       const next = [...prev];
       const arr = [...next[bi].outputs];
       arr[oi] = { ...arr[oi], [key]: val };
+      next[bi] = { ...next[bi], outputs: arr };
+      return next;
+    });
+  const updateOutputProduct = (bi, oi, { code, name }) =>
+    setBatches((prev) => {
+      const next = [...prev];
+      const arr = [...next[bi].outputs];
+      arr[oi] = { ...arr[oi], finalCode: code, finalName: name };
       next[bi] = { ...next[bi], outputs: arr };
       return next;
     });
@@ -705,6 +727,7 @@ export default function TraceabilityLogInput() {
     for (const b of batches) {
       const batchId = (b.batchId || "").trim();
       const inputs = (b.inputs ?? []).map((x) => ({
+        rawCode: (x.rawCode || "").trim(),
         rawName: (x.rawName || "").trim(),
         origProdDate: (x.origProdDate || "").trim(),
         origExpDate: (x.origExpDate || "").trim(),
@@ -713,6 +736,7 @@ export default function TraceabilityLogInput() {
         rawWeight: (x.rawWeight || "").toString().trim(),
       }));
       const outputs = (b.outputs ?? []).map((x) => ({
+        finalCode: (x.finalCode || "").trim(),
         finalName: (x.finalName || "").trim(),
         finalProdDate: (x.finalProdDate || "").trim(),
         finalExpDate: (x.finalExpDate || "").trim(),
@@ -752,6 +776,7 @@ export default function TraceabilityLogInput() {
           entries.push({
             batchId,
             ...inp,
+            finalCode: "",
             finalName: "",
             finalProdDate: "",
             finalExpDate: "",
@@ -761,6 +786,7 @@ export default function TraceabilityLogInput() {
         for (const out of outputs)
           entries.push({
             batchId,
+            rawCode: "",
             rawName: "",
             origProdDate: "",
             origExpDate: "",
@@ -942,8 +968,10 @@ export default function TraceabilityLogInput() {
                     {b.inputs.map((inp, ii) => (
                       <div key={ii} style={{ border: "1px dashed #c7d2fe", borderRadius: 8, padding: 8 }}>
                         <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                          <label>Item Code / كود المنتج</label>
+                          <ItemCodeInput code={inp.rawCode || ""} name={inp.rawName || ""} onChange={(pair) => updateInputProduct(bi, ii, pair)} style={inputStyle} />
                           <label>Name / الاسم</label>
-                          <input placeholder="Raw material name" value={inp.rawName} onChange={(e) => updateInputField(bi, ii, "rawName", e.target.value)} style={inputStyle} />
+                          <ItemNameInput code={inp.rawCode || ""} name={inp.rawName || ""} onChange={(pair) => updateInputProduct(bi, ii, pair)} style={inputStyle} placeholder="Raw material name" />
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 6, alignItems: "center" }}>
                           <label>Original Production Date / تاريخ الإنتاج الأصلي</label>
@@ -973,8 +1001,10 @@ export default function TraceabilityLogInput() {
                     {b.outputs.map((out, oi) => (
                       <div key={oi} style={{ border: "1px dashed #bae6fd", borderRadius: 8, padding: 8 }}>
                         <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                          <label>Item Code / كود المنتج</label>
+                          <ItemCodeInput code={out.finalCode || ""} name={out.finalName || ""} onChange={(pair) => updateOutputProduct(bi, oi, pair)} style={inputStyle} />
                           <label>Final Product Name / اسم المنتج النهائي</label>
-                          <input placeholder="Final product name" value={out.finalName} onChange={(e) => updateOutputField(bi, oi, "finalName", e.target.value)} style={inputStyle} />
+                          <ItemNameInput code={out.finalCode || ""} name={out.finalName || ""} onChange={(pair) => updateOutputProduct(bi, oi, pair)} style={inputStyle} placeholder="Final product name" />
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 6, alignItems: "center" }}>
                           <label>Production Date / تاريخ الإنتاج</label>

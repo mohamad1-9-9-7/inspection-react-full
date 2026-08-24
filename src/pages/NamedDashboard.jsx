@@ -263,6 +263,13 @@ const ALL_ROLES = [
     glow: "rgba(8,145,178,.45)",
   },
   {
+    // 🧬 منظومة تتبع المنتج — كود واحد يعرض رحلة المنتج من الشحنة حتى العميل
+    id: "productTrace", label: "Product Traceability", route: "/product-trace", icon: "🧬",
+    keywords: ["trace", "traceability", "recall", "item code", "تتبع", "كود", "استدعاء"],
+    grad: "linear-gradient(135deg,#7c3aed,#4f46e5)",
+    glow: "rgba(124,58,237,.45)",
+  },
+  {
     id: "emailCenter", label: "Email Center", route: "/email-center", icon: "📨",
     grad: "linear-gradient(135deg,#1e40af,#7c3aed)",
     glow: "rgba(30,64,175,.45)",

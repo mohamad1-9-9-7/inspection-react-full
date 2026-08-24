@@ -61,6 +61,7 @@ function rowHaystack(r = {}) {
   return norm(
     [
       r.supplier,
+      r.itemCode,
       r.foodItem,
       r.countryOfOrigin,
       r.productionDate,
@@ -98,6 +99,7 @@ function metaHaystack(p = {}) {
 function emptyRow() {
   return {
     supplier: "",
+    itemCode: "",
     foodItem: "",
     vehicleTemp: "",
     foodTemp: "",
@@ -159,11 +161,23 @@ export default function POS10ReceivingLogView() {
     () => ({
       width: "100%",
       borderCollapse: "collapse",
+      // Sixteen columns sharing one page width: without a fixed layout the
+      // browser hands the width to whichever column happens to hold the longest
+      // unbroken word, and the rest collapse to a letter or two. Fixed layout +
+      // the colgroup below give every column a share the reader can use.
+      tableLayout: "fixed",
       fontSize: 15,
       borderRadius: 12,
       overflow: "hidden",
       boxShadow: "0 2px 14px rgba(99,102,241,0.10)",
     }),
+    []
+  );
+
+  /* Column widths as a share of the table, in the order the header row prints
+     them: code and product first, the way the sheet is filled in. */
+  const colWidths = useMemo(
+    () => [7, 12, 11, 5, 5, 6, 4, 4.5, 4, 4, 4, 5.5, 6, 6, 6, 10],
     []
   );
   const theadRow = {
@@ -173,7 +187,10 @@ export default function POS10ReceivingLogView() {
     border: "1px solid rgba(255,255,255,0.30)",
     padding: "10px 8px",
     textAlign: "center",
-    whiteSpace: "pre-line",
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
+    lineHeight: 1.35,
+    fontSize: 13,
     fontWeight: 800,
     background: "transparent",
     color: "#fff",
@@ -183,6 +200,10 @@ export default function POS10ReceivingLogView() {
     padding: "9px 7px",
     textAlign: "center",
     verticalAlign: "middle",
+    // A long supplier name or a remark has to wrap inside its own column
+    // instead of pushing the table wider than the page.
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
   };
   const inputStyle = {
     width: "100%",
@@ -415,8 +436,9 @@ export default function POS10ReceivingLogView() {
 
   function fallbackCSV(p) {
     const headers = [
-      "Name of the Supplier",
+      "Item Code",
       "Food Item",
+      "Name of the Supplier",
       "Vehicle Temp (°C)",
       "Food Temp (°C)",
       "Quantity KG\\PCS",
@@ -434,8 +456,9 @@ export default function POS10ReceivingLogView() {
     const rows = (p.entries || [])
       .filter(isFilledRow)
       .map((e) => [
-        e?.supplier ?? "",
+        e?.itemCode ?? "",
         e?.foodItem ?? "",
+        e?.supplier ?? "",
         e?.vehicleTemp ?? "",
         e?.foodTemp ?? "",
         e?.quantity ?? "",
@@ -488,7 +511,6 @@ export default function POS10ReceivingLogView() {
         ["Classification:", p.classification || "Official"],
         ["Branch:", p.branch || "POS 10"],
         ["Date:", p.reportDate || ""],
-        ["Time:", p.reportTime || ""],
         ["Invoice No:", p.invoiceNo || ""],
       ];
       for (let i = 0; i < meta.length; i++) {
@@ -501,8 +523,9 @@ export default function POS10ReceivingLogView() {
       }
 
       ws.columns = [
+        { width: 13 },
+        { width: 22 },
         { width: 24 },
-        { width: 20 },
         { width: 14 },
         { width: 14 },
         { width: 16 },
@@ -519,8 +542,9 @@ export default function POS10ReceivingLogView() {
       ];
 
       const COL_HEADERS = [
-        "Name of the Supplier",
+        "Item Code",
         "Food Item",
+        "Name of the Supplier",
         "Vehicle Temp (°C)",
         "Food Temp (°C)",
         "Quantity KG\\PCS",
@@ -548,8 +572,9 @@ export default function POS10ReceivingLogView() {
       let rowIdx = 8;
       rawRows.forEach((e) => {
         ws.getRow(rowIdx).values = [
-          e?.supplier || "",
+          e?.itemCode || "",
           e?.foodItem || "",
+          e?.supplier || "",
           e?.vehicleTemp || "",
           e?.foodTemp || "",
           e?.quantity || "",
@@ -850,8 +875,9 @@ export default function POS10ReceivingLogView() {
                 {/* Info band — شارات زجاجية تملأ العرض */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8, marginBottom: 10, fontSize: 14.5 }}>
                   {[
+                    /* No "Time" badge: the receiving sheet has never recorded
+                       one — the receiving date is the record. */
                     ["Date", safe(record.payload?.reportDate)],
-                    ["Time", safe(record.payload?.reportTime)],
                     ["Invoice No", safe(record.payload?.invoiceNo)],
                     ["Branch", safe(record.payload?.branch)],
                     ["Form Ref", safe(record.payload?.formRef || "FSMS/BR/F01A")],
@@ -884,10 +910,16 @@ export default function POS10ReceivingLogView() {
 
                 {/* Table */}
                 <table style={gridStyle}>
+                  <colgroup>
+                    {colWidths.map((w, i) => (
+                      <col key={i} style={{ width: `${w}%` }} />
+                    ))}
+                  </colgroup>
                   <thead>
                     <tr style={theadRow}>
-                      <th style={thCell}>Name of the Supplier</th>
+                      <th style={thCell}>Item Code</th>
                       <th style={thCell}>Food Item</th>
+                      <th style={thCell}>Name of the Supplier</th>
                       <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
                       <th style={thCell}>Quantity KG\PCS</th>
@@ -896,8 +928,10 @@ export default function POS10ReceivingLogView() {
                       <th style={thCell}>Appearance</th>
                       <th style={thCell}>Firmness</th>
                       <th style={thCell}>Bad Smell</th>
-                      <th style={thCell}>
-                        Packaging of food is good and undamaged, clean and no signs of pest infestation
+                      <th
+                        style={thCell}
+                        title="Packaging of food is good and undamaged, clean and no signs of pest infestation">
+                        Packaging intact
                       </th>
                       <th style={thCell}>Country of origin</th>
                       <th style={thCell}>Production Date</th>
@@ -911,8 +945,9 @@ export default function POS10ReceivingLogView() {
                       viewRows.length ? (
                         viewRows.map((r, idx) => (
                           <tr key={idx} style={zebra(idx)}>
-                            <td style={{ ...tdCell, fontWeight: 700 }}>{safe(r.supplier)}</td>
+                            <td style={{ ...tdCell, fontWeight: 800, color: "#4f46e5" }}>{safe(r.itemCode)}</td>
                             <td style={tdCell}>{safe(r.foodItem)}</td>
+                            <td style={{ ...tdCell, fontWeight: 700 }}>{safe(r.supplier)}</td>
                             <td style={tdCell}>{safe(r.vehicleTemp)}</td>
                             <td style={tdCell}>{safe(r.foodTemp)}</td>
                             <td style={tdCell}>{safe(r.quantity)}</td>
@@ -930,7 +965,7 @@ export default function POS10ReceivingLogView() {
                         ))
                       ) : (
                         <tr>
-                          <td style={{ ...tdCell, textAlign: "left" }} colSpan={15}>
+                          <td style={{ ...tdCell, textAlign: "left" }} colSpan={16}>
                             No matching results in this day for: <strong>{search}</strong>
                           </td>
                         </tr>
@@ -947,11 +982,11 @@ export default function POS10ReceivingLogView() {
                             <td style={tdCell}>
                               <input
                                 type="text"
-                                value={r.supplier || ""}
+                                value={r.itemCode || ""}
                                 onChange={(e) =>
                                   setEditRows((prev) => {
                                     const n = [...prev];
-                                    n[idx] = { ...n[idx], supplier: e.target.value };
+                                    n[idx] = { ...n[idx], itemCode: e.target.value };
                                     return n;
                                   })
                                 }
@@ -966,6 +1001,20 @@ export default function POS10ReceivingLogView() {
                                   setEditRows((prev) => {
                                     const n = [...prev];
                                     n[idx] = { ...n[idx], foodItem: e.target.value };
+                                    return n;
+                                  })
+                                }
+                                style={inputStyle}
+                              />
+                            </td>
+                            <td style={tdCell}>
+                              <input
+                                type="text"
+                                value={r.supplier || ""}
+                                onChange={(e) =>
+                                  setEditRows((prev) => {
+                                    const n = [...prev];
+                                    n[idx] = { ...n[idx], supplier: e.target.value };
                                     return n;
                                   })
                                 }

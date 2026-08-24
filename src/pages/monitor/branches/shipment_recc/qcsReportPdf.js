@@ -172,6 +172,7 @@ export async function generateReportPdf(payload) {
   y += 6;
 
   const sampleHead = ["Attribute", ...samples.map((_, i) => `Sample ${i + 1}`)];
+  const productCodeRow = ["PRODUCT CODE", ...samples.map((s) => safe(s.productCode || s.itemCode))];
   const productNameRow = ["PRODUCT NAME", ...samples.map((s) => safe(s.productName))];
   const attrRows = ATTR_ORDER.map((k) => [
     ATTR_LABELS[k],
@@ -190,7 +191,7 @@ export async function generateReportPdf(payload) {
     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: "bold" },
     columnStyles: { 0: { fontStyle: "bold", fillColor: [248, 250, 252], cellWidth: 95 } },
     head: [sampleHead],
-    body: [productNameRow, ...attrRows],
+    body: [productCodeRow, productNameRow, ...attrRows],
   });
 
   /* ========== Product Lines + Totals ========== */
@@ -207,19 +208,20 @@ export async function generateReportPdf(payload) {
       theme: "grid",
       styles: { fontSize: 9, cellPadding: 4 },
       headStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: "bold" },
-      head: [["#", "Product Name", "Qty (pcs)", "Weight (kg)"]],
+      head: [["#", "Item Code", "Product Name", "Qty (pcs)", "Weight (kg)"]],
       body: productLines.map((l, i) => [
         String(i + 1),
+        safe(l.code || l.itemCode),
         safe(l.name),
         safe(l.qty),
         safe(l.weight),
       ]),
       foot: [[
-        { content: "TOTAL", colSpan: 2, styles: { halign: "right", fontStyle: "bold" } },
+        { content: "TOTAL", colSpan: 3, styles: { halign: "right", fontStyle: "bold" } },
         { content: safe(totalQuantity), styles: { fontStyle: "bold" } },
         { content: safe(totalWeight), styles: { fontStyle: "bold" } },
       ], [
-        { content: `Average Weight (kg/pc): ${safe(averageWeight)}`, colSpan: 4, styles: { halign: "right", fontStyle: "italic" } },
+        { content: `Average Weight (kg/pc): ${safe(averageWeight)}`, colSpan: 5, styles: { halign: "right", fontStyle: "italic" } },
       ]],
       footStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42] },
     });

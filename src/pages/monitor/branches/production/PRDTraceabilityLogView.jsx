@@ -14,6 +14,15 @@ import {
 } from "../_shared/branchViewKit";
 import { canEdit, canDelete } from "../../../../utils/perms";
 
+/* "22000 · NAME" — the item code glued to its product name, so one cell
+   carries both wherever the row is rendered, printed or exported. */
+const codedName = (code, name) => {
+  const c = String(code ?? "").trim();
+  const n = String(name ?? "").trim();
+  return c && n ? `${c} · ${n}` : c || n || "";
+};
+
+
 
 
 const TYPE   = "prd_traceability_log";
@@ -45,9 +54,9 @@ const isFilledRow = (r = {}) =>
 function emptyRow() {
   return {
     batchId: "",
-    rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "",
+    rawCode: "", rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "",
     rawWeight: "",
-    finalName: "", finalProdDate: "", finalExpDate: "",
+    finalCode: "", finalName: "", finalProdDate: "", finalExpDate: "",
     finalWeight: "",
   };
 }
@@ -182,10 +191,10 @@ export default function PRDTraceabilityLogView() {
       const e = match?.payload?.entries?.[i];
       return e ? {
         batchId: e.batchId ?? "",
-        rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
+        rawCode: e.rawCode ?? "", rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
         openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
         rawWeight: e.rawWeight ?? "",
-        finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
+        finalCode: e.finalCode ?? "", finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
         finalWeight: e.finalWeight ?? "",
       } : emptyRow();
     });
@@ -240,10 +249,10 @@ export default function PRDTraceabilityLogView() {
         const e = record?.payload?.entries?.[i];
         return e ? {
           batchId: e.batchId ?? "",
-          rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
+          rawCode: e.rawCode ?? "", rawName: e.rawName ?? "", origProdDate: e.origProdDate ?? "", origExpDate: e.origExpDate ?? "",
           openedDate: e.openedDate ?? "", bestBefore: e.bestBefore ?? "",
           rawWeight: e.rawWeight ?? "",
-          finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
+          finalCode: e.finalCode ?? "", finalName: e.finalName ?? "", finalProdDate: e.finalProdDate ?? "", finalExpDate: e.finalExpDate ?? "",
           finalWeight: e.finalWeight ?? "",
         } : emptyRow();
       });
@@ -359,9 +368,9 @@ export default function PRDTraceabilityLogView() {
     ];
     const rows = (p.entries || []).filter(isFilledRow).map(e => ([
       e?.batchId ?? "",
-      e?.rawName ?? "", e?.origProdDate ?? "", e?.origExpDate ?? "",
+      codedName(e?.rawCode, e?.rawName), e?.origProdDate ?? "", e?.origExpDate ?? "",
       e?.openedDate ?? "", e?.bestBefore ?? "", e?.rawWeight ?? "",
-      e?.finalName ?? "", e?.finalProdDate ?? "", e?.finalExpDate ?? "", e?.finalWeight ?? "",
+      codedName(e?.finalCode, e?.finalName), e?.finalProdDate ?? "", e?.finalExpDate ?? "", e?.finalWeight ?? "",
       p?.checkedBy ?? "", p?.verifiedBy ?? "",
     ]));
     const csv = [headers, ...rows]
@@ -458,9 +467,9 @@ export default function PRDTraceabilityLogView() {
       rawRows.forEach((e) => {
         ws.getRow(rowIdx).values = [
           e?.batchId || "",
-          e?.rawName || "", e?.origProdDate || "", e?.origExpDate || "",
+          codedName(e?.rawCode, e?.rawName), e?.origProdDate || "", e?.origExpDate || "",
           e?.openedDate || "", e?.bestBefore || "", e?.rawWeight || "",
-          e?.finalName || "", e?.finalProdDate || "", e?.finalExpDate || "", e?.finalWeight || "",
+          codedName(e?.finalCode, e?.finalName), e?.finalProdDate || "", e?.finalExpDate || "", e?.finalWeight || "",
         ];
         ws.getRow(rowIdx).eachCell((cell) => {
           cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
@@ -742,8 +751,8 @@ export default function PRDTraceabilityLogView() {
                         const rows = allRows.filter(isFilledRow);
                         if (!rows.length) return null;
 
-                        const rawsSame   = equalAcross(rows, ["rawName","origProdDate","origExpDate","openedDate","bestBefore","rawWeight"]);
-                        const finalsSame = equalAcross(rows, ["finalName","finalProdDate","finalExpDate","finalWeight"]);
+                        const rawsSame   = equalAcross(rows, ["rawCode","rawName","origProdDate","origExpDate","openedDate","bestBefore","rawWeight"]);
+                        const finalsSame = equalAcross(rows, ["finalCode","finalName","finalProdDate","finalExpDate","finalWeight"]);
                         const span = rows.length;
 
                         return (
@@ -773,7 +782,7 @@ export default function PRDTraceabilityLogView() {
                                 {rawsSame ? (
                                   idx === 0 ? (
                                     <>
-                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].rawName)}</td>
+                                      <td style={tdCell} rowSpan={span}>{codedName(rows[0].rawCode, rows[0].rawName)}</td>
                                       <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origProdDate))}</td>
                                       <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].origExpDate))}</td>
                                       <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].openedDate))}</td>
@@ -783,7 +792,7 @@ export default function PRDTraceabilityLogView() {
                                   ) : null
                                 ) : (
                                   <>
-                                    <td style={tdCell}>{safe(r.rawName)}</td>
+                                    <td style={tdCell}>{codedName(r.rawCode, r.rawName)}</td>
                                     <td style={tdCell}>{formatDMY(safe(r.origProdDate))}</td>
                                     <td style={tdCell}>{formatDMY(safe(r.origExpDate))}</td>
                                     <td style={tdCell}>{formatDMY(safe(r.openedDate))}</td>
@@ -795,7 +804,7 @@ export default function PRDTraceabilityLogView() {
                                 {finalsSame ? (
                                   idx === 0 ? (
                                     <>
-                                      <td style={tdCell} rowSpan={span}>{safe(rows[0].finalName)}</td>
+                                      <td style={tdCell} rowSpan={span}>{codedName(rows[0].finalCode, rows[0].finalName)}</td>
                                       <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalProdDate))}</td>
                                       <td style={tdCell} rowSpan={span}>{formatDMY(safe(rows[0].finalExpDate))}</td>
                                       <td style={tdCell} rowSpan={span}>{safe(rows[0].finalWeight) ? `${rows[0].finalWeight} kg` : ""}</td>
@@ -803,7 +812,7 @@ export default function PRDTraceabilityLogView() {
                                   ) : null
                                 ) : (
                                   <>
-                                    <td style={tdCell}>{safe(r.finalName)}</td>
+                                    <td style={tdCell}>{codedName(r.finalCode, r.finalName)}</td>
                                     <td style={tdCell}>{formatDMY(safe(r.finalProdDate))}</td>
                                     <td style={tdCell}>{formatDMY(safe(r.finalExpDate))}</td>
                                     <td style={tdCell}>{safe(r.finalWeight) ? `${r.finalWeight} kg` : ""}</td>

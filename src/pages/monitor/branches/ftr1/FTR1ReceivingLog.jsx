@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
 import { uploadImage } from "../../../../utils/imageUpload";
+import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 
 
 
@@ -21,6 +22,9 @@ const TICK_COLS = [
 function emptyRow(imageSlots = 1) {
   return {
     supplier: "",
+    // itemCode ⟷ foodItem: the catalog code that ties this line to the same
+    // product everywhere else (QCS shipment, traceability, final product).
+    itemCode: "",
     foodItem: "",
     dmApprovalNo: "",
     vehicleTemp: "",
@@ -320,7 +324,8 @@ export default function FTR1ReceivingLog() {
   const colDefs = useMemo(
     () => [
       <col key="supplier" style={{ width: 180, minWidth: 160 }} />,
-      <col key="food" style={{ width: 160, minWidth: 150 }} />,
+      <col key="itemCode" style={{ width: 110, minWidth: 100 }} />,
+      <col key="food" style={{ width: 190, minWidth: 170 }} />,
       <col key="dm" style={{ width: 150, minWidth: 140 }} />,
       <col key="vehT" style={{ width: 90, minWidth: 90 }} />,
       <col key="foodT" style={{ width: 90, minWidth: 90 }} />,
@@ -344,6 +349,15 @@ export default function FTR1ReceivingLog() {
     setRows((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], [key]: val };
+      return next;
+    });
+  }
+
+  // Code and name are one unit — a catalog pick on either side rewrites both.
+  function updateProduct(idx, { code, name }) {
+    setRows((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], itemCode: code, foodItem: name };
       return next;
     });
   }
@@ -598,6 +612,7 @@ export default function FTR1ReceivingLog() {
           <thead>
             <tr>
               <th style={thCell}>Name of the Supplier</th>
+              <th style={thCell}>Item Code</th>
               <th style={thCell}>Food Item</th>
               <th style={thCell}>DM approval number of the delivery vehicle</th>
               <th style={thCell}>Vehicle Temp (°C)</th>
@@ -625,7 +640,10 @@ export default function FTR1ReceivingLog() {
                   <input type="text" value={r.supplier} onChange={(e) => updateRow(idx, "supplier", e.target.value)} style={inputStyle} />
                 </td>
                 <td style={tdCell}>
-                  <input type="text" value={r.foodItem} onChange={(e) => updateRow(idx, "foodItem", e.target.value)} style={inputStyle} />
+                  <ItemCodeInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair) => updateProduct(idx, pair)} style={inputStyle} />
+                </td>
+                <td style={tdCell}>
+                  <ItemNameInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair) => updateProduct(idx, pair)} style={inputStyle} placeholder="Search code or product…" />
                 </td>
                 <td style={tdCell}>
                   <input type="text" value={r.dmApprovalNo} onChange={(e) => updateRow(idx, "dmApprovalNo", e.target.value)} style={inputStyle} />

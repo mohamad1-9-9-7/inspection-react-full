@@ -30,6 +30,7 @@ function checkPin() {
 /* ================== Columns ================== */
 const COLS = [
   { key: "supplier",         label: "Name of the Supplier",                                                           align: "left"   },
+  { key: "itemCode",         label: "Item Code",                                                                       align: "left"   },
   { key: "foodItem",         label: "Food Item",                                                                       align: "left"   },
   { key: "dmApprovalNo",    label: "DM approval number of the delivery vehicle",                                      align: "left"   },
   { key: "vehicleTemp",     label: "Vehicle Temp (°C)",                                                                align: "center" },
@@ -46,7 +47,7 @@ const COLS = [
   { key: "receivedBy",      label: "Received by",                                                                     align: "center" },
 ];
 
-const COL_WIDTHS_PX    = [64,160,140,240,110,110,130,160,130,110,300,140,140,140,260,160];
+const COL_WIDTHS_PX    = [64,160,110,140,240,110,110,130,160,130,110,300,140,140,140,260,160];
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
 const MIN_SCALE        = 0.5;
 

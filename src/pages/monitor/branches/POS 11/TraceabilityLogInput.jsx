@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { REPORTS_URL } from "../shipment_recc/qcsRawApi";
 import API_BASE from "../../../../config/api";
 import { RAW_RECIPES, classifyRaw, ALL_FINALS } from "../_shared/traceabilityRecipes";
+import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 
 /* ===== API base ===== */
 
@@ -27,12 +28,14 @@ function genBatchId() {
 }
 
 /* ===== قوالب عناصر الإدخال/الإخراج ===== */
+// rawCode / finalCode carry the catalog item code alongside the name, so the
+// Product Traceability system can follow one code from shipment to dispatch.
 const emptyInput = () => ({
-  rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "",
+  rawCode: "", rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "",
   rawWeight: ""
 });
 const emptyOutput = () => ({
-  finalName: "", finalProdDate: "", finalExpDate: "",
+  finalCode: "", finalName: "", finalProdDate: "", finalExpDate: "",
   finalWeight: ""
 });
 
@@ -221,11 +224,13 @@ function extractProducts(payloadIn) {
   const out = [];
   samples.forEach((s) => {
     const name = String(s?.productName || "").trim();
+    const code = String(s?.productCode || s?.itemCode || "").trim();
     const prodDate = normDate(s?.slaughterDate ?? s?.productionDate ?? "");
     const expDate = normDate(s?.expiryDate ?? s?.bestBefore ?? "");
     if (!name && !prodDate && !expDate) return;
     out.push({
       name,
+      code,
       prodDate: isYMD(prodDate) ? prodDate : "",
       expDate: isYMD(expDate) ? expDate : "",
     });
@@ -236,7 +241,8 @@ function extractProducts(payloadIn) {
                 : Array.isArray(p.lines) ? p.lines : [];
     lines.forEach((l) => {
       const name = String(l?.name || l?.productName || "").trim();
-      if (name) out.push({ name, prodDate: "", expDate: "" });
+      const code = String(l?.code || l?.itemCode || "").trim();
+      if (name) out.push({ name, code, prodDate: "", expDate: "" });
     });
   }
   return out;
@@ -435,6 +441,7 @@ export default function POS11TraceabilityLogInput() {
       const filled = {
         ...newInput(),
         rawName,
+        rawCode: String(product.code || "").trim(),
         origProdDate: isYMD(product.prodDate) ? product.prodDate : "",
         origExpDate: isYMD(product.expDate) ? product.expDate : "",
       };
@@ -662,6 +669,16 @@ export default function POS11TraceabilityLogInput() {
       return next;
     });
   };
+  // Code and name are one unit — a catalog pick on either side rewrites both.
+  const updateOutputProduct = (bi, oi, { code, name }) => {
+    setBatches((prev) => {
+      const next = [...prev];
+      const arr = [...next[bi].outputs];
+      arr[oi] = { ...arr[oi], finalCode: code, finalName: name };
+      next[bi] = { ...next[bi], outputs: arr };
+      return next;
+    });
+  };
 
   /* ===== حفظ ===== */
   async function handleSave() {
@@ -695,6 +712,7 @@ export default function POS11TraceabilityLogInput() {
       const batchId = (b.batchId || "").trim();
 
       const inputs  = (b.inputs  ?? []).map(x => ({
+        rawCode: (x.rawCode || "").trim(),
         rawName: (x.rawName || "").trim(),
         origProdDate: (x.origProdDate || "").trim(),
         origExpDate: (x.origExpDate || "").trim(),
@@ -703,6 +721,7 @@ export default function POS11TraceabilityLogInput() {
         rawWeight: (x.rawWeight || "").toString().trim(),
       }));
       const outputs = (b.outputs ?? []).map(x => ({
+        finalCode: (x.finalCode || "").trim(),
         finalName: (x.finalName || "").trim(),
         finalProdDate: (x.finalProdDate || "").trim(),
         finalExpDate: (x.finalExpDate || "").trim(),
@@ -742,14 +761,14 @@ export default function POS11TraceabilityLogInput() {
         for (const inp of sigInputs) {
           entries.push({
             batchId, ...inp,
-            finalName: "", finalProdDate: "", finalExpDate: "", finalWeight: ""
+            finalCode: "", finalName: "", finalProdDate: "", finalExpDate: "", finalWeight: ""
           });
         }
       } else if (hasOutputs) {
         for (const out of outputs) {
           entries.push({
             batchId,
-            rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "", rawWeight: "",
+            rawCode: "", rawName: "", origProdDate: "", origExpDate: "", openedDate: "", bestBefore: "", rawWeight: "",
             ...out
           });
         }
@@ -898,6 +917,14 @@ export default function POS11TraceabilityLogInput() {
                     {b.inputs.map((inp, ii) => (
                       <div key={ii} style={{ border:"1px dashed #c7d2fe", borderRadius:8, padding:8 }}>
                         <div style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:6, alignItems:"center", marginBottom:6 }}>
+                          <label>Item Code <span style={{ color:"#94a3b8" }}>🔒</span></label>
+                          <input
+                            placeholder="من كود المنتج بالشحنة / From the shipment item code"
+                            value={inp.rawCode || ""}
+                            readOnly
+                            title="كود المنتج — يُعبّأ تلقائياً عند الربط من الشحنة"
+                            style={{ ...lockedStyle, fontWeight: 800, color: "#4f46e5" }}
+                          />
                           <label>Name <span style={{ color:"#94a3b8" }}>🔒</span></label>
                           <input
                             placeholder="يُعبّأ من الربط فقط / Fill via Link from RAW"
@@ -948,12 +975,20 @@ export default function POS11TraceabilityLogInput() {
                     {b.outputs.map((out, oi) => (
                       <div key={oi} style={{ border:"1px dashed #bae6fd", borderRadius:8, padding:8 }}>
                         <div style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:6, alignItems:"center", marginBottom:6 }}>
-                          <label>Final Product Name</label>
-                          <input
-                            placeholder="Final product name"
-                            value={out.finalName}
-                            onChange={(e)=>updateOutputField(bi, oi, "finalName", e.target.value)}
+                          <label>Item Code</label>
+                          <ItemCodeInput
+                            code={out.finalCode || ""}
+                            name={out.finalName || ""}
+                            onChange={(pair)=>updateOutputProduct(bi, oi, pair)}
                             style={inputStyle}
+                          />
+                          <label>Final Product Name</label>
+                          <ItemNameInput
+                            code={out.finalCode || ""}
+                            name={out.finalName || ""}
+                            onChange={(pair)=>updateOutputProduct(bi, oi, pair)}
+                            style={inputStyle}
+                            placeholder="Final product name"
                           />
                         </div>
                         <div style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:6, alignItems:"center" }}>

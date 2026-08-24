@@ -247,6 +247,7 @@ export const ST = {
   amSecButcher:          { en: "Butcher",           ar: "الجزار" },
   amSecWorkforce:        { en: "Workforce",         ar: "القوى العاملة" },
   amSecMrp:              { en: "Manufacturing",     ar: "التصنيع" },
+  amSecProductTrace:     { en: "Product Traceability", ar: "تتبع المنتج" },
   amSecSettings:         { en: "Settings",          ar: "الإعدادات" },
 
   // CRUD operations

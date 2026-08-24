@@ -6,6 +6,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import API_BASE from "../../../../config/api";
 import useTakenDates from "../_shared/useTakenDates";
+import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 
 
 
@@ -24,7 +25,9 @@ const TICK_COLS = [
 
 function emptyRow() {
   return {
-    supplier: "", foodItem: "",
+    // itemCode ⟷ foodItem: the catalog code that ties this line to the same
+    // product everywhere else (QCS shipment, traceability, final product).
+    supplier: "", itemCode: "", foodItem: "",
     vehicleTemp: "", foodTemp: "",
     weightKg: "", // ✅ العمود الجديد
     vehicleClean: "", handlerHygiene: "", appearanceOK: "", firmnessOK: "", smellOK: "", packagingGood: "",
@@ -110,7 +113,8 @@ export default function POS11ReceivingLogInput() {
   // ✅ تعريف الأعمدة (أضفنا عمود الوزن بعد Food Temp)
   const colDefs = useMemo(() => ([
     <col key="supplier" style={{ width: 170 }} />,
-    <col key="food" style={{ width: 160 }} />,
+    <col key="itemCode" style={{ width: 110 }} />,
+    <col key="food" style={{ width: 190 }} />,
     <col key="vehT" style={{ width: 90 }} />,
     <col key="foodT" style={{ width: 90 }} />,
     <col key="weight" style={{ width: 110 }} />, // ✅ Weight (kg)
@@ -130,6 +134,15 @@ export default function POS11ReceivingLogInput() {
     setRows((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], [key]: val };
+      return next;
+    });
+  }
+
+  // Code and name are one unit — a catalog pick on either side rewrites both.
+  function updateProduct(idx, { code, name }) {
+    setRows((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], itemCode: code, foodItem: name };
       return next;
     });
   }
@@ -288,6 +301,7 @@ export default function POS11ReceivingLogInput() {
           <thead>
             <tr>
               <th style={thCell}>Name of the Supplier</th>
+              <th style={thCell}>Item Code</th>
               <th style={thCell}>Food Item</th>
               <th style={thCell}>Vehicle Temp (°C)</th>
               <th style={thCell}>Food Temp (°C)</th>
@@ -311,7 +325,10 @@ export default function POS11ReceivingLogInput() {
                   <input type="text" value={r.supplier} onChange={(e)=>updateRow(idx, "supplier", e.target.value)} style={inputStyle} />
                 </td>
                 <td style={tdCell}>
-                  <input type="text" value={r.foodItem} onChange={(e)=>updateRow(idx, "foodItem", e.target.value)} style={inputStyle} />
+                  <ItemCodeInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair)=>updateProduct(idx, pair)} style={inputStyle} />
+                </td>
+                <td style={tdCell}>
+                  <ItemNameInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair)=>updateProduct(idx, pair)} style={inputStyle} placeholder="Search code or product…" />
                 </td>
                 <td style={tdCell}>
                   <input type="number" step="0.1" value={r.vehicleTemp} onChange={(e)=>updateRow(idx, "vehicleTemp", e.target.value)} style={inputStyle} placeholder="°C" />

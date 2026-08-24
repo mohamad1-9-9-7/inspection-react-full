@@ -29,6 +29,8 @@ const ButcherMyWork = lazy(() => import("./pages/butcher/ButcherMyWork"));
 // 📦 المخزون — كرت جامع للجزار والتصنيع
 const InventoryHub = lazy(() => import("./pages/inventory/InventoryHub"));
 const WorkforceHub = lazy(() => import("./pages/workforce/WorkforceHub"));
+// 🧬 منظومة تتبع المنتج بالكود — Product Traceability
+const ProductTracePage = lazy(() => import("./pages/traceability/ProductTracePage"));
 // كتالوج المنتجات — نفس أداة الإعدادات، بمدخل تاني من المخزون
 const ProductsCatalogPage = lazy(() => import("./pages/inventory/ProductsCatalogPage"));
 
@@ -36,7 +38,7 @@ const ProductsCatalogPage = lazy(() => import("./pages/inventory/ProductsCatalog
 const MrpHub = lazy(() => import("./pages/mrp/MrpHub"));
 const MrpItems = lazy(() => import("./pages/mrp/MrpItems"));
 const MrpBom = lazy(() => import("./pages/mrp/MrpBom"));
-const MrpAudit = lazy(() => import("./pages/mrp/MrpAudit"));
+const MrpAudit = lazy(() => import("./pages/mrp/MrpAudit.jsx"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
 
 const DailyMonitorDashboard = lazy(() =>
@@ -861,6 +863,16 @@ export default function App() {
             <ProtectedRoute>
               <InventoryHub />
             </ProtectedRoute>
+          }
+        />
+
+        {/* 🧬 تتبع المنتج — منظومة مستقلّة: كود واحد يعرض رحلة المنتج كاملة */}
+        <Route
+          path="/product-trace"
+          element={
+            <SectionRoute section="productTrace">
+              <ProductTracePage />
+            </SectionRoute>
           }
         />
 

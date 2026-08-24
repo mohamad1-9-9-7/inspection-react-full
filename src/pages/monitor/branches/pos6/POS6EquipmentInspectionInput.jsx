@@ -6,7 +6,7 @@ import React, { useState } from "react";
 import PRDReportHeader from "../production/_shared/PRDReportHeader";
 import { useLang } from "./pos6I18n";
 import { BRANCH, TYPES, todayISO, useSaveReport } from "./pos6Api";
-import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "./POS6FormShell";
+import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "../_shared/BranchFormShell";
 import { GUIDANCE } from "./pos6Guidance";
 
 /* Sanitizing rounds through the day. */

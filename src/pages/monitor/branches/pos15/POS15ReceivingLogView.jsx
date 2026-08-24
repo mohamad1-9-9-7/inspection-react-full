@@ -15,14 +15,47 @@ import mawashiLogo from "../../../../assets/almawashi-logo.jpg";
 const TYPE   = "pos15_receiving_log_butchery";
 const BRANCH = "POS 15";
 
+/* Columns judged C / NC on arrival. `hint` carries the paper form's full
+   wording for the short header — spelled out in the heading it was unreadable. */
 const TICK_COLS = [
-  { key: "vehicleClean",   label: "Vehicle clean" },
-  { key: "handlerHygiene", label: "Food handler hygiene" },
-  { key: "appearanceOK",   label: "Appearance" },
-  { key: "firmnessOK",     label: "Firmness" },
-  { key: "smellOK",        label: "Smell" },
-  { key: "packagingGood",  label: "Packaging good/undamaged/clean/no pests" },
+  { key: "vehicleClean",   label: "Vehicle clean",   w: 105 },
+  { key: "handlerHygiene", label: "Handler hygiene", w: 115, hint: "Food handler hygiene" },
+  { key: "appearanceOK",   label: "Appearance",      w: 105, hint: "Normal colour, free from discoloration" },
+  { key: "firmnessOK",     label: "Firmness",        w: 100, hint: "Firm rather than soft" },
+  { key: "smellOK",        label: "Smell",           w: 95,  hint: "Normal smell — no rancid or strange smell" },
+  { key: "packagingGood",  label: "Packaging intact", w: 125,
+    hint: "Packaging of food is good and undamaged, clean and no signs of pest infestation" },
 ];
+
+/* One definition of the sheet, used by the header row, the read-only row, the
+   edit row, the CSV and the XLSX — five hand-maintained lists that each had to
+   be edited in step, and any one of them slipping put a header above the wrong
+   value.
+
+   Code and product lead the sheet, the way the branch fills it in and the way
+   POS 6 and POS 10 already print it.
+     w  — on-screen pixel width,  xw — Excel column width. */
+const COLUMNS = [
+  { key: "itemCode",        label: "Item Code",            w: 115, xw: 13, kind: "code" },
+  { key: "foodItem",        label: "Food Item",            w: 200, xw: 22, align: "left" },
+  { key: "supplier",        label: "Name of the Supplier", w: 180, xw: 24, align: "left" },
+  { key: "netWeight",       label: "Net Weight (kg)",      w: 110, xw: 14, kind: "number", step: "0.01" },
+  { key: "vehicleTemp",     label: "Vehicle Temp (°C)",    w: 100, xw: 14, kind: "number", step: "0.1" },
+  { key: "foodTemp",        label: "Food Temp (°C)",       w: 100, xw: 14, kind: "number", step: "0.1" },
+  ...TICK_COLS.map((c) => ({ ...c, xw: 13, kind: "tick" })),
+  { key: "countryOfOrigin", label: "Country of origin",    w: 135, xw: 16 },
+  { key: "productionDate",  label: "Production Date",      w: 130, xw: 15, kind: "date" },
+  { key: "expiryDate",      label: "Expiry Date",          w: 130, xw: 15, kind: "date" },
+  { key: "invoiceNo",       label: "Invoice No.",          w: 120, xw: 14 },
+  // In a cross-day search this is what tells the reader which report the line
+  // came from, so it falls back to the report's own date.
+  { key: "date",            label: "Received date",        w: 130, xw: 14, kind: "date", orReportDate: true },
+  { key: "time",            label: "Time",                 w: 90,  xw: 10, kind: "time" },
+  { key: "receivedBy",      label: "Received by",          w: 130, xw: 16 },
+  { key: "remarks",         label: "Remarks (if any)",     w: 200, xw: 24, align: "left" },
+];
+
+const SNO_W = 48;
 
 const safe = (v) => (v ?? "");
 const getId = (r) => r?.id || r?._id || r?.payload?.id || r?.payload?._id;
@@ -42,7 +75,7 @@ function normYMD(s) {
 
 function emptyRow() {
   return {
-    date: "", time: "", supplier: "", foodItem: "",
+    date: "", time: "", supplier: "", itemCode: "", foodItem: "",
     netWeight: "",
     vehicleTemp: "", foodTemp: "",
     vehicleClean: "", handlerHygiene: "", appearanceOK: "", firmnessOK: "", smellOK: "", packagingGood: "",
@@ -50,10 +83,33 @@ function emptyRow() {
   };
 }
 
-const gridStyle = { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12 };
+/* `width: 100%` with `table-layout: fixed` was the reason this sheet was
+   unreadable: the colgroup asked for ~2400px of columns, the fixed layout
+   scaled every one of them down to fit the container, and twenty columns each
+   ended up about 50px wide with their headers shredded down the middle. The
+   table now takes the width its columns need and the wrapper scrolls. */
+const gridStyle = { width: "max-content", minWidth: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 12.5 };
 const theadRow = { background: "#0ea5e9" };
-const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "6px 4px", textAlign: "center", whiteSpace: "pre-line", fontWeight: 800, background: "transparent", color: "#fff" };
-const tdCell = { border: "1px solid #e2e8f0", padding: "6px 4px", textAlign: "center", verticalAlign: "middle" };
+const thCell = { border: "1px solid rgba(255,255,255,0.30)", padding: "9px 6px", textAlign: "center", whiteSpace: "normal", overflowWrap: "anywhere", lineHeight: 1.35, fontSize: 11.5, fontWeight: 800, background: "transparent", color: "#fff" };
+const tdCell = { border: "1px solid #e2e8f0", padding: "8px 6px", textAlign: "center", verticalAlign: "middle", whiteSpace: "normal", overflowWrap: "anywhere" };
+
+/* C / NC as a coloured badge: a non-conformity has to be visible at a glance
+   when the sheet is skimmed, not a bare two-letter string in a grey grid. */
+function Tick({ v }) {
+  const s = String(v ?? "").trim().toUpperCase();
+  if (!s) return <span style={{ color: "#cbd5e1" }}>—</span>;
+  const ok = s === "C";
+  const bad = s === "NC";
+  return (
+    <span style={{
+      display: "inline-block", padding: "2px 10px", borderRadius: 999,
+      fontWeight: 800, fontSize: 12,
+      background: ok ? "#d1fae5" : bad ? "#fee2e2" : "#e5e7eb",
+      color: ok ? "#065f46" : bad ? "#991b1b" : "#374151",
+      border: `1px solid ${ok ? "#6ee7b7" : bad ? "#fca5a5" : "#d1d5db"}`,
+    }}>{s}</span>
+  );
+}
 const inputStyle = { width: "100%", border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 6px" };
 const advancedSelectStyle = { width: "100%", height: 39, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 10px", background: "#fff", color: "#0f172a", fontSize: 12, fontWeight: 700, outline: "none" };
 
@@ -257,6 +313,13 @@ export default function POS15ReceivingLogView() {
     setCountryFilter("all"); setComplianceFilter("all"); setResultSort("original");
   }
 
+  const editCell = (idx, key, value) =>
+    setEditRows((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [key]: value };
+      return next;
+    });
+
   const askPass = (label = "") => (window.prompt(`${label}\nEnter password:`) || "") === "9999";
 
   function toggleEdit() {
@@ -276,9 +339,22 @@ export default function POS15ReceivingLogView() {
     const payload = { ...(record?.payload || {}), branch: BRANCH, reportDate: record?.payload?.reportDate, entries: cleaned, verifiedBy: editVerifiedBy, savedAt: Date.now() };
     try {
       setLoading(true);
-      if (rid) { try { await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, { method: "DELETE" }); } catch (e) { console.warn("DELETE ignored:", e); } }
-      const postRes = await fetch(`${API_BASE}/api/reports`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }) });
-      if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`);
+      // Editing UPDATES the record. It used to DELETE the row and POST a new
+      // one, which threw away the server-allocated reference number and the
+      // record's history — and if the POST then failed, the report was simply
+      // gone. PUT /api/reports/:id keeps the id and the reference.
+      const res = rid
+        ? await fetch(`${API_BASE}/api/reports/${encodeURIComponent(rid)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: TYPE, payload }),
+          })
+        : await fetch(`${API_BASE}/api/reports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reporter: "pos15", type: TYPE, payload }),
+          });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("✅ Changes saved"); setEditing(false);
       await fetchRecord(payload.reportDate); await fetchAllDates();
     } catch (e) { console.error(e); alert("❌ Saving failed.\n" + String(e?.message || e)); }
@@ -318,10 +394,21 @@ export default function POS15ReceivingLogView() {
   }
   async function resolveSaveAs() { const mod = await import("file-saver"); return mod?.saveAs || mod?.default?.saveAs || mod?.default || mod; }
 
+  /* Both exports print the sheet the viewer is looking at: same columns, same
+     order, same date format. They are generated from COLUMNS so a change to
+     the table cannot leave the backup describing a different sheet. */
+  const exportHeaders = ["S.No", ...COLUMNS.map((c) => c.label)];
+  const exportRow = (e, i) => [
+    i + 1,
+    ...COLUMNS.map((c) => {
+      const raw = c.orReportDate ? (e?.[c.key] || e?.__reportDate) : e?.[c.key];
+      return c.kind === "date" ? formatDMY(safe(raw)) : safe(raw);
+    }),
+  ];
+
   function fallbackCSV(p) {
-    const headers = ["Date","Time","Supplier","Food Item","Net Weight (kg)","Vehicle Temp (°C)","Food Temp (°C)","Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell","Packaging good/undamaged/clean/no pests","Country of origin","Production Date","Expiry Date","Invoice No","Remarks (if any)","Received by"];
-    const rows = (p.entries || []).map(e => ([e?.date ?? "", e?.time ?? "", e?.supplier ?? "", e?.foodItem ?? "", e?.netWeight ?? "", e?.vehicleTemp ?? "", e?.foodTemp ?? "", e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "", e?.firmnessOK ?? "", e?.smellOK ?? "", e?.packagingGood ?? "", e?.countryOfOrigin ?? "", e?.productionDate ?? "", e?.expiryDate ?? "", e?.invoiceNo ?? "", e?.remarks ?? "", e?.receivedBy ?? ""]));
-    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+    const rows = (p.entries || []).filter(isFilledRow).map(exportRow);
+    const csv = [exportHeaders, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = `POS15_ReceivingLog_${p.reportDate || date}.csv`; a.click(); URL.revokeObjectURL(a.href);
@@ -333,27 +420,31 @@ export default function POS15ReceivingLogView() {
       const p = record?.payload || {}; const rawRows = Array.isArray(p.entries) ? p.entries : [];
       const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet("ReceivingLog");
       const lightBlue = "D9E2F3"; const tableHeaderBlue = "DCE6F1"; const borderThin = { style: "thin", color: { argb: "1F3B70" } };
-      ws.mergeCells(1,1,1,19);
+      const NC = exportHeaders.length;             // S.No + every column
+      const metaCol = Math.max(1, NC - 10);        // meta block sits on the right
+      ws.mergeCells(1, 1, 1, NC);
       const r1 = ws.getCell(1,1); r1.value = "POS 15 | Receiving Log (Butchery)";
       r1.alignment = { horizontal: "center", vertical: "middle" }; r1.font = { size: 14, bold: true };
       r1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } }; ws.getRow(1).height = 26;
-      const meta = [["Classification:", p.classification || "Official"],["Branch:", p.branch || "POS 15"],["Date:", p.reportDate || ""]];
+      const meta = [["Classification:", p.classification || "Official"],["Branch:", p.branch || "POS 15"],["Date:", formatDMY(p.reportDate || "")],["Form Ref:", p.formRef || "FSMS/BR/F01A"]];
       for (let i = 0; i < meta.length; i++) {
-        const rowIdx = 2 + i; ws.mergeCells(rowIdx, 9, rowIdx, 19);
-        const c = ws.getCell(rowIdx, 9); c.value = `${meta[i][0]} ${meta[i][1]}`;
+        const rowIdx = 2 + i; ws.mergeCells(rowIdx, metaCol, rowIdx, NC);
+        const c = ws.getCell(rowIdx, metaCol); c.value = `${meta[i][0]} ${meta[i][1]}`;
         c.alignment = { horizontal: "right", vertical: "middle" }; ws.getRow(rowIdx).height = 18;
       }
-      ws.columns = [{ width: 12 }, { width: 10 }, { width: 24 }, { width: 20 }, { width: 12 }, { width: 14 }, { width: 14 }, { width: 16 }, { width: 18 }, { width: 14 }, { width: 12 }, { width: 12 }, { width: 36 }, { width: 16 }, { width: 15 }, { width: 15 }, { width: 14 }, { width: 22 }, { width: 16 }];
-      const COL_HEADERS = ["Date","Time","Name of the Supplier","Food Item","Net Weight (kg)","Vehicle Temp (°C)","Food Temp (°C)","Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell","Packaging of food is good and undamaged, clean and no signs of pest infestation","Country of origin","Production Date","Expiry Date","Invoice No:","Remarks (if any)","Received by"];
-      const hr = ws.getRow(6); hr.values = COL_HEADERS;
-      hr.eachCell((cell) => { cell.font = { bold: true }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: tableHeaderBlue } }; cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin }; }); hr.height = 28;
-      const rows = rawRows.filter(isFilledRow); let rowIdx = 7;
-      rows.forEach((e) => {
-        ws.getRow(rowIdx).values = [e?.date || "", e?.time || "", e?.supplier || "", e?.foodItem || "", e?.netWeight || "", e?.vehicleTemp || "", e?.foodTemp || "", e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "", e?.firmnessOK || "", e?.smellOK || "", e?.packagingGood || "", e?.countryOfOrigin || "", e?.productionDate || "", e?.expiryDate || "", e?.invoiceNo || "", e?.remarks || "", e?.receivedBy || ""];
+      ws.columns = [{ width: 6 }, ...COLUMNS.map((c) => ({ width: c.xw }))];
+      const headRowIdx = 2 + meta.length + 1;
+      const hr = ws.getRow(headRowIdx); hr.values = exportHeaders;
+      hr.eachCell((cell) => { cell.font = { bold: true }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: tableHeaderBlue } }; cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin }; }); hr.height = 30;
+      const rows = rawRows.filter(isFilledRow); let rowIdx = headRowIdx + 1;
+      rows.forEach((e, i) => {
+        ws.getRow(rowIdx).values = exportRow(e, i);
         ws.getRow(rowIdx).eachCell((cell) => { cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; cell.border = { top: borderThin, left: borderThin, bottom: borderThin, right: borderThin }; }); ws.getRow(rowIdx).height = 20; rowIdx++;
       });
-      const legendRow = rowIdx + 1; ws.mergeCells(legendRow, 1, legendRow, 10);
+      const legendRow = rowIdx + 1; ws.mergeCells(legendRow, 1, legendRow, Math.min(10, NC));
       const legCell = ws.getCell(legendRow, 1); legCell.value = "Legend: (C) – Conform   (NC) – Non-Conform"; legCell.font = { bold: true }; legCell.alignment = { horizontal: "left", vertical: "middle" }; ws.getRow(legendRow).height = 18;
+      const signRow = legendRow + 2; ws.mergeCells(signRow, 1, signRow, Math.min(10, NC));
+      const signCell = ws.getCell(signRow, 1); signCell.value = `Verified by: ${p.verifiedBy || ""}`; signCell.font = { bold: true }; signCell.alignment = { horizontal: "left", vertical: "middle" };
       const buf = await wb.xlsx.writeBuffer({ useStyles: true, useSharedStrings: true });
       saveAs(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `POS15_ReceivingLog_${p.reportDate || date}.xlsx`);
     } catch (err) {
@@ -551,67 +642,71 @@ export default function POS15ReceivingLogView() {
               <div style={{ overflowX: "auto" }}>
                 <table style={gridStyle}>
                   <colgroup>
-                    <col style={{ width: 100 }} /><col style={{ width: 84 }} /><col style={{ width: 170 }} />
-                    <col style={{ width: 160 }} /><col style={{ width: 110 }} /><col style={{ width: 90 }} />
-                    <col style={{ width: 90 }} /><col style={{ width: 120 }} /><col style={{ width: 140 }} />
-                    <col style={{ width: 120 }} /><col style={{ width: 110 }} /><col style={{ width: 110 }} />
-                    <col style={{ width: 130 }} /><col style={{ width: 120 }} /><col style={{ width: 120 }} />
-                    <col style={{ width: 120 }} /><col style={{ width: 120 }} /><col style={{ width: 180 }} />
-                    <col style={{ width: 120 }} />
+                    <col style={{ width: SNO_W }} />
+                    {COLUMNS.map((c) => <col key={c.key} style={{ width: c.w }} />)}
                   </colgroup>
                   <thead>
                     <tr style={theadRow}>
-                      <th style={thCell}>Date</th><th style={thCell}>Time</th>
-                      <th style={thCell}>Name of the Supplier</th><th style={thCell}>Food Item</th>
-                      <th style={thCell}>Net Weight (kg)</th><th style={thCell}>Vehicle Temp (°C)</th>
-                      <th style={thCell}>Food Temp (°C)</th><th style={thCell}>Vehicle clean</th>
-                      <th style={thCell}>Food handler hygiene</th><th style={thCell}>Appearance</th>
-                      <th style={thCell}>Firmness</th><th style={thCell}>Smell</th>
-                      <th style={thCell}>Packaging of food is good and undamaged, clean and no signs of pest infestation</th>
-                      <th style={thCell}>Country of origin</th><th style={thCell}>Production Date</th>
-                      <th style={thCell}>Expiry Date</th><th style={thCell}>Invoice No:</th>
-                      <th style={thCell}>Remarks (if any)</th><th style={thCell}>Received by</th>
+                      <th style={thCell}>#</th>
+                      {COLUMNS.map((c) => (
+                        <th key={c.key} style={thCell} title={c.hint || c.label}>{c.label}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {!editing ? (
-                      filteredEntries.map((r, idx) => (
+                      filteredEntries.length ? filteredEntries.map((r, idx) => (
                         <tr key={r.__historyKey || idx} style={{ background: idx % 2 ? "#f0f9ff" : "#fff" }}>
-                          <td style={tdCell}>{formatDMY(safe(r.date || r.__reportDate))}</td><td style={tdCell}>{safe(r.time)}</td>
-                          <td style={tdCell}>{safe(r.supplier)}</td><td style={tdCell}>{safe(r.foodItem)}</td>
-                          <td style={tdCell}>{safe(r.netWeight)}</td><td style={tdCell}>{safe(r.vehicleTemp)}</td>
-                          <td style={tdCell}>{safe(r.foodTemp)}</td><td style={tdCell}>{safe(r.vehicleClean)}</td>
-                          <td style={tdCell}>{safe(r.handlerHygiene)}</td><td style={tdCell}>{safe(r.appearanceOK)}</td>
-                          <td style={tdCell}>{safe(r.firmnessOK)}</td><td style={tdCell}>{safe(r.smellOK)}</td>
-                          <td style={tdCell}>{safe(r.packagingGood)}</td><td style={tdCell}>{safe(r.countryOfOrigin)}</td>
-                          <td style={tdCell}>{formatDMY(safe(r.productionDate))}</td><td style={tdCell}>{formatDMY(safe(r.expiryDate))}</td>
-                          <td style={tdCell}>{safe(r.invoiceNo)}</td><td style={tdCell}>{safe(r.remarks)}</td>
-                          <td style={tdCell}>{safe(r.receivedBy)}</td>
+                          <td style={{ ...tdCell, color: "#94a3b8", fontWeight: 700 }}>{idx + 1}</td>
+                          {COLUMNS.map((c) => {
+                            const raw = c.orReportDate ? (r[c.key] || r.__reportDate) : r[c.key];
+                            if (c.kind === "tick") {
+                              return <td key={c.key} style={tdCell}><Tick v={raw} /></td>;
+                            }
+                            const cell = { ...tdCell, ...(c.align === "left" ? { textAlign: "left" } : null) };
+                            if (c.kind === "code") {
+                              return <td key={c.key} style={{ ...cell, fontWeight: 800, color: "#4f46e5" }}>{safe(raw)}</td>;
+                            }
+                            return (
+                              <td key={c.key} style={cell}>
+                                {c.kind === "date" ? formatDMY(safe(raw)) : safe(raw)}
+                              </td>
+                            );
+                          })}
                         </tr>
-                      ))
+                      )) : (
+                        <tr>
+                          <td style={{ ...tdCell, textAlign: "left", color: "#64748b", fontWeight: 700 }} colSpan={COLUMNS.length + 1}>
+                            No lines to show for this report.
+                          </td>
+                        </tr>
+                      )
                     ) : (
                       editRows.map((r, idx) => (
                         <tr key={idx}>
-                          <td style={tdCell}><input type="date" value={r.date || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], date:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="time" value={r.time || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], time:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="text" value={r.supplier || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], supplier:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="text" value={r.foodItem || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], foodItem:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="number" step="0.01" value={r.netWeight || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], netWeight:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="number" step="0.1" value={r.vehicleTemp || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], vehicleTemp:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="number" step="0.1" value={r.foodTemp || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], foodTemp:e.target.value}; return n; })} style={inputStyle}/></td>
-                          {TICK_COLS.map((c) => (
+                          <td style={{ ...tdCell, color: "#94a3b8", fontWeight: 700 }}>{idx + 1}</td>
+                          {COLUMNS.map((c) => (
                             <td key={c.key} style={tdCell}>
-                              <select value={r[c.key] || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], [c.key]:e.target.value}; return n; })} style={inputStyle}>
-                                <option value=""></option><option value="C">C</option><option value="NC">NC</option>
-                              </select>
+                              {c.kind === "tick" ? (
+                                <select
+                                  value={r[c.key] || ""}
+                                  onChange={(e) => editCell(idx, c.key, e.target.value)}
+                                  title={c.hint || c.label}
+                                  style={inputStyle}
+                                >
+                                  <option value=""></option><option value="C">C</option><option value="NC">NC</option>
+                                </select>
+                              ) : (
+                                <input
+                                  type={c.kind === "date" ? "date" : c.kind === "time" ? "time" : c.kind === "number" ? "number" : "text"}
+                                  step={c.step}
+                                  value={r[c.key] || ""}
+                                  onChange={(e) => editCell(idx, c.key, e.target.value)}
+                                  style={inputStyle}
+                                />
+                              )}
                             </td>
                           ))}
-                          <td style={tdCell}><input type="text" value={r.countryOfOrigin || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], countryOfOrigin:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="date" value={r.productionDate || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], productionDate:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="date" value={r.expiryDate || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], expiryDate:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="text" value={r.invoiceNo || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], invoiceNo:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="text" value={r.remarks || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], remarks:e.target.value}; return n; })} style={inputStyle}/></td>
-                          <td style={tdCell}><input type="text" value={r.receivedBy || ""} onChange={(e)=>setEditRows((p)=>{ const n=[...p]; n[idx]={...n[idx], receivedBy:e.target.value}; return n; })} style={inputStyle}/></td>
                         </tr>
                       ))
                     )}

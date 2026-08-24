@@ -4,8 +4,9 @@ import React, { useState } from "react";
 import PRDReportHeader from "../production/_shared/PRDReportHeader";
 import { useLang } from "./pos6I18n";
 import { BRANCH, TYPES, todayISO, useSaveReport } from "./pos6Api";
-import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "./POS6FormShell";
+import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "../_shared/BranchFormShell";
 import { GUIDANCE } from "./pos6Guidance";
+import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 
 /* Columns judged C / NC on arrival. */
 const TICK_COLS = [
@@ -19,9 +20,11 @@ const TICK_COLS = [
 
 /* Free-text / numeric columns, in the order they appear on the sheet. */
 const TEXT_COLS = [
-  { key: "time",           label: "Time",             type: "time",   w: 96 },
-  { key: "supplier",       label: "Supplier",         type: "text",   w: 160 },
-  { key: "foodItem",       label: "Food item",        type: "text",   w: 160 },
+  // itemCode ⟷ foodItem lead the sheet: the catalog code that ties this line to
+  // the same product everywhere else (QCS shipment, traceability, final product).
+  { key: "itemCode",       label: "Item code",        type: "code",    w: 120 },
+  { key: "foodItem",       label: "Food item",        type: "product", w: 180 },
+  { key: "supplier",       label: "Supplier",         type: "text",    w: 160 },
   { key: "netWeight",      label: "Net weight (kg)",  type: "number", w: 110 },
   { key: "vehicleTemp",    label: "Vehicle °C",       type: "number", w: 95 },
   { key: "foodTemp",       label: "Food °C",          type: "number", w: 95 },
@@ -61,6 +64,14 @@ export default function POS6ReceivingLogInput() {
     setRows((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], [key]: val };
+      return next;
+    });
+
+  // Code and name are one unit — a catalog pick on either side rewrites both.
+  const updateProduct = (idx, { code, name }) =>
+    setRows((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], itemCode: code, foodItem: name };
       return next;
     });
 
@@ -124,7 +135,7 @@ export default function POS6ReceivingLogInput() {
       </div>
 
       <div className="ph-table-wrap ph-scroll-x">
-        <table className="ph-table" style={{ minWidth: 1750 }}>
+        <table className="ph-table" style={{ minWidth: 1660 }}>
           <thead>
             <tr>
               <th style={{ width: 44 }}>{t("ph_col_no")}</th>
@@ -147,11 +158,28 @@ export default function POS6ReceivingLogInput() {
 
                 {TEXT_COLS.map((c) => (
                   <td key={c.key}>
-                    <input
-                      type={c.type}
-                      value={row[c.key]}
-                      onChange={(e) => updateRow(i, c.key, e.target.value)}
-                      className="ph-input"/>
+                    {c.type === "code" ? (
+                      <ItemCodeInput
+                        code={row.itemCode || ""}
+                        name={row.foodItem || ""}
+                        onChange={(pair) => updateProduct(i, pair)}
+                        className="ph-input"
+                      />
+                    ) : c.type === "product" ? (
+                      <ItemNameInput
+                        code={row.itemCode || ""}
+                        name={row.foodItem || ""}
+                        onChange={(pair) => updateProduct(i, pair)}
+                        className="ph-input"
+                        placeholder="Search code or product…"
+                      />
+                    ) : (
+                      <input
+                        type={c.type}
+                        value={row[c.key]}
+                        onChange={(e) => updateRow(i, c.key, e.target.value)}
+                        className="ph-input"/>
+                    )}
                   </td>
                 ))}
 

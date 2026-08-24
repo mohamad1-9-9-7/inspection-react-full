@@ -57,7 +57,7 @@ function Tick({ v }) {
 // نفس بنية الإدخال (يشمل weightKg)
 function emptyRow() {
   return {
-    supplier: "", foodItem: "",
+    supplier: "", itemCode: "", foodItem: "",
     vehicleTemp: "", foodTemp: "",
     weightKg: "",
     vehicleClean: "", handlerHygiene: "", appearanceOK: "", firmnessOK: "", smellOK: "", packagingGood: "",
@@ -304,13 +304,13 @@ export default function POS11ReceivingLogView() {
   // CSV fallback (يشمل Weight)
   function fallbackCSV(p) {
     const headers = [
-      "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Weight (kg)",
+      "Name of the Supplier","Item Code","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Weight (kg)",
       "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
       "Packaging good/undamaged/clean/no pests",
       "Country of origin","Production Date","Expiry Date","Remarks (if any)"
     ];
     const rows = (p.entries || []).filter(isFilledRow).map(e => ([
-      e?.supplier ?? "", e?.foodItem ?? "", e?.vehicleTemp ?? "", e?.foodTemp ?? "", e?.weightKg ?? "",
+      e?.supplier ?? "", e?.itemCode ?? "", e?.foodItem ?? "", e?.vehicleTemp ?? "", e?.foodTemp ?? "", e?.weightKg ?? "",
       e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "", e?.firmnessOK ?? "", e?.smellOK ?? "",
       e?.packagingGood ?? "", e?.countryOfOrigin ?? "", e?.productionDate ?? "", e?.expiryDate ?? "",
       e?.remarks ?? ""
@@ -370,14 +370,14 @@ export default function POS11ReceivingLogView() {
 
       // Column widths
       ws.columns = [
-        { width: 24 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 12 },
+        { width: 24 }, { width: 13 }, { width: 20 }, { width: 14 }, { width: 14 }, { width: 12 },
         { width: 16 }, { width: 18 }, { width: 14 }, { width: 12 }, { width: 12 },
         { width: 36 }, { width: 16 }, { width: 15 }, { width: 15 }, { width: 22 },
       ];
 
       // Header row
       const COL_HEADERS = [
-        "Name of the Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Weight (kg)",
+        "Name of the Supplier","Item Code","Food Item","Vehicle Temp (°C)","Food Temp (°C)","Weight (kg)",
         "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
         "Packaging of food is good and undamaged, clean and no signs of pest infestation",
         "Country of origin","Production Date","Expiry Date","Remarks (if any)"
@@ -396,7 +396,7 @@ export default function POS11ReceivingLogView() {
       let rowIdx = 8;
       rawRows.forEach((e) => {
         ws.getRow(rowIdx).values = [
-          e?.supplier || "", e?.foodItem || "", e?.vehicleTemp || "", e?.foodTemp || "", e?.weightKg || "",
+          e?.supplier || "", e?.itemCode || "", e?.foodItem || "", e?.vehicleTemp || "", e?.foodTemp || "", e?.weightKg || "",
           e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "", e?.firmnessOK || "", e?.smellOK || "",
           e?.packagingGood || "", e?.countryOfOrigin || "", e?.productionDate || "", e?.expiryDate || "",
           e?.remarks || "",
@@ -663,6 +663,7 @@ export default function POS11ReceivingLogView() {
                   <thead>
                     <tr style={theadRow}>
                       <th style={thCell}>Name of the Supplier</th>
+                      <th style={thCell}>Item Code</th>
                       <th style={thCell}>Food Item</th>
                       <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
@@ -684,6 +685,7 @@ export default function POS11ReceivingLogView() {
                       (record.payload?.entries || []).filter(isFilledRow).map((r, idx) => (
                         <tr key={idx} style={zebra(idx)}>
                           <td style={{ ...tdCell, fontWeight: 700 }}>{safe(r.supplier)}</td>
+                          <td style={{ ...tdCell, fontWeight: 800, color: "#4f46e5" }}>{safe(r.itemCode)}</td>
                           <td style={tdCell}>{safe(r.foodItem)}</td>
                           <td style={tdCell}>{safe(r.vehicleTemp)}</td>
                           <td style={tdCell}>{safe(r.foodTemp)}</td>
@@ -708,6 +710,14 @@ export default function POS11ReceivingLogView() {
                               type="text"
                               value={r.supplier || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], supplier:e.target.value}; return n; })}
+                              style={inputStyle}
+                            />
+                          </td>
+                          <td style={tdCell}>
+                            <input
+                              type="text"
+                              value={r.itemCode || ""}
+                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], itemCode:e.target.value}; return n; })}
                               style={inputStyle}
                             />
                           </td>

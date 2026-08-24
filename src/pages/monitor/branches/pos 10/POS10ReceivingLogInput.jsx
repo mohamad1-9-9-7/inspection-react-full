@@ -1,299 +1,233 @@
 // src/pages/monitor/branches/pos 10/POS10ReceivingLogInput.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// Incoming-delivery inspection for POS 10, drawn in the same form style as the
+// POS 6 receiving log: shared shell, guidance panel, one column definition list
+// that the header row and the body row are both generated from.
+//
+// The old hand-rolled table set every input to `white-space: nowrap` with an
+// ellipsis and gave the headers fixed narrow widths, so a supplier name, a
+// product name or the packaging header was cut off with no way to read it. The
+// shared table wraps its headers and lets each cell show its own value.
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "../../../../config/api";
+import PRDReportHeader from "../production/_shared/PRDReportHeader";
+import { useLang } from "../production/_shared/i18n";
 import useTakenDates from "../_shared/useTakenDates";
+import FormShell, { GuidanceNote, SaveBar, SignatureFooter } from "../_shared/BranchFormShell";
+import { RECEIVING_GUIDANCE } from "../_shared/receivingGuidance";
+import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 
-
-
-// نوع التقرير و الفرع (مكيّف لـ POS 10)
 const TYPE = "pos10_receiving_log_butchery";
 const BRANCH = "POS 10";
 
-// أعمدة C / NC
+/* Columns judged C / NC on arrival. `hint` carries the full sheet wording for
+   the short header — the paper form spells the packaging check out in a whole
+   sentence, which is unreadable as a column heading. */
 const TICK_COLS = [
-  { key: "vehicleClean", label: "Vehicle clean" },
-  { key: "handlerHygiene", label: "Food handler hygiene" },
-  { key: "appearanceOK", label: "Appearance" },
-  { key: "firmnessOK", label: "Firmness" },
-  { key: "smellOK", label: "Bad Smell" },
-  {
-    key: "packagingGood",
-    label:
-      "Packaging of food is good / undamaged / clean / no pests",
-  },
+  { key: "vehicleClean",   label: "Vehicle clean",    w: 105 },
+  { key: "handlerHygiene", label: "Handler hygiene",  w: 115, hint: "Food handler hygiene" },
+  { key: "appearanceOK",   label: "Appearance",       w: 105, hint: "Normal colour, free from discoloration" },
+  { key: "firmnessOK",     label: "Firmness",         w: 100, hint: "Firm rather than soft" },
+  { key: "smellOK",        label: "Smell",            w: 95,  hint: "Normal smell — no rancid or strange smell" },
+  { key: "packagingGood",  label: "Packaging intact", w: 125,
+    hint: "Packaging of food is good and undamaged, clean and no signs of pest infestation" },
 ];
 
-function emptyRow() {
-  return {
-    supplier: "",
-    foodItem: "",
-    vehicleTemp: "",
-    foodTemp: "",
-    quantity: "",            // ✅ عمود الكمية الجديد
-    vehicleClean: "",
-    handlerHygiene: "",
-    appearanceOK: "",
-    firmnessOK: "",
-    smellOK: "",
-    packagingGood: "",
-    countryOfOrigin: "",
-    productionDate: "",
-    expiryDate: "",
-    remarks: "",
-  };
+/* Free-text / numeric columns, in the order they appear on the sheet.
+   itemCode ⟷ foodItem lead the sheet: the catalog code that ties this line to
+   the same product everywhere else (QCS shipment, traceability, final product). */
+const TEXT_COLS = [
+  { key: "itemCode",    label: "Item code",       type: "code",    w: 115 },
+  { key: "foodItem",    label: "Food item",       type: "product", w: 195 },
+  { key: "supplier",    label: "Name of the supplier", type: "text", w: 175 },
+  { key: "quantity",    label: "Quantity KG / PCS",    type: "text", w: 125, placeholder: "e.g. 10 KG / 5 PCS" },
+  { key: "vehicleTemp", label: "Vehicle °C",      type: "number",  w: 95, step: "0.1", placeholder: "°C" },
+  { key: "foodTemp",    label: "Food °C",         type: "number",  w: 95, step: "0.1", placeholder: "°C" },
+];
+
+const TAIL_COLS = [
+  { key: "countryOfOrigin", label: "Country of origin", type: "text", w: 135 },
+  { key: "productionDate",  label: "Production date",   type: "date", w: 145 },
+  { key: "expiryDate",      label: "Expiry date",       type: "date", w: 145 },
+  { key: "remarks",         label: "Remarks (if any)",  type: "text", w: 195 },
+];
+
+/* Sum of every column above plus the row number and the delete button, so the
+   table scrolls instead of squeezing its columns to nothing. */
+const TABLE_MIN_WIDTH =
+  44 + 52 + [...TEXT_COLS, ...TICK_COLS, ...TAIL_COLS].reduce((n, c) => n + c.w, 0);
+
+const STARTING_ROWS = 10;
+
+const emptyRow = () => {
+  const row = {};
+  [...TEXT_COLS, ...TICK_COLS, ...TAIL_COLS].forEach((c) => { row[c.key] = ""; });
+  return row;
+};
+
+const isFilled = (r) => Object.values(r).some((v) => String(v ?? "").trim() !== "");
+
+/* Today in the branch's own timezone. A receiving log filed just after midnight
+   in Dubai must not be dated to the previous day because the browser is on UTC. */
+function todayISO() {
+  try {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Dubai" });
+  } catch {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+  }
 }
 
-export default function POS10ReceivingLogInput() {
-  // تاريخ التقرير الهيدر
-  const [reportDate, setReportDate] = useState(() => {
-    try {
-      return new Date().toLocaleDateString("en-CA", {
-        timeZone: "Asia/Dubai",
-      });
-    } catch {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}-${String(d.getDate()).padStart(2, "0")}`;
-    }
-  });
+/* Only the handful of strings this screen says itself — everything else comes
+   from the shared header and shell. */
+const STR = {
+  subtitle:      { en: "Incoming deliveries — POS 10", ar: "استلام البضائع — POS 10" },
+  form_ref:      { en: "Form ref.",        ar: "رقم النموذج" },
+  revision:      { en: "Revision no.",     ar: "رقم المراجعة" },
+  branch:        { en: "Branch",           ar: "الفرع" },
+  issued_by:     { en: "Issued by",        ar: "صادر عن" },
+  controlling:   { en: "Controlling officer", ar: "مسؤول الضبط" },
+  report_date:   { en: "Report date",      ar: "تاريخ التقرير" },
+  invoice_no:    { en: "Invoice no. *",    ar: "رقم الفاتورة *" },
+  invoice_ph:    { en: "Required",         ar: "إلزامي" },
+  conform:       { en: "Conform",          ar: "مطابق" },
+  nonconform:    { en: "Non-conform",      ar: "غير مطابق" },
+  col_no:        { en: "#",                ar: "#" },
+  add_row:       { en: "Add row",          ar: "إضافة صف" },
+  remove_row:    { en: "Remove this row",  ar: "حذف هذا الصف" },
+  received_by:   { en: "Received by",      ar: "استلمها" },
+  verified_by:   { en: "Verified by",      ar: "تم التحقق بواسطة" },
+  name_sig:      { en: "Name & signature", ar: "الاسم والتوقيع" },
+  btn_save:      { en: "Save receiving log", ar: "حفظ سجل الاستلام" },
+  btn_saving:    { en: "Saving…",          ar: "جاري الحفظ…" },
+  msg_saving:    { en: "Saving…",          ar: "جاري الحفظ…" },
+  msg_saved:     { en: "Saved",            ar: "تم الحفظ" },
 
-  // حالة التحقق من التاريخ — تُشتق من فهرس التواريخ الخفيف (بلا تنزيل الأرشيف)
+  date_checking: { en: "Checking whether this date is free…", ar: "جاري التحقق من توفر التاريخ…" },
+  date_free:     { en: "This date is free.", ar: "التاريخ متاح لإدخال التقرير." },
+  date_taken:    { en: "A report is already filed for this date.", ar: "يوجد تقرير محفوظ بالفعل لهذا التاريخ." },
+  date_future:   { en: "This date is in the future — goods cannot be received yet.", ar: "التاريخ مستقبلي — لا يمكن استلام بضاعة بتاريخ لم يأتِ بعد." },
+  date_unknown:  { en: "Could not check this date (server unreachable) — save will still be checked by the server.", ar: "تعذر التحقق من التاريخ (لا اتصال بالسيرفر) — السيرفر سيتحقق عند الحفظ." },
+
+  err_no_date:   { en: "Choose the report date.", ar: "يرجى اختيار التاريخ." },
+  err_invoice:   { en: "Invoice no. is required.", ar: "رقم الفاتورة إلزامي." },
+  err_no_rows:   { en: "Nothing to save — fill at least one line.", ar: "لا يوجد بيانات للحفظ — عبّئ سطراً واحداً على الأقل." },
+  err_dates:     { en: "row %n: expiry date must be later than the production date.", ar: "الصف %n: تاريخ الصلاحية يجب أن يكون أكبر من تاريخ الإنتاج." },
+  err_sign:      { en: "Received by and Verified by are both required.", ar: "حقلا «استلمها» و«تم التحقق بواسطة» إلزاميان." },
+  err_save:      { en: "Save failed — check the server or the network.", ar: "فشل الحفظ. تحقق من السيرفر أو الشبكة." },
+  saved:         { en: "Saved successfully.", ar: "تم الحفظ بنجاح!" },
+};
+
+export default function POS10ReceivingLogInput() {
+  const { lang, dir, isAr } = useLang();
+  const t = useCallback((k) => STR[k]?.[lang] ?? STR[k]?.en ?? k, [lang]);
+
+  const [reportDate, setReportDate] = useState(todayISO);
+  const [formRef, setFormRef] = useState("FSMS/BR/F01A");
+  const [invoiceNo, setInvoiceNo] = useState("");
+  const [invoiceTouched, setInvoiceTouched] = useState(false);
+  const [rows, setRows] = useState(() => Array.from({ length: STARTING_ROWS }, emptyRow));
+  const [receivedBy, setReceivedBy] = useState("");
+  const [verifiedBy, setVerifiedBy] = useState("");
+
+  const [saving, setSaving] = useState(false);
+  const [opMsg, setOpMsg] = useState("");
+  const msgTimer = useRef(null);
+  useEffect(() => () => clearTimeout(msgTimer.current), []);
+
+  // "Is this day already filed?" — answered from the lightweight date index,
+  // so changing the date costs nothing and never downloads the archive.
   const { isTaken, markTaken, loading: datesLoading, failed: datesFailed } =
     useTakenDates(TYPE);
 
-  // 🧾 رقم الفاتورة في أعلى التقرير (إلزامي)
-  const [invoiceNo, setInvoiceNo] = useState("");
-  const [invoiceError, setInvoiceError] = useState("");
-  const invoiceRef = useRef(null);
-
-  // الصفوف (قابلة للإضافة / الحذف)
-  const [rows, setRows] = useState(() =>
-    Array.from({ length: 10 }, () => emptyRow())
-  );
-
-  // هيدر (Document No مربوط بهذا الحقل)
-  const [formRef, setFormRef] = useState("FSMS/BR/F01A");
-
-  // فوتر
-  const [verifiedBy, setVerifiedBy] = useState("");
-  const [receivedBy, setReceivedBy] = useState("");
-
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState("");
-
-  // month text
   const monthText = useMemo(() => {
     const m = String(reportDate || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
     return m ? `${m[2]}/${m[1]}` : "";
   }, [reportDate]);
 
-  const gridStyle = useMemo(
-    () => ({
-      width: "max-content",     // honour colDefs; the wrapper scrolls
-      minWidth: "100%",
-      borderCollapse: "collapse",
-      tableLayout: "fixed",
-      fontSize: 13.5,
-    }),
-    []
-  );
-  const thCell = {
-    border: "1px solid #1f3b70",
-    padding: "14px 8px",
-    height: 78,
-    textAlign: "center",
-    whiteSpace: "normal",
-    overflowWrap: "anywhere",
-    lineHeight: 1.4,
-    fontSize: 12.5,
-    fontWeight: 700,
-    background: "#f5f8ff",
-    color: "#0b1f4d",
-  };
-  const tdCell = {
-    border: "1px solid #1f3b70",
-    padding: "12px 8px",
-    height: 56,
-    textAlign: "center",
-    verticalAlign: "middle",
-  };
-  const inputStyle = {
-    width: "100%",
-    boxSizing: "border-box",
-    border: "1px solid #c7d2fe",
-    borderRadius: 6,
-    padding: "9px 10px",
-    minHeight: 40,
-    fontSize: 13.5,
-    fontFamily: "inherit",
-    display: "block",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    minWidth: 0,
-  };
-  const btn = (bg) => ({
-    background: bg,
-    color: "#fff",
-    border: "none",
-    borderRadius: 10,
-    padding: "10px 14px",
-    fontWeight: 700,
-    cursor: "pointer",
-    boxShadow: "0 4px 12px rgba(0,0,0,.15)",
-  });
-
-  // ===== ترويسة المواشي + جدول المستند =====
-  const topTable = {
-    width: "100%",
-    borderCollapse: "collapse",
-    marginBottom: 10,
-    fontSize: "0.9rem",
-    border: "1px solid #9aa4ae",
-    background: "#f8fbff",
-  };
-  const tdHeader = {
-    border: "1px solid #9aa4ae",
-    padding: "6px 8px",
-    verticalAlign: "middle",
-  };
-  const bandTitle = {
-    textAlign: "center",
-    background: "#dde3e9",
-    fontWeight: 700,
-    padding: "6px 4px",
-    border: "1px solid #9aa4ae",
-    borderTop: "none",
-    marginBottom: 10,
-  };
-
-  // ✅ تعريف الأعمدة
-  const colDefs = useMemo(
-    () => [
-      <col key="supplier" style={{ width: 190 }} />,
-      <col key="food" style={{ width: 180 }} />,
-      <col key="vehT" style={{ width: 96 }} />,
-      <col key="foodT" style={{ width: 96 }} />,
-      <col key="qty" style={{ width: 116 }} />,          // ✅ عمود الكمية
-      <col key="vehClean" style={{ width: 96 }} />,
-      <col key="handler" style={{ width: 104 }} />,
-      <col key="appearanceOK" style={{ width: 96 }} />,
-      <col key="firmnessOK" style={{ width: 92 }} />,
-      <col key="smellOK" style={{ width: 92 }} />,
-      <col key="pack" style={{ width: 150 }} />,
-      <col key="origin" style={{ width: 130 }} />,
-      <col key="prod" style={{ width: 132 }} />,
-      <col key="exp" style={{ width: 132 }} />,
-      <col key="remarks" style={{ width: 230 }} />,
-      <col key="del" style={{ width: 64 }} />,
-    ],
-    []
-  );
-
-  function updateRow(idx, key, val) {
+  const updateRow = (idx, key, val) =>
     setRows((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], [key]: val };
       return next;
     });
-  }
 
-  // إضافة صف جديد
-  function addRow() {
-    setRows((prev) => [...prev, emptyRow()]);
-  }
-
-  // حذف صف
-  function removeRow(idx) {
+  // Code and name are one unit — a catalog pick on either side rewrites both.
+  const updateProduct = (idx, { code, name }) =>
     setRows((prev) => {
-      if (prev.length === 1) {
-        // لا تترك الجدول فارغ، فقط نظّف الصف الوحيد
-        return [emptyRow()];
-      }
-      return prev.filter((_, i) => i !== idx);
+      const next = [...prev];
+      next[idx] = { ...next[idx], itemCode: code, foodItem: name };
+      return next;
     });
-  }
 
-  // ===== التحقق من توفر التاريخ =====
+  const addRow = () => setRows((p) => [...p, emptyRow()]);
+  const removeRow = (idx) =>
+    setRows((p) => (p.length > 1 ? p.filter((_, i) => i !== idx) : [emptyRow()]));
+
+  /* ── report date state ──────────────────────────────────────────────
+     "future" is checked before "taken": a date the branch cannot possibly have
+     received goods on is wrong whether or not a record already exists for it. */
   const dateStatus = (() => {
-    if (!reportDate) return "idle";
+    if (!reportDate) return "none";
+    if (reportDate > todayISO()) return "future";
     if (datesLoading) return "checking";
-    if (datesFailed) return "error";
-    return isTaken(reportDate) ? "exists" : "available";
+    if (datesFailed) return "unknown";
+    return isTaken(reportDate) ? "taken" : "free";
   })();
 
-  const dateStatusText = (() => {
-    if (!reportDate) return "";
-    if (dateStatus === "checking") return "جاري التحقق من توفر التاريخ...";
-    if (dateStatus === "available") return "التاريخ متاح لإدخال التقرير.";
-    if (dateStatus === "exists")
-      return "يوجد تقرير محفوظ بالفعل لهذا التاريخ.";
-    if (dateStatus === "error")
-      return "تعذر التحقق من التاريخ (تحقق من الاتصال بالسيرفر).";
-    return "";
-  })();
+  const dateNote = {
+    none: "",
+    future: t("date_future"),
+    checking: t("date_checking"),
+    unknown: t("date_unknown"),
+    taken: t("date_taken"),
+    free: t("date_free"),
+  }[dateStatus];
 
-  const dateStatusColor =
-    dateStatus === "available"
-      ? "#065f46"
-      : dateStatus === "exists"
-      ? "#b91c1c"
-      : "#92400e";
+  const dateNoteColor = {
+    none: undefined,
+    future: "#b91c1c",
+    checking: "#92400e",
+    unknown: "#92400e",
+    taken: "#b91c1c",
+    free: "#065f46",
+  }[dateStatus];
 
-  const saveDisabled =
-    saving ||
-    !reportDate ||
-    dateStatus === "exists" ||
+  const invoiceMissing = !String(invoiceNo).trim();
+  const saveBlocked =
+    saving || !reportDate || dateStatus === "taken" || dateStatus === "future" ||
     dateStatus === "checking";
 
+  const flash = (text, keep = 3500) => {
+    setOpMsg(text);
+    clearTimeout(msgTimer.current);
+    if (keep) msgTimer.current = setTimeout(() => setOpMsg(""), keep);
+  };
+
   async function handleSave() {
-    setSaveMsg("");
+    setOpMsg("");
 
-    if (!reportDate) {
-      setSaveMsg("⚠️ يرجى اختيار التاريخ.");
-      return;
+    if (!reportDate) return flash("⚠️ " + t("err_no_date"));
+    if (dateStatus === "future") return flash("⚠️ " + t("date_future"));
+    if (dateStatus === "taken") return flash("⚠️ " + t("date_taken"));
+
+    if (invoiceMissing) {
+      setInvoiceTouched(true);
+      return flash("⚠️ " + t("err_invoice"));
     }
 
-    if (dateStatus === "exists") {
-      setSaveMsg(
-        "⚠️ يوجد تقرير محفوظ لهذا التاريخ، لا يمكن حفظ تقرير جديد."
-      );
-      return;
-    }
+    const entries = rows.filter(isFilled);
+    if (entries.length === 0) return flash("⚠️ " + t("err_no_rows"));
 
-    // ✅ التحقق: رقم الفاتورة إلزامي
-    if (!String(invoiceNo || "").trim()) {
-      setInvoiceError("Invoice No is required.");
-      if (invoiceRef.current) {
-        invoiceRef.current.focus();
-        invoiceRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }
-      return;
-    } else {
-      setInvoiceError("");
-    }
-
-    const entries = rows.filter((r) =>
-      Object.values(r).some((v) => String(v || "").trim() !== "")
-    );
-    if (entries.length === 0) {
-      setSaveMsg("⚠️ لا يوجد بيانات للحفظ.");
-      return;
-    }
-
-    // التحقق من التواريخ: تاريخ الانتهاء > تاريخ الإنتاج
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       if (e.productionDate && e.expiryDate && e.expiryDate <= e.productionDate) {
-        setSaveMsg(`⚠️ الصف ${i + 1}: تاريخ الصلاحية يجب أن يكون أكبر من تاريخ الإنتاج.`);
-        return;
+        return flash("⚠️ " + t("err_dates").replace("%n", String(i + 1)));
       }
     }
+
+    if (!receivedBy.trim() || !verifiedBy.trim()) return flash("⚠️ " + t("err_sign"));
 
     const payload = {
       branch: BRANCH,
@@ -309,366 +243,169 @@ export default function POS10ReceivingLogInput() {
 
     try {
       setSaving(true);
+      setOpMsg("⏳");
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reporter: "pos10",
-          type: TYPE,
-          payload,
-        }),
+        body: JSON.stringify({ reporter: "pos10", type: TYPE, payload }),
       });
 
-      let data = null;
-      try {
-        data = await res.json();
-      } catch {
-        data = null;
-      }
+      const data = await res.json().catch(() => null);
 
+      // The server holds the same one-per-day rule on a unique index, so it is
+      // the last word even if this screen's index was stale.
       if (res.status === 409) {
         markTaken(reportDate);
-        setSaveMsg(
-          (data && data.message) ||
-            "⚠️ يوجد تقرير محفوظ لهذا التاريخ، لا يمكن حفظ تقرير جديد."
-        );
-        return;
+        return flash("⚠️ " + (data?.message || t("date_taken")), 6000);
       }
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       markTaken(reportDate);
-      setSaveMsg("✅ تم الحفظ بنجاح!");
+      flash("✅ " + t("saved"));
     } catch (e) {
       console.error(e);
-      setSaveMsg("❌ فشل الحفظ. تحقق من السيرفر أو الشبكة.");
+      flash("❌ " + t("err_save"), 6000);
     } finally {
       setSaving(false);
-      setTimeout(() => setSaveMsg(""), 3500);
     }
   }
 
-  const invoiceBorder = String(invoiceNo || "").trim()
-    ? "#1f3b70"
-    : invoiceError
-    ? "#b91c1c"
-    : "#1f3b70";
+  const alignStart = isAr ? "right" : "left";
 
   return (
-    <div
-      style={{
-        background: "#fff",
-        border: "1px solid #dbe3f4",
-        borderRadius: 12,
-        padding: 16,
-        color: "#0b1f4d",
-      }}
-    >
-      {/* === ترويسة AL MAWASHI + جدول المستند === */}
-      <table style={topTable}>
-        <tbody>
-          <tr>
-            <td
-              rowSpan={3}
-              style={{ ...tdHeader, width: 120, textAlign: "center" }}
-            >
-              <div
-                style={{
-                  fontWeight: 900,
-                  color: "#a00",
-                  lineHeight: 1.1,
-                }}
-              >
-                AL
-                <br />
-                MAWASHI
-              </div>
-            </td>
-            <td style={tdHeader}>
-              <b>Document Title:</b> Receiving Log (Butchery)
-            </td>
-            <td style={tdHeader}>
-              <b>Document No:</b>{" "}
-              <input
-                value={formRef}
-                onChange={(e) => setFormRef(e.target.value)}
-                style={{
-                  border: "1px solid #9aa4ae",
-                  borderRadius: 6,
-                  padding: "3px 6px",
-                  width: "60%",
-                }}
-              />
-            </td>
-          </tr>
-          <tr>
-            <td style={tdHeader}>
-              <b>Issue Date:</b> 05/02/2020
-            </td>
-            <td style={tdHeader}>
-              <b>Revision No:</b> 0
-            </td>
-          </tr>
-          <tr>
-            <td style={tdHeader}>
-              <b>Area:</b> {BRANCH}
-            </td>
-            <td style={tdHeader}>
-              <b>Date:</b>{" "}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                }}
-              >
-                <input
-                  type="date"
-                  value={reportDate}
-                  onChange={(e) => setReportDate(e.target.value)}
-                  style={{
-                    border: "1px solid #9aa4ae",
-                    borderRadius: 6,
-                    padding: "3px 6px",
-                    width: "100%",
-                    maxWidth: 180,
-                  }}
-                />
-                {dateStatusText && (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: dateStatusColor,
-                    }}
-                  >
-                    {dateStatusText}
-                  </span>
-                )}
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div style={bandTitle}>RECEIVING LOG — {BRANCH}</div>
+    <FormShell dir={dir}>
+      <PRDReportHeader
+        title="Receiving Log (Butchery)"
+        titleAr="سجل استلام البضائع"
+        subtitle={t("subtitle")}
+        accent="#f97316"
+        fields={[
+          { label: t("form_ref"),    value: formRef, onChange: setFormRef },
+          { label: t("revision"),    value: "0" },
+          { label: t("branch"),      value: BRANCH },
+          { label: t("issued_by"),   value: "QA" },
+          { label: t("controlling"), value: "Quality Controller" },
+          {
+            label: t("report_date"),
+            type: "date",
+            value: reportDate,
+            onChange: setReportDate,
+            invalid: dateStatus === "taken" || dateStatus === "future",
+            note: dateNote,
+            noteColor: dateNoteColor,
+          },
+          {
+            label: t("invoice_no"),
+            value: invoiceNo,
+            onChange: (v) => { setInvoiceNo(v); if (v.trim()) setInvoiceTouched(false); },
+            placeholder: t("invoice_ph"),
+            invalid: invoiceTouched && invoiceMissing,
+            note: invoiceTouched && invoiceMissing ? t("err_invoice") : "",
+            noteColor: "#b91c1c",
+          },
+        ]}
+      />
 
-      {/* شريط الميتا (فقط رقم الفاتورة) */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: 8,
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ fontWeight: 700, color: "#0b1f4d" }}>
-          Invoice No <span style={{ color: "#b91c1c" }}>*</span> :
+      <GuidanceNote isAr={isAr} accent="#f97316" items={RECEIVING_GUIDANCE} />
+
+      <div className="ph-toolbar">
+        <div className="ph-legend">
+          <span><b className="ph-chip-c">C</b> {t("conform")}</span>
+          <span><b className="ph-chip-nc">NC</b> {t("nonconform")}</span>
         </div>
-        <div style={{ display: "grid", gap: 4 }}>
-          <input
-            ref={invoiceRef}
-            type="text"
-            value={invoiceNo}
-            onChange={(e) => {
-              setInvoiceNo(e.target.value);
-              if (invoiceError) setInvoiceError("");
-            }}
-            placeholder="Enter invoice number (required)"
-            aria-invalid={!!invoiceError}
-            aria-describedby={invoiceError ? "invoice-error" : undefined}
-            style={{
-              ...inputStyle,
-              borderColor: invoiceBorder,
-              minWidth: 220,
-            }}
-          />
-          {invoiceError && (
-            <div
-              id="invoice-error"
-              style={{
-                color: "#b91c1c",
-                fontWeight: 700,
-                fontSize: 12,
-              }}
-            >
-              {invoiceError}
-            </div>
-          )}
-        </div>
+        <button onClick={addRow} className="ph-btn ph-btn-ghost">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+          {t("add_row")}
+        </button>
       </div>
 
-      {/* Legend strip */}
-      <div style={{ border: "1px solid #1f3b70", borderBottom: "none" }}>
-        <div style={{ ...thCell, background: "#e9f0ff" }}>
-          LEGEND: (C) – Conform &nbsp;&nbsp; / &nbsp;&nbsp; (NC) – Non-Conform
-        </div>
-      </div>
-
-      {/* Table */}
-      <div style={{ overflowX: "auto" }}>
-        <table style={gridStyle}>
-          <colgroup>{colDefs}</colgroup>
+      <div className="ph-table-wrap ph-scroll-x">
+        <table className="ph-table" style={{ minWidth: TABLE_MIN_WIDTH }}>
           <thead>
             <tr>
-              <th style={thCell}>Name of the Supplier</th>
-              <th style={thCell}>Food Item</th>
-              <th style={thCell}>Vehicle Temp (°C)</th>
-              <th style={thCell}>Food Temp (°C)</th>
-              <th style={thCell}>Quantity KG\PCS</th> {/* ✅ الهيدر الجديد */}
-              <th style={thCell}>Vehicle clean</th>
-              <th style={thCell}>Food handler hygiene</th>
-              <th style={thCell}>Appearance</th>
-              <th style={thCell}>Firmness</th>
-              <th style={thCell}>Bad Smell</th>
-              <th style={thCell}>
-                Packaging of food is good and undamaged, clean and no
-                signs of pest infestation
-              </th>
-              <th style={thCell}>Country of origin</th>
-              <th style={thCell}>Production Date</th>
-              <th style={thCell}>Expiry Date</th>
-              <th style={thCell}>Remarks (if any)</th>
-              <th style={thCell}>Delete</th>
+              <th style={{ width: 44 }}>{t("col_no")}</th>
+              {TEXT_COLS.map((c) => (
+                <th key={c.key} style={{ width: c.w, textAlign: alignStart }}>{c.label}</th>
+              ))}
+              {TICK_COLS.map((c) => (
+                <th key={c.key} className="ph-col-compact" style={{ width: c.w }} title={c.hint || c.label}>
+                  {c.label}
+                </th>
+              ))}
+              {TAIL_COLS.map((c) => (
+                <th key={c.key} style={{ width: c.w, textAlign: alignStart }}>{c.label}</th>
+              ))}
+              <th style={{ width: 52 }} className="no-print" />
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, idx) => (
-              <tr key={idx}>
-                <td style={tdCell}>
-                  <input
-                    type="text"
-                    value={r.supplier}
-                    onChange={(e) =>
-                      updateRow(idx, "supplier", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={tdCell}>
-                  <input
-                    type="text"
-                    value={r.foodItem}
-                    onChange={(e) =>
-                      updateRow(idx, "foodItem", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={tdCell}>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={r.vehicleTemp}
-                    onChange={(e) =>
-                      updateRow(idx, "vehicleTemp", e.target.value)
-                    }
-                    style={inputStyle}
-                    placeholder="°C"
-                  />
-                </td>
-                <td style={tdCell}>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={r.foodTemp}
-                    onChange={(e) =>
-                      updateRow(idx, "foodTemp", e.target.value)
-                    }
-                    style={inputStyle}
-                    placeholder="°C"
-                  />
-                </td>
-                {/* ✅ خانة الكمية */}
-                <td style={tdCell}>
-                  <input
-                    type="text"
-                    value={r.quantity}
-                    onChange={(e) =>
-                      updateRow(idx, "quantity", e.target.value)
-                    }
-                    style={inputStyle}
-                    placeholder="e.g., 10 KG / 5 PCS"
-                  />
-                </td>
+            {rows.map((row, i) => (
+              <tr key={i}>
+                <td className="ph-num">{i + 1}</td>
 
-                {/* C / NC */}
-                {TICK_COLS.map((c) => (
-                  <td key={c.key} style={tdCell}>
-                    <select
-                      value={r[c.key]}
-                      onChange={(e) =>
-                        updateRow(idx, c.key, e.target.value)
-                      }
-                      style={inputStyle}
-                      title="C = Conform, NC = Non-Conform"
-                    >
-                      <option value=""></option>
-                      <option value="C">C</option>
-                      <option value="NC">NC</option>
-                    </select>
+                {TEXT_COLS.map((c) => (
+                  <td key={c.key}>
+                    {c.type === "code" ? (
+                      <ItemCodeInput
+                        code={row.itemCode || ""}
+                        name={row.foodItem || ""}
+                        onChange={(pair) => updateProduct(i, pair)}
+                        className="ph-input"
+                      />
+                    ) : c.type === "product" ? (
+                      <ItemNameInput
+                        code={row.itemCode || ""}
+                        name={row.foodItem || ""}
+                        onChange={(pair) => updateProduct(i, pair)}
+                        className="ph-input"
+                        placeholder="Search code or product…"
+                      />
+                    ) : (
+                      <input
+                        type={c.type}
+                        step={c.step}
+                        value={row[c.key]}
+                        placeholder={c.placeholder}
+                        onChange={(e) => updateRow(i, c.key, e.target.value)}
+                        className="ph-input"/>
+                    )}
                   </td>
                 ))}
 
-                <td style={tdCell}>
-                  <input
-                    type="text"
-                    value={r.countryOfOrigin}
-                    onChange={(e) =>
-                      updateRow(idx, "countryOfOrigin", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={tdCell}>
-                  <input
-                    type="date"
-                    value={r.productionDate}
-                    onChange={(e) =>
-                      updateRow(idx, "productionDate", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={tdCell}>
-                  <input
-                    type="date"
-                    value={r.expiryDate}
-                    onChange={(e) =>
-                      updateRow(idx, "expiryDate", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={tdCell}>
-                  <input
-                    type="text"
-                    value={r.remarks}
-                    onChange={(e) =>
-                      updateRow(idx, "remarks", e.target.value)
-                    }
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={tdCell}>
+                {TICK_COLS.map((c) => {
+                  const v = row[c.key];
+                  return (
+                    <td key={c.key} className="ph-cell-select">
+                      <select
+                        value={v}
+                        onChange={(e) => updateRow(i, c.key, e.target.value)}
+                        title={c.hint || c.label}
+                        className={`ph-select ph-select-${v === "C" ? "ok" : v === "NC" ? "bad" : "empty"}`}>
+                        <option value="">—</option>
+                        <option value="C">C</option>
+                        <option value="NC">NC</option>
+                      </select>
+                    </td>
+                  );
+                })}
+
+                {TAIL_COLS.map((c) => (
+                  <td key={c.key}>
+                    <input
+                      type={c.type}
+                      value={row[c.key]}
+                      onChange={(e) => updateRow(i, c.key, e.target.value)}
+                      className="ph-input"/>
+                  </td>
+                ))}
+
+                <td className="no-print">
                   <button
-                    type="button"
-                    onClick={() => removeRow(idx)}
-                    style={{
-                      padding: "4px 8px",
-                      borderRadius: 8,
-                      border: "none",
-                      background:
-                        "linear-gradient(135deg,#ef4444,#b91c1c)",
-                      color: "#fff",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                    title="Delete this row">
-                    ✕
+                    onClick={() => removeRow(i)}
+                    className="ph-btn-icon ph-btn-danger"
+                    title={t("remove_row")}
+                    disabled={rows.length === 1}>
+                    ×
                   </button>
                 </td>
               </tr>
@@ -677,140 +414,47 @@ export default function POS10ReceivingLogInput() {
         </table>
       </div>
 
-      {/* أزرار التحكم بعد الجدول (إضافة صفوف) */}
-      <div
-        style={{
-          marginTop: 10,
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          type="button"
-          onClick={addRow}
-          style={btn("#16a34a")}
-        >
-          + Add Row
-        </button>
+      {/* The acceptance limits the sheet is judged against — kept under the
+          table where the checker can read them while filling it in. */}
+      <div className="ph-guide" style={{ "--guide-accent": "#0f766e", marginTop: 14 }}>
+        <div className="ph-guide-head">
+          {isAr ? "حدود القبول" : "Acceptance limits"}
+        </div>
+        <ul className="ph-guide-list">
+          <li className="ph-guide-item tip">
+            <span className="ph-guide-mark">i</span>
+            <span>Chilled food: target ≤ 5 °C (critical limit 5 °C; short deviations up to 15 minutes during transfer).</span>
+          </li>
+          <li className="ph-guide-item tip">
+            <span className="ph-guide-mark">i</span>
+            <span>Frozen food: target ≤ −18 °C (critical limits: RTE frozen ≤ −18 °C, raw frozen ≤ −10 °C).</span>
+          </li>
+          <li className="ph-guide-item tip">
+            <span className="ph-guide-mark">i</span>
+            <span>Hot food: target ≥ 60 °C (critical limit 60 °C). Dry / low-risk food: cool dry condition or ≤ 25 °C, or as per product requirement.</span>
+          </li>
+          <li className="ph-guide-item tip">
+            <span className="ph-guide-mark">i</span>
+            <span>Organoleptic checks — appearance: normal colour, free from discoloration. Firmness: firm rather than soft. Smell: normal, no rancid or strange smell.</span>
+          </li>
+        </ul>
       </div>
 
-      {/* Notes */}
-      <div style={{ marginTop: 10, fontSize: 11, color: "#0b1f4d" }}>
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>
-          Organoleptic Checks*
-        </div>
-        <div>Appearance: Normal colour (Free from discoloration)</div>
-        <div>Firmness: Firm rather than soft.</div>
-        <div>Smell: Normal smell (No rancid or strange smell)</div>
-        <div style={{ marginTop: 8 }}>
-          <strong>Note:</strong> For Chilled Food: Target ≤ 5°C
-          (Critical Limit: 5°C; short deviations up to 15 minutes during
-          transfer).&nbsp; For Frozen Food: Target ≤ -18°C (Critical
-          limits: RTE Frozen ≤ -18°C, Raw Frozen ≤ -10°C).&nbsp; For
-          Hot Food: Target ≥ 60°C (Critical Limit: 60°C).&nbsp; Dry
-          food, Low Risk: Receive at cool, dry condition or ≤ 25°C, or
-          as per product requirement.
-        </div>
-      </div>
+      <SignatureFooter
+        t={(k) => (k === "sig_checked_by" ? t("received_by") : k === "sig_verified_by" ? t("verified_by") : t("name_sig"))}
+        checkedBy={receivedBy}
+        setCheckedBy={setReceivedBy}
+        verifiedBy={verifiedBy}
+        setVerifiedBy={setVerifiedBy}
+      />
 
-      {/* Footer controls + Received / Verified by (مبدّل الترتيب) */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 8,
-          marginTop: 16,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        {/* Received by أولاً */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontSize: 12,
-          }}
-        >
-          <strong>Received by:</strong>
-          <input
-            value={receivedBy}
-            onChange={(e) => setReceivedBy(e.target.value)}
-            placeholder=""
-            style={{
-              flex: "0 1 300px",
-              border: "none",
-              borderBottom: "2px solid #1f3b70",
-              padding: "4px 6px",
-              outline: "none",
-              fontSize: 12,
-              color: "#0b1f4d",
-            }}
-          />
-        </div>
-
-        {/* Verified by ثانياً */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontSize: 12,
-          }}
-        >
-          <strong>Verified by:</strong>
-          <input
-            value={verifiedBy}
-            onChange={(e) => setVerifiedBy(e.target.value)}
-            placeholder=""
-            style={{
-              flex: "0 1 300px",
-              border: "none",
-              borderBottom: "2px solid #1f3b70",
-              padding: "4px 6px",
-              outline: "none",
-              fontSize: 12,
-              color: "#0b1f4d",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Save */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginTop: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          onClick={handleSave}
-          disabled={saveDisabled}
-          style={btn(saveDisabled ? "#9ca3af" : "#2563eb")}
-        >
-          {saving ? "Saving…" : "Save Receiving Log"}
-        </button>
-
-        {saveMsg && (
-          <div
-            style={{
-              fontWeight: 800,
-              color: saveMsg.startsWith("✅")
-                ? "#065f46"
-                : saveMsg.startsWith("❌")
-                ? "#b91c1c"
-                : "#92400e",
-            }}
-          >
-            {saveMsg}
-          </div>
-        )}
-      </div>
-    </div>
+      <SaveBar
+        t={(k) => (k === "msg_saving" ? t("msg_saving") : k === "msg_saved" ? t("msg_saved") : k === "btn_saving" ? t("btn_saving") : t("btn_save"))}
+        opMsg={opMsg}
+        saving={saving}
+        disabled={saveBlocked}
+        onSave={handleSave}
+      />
+    </FormShell>
   );
 }

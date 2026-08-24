@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from "react";
 import API_BASE from "../../../../config/api";
 import useTakenDates from "../_shared/useTakenDates";
+import { ItemCodeInput, ItemNameInput } from "../_shared/CodedProductField";
 
 
 
@@ -21,7 +22,9 @@ const TICK_COLS = [
 
 function emptyRow() {
   return {
-    date: "", time: "", supplier: "", foodItem: "",
+    // itemCode ⟷ foodItem: the catalog code that ties this line to the same
+    // product everywhere else (QCS shipment, traceability, final product).
+    date: "", time: "", supplier: "", itemCode: "", foodItem: "",
     netWeight: "", // ✅ جديد
     vehicleTemp: "", foodTemp: "",
     vehicleClean: "", handlerHygiene: "", appearanceOK: "", firmnessOK: "", smellOK: "", packagingGood: "",
@@ -88,7 +91,8 @@ export default function POS15ReceivingLogInput() {
   // ✅ بعد الإضافة: أضفنا عمود الوزن بعد Food Item
   const colDefs = useMemo(() => ([
     <col key="date" style={{ width: 100 }} />,   <col key="time" style={{ width: 84 }} />,
-    <col key="supplier" style={{ width: 170 }} />, <col key="food" style={{ width: 160 }} />,
+    <col key="supplier" style={{ width: 170 }} />,
+    <col key="itemCode" style={{ width: 110 }} />, <col key="food" style={{ width: 190 }} />,
     <col key="netW" style={{ width: 110 }} />, // ✅ جديد
     <col key="vehT" style={{ width: 90 }} />, <col key="foodT" style={{ width: 90 }} />,
     <col key="vehClean" style={{ width: 120 }} />, <col key="handler" style={{ width: 140 }} />,
@@ -102,6 +106,15 @@ export default function POS15ReceivingLogInput() {
     setRows((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], [key]: val };
+      return next;
+    });
+  }
+
+  // Code and name are one unit — a catalog pick on either side rewrites both.
+  function updateProduct(idx, { code, name }) {
+    setRows((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], itemCode: code, foodItem: name };
       return next;
     });
   }
@@ -198,6 +211,7 @@ export default function POS15ReceivingLogInput() {
               <th style={thCell}>Date</th>
               <th style={thCell}>Time</th>
               <th style={thCell}>Name of the Supplier</th>
+              <th style={thCell}>Item Code</th>
               <th style={thCell}>Food Item</th>
               <th style={thCell}>Net Weight (kg)</th> {/* ✅ جديد */}
               <th style={thCell}>Vehicle Temp (°C)</th>
@@ -229,7 +243,10 @@ export default function POS15ReceivingLogInput() {
                   <input type="text" value={r.supplier} onChange={(e)=>updateRow(idx, "supplier", e.target.value)} style={inputStyle} />
                 </td>
                 <td style={tdCell}>
-                  <input type="text" value={r.foodItem} onChange={(e)=>updateRow(idx, "foodItem", e.target.value)} style={inputStyle} />
+                  <ItemCodeInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair)=>updateProduct(idx, pair)} style={inputStyle} />
+                </td>
+                <td style={tdCell}>
+                  <ItemNameInput code={r.itemCode || ""} name={r.foodItem || ""} onChange={(pair)=>updateProduct(idx, pair)} style={inputStyle} placeholder="Search code or product…" />
                 </td>
 
                 {/* ✅ خلية الوزن */}

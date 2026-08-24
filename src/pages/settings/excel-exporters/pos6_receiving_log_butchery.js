@@ -3,9 +3,9 @@ import { buildPos6Sheet, numbered, verdictWarn, S_NO } from "./_pos6";
 
 const columns = [
   S_NO,
-  { key: "time",            label: "Time",             width: 10 },
-  { key: "supplier",        label: "Supplier",         width: 22, align: "left" },
+  { key: "itemCode",        label: "Item Code",        width: 12, align: "left" },
   { key: "foodItem",        label: "Food Item",        width: 22, align: "left" },
+  { key: "supplier",        label: "Supplier",         width: 22, align: "left" },
   { key: "netWeight",       label: "Net Weight (kg)",  width: 13 },
   { key: "vehicleTemp",     label: "Vehicle °C",       width: 11 },
   { key: "foodTemp",        label: "Food °C",          width: 11 },

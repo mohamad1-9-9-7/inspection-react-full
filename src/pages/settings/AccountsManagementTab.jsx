@@ -49,6 +49,7 @@ const SECTIONS = [
   { id: "butcher",          icon: "🔪",   nameKey: "amSecButcher" },
   { id: "workforce",        icon: "👥",   nameKey: "amSecWorkforce" },
   { id: "mrp",              icon: "🏭",   nameKey: "amSecMrp" },
+  { id: "productTrace",     icon: "🧬",   nameKey: "amSecProductTrace" },
   { id: "settings",         icon: "⚙️",  nameKey: "amSecSettings" },
 ];
 

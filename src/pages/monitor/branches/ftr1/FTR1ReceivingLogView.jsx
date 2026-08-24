@@ -23,6 +23,7 @@ const LIST_LIMIT = 180;
 /* ================== Columns (بدون عمود الصور) ================== */
 const COLS = [
   { key: "supplier", label: "Name of the Supplier", align: "left" },
+  { key: "itemCode", label: "Item Code", align: "left" },
   { key: "foodItem", label: "Food Item", align: "left" },
   {
     key: "dmApprovalNo",
@@ -50,7 +51,7 @@ const COLS = [
 
 /* أبعاد الأعمدة الأساسية (قبل التحجيم) — لا صور */
 const COL_WIDTHS_PX = [
-  64, 160, 140, 240, 110, 110, 130, 160, 130, 110, 300, 140, 140, 140, 260, 160,
+  64, 160, 110, 140, 240, 110, 110, 130, 160, 130, 110, 300, 140, 140, 140, 260, 160,
 ];
 const TABLE_BASE_WIDTH = COL_WIDTHS_PX.reduce((a, b) => a + b, 0);
 const MIN_SCALE = 0.5; // حد أدنى للتحجيم

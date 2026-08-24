@@ -4,13 +4,24 @@ import {
   pageSetupLandscape,
 } from "./_lib";
 
+/* "22000 · NAME" — the item code glued to its product name, exactly as the
+   branch view renders it. Either half may be missing. */
+const codedName = (code, name) => {
+  const c = String(code ?? "").trim();
+  const n = String(name ?? "").trim();
+  return c && n ? `${c} · ${n}` : c || n || "";
+};
+
 const COLS = [
   { key: "date",             label: "Date",             width: 12 },
-  { key: "rawName",          label: "Raw Material",     width: 22 },
+  { key: "batchId",          label: "Batch / Lot",      width: 18 },
+  // The item code travels glued to its name — the same "22000 · NAME" the
+  // branch sees on screen, so the backup mirrors the view exactly.
+  { key: "rawName",          label: "Raw Material",     width: 28, get: (r) => codedName(r.rawCode, r.rawName) },
   { key: "supplier",         label: "Supplier",         width: 18 },
-  { key: "productionDate",   label: "Production Date",  width: 14 },
-  { key: "expiryDate",       label: "Expiry Date",      width: 14 },
-  { key: "finalProduct",     label: "Final Product",    width: 22 },
+  { key: "productionDate",   label: "Production Date",  width: 14, get: (r) => r.productionDate ?? r.origProdDate },
+  { key: "expiryDate",       label: "Expiry Date",      width: 14, get: (r) => r.expiryDate ?? r.origExpDate },
+  { key: "finalProduct",     label: "Final Product",    width: 28, get: (r) => codedName(r.finalCode, r.finalProduct ?? r.finalName) },
   { key: "finalProdDate",    label: "Final Prod. Date", width: 14 },
   { key: "finalExpDate",     label: "Final Exp. Date",  width: 14 },
   { key: "storageLocation",  label: "Storage Location", width: 16 },
@@ -70,7 +81,7 @@ export function makePosTraceabilityBuilder(branchLabel) {
       entries.forEach((row, i) => {
         const bg = i % 2 === 0 ? COLORS.WHITE : COLORS.GRAY_ALT;
         COLS.forEach((col, ci) => {
-          let v = row[col.key];
+          let v = typeof col.get === "function" ? col.get(row, p) : row[col.key];
           if (/date/i.test(col.key)) v = formatDMY(v);
           const c = ws.getCell(r, ci + 1);
           c.value = v ?? "";

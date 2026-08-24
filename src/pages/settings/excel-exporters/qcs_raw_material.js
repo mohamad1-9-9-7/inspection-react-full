@@ -235,7 +235,24 @@ export default async function build(wb, record, ctx) {
   ws.getRow(r).height = 22;
   r++;
 
-  // Header row 2: Product Names
+  // Header row 2: Product Codes (catalog item code bound to the name below)
+  ws.getCell(r, 1).value = "PRODUCT CODE";
+  ws.getCell(r, 1).font = { bold: true, color: { argb: COLORS.NAVY } };
+  ws.getCell(r, 1).fill = fillSolid("FAFAFA");
+  ws.getCell(r, 1).alignment = left;
+  ws.getCell(r, 1).border = BORDER_BLACK;
+  samples.forEach((s, i) => {
+    const c = ws.getCell(r, i + 2);
+    c.value = s?.productCode || s?.itemCode || "—";
+    c.font = { bold: true };
+    c.fill = fillSolid("FAFAFA");
+    c.alignment = center;
+    c.border = BORDER_BLACK;
+  });
+  ws.getRow(r).height = 22;
+  r++;
+
+  // Header row 3: Product Names
   ws.getCell(r, 1).value = "PRODUCT NAME";
   ws.getCell(r, 1).font = { bold: true, color: { argb: COLORS.NAVY } };
   ws.getCell(r, 1).fill = fillSolid("FAFAFA");
@@ -300,8 +317,12 @@ export default async function build(wb, record, ctx) {
   ws.getRow(r).height = 22;
   r++;
 
-  const plHeaders = ["Product Name", "Qty (pcs)", "Weight (kg)"];
-  const plWidths  = [Math.floor(NC / 2), Math.floor(NC / 4), NC - Math.floor(NC / 2) - Math.floor(NC / 4)];
+  const plHeaders = ["Item Code", "Product Name", "Qty (pcs)", "Weight (kg)"];
+  const wCode = Math.max(1, Math.floor(NC / 6));
+  const wQty  = Math.max(1, Math.floor(NC / 5));
+  const wWgt  = Math.max(1, Math.floor(NC / 5));
+  const wName = Math.max(1, NC - wCode - wQty - wWgt);
+  const plWidths  = [wCode, wName, wQty, wWgt];
   let cursor = 1;
   plHeaders.forEach((h, i) => {
     const c1 = cursor;
@@ -332,6 +353,7 @@ export default async function build(wb, record, ctx) {
       const bg = idx % 2 === 0 ? COLORS.WHITE : COLORS.GRAY_ALT;
       let c1Idx = 1;
       [
+        line?.code || line?.itemCode || line?.item_code || "—",
         line?.name || line?.productName || "—",
         Number(line?.qty ?? line?.quantity ?? line?.pcs ?? 0),
         Number(line?.weight ?? line?.wt ?? line?.kg ?? 0).toFixed(2),
@@ -343,18 +365,19 @@ export default async function build(wb, record, ctx) {
         c.value = val;
         c.font = { size: 10 };
         c.fill = fillSolid(bg);
-        c.alignment = i === 0 ? left : center;
+        c.alignment = i <= 1 ? left : center;
         c.border = BORDER_BLACK;
         c1Idx = c2 + 1;
       });
       ws.getRow(r).height = 20;
       r++;
     });
-    // Totals row
+    // Totals row — the label spans the code + name columns.
+    const totalWidths = [wCode + wName, wQty, wWgt];
     let c1Idx = 1;
     [`الإجمالي:`, totalQty, Number(totalWgt).toFixed(2)].forEach((val, i) => {
       const c1 = c1Idx;
-      const c2 = c1Idx + plWidths[i] - 1;
+      const c2 = c1Idx + totalWidths[i] - 1;
       if (c2 > c1) ws.mergeCells(r, c1, r, c2);
       const c = ws.getCell(r, c1);
       c.value = val;

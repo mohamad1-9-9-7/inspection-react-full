@@ -65,6 +65,7 @@ async function loadImageDataURL(src) {
 function emptyRow() {
   return {
     supplier: "",
+    itemCode: "",
     foodItem: "",
     vehicleTemp: "",
     foodTemp: "",
@@ -137,7 +138,8 @@ export default function ReceivingLogView() {
 
   const colDefs = useMemo(() => ([
     <col key="supplier"     style={{ width: 170 }} />,
-    <col key="food"         style={{ width: 160 }} />,
+    <col key="itemCode"     style={{ width: 110 }} />,
+    <col key="food"         style={{ width: 190 }} />,
     <col key="vehT"         style={{ width: 90 }} />,
     <col key="foodT"        style={{ width: 90 }} />,
     <col key="vehClean"     style={{ width: 120 }} />,
@@ -310,13 +312,13 @@ export default function ReceivingLogView() {
 
   function fallbackCSV(p) {
     const headers = [
-      "Supplier","Food Item","Vehicle Temp (°C)","Food Temp (°C)",
+      "Supplier","Item Code","Food Item","Vehicle Temp (°C)","Food Temp (°C)",
       "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
       "Packaging good/undamaged/clean/no pests",
       "Country of origin","Production Date","Expiry Date","Invoice No","Remarks (if any)","Received by"
     ];
     const rows = (p.entries || []).map(e => ([
-      e?.supplier ?? "", e?.foodItem ?? "",
+      e?.supplier ?? "", e?.itemCode ?? "", e?.foodItem ?? "",
       e?.vehicleTemp ?? "", e?.foodTemp ?? "",
       e?.vehicleClean ?? "", e?.handlerHygiene ?? "", e?.appearanceOK ?? "",
       e?.firmnessOK ?? "", e?.smellOK ?? "", e?.packagingGood ?? "",
@@ -388,7 +390,7 @@ export default function ReceivingLogView() {
 
       // Column widths (16 columns now)
       ws.columns = [
-        { width: 24 }, { width: 20 },
+        { width: 24 }, { width: 13 }, { width: 20 },
         { width: 14 }, { width: 14 },
         { width: 16 }, { width: 18 }, { width: 14 },
         { width: 12 }, { width: 12 }, { width: 36 },
@@ -398,7 +400,7 @@ export default function ReceivingLogView() {
 
       // Headers row (row 7)
       const COL_HEADERS = [
-        "Name of the Supplier","Food Item",
+        "Name of the Supplier","Item Code","Food Item",
         "Vehicle Temp (°C)","Food Temp (°C)",
         "Vehicle clean","Food handler hygiene","Appearance","Firmness","Smell",
         "Packaging of food is good and undamaged, clean and no signs of pest infestation",
@@ -421,7 +423,7 @@ export default function ReceivingLogView() {
       let rowIdx = 8;
       rows.forEach((e) => {
         ws.getRow(rowIdx).values = [
-          e?.supplier || "", e?.foodItem || "",
+          e?.supplier || "", e?.itemCode || "", e?.foodItem || "",
           e?.vehicleTemp || "", e?.foodTemp || "",
           e?.vehicleClean || "", e?.handlerHygiene || "", e?.appearanceOK || "",
           e?.firmnessOK || "", e?.smellOK || "", e?.packagingGood || "",
@@ -746,6 +748,7 @@ export default function ReceivingLogView() {
                   <thead>
                     <tr>
                       <th style={thCell}>Name of the Supplier</th>
+                      <th style={thCell}>Item Code</th>
                       <th style={thCell}>Food Item</th>
                       <th style={thCell}>Vehicle Temp (°C)</th>
                       <th style={thCell}>Food Temp (°C)</th>
@@ -768,6 +771,7 @@ export default function ReceivingLogView() {
                       (record.payload?.entries || []).filter(isFilledRow).map((r, idx) => (
                         <tr key={idx}>
                           <td style={tdCell}>{safe(r.supplier)}</td>
+                          <td style={{ ...tdCell, fontWeight: 800, color: "#4f46e5" }}>{safe(r.itemCode)}</td>
                           <td style={tdCell}>{safe(r.foodItem)}</td>
                           <td style={tdCell}>{safe(r.vehicleTemp)}</td>
                           <td style={tdCell}>{safe(r.foodTemp)}</td>
@@ -791,6 +795,12 @@ export default function ReceivingLogView() {
                           <td style={tdCell}>
                             <input type="text" value={r.supplier || ""}
                               onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], supplier:e.target.value}; return n; })}
+                              style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
+                            />
+                          </td>
+                          <td style={tdCell}>
+                            <input type="text" value={r.itemCode || ""}
+                              onChange={(e)=>setEditRows((prev)=>{ const n=[...prev]; n[idx]={...n[idx], itemCode:e.target.value}; return n; })}
                               style={{ width:"100%", border:"1px solid #c7d2fe", borderRadius:6, padding:"4px 6px" }}
                             />
                           </td>

@@ -7,6 +7,7 @@ import {
   keyLabels,
   defaultDocMeta,
 } from "./viewUtils";
+import { ItemCodeInput, ItemNameInput } from "../../monitor/branches/_shared/CodedProductField";
 
 /* ── numeric helper (same behaviour as ReportDetails) ── */
 const toNum = (v) => {
@@ -80,6 +81,7 @@ export default function EditReportModal({ report, onClose, onSave }) {
   const [lines, setLines] = useState(() =>
     Array.isArray(report?.productLines)
       ? report.productLines.map((l) => ({
+          code: l?.code ?? l?.itemCode ?? l?.item_code ?? "",
           name: l?.name ?? l?.productName ?? "",
           qty: l?.qty ?? l?.quantity ?? l?.pcs ?? l?.pieces ?? "",
           weight: l?.weight ?? l?.wt ?? l?.kg ?? l?.kgs ?? l?.weightKg ?? "",
@@ -118,14 +120,38 @@ export default function EditReportModal({ report, onClose, onSave }) {
   // ── product-line helpers ──
   const setLineField = (idx, key, v) =>
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, [key]: v } : l)));
-  const addLine = () => setLines((prev) => [...prev, { name: "", qty: "", weight: "" }]);
+  const addLine = () => setLines((prev) => [...prev, { code: "", name: "", qty: "", weight: "" }]);
+  // Code and name are one unit — a catalog pick on either side rewrites both.
+  const setSampleProduct = (idx, { code, name }) =>
+    setSamples((prev) => prev.map((s, i) => (i === idx ? { ...s, productCode: code, productName: name } : s)));
+
+  // Product lines may only name products that appear in the sample columns.
+  const lineKeyOf = (r) => (r?.code || r?.name ? `${r.code || ""}||${r.name || ""}` : "");
+  const sampleProducts = useMemo(() => {
+    const seen = new Map();
+    samples.forEach((s) => {
+      const code = String(s?.productCode ?? s?.itemCode ?? "").trim();
+      const name = String(s?.productName ?? "").trim();
+      if (!code && !name) return;
+      const key = `${code}||${name}`;
+      if (!seen.has(key)) seen.set(key, { key, code, name });
+    });
+    return Array.from(seen.values());
+  }, [samples]);
+  const pickLineProduct = (idx, key) => {
+    const hit = sampleProducts.find((sp) => sp.key === key);
+    setLines((prev) =>
+      prev.map((l, i) => (i === idx ? { ...l, code: hit?.code ?? "", name: hit?.name ?? "" } : l))
+    );
+  };
   const removeLine = (idx) => setLines((prev) => prev.filter((_, i) => i !== idx));
 
   const handleSave = async () => {
     const cleanLines = lines
-      .filter((l) => String(l.name).trim() || l.qty || l.weight)
+      .filter((l) => String(l.name).trim() || String(l.code || "").trim() || l.qty || l.weight)
       .map((l, i) => ({
         id: report?.productLines?.[i]?.id || `pl_${i}_${Date.now()}`,
+        code: String(l.code || "").trim(),
         name: String(l.name).trim(),
         qty: l.qty,
         weight: l.weight,
@@ -280,10 +306,28 @@ export default function EditReportModal({ report, onClose, onSave }) {
                   ))}
                 </tr>
                 <tr>
+                  <th style={{ ...thTd, textAlign: "left", background: "#f1f5f9", fontWeight: 700 }}>Product Code</th>
+                  {samples.map((s, idx) => (
+                    <th key={`pc-${idx}`} style={{ ...thTd, background: "#f1f5f9" }}>
+                      <ItemCodeInput
+                        code={s.productCode ?? s.itemCode ?? ""}
+                        name={s.productName ?? ""}
+                        onChange={(pair) => setSampleProduct(idx, pair)}
+                        style={inp}
+                      />
+                    </th>
+                  ))}
+                </tr>
+                <tr>
                   <th style={{ ...thTd, textAlign: "left", background: "#f1f5f9", fontWeight: 700 }}>Product Name</th>
                   {samples.map((s, idx) => (
                     <th key={`pn-${idx}`} style={{ ...thTd, background: "#f1f5f9" }}>
-                      <input style={inp} value={s.productName ?? ""} onChange={(e) => setSampleField(idx, "productName", e.target.value)} />
+                      <ItemNameInput
+                        code={s.productCode ?? s.itemCode ?? ""}
+                        name={s.productName ?? ""}
+                        onChange={(pair) => setSampleProduct(idx, pair)}
+                        style={inp}
+                      />
                     </th>
                   ))}
                 </tr>
@@ -311,6 +355,7 @@ export default function EditReportModal({ report, onClose, onSave }) {
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead>
               <tr>
+                <th style={{ ...thTd, textAlign: "left", background: "#f8fafc", width: 130 }}>Item Code</th>
                 <th style={{ ...thTd, textAlign: "left", background: "#f8fafc" }}>Product Name</th>
                 <th style={{ ...thTd, background: "#f8fafc", width: 120 }}>Qty (pcs)</th>
                 <th style={{ ...thTd, background: "#f8fafc", width: 130 }}>Weight (kg)</th>
@@ -320,7 +365,27 @@ export default function EditReportModal({ report, onClose, onSave }) {
             <tbody>
               {lines.map((l, idx) => (
                 <tr key={idx}>
-                  <td style={thTd}><input style={inp} value={l.name} onChange={(e) => setLineField(idx, "name", e.target.value)} /></td>
+                  {/* A product line names a product inspected in the sample
+                      columns above, so it is picked from those — not the whole
+                      catalog. */}
+                  <td style={thTd}>
+                    <select value={lineKeyOf(l)} onChange={(e) => pickLineProduct(idx, e.target.value)} style={inp}>
+                      <option value="">— اختر —</option>
+                      {sampleProducts.map((sp) => (
+                        <option key={sp.key} value={sp.key}>
+                          {sp.code || "—"}{sp.name ? ` · ${sp.name}` : ""}
+                        </option>
+                      ))}
+                      {lineKeyOf(l) && !sampleProducts.some((sp) => sp.key === lineKeyOf(l)) && (
+                        <option value={lineKeyOf(l)}>
+                          {l.code || "—"}{l.name ? ` · ${l.name}` : ""} (خارج العينات)
+                        </option>
+                      )}
+                    </select>
+                  </td>
+                  <td style={thTd}>
+                    <input value={l.name || ""} readOnly style={{ ...inp, background: "#f1f5f9", fontWeight: 700 }} />
+                  </td>
                   <td style={thTd}><input style={inp} type="number" value={l.qty} onChange={(e) => setLineField(idx, "qty", e.target.value)} /></td>
                   <td style={thTd}><input style={inp} type="number" value={l.weight} onChange={(e) => setLineField(idx, "weight", e.target.value)} /></td>
                   <td style={thTd}>
@@ -329,18 +394,18 @@ export default function EditReportModal({ report, onClose, onSave }) {
                 </tr>
               ))}
               {lines.length === 0 && (
-                <tr><td colSpan={4} style={{ ...thTd, textAlign: "center", color: "#94a3b8", fontStyle: "italic" }}>No product lines.</td></tr>
+                <tr><td colSpan={5} style={{ ...thTd, textAlign: "center", color: "#94a3b8", fontStyle: "italic" }}>No product lines.</td></tr>
               )}
             </tbody>
             <tfoot>
               <tr>
-                <td style={{ ...thTd, textAlign: "right", fontWeight: 800 }}>Totals:</td>
+                <td colSpan={2} style={{ ...thTd, textAlign: "right", fontWeight: 800 }}>Totals:</td>
                 <td style={{ ...thTd, textAlign: "center", fontWeight: 800 }}>{totals.totalQuantity}</td>
                 <td style={{ ...thTd, textAlign: "center", fontWeight: 800 }}>{totals.totalWeight}</td>
                 <td style={thTd} />
               </tr>
               <tr>
-                <td colSpan={4} style={{ ...thTd, textAlign: "right", color: "#475569" }}>
+                <td colSpan={5} style={{ ...thTd, textAlign: "right", color: "#475569" }}>
                   Average Weight (kg/pc): <strong>{totals.averageWeight}</strong>
                 </td>
               </tr>

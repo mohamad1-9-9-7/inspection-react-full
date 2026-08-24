@@ -42,9 +42,9 @@ const EQUIPMENT_COLUMNS = [
 ];
 
 const RECEIVING_COLUMNS = [
-  { key: "time", label: "Time", labelAr: "الوقت" },
-  { key: "supplier", label: "Supplier", labelAr: "المورّد" },
+  { key: "itemCode", label: "Item code", labelAr: "كود الصنف" },
   { key: "foodItem", label: "Food item", labelAr: "الصنف" },
+  { key: "supplier", label: "Supplier", labelAr: "المورّد" },
   { key: "netWeight", label: "Net weight", labelAr: "الوزن الصافي" },
   { key: "vehicleTemp", label: "Vehicle °C", labelAr: "حرارة السيارة" },
   { key: "foodTemp", label: "Food °C", labelAr: "حرارة المنتج" },
