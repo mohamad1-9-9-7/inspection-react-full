@@ -7,6 +7,8 @@ import { branchIdFromPath } from "./config/branches";
 import { getSecuritySettings, isDeleteAllowedForBranch } from "./pages/settings/SecurityControlsTab";
 import { clearAppSession } from "./utils/authFetch";
 import { hasSection, branchAllowed } from "./utils/perms";
+import { isItemAllowed } from "./utils/sectionItems";
+import { useInventoryOfficer } from "./pages/workforce/workforceAccess";
 
 const SubscriptionExpired = lazy(() => import("./pages/SubscriptionExpired"));
 const EmailCenter = lazy(() => import("./pages/email-center/EmailCenter"));
@@ -599,13 +601,35 @@ function ProtectedRoute({ children }) {
    guard. `section` is the same permission the hub tile is drawn from, and
    `branch` additionally pins a route to one branch, matching the per-branch
    filter the hubs already apply. Admins and full-access accounts pass both. */
-function SectionRoute({ section, branch, children }) {
-  const allowed = hasSection(section) && (!branch || branchAllowed(section, branch));
+function SectionRoute({ section, branch, item, children }) {
+  const allowed =
+    hasSection(section) &&
+    (!branch || branchAllowed(section, branch)) &&
+    // `item` = بند واحد جوّا القسم (متل "settings.products"). بيخلّي المسار
+    // يتبع نفس القائمة اللي بتتحكم بالكرت، فما بيصير كرت مخفي ورابط مفتوح.
+    (!item || isItemAllowed(section, item));
   return (
     <ProtectedRoute>
       {allowed ? children : <Navigate to="/named-dashboard" replace />}
     </ProtectedRoute>
   );
+}
+
+/**
+ * حارس صفحات المخزون.
+ *
+ * نفس فحص `SectionRoute`، زائد بوابة «مسؤول المخزون»: دور بالقوى العاملة
+ * بيعطي صلاحيات كاملة داخل كرت المخزون وحده. ولأن الدور بيجي من سجل بيتحمّل
+ * من الشبكة، منستنّى جوابه بدل ما نرفض — الرفض قبل الجواب بيقفل الباب بوجه
+ * صاحب الصلاحية أول مرّة بيفتح فيها النظام على جهاز جديد.
+ */
+function InventoryRoute({ section, item, children }) {
+  const { officer, resolved } = useInventoryOfficer();
+  const byPerm = hasSection(section) && (!item || isItemAllowed(section, item));
+
+  if (officer || byPerm) return <ProtectedRoute>{children}</ProtectedRoute>;
+  if (!resolved) return <ProtectedRoute><BranchLoader /></ProtectedRoute>;
+  return <Navigate to="/named-dashboard" replace />;
 }
 
 function AdminRoute({ children }) {
@@ -880,18 +904,20 @@ export default function App() {
         <Route
           path="/workforce"
           element={
-            <ProtectedRoute>
+            <InventoryRoute section="workforce">
               <WorkforceHub />
-            </ProtectedRoute>
+            </InventoryRoute>
           }
         />
-        {/* 📦 كتالوج المنتجات — نفس أداة الإعدادات ← أدوات البيانات، مدخل تاني من المخزون */}
+        {/* 📦 كتالوج المنتجات — نفس أداة الإعدادات ← أدوات البيانات، مدخل تاني من
+            المخزون. الصلاحية = بند "settings.products" لحاله جوّا قسم الإعدادات،
+            مش القسم كامل — فبتقدر تعطيه لموظف بلا ما تفتح له باقي الأدوات. */}
         <Route
           path="/inventory/products"
           element={
-            <ProtectedRoute>
+            <InventoryRoute section="settings" item="settings.products">
               <ProductsCatalogPage />
-            </ProtectedRoute>
+            </InventoryRoute>
           }
         />
 
@@ -946,13 +972,15 @@ export default function App() {
             </AdminRoute>
           }
         />
-        {/* 📨 Email Center — audit history + analytics */}
+        {/* 📨 Email Center — audit history + analytics.
+            SectionRoute, not ProtectedRoute: this page lists what was mailed to
+            whom, so "signed in" was never the right bar for it. */}
         <Route
           path="/email-center"
           element={
-            <ProtectedRoute>
+            <SectionRoute section="emailCenter">
               <EmailCenter />
-            </ProtectedRoute>
+            </SectionRoute>
           }
         />
 

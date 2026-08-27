@@ -7,6 +7,21 @@ import API_BASE from "../../config/api";
 import { SECTION_ITEMS } from "../../utils/sectionItems";
 import { useSettingsLang } from "./_shared/settingsI18n";
 import { logSettingsAudit } from "../../utils/settingsAudit";
+import {
+  GROUP_COLORS,
+  UNGROUPED,
+  NO_BRANCH,
+  assignMember,
+  autoGroupByBranch,
+  colorOf,
+  groupByCustom,
+  groupOfUser,
+  normalizeGroup,
+  removeGroup,
+  unassignMember,
+  upsertGroup,
+  useAccountGroups,
+} from "./_shared/accountGroups";
 
 /* ═══════════════════════════════════════════════════════ CONSTANTS */
 
@@ -50,6 +65,13 @@ const SECTIONS = [
   { id: "workforce",        icon: "👥",   nameKey: "amSecWorkforce" },
   { id: "mrp",              icon: "🏭",   nameKey: "amSecMrp" },
   { id: "productTrace",     icon: "🧬",   nameKey: "amSecProductTrace" },
+  // Email Center was a dashboard card and a live route with NO entry here, so
+  // it could be neither granted nor denied: the tile is drawn from
+  // `permissions.includes(id)`, and no account could ever hold an id that the
+  // form never offered — while /email-center itself sat behind a plain
+  // signed-in check, reachable by anyone who typed the URL. Both halves are
+  // fixed: the row below makes it grantable, and App.jsx now guards the route.
+  { id: "emailCenter",      icon: "📨",   nameKey: "amSecEmailCenter" },
   { id: "settings",         icon: "⚙️",  nameKey: "amSecSettings" },
 ];
 
@@ -93,6 +115,8 @@ const BRANCH_THEMES = {
   butcher:          { icon:"🔪",  title:"Butcher",           bg:"#fef2f2", border:"#fecaca", accent:"#991b1b", chipOn:"#fee2e2", chipOnText:"#7f1d1d", badgeBg:"#fee2e2", badgeBorder:"#fca5a5", badgeText:"#7f1d1d" },
   workforce:        { icon:"👥",  title:"Workforce",         bg:"#f5f3ff", border:"#ddd6fe", accent:"#6d28d9", chipOn:"#ede9fe", chipOnText:"#4c1d95", badgeBg:"#ede9fe", badgeBorder:"#c4b5fd", badgeText:"#4c1d95" },
   mrp:              { icon:"🏭",  title:"Manufacturing",     bg:"#ecfdf5", border:"#a7f3d0", accent:"#0f766e", chipOn:"#d1fae5", chipOnText:"#115e59", badgeBg:"#d1fae5", badgeBorder:"#6ee7b7", badgeText:"#115e59" },
+  productTrace:     { icon:"🧬",  title:"Product Traceability", bg:"#f5f3ff", border:"#ddd6fe", accent:"#6d28d9", chipOn:"#ede9fe", chipOnText:"#4c1d95", badgeBg:"#ede9fe", badgeBorder:"#c4b5fd", badgeText:"#4c1d95" },
+  emailCenter:      { icon:"📨",  title:"Email Center",      bg:"#eff6ff", border:"#bfdbfe", accent:"#1e40af", chipOn:"#dbeafe", chipOnText:"#1e3a8a", badgeBg:"#dbeafe", badgeBorder:"#93c5fd", badgeText:"#1e3a8a" },
   settings:         { icon:"⚙️",  title:"Settings",          bg:"#f1f5f9", border:"#cbd5e1", accent:"#334155", chipOn:"#e2e8f0", chipOnText:"#0f172a", badgeBg:"#e2e8f0", badgeBorder:"#94a3b8", badgeText:"#0f172a" },
 };
 
@@ -209,8 +233,8 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
           <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer" }}>
             <input type="checkbox" checked={isFullAccess}
               onChange={e => onFullAccessChange(e.target.checked)}
-              style={{ width:18, height:18, accentColor:"#7c3aed" }} />
-            <span style={{ fontWeight:900, color:"#7c3aed", fontSize:15 }}>
+              style={{ ...fs.cbBig, accentColor:"#7c3aed" }} />
+            <span style={{ fontWeight:900, color:"#7c3aed", fontSize:16 }}>
               ⭐ {t("amFullAccess")}
             </span>
           </label>
@@ -235,10 +259,12 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
           <table style={fs.permTable}>
             <thead>
               <tr>
-                <th style={{ ...fs.permTh, textAlign:"left", minWidth:190 }}>{t("amColSection")}</th>
-                <th style={fs.permTh}>{t("amColAccess")}</th>
+                <th style={{ ...fs.permTh, textAlign:"start", minWidth:250 }}>{t("amColSection")}</th>
                 {CRUD_OPS.map(op => (
-                  <th key={op.id} style={{ ...fs.permTh, color:op.color }}>{op.icon} {t(op.nameKey)}</th>
+                  <th key={op.id} style={{ ...fs.permTh, color:op.color, minWidth:78 }}>
+                    <span style={{ fontSize:17, display:"block", lineHeight:1.4 }}>{op.icon}</span>
+                    {t(op.nameKey)}
+                  </th>
                 ))}
                 <th style={fs.permTh}>{t("amColAllOps")}</th>
               </tr>
@@ -247,25 +273,66 @@ function CrudTable({ isFullAccess, crudPerms, onChange, onFullAccessChange }) {
               {SECTIONS.map((sec, i) => {
                 const hasAccess = !!(crudPerms[sec.id]?.length > 0);
                 const ops = crudPerms[sec.id] || [];
+                const theme = BRANCH_THEMES[sec.id] || BRANCH_THEMES.daily;
                 return (
-                  <tr key={sec.id} style={{ background: i % 2 === 0 ? "#f8fafc" : "#fff", opacity: hasAccess ? 1 : 0.5 }}>
-                    <td style={fs.permTd}><span style={{ fontWeight:800, fontSize:14 }}>{sec.icon} {t(sec.nameKey)}</span></td>
-                    <td style={{ ...fs.permTd, textAlign:"center" }}>
-                      <input type="checkbox" checked={hasAccess} onChange={() => toggleSection(sec.id)}
-                        style={{ width:17, height:17, accentColor:"#2563eb", cursor:"pointer" }} />
+                  <tr
+                    key={sec.id}
+                    className="acm-permrow"
+                    style={{
+                      background: hasAccess ? "#fff" : i % 2 === 0 ? "#f8fafc" : "#fff",
+                      // Off rows used to drop to opacity .5, which greyed the
+                      // section NAME too and made the list hard to read while
+                      // hunting for the row you came to switch on. The row is
+                      // now marked by its left edge instead, and only the
+                      // disabled boxes dim.
+                      boxShadow: hasAccess ? `inset 3px 0 0 ${theme.accent}` : "inset 3px 0 0 #e2e8f0",
+                    }}
+                  >
+                    <td style={fs.permTd}>
+                      {/* The whole name is the hit target for the row's master
+                          switch — a 22px box is still a small thing to aim at. */}
+                      <label style={fs.permSecLabel} title={t("amColAccess")}>
+                        <input
+                          type="checkbox"
+                          checked={hasAccess}
+                          onChange={() => toggleSection(sec.id)}
+                          style={{ ...fs.cbBig, accentColor: theme.accent }}
+                        />
+                        <span style={{ fontSize: 19, lineHeight: 1 }}>{sec.icon}</span>
+                        <span style={{ fontWeight: 900, fontSize: 15, color: hasAccess ? "#0f172a" : "#64748b" }}>
+                          {t(sec.nameKey)}
+                        </span>
+                      </label>
                     </td>
-                    {CRUD_OPS.map(op => (
-                      <td key={op.id} style={{ ...fs.permTd, textAlign:"center" }}>
-                        {op.id === "history" && !HISTORY_SECTIONS.has(sec.id) ? (
-                          <span style={{ color:"#cbd5e1", fontWeight:900 }} title="Only applies to Daily (POS) & Returns reports">—</span>
-                        ) : (
-                          <input type="checkbox" checked={ops.includes(op.id)}
-                            disabled={!hasAccess || (op.id !== "view" && !ops.includes("view"))}
-                            onChange={() => toggleOp(sec.id, op.id)}
-                            style={{ width:16, height:16, accentColor:op.color, cursor: hasAccess ? "pointer" : "not-allowed" }} />
-                        )}
-                      </td>
-                    ))}
+                    {CRUD_OPS.map(op => {
+                      const inert = op.id === "history" && !HISTORY_SECTIONS.has(sec.id);
+                      const locked = !hasAccess || (op.id !== "view" && !ops.includes("view"));
+                      const on = ops.includes(op.id);
+                      return (
+                        <td key={op.id} style={{ ...fs.permTd, textAlign:"center" }}>
+                          {inert ? (
+                            <span style={{ color:"#cbd5e1", fontWeight:900, fontSize:16 }}
+                              title="Only applies to Daily (POS) & Returns reports">—</span>
+                          ) : (
+                            <label
+                              style={{
+                                ...fs.cbCell,
+                                background: on ? `${op.color}14` : "transparent",
+                                borderColor: on ? op.color : "transparent",
+                                cursor: locked ? "not-allowed" : "pointer",
+                                opacity: locked ? 0.35 : 1,
+                              }}
+                              title={t(op.nameKey)}
+                            >
+                              <input type="checkbox" checked={on}
+                                disabled={locked}
+                                onChange={() => toggleOp(sec.id, op.id)}
+                                style={{ ...fs.cbBig, accentColor: op.color, cursor: locked ? "not-allowed" : "pointer" }} />
+                            </label>
+                          )}
+                        </td>
+                      );
+                    })}
                     <td style={{ ...fs.permTd, textAlign:"center" }}>
                       {hasAccess && (
                         <button type="button" onClick={() => selectAllOps(sec.id)}
@@ -1459,6 +1526,173 @@ const al = {
 /* ═══════════════════════════════════════════════════════
    MAIN — Account Control Center
 ═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   GROUP MANAGER — the admin defines the buckets by hand
+   ═══════════════════════════════════════════════════════
+   Membership is explicit, never derived: an account belongs where the admin
+   put it. The automatic branch view answers "who can reach POS 15"; this one
+   answers "whose team is this", and the two disagree often enough that
+   guessing would be worse than asking. */
+function GroupManager({ open, groups, users, saving, onSave, onClose }) {
+  const { t } = useSettingsLang();
+  const [draft, setDraft] = useState(groups);
+  const [name, setName] = useState("");
+  const [nameAr, setNameAr] = useState("");
+  const [icon, setIcon] = useState("🏬");
+  const [color, setColor] = useState("teal");
+  const [active, setActive] = useState(null);
+
+  useEffect(() => { if (open) setDraft(groups); }, [open, groups]);
+  useEffect(() => {
+    if (!active && draft.length) setActive(draft[0].id);
+    if (active && !draft.some(g => g.id === active)) setActive(draft[0]?.id || null);
+  }, [draft, active]);
+
+  if (!open) return null;
+
+  const addGroup = () => {
+    const n = name.trim();
+    if (!n && !nameAr.trim()) return;
+    const g = normalizeGroup({ name: n, nameAr: nameAr.trim(), icon, color, order: draft.length });
+    setDraft(upsertGroup(draft, g));
+    setActive(g.id);
+    setName(""); setNameAr("");
+  };
+
+  const activeGroup = draft.find(g => g.id === active) || null;
+
+  return (
+    <div style={gmS.overlay} onClick={onClose}>
+      <div style={gmS.modal} onClick={e => e.stopPropagation()}>
+        <div style={gmS.head}>
+          <span style={{ fontWeight:1000, fontSize:19, color:"#0f172a" }}>🏷️ {t("amGroupsTitle")}</span>
+          <button onClick={onClose} style={gmS.x}>✕</button>
+        </div>
+        <div style={gmS.hint}>{t("amGroupsHint")}</div>
+
+        {/* new group */}
+        <div style={gmS.newRow}>
+          <select value={icon} onChange={e => setIcon(e.target.value)} style={{ ...gmS.input, width:64, textAlign:"center" }}>
+            {["🏬","🔪","🏭","🚚","🛡️","👨‍🍳","📍","⭐"].map(x => <option key={x} value={x}>{x}</option>)}
+          </select>
+          <input value={name} onChange={e => setName(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") addGroup(); }}
+            placeholder={t("amGroupName")} style={{ ...gmS.input, flex:"2 1 170px" }} />
+          <input value={nameAr} onChange={e => setNameAr(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") addGroup(); }}
+            placeholder={t("amGroupNameAr")} style={{ ...gmS.input, flex:"2 1 150px" }} />
+          <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+            {GROUP_COLORS.map(c => (
+              <button key={c.id} type="button" onClick={() => setColor(c.id)}
+                title={c.id}
+                style={{
+                  width:22, height:22, borderRadius:7, background:c.dot, cursor:"pointer",
+                  border: color === c.id ? "3px solid #0f172a" : "1px solid rgba(0,0,0,.15)",
+                }} />
+            ))}
+          </div>
+          <button type="button" onClick={addGroup} style={gmS.addBtn}>➕ {t("amGroupAdd")}</button>
+        </div>
+
+        <div style={gmS.body}>
+          {/* the groups */}
+          <div style={gmS.col}>
+            {draft.length === 0 ? (
+              <div style={gmS.empty}>—</div>
+            ) : draft.map(g => {
+              const c = colorOf(g.color);
+              const on = g.id === active;
+              return (
+                /* Two sibling buttons in a row, not a delete nested inside the
+                   select button: an interactive element inside another one is
+                   unreachable by keyboard and ambiguous to a screen reader. */
+                <div key={g.id} style={{
+                  ...gmS.groupRow,
+                  background: on ? c.bg : "#fff",
+                  borderColor: on ? c.dot : "#e2e8f0",
+                  color: on ? c.text : "#334155",
+                }}>
+                  <button type="button" onClick={() => setActive(g.id)} style={gmS.groupPick}>
+                    <span style={{ fontSize:17 }}>{g.icon}</span>
+                    <span style={{ fontWeight:900, minWidth:0, overflow:"hidden", textOverflow:"ellipsis" }}>
+                      {g.name}{g.nameAr ? ` — ${g.nameAr}` : ""}
+                    </span>
+                    <span style={{ marginInlineStart:"auto", fontWeight:900, fontSize:12, background:c.dot, color:"#fff", borderRadius:999, padding:"1px 8px" }}>
+                      {g.members.length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    title={t("amGroupDelete")}
+                    aria-label={`${t("amGroupDelete")} — ${g.name}`}
+                    onClick={() => setDraft(removeGroup(draft, g.id))}
+                    style={gmS.groupDel}
+                  >✕</button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* who is in it */}
+          <div style={gmS.col}>
+            {!activeGroup ? (
+              <div style={gmS.empty}>{t("amGroupsHint")}</div>
+            ) : users.map(u => {
+              const owner = groupOfUser(draft, u.username);
+              const mine = owner?.id === activeGroup.id;
+              const elsewhere = owner && !mine;
+              return (
+                <label key={u.id} style={{ ...gmS.memberRow, opacity: elsewhere ? 0.6 : 1 }}>
+                  <input type="checkbox" checked={!!mine}
+                    onChange={() => setDraft(mine
+                      ? unassignMember(draft, u.username)
+                      : assignMember(draft, u.username, activeGroup.id))}
+                    style={{ width:20, height:20, accentColor: colorOf(activeGroup.color).dot, cursor:"pointer" }} />
+                  <span style={{ fontWeight:800, color:"#0f172a" }}>{u.display_name || u.username}</span>
+                  <span style={{ color:"#64748b", fontSize:12 }}>@{u.username}</span>
+                  {elsewhere && (
+                    <span style={{ marginInlineStart:"auto", fontSize:11, fontWeight:800, background:colorOf(owner.color).bg, color:colorOf(owner.color).text, borderRadius:999, padding:"2px 8px" }}>
+                      {owner.icon} {owner.name}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={gmS.foot}>
+          <button type="button" onClick={onClose} style={gmS.cancel}>✕</button>
+          <button type="button" disabled={saving} onClick={() => onSave(draft)} style={gmS.save}>
+            {saving ? "⏳" : "💾"} {t("amSaveChanges")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const gmS = {
+  overlay: { position:"fixed", inset:0, background:"rgba(15,23,42,.62)", zIndex:9000, display:"grid", placeItems:"center", padding:16 },
+  modal:   { background:"#fff", borderRadius:18, width:"min(1000px,96vw)", maxHeight:"92vh", display:"flex", flexDirection:"column", padding:"20px 22px", boxShadow:"0 30px 70px rgba(0,0,0,.4)" },
+  head:    { display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 },
+  x:       { background:"none", border:"none", fontSize:20, cursor:"pointer", color:"#64748b", fontWeight:900 },
+  hint:    { color:"#64748b", fontSize:13, fontWeight:600, marginBottom:14, lineHeight:1.7 },
+  newRow:  { display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", padding:"12px", background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:12, marginBottom:14 },
+  input:   { padding:"9px 11px", border:"1.5px solid #e2e8f0", borderRadius:9, fontSize:14, fontFamily:"inherit", background:"#fff", outline:"none", minWidth:0 },
+  addBtn:  { padding:"9px 16px", background:"#0f766e", color:"#fff", border:"none", borderRadius:9, fontWeight:900, fontSize:14, cursor:"pointer", fontFamily:"inherit" },
+  body:    { display:"grid", gridTemplateColumns:"minmax(240px,1fr) minmax(260px,1.2fr)", gap:14, overflow:"hidden", flex:1, minHeight:0 },
+  col:     { overflowY:"auto", display:"flex", flexDirection:"column", gap:6, padding:2, minHeight:120 },
+  groupRow:{ display:"flex", alignItems:"center", gap:4, width:"100%", padding:"4px 6px 4px 10px", borderRadius:11, border:"1.5px solid #e2e8f0", fontSize:14 },
+  groupPick:{ display:"flex", alignItems:"center", gap:9, flex:1, minWidth:0, textAlign:"start", background:"none", border:"none", color:"inherit", font:"inherit", cursor:"pointer", padding:"7px 2px" },
+  groupDel: { background:"none", border:"none", color:"#dc2626", fontWeight:900, fontSize:15, cursor:"pointer", padding:"6px 8px", borderRadius:8, lineHeight:1, flexShrink:0 },
+  memberRow:{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:10, border:"1px solid #e2e8f0", cursor:"pointer", fontSize:14, background:"#fff" },
+  empty:   { color:"#94a3b8", fontStyle:"italic", fontSize:13, padding:14, lineHeight:1.7 },
+  foot:    { display:"flex", gap:10, justifyContent:"flex-end", marginTop:16, paddingTop:14, borderTop:"1px solid #e2e8f0" },
+  cancel:  { padding:"11px 20px", background:"#f1f5f9", color:"#374151", border:"1px solid #e2e8f0", borderRadius:10, fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit" },
+  save:    { padding:"11px 26px", background:"linear-gradient(135deg,#0f766e,#0891b2)", color:"#fff", border:"none", borderRadius:10, fontWeight:900, fontSize:15, cursor:"pointer", fontFamily:"inherit" },
+};
+
 export default function AccountsManagementTab({ onClose }) {
   const { t, dir } = useSettingsLang();
   const [view, setView]         = useState("list");
@@ -1472,6 +1706,14 @@ export default function AccountsManagementTab({ onClose }) {
   const [resetPwUser, setResetPwUser] = useState(null);
   const [search, setSearch]     = useState("");
   const [companies, setCompanies] = useState([]);
+  /* Grouping: "none" | "branch" (derived from allowed_branches, zero setup)
+     | "custom" (the admin's own buckets, stored server-side). */
+  const [groupBy, setGroupBy]   = useState("none");
+  const [sortBy, setSortBy]     = useState("name");
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [showGroups, setShowGroups] = useState(false);
+  const [savingGroups, setSavingGroups] = useState(false);
+  const { groups, error: groupsError, save: saveGroups } = useAccountGroups();
 
   const isSuperAdmin = (() => {
     try { return !!JSON.parse(localStorage.getItem("currentUser") || "{}").isSuperAdmin; }
@@ -1673,9 +1915,71 @@ export default function AccountsManagementTab({ onClose }) {
   const filteredUsers = search
     ? users.filter(u =>
         u.username?.toLowerCase().includes(search.toLowerCase()) ||
-        (u.display_name || "").toLowerCase().includes(search.toLowerCase())
+        // Searching a group name has to find its people: the group is often
+        // the only thing the admin remembers about an account.
+        (u.display_name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (groupOfUser(groups, u.username)?.name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (groupOfUser(groups, u.username)?.nameAr || "").includes(search)
       )
     : users;
+
+  const sortedUsers = React.useMemo(() => {
+    const list = [...filteredUsers];
+    const nameOf = (u) => (u.display_name || u.username || "").toLowerCase();
+    if (sortBy === "login") {
+      // Never-logged-in accounts sort last rather than first: an empty date is
+      // "unknown", not "the oldest login in the system".
+      return list.sort((a, b) => {
+        const ta = a.last_login ? Date.parse(a.last_login) : -Infinity;
+        const tb = b.last_login ? Date.parse(b.last_login) : -Infinity;
+        return tb - ta || nameOf(a).localeCompare(nameOf(b));
+      });
+    }
+    if (sortBy === "role") {
+      const rank = (u) => (u.is_admin ? 0 : (u.permissions || []).includes("*") ? 1 : 2);
+      return list.sort((a, b) => rank(a) - rank(b) || nameOf(a).localeCompare(nameOf(b)));
+    }
+    return list.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+  }, [filteredUsers, sortBy]);
+
+  const buckets = React.useMemo(() => {
+    if (groupBy === "branch") {
+      return autoGroupByBranch(sortedUsers, { fullAccessLabel: t("amGroupAllAccess") });
+    }
+    if (groupBy === "custom") {
+      return groupByCustom(sortedUsers, groups, { ungroupedLabel: t("amGroupUngrouped") });
+    }
+    return null;
+  }, [groupBy, sortedUsers, groups, t]);
+
+  const toggleBucket = (key) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const handleSaveGroups = async (draft) => {
+    setSavingGroups(true);
+    try {
+      await saveGroups(draft, currentUsername);
+      await logSettingsAudit({
+        area: "accounts",
+        action: "update_account_groups",
+        target: "account_groups",
+        after: draft,
+        reason: "Account groups updated",
+      });
+      showMsg("ok", `${t("amGroupsSaved")} ✅`);
+      setShowGroups(false);
+      // Grouping the list by buckets nobody can see yet is a dead end.
+      if (groupBy === "none" && draft.length) setGroupBy("custom");
+    } catch {
+      showMsg("err", t("amGroupsSaveErr"));
+    }
+    setSavingGroups(false);
+  };
 
   /* Current logged-in username — used to lock self-destruction in cards */
   const currentUsername = (() => {
@@ -1829,6 +2133,22 @@ export default function AccountsManagementTab({ onClose }) {
                     onChange={e => setSearch(e.target.value)}
                   />
                 </div>
+                <select value={groupBy} onChange={e => setGroupBy(e.target.value)}
+                  style={p.toolSelect} title={t("amGroupBy")}>
+                  <option value="none">▤ {t("amGroupNone")}</option>
+                  <option value="branch">🏬 {t("amGroupBranch")}</option>
+                  <option value="custom">🏷️ {t("amGroupCustom")}{groups.length ? ` (${groups.length})` : ""}</option>
+                </select>
+                <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+                  style={p.toolSelect} title={t("amSortBy")}>
+                  <option value="name">🔤 {t("amSortName")}</option>
+                  <option value="login">🕒 {t("amSortLogin")}</option>
+                  <option value="role">👑 {t("amSortRole")}</option>
+                </select>
+                <button className="acm-actbtn" onClick={() => setShowGroups(true)}
+                  style={p.btnRefresh} title={t("amManageGroups")}>
+                  🏷️ {t("amManageGroups")}
+                </button>
                 <button className="acm-actbtn" onClick={loadUsers} style={p.btnRefresh}>
                   🔄 {t("amRefresh")}
                 </button>
@@ -1850,14 +2170,80 @@ export default function AccountsManagementTab({ onClose }) {
               {/* Content */}
               {loading ? (
                 <div style={p.empty}><div style={{ fontSize:34, marginBottom:10 }}>⏳</div>{t("amLoadingAccounts")}</div>
-              ) : filteredUsers.length === 0 ? (
+              ) : sortedUsers.length === 0 ? (
                 <div style={p.empty}>
                   <div style={{ fontSize:34, marginBottom:10 }}>{search ? "🔍" : "👥"}</div>
                   {search ? `${t("amNoMatchAccounts")} "${search}"` : t("amNoAccounts")}
                 </div>
+              ) : buckets ? (
+                <div>
+                  {/* A bucket header is a real control, not a caption: it says
+                      how many are inside and folds the ones you are not
+                      looking at, which is the whole point of grouping thirty
+                      accounts. */}
+                  <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+                    <button className="acm-actbtn" style={p.btnMini}
+                      onClick={() => setCollapsed(new Set())}>{t("amExpandAll")}</button>
+                    <button className="acm-actbtn" style={p.btnMini}
+                      onClick={() => setCollapsed(new Set(buckets.map(b => b.key)))}>{t("amCollapseAll")}</button>
+                    {groupBy === "branch" && (
+                      <span style={p.bucketNote}>
+                        ℹ️ {t("amGroupBranch")} — {t("amBranchMemberships")}
+                      </span>
+                    )}
+                    {groupsError === "offline" && groupBy === "custom" && (
+                      <span style={{ ...p.bucketNote, color:"#fbbf24" }}>⚠️ {t("amGroupsOffline")}</span>
+                    )}
+                  </div>
+
+                  {buckets.map(b => {
+                    const isOpen = !collapsed.has(b.key);
+                    const c = b.group ? colorOf(b.group.color) : null;
+                    const label =
+                      b.key === NO_BRANCH ? t("amGroupNoBranch")
+                      : b.key === UNGROUPED ? t("amGroupUngrouped")
+                      : b.label;
+                    return (
+                      <div key={b.key} style={p.bucket}>
+                        <button onClick={() => toggleBucket(b.key)} style={{
+                          ...p.bucketHead,
+                          borderInlineStartColor: c ? c.dot : "#334155",
+                        }}>
+                          <span style={{ width:14, fontWeight:900, opacity:.75 }}>{isOpen ? "▾" : "▸"}</span>
+                          {b.group ? <span style={{ fontSize:17 }}>{b.group.icon}</span> : null}
+                          <span style={{ fontWeight:900 }}>{label}</span>
+                          <span style={{
+                            marginInlineStart:"auto", fontWeight:900, fontSize:12,
+                            background: c ? c.dot : "rgba(148,163,184,.28)",
+                            color:"#fff", borderRadius:999, padding:"2px 10px",
+                          }}>
+                            {b.users.length} {t("amGroupMembers")}
+                          </span>
+                        </button>
+                        {isOpen && (
+                          b.users.length === 0 ? (
+                            <div style={p.bucketEmpty}>{t("amGroupEmpty")}</div>
+                          ) : (
+                            <div style={{ ...p.cardsGrid, padding:"10px 0 4px" }}>
+                              {b.users.map(u => (
+                                <AccountCard key={`${b.key}-${u.id}`} user={u}
+                                  currentUsername={currentUsername}
+                                  adminCount={adminCount}
+                                  onEdit={() => { setEditUser(u); setView("form"); }}
+                                  onToggle={() => handleToggle(u)}
+                                  onDelete={() => setConfirmDel(u)}
+                                  onResetPw={() => setResetPwUser(u)} />
+                              ))}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <div style={p.cardsGrid}>
-                  {filteredUsers.map(u => (
+                  {sortedUsers.map(u => (
                     <AccountCard key={u.id} user={u}
                       currentUsername={currentUsername}
                       adminCount={adminCount}
@@ -1902,6 +2288,16 @@ export default function AccountsManagementTab({ onClose }) {
           {/* ── ACTIVITY VIEW ── */}
           {view === "activity" && <ActivityLogTab />}
       </main>
+
+      {/* ══════════════ ACCOUNT GROUPS MODAL ══════════════ */}
+      <GroupManager
+        open={showGroups}
+        groups={groups}
+        users={users}
+        saving={savingGroups}
+        onSave={handleSaveGroups}
+        onClose={() => setShowGroups(false)}
+      />
 
       {/* ══════════════ RESET PASSWORD MODAL ══════════════ */}
       {resetPwUser && (
@@ -2042,6 +2438,28 @@ const p = {
     whiteSpace:"nowrap",
   },
   cardsGrid: { display:"flex", flexDirection:"column", gap:10 },
+  toolSelect: {
+    padding:"10px 12px", borderRadius:10, fontSize:14, fontWeight:800,
+    fontFamily:"inherit", cursor:"pointer", outline:"none",
+    background:"rgba(255,255,255,.06)", color:"#e2e8f0",
+    border:"1px solid rgba(148,163,184,.3)",
+  },
+  btnMini: {
+    padding:"6px 13px", borderRadius:999, fontSize:12.5, fontWeight:900,
+    fontFamily:"inherit", cursor:"pointer",
+    background:"rgba(255,255,255,.06)", color:"#cbd5e1",
+    border:"1px solid rgba(148,163,184,.28)",
+  },
+  bucketNote: { fontSize:12.5, fontWeight:700, color:"#94a3b8", alignSelf:"center" },
+  bucket: { marginBottom:14 },
+  bucketHead: {
+    display:"flex", alignItems:"center", gap:9, width:"100%", textAlign:"start",
+    padding:"11px 14px", borderRadius:12, cursor:"pointer", font:"inherit", fontSize:15,
+    background:"rgba(255,255,255,.05)", color:"#e2e8f0",
+    border:"1px solid rgba(148,163,184,.22)", borderInlineStartWidth:4,
+    borderInlineStartStyle:"solid",
+  },
+  bucketEmpty: { color:"#64748b", fontStyle:"italic", fontSize:13, padding:"12px 16px" },
   empty: { background:"#fff", border:"1px solid rgba(15,23,42,.12)", borderRadius:8, textAlign:"center", padding:"30px 20px", color:"#64748b", fontWeight:800, fontSize:16 },
   overlay: {
     position:"fixed", inset:0,
@@ -2085,15 +2503,20 @@ const fs = {
   checkRow: { display:"flex", alignItems:"center", gap:10, cursor:"pointer", padding:"6px 8px", borderRadius:8 },
   err: { color:"#991b1b", background:"#fee2e2", padding:"10px 14px", borderRadius:8, fontSize:15, fontWeight:800, marginTop:10 },
   /* permissions table */
-  permBox:    { border:"1.5px solid #e2e8f0", borderRadius:14, padding:"16px 18px", marginBottom:18, background:"#fafafa" },
+  permBox:    { border:"1.5px solid #e2e8f0", borderRadius:14, padding:"16px 18px", marginBottom:18, background:"#fff" },
   permHeader: { display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10, marginBottom:14 },
-  permTitle:  { fontWeight:900, fontSize:16, color:"#0f172a" },
+  permTitle:  { fontWeight:900, fontSize:17, color:"#0f172a" },
   fullAccessBanner: { background:"#f3e8ff", border:"1px solid #d8b4fe", borderRadius:10, padding:"12px 16px", color:"#7c3aed", fontWeight:800, fontSize:15 },
-  permTable:  { width:"100%", borderCollapse:"collapse", fontSize:14 },
-  permTh:     { padding:"10px 14px", background:"#f1f5f9", fontSize:13, fontWeight:900, color:"#475569", textAlign:"center", whiteSpace:"nowrap", borderBottom:"2px solid #e2e8f0" },
-  permTd:     { padding:"10px 12px", verticalAlign:"middle" },
-  btnSelectAll: { fontSize:13, fontWeight:900, color:"#2563eb", background:"#dbeafe", border:"1px solid #bfdbfe", borderRadius:8, cursor:"pointer", padding:"5px 12px", fontFamily:"inherit" },
-  btnAllOps:  { background:"none", border:"none", cursor:"pointer", fontSize:16, padding:"2px 6px", borderRadius:6 },
+  permTable:  { width:"100%", borderCollapse:"separate", borderSpacing:0, fontSize:14 },
+  permTh:     { padding:"9px 10px", background:"#f1f5f9", fontSize:12, fontWeight:900, color:"#475569", textAlign:"center", whiteSpace:"nowrap", borderBottom:"2px solid #e2e8f0", position:"sticky", top:0, zIndex:1 },
+  permTd:     { padding:"7px 10px", verticalAlign:"middle", borderBottom:"1px solid #f1f5f9" },
+  /* 22px, not 16 — these are the switches the whole screen exists to flip, and
+     at 16px they were smaller than the text beside them and awkward to hit. */
+  cbBig:      { width:22, height:22, cursor:"pointer", flexShrink:0, margin:0 },
+  permSecLabel: { display:"flex", alignItems:"center", gap:10, cursor:"pointer", userSelect:"none" },
+  cbCell:     { display:"inline-flex", alignItems:"center", justifyContent:"center", width:38, height:34, borderRadius:9, border:"1.5px solid transparent", transition:"background .12s, border-color .12s" },
+  btnSelectAll: { fontSize:13, fontWeight:900, color:"#2563eb", background:"#dbeafe", border:"1px solid #bfdbfe", borderRadius:8, cursor:"pointer", padding:"7px 14px", fontFamily:"inherit" },
+  btnAllOps:  { background:"none", border:"none", cursor:"pointer", fontSize:18, padding:"2px 6px", borderRadius:6 },
   /* employees */
   empBox:      { border:"1.5px solid #e2e8f0", borderRadius:14, padding:"16px 18px", marginBottom:18, background:"#fafafa" },
   empChip:     { display:"flex", alignItems:"center", gap:6, background:"#dbeafe", border:"1px solid #bfdbfe", borderRadius:999, padding:"4px 12px", fontSize:14 },
