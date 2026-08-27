@@ -133,7 +133,13 @@ export default function BranchDashboard({
       const cached = getCached(rt.type);
       if (cached) return [rt.type, cached];
       try {
-        const res = await fetch(`${API_BASE}/api/reports?type=${rt.type}`);
+        // `dates=1` returns one { id, reportDate } per record with NO limit, so
+        // the counts below are the true totals — a plain `?type=` caps at the
+        // server default of 200 and every busy type falsely reads "200". The
+        // extra `lite=1&limit=5000` keeps servers that predate `dates=1` honest
+        // (they answer with a 5000-row id+reportDate shape instead of 200 full
+        // payloads). Either way we move date strings, not JSON payloads.
+        const res = await fetch(`${API_BASE}/api/reports?type=${rt.type}&dates=1&lite=1&limit=5000`);
         if (!res.ok) return [rt.type, []];
         const json = await res.json();
         const arr = Array.isArray(json) ? json : json?.data ?? [];
@@ -165,10 +171,12 @@ export default function BranchDashboard({
       list.forEach((r) => {
         const p = r?.payload || {};
         const rd =
+          r?.reportDate ||            // flat shape from dates=1 / lite=1
           p.reportDate ||
           p.header?.reportDate ||
           p.date ||
           r?.createdAt?.slice?.(0, 10) ||
+          r?.created_at?.slice?.(0, 10) ||
           "";
         if (!rd) return;
         if (rd === todayIso) todayCount++;

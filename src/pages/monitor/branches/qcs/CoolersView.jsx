@@ -15,6 +15,7 @@ import {
   importReportPayloads,
   listReports,
   parseJsonImport,
+  REPORTS_MAX_LIMIT,
   reportDateOf,
   saveReport,
 } from "../_shared/reportApi";
@@ -63,7 +64,10 @@ function storageLabel(storageKey) {
 function tempInputStyle(temp, idx, isLoading) {
   const t = Number(temp);
   const base = {
-    width: 80, padding: "6px 8px", borderRadius: 8, border: "1.7px solid #94a3b8",
+    // Longhand (not the `border` shorthand) so the conditional variants below
+    // can toggle borderColor without React warning about a shorthand/longhand mix.
+    width: 80, padding: "6px 8px", borderRadius: 8,
+    borderWidth: "1.7px", borderStyle: "solid", borderColor: "#94a3b8",
     textAlign: "center", fontWeight: 600, color: "#111827", background: "#fff",
   };
   if (Number.isNaN(t) || temp === "") return base;
@@ -178,7 +182,7 @@ export default function CoolersView() {
   async function refreshList() {
     setLoadingList(true);
     try {
-      const rows = await listReports(TYPE_COOLERS);
+      const rows = await listReports(TYPE_COOLERS, { limit: REPORTS_MAX_LIMIT });
       rows.sort((a, b) => {
         const da = new Date(extractAnyDate(a)).getTime() || 0;
         const db = new Date(extractAnyDate(b)).getTime() || 0;
@@ -318,7 +322,7 @@ export default function CoolersView() {
   };
   const handleExportJSON = async () => {
     try {
-      const rows = await listReports(TYPE_COOLERS);
+      const rows = await listReports(TYPE_COOLERS, { limit: REPORTS_MAX_LIMIT });
       downloadReportsJson(TYPE_COOLERS, rows, "QCS_Coolers_ALL");
     } catch (e) {
       console.error(e);

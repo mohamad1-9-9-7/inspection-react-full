@@ -2,6 +2,12 @@ import API_BASE from "../../../../config/api";
 
 const REPORTS_URL = `${String(API_BASE).replace(/\/$/, "")}/api/reports`;
 
+// Server default for a listing is 200 (most-recent, created_at DESC) and its
+// hard ceiling is 5000 — see routes/reports.cjs `clampInt(limit, 200, 1, 5000)`.
+// Date-tree views must pass this explicitly, otherwise any report type with
+// more than 200 records loses its oldest dates from the tree.
+export const REPORTS_MAX_LIMIT = 5000;
+
 const isSameOrigin = (() => {
   try {
     if (typeof window === "undefined") return false;

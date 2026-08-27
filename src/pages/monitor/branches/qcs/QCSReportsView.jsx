@@ -1,8 +1,13 @@
 // src/pages/monitor/branches/qcs/QCSReportsView.jsx
 // QCS — Daily Viewer Hub (unified design).
-import React, { lazy } from "react";
+import React from "react";
+import lazyWithRetry from "../../../../utils/lazyWithRetry";
 import BranchDailyView from "../_shared/BranchDailyView";
 import BranchDashboard from "../_shared/BranchDashboard";
+
+// Resilient lazy: retries the chunk fetch and self-heals after a deploy /
+// network blip instead of white-screening the route (see lazyWithRetry.js).
+const lazy = lazyWithRetry;
 
 const CoolersView                       = lazy(() => import("./CoolersView"));
 const PersonalHygieneView               = lazy(() => import("./PersonalHygieneView"));

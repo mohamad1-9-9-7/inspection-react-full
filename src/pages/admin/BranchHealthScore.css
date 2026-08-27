@@ -119,6 +119,18 @@
   font-weight: 850;
 }
 
+.bhs-idle {
+  padding: 18px 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.6;
+}
+.bhs-idle b { color: #0f172a; font-weight: 850; }
+
 .bhs-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(310px, 100%), 1fr));

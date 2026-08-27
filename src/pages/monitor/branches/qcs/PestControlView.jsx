@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { GlassShell, KpiGrid, ReportActions, ResponsiveTableWrap } from "../_shared/branchViewKit";
-import { deleteReport, downloadReportsJson, listReports, reportId } from "../_shared/reportApi";
+import { deleteReport, downloadReportsJson, listReports, REPORTS_MAX_LIMIT, reportId } from "../_shared/reportApi";
 import { pdfSafeText } from "./pdfImageUtils";
 import { canDelete } from "../../../../utils/perms";
 
@@ -90,7 +90,7 @@ export default function PestControlView() {
   async function load() {
     setLoading(true);
     try {
-      const arr = await listReports(TYPE);
+      const arr = await listReports(TYPE, { limit: REPORTS_MAX_LIMIT });
       arr.sort((a, b) => new Date(b?.payload?.reportDate || 0) - new Date(a?.payload?.reportDate || 0));
       setItems(arr);
     } catch (e) {

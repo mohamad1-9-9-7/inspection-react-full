@@ -20,7 +20,7 @@ import {
   toISODate,
   useLightbox,
 } from "../_shared/branchViewKit";
-import { deleteReport, downloadReportsJson, listReports, reportId } from "../_shared/reportApi";
+import { deleteReport, downloadReportsJson, listReports, REPORTS_MAX_LIMIT, reportId } from "../_shared/reportApi";
 import { uploadImageToServer } from "../shipment_recc/qcsRawApi";
 import { canDelete, canEdit } from "../../../../utils/perms";
 import API_BASE from "../../../../config/api";
@@ -702,7 +702,7 @@ export default function MeatWasteDisposalView() {
     setLoading(true);
     setErr("");
     try {
-      const arr = await listReports(TYPE);
+      const arr = await listReports(TYPE, { limit: REPORTS_MAX_LIMIT });
       arr.sort((a, b) => String(dateOf(b)).localeCompare(String(dateOf(a))));
       setItems(arr);
     } catch (e) {

@@ -59,8 +59,10 @@ function NCText({ label, value }) {
 
 /* ===== Server helpers ===== */
 async function listReports(type) {
+  // limit=5000 (server ceiling) so the date tree keeps every date; without it
+  // the server defaults to the most-recent 200 and older reports fall off.
   const res = await fetch(
-    `${API_BASE}/api/reports?type=${encodeURIComponent(type || DEFAULT_TYPE)}`,
+    `${API_BASE}/api/reports?type=${encodeURIComponent(type || DEFAULT_TYPE)}&limit=5000`,
     { method: "GET", cache: "no-store", credentials: IS_SAME_ORIGIN ? "include" : "omit" }
   );
   if (!res.ok) return [];

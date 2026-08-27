@@ -5,6 +5,8 @@ import "./BranchHealthScore.css";
 const LOOKBACK_DAYS = 30;
 const COVERAGE_DAYS = 7;
 const MAX_RECORDS_PER_TYPE = 700;
+// كم نوع نسحبه بنفس اللحظة — نبقيه صغيراً حتى لا نصطدم بحدّ 429 (per-IP) على السيرفر.
+const FETCH_CONCURRENCY = 4;
 
 const BRANCHES = [
   {
@@ -191,12 +193,38 @@ function normalizeItems(json) {
   return [];
 }
 
-async function fetchType(type, signal) {
-  const url = `${API_BASE}/api/reports?type=${encodeURIComponent(type)}&limit=${MAX_RECORDS_PER_TYPE}`;
+async function fetchType(type, since, signal) {
+  // نطلب آخر شهر فقط من السيرفر (from=). الخوادم الأقدم تتجاهلها وترجّع الكل،
+  // والحساب يفلتر بالتاريخ محلياً على أي حال — فالنتيجة صحيحة قبل النشر وبعده.
+  const range = since ? `&from=${encodeURIComponent(since)}` : "";
+  const url = `${API_BASE}/api/reports?type=${encodeURIComponent(type)}&limit=${MAX_RECORDS_PER_TYPE}${range}`;
   const res = await fetch(url, { cache: "no-store", signal });
   if (!res.ok) return [];
   const json = await res.json().catch(() => []);
   return normalizeItems(json);
+}
+
+// نشغّل الطلبات على دفعات صغيرة بدل إطلاق 60+ طلب سوا (يمنع 429).
+async function runThrottled(items, worker, concurrency, signal) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function pump() {
+    while (cursor < items.length) {
+      if (signal?.aborted) return;
+      const index = cursor++;
+      results[index] = await worker(items[index]);
+    }
+  }
+  const lanes = Array.from({ length: Math.min(concurrency, items.length) }, pump);
+  await Promise.all(lanes);
+  return results;
+}
+
+// آخر LOOKBACK_DAYS يوماً بصيغة YYYY-MM-DD لتمريرها كـ from= للسيرفر.
+function lookbackSince() {
+  const d = new Date();
+  d.setDate(d.getDate() - LOOKBACK_DAYS);
+  return d.toISOString().slice(0, 10);
 }
 
 function flattenValues(value, out = []) {
@@ -319,7 +347,8 @@ function normalizeVisibleBranch(branch) {
 
 export default function BranchHealthScore({ visibleBranches = [] }) {
   const [recordsByType, setRecordsByType] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [computed, setComputed] = useState(false);
   const [error, setError] = useState("");
   const [refreshedAt, setRefreshedAt] = useState(null);
 
@@ -336,34 +365,45 @@ export default function BranchHealthScore({ visibleBranches = [] }) {
     });
   }, [visibleSet]);
 
-  async function load(signal) {
+  // مرجع للإلغاء عند تفكيك المكوّن أو بدء تحميل جديد.
+  const abortRef = React.useRef(null);
+
+  async function load() {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
+
     setLoading(true);
     setError("");
     try {
-      const settled = await Promise.allSettled(
-        ALL_TYPES.map((type) => fetchType(type, signal).then((items) => [type, items]))
+      const since = lookbackSince();
+      // دفعات صغيرة (FETCH_CONCURRENCY) لآخر شهر فقط — لا رشقة 60+ طلب سوا.
+      const pairs = await runThrottled(
+        ALL_TYPES,
+        (type) => fetchType(type, since, signal).then((items) => [type, items]),
+        FETCH_CONCURRENCY,
+        signal
       );
+      if (signal.aborted) return;
       const next = {};
-      settled.forEach((result) => {
-        if (result.status === "fulfilled") {
-          const [type, items] = result.value;
-          next[type] = items;
-        }
+      pairs.forEach((pair) => {
+        if (!pair) return;
+        const [type, items] = pair;
+        next[type] = items;
       });
       setRecordsByType(next);
+      setComputed(true);
       setRefreshedAt(new Date());
     } catch (e) {
       if (e?.name !== "AbortError") setError(e?.message || "Unable to load branch score data.");
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }
 
-  useEffect(() => {
-    const controller = new AbortController();
-    load(controller.signal);
-    return () => controller.abort();
-  }, []);
+  // لا نسحب شيئاً عند فتح الصفحة — فقط ننظّف أي طلب معلّق عند التفكيك.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const rows = useMemo(() => {
     const now = new Date();
@@ -400,7 +440,7 @@ export default function BranchHealthScore({ visibleBranches = [] }) {
             </span>
           )}
           <button type="button" onClick={() => load()} disabled={loading}>
-            {loading ? "Refreshing" : "Refresh score"}
+            {loading ? "Loading…" : computed ? "Refresh score" : `Compute score (last ${LOOKBACK_DAYS}d)`}
           </button>
         </div>
       </div>
@@ -408,24 +448,30 @@ export default function BranchHealthScore({ visibleBranches = [] }) {
       <div className="bhs-summary">
         <article>
           <span>Average score</span>
-          <strong>{summary.avg}%</strong>
+          <strong>{computed ? `${summary.avg}%` : "—"}</strong>
         </article>
         <article>
           <span>Tracked branches</span>
-          <strong>{summary.tracked}</strong>
+          <strong>{computed ? summary.tracked : "—"}</strong>
         </article>
         <article>
           <span>Critical branches</span>
-          <strong>{summary.critical}</strong>
+          <strong>{computed ? summary.critical : "—"}</strong>
         </article>
         <article>
           <span>Detected issues</span>
-          <strong>{summary.issues}</strong>
+          <strong>{computed ? summary.issues : "—"}</strong>
         </article>
       </div>
 
       {error && <div className="bhs-error">{error}</div>}
 
+      {!computed && !loading ? (
+        <div className="bhs-idle">
+          Scores aren’t loaded yet — to save bandwidth nothing is pulled from the server automatically.
+          Press <b>Compute score (last {LOOKBACK_DAYS}d)</b> to load and rank the branches.
+        </div>
+      ) : (
       <div className="bhs-grid" aria-busy={loading}>
         {loading && rows.length === 0
           ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="bhs-card bhs-skeleton" />)
@@ -471,6 +517,7 @@ export default function BranchHealthScore({ visibleBranches = [] }) {
               </article>
             ))}
       </div>
+      )}
     </section>
   );
 }

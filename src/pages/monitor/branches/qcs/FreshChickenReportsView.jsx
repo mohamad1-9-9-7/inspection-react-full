@@ -15,6 +15,7 @@ import {
   downloadReportsJson,
   listReports,
   payloadOf,
+  REPORTS_MAX_LIMIT,
   reportId,
 } from "../_shared/reportApi";
 
@@ -187,7 +188,7 @@ export default function FreshChickenReportsView() {
   async function loadReports() {
     try {
       setLoading(true);
-      const rows = (await listReports(REPORT_TYPE_KEY)).map((r) => ({
+      const rows = (await listReports(REPORT_TYPE_KEY, { limit: REPORTS_MAX_LIMIT })).map((r) => ({
         id: reportId(r),
         payload: payloadOf(r),
       }));
